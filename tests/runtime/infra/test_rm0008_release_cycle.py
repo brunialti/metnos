@@ -827,8 +827,9 @@ def prepared_withdrawal(monkeypatch, tmp_path, request):
     tx = coord / "transactions-v2" / claim.request_id
     journal = birth / (cycle.JOURNAL_PREFIX + nonce)
     release = root / "releases-v1" / f"{claim.release_sequence:020d}"
+    context_directory = root / "chain-v1/context-transitions-v1"
     claim_path = coord / "successor-claims-v1" / (claim.previous_head_id[7:] + ".json")
-    for directory in (tx, journal, release / "deployment", claim_path.parent):
+    for directory in (tx, journal, release / "deployment", claim_path.parent, context_directory):
         directory.mkdir(parents=True)
     for item in records:
         (tx / f"record-{item.sequence:03d}-v2.json").write_bytes(item.encode())
@@ -860,7 +861,46 @@ def prepared_withdrawal(monkeypatch, tmp_path, request):
     archive = archive_root / claim.request_id[7:]
     origins = (tx, journal, release, claim_path)
     return NS(claim=claim, record=record, tx=tx, journal=journal, release=release,
-              archive=archive, origins=origins, preserved=preserved, records=records)
+              archive=archive, origins=origins, preserved=preserved, records=records,
+              record_fixtures=fixtures, context_directory=context_directory)
+
+
+@pytest.fixture
+def context_withdrawal(prepared_withdrawal, monkeypatch):
+    fixture = prepared_withdrawal
+    record = fixture.record
+    from executor_birth_context_transition import issue_context_transition_v1
+    payload, transition = issue_context_transition_v1(
+        request_id=record.request_id, closed_build_id=record.closed_build_id,
+        previous_cutover_id=record.previous_cutover_id,
+        previous_set_id=record.previous_set_id,
+        previous_admission_context_id=record.previous_admission_context_id,
+        previous_context_epoch=record.previous_context_epoch,
+        set_id=record.target_set_id,
+        prepared_admission_context_id=record.target_admission_context_id,
+        prepared_context_epoch=record.target_context_epoch,
+        context_material_sha256=record.target_context_material_sha256,
+        set_json_sha256=record.target_set_json_sha256,
+        current_inventory=fixture.record_fixtures.proof().inventory)
+    records = fixture.record_fixtures.transaction_records(
+        fixture.claim, end_sequence=record.sequence,
+        previous_closed_build_id=record.previous_closed_build_id,
+        previous_cutover_id=record.previous_cutover_id,
+        cutover_id="sha256:" + "c" * 64, head_id="sha256:" + "d" * 64,
+        context_transition_id=transition.transition_id)
+    for item in records:
+        (fixture.tx / f"record-{item.sequence:03d}-v2.json").write_bytes(item.encode())
+    context = fixture.context_directory / (transition.transition_id[7:] + ".json")
+    context.write_bytes(payload)
+    context.chmod(0o644)
+    fixture.context = context
+    fixture.records, fixture.record = records, records[-1]
+    def startup():
+        if context.exists() and not fixture.tx.exists():
+            return ("refused", "PreflightError", "orphan context transition")
+        return ("attested", 41, fixture.claim.previous_head_id)
+    monkeypatch.setattr(cycle, "startup_fingerprint", startup)
+    return fixture
 
 
 @pytest.mark.parametrize("crash_after", [None, 0, 1, 2, 3])
@@ -915,6 +955,27 @@ def test_prepared_withdrawal_never_retries_or_moves_selected_state(
         with pytest.raises(RuntimeError):
             cycle.withdraw_superseded_prepared(source)
     assert [cycle.snapshot(path) for path in fixture.origins] == before
+    assert not fixture.archive.exists()
+
+
+@pytest.mark.parametrize("crash_after", (None, 0, 1, 2, 3, 4))
+def test_context_withdrawal_preserves_startup_at_every_interrupted_prefix(
+        context_withdrawal, monkeypatch, crash_after):
+    fixture = context_withdrawal
+    before = cycle.snapshot(fixture.context)
+    test_prepared_archive_resumes_each_prefix_without_resetting_history(
+        fixture, monkeypatch, crash_after)
+    assert not fixture.context.exists()
+    assert cycle.snapshot(fixture.archive / "unselected-context-transition.json") == before
+
+
+def test_context_withdrawal_rejects_tampered_context_before_any_move(context_withdrawal):
+    fixture = context_withdrawal
+    fixture.context.write_bytes(b"invalid context")
+    before = [cycle.snapshot(path) for path in (*fixture.origins, fixture.context)]
+    with pytest.raises(RuntimeError):
+        cycle.withdraw_superseded_prepared("new-source")
+    assert [cycle.snapshot(path) for path in (*fixture.origins, fixture.context)] == before
     assert not fixture.archive.exists()
 
 

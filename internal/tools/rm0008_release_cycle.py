@@ -517,6 +517,8 @@ def withdraw_superseded_prepared(source_id: str) -> str | None:
     journal is verified by the canonical reader, including on interrupted
     archive prefixes; the exact predecessor must still attest. Receipt proofs
     remain in the archived journal and their backing stores are never moved.
+    A published context transition is archived first, while its journal still
+    exists; otherwise the independent startup reader sees an orphan context.
     A new source is required. The caller holds deployment, startup and
     provisioning locks. The historical archive slot name stays compatible.
     """
@@ -525,6 +527,9 @@ def withdraw_superseded_prepared(source_id: str) -> str | None:
         _successor_claim_basename_v1, OwnershipCoordinatorStateV1,
     )
     from install.birth_authority_provisioner import decode_transaction_header_v2
+    from executor_birth_context_transition import (
+        context_transition_basename_v1, verify_context_transition_v1,
+    )
 
     unselected_states = (OwnershipCoordinatorStateV1.PREPARED,
                          OwnershipCoordinatorStateV1.RECEIPTS_COMPLETE)
@@ -575,8 +580,6 @@ def withdraw_superseded_prepared(source_id: str) -> str | None:
              (release, archive / "unselected-release"),
              (claim_path, archive / "successor-claim.json"))
     paths = [location(*pair) for pair in pairs]
-    moved = [path == pair[1] for path, pair in zip(paths, pairs)]
-    require(moved == sorted(moved, reverse=True), "non-monotone prepared withdrawal")
     header = decode_transaction_header_v2((paths[1] / "transaction-v2.json").read_bytes())
     require((header.request_id, header.closed_build_id, header.transaction_id,
              header.distribution_payload_hash, header.distribution_signature_hash) == (
@@ -589,13 +592,32 @@ def withdraw_superseded_prepared(source_id: str) -> str | None:
             "prepared release identity changed")
     require(json.loads(paths[3].read_bytes()) == claim.as_value(),
             "prepared claim identity changed")
+    context_directory = ROOT / "chain-v1/context-transitions-v1"
+    context = context_directory / context_transition_basename_v1(record.context_transition_id)
+    saved_context = archive / "unselected-context-transition.json"
+    snapshot(context_directory)
+    context_names = {item.name for item in context_directory.iterdir()} - {context.name}
+    if os.path.lexists(context) or os.path.lexists(saved_context):
+        context_path = location(context, saved_context)
+        snapshot(context_path)
+        transition = verify_context_transition_v1(
+            context_path.read_bytes(), expected_transition_id=record.context_transition_id)
+        require((transition.request_id, transition.closed_build_id) == (
+                    record.request_id, record.closed_build_id),
+                "prepared context identity changed")
+        pairs = ((context, saved_context), *pairs)
+        paths = [context_path, *paths]
+    moved = [path == pair[1] for path, pair in zip(paths, pairs)]
+    require(moved == sorted(moved, reverse=True), "non-monotone prepared withdrawal")
     first = startup_fingerprint()
     require(first == ("attested", claim.release_sequence - 1, claim.previous_head_id),
             "prepared predecessor is not the selected release")
-    preserved = tuple(item for item in preserved_paths() if item != transaction)
+    preserved = tuple(item for item in preserved_paths()
+                      if item not in (transaction, context_directory)) + tuple(
+        context_directory / name for name in sorted(context_names))
     before = {str(item): snapshot(item) for item in preserved}
-    pins = [snapshot(path, BIRTH_OWNERS if index == 1 else OWNERS)
-            for index, path in enumerate(paths)]
+    pins = [snapshot(path, BIRTH_OWNERS if pair[0] == journal else OWNERS)
+            for path, pair in zip(paths, pairs)]
     archive.mkdir(mode=0o700, parents=True, exist_ok=True)
     info = archive.lstat()
     require(stat.S_ISDIR(info.st_mode) and (info.st_uid, info.st_gid) in OWNERS
@@ -605,12 +627,14 @@ def withdraw_superseded_prepared(source_id: str) -> str | None:
         "prepared archive inventory changed")
 
     def unchanged():
+        require({item.name for item in context_directory.iterdir()} - {context.name}
+                == context_names, "selected context inventory changed")
         require({str(item): snapshot(item) for item in preserved} == before,
                 "selected history changed during prepared withdrawal")
         require(startup_fingerprint() == first, "prepared startup selection moved")
 
     for index, (origin, target) in enumerate(pairs):
-        owners = BIRTH_OWNERS if index == 1 else OWNERS
+        owners = BIRTH_OWNERS if origin == journal else OWNERS
         if not moved[index]:
             unchanged()
             require(snapshot(origin, owners) == pins[index], "prepared object changed")
