@@ -95,5 +95,63 @@ order independence, lack of required rebuild, and the limits on new photos
 and undetected faces. NAS answers describe the existing natural-language
 request and protected credential/review flow, not an executed mount.
 
-Production follow-up publication is pending below; the owner has authorized
-incremental local/public commits with English messages.
+## Publication
+
+Local implementation/documentation commit:
+`f7c5d8fd` — `Explain NAS access and independent person enrollment in public guides`.
+No runtime Python changed: both reviewed Python roots remain those of release 52.
+The prepared distribution has 1,771 files and census
+`54378ae1a64864f25c4ae419702c4e6b7a9e18897ed55ea0cd2edad1e79f95c9`.
+
+Static-only website deployment completed at
+`https://557f2efc.mykleos.pages.dev`, uploading six changed assets. All six
+origin responses match the local bytes. On `metnos.com`, both PDFs and both
+LRE guides also match exactly; the two Quick Tour HTML responses differ only
+by Cloudflare's email-obfuscation markup/script. Decoding just that verified
+transformation restores exact byte equality. No Cloudflare setting was changed.
+The raw comparison failure was retained and explained, not treated as a stale
+deployment or hidden with a broad text-only comparison.
+
+The public export preflight passes with zero GII findings.
+
+### Release 53 and live acceptance
+
+The ordinary cycle completed with exit 0 and no changed runtime components.
+Source: `sha256:d3074f1472563eb819fa24105d6ae9452c192e73de7aadf5bf7e9987c2a93ac5`;
+build: `sha256:277b5c7ff596ad06416cd8946461146933af5d7f7a97a59b87f4a3403260b3f5`;
+head: `sha256:e63bc648309c87f43ba9ba39a9f1a22456b0361f2bf14b707cfb8f0cb4f17743`.
+Evidence: `/var/lib/metnos-admin/rm0008-cycle-evidence-277b5c7ff596ad06`.
+
+Readiness `run-290p15qu` confirms ready HTTP/LRE and automatic compilation of
+the new Tutor catalog, digest
+`36469c8b4a8f20f3c5c56756e215db5d9721b2f430b09258e2377611fe034dd0`.
+No independent live catalog edit, key replacement or forced compilation was
+used; sources arrived through the ordinary release.
+
+- Exact NAS replay: `be4e00789aac49eb`, 8.202 seconds, `fondata`, three Quick
+  Tour source IDs, no evidence gap and zero executed steps. Evidence:
+  `run-tn9l_j1s`.
+- Enrollment replay: `5974c98f71ea4be3`, 5.936 seconds, `fondata`, four photo
+  guide source IDs, no evidence gap and zero executed steps. The answer
+  correctly explains enrollment after indexing and its limits. Evidence:
+  `run-9_sc8t5b`.
+
+The two-question harness initially read the second turn's log before its
+record was available and ended with `turn_not_unique`. A bounded read-only
+continuation located exactly one enrollment record after the known NAS turn,
+under the same release head. It made zero new HTTP requests: neither the
+successful NAS test nor the already executed enrollment question was repeated.
+This harness failure is retained separately from the two successful product
+outcomes.
+
+The second incremental public commit is
+`ab9c6a27c9a2cca2c859de6d4229dfa464cdd4bc`:
+`Document NAS mounting and enrollment independent of photo indexing`.
+The clean local public mirror and GitHub `refs/heads/main` match exactly.
+It follows `8dc7f0515f9b6efacbb3a675b81858ee92848600`; both public messages
+are in English and no public history was rewritten. Both GII gates passed
+with zero findings. Private reports and coordination material are excluded.
+
+The requested documentation and verification work is complete. Large-archive
+performance remains for the owner's planned test; no real NAS mount, photo
+scan, person enrollment or index deletion was performed for this follow-up.
