@@ -14,10 +14,10 @@
 > - **Fonti:**
 >   - revisioni 1-5, con i rilievi della revisione 4, la review indipendente
 >     della revisione 5 e la sua verifica (commit `ad37442c`), nella storia Git;
->   - revisione 7 precedente all'unione, conservata senza sovrascriverla in
+>   - revisione 7 precedente all'unione, conservata nella storia Git (commit `0b28ba07`) in
 >     `internal/roadmap/.codex-review/RM-0009-rev7-codex-review.md`, SHA-256
 >     `9700e6962691b2743732c7d88519a28e09d6f51152fa6b270a842a17ed1bd360`;
->   - proposta dell'agente esterno precedente all'unione, conservata in
+>   - proposta dell'agente esterno precedente all'unione, conservata nella storia Git (commit `0b28ba07`) in
 >     `internal/roadmap/.merge-sources/RM-0009-proposta-agente-esterno-pre-merge.md`,
 >     SHA-256 `fe7cf3de76559075ca04b6ce2d54fd69f899ce3b542c1a98a8617f604fedaa59`;
 >   - verifiche sul codice del 14/9, riportate al §2;
