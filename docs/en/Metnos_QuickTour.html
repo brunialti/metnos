@@ -139,12 +139,14 @@ bash install/bootstrap.sh</pre>
   <p class="lead">You do not need to know the shape of Settings or guess a capability's technical name. Tutor answers questions about Metnos before the operational planner can mistake the question for an action.</p>
   <div class="scene">
     <div class="group-title">Orientation</div>
-    <h3>“Where can I see the configured embedder?”</h3>
-    <p class="q">Show me which embedder is configured under Settings &gt; System &gt; Models, and guide me there from the web chat.</p>
-    <div class="reply"><strong>Path in the web chat:</strong> Settings → System → Models. The page shows the effective configuration for LLM, embedding, and vision-language models: LLM and VLM are editable; embedding is view-only. <a href="interface.html#settings" data-url="metnos.com/en/interface#settings">Open the official interface guide</a>.</div>
-    <p>If the question arrives from Telegram, Tutor says that the path must be opened in the web chat. It can also describe the page attested by the current instance, give its address, and say what is missing rather than inventing a menu.</p>
+    <h3>How do I mount a NAS folder in Metnos?</h3>
+    <p class="q">How do I connect a NAS folder so I can use it in Metnos?</p>
+    <p class="reply">A <strong>mount</strong> makes a shared NAS folder accessible as a local folder on the Metnos server; it does not copy the files. On a Linux server, Metnos can prepare an SMB/CIFS mount through its administrative operation, when available and authorized. You need the NAS address, share name and desired local folder.</p>
+    <p><strong>Example action request:</strong> “Mount the NAS share <code>//storage.example.org/Photos</code> in the Metnos Pictures folder, read-only.” Replace the address and share with your actual ones. Check the proposed local path: the Metnos service account must be able to access it, not just your desktop session.</p>
+    <p>If credentials are missing, Metnos collects them in a dedicated form with a protected password field: do not include them in the request text. Before execution, it presents the review required by the instance policy. If the NAS is already mounted and accessible, use its existing path. Persistence after a reboot is a separate configuration: a successful mount does not guarantee it.</p>
+    <p>To check the connection, you can ask: “List the files in the Pictures folder.” Mounting a folder does not index it. The first photo-content search can automatically start background preparation: <a href="system/lre.html#photo-indexing" data-url="metnos.com/en/system/lre#photo-indexing">read how indexing works</a>. Asking Tutor “how do I do this?” provides these instructions but does not mount anything.</p>
     <div class="truth">Tutor is compiled locally from published documentation, admitted executor manifests, and permitted runtime registries. Changes to those sources rebuild and sign the catalog; internal notes and personal files are never Tutor sources.</div>
-    <div class="meta"><b>Settings:</b> 15 pages in four areas · <b>Validated languages:</b> Italian and English · <b>Boundary:</b> Tutor explains; it never acts quietly</div>
+    <div class="meta"><b>Data:</b> stays on the NAS · <b>Access:</b> share, credentials and service permissions · <b>Boundary:</b> Tutor explains; it never acts quietly</div>
   </div>
 </section>
 

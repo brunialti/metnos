@@ -139,12 +139,14 @@ bash install/bootstrap.sh</pre>
   <p class="lead">Non occorre conoscere la struttura di Settings né indovinare il nome tecnico di una funzione. Il Tutor risponde su Metnos prima che il pianificatore operativo interpreti la domanda come un'azione.</p>
   <div class="scene">
     <div class="group-title">Orientamento</div>
-    <h3>«Dove vedo l'embedder configurato?»</h3>
-    <p class="q">Mostrami quale embedder è configurato in Settings &gt; Sistema &gt; Modelli e guidami per raggiungere la pagina dalla chat web.</p>
-    <div class="reply"><strong>Percorso nella chat web:</strong> Settings → Sistema → Modelli. La pagina mostra la configurazione effettiva di LLM, embedding e VLM: LLM e VLM sono modificabili; l&rsquo;embedding è consultabile. <a href="interface.html#settings" data-url="metnos.com/it/interface#settings">Apri la guida ufficiale all'interfaccia</a>.</div>
-    <p>Se la domanda arriva da Telegram, il Tutor specifica che il percorso va aperto nella chat web. Può anche descrivere la pagina attestata dall'istanza, indicarne l'indirizzo e dire che cosa manca, senza inventare un menu.</p>
+    <h3>Come faccio a fare il mount di una cartella NAS in Metnos?</h3>
+    <p class="q">Come collego una cartella del NAS per usarla in Metnos?</p>
+    <p class="reply">Il <strong>mount</strong> rende una cartella condivisa del NAS accessibile come cartella locale sul server Metnos; non ne copia i file. Su un server Linux, Metnos può preparare un montaggio SMB/CIFS tramite l'operazione amministrativa, se disponibile e autorizzata. Servono l'indirizzo del NAS, il nome della condivisione e la cartella locale desiderata.</p>
+    <p><strong>Esempio di richiesta operativa:</strong> «Monta la condivisione <code>//storage.example.org/Photos</code> del NAS nella cartella Immagini di Metnos, in sola lettura». Sostituisci l'indirizzo e la condivisione con quelli reali. Il percorso locale proposto va controllato: deve essere accessibile all'utente del servizio Metnos, non soltanto alla tua sessione desktop.</p>
+    <p>Se mancano le credenziali, Metnos le raccoglie con un modulo dedicato e un campo password protetto: non inserirle nel testo della richiesta. Prima dell'esecuzione mostra il vaglio previsto dalla politica dell'istanza. Se il NAS è già montato e accessibile, usa il percorso esistente. La persistenza dopo il riavvio è una configurazione distinta: un mount riuscito non la garantisce.</p>
+    <p>Per verificare il collegamento puoi chiedere: «Elenca i file nella cartella Immagini». Montare una cartella non la indicizza. La prima ricerca nel contenuto delle foto può avviare automaticamente la preparazione in background: <a href="system/lre.html#photo-indexing" data-url="metnos.com/it/system/lre#photo-indexing">leggi come funziona l'indicizzazione</a>. Chiedere «come si fa» al Tutor fornisce queste indicazioni, ma non monta nulla.</p>
     <div class="truth">Il Tutor viene compilato localmente da documentazione pubblicata, manifesti degli executor ammessi e registri runtime consentiti. Quando queste fonti cambiano, il catalogo viene ricostruito e firmato; note interne e file personali non ne fanno parte.</div>
-    <div class="meta"><b>Settings:</b> 15 pagine in quattro aree · <b>Lingue validate:</b> italiano e inglese · <b>Confine:</b> il Tutor spiega, non esegue in silenzio</div>
+    <div class="meta"><b>Dati:</b> restano sul NAS · <b>Accesso:</b> condivisione, credenziali e permessi del servizio · <b>Confine:</b> il Tutor spiega, non esegue in silenzio</div>
   </div>
 </section>
 

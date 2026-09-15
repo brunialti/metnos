@@ -94,6 +94,24 @@ LRE console and is notified through available associated channels. A receipt
 does not mean the index is ready: wait for completion, then repeat the search.
 Subsequent searches reuse the index and are generally faster.</p>
 
+<h3 id="photo-person-enrollment">Person enrollment and photo indexing</h3>
+
+<p>These are separate operations. <strong>Enrollment</strong> registers a
+person by associating a name with one or more examples of their face in the
+person registry. Indexing instead analyzes the archive's photos and stores
+features of the detected faces, without requiring people to be registered
+first. When you search for a person by name, Metnos compares the current
+registry with the faces already stored in the index.</p>
+
+<p>You can therefore enroll a person <strong>before or after</strong>
+indexing: adding or improving their enrollment does not require rebuilding
+the photo index. For example, after enrolling Anna you can ask “Find photos
+of Anna in the holiday archive” even if the archive was indexed earlier.
+This applies to a valid index that contains face features: enrollment does
+not analyze new photos or recover faces that were not detected. New or
+modified photos require an index update, managed by LRE. Images used to
+enroll a person do not have to belong to the archive being searched.</p>
+
 <h3 id="photo-indexing-resume">Small, resumable steps</h3>
 
 <p>LRE discovers the files in the background, prepares folder context and
@@ -133,6 +151,8 @@ request is not enough if preparation is still running or has failed. New or
 modified photos require an index update; an incremental update reuses
 unchanged photos, while a full rebuild repeats the analysis. None of these
 operations makes every search instantaneous.</p>
+
+<h3 id="photo-index-update">Incremental updates and full rebuilds</h3>
 
 <p>Searching an existing index does not itself start an update on every
 request. You can ask Metnos to update the archive's index; the scheduled

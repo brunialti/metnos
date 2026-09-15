@@ -113,3 +113,44 @@ def test_photo_card_agrees_with_the_automatic_indexing_guide(language, required,
     for phrase in required:
         assert phrase in text
     assert obsolete not in text
+
+
+@pytest.mark.parametrize("language,heading,phrases", [
+    ("it", "Enrollment delle persone", ("due operazioni separate", "prima o dopo",
+        "non richiede", "registro attuale", "non erano stati rilevati")),
+    ("en", "Person enrollment", ("separate operations", "before or after",
+        "does not require", "current registry", "were not detected")),
+])
+def test_enrollment_order_and_limits_are_available_to_tutor(language, heading, phrases):
+    units = [unit for unit in _guide_units(language) if unit.title.startswith(heading)]
+    assert units
+    text = " ".join(unit.text for unit in units)
+    for phrase in phrases:
+        assert phrase in text
+    assert all(unit.visible_to("user") for unit in units)
+
+
+@pytest.mark.parametrize("language,heading,phrases", [
+    ("it", "Come faccio a fare il mount", ("SMB/CIFS", "sola lettura",
+        "utente del servizio", "campo password protetto", "percorso esistente",
+        "non la garantisce", "non la indicizza", "non monta nulla")),
+    ("en", "How do I mount", ("SMB/CIFS", "read-only", "service account",
+        "protected password field", "existing path", "does not guarantee",
+        "does not index", "does not mount anything")),
+])
+def test_quicktour_nas_example_is_real_public_tutor_evidence(language, heading, phrases):
+    document = next(item for item in catalog()
+                    if item.relative_path == f"{language}/Metnos_QuickTour.html")
+    units = [unit for unit in _document_units(
+        source_id=document.source_id, lang=language, path=document.path,
+        audience="user", source_kind="manual", priority=80,
+        public_url=document.canonical_url,
+    ) if unit.title.startswith(heading)]
+    assert units
+    text = " ".join(unit.text for unit in units)
+    assert "//storage.example.org/Photos" in text
+    for phrase in phrases:
+        assert phrase in text
+    assert all(unit.visible_to("user") and unit.public_url == document.canonical_url
+               and not unit.observation_ref for unit in units)
+    assert document.path.read_text().count('class="scene"') == 6

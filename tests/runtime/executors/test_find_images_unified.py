@@ -202,6 +202,35 @@ class TestFindImagesUnified(unittest.TestCase):
         })
         self.assertFalse((self.tmp / "index").exists())
 
+    def test_late_enrollment_and_replacement_reuse_existing_face_index(self):
+        """Search reads the current registry without rewriting indexed photos."""
+        import find_images_indices as fii
+        import persons_registry as registry
+
+        _build_unified_index(self.corpus, self.idx_dir, n_photos=3)
+        vectors = np.eye(3, 512, dtype="float32")
+        np.save(self.idx_dir / "embeddings_face.npy", vectors)
+        before = {path.name: path.read_bytes() for path in self.idx_dir.iterdir()}
+        example = self.tmp / "enrollment-example.jpg"
+        example.write_bytes(b"synthetic registry fixture; no face model is used")
+        with mock.patch.object(registry, "DEFAULT_DB_PATH", self.tmp / "persons.sqlite"), \
+                mock.patch.object(registry, "PERSISTENT_EXAMPLES_DIR", self.tmp / "examples"):
+            reg = registry.PersonsRegistry()
+            try:
+                self.assertEqual(reg.lookup_embeddings("Anna"), [])
+                for index, mode in ((0, "add"), (1, "replace")):
+                    reg.enroll(name="Anna", image_path=str(example),
+                               face_box=(0, 0, 50, 50), embedding=vectors[index],
+                               sha256=str(index) * 64, mode=mode)
+                    result = fii.invoke({"base_path": str(self.corpus), "name": "Anna"})
+                    self.assertTrue(result["ok"], result)
+                    self.assertEqual([row["path"] for row in result["entries"]],
+                                     [str(self.corpus / f"img_{index}.jpg")])
+                    self.assertEqual(before, {path.name: path.read_bytes()
+                                             for path in self.idx_dir.iterdir()})
+            finally:
+                reg.close()
+
     def test_schema_too_old(self):
         import find_images_indices as fii
         # Crea legacy v3 dir invece di unified
