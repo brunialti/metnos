@@ -4932,8 +4932,9 @@ class TurnLog:
         # match → blocco-status completo (comportamento storico).
         _focus: set = set()
         try:
+            from tool_grammar import _strip_fs_paths
             _fmap = _detlex.mapping("health.section_focus") or {}
-            _ql = (self.user_query or "").lower()
+            _ql = _strip_fs_paths(self.user_query or "").lower()
             for _sec, _forms in _fmap.items():
                 if _detlex.match_any(_forms, _ql):
                     _focus.add(_sec)

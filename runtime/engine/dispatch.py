@@ -1070,12 +1070,14 @@ def _ensure_health_arg(framework: Framework, query: str,
         steps = getattr(framework, "steps", None) or []
         if not query:
             return framework
-        hw = _dl_match("system.status_query", query)
+        from tool_grammar import _strip_fs_paths
+        lexical_query = _strip_fs_paths(query)
+        hw = _dl_match("system.status_query", lexical_query)
         focus_sections: set[str] = set()
         try:
             import detection_lexicon as _dl
             fmap = _dl.mapping("health.section_focus") or {}
-            ql = query.lower()
+            ql = lexical_query.lower()
             focus_sections = {
                 str(section) for section, forms in fmap.items()
                 if _dl.match_any(forms, ql)
@@ -1086,7 +1088,7 @@ def _ensure_health_arg(framework: Framework, query: str,
             (getattr(s, "tool", "") or "") == "get_processes"
             for s in steps)
         if (not hw and focus_sections
-                and (_dl_match("machine.reference", query)
+                and (_dl_match("machine.reference", lexical_query)
                      or has_process_step)):
             hw = True
         # Compound file+health (turn ddd828a6, 20/7): l'align per oggetto può

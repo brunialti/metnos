@@ -159,6 +159,8 @@ def _has_machine_focus(query: str) -> bool:
 
     try:
         import detection_lexicon as _detlex
+        from tool_grammar import _strip_fs_paths
+        query = _strip_fs_paths(query)
         if _detlex.match("system.status_query", query):
             return True
         focus = _detlex.mapping("health.section_focus") or {}
