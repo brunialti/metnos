@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """Deterministic retirement plan for the legacy entry points, and its proof.
 
 Group 7 must neutralise every `legacy_binding` so the service identity cannot

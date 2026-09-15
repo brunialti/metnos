@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """llm_cost_sink.py — sink persistente di metering per le chiamate LLM.
 
 Si aggancia all'hook universale `llm_telemetry.add_sink(...)` e scrive UNA riga

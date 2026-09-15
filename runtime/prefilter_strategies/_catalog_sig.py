@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """Common RM-0008 identity for every catalog-dependent prefilter cache."""
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """date_tokens.py — sostituzione deterministica dei token-data nei prompt.
 
 Universale (§7.3) + deterministico (§7.9): risolve i placeholder data nei

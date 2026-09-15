@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """args_resolver — risoluzione deterministica degli arg di SCOPE mancanti o a
 PLACEHOLDER, prima di validate_args. Riusabile per QUALSIASI executor: opera su
 schema (args.required) + il vocab SCOPE_ARGS, non su nomi specifici.

@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """turn_feedback.py — Feedback OK/Errore utente su risposte Metnos.
 
 Loop di rinforzo esplicito (22/5/2026). L'utente preme:

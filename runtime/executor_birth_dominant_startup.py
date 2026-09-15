@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """Private completion capability for the dominant startup installation.
 
 Group 7 crosses the certificate boundary in ONE call that never releases the

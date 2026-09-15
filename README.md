@@ -12,7 +12,7 @@ LLM-powered agents receive narrow mandates and bounded authority. They may
 adapt how they pursue the requested outcome, but they cannot widen their own
 goal, permissions, or admission status.
 
-[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![Python](https://img.shields.io/badge/python-%E2%89%A53.12-green)
 ![Self-hosted](https://img.shields.io/badge/cloud-optional-success)
 [![Docs](https://img.shields.io/badge/docs-metnos.com-1A477A.svg)](https://metnos.com)
@@ -329,5 +329,8 @@ observable result, and logs with secrets removed.
 
 ## License
 
-[AGPL-3.0](LICENSE). If you run a modified version as a network service, the
-AGPL network-use clause applies.
+[MIT](LICENSE), copyright (c) 2026 Roberto Brunialti.
+
+Third-party libraries, companion services and downloaded models retain their
+own licenses. The Metnos license does not replace their terms; check those
+terms before using or redistributing the corresponding components.

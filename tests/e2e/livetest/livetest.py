@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """livetest.py — simulatore client chat HTTP per Metnos (live, porta 8770).
 
 Esegue una batteria di query MOLTO COMPLESSE multitool/multidominio contro il

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """migrate-syspath-to-package.py — convert sys.path.insert hacks to proper package imports.
 
 Refactor R2 di ADR 0148. Per ogni .py che contiene

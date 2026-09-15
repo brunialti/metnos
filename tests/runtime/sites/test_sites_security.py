@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """test_sites_security — verifiche di sicurezza AUTOMATICHE del dominio `sites`
 (spec §4.1 verifica + §8 criteri + §10.9). Parte del CONTRATTO, non opzionali.
 

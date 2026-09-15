@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """pipeline_shape.py — invariante di forma del pipeline (FSM deterministico).
 
 Regola universale di Metnos: la sequenza degli step di un turno matcha

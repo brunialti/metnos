@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """install/playwright_sidecar.py — JS-render sidecar (locale, opzionale).
 
 Abilita la lettura di pagine rese via JavaScript (SPA: shopping, social,

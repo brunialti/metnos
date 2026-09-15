@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """Transactional readiness and restart authority for the local Metnos stack.
 
 This module never discovers arbitrary units and never signs arbitrary paths.

@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """Projection of structured records into user-labelled tabular columns.
 
 The labels shown in a spreadsheet are presentation text; record keys are a

@@ -14,6 +14,12 @@ related:
 
 ## Context
 
+> Licensing update, 2026-09-15: the owner replaced Metnos's first-party license
+> with MIT. The AGPL references below describe the original proposal and are
+> retained as historical context, not current licensing instructions. See the
+> repository's `LICENSE` and README for the current terms. Third-party software
+> and model licenses are unchanged.
+
 Metnos e' nato come assistente self-hosted personale su `.33`
 (Strix Halo 96GB, owner Roberto). La pipeline attuale di publishing
 copre solo docs (Cloudflare Pages, `metnos.com`); il codice runtime

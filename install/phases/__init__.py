@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """Six install phases per ADR 0145.
 
 Each phase exposes a single ``run(args)`` function returning a dict of

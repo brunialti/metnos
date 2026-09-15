@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """install/sidecar.py — optional self-hosted sidecars (real install, post-base).
 
 The base install ships the mandatory pieces (embedder + LLM tier). A few

@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """Common cache identity for one effective executor catalog.
 
 RM-0008 requires every catalog-dependent cache to agree on one identity.  A

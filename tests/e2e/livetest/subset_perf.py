@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """subset_perf.py — misuratore perf SEQUENZIALE (no contesa GPU) per A/B leve.
 
 Esegue un subset di query del livetest UNA ALLA VOLTA contro :8770 e riporta
