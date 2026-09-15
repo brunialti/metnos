@@ -510,25 +510,29 @@ def withdraw_superseded_claim(source_id: str) -> str | None:
 
 
 def withdraw_superseded_prepared(source_id: str) -> str | None:
-    """Archive an unselected PREPARED attempt, with its claim moved last.
+    """Archive an unselected pre-certificate attempt, moving its claim last.
 
     No selected record, receipt, authority set or producer decision is reset.
-    The canonical reader must prove sequence zero and the running predecessor
-    must still attest. A new source is required; replaying the failed source
-    is not recovery. Each interrupted prefix resumes from its exact archive.
-    The caller holds deployment, startup and provisioning locks.
+    PREPARED and RECEIPTS_COMPLETE are the only admissible frontiers. The full
+    journal is verified by the canonical reader, including on interrupted
+    archive prefixes; the exact predecessor must still attest. Receipt proofs
+    remain in the archived journal and their backing stores are never moved.
+    A new source is required. The caller holds deployment, startup and
+    provisioning locks. The historical archive slot name stays compatible.
     """
     from executor_birth_ownership_coordinator import (
-        _decode_record_v2, _resolve_ownership_coordinator_at_v2,
+        _read_transaction_directory_v2, _resolve_ownership_coordinator_at_v2,
         _successor_claim_basename_v1, OwnershipCoordinatorStateV1,
     )
     from install.birth_authority_provisioner import decode_transaction_header_v2
 
+    unselected_states = (OwnershipCoordinatorStateV1.PREPARED,
+                         OwnershipCoordinatorStateV1.RECEIPTS_COMPLETE)
     graph = _resolve_ownership_coordinator_at_v2(COORD, root_owned=ROOT_OWNED)
     candidate = None
     if graph.transactions:
         last = graph.transactions[-1]
-        if last.latest.state is OwnershipCoordinatorStateV1.PREPARED:
+        if last.latest.state in unselected_states:
             candidate = last.claim
     resumed = [claim for claim in graph.pending_claims if (
         WITHDRAWN_ROOT / claim.request_id[7:] / "prepared-transaction").exists()]
@@ -549,11 +553,12 @@ def withdraw_superseded_prepared(source_id: str) -> str | None:
 
     record_path = location(transaction, archive / "prepared-transaction")
     snapshot(record_path)
-    require({item.name for item in record_path.iterdir()} == {"record-000-v2.json"},
-            "prepared attempt advanced")
-    record = _decode_record_v2((record_path / "record-000-v2.json").read_bytes())
-    require(record.state is OwnershipCoordinatorStateV1.PREPARED
-            and record.sequence == 0 and record.current_proof is None
+    records, _ = _read_transaction_directory_v2(
+        record_path, request_id=claim.request_id, root_owned=ROOT_OWNED)
+    record = records[-1]
+    require(record.state in unselected_states and record.sequence in (0, 1)
+            and len(records) == record.sequence + 1
+            and (record.current_proof is None) == (record.sequence == 0)
             and record.head_id is None and record.certificate_payload_hash is None
             and (record.request_id, record.source_id, record.closed_build_id,
                  record.successor_claim_id, record.previous_head_id,
@@ -619,7 +624,8 @@ def withdraw_superseded_prepared(source_id: str) -> str | None:
             finally:
                 os.close(fd)
     unchanged()
-    say("WITHDREW_UNSELECTED_PREPARED", claim.request_id, "->", str(archive))
+    say("WITHDREW_UNSELECTED_PREPARED", record.state.value,
+        claim.request_id, "->", str(archive))
     return claim.request_id
 
 
@@ -1432,6 +1438,20 @@ def _run_release_edits(distribution, descriptor, catalog, *, plan_only: bool) ->
 # stage 3: the crossing, in its own interpreter over the installed release
 # --------------------------------------------------------------------------
 
+def _verify_autonomous_service_recipe(descriptor, catalog) -> None:
+    """Reject a stale independent recipe pin before reserving or stopping anything."""
+    from executor_birth_admin_preflight import (
+        _decode_deployment_descriptor_v1, _decode_service_catalog_v1,
+        _service_source_identity_v1,
+    )
+    from executor_birth_distribution_assembler import encode_deployment_descriptor_v1
+
+    _service_source_identity_v1(
+        _decode_service_catalog_v1(catalog.catalog.encoded),
+        _decode_deployment_descriptor_v1(encode_deployment_descriptor_v1(descriptor)),
+    )
+
+
 def cross(release_root: str, source_id: str, evidence: str, mode: str) -> int:
     require(os.geteuid() == 0, "the crossing requires root")
     release = Path(release_root)
@@ -1484,6 +1504,7 @@ def cross(release_root: str, source_id: str, evidence: str, mode: str) -> int:
     old_catalog = load_previous_service_catalog_v1(
         capture_previous_release_artifacts_v1(current, old))
     new_catalog = load_service_catalog_v1(current)
+    _verify_autonomous_service_recipe(descriptor, new_catalog)
     old_units, new_units = dict(old_catalog.unit_fragments), dict(
         new_catalog.unit_fragments)
     require(old_units.keys() == new_units.keys(), "unit names changed")

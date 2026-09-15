@@ -591,6 +591,7 @@ def crossing(monkeypatch, release, tmp_path):
         selection=NS(distribution=release.distribution), required_head_id="old-head"))
     monkeypatch.setattr(catalogs, "load_previous_service_catalog_v1", lambda d: release.catalog)
     monkeypatch.setattr(catalogs, "load_service_catalog_v1", lambda d: release.catalog)
+    monkeypatch.setattr(cycle, "_verify_autonomous_service_recipe", lambda *args: None)
     monkeypatch.setattr(stack_reconcile, "StackReconciler", lambda **kw: NS(
         require_quiescent=lambda: {"ok": True, "source": "test-idle"}))
     monkeypatch.setattr(transition, "_handoff_frame_v1", lambda **kw: None)
@@ -623,6 +624,33 @@ def test_audit_runs_only_the_read_only_transition_preview(crossing, capsys):
     assert crossing.run("audit") == 0
     assert crossing.events == ["preview"]
     assert "CUTOVER_OK" not in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("mode", ("audit", "complete"))
+def test_recipe_disagreement_is_refused_before_effects(crossing, monkeypatch, mode):
+    def refuse(*args):
+        raise RuntimeError("service source recipe")
+    monkeypatch.setattr(cycle, "_verify_autonomous_service_recipe", refuse)
+    with pytest.raises(RuntimeError, match="service source recipe"):
+        crossing.run(mode)
+    assert crossing.events == []
+
+
+@pytest.mark.parametrize("stale_pin", (False, True))
+def test_early_recipe_check_uses_real_canonical_and_independent_codecs(monkeypatch, stale_pin):
+    fixture_path = SOURCE.parents[2] / "tests/portable/test_executor_birth_admin_preflight_materials.py"
+    fixture_spec = importlib.util.spec_from_file_location("release_recipe_fixtures", fixture_path)
+    fixtures = importlib.util.module_from_spec(fixture_spec)
+    fixture_spec.loader.exec_module(fixtures)
+    catalog = NS(catalog=NS(encoded=fixtures._catalog_bytes()))
+    descriptor = fixtures._deployment_record()
+    if stale_pin:
+        monkeypatch.setattr(fixtures.preflight, "_EXPECTED_SERVICE_SOURCE_IDENTITY_V1",
+                            "sha256:" + "0" * 64)
+        with pytest.raises(fixtures.preflight.PreflightError, match="service source recipe"):
+            cycle._verify_autonomous_service_recipe(descriptor, catalog)
+    else:
+        cycle._verify_autonomous_service_recipe(descriptor, catalog)
 
 
 def test_preview_child_cannot_select_the_admission_flag(monkeypatch, release, tmp_path):
@@ -775,10 +803,14 @@ def test_cutover_checks_run_before_stopping_services(crossing, monkeypatch):
     assert crossing.events == []
 
 
-@pytest.fixture
-def prepared_withdrawal(monkeypatch, tmp_path):
+@pytest.fixture(params=(0, 1), ids=("prepared", "receipts_complete"))
+def prepared_withdrawal(monkeypatch, tmp_path, request):
     import executor_birth_ownership_coordinator as coordinator
     from install import birth_authority_provisioner as provisioner
+    fixture_path = SOURCE.parents[2] / "tests/portable/test_executor_birth_ownership_coordinator_v2.py"
+    fixture_spec = importlib.util.spec_from_file_location("withdrawal_record_fixtures", fixture_path)
+    fixtures = importlib.util.module_from_spec(fixture_spec)
+    fixture_spec.loader.exec_module(fixtures)
     root, birth, archive_root = (tmp_path / part for part in ("root", "birth", "archive"))
     coord = root / "coordinator-v1"
     values = {"schema_version": 1, "request_id": "sha256:" + "1" * 64,
@@ -786,20 +818,20 @@ def prepared_withdrawal(monkeypatch, tmp_path):
               "previous_head_id": "sha256:" + "4" * 64, "release_sequence": 42}
     claim = coordinator._decode_successor_claim_v1(coordinator._canonical({
         **values, "claim_id": coordinator._successor_claim_id_v1(values)}))
-    nonce = "5" * 32
+    records = fixtures.transaction_records(claim, end_sequence=request.param,
+        previous_closed_build_id="sha256:" + "a" * 64,
+        previous_cutover_id="sha256:" + "b" * 64,
+        cutover_id="sha256:" + "c" * 64, head_id="sha256:" + "d" * 64)
+    record = records[-1]
+    nonce = record.provisioning_transaction_id
     tx = coord / "transactions-v2" / claim.request_id
     journal = birth / (cycle.JOURNAL_PREFIX + nonce)
     release = root / "releases-v1" / f"{claim.release_sequence:020d}"
     claim_path = coord / "successor-claims-v1" / (claim.previous_head_id[7:] + ".json")
     for directory in (tx, journal, release / "deployment", claim_path.parent):
         directory.mkdir(parents=True)
-    encoded = b'{"fixture":"prepared"}'
-    (tx / "record-000-v2.json").write_bytes(encoded)
-    record = NS(**{key: value for key, value in values.items() if key != "schema_version"},
-        successor_claim_id=claim.claim_id, state=coordinator.OwnershipCoordinatorStateV1.PREPARED,
-        sequence=0, provisioning_transaction_id=nonce, current_proof=None, head_id=None,
-        certificate_payload_hash=None, distribution_payload_hash="sha256:" + "6" * 64,
-        distribution_signature_hash="sha256:" + "7" * 64, deployment_descriptor_id="sha256:" + "8" * 64)
+    for item in records:
+        (tx / f"record-{item.sequence:03d}-v2.json").write_bytes(item.encode())
     header = provisioner.TransactionHeaderV2(nonce, "test-build", claim.request_id,
         claim.closed_build_id, "9" * 64, record.distribution_payload_hash,
         record.distribution_signature_hash, "sha256:" + "a" * 64)
@@ -814,17 +846,13 @@ def prepared_withdrawal(monkeypatch, tmp_path):
     ownership = {(os.getuid(), os.getgid()), (0, 0)}
     for key, value in {"ROOT": root, "COORD": coord, "BIRTH": birth,
                        "WITHDRAWN_ROOT": archive_root, "OWNERS": ownership,
-                       "BIRTH_OWNERS": ownership}.items():
+                       "BIRTH_OWNERS": ownership, "ROOT_OWNED": False}.items():
         monkeypatch.setattr(cycle, key, value)
     monkeypatch.setattr(cycle, "open_parent", lambda path, owners=None:
                         os.open(path, cycle.READ | os.O_DIRECTORY))
     monkeypatch.setattr(cycle, "preserved_paths", lambda: (preserved, tx) if tx.exists() else (preserved,))
     monkeypatch.setattr(cycle, "startup_fingerprint", lambda:
                         ("attested", 41, claim.previous_head_id))
-    def decode(payload):
-        assert payload == encoded
-        return record
-    monkeypatch.setattr(coordinator, "_decode_record_v2", decode)
     def graph(*args, **kwargs):
         return NS(transactions=(NS(claim=claim, latest=record),) if tx.exists() else (),
                   pending_claims=(claim,) if not tx.exists() and claim_path.exists() else ())
@@ -832,7 +860,7 @@ def prepared_withdrawal(monkeypatch, tmp_path):
     archive = archive_root / claim.request_id[7:]
     origins = (tx, journal, release, claim_path)
     return NS(claim=claim, record=record, tx=tx, journal=journal, release=release,
-              archive=archive, origins=origins, preserved=preserved)
+              archive=archive, origins=origins, preserved=preserved, records=records)
 
 
 @pytest.mark.parametrize("crash_after", [None, 0, 1, 2, 3])
@@ -868,20 +896,64 @@ def test_prepared_withdrawal_never_retries_or_moves_selected_state(
     fixture = prepared_withdrawal
     source = "new-source"
     if bad == "advanced":
-        (fixture.tx / "record-001-v2.json").write_bytes(b"advanced")
-        (fixture.tx / "record-001-v2.json").chmod(0o644)
+        extra = fixture.tx / f"record-{len(fixture.records):03d}-v2.json"
+        extra.write_bytes(b"advanced")
+        extra.chmod(0o644)
     elif bad == "same_source":
         source = fixture.claim.source_id
     elif bad == "selected":
         monkeypatch.setattr(cycle, "startup_fingerprint", lambda: ("attested", 42, "new-head"))
     else:
-        fixture.record.deployment_descriptor_id = "different-descriptor"
+        descriptor = fixture.release / "deployment/executor-birth-deployment-v1.json"
+        payload = json.loads(descriptor.read_bytes())
+        payload["descriptor_id"] = "different-descriptor"
+        descriptor.write_text(json.dumps(payload))
     before = [cycle.snapshot(path) for path in fixture.origins]
     if bad == "same_source":
         assert cycle.withdraw_superseded_prepared(source) is None
     else:
         with pytest.raises(RuntimeError):
             cycle.withdraw_superseded_prepared(source)
+    assert [cycle.snapshot(path) for path in fixture.origins] == before
+    assert not fixture.archive.exists()
+
+
+def test_interrupted_withdrawal_revalidates_the_complete_archived_journal(
+        prepared_withdrawal, monkeypatch):
+    import executor_birth_ownership_coordinator as coordinator
+    fixture = prepared_withdrawal
+    original_rename = cycle.rename_no_replace
+    def interrupt(origin, target, owners=None):
+        original_rename(origin, target, owners)
+        raise RuntimeError("interrupted after first rename")
+    monkeypatch.setattr(cycle, "rename_no_replace", interrupt)
+    with pytest.raises(RuntimeError, match="interrupted after first rename"):
+        cycle.withdraw_superseded_prepared("new-source")
+    monkeypatch.setattr(cycle, "rename_no_replace", original_rename)
+    archived = fixture.archive / "prepared-transaction"
+    last = archived / f"record-{fixture.record.sequence:03d}-v2.json"
+    payload = json.loads(last.read_bytes())
+    payload["previous_record_sha256"] = "sha256:" + "f" * 64
+    last.write_text(json.dumps(payload, sort_keys=True, separators=(",", ":")))
+    remaining = [cycle.snapshot(path) for path in fixture.origins[1:]]
+    with pytest.raises(coordinator.OwnershipCoordinatorError):
+        cycle.withdraw_superseded_prepared("new-source")
+    assert [cycle.snapshot(path) for path in fixture.origins[1:]] == remaining
+
+
+@pytest.mark.parametrize("state", (
+    "CERTIFICATE_READY", "CERTIFICATE_PUBLISHED", "BUILD_VERIFIED",
+    "HEAD_REQUIRED", "PREFLIGHT_VERIFIED",
+))
+def test_pre_certificate_withdrawal_never_selects_a_later_frontier(
+        prepared_withdrawal, monkeypatch, state):
+    import executor_birth_ownership_coordinator as coordinator
+    fixture = prepared_withdrawal
+    graph = NS(transactions=(NS(claim=fixture.claim, latest=NS(
+        state=coordinator.OwnershipCoordinatorStateV1(state))),), pending_claims=())
+    monkeypatch.setattr(coordinator, "_resolve_ownership_coordinator_at_v2", lambda *a, **k: graph)
+    before = [cycle.snapshot(path) for path in fixture.origins]
+    assert cycle.withdraw_superseded_prepared("new-source") is None
     assert [cycle.snapshot(path) for path in fixture.origins] == before
     assert not fixture.archive.exists()
 
