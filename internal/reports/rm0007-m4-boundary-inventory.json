@@ -2039,6 +2039,36 @@
     },
     {
       "path": "runtime/contract_store.py",
+      "scope": "read_historical_birth_inventory_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "complete bounded read-only receipt namespace inventory; no live selection, deduplication or publication authority",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
+      "scope": "read_historical_birth_inventory_v1.acquire_history_bytes",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "bounded raw binding/receipt acquisition using the existing read-only historical file guard",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
+      "scope": "read_historical_birth_inventory_v1.receipt",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "preserve each physical receipt locator and raw bytes without qualification or mutation",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
       "scope": "prepare_technical_draft",
       "role": "store_owner",
       "capabilities": [

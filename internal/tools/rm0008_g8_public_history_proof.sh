@@ -3,7 +3,7 @@
 # The administrative runner captures diagnostics privately. Only bounded
 # public identities, counts and error codes leave this process.
 set -euo pipefail
-case "${2:-}" in public-history|producer-policy|producer-history|contract-history|contract-history-v1) ;; *) exit 64 ;; esac
+case "${2:-}" in public-history|producer-policy|producer-history|contract-history|contract-history-v1|contract-inventory|contract-residual) ;; *) exit 64 ;; esac
 /opt/metnos/.venv/bin/python -I - "$1" "$2" <<'PY'
 import hashlib
 import importlib.util
@@ -25,7 +25,7 @@ modules = (
 )
 if sys.argv[2] in {"producer-history", "contract-history", "contract-history-v1"}:
     modules += ("executor_birth_producer_store.py",)
-if sys.argv[2] in {"contract-history", "contract-history-v1"}:
+if sys.argv[2] in {"contract-history", "contract-history-v1", "contract-inventory"}:
     modules += ("contract_store.py",)
 
 def source_hashes():
@@ -234,6 +234,75 @@ try:
             "qualification": "complete_logical_snapshot_only_no_signature_or_global_frontier_proof",
         }
         selectors = ()
+    if sys.argv[2] == "contract-inventory":
+        from contract_store import read_historical_birth_inventory_v1
+
+        inventory = read_historical_birth_inventory_v1()
+        result["contract_inventory"] = {
+            "source_path": str(inventory.source_path),
+            "contracts": len(inventory.contracts),
+            "contracts_without_receipts": sum(not item.receipts for item in inventory.contracts),
+            "unbound_empty_namespaces": len(inventory.unbound_empty_namespaces),
+            "generation_entries": sum(len(item.generation_ids) for item in inventory.contracts),
+            "retirement_entries": sum(len(item.retirement_ids) for item in inventory.contracts),
+            "receipt_entries_v1": sum(receipt.admission_context_id is None
+                                      for item in inventory.contracts for receipt in item.receipts),
+            "receipt_entries_v2": sum(receipt.admission_context_id is not None
+                                      for item in inventory.contracts for receipt in item.receipts),
+            "entry_count": inventory.entry_count,
+            "field_bytes": inventory.field_bytes,
+            "qualification": "complete_raw_namespace_not_authentication_or_global_frontier_proof",
+            "certification_ready": "not_determined_unbound_namespaces_require_reconciliation",
+        }
+        selectors = ()
+    if sys.argv[2] == "contract-residual":
+        import config
+        from contract_bootstrap import STORE_RELATIVE
+
+        # Diagnostic of one explicitly named failed namespace, not a fallback
+        # inventory and not an inference of its absent contract identity.
+        # Exact diagnostic test locator from run-m7roerbp. This script is
+        # digest-pinned by the administrative runner; no product exception or
+        # inferred contract mapping is introduced for this stored artifact.
+        target = "4e2feabf613fef06a63bddbf37396733f427cbeae5366aa75df4816d7f27611d"
+        root = Path(config.PATH_USER_STATE) / STORE_RELATIVE
+        directory = root / target
+
+        def metadata(path):
+            info = path.lstat()
+            return {"name": str(path.relative_to(directory)), "mode": oct(stat.S_IMODE(info.st_mode)),
+                    "uid": info.st_uid, "gid": info.st_gid, "size": info.st_size,
+                    "device": info.st_dev, "inode": info.st_ino, "links": info.st_nlink,
+                    "mtime_ns": info.st_mtime_ns, "ctime_ns": info.st_ctime_ns,
+                    "kind": "directory" if stat.S_ISDIR(info.st_mode) else
+                    "regular" if stat.S_ISREG(info.st_mode) else "unsupported"}
+
+        residual_before = metadata(directory)
+        if residual_before["kind"] != "directory" or directory.resolve(strict=True) != directory:
+            raise RuntimeError("residual_directory_invalid")
+        entries = []
+        with os.scandir(directory) as children:
+            for child in children:
+                if len(entries) >= 32:
+                    raise RuntimeError("residual_entry_limit")
+                item = metadata(directory / child.name)
+                if item["kind"] == "directory":
+                    names = []
+                    with os.scandir(directory / child.name) as grandchildren:
+                        for grandchild in grandchildren:
+                            if len(names) >= 32:
+                                raise RuntimeError("residual_entry_limit")
+                            names.append(grandchild.name)
+                    item["children"] = sorted(names)
+                entries.append(item)
+        if metadata(directory) != residual_before:
+            raise RuntimeError("residual_changed")
+        result["contract_residual"] = {
+            "source_path": str(directory), "directory": residual_before,
+            "entries": sorted(entries, key=lambda item: item["name"]),
+            "qualification": "exact_metadata_only_no_identity_authentication_or_cleanup",
+        }
+        selectors = ()
     if sys.argv[2] in {"contract-history", "contract-history-v1"}:
         import base64
         from contract_store import read_historical_birth_evidence_v1
@@ -255,8 +324,8 @@ try:
             raise RuntimeError("history_sample_unavailable")
         samples = [located[0]] if len(located) == 1 else [located[0], located[-1]]
         if sys.argv[2] == "contract-history-v1":
-            # A separate diagnostic of the original oldest sample, whose V2
-            # lookup was absent. Never turn a failed V2 read into a fallback.
+            # Explicit V1 for the first sample of this fresh snapshot. No
+            # cross-run identity claim and no failed-V2-to-V1 fallback.
             samples = [located[0]]
         result["contract_history"] = []
         sample_failures = 0
@@ -368,6 +437,8 @@ try:
         "producer-history": "observed_complete_producer_history",
         "contract-history": "observed_exact_durable_history_samples",
         "contract-history-v1": "observed_exact_original_layout_sample",
+        "contract-inventory": "observed_complete_raw_contract_inventory",
+        "contract-residual": "observed_exact_unbound_namespace_metadata",
         "producer-policy": "observed_authenticated_policy_sources",
         "public-history": "verified_selected_public_contexts",
     }[sys.argv[2]]
@@ -377,7 +448,7 @@ except Exception as exc:
         item = {"type": type(exc).__name__, "code": getattr(exc, "code", None)}
         if type(exc) is RuntimeError:
             item["detail"] = str(exc)[:128]
-        if type(exc).__name__ in {"OwnershipChainError", "DistributionManifestError"}:
+        if type(exc).__name__ in {"OwnershipChainError", "DistributionManifestError", "ContractStoreError"}:
             item["detail"] = str(getattr(exc, "detail", ""))[:256]
         errors.append(item)
         exc = exc.__cause__ or getattr(exc, "_internal_cause", None)
