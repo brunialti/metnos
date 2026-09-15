@@ -383,6 +383,79 @@ def test_terminal_envelope_tampering_fails_closed_before_checks_or_publish(monke
     assert calls == [1]
 
 
+@pytest.mark.parametrize("mismatch", [
+    "signed_contract", "stored_result_binding", "committed_hint", "rejected_publication",
+])
+def test_terminal_replay_rejects_inconsistent_durable_bindings(
+    monkeypatch, tmp_path, mismatch,
+):
+    """A valid signature does not excuse a contradictory stored identity."""
+    import json
+
+    calls = []
+
+    def publisher(ref, *, expected_generation_id, **_kwargs):
+        calls.append(1)
+        return PublicationResult(
+            ref.contract_id, expected_generation_id, "sha256:" + "3" * 64,
+            "commit_birth_snapshot", False,
+        )
+
+    request, core = _fixture(tmp_path, publisher)
+    assert _birth_executor_for_test(request, _core=core).error_code is None
+    with sqlite3.connect(core.producer_db) as db:
+        envelope, signature, binding = db.execute(
+            "SELECT terminal_envelope,terminal_auth,result_binding "
+            "FROM birth_producer_receipts"
+        ).fetchone()
+        if mismatch in {"signed_contract", "committed_hint"}:
+            value = json.loads(envelope)
+            if mismatch == "signed_contract":
+                value["publication"]["contract_id"] = ContractId(
+                    ManifestOrigin.USER, "other/manifest.toml",
+                ).value
+            else:
+                value["publication"] = None
+            envelope = json.dumps(
+                value, ensure_ascii=True, sort_keys=True, separators=(",", ":"),
+            ).encode("ascii")
+            # Only the isolated test owns this signing key. Model an invalid
+            # producer record, not an attacker able to forge a production key.
+            signature = operational._sign_terminal(core, envelope)
+            binding = operational._terminal_binding(envelope)
+        elif mismatch == "stored_result_binding":
+            binding = D
+        else:
+            binding = None
+            db.execute(
+                "UPDATE birth_producer_receipts SET state='rejected',"
+                "result_binding=NULL,rejection_code='birth_not_admitted'",
+            )
+        db.execute(
+            "UPDATE birth_producer_receipts SET terminal_envelope=?,"
+            "terminal_auth=?,result_binding=?",
+            (envelope, signature, binding),
+        )
+
+    def forbidden(*_args, **_kwargs):
+        pytest.fail("inconsistent terminal reached checks or postcondition verification")
+
+    monkeypatch.setattr(operational, "_observe_birth_for_test", forbidden)
+    core = replace(core, postcondition_verifier=forbidden)
+    replay = _birth_executor_for_test(request, _core=core)
+    assert replay.error_code == "birth_unavailable"
+    assert replay.publication is None
+    assert calls == [1]
+    with sqlite3.connect(core.producer_db) as db:
+        assert db.execute(
+            "SELECT state,terminal_envelope,terminal_auth,result_binding "
+            "FROM birth_producer_receipts"
+        ).fetchone() == (
+            "rejected" if mismatch == "rejected_publication" else "committed",
+            envelope, signature, binding,
+        )
+
+
 RUN_PROCESSES_SOURCE = Path("executors/run_processes")
 CANDIDATES_KEY = b'from_entries_candidates_key = "candidates"\n'
 

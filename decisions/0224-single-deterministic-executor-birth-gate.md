@@ -365,3 +365,20 @@ The recipe now selects that directory, as other bare runtime modules do.
 A regression resolves every Python target from its signed directory without
 importing a parent package or inheriting ambient source paths. The launcher
 keeps its restricted path; no runtime fallback or readiness exception is added.
+
+## Development prerequisite for F5: exact terminal replay (15 September 2026)
+
+The schema-2 terminal reader now compares the contract encoded in a signed
+publication with the request's exact contract before constructing the typed
+publication. Previously construction substituted the request identity and
+could hide a contradictory signed field. Replay also checks that committed
+state corresponds to a publication and that the durable result hash matches
+the authenticated terminal bytes; a signed recovery hint is not a completed
+publication, and a rejected row cannot replay one as successful.
+
+Four negative cases reproduced the omissions before repair. The affected
+operational/Producer and bootstrap/recovery families pass 82 isolated tests.
+This preserves existing signing domains, schemas and productive callers;
+it does not establish the F5 admission threshold or enable F5. At this
+checkpoint the repair is not installed, the source-review pin is unchanged,
+and live HTTP, native Windows and independent review remain outstanding.

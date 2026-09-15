@@ -234,6 +234,10 @@ def _decode_terminal_envelope(encoded: bytes, request: BirthRequest) -> tuple[Bi
             tuple(item["changed_dimensions"]), checks, BirthOutcome(item["outcome"]), item["error_code"],
         )
         pub = value["publication"]
+        # Compare the signed fact before reconstructing its typed identity;
+        # copying the request's contract here must not hide a contradiction.
+        if pub is not None and pub["contract_id"] != request.manifest_ref.contract_id.value:
+            raise ValueError("publication contract binding")
         publication = None if pub is None else PublicationResult(
             request.manifest_ref.contract_id, pub["previous_generation_id"],
             pub["current_generation_id"], pub["operation"], True,
@@ -283,6 +287,11 @@ def _replay_terminal(core: "_BirthCore", request: BirthRequest, claim: object) -
     if encoded is None or signature is None:
         raise ValueError("birth_terminal_envelope_missing")
     result, admission = _verify_terminal(core, encoded, signature, request)
+    committed = claim.state == "committed"
+    if committed != (result.publication is not None):
+        raise ValueError("birth_terminal_state_mismatch")
+    if committed and claim.result_binding != _terminal_binding(encoded):
+        raise ValueError("birth_terminal_binding_mismatch")
     if result.publication is not None:
         _publication_binding(request, result.publication)
         verified, verified_admission = _verified_postcondition(
