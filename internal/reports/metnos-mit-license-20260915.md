@@ -56,5 +56,22 @@ Private reviewed Python root (767 files):
 Public reviewed Python root (755 files):
 `sha256:3ce41587c8e72fee671a720260fee9ab8a101a6f7d5ef1fd205f7332832c9ddf`.
 
-Incremental Git and static website publication results are recorded below
-after remote verification. Private coordination material is excluded.
+Local implementation commit: `cd0776a8` — `Re-license Metnos under MIT and
+align public documentation`.
+
+Public incremental commit: `0abefe777fc79d754b3d92970bec45fa3b1fcd88` —
+`Re-license Metnos under MIT and update installer and public guides`.
+The clean public mirror matches GitHub `refs/heads/main`. GitHub's license
+endpoint reports `spdx_id=MIT`. Both publication GII gates report zero findings.
+No public history was rewritten. Private coordination material is excluded.
+
+Static deployment: `https://108b5ee0.mykleos.pages.dev`. All eight changed
+IT/EN HTML and PDF assets match the local bytes at the deployment origin.
+The canonical `metnos.com` pages also show MIT without AGPL; both canonical
+PDFs match the local bytes. The initial urllib verification received HTTP 403;
+the normal curl client following the site's redirects completed all checks.
+No access policy or server configuration was changed to make this pass.
+
+The installation audit timer remains enabled for 2026-09-16 01:00 Europe/Rome.
+Its executable and automatic approval mechanism both passed independent
+read-only scheduling smoke checks. The actual cold install has not started.
