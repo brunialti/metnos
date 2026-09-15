@@ -99,6 +99,25 @@ associati disponibili. La ricevuta non significa indice pronto: attendi il
 completamento, poi ripeti la ricerca. Le ricerche successive riusano l'indice
 e sono in genere più veloci.</p>
 
+<h3 id="photo-person-enrollment">Enrollment delle persone e indicizzazione delle foto</h3>
+
+<p>Sono due operazioni separate. L'<strong>enrollment</strong>, cioè la
+registrazione di una persona, associa un nome a uno o più esempi del suo volto
+nel registro delle persone. L'indicizzazione analizza invece le foto
+dell'archivio e conserva le caratteristiche dei volti rilevati, senza richiedere
+che le persone siano già registrate. Quando cerchi una persona per nome,
+Metnos confronta il registro attuale con i volti presenti nell'indice.</p>
+
+<p>Puoi quindi registrare una persona <strong>prima o dopo</strong>
+l'indicizzazione: aggiungere o migliorare il suo enrollment non richiede di
+ricostruire l'indice delle foto. Per esempio, dopo aver registrato Anna puoi
+chiedere «Cerca le foto di Anna nell'archivio delle vacanze» anche se
+l'archivio era già indicizzato. Vale per un indice valido che contiene le
+caratteristiche dei volti: l'enrollment non analizza nuove foto e non recupera
+volti che non erano stati rilevati. Le foto nuove o modificate richiedono
+l'aggiornamento dell'indice, gestito da LRE. Le immagini usate per registrare
+la persona non devono appartenere all'archivio da cercare.</p>
+
 <h3 id="photo-indexing-resume">Piccoli passi riprendibili</h3>
 
 <p>LRE scopre i file in background, prepara il contesto delle cartelle e
@@ -139,6 +158,8 @@ seconda richiesta se la preparazione è ancora in corso o è fallita. Foto nuove
 o modificate richiedono un aggiornamento dell'indice; un aggiornamento
 incrementale riusa le foto invariate, mentre una ricostruzione completa rifà
 l'analisi. Nessuna di queste operazioni rende istantanea ogni ricerca.</p>
+
+<h3 id="photo-index-update">Aggiornamento incrementale e ricostruzione completa</h3>
 
 <p>La ricerca in un indice esistente non avvia un aggiornamento a ogni
 richiesta. Puoi chiedere a Metnos di aggiornare l'indice dell'archivio;
