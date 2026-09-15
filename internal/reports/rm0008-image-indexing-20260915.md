@@ -1,9 +1,11 @@
 # RM-0008 image indexing and relevance — candidate evidence
 
-Status: candidate changes only; the isolated service-identity cold-start
-end-to-end gate has passed. No production signing, commit, deployment,
-production service restart or modification of a user's photo index has been
-performed by this workstream. The original failed oracles are retained.
+Status: the implementation is installed in release 46. The isolated
+service-identity cold-start gate passed, but production release 45 exposed
+an additional model-path defect. The correction and actual release-46 E2E
+are tracked in [the release ledger](rm0008-release-20260915.md). This report
+preserves the original candidate evidence and failed oracles; none is
+relabeled as production evidence. The owner's photo index remains untouched.
 
 ## Original failure and separate causes
 

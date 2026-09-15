@@ -2,10 +2,10 @@
 
 Date: 2026-09-15. Candidate worktree: `rm0008-reboot`.
 
-No production configuration, signing key, deployment, service or sandbox mount
-was changed by this work. All tests described below are local/synthetic unless
-explicitly identified otherwise. Photo HTTP/LRE verification is owned by the
-separate image-indexing task; it is not claimed by this report.
+The tests below describe the original candidate work and are local/synthetic
+unless explicitly identified otherwise. The implementation is now installed
+in release 46; deployment and production mail/photo outcomes belong to
+[the release ledger](rm0008-release-20260915.md), not these earlier tests.
 
 ## Capability-aware protected-path guard
 

@@ -2,9 +2,11 @@
 
 ## Scope and outcome
 
-Candidate changes only; no release, signing, live service mutation, restart,
-provider invocation, or image reindex was performed for this work. Existing
-search-turn fixes are preserved. All model usage in these tests is synthetic.
+This report describes the original isolated candidate tests; all model usage
+in those tests is synthetic. The implementation is now installed in release
+46, including a correction for unnecessary writer locking on current-store
+opening. Production deployment and real-model outcomes are recorded separately
+in [the release ledger](rm0008-release-20260915.md).
 
 The supervised service now uses available central scheduler lanes without an
 independent pool, refills useful work without the idle polling delay, and

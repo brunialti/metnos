@@ -375,19 +375,25 @@ def _bm25_score(query_terms: list[str], doc_terms: list[str]) -> float:
 
 
 def _descriptive_terms(entry: dict) -> list[str]:
-    """Keep descriptive evidence separate from the physical storage path."""
+    """Keep observed image content separate from inherited folder context."""
     return _normalize_text_for_bm25(
         entry.get("description", "") + " "
-        + entry.get("path_context", "") + " "
         + " ".join(entry.get("keywords", []))
     )
 
 
+def _folder_terms(entry: dict) -> list[str]:
+    return _normalize_text_for_bm25(
+        " ".join(entry.get("path_tokens", [])) + " "
+        + entry.get("path_context", "")
+    )
+
+
 def _common_path_terms(entries: list[dict]) -> set[str]:
-    """Find shared path vocabulary without knowing any host directory names."""
+    """Find shared folder vocabulary without knowing any directory names."""
     shared = None
     for entry in entries:
-        terms = set(_normalize_text_for_bm25(" ".join(entry.get("path_tokens", []))))
+        terms = set(_folder_terms(entry))
         shared = terms if shared is None else shared & terms
         if not shared:
             break
@@ -1310,7 +1316,7 @@ def _filter_unified(
                         cos_score = _cosine(q_vec, _l2_normalize(emb_text[t_idx_int]))
             # Expanded words need evidence beyond a common storage ancestor.
             # Literal path searches and genuine descriptive matches still count.
-            path_terms = _normalize_text_for_bm25(" ".join(e.get("path_tokens", [])))
+            path_terms = _folder_terms(e)
             doc_terms = _descriptive_terms(e) + [
                 term for term in path_terms if term not in shared_path_terms
             ]

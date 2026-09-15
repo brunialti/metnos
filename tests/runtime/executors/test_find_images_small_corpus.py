@@ -69,11 +69,12 @@ _LARGER_CORPUS = [
 
 
 def _filter(tmp_path, monkeypatch, documents, vectors, *, query="computer",
-            path_tokens=None, **args):
+            path_tokens=None, path_context="", **args):
     entries = [{
         "path": str(tmp_path / f"photo-{index}.jpg"), "name": f"photo-{index}.jpg",
         "description": description, "keywords": keywords,
         "path_tokens": list(path_tokens or []),
+        "path_context": path_context,
         "embedding_text_idx": index, "faces": [{"embedding_face_idx": index}],
     } for index, (description, keywords) in enumerate(documents)]
     (tmp_path / "entries.jsonl").write_text("".join(json.dumps(entry) + "\n" for entry in entries))
@@ -149,6 +150,20 @@ def test_literal_common_path_query_is_preserved(tmp_path, monkeypatch, synthetic
                        _cosines([.75, .60]), query="archive", path_tokens=["archive"])) == {0, 1}
 
 
+def test_shared_folder_explanation_is_not_visual_content_evidence(tmp_path, monkeypatch, synthetic_model):
+    monkeypatch.setattr(search, "_expand_query_via_corpus", lambda query, *_args: [query, "photos"])
+    assert _filter(tmp_path, monkeypatch, [_COMPUTER, _MOUNTAIN],
+                   _cosines([.70, .56]), name=None, path_tokens=["photos"],
+                   path_context="Foto: photos.") == [0]
+
+
+def test_literal_folder_context_search_still_matches(tmp_path, monkeypatch, synthetic_model):
+    monkeypatch.setattr(search, "_expand_query_via_corpus", lambda query, *_args: [query])
+    assert set(_filter(tmp_path, monkeypatch, [_COMPUTER, _MOUNTAIN],
+                       _cosines([.75, .60]), query="vacanza", name=None,
+                       path_context="Foto della vacanza")) == {0, 1}
+
+
 @pytest.fixture(scope="module")
 def real_bge():
     path = os.environ.get("METNOS_TEST_BGE_MODEL_DIR")
@@ -182,3 +197,26 @@ def test_real_cold_start_captions_are_invariant_to_storage_root(
     vectors = real_bge.embed_texts([description for description, _keywords in documents])
     assert _filter(tmp_path, monkeypatch, documents, vectors, name=None,
                    path_tokens=path_terms) == [0]
+
+
+def test_real_release46_captions_and_folder_context(tmp_path, monkeypatch, real_bge):
+    """Replay the exact synthetic production failure, without another VLM call."""
+    monkeypatch.setattr("virt.get_local_embedder", lambda _role: real_bge)
+    documents = [(
+        "L'immagine mostra un laptop aperto con uno schermo che visualizza testo, "
+        "posizionato su una superficie di colore marrone. Il design è semplice e "
+        "stilizzato, con un colore di sfondo beige. L'azione rappresentata è l'uso "
+        "del computer per la lettura di testo.",
+        ["laptop", "schermo", "testo", "computer", "stilizzazione", "ambiente", "azione", "lettura"],
+    ), (
+        "Illustrazione stilizzata di una scenografia montuosa con due montagne "
+        "grigie e bianche, una strada che conduce verso il centro, e alberi di "
+        "conifere su un prato verde. Il cielo è blu con un sole giallo. "
+        "L'immagine è in stile grafico semplice e puro.",
+        ["montagna", "sole", "albero", "prato", "strada", "cielo", "giallo", "blu", "verde", "grigio"],
+    )]
+    context = "Foto: photos."
+    vectors = real_bge.embed_texts([context + " " + description for description, _ in documents])
+    assert _filter(tmp_path, monkeypatch, documents, vectors, name=None, match_all=True,
+                   path_tokens=["fixture", "photos", "rm0008", "live", "check", "g3icghq4"],
+                   path_context=context) == [0]
