@@ -33,6 +33,21 @@ def store(tmp_path):
         repository.close()
 
 
+def test_current_store_opens_while_another_connection_holds_the_writer(store):
+    """A current WAL schema needs a read snapshot, not a migration lock."""
+    writer = sqlite3.connect(store.database_path, isolation_level=None)
+    try:
+        writer.execute("BEGIN IMMEDIATE")
+        other = DurableWorkloadStore.open(store.database_path)
+        try:
+            assert other.list_workloads("synthetic-owner") == ()
+        finally:
+            other.close()
+    finally:
+        writer.execute("ROLLBACK")
+        writer.close()
+
+
 def _admit(
     store,
     *,

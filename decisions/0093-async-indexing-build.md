@@ -242,6 +242,17 @@ release is required. Its targeted identity, Birth, reconciliation and LRE
 group passes 598 tests. Production publication and final live verification
 are tracked separately in `internal/reports/rm0008-release-20260915.md`.
 
+The release-46 correction also routes scheduled incremental maintenance
+through this same registered plan, rather than importing the retired inline
+builder. Archive location comes from the configured data root, ownership
+from the live user registry, and executor authority from the verified
+catalog. Incremental work can be large: LRE owns its units, resumption and
+model reservations just as for a first build. Ordinary searches of an
+existing index do not trigger an unconditional refresh on every query.
+Production model artifacts live outside immutable releases and are selected
+through the existing embedding-tier configuration, including the face role;
+only declared artifact files cross the read-only sandbox boundary.
+
 ## Historical notes
 
 - Threshold 120s è euristico iniziale. Telemetria future può aggiornare.

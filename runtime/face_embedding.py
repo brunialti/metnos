@@ -47,12 +47,12 @@ __all__ = [
 
 
 def _default_model_dir() -> Path:
+    # The sandbox supplies its exact read-only projection through this value.
     env = os.environ.get("METNOS_FACE_MODEL_DIR")
     if env:
         return Path(env)
-    # ADR 0148 rename-resilient: derive from PATH_ROOT.
-    import config as _C  # local import to avoid cyclic at module load
-    return _C.PATH_ROOT / "models" / "face"
+    from virt.local_models import model_spec
+    return Path(model_spec("face")["model_dir"])
 
 
 # Template volto allineato (5 landmark standard ArcFace, 112x112)

@@ -41,9 +41,9 @@ CHECK_ONLY=0
 # projection are two different reviewed source profiles.  Never derive either
 # expected value from the candidate being published: changing source bytes
 # requires an explicit review and an update of the corresponding fixed pin.
-PRIVATE_SOURCE_REVIEW_SHA256="sha256:d8d1da9d5c11a30001e62f1eacad63d181fe879811a32e5861174ae0e419c3f9"
+PRIVATE_SOURCE_REVIEW_SHA256="sha256:4b32bf2b5fc0fa43b9d7580e42ba5ca97740a1048fcaa58ef31da9c6e60db656"
 PRIVATE_SOURCE_REVIEW_COUNT=767
-PUBLIC_SOURCE_REVIEW_SHA256="sha256:cd67d2ba63917782d5309e8db42b1b5b2ef7be13c99692aca8aae4adba905f46"
+PUBLIC_SOURCE_REVIEW_SHA256="sha256:aca17c8d452e4b4bcadcefc2efc045be127eea8856c380c1e506552364e4b0c4"
 PUBLIC_SOURCE_REVIEW_COUNT=755
 SOURCE_REVIEW_TOOL="$REPO_ROOT/internal/tools/rm0008_public_source_review.py"
 BOUNDARY_POLICY_CHECKER="$REPO_ROOT/scripts/check_contract_boundary_policy.py"

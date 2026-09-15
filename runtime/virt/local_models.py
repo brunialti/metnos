@@ -92,6 +92,12 @@ def model_spec(role: str) -> dict:
 
     spec = ({"provider": "face"} if role == "face"
             else local_embedding_spec(role, projected=False))
+    if role == "face":
+        configured = tiers.spec("embedding", role, {role: spec})
+        if (configured.get("provider") == "face"
+                and isinstance(configured.get("model_dir"), str)
+                and configured["model_dir"]):
+            spec["model_dir"] = configured["model_dir"]
     provider = spec["provider"]
     if "model_dir" not in spec:
         if provider == "qwen":

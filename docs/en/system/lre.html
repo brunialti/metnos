@@ -134,6 +134,12 @@ modified photos require an index update; an incremental update reuses
 unchanged photos, while a full rebuild repeats the analysis. None of these
 operations makes every search instantaneous.</p>
 
+<p>Searching an existing index does not itself start an update on every
+request. You can ask Metnos to update the archive's index; the scheduled
+nightly maintenance also submits incremental indexing to LRE. Both an
+incremental update and a full rebuild can be substantial background jobs,
+so they use the same resumable processing and resource limits.</p>
+
 <h2 id="flow">What happens after a request</h2>
 
 <ol>

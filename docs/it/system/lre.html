@@ -140,6 +140,12 @@ o modificate richiedono un aggiornamento dell'indice; un aggiornamento
 incrementale riusa le foto invariate, mentre una ricostruzione completa rifà
 l'analisi. Nessuna di queste operazioni rende istantanea ogni ricerca.</p>
 
+<p>La ricerca in un indice esistente non avvia un aggiornamento a ogni
+richiesta. Puoi chiedere a Metnos di aggiornare l'indice dell'archivio;
+anche la manutenzione notturna programmata affida l'aggiornamento incrementale
+a LRE. Sia l'aggiornamento sia la ricostruzione completa possono essere lavori
+consistenti: usano quindi gli stessi passi riprendibili e limiti di risorse.</p>
+
 <h2 id="flusso">Che cosa accade dopo una richiesta</h2>
 
 <ol>

@@ -196,6 +196,37 @@ def test_image_and_face_overrides_are_independent_read_only_grants(
     assert all("embedding-bge" not in source for source, _dest in _bindings(args))
 
 
+def test_external_image_and_face_config_survives_an_immutable_release(
+        tmp_path, local_installation, monkeypatch):
+    import face_embedding
+
+    configured = tmp_path / "shared-models"
+    face, image = configured / "face", configured / "image"
+    _artifacts(face, "det_10g.onnx", "w600k_r50.onnx", "private.env")
+    _artifacts(image, "text_model.onnx", "vision_model.onnx", "tokenizer.json")
+    monkeypatch.setattr(virt.tiers, "spec", lambda _kind, role, defaults: {
+        **defaults[role], "model_dir": str(configured / role), "api_key": "fixture-secret"})
+
+    assert not (local_installation / "models").exists()
+    assert face_embedding._default_model_dir() == face
+    bindings = _bindings(_arguments("embedding_image:local", "embedding_face:local"))
+    assert len(bindings) == 5
+    assert all(Path(source).parent in (face, image) for source, _dest in bindings)
+    assert not any("private.env" in source for source, _dest in bindings)
+    # An existing installation-independent projection remains authoritative.
+    monkeypatch.setenv("METNOS_FACE_MODEL_DIR", str(local_models.PROJECTION_ROOT / "face"))
+    assert face_embedding._default_model_dir() == local_models.PROJECTION_ROOT / "face"
+
+
+def test_face_asset_configuration_keeps_the_provider_role_closed():
+    from virt.config_editor import ConfigEditError, _validate
+
+    _validate("embedding", {"face": {"provider": "face", "model_dir": "/models/face"}})
+    for role, provider in (("text", "face"), ("image", "face"), ("face", "http")):
+        with pytest.raises(ConfigEditError, match=f"{role}.provider"):
+            _validate("embedding", {role: {"provider": provider, "endpoint": "http://localhost:8080"}})
+
+
 def test_cached_qwen_symlinks_project_exact_files_not_the_cache(
         tmp_path, local_installation, monkeypatch):
     checkout = tmp_path / "cache" / "snapshots" / "revision"

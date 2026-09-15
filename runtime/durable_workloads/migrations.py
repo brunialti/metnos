@@ -1597,8 +1597,15 @@ def migrate(
     the version and partial tables roll back together.
     """
     try:
-        connection.execute("BEGIN IMMEDIATE")
+        # Opening an already-current store only authenticates its schema.
+        # Parallel readers must not compete for the writer's reservation.
+        connection.execute("BEGIN")
         current = schema_version(connection)
+        if current < CURRENT_SCHEMA_VERSION:
+            connection.execute("ROLLBACK")
+            connection.execute("BEGIN IMMEDIATE")
+            # Another opener may have migrated while this one waited.
+            current = schema_version(connection)
         if current > CURRENT_SCHEMA_VERSION:
             raise SchemaTooNewError(
                 f"database schema {current} is newer than supported "

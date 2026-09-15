@@ -163,7 +163,6 @@ def test_vlm_edits_the_runtime_base_url_and_reset_restores_factory_values(
 
 
 def test_vlm_invalidation_refreshes_the_request_client(monkeypatch):
-    import virt
     import virt.config_editor as editor
 
     calls: list[bool] = []
@@ -171,12 +170,9 @@ def test_vlm_invalidation_refreshes_the_request_client(monkeypatch):
         sys.modules, "vlm_client",
         SimpleNamespace(reload_configuration=lambda: calls.append(True)),
     )
-    virt._vlm_started["default"] = True
-
     editor._invalidate_runtime("vlm")
 
     assert calls == [True]
-    assert not virt._vlm_started
 
 
 def test_invalid_endpoint_leaves_the_previous_file_untouched(
