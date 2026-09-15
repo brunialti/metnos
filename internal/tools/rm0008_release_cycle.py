@@ -427,6 +427,16 @@ def load_live_helper():
 
 
 def rename_no_replace(source: Path, target: Path, owners: set | None = None) -> None:
+    _rename_entries(source, target, owners, 1)
+
+
+def exchange_names(source: Path, target: Path, owners: set | None = None) -> None:
+    """Exchange two verified names atomically; neither name becomes absent."""
+    _rename_entries(source, target, owners, 2)
+
+
+def _rename_entries(source: Path, target: Path, owners: set | None, flags: int) -> None:
+    require(flags in (1, 2), "unsupported rename operation")
     left = open_parent(source.parent, owners)
     right = open_parent(target.parent, owners)
     try:
@@ -437,8 +447,8 @@ def rename_no_replace(source: Path, target: Path, owners: set | None = None) -> 
                            ctypes.c_char_p, ctypes.c_uint]
         rename.restype = ctypes.c_int
         if rename(left, os.fsencode(source.name), right,
-                  os.fsencode(target.name), 1) != 0:
-            raise OSError(ctypes.get_errno(), "no-replace rename refused")
+                  os.fsencode(target.name), flags) != 0:
+            raise OSError(ctypes.get_errno(), "verified rename refused")
         os.fsync(left)
         os.fsync(right)
     finally:
@@ -507,6 +517,98 @@ def withdraw_superseded_claim(source_id: str) -> str | None:
     # The request, not the source: it is what binds this attempt to the
     # provisioning journal it opened before the coordinator recorded anything.
     return claim["request_id"]
+
+
+def _restore_administrative_tree(previous: bytes, candidate: bytes,
+                                 descriptor_id: str, archive: Path) -> None:
+    """Restore authenticated predecessor bytes without an absent live helper.
+
+    The caller holds all three release locks and has authenticated both signed
+    artifacts and the selected predecessor. The candidate and the installer's
+    descriptor-bound previous copy are exchanged, then the candidate is archived.
+    Either interrupted prefix can resume without replacing an unknown file.
+    """
+    from install.executor_birth_systemd import _verify_installed_tree_v1
+    from executor_birth_distribution_manifest import file_content_hash
+
+    live = LIVE_HELPER.parent
+    backup = live.parent / (".executor-birth-v1." + descriptor_id[7:] + ".previous")
+    saved = archive / "unselected-administrative"
+
+    def verify(path: Path, expected: bytes):
+        parent_fd = open_parent(path.parent)
+        try:
+            fd = _verify_installed_tree_v1(parent_fd, path.name,
+                content=expected, content_hash=file_content_hash(
+                    "deployment/admin/preflight.py", expected),
+                owner=(0, 0) if ROOT_OWNED else (os.getuid(), os.getgid()),
+                error_code="birth_ownership_recovery_required")
+            os.close(fd)
+        finally:
+            os.close(parent_fd)
+        return snapshot(path)
+
+    content = LIVE_HELPER.read_bytes()
+    require(content in (previous, candidate), "unknown live administrative artifact")
+    if previous == candidate:
+        verify(live, previous)
+        return
+    if content == candidate:
+        require(not os.path.lexists(saved), "duplicate administrative archive")
+        candidate_pin, previous_pin = verify(live, candidate), verify(backup, previous)
+        exchange_names(live, backup)
+        require(verify(live, previous) == previous_pin
+                and verify(backup, candidate) == candidate_pin,
+                "administrative exchange changed objects")
+    else:
+        verify(live, previous)
+    if os.path.lexists(saved):
+        require(not os.path.lexists(backup), "duplicate administrative archive")
+        verify(saved, candidate)
+    elif os.path.lexists(backup):
+        pin = verify(backup, candidate)
+        rename_no_replace(backup, saved)
+        require(verify(saved, candidate) == pin, "administrative archive changed")
+
+
+def restore_unselected_administrative(record, release: Path, archive: Path) -> None:
+    """Bind administrative recovery to the unselected journal and fixed trust."""
+    from install.executor_birth_systemd import _capture_descriptor_and_preflight_v1
+
+    require(record.state.value in ("PREPARED", "RECEIPTS_COMPLETE")
+            and record.sequence in (0, 1) and record.head_id is None
+            and record.certificate_payload_hash is None,
+            "administrative attempt already selected or certified")
+    helper = load_live_helper()
+    materials, _ = helper._attest_service_startup_v1("service-http")
+    require((materials.distribution.facts.release_sequence, materials.transaction.head_id)
+            == (record.release_sequence - 1, record.previous_head_id),
+            "administrative predecessor is not selected")
+    evidence = EVIDENCE_ROOT / ("rm0008-cycle-evidence-" + record.closed_build_id[7:23])
+    snapshot(evidence)
+    encoded, signature = ((evidence / name).read_bytes()
+                          for name in ("distribution.json", "distribution.sig"))
+    require(tuple("sha256:" + hashlib.sha256(value).hexdigest()
+                  for value in (encoded, signature)) == (
+                      record.distribution_payload_hash, record.distribution_signature_hash),
+            "administrative distribution does not bind the journal")
+    # The runtime trust loader reacquires the provisioning lock held by this
+    # recovery. The administrative cold verifier uses the fixed public trust
+    # root directly and preserves signature verification without that recursion.
+    candidate = helper.authenticate_distribution_v1(encoded, signature)
+    descriptor, candidate_bytes = _capture_descriptor_and_preflight_v1(candidate, release)
+    require((candidate.facts.closed_build_id, descriptor.descriptor_id) == (
+                record.closed_build_id, record.deployment_descriptor_id),
+            "administrative candidate identity changed")
+    previous = helper.authenticate_distribution_v1(
+        materials.distribution.encoded, materials.distribution.signature)
+    _, previous_bytes = _capture_descriptor_and_preflight_v1(
+        previous, Path(materials.descriptor.installation_root))
+    _restore_administrative_tree(previous_bytes, candidate_bytes,
+                                 descriptor.descriptor_id, archive)
+    require(startup_fingerprint() == ("attested", record.release_sequence - 1,
+                                     record.previous_head_id),
+            "administrative predecessor changed during recovery")
 
 
 def withdraw_superseded_prepared(source_id: str) -> str | None:
@@ -623,8 +725,11 @@ def withdraw_superseded_prepared(source_id: str) -> str | None:
     require(stat.S_ISDIR(info.st_mode) and (info.st_uid, info.st_gid) in OWNERS
             and stat.S_IMODE(info.st_mode) == 0o700, "unsafe prepared archive")
     require({item.name for item in archive.iterdir()} == {
-        pair[1].name for pair, saved in zip(pairs, moved) if saved},
+        pair[1].name for pair, saved in zip(pairs, moved) if saved} | (
+            {"unselected-administrative"}
+            if os.path.lexists(archive / "unselected-administrative") else set()),
         "prepared archive inventory changed")
+    restore_unselected_administrative(record, location(release, archive / "unselected-release"), archive)
 
     def unchanged():
         require({item.name for item in context_directory.iterdir()} - {context.name}
@@ -1476,6 +1581,27 @@ def _verify_autonomous_service_recipe(descriptor, catalog) -> None:
     )
 
 
+def _verify_live_administrative_artifact(previous, distribution) -> None:
+    """Detect a superseded or unknown helper before stopping any service."""
+    from install.executor_birth_systemd import (
+        ADMINISTRATIVE_PROGRAM_SOURCE_V1, _verify_installed_tree_v1,
+    )
+    from executor_birth_distribution_manifest import file_content_hash
+
+    expected = (previous.contents[ADMINISTRATIVE_PROGRAM_SOURCE_V1],
+                (Path(distribution.installation_root) / ADMINISTRATIVE_PROGRAM_SOURCE_V1).read_bytes())
+    observed = LIVE_HELPER.read_bytes()
+    require(observed in expected, "live administrative artifact requires recovery")
+    parent = open_parent(LIVE_HELPER.parent.parent)
+    try:
+        fd = _verify_installed_tree_v1(parent, LIVE_HELPER.parent.name,
+            content=observed, content_hash=file_content_hash(ADMINISTRATIVE_PROGRAM_SOURCE_V1, observed),
+            owner=(0, 0), error_code="birth_ownership_recovery_required")
+        os.close(fd)
+    finally:
+        os.close(parent)
+
+
 def cross(release_root: str, source_id: str, evidence: str, mode: str) -> int:
     require(os.geteuid() == 0, "the crossing requires root")
     release = Path(release_root)
@@ -1525,10 +1651,11 @@ def cross(release_root: str, source_id: str, evidence: str, mode: str) -> int:
     old_record = previous.selection.distribution
     old = authenticate_distribution_record_v1(
         old_record.encoded, old_record.signature)
-    old_catalog = load_previous_service_catalog_v1(
-        capture_previous_release_artifacts_v1(current, old))
+    old_artifacts = capture_previous_release_artifacts_v1(current, old)
+    old_catalog = load_previous_service_catalog_v1(old_artifacts)
     new_catalog = load_service_catalog_v1(current)
     _verify_autonomous_service_recipe(descriptor, new_catalog)
+    _verify_live_administrative_artifact(old_artifacts, distribution)
     old_units, new_units = dict(old_catalog.unit_fragments), dict(
         new_catalog.unit_fragments)
     require(old_units.keys() == new_units.keys(), "unit names changed")

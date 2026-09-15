@@ -592,6 +592,7 @@ def crossing(monkeypatch, release, tmp_path):
     monkeypatch.setattr(catalogs, "load_previous_service_catalog_v1", lambda d: release.catalog)
     monkeypatch.setattr(catalogs, "load_service_catalog_v1", lambda d: release.catalog)
     monkeypatch.setattr(cycle, "_verify_autonomous_service_recipe", lambda *args: None)
+    monkeypatch.setattr(cycle, "_verify_live_administrative_artifact", lambda *args: None)
     monkeypatch.setattr(stack_reconcile, "StackReconciler", lambda **kw: NS(
         require_quiescent=lambda: {"ok": True, "source": "test-idle"}))
     monkeypatch.setattr(transition, "_handoff_frame_v1", lambda **kw: None)
@@ -627,10 +628,11 @@ def test_audit_runs_only_the_read_only_transition_preview(crossing, capsys):
 
 
 @pytest.mark.parametrize("mode", ("audit", "complete"))
-def test_recipe_disagreement_is_refused_before_effects(crossing, monkeypatch, mode):
+@pytest.mark.parametrize("check", ("_verify_autonomous_service_recipe", "_verify_live_administrative_artifact"))
+def test_recipe_disagreement_is_refused_before_effects(crossing, monkeypatch, mode, check):
     def refuse(*args):
         raise RuntimeError("service source recipe")
-    monkeypatch.setattr(cycle, "_verify_autonomous_service_recipe", refuse)
+    monkeypatch.setattr(cycle, check, refuse)
     with pytest.raises(RuntimeError, match="service source recipe"):
         crossing.run(mode)
     assert crossing.events == []
@@ -854,6 +856,7 @@ def prepared_withdrawal(monkeypatch, tmp_path, request):
     monkeypatch.setattr(cycle, "preserved_paths", lambda: (preserved, tx) if tx.exists() else (preserved,))
     monkeypatch.setattr(cycle, "startup_fingerprint", lambda:
                         ("attested", 41, claim.previous_head_id))
+    monkeypatch.setattr(cycle, "restore_unselected_administrative", lambda *args: None)
     def graph(*args, **kwargs):
         return NS(transactions=(NS(claim=claim, latest=record),) if tx.exists() else (),
                   pending_claims=(claim,) if not tx.exists() and claim_path.exists() else ())
@@ -977,6 +980,74 @@ def test_context_withdrawal_rejects_tampered_context_before_any_move(context_wit
         cycle.withdraw_superseded_prepared("new-source")
     assert [cycle.snapshot(path) for path in (*fixture.origins, fixture.context)] == before
     assert not fixture.archive.exists()
+
+
+@pytest.mark.parametrize("crash_after", (None, "exchange", "archive"))
+def test_administrative_recovery_preserves_both_trees_and_resumes(tmp_path, monkeypatch, crash_after):
+    live = tmp_path / "executor-birth-v1"
+    backup = tmp_path / (".executor-birth-v1." + "a" * 64 + ".previous")
+    archive = tmp_path / "archive"
+    for path, content in ((live, b"candidate"), (backup, b"previous")):
+        path.mkdir(mode=0o755)
+        (path / "preflight.py").write_bytes(content)
+        (path / "preflight.py").chmod(0o755)
+    archive.mkdir(mode=0o700)
+    monkeypatch.setattr(cycle, "LIVE_HELPER", live / "preflight.py")
+    monkeypatch.setattr(cycle, "ROOT_OWNED", False)
+    monkeypatch.setattr(cycle, "OWNERS", {(os.getuid(), os.getgid())})
+    monkeypatch.setattr(cycle, "open_parent", lambda path, owners=None:
+                        os.open(path, cycle.READ | os.O_DIRECTORY))
+    original = {name: cycle.snapshot(path) for name, path in (("old", backup), ("new", live))}
+    exchange, rename = cycle.exchange_names, cycle.rename_no_replace
+    observed = []
+    def checkpoint(operation, implementation, source, target):
+        implementation(source, target)
+        assert (live / "preflight.py").read_bytes() == b"previous"
+        observed.append(operation)
+        if operation == crash_after:
+            raise RuntimeError("expected administrative interruption")
+    monkeypatch.setattr(cycle, "exchange_names", lambda a, b:
+                        checkpoint("exchange", exchange, a, b))
+    monkeypatch.setattr(cycle, "rename_no_replace", lambda a, b:
+                        checkpoint("archive", rename, a, b))
+    if crash_after:
+        with pytest.raises(RuntimeError, match="expected administrative interruption"):
+            cycle._restore_administrative_tree(b"previous", b"candidate", "sha256:" + "a" * 64, archive)
+        monkeypatch.setattr(cycle, "exchange_names", exchange)
+        monkeypatch.setattr(cycle, "rename_no_replace", rename)
+    cycle._restore_administrative_tree(b"previous", b"candidate", "sha256:" + "a" * 64, archive)
+    assert cycle.snapshot(live) == original["old"]
+    assert cycle.snapshot(archive / "unselected-administrative") == original["new"]
+    assert not backup.exists()
+    cycle._restore_administrative_tree(b"previous", b"candidate", "sha256:" + "a" * 64, archive)
+
+
+@pytest.mark.parametrize("bad", ("unknown_live", "wrong_backup", "extra_file"))
+def test_administrative_recovery_never_replaces_unknown_artifacts(tmp_path, monkeypatch, bad):
+    live = tmp_path / "executor-birth-v1"
+    backup = tmp_path / (".executor-birth-v1." + "a" * 64 + ".previous")
+    archive = tmp_path / "archive"
+    for path, content in ((live, b"candidate"), (backup, b"previous")):
+        path.mkdir(mode=0o755)
+        (path / "preflight.py").write_bytes(content)
+        (path / "preflight.py").chmod(0o755)
+    archive.mkdir(mode=0o700)
+    if bad == "unknown_live":
+        (live / "preflight.py").write_bytes(b"unknown")
+    elif bad == "wrong_backup":
+        (backup / "preflight.py").write_bytes(b"wrong")
+    else:
+        (live / "unexpected").write_bytes(b"extra")
+        (live / "unexpected").chmod(0o644)
+    monkeypatch.setattr(cycle, "LIVE_HELPER", live / "preflight.py")
+    monkeypatch.setattr(cycle, "ROOT_OWNED", False)
+    monkeypatch.setattr(cycle, "OWNERS", {(os.getuid(), os.getgid())})
+    monkeypatch.setattr(cycle, "open_parent", lambda path, owners=None:
+                        os.open(path, cycle.READ | os.O_DIRECTORY))
+    before = [cycle.snapshot(path) for path in (live, backup, archive)]
+    with pytest.raises(RuntimeError):
+        cycle._restore_administrative_tree(b"previous", b"candidate", "sha256:" + "a" * 64, archive)
+    assert [cycle.snapshot(path) for path in (live, backup, archive)] == before
 
 
 def test_interrupted_withdrawal_revalidates_the_complete_archived_journal(
