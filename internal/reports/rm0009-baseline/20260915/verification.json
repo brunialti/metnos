@@ -1,0 +1,208 @@
+{
+  "schema_version": "rm0009-preparation-verification-v1",
+  "verified_at_utc": "2026-09-15 15:39:20 UTC",
+  "status": "passed_preparation_only",
+  "scope": "internal_tools_and_synthetic_fixtures",
+  "source_checkout": {
+    "path": "/opt/metnos",
+    "head": "037840f455c005899dcaf089cc2e52dd614f07de",
+    "preexisting_changes_preserved": true,
+    "frozen": false
+  },
+  "tests": {
+    "command": "METNOS_USER_DATA=/tmp/metnos-rm0009-verification-AZksfZRX/data METNOS_USER_CONFIG=/tmp/metnos-rm0009-verification-AZksfZRX/config /opt/metnos/.venv/bin/python -m pytest -q tests/internal/test_rm0009_plan_check.py tests/internal/test_rm0009_test_lab.py",
+    "exit_code": 0,
+    "passed": 62,
+    "failed": 0,
+    "skipped": 0,
+    "duration_seconds": 0.24,
+    "cases": {
+      "plan_checker": 48,
+      "synthetic_lab": 14
+    },
+    "runtime_suites_run": false,
+    "source_configuration_and_data": "empty temporary paths"
+  },
+  "document_dependency_check": {
+    "concrete": false,
+    "document_sha256": "925815b298f0d1e37838681014579b2ad023dcd2f8202468732552151c51a9a2",
+    "errors": [],
+    "expansion_inventory_checked": false,
+    "node_count": 101,
+    "preliminary_ancestor_count": 66,
+    "real_integration_ancestor_count": 73,
+    "scope": "plan_dependencies_only",
+    "templates": [
+      "D-FS-A.3.N",
+      "D-FS-B.3.N"
+    ],
+    "valid": true
+  },
+  "expected_concrete_rejection": {
+    "exit_code": 1,
+    "expected": true,
+    "report": {
+      "concrete": false,
+      "document_sha256": "925815b298f0d1e37838681014579b2ad023dcd2f8202468732552151c51a9a2",
+      "errors": [
+        {
+          "code": "expansion_inventory_required"
+        },
+        {
+          "code": "unexpanded_template",
+          "node": "D-FS-A.3.N"
+        },
+        {
+          "code": "unexpanded_template",
+          "node": "D-FS-B.3.N"
+        }
+      ],
+      "expansion_inventory_checked": false,
+      "node_count": 101,
+      "preliminary_ancestor_count": 66,
+      "real_integration_ancestor_count": 73,
+      "scope": "plan_dependencies_only",
+      "templates": [
+        "D-FS-A.3.N",
+        "D-FS-B.3.N"
+      ],
+      "valid": false
+    }
+  },
+  "tracked_document_diff_check": {
+    "exit_code": 0,
+    "scope": [
+      "CLAUDE.mutabile.md",
+      "internal/roadmap/README.md",
+      "internal/roadmap/RM-0009-crescita-allineata-delle-capacita.md"
+    ],
+    "untracked_files_not_validated_by_git_diff_check": true
+  },
+  "independent_reviews": {
+    "preparation_tools": {
+      "report": "internal/reports/rm0009-baseline/20260915/preparation-review-followup.md",
+      "false_green_reproductions_closed": 3,
+      "unresolved_findings_in_targeted_scope": 0
+    },
+    "preparation_analysis": {
+      "report": "internal/reports/rm0009-baseline/20260915/analysis-review.md",
+      "clarifications_addressed": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5"
+      ],
+      "technical_directions_A_through_H": "proposals_pending_G0_definition_and_approval"
+    }
+  },
+  "upstream_coordination": {
+    "wait_condition": "satisfied_for_observed_upstream_assignment",
+    "observed_commit": "1c308922839f7659a3cf54d988f995bba0f215d6",
+    "detail": "internal/reports/rm0009-baseline/20260915/upstream-completion.json",
+    "final_source_inventory_and_release_binding_verified": false
+  },
+  "product_gates": {
+    "roadmap_state": "active",
+    "baseline_G0_P0_frozen": false,
+    "G0_7_medium_dry_runs_complete": false,
+    "G0_8_final_project_review_complete": false,
+    "G0_9_exact_payload_approved": false,
+    "F0_F6_started": false,
+    "FS_A_certified_by_this_work": false,
+    "FS_B_certified_by_this_work": false,
+    "RM0008_F5_certified_by_this_work": false
+  },
+  "safety": {
+    "production_application_databases_opened": false,
+    "real_data_copied": false,
+    "runtime_or_executor_files_modified": false,
+    "services_restarted": false,
+    "keys_or_signatures_modified": false,
+    "branches_or_worktrees_created": false,
+    "commits_or_pushes_performed_by_this_work": false,
+    "unrelated_changes_preserved": true
+  },
+  "artifacts": [
+    {
+      "path": "internal/tools/rm0009_plan_check.py",
+      "sha256": "7fd47fae9bb83336732c6eeb8889a74dc7a29f0fe6b278a704d3869e624574a6"
+    },
+    {
+      "path": "internal/tools/rm0009_test_lab.py",
+      "sha256": "a6f88a4327e47f5fb13fb240c374508b6f55e0846ab42b5d96e3590b6025974f"
+    },
+    {
+      "path": "tests/internal/test_rm0009_plan_check.py",
+      "sha256": "19a73a6f9aad574eaf65e7213210162e9a254e6021336794aa7f5281444b8e26"
+    },
+    {
+      "path": "tests/internal/test_rm0009_test_lab.py",
+      "sha256": "7eeea5a21bd5fcff4a27dc1fce645c22e0479406866bcfcc081f9f7fce0314a3"
+    },
+    {
+      "path": "internal/roadmap/RM-0009-crescita-allineata-delle-capacita.md",
+      "sha256": "925815b298f0d1e37838681014579b2ad023dcd2f8202468732552151c51a9a2"
+    },
+    {
+      "path": "internal/roadmap/README.md",
+      "sha256": "50805cc22824f4dc91ce6860e7401873d3989e2368f3428dc52e9967a4fa6d66"
+    },
+    {
+      "path": "CLAUDE.mutabile.md",
+      "sha256": "f87ac2adda2ce0af838f4a8f877953f8e5b5cdf2d449384343e3cad8e78d121e"
+    },
+    {
+      "path": "internal/reports/rm0009-baseline/20260915/README.md",
+      "sha256": "ed53837ddad33b64623d90d846f6baf76908002e4ffcbe5c2ced107348363bb6"
+    },
+    {
+      "path": "internal/reports/rm0009-baseline/20260915/preflight-observation.json",
+      "sha256": "6b5d0859bfe0664d2c258f5a670893f9b786b4396ca00be98bc3bc5305cf9cfc"
+    },
+    {
+      "path": "internal/reports/rm0009-baseline/20260915/inventory-data.md",
+      "sha256": "7c81d3aaad5c071bbf36240b8e6bb688c37145d63150f75258229d8895585354"
+    },
+    {
+      "path": "internal/reports/rm0009-baseline/20260915/inventory-security.md",
+      "sha256": "7f32c816edaf0e740ad57769b5436612f8d765598ed1a3377f0dd5ed4a1fb442"
+    },
+    {
+      "path": "internal/reports/rm0009-baseline/20260915/birth-contract.md",
+      "sha256": "05388c4d1d45888dc51febd73ccd56b4518848a22ea3d77ebb6c84958eb6cfcd"
+    },
+    {
+      "path": "internal/reports/rm0009-baseline/20260915/preparation-analysis.md",
+      "sha256": "572afedf47667ea9edb7d63aeb03dd610ec607d6562a4c3febde2c4c7c37a697"
+    },
+    {
+      "path": "internal/reports/rm0009-baseline/20260915/test-lab.md",
+      "sha256": "0fd568831b5f1cef98820b96b85277a789c17dec244cb645e3f12233ab3f2476"
+    },
+    {
+      "path": "internal/reports/rm0009-baseline/20260915/preparation-review.md",
+      "sha256": "b0d12208d0fe2d7124fac42c5bde882472e97677af7f448ade0295c6aa119a7f"
+    },
+    {
+      "path": "internal/reports/rm0009-baseline/20260915/preparation-review-followup.md",
+      "sha256": "c19dd06da33eefd7895ceefc667932d51d42045fbd20823b9cb40af2fc9abf2e"
+    },
+    {
+      "path": "internal/reports/rm0009-baseline/20260915/analysis-review.md",
+      "sha256": "043c440c2666e2cadb0fc78c23418f4128062250d3551e67c8b019178fe6c7cc"
+    },
+    {
+      "path": "internal/reports/rm0009-baseline/20260915/upstream-completion.json",
+      "sha256": "0d57518a244785b640947cbebeceecc0e0b41f955b835b2a585f6c1741779c4c"
+    }
+  ],
+  "limitations": [
+    "The artifacts identify working-file contents, not an approved source commit.",
+    "Inventories describe provisional upstream snapshots and must be regenerated on the final observed source.",
+    "Synthetic database fixtures are not a system sandbox and do not certify real publisher, remote execution or Windows.",
+    "The fixture directory guards prevent static mistakes, not hostile same-process races.",
+    "The dependency checker validates its explicit invariants and supplied ID inventory, not completeness or truth of the real-world inventory.",
+    "This JSON does not hash itself."
+  ]
+}
