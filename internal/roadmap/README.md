@@ -73,7 +73,7 @@ Ogni roadmap deve inoltre separare chiaramente:
 
 | ID | Titolo | Stato | Implementazione | Ultima revisione |
 |---|---|---|---|---|
-| [RM-0009](RM-0009-crescita-allineata-delle-capacita.md) | Crescita allineata delle capacità | `active` | revisione 8; base 09a58c7 riallineata al seguito RM-0008 5c1220ac; inventari ricontrollati, F5/F6 non certificabili; completamento RM-0008 autorizzato e revisione esterna prima della ripresa RM-0009; contratti G0 aperti, codice F0-F6 non iniziato | 2026-09-15 |
+| [RM-0009](RM-0009-crescita-allineata-delle-capacita.md) | Crescita allineata delle capacità | `active` | revisione 8; base 09a58c7 riallineata al seguito RM-0008 5c1220ac; inventari ricontrollati, F5/F6 non certificabili; ultima disposizione: solo handover F5/F6 per un agente specializzato; ripresa RM-0009 in attesa di via libera; contratti G0 aperti, codice F0-F6 non iniziato | 2026-09-15 |
 | [RM-0008](RM-0008-porta-unica-nascita-executor.md) | Porta unica di nascita e ciclo controllato degli executor sintetizzati | `in_progress` | F4: transizione produttiva e turni reali verificati; requisiti di preesercizio e chiusura F5-F6 ancora distinti | 2026-09-08 |
 | [RM-0007](RM-0007-pubblicazione-verificata-contratti.md) | Pubblicazione verificata delle varianti linguistiche dei contratti | `closed` | M0-M4, cutover, due cicli operativi e distribuzione certificati | 2026-08-25 |
 | [RM-0006](RM-0006-certificazione-logica-e2e.md) | Certificazione logica da capo a fondo | `implemented` | C0-C6 completate; cinque sonde reali e certificazione finale 96/96 | 2026-08-23 |

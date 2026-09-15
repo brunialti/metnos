@@ -36,9 +36,13 @@
 >   Esito, prove isolate e inventari ricalcolati sono in
 >   [verifica di certificabilita](../reports/rm0009-baseline/20260915-certification/README.md).
 >   Nessun attestato `EXT-RM0008-F5` e emesso e nessun veto e rimosso.
->   Roberto affida quindi allo stesso coordinatore anche il completamento
->   RM-0008/F5-F6 e richiede una pausa alla loro conclusione per la revisione
->   esterna. L'implementazione RM-0009 attende il successivo via libera.
+>   Roberto aveva poi affidato allo stesso coordinatore il completamento
+>   RM-0008/F5-F6, con pausa per revisione esterna. L'ultima istruzione
+>   sostituisce quell'incarico con il solo
+>   [handover dettagliato F5/F6](../design/handover_rm0008_f5_f6_15_9_2026.md)
+>   per un agente specializzato. Nessun codice F5/F6 viene avviato in questa
+>   task; decisioni aperte e prove richieste sono esplicite nell'handover.
+>   L'implementazione RM-0009 attende il successivo via libera.
 > - **Fonti:**
 >   - revisioni 1-5, con i rilievi della revisione 4, la review indipendente
 >     della revisione 5 e la sua verifica (commit `ad37442c`), nella storia Git;
@@ -76,6 +80,7 @@
 | 15/9 | **Documento unico:** le due sorgenti dell'unione restano soltanto nella storia Git. |
 | 15/9 | **Incarico di sviluppo:** il coordinatore sviluppa RM-0009, puo assegnare attivita ad agenti di livello adeguato e risponde del coordinamento e della qualita finale. |
 | 15/9 | **Priorita e arresto concordato:** completare anche F5/F6 di RM-0008; alla loro conclusione fermarsi per la revisione esterna richiesta da Roberto, senza riprendere RM-0009 prima del suo via libera. |
+| 15/9 | **Ultima disposizione, sostitutiva dell'incarico F5/F6 precedente:** preparare soltanto un handover dettagliato per far sviluppare F5/F6 a un agente specializzato. Questa task non implementa F5/F6; il successore dovra ricevere l'incarico e fermarsi alla conclusione per la revisione esterna. RM-0009 non riparte automaticamente. |
 | 15/9 | **Coordinamento con RM-0008:** attendere che l'altro agente abbia finito e committato prima di integrare o iniziare il runtime; nell'attesa svolgere analisi profonda, sviluppi preparatori e creazione dell'ambiente di test/verifica. Un commit intermedio non prova la conclusione. |
 
 ## 1. Obiettivo e valore per l'utente
