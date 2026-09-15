@@ -660,6 +660,8 @@ def verify_named_executors(
             materialize_birth_candidate_from_authoring,
         )
         from sign import list_trusted_publics
+        from i18n_materializer import LanguageStateError, decode_language_state
+        import tomllib
         import tomlkit
 
         from executor_birth_operational import birth_failure_diagnostic
@@ -736,6 +738,13 @@ def verify_named_executors(
                         # not derive this copy from the code being released.
                         raise CandidateSnapshotError("builtin_candidate_stale", name)
                     language_state = _read_regular(candidate, LANGUAGE_STATE_FILE)
+                    try:
+                        decode_language_state(
+                            language_state, manifest=tomllib.loads(prepared.decode("utf-8")))
+                    except LanguageStateError as exc:
+                        # Preview must reject the same stale companion that
+                        # publication would reject after the release cutover.
+                        raise CandidateSnapshotError(exc.code, exc.detail) from exc
                     declared = _declared_code_files(prepared)
                     code = {item: _read_regular(candidate, item) for item in declared}
                     same = False

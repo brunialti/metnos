@@ -1576,6 +1576,9 @@ def test_store_only_deploy_admits_the_edit_not_the_stale_authoring(
 # are substitutes. "store_verified" is proven against those substitutes only.
 
 def _contract_bytes(name, spec):
+    import tomllib
+    from i18n_materializer import encode_language_state, migrate_language_state_bytes
+
     files = spec["files"]
     manifest = (
         # The preview validates the same localized grammar as Birth.
@@ -1584,7 +1587,14 @@ def _contract_bytes(name, spec):
         "[code]\nfiles = [" + ", ".join(f'"{item}"' for item in files) + "]\n"
         f'digest = "sha256:{"0" * 64}"\n'
     ).encode("utf-8")
-    return manifest, spec.get("lang", b'{"version":1}\n'), dict(files)
+    parsed = tomllib.loads(manifest.decode("utf-8"))
+    lang = migrate_language_state_bytes(b'{}', manifest=parsed).state_bytes
+    if spec.get("language_provenance"):
+        state = json.loads(lang)
+        entry = state["selectors"]["description"]["en"]
+        entry.update(source_lang="en", source_hash=entry["version_hash"])
+        lang = encode_language_state(state, manifest=parsed)
+    return manifest, spec.get("lang", lang), dict(files)
 
 
 def _contract_name(contract_id):
@@ -1763,7 +1773,7 @@ def test_release_admission_sees_what_the_code_digest_hides(
     served = {"files": {"a.py": b"ab", "b.py": b"c"}}
     working = {
         "manifest": {"files": served["files"], "description": "changed"},
-        "language": {"files": served["files"], "lang": b'{"version":2}\n'},
+        "language": {"files": served["files"], "language_provenance": True},
         "split": {"files": {"a.py": b"a", "b.py": b"bc"}},
     }[change]
     if change == "split":
@@ -1840,6 +1850,47 @@ def test_release_preview_continues_after_a_bad_candidate_without_state_changes(m
     after = {str(path): (path.read_bytes(), path.stat().st_mtime_ns)
              for path in root.rglob("*") if path.is_file()}
     assert before == after and reached == []
+
+
+@pytest.mark.parametrize("plan", [True, False])
+@pytest.mark.parametrize("corruption, expected", [
+    ("extra", "language_state_coverage"),
+    ("missing", "language_state_coverage"),
+    ("stale_hash", "language_version_mismatch"),
+    ("noncanonical", "language_state_noncanonical"),
+])
+def test_release_rejects_invalid_language_state_before_birth(
+        monkeypatch, tmp_path, plan, corruption, expected):
+    """Preview and admission enforce the publication companion contract."""
+    same = {"files": {"main.py": b"same\n"}}
+    run, reached, _control, root = _release_store(
+        monkeypatch, tmp_path, working={"alpha": same, "beta": same, "gamma": same},
+        served={"alpha": same, "beta": same, "gamma": same})
+    companion = root / "beta" / "manifest.lang_state.json"
+    state = json.loads(companion.read_bytes())
+    if corruption == "extra":
+        state["selectors"]["args.properties.removed.description"] = state["selectors"]["description"]
+    elif corruption == "missing":
+        state["selectors"].clear()
+    elif corruption == "stale_hash":
+        state["selectors"]["description"]["en"]["version_hash"] = "sha256:" + "0" * 64
+    payload = json.dumps(state, sort_keys=True, separators=(",", ":")) + "\n"
+    companion.write_text(payload + ("\n" if corruption == "noncanonical" else ""))
+    before = {str(path): (path.read_bytes(), path.stat().st_mtime_ns)
+              for path in root.rglob("*") if path.is_file()}
+    if plan:
+        rows = run(plan=True)
+    else:
+        with pytest.raises(sr.StackFailure) as caught:
+            run()
+        assert caught.value.code == "candidate_unavailable"
+        rows = caught.value.details["outcomes"]
+    assert [(row["name"], row["outcome"]) for row in rows] == [
+        ("alpha", "unchanged"), ("beta", "error"), ("gamma", "unchanged")]
+    assert rows[1]["diagnostic"]["code"] == expected
+    assert reached == []
+    assert before == {str(path): (path.read_bytes(), path.stat().st_mtime_ns)
+                      for path in root.rglob("*") if path.is_file()}
 
 
 def test_release_preview_missing_authority_is_not_evaluated_not_green(monkeypatch, tmp_path):
