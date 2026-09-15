@@ -34,6 +34,12 @@ METNOS_USER_CONFIG="${METNOS_USER_CONFIG:-$HOME/.config/metnos}"
 METNOS_REPO_URL="${METNOS_REPO_URL:-https://github.com/brunialti/metnos.git}"
 PYTHON_MIN_MAJOR=3
 PYTHON_MIN_MINOR=12
+CHECK_ONLY=0
+for _argument in "$@"; do
+  if [ "$_argument" = "--check" ]; then
+    CHECK_ONLY=1
+  fi
+done
 
 # ─────── Pretty output (works without rich) ───────────────────────
 if [ -t 1 ] && [ "${NO_COLOR:-}" = "" ]; then
@@ -129,8 +135,13 @@ if [ -f "$REPO_DIR/requirements.txt" ]; then
   # Retry: alcune reti corrompono i transfer TLS grandi a tratti (bad record
   # mac). Riprova l'intero install fino a 4 volte prima di arrendersi.
   # Log su file (niente pipe) così l'exit status è quello di pip, non di tail.
-  _piplog="${METNOS_USER_STATE:-/tmp}/install/pip.log"
-  mkdir -p "$(dirname "$_piplog")" 2>/dev/null || _piplog="/tmp/metnos-pip.log"
+  if [ "$CHECK_ONLY" = 1 ]; then
+    _piplog=$(mktemp "${TMPDIR:-/tmp}/metnos-pip.XXXXXXXX") || fail "cannot create temporary pip log"
+    trap 'rm -f -- "$_piplog"' EXIT HUP INT TERM
+  else
+    _piplog="${METNOS_USER_STATE:-/tmp}/install/pip.log"
+    mkdir -p "$(dirname "$_piplog")" 2>/dev/null || _piplog="/tmp/metnos-pip.log"
+  fi
   _deps_ok=0
   for _a in 1 2 3 4; do
     if "$VENV_PIP" install --no-cache-dir --timeout 90 --retries 5 \
@@ -147,10 +158,21 @@ else
 fi
 
 # ─────── 5. Hand off to Python installer ──────────────────────────
-mkdir -p "$METNOS_USER_STATE/install"
+if [ "$CHECK_ONLY" != 1 ]; then
+  mkdir -p "$METNOS_USER_STATE/install"
+fi
 export METNOS_USER_DATA METNOS_USER_STATE METNOS_USER_CONFIG METNOS_VENV
 # Canonical: the runtime reads METNOS_INSTALL_ROOT for PATH_ROOT.
 export METNOS_INSTALL_ROOT="$REPO_DIR"
+# Runtime modules intentionally retain flat peer imports.  The documented
+# `python -m install` handoff therefore needs both the package root and the
+# flat runtime root from the selected checkout, ahead of inherited paths.
+export PYTHONPATH="$REPO_DIR:$REPO_DIR/runtime${PYTHONPATH:+:$PYTHONPATH}"
+
+if [ "$CHECK_ONLY" = 1 ]; then
+  rm -f -- "$_piplog"
+  trap - EXIT HUP INT TERM
+fi
 
 banner "Handing off to Python installer"
 # Run from REPO_DIR so `python -m install` resolves the installer package

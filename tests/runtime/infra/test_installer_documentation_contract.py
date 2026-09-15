@@ -57,6 +57,18 @@ def test_install_manifest_is_current_parseable_inventory() -> None:
         assert stale_name not in text.lower()
 
 
+def test_all_local_ubuntu_inventory_covers_native_sidecar_requirements() -> None:
+    with (ROOT / "install" / "manifest.toml").open("rb") as handle:
+        packages = tomllib.load(handle)["system_packages"]
+
+    complete = set(packages["ubuntu_24_04_all_local"])
+    assert {
+        "openjdk-21-jre-headless", "zstd", "dbus-user-session",
+        "libpam-systemd", "libvulkan1", "mesa-vulkan-drivers",
+        "libnss3", "libgbm1", "fonts-noto-color-emoji",
+    } <= complete
+
+
 def test_tomlkit_runtime_dependency_has_one_exact_version() -> None:
     dependency = "tomlkit==0.15.0"
     with (ROOT / "install" / "manifest.toml").open("rb") as handle:
