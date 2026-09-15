@@ -14,6 +14,8 @@ import sys
 import unittest
 from pathlib import Path
 
+import pytest
+
 _RUNTIME = (Path(__file__).resolve().parents[3] / "runtime")
 
 from agent_runtime import _is_degenerate_final  # noqa: E402
@@ -100,6 +102,47 @@ class DegenerateFinalReplacementTests(unittest.TestCase):
         ])
         log.write()
         self.assertEqual(log.final_message, "Ho trovato 3 eventi in calendario.")
+
+    def test_nonempty_transforms_are_not_counted_as_additional_results(self):
+        from messages import get as msg
+        rows = [{"id": n} for n in range(14)]
+        log = self._make_log_with("0", [
+            {"tool": "read_objects", "result": {"ok": True, "entries": rows}},
+            {"tool": "classify_entries", "result": {"ok": True, "entries": rows}},
+        ])
+        log.write()
+        self.assertEqual(log.effect_counts["items"], 28)
+        self.assertEqual(log.final_message, msg("MSG_DEGENERATE_FINAL_ITEMS", n=14))
+
+    def test_successful_mutation_count_is_preserved_after_empty_read(self):
+        from messages import get as msg
+        log = self._make_log_with("0", [
+            {"tool": "read_objects", "result": {"ok": True, "entries": []}},
+            {"tool": "write_objects", "result": {"ok": True, "ok_count": 2, "results": [{}, {}]}},
+        ])
+        log.write()
+        self.assertEqual(log.effect_counts["mutations"], 2)
+        self.assertEqual(log.final_message, msg("MSG_DEGENERATE_FINAL_MUTATIONS", n=2))
+
+
+@pytest.mark.parametrize("lang", ["it", "en"])
+@pytest.mark.parametrize("upstream_hint", [False, True])
+def test_degenerate_filter_fallback_never_revives_upstream_rows(lang, upstream_hint, monkeypatch):
+    import i18n
+    from messages import get as msg
+    monkeypatch.setattr(i18n, "current_lang", lambda: lang)
+    rows = [{"id": n} for n in range(14)]
+    log = DegenerateFinalReplacementTests()._make_log_with("0", [
+        {"tool": "read_objects", "result": {"ok": True, "entries": rows,
+         **({"message": "Found 14 source rows."} if upstream_hint else {})}},
+        {"tool": "classify_entries", "result": {"ok": True, "entries": rows}},
+        {"tool": "filter_entries", "result": {"ok": True, "entries": [],
+         "metadata": {"count_in": 14, "count_out": 0, "dropped": 14}}},
+        {"tool": "final_answer", "result": {"ok": True}},
+    ])
+    log.write()
+    assert log.effect_counts["items"] == 28
+    assert log.final_message == msg("MSG_PROCESSOR_EMPTY", tool="filter_entries")
 
 
 class NonDeletePartialHonestyTests(unittest.TestCase):

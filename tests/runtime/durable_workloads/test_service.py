@@ -155,6 +155,7 @@ def _service(
         poll_interval_s=0.05,
         recovery_batch_size=100,
         max_recovery_batches=max_recovery_batches,
+        parallel_workers=1,
     )
 
 

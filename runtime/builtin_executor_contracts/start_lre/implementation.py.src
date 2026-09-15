@@ -10,8 +10,11 @@ import logging
 import os
 import re
 
-from durable_runtime_registry import ADMISSION_NAMES, default_runtime_registry
+from durable_runtime_registry import (
+    ADMISSION_NAMES, default_runtime_registry, invocation_plan_adapter,
+)
 from durable_workloads.admission import (
+    SubmissionResult,
     submit_candidate,
     submit_registered_local_sources,
 )
@@ -22,6 +25,7 @@ from durable_workloads.direct_invocation import (
 )
 from durable_workloads.schema import MAX_PLAN_JSON_BYTES, digest_json
 from durable_workloads.source_authority import SourceAuthority
+from durable_workloads.models import WorkloadState
 from durable_workloads.storage import (
     DurableWorkloadStore,
     IdempotencyConflictError,
@@ -182,7 +186,8 @@ def _receipt(store: DurableWorkloadStore, result) -> dict:
         "final_message_hint": _msg(
             (
                 "MSG_LRE_SUBMITTED_WITH_SUMMARY"
-                if summary is not None else "MSG_LRE_SUBMITTED"
+                if summary is not None and revision is not None
+                and revision.expected_source_count > 0 else "MSG_LRE_SUBMITTED"
             ),
             workload_id=workload.workload_id,
             source_count=(
@@ -233,6 +238,63 @@ def _automatic_error(code: str, *, error_class: str) -> dict:
     return result
 
 
+def _submit_adapted_invocation(adapter, executor, args, target_device, *,
+                               owner_user_id, request_key):
+    """Expand a signed operation and reuse an owner-scoped active job.
+
+    The short cross-process lock covers only draft/admit/queue, never source
+    discovery or model calls. Request delivery identity remains independent
+    from the operation scope, allowing a new run after completion.
+    """
+    request = adapter.normalize_request(executor, args, target_device)
+    if request.get("dry_run") is True:
+        return None
+    redacted = {
+        "runner_name": executor.name,
+        "plan_id": adapter.PLAN_ID,
+        "arguments_digest": digest_json(
+            "lre-invocation-arguments", request, max_bytes=MAX_PLAN_JSON_BYTES),
+        "submission_scope": digest_json("lre-invocation-scope", {
+            "owner": owner_user_id, "plan": adapter.PLAN_ID, "arguments": request,
+        }, max_bytes=MAX_PLAN_JSON_BYTES),
+    }
+    _require_ready()
+    registry = default_runtime_registry()
+    from executor_scheduler import orchestration_capacity
+
+    with DurableWorkloadStore.open() as store:
+        database = store.database_path
+        if database is None:
+            raise RuntimeError("durable submission needs persistent storage")
+        with feature_configuration_lock(
+                path=database.with_name(database.name + ".submissions")):
+            delivery = store.find_submission_by_request_key(
+                owner_user_id, request_key, redacted_request=redacted)
+            if delivery is not None and delivery.state not in {WorkloadState.DRAFT, WorkloadState.ADMITTED}:
+                revision = (store.get_revision(owner_user_id, delivery.active_revision_id)
+                            if delivery.active_revision_id is not None else None)
+                return _receipt(store, SubmissionResult(delivery, revision))
+            active = store.find_active_submission(
+                owner_user_id, redacted["submission_scope"])
+            if active is not None:
+                if active.state not in {WorkloadState.DRAFT, WorkloadState.ADMITTED}:
+                    revision = (store.get_revision(owner_user_id, active.active_revision_id)
+                                if active.active_revision_id is not None else None)
+                    return _receipt(store, SubmissionResult(active, revision))
+                request_key = active.request_key
+            draft = store.create_draft(
+                owner_user_id, request_key, redacted_request=redacted)
+            candidate, inventory = adapter.build_candidate(
+                request, draft.workload_id, registry.runners,
+                max_concurrency=min(256, max(1, orchestration_capacity())),
+            )
+            result = submit_candidate(
+                store, registry, owner_user_id, request_key, candidate, inventory,
+                redacted_request=redacted, admission_boundary=_admission_boundary,
+            )
+            return _receipt(store, result)
+
+
 def submit_automatic_lre(
     framework: object,
     *,
@@ -252,7 +314,8 @@ def submit_automatic_lre(
         if tool == "final_answer":
             continue
         executor = executors.get(tool)
-        if executor is not None and is_intrinsically_long(executor):
+        if executor is not None and (
+                is_intrinsically_long(executor) or getattr(executor, "lre_plan", "")):
             long_steps.append((index, step, executor))
     if not long_steps:
         return None
@@ -305,6 +368,12 @@ def submit_automatic_lre(
                 error_class="operation_failed",
             )
         request_key = _request_key(source_request_id, turn_id)
+        adapter = invocation_plan_adapter(executor)
+        if adapter is not None:
+            return _submit_adapted_invocation(
+                adapter, executor, args, target_device,
+                owner_user_id=owner_user_id, request_key=request_key,
+            )
         candidate, inventory = build_direct_candidate(
             executor, args, target_device,
         )

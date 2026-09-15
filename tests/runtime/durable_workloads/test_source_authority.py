@@ -101,6 +101,28 @@ def test_local_authority_keeps_at_most_one_snapshot_per_lane(tmp_path):
         assert len(authority._snapshot_files) == 1
 
 
+@pytest.mark.parametrize("recursive,expected", [(False, 1), (True, 2)])
+def test_selection_precedes_source_limits_and_authority_grants(tmp_path, recursive, expected):
+    root = tmp_path / "input"
+    root.mkdir()
+    (root / "a.png").write_bytes(b"first")
+    (root / "ignored.txt").write_bytes(b"not selected")
+    (root / "nested").mkdir()
+    (root / "nested" / "b.PNG").write_bytes(b"second")
+    with SourceAuthority.open(tmp_path / "authority.sqlite3", clock=lambda: NOW) as authority:
+        inventory = authority.seal_and_register(
+            [root], owner_user_id="owner", workload_id="workload", device_id="server",
+            limits=InventoryLimits(max_sources=expected, max_total_bytes=11, max_depth=4),
+            valid_until=NOW + timedelta(days=1), recursive=recursive,
+            accept=lambda path: path.suffix.casefold() == ".png",
+        )
+        assert len(inventory["sources"]) == expected
+        assert authority._connection.execute("SELECT count(*) FROM source_grants").fetchone()[0] == expected
+        for item in inventory["sources"]:
+            resolved = authority.resolve(item, _context("owner", "workload"))
+            assert Path(resolved.value).suffix.casefold() == ".png"
+
+
 def test_named_source_boundaries_are_ordered_and_registration_rolls_back(
     tmp_path,
 ):

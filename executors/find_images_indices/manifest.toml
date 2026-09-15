@@ -6,7 +6,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "find_images_indices"
-version     = "0.3.0"
+version     = "0.3.1"
 author      = "Roberto Brunialti"
 affinity    = ["cerca", "find", "search", "ricerca-foto", "ricerca-volti",
                 "ricerca-semantica", "foto", "image", "volti", "faces",
@@ -16,14 +16,28 @@ affinity    = ["cerca", "find", "search", "ricerca-foto", "ricerca-volti",
                 "like-this", "immagini indicizzate", "indexed pictures",
                 "indexed images"]
 
-# Query pure (indice gia' presente) ~1 s.
-timeout_s = 14400
+# Time limit for existing-index searches, including local embeddings.
+timeout_s = 300
 revertible = false
 platforms = ["linux"]
+
+[[prerequisites]]
+on_error = "index_missing"
+executor = "create_images_indices"
+[prerequisites.arguments.base_path]
+source = "result"
+field = "base_path"
 
 [placement]
 scope = "server"
 device_ok = false
+
+[execution]
+effect            = "read_only"
+parallelism_class = 0
+resource_class    = "cpu"
+concurrency_key   = "none"
+equivalence_gate  = "unverified"
 
 [description]
 it = "SCOPO: cerca foto indicizzate per contenuto, persona o volto. PATTERN: find_images_indices(query_text=\"mare\"); name=\"nome\"; min_face_pixels=40000. NON: EXIF di path noti -> get_files; file di una cartella per path -> find_files. OUT: entries=[{path,score}] + metadata{total_count,total_size_gb}."
@@ -31,7 +45,7 @@ en = "SCOPO: search indexed photos by content, person or face. PATTERN: find_ima
 
 [code]
 files  = ["find_images_indices.py"]
-digest = "sha256:0222cb463213410edb764a1cf9d55ea770c3b37c3607a531063f749208826a9f"
+digest = "sha256:9d8c26ba452e9a7ce26a435f3dfc46999edb9de428143456baef18a9789b9617"
 
 [args]
 type     = "object"
@@ -150,11 +164,12 @@ en = "Radius in km for GPS filter. Default 5."
 
 [args.properties.time_window]
 type        = "string"
+format      = "time-window"
 default     = "all"
 
 [args.properties.time_window.description]
-it = "Filtro temporale (preferenza EXIF taken_at_iso, fallback mtime). Pattern: 'all' (default), 'today'/'yesterday', 'last-Nd/Nw/Nm/Ny', 'YYYY' (anno), 'YYYY-MM' (mese). Pattern invalidi → no-op."
-en = "Time filter (preference EXIF taken_at_iso, fallback mtime). Patterns: 'all' (default), 'today'/'yesterday', 'last-Nd/Nw/Nm/Ny', 'YYYY' (year), 'YYYY-MM' (month). Invalid patterns → no-op."
+it = "Periodo delle foto (data EXIF se disponibile, altrimenti modifica del file). 'all' non impone un limite temporale. Accetta date, anni, mesi, durate relative e intervalli tramite il sistema temporale comune. Conserva le espressioni relative: il runtime calcola le date nel fuso configurato. Le espressioni ambigue richiedono un chiarimento; un filtro non valido non viene ignorato."
+en = "Photo period (EXIF date when available, otherwise file modification time). 'all' imposes no time limit. Accepts dates, years, months, relative durations and intervals through the shared temporal system. Preserve relative expressions: the runtime calculates dates in the configured timezone. Ambiguous expressions require clarification; an invalid filter is not ignored."
 
 [args.properties.top_k]
 type        = "integer"
@@ -239,7 +254,7 @@ max_chars = 16000
 overflow = "notice"
 [[capabilities]]
 name = "fs:read"
-hint = ["arg:reference_images"]
+hint = ["arg:reference_images", "arg:base_path"]
 
 [[capabilities]]
 name = "index:read"
@@ -247,7 +262,7 @@ hint = ["image"]
 
 [[capabilities]]
 name = "metnos:read"
-hint = ["persons_registry:local"]
+hint = ["persons_registry:local", "embedding_text:local", "embedding_image:local", "embedding_face:local"]
 
 [[capabilities]]
 name = "compute:pure"

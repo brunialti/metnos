@@ -21,6 +21,7 @@ Limiti v1.1:
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 import shutil
@@ -150,6 +151,10 @@ def _managed_local_resource_paths(hints: list[str], *, writable: bool) -> list[P
             "file_hash_cache": ((
                 Path(_C.PATH_USER_CACHE) / "file_hashes",
             ), True),
+            # Rebuildable derivatives only; source photos and the persons
+            # registry remain outside this grant. Honour the configured
+            # actor/test index root, never a second service-home fallback.
+            "image_index": ((Path(_C.PATH_INDEX_IMAGE),), True),
             # Exact provider configuration, read-only. Never expose the
             # credential vault, its master key, or the parent config tree.
             "geo_provider_config": ((
@@ -299,6 +304,10 @@ def resolve_filesystem_read_args(executor, args) -> dict:
         getattr(executor, "args_schema", None) or {},
         out,
     )
+    image_index_consumer = any(
+        capability.get("name") == "index:read" and "image" in capability.get("hint", [])
+        for capability in effective
+    )
     for capability in effective:
         if capability.get("name") != "fs:read":
             continue
@@ -333,6 +342,13 @@ def resolve_filesystem_read_args(executor, args) -> dict:
                     else:
                         resolved, _note = resolve_path_with_alias(value)
                     if resolved.exists():
+                        if image_index_consumer:
+                            # Freeze the same logical corpus key used by the
+                            # index before a physical alias crosses the mount
+                            # boundary. Bind that exact directory, not the
+                            # workspace or its symlink metadata/configuration.
+                            from index_schema import canonical_corpus_path
+                            resolved = Path(canonical_corpus_path(resolved))
                         concrete = str(resolved)
                         resolved_values.append(concrete)
                         changed = changed or concrete != value
@@ -594,6 +610,44 @@ def python_package_roots() -> tuple[Path, ...]:
     return tuple(roots)
 
 
+def _local_model_projection_args(capabilities: list) -> list[str]:
+    """Project only declared local model artifacts, with no host configuration."""
+    from virt.local_models import (
+        PROJECTION_ENV, PROJECTION_ROOT, RESOURCE_ROLES, model_artifacts, model_spec,
+    )
+
+    roles = {
+        RESOURCE_ROLES[hint]
+        for capability in capabilities or []
+        if (_capability_kind(capability) == "metnos"
+            and _capability_mode(capability) == "read"
+            and isinstance(capability, dict))
+        for hint in capability.get("hint", []) or []
+        if isinstance(hint, str) and hint in RESOURCE_ROLES
+    }
+    args = ["--tmpfs", str(PROJECTION_ROOT)]
+    projection = {}
+    for role in sorted(roles):
+        destination = PROJECTION_ROOT / role
+        try:
+            spec = model_spec(role)
+            artifacts = model_artifacts(spec)
+        except (OSError, RuntimeError, ValueError, KeyError, TypeError) as exc:
+            raise SandboxUnavailableError("local model projection is unavailable") from exc
+        args += ["--dir", str(destination)]
+        for source, relative in artifacts:
+            args += ["--ro-bind", str(source), str(destination / relative)]
+        if role != "face":
+            projection[role] = {**spec, "model_dir": str(destination)}
+    args += ["--remount-ro", str(PROJECTION_ROOT)]
+    # Always replace inherited projections. A parent environment is not an
+    # authority grant, and constructors must not follow host model overrides.
+    args += ["--setenv", PROJECTION_ENV, json.dumps(projection, sort_keys=True)]
+    args += ["--setenv", "METNOS_CLIP_MODEL_DIR", str(PROJECTION_ROOT / "image")]
+    args += ["--setenv", "METNOS_FACE_MODEL_DIR", str(PROJECTION_ROOT / "face")]
+    return args
+
+
 def _build_bwrap_args(
     code_path: Path,
     capabilities: list,
@@ -783,6 +837,8 @@ def _build_bwrap_args(
     for p in extra_rw or []:
         if Path(p).exists():
             args += ["--bind", str(p), str(p)]
+
+    args += _local_model_projection_args(capabilities)
 
     # Signer keys authenticate projected executor code.  Never reproduce their
     # configurable host path: an executor could replace one of its writable

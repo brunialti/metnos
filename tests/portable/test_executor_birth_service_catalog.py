@@ -564,6 +564,14 @@ def test_signed_http_target_preserves_the_production_v3_engine(monkeypatch) -> N
     assert is_v3() is True
 
 
+def test_signed_durable_target_uses_the_central_scheduler_without_fixed_lanes():
+    entry = next(item for item in _entries() if item.entry_id == "service-durable-worker")
+    environment = {item.name: item.value for item in entry.target_environment}
+    assert environment["METNOS_EXECUTOR_PARALLEL"] == "1"
+    assert "METNOS_DURABLE_WORKERS" not in environment
+    assert not any(name.startswith("METNOS_DURABLE_RESOURCE_") for name in environment)
+
+
 def test_source_compiler_binds_targets_environment_and_supplementary_groups() -> None:
     entries = catalog._compile_service_source_v1(_context(
         supplementary_gids=(1001, 1002),

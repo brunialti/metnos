@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import sys
+import json
 from pathlib import Path
 from unittest.mock import patch
 
@@ -28,35 +29,36 @@ def test_rerank_empty_returns_no_used():
     assert meta["reason"] == "no_candidates"
 
 
-def test_rerank_single_skipped():
-    urls, meta = f._llm_rerank_candidates(
-        "q", [{"url": "https://x", "title": "X", "snippet": "x"}], top_k=5,
-    )
-    assert urls == ["https://x"]
-    assert meta["used"] is False
-    assert meta["reason"] == "trivial_size"
+def test_rerank_single_candidate_still_requires_relevance():
+    with patch("llm_helpers.call_llm", return_value=('{"top": []}', {})) as model:
+        urls, meta = f._llm_rerank_candidates(
+            "q", [{"url": "https://x", "title": "X", "snippet": "x"}], top_k=5,
+        )
+    model.assert_called_once()
+    assert urls == []
+    assert meta["used"] is True
 
 
-def test_rerank_llm_failure_returns_original_order():
-    """Se call_llm tira eccezione, fallback ai candidati originali."""
+def test_rerank_llm_failure_has_no_approved_urls():
+    """A dependency failure must not approve unverified results."""
     with patch("llm_helpers.call_llm", side_effect=RuntimeError("provider down")):
         urls, meta = f._llm_rerank_candidates(
             "q", _SAMPLE_CANDIDATES, top_k=3,
         )
-    assert urls == [c["url"] for c in _SAMPLE_CANDIDATES]
+    assert urls == []
     assert meta["used"] is False
     assert meta["reason"] == "llm_unavailable"
     assert "provider down" in meta["error"]
 
 
-def test_rerank_invalid_json_returns_original():
-    """JSON malformato → fallback con reason=json_invalid."""
+def test_rerank_invalid_json_has_no_approved_urls():
+    """An invalid response is a technical failure, not an empty selection."""
     with patch("llm_helpers.call_llm",
                return_value=("not json at all", {"in_tokens": 100, "out_tokens": 5, "latency_ms": 1})):
         urls, meta = f._llm_rerank_candidates(
             "q", _SAMPLE_CANDIDATES, top_k=3,
         )
-    assert urls == [c["url"] for c in _SAMPLE_CANDIDATES]
+    assert urls == []
     assert meta["used"] is False
     assert meta["reason"] == "json_invalid"
 
@@ -102,17 +104,20 @@ def test_rerank_unknown_url_skipped():
     assert meta["used"] is True
 
 
-def test_rerank_top_empty_returns_original():
-    """Top vuoto → fallback con reason=empty_top."""
+def test_rerank_top_empty_is_authoritative():
+    """The prompt explicitly uses an empty list to reject all candidates."""
     fake = '{"top": []}'
     with patch("llm_helpers.call_llm",
                return_value=(fake, {"in_tokens": 200, "out_tokens": 5, "latency_ms": 1500})):
         urls, meta = f._llm_rerank_candidates(
             "q", _SAMPLE_CANDIDATES, top_k=3,
         )
-    assert urls == [c["url"] for c in _SAMPLE_CANDIDATES]
-    assert meta["used"] is False
-    assert meta["reason"] == "empty_top"
+    assert urls == []
+    assert meta["used"] is True
+    assert meta["reason"] == "no_relevant_candidates"
+    assert meta["n_candidates"] == 4
+    assert meta["n_kept"] == 0
+    assert meta["latency_ms"] == 1500
 
 
 def test_rerank_code_fence_stripped():
@@ -130,3 +135,25 @@ def test_rerank_code_fence_stripped():
         )
     assert urls == ["https://a.example/a.pdf"]
     assert meta["used"] is True
+
+
+def test_rerank_passes_real_deadline_and_accepts_wide_candidate_payload():
+    candidates = [{**c, "snippet": "x" * 600} for c in _SAMPLE_CANDIDATES] * 8
+    with patch("llm_helpers.call_llm", return_value=('{"top": []}', {})) as model:
+        f._llm_rerank_candidates("query", candidates)
+    kwargs = model.call_args.kwargs
+    assert kwargs["timeout_s"] == f._RERANK_TIMEOUT_S
+    assert kwargs["max_query_chars"] >= len(json.dumps(model.call_args.args[0]))
+
+
+def test_rerank_rejects_invalid_and_irrelevant_scores():
+    fake = json.dumps({"top": [
+        {"url": _SAMPLE_CANDIDATES[0]["url"], "score": 0.2},
+        {"url": _SAMPLE_CANDIDATES[1]["url"], "score": float("nan")},
+        {"url": _SAMPLE_CANDIDATES[2]["url"], "score": True},
+        {"url": _SAMPLE_CANDIDATES[3]["url"], "score": 0.8},
+    ]})
+    with patch("llm_helpers.call_llm", return_value=(fake, {})):
+        urls, meta = f._llm_rerank_candidates("q", _SAMPLE_CANDIDATES)
+    assert urls == [_SAMPLE_CANDIDATES[3]["url"]]
+    assert meta["scores"] == {_SAMPLE_CANDIDATES[3]["url"]: 0.8}

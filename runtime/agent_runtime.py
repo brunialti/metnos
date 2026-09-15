@@ -2868,7 +2868,7 @@ def _detect_unbacked_promise(final_message: str | None, steps: list) -> bool:
 # Implementazione condivisa in `pipeline_effects.py` (12/6/2026): la stessa
 # contabilità alimenta il criterio di EFFICACIA del fastpath L0
 # (engine/dispatch._maybe_record_fastpath → ineffective_mutations).
-from pipeline_effects import pipeline_effect_counts  # noqa: E402
+from pipeline_effects import pipeline_effect_counts, terminal_collection_output  # noqa: E402
 
 
 # Positive-result language is manually reviewed; the structural counters
@@ -3300,6 +3300,11 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
     # anche per fast-path, resume ed esecuzione remota: gli args del chiamante
     # non possono impersonare un altro attore o canale.
     args = dict(args or {})
+    # Resolved scalar strings retain exactly one value when the signed
+    # contract requires an array.  Apply this before argument-dependent
+    # controls, for ordinary plans, piping, resumes and remote invocations.
+    from executor_helpers import normalize_array_args
+    args = normalize_array_args(args, getattr(executor, "args_schema", None))
     from paired_device_arg_resolver import resolve_paired_device_args
     args = resolve_paired_device_args(
         args, getattr(executor, "args_schema", None),
@@ -3311,6 +3316,17 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
     # significato (righe, messaggi, valori). Nessuna regola per nome-tool.
     from executor_helpers import normalize_unique_items
     args = normalize_unique_items(args, getattr(executor, "args_schema", None))
+    # Validate temporal values again at the common invocation boundary. This
+    # also covers direct API calls and form resumes, which have no query to
+    # reinterpret. A clarification is not an additional authorization gate.
+    from temporal_resolution import resolve_temporal_args, temporal_form_request
+    temporal_form = temporal_form_request(executor.name, args, getattr(executor, "args_schema", None))
+    if temporal_form is not None:
+        return temporal_form
+    args = resolve_temporal_args(executor.name, args, "", getattr(executor, "args_schema", None))
+    temporal_form = temporal_form_request(executor.name, args, getattr(executor, "args_schema", None))
+    if temporal_form is not None:
+        return temporal_form
     if actor is not None or "_actor" in args:
         args["_actor"] = actor or "host"
     if channel is not None or "_channel" in args:
@@ -3696,7 +3712,29 @@ def _invoke_executor_impl_optional_context(
         executor, args, *, execution_context=None, **kwargs):
     if execution_context is not None:
         kwargs["execution_context"] = execution_context
-    return _invoke_executor_impl(executor, args, **kwargs)
+    elif getattr(executor, "lre_plan", ""):
+        # Fast paths and form resumes cross the same durable boundary as a
+        # finalized plan. Public calls cannot inject internal worker phases.
+        from engine.types import Framework, StepSpec
+        admitted = submit_automatic_lre(
+            Framework(steps=[StepSpec(executor.name, args)]), catalog=[executor],
+            owner_user_id=kwargs.get("owner_user_id") or kwargs.get("actor") or "host",
+            turn_id=kwargs.get("turn_id") or "",
+            target_device=kwargs.get("target_device"),
+        )
+        if admitted is not None:
+            return admitted
+    observation = _invoke_executor_impl(executor, args, **kwargs)
+    if execution_context is None and getattr(executor, "prerequisites", ()):
+        from executor_prerequisites import admit_prerequisite
+        return admit_prerequisite(
+            executor, args, observation, catalog_loader=load_catalog,
+            validate_args=validate_args, guard=guard_check,
+            owner_user_id=kwargs.get("owner_user_id") or kwargs.get("actor") or "host",
+            turn_id=kwargs.get("turn_id") or "",
+            target_device=kwargs.get("target_device"),
+        )
+    return observation
 
 
 def invoke_executor(executor, args, timeout_s=30, *, autonomy="supervised",
@@ -5289,6 +5327,8 @@ class TurnLog:
                   and not (self.effect_counts or {}).get("failures")):
                 self.false_success_detected = True
                 _ec = self.effect_counts or {}
+                _terminal_output = terminal_collection_output(self.steps)
+                _n = _terminal_output[2] if _terminal_output is not None else 0
                 # §2.8: un builtin che dichiara il SUO esito nel result
                 # (`final_message_hint`/`message` i18n, es. undo_last_turn
                 # «Nessuna operazione reversibile da annullare») vince sui generici — bug live
@@ -5296,16 +5336,25 @@ class TurnLog:
                 # trovato» (falso: non era una ricerca).
                 _exec_msg = ""
                 for _s in reversed(self.steps):
+                    if _s.chosen_tool == "final_answer":
+                        continue
                     _r = _s.result if isinstance(_s.result, dict) else {}
                     _declared = (_r.get("final_message_hint")
                                  or _r.get("message"))
                     if isinstance(_declared, str) and _declared.strip():
                         _exec_msg = _declared.strip()
-                        break
+                    # An upstream read's presentation cannot override a later
+                    # selection, even when the terminal result has no hint.
+                    break
                 if _exec_msg:
                     self.final_message = _exec_msg
+                elif (not _ec.get("mutating_attempted")
+                      and _terminal_output is not None and _n == 0):
+                    # A terminal filter supersedes the read/transform inputs;
+                    # processing the same rows twice is not twice the output.
+                    from engine.executor import _deterministic_zero_result
+                    self.final_message = _deterministic_zero_result(self.steps)
                 elif not _ec.get("mutating_attempted") and _ec.get("items", 0) == 0:
-                    # niente prodotto, niente mutato → no-results onesto
                     self.final_message = msg("MSG_NO_RESULTS")
                 else:
                     # qualcosa è stato letto/prodotto ma il messaggio è degenere:
@@ -5314,7 +5363,6 @@ class TurnLog:
                     # §7.13: chiavi risolte via i18n DB (lingua istanza), definite
                     # nel catalogo seed — mai testo in-linea nel sorgente. Guard:
                     # tests/runtime/i18n/test_seed_i18n_gate_keys.py.
-                    _n = _ec.get("items", 0)
                     _muts = _ec.get("mutations", 0)
                     if _muts:
                         # Mutazione RIUSCITA (es. piano da recovery, che non
@@ -5325,8 +5373,10 @@ class TurnLog:
                             "MSG_DEGENERATE_FINAL_MUTATIONS", n=_muts)
                     elif _n == 1:
                         self.final_message = msg("MSG_DEGENERATE_FINAL_ITEM_ONE")
-                    else:
+                    elif _terminal_output is not None:
                         self.final_message = msg("MSG_DEGENERATE_FINAL_ITEMS", n=_n)
+                    else:
+                        self.final_message = msg("MSG_FINAL_FALLBACK_GENERIC")
         # A.2 (fase 7): avvisi fuori-turno pendenti per QUESTO destinatario
         # (es. op remota completata DOPO il timeout del suo turno) — anteposti
         # DOPO tutte le riscritture del final (honesty/degenerate/false-success

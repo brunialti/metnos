@@ -174,7 +174,7 @@ def test_multi_account_reads_are_parallel_and_globally_capped(
                   _since, _before, per_account_cap, _page_size,
                   entries, _failed, _time_window, _from_contains,
                   _subject_contains, _body_contains, _open_imap,
-                  _parse_envelope):
+                  _parse_envelope, **_kwargs):
         nonlocal active, maximum
         with lock:
             active += 1
@@ -222,7 +222,7 @@ def test_last_three_days_excludes_calendar_day_overhang(monkeypatch) -> None:
                   _since, _before, _per_account_cap, _page_size,
                   entries, _failed, _time_window, _from_contains,
                   _subject_contains, _body_contains, _open_imap,
-                  _parse_envelope):
+                  _parse_envelope, **_kwargs):
         entries.extend([
             {"subject": "inside", "date": "Fri, 31 Jul 2026 15:45:00 +0000"},
             {"subject": "overhang", "date": "Fri, 31 Jul 2026 00:04:00 +0000"},

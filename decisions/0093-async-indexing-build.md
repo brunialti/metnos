@@ -175,7 +175,50 @@ per orchestrazione, healthcheck, notification dispatch e cleanup.
   systemctl): più pulito ma libreria extra. systemctl CLI è già stabile
   e self-contained.
 
-## Notes
+## Runtime audit, 2026-09-15
+
+The original automatic-build design above is historical, not evidence of the
+current runtime. Turn `7a5207e0d0a14d1b` asked whether photo indexing was
+automatic. Tutor selected executor manifests and a Quick Tour section, then
+incorrectly presented an explicit manual command as a universal requirement.
+The public sources lacked the complete first-search lifecycle.
+
+The code audit found a separate operational gap:
+
+- Commit `528526037` (2026-08-05) removed index creation from the read executor.
+  `find_images_indices._index_missing_result()` now returns `index_missing`
+  with `recommended_action`; it does not start a build.
+- `index_missing` is an operational error, not a recoverable argument error,
+  in `runtime/engine/types.py`. No central consumer of `recommended_action`
+  currently turns that result into a queued prerequisite and search continuation.
+- `create_images_indices` declares `intelligence="llm"`; the direct LRE
+  compiler currently admits deterministic executors only. The old transient
+  user-unit design must not be described as the current automatic LRE path.
+- LRE completion delivery exists independently: durable events expose the
+  outcome, and the outbox sends localized notices to a currently verified
+  Telegram association. An admission failure is not a running indexing job.
+
+The bilingual public LRE and Tutor guides now explain initial cost, index
+reuse, asynchronous execution, delivery conditions and the current gap. A
+static website publication alone does not refresh the admitted Tutor catalog.
+No runtime behavior or production catalog is changed by this documentation
+correction.
+
+Automatic first-search indexing remains an open regression. Closing it requires
+an unchanged content-search request against a missing index to create one
+admitted asynchronous job, preserve source/owner authority, report completion
+or failure honestly and reuse the completed index on a second search. Repeated
+requests must not start duplicate builds. This must be proved end to end before
+removing the public limitation; do not restore hidden writes inside a read
+executor or bypass LRE admission.
+
+Validation: 45 tests passed across the bilingual photo-indexing source
+regressions, public-document inventory, Tutor procedure scope and durable
+notification outbox. This verifies source inclusion and existing delivery
+contracts, not a successful automatic indexing workflow or a changed live
+Tutor answer.
+
+## Historical notes
 
 - Threshold 120s è euristico iniziale. Telemetria future può aggiornare.
 - Notification: per ora send_messages testuale. Futuro: payload arricchito

@@ -1,0 +1,11 @@
+{# ---
+role: image_index_context
+tier: auto
+lang: it
+style: definitional
+version: 1
+owner: roberto
+updated: 2026-09-15
+sha_prev: 00000000
+--- #}
+{% if category == "VIAGGIO" %}Foto di un viaggio{% if place %} a {{ place }}{% endif %}.{% elif category == "EVENTO" %}Foto di un evento: {{ label }}.{% elif category == "PERSONE" %}Foto di: {{ label }}.{% elif category == "DOCUMENTI" %}Foto di documenti e scansioni: {{ label }}.{% else %}Foto: {{ label }}.{% endif %}

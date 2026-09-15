@@ -1506,8 +1506,14 @@ def test_how_to_composer_contract_leads_with_a_natural_chat_example():
                "“<NATURAL_REQUEST>”")
     assert it_lead in italian
     assert en_lead in english
-    assert italian.index(it_lead) < italian.index("nomi di executor")
-    assert english.index(en_lead) < english.index("executor names")
+    assert italian.index(it_lead) < italian.index("Usare l'esempio di comando per una domanda informativa")
+    assert english.index(en_lead) < english.index("Use the command example for an informational question")
+    assert "Quando la domanda richiede istruzioni" in italian
+    assert "When the question requests instructions" in english
+    assert "Per domande su disponibilità, condizioni o comportamento" in italian
+    assert "For questions about availability, conditions or behavior" in english
+    assert "risposta diretta sostenuta dalle fonti" in italian
+    assert "direct source-grounded answer" in english
     assert "source_kind=ui_surface" in italian
     assert "source_kind=ui_surface" in english
     assert "delivery_channel" in italian and "delivery_channel" in english
@@ -1515,7 +1521,7 @@ def test_how_to_composer_contract_leads_with_a_natural_chat_example():
     assert "From Telegram" not in english
     assert "turno successivo" in italian
     assert "next turn" in english
-    assert "password" in italian and "password" in english
+    assert "segreti" in italian and "secrets" in english
     assert "Il Tutor di Metnos" in italian
     assert "The Metnos Tutor" in english
     assert "intero `retrieved_context`" in italian

@@ -16,6 +16,7 @@ import sys
 import unittest
 from types import SimpleNamespace
 
+import pytest
 
 from engine.types import Intent, Framework, StepSpec, StepRun
 from output_policy import normalize_terminal, G, L, S, T
@@ -266,8 +267,10 @@ class TestNormalizeWebRead(unittest.TestCase):
                   ("final_answer", {})])
         out, info = normalize_terminal(
             fw, Intent(verb="read", object="urls"), "leggi gli articoli su x")
-        self.assertEqual(info["action"], "noop")
-        self.assertIs(out, fw)
+        self.assertEqual(info["action"], "final_only")
+        self.assertEqual([step.tool for step in out.steps].count("read_urls_html"), 1)
+        self.assertEqual(out.final_message, "${step3.summary}")
+        self.assertEqual(out.steps[2].args["context"], "leggi gli articoli su x")
 
     def test_enumerate_web_resta_W_noop(self):
         fw = _fw([("find_urls", {"query": "x"}), ("final_answer", {})])
@@ -275,6 +278,197 @@ class TestNormalizeWebRead(unittest.TestCase):
             fw, Intent(verb="find", object="urls"), "cerca link su x")
         self.assertEqual(info["action"], "noop")
         self.assertIs(out, fw)
+
+
+def _web_presentation_catalog(reader="read_urls_html"):
+    return [SimpleNamespace(
+        name=tool,
+        args_schema={"type": "object", "properties": {
+            ("entries" if tool == "describe_entries" else "urls"):
+                {"type": "array"}}},
+        presentation={"default_view": "list", "list": {
+            "mode": "table", "columns": [
+                {"key": "title", "source": "title", "cell_max": 180},
+                {"key": "url", "source": "url", "cell_max": 240}],
+            "max_rows": 200, "max_chars": 16000, "overflow": "notice"}},
+    ) for tool in ("find_urls", reader, "describe_entries")]
+
+
+@pytest.mark.parametrize("reader", ["read_urls_html", "read_urls_pdf", "get_urls"])
+@pytest.mark.parametrize("verb", ["find", "read", "describe"])
+def test_web_content_default_table_cannot_remove_synthesis(reader, verb):
+    query = "cerca se ci sono novità sullo stack amd rocm"
+    fw = _fw([
+        ("find_urls", {"search_query": "AMD ROCm"}),
+        (reader, {"from_step": 1}),
+        ("describe_entries", {"from_step": 2}),
+        ("final_answer", {}),
+    ], final="${step3.summary}")
+    fw.runtime_step_cap = 19
+
+    out, info = normalize_terminal(
+        fw, Intent(verb=verb, object="urls"), query,
+        catalog=_web_presentation_catalog(reader))
+
+    assert info["mode"] == T
+    assert not info["manifest_declared"]
+    assert [step.tool for step in out.steps] == [step.tool for step in fw.steps]
+    assert out.steps[2].args == {
+        "from_step": 2, "style": "by_relevance", "context": query,
+        "data_kind": "urls"}
+    assert out.final_message == "${step3.summary}"
+    assert out.runtime_step_cap == 19
+    assert fw.steps[2].args == {"from_step": 2}
+    repeated, repeat_info = normalize_terminal(
+        out, Intent(verb=verb, object="urls"), query,
+        catalog=_web_presentation_catalog(reader))
+    assert repeat_info["action"] == "noop"
+    assert repeated is out
+
+
+@pytest.mark.parametrize("lang,query", [
+    ("it", "cerca se ci sono novità sullo stack amd rocm"),
+    ("en", "search for any updates on the AMD ROCm stack"),
+])
+def test_web_reader_inserts_one_grounded_summary(lang, query, monkeypatch):
+    from engine.executor import Executor
+    import describe_entries
+    import i18n
+
+    monkeypatch.setattr(i18n, "current_lang", lambda: lang)
+    catalog = _web_presentation_catalog()
+    fw = _fw([
+        ("find_urls", {"search_query": "AMD ROCm"}),
+        ("read_urls_html", {"from_step": 1}),
+        ("final_answer", {}),
+    ], final="${step2.@table}")
+    out, info = normalize_terminal(
+        fw, Intent(verb="find", object="urls", lang=lang), query, catalog=catalog)
+    assert info["action"] == "insert_describe_entries"
+    source = {"url": "https://example.org/release", "title": "Release notes",
+              "body_text": "The new release adds a portable kernel API. " * 20,
+              "date": "2026-09-01"}
+    summary = ("La versione aggiunge una API portabile per i kernel."
+               if lang == "it" else "The release adds a portable kernel API.")
+    calls = []
+
+    def synthesize(entries, prompt, **kwargs):
+        calls.append(entries)
+        assert entries == [source]
+        assert query in prompt
+        return summary, {"deterministic": False, "latency_ms": 1}
+
+    monkeypatch.setattr(describe_entries, "call_llm", synthesize)
+
+    def invoke(tool, args):
+        if tool == "find_urls":
+            return {"ok": True, "entries": [{
+                "url": source["url"], "title": source["title"]}]}
+        if tool == "read_urls_html":
+            return {"ok": True, "entries": [source]}
+        assert tool == "describe_entries"
+        return describe_entries.handle_describe_entries(args)
+
+    result = Executor(invoke_executor=invoke, catalog=catalog).run(out, query=query)
+    assert all(step.ok for step in result.steps), [step.result for step in result.steps]
+    assert result.final_kind == "answer" and not result.aborted_reason, result
+    assert len(calls) == 1
+    assert summary in result.final_text
+    assert source["url"] in result.final_text
+    assert "| title |" not in result.final_text
+
+
+@pytest.mark.parametrize("empty_at", ["find_urls", "read_urls_html"])
+def test_web_content_zero_results_never_synthesizes_facts(empty_at, monkeypatch):
+    from engine.executor import Executor
+    import describe_entries
+    from messages import get as msg
+
+    monkeypatch.setattr(describe_entries, "call_llm", lambda *a, **kw:
+                        pytest.fail("No model call is needed for empty evidence"))
+
+    catalog = _web_presentation_catalog()
+    fw = _fw([
+        ("find_urls", {"search_query": "sample release"}),
+        ("read_urls_html", {"from_step": 1}),
+        ("final_answer", {}),
+    ])
+    out, _ = normalize_terminal(
+        fw, Intent(verb="find", object="urls"), "find updates", catalog=catalog)
+    tools = []
+
+    def invoke(tool, args):
+        tools.append(tool)
+        if tool == empty_at:
+            return {"ok": empty_at != "find_urls", "entries": [],
+                    **({"error_class": "search_no_results", "error": msg("MSG_NO_RESULTS")}
+                       if empty_at == "find_urls" else {})}
+        if tool == "find_urls":
+            return {"ok": True, "entries": [{"url": "https://example.org/release"}]}
+        assert tool == "describe_entries"
+        assert args["entries"] == []
+        return describe_entries.handle_describe_entries(args)
+
+    result = Executor(invoke_executor=invoke, catalog=catalog).run(out)
+    assert "example.org" not in result.final_text
+    if empty_at == "find_urls":
+        assert tools == ["find_urls"]
+        assert result.final_kind == "error"
+        assert result.steps[-1].result["error_class"] == "search_no_results"
+    else:
+        assert result.final_text.strip()
+        assert result.final_kind == "answer"
+
+
+@pytest.mark.parametrize("verb,tail", [
+    ("list", []), ("compute", []), ("move", []),
+    ("find", [("extract_entries", {"from_step": 2, "fields": ["version"]})]),
+    ("find", [("create_files_spreadsheet", {"from_step": 2})]),
+])
+def test_web_read_preserves_explicit_enumeration_and_terminal_operations(verb, tail):
+    fw = _fw([
+        ("find_urls", {"search_query": "sample"}),
+        ("read_urls_html", {"from_step": 1}),
+        *tail,
+        ("describe_entries", {"from_step": 2}),
+        ("final_answer", {}),
+    ])
+    out, info = normalize_terminal(
+        fw, Intent(verb=verb, object="urls"), "request",
+        catalog=_web_presentation_catalog())
+    assert info["mode"] != T
+    if verb in {"list", "compute"} or tail:
+        assert "describe_entries" not in [step.tool for step in out.steps]
+
+
+def test_web_discovery_and_head_keep_metadata_presentation():
+    for tool, args in [("find_urls", {"search_query": "sample"}),
+                       ("get_urls", {"url": "https://example.org", "method": "HEAD"})]:
+        fw = _fw([(tool, args), ("final_answer", {})])
+        out, info = normalize_terminal(
+            fw, Intent(verb="find", object="urls"), "request",
+            catalog=_web_presentation_catalog(tool))
+        assert info["mode"] == L
+        assert out.final_message == "${step1.@table}"
+        assert [step.tool for step in out.steps] == [tool, "final_answer"]
+
+
+@pytest.mark.parametrize("style", ["compact", "by_importance"])
+def test_web_content_mode_uses_request_not_incidental_summary_preset(style):
+    query = "search for any updates on the AMD ROCm stack"
+    fw = _fw([
+        ("read_urls_html", {"urls": ["https://example.org/release"]}),
+        ("describe_entries", {"from_step": 1, "style": style,
+                              "context": "generic article metadata"}),
+        ("final_answer", {}),
+    ], final="${step2.summary}")
+    out, _ = normalize_terminal(
+        fw, Intent(verb="find", object="urls"), query,
+        catalog=_web_presentation_catalog())
+    assert out.steps[1].args == {
+        "from_step": 1, "style": "by_relevance", "context": query,
+        "data_kind": "urls"}
+    assert fw.steps[1].args["style"] == style
 
 
 class TestNormalizeSitesRead(unittest.TestCase):
@@ -426,20 +620,22 @@ class TestTableAppendsExecutorMessage(unittest.TestCase):
 
     def test_table_zero_entries_appends_message(self):
         from engine.executor import _render_final_message
+        from messages import get as msg
         hist = [StepRun(step_idx=1, tool="find_images_google_photos", args={},
                         result={"ok": True, "entries": [], "used": 0,
                                 "message": "Nota: solo app-created."},
                         ok=True, latency_ms=1)]
         out = _render_final_message("${step1.@table}", hist)
-        self.assertTrue(out.startswith("0"))                 # conteggio onesto
+        self.assertTrue(out.startswith(msg("MSG_NO_RESULTS")))
         self.assertIn("Nota: solo app-created.", out)
 
-    def test_table_without_message_unchanged(self):
+    def test_empty_table_without_message_explains_zero_results(self):
         from engine.executor import _render_final_message
+        from messages import get as msg
         hist = [StepRun(step_idx=1, tool="find_files", args={},
                         result={"ok": True, "entries": [], "used": 0},
                         ok=True, latency_ms=1)]
-        self.assertEqual(_render_final_message("${step1.@table}", hist), "0")
+        self.assertEqual(_render_final_message("${step1.@table}", hist), msg("MSG_NO_RESULTS"))
 
     def test_table_uses_transform_results_when_entries_are_absent(self):
         from engine.executor import _render_final_message

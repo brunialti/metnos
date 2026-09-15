@@ -64,12 +64,81 @@ parole come “lungo”, “in background” o “molti file”.</p>
  <tbody>
   <tr><td>Il piano non contiene azioni sopra la soglia.</td><td>Metnos usa il percorso interattivo ordinario. LRE non viene coinvolto.</td></tr>
   <tr><td>Il piano contiene una sola azione lunga indipendente; l'executor è attivo, firmato e deterministico; argomenti, effetto e destinazione possono essere congelati.</td><td>Metnos crea il piano LRE durante il turno, accoda il lavoro e restituisce una ricevuta. Non serve alcun profilo.</td></tr>
+  <tr><td>Il lavoro ha un piano LRE già integrato, come l'indicizzazione delle foto.</td><td>Metnos usa quel piano riprendibile, con passaggi e modelli definiti prima dell'avvio. Anche in questo caso devono essere rispettati i controlli di accesso e i limiti delle risorse.</td></tr>
   <tr><td>Prima dell'azione lunga è richiesta una conferma.</td><td>Metnos sospende l'esecuzione e richiede la conferma. Dopo l'approvazione ricontrolla il piano e, se ammissibile, lo affida una sola volta a LRE.</td></tr>
   <tr><td>L'interruttore dell'istanza è disattivato.</td><td>Nessun nuovo lavoro entra in LRE. La chat ordinaria e la consultazione dei lavori esistenti continuano a funzionare.</td></tr>
-  <tr><td>Il piano contiene un'azione lunga, ma anche più azioni dipendenti, riferimenti ancora da risolvere, un modello non completamente congelato o una destinazione remota ambigua.</td><td>Metnos dichiara che il lavoro non è partito. Non esegue la parte lunga nel percorso interattivo e non promette una ripresa che non potrebbe garantire.</td></tr>
+  <tr><td>Il lavoro non ha un piano LRE integrato e contiene più azioni dipendenti, riferimenti ancora da risolvere, un modello non completamente congelato o una destinazione remota ambigua.</td><td>Metnos dichiara che il lavoro lungo non è partito. Non esegue la parte lunga nel percorso interattivo e non promette una ripresa che non potrebbe garantire.</td></tr>
   <tr><td>La configurazione non è valida o il servizio di esecuzione non è disponibile.</td><td>L'ammissione fallisce con una spiegazione precisa. Nessuna unità aggira il controllo.</td></tr>
  </tbody>
 </table>
+
+<h2 id="photo-indexing">Indicizzazione delle foto: primo utilizzo e ricerche successive</h2>
+
+<p>La ricerca nel <strong>contenuto delle fotografie</strong> usa un indice
+persistente: descrizioni delle immagini, caratteristiche visive e, quando
+disponibili, volti e posizione. Cercare un nome di file o elencare una cartella
+non richiede questa preparazione. La semplice presenza di foto in una cartella
+non significa che il loro contenuto sia già stato indicizzato.</p>
+
+<p>Per cercare, indica l'archivio e descrivi il contenuto desiderato. Per
+esempio: «Nell'archivio delle vacanze cerca foto di montagne». Questa è una
+richiesta di ricerca: non occorre anteporre un comando per creare l'indice.</p>
+
+<h3 id="photo-first-search">Prima ricerca e avvio automatico</h3>
+
+<p>Sì: alla prima ricerca per contenuto, Metnos richiede automaticamente
+l'indicizzazione se l'archivio locale non ha un indice. Non occorre avviarla
+manualmente: la preparazione è affidata a LRE, il motore generale per i lavori
+lunghi. LRE deve essere attivo,
+l'archivio accessibile e i modelli configurati. La ricevuta arriva solo dopo
+l'ammissione: se un controllo fallisce, la preparazione non è iniziata. Una
+richiesta ripetuta riusa il lavoro attivo; un risultato vuoto non causa una
+ricostruzione. Il lavoro prosegue in background e, per archivi grandi, può
+richiedere ore. L'esito resta nella console LRE ed è notificato sui canali
+associati disponibili. La ricevuta non significa indice pronto: attendi il
+completamento, poi ripeti la ricerca. Le ricerche successive riusano l'indice
+e sono in genere più veloci.</p>
+
+<h3 id="photo-indexing-resume">Piccoli passi riprendibili</h3>
+
+<p>LRE scopre i file in background, prepara il contesto delle cartelle e
+analizza le foto in piccoli gruppi. Le unità indipendenti possono sovrapporsi
+entro i limiti delle risorse configurate; la capacità dei modelli non è
+illimitata. Le unità completate e i loro risultati verificati sopravvivono al
+riavvio del worker: il lavoro può riprendere senza ripetere i passi già
+accettati. Il modello visivo locale si avvia quando serve e può spegnersi
+dopo un periodo di inattività. Il nuovo indice diventa visibile solo alla
+pubblicazione della generazione completa; un indice completo precedente resta
+utilizzabile durante la ricostruzione. Un errore nei modelli o nei file rimane
+visibile come problema del lavoro, non come indicizzazione riuscita.</p>
+
+<h3 id="photo-indexing-duration">Perché la prima preparazione può durare molto</h3>
+
+<p>Creare l'indice richiede di leggere e analizzare le fotografie. La durata
+dipende dal numero e dalla dimensione dei file, dalle analisi richieste, dalla
+velocità del disco, dai modelli e dalle risorse disponibili. Per archivi grandi
+può richiedere molto tempo, anche ore. Un'eventuale stima è indicativa, non una
+scadenza garantita; l'attesa non va presentata come assenza di risultati.</p>
+
+<h3 id="photo-indexing-progress">Lavoro asincrono, avanzamento e notifica finale</h3>
+
+<p>Quando un'elaborazione viene realmente accettata da LRE, la chat restituisce
+una ricevuta e il motore asincrono continua il lavoro separatamente: puoi usare
+Metnos per altro o chiudere la pagina. Stato ed esito restano nella console LRE;
+le notifiche di completamento, completamento con errori o fallimento vengono
+consegnate su Telegram se il proprietario ha un'associazione valida. Un lavoro
+non ammesso non è iniziato e non produrrà una notifica di fine indicizzazione.
+La ricevuta iniziale non equivale a indice pronto.</p>
+
+<h3 id="photo-index-reuse">Perché le ricerche successive sono normalmente più veloci</h3>
+
+<p><strong>Dopo il completamento dell'indice</strong>, le ricerche successive
+sullo stesso archivio riutilizzano il lavoro già svolto: normalmente sono molto
+più veloci perché non devono rianalizzare tutte le foto. Non basta essere alla
+seconda richiesta se la preparazione è ancora in corso o è fallita. Foto nuove
+o modificate richiedono un aggiornamento dell'indice; un aggiornamento
+incrementale riusa le foto invariate, mentre una ricostruzione completa rifà
+l'analisi. Nessuna di queste operazioni rende istantanea ogni ricerca.</p>
 
 <h2 id="flusso">Che cosa accade dopo una richiesta</h2>
 

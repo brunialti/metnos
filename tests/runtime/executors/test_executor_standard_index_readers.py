@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import json
+import shutil
 import sys
+import tomllib
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -43,9 +45,50 @@ def _sign_projected_record(record, monkeypatch: pytest.MonkeyPatch) -> None:
         private.sign(manifest_bytes),
     )
     monkeypatch.setattr(
-        admitted, "_trusted_public_keys_v1",
+        admitted, "_projected_trusted_public_keys_v1",
         lambda: (private.public_key(),),
     )
+
+
+@pytest.fixture
+def signed_index_readers(tmp_path, monkeypatch):
+    """Admit current candidate bytes without depending on their publication."""
+    import agent_runtime
+    import loader
+    import sign
+    from i18n_materializer import migrate_language_state_bytes
+    from manifest_code_digest import prepare_manifest_digest_v1
+
+    root = tmp_path / "signed-readers"
+    keys = tmp_path / "signer-keys"
+    keys.mkdir()
+    private = Ed25519PrivateKey.generate()
+    signer = "test-index-author"
+    public_key = keys / f"{signer}_pub.bin"
+    public_key.write_bytes(private.public_key().public_bytes_raw())
+    public_key.chmod(0o644)
+    names = ("find_images_indices", "find_persons_indices", "get_images_indices")
+    for name in names:
+        directory = root / name
+        shutil.copytree(ROOT / "executors" / name, directory,
+                        ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+        path = directory / "manifest.toml"
+        parsed = tomllib.loads(path.read_text())
+        manifest = prepare_manifest_digest_v1(path.read_bytes(), {
+            part: (directory / part).read_bytes() for part in parsed["code"]["files"]})
+        state_path = directory / "manifest.lang_state.json"
+        state = migrate_language_state_bytes(
+            state_path.read_bytes(), manifest=tomllib.loads(manifest.decode()))
+        path.write_bytes(manifest)
+        state_path.write_bytes(state.state_bytes)
+        path.with_suffix(".toml.sig").write_bytes(private.sign(manifest))
+    monkeypatch.setattr(sign, "KEYS_DIR", keys)
+    monkeypatch.setattr(loader, "list_trusted_publics", lambda: [(signer, private.public_key())])
+    value = Catalog()
+    _load_dir_into_catalog(root, value, True, is_synthesized=False)
+    assert set(value.executors) == set(names)
+    monkeypatch.setattr(agent_runtime, "load_catalog", lambda **_kwargs: value)
+    return value
 
 
 def _seed_private_index(base: Path, index_dir: Path) -> None:
@@ -144,7 +187,7 @@ def test_sandboxed_reader_sees_only_semantic_index_bind(
 
 
 def test_sandboxed_readers_reuse_logical_symlink_index_without_source_bind(
-        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch, signed_index_readers) -> None:
     """Regression turn 739f2212: materialized idx_dir is the lookup authority."""
     import agent_runtime
     import config
@@ -165,9 +208,7 @@ def test_sandboxed_readers_reuse_logical_symlink_index_without_source_bind(
     monkeypatch.setattr(config, "PATH_INDEX_IMAGE", index_root / "image")
     _seed_private_index(target, image_reader._index_dir(logical))
 
-    value = Catalog()
-    _load_dir_into_catalog(ROOT / "executors", value, False,
-                           is_synthesized=False)
+    value = signed_index_readers
     cases = [
         ("find_images_indices", {"match_all": True}),
         ("find_persons_indices", {"name": "private"}),

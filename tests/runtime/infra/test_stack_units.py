@@ -99,6 +99,8 @@ def test_durable_worker_is_a_bounded_supervised_target_component():
     assert "KillMode=control-group" in unit
     assert "EnvironmentFile=" not in unit
     assert "Environment=METNOS_DURABLE_WORKLOADS_ENABLED=" not in unit
+    assert "Environment=METNOS_EXECUTOR_PARALLEL=1" in unit
+    assert "Environment=METNOS_DURABLE_WORKERS=" not in unit
     assert "strict shared parser" in unit
 
 

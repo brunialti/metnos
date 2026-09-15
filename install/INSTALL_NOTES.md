@@ -384,6 +384,37 @@ All persistent units installed by this flow are user units and require no
 host-administrator command `loginctl enable-linger`. The VLM remains lazy even
 when its assets have been installed.
 
+For a closed-build system service, optional native vision assets are separate
+installation prerequisites, not changes to a signed unit. An administrator can
+place the existing model, projection and native engine paths in
+`/etc/metnos/vlm-startup.toml`:
+
+```toml
+[default]
+model = "/srv/metnos-models/vision.gguf"
+mmproj = "/srv/metnos-models/vision-projection.gguf"
+llama_bin = "/srv/metnos-engines/llama/bin/llama-server"
+```
+
+The role names match `vlm_tiers.toml`. The profile and its parent directories
+must be root-owned, not group/world writable and not symbolic links. Paths
+must reference assets readable by the service account and a runnable native
+engine; its sibling library directory is projected only into the launcher.
+Provision and verify those assets separately: this profile performs no download
+and does not make the closed sidecar-install adapter available. A missing
+profile preserves legacy startup; an invalid present profile fails closed.
+The three existing `METNOS_VLM_MODEL`, `METNOS_VLM_MMPROJ` and
+`METNOS_VLM_LLAMA_BIN` startup variables retain precedence where a trusted
+launcher already provides them. Ordinary user model configuration cannot add
+host executables, shell commands or arbitrary environment variables.
+
+HTTP and LRE use the same host readiness function. LRE starts local vision only
+after admission, resource acquisition and runner verification, within the
+attempt deadline. Concurrent callers share the startup lock, and a later job
+can start the model again after idle shutdown. Executors never launch host
+processes from inside their sandbox. PID and log files follow the configured
+user state/data roots, including in isolated test installations.
+
 ## Integrated service lifecycle
 
 On a fresh host, `metnos.target` owns the HTTP server and installed companion
@@ -408,6 +439,25 @@ would introduce a second parser with different acceptance rules. The Services
 page writes only the canonical form and restarts the exact catalogued user
 unit. Disabling LRE never removes its store or artifacts, and the idle worker
 continues to publish health state.
+
+The supervised worker opts into the same bounded executor scheduler as HTTP.
+With no explicit `METNOS_DURABLE_WORKERS` override, it derives its controller
+lanes from that scheduler's available capacity, preserving a spare executor
+thread and the existing lane ceiling. An explicit serial override and the
+central parallelism gate remain authoritative. Independent ready units may
+overlap only within the frozen plan's `max_concurrency`, worker capabilities,
+and central resource and executor limits. Idle workers back off; useful
+progress refills free lanes without waiting for the next idle poll. The
+legacy unit template and the closed-build signed target recipe must declare
+the same scheduler opt-in; changing a live signed unit or adding a drop-in is
+not a supported activation path.
+
+Model units with a frozen, bounded zero-cost contract reserve their maximum
+token use atomically when a lease is acquired. Exact persisted usage replaces
+that reservation; expired leases require reconciliation, and unknown usage
+blocks further admission. This does not increase model capacity: default host
+limits remain one LLM and one VLM slot, the LLM class override remains binding,
+and mutating calls without a verified independent path identity stay serial.
 
 The phase-5 import preflight must reproduce both supported Python package
 roots: the installation root for `runtime.*` modules and its `runtime/`

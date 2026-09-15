@@ -37,6 +37,7 @@ class WorkloadContract:
 WORKLOADS: dict[str, WorkloadContract] = {
     # Micro decisions: bounded labels or tiny JSON.
     "intent.extract": WorkloadContract("fast", "micro", "micro_decision", "json"),
+    "temporal.interpret": WorkloadContract("fast", "micro", "micro_decision", "json"),
     "intent.route_relation": WorkloadContract("fast", "micro", "micro_decision", "label"),
     "dialog.filler": WorkloadContract("fast", "micro", "micro_decision", "text"),
     "sites.goal_reduce": WorkloadContract("fast", "micro", "micro_decision", "json"),

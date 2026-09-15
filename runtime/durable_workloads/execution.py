@@ -153,6 +153,7 @@ class DurableExecutionBridge:
         device_selector: Callable[[Mapping[str, Any] | None], str | None] | None = None,
         executor_generation_attestor: Callable[[object], object] | None = None,
         require_generation_attestation: bool = False,
+        resource_readiness: Callable[..., None] | None = None,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         self.store = store
@@ -168,6 +169,7 @@ class DurableExecutionBridge:
             raise ValueError("generation attestation authority is required")
         self._executor_generation_attestor = executor_generation_attestor
         self._require_generation_attestation = bool(require_generation_attestation)
+        self._resource_readiness = resource_readiness
         self._clock = clock or _now
 
     @staticmethod
@@ -709,6 +711,7 @@ class DurableExecutionBridge:
         args: Mapping[str, Any],
         context: ExecutionContext,
         device_id: str | None,
+        *, usage_sink=None,
     ) -> object:
         stage = _mapping(facts["stage"], context="stage")
         if contract.kind == RunnerKind.EXECUTOR.value:
@@ -787,6 +790,31 @@ class DurableExecutionBridge:
                     retry="never",
                     details={"runner_name": contract.name},
                 ) from exc
+            if self._resource_readiness is not None:
+                from .resource_readiness import ModelResourceChanged, ModelResourceUnavailable
+                import time
+
+                try:
+                    self._resource_readiness(
+                        executor, args, contract, context, device_id,
+                        deadline_at=time.monotonic() + self._remaining_timeout(context),
+                    )
+                except ModelResourceChanged as exc:
+                    if usage_sink is not None:
+                        usage_sink.complete_local_capture()
+                    raise self._failure(
+                        "contract_violation", code="execution.model_resource_changed",
+                        message_key="ERR_DURABLE_CONTRACT_CHANGED", retry="never",
+                    ) from exc
+                except ModelResourceUnavailable as exc:
+                    if usage_sink is not None:
+                        # The host did not enter the executor transport. This
+                        # verifies zero calls without inventing usage records.
+                        usage_sink.complete_local_capture()
+                    raise self._failure(
+                        "capability_unavailable", code="execution.model_resource_unavailable",
+                        message_key="ERR_DURABLE_RUNNER_UNAVAILABLE", retry="manual",
+                    ) from exc
             return self._executor_invoker(
                 executor, args, context, self._remaining_timeout(context), device_id,
                 self._autonomy(DurableEffect(stage["effect_profile"])),
@@ -1034,8 +1062,10 @@ class DurableExecutionBridge:
                     sink=usage_sink,
                 ):
                     observation = self._invoke(
-                        contract, facts, args, context, device_id,
+                        contract, facts, args, context, device_id, usage_sink=usage_sink,
                     )
+                if contract.kind == RunnerKind.WORKLOAD.value:
+                    usage_sink.complete_local_capture()
             else:
                 observation = self._invoke(contract, facts, args, context, device_id)
             observation = self._consume_transport_usage(

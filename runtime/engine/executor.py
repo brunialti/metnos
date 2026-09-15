@@ -1251,7 +1251,7 @@ def _render_final_message(template: str, history: list[StepRun]) -> str:
             template = f"${{step{last.step_idx}.@count}}"
     if not template:
         return ""
-    def _sub_one(result, path):
+    def _sub_one(result, path, *, step):
         if path == "@count":
             for k in ("available_total", "ok_count", "used"):
                 v = result.get(k)
@@ -1333,7 +1333,7 @@ def _render_final_message(template: str, history: list[StepRun]) -> str:
             # ``final_message_hint`` ha però già una presentazione canonica:
             # per una mutazione/creazione la tabella dei campi tecnici
             # (ok/path/kind/rows/...) non è il risultato utile in chat.
-            _note = _sub_one(result, "@note")
+            _note = _sub_one(result, "@note", step=step)
             _hint = result.get("final_message_hint")
             if isinstance(_hint, str) and _hint.strip():
                 rendered_hint = _hint.strip()
@@ -1348,7 +1348,10 @@ def _render_final_message(template: str, history: list[StepRun]) -> str:
                     entries,
                     presentation=result.get("_presentation_contract"),
                 ) + _note
-            return _sub_one(result, "@count") + _note  # 0 entries → conteggio onesto
+            zero = _deterministic_zero_result([step])
+            if zero:
+                return zero + _note
+            return _sub_one(result, "@count", step=step) + _note
         if path == "@content":
             return _read_content(result)
         # Universal §7.9 fallback: prova path diretto, poi entries[*].field
@@ -1366,13 +1369,13 @@ def _render_final_message(template: str, history: list[StepRun]) -> str:
         path = m.group(2)
         if not (1 <= n <= len(history)):
             return ""
-        return _sub_one(history[n - 1].result, path)
+        return _sub_one(history[n - 1].result, path, step=history[n - 1])
     def _sub_steps(m):
         n = int(m.group(1))
         path = m.group(2)
         if not (0 <= n < len(history)):
             return ""
-        return _sub_one(history[n].result, path)
+        return _sub_one(history[n].result, path, step=history[n])
     out = _STEPREF_RE.sub(_sub_step, template)
     out = _STEPSREF_RE.sub(_sub_steps, out)
     return out
@@ -2094,43 +2097,28 @@ def _synthesize_final_from_steps(
 
 
 def _turn_is_zero_entries(steps) -> bool:
-    """True se il turno è genuinamente a 0 risultati: lo step più recente con
-    semantica di lista (`item_count` di describe_entries, o una chiave-payload
-    `entries`/`results`/`lines`/`matches`) è VUOTO. False se non esiste alcuno
-    step-lista (scalare puro, es. get_now → degenere per ALTRO motivo, la synth
-    LLM resta corretta) o se l'ultima lista è non-vuota. Deterministico,
-    model-independent — scandisce a ritroso e si ferma al primo segnale.
-    """
-    for s in reversed(steps or []):
-        if getattr(s, "tool", "") == "final_answer":
-            continue
-        r = getattr(s, "result", None)
-        if not isinstance(r, dict):
-            continue
-        ic = r.get("item_count")
-        if isinstance(ic, int):
-            return ic == 0
-        # Conteggio esplicito (es. count_only: entries=[] MA available_total/count
-        # > 0). §2.8: «quanti file» con entries materializzate vuote NON è zero
-        # risultati — il numero È il risultato. Va consultato prima della lista,
-        # altrimenti un conteggio legittimo viene reso «Nessun risultato».
-        for ck in ("available_total", "count", "ok_count"):
-            cv = r.get(ck)
-            if isinstance(cv, int):
-                return cv == 0
-        for k in ("entries", "results", "lines", "matches"):
-            v = r.get(k)
-            if isinstance(v, list):
-                return not v
-    return False
+    """Recognize an empty terminal collection without reviving earlier rows."""
+    from pipeline_effects import terminal_collection_output
+    output = terminal_collection_output(steps)
+    return output is not None and output[2] == 0
 
 
 def _deterministic_zero_result(steps) -> str:
-    """§7.9 (deterministico>LLM) + §2.8 (onesto): messaggio finale per i turni
-    a 0 entries, da provare PRIMA della synth LLM — evita una call `fast`
-    spesa solo per dire «niente trovato». "" se il turno NON è a 0 entries
-    (lascia la synth ai degeneri-ma-non-vuoti). Byte-riproducibile (i18n)."""
-    return _msg("MSG_NO_RESULTS") if _turn_is_zero_entries(steps) else ""
+    """Use observed selection counts for an honest localized empty result."""
+    from pipeline_effects import terminal_collection_output
+    from vocab import PROCESSOR_VERBS
+    output = terminal_collection_output(steps)
+    if output is None or output[2] != 0:
+        return ""
+    tool, result, _count = output
+    metadata = result.get("metadata")
+    if isinstance(metadata, dict) and tool.split("_", 1)[0] in PROCESSOR_VERBS:
+        count_in, count_out = metadata.get("count_in"), metadata.get("count_out")
+        if (isinstance(count_in, int) and not isinstance(count_in, bool)
+                and count_in > 0 and isinstance(count_out, int) and count_out == 0
+                and not isinstance(count_out, bool)):
+            return _msg("MSG_PROCESSOR_EMPTY", tool=tool)
+    return _msg("MSG_NO_RESULTS")
 
 
 @dataclass
@@ -2242,12 +2230,13 @@ class Executor:
                 log.debug("scope_form_request parallel-preflight noop: %r", exc)
         if self.vaglio_guard is not None:
             try:
-                allowed, _reason = self.vaglio_guard(step.tool, args)
+                from vaglio import check_executor_guard
+                allowed, _reason = check_executor_guard(
+                    self.vaglio_guard, step.tool, args,
+                    executor=self._catalog_map.get(step.tool))
             except Exception as exc:
-                # Preserve the existing guard contract; admission remains
-                # read-only even when the best-effort guard itself fails.
                 log.warning("vaglio_guard parallel-preflight raised %r", exc)
-                allowed = True
+                allowed = False
             if not allowed:
                 return False
         return True
@@ -2813,10 +2802,13 @@ class Executor:
             if (_parallel_call is None and self.vaglio_guard is not None
                     and _form_obs is None):
                 try:
-                    _ok_g, _why_g = self.vaglio_guard(_exec_tool, args)
+                    from vaglio import check_executor_guard
+                    _ok_g, _why_g = check_executor_guard(
+                        self.vaglio_guard, _exec_tool, args,
+                        executor=self._catalog_map.get(_exec_tool))
                 except Exception as _ge:
-                    _ok_g, _why_g = True, None  # best-effort: fail-open
-                    log.warning("vaglio_guard raised %r — fail-open", _ge)
+                    _ok_g, _why_g = False, "guard_check_failed"
+                    log.warning("vaglio_guard raised %r — fail-closed", _ge)
                 if not _ok_g:
                     log.warning("[vaglio guard] BLOCCO pre-invoke %s: %s",
                                 _exec_tool, _why_g)

@@ -16,7 +16,8 @@ class TestUnits(unittest.TestCase):
         self.assertEqual(twr.parse_query_time_window("ultimi 12 mesi"), "last-12m")
         self.assertEqual(twr.parse_query_time_window("last 2 weeks"), "last-2w")
         self.assertEqual(twr.parse_query_time_window("degli ultimi 3 anni"), "last-3y")
-        self.assertEqual(twr.parse_query_time_window("12 mesi fa"), "last-12m")
+        # A point in calendar time is not the whole preceding year.
+        self.assertEqual(twr.parse_query_time_window("12 mesi fa"), "today-12m")
 
     def test_days_hours_still_work(self):
         self.assertEqual(twr.parse_query_time_window("ultime 24 ore"), "last-24h")

@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 
 import pytest
 
 import args_extractor as ae
 import detection_lexicon as dl
+from time_window_parser import temporal_now
 
 
 @pytest.fixture
@@ -22,7 +23,7 @@ def lexicon(tmp_path, monkeypatch):
 
 def test_seed_preserves_date_window_and_home_behavior(lexicon) -> None:
     assert ae._extract_date_keyword("eventi dopodomani") == (
-        datetime.now(timezone.utc) + timedelta(days=2)
+        temporal_now() + timedelta(days=2)
     ).strftime("%Y-%m-%d")
     assert ae._extract_time_window("mail delle ultime 24 ore") == "last-24h"
     assert ae._extract_time_window("files from last 30 days") == "last-30d"
@@ -58,7 +59,7 @@ def test_third_language_uses_materialized_argument_lexicon(
     dl._invalidate()
 
     assert ae._extract_date_keyword("evento zorrow") == (
-        datetime.now(timezone.utc) + timedelta(days=1)
+        temporal_now() + timedelta(days=1)
     ).strftime("%Y-%m-%d")
     assert ae._extract_time_window("items z next week") == "next-week"
     assert ae._extract_time_window("items zlast 12 zhours") == "last-12h"

@@ -93,6 +93,36 @@ def test_submit_is_idempotent_and_owner_ids_can_overlap(store):
     assert len(store.list_workloads("owner-b")) == 1
 
 
+def test_active_submission_lookup_is_exact_owner_scoped_and_nonterminal(store):
+    scope = "sha256:" + "a" * 64
+    other_scope = "sha256:" + "b" * 64
+    first = store.create_draft(
+        "owner-a", "scoped-first", redacted_request={"submission_scope": scope},
+    )
+    other_owner = store.create_draft(
+        "owner-b", "scoped-other-owner", redacted_request={"submission_scope": scope},
+    )
+    different = store.create_draft(
+        "owner-a", "scoped-different", redacted_request={"submission_scope": other_scope},
+    )
+    assert store.find_active_submission("owner-a", scope) == first
+    assert store.find_active_submission("owner-b", scope) == other_owner
+    assert store.find_active_submission("owner-a", other_scope) == different
+    assert store.find_active_submission("owner-c", scope) is None
+    store.transition_workload(
+        "owner-a", first.workload_id, WorkloadState.CANCELLED,
+        expected_version=first.version,
+    )
+    assert store.find_active_submission("owner-a", scope) is None
+    assert store.find_active_submission("owner-b", scope) == other_owner
+
+
+@pytest.mark.parametrize("scope", [None, 123, "", "a" * 64, "sha256:" + "A" * 64])
+def test_active_submission_rejects_noncanonical_digest(store, scope):
+    with pytest.raises(ValueError, match="scope"):
+        store.find_active_submission("owner-a", scope)
+
+
 def test_named_transaction_boundaries_rollback_or_replay_without_duplicates(
     tmp_path,
 ):

@@ -129,3 +129,35 @@ backend mail deve essere **completo e mai-crashante** su molte mailbox.
 - `executors/read_messages/read_messages.py`: `default=_json_safe` + re-sign.
 - `runtime/agent_runtime.py`: notice `input_sources` sui campi INPUT.
 - Moduli RUNTIME → nessun re-sign tranne `read_messages` (executor).
+
+## Addendum — shared temporal semantics (2026-09-15)
+
+The owner requested one general, fast and localized treatment of dates and
+intervals, including unfamiliar expressions and explicit clarification when
+meaning is ambiguous. Domain-specific date guesses duplicated arithmetic and
+could confuse a complete window with its lower endpoint. The common boundary
+now recognizes schema formats `date`, `date-time` and `time-window` on scalar
+and array properties. This does not claim recursive support for arbitrary
+nested schemas. Existing window consumers share the same arithmetic.
+
+`time_window_parser` distinguishes calendar periods, elapsed durations and
+instants using one timezone-aware reference clock. Versioned language resources
+and `time_window_resolver` handle common wording without a model. A bounded
+local `temporal.interpret` workload may map unfamiliar wording to the same
+canonical grammar; it does not perform arithmetic, invent absolute dates or
+erase constraints by returning the unbounded `all` window. Ambiguous weekdays
+and invalid or ambiguous daylight-saving times are not silently guessed.
+
+`temporal_resolution` uses the existing input-selection form when meaning is
+unresolved. Choices contain frozen absolute bounds and preserve valid array
+siblings on resume. This is clarification, not a permission request. One whole
+period is not copied into `since`; explicit endpoints retain their own meaning.
+An explicitly supplied `all` is valid only as an unbounded window, never as a
+date/time instant.
+
+For mail, IMAP date search is only an outward-rounded coarse filter. Exact
+receipt timestamps (`INTERNALDATE`, with the message Date header as fallback)
+are filtered before the result limit; `before` is exclusive. Read-only selection
+and `BODY.PEEK` avoid changing message flags. Scanning remains bounded and
+partial coverage is visible. The implementation and real read-only HTTP/dialog
+evidence are recorded in `internal/reports/rm0008-temporal-20260915.md`.

@@ -164,3 +164,98 @@ def test_single_source_no_twin_blocks():
         "logica degenere duplicata fuori dal Finalizer")
     assert run_body.count("_finalize_answer_text(") == 2, (
         "attesi ESATTAMENTE 2 call-site (terminator + fallback post-loop)")
+
+
+@pytest.mark.parametrize("lang", ["it", "en"])
+def test_empty_table_explains_selection_while_explicit_count_remains_numeric(lang, monkeypatch):
+    import i18n
+    from engine.executor import _finalize_answer_text, _render_final_message
+    from messages import get as msg
+    monkeypatch.setattr(i18n, "current_lang", lambda: lang)
+    steps = _steps({"ok": True, "entries": [],
+                    "metadata": {"count_in": 14, "count_out": 0, "dropped": 14}})
+    steps[0].tool = "filter_entries"
+    expected = msg("MSG_PROCESSOR_EMPTY", tool="filter_entries")
+    assert _finalize_answer_text(_fw("${step1.@table}"), steps, "q", _no_llm) == expected
+    assert _render_final_message("${step1.@count}", steps) == "0"
+    assert _finalize_answer_text(_fw("${step1.@count}"), steps, "q", _no_llm) == "0"
+    assert _finalize_answer_text(_fw(msg("MSG_COUNT_TOTAL", count="${step1.@count}")), steps, "q", _no_llm) == msg("MSG_COUNT_TOTAL", count=0)
+
+
+def test_empty_table_uses_its_referenced_step_not_an_unrelated_later_result():
+    from engine.executor import _render_final_message
+    from messages import get as msg
+    steps = _steps({"ok": True, "entries": []}, {"ok": True, "entries": [{"name": "Later"}]})
+    assert _render_final_message("${step1.@table}", steps) == msg("MSG_NO_RESULTS")
+    assert _render_final_message("${steps.0.@table}", steps) == msg("MSG_NO_RESULTS")
+    assert "Later" in _render_final_message("${step2.@table}", steps)
+
+
+def test_empty_table_preserves_source_note_and_count_only_totals():
+    from engine.executor import _render_final_message
+    from messages import get as msg
+    steps = _steps({"ok": True, "entries": [], "message": "Bounded source scope."})
+    assert _render_final_message("${step1.@table}", steps) == msg("MSG_NO_RESULTS") + "\n\nBounded source scope."
+    steps[0].result["available_total"] = 14
+    assert _render_final_message("${step1.@table}", steps).startswith("14")
+
+
+@pytest.mark.parametrize("lang", ["it", "en"])
+@pytest.mark.parametrize("kind", ["messages", "files"])
+def test_simulated_read_classify_filter_pipeline_has_honest_empty_final(lang, kind, monkeypatch):
+    """Actual policy, piping, filter, finalizer and persistence; no model calls."""
+    import importlib.util
+    import i18n
+    from types import SimpleNamespace
+    from agent_runtime import StepLog, TurnLog
+    from engine.executor import Executor
+    from engine.types import Framework, Intent, StepSpec
+    from messages import get as msg
+    from output_policy import normalize_terminal
+
+    monkeypatch.setattr(i18n, "current_lang", lambda: lang)
+    path = _RUNTIME.parent / "executors/filter_entries/filter_entries.py"
+    spec = importlib.util.spec_from_file_location("_empty_final_filter_fixture", path)
+    filtering = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(filtering)
+    source_tool = "read_messages" if kind == "messages" else "find_files"
+    rows = [{"id": n, "name": f"Item {n}"} for n in range(14)]
+    calls = []
+
+    def invoke(tool, args):
+        calls.append(tool)
+        if tool == source_tool:
+            return {"ok": True, "entries": rows}
+        if tool == "classify_entries":
+            return {"ok": True, "entries": [{**row, "importance": "low"} for row in args["entries"]]}
+        assert tool == "filter_entries"
+        return filtering.invoke(args)
+
+    schema = {"type": "object", "properties": {"entries": {"type": "array", "items": {"type": "object"}}}}
+    catalog = [SimpleNamespace(name=tool, args_schema=schema, presentation={"default_view": "list"})
+               for tool in (source_tool, "classify_entries", "filter_entries")]
+    framework = Framework(steps=[
+        StepSpec(source_tool, {}),
+        StepSpec("classify_entries", {"from_step": 1}),
+        StepSpec("filter_entries", {"from_step": 2, "where_field": "importance", "where_value": "important"}),
+        StepSpec("final_answer", {}),
+    ])
+    framework, _ = normalize_terminal(framework, Intent(verb="find", object=kind), "q", catalog=catalog)
+    assert framework.final_message == "${step3.@table}"
+    run = Executor(invoke_executor=invoke, llm_call_fast=_no_llm, catalog=catalog).run(framework, query="q")
+    assert calls == [source_tool, "classify_entries", "filter_entries"]
+    assert all(step.ok for step in run.steps)
+    assert run.final_kind == "answer"
+    expected = msg("MSG_PROCESSOR_EMPTY", tool="filter_entries")
+    assert run.final_text == expected
+    log = TurnLog(ts_start=0.0, user_query="q", channel="test", actor="empty-final-fixture")
+    for step in run.steps:
+        saved = StepLog(step_num=step.step_idx, chosen_tool=step.tool)
+        saved.result = step.result
+        log.steps.append(saved)
+    log.final_kind = "answer"
+    log.final_message = run.final_text
+    log.write()
+    assert log.effect_counts["items"] == 28
+    assert log.effect_counts["mutations"] == 0
+    assert log.final_message == expected

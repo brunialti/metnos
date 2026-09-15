@@ -12,6 +12,7 @@ import time
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from unittest.mock import patch
 
 # import path
 _RUNTIME = (Path(__file__).resolve().parents[3] / "runtime")
@@ -166,6 +167,30 @@ class TestFindUrls(unittest.TestCase):
         # tutti i 3 url della sitemap devono essere nelle entries
         urls = [e["url"] for e in out["entries"]]
         self.assertEqual(sum(1 for u in urls if u.endswith(".html")), 3, urls)
+
+    def test_search_crawls_only_with_explicit_depth_and_vetted_seeds(self):
+        """An explicit crawl still follows links from the approved result."""
+        import find_urls
+        seed_url = self.srv.url("/")
+        _set_pages({
+            "/": (200, "text/html", '<html><title>Alpha</title><a href="/child">Alpha child</a></html>'),
+            "/child": (200, "text/html", '<html><title>Alpha child</title><a href="/deep">Alpha deep</a></html>'),
+            "/deep": (200, "text/html", "<html><title>Alpha deep</title></html>"),
+        })
+        with patch.object(find_urls, "_searxng_search_full", return_value=([
+            {"url": seed_url, "title": "Alpha", "snippet": "Alpha result"},
+        ], None)), patch.object(find_urls, "_llm_rerank_candidates", return_value=(
+            [seed_url], {"used": True, "scores": {seed_url: 0.8}},
+        )):
+            out = find_urls.invoke({
+                "search_query": "alpha", "max_depth": 1,
+                "respect_robots": False, "max_pages": 10, "rate_limit_ms": 30,
+            })
+        self.assertTrue(out["ok"], out)
+        urls = [entry["url"] for entry in out["entries"]]
+        self.assertIn(self.srv.url("/child"), urls)
+        self.assertNotIn(self.srv.url("/deep"), urls)
+        self.assertEqual(out["metadata"]["max_depth_used"], 1)
 
     def test_rss_feed_strategy(self):
         """RSS feed via <link rel=alternate type=application/rss+xml>."""

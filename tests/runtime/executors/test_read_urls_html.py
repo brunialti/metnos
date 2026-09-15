@@ -137,6 +137,39 @@ class TestReadUrlsHtml(unittest.TestCase):
         out = read_urls_html.invoke({"urls": [self.url("/dated")]})
         self.assertEqual(out["entries"][0]["date"], "2026-07-21")
 
+    def test_structured_publication_date_reaches_normalized_field_it_en(self):
+        import read_urls_html
+        for language, label in (("it", "27 agosto 2026"),
+                                ("en", "August 27, 2026")):
+            with self.subTest(language=language):
+                path = f"/published-{language}"
+                body = (f'<html lang="{language}"><body><article>'
+                        '<time datetime="2026-08-27T09:30:00+02:00">'
+                        f'{label}</time><p>Release notes.</p>'
+                        '</article></body></html>')
+                _set_pages({path: (200, "text/html", body)})
+                out = read_urls_html.invoke({
+                    "urls": [self.url(path)], "cache_ttl_s": 0})
+                self.assertTrue(out["ok"], out)
+                entry = out["entries"][0]
+                self.assertEqual(entry["lang"], language)
+                self.assertEqual(entry["meta"]["published"],
+                                 "2026-08-27T09:30:00+02:00")
+                self.assertEqual(entry["date"], "2026-08-27")
+
+    def test_publication_mapping_preserves_date_authority_and_empty_values(self):
+        import read_urls_html
+        page_date = read_urls_html._page_date
+        self.assertEqual(page_date({"published": "2026-08-27"}, ""),
+                         "2026-08-27")
+        self.assertEqual(page_date({"published": "2026-08-27",
+                                    "article:modified_time": "2026-09-01"}, ""),
+                         "2026-09-01")
+        for value in (None, "", "not a date", 42, "2026-02-30", "2026-99-27T09:30:00Z"):
+            with self.subTest(value=value):
+                self.assertEqual(page_date({"published": value},
+                                            "Example input: 2026-08-27"), "")
+
     def test_non_html_skipped(self):
         """Content-Type non html → skip con error in failed."""
         import read_urls_html

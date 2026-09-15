@@ -59,6 +59,9 @@ _SCHEMA_TW_SINCE_BEFORE = {"properties": {
     ("emails received today", "today"),
     ("le mail di ieri", "yesterday"),
     ("what did I get yesterday", "yesterday"),
+    # Calendar periods are now understood centrally, not left to the planner.
+    ("la settimana scorsa", "last-week"),
+    ("last week emails", "last-week"),
 ])
 def test_parse_estrae_finestra(query, expected):
     assert parse_query_time_window(query) == expected
@@ -72,8 +75,6 @@ def test_parse_estrae_finestra(query, expected):
     "controlla la posta",
     "elenca i file in /tmp",
     # fuori confine dichiarato: calendario-settimana ambiguo, numeri in lettere
-    "la settimana scorsa",
-    "last week emails",
     "le ultime ventiquattro ore",
     # parole contenenti sottostringhe (oggi/ieri dentro altre parole)
     "aggiungi un evento al pomeriggio",

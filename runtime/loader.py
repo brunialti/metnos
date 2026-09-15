@@ -40,6 +40,9 @@ from executor_metadata import (
     transport_kind as _transport_kind,
 )
 from presentation_contract import normalize_presentation as _normalize_presentation
+from executor_prerequisites import (
+    ExecutorPrerequisite, normalize_lre_plan, normalize_prerequisites,
+)
 
 from logging_setup import get_logger
 log = get_logger(__name__)
@@ -491,6 +494,8 @@ def builtin_contract_executor(name: str, module_path: Path,
         execution_policy=_execution_policy(manifest),
         execution_policy_declared=isinstance(manifest.get("execution"), dict),
         presentation=_normalize_presentation(manifest),
+        prerequisites=normalize_prerequisites(manifest.get("prerequisites"), owner=name),
+        lre_plan=normalize_lre_plan(manifest.get("lre_plan")),
     )
 
 
@@ -898,6 +903,11 @@ class Executor:
     # the declared key; executors never provide a command, path, or package ID
     # in their result.
     managed_dependencies: tuple[ManagedDependency, ...] = ()
+    # Signed authority for a missing derived resource. Observations supply
+    # bound data only; runtime admission still controls the prerequisite.
+    prerequisites: tuple[ExecutorPrerequisite, ...] = ()
+    # A signed reference, never an executable plan supplied in observations.
+    lre_plan: str = ""
 
     def has_capability(self, name_prefix: str) -> bool:
         return any(c.get("name", "").startswith(name_prefix) for c in self.capabilities)
@@ -2153,6 +2163,9 @@ def _load_parsed_manifest_into_catalog(
         try:
             _managed = _managed_dependencies(
                 manifest.get("managed_dependencies"))
+            _prerequisites = normalize_prerequisites(
+                manifest.get("prerequisites"), owner=name)
+            _lre_plan = normalize_lre_plan(manifest.get("lre_plan"))
         except ValueError as exc:
             catalog.rejected.append((str(sub), str(exc)))
             continue
@@ -2221,6 +2234,8 @@ def _load_parsed_manifest_into_catalog(
             execution_policy_declared=isinstance(manifest.get("execution"), dict),
             presentation=_normalize_presentation(manifest),
             managed_dependencies=_managed,
+            prerequisites=_prerequisites,
+            lre_plan=_lre_plan,
         )
         catalog.executors[name] = ex
 

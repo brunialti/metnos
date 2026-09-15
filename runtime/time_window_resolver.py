@@ -116,7 +116,8 @@ def _year_bounds_imap(year: int) -> tuple[str, str]:
     return (f"01-{_MONTHS_IMAP[0]}-{year}", f"01-{_MONTHS_IMAP[0]}-{year + 1}")
 
 
-def parse_query_time_window(query: str) -> str | None:
+def parse_query_time_window(query: str, *, exact: bool = False,
+                            _spans: list | None = None) -> str | None:
     """Estrae la finestra temporale RELATIVA espressa nella query NL.
 
     Ritorna la spec canonica (`today|yesterday|last-Nh|last-Nd|last-Nw|last-Nm|last-Ny`) o None se
@@ -129,21 +130,41 @@ def parse_query_time_window(query: str) -> str | None:
     if lexicon is None:
         return None
     candidates: list[tuple[int, int, str]] = []
+    def add(priority, match, canonical):
+        if not exact or (match.start() == 0 and match.end() == len(query)):
+            candidates.append((priority, match.start(), canonical))
+            if _spans is not None:
+                _spans.append((match.start(), match.end(), priority, canonical))
+    months = _surface_to_canonical(lexicon["parser.time.month"])
+    month_alt = _phrase_alt(months)
+    for pattern in (
+        rf"(?<!\w)(?P<day>\d{{1,2}})\s+(?P<month>{month_alt})(?:\s+(?P<year>\d{{4}}))?(?!\w)",
+        rf"(?<!\w)(?P<month>{month_alt})\s+(?P<day>\d{{1,2}})(?:,?\s+(?P<year>\d{{4}}))?(?!\w)",
+    ):
+        for match in re.finditer(pattern, query, re.I):
+            month = int(months[match.group("month").casefold()])
+            day = int(match.group("day"))
+            year = match.group("year") or "date"
+            add(-2, match, f"{year}-{month:02d}-{day:02d}")
+    numbers = _surface_to_canonical(lexicon["parser.time.number"])
+    number_alt = r"\d{1,4}|" + _phrase_alt(numbers)
+    def number(value):
+        return int(value) if value.isdigit() else int(numbers.get(value.casefold(), "0"))
     determiners = _phrase_alt(lexicon["parser.time.past_determiner"])
     units = lexicon["parser.time.unit"]
     reverse_units = _surface_to_canonical(units)
     unit_alt = _phrase_alt(reverse_units)
     if determiners and unit_alt:
         explicit = re.compile(
-            rf"(?<!\w)(?:{determiners})(?!\w)\s+(\d{{1,4}})\s*"
+            rf"(?<!\w)(?:{determiners})(?!\w)\s+({number_alt})\s*"
             rf"(?P<unit>{unit_alt})(?!\w)",
             re.IGNORECASE | re.UNICODE,
         )
         for match in explicit.finditer(query):
-            n = int(match.group(1))
+            n = number(match.group(1))
             unit = reverse_units.get(match.group("unit").casefold())
             if 1 <= n <= 9999 and unit:
-                candidates.append((0, match.start(), f"last-{n}{unit}"))
+                add(0, match, f"last-{n}{unit}")
         # The established bare singular contract excludes weeks; the numeric
         # form above remains available for all registered units.
         singular_surfaces = _surface_to_canonical(
@@ -158,7 +179,7 @@ def parse_query_time_window(query: str) -> str | None:
             for match in singular.finditer(query):
                 unit = singular_surfaces.get(match.group("unit").casefold())
                 if unit:
-                    candidates.append((0, match.start(), f"last-1{unit}"))
+                    add(0, match, f"last-1{unit}")
 
     for canonical in ("h", "d", "w", "m", "y"):
         forms = lexicon[f"parser.time.past_postfix.{canonical}"]
@@ -168,14 +189,14 @@ def parse_query_time_window(query: str) -> str | None:
         if not unit_alt_for_kind or not postfix_alt:
             continue
         rx = re.compile(
-            rf"(?<!\w)(\d{{1,4}})\s*(?:{unit_alt_for_kind})(?!\w)\s+"
+            rf"(?<!\w)({number_alt})\s*(?:{unit_alt_for_kind})(?!\w)\s+"
             rf"(?:{postfix_alt})(?!\w)",
             re.IGNORECASE | re.UNICODE,
         )
         for match in rx.finditer(query):
-            n = int(match.group(1))
+            n = number(match.group(1))
             if 1 <= n <= 9999:
-                candidates.append((0, match.start(), f"last-{n}{canonical}"))
+                add(0, match, f"last-{n}{canonical}")
         # Historical singular postfix exists only for hour and day.
         if canonical in {"h", "d"}:
             singular_unit_alt = _phrase_alt(
@@ -185,8 +206,57 @@ def parse_query_time_window(query: str) -> str | None:
                 rf"(?:{postfix_alt})(?!\w)",
                 re.IGNORECASE | re.UNICODE,
             )
-            candidates.extend((0, match.start(), f"last-1{canonical}")
-                              for match in rx.finditer(query))
+            for match in rx.finditer(query):
+                add(0, match, f"last-1{canonical}")
+
+    # Offset points are not rolling windows. Their arithmetic is shared by
+    # date/time fields and interval endpoints in time_window_parser.
+    suffix = _phrase_alt(lexicon["parser.time.past_offset_suffix"])
+    future = _phrase_alt(lexicon["parser.time.future_offset_prefix"])
+    future_window = _phrase_alt(lexicon["parser.time.future_determiner"])
+    quantity = rf"(?P<count>{number_alt})\s*(?P<unit>{unit_alt})(?!\w)"
+    for pattern, sign, rolling in (
+        (rf"(?<!\w){quantity}\s+(?:{suffix})(?!\w)", "-", False),
+        (rf"(?<!\w)(?:{future})(?!\w)\s+{quantity}", "+", False),
+        (rf"(?<!\w)(?:{future_window})(?!\w)\s+{quantity}", "+", True),
+    ):
+        for match in re.finditer(pattern, query, re.I):
+            n = number(match.group("count"))
+            unit = reverse_units.get(match.group("unit").casefold())
+            if n < 1 or not unit:
+                continue
+            anchor = "today" if unit in {"d", "w", "m", "y"} else "now"
+            canonical = f"next-{n}{unit}" if rolling else f"{anchor}{sign}{n}{unit}"
+            add(-1, match, canonical)
+
+    # Explicit value-only compatibility: bare quantities were historically
+    # accepted as rolling windows. Never extract them from an arbitrary query.
+    if exact:
+        bare = re.fullmatch(quantity, query, re.I)
+        if bare and number(bare.group("count")) > 0:
+            unit = reverse_units[bare.group("unit").casefold()]
+            add(0, bare, f"last-{number(bare.group('count'))}{unit}")
+
+    directions = _surface_to_canonical(lexicon["parser.time.direction"])
+    direction_alt = _phrase_alt(directions)
+    for concept, kind in (("parser.time.weekday", "weekday"),
+                          ("parser.time.calendar_period", "period")):
+        names = _surface_to_canonical(lexicon[concept])
+        names_alt = _phrase_alt(names)
+        pattern = (rf"(?<!\w)(?:(?P<before>{direction_alt})\s+)?"
+                   rf"(?P<name>{names_alt})(?!\w)"
+                   rf"(?:\s+(?P<after>{direction_alt})(?!\w))?")
+        for match in re.finditer(pattern, query, re.I):
+            name = names[match.group("name").casefold()]
+            direction = match.group("before") or match.group("after")
+            direction = directions.get((direction or "").casefold())
+            if kind == "weekday":
+                value = f"weekday-{name}" + (f"-{direction}" if direction else "")
+                add(1, match, value)
+            elif direction:
+                # Named calendar periods beat the older bare-singular rolling
+                # alias ("last month" is the preceding calendar month).
+                add(-1, match, f"{direction}-{name}")
 
     relative = lexicon["parser.time.relative_day"]
     reverse_relative = _surface_to_canonical(relative)
@@ -199,11 +269,24 @@ def parse_query_time_window(query: str) -> str | None:
         for match in rx.finditer(query):
             canonical = reverse_relative.get(match.group("form").casefold())
             if canonical:
-                candidates.append((1, match.start(), canonical))
+                add(1, match, canonical)
     if not candidates:
         return None
     candidates.sort()
     return candidates[0][2]
+
+
+def temporal_mentions(query: str) -> list[str]:
+    """Return non-overlapping temporal references using the same grammar."""
+    spans: list = []
+    parse_query_time_window(query, _spans=spans)
+    selected, end = [], -1
+    for start, stop, _priority, canonical in sorted(
+            spans, key=lambda item: (item[0], -(item[1] - item[0]), item[2])):
+        if start >= end:
+            selected.append(canonical)
+            end = stop
+    return selected
 
 
 def resolve_time_window(tool: str, args: dict, query: str,

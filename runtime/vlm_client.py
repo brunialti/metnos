@@ -178,7 +178,8 @@ def describe_image(img_path, *, lang: str | None = None,
                    url: str | None = None, model: str | None = None,
                    timeout_s: float | None = None,
                    max_tokens: int | None = None,
-                   deadline_at: float | None = None) -> dict:
+                   deadline_at: float | None = None,
+                   allow_lazy_start: bool = True) -> dict:
     """Descrive il CONTENUTO di un'immagine col VLM. Ritorna dict
     {description, keywords, location_hint, activity_hint} (+`_vlm_error` su
     fallimento, mai solleva — fail-safe §2.8). `lang` usa per default la
@@ -187,7 +188,9 @@ def describe_image(img_path, *, lang: str | None = None,
     ad-hoc per ricerca; create_images_indices passa il suo prompt index-build).
     `max_tokens` default 1024 (descrizione RICCA per ricerca, vs 512 caption).
     ``deadline_at`` è un deadline monotono condiviso: preprocessing, lazy
-    start e retry non possono rinnovare il budget a ogni fase."""
+    start e retry non possono rinnovare il budget a ogni fase.
+    ``allow_lazy_start=False`` permits a durable unit to make one request
+    without launching a model process or retrying inside the unit."""
     import base64
     from io import BytesIO
 
@@ -271,7 +274,7 @@ def describe_image(img_path, *, lang: str | None = None,
         with urllib.request.urlopen(req, timeout=request_timeout) as resp:
             raw = resp.read().decode("utf-8")
     except urllib.error.URLError as e:
-        if (_looks_like_connection_refused(e)
+        if (allow_lazy_start and _looks_like_connection_refused(e)
                 and _lazy_start_vlm(deadline_at=deadline_at)):
             try:
                 request_timeout = _remaining_timeout()

@@ -119,6 +119,87 @@ _TERMINAL_WORKLOAD_STATES = frozenset({
     WorkloadState.COMPLETED,
 })
 
+# ``reservation_revisions`` is supplied by each owner-scoped caller. The
+# admitted catalog plus the active fenced lease is the durable reservation;
+# no live model binding or process-local counter participates in admission.
+_MODEL_RESERVATIONS_CTES = """
+    model_catalog_entries AS (
+        SELECT revision.owner_user_id, revision.id AS revision_id,
+               CASE WHEN entry.type='object' THEN entry.value ELSE '{}' END AS contract
+        FROM reservation_revisions revision,
+             json_each(revision.catalog_snapshot_json, '$.entries') entry
+    ),
+    model_limits AS (
+        SELECT stage.owner_user_id, stage.revision_id, stage.id AS stage_id,
+               CAST(json_extract(revision.plan_json, '$.budgets.max_tokens') AS INTEGER)
+                   AS token_limit,
+               CAST(json_extract(revision.plan_json, '$.budgets.max_tokens') AS INTEGER)
+                   - usage.input_tokens - usage.output_tokens AS remaining_tokens,
+               CASE WHEN COUNT(entry.contract)=1
+                 AND json_extract(entry.contract, '$.model_cost_policy')='zero'
+                 AND json_type(entry.contract, '$.model_binding_digest')='text'
+                 AND length(json_extract(entry.contract, '$.model_binding_digest'))=71
+                 AND substr(json_extract(entry.contract, '$.model_binding_digest'), 1, 7)='sha256:'
+                 AND substr(json_extract(entry.contract, '$.model_binding_digest'), 8)
+                     NOT GLOB '*[^0-9a-f]*'
+                 AND json_extract(entry.contract, '$.kind')=stage.runner_kind
+                 AND json_extract(entry.contract, '$.name')=stage.runner_name
+                 AND json_type(entry.contract, '$.model_max_calls')='integer'
+                 AND json_extract(entry.contract, '$.model_max_calls') BETWEEN 1 AND 64
+                 AND json_type(entry.contract, '$.model_max_input_tokens')='integer'
+                 AND json_extract(entry.contract, '$.model_max_input_tokens')
+                     BETWEEN 1 AND 16777216
+                 AND json_type(entry.contract, '$.model_max_output_tokens')='integer'
+                 AND json_extract(entry.contract, '$.model_max_output_tokens')
+                     BETWEEN 1 AND 1000000
+               THEN json_extract(entry.contract, '$.model_max_calls') * (
+                    json_extract(entry.contract, '$.model_max_input_tokens')
+                    + json_extract(entry.contract, '$.model_max_output_tokens')
+               ) ELSE NULL END AS max_tokens
+        FROM stages stage
+        JOIN reservation_revisions revision
+          ON revision.owner_user_id=stage.owner_user_id AND revision.id=stage.revision_id
+        JOIN revision_usage usage
+          ON usage.owner_user_id=stage.owner_user_id AND usage.revision_id=stage.revision_id
+        LEFT JOIN model_catalog_entries entry
+          ON entry.owner_user_id=stage.owner_user_id
+         AND entry.revision_id=stage.revision_id
+         AND json_extract(entry.contract, '$.stage_key')=stage.stage_key
+        WHERE CAST(json_extract(stage.resources_json, '$.llm') AS INTEGER)>0
+           OR CAST(json_extract(stage.resources_json, '$.vlm') AS INTEGER)>0
+        GROUP BY stage.owner_user_id, stage.revision_id, stage.id
+    ),
+    model_reservations AS (
+        SELECT unit.owner_user_id, unit.revision_id, unit.id AS unit_id,
+               unit.active_attempt_id AS attempt_id,
+               CASE WHEN limits.max_tokens IS NULL OR attempt.id IS NULL
+                    THEN 1 ELSE 0 END AS unbounded,
+               CASE WHEN attempt.id IS NOT NULL
+                      AND json_extract(attempt.model_snapshot_json, '$.mode')='llm'
+                      AND json_extract(attempt.metrics_json, '$.llm_usage.schema_version')
+                          ='metnos.durable-model-usage/2'
+                      AND json_type(attempt.metrics_json, '$.llm_usage.usage_missing')='false'
+                      AND json_type(attempt.metrics_json, '$.llm_usage.cost_unknown')='false'
+                    THEN 0 ELSE COALESCE(limits.max_tokens, 0) END AS reserved_tokens
+        FROM units unit
+        JOIN model_limits limits
+          ON limits.owner_user_id=unit.owner_user_id
+         AND limits.revision_id=unit.revision_id AND limits.stage_id=unit.stage_id
+        LEFT JOIN attempts attempt
+          ON attempt.owner_user_id=unit.owner_user_id AND attempt.unit_id=unit.id
+         AND attempt.id=unit.active_attempt_id AND attempt.fence=unit.fence
+         AND attempt.worker_id=unit.lease_worker_id
+         AND attempt.state IN ('leased', 'running') AND attempt.ended_at IS NULL
+        WHERE unit.state IN ('leased', 'running')
+    ),
+    model_reservation_totals AS (
+        SELECT owner_user_id, revision_id, COUNT(*) AS active_models,
+               SUM(unbounded) AS unbounded_models,
+               SUM(reserved_tokens) AS reserved_tokens
+        FROM model_reservations GROUP BY owner_user_id, revision_id
+    )
+"""
+
 
 class DurableStoreError(RuntimeError):
     """Base class for repository failures with stable caller semantics."""
@@ -843,6 +924,64 @@ class DurableWorkloadStore:
         return _row_to_workload(
             self._select_workload(self._connection, owner, workload_id)
         )
+
+    def find_active_submission(
+        self, owner_user_id: str, scope_digest: str,
+    ) -> WorkloadRecord | None:
+        """Find one owner's existing nonterminal submission by its exact scope."""
+
+        owner = _require_owner(owner_user_id)
+        if not isinstance(scope_digest, str) or not _SHA256_RE.fullmatch(scope_digest):
+            raise ValueError("submission scope must be a canonical SHA-256 digest")
+        terminal = tuple(sorted(state.value for state in _TERMINAL_WORKLOAD_STATES))
+        placeholders = ",".join("?" for _state in terminal)
+        row = self._connection.execute(
+            f"""
+            SELECT owner_user_id, id, request_key, state, priority,
+                   active_revision_id, version, created_at, updated_at,
+                   terminal_reason_json
+            FROM workloads
+            WHERE owner_user_id=? AND state NOT IN ({placeholders})
+              AND json_extract(redacted_request_json, '$.payload.submission_scope')=?
+            ORDER BY created_at, id
+            LIMIT 1
+            """,
+            (owner, *terminal, scope_digest),
+        ).fetchone()
+        return None if row is None else _row_to_workload(row)
+
+    def find_submission_by_request_key(
+        self, owner_user_id: str, request_key: str, *,
+        redacted_request: Mapping[str, Any], priority: str = "normal",
+        budget: Mapping[str, Any] | None = None,
+    ) -> WorkloadRecord | None:
+        """Validate an existing delivery identity without creating a draft.
+
+        Scope-level coalescing must not hide a delivery key already bound to
+        different arguments, or redirect a completed delivery to a newer job.
+        """
+        owner = _require_owner(owner_user_id)
+        key = _require_key(request_key, name="request_key")
+        if priority not in {"low", "normal", "high"}:
+            raise ValueError("priority must be low, normal or high")
+        if not isinstance(redacted_request, Mapping):
+            raise SchemaValidationError("redacted_request must be an object")
+        budget_value = {} if budget is None else budget
+        if not isinstance(budget_value, Mapping):
+            raise SchemaValidationError("budget must be an object")
+        expected = digest_json("durable-submit", {
+            "redacted_request": redacted_request, "priority": priority, "budget": budget_value,
+        }, max_bytes=MAX_PLAN_JSON_BYTES)
+        row = self._connection.execute(
+            "SELECT owner_user_id, id, request_key, state, priority, active_revision_id, "
+            "version, created_at, updated_at, terminal_reason_json, request_digest "
+            "FROM workloads WHERE owner_user_id=? AND request_key=?", (owner, key),
+        ).fetchone()
+        if row is None:
+            return None
+        if row["request_digest"] != expected:
+            raise IdempotencyConflictError("request_key was already used with a different payload")
+        return _row_to_workload(row)
 
     def source_authority_active(
         self,
@@ -2575,17 +2714,31 @@ class DurableWorkloadStore:
                 now=current,
             )
 
-    def remaining_model_budget(self, lease: Lease) -> dict[str, int]:
-        """Return the transactionally observed token and cost remainder."""
+    def remaining_model_budget(
+        self, lease: Lease, *, now: datetime | None = None,
+    ) -> dict[str, int]:
+        """Return the remainder after other attempts' durable reservations."""
 
         if not isinstance(lease, Lease):
             raise TypeError("lease must be Lease")
+        current, _current_text = self._operation_now(now)
         with self._transaction() as connection:
             row = self._select_lease_row(connection, lease)
             if not self._lease_matches(row, lease):
                 raise DurableStoreError(
                     "model budget requires the active attempt fence"
                 )
+            assert row is not None
+            if (
+                row["unit_state"] not in {"leased", "running"}
+                or row["attempt_state"] not in {"leased", "running"}
+                or self._clock_regressed(row["revision_clock_high_water_at"], current)
+                or parse_instant(str(row["lease_expires_at"])) <= current
+            ):
+                raise BudgetExceededError({
+                    "reason_code": "budget_accounting_incomplete",
+                    "budget": "accounting",
+                })
             budget = connection.execute(
                 """
                 SELECT revision.plan_json, usage.input_tokens,
@@ -2613,8 +2766,28 @@ class DurableWorkloadStore:
             used_tokens = int(budget["input_tokens"]) + int(
                 budget["output_tokens"]
             )
+            reserved = connection.execute(
+                f"""
+                WITH reservation_revisions AS (
+                    SELECT owner_user_id, id, catalog_snapshot_json, plan_json FROM revisions
+                    WHERE owner_user_id=? AND id=?
+                ), {_MODEL_RESERVATIONS_CTES}
+                SELECT COALESCE(SUM(reserved_tokens), 0) AS tokens,
+                       COALESCE(SUM(unbounded), 0) AS unbounded
+                FROM model_reservations
+                WHERE unit_id<>? OR attempt_id<>?
+                """,
+                (lease.owner_user_id, lease.revision_id, lease.unit_id, lease.attempt_id),
+            ).fetchone()
+            if reserved is None or int(reserved["unbounded"]):
+                raise BudgetExceededError({
+                    "reason_code": "budget_accounting_incomplete",
+                    "budget": "accounting",
+                })
             return {
-                "max_tokens": max(0, int(limits["max_tokens"]) - used_tokens),
+                "max_tokens": max(
+                    0, int(limits["max_tokens"]) - used_tokens - int(reserved["tokens"]),
+                ),
                 "max_cost_micros": max(
                     0,
                     int(limits["max_cost_micros"])
@@ -5010,7 +5183,12 @@ class DurableWorkloadStore:
             )
             candidate = connection.execute(
                 f"""
-                WITH candidate AS (
+                WITH reservation_revisions AS (
+                    SELECT r.owner_user_id, r.id, r.catalog_snapshot_json, r.plan_json
+                    FROM workloads w JOIN revisions r
+                      ON r.owner_user_id=w.owner_user_id AND r.id=w.active_revision_id
+                    WHERE w.state IN ('queued', 'running')
+                ), {_MODEL_RESERVATIONS_CTES}, candidate AS (
                     SELECT
                         w.owner_user_id, w.id AS workload_id,
                         w.state AS workload_state, w.version AS workload_version,
@@ -5026,6 +5204,10 @@ class DurableWorkloadStore:
                         (
                             SELECT s.id
                             FROM stages s
+                            LEFT JOIN model_limits model_limit
+                              ON model_limit.owner_user_id=s.owner_user_id
+                             AND model_limit.revision_id=s.revision_id
+                             AND model_limit.stage_id=s.id
                             WHERE s.owner_user_id=w.owner_user_id
                               AND s.revision_id=r.id
                               AND EXISTS (
@@ -5096,11 +5278,17 @@ class DurableWorkloadStore:
                                   ) AS INTEGER)=0
                                 )
                                 OR (
-                                  revision_usage.input_tokens
-                                    + revision_usage.output_tokens
-                                    < CAST(json_extract(
-                                      r.plan_json, '$.budgets.max_tokens'
-                                    ) AS INTEGER)
+                                  (
+                                    revision_usage.input_tokens
+                                      + revision_usage.output_tokens
+                                      < CAST(json_extract(
+                                        r.plan_json, '$.budgets.max_tokens'
+                                      ) AS INTEGER)
+                                    OR (
+                                      model_limit.max_tokens IS NOT NULL
+                                      AND COALESCE(reservations.active_models, 0)=0
+                                    )
+                                  )
                                   AND (
                                     CAST(json_extract(
                                       r.plan_json,
@@ -5112,36 +5300,26 @@ class DurableWorkloadStore:
                                         '$.budgets.max_cost_micros'
                                       ) AS INTEGER)
                                   )
-                                  AND NOT EXISTS (
-                                    SELECT 1
-                                    FROM units active_model_unit
-                                    JOIN stages active_model_stage
-                                      ON active_model_stage.owner_user_id=
-                                           active_model_unit.owner_user_id
-                                     AND active_model_stage.revision_id=
-                                           active_model_unit.revision_id
-                                     AND active_model_stage.id=
-                                           active_model_unit.stage_id
-                                    WHERE active_model_unit.owner_user_id=
-                                            r.owner_user_id
-                                      AND active_model_unit.revision_id=r.id
-                                      AND active_model_unit.state IN (
-                                        'leased', 'running'
-                                      )
+                                  AND (
+                                    (
+                                      model_limit.max_tokens IS NULL
+                                      AND COALESCE(reservations.active_models, 0)=0
+                                    ) OR (
+                                      model_limit.max_tokens IS NOT NULL
+                                      AND COALESCE(reservations.unbounded_models, 0)=0
                                       AND (
-                                        CAST(json_extract(
-                                          active_model_stage.resources_json,
-                                          '$.llm'
-                                        ) AS INTEGER)>0
-                                        OR CAST(json_extract(
-                                          active_model_stage.resources_json,
-                                          '$.vlm'
-                                        ) AS INTEGER)>0
+                                        model_limit.max_tokens
+                                          + COALESCE(reservations.reserved_tokens, 0)
+                                          <= model_limit.remaining_tokens
+                                        OR COALESCE(reservations.active_models, 0)=0
                                       )
+                                    )
                                   )
                                 )
                               )
-                            ORDER BY s.position, s.id
+                            ORDER BY CASE WHEN model_limit.max_tokens
+                                                 > model_limit.remaining_tokens
+                                          THEN 1 ELSE 0 END, s.position, s.id
                             LIMIT 1
                         ) AS stage_id
                     FROM workloads w
@@ -5151,6 +5329,9 @@ class DurableWorkloadStore:
                     JOIN revision_usage revision_usage
                       ON revision_usage.owner_user_id=r.owner_user_id
                      AND revision_usage.revision_id=r.id
+                    LEFT JOIN model_reservation_totals reservations
+                      ON reservations.owner_user_id=r.owner_user_id
+                     AND reservations.revision_id=r.id
                     LEFT JOIN scheduler_credits sc
                       ON sc.owner_user_id=w.owner_user_id
                      AND sc.workload_id=w.id
@@ -5209,11 +5390,18 @@ class DurableWorkloadStore:
                         AS INTEGER
                       )
                 )
-                SELECT * FROM candidate
-                WHERE stage_id IS NOT NULL
-                ORDER BY owner_selected_seq, selected_seq,
-                         CASE priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END,
-                         workload_created_at, owner_user_id, workload_id
+                SELECT candidate.*, model_limit.max_tokens AS required_model_tokens,
+                       model_limit.remaining_tokens, model_limit.token_limit
+                FROM candidate LEFT JOIN model_limits model_limit
+                  ON model_limit.owner_user_id=candidate.owner_user_id
+                 AND model_limit.revision_id=candidate.revision_id
+                 AND model_limit.stage_id=candidate.stage_id
+                WHERE candidate.stage_id IS NOT NULL
+                ORDER BY CASE WHEN model_limit.max_tokens > model_limit.remaining_tokens
+                              THEN 1 ELSE 0 END,
+                         candidate.owner_selected_seq, candidate.selected_seq,
+                         CASE candidate.priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END,
+                         candidate.workload_created_at, candidate.owner_user_id, candidate.workload_id
                 LIMIT 1
                 """,
                 (
@@ -5229,6 +5417,31 @@ class DurableWorkloadStore:
                 ),
             ).fetchone()
             if candidate is None:
+                return None
+            required_tokens = candidate["required_model_tokens"]
+            if required_tokens is not None and int(required_tokens) > int(candidate["remaining_tokens"]):
+                # A missing reservation is transient only while another model
+                # attempt can release it. With no active model reservation and
+                # no runnable candidate ahead of this one, fail explicitly;
+                # never lease an attempt that cannot pass its preflight.
+                self._automatic_workload_transition_in_transaction(
+                    connection,
+                    self._select_workload(
+                        connection, str(candidate["owner_user_id"]),
+                        str(candidate["workload_id"]),
+                    ),
+                    WorkloadState.NEEDS_ATTENTION,
+                    reason_code="budget_limit_exceeded",
+                    details={
+                        "budget": "max_tokens",
+                        "limit": int(candidate["token_limit"]),
+                        "observed": int(candidate["token_limit"])
+                            - int(candidate["remaining_tokens"]),
+                        "required_token_reservation": int(required_tokens),
+                        "remaining": int(candidate["remaining_tokens"]),
+                    },
+                    now_text=current_text,
+                )
                 return None
 
             row = connection.execute(

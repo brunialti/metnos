@@ -124,7 +124,7 @@ class TestCreateUnifiedDryRun(unittest.TestCase):
 
 @unittest.skipUnless(_pillow_present(), "Pillow non disponibile")
 class TestCreateUnifiedBuilder(unittest.TestCase):
-    """Test del builder reale, mockando VLM + face engine."""
+    """Exercise real phase/storage code with synthetic local model responses."""
 
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp(prefix="metnos_unified_test_"))
@@ -133,9 +133,41 @@ class TestCreateUnifiedBuilder(unittest.TestCase):
         import os
         self._old_idx_root = os.environ.get("METNOS_INDEX_ROOT")
         os.environ["METNOS_INDEX_ROOT"] = str(self.tmp / "index")
+        self._generation = 0
+        import numpy as np
+        from types import SimpleNamespace
+        self._models = mock.patch("virt.get_embedder", side_effect=lambda role: {
+            "text": SimpleNamespace(name="text-fixture", embed_texts=lambda _texts: np.array([[1, 0]], dtype="float32")),
+            "image": SimpleNamespace(name="image-fixture", available=True,
+                                     embed_images=lambda *_args, **_kwargs: np.array([[1, 0]], dtype="float32")),
+        }[role])
+        self._identity = mock.patch("create_images_indices.analysis_identity", return_value="fixture-policy")
+        self._models.start()
+        self._identity.start()
+
+    def _build(self, args):
+        import create_images_indices as cii
+        self._generation += 1
+        common = {**args, "generation": f"test-{self._generation}"}
+        discovery = cii.invoke({**common, "phase": "discover"})
+        if not discovery["ok"]:
+            return discovery
+        receipts = []
+        for group in discovery["entries"]:
+            result = cii.invoke({**common, "phase": "analyze", "entries": [{
+                "part": group["part"],
+                "folder_contexts": {label: f"Photos: {label}." for label in group["folder_labels"]},
+            }]})
+            if not result["ok"]:
+                return result
+            receipts.extend(result["entries"])
+        return cii.invoke({**common, "phase": "publish", "entries": receipts,
+                           "expected_count": discovery["source_count"]})
 
     def tearDown(self):
         import os
+        self._models.stop()
+        self._identity.stop()
         if self._old_idx_root is None:
             os.environ.pop("METNOS_INDEX_ROOT", None)
         else:
@@ -148,9 +180,9 @@ class TestCreateUnifiedBuilder(unittest.TestCase):
         photos.mkdir()
         # Solo file non-image
         (photos / "doc.txt").write_text("hello")
-        out = cii.invoke({"base_path": str(photos)})
+        out = self._build({"base_path": str(photos)})
         self.assertFalse(out["ok"])
-        self.assertIn("immagini supportate", out["error"])
+        self.assertEqual(out["error_code"], "image_corpus_empty")
 
     def test_build_writes_unified_storage(self):
         import create_images_indices as cii
@@ -161,7 +193,7 @@ class TestCreateUnifiedBuilder(unittest.TestCase):
         with mock.patch.object(cii, "_call_vlm", return_value=_VLM_MOCK_OUT), \
              mock.patch("face_embedding.get_face_engine",
                         return_value=_StubFaceEngine()):
-            out = cii.invoke({"base_path": str(photos)})
+            out = self._build({"base_path": str(photos)})
         self.assertTrue(out["ok"], msg=out)
         self.assertEqual(out["schema_version"], 4)
         self.assertEqual(out["ok_count"], 2)
@@ -182,7 +214,7 @@ class TestCreateUnifiedBuilder(unittest.TestCase):
         with mock.patch.object(cii, "_call_vlm", return_value=_VLM_MOCK_OUT), \
              mock.patch("face_embedding.get_face_engine",
                         return_value=_StubFaceEngine()):
-            out = cii.invoke({"base_path": str(photos)})
+            out = self._build({"base_path": str(photos)})
         self.assertTrue(out["ok"])
         idx_path = Path(out["index_path"])
         with (idx_path / "entries.jsonl").open() as fh:
@@ -199,10 +231,10 @@ class TestCreateUnifiedBuilder(unittest.TestCase):
         with mock.patch.object(cii, "_call_vlm", return_value=_VLM_MOCK_OUT), \
              mock.patch("face_embedding.get_face_engine",
                         return_value=_StubFaceEngine()):
-            out1 = cii.invoke({"base_path": str(photos)})
+            out1 = self._build({"base_path": str(photos)})
             self.assertEqual(out1["ok_count"], 1)
             # Re-build: nessuna modifica → resume skip VLM call
-            out2 = cii.invoke({"base_path": str(photos)})
+            out2 = self._build({"base_path": str(photos)})
         self.assertTrue(out2["ok"])
         self.assertEqual(out2["ok_count"], 1)
         self.assertEqual(out2["refreshed_count"], 0)
@@ -215,12 +247,12 @@ class TestCreateUnifiedBuilder(unittest.TestCase):
         with mock.patch.object(cii, "_call_vlm", return_value=_VLM_MOCK_OUT), \
              mock.patch("face_embedding.get_face_engine",
                         return_value=_StubFaceEngine()):
-            cii.invoke({"base_path": str(photos)})
-            out2 = cii.invoke({"base_path": str(photos), "force": True})
+            self._build({"base_path": str(photos)})
+            out2 = self._build({"base_path": str(photos), "force": True})
         self.assertTrue(out2["ok"])
         self.assertEqual(out2["ok_count"], 1)
 
-    def test_max_files_truncated(self):
+    def test_max_files_overflow_does_not_publish_a_partial_index(self):
         import create_images_indices as cii
         photos = self.tmp / "photos"
         photos.mkdir()
@@ -229,11 +261,9 @@ class TestCreateUnifiedBuilder(unittest.TestCase):
         with mock.patch.object(cii, "_call_vlm", return_value=_VLM_MOCK_OUT), \
              mock.patch("face_embedding.get_face_engine",
                         return_value=_StubFaceEngine()):
-            out = cii.invoke({"base_path": str(photos), "max_files": 2})
-        self.assertTrue(out["ok"])
-        self.assertTrue(out.get("truncated"))
-        self.assertEqual(out["cap_field"], "max_files")
-        self.assertEqual(out["cap_value"], 2)
+            out = self._build({"base_path": str(photos), "max_files": 2})
+        self.assertFalse(out["ok"])
+        self.assertFalse((cii._index_dir(photos) / "meta.json").exists())
 
     def test_atomic_write(self):
         import create_images_indices as cii
@@ -243,7 +273,7 @@ class TestCreateUnifiedBuilder(unittest.TestCase):
         with mock.patch.object(cii, "_call_vlm", return_value=_VLM_MOCK_OUT), \
              mock.patch("face_embedding.get_face_engine",
                         return_value=_StubFaceEngine()):
-            out = cii.invoke({"base_path": str(photos)})
+            out = self._build({"base_path": str(photos)})
         idx_path = Path(out["index_path"])
         # Niente .tmp residui dopo build
         for tmp_pat in idx_path.glob("*.tmp"):

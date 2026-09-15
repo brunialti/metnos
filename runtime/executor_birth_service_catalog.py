@@ -527,7 +527,9 @@ SERVICE_SOURCE_V1 = tuple(sorted((
         target_recipe=_python_target(
             "durable_workloads.service",
             working_directory="@installation_root@/runtime",
-            environment=_TARGET_DATA_ENVIRONMENT_V1,
+            environment=_TARGET_DATA_ENVIRONMENT_V1 + (
+                ("METNOS_EXECUTOR_PARALLEL", "1"),
+            ),
         ),
         relations=(
             _unit_relation("After", "external-network-online"),

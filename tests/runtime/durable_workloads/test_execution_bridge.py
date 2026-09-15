@@ -1484,6 +1484,7 @@ def test_supervised_service_resumes_the_generic_f7_path_after_restart(tmp_path):
             worker_factory=lambda store: _worker(store, resolver),
             bridge_factory=bridge_factory,
             poll_interval_s=0.05,
+            parallel_workers=1,
         )
 
     first = service()
@@ -1535,19 +1536,21 @@ def test_token_budget_exhaustion_stops_without_an_automatic_retry(tmp_path):
             )
         outcome = bridge.run_once(worker)
 
-        assert outcome.status is WorkerRunStatus.FAILED
-        assert outcome.failure is not None
-        assert outcome.failure.status.value == "needs_attention"
+        # Admission now detects an impossible reservation before creating an
+        # attempt; the workload still enters attention with no provider call.
+        assert outcome.status is WorkerRunStatus.IDLE
+        assert outcome.lease is None
         unit = store._connection.execute(
             """
-            SELECT state, error_class, attempt_count
-            FROM units
-            WHERE owner_user_id='owner-f7' AND revision_id=?
-              AND state='needs_attention'
+            SELECT unit.state, unit.error_class, unit.attempt_count
+            FROM units unit JOIN stages stage
+              ON stage.owner_user_id=unit.owner_user_id AND stage.id=unit.stage_id
+            WHERE unit.owner_user_id='owner-f7' AND unit.revision_id=?
+              AND stage.stage_key='reduce'
             """,
             (revision_id,),
         ).fetchone()
-        assert tuple(unit) == ("needs_attention", "budget_exhausted", 1)
+        assert tuple(unit) == ("pending", None, 0)
         usage = store._connection.execute(
             """
             SELECT input_tokens, output_tokens, usage_unknown
@@ -1561,6 +1564,14 @@ def test_token_budget_exhaustion_stops_without_an_automatic_retry(tmp_path):
         assert store.get_workload(
             "owner-f7", workload_id,
         ).state is WorkloadState.NEEDS_ATTENTION
+        attention = [
+            json.loads(event.payload_json)
+            for event in store.list_events("owner-f7", workload_id)
+            if event.event_type.value == "needs_attention"
+        ][-1]
+        assert attention["observed"] == 1
+        assert attention["required_token_reservation"] == 8_192
+        assert attention["remaining"] == 8_191
         assert bridge.run_once(worker).status is WorkerRunStatus.IDLE
 
 

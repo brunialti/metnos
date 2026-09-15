@@ -29,9 +29,23 @@ from durable_workloads.runtime_bindings import (
 )
 from durable_workloads.storage import DurableWorkloadStore
 from durable_workloads.worker import DurableWorker
+from durable_workloads import image_indexing
 
 
 ADMISSION_NAMES = (PRESET_ID,)
+_INVOCATION_ADAPTERS = {image_indexing.PLAN_ID: image_indexing}
+
+
+def invocation_plan_adapter(executor):
+    """Resolve a signed adapter reference at the deployment boundary."""
+    reference = getattr(executor, "lre_plan", "")
+    if not reference:
+        return None
+    try:
+        return _INVOCATION_ADAPTERS[reference]
+    except KeyError as exc:
+        from durable_workloads.direct_invocation import DirectInvocationUnsupported
+        raise DirectInvocationUnsupported("executor LRE plan is not registered") from exc
 
 
 @lru_cache(maxsize=1)
@@ -56,7 +70,11 @@ def default_runtime_registry() -> RuntimeRegistry:
         candidate_plan_factory=image_questions_plan,
     )
     registrations = [image_questions]
-    direct = direct_runtime_registration(_verified_catalog_snapshot())
+    catalog = _verified_catalog_snapshot()
+    indexer = catalog.get(image_indexing.EXECUTOR)
+    if indexer is not None and getattr(indexer, "lre_plan", "") == image_indexing.PLAN_ID:
+        registrations.append(image_indexing.registration(catalog_loader=lambda **_kw: catalog))
+    direct = direct_runtime_registration(catalog)
     if direct is not None:
         registrations.append(direct)
     return RuntimeRegistry(tuple(registrations))
@@ -70,4 +88,4 @@ def production_factories() -> tuple[
     return factory.worker, factory.bridge
 
 
-__all__ = ["ADMISSION_NAMES", "default_runtime_registry", "production_factories"]
+__all__ = ["ADMISSION_NAMES", "default_runtime_registry", "production_factories", "invocation_plan_adapter"]

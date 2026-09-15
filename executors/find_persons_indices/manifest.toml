@@ -14,6 +14,21 @@ affinity    = ["cerca persona", "trova", "foto di", "find person",
                 "primi piani", "persona registrata", "enrolled person"]
 revertible  = false
 platforms   = ["linux"]
+timeout_s   = 300
+
+[[prerequisites]]
+on_error = "index_missing"
+executor = "create_images_indices"
+[prerequisites.arguments.base_path]
+source = "result"
+field = "base_path"
+
+[execution]
+effect = "read_only"
+parallelism_class = 0
+resource_class = "cpu"
+concurrency_key = "none"
+equivalence_gate = "unverified"
 
 [placement]
 scope = "server"
@@ -90,6 +105,7 @@ en = "Maximum faces per photo."
 
 [args.properties.time_window]
 type        = "string"
+format      = "time-window"
 default     = "all"
 
 [args.properties.time_window.description]
@@ -132,11 +148,11 @@ max_chars = 16000
 overflow = "notice"
 [[capabilities]]
 name = "fs:read"
-hint = ["arg:reference_images"]
+hint = ["arg:reference_images", "arg:base_path"]
 
 [[capabilities]]
 name = "metnos:read"
-hint = ["persons_registry:local"]
+hint = ["persons_registry:local", "embedding_text:local", "embedding_image:local", "embedding_face:local"]
 
 [[capabilities]]
 name = "index:read"

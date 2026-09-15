@@ -32,7 +32,7 @@ from process_lock import ProcessLock
 from .coordinator import ReconcileOutcome
 from .migrations import MigrationError, SchemaTooNewError, default_db_path
 from .storage import DurableWorkloadStore, StoreNotReadyError
-from .worker import DurableWorker
+from .worker import DurableWorker, WorkerRunOutcome, WorkerRunStatus
 
 
 log = logging.getLogger("metnos.durable_workloads.service")
@@ -236,13 +236,13 @@ class DurableWorkerService:
         if isinstance(max_recovery_batches, bool) or not 1 <= max_recovery_batches <= 1000:
             raise ValueError("max_recovery_batches must be an integer in 1..1000")
         if parallel_workers is None:
-            try:
-                parallel_workers = int(
-                    os.environ.get("METNOS_DURABLE_WORKERS", "1")
-                )
-            except (TypeError, ValueError):
-                parallel_workers = 1
-        if (
+            configured_workers = os.environ.get("METNOS_DURABLE_WORKERS")
+            if configured_workers is not None:
+                try:
+                    parallel_workers = int(configured_workers)
+                except (TypeError, ValueError):
+                    parallel_workers = 1
+        if parallel_workers is not None and (
             isinstance(parallel_workers, bool)
             or not isinstance(parallel_workers, int)
             or not 1 <= parallel_workers <= _MAX_PARALLEL_WORKERS
@@ -268,11 +268,13 @@ class DurableWorkerService:
         self._started = False
         self._restart_required = False
         self._stop_event = threading.Event()
+        self._cycle_wakeup = threading.Event()
         self._consecutive_cycle_failures = 0
         self._cycle_guard = threading.Lock()
         self._parallel_guard = threading.Lock()
         self._parallel_futures: dict[Future[Any], int] = {}
         self._active_parallel_workers: dict[int, tuple[Any, Any]] = {}
+        self._progress_generation = 0
         self._health_pulse_guard = threading.Lock()
         self._health_pulse_thread: threading.Thread | None = None
         self._health_pulse_stop: threading.Event | None = None
@@ -445,7 +447,7 @@ class DurableWorkerService:
     def _configure_parallelism(self) -> None:
         """Clamp controller lanes to the one central scheduler pool."""
 
-        if self._requested_parallel_workers <= 1:
+        if self._requested_parallel_workers == 1:
             self._effective_parallel_workers = 1
             return
         from executor_scheduler import orchestration_capacity
@@ -453,19 +455,45 @@ class DurableWorkerService:
         self._effective_parallel_workers = max(
             1,
             min(
-                self._requested_parallel_workers,
+                self._requested_parallel_workers or _MAX_PARALLEL_WORKERS,
                 orchestration_capacity(),
             ),
         )
-        if self._effective_parallel_workers < self._requested_parallel_workers:
-            log.info(
-                "durable_worker_parallelism_clamped requested=%d effective=%d",
-                self._requested_parallel_workers,
-                self._effective_parallel_workers,
-            )
+        log.info(
+            "durable_worker_parallelism requested=%s effective=%d",
+            self._requested_parallel_workers or "auto",
+            self._effective_parallel_workers,
+        )
 
-    def _run_parallel_once(self, lane: int) -> Any:
-        """Open thread-owned bindings, execute one unit, then close them."""
+    @staticmethod
+    def _made_progress(outcome: object) -> bool:
+        return isinstance(outcome, WorkerRunOutcome) and outcome.status in {
+            WorkerRunStatus.CONTROL_PROGRESS,
+            WorkerRunStatus.COMMITTED,
+            WorkerRunStatus.IDEMPOTENT_REPLAY,
+        }
+
+    def _notify_progress(self) -> None:
+        with self._parallel_guard:
+            self._progress_generation += 1
+        self._cycle_wakeup.set()
+
+    def _parallel_completed(self, future: Future[Any], generation: int) -> None:
+        """Wake for useful work, errors, or an idle probe overtaken by progress."""
+
+        if self._stop_event.is_set():
+            return
+        try:
+            failed = future.exception() is not None
+        except CancelledError:
+            failed = True
+        with self._parallel_guard:
+            progressed = self._progress_generation != generation
+        if failed or progressed:
+            self._cycle_wakeup.set()
+
+    def _run_parallel_batch(self, lane: int) -> Any:
+        """Reuse thread-owned bindings for a cooperative, time-bounded batch."""
 
         store = None
         worker = None
@@ -498,7 +526,17 @@ class DurableWorkerService:
             if self._stop_event.is_set():
                 worker.request_stop()
                 return None
-            return bridge.run_once(worker)
+            # Reuse the existing supervisor interval as a scheduling slice;
+            # never interrupt a fenced unit or sleep while useful work is ready.
+            # Each invocation still performs its own DB/resource admission.
+            deadline = time.monotonic() + self._poll_interval_s
+            while True:
+                outcome = bridge.run_once(worker)
+                if not self._made_progress(outcome):
+                    return outcome
+                self._notify_progress()
+                if self._stop_event.is_set() or time.monotonic() >= deadline:
+                    return outcome
         finally:
             if registered:
                 with self._parallel_guard:
@@ -556,14 +594,21 @@ class DurableWorkerService:
         for lane in range(self._effective_parallel_workers):
             if lane in busy_lanes:
                 continue
+            with self._parallel_guard:
+                generation = self._progress_generation
             try:
                 future = submit_orchestration(
-                    lambda selected=lane: self._run_parallel_once(selected)
+                    lambda selected=lane: self._run_parallel_batch(selected)
                 )
             except SchedulerOrchestrationSaturated:
                 break
             with self._parallel_guard:
                 self._parallel_futures[future] = lane
+            future.add_done_callback(
+                lambda completed, observed=generation: self._parallel_completed(
+                    completed, observed,
+                )
+            )
             busy_lanes.add(lane)
         if self._consecutive_cycle_failures:
             self._set_health(
@@ -656,6 +701,7 @@ class DurableWorkerService:
         """Request cooperative shutdown; active attempt fencing stays in the DB."""
 
         self._stop_event.set()
+        self._cycle_wakeup.set()
         if self._worker is not None:
             self._worker.request_stop()
         with self._parallel_guard:
@@ -669,7 +715,7 @@ class DurableWorkerService:
                 log.warning("durable_parallel_worker_stop_request_failed")
 
     def run_cycle(self) -> None:
-        """Advance bounded recovery or run exactly one bridged unit."""
+        """Advance recovery, run one serial unit, or refill bounded lanes."""
 
         with self._cycle_guard:
             self._run_cycle_locked()
@@ -705,13 +751,15 @@ class DurableWorkerService:
         assert self._worker is not None
         assert self._bridge is not None
         try:
-            self._with_health_pulse(
+            outcome = self._with_health_pulse(
                 lambda: self._bridge.run_once(self._worker),
                 state=DurableServiceState.READY,
                 reason_code="none",
             )
             self._consecutive_cycle_failures = 0
             self._set_health(DurableServiceState.READY, "none")
+            if self._made_progress(outcome):
+                self._notify_progress()
         except Exception:
             self._consecutive_cycle_failures += 1
             self._set_health(DurableServiceState.DEGRADED, "worker_cycle_failed")
@@ -726,12 +774,13 @@ class DurableWorkerService:
         exit_code = 0
         try:
             while not self._stop_event.is_set():
+                self._cycle_wakeup.clear()
                 try:
                     self.run_cycle()
                 except RuntimeError:
                     exit_code = 1
                     break
-                self._stop_event.wait(self._poll_interval_s)
+                self._cycle_wakeup.wait(self._poll_interval_s)
         finally:
             self.stop()
         return exit_code

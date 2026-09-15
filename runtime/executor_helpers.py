@@ -405,6 +405,31 @@ def normalize_vector_result(result: dict, *,
     return out
 
 
+def normalize_array_args(args: dict, schema) -> dict:
+    """Preserve a scalar string as one item when the contract requires an array.
+
+    Step references and resumed inputs can resolve to a single value after
+    planner validation.  Normalize their container at the invocation boundary,
+    without splitting strings, interpreting their contents, or changing item
+    validation.  Union types, nulls, existing lists and undeclared arguments
+    stay untouched.  The input is never mutated; repeated calls are no-ops.
+    """
+    if not isinstance(args, dict) or not isinstance(schema, dict):
+        return args
+    properties = schema.get("properties")
+    if not isinstance(properties, dict):
+        return args
+    out = args
+    for name, declaration in properties.items():
+        if (isinstance(declaration, dict)
+                and declaration.get("type") == "array"
+                and isinstance(args.get(name), str)):
+            if out is args:
+                out = dict(args)
+            out[name] = [args[name]]
+    return out
+
+
 def normalize_unique_items(args: dict, schema) -> dict:
     """Elimina duplicati solo dagli array dichiarati insiemi dallo schema.
 

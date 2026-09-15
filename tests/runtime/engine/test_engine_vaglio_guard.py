@@ -11,6 +11,9 @@ blocca a valle. Wirata in `_run_engine` via `vaglio.guard_check`.
 from __future__ import annotations
 import os, sys, unittest
 from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
 
 
 from engine.executor import Executor            # noqa: E402
@@ -18,11 +21,11 @@ from engine.types import Framework, StepSpec     # noqa: E402
 from vaglio import guard_check                    # noqa: E402
 
 
-def _exec(calls):
+def _exec(calls, *, catalog=None, guard=guard_check):
     def _invoke(tool, args):
         calls.append((tool, dict(args)))
         return {"ok": True, "entries": []}
-    return Executor(invoke_executor=_invoke, vaglio_guard=guard_check, catalog=[])
+    return Executor(invoke_executor=_invoke, vaglio_guard=guard, catalog=catalog or [])
 
 
 def _run(ex, tool, args):
@@ -62,3 +65,58 @@ class TestEngineVaglioGuard(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def _source_executor():
+    return SimpleNamespace(
+        name="create_objects_indices", signed_by="fixture-signer", lifecycle="active", dormant=False,
+        args_schema={"type": "object", "properties": {"base_path": {"type": "string"}}},
+        capabilities=[{"name": "fs:read", "hint": ["arg:base_path"]},
+                      {"name": "metnos:cache", "hint": ["objects:local"]}],
+    )
+
+
+def test_preinvoke_binds_catalog_for_protected_source_but_not_secrets():
+    ex = _source_executor()
+    calls = []
+    engine = _exec(calls, catalog=[ex])
+    _run(engine, ex.name, {"base_path": "/var/lib/app/user_data/Images"})
+    assert len(calls) == 1
+    result = _run(engine, ex.name, {"base_path": "~/.ssh/id_rsa"})
+    assert len(calls) == 1
+    assert result.final_kind == "error"
+    assert "vaglio_guard" in result.aborted_reason
+
+
+def test_parallel_preflight_uses_the_same_verified_catalog_authority():
+    ex = _source_executor()
+    engine = _exec([], catalog=[ex])
+    step = StepSpec(tool=ex.name, args={})
+    assert engine._parallel_preflight(step, {"base_path": "/var/photos"}, query="q", runtime_ctx={})
+    assert not engine._parallel_preflight(step, {"base_path": "~/.ssh/id_rsa"}, query="q", runtime_ctx={})
+    assert not engine._parallel_preflight(step, {"base_path": "/var/photos", "dst": "/var/output"}, query="q", runtime_ctx={})
+
+
+@pytest.mark.parametrize("error_type", [TypeError, RuntimeError])
+def test_guard_error_never_invokes_or_submits_and_is_not_retried(error_type):
+    calls, guards = [], []
+    def broken(name, args):
+        guards.append(name)
+        raise error_type("guard unavailable")
+    engine = _exec(calls, guard=broken)
+    result = _run(engine, "read_files", {"paths": ["/tmp/test"]})
+    assert result.final_kind == "error"
+    assert calls == []
+    assert guards == ["read_files"]
+    assert not engine._parallel_preflight(StepSpec("read_files", {}), {}, query="q", runtime_ctx={})
+    assert guards == ["read_files", "read_files"]
+
+
+def test_engine_custom_two_argument_guard_remains_compatible():
+    calls, guards = [], []
+    def custom(name, args):
+        guards.append((name, args))
+        return True, None
+    engine = _exec(calls, guard=custom)
+    _run(engine, "read_files", {"paths": ["/tmp/test"]})
+    assert len(calls) == len(guards) == 1

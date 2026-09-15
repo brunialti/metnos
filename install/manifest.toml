@@ -321,6 +321,11 @@ purpose = "Provider e parametri del modello visivo-linguistico."
 mode = "0600"
 
 [[config_files.entry]]
+path = "/etc/metnos/vlm-startup.toml"
+purpose = "Optional administrator-owned native vision asset paths for closed-build services; not user model settings or a service drop-in."
+mode = "0644"
+
+[[config_files.entry]]
 path = "~/.config/metnos/runtime.toml"
 purpose = "Impostazioni persistenti del runtime."
 mode = "0600"

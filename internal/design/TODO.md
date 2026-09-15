@@ -15,6 +15,7 @@ non restano artificialmente aperte.
 | P0 | **SEC-001** | attesa esterna | Audit indipendente svolto da un soggetto diverso dall'implementatore; finding classificati e chiusura verificata di quelli alti o bloccanti. |
 | P1 | **EXEC-BIND-001** | analisi separata; nessuna implementazione autorizzata | Stabilire se e come legare i byte verificati a quelli eseguiti per processi locali, builtin e bundle remoti, censendo prima la chiusura reale delle dipendenze. |
 | P1 | **REL-001** | osservazione temporale | Almeno un ciclo di release con telemetria versionata e volume sufficiente per dominio; ratifica degli SLO sulla base dei dati osservati. |
+| — | **WEB-SEARCH-001** | deferred analysis, requested on 2026-09-15; no external search APIs for now | General query handling validated on multiple subjects and languages, followed by the unchanged original query through real search, reading and a source-grounded answer. |
 
 `AFF-I18N-001` è la massima priorità. L'analisi tecnica e il confronto delle
 alternative sono conclusi in
@@ -166,6 +167,25 @@ nuova pubblicazione, aggiornamento release, rollback e matrice Linux/Windows.
 - Gap deliberato: i record anteriori alla telemetria restano `pre-telemetry` e
   non possono sostenere confronti fra release. Le soglie per dominio saranno
   fissate soltanto dopo un campione osservato sufficiente.
+
+### WEB-SEARCH-001 - Investigate web-search relevance and query formulation
+
+**Decision (2026-09-15).** Defer the deeper analysis. Do not introduce external
+search APIs, accounts, credentials or subscriptions; any future exception needs
+explicit approval. The existing search service is not disabled by this decision.
+
+**Evidence and next investigation.** The bounded Bing/SearXNG check retrieved
+relevant sources for `ROCm AMD`, but not for `AMD ROCm`. This is evidence of
+query-order sensitivity in that sample, not a general fix or proof that an API
+is required. Investigate a KISS, bounded, language-aware query strategy that
+preserves entities, requested freshness, domains and exclusions. No term-specific
+rewrites or restoration of rejected results. Validate multiple topics, negative
+cases and latency, then retest the original user query unchanged end to end.
+
+**Status.** Web-search relevance remains open, not certified as resolved. The
+diagnostic result does not itself authorize a provider change. Reuse the existing
+evidence instead of repeating completed probes:
+[incident and test ledger](../reports/rm0008-search-e0de40fe-20260915.md).
 
 ## Completati il 25 agosto 2026
 
