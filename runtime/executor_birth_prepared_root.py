@@ -721,19 +721,12 @@ class HistoricalContextVerifiersV1:
     public_set: object
 
 
-def load_historical_context_verifiers_v1(
-    admission_context_id: str,
-) -> HistoricalContextVerifiersV1:
-    """Resolve an untrusted context selector only inside the fixed live chain.
-
-    This first historical interface covers transition targets. It does not
-    infer the predecessor of the first transition or activate an old context.
-    """
+def _select_historical_context_v1(admission_context_id: str):
+    """Acquire the fixed chain and one unambiguous transition target."""
     import re
     from executor_birth_ownership_chain import (
         VerifiedOwnershipChain, inspect_ownership_chain_state_v1,
     )
-    from executor_birth_prepared_set import load_historical_public_set_v1
 
     if (type(admission_context_id) is not str
             or re.fullmatch(r"sha256:[0-9a-f]{64}", admission_context_id) is None):
@@ -747,7 +740,12 @@ def load_historical_context_verifiers_v1(
     }
     if len(matches) != 1:
         raise PreparedRootError("birth_context_selection_invalid")
-    transition = next(iter(matches.values()))
+    return before, next(iter(matches.values()))
+
+
+def _read_historical_context_set_v1(transition):
+    from executor_birth_prepared_set import load_historical_public_set_v1
+
     session = open_prepared_root_session_v1()
     with session:
         with session.global_lock(exclusive=False, create=False):
@@ -756,15 +754,161 @@ def load_historical_context_verifiers_v1(
                 expected_set_json_sha256=transition.set_json_sha256,
                 expected_context_material_sha256=transition.context_material_sha256,
             )
-            if (public.material.pin.admission_context_id != admission_context_id
+            if (public.material.pin.admission_context_id != transition.prepared_admission_context_id
                     or public.material.pin.context_epoch != transition.prepared_context_epoch):
                 raise PreparedRootError("birth_context_selection_invalid")
+            return public
+
+
+def _require_historical_frontier_unchanged_v1(before):
+    from executor_birth_ownership_chain import (
+        VerifiedOwnershipChain, inspect_ownership_chain_state_v1,
+    )
+
     after = inspect_ownership_chain_state_v1()
     if (type(after) is not VerifiedOwnershipChain
             or after.required_head != before.required_head
             or after.context_transitions != before.context_transitions
             or after.authenticated_records != before.authenticated_records):
         raise PreparedRootError("birth_context_selection_changed")
+
+
+def load_historical_context_verifiers_v1(
+    admission_context_id: str,
+) -> HistoricalContextVerifiersV1:
+    """Resolve an untrusted context selector only inside the fixed live chain.
+
+    This interface covers transition targets, not the predecessor of the
+    first transition. It never activates an old context.
+    """
+    before, transition = _select_historical_context_v1(admission_context_id)
+    public = _read_historical_context_set_v1(transition)
+    _require_historical_frontier_unchanged_v1(before)
     return HistoricalContextVerifiersV1(
         before.required_head.head_id, transition.transition_id, public,
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class HistoricalProducerAuthorsV1:
+    """An authenticated declaration, not an issuer registry or policy engine."""
+
+    context: HistoricalContextVerifiersV1
+    closed_build_id: str
+    source_path: str
+    source_hash: str
+    authors: Mapping[str, str]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "authors", MappingProxyType(dict(self.authors)))
+
+
+def _historical_producer_author_declaration_v1(source: bytes) -> Mapping[str, str]:
+    """Read only the table's literal data; never execute historical Python."""
+    import ast
+    from contract_boundary_guard import _bounded_ast_metrics
+    from executor_birth_distribution_manifest import MAX_BOUNDARY_SOURCE_BYTES_V1
+    from executor_birth_identity import RevisionAuthor
+
+    try:
+        if type(source) is not bytes or len(source) > MAX_BOUNDARY_SOURCE_BYTES_V1:
+            raise ValueError("source size")
+        tree = ast.parse(source.decode("utf-8"))
+        _bounded_ast_metrics(tree)
+        stores = [
+            node for node in ast.walk(tree)
+            if isinstance(node, ast.Name) and node.id == "PRODUCER_AUTHOR_V1"
+            and isinstance(node.ctx, (ast.Store, ast.Del))
+        ]
+        declarations = [
+            node for node in tree.body
+            if isinstance(node, ast.Assign) and len(node.targets) == 1
+            and isinstance(node.targets[0], ast.Name)
+            and node.targets[0].id == "PRODUCER_AUTHOR_V1"
+        ]
+        if len(stores) != 1 or len(declarations) != 1:
+            raise ValueError("declaration")
+        value = declarations[0].value
+        if (not isinstance(value, ast.Call) or not isinstance(value.func, ast.Name)
+                or value.func.id != "MappingProxyType" or len(value.args) != 1
+                or value.keywords or not isinstance(value.args[0], ast.Dict)):
+            raise ValueError("literal table")
+        table = value.args[0]
+        result = {}
+        for key, author in zip(table.keys, table.values):
+            if (not isinstance(key, ast.Tuple) or len(key.elts) != 2
+                    or any(not isinstance(part, ast.Constant) or type(part.value) is not str
+                           or not part.value or part.value.strip() != part.value
+                           or ":" in part.value or "\x00" in part.value for part in key.elts)
+                    or not isinstance(author, ast.Attribute)
+                    or not isinstance(author.value, ast.Name)
+                    or author.value.id != "RevisionAuthor"):
+                raise ValueError("entry")
+            namespace = ":".join(part.value for part in key.elts)
+            if namespace in result:
+                raise ValueError("duplicate namespace")
+            result[namespace] = RevisionAuthor[author.attr].value
+        if not result:
+            raise ValueError("empty table")
+        return MappingProxyType(result)
+    except (UnicodeError, SyntaxError, RecursionError, ValueError, TypeError,
+            KeyError, OverflowError, MemoryError) as exc:
+        raise PreparedRootError("birth_context_producer_policy_invalid", exc) from None
+
+
+def load_historical_producer_authors_v1(
+    admission_context_id: str,
+) -> HistoricalProducerAuthorsV1:
+    """Bind a historical author declaration to public bytes and a stable chain.
+
+    A matching current public copy can supply historical bytes. A differing
+    copy is unsupported, never permission to reinterpret history as current.
+    """
+    from executor_birth_distribution_manifest import (
+        AuthenticatedDistributionRecordV1, MAX_BOUNDARY_SOURCE_BYTES_V1,
+        file_content_hash, read_verified_distribution_file_v1,
+    )
+
+    before, transition = _select_historical_context_v1(admission_context_id)
+    public = _read_historical_context_set_v1(transition)
+    if (before.required_distribution is None
+            or len(before.authenticated_records) != len(before.heads)
+            or len(before.context_transitions) != len(before.heads)):
+        raise PreparedRootError("birth_context_producer_policy_invalid")
+    matches = [
+        (head, record, item)
+        for head, record, item in zip(
+            before.heads, before.authenticated_records, before.context_transitions,
+        ) if record.closed_build_id == transition.closed_build_id
+    ]
+    if len(matches) != 1:
+        raise PreparedRootError("birth_context_producer_policy_invalid")
+    head, record, associated_transition = matches[0]
+    if (type(record) is not AuthenticatedDistributionRecordV1
+            or head.closed_build_id != record.closed_build_id
+            or head.release_sequence != record.release_sequence
+            or associated_transition.encoded != transition.encoded
+            or before.required_distribution.identity.closed_build_id != before.required_head.closed_build_id):
+        raise PreparedRootError("birth_context_producer_policy_invalid")
+    path = "runtime/executor_birth_producer_table_v1.py"
+    historical = [item for item in record.files if item.path == path]
+    current = [item for item in before.required_distribution.files if item.path == path]
+    if (len(historical) != 1 or len(current) != 1 or historical != current
+            or historical[0].role != "runtime_code"
+            or historical[0].size > MAX_BOUNDARY_SOURCE_BYTES_V1):
+        raise PreparedRootError("birth_context_producer_policy_invalid")
+    source = read_verified_distribution_file_v1(
+        before.required_distribution, expected_path=path, expected_role="runtime_code",
+    )
+    if (len(source) != historical[0].size
+            or file_content_hash(path, source) != historical[0].content_hash):
+        raise PreparedRootError("birth_context_producer_policy_invalid")
+    declared = _historical_producer_author_declaration_v1(source)
+    if not set(public.producers) <= set(declared):
+        raise PreparedRootError("birth_context_producer_policy_invalid")
+    authors = {namespace: declared[namespace] for namespace in public.producers}
+    _require_historical_frontier_unchanged_v1(before)
+    return HistoricalProducerAuthorsV1(
+        HistoricalContextVerifiersV1(before.required_head.head_id, transition.transition_id, public),
+        record.closed_build_id, path, historical[0].content_hash, authors,
     )

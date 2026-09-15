@@ -2345,6 +2345,25 @@ def _decode_bound_deployment_descriptor_v1(
     return descriptor
 
 
+def read_verified_distribution_file_v1(
+    distribution: object, *, expected_path: str, expected_role: str,
+) -> bytes:
+    """Capture exact public bytes, without selecting a current release.
+
+    The calling owner must establish which verified distribution it needs.
+    Its authenticated root is the only root this interface can read.
+    """
+    if not _verified_distribution_matches_payload_v1(distribution):
+        raise DistributionManifestError(
+            "birth_ownership_distribution_invalid", "verified artifact",
+        )
+    return _capture_distribution_file_at_v1(
+        distribution, Path(distribution.installation_root),
+        expected_path=expected_path, expected_role=expected_role,
+        administrative=True,
+    )
+
+
 def capture_current_deployment_descriptor_v1(
     distribution: object,
 ) -> tuple[VerifiedDistribution, object]:
@@ -2364,10 +2383,10 @@ def capture_current_deployment_descriptor_v1(
         DEPLOYMENT_DESCRIPTOR_PATH_V1,
     )
 
-    encoded = _capture_distribution_file_at_v1(
-        verified, Path(verified.installation_root),
+    encoded = read_verified_distribution_file_v1(
+        verified,
         expected_path=DEPLOYMENT_DESCRIPTOR_PATH_V1,
-        expected_role="deployment_descriptor", administrative=True,
+        expected_role="deployment_descriptor",
     )
     descriptor = _decode_bound_deployment_descriptor_v1(verified, encoded)
     reread = verify_current_installation_distribution_v1(
@@ -2428,6 +2447,7 @@ __all__ = [
     "DistributionManifestError", "DistributionRegistry", "VerifiedDistribution",
     "authenticate_distribution_record_v1", "build_distribution_manifest_v1",
     "capture_current_deployment_descriptor_v1", "distribution_key_id",
+    "read_verified_distribution_file_v1",
     "file_content_hash", "installed_tree_hash_v1", "is_verified_distribution",
     "verify_current_installation_distribution_v1",
     "verify_installed_distribution_record_v1",

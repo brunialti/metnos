@@ -437,6 +437,75 @@ def test_descriptor_capture_is_anchored_and_bound_to_the_verified_payload(
         )
 
 
+@pytest.mark.parametrize("case", ("valid", "wrong-role", "unlisted-path", "forged-payload", "changed-file"))
+def test_public_file_reader_reuses_the_verified_tree_without_a_caller_root(
+    tmp_path, monkeypatch, case,
+):
+    _value, _encoded, _signature, _registry, verified = _verify(tmp_path)
+    open_anchor = distribution._open_distribution_tree_anchor_v1
+    # Test ownership only: all handle-bound tree and content checks are real.
+    monkeypatch.setattr(
+        distribution, "_open_distribution_tree_anchor_v1",
+        lambda root, *, administrative: open_anchor(root, administrative=False),
+    )
+    path, role = "runtime/contract_store.py", "runtime_code"
+    if case == "wrong-role":
+        role = "public_document"
+    elif case == "unlisted-path":
+        path = "../private.key"
+    elif case == "forged-payload":
+        verified = replace(verified, installation_root=str(tmp_path / "other"))
+    elif case == "changed-file":
+        (tmp_path / path).write_bytes(b"STORE = 2\n")
+    if case != "valid":
+        with pytest.raises(distribution.DistributionManifestError):
+            distribution.read_verified_distribution_file_v1(
+                verified, expected_path=path, expected_role=role,
+            )
+    else:
+        assert distribution.read_verified_distribution_file_v1(
+            verified, expected_path=path, expected_role=role,
+        ) == b"STORE = 1\n"
+
+
+@pytest.mark.parametrize("case", ("valid", "changed-before", "changed-after"))
+def test_current_descriptor_keeps_both_current_release_checks(tmp_path, monkeypatch, case):
+    _value, _encoded, _signature, _registry, verified = _verify(tmp_path)
+    observations = iter((
+        replace(verified, product_version="changed") if case == "changed-before" else verified,
+        replace(verified, product_version="changed") if case == "changed-after" else verified,
+    ))
+    calls = []
+
+    def verify(encoded, signature):
+        assert (encoded, signature) == (verified.encoded, verified.signature)
+        calls.append("verify-current")
+        return next(observations)
+
+    def read(value, *, expected_path, expected_role):
+        assert value == verified
+        assert expected_path == "deployment/executor-birth-deployment-v1.json"
+        assert expected_role == "deployment_descriptor"
+        calls.append("capture-file")
+        return b"descriptor-boundary-fixture"
+
+    descriptor = object()
+    monkeypatch.setattr(distribution, "verify_current_installation_distribution_v1", verify)
+    monkeypatch.setattr(distribution, "read_verified_distribution_file_v1", read)
+    monkeypatch.setattr(
+        distribution, "_decode_bound_deployment_descriptor_v1",
+        lambda value, encoded: descriptor,
+    )
+    if case != "valid":
+        with pytest.raises(distribution.DistributionManifestError):
+            distribution.capture_current_deployment_descriptor_v1(verified)
+    else:
+        assert distribution.capture_current_deployment_descriptor_v1(verified) == (verified, descriptor)
+    assert calls == (["verify-current"] if case == "changed-before" else [
+        "verify-current", "capture-file", "verify-current",
+    ])
+
+
 def test_relative_path_depth_is_normative_and_existing_manifest_is_compatible(
     tmp_path: Path,
 ) -> None:

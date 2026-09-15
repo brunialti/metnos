@@ -23,6 +23,8 @@ from . import support
 
 pytestmark = pytest.mark.skipif(os.name == "nt", reason=support.POSIX_SCENARIO_ONLY_V1)
 
+_POLICY_PATH = "runtime/executor_birth_producer_table_v1.py"
+
 
 def _prepared(tmp_path: Path, monkeypatch):
     base = support.make_config(
@@ -103,6 +105,203 @@ def _chain_boundary_fixture(base, monkeypatch, **transition_changes):
     )
     monkeypatch.setattr(chain_module, "inspect_ownership_chain_state_v1", lambda: chain)
     return chain
+
+
+def _producer_policy_fixture(tmp_path, monkeypatch):
+    """Real signed files/public sets; chain and admin metadata remain test seams."""
+    import executor_birth_distribution_manifest as distribution
+    import executor_birth_ownership_authorities as authorities
+    import test_executor_birth_distribution_manifest as distribution_support
+
+    base = _prepared(tmp_path / "prepared", monkeypatch)
+    source = (Path(__file__).parents[3] / _POLICY_PATH).read_bytes()
+    private, key_id, registry = distribution_support._authority(distribution.PURPOSE)
+    release = tmp_path / "release"
+    _value, encoded, signature = distribution_support._manifest(
+        release, private, key_id,
+        files_mutate=lambda files, path: distribution_support._add_declared_file(
+            files, path, _POLICY_PATH, "runtime_code", source,
+        ),
+    )
+    verified = distribution._verify_distribution_manifest_for_test(
+        encoded, signature, registry=registry,
+        _environment=distribution_support._test_environment(release),
+    )
+    monkeypatch.setattr(
+        authorities, "load_ownership_public_registries_v1",
+        lambda: distribution_support._fixed_public_bundle(private),
+    )
+    record = distribution.authenticate_distribution_record_v1(encoded, signature)
+    chain = _chain_boundary_fixture(
+        base, monkeypatch, closed_build_id=record.closed_build_id,
+    )
+    chain = replace(
+        chain, heads=(replace(chain.required_head, closed_build_id=record.closed_build_id),),
+        authenticated_records=(record,), required_distribution=verified,
+    )
+    monkeypatch.setattr(chain_module, "inspect_ownership_chain_state_v1", lambda: chain)
+    open_anchor = distribution._open_distribution_tree_anchor_v1
+    monkeypatch.setattr(
+        distribution, "_open_distribution_tree_anchor_v1",
+        lambda path, *, administrative: open_anchor(path, administrative=False),
+    )
+    return chain, release, source
+
+
+def test_historical_producer_authors_are_public_data_not_loaded_policy(tmp_path, monkeypatch):
+    import executor_birth_producer_table_v1 as table
+
+    chain, release, source = _producer_policy_fixture(tmp_path, monkeypatch)
+    expected = {":".join(key): value.value for key, value in table.PRODUCER_AUTHOR_V1.items()}
+    monkeypatch.setattr(table, "PRODUCER_AUTHOR_V1", {})
+    monkeypatch.setattr(
+        table, "producer_author_v1",
+        lambda *_args: pytest.fail("historical declaration executed as current policy"),
+    )
+    observed = root.load_historical_producer_authors_v1(
+        chain.context_transitions[0].prepared_admission_context_id,
+    )
+    assert observed.authors == expected
+    assert observed.context.required_head_id == chain.required_head.head_id
+    assert observed.closed_build_id == chain.authenticated_records[0].closed_build_id
+    assert observed.source_path == _POLICY_PATH
+    assert (release / _POLICY_PATH).read_bytes() == source
+    with pytest.raises(TypeError):
+        observed.authors["other:operation"] = "human"
+    with pytest.raises(FrozenInstanceError):
+        observed.closed_build_id = _digest("0")
+
+
+@pytest.mark.parametrize("same_source", (True, False))
+def test_historical_author_projection_selects_the_old_build_not_the_latest(
+    tmp_path, monkeypatch, same_source,
+):
+    import config
+    import executor_birth_distribution_manifest as distribution
+    import test_executor_birth_distribution_manifest as distribution_support
+
+    original, _release, source = _producer_policy_fixture(tmp_path, monkeypatch)
+    private, key_id, registry = distribution_support._authority(distribution.PURPOSE)
+    latest_root = tmp_path / "next-release"
+    _value, encoded, signature = distribution_support._manifest(
+        latest_root, private, key_id,
+        mutate=lambda value: value.update(
+            release_sequence=2, previous_closed_build_id=original.required_head.closed_build_id,
+        ),
+        files_mutate=lambda files, path: distribution_support._add_declared_file(
+            files, path, _POLICY_PATH, "runtime_code",
+            source if same_source else source + b"\n# Different future source.\n",
+        ),
+    )
+    latest = distribution.authenticate_distribution_record_v1(encoded, signature)
+    verified = distribution._verify_distribution_manifest_for_test(
+        encoded, signature, registry=registry,
+        _environment=distribution_support._test_environment(latest_root),
+    )
+    later = _chain_boundary_fixture(
+        config.PATH_USER_CONFIG, monkeypatch, closed_build_id=latest.closed_build_id,
+        request_id=_digest("9"), prepared_admission_context_id=_digest("a"),
+    )
+    chain = replace(
+        original,
+        heads=original.heads + (replace(
+            later.required_head, closed_build_id=latest.closed_build_id,
+            release_sequence=2, head_id=_digest("b"), previous_head_id=original.required_head.head_id,
+        ),),
+        authenticated_records=original.authenticated_records + (latest,),
+        context_transitions=original.context_transitions + later.context_transitions,
+        required_distribution=verified,
+    )
+    monkeypatch.setattr(chain_module, "inspect_ownership_chain_state_v1", lambda: chain)
+    selector = original.context_transitions[0].prepared_admission_context_id
+    if not same_source:
+        with pytest.raises(root.PreparedRootError, match="birth_context_producer_policy_invalid"):
+            root.load_historical_producer_authors_v1(selector)
+    else:
+        observed = root.load_historical_producer_authors_v1(selector)
+        assert observed.closed_build_id == original.required_head.closed_build_id
+        assert observed.context.required_head_id == chain.required_head.head_id
+
+
+@pytest.mark.parametrize("source", (
+    b"", b"x" * (1024 * 1024 + 1), b"(invalid", b"OTHER = {}",
+    b"PRODUCER_AUTHOR_V1 = {}",
+    b"PRODUCER_AUTHOR_V1 = dict({('p', 'o'): RevisionAuthor.MODEL})",
+    b"PRODUCER_AUTHOR_V1 = MappingProxyType({('p', 'o'): RevisionAuthor.MODEL}, {})",
+    b"PRODUCER_AUTHOR_V1 = MappingProxyType(value={('p', 'o'): RevisionAuthor.MODEL})",
+    b"PRODUCER_AUTHOR_V1 = MappingProxyType([])",
+    b"PRODUCER_AUTHOR_V1 = MappingProxyType({**other})",
+    b"PRODUCER_AUTHOR_V1 = MappingProxyType({(producer(), 'o'): RevisionAuthor.MODEL})",
+    b"PRODUCER_AUTHOR_V1 = MappingProxyType({('p', 'o'): RevisionAuthor.UNKNOWN})",
+    b"PRODUCER_AUTHOR_V1 = MappingProxyType({('p', 'o'): Other.MODEL})",
+    b"PRODUCER_AUTHOR_V1 = MappingProxyType({('p', 'o'): author()})",
+    b"PRODUCER_AUTHOR_V1 = MappingProxyType({('', 'o'): RevisionAuthor.MODEL})",
+    b"PRODUCER_AUTHOR_V1 = MappingProxyType({('p:o', 'x'): RevisionAuthor.MODEL})",
+    b"PRODUCER_AUTHOR_V1 = MappingProxyType({('p', 'o'): RevisionAuthor.MODEL, ('p', 'o'): RevisionAuthor.HUMAN})",
+    b"PRODUCER_AUTHOR_V1 = MappingProxyType({('p', 'o'): RevisionAuthor.MODEL})\nPRODUCER_AUTHOR_V1 = other",
+    b"PRODUCER_AUTHOR_V1 = MappingProxyType({('p', 'o'): RevisionAuthor.MODEL})\ndef f():\n global PRODUCER_AUTHOR_V1\n PRODUCER_AUTHOR_V1 = other",
+    b"OTHER = PRODUCER_AUTHOR_V1 = MappingProxyType({('p', 'o'): RevisionAuthor.MODEL})",
+))
+def test_historical_producer_declaration_rejects_unsupported_source(source):
+    with pytest.raises(root.PreparedRootError, match="birth_context_producer_policy_invalid"):
+        root._historical_producer_author_declaration_v1(source)
+
+
+@pytest.mark.parametrize("case", (
+    "source-changed", "source-missing", "historical-hash", "historical-size",
+    "historical-role", "historical-file-missing", "historical-file-duplicate",
+    "historical-build", "head-build", "sequence", "missing-record",
+    "missing-distribution", "missing-namespace", "frontier-changed",
+))
+def test_historical_producer_authors_reject_incomplete_or_unbound_evidence(
+    tmp_path, monkeypatch, case,
+):
+    import executor_birth_distribution_manifest as distribution
+
+    chain, release, source = _producer_policy_fixture(tmp_path, monkeypatch)
+    record = chain.authenticated_records[0]
+    item = next(item for item in record.files if item.path == _POLICY_PATH)
+    if case == "source-changed":
+        support.write(release / _POLICY_PATH, source + b"\n", 0o644)
+    elif case == "source-missing":
+        (release / _POLICY_PATH).unlink()
+    elif case.startswith("historical-"):
+        if case == "historical-hash":
+            replacement = replace(item, content_hash=_digest("0"))
+        elif case == "historical-size":
+            replacement = replace(item, size=item.size + 1)
+        elif case == "historical-role":
+            replacement = replace(item, role="public_document")
+        else:
+            replacement = item
+        files = tuple(replacement if entry.path == _POLICY_PATH else entry for entry in record.files)
+        if case == "historical-file-missing":
+            files = tuple(entry for entry in files if entry.path != _POLICY_PATH)
+        elif case == "historical-file-duplicate":
+            files += (item,)
+        record = replace(record, files=files)
+        if case == "historical-build":
+            record = replace(record, closed_build_id=_digest("0"))
+        chain = replace(chain, authenticated_records=(record,))
+    elif case == "head-build":
+        chain = replace(chain, heads=(replace(chain.required_head, closed_build_id=_digest("0")),))
+    elif case == "sequence":
+        chain = replace(chain, authenticated_records=(replace(record, release_sequence=2),))
+    elif case == "missing-record":
+        chain = replace(chain, authenticated_records=())
+    elif case == "missing-distribution":
+        chain = replace(chain, required_distribution=None)
+    elif case == "missing-namespace":
+        monkeypatch.setattr(root, "_historical_producer_author_declaration_v1", lambda _source: {})
+    after = chain
+    if case == "frontier-changed":
+        after = replace(chain, heads=(replace(chain.required_head, head_id=_digest("0")),))
+    observations = iter((chain, after))
+    monkeypatch.setattr(chain_module, "inspect_ownership_chain_state_v1", lambda: next(observations))
+    with pytest.raises((root.PreparedRootError, distribution.DistributionManifestError)):
+        root.load_historical_producer_authors_v1(
+            chain.context_transitions[0].prepared_admission_context_id,
+        )
 
 
 def test_historical_material_is_independent_of_the_current_catalog(
