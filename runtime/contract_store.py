@@ -258,6 +258,20 @@ class ContractBinding:
 
 
 @dataclass(frozen=True, slots=True)
+class HistoricalBirthEvidenceV1:
+    """Raw durable bytes and their locators, not an authenticated admission."""
+
+    contract_id: ContractId
+    generation_id: str
+    admission_context_id: str | None
+    binding_bytes: bytes
+    receipt_bytes: bytes
+    manifest_bytes: bytes
+    signature_bytes: bytes
+    language_state_bytes: bytes
+
+
+@dataclass(frozen=True, slots=True)
 class StoreDiagnostic:
     code: str
     contract_id: ContractId | None
@@ -4197,6 +4211,137 @@ def _birth_receipt_path_v2(
     )
 
 
+def _history_file_identity_v1(info: os.stat_result) -> tuple[int, ...]:
+    return (info.st_dev, info.st_ino, info.st_mode, info.st_nlink,
+            info.st_uid, info.st_gid, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+
+
+def _read_history_file_v1(path: Path, *, maximum_bytes: int) -> bytes:
+    """Bounded, handle-stable read; no directory creation or metadata repair."""
+    code = "birth_history_file_invalid"
+    try:
+        before = path.lstat()
+        if (not stat.S_ISREG(before.st_mode) or _is_link_like(path)
+                or before.st_nlink != 1 or before.st_size > maximum_bytes
+                or (os.name != "nt" and (before.st_uid != os.geteuid()
+                                         or before.st_mode & 0o022))):
+            raise ContractStoreError(code)
+        if _windows_platform():
+            payload = _read_windows_shared_regular_file(
+                path, code=code, maximum_bytes=maximum_bytes,
+            )
+        else:
+            flags = (os.O_RDONLY | os.O_NONBLOCK | getattr(os, "O_CLOEXEC", 0)
+                     | os.O_NOFOLLOW)
+            descriptor = os.open(path, flags)
+            with os.fdopen(descriptor, "rb") as stream:
+                if _history_file_identity_v1(os.fstat(stream.fileno())) != _history_file_identity_v1(before):
+                    raise ContractStoreError(code)
+                payload = stream.read(maximum_bytes + 1)
+                if _history_file_identity_v1(os.fstat(stream.fileno())) != _history_file_identity_v1(before):
+                    raise ContractStoreError(code)
+        if (len(payload) != before.st_size or len(payload) > maximum_bytes
+                or _history_file_identity_v1(path.lstat()) != _history_file_identity_v1(before)):
+            raise ContractStoreError(code)
+        return payload
+    except OSError as exc:
+        raise ContractStoreError(code) from exc
+
+
+def _history_directory_identities_v1(paths: tuple[Path, ...]) -> tuple[tuple[int, ...], ...]:
+    result = []
+    for path in paths:
+        _require_no_link_components(path, code="birth_history_directory_invalid")
+        try:
+            info = path.lstat()
+        except OSError as exc:
+            raise ContractStoreError("birth_history_directory_invalid") from exc
+        if (not stat.S_ISDIR(info.st_mode) or _is_link_like(path)
+                or (os.name != "nt" and (info.st_uid != os.geteuid() or info.st_mode & 0o022))):
+            raise ContractStoreError("birth_history_directory_invalid")
+        # Other generations/receipts may be added normally. This is not a
+        # complete inventory, so directory timestamps are not its frontier.
+        result.append((info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_gid))
+    return tuple(result)
+
+
+def _require_history_generation_shape_v1(directory: Path) -> None:
+    names = set()
+    try:
+        with os.scandir(directory) as entries:
+            for entry in entries:
+                names.add(entry.name)
+                if len(names) > len(GENERATION_FILES):
+                    raise ContractStoreError("generation_structure")
+    except OSError as exc:
+        raise ContractStoreError("generation_structure") from exc
+    if names != set(GENERATION_FILES):
+        raise ContractStoreError("generation_structure")
+
+
+def read_historical_birth_evidence_v1(
+    contract_id: ContractId, generation_identifier: str, *,
+    admission_context_id: str | None,
+) -> HistoricalBirthEvidenceV1:
+    """Reread one exact historical receipt and generation in the selected store.
+
+    None explicitly selects V1; V2 never falls back to another receipt.
+    The content address is checked, but signatures/policy and complete history
+    enumeration belong to the enclosing verifier. Current pointers, today's
+    executor standard, original code and temporary journals are not consulted.
+    Requires initialized configuration; a cold certifier must guard imports.
+    Path observations do not prove a cross-store barrier or native ACL safety.
+    """
+    if type(contract_id) is not ContractId:
+        raise ContractStoreError("contract_id_invalid")
+    physical = generation_directory_name(generation_identifier)
+    if admission_context_id is not None:
+        _context_directory_name(admission_context_id)
+    root = _store_root(None)
+    directory = root / contract_storage_key(contract_id)
+    generation = directory / "generations" / physical
+    receipt = (
+        _birth_receipt_path(directory, generation_identifier)
+        if admission_context_id is None else
+        _birth_receipt_path_v2(directory, generation_identifier, admission_context_id)
+    )
+    parents = (root, directory, generation.parent, generation, receipt.parent)
+    if admission_context_id is not None:
+        parents += (receipt.parent.parent,)
+    before = _history_directory_identities_v1(parents)
+    binding_bytes = _read_history_file_v1(directory / BINDING_FILE, maximum_bytes=65536)
+    try:
+        binding = decode_binding(binding_bytes, storage_key=directory.name)
+    except (ValueError, TypeError, RecursionError) as exc:
+        raise ContractStoreError("binding_invalid") from exc
+    if binding.contract_id != contract_id:
+        raise ContractStoreError("binding_invalid")
+    encoded = _read_history_file_v1(receipt, maximum_bytes=1024 * 1024)
+    if not encoded:
+        raise ContractStoreError("birth_receipt_invalid", "empty wire receipt")
+    _require_history_generation_shape_v1(generation)
+    payloads = {
+        name: _read_history_file_v1(
+            generation / name, maximum_bytes=64 if name == "manifest.toml.sig" else 1024 * 1024,
+        ) for name in GENERATION_FILES
+    }
+    if len(payloads["manifest.toml.sig"]) != 64:
+        raise ContractStoreError("birth_history_file_invalid")
+    if generation_id(payloads) != generation_identifier:
+        raise ContractStoreError("generation_digest_mismatch")
+    if (_read_history_file_v1(directory / BINDING_FILE, maximum_bytes=65536) != binding_bytes
+            or _read_history_file_v1(receipt, maximum_bytes=1024 * 1024) != encoded):
+        raise ContractStoreError("birth_history_reread_mismatch")
+    _require_history_generation_shape_v1(generation)
+    if _history_directory_identities_v1(parents) != before:
+        raise ContractStoreError("birth_history_source_changed")
+    return HistoricalBirthEvidenceV1(
+        contract_id, generation_identifier, admission_context_id, binding_bytes, encoded,
+        payloads["manifest.toml"], payloads["manifest.toml.sig"],
+        payloads["manifest.lang_state.json"],
+    )
+
+
 def _birth_receipt_path_for_context(
     contract_dir: Path, generation_identifier: str, selection: object | None,
 ) -> Path:
@@ -4224,9 +4369,9 @@ def _sealed_v2_triple(ref: ManifestRef, request: object) -> tuple[str, str]:
 
     The triple (contract, generation, context) is the identity of one V2
     receipt.  It arrives only inside ``ProducerRequestV2``, which can be built
-    solely from a context selection the F4 head has already sealed, so no
-    public entry point of this module accepts a context or a path as a free
-    selector.
+    solely from a context selection the F4 head has already sealed. Productive
+    reads and writes never accept a free context selector. The separate raw
+    historical reader grants no current-selection or publication authority.
     """
     from executor_birth_producer_context import ProducerRequestV2
 

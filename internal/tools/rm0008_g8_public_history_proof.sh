@@ -3,7 +3,7 @@
 # The administrative runner captures diagnostics privately. Only bounded
 # public identities, counts and error codes leave this process.
 set -euo pipefail
-case "${2:-}" in public-history|producer-policy|producer-history) ;; *) exit 64 ;; esac
+case "${2:-}" in public-history|producer-policy|producer-history|contract-history|contract-history-v1) ;; *) exit 64 ;; esac
 /opt/metnos/.venv/bin/python -I - "$1" "$2" <<'PY'
 import hashlib
 import importlib.util
@@ -23,8 +23,10 @@ modules = (
     "executor_birth_context_v1.py", "executor_birth_prepared_set.py",
     "executor_birth_prepared_root.py",
 )
-if sys.argv[2] == "producer-history":
+if sys.argv[2] in {"producer-history", "contract-history", "contract-history-v1"}:
     modules += ("executor_birth_producer_store.py",)
+if sys.argv[2] in {"contract-history", "contract-history-v1"}:
+    modules += ("contract_store.py",)
 
 def source_hashes():
     return {
@@ -88,7 +90,7 @@ os.setgid(account.pw_gid)
 os.setuid(account.pw_uid)
 os.chdir(source)
 sys.dont_write_bytecode = True
-denied = {"private_read": 0, "metadata_repair": 0, "write_or_execution": 0}
+denied = {"private_read": 0, "metadata_repair": 0, "log_initialization": 0, "write_or_execution": 0}
 denied_events = []
 
 def read_only_audit(event, args):
@@ -98,7 +100,7 @@ def read_only_audit(event, args):
         # event. Permit only the reviewed, logically read-only connection.
         allowed_database = (Path(os.environ["METNOS_USER_STATE"]) / "birth"
                             / "producer_receipts.sqlite")
-        if (sys.argv[2] != "producer-history"
+        if (sys.argv[2] not in {"producer-history", "contract-history", "contract-history-v1"}
                 or args[0] != allowed_database.as_uri() + "?mode=ro&cache=private"):
             denied["write_or_execution"] += 1
             denied_events.append({"event": event})
@@ -106,6 +108,13 @@ def read_only_audit(event, args):
     elif event == "open":
         path, _mode, flags = args
         if flags & (os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_TRUNC | os.O_APPEND):
+            if (isinstance(path, (str, bytes))
+                    and Path(os.fsdecode(path)) == Path(os.environ["METNOS_USER_STATE"]) / "metnos.log"):
+                # sign's cold import tries to initialize the ordinary logger.
+                # Keep the write denied and report it separately, like config's
+                # optional permission repair; never create a production log.
+                denied["log_initialization"] += 1
+                raise PermissionError("proof_log_initialization_denied")
             denied["write_or_execution"] += 1
             denied_events.append({"event": event, "name": Path(os.fsdecode(path)).name})
             raise PermissionError("proof_write_denied")
@@ -225,6 +234,74 @@ try:
             "qualification": "complete_logical_snapshot_only_no_signature_or_global_frontier_proof",
         }
         selectors = ()
+    if sys.argv[2] in {"contract-history", "contract-history-v1"}:
+        import base64
+        from contract_store import read_historical_birth_evidence_v1
+        from executor_birth_producer_store import read_producer_history_v1
+        from manifest_inventory import ContractId, ManifestOrigin
+
+        history = read_producer_history_v1()
+        # This is a new exact durable-read traversal, not a repeat of the raw
+        # row census or a signature/eligibility verifier. Unsigned locators
+        # select two samples and cannot authorize publication or certification.
+        located = []
+        for row in history.receipts:
+            if row.state != "committed" or row.terminal_envelope is None:
+                continue
+            value = json.loads(row.terminal_envelope)
+            if isinstance(value.get("publication"), dict) and value.get("admission_receipt"):
+                located.append(value)
+        if not located:
+            raise RuntimeError("history_sample_unavailable")
+        samples = [located[0]] if len(located) == 1 else [located[0], located[-1]]
+        if sys.argv[2] == "contract-history-v1":
+            # A separate diagnostic of the original oldest sample, whose V2
+            # lookup was absent. Never turn a failed V2 read into a fallback.
+            samples = [located[0]]
+        result["contract_history"] = []
+        sample_failures = 0
+        for sample in samples:
+            publication = sample["publication"]
+            raw_origin, relative = publication["contract_id"].split(":", 1)
+            context = sample["report"]["admission_context_id"]
+            if not isinstance(context, str) or not context:
+                raise RuntimeError("history_sample_context_not_v2")
+            try:
+                evidence = read_historical_birth_evidence_v1(
+                    ContractId(ManifestOrigin(raw_origin), relative),
+                    publication["current_generation_id"],
+                    admission_context_id=None if sys.argv[2] == "contract-history-v1" else context,
+                )
+            except Exception as exc:
+                item = {"status": "not_read", "code": getattr(exc, "code", None)}
+                cause = exc.__cause__
+                if isinstance(cause, FileNotFoundError) and cause.filename:
+                    try:
+                        item["missing_state_relative_path"] = str(
+                            Path(cause.filename).relative_to(os.environ["METNOS_USER_STATE"])
+                        )
+                    except ValueError:
+                        item["missing_state_relative_path"] = "outside_selected_state"
+                result["contract_history"].append(item)
+                sample_failures += 1
+                continue
+            embedded = base64.b64decode(sample["admission_receipt"], validate=True)
+            if evidence.receipt_bytes != embedded:
+                raise RuntimeError("historical_embedded_receipt_differs_from_durable")
+            result["contract_history"].append({
+                "receipt_bytes": len(evidence.receipt_bytes),
+                "manifest_bytes": len(evidence.manifest_bytes),
+                "signature_bytes": len(evidence.signature_bytes),
+                "language_state_bytes": len(evidence.language_state_bytes),
+                "binding_bytes": len(evidence.binding_bytes),
+                "embedded_equals_durable": True,
+                "generation_content_address_matches": True,
+                "selected_layout": "v1" if sys.argv[2] == "contract-history-v1" else "v2",
+                "qualification": "exact_samples_not_authentication_or_complete_inventory",
+            })
+        if sample_failures:
+            raise RuntimeError("historical_samples_incomplete_no_replacement_samples")
+        selectors = ()
     if sys.argv[2] == "producer-policy":
         from executor_birth_distribution_manifest import file_content_hash
 
@@ -289,6 +366,8 @@ try:
         raise RuntimeError("proof_forbidden_access_attempted")
     result["status"] = {
         "producer-history": "observed_complete_producer_history",
+        "contract-history": "observed_exact_durable_history_samples",
+        "contract-history-v1": "observed_exact_original_layout_sample",
         "producer-policy": "observed_authenticated_policy_sources",
         "public-history": "verified_selected_public_contexts",
     }[sys.argv[2]]

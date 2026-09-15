@@ -1641,6 +1641,16 @@
     },
     {
       "path": "runtime/contract_store.py",
+      "scope": "_read_history_file_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "reviewed bounded read-only historical file acquisition; descriptor operations retain conservative store-owner classification",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
       "scope": "_read_windows_shared_regular_file",
       "role": "store_owner",
       "capabilities": [
@@ -2015,6 +2025,16 @@
         "verified_store_read"
       ],
       "destination": "sole exact-current authority for context-bound reattestation receipt persistence and reread",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
+      "scope": "read_historical_birth_evidence_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "raw read-only acquisition of one exact historical receipt and generation; no current-selection or publication authority",
       "phase": "M4"
     },
     {
