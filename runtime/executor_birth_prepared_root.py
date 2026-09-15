@@ -682,37 +682,89 @@ def _historical_birth_public_inventory_v1() -> frozenset[bytes]:
     authenticated predecessor, while candidate source is not yet an installed
     runtime and therefore cannot be used to rebuild its context material.
     """
-    from executor_birth_keystore import (
-        BirthKeyStoreError, _load_birth_keystore_in_session,
-    )
+    from executor_birth_keystore import raw_public_key
     from executor_birth_prepared_set import (
-        AUTHORITY_SETS_BASENAME_V1, AUTHOR_STORE_BASENAME_V1,
-        PreparedSetError, authority_registry_v1, load_prepared_set_v1,
+        AUTHOR_STORE_BASENAME_V1, PreparedSetError,
+        _read_historical_public_keys_v1, load_historical_marker_public_set_v1,
     )
+    from executor_birth_secure_fs import BirthSecureFSError
 
     session = open_prepared_root_session_v1()
     with session:
         with session.global_lock(exclusive=False, create=False):
-            prepared = load_prepared_set_v1(session)
-            location = (AUTHORITY_SETS_BASENAME_V1, prepared.set_id)
-            registry = authority_registry_v1(session, location)
+            public = load_historical_marker_public_set_v1(session)
             try:
-                stores = (
-                    _load_birth_keystore_in_session(
-                        (AUTHOR_STORE_BASENAME_V1,), session,
-                    ),
-                    _load_birth_keystore_in_session(
-                        location + ("admission",), session,
-                    ),
-                    *(
-                        _load_birth_keystore_in_session(
-                            location + ("producers", name), session,
-                        )
-                        for name in sorted(registry["producers"])
-                    ),
-                )
-            except BirthKeyStoreError as exc:
-                raise PreparedSetError(
-                    "birth_prepared_set_unavailable", exc,
-                ) from None
-            return _public_inventory_from_stores_v1(stores)
+                names = session.inventory((AUTHOR_STORE_BASENAME_V1, "public"))
+            except BirthSecureFSError as exc:
+                raise PreparedSetError("birth_prepared_set_unavailable", exc) from None
+            if not names or any(not name.endswith(".pub") for name in names):
+                raise PreparedSetError("birth_prepared_set_invalid")
+            # Exclusion is deliberately wider than historical verification:
+            # later author keys can only add forbidden identities, not trust.
+            authors = _read_historical_public_keys_v1(
+                session, (AUTHOR_STORE_BASENAME_V1,), tuple(name[:-4] for name in names),
+            )
+            rings = (authors, public.admission_verifier_keys, *(
+                producer.verifier_keys for producer in public.producers.values()
+            ))
+            return frozenset(
+                raw_public_key(key) for ring in rings for key in ring.values()
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class HistoricalContextVerifiersV1:
+    """Inert evidence bound to an observed chain frontier, never a runtime."""
+
+    required_head_id: str
+    transition_id: str
+    public_set: object
+
+
+def load_historical_context_verifiers_v1(
+    admission_context_id: str,
+) -> HistoricalContextVerifiersV1:
+    """Resolve an untrusted context selector only inside the fixed live chain.
+
+    This first historical interface covers transition targets. It does not
+    infer the predecessor of the first transition or activate an old context.
+    """
+    import re
+    from executor_birth_ownership_chain import (
+        VerifiedOwnershipChain, inspect_ownership_chain_state_v1,
+    )
+    from executor_birth_prepared_set import load_historical_public_set_v1
+
+    if (type(admission_context_id) is not str
+            or re.fullmatch(r"sha256:[0-9a-f]{64}", admission_context_id) is None):
+        raise PreparedRootError("birth_context_selection_invalid")
+    before = inspect_ownership_chain_state_v1()
+    if type(before) is not VerifiedOwnershipChain or not before.context_transitions:
+        raise PreparedRootError("birth_context_transition_required")
+    matches = {
+        transition.encoded: transition for transition in before.context_transitions
+        if transition.prepared_admission_context_id == admission_context_id
+    }
+    if len(matches) != 1:
+        raise PreparedRootError("birth_context_selection_invalid")
+    transition = next(iter(matches.values()))
+    session = open_prepared_root_session_v1()
+    with session:
+        with session.global_lock(exclusive=False, create=False):
+            public = load_historical_public_set_v1(
+                session, transition.set_id,
+                expected_set_json_sha256=transition.set_json_sha256,
+                expected_context_material_sha256=transition.context_material_sha256,
+            )
+            if (public.material.pin.admission_context_id != admission_context_id
+                    or public.material.pin.context_epoch != transition.prepared_context_epoch):
+                raise PreparedRootError("birth_context_selection_invalid")
+    after = inspect_ownership_chain_state_v1()
+    if (type(after) is not VerifiedOwnershipChain
+            or after.required_head != before.required_head
+            or after.context_transitions != before.context_transitions
+            or after.authenticated_records != before.authenticated_records):
+        raise PreparedRootError("birth_context_selection_changed")
+    return HistoricalContextVerifiersV1(
+        before.required_head.head_id, transition.transition_id, public,
+    )

@@ -8,12 +8,17 @@ so there is one, here, and both sides import it.
 The factory **receives** an already open read session over the distribution and
 opens nothing of its own: the authority to reach the filesystem stays with the
 two doors the productive graph admits.
+
+The historical decoder returns only inert evidence from authenticated stored
+material. It cannot replace the source rebuild needed for runtime authority.
 """
 from __future__ import annotations
 
 import hashlib
 import json
+import re
 from dataclasses import dataclass
+from pathlib import PurePosixPath
 from typing import Mapping
 
 CONTEXT_MATERIAL_BASENAME_V1 = "material-v1.json"
@@ -22,6 +27,7 @@ CONTEXT_SOURCE_DIGEST_DOMAIN_V1 = (
     b"metnos.executor-birth.context-source-inventory/v1\0"
 )
 MAXIMUM_CONTEXT_SOURCE_BYTES_V1 = 4 * 1024 * 1024
+MAXIMUM_CONTEXT_DOCUMENT_BYTES_V1 = 1024 * 1024
 PREPARED_STATE_V1 = "prepared_not_active"
 
 # The V1 catalogue is owned by the code and reviewed as a whole: no caller can
@@ -124,11 +130,123 @@ class PreparedContextMaterialV1:
     pin: object = None
 
 
+@dataclass(frozen=True, slots=True)
+class HistoricalContextMaterialV1:
+    """Inert persisted evidence; source bytes have not been reconstructed."""
+
+    context: object
+    pin: object
+    registry_document: bytes
+    source_inventory_sha256: str
+    material_sha256: str
+
+
 def _canonical(value: object) -> bytes:
     return json.dumps(
         value, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
         allow_nan=False,
     ).encode("utf-8")
+
+
+def decode_historical_context_material_v1(
+    encoded: bytes,
+) -> HistoricalContextMaterialV1:
+    """Decode existing material; its caller must authenticate the material hash.
+
+    The registry configuration is retained in full and can be rehashed. Other
+    component digests are historical claims, not recomputed source evidence.
+    No current source, catalog version or signing key is consulted.
+    """
+    from executor_birth_context import (
+        FrozenComponentMaterial, _component_digest, _context_epoch,
+    )
+    from executor_birth_identity import (
+        AdmissionContextV1, ContextComponent, admission_context_id,
+    )
+    from executor_birth_predecessor import AdmissionContextPin
+
+    try:
+        if (type(encoded) is not bytes
+                or len(encoded) > MAXIMUM_CONTEXT_DOCUMENT_BYTES_V1):
+            raise ValueError("material size")
+        value = json.loads(encoded.decode("utf-8"))
+        if (type(value) is not dict or _canonical(value) != encoded
+                or set(value) != {
+                    "schema_version", "state", "components",
+                    "prepared_admission_context_id", "prepared_context_epoch",
+                }
+                or type(value["schema_version"]) is not int
+                or value["schema_version"] != 1
+                or value["state"] != PREPARED_STATE_V1):
+            raise ValueError("material schema")
+        components = value["components"]
+        if (type(components) is not dict
+                or set(components) != set(AdmissionContextV1.__dataclass_fields__)):
+            raise ValueError("components")
+        identities = {}
+        inventory = []
+        # Declaration order is the persisted V1 inventory order, not today's
+        # source-file catalog. Individual file order comes from the document.
+        for name in AdmissionContextV1.__dataclass_fields__:
+            item = components[name]
+            if type(item) is not dict or set(item) != {
+                "version", "files", "configuration", "component_digest",
+            }:
+                raise ValueError("component schema")
+            identities[name] = ContextComponent(item["version"], item["component_digest"])
+            configuration = item["configuration"]
+            fields = {"enforcement_state"}
+            if name == "authority_registry":
+                fields.add("registry")
+            if (type(configuration) is not dict or set(configuration) != fields
+                    or configuration["enforcement_state"] not in {
+                        "prepared_only", "productive",
+                    }
+                    or type(item["files"]) is not list):
+                raise ValueError("component configuration")
+            labels = set()
+            for record in item["files"]:
+                if (type(record) is not dict
+                        or set(record) != {"label", "size", "sha256"}):
+                    raise ValueError("source record")
+                label = record["label"]
+                if (type(label) is not str or not label
+                        or "\x00" in label or "\\" in label
+                        or PurePosixPath(label).is_absolute()
+                        or ".." in PurePosixPath(label).parts
+                        or PurePosixPath(label).as_posix() != label or label in labels
+                        or type(record["size"]) is not int or record["size"] < 0
+                        or type(record["sha256"]) is not str
+                        or re.fullmatch(r"[0-9a-f]{64}", record["sha256"]) is None):
+                    raise ValueError("source record value")
+                labels.add(label)
+                inventory.append({
+                    "component": name, "label": label, "sha256": record["sha256"],
+                })
+        registry_component = components["authority_registry"]
+        configuration = registry_component["configuration"]
+        if (registry_component["files"]
+                or type(configuration["registry"]) is not dict
+                or _component_digest("authority_registry", FrozenComponentMaterial(
+                    registry_component["version"], {}, _canonical(configuration),
+                )) != registry_component["component_digest"]):
+            raise ValueError("registry binding")
+        context = AdmissionContextV1(**identities)
+        context_id = admission_context_id(context)
+        epoch = _context_epoch(context_id)
+        if (context_id != value["prepared_admission_context_id"]
+                or epoch != value["prepared_context_epoch"]):
+            raise ValueError("context binding")
+        return HistoricalContextMaterialV1(
+            context, AdmissionContextPin(context_id, epoch),
+            _canonical(configuration["registry"]),
+            hashlib.sha256(
+                CONTEXT_SOURCE_DIGEST_DOMAIN_V1 + _canonical(inventory),
+            ).hexdigest(),
+            hashlib.sha256(encoded).hexdigest(),
+        )
+    except (ValueError, TypeError, KeyError, RecursionError, UnicodeError) as exc:
+        raise ContextMaterialError("birth_prepared_set_invalid", exc) from None
 
 
 def component_configuration_v1(
