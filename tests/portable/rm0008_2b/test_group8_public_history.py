@@ -107,7 +107,7 @@ def _chain_boundary_fixture(base, monkeypatch, **transition_changes):
     return chain
 
 
-def _producer_policy_fixture(tmp_path, monkeypatch):
+def _producer_policy_fixture(tmp_path, monkeypatch, *, source_transform=None):
     """Real signed files/public sets; chain and admin metadata remain test seams."""
     import executor_birth_distribution_manifest as distribution
     import executor_birth_ownership_authorities as authorities
@@ -115,6 +115,8 @@ def _producer_policy_fixture(tmp_path, monkeypatch):
 
     base = _prepared(tmp_path / "prepared", monkeypatch)
     source = (Path(__file__).parents[3] / _POLICY_PATH).read_bytes()
+    if source_transform is not None:
+        source = source_transform(source)
     private, key_id, registry = distribution_support._authority(distribution.PURPOSE)
     release = tmp_path / "release"
     _value, encoded, signature = distribution_support._manifest(
@@ -153,21 +155,32 @@ def test_historical_producer_authors_are_public_data_not_loaded_policy(tmp_path,
 
     chain, release, source = _producer_policy_fixture(tmp_path, monkeypatch)
     expected = {":".join(key): value.value for key, value in table.PRODUCER_AUTHOR_V1.items()}
+    expected_origins = {
+        key.value: value.value for key, value in table._MANIFEST_ORIGIN_TO_EXECUTOR_V1.items()
+    }
     monkeypatch.setattr(table, "PRODUCER_AUTHOR_V1", {})
+    monkeypatch.setattr(table, "_MANIFEST_ORIGIN_TO_EXECUTOR_V1", {})
     monkeypatch.setattr(
         table, "producer_author_v1",
         lambda *_args: pytest.fail("historical declaration executed as current policy"),
     )
-    observed = root.load_historical_producer_authors_v1(
+    monkeypatch.setattr(
+        table, "executor_origin_v1",
+        lambda *_args: pytest.fail("historical origin executed as current policy"),
+    )
+    observed = root.load_historical_producer_declarations_v1(
         chain.context_transitions[0].prepared_admission_context_id,
     )
     assert observed.authors == expected
+    assert observed.executor_origins == expected_origins
     assert observed.context.required_head_id == chain.required_head.head_id
     assert observed.closed_build_id == chain.authenticated_records[0].closed_build_id
     assert observed.source_path == _POLICY_PATH
     assert (release / _POLICY_PATH).read_bytes() == source
     with pytest.raises(TypeError):
         observed.authors["other:operation"] = "human"
+    with pytest.raises(TypeError):
+        observed.executor_origins["core"] = "human"
     with pytest.raises(FrozenInstanceError):
         observed.closed_build_id = _digest("0")
 
@@ -216,9 +229,9 @@ def test_historical_author_projection_selects_the_old_build_not_the_latest(
     selector = original.context_transitions[0].prepared_admission_context_id
     if not same_source:
         with pytest.raises(root.PreparedRootError, match="birth_context_producer_policy_invalid"):
-            root.load_historical_producer_authors_v1(selector)
+            root.load_historical_producer_declarations_v1(selector)
     else:
-        observed = root.load_historical_producer_authors_v1(selector)
+        observed = root.load_historical_producer_declarations_v1(selector)
         assert observed.closed_build_id == original.required_head.closed_build_id
         assert observed.context.required_head_id == chain.required_head.head_id
 
@@ -245,6 +258,69 @@ def test_historical_author_projection_selects_the_old_build_not_the_latest(
 def test_historical_producer_declaration_rejects_unsupported_source(source):
     with pytest.raises(root.PreparedRootError, match="birth_context_producer_policy_invalid"):
         root._historical_producer_author_declaration_v1(source)
+
+
+@pytest.mark.parametrize("source", (
+    b"", b"OTHER = {}", b"_MANIFEST_ORIGIN_TO_EXECUTOR_V1 = {}",
+    b"_MANIFEST_ORIGIN_TO_EXECUTOR_V1 = MappingProxyType({**other})",
+    b"_MANIFEST_ORIGIN_TO_EXECUTOR_V1 = MappingProxyType({origin(): ExecutorOrigin.CORE})",
+    b"_MANIFEST_ORIGIN_TO_EXECUTOR_V1 = MappingProxyType({'core': ExecutorOrigin.CORE})",
+    b"_MANIFEST_ORIGIN_TO_EXECUTOR_V1 = MappingProxyType({ManifestOrigin.CORE: 'core'})",
+    b"_MANIFEST_ORIGIN_TO_EXECUTOR_V1 = MappingProxyType({ManifestOrigin.CORE: origin()})",
+    b"_MANIFEST_ORIGIN_TO_EXECUTOR_V1 = MappingProxyType({Other.CORE: ExecutorOrigin.CORE})",
+    b"_MANIFEST_ORIGIN_TO_EXECUTOR_V1 = MappingProxyType({ManifestOrigin.CORE: Other.CORE})",
+    b"_MANIFEST_ORIGIN_TO_EXECUTOR_V1 = MappingProxyType({ManifestOrigin.UNKNOWN: ExecutorOrigin.CORE})",
+    b"_MANIFEST_ORIGIN_TO_EXECUTOR_V1 = MappingProxyType({ManifestOrigin.CORE: ExecutorOrigin.UNKNOWN})",
+    b"_MANIFEST_ORIGIN_TO_EXECUTOR_V1 = MappingProxyType({ManifestOrigin.CORE: ExecutorOrigin.CORE, ManifestOrigin.CORE: ExecutorOrigin.HUMAN})",
+    b"_MANIFEST_ORIGIN_TO_EXECUTOR_V1 = MappingProxyType({})\n_MANIFEST_ORIGIN_TO_EXECUTOR_V1 = other",
+    b"_MANIFEST_ORIGIN_TO_EXECUTOR_V1 = MappingProxyType({})\ndef f():\n global _MANIFEST_ORIGIN_TO_EXECUTOR_V1\n _MANIFEST_ORIGIN_TO_EXECUTOR_V1 = other",
+    b"OTHER = _MANIFEST_ORIGIN_TO_EXECUTOR_V1 = MappingProxyType({})",
+))
+def test_historical_origin_declaration_rejects_unsupported_source(source):
+    with pytest.raises(root.PreparedRootError, match="birth_context_producer_policy_invalid"):
+        root._historical_executor_origin_declaration_v1(source)
+
+
+@pytest.mark.parametrize("entries, expected", (
+    (b"", {}),
+    (b"ManifestOrigin.CORE: ExecutorOrigin.HUMAN", {"core": "human"}),
+    (b"ManifestOrigin.BUILTIN_SKILL: ExecutorOrigin.IMPORTED", {"builtin_skill": "imported"}),
+))
+def test_historical_origin_declaration_preserves_sparse_historical_maps(entries, expected):
+    observed = root._historical_executor_origin_declaration_v1(
+        b"_MANIFEST_ORIGIN_TO_EXECUTOR_V1 = MappingProxyType({" + entries + b"})",
+    )
+    assert observed == expected
+    with pytest.raises(TypeError):
+        observed["user"] = "human"
+
+
+def test_historical_origin_projection_uses_authenticated_source_not_loaded_map(tmp_path, monkeypatch):
+    def historical_source(source):
+        return source.replace(b"ManifestOrigin.CORE: ExecutorOrigin.CORE",
+                              b"ManifestOrigin.CORE: ExecutorOrigin.HUMAN")
+
+    chain, _release, _source = _producer_policy_fixture(
+        tmp_path, monkeypatch, source_transform=historical_source,
+    )
+    observed = root.load_historical_producer_declarations_v1(
+        chain.context_transitions[0].prepared_admission_context_id,
+    )
+    assert observed.executor_origins["core"] == "human"
+
+
+def test_historical_origin_projection_rejects_invalid_authenticated_declaration(tmp_path, monkeypatch):
+    chain, _release, _source = _producer_policy_fixture(
+        tmp_path, monkeypatch,
+        source_transform=lambda source: source.replace(
+            b"ManifestOrigin.CORE: ExecutorOrigin.CORE",
+            b"ManifestOrigin.CORE: ExecutorOrigin.UNKNOWN",
+        ),
+    )
+    with pytest.raises(root.PreparedRootError, match="birth_context_producer_policy_invalid"):
+        root.load_historical_producer_declarations_v1(
+            chain.context_transitions[0].prepared_admission_context_id,
+        )
 
 
 @pytest.mark.parametrize("case", (
@@ -299,7 +375,7 @@ def test_historical_producer_authors_reject_incomplete_or_unbound_evidence(
     observations = iter((chain, after))
     monkeypatch.setattr(chain_module, "inspect_ownership_chain_state_v1", lambda: next(observations))
     with pytest.raises((root.PreparedRootError, distribution.DistributionManifestError)):
-        root.load_historical_producer_authors_v1(
+        root.load_historical_producer_declarations_v1(
             chain.context_transitions[0].prepared_admission_context_id,
         )
 
@@ -644,7 +720,7 @@ def test_initial_context_cannot_borrow_successor_producer_policy(tmp_path, monke
     monkeypatch.setattr(root, "_read_historical_context_set_v1",
                         lambda *_args, **_kwargs: pytest.fail("policy lookup passed initial selector"))
     with pytest.raises(root.PreparedRootError, match="birth_context_selection_invalid"):
-        root.load_historical_producer_authors_v1(public.material.pin.admission_context_id)
+        root.load_historical_producer_declarations_v1(public.material.pin.admission_context_id)
 
 
 def test_historical_set_requires_the_held_barrier_and_both_owner_pins(tmp_path, monkeypatch):

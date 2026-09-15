@@ -3,7 +3,7 @@
 # The administrative runner captures diagnostics privately. Only bounded
 # public identities, counts and error codes leave this process.
 set -euo pipefail
-case "${2:-}" in public-history|initial-public-history|producer-policy|producer-history|contract-history|contract-history-v1|contract-inventory|contract-residual) ;; *) exit 64 ;; esac
+case "${2:-}" in public-history|initial-public-history|initial-policy-binding|producer-policy|producer-declarations|producer-history|contract-history|contract-history-v1|contract-inventory|contract-residual) ;; *) exit 64 ;; esac
 /opt/metnos/.venv/bin/python -I - "$1" "$2" <<'PY'
 import hashlib
 import importlib.util
@@ -23,6 +23,11 @@ modules = (
     "executor_birth_context_v1.py", "executor_birth_prepared_set.py",
     "executor_birth_prepared_root.py",
 )
+if sys.argv[2] == "producer-declarations":
+    # This candidate helper was not present in the installed release. Measure
+    # it explicitly; do not mistake the older source-availability probe for
+    # an execution of the new exact-file owner interface.
+    modules = ("executor_birth_distribution_manifest.py",) + modules
 if sys.argv[2] in {"producer-history", "contract-history", "contract-history-v1"}:
     modules += ("executor_birth_producer_store.py",)
 if sys.argv[2] in {"contract-history", "contract-history-v1", "contract-inventory"}:
@@ -218,6 +223,65 @@ try:
     )
     if sys.argv[2] == "initial-public-history":
         selectors = (chain.context_transitions[0].previous_admission_context_id,)
+    if sys.argv[2] == "initial-policy-binding":
+        from executor_birth_prepared_root import open_prepared_root_session_v1
+        from executor_birth_prepared_set import (
+            AUTHORITY_SETS_BASENAME_V1, _read_integrity_document_v1,
+        )
+        from executor_birth_context_v1 import (
+            CONTEXT_CONTAINER_BASENAME_V1, CONTEXT_MATERIAL_BASENAME_V1,
+        )
+
+        evidence = load_historical_context_verifiers_v1(
+            chain.context_transitions[0].previous_admission_context_id,
+        )
+        if evidence.required_head_id != chain.required_head.head_id:
+            raise RuntimeError("proof_frontier_changed")
+        public = evidence.public_set
+        with open_prepared_root_session_v1() as session:
+            with session.global_lock(exclusive=False, create=False):
+                encoded_material = _read_integrity_document_v1(session, (
+                    AUTHORITY_SETS_BASENAME_V1, public.set_id,
+                    CONTEXT_CONTAINER_BASENAME_V1, CONTEXT_MATERIAL_BASENAME_V1,
+                ))
+        if hashlib.sha256(encoded_material).hexdigest() != public.material.material_sha256:
+            raise RuntimeError("initial_material_binding_changed")
+        material = json.loads(encoded_material)
+        records = [
+            {"component": name, **item}
+            for name, component in material["components"].items()
+            for item in component["files"]
+        ]
+        result["initial_policy_binding"] = {
+            "context_id": public.material.pin.admission_context_id,
+            "material_sha256": public.material.material_sha256,
+            "material_file_entries": len(records),
+            "source_labels": sorted({item["label"] for item in records}),
+            "producer_policy_records": [
+                item for item in records
+                if Path(item["label"]).name == "executor_birth_producer_table_v1.py"
+            ],
+            "qualification": "exact_initial_material_inventory_not_policy_substitution",
+        }
+        selectors = ()
+    if sys.argv[2] == "producer-declarations":
+        from executor_birth_prepared_root import load_historical_producer_declarations_v1
+
+        evidence = load_historical_producer_declarations_v1(
+            chain.context_transitions[-1].prepared_admission_context_id,
+        )
+        if evidence.context.required_head_id != chain.required_head.head_id:
+            raise RuntimeError("proof_frontier_changed")
+        result["producer_declarations"] = {
+            "context_id": evidence.context.public_set.material.pin.admission_context_id,
+            "closed_build_id": evidence.closed_build_id,
+            "source_path": evidence.source_path,
+            "source_hash": evidence.source_hash,
+            "producer_namespaces": len(evidence.authors),
+            "executor_origins": dict(evidence.executor_origins),
+            "qualification": "historical_declarations_not_qualifying_admission",
+        }
+        selectors = ()
     if sys.argv[2] == "producer-history":
         from executor_birth_producer_store import read_producer_history_v1
 
@@ -423,9 +487,12 @@ try:
         "executor_birth_secure_fs",
     )
     origins = {name: sys.modules[name].__file__ for name in critical}
-    if any(Path(path).parent != dependency_root / "runtime" for path in origins.values()):
-        raise RuntimeError("undeclared_dependency_origin")
     candidate_names = {name.removesuffix(".py") for name in modules}
+    if any(
+        Path(path).parent != (source if name in candidate_names else dependency_root) / "runtime"
+        for name, path in origins.items()
+    ):
+        raise RuntimeError("undeclared_dependency_origin")
     for name, module in tuple(sys.modules.items()):
         filename = getattr(module, "__file__", None)
         if filename and Path(filename).is_relative_to(source) and name not in candidate_names:
@@ -445,6 +512,8 @@ try:
         "producer-policy": "observed_authenticated_policy_sources",
         "public-history": "verified_selected_public_contexts",
         "initial-public-history": "verified_initial_public_context_not_historical_producer_policy",
+        "initial-policy-binding": "observed_authenticated_initial_material_source_inventory",
+        "producer-declarations": "verified_selected_historical_producer_declarations",
     }[sys.argv[2]]
 except Exception as exc:
     errors = []

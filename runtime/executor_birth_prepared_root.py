@@ -809,7 +809,7 @@ def load_historical_context_verifiers_v1(
 
 
 @dataclass(frozen=True, slots=True)
-class HistoricalProducerAuthorsV1:
+class HistoricalProducerDeclarationsV1:
     """An authenticated declaration, not an issuer registry or policy engine."""
 
     context: HistoricalContextVerifiersV1
@@ -817,17 +817,18 @@ class HistoricalProducerAuthorsV1:
     source_path: str
     source_hash: str
     authors: Mapping[str, str]
+    executor_origins: Mapping[str, str]
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "authors", MappingProxyType(dict(self.authors)))
+        object.__setattr__(self, "executor_origins", MappingProxyType(dict(self.executor_origins)))
 
 
-def _historical_producer_author_declaration_v1(source: bytes) -> Mapping[str, str]:
-    """Read only the table's literal data; never execute historical Python."""
+def _historical_literal_table_v1(source: bytes, name: str):
+    """Select one bounded literal declaration without executing its module."""
     import ast
     from contract_boundary_guard import _bounded_ast_metrics
     from executor_birth_distribution_manifest import MAX_BOUNDARY_SOURCE_BYTES_V1
-    from executor_birth_identity import RevisionAuthor
 
     try:
         if type(source) is not bytes or len(source) > MAX_BOUNDARY_SOURCE_BYTES_V1:
@@ -836,14 +837,14 @@ def _historical_producer_author_declaration_v1(source: bytes) -> Mapping[str, st
         _bounded_ast_metrics(tree)
         stores = [
             node for node in ast.walk(tree)
-            if isinstance(node, ast.Name) and node.id == "PRODUCER_AUTHOR_V1"
+            if isinstance(node, ast.Name) and node.id == name
             and isinstance(node.ctx, (ast.Store, ast.Del))
         ]
         declarations = [
             node for node in tree.body
             if isinstance(node, ast.Assign) and len(node.targets) == 1
             and isinstance(node.targets[0], ast.Name)
-            and node.targets[0].id == "PRODUCER_AUTHOR_V1"
+            and node.targets[0].id == name
         ]
         if len(stores) != 1 or len(declarations) != 1:
             raise ValueError("declaration")
@@ -852,7 +853,19 @@ def _historical_producer_author_declaration_v1(source: bytes) -> Mapping[str, st
                 or value.func.id != "MappingProxyType" or len(value.args) != 1
                 or value.keywords or not isinstance(value.args[0], ast.Dict)):
             raise ValueError("literal table")
-        table = value.args[0]
+        return value.args[0]
+    except (UnicodeError, SyntaxError, RecursionError, ValueError, TypeError,
+            OverflowError, MemoryError) as exc:
+        raise PreparedRootError("birth_context_producer_policy_invalid", exc) from None
+
+
+def _historical_producer_author_declaration_v1(source: bytes) -> Mapping[str, str]:
+    """Read only the table's literal authors, never loaded runtime policy."""
+    import ast
+    from executor_birth_identity import RevisionAuthor
+
+    table = _historical_literal_table_v1(source, "PRODUCER_AUTHOR_V1")
+    try:
         result = {}
         for key, author in zip(table.keys, table.values):
             if (not isinstance(key, ast.Tuple) or len(key.elts) != 2
@@ -875,10 +888,35 @@ def _historical_producer_author_declaration_v1(source: bytes) -> Mapping[str, st
         raise PreparedRootError("birth_context_producer_policy_invalid", exc) from None
 
 
-def load_historical_producer_authors_v1(
+def _historical_executor_origin_declaration_v1(source: bytes) -> Mapping[str, str]:
+    """Project historical origin declarations without inventing missing ones."""
+    import ast
+    from executor_birth_identity import ExecutorOrigin
+    from manifest_inventory import ManifestOrigin
+
+    table = _historical_literal_table_v1(source, "_MANIFEST_ORIGIN_TO_EXECUTOR_V1")
+    try:
+        result = {}
+        for key, origin in zip(table.keys, table.values):
+            if (not isinstance(key, ast.Attribute) or not isinstance(key.value, ast.Name)
+                    or key.value.id != "ManifestOrigin"
+                    or not isinstance(origin, ast.Attribute)
+                    or not isinstance(origin.value, ast.Name)
+                    or origin.value.id != "ExecutorOrigin"):
+                raise ValueError("origin entry")
+            manifest_origin = ManifestOrigin[key.attr].value
+            if manifest_origin in result:
+                raise ValueError("duplicate origin")
+            result[manifest_origin] = ExecutorOrigin[origin.attr].value
+        return MappingProxyType(result)
+    except (ValueError, TypeError, KeyError, MemoryError) as exc:
+        raise PreparedRootError("birth_context_producer_policy_invalid", exc) from None
+
+
+def load_historical_producer_declarations_v1(
     admission_context_id: str,
-) -> HistoricalProducerAuthorsV1:
-    """Bind a historical author declaration to public bytes and a stable chain.
+) -> HistoricalProducerDeclarationsV1:
+    """Bind historical declarations to public bytes and a stable chain.
 
     A matching current public copy can supply historical bytes. A differing
     copy is unsupported, never permission to reinterpret history as current.
@@ -926,8 +964,9 @@ def load_historical_producer_authors_v1(
     if not set(public.producers) <= set(declared):
         raise PreparedRootError("birth_context_producer_policy_invalid")
     authors = {namespace: declared[namespace] for namespace in public.producers}
+    executor_origins = _historical_executor_origin_declaration_v1(source)
     _require_historical_frontier_unchanged_v1(before)
-    return HistoricalProducerAuthorsV1(
+    return HistoricalProducerDeclarationsV1(
         HistoricalContextVerifiersV1(before.required_head.head_id, transition.transition_id, public),
-        record.closed_build_id, path, historical[0].content_hash, authors,
+        record.closed_build_id, path, historical[0].content_hash, authors, executor_origins,
     )
