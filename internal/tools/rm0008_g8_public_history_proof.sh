@@ -3,7 +3,7 @@
 # The administrative runner captures diagnostics privately. Only bounded
 # public identities, counts and error codes leave this process.
 set -euo pipefail
-case "${2:-}" in public-history|producer-policy|producer-history|contract-history|contract-history-v1|contract-inventory|contract-residual) ;; *) exit 64 ;; esac
+case "${2:-}" in public-history|initial-public-history|producer-policy|producer-history|contract-history|contract-history-v1|contract-inventory|contract-residual) ;; *) exit 64 ;; esac
 /opt/metnos/.venv/bin/python -I - "$1" "$2" <<'PY'
 import hashlib
 import importlib.util
@@ -216,6 +216,8 @@ try:
         transition.prepared_admission_context_id
         for transition in (chain.context_transitions[0], chain.context_transitions[-1])
     )
+    if sys.argv[2] == "initial-public-history":
+        selectors = (chain.context_transitions[0].previous_admission_context_id,)
     if sys.argv[2] == "producer-history":
         from executor_birth_producer_store import read_producer_history_v1
 
@@ -405,6 +407,7 @@ try:
         public = evidence.public_set
         result["contexts"].append({
             "context_id": selector, "set_id": public.set_id,
+            "binding_kind": evidence.binding_kind,
             "context_epoch": public.material.pin.context_epoch,
             "set_json_sha256": public.set_json_sha256,
             "context_material_sha256": public.material.material_sha256,
@@ -441,6 +444,7 @@ try:
         "contract-residual": "observed_exact_unbound_namespace_metadata",
         "producer-policy": "observed_authenticated_policy_sources",
         "public-history": "verified_selected_public_contexts",
+        "initial-public-history": "verified_initial_public_context_not_historical_producer_policy",
     }[sys.argv[2]]
 except Exception as exc:
     errors = []

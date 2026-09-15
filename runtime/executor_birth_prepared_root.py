@@ -15,7 +15,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
-from typing import Mapping
+from typing import Literal, Mapping
 
 BIRTH_ROOT_BASENAME_V1 = "birth"
 
@@ -719,10 +719,13 @@ class HistoricalContextVerifiersV1:
     required_head_id: str
     transition_id: str
     public_set: object
+    binding_kind: Literal["transition_target", "initial_predecessor"] = "transition_target"
 
 
-def _select_historical_context_v1(admission_context_id: str):
-    """Acquire the fixed chain and one unambiguous transition target."""
+def _select_historical_context_v1(
+    admission_context_id: str, *, include_initial_predecessor: bool = False,
+):
+    """Acquire one unambiguous context; policy readers remain target-only."""
     import re
     from executor_birth_ownership_chain import (
         VerifiedOwnershipChain, inspect_ownership_chain_state_v1,
@@ -735,20 +738,32 @@ def _select_historical_context_v1(admission_context_id: str):
     if type(before) is not VerifiedOwnershipChain or not before.context_transitions:
         raise PreparedRootError("birth_context_transition_required")
     matches = {
-        transition.encoded: transition for transition in before.context_transitions
+        ("target", transition.encoded): transition for transition in before.context_transitions
         if transition.prepared_admission_context_id == admission_context_id
     }
+    first = before.context_transitions[0]
+    if include_initial_predecessor and first.previous_admission_context_id == admission_context_id:
+        matches[("initial", first.encoded)] = first
     if len(matches) != 1:
         raise PreparedRootError("birth_context_selection_invalid")
     return before, next(iter(matches.values()))
 
 
-def _read_historical_context_set_v1(transition):
-    from executor_birth_prepared_set import load_historical_public_set_v1
+def _read_historical_context_set_v1(transition, *, initial_predecessor: bool = False):
+    from executor_birth_prepared_set import (
+        load_historical_marker_public_set_v1, load_historical_public_set_v1,
+    )
 
     session = open_prepared_root_session_v1()
     with session:
         with session.global_lock(exclusive=False, create=False):
+            if initial_predecessor:
+                public = load_historical_marker_public_set_v1(session)
+                if (public.set_id != transition.previous_set_id
+                        or public.material.pin.admission_context_id != transition.previous_admission_context_id
+                        or public.material.pin.context_epoch != transition.previous_context_epoch):
+                    raise PreparedRootError("birth_context_selection_invalid")
+                return public
             public = load_historical_public_set_v1(
                 session, transition.set_id,
                 expected_set_json_sha256=transition.set_json_sha256,
@@ -778,14 +793,18 @@ def load_historical_context_verifiers_v1(
 ) -> HistoricalContextVerifiersV1:
     """Resolve an untrusted context selector only inside the fixed live chain.
 
-    This interface covers transition targets, not the predecessor of the
-    first transition. It never activates an old context.
+    The first predecessor is bound through the fixed marker and first edge,
+    not a successor distribution's policy. It never activates an old context.
     """
-    before, transition = _select_historical_context_v1(admission_context_id)
-    public = _read_historical_context_set_v1(transition)
+    before, transition = _select_historical_context_v1(
+        admission_context_id, include_initial_predecessor=True,
+    )
+    initial = admission_context_id != transition.prepared_admission_context_id
+    public = _read_historical_context_set_v1(transition, initial_predecessor=initial)
     _require_historical_frontier_unchanged_v1(before)
     return HistoricalContextVerifiersV1(
         before.required_head.head_id, transition.transition_id, public,
+        "initial_predecessor" if initial else "transition_target",
     )
 
 

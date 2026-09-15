@@ -482,6 +482,7 @@ def test_exact_historical_context_is_inert_immutable_and_read_only(tmp_path, mon
     )
     assert observed.required_head_id == chain.required_head.head_id
     assert observed.transition_id == transition.transition_id
+    assert observed.binding_kind == "transition_target"
     assert observed.public_set.set_json_sha256 == transition.set_json_sha256
     assert observed.public_set.material.pin.context_epoch == transition.prepared_context_epoch
     assert not is_prepared_set_v1(observed.public_set)
@@ -540,6 +541,110 @@ def test_context_selector_rejects_missing_ambiguous_or_changing_evidence(
         else "birth_context_selection_invalid"
     )
     assert error.value.code == expected
+
+
+def _initial_context_fixture(tmp_path, monkeypatch, **changes):
+    """Real predecessor set with a mocked authenticated first-edge boundary."""
+    base = _prepared(tmp_path, monkeypatch)
+    public = _read_public()
+    values = dict(
+        previous_set_id=public.set_id,
+        previous_admission_context_id=public.material.pin.admission_context_id,
+        previous_context_epoch=public.material.pin.context_epoch,
+        prepared_admission_context_id=_digest("a"), prepared_context_epoch=_digest("b"),
+    )
+    values.update(changes)
+    return base, public, _chain_boundary_fixture(base, monkeypatch, **values)
+
+
+def test_initial_context_keys_are_public_inert_and_explicitly_predecessor(tmp_path, monkeypatch):
+    import executor_birth_keystore as keystore
+    from executor_birth_context_selection import is_context_selection_v1
+    from executor_birth_secure_fs import _SecureRootSession
+
+    _base, public, chain = _initial_context_fixture(tmp_path, monkeypatch)
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("initial-context evidence entered a private or mutating boundary")
+
+    for operation in ("create_file_exclusive", "create_directory_exclusive",
+                      "rename_no_replace", "dispose_transaction_object"):
+        monkeypatch.setattr(_SecureRootSession, operation, forbidden)
+    monkeypatch.setattr(keystore, "_load_birth_keystore_in_session", forbidden)
+    for name in ("load_sealed_authorities_v1", "load_required_context_runtime_v1",
+                 "_load_historical_transition_verifiers_v1", "_load_historical_transition_anchor_v1"):
+        monkeypatch.setattr(root, name, forbidden)
+    original = _SecureRootSession.read_file
+    observed_paths = []
+
+    def read(session, components, **kwargs):
+        assert "private" not in components and "keystore.json" not in components
+        observed_paths.append(components)
+        return original(session, components, **kwargs)
+
+    monkeypatch.setattr(_SecureRootSession, "read_file", read)
+    result = root.load_historical_context_verifiers_v1(public.material.pin.admission_context_id)
+    assert result.binding_kind == "initial_predecessor"
+    assert result.public_set.set_id == public.set_id
+    assert result.required_head_id == chain.required_head.head_id
+    assert result.transition_id == chain.context_transitions[0].transition_id
+    assert len(result.public_set.producers) == len(public.producers)
+    assert observed_paths and not is_context_selection_v1(result)
+    assert not isinstance(result, root.SealedAuthoritiesV1)
+    with pytest.raises(FrozenInstanceError):
+        result.binding_kind = "transition_target"
+
+
+@pytest.mark.parametrize("field", ["previous_set_id", "previous_admission_context_id", "previous_context_epoch"])
+def test_initial_context_refuses_mismatched_first_edge_pin(tmp_path, monkeypatch, field):
+    value = "0" * 64 if field == "previous_set_id" else _digest("0")
+    _base, _public, chain = _initial_context_fixture(tmp_path, monkeypatch, **{field: value})
+    with pytest.raises(root.PreparedRootError, match="birth_context_selection_invalid"):
+        root.load_historical_context_verifiers_v1(chain.context_transitions[0].previous_admission_context_id)
+
+
+@pytest.mark.parametrize("change", ["missing", "altered"])
+def test_initial_context_requires_its_fixed_marker(tmp_path, monkeypatch, change):
+    base, public, _chain = _initial_context_fixture(tmp_path, monkeypatch)
+    if change == "missing":
+        support.installed_marker(base).unlink()
+    else:
+        _rewrite(support.installed_marker(base), lambda marker: marker.update(set_id="0" * 64))
+    with pytest.raises(PreparedSetError, match="birth_prepared_set_(invalid|unavailable|mismatch)"):
+        root.load_historical_context_verifiers_v1(public.material.pin.admission_context_id)
+
+
+def test_initial_context_and_target_collision_has_no_implicit_priority(tmp_path, monkeypatch):
+    _base, public, chain = _initial_context_fixture(tmp_path, monkeypatch)
+    transition = replace(chain.context_transitions[0],
+                         prepared_admission_context_id=public.material.pin.admission_context_id)
+    monkeypatch.setattr(chain_module, "inspect_ownership_chain_state_v1",
+                        lambda: replace(chain, context_transitions=(transition,)))
+    with pytest.raises(root.PreparedRootError, match="birth_context_selection_invalid"):
+        root.load_historical_context_verifiers_v1(public.material.pin.admission_context_id)
+
+
+@pytest.mark.parametrize("change", ["head", "transition", "record"])
+def test_initial_context_requires_unchanged_chain_after_acquisition(tmp_path, monkeypatch, change):
+    _base, public, chain = _initial_context_fixture(tmp_path, monkeypatch)
+    if change == "head":
+        after = replace(chain, heads=(replace(chain.required_head, head_id=_digest("9")),))
+    elif change == "transition":
+        after = replace(chain, context_transitions=())
+    else:
+        after = replace(chain, authenticated_records=(b"changed record",))
+    observations = iter((chain, after))
+    monkeypatch.setattr(chain_module, "inspect_ownership_chain_state_v1", lambda: next(observations))
+    with pytest.raises(root.PreparedRootError, match="birth_context_selection_changed"):
+        root.load_historical_context_verifiers_v1(public.material.pin.admission_context_id)
+
+
+def test_initial_context_cannot_borrow_successor_producer_policy(tmp_path, monkeypatch):
+    _base, public, _chain = _initial_context_fixture(tmp_path, monkeypatch)
+    monkeypatch.setattr(root, "_read_historical_context_set_v1",
+                        lambda *_args, **_kwargs: pytest.fail("policy lookup passed initial selector"))
+    with pytest.raises(root.PreparedRootError, match="birth_context_selection_invalid"):
+        root.load_historical_producer_authors_v1(public.material.pin.admission_context_id)
 
 
 def test_historical_set_requires_the_held_barrier_and_both_owner_pins(tmp_path, monkeypatch):
