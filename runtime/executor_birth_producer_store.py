@@ -13,7 +13,10 @@ from pathlib import Path
 from typing import Callable
 
 from executor_birth_identity import ExecutorOrigin, RevisionAuthor
-from executor_birth_receipts import IssuerRegistry, ProducerReceipt, ReceiptError, verify_producer_receipt
+from executor_birth_receipts import (
+    AdmissionReceipt, IssuerRegistry, ProducerReceipt, ReceiptError,
+    verify_producer_receipt,
+)
 
 _VERSION = 5
 BIRTH_STATE_BASENAME_V1 = "birth"
@@ -117,6 +120,118 @@ class ProducerHistoryV1:
     receipts: tuple[ProducerReceiptRowV1, ...]
     issuances: tuple[ProducerIssuanceRowV1, ...]
     field_bytes: int
+
+
+@dataclass(frozen=True, slots=True)
+class HistoricalProducerBindingV1:
+    """An ordinary signed evidence join, not terminal success or a grant."""
+
+    admission: AdmissionReceipt
+    producer: ProducerReceipt
+    namespace: str
+
+
+def verify_historical_producer_binding_v1(
+    admission_encoded: bytes, *, receipt_row: ProducerReceiptRowV1,
+    issuance_row: ProducerIssuanceRowV1, declarations,
+) -> HistoricalProducerBindingV1:
+    """Join owner-acquired evidence without opening a store or a private key.
+
+    The acquiring owner establishes declaration provenance and the common
+    frontier. This pure verifier does not turn an evidence container into
+    operational authority, prove terminal success or reconstruct old source.
+    """
+    from executor_birth_prepared_root import HistoricalProducerDeclarationsV1
+    from executor_birth_receipts import (
+        AdmissionKind, IssuerKey, _parse_producer, _timestamp,
+        producer_request_id_v1, verify_admission_receipt,
+    )
+
+    if (type(receipt_row) is not ProducerReceiptRowV1
+            or type(issuance_row) is not ProducerIssuanceRowV1
+            or type(declarations) is not HistoricalProducerDeclarationsV1):
+        raise ReceiptError("producer_receipt_invalid", "history_binding_input")
+    if any(type(value) is not bytes or len(value) > limit for value, limit in (
+        (admission_encoded, 1024 * 1024),
+        (receipt_row.encoded, _HISTORY_ROW_BYTES),
+        (issuance_row.encoded, _HISTORY_ROW_BYTES),
+    )):
+        raise ReceiptError("producer_receipt_invalid", "history_binding_bytes")
+    public = declarations.context.public_set
+    try:
+        admission = verify_admission_receipt(
+            admission_encoded, verifier_keys=public.admission_verifier_keys,
+        )
+    except ReceiptError:
+        raise
+    except (ValueError, TypeError, RecursionError, OverflowError) as exc:
+        raise ReceiptError("producer_receipt_invalid", "history_admission_encoding") from exc
+    if (admission.admission_context_id != public.material.pin.admission_context_id
+            or admission.kind is not AdmissionKind.ADMISSION):
+        raise ReceiptError("producer_receipt_invalid", "history_admission_context_or_kind")
+    encoded = receipt_row.encoded
+    receipt_hash = producer_receipt_hash(encoded)
+    if (receipt_hash != admission.producer_receipt_hash
+            or issuance_row.encoded != encoded):
+        raise ReceiptError("producer_receipt_invalid", "history_receipt_bytes")
+
+    try:
+        preview, _unsigned = _parse_producer(encoded, temporal_now=None)
+    except ReceiptError:
+        raise
+    except (ValueError, TypeError, RecursionError, OverflowError) as exc:
+        raise ReceiptError("producer_receipt_invalid", "history_producer_encoding") from exc
+    matches = []
+    for namespace, keys in public.producers.items():
+        issuer, separator, operation = namespace.partition(":")
+        if (separator and issuer == preview.issuer_id
+                and preview.authentication.key_id in keys.verifier_keys
+                and producer_request_id_v1(
+                    issuer_id=issuer, operation=operation, contract_id=admission.contract_id,
+                    objective_hash=preview.objective_hash,
+                    candidate_source_id=preview.candidate_source_id,
+                ) == admission.birth_request_id):
+            matches.append((namespace, keys.verifier_keys[preview.authentication.key_id]))
+    if len(matches) != 1:
+        raise ReceiptError("producer_receipt_invalid", "history_capability_binding")
+    namespace, key = matches[0]
+    try:
+        origin = ExecutorOrigin(declarations.executor_origins[
+            admission.contract_id.partition(":")[0]
+        ])
+        author = RevisionAuthor(declarations.authors[namespace])
+    except (KeyError, ValueError) as exc:
+        raise ReceiptError("producer_receipt_invalid", "history_scope_missing") from exc
+    # Constrain this verification to facts derived independently of the
+    # Producer's own declarations. This is not a historical runtime registry.
+    registry = IssuerRegistry({preview.issuer_id: (IssuerKey(
+        preview.authentication.key_id, key, frozenset({origin}), frozenset({author}),
+    ),)})
+    producer = verify_producer_receipt(
+        encoded, registry=registry, now=_timestamp(admission.issued_at, field="issued_at"),
+    )
+    if producer.nonce != hashlib.sha256(admission.birth_request_id.encode()).hexdigest()[:32]:
+        raise ReceiptError("producer_receipt_invalid", "history_nonce_binding")
+
+    receipt_fields = {
+        "receipt_id": producer.receipt_id, "receipt_hash": receipt_hash,
+        "issuer_id": producer.issuer_id, "objective_hash": producer.objective_hash,
+        "candidate_source_id": producer.candidate_source_id,
+        "executor_origin": producer.executor_origin.value,
+        "revision_authorship": producer.revision_authorship.value,
+        "expires_at": producer.expires_at, "request_id": admission.birth_request_id,
+    }
+    issuance_fields = {
+        "receipt_id": producer.receipt_id, "issuer_id": producer.issuer_id,
+        "objective_hash": producer.objective_hash,
+        "candidate_source_id": producer.candidate_source_id,
+        "request_id": admission.birth_request_id, "contract_id": admission.contract_id,
+        "capability_id": namespace,
+    }
+    for row, expected in ((receipt_row, receipt_fields), (issuance_row, issuance_fields)):
+        if any(getattr(row, field) != value for field, value in expected.items()):
+            raise ReceiptError("producer_receipt_invalid", "history_stored_binding")
+    return HistoricalProducerBindingV1(admission, producer, namespace)
 
 
 def _history_source_identity_v1(state_root: Path) -> tuple[tuple[int, ...], ...]:

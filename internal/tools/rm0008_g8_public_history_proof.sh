@@ -3,7 +3,7 @@
 # The administrative runner captures diagnostics privately. Only bounded
 # public identities, counts and error codes leave this process.
 set -euo pipefail
-case "${2:-}" in public-history|initial-public-history|initial-policy-binding|producer-policy|producer-declarations|producer-history|contract-history|contract-history-v1|contract-inventory|contract-residual) ;; *) exit 64 ;; esac
+case "${2:-}" in public-history|initial-public-history|initial-policy-binding|producer-policy|producer-declarations|producer-binding|producer-history|contract-history|contract-history-v1|contract-inventory|contract-residual) ;; *) exit 64 ;; esac
 /opt/metnos/.venv/bin/python -I - "$1" "$2" <<'PY'
 import hashlib
 import importlib.util
@@ -23,14 +23,16 @@ modules = (
     "executor_birth_context_v1.py", "executor_birth_prepared_set.py",
     "executor_birth_prepared_root.py",
 )
-if sys.argv[2] == "producer-declarations":
+if sys.argv[2] in {"producer-declarations", "producer-binding"}:
     # This candidate helper was not present in the installed release. Measure
     # it explicitly; do not mistake the older source-availability probe for
     # an execution of the new exact-file owner interface.
     modules = ("executor_birth_distribution_manifest.py",) + modules
-if sys.argv[2] in {"producer-history", "contract-history", "contract-history-v1"}:
+if sys.argv[2] == "producer-binding":
+    modules = ("executor_birth_receipts.py",) + modules
+if sys.argv[2] in {"producer-history", "contract-history", "contract-history-v1", "producer-binding"}:
     modules += ("executor_birth_producer_store.py",)
-if sys.argv[2] in {"contract-history", "contract-history-v1", "contract-inventory"}:
+if sys.argv[2] in {"contract-history", "contract-history-v1", "contract-inventory", "producer-binding"}:
     modules += ("contract_store.py",)
 
 def source_hashes():
@@ -105,7 +107,7 @@ def read_only_audit(event, args):
         # event. Permit only the reviewed, logically read-only connection.
         allowed_database = (Path(os.environ["METNOS_USER_STATE"]) / "birth"
                             / "producer_receipts.sqlite")
-        if (sys.argv[2] not in {"producer-history", "contract-history", "contract-history-v1"}
+        if (sys.argv[2] not in {"producer-history", "contract-history", "contract-history-v1", "producer-binding"}
                 or args[0] != allowed_database.as_uri() + "?mode=ro&cache=private"):
             denied["write_or_execution"] += 1
             denied_events.append({"event": event})
@@ -280,6 +282,71 @@ try:
             "producer_namespaces": len(evidence.authors),
             "executor_origins": dict(evidence.executor_origins),
             "qualification": "historical_declarations_not_qualifying_admission",
+        }
+        selectors = ()
+    if sys.argv[2] == "producer-binding":
+        import base64
+        from contract_store import read_historical_birth_evidence_v1
+        from executor_birth_prepared_root import load_historical_producer_declarations_v1
+        from executor_birth_producer_store import (
+            read_producer_history_v1, verify_historical_producer_binding_v1,
+        )
+        from manifest_inventory import ContractId, ManifestOrigin
+
+        history = read_producer_history_v1()
+        targets = {item.prepared_admission_context_id for item in chain.context_transitions}
+        candidates = []
+        ordinary_hints = 0
+        # Unsigned wire fields choose a deterministic sample, not its truth.
+        # The join then authenticates the exact bytes, key and request itself.
+        for row in history.receipts:
+            if row.terminal_envelope is None:
+                continue
+            terminal = json.loads(row.terminal_envelope)
+            embedded = terminal.get("admission_receipt")
+            if embedded is None:
+                continue
+            encoded_admission = base64.b64decode(embedded, validate=True)
+            hint = json.loads(encoded_admission)
+            if hint["kind"] != "admission":
+                continue
+            ordinary_hints += 1
+            if hint["admission_context_id"] in targets:
+                candidates.append((row, encoded_admission, hint))
+        if not candidates:
+            raise RuntimeError("no_ordinary_target_context_sample")
+        row, encoded_admission, hint = max(candidates, key=lambda item: item[0].row_id)
+        issuance = [item for item in history.issuances if item.request_id == hint["birth_request_id"]]
+        if len(issuance) != 1:
+            raise RuntimeError("ordinary_sample_issuance_ambiguous")
+        declarations = load_historical_producer_declarations_v1(hint["admission_context_id"])
+        if declarations.context.required_head_id != chain.required_head.head_id:
+            raise RuntimeError("proof_frontier_changed")
+        binding = verify_historical_producer_binding_v1(
+            encoded_admission, receipt_row=row, issuance_row=issuance[0],
+            declarations=declarations,
+        )
+        origin, relative = binding.admission.contract_id.split(":", 1)
+        durable = read_historical_birth_evidence_v1(
+            ContractId(ManifestOrigin(origin), relative), binding.admission.generation_id,
+            admission_context_id=binding.admission.admission_context_id,
+        )
+        if durable.receipt_bytes != encoded_admission:
+            raise RuntimeError("ordinary_sample_durable_receipt_differs")
+        result["producer_binding"] = {
+            "unsigned_ordinary_terminal_hints": ordinary_hints,
+            "unsigned_target_context_hints": len(candidates),
+            "selected_receipt_row_id": row.row_id,
+            "selected_issuance_row_id": issuance[0].row_id,
+            "selection_rule": "largest_row_id_with_embedded_ordinary_target_context_hint",
+            "admission_receipt_id": binding.admission.receipt_id,
+            "producer_receipt_id": binding.producer.receipt_id,
+            "context_id": binding.admission.admission_context_id,
+            "namespace": binding.namespace,
+            "signed_act_time": binding.admission.issued_at,
+            "producer_expires_at": binding.producer.expires_at,
+            "durable_receipt_byte_equal": True,
+            "qualification": "signed_producer_binding_sample_not_terminal_or_admission_qualification",
         }
         selectors = ()
     if sys.argv[2] == "producer-history":
@@ -514,6 +581,7 @@ try:
         "initial-public-history": "verified_initial_public_context_not_historical_producer_policy",
         "initial-policy-binding": "observed_authenticated_initial_material_source_inventory",
         "producer-declarations": "verified_selected_historical_producer_declarations",
+        "producer-binding": "verified_ordinary_producer_and_durable_receipt_binding_sample",
     }[sys.argv[2]]
 except Exception as exc:
     errors = []

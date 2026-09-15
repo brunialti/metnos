@@ -35,7 +35,9 @@ from executor_birth_producer_store import (
     ProducerReceiptBinding, get_or_issue_and_claim_producer_receipt,
     get_or_issue_producer_receipt,
 )
-from executor_birth_receipts import IssuerKey, IssuerRegistry, issue_producer_receipt
+from executor_birth_receipts import (
+    IssuerKey, IssuerRegistry, issue_producer_receipt, producer_request_id_v1,
+)
 from executor_birth_shadow import _assemble_production_dependencies
 from manifest_inventory import ManifestRef
 
@@ -176,9 +178,10 @@ def _request_factory(authority: _ProducerAuthority, registry: IssuerRegistry,
             source_id = candidate_source_id(observed)
         finally:
             observed.close()
-        request_id = _hash(
-            b"metnos.executor-birth.request/v1\0", authority.issuer_id,
-            authority.capability.operation, intent.contract_id.value, objective, source_id,
+        request_id = producer_request_id_v1(
+            issuer_id=authority.issuer_id, operation=authority.capability.operation,
+            contract_id=intent.contract_id.value, objective_hash=objective,
+            candidate_source_id=source_id,
         )
         instant = now().astimezone(timezone.utc).replace(microsecond=0)
         expires = instant + timedelta(seconds=ttl_seconds)
@@ -1109,13 +1112,10 @@ def _initial_request_id_v1(
     objective = _hash(
         b"metnos.executor-birth.objective/v1\0", _INITIAL_INSTALL_REASON_V1,
     )
-    return _hash(
-        b"metnos.executor-birth.request/v1\0",
-        _INSTALLER.producer_id,
-        _INSTALLER.operation,
-        ref.contract_id.value,
-        objective,
-        source_id,
+    return producer_request_id_v1(
+        issuer_id=_INSTALLER.producer_id, operation=_INSTALLER.operation,
+        contract_id=ref.contract_id.value, objective_hash=objective,
+        candidate_source_id=source_id,
     )
 
 
