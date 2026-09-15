@@ -1,9 +1,10 @@
 # RM-0009 — Crescita allineata delle capacità
 
 > **RM-0009**
-> - **Stato:** `active`. Revisione 8, risultante dall'unione analizzata fra la
->   revisione 7 e la proposta dell'agente esterno. Non e ancora `ready`: prima
->   servono il dry-run medium e la review indipendente conclusiva di G0.7-G0.8.
+> - **Stato:** `active`. Revisione 7, **non approvabile**: il nuovo giro
+>   adversarial ha trovato blocchi di architettura, sicurezza e attuabilita
+>   elencati nell'appendice C. Passa a `ready` solo dopo la loro chiusura e una
+>   verifica indipendente conclusiva.
 > - **Creazione e revisione:** creata il 2 settembre 2026; ultima revisione il
 >   14 settembre 2026 (sera).
 > - **Conservazione:** persistente.
@@ -14,17 +15,14 @@
 > - **Fonti:**
 >   - revisioni 1-5, con i rilievi della revisione 4, la review indipendente
 >     della revisione 5 e la sua verifica (commit `ad37442c`), nella storia Git;
->   - revisione 7 precedente all'unione, conservata senza sovrascriverla in
->     `internal/roadmap/.codex-review/RM-0009-rev7-codex-review.md`, SHA-256
->     `9700e6962691b2743732c7d88519a28e09d6f51152fa6b270a842a17ed1bd360`;
->   - proposta dell'agente esterno precedente all'unione, conservata in
->     `internal/roadmap/.merge-sources/RM-0009-proposta-agente-esterno-pre-merge.md`,
->     SHA-256 `fe7cf3de76559075ca04b6ce2d54fd69f899ce3b542c1a98a8617f604fedaa59`;
+>   - copia integrale della revisione 6 precedente a questa review ripristinata
+>     nel percorso canonico `internal/roadmap/RM-0009-crescita-allineata-delle-capacita.md`, SHA-256
+>     `3397d6298811ed1e0c859e209b7678f83910f4a8cb55d5be4d76d3a934a44b97`;
+>     questa revisione 7 resta una bozza di review separata e non normativa;
 >   - verifiche sul codice del 14/9, riportate al §2;
 >   - esito storico dei 22 rilievi della revisione 5 nell'appendice B;
 >   - nuova review adversarial e multidisciplinare nell'appendice C;
->   - piano esecutivo atomico per lo sviluppo nell'appendice D;
->   - decisioni puntuali dell'unione nell'appendice E.
+>   - piano esecutivo atomico per lo sviluppo nell'appendice D.
 > - **Baseline di approvazione:** va registrata fuori da questo file, in
 >   `internal/reports/rm0009-baseline/`, dall'unità P0.
 
@@ -41,11 +39,6 @@
 | 14/9 | **Autonomia:** «l'utente deve intervenire solo in poche e semplici occasioni, il meno possibile». |
 | 14/9 | **Criteri di progettazione:** KISS, utilità per l'utente, soluzioni universali e non ad hoc, niente hardcoding, efficienza. |
 | 14/9 | **Non bloccante:** un difetto cosmetico o di preparazione non ferma sviluppo e manutenzione; si ferma solo per rischi veri. |
-| 15/9 | **Revisione 8 principale:** la revisione 7 dell'agente esterno, unita con la proposta precedente, è il documento di riferimento; osservazioni di verifica in C.4. |
-| 15/9 | **Attivazione:** nessuna nuova capacità si attiva prima della certificazione RM-0008/F5, nemmeno con il «sì» dell'host (D2 resta `blocked`). |
-| 15/9 | **Separazione:** RM-0009 si chiude sul ciclo di crescita con F6 in ombra; la sicurezza completa (FS-A, FS-B multipiattaforma, helper amministrativo, protocollo remoto v2, enforcement F6) è un lavoro a parte, già autorizzato (D.1-bis). |
-| 15/9 | **Schemi d'uso:** S2 usa anche gli schemi d'uso ripetuti di tutti gli utenti, aggregati e senza testo né valori personali. |
-| 15/9 | **Documento unico:** le due sorgenti dell'unione restano soltanto nella storia Git. |
 
 ## 1. Obiettivo e valore per l'utente
 
@@ -258,9 +251,7 @@ Un registro append-only `change_intent_evaluations`:
 - `source_event_id`: `NOT NULL`, con namespace (§5.7);
 - `revision` e `supersedes_evaluation_id`;
 - `created_at`;
-- `evaluation_key` non nulla, digest canonico versionato di dimensione,
-  valutatore, metrica, unita, finestra e `source_event_id`; vincolo
-  `UNIQUE(intent_id, evaluation_key, revision)`.
+- vincolo `UNIQUE(intent_id, dimension, evaluator_id, source_event_id, revision)`.
 
 Regole:
 - **Proiezione:** l'ultima valutazione non superata per `(intent, dimensione,
@@ -369,43 +360,6 @@ atomicamente solo da un «no» autorizzato.
 - **Ritorno automatico:** si attiva solo con `benefit` `ok` e campione
   sufficiente, quando peggiora oltre la soglia di politica. Una prova
   insufficiente non dichiara successo e non provoca rollback.
-
-#### 5.4.1 Stati e transizioni
-
-La proposta esterna ha correttamente ricordato gli stati storici `observed` e
-`finalized`, ma ammetteva anche salti incompatibili con D1/D2. La tabella
-seguente e l'unica macchina a stati normativa; ogni arco usa il compare-and-swap
-e gli archi non elencati sono vietati.
-
-| Da | A | Condizione normativa |
-|---|---|---|
-| `proposed` | `trial_applying` | solo create/extend dopo D1 `auto` o «si» valido; non attiva la capacita |
-| `proposed` | `accepted` | solo `promote_plan`, dopo la sua decisione unica `auto` o «si» valido |
-| `proposed` | `rejected` | «no» autorizzato, atomico con token, regola di rifiuto ed epoca |
-| `proposed` | `blocked` | veto tecnico D1 con `ReasonCode` e `resume_state=proposed` |
-| `trial_applying` | `staged` | la richiesta Birth idempotente e stata accettata dalla porta unica |
-| `trial_applying` | `failed` o `trial_applying` | errore tipizzato oppure recupero della stessa operation |
-| `staged` | `awaiting_activation` | ricevuta Birth/preesercizio verificata e associata alla stessa operation |
-| `staged` | `rejected` | annullamento autorizzato prima di D2 |
-| `awaiting_activation` | `accepted` | solo dopo D2 `auto` o «si» valido e con tutti i prerequisiti tecnici |
-| `awaiting_activation` | `rejected` | «no» D2 autorizzato e transazione completa della regola |
-| `awaiting_activation` | `blocked` | veto tecnico D2 con `resume_state=awaiting_activation` |
-| `blocked` | `proposed` o `awaiting_activation` | soltanto verso il `resume_state` registrato, dopo rimozione verificata del veto |
-| `accepted` | `applying` | claim dell'effetto con lease e `operation_id` |
-| `accepted` | `rejected` | revoca autorizzata prima che l'operation sia stata reclamata |
-| `applying` | `applied`, `failed` o `applying` | commit dell'autorita di visibilita, errore, oppure recupero della stessa operation |
-| `failed` | `trial_applying`, `accepted` o `rejected` | il `failure_phase` tipizzato sceglie il solo retry coerente, oppure abbandono autorizzato |
-| `applied` | `observed` | prima finestra di beneficio valida e attribuita all'effetto |
-| `observed` | `finalized` | criteri di stabilizzazione soddisfatti; il monitoraggio di sicurezza continua |
-| `applied`, `observed`, `finalized` | `rolled_back` o `rollback_failed` | inverso verificato oppure fallito; un segnale di sicurezza apre prima la quarantine operation senza inventare `applied -> blocked` |
-| `rollback_failed` | `rolled_back` o `rollback_failed` | nuovo tentativo della stessa operazione inversa |
-| `rejected` | `proposed` | soltanto dopo scadenza o revoca atomica della regola di rifiuto |
-| `proposed`, `staged`, `awaiting_activation` | `superseded` | sola migrazione/bonifica con alias canonico; non e una decisione operativa |
-| `superseded` | — | terminale; il ripristino consolida/sostituisce transazionalmente il canonico |
-| `rolled_back` | — | terminale; una nuova proposta usa un nuovo evento causale |
-
-Gli stati storici terminali non compatibili vengono conservati in audit e
-mappati dalla migrazione, mai fatti rientrare con un arco inventato.
 
 ### 5.5 Consegna e domande
 
@@ -628,9 +582,8 @@ Ordine: `P0 → P1 → P2 → F0 → F1 → F2 → F3 → F4 → F5 → F6`.
     - `row_version`;
     - upsert atomico `INSERT … ON CONFLICT … RETURNING`;
     - transizioni con compare-and-swap;
-    - stati nuovi: `trial_applying`, `awaiting_activation`, `applying`,
-      `blocked`, `superseded`, `rollback_failed`, con `resume_state` e
-      `failure_phase` tipizzati; gli storici `observed` e `finalized` restano;
+    - stati nuovi: `awaiting_activation`, `applying`, `blocked`, `superseded`,
+      `rollback_failed`;
   - il primitivo `one_shot_tokens`;
   - `global_change_epoch`, incluso in `tools_sig`.
 - *Completata quando:*
@@ -867,7 +820,7 @@ artefatti i difetti statici provati.
 
 **Normalizzazione dopo l'approvazione.** Nel primo commit documentale successivo
 all'approvazione il coordinatore elimina da questo file lo stato di lavorazione,
-la cronaca delle revisioni e le appendici storiche B, C ed E. Restano soltanto il
+la cronaca delle revisioni e le appendici storiche B e C. Restano soltanto il
 testo normativo approvato, le istruzioni operative e il piano esecutivo
 approvato. La storia Git non viene riscritta; una sua eventuale riscrittura
 richiede un'autorizzazione separata ed esplicita.
@@ -1018,12 +971,20 @@ eseguono.
        non lascia mai due fingerprint uguali nella tabella soggetta a UNIQUE;
      - poi crea l'indice univoco sulla sola tabella canonica;
      - aggiunge `row_version INTEGER NOT NULL DEFAULT 0`.
-  2. **Macchina a stati:** implementa senza aggiunte la tabella esaustiva del
-     §5.4.1, compresi gli stati storici `observed` e `finalized`. Persisti
-     `decision_moment`, `resume_state` e `failure_phase` come enum chiusi;
-     verifica la precondizione specifica dell'arco nello stesso CAS. Il
-     ripristino di un alias consolida/sostituisce transazionalmente il canonico:
-     non esiste `superseded → proposed` diretto.
+  2. **Stati nuovi** in `ALL_STATES`, con le transizioni:
+     - `proposed → trial_applying | blocked | rejected`;
+     - `trial_applying → staged | failed | trial_applying`;
+     - `staged → awaiting_activation` (ricevuta verificata);
+     - `awaiting_activation → accepted | rejected | blocked`;
+     - `accepted → applying`;
+     - `applying → applied | failed | applying`;
+     - `applied → rolled_back | rollback_failed`;
+     - `rollback_failed → rolled_back | rollback_failed`;
+     - `blocked → proposed | awaiting_activation`, quando il `ReasonCode`
+       ritentabile non si applica piu;
+     - `proposed | staged | awaiting_activation → superseded`;
+     - il ripristino di un alias fa merge/sostituzione transazionale del
+       canonico: non esiste `superseded → proposed` diretto.
   3. **`upsert_intent`** con `INSERT … ON CONFLICT(fingerprint) DO UPDATE …
      RETURNING id`, in una sola istruzione.
   4. **`transition(id, expected_state, expected_version, new_state, **fields)`**
@@ -1168,7 +1129,7 @@ eseguono.
   - `extend_executor` il cui bersaglio non esiste più → archivio.
   - `create_executor` con bersaglio assente: **nessuna azione**, perché è normale.
   - Il dry-run stampa, per ogni id, regola ed evidenza; `--restore <id>` esegue
-    consolidamento/sostituzione transazionale del canonico e non una transizione diretta.
+    merge/sostituzione transazionale del canonico e non una transizione diretta.
 - **Test:** un `create_executor` valido con bersaglio assente resta; il ripristino
   funziona.
 - **Coordinatore:** esegue `--apply` sui dati del servizio.
@@ -1405,10 +1366,9 @@ eseguono.
   (`mark_applied` ~608), `synth_request.py` (`handle_synth_request`, verso Birth),
   RM-0008 (`BirthIntent`).
 - **Passi:**
-  1. Per `create_executor` ed `extend_executor`: D1 `auto` o approvata porta a
-     `proposed → trial_applying`; la richiesta Birth e idempotente per
-     `operation_id`. L'accettazione della richiesta porta a `staged`; la
-     ricevuta verificata porta ad `awaiting_activation`, poi D2.
+  1. Per `create_executor` ed `extend_executor`: D1 `auto` o approvata →
+     `proposed → staged` con richiesta Birth idempotente (`operation_id`).
+     Alla ricevuta verificata → `awaiting_activation`, poi D2.
   2. `accepted → applying`, con lease e `operation_id`; handler idempotente;
      `observe_effect`; `applied` + `bump_epoch`, nella stessa transazione.
   3. Un recupero, all'avvio e ogni notte, gestisce le lease scadute come al §5.4.
@@ -1689,65 +1649,6 @@ Una revisione successiva puo essere sottoposta a Roberto solo quando:
 6. `git diff --check`, link documentali e riferimenti ai simboli risultano
    validi.
 
-### C.4 Verifica e osservazioni di Claude sulla revisione 8 (14/9, notte)
-
-**Adozione.** Il file canonico è la revisione 8, cioè la revisione 7
-dell'agente esterno unita, caso per caso, con la mia proposta (revisione 6 più
-elenco lavori; appendice E). La adotto come principale. Non la sostituisco con
-la revisione 7 grezza, perché si perderebbero le decisioni dell'unione.
-
-**Fatti verificati nel codice** (sola lettura, checkout principale):
-
-| Rilievo | Esito | Evidenza |
-|---|---|---|
-| R6-01 | confermato | `engine/autopath.lookup` (~362) filtra `status='active'` ma non `shadow`: un piano in ombra è servito |
-| R6-04, M-11 | confermato | `invocations.next_invocation` (~937) riconsegna le invocazioni `delivered` orfane oltre scadenza + grazia: consumare il token al poll romperebbe la riconsegna |
-| R6-08 | confermato | `prefilter.implements_intent_verb(candidate_verb, intent_verb)` confronta solo il verbo |
-| R6-13 | confermato | 33 manifest hanno `setup`/`teardown`/`env` nei `[[tests]]`; il 24 della mia revisione 6 era sbagliato |
-| R6-15 | confermato | `-H "Authorization: Bearer $(cat …)"` mette la chiave negli argomenti di `curl`, visibili in `/proc` |
-| R6-16 | confermato | RM-0008 (~797) descrive `runtime/test_runner.py` come runner delle prove |
-| R5-11 | confermato | l'hash di `_compute_intent_sig` ha 16 caratteri esadecimali, cioè 64 bit |
-| E.2, D.6 | confermato | esistono tutti i file `client-rs/src/*.rs` citati, `runtime/change_applier_extend.py`, `runtime/agent_server.py`, `runtime/engine/fastpath_promote.py` |
-
-**Osservazioni**, nell'ottica dei criteri di Roberto (KISS, autonomia, non bloccante):
-
-- **O-01 — Il completamento dipende da lavori estranei al ciclo di crescita.**
-  - `D-I0.1` (chiusura) richiede il protocollo remoto v2 con modifiche al client
-    Rust e rollout sulla flotta (F6.4a-e), FS-B multipiattaforma con
-    attestazione di release (FS-B.4c) e l'helper con socket (S0.1).
-  - Proposta: una tranche o roadmap separata «sicurezza ed enforcement F6».
-    RM-0009 chiude sul ciclo di crescita, con F6 in ombra.
-  - `D-I1.1` non dipende da FS-B.4c finché D2 resta `blocked`: FS-B serve come
-    veto di D2, che prima di RM-0008/F5 è comunque bloccata.
-- **O-02 — D2 bloccata fino a RM-0008/F5 congela la nascita di capacità.**
-  - La regola è sicura (R6-03, M-05), ma l'anello 7 resta a zero finché RM-0008/F5
-    non è certificata, e oggi quel cancello è a zero ammissioni.
-  - È una **decisione di prodotto** di Roberto:
-    - (a) attendere F5;
-    - (b) prima di F5, attivazione con il «sì» dell'host solo per capacità in
-      sola lettura, senza rete né credenziali, con quarantena e ritiro rapido.
-- **O-03 — `D-S0.1` è sproporzionato rispetto a R6-15.** Per non esporre la
-  chiave basta leggere l'intestazione da file o da stdin: `curl -H @file`, che
-  `curl` 8.5 supporta. Un nuovo socket con token non serve a questo scopo.
-- **O-04 — `D-P2.9`: la revoca HMAC con «delete-pepper» è superflua.** Gli id
-  utente sono casuali (`uuid.uuid4().hex[:16]`) e non si riusano, quindi basta
-  un registro di cancellazione con tombstone. Il resto di P2.9 (inventario degli
-  store con dati dell'owner) resta necessario.
-- **O-05 — `D-G0.2` porta a Roberto decisioni tecniche.** Secondo la regola
-  «Roberto interviene il meno possibile», gli restano solo O-02, l'ambito dei
-  pattern d'uso di S2 (aggregati di più utenti) e il budget di costo. Il resto
-  lo fissano gli agenti, con valori prudenti.
-- **O-06 — Documento unico.** La revisione 8 cita per SHA due file non tracciati
-  (`.codex-review/`, `.merge-sources/`), e la mia revisione 6 non è mai stata
-  committata. Proposta:
-  1. un commit che traccia la revisione 8 e le due sorgenti;
-  2. un secondo commit che rimuove le sorgenti dall'albero.
-
-  Restano in Git, con gli SHA verificabili, e vive un solo documento.
-- **O-07 — Coerenza interna.** Finché G0.6 non riallinea, le schede A.4 e l'elenco
-  candidato E.2 possono contraddire l'appendice D. D.1 dichiara la precedenza di
-  D; conviene ripeterlo in testa ad A.4 e a E.2.
-
 ## Appendice D — Piano esecutivo dettagliato dello sviluppo
 
 ### D.1 Regola di esecuzione
@@ -1775,25 +1676,6 @@ unita `decision/document/review/approval` richiedono rispettivamente verbale,
 diff documentale, rapporto indipendente o registrazione dell'approvazione, non
 un test rosso artificiale. Il coordinatore assegna un lease esclusivo sui file.
 
-### D.1-bis Separazione della sicurezza (decisione di Roberto, 15/9)
-
-Le unità seguenti formano la **tranche di sicurezza**. È un lavoro a parte, già
-autorizzato, che non condiziona la chiusura di RM-0009:
-- `D-S0.1`;
-- tutte le `D-FS-A.*` e le `D-FS-B.*`;
-- `D-F6.3`, `D-F6.4a`-`D-F6.4e`, `D-F6.5`, `D-F6.6`.
-
-RM-0009 conserva F6 **in ombra**: `D-F6.1`, `D-F6.2a`-`D-F6.2e` e
-`D-F6.2.barrier`.
-
-Restano due vincoli di dipendenza, non di chiusura:
-- l'attestazione FS-B (`D-FS-B.4c`) è un veto di D2 per ogni capacità che
-  raggiunge credenziali o piano di controllo (R6-14);
-- l'esecuzione di codice candidato richiede `D-FS-A.4`.
-
-Poiché D2 resta comunque `blocked` fino a RM-0008/F5 (decisione del 15/9),
-nessuno dei due vincoli ritarda i milestone di RM-0009.
-
 ### D.2 Tranche G — Correzione del progetto e baseline
 
 | ID | Dip. | File di proprieta | Attivita atomica | Prova e criterio di uscita |
@@ -1802,8 +1684,8 @@ nessuno dei due vincoli ritarda i milestone di RM-0009.
 | D-G0.2 | G0.1 | Roberto per le decisioni di prodotto; coordinatore per la specifica | Fissare le decisioni normative: fatti D1/D2, `blocked` tecnico, semantica shadow, deduplica, protocollo remoto, costo/autorita e pattern d'uso S2. Nessuna scelta di prodotto viene delegata a un agente medium. | Tabella decisionale esaustiva senza `TBD`; simulazione su create, extend, promote e reject; decisioni materiali registrate tra quelle vincolanti. |
 | D-G0.3 | G0.2 | `internal/roadmap/RM-0008-porta-unica-nascita-executor.md`, questo file | Emettere l'emendamento che assegna una sola porta Birth, risolve il destino di `test_runner.py` e rende RM-0008/F5 un prerequisito non aggirabile di D2. | Ricerca repository: nessuna istruzione attiva contraddittoria; approvazione dei maintainer dei due piani. |
 | D-G0.4 | G0.1 | specifica helper, socket locale e test | Definire senza implementare: socket Unix con owner/mode/inode e peer credential verificati; token breve legato a metodo+path, mai chiave master; HTTP solo loopback/path relativo; proxy/redirect/URL assoluti vietati; payload stdin e redazione. | Modello di minaccia e prove argv/env/log, processo impostore loopback/socket, redirect/proxy e replay; implementazione D-S0.1. |
-| D-G0.5 | G0.1 | report baseline, A.5, work manifest, elenco candidato E.2 | Generare inventari di manifest legacy, consumer di chiavi/vault, writer `TurnLog`, call graph F6, registrazioni per kind, produttori che scrivono marker di crescita o chiamano direttamente Birth/sintesi, file condivisi e **tutti** gli store owner-bearing esistenti (DB, JSONL, cache, auth, invocation, durable); verificare i candidati E.2 e generare il work manifest per ogni ID. | Inventari riproducibili; conteggi derivati dai file; nessun ingresso di crescita diretto, path generico o store owner-bearing senza lifecycle owner. |
-| D-G0.6 | G0.2, G0.3, G0.4, G0.5 | questa roadmap, §§5.4.1 e D.8, A.4, A.5, work manifest | Integrare gli inventari; allineare §§5-6 e A.4-A.5 a D; congelare nomi moduli, DAG, schemi, file e numeri migrazione; generare test di aciclicita, macchina a stati e dominanza dei milestone. | Nessuna prescrizione concorrente; ogni unita obbligatoria e antenata del milestone pertinente; work manifest completo. |
+| D-G0.5 | G0.1 | report baseline, A.5, work manifest | Generare inventari di manifest legacy, consumer di chiavi/vault, writer `TurnLog`, call graph F6, registrazioni per kind, file condivisi e **tutti** gli store owner-bearing esistenti (DB, JSONL, cache, auth, invocation, durable); generare il work manifest per ogni ID. | Inventari riproducibili; conteggi derivati dai file; nessun path generico o store owner-bearing senza lifecycle owner. |
+| D-G0.6 | G0.2, G0.3, G0.4, G0.5 | questa roadmap, A.4, A.5, work manifest | Integrare gli inventari; allineare §§5-6 e A.4-A.5 a D; congelare nomi moduli, DAG, schemi, file e numeri migrazione; generare test di aciclicita e dominanza dei milestone. | Nessuna prescrizione concorrente; ogni unita obbligatoria e antenata del milestone pertinente; work manifest completo. |
 | D-G0.7 | G0.6 | due agenti medium indipendenti | Eseguire il dry-run documentale senza contesto orale. | Stesso ordine, file, transizioni, commit point e test; ogni divergenza riapre G0.6. |
 | D-G0.8 | G0.7 | reviewer architettura e sicurezza indipendenti | Ripetere la review del progetto e verificare tutti i gate C.3. | Nessun rilievo bloccante o alto irrisolto. |
 | D-G0.9 | G0.8 | Roberto, poi coordinatore | Generare in anteprima il contenuto normalizzato senza storia; ottenere l'approvazione su quel payload e impostare lo stato `ready`. | Digest registrato; nessun codice non-FS iniziato. Eventuali commit FS gia autorizzati sono elencati con stato e prove. |
@@ -1821,7 +1703,7 @@ nessuno dei due vincoli ritarda i milestone di RM-0009.
 | D-P1.3 | P1.2 | `growth_policy.py`, test decisioni | Aggiungere budget/costo, soglie benefit per kind e regole anti-ripetizione indipendenti da owner/provenienza. | Nessun campo owner/principal influenza soglia, ranking o decisione; retry duplicati non aumentano il campione. |
 | D-P2.1 | P1.2 | `runtime/change_intents.py`; test migrazione | Definire migration ledger e DDL del solo nucleo intent+fonti+alias, con FK attive su ogni connessione. Valutazioni, rifiuti, token, operation ed epoca appartengono alle unita dedicate. | Migrazione vuota e da schema storico, rollback simulato, `foreign_key_check` vuoto. |
 | D-P2.4 | P2.1 | nuovo `runtime/change_canonical.py`; test codec | Definire body chiuso per ogni kind, qualificatori sicuri e SHA-256 domain-separated su JSON canonico. | Vettori golden, delimitatori/Unicode, collision check e compatibilita di sola lettura col digest corto legacy. |
-| D-P2.2 | P2.1, P2.4 | `change_intents.py`; test concorrenza | Migrare duplicati trasferendo fonti e sole tabelle figlie legacy gia esistenti al canonico e archiviando alias; creare unicita sul canonico. Le nuove valutazioni F2 risolvono sempre l'alias canonico alla scrittura. | Due connessioni convergono a un intent; indice creato con duplicati reali; il ripristino consolida senza collisione. |
+| D-P2.2 | P2.1, P2.4 | `change_intents.py`; test concorrenza | Migrare duplicati trasferendo fonti e sole tabelle figlie legacy gia esistenti al canonico e archiviando alias; creare unicita sul canonico. Le nuove valutazioni F2 risolvono sempre l'alias canonico alla scrittura. | Due connessioni convergono a un intent; indice creato con duplicati reali; restore fa merge senza collisione. |
 | D-P2.3 | P2.2 | `change_intents.py`; test state machine | Implementare enum e tabella esaustiva D1/D2: incluso `trial_applying`, `blocked` con reason tipizzato, recovery e terminali legacy. | Test parametrico di ogni arco ammesso e di ogni salto negato; nessun `UPDATE` stato fuori dal CAS. |
 | D-P2.8 | P1.2, P2.3 | `change_intents.py`; test epoch | Creare l'unica API epoch e il ledger idempotente dopo schema, deduplica e stati; ogni consumer successivo deve usarla per policy, apply, rifiuto, revoca e rollback. | Stesso event/operation ID incrementa una volta; policy version diversa dopo restart invalida la firma. |
 | D-P2.5 | P2.3, P2.8 | nuovo `runtime/change_operations.py`; test recovery | Implementare journal/outbox con `operation_id`, phase, lease owner/expiry, attempt, before/after, receipt e CAS. | Due worker, lease scaduta e crash in ogni confine convergono a un solo effetto osservato. |
@@ -1873,7 +1755,6 @@ nessuno dei due vincoli ritarda i milestone di RM-0009.
 | D-F5.6 | F5.3, P2.6, P2.8, P2.10 | `runtime/rejection_rules.py`, `growth_decision.py` | Verificare la transazione atomica del «no» gia introdotta da P2.6; implementare scadenza/revoca append-only ed epoch. I producer usano l'API P2.10. | Nessuna rigenerazione fino a expiry/revoca; crash sul «no» non separa token, stato, regola o epoca. |
 | D-F5.7 | F5.5e, F5.6, F0.3, F2.2, P1.3 | valutazioni benefit e rollback dal work manifest | Calcolare vettore success/latency/cost per kind, baseline causale e sample deduplicato; rollback solo dopo `observe_effect` inverso. | No traffic = insufficient; peggioramento attribuito provoca un solo rollback; failure non attribuita non lo provoca. |
 | D-F5.8 | F5.5e, P2.5, P2.8 | nuovo `runtime/growth_safety.py`, adapter RM-0008/F6 e test | Implementare `AuthorityViolationV1` autenticata: quarantine immediata; create/extend richiedono ritiro RM-0008, promote torna shadow; stato finale solo dopo observe/receipt. | Evento falsificato ignorato; evento valido blocca uso globale senza attendere campione; crash/retry convergono a una quarantine. |
-| D-F5.9 | F5.2, F5.4, F4.2c, G0.5 | `runtime/proposal_actions.py`, `runtime/telos_synth_consumer.py`, `runtime/engine/fastpath_promote.py` e ogni altro ingresso trovato dal work manifest | Chiudere i percorsi che scrivono `synt_pending` o chiamano direttamente `handle_synth_request`: ogni proposta di crescita diventa prima intent canonico con fonte registrata e attraversa D1; restano fuori soltanto gli ingressi espliciti non classificati come crescita dal registro chiuso. | Per ciascun produttore censito: nessuna chiamata Birth prima di D1, retry idempotente, rifiuto efficace e «si» che arriva a `trial_applying`, mai direttamente ad `accepted` o attivo. |
 
 ### D.6 Tranche FS e F6 — Confini di sicurezza e invocazione
 
@@ -1916,88 +1797,11 @@ nessuno dei due vincoli ritarda i milestone di RM-0009.
 
 | ID | Dip. | Responsabile | Attivita atomica | Prova e criterio di uscita |
 |---|---|---|---|---|
-| D-I1.1 | F1.1, F1.2, F1.3, F5.6, F5.7, F5.8, F5.9, F6.2.barrier, P2.9 | coordinatore | Integrare il milestone pre-certificazione: registro/ritiri/migrazioni legacy, F0-F5 infrastrutturali, chiusura di ogni ingresso diretto alla sintesi, F6 shadow e D2 `blocked`/`dependency_unready`. La tranche di sicurezza (D.1-bis) procede a parte. | Test di dominanza verde; stato `implemented_pending_rm0008`; prova che nessuna approvazione o marker attiva D2 o Birth fuori dal ciclo. |
-| D-I0.1 | I1.1, X0.1 | coordinatore | Integrare in ordine topologico i commit elencati nel release manifest, risolvere conflitti dai rispettivi owner e rieseguire suite dei moduli toccati. | Worktree pulito, `git diff --check`, nessun test indebolito, release manifest con conteggi completi. |
+| D-I1.1 | F1.1, F1.2, F1.3, F5.6, F5.7, F5.8, F6.2.barrier, FS-A.4, FS-B.4c, P2.9 | coordinatore | Integrare il milestone pre-certificazione: registro/ritiri/migrazioni legacy, F0-F5 infrastrutturali, F6 shadow, confini FS chiusi e D2 `blocked`/`dependency_unready`. | Test di dominanza verde; stato `implemented_pending_rm0008`; prova che nessuna approvazione attiva D2. |
+| D-I0.1 | I1.1, X0.1, F6.3, F6.4e, F6.5, F6.6, S0.1 | coordinatore | Integrare in ordine topologico i commit elencati nel release manifest, risolvere conflitti dai rispettivi owner e rieseguire suite dei moduli toccati. | Worktree pulito, `git diff --check`, nessun test indebolito, release manifest con conteggi completi. |
 | D-I0.2 | I0.1 | coordinatore sicurezza | Eseguire fault injection su transazioni, lease, token, Birth, apply, rollback, redelivery e restart. | Ogni crash converge; nessun effetto senza receipt/commit; nessun replay produce un secondo effetto. |
 | D-I0.3 | I0.1 | coordinatore privacy | Eseguire matrice con almeno due utenti: stesso catalogo/routing globale; dati, argomenti, credenziali, task, ricevute d'invocazione e riprese isolati. Le ricevute del cambiamento globale restano canoniche e prive di dati owner. | Tutti vedono la modifica attiva; nessun artefatto owner-scoped attraversa il confine. |
 | D-I0.4 | I0.2, I0.3 | coordinatore | Eseguire un ciclo reale S1, S2-TELOS, S2-pattern e S3 con ID causali; includere rifiuto, revoca, retry e rollback. | Evento→intent→valutazione→decisione→effetto→misura completo per ogni sorgente. |
 | D-I0.5 | I0.4 | coordinatore | Produrre tutti gli indicatori 1-10 e verificare successo, latenza, costo, valore TELOS, domande e autorita; nessuna attivazione per-owner. | Soglie di §5.6 rispettate e indicatori non vuoti dove il ciclo reale li rende applicabili. |
 | D-I0.6 | I0.5 | due reviewer indipendenti | Ripetere review architettura/sicurezza e dry-run medium del codice e del release manifest approvato. | Nessun rilievo bloccante/alto; file, transizioni, test e risultati concordano con il digest approvato a G0.9. |
 | D-I0.7 | I0.6 | coordinatore | Impostare lo stato `implemented`, poi `complete` solo quando le condizioni del §11 sono tutte provate. | Report finale persistente; baseline e digest di approvazione conservati; nessuna riscrittura della storia Git. |
-
-### D.8 Schemi minimi da congelare in G0.6
-
-Questa tabella integra il catalogo dati della proposta esterna, correggendone i
-conflitti con globalita, atomicita e ciclo D1/D2. I nomi fisici e il numero di
-migrazione vengono confermati dal work manifest; campi e invarianti minimi non
-possono essere ridotti da un agente esecutore.
-
-| Unita proprietaria | Oggetto | Campi/invarianti minimi |
-|---|---|---|
-| P2.1/P2.3 | `change_intents` | ID canonico, kind, body canonico e versione, fingerprint SHA-256, stato, `row_version`, `decision_moment`, `resume_state`, `failure_phase`, contract/policy version e timestamp. Nessuna provenienza o identita owner top-level. |
-| P2.2 | alias/archivio legacy | ID e fingerprint legacy, ID canonico, motivo, digest pre/post e timestamp; unicita sul canonico attivo; ripristino soltanto come consolidamento transazionale. |
-| F4.0 | `change_intent_sources` | FK intent, `source_event_id`, kind/fine TELOS, component ID/version/digest iniettati dal registro, `origin_owner_id` opaco e timestamp; tutte le fonti append-only, nessuna primaria. |
-| F2.1 | `change_intent_evaluations` | ID totale, FK intent, `evaluation_key`, dimensione, stato, valore, metrica, unita, finestra, campione, baseline/osservato, evaluator/versione, source event, revisione/supersedes e timestamp; `UNIQUE(intent_id,evaluation_key,revision)`. |
-| P2.5 | `change_operations` e outbox | `operation_id`, intent/kind, fase, lease owner/scadenza, tentativo, autorita target/versione, digest before/after/receipt, errore tipizzato e timestamp; claim e commit con CAS. |
-| P2.10/F5.6 | `rejection_rules` e revoche | rule ID, fingerprint canonica, token/decisione, principal autenticato o tombstone, creazione/scadenza; revoche append-only. Non e un change kind e non possiede handler. |
-| P2.6 | token di decisione | nello stesso DB dell'intent: token casuale, purpose, binding kind/ID/generazione/digest, destinatario/canale, scadenza, consumo/principal e revoca/motivo; «no», stato, regola ed epoca nella stessa transazione. |
-| P2.8 | epoca globale | riga epoch e ledger degli event/operation ID gia applicati; stesso evento incrementa una volta. `GrowthPolicy.version` entra direttamente nelle firme anche senza incremento. |
-| F3.1 | `lacuna_events` | event ID immutabile da turno+ordinale azione, contratto canonico, classificazione revisionabile, generazione catalogo, classificatore e provenienza owner soggetta a cancellazione. |
-| F4.3a | `PlanTemplateV1` | scheletro e placeholder allowlist senza valori, fingerprint, operation autorevole, stato shadow/legacy committed e versione; argomenti concreti rilegati solo dal principal corrente. |
-| F6.2a | statistiche F6 | process start ID, sequenza/watermark, percorso, executor, decisione/reason e conteggio; unicita idempotente del flush, nessun record per singola invocazione. |
-| F6.4a-e | autorizzazione remota v2 | invocation/device/principal operativo, contratto/generazione, digest payload, epoca, scadenza, claim, CAS start, completion firmata e stato `execution_unknown`; nessun secondo grant dopo start. |
-| F0.1/P2.9 | record turno e lifecycle owner | origin/outcome/intent hash canonico; registro di ogni store owner-bearing, purger, revocation HMAC e tombstone distinto. |
-
-## Appendice E — Registro dell'unione delle due revisioni
-
-Questa appendice documenta l'unione caso per caso richiesta da Roberto. E
-storica e viene rimossa dopo l'approvazione secondo il §12. Le due sorgenti
-integrali, identificate dagli SHA-256 in testa al documento, restano separate e
-non normative.
-
-### E.1 Decisioni puntuali
-
-| Caso | Apporto confrontato | Decisione | Motivo |
-|---|---|---|---|
-| M-01 | Stato del documento | mantenuta la prudenza della revisione 7 | Un elenco lavori non equivale a review conclusiva; G0.7-G0.8 restano necessari. |
-| M-02 | S2 limitata a TELOS nella proposta esterna | mantenute TELOS e pattern d'uso aggregati | L'obiettivo vincolante include anticipazione dagli schemi d'uso. |
-| M-03 | Provenienza duplicata nell'intent e nelle fonti | mantenuta solo in `change_intent_sources` | Evita una fonte primaria arbitraria; componente e `owner_id` restano audit, mai cancello. |
-| M-04 | Proiezione delle valutazioni per sola dimensione | mantenuta la chiave per valutatore/metrica/unita/finestra/evento | Successo, latenza e costo devono coesistere; introdotta `evaluation_key` univoca. |
-| M-05 | Fatto mancante trasformato in domanda | mantenuta la separazione D1/D2 e `blocked` tecnico | Una persona non puo sostituire receipt, firma, preesercizio o dipendenza. |
-| M-06 | Tabella stati esterna con `observed/finalized` e salti diretti | integrazione selettiva nel §5.4.1 | Gli stati storici utili restano; `proposed→accepted` vale solo per promote, create/extend passano da trial; `superseded` e terminale. |
-| M-07 | `reject_rule` come quarto change kind | escluso | La regola e governance atomica del «no», senza apply/observe/rollback. |
-| M-08 | Effetto diretto e falsa transazione fra DB | mantenuti prepare/commit, autorita per tipo e outbox | Solo il puntatore RM-0008 o il commit governance rende globale una modifica. |
-| M-09 | Politica in tabella descrittiva senza tipi/range | mantenuto il registro macchina della revisione 7 | Un agente medio deve poter validare ogni campo e non introdurre letterali. |
-| M-10 | Digest storico corto come identita globale | escluso | Il nuovo ID usa SHA-256 del codec canonico; il corto resta alias di migrazione. |
-| M-11 | Token remoto consumato al poll | escluso | Rompe redelivery e revoca; resta claim seguito da `authorize_start` con CAS immediatamente prima dell'effetto. |
-| M-12 | Numero fisso di manifest FS-A e rimozione immediata dei campi | escluso | Il conteggio e gia variabile e le prove legacy vanno convertite con equivalenza prima del rifiuto. |
-| M-13 | FS-B limitata al server e al CRUD credenziali | escluso | Il confine comprende server, device, hardlink, mail e provider censiti, con attestazione di release. |
-| M-14 | Completamento con soli quattro indicatori | escluso | Restano indicatori 1-10, visibilita globale e isolamento dei dati per owner. |
-| M-15 | Comandi amministrativi con chiave in argv | esclusi | Resta l'helper con socket protetto e token breve, implementato da D-S0.1. |
-| M-16 | Catalogo esterno di file, simboli e prove | accolto come elenco candidato E.2 | E utile per gli agenti medi, ma G0.5 deve riconfermarlo sul commit di partenza. |
-| M-17 | Percorso `proposal_actions → synt_pending → telos_synth_consumer → handle_synth_request` | accolto e generalizzato in D-F5.9 | E un vero ingresso che puo aggirare D1; il censimento include anche `fastpath_promote` e ogni altro chiamante. |
-| M-18 | Schema dati consolidato della proposta esterna | accolto con correzioni in D.8 | Conservati i dettagli utili; rimossi provenienza top-level, token in DB separato e rejection come kind. |
-| M-19 | Nomi di test puntuali della proposta esterna | accolti come candidati, non come prova esistente | Molti file di test sono ancora da creare; il work manifest fissa nome finale e comando. |
-| M-20 | Cronaca da cancellare dopo approvazione | mantenuta ed estesa a questa appendice | Dopo l'approvazione restano soltanto specifica e piano approvati, senza riscrivere Git. |
-
-### E.2 Elenco candidato di file e simboli
-
-I percorsi esistenti sotto sono stati ricontrollati il 14/9; quelli indicati
-come «nuovo» non esistono ancora. D-G0.5 deve risolvere nuovamente ogni simbolo,
-aggiungere i chiamanti mancanti e produrre percorsi/test esatti prima
-dell'assegnazione.
-
-| Area | Esistenti da verificare | Nuovi candidati |
-|---|---|---|
-| P0-P1 | `runtime/learning_loop.py`, `runtime/stack_reconcile.py` | `internal/tools/rm0009_baseline.py`, `runtime/growth_policy.py`, relativi test |
-| P2 | `runtime/change_intents.py`, `runtime/engine/cache_validity.py` | `runtime/change_canonical.py`, `runtime/change_operations.py`, `runtime/rejection_rules.py`, `runtime/one_shot_tokens.py`, test migrazione/concorrenza |
-| F0 | `runtime/agent_runtime.py`, `runtime/http_auth.py`, `runtime/users.py`, route e chiamanti di `run_turn` | `runtime/turn_outcome.py`, `runtime/growth_indicators.py`, test origine/esito |
-| F1 | `runtime/vaglio.py`, `runtime/engine/{executor,dispatch}.py`, `runtime/change_{applier,rollback}.py`, adapter e documenti lifecycle | registro test dei collegamenti e `internal/tools/rm0009_backlog_cleanup.py` |
-| F2 | `runtime/alignment_engine.py`, adapter, route amministrative e job | `runtime/change_evaluations.py`, test valutazioni/privacy |
-| F3 | `runtime/engine/{dispatch,terminator}.py`, `runtime/prefilter.py` | `runtime/engine/gap_evidence.py`, test eventi e riconciliazione |
-| F4 | adapter `telos`, registro adapter, autopath e job `change_intent_materialize` | adapter `gap.py`, `usage_patterns.py`, `optimization.py`, store pattern e test |
-| Ingressi D1 | `runtime/proposal_actions.py::on_accept`, `runtime/telos_synth_consumer.py::run_once`, `runtime/engine/fastpath_promote.py`, chiamanti di `handle_synth_request` e `submit_*_birth` | test parametrico che ogni produttore di crescita attraversi D1 |
-| F5 | promoter digest/state, canale, route amministrativa, change applier/rollback, `executor_birth_{intent,properties}.py` | `runtime/growth_{facts,decision,safety}.py`, recovery e test fault-injection |
-| F6 | `runtime/agent_runtime.py`, `runtime/loader.py`, durable execution/scheduler, `runtime/{invocations,remote_exec,agent_server,devices}.py` | `runtime/invocation_authority.py`, protocollo/test v2 |
-| Device | `client-rs/src/{config,runner,wire,selfupdate,sandbox_common,sandbox_linux,sandbox_windows,appcontainer}.rs` | fixture comuni e prove Linux/Windows |
-| FS-A/FS-B | `runtime/{synth_request,executor_birth_runner,executor_birth_identity,test_runner,sandbox,credentials,vaglio}.py`, generatori builtin e consumer vault/chiavi | `runtime/protected_roots.py`, broker core, inventari e attestazioni |
