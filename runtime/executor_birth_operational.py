@@ -290,8 +290,21 @@ def _replay_terminal(core: "_BirthCore", request: BirthRequest, claim: object) -
     committed = claim.state == "committed"
     if committed != (result.publication is not None):
         raise ValueError("birth_terminal_state_mismatch")
-    if committed and claim.result_binding != _terminal_binding(encoded):
-        raise ValueError("birth_terminal_binding_mismatch")
+    if committed:
+        if (result.report.outcome not in {BirthOutcome.ADMITTED, BirthOutcome.PREEXERCISE}
+                or result.error_code is not None):
+            raise ValueError("birth_terminal_state_mismatch")
+        if claim.result_binding != _terminal_binding(encoded):
+            raise ValueError("birth_terminal_binding_mismatch")
+    elif (claim.state != "rejected"
+            or result.report.outcome not in {
+                BirthOutcome.REJECTED, BirthOutcome.NEEDS_HUMAN, BirthOutcome.QUARANTINED,
+            }
+            or not isinstance(result.error_code, str) or not result.error_code
+            or result.error_code != claim.rejection_code):
+        # An admitted recovery hint is not a terminal rejection. The operational
+        # error can differ from the original check error after finalization fails.
+        raise ValueError("birth_terminal_state_mismatch")
     if result.publication is not None:
         _publication_binding(request, result.publication)
         verified, verified_admission = _verified_postcondition(

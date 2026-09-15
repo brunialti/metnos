@@ -32,6 +32,27 @@ or F5/F6 have passed their exit criteria. New authority scopes or normative
 exceptions remain subject to RM-0008 section 17; they must not be inferred
 from the assignment of F6.
 
+### Historical evidence clarification — approved on 15 September 2026
+
+After an explanation of both alternatives, Roberto explicitly answered
+**PRIMA OPZIONE**: certify historical acts using authenticated receipts,
+exact bindings and independently reread persistent state. The temporary
+authoring journals and source snapshots are not generally retained after
+publication; their absence must be stated, not hidden or reconstructed as
+if they had been preserved.
+
+This approval resolves the evidence-sufficiency question raised by the
+independent internal review. It does not waive signatures, exact identity,
+complete inventory, deduplication, terminal success, historical authority,
+cycles or defect closure. It does not assert that the installed candidates
+already meet the threshold. An absent temporary artifact is distinct from a
+missing or inconsistent durable receipt: the latter cannot qualify.
+
+The certifier must distinguish a verified signed journal/source binding from
+original journal/source bytes actually reread. Available originals, if used,
+must match their authenticated binding. No new admissions, signing keys or
+artificial edits may be manufactured to populate the historical threshold.
+
 ## 2. Order and stopping condition
 
 The sequence remains:

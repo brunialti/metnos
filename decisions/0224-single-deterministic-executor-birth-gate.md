@@ -382,3 +382,20 @@ This preserves existing signing domains, schemas and productive callers;
 it does not establish the F5 admission threshold or enable F5. At this
 checkpoint the repair is not installed, the source-review pin is unchanged,
 and live HTTP, native Windows and independent review remain outstanding.
+
+An independent internal review subsequently found that an admitted recovery
+hint stored as a rejected terminal still passed the publication-presence
+check. Replay now also requires the signed outcome and operational error to
+match the terminal state and stored rejection code. It preserves admitted
+and preexercise successes, all three rejection outcomes, and an operational
+finalization error distinct from the original check error. Five new negative
+cases reproduced the remaining omission; 20 affected cases pass, including
+both interruption-recovery paths. The reviewer found no further blocker in
+this bounded repair. Installed verification and source review remain open.
+
+For G8 historical evidence, Roberto approved verification of signed receipts,
+exact bindings and reread persistent state, with explicit disclosure that
+temporary journals and source snapshots may no longer exist. A verified
+signed hash is not evidence that those original bytes were reread. This
+clarifies the evidence contract without enabling F5 or lowering its admission,
+producer, cycle or defect thresholds.

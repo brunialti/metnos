@@ -191,7 +191,10 @@ def test_approval_is_resolved_from_observed_facts_per_request(tmp_path):
     assert seen == [(request.request_id, seen[0][1], None, NOW)]
 
 
-def test_admitted_pipeline_commits_receipt_and_replays_verified_postcondition(tmp_path):
+@pytest.mark.parametrize("outcome", [BirthOutcome.ADMITTED, BirthOutcome.PREEXERCISE])
+def test_admitted_pipeline_commits_receipt_and_replays_verified_postcondition(
+    monkeypatch, tmp_path, outcome,
+):
     calls = []
 
     def publisher(ref, *, expected_generation_id, snapshot, request_id,
@@ -218,16 +221,25 @@ def test_admitted_pipeline_commits_receipt_and_replays_verified_postcondition(tm
                                  "commit_birth_snapshot", False)
 
     request, core = _fixture(tmp_path, publisher)
+    if outcome is BirthOutcome.PREEXERCISE:
+        observe = operational._observe_birth_for_test
+
+        def preexercise_report(*args, **kwargs):
+            # F3 owns the decision; exercise both valid success states at the
+            # terminal boundary without repeating the synthesized-origin suite.
+            return replace(observe(*args, **kwargs), outcome=outcome)
+
+        monkeypatch.setattr(operational, "_observe_birth_for_test", preexercise_report)
     result = _birth_executor_for_test(request, _core=core)
     assert result.error_code is None
-    assert result.report.outcome is BirthOutcome.ADMITTED
+    assert result.report.outcome is outcome
     assert result.publication is not None
     assert len(calls) == 1
     assert not calls[0].private_root.exists()
 
     replay = _birth_executor_for_test(request, _core=core)
     assert replay.publication is not None
-    assert replay.report.outcome is BirthOutcome.ADMITTED
+    assert replay.report.outcome is outcome
     assert len(calls) == 1
 
 
@@ -385,6 +397,8 @@ def test_terminal_envelope_tampering_fails_closed_before_checks_or_publish(monke
 
 @pytest.mark.parametrize("mismatch", [
     "signed_contract", "stored_result_binding", "committed_hint", "rejected_publication",
+    "rejected_hint", "committed_outcome", "committed_error",
+    "rejected_error_code", "rejected_missing_error",
 ])
 def test_terminal_replay_rejects_inconsistent_durable_bindings(
     monkeypatch, tmp_path, mismatch,
@@ -408,14 +422,27 @@ def test_terminal_replay_rejects_inconsistent_durable_bindings(
             "SELECT terminal_envelope,terminal_auth,result_binding "
             "FROM birth_producer_receipts"
         ).fetchone()
-        if mismatch in {"signed_contract", "committed_hint"}:
-            value = json.loads(envelope)
-            if mismatch == "signed_contract":
-                value["publication"]["contract_id"] = ContractId(
-                    ManifestOrigin.USER, "other/manifest.toml",
-                ).value
-            else:
-                value["publication"] = None
+        value = json.loads(envelope)
+        rejected = mismatch.startswith("rejected_")
+        if mismatch == "signed_contract":
+            value["publication"]["contract_id"] = ContractId(
+                ManifestOrigin.USER, "other/manifest.toml",
+            ).value
+        elif mismatch in {"committed_hint", "rejected_hint"}:
+            value["publication"] = None
+        elif mismatch == "committed_outcome":
+            value["report"]["outcome"] = "rejected"
+        elif mismatch == "committed_error":
+            value["error_code"] = "birth_not_admitted"
+        elif mismatch in {"rejected_error_code", "rejected_missing_error"}:
+            value["publication"] = None
+            value["admission_receipt"] = None
+            value["report"]["outcome"] = "rejected"
+            value["report"]["error_code"] = "semantic_review_failed"
+            value["error_code"] = (
+                "semantic_review_failed" if mismatch == "rejected_error_code" else None
+            )
+        if mismatch not in {"stored_result_binding", "rejected_publication"}:
             envelope = json.dumps(
                 value, ensure_ascii=True, sort_keys=True, separators=(",", ":"),
             ).encode("ascii")
@@ -425,7 +452,7 @@ def test_terminal_replay_rejects_inconsistent_durable_bindings(
             binding = operational._terminal_binding(envelope)
         elif mismatch == "stored_result_binding":
             binding = D
-        else:
+        if rejected:
             binding = None
             db.execute(
                 "UPDATE birth_producer_receipts SET state='rejected',"
@@ -451,7 +478,7 @@ def test_terminal_replay_rejects_inconsistent_durable_bindings(
             "SELECT state,terminal_envelope,terminal_auth,result_binding "
             "FROM birth_producer_receipts"
         ).fetchone() == (
-            "rejected" if mismatch == "rejected_publication" else "committed",
+            "rejected" if rejected else "committed",
             envelope, signature, binding,
         )
 
@@ -690,14 +717,20 @@ def test_crash_between_publisher_postcondition_and_finalize_is_retryable(
     assert reconciliations == [None]
 
 
+@pytest.mark.parametrize("outcome,check_error,finalization_failure", [
+    (BirthOutcome.REJECTED, "semantic_review_failed", False),
+    (BirthOutcome.NEEDS_HUMAN, "approval_required", False),
+    (BirthOutcome.QUARANTINED, "candidate_quarantined", False),
+    (BirthOutcome.REJECTED, "semantic_review_failed", True),
+])
 def test_non_admission_is_durably_rejected_and_replayed_without_checks_or_publish(
-    monkeypatch, tmp_path,
+    monkeypatch, tmp_path, outcome, check_error, finalization_failure,
 ):
     calls = []
     request, core = _fixture(tmp_path, lambda *_args, **_kwargs: calls.append(1))
     rejected = BirthReport(
         1, request.manifest_ref.contract_id, None, None, None, None, (), (),
-        BirthOutcome.REJECTED, "semantic_review_failed",
+        outcome, check_error,
     )
     observations = []
 
@@ -706,16 +739,30 @@ def test_non_admission_is_durably_rejected_and_replayed_without_checks_or_publis
         return rejected
 
     monkeypatch.setattr(operational, "_observe_birth_for_test", reject)
+    if finalization_failure:
+        finalize = operational.finalize_producer_receipt
+        finalizations = []
+
+        def fail_once(*args, **kwargs):
+            finalizations.append(1)
+            if len(finalizations) == 1:
+                raise OSError("rejection finalization interrupted")
+            return finalize(*args, **kwargs)
+
+        monkeypatch.setattr(operational, "finalize_producer_receipt", fail_once)
+    expected_error = "birth_unavailable" if finalization_failure else check_error
     first = _birth_executor_for_test(request, _core=core)
-    assert first.error_code == "semantic_review_failed"
+    assert first.error_code == expected_error
+    assert first.report.error_code == check_error
     assert len(observations) == 1 and calls == []
     monkeypatch.setattr(
         operational, "_observe_birth_for_test",
         lambda *_args, **_kwargs: pytest.fail("terminal rejection reran checks"),
     )
     replay = _birth_executor_for_test(request, _core=core)
-    assert replay.error_code == "semantic_review_failed"
-    assert replay.report.outcome is BirthOutcome.REJECTED
+    assert replay.error_code == expected_error
+    assert replay.report.error_code == check_error
+    assert replay.report.outcome is outcome
     assert calls == []
 
 
