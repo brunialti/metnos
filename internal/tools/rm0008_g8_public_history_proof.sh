@@ -3,7 +3,7 @@
 # The administrative runner captures diagnostics privately. Only bounded
 # public identities, counts and error codes leave this process.
 set -euo pipefail
-case "${2:-}" in public-history|initial-public-history|initial-policy-binding|producer-policy|producer-declarations|producer-binding|producer-history|contract-history|contract-history-v1|contract-inventory|contract-residual) ;; *) exit 64 ;; esac
+case "${2:-}" in public-history|initial-public-history|initial-policy-binding|producer-policy|producer-declarations|producer-binding|publication-binding|producer-history|contract-history|contract-history-v1|contract-inventory|contract-residual) ;; *) exit 64 ;; esac
 /opt/metnos/.venv/bin/python -I - "$1" "$2" <<'PY'
 import hashlib
 import importlib.util
@@ -23,17 +23,19 @@ modules = (
     "executor_birth_context_v1.py", "executor_birth_prepared_set.py",
     "executor_birth_prepared_root.py",
 )
-if sys.argv[2] in {"producer-declarations", "producer-binding"}:
+if sys.argv[2] in {"producer-declarations", "producer-binding", "publication-binding"}:
     # This candidate helper was not present in the installed release. Measure
     # it explicitly; do not mistake the older source-availability probe for
     # an execution of the new exact-file owner interface.
     modules = ("executor_birth_distribution_manifest.py",) + modules
-if sys.argv[2] == "producer-binding":
+if sys.argv[2] in {"producer-binding", "publication-binding"}:
     modules = ("executor_birth_receipts.py",) + modules
-if sys.argv[2] in {"producer-history", "contract-history", "contract-history-v1", "producer-binding"}:
+if sys.argv[2] in {"producer-history", "contract-history", "contract-history-v1", "producer-binding", "publication-binding"}:
     modules += ("executor_birth_producer_store.py",)
-if sys.argv[2] in {"contract-history", "contract-history-v1", "contract-inventory", "producer-binding"}:
+if sys.argv[2] in {"contract-history", "contract-history-v1", "contract-inventory", "producer-binding", "publication-binding"}:
     modules += ("contract_store.py",)
+if sys.argv[2] == "publication-binding":
+    modules += ("executor_birth_operational.py",)
 
 def source_hashes():
     return {
@@ -107,7 +109,7 @@ def read_only_audit(event, args):
         # event. Permit only the reviewed, logically read-only connection.
         allowed_database = (Path(os.environ["METNOS_USER_STATE"]) / "birth"
                             / "producer_receipts.sqlite")
-        if (sys.argv[2] not in {"producer-history", "contract-history", "contract-history-v1", "producer-binding"}
+        if (sys.argv[2] not in {"producer-history", "contract-history", "contract-history-v1", "producer-binding", "publication-binding"}
                 or args[0] != allowed_database.as_uri() + "?mode=ro&cache=private"):
             denied["write_or_execution"] += 1
             denied_events.append({"event": event})
@@ -284,7 +286,7 @@ try:
             "qualification": "historical_declarations_not_qualifying_admission",
         }
         selectors = ()
-    if sys.argv[2] == "producer-binding":
+    if sys.argv[2] in {"producer-binding", "publication-binding"}:
         import base64
         from contract_store import read_historical_birth_evidence_v1
         from executor_birth_prepared_root import load_historical_producer_declarations_v1
@@ -348,6 +350,22 @@ try:
             "durable_receipt_byte_equal": True,
             "qualification": "signed_producer_binding_sample_not_terminal_or_admission_qualification",
         }
+        if sys.argv[2] == "publication-binding":
+            from executor_birth_operational import verify_historical_publication_v1
+
+            joined = verify_historical_publication_v1(
+                evidence=durable, receipt_row=row, issuance_row=issuance[0],
+                declarations=declarations,
+            )
+            result["publication_binding"] = {
+                "generation_id": joined.terminal.publication.current_generation_id,
+                "outcome": joined.terminal.report.outcome.value,
+                "revision_class": joined.terminal.report.revision_class.value,
+                "approved_lifecycle": joined.producer_binding.admission.approved_lifecycle.value,
+                "embedded_receipt_present": True,
+                "original_source_journal_reread": False,
+                "qualification": "authenticated_publication_sample_not_complete_inventory_or_f5_count",
+            }
         selectors = ()
     if sys.argv[2] == "producer-history":
         from executor_birth_producer_store import read_producer_history_v1
@@ -582,6 +600,7 @@ try:
         "initial-policy-binding": "observed_authenticated_initial_material_source_inventory",
         "producer-declarations": "verified_selected_historical_producer_declarations",
         "producer-binding": "verified_ordinary_producer_and_durable_receipt_binding_sample",
+        "publication-binding": "verified_ordinary_historical_publication_sample",
     }[sys.argv[2]]
 except Exception as exc:
     errors = []

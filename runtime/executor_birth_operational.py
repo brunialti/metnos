@@ -22,6 +22,11 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 
 if TYPE_CHECKING:
     from executor_birth_intent import BirthIntent, _ProducerCapability
+    from executor_birth_prepared_root import HistoricalProducerDeclarationsV1
+    from executor_birth_producer_store import (
+        HistoricalProducerBindingV1, ProducerReceiptRowV1, ProducerIssuanceRowV1,
+    )
+    from contract_store import HistoricalBirthEvidenceV1
 
 from contract_store import BirthCommitAuthorization, ManifestRef, PublicationResult
 from manifest_inventory import ContractId
@@ -174,6 +179,14 @@ class BirthResult:
     publication: PublicationResult | None
     error_code: str | None
     diagnostic: BirthDiagnostic | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class HistoricalPublicationV1:
+    """Authenticated ordinary publication facts, not a grant or F5 count."""
+
+    producer_binding: HistoricalProducerBindingV1
+    terminal: BirthResult
 
 
 def _terminal_envelope(
@@ -624,6 +637,77 @@ def _receipt_checks(report: BirthReport) -> Mapping[str, AdmissionCheck]:
             check.rule_version, AdmittedCheckStatus(check.status.value), check.evidence_hash,
         )
     return MappingProxyType(result)
+
+
+def verify_historical_publication_v1(
+    *, evidence: HistoricalBirthEvidenceV1, receipt_row: ProducerReceiptRowV1,
+    issuance_row: ProducerIssuanceRowV1, declarations: HistoricalProducerDeclarationsV1,
+) -> HistoricalPublicationV1:
+    """Join durable, Producer and terminal evidence without operational access.
+
+    Public-ring provenance and a common complete frontier belong to the
+    acquiring owner. Valid nontechnical/preexercise publications remain facts,
+    not qualifying technical admissions. Missing original source/journal bytes
+    are not reconstructed from their signed cross-bindings.
+    """
+    from contract_store import HistoricalBirthEvidenceV1, verify_historical_birth_evidence_v1
+    from executor_birth_prepared_root import HistoricalProducerDeclarationsV1
+    from executor_birth_producer_store import verify_historical_producer_binding_v1
+
+    if (type(evidence) is not HistoricalBirthEvidenceV1
+            or type(declarations) is not HistoricalProducerDeclarationsV1):
+        raise ValueError("birth_history_terminal_input_invalid")
+    public = declarations.context.public_set
+    admission = verify_historical_birth_evidence_v1(
+        evidence, admission_verifier_keys=public.admission_verifier_keys,
+        author_verifier_keys=public.author_verifier_keys,
+    )
+    binding = verify_historical_producer_binding_v1(
+        evidence.receipt_bytes, receipt_row=receipt_row, issuance_row=issuance_row,
+        declarations=declarations,
+    )
+    if receipt_row.state != "committed" or receipt_row.rejection_code is not None:
+        raise ValueError("birth_history_terminal_state_invalid")
+    terminal, embedded = verify_terminal_evidence_v1(
+        receipt_row.terminal_envelope, receipt_row.terminal_auth,
+        expected_request_id=admission.birth_request_id,
+        expected_contract_id=evidence.contract_id,
+        verifier_keys=public.admission_verifier_keys,
+    )
+    if receipt_row.result_binding != _terminal_binding(receipt_row.terminal_envelope):
+        raise ValueError("birth_history_terminal_binding_invalid")
+    if embedded is not None and embedded != evidence.receipt_bytes:
+        raise ValueError("birth_history_terminal_receipt_mismatch")
+    report, publication = terminal.report, terminal.publication
+    lifecycles = {
+        BirthOutcome.ADMITTED: ApprovedLifecycle.ACTIVE,
+        BirthOutcome.PREEXERCISE: ApprovedLifecycle.PREEXERCISE,
+    }
+    if (publication is None or terminal.error_code is not None or report.error_code is not None
+            or lifecycles.get(report.outcome) != admission.approved_lifecycle
+            or publication.operation != "commit_birth_snapshot"
+            or publication.current_generation_id != admission.generation_id
+            or publication.previous_generation_id != admission.predecessor_id
+            or report.candidate_id != admission.candidate_id
+            or report.semantic_core_id != admission.semantic_core_id
+            or report.admission_context_id != admission.admission_context_id
+            or report.revision_class is None
+            or report.revision_class.value != admission.revision_class.value):
+        raise ValueError("birth_history_terminal_facts_mismatch")
+    checks = dict(_receipt_checks(report))
+    if "authoring_install_journal_v1" in checks:
+        raise ValueError("birth_history_terminal_reserved_check")
+    checks["authoring_install_journal_v1"] = AdmissionCheck(
+        "1", AdmittedCheckStatus.PASSED, admission.authoring_journal_hash,
+    )
+    semantic_hash = next((c.evidence_hash for c in report.checks
+                          if c.check_id == "semantic_review" and c.status is CheckStatus.PASSED), None)
+    approval = checks.get("approval")
+    if (checks != admission.check_results or semantic_hash != admission.semantic_review_hash
+            or (approval is not None and approval.status is AdmittedCheckStatus.PASSED
+                and approval.evidence_hash != admission.approval_hash)):
+        raise ValueError("birth_history_terminal_checks_mismatch")
+    return HistoricalPublicationV1(binding, terminal)
 
 
 _PREDECESSOR_UNSET = object()

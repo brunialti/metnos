@@ -34,7 +34,7 @@ import tomlkit
 from dataclasses import dataclass, replace
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from types import MappingProxyType
-from typing import Any, Callable, Iterable, Iterator, Mapping, TypeAlias
+from typing import TYPE_CHECKING, Any, Callable, Iterable, Iterator, Mapping, TypeAlias
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PrivateKey,
@@ -65,6 +65,9 @@ from sign import (
     sign_manifest_bytes,
     verify_manifest_bytes,
 )
+
+if TYPE_CHECKING:
+    from executor_birth_receipts import AdmissionReceipt
 
 
 SHADOW_RELATIVE = Path("contract-publications-shadow")
@@ -4380,6 +4383,62 @@ def read_historical_birth_evidence_v1(
         payloads["manifest.toml"], payloads["manifest.toml.sig"],
         payloads["manifest.lang_state.json"],
     )
+
+
+def verify_historical_birth_evidence_v1(
+    evidence: HistoricalBirthEvidenceV1, *,
+    admission_verifier_keys: Mapping[str, Ed25519PublicKey],
+    author_verifier_keys: Mapping[str, Ed25519PublicKey],
+) -> AdmissionReceipt:
+    """Authenticate acquired payloads, not a current executable contract.
+
+    The owner supplies historical public rings and acquisition provenance.
+    Language bytes are bound by the signed generation digest; current policy,
+    original source and temporary authoring journals are never reconstructed.
+    This function does not open a store or prove a completed publication.
+    """
+    from executor_birth_receipts import ReceiptError, verify_admission_receipt
+
+    if type(evidence) is not HistoricalBirthEvidenceV1 or type(evidence.contract_id) is not ContractId:
+        raise ContractStoreError("birth_history_input_invalid")
+    for field, maximum in (
+        ("binding_bytes", 65536), ("receipt_bytes", 1024 * 1024),
+        ("manifest_bytes", 1024 * 1024), ("signature_bytes", 64),
+        ("language_state_bytes", 1024 * 1024),
+    ):
+        value = getattr(evidence, field)
+        if type(value) is not bytes or len(value) > maximum:
+            raise ContractStoreError("birth_history_file_invalid")
+    if len(evidence.signature_bytes) != 64:
+        raise ContractStoreError("birth_history_file_invalid")
+    try:
+        admission = verify_admission_receipt(
+            evidence.receipt_bytes, verifier_keys=admission_verifier_keys,
+        )
+        binding = decode_binding(
+            evidence.binding_bytes, storage_key=contract_storage_key(evidence.contract_id),
+        )
+    except ReceiptError:
+        raise
+    except (ValueError, TypeError, RecursionError, OverflowError) as exc:
+        raise ContractStoreError("birth_history_encoding_invalid") from exc
+    if (binding.contract_id != evidence.contract_id
+            or admission.contract_id != evidence.contract_id.value
+            or admission.generation_id != evidence.generation_id
+            or (evidence.admission_context_id is not None
+                and evidence.admission_context_id != admission.admission_context_id)):
+        raise ContractStoreError("birth_history_receipt_binding_invalid")
+    if generation_id({
+        "manifest.toml": evidence.manifest_bytes,
+        "manifest.toml.sig": evidence.signature_bytes,
+        "manifest.lang_state.json": evidence.language_state_bytes,
+    }) != admission.generation_id:
+        raise ContractStoreError("generation_digest_mismatch")
+    verify_manifest_bytes(
+        evidence.manifest_bytes, evidence.signature_bytes,
+        trusted_publics=author_verifier_keys.items(),
+    )
+    return admission
 
 
 def read_historical_birth_inventory_v1(
