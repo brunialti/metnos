@@ -52,6 +52,7 @@
   let detailLoading = false;
   let polling = false;
   let lastRefreshAt = 0;
+  let lastRefreshTick = null;
   let engine = null;
   let listPages = 1;
   let detailSignature = null;
@@ -60,6 +61,13 @@
   let staleTimer = null;
   const engineStatus = document.getElementById("dwEngine");
   const freshness = document.getElementById("dwFreshness");
+  const observationTick = Symbol("observationTick");
+  function observeProgress(progress, startedAt = performance.now()) {
+    // Client-only metadata survives the discovery projection's object spread,
+    // but is excluded from JSON signatures and never sent back to the server.
+    if (progress && typeof progress === "object") progress[observationTick] = startedAt;
+    return progress;
+  }
 
   const request = async (url, options = {}) => {
     const headers = new Headers(options.headers || {});
@@ -67,6 +75,7 @@
     if (options.body) headers.set("Content-Type", "application/json");
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 10000);
+    const startedAt = performance.now();
     try {
       const response = await fetch(url, {...options, headers, credentials: "same-origin", cache: "no-store", signal: controller.signal});
       if (!response.ok) {
@@ -74,7 +83,12 @@
         error.status = response.status;
         throw error;
       }
-      return await response.json();
+      const payload = await response.json();
+      observeProgress(payload?.workload?.progress, startedAt);
+      if (Array.isArray(payload?.items)) {
+        for (const workload of payload.items) observeProgress(workload?.progress, startedAt);
+      }
+      return payload;
     } finally { window.clearTimeout(timeout); }
   };
   const node = (name, text = "", className = "") => {
@@ -101,9 +115,13 @@
       return (scope === "phase" ? progress?.current_phase?.estimated_end_reason : progress?.estimated_end_reason) || "insufficient_data";
     }
     if (!engine || engine.enabled !== true || engine.worker_available !== true || engine.state !== "ready") return "engine_unavailable";
-    const age = Date.now() - Date.parse(progress?.observed_at);
-    if (!Number.isFinite(age) || age < 0 || age > 30000) return "data_stale";
-    if (Date.parse(estimate) <= Date.now()) return "estimate_overdue";
+    // Browser/server wall clocks need not agree. Age the no-store response
+    // monotonically, including transport time, and compare server instants
+    // only with the server's own observation plus that conservative age.
+    const age = performance.now() - progress?.[observationTick];
+    const observedAt = Date.parse(progress?.observed_at);
+    if (!Number.isFinite(age) || age < 0 || age > 30000 || !Number.isFinite(observedAt)) return "data_stale";
+    if (Date.parse(estimate) <= observedAt + age) return "estimate_overdue";
     return null;
   };
   const estimateText = (progress, scope = "whole") => {
@@ -299,6 +317,7 @@
       const detailOk = selectedId ? await loadDetail(selectedId, false) : true;
       if (listOk && detailOk && listPages === 1) {
         lastRefreshAt = Date.now();
+        lastRefreshTick = performance.now();
         freshness.textContent = `${copy.fresh}: ${dateText(lastRefreshAt)}`;
         freshness.classList.remove("dw-warning");
       } else { markStale(); }
@@ -633,7 +652,7 @@
     window.clearInterval(pollTimer);
     window.clearInterval(staleTimer);
     pollTimer = window.setInterval(() => { if (!document.hidden) refresh(); }, 15000);
-    staleTimer = window.setInterval(() => { if (lastRefreshAt && Date.now() - lastRefreshAt > 30000) markStale(); }, 5000);
+    staleTimer = window.setInterval(() => { if (lastRefreshTick !== null && performance.now() - lastRefreshTick > 30000) markStale(); }, 5000);
   }
 
   function deactivatePage() {

@@ -18,7 +18,7 @@ def test_console_async_races_progress_and_disconnection(tmp_path):
     script = source.split("<script>", 1)[1].split("</script>", 1)[0]
     script = script.replace("{{ copy|tojson }}", "globalThis.copy")
     script = script.split('  document.getElementById("dwRefresh").addEventListener', 1)[0]
-    script += "globalThis.ui = {request, errorName, availableDate, percentText, estimateText, estimateReason, appendProgress, appendProgressTable, appendPhase, countersText, breakdown, jobTitle, jobFolder, loadList, loadDetail, refresh, markStale, renderEngine, startPolling, deactivatePage, restorePage, setEngine: value => {engine = value; renderEngine();}, selected: () => selected};})();"
+    script += "globalThis.ui = {request, observeProgress, errorName, availableDate, percentText, estimateText, estimateReason, appendProgress, appendProgressTable, appendPhase, countersText, breakdown, jobTitle, jobFolder, loadList, loadDetail, refresh, markStale, renderEngine, startPolling, deactivatePage, restorePage, setEngine: value => {engine = value; renderEngine();}, selected: () => selected};})();"
     harness = r'''
 const assert = require("node:assert/strict");
 const vm = require("node:vm");
@@ -43,6 +43,8 @@ for (const id of ["durableWorkloads", "dwList", "dwListPager", "dwDetail", "dwPl
 nodes.get("durableWorkloads").dataset.api = "/agent/workloads";
 nodes.get("durableWorkloads").append(nodes.get("dwList"), nodes.get("dwDetail"));
 const timers = new Map(); const intervals = new Map(); let timerId = 0;
+let monotonicMs = 1000;
+Object.defineProperty(globalThis, "performance", {value: {now: () => monotonicMs}});
 globalThis.window = {setTimeout(fn, delay) { timers.set(++timerId, {fn, delay}); return timerId; }, clearTimeout(id) { timers.delete(id); }, setInterval(fn, delay) {intervals.set(++timerId, {fn, delay}); return timerId;}, clearInterval(id) {intervals.delete(id);}};
 globalThis.document = {getElementById: id => nodes.get(id), createElement: tag => new Element(tag)};
 let streamsOpened = 0;
@@ -69,7 +71,7 @@ assert.equal(ui.jobTitle({description: {kind: "unknown", operation: "untrusted"}
 assert.equal(ui.jobTitle({description: {kind: "image_indexing"}}), "photoIndexing");
 assert.equal(ui.jobFolder({}), null);
 assert.equal(ui.jobFolder({description: {target_path: "/photos/<script>alert(1)</script>"}}), "/photos/<script>alert(1)</script>");
-const timing = {started_at: new Date(Date.now() - 10000).toISOString(), known_units_percent: 30, observed_at: new Date().toISOString(), estimated_end_at: new Date(Date.now() + 60000).toISOString()};
+const timing = ui.observeProgress({started_at: new Date(Date.now() - 10000).toISOString(), known_units_percent: 30, observed_at: new Date().toISOString(), estimated_end_at: new Date(Date.now() + 60000).toISOString()});
 timing.current_phase = {stage_key: "analyze", number: 3, count: 5, committed_units: 8, total_units: 967, known_units_percent: 0.8, estimated_end_at: new Date(Date.now() + 180000).toISOString(), estimated_end_reason: null};
 ui.setEngine({enabled: false, state: "degraded", reason_code: "feature_disabled", worker_available: false});
 assert.ok(nodes.get("dwEngine").textContent.includes("engineDisabled"));
@@ -79,8 +81,10 @@ assert.ok(nodes.get("dwEngine").textContent.includes("engineReady"));
 assert.notEqual(ui.estimateText(timing), "n.a.");
 assert.notEqual(ui.estimateText(timing, "phase"), ui.estimateText(timing));
 assert.equal(ui.estimateText({...timing, current_phase: null}, "phase"), "n.a.");
-assert.equal(ui.estimateText({...timing, observed_at: new Date(Date.now() - 31000).toISOString()}), "n.a.");
-assert.equal(ui.estimateText({...timing, estimated_end_at: new Date(Date.now() - 1).toISOString()}), "n.a.");
+const expiredTiming = ui.observeProgress({...timing}, monotonicMs - 31000);
+const overdueTiming = {...timing, estimated_end_at: new Date(Date.parse(timing.observed_at) - 1).toISOString()};
+assert.equal(ui.estimateText(expiredTiming), "n.a.");
+assert.equal(ui.estimateText(overdueTiming), "n.a.");
 ui.appendProgress(nodes.get("dwDetail"), timing);
 assert.ok(nodes.get("dwDetail").textContent.includes("phaseProgress: 0.8%8 of 967"));
 assert.ok(!nodes.get("dwDetail").textContent.includes("30%"), "primary progress excludes other phases");
@@ -115,8 +119,25 @@ assert.equal(ui.estimateText(timing), "n.a.");
 assert.equal(nodes.get("dwDetail").querySelectorAll(".dw-estimate-reason")[0].textContent, "engine unavailable");
 ui.setEngine({enabled: true, state: "ready", worker_available: true});
 assert.equal(nodes.get("dwDetail").querySelectorAll(".dw-estimate-reason")[0].hidden, true);
-assert.equal(ui.estimateReason({...timing, observed_at: new Date(Date.now() - 31000).toISOString()}), "data_stale");
-assert.equal(ui.estimateReason({...timing, estimated_end_at: new Date(Date.now() - 1).toISOString()}), "estimate_overdue");
+assert.equal(ui.estimateReason(expiredTiming), "data_stale");
+assert.equal(ui.estimateReason(overdueTiming), "estimate_overdue");
+assert.equal(ui.estimateReason({...timing, observed_at: "invalid"}), "data_stale");
+assert.equal(ui.estimateReason(JSON.parse(JSON.stringify(timing))), "data_stale",
+  "unobserved data cannot acquire freshness just by rendering it");
+const realWallNow = Date.now;
+for (const offset of [-172800000, -3600000, -1000, 1000, 3600000, 172800000]) {
+  Date.now = () => realWallNow() + offset;
+  assert.equal(ui.estimateReason(timing, "phase"), null,
+    "a fresh forecast must not depend on the browser/server wall-clock offset");
+  assert.equal(ui.estimateReason(expiredTiming, "phase"), "data_stale");
+  assert.equal(ui.estimateReason(overdueTiming), "estimate_overdue");
+}
+Date.now = realWallNow;
+const almostDue = ui.observeProgress({...timing, estimated_end_at: new Date(Date.parse(timing.observed_at) + 10000).toISOString()});
+monotonicMs += 11000;
+assert.equal(ui.estimateReason(almostDue), "estimate_overdue", "a forecast expires without moving either wall clock");
+monotonicMs += 20000;
+assert.equal(ui.estimateReason(timing, "phase"), "data_stale", "elapsed time still expires a valid response");
 const job = id => ({
   workload: {workload_id: id, state: "needs_attention", version: 1, counters, updated_at: null, created_at: null},
   revision: {execution: {
@@ -128,6 +149,16 @@ const job = id => ({
   }},
 });
 (async () => {
+  globalThis.fetch = async (_url, options) => {
+    assert.equal(options.cache, "no-store");
+    monotonicMs += 9000;
+    return response({workload: {progress: JSON.parse(JSON.stringify(timing))}});
+  };
+  const transported = await ui.request("/agent/workloads/transport");
+  assert.equal(ui.estimateReason(transported.workload.progress, "phase"), null);
+  monotonicMs += 21001;
+  assert.equal(ui.estimateReason(transported.workload.progress, "phase"), "data_stale",
+    "response age includes transport time, not only time since parsing");
   globalThis.fetch = async () => { throw new Error("offline"); };
   assert.equal(await ui.loadList(true), false);
   assert.equal(nodes.get("dwList").textContent, "readFailed");
@@ -204,6 +235,18 @@ const job = id => ({
   assert.ok(paths.includes("/agent/workloads/B"), "failed health must not prevent detail refresh");
   assert.equal(nodes.get("dwList").children[0].dataset.workloadId, "C");
   assert.ok(nodes.get("dwFreshness").textContent.includes("fresh"));
+  ui.startPolling();
+  const staleCheck = [...intervals.values()].find(timer => timer.delay === 5000);
+  Date.now = () => realWallNow() + 172800000;
+  staleCheck.fn();
+  assert.ok(nodes.get("dwFreshness").textContent.includes("fresh"),
+    "a browser clock jump cannot expire a just-received response");
+  Date.now = () => realWallNow() - 172800000;
+  monotonicMs += 30001;
+  staleCheck.fn();
+  assert.ok(nodes.get("dwFreshness").textContent.includes("stale"),
+    "a backward browser clock jump cannot keep a response fresh indefinitely");
+  Date.now = realWallNow;
   const availableFetch = globalThis.fetch;
   globalThis.fetch = async () => { throw new Error("offline"); };
   await ui.loadList(true);
@@ -232,6 +275,24 @@ const job = id => ({
   assert.equal(nodes.get("dwDetail").childElementCount, 0);
   assert.equal(nodes.get("dwPlaceholder").hidden, false);
   assert.equal(nodes.get("dwPlaceholder").textContent, "empty");
+  ui.setEngine({enabled: true, state: "ready", worker_available: true});
+  globalThis.fetch = async url => {
+    if (url !== "/agent/workloads/fresh") return response({items: []});
+    const payload = job("fresh");
+    payload.workload.progress = JSON.parse(JSON.stringify(timing));
+    return response(payload);
+  };
+  await ui.loadDetail("fresh");
+  const estimateNode = nodes.get("dwDetail").querySelectorAll(".dw-estimate")[0];
+  assert.notEqual(estimateNode.textContent, "n.a.");
+  monotonicMs += 30001;
+  ui.setEngine({enabled: true, state: "ready", worker_available: true});
+  assert.equal(estimateNode.textContent, "n.a.");
+  await ui.loadDetail("fresh", false);
+  assert.equal(nodes.get("dwDetail").querySelectorAll(".dw-estimate")[0], estimateNode,
+    "unchanged counters do not require replacing the detail DOM");
+  assert.notEqual(estimateNode.textContent, "n.a.",
+    "a new response renews freshness even when the detail signature is unchanged");
   ui.deactivatePage();
   globalThis.fetch = async (_url, options) => new Promise((_resolve, reject) => options.signal.addEventListener("abort", () => reject(new Error("timeout"))));
   const hanging = ui.request("/stalled");
@@ -368,6 +429,9 @@ def test_console_design_browser_isolated(monkeypatch, tmp_path, lang):
             # outage, not a healthy stream. Keep synthetic streams open and
             # drive their error callback explicitly below.
             page.add_init_script("""
+                window.syntheticWallOffset = 0;
+                const originalNow = Date.now;
+                Date.now = () => originalNow() + window.syntheticWallOffset;
                 window.syntheticStreams = [];
                 window.EventSource = class extends EventTarget {
                     constructor() { super(); window.syntheticStreams.push(this); queueMicrotask(() => this.onopen?.()); }
@@ -442,6 +506,18 @@ def test_console_design_browser_isolated(monkeypatch, tmp_path, lang):
             assert table.get_by_text("0,8%" if lang == "it" else "0.8%", exact=True).is_visible()
             assert table.locator(".dw-estimate-reason").is_hidden()
             assert not page.get_by_text(texts["UI_DURABLE_ALL_PHASES_PROGRESS"] + ":", exact=True).is_visible()
+            for offset in (-172800000, -1000, 172800000):
+                # An outage masks the old forecast first, so the assertion
+                # cannot accidentally pass against a previous render.
+                page.evaluate("window.syntheticStreams.at(-1).onerror()")
+                assert table.locator(".dw-estimate").inner_text() == "n.a."
+                page.evaluate("offset => { window.syntheticWallOffset = offset; }", offset)
+                page.locator("#dwRefresh").click()
+                page.wait_for_function("document.querySelector('#dwDetail > .dw-progress-table .dw-estimate').textContent !== 'n.a.'")
+                assert choice.locator(".dw-estimate").inner_text() != "n.a."
+                assert table.locator(".dw-estimate-reason").is_hidden()
+                assert choice.locator(".dw-estimate-reason").is_hidden()
+            page.evaluate("window.syntheticWallOffset = 0")
             page.evaluate("window.syntheticStreams.at(-1).onerror()")
             assert table.locator(".dw-estimate").inner_text() == "n.a."
             assert table.get_by_text(texts["UI_DURABLE_ETA_DATA_STALE"], exact=True).is_visible()
