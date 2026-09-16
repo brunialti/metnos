@@ -6,7 +6,7 @@
 
 ## S. Stato corrente (15/9/2026)
 
-- **Resilienza LRE — candidato verificato, rilascio in corso** (16/9,
+- **Resilienza LRE — installato, release 63** (16/9,
   ADR 0213/0117): errori dichiarati recuperabili riprovati entro il contratto;
   esaurimento e cause opache richiedono attenzione senza distruggere la coda.
   Restano vincolanti contabilità, autorità ed effetti; la riprova manuale

@@ -1,8 +1,9 @@
 # LRE — resilienza degli errori, tabella e collegamento alla console
 
-16 settembre 2026. Stato: candidato verificato localmente; rilascio ancora da
-completare. Fonti isolate in `codex/lre-backend-release`. Nessun nuovo lavoro
-di indicizzazione verrà avviato: Roberto ha scelto di ripartire personalmente.
+16 settembre 2026. Stato: release 63 installata, console e Tutor verificati in
+esercizio. Fonti isolate in `codex/lre-backend-release`, commit `4f64b26b`.
+Nessun nuovo lavoro di indicizzazione è stato avviato dall'agente: Roberto
+ha scelto di ripartire personalmente.
 
 ## Causa verificata
 
@@ -85,8 +86,8 @@ Verificato con Node e Chromium in entrambe le lingue.
 
 ## Rilascio e collaudo di esercizio
 
-Da completare tramite il ciclo canonico firmato. La semplice preparazione del
-candidato non equivale alla pubblicazione.
+Il resoconto seguente distingue preparazione, attraversamento e attivazione:
+la semplice preparazione del candidato non equivale alla pubblicazione.
 
 Ricontrollo delle 20:06 UTC (`run-6b4q44xi`): i due job eliminati sono assenti
 sia dall'API sia dal database. È però presente un nuovo lavoro,
@@ -109,3 +110,68 @@ Radici riviste: privata
 pubblica
 `sha256:40188140b09ceda4b3e4dbf2322380e432e3d15d49d7aed68fa156fa6629cf48`.
 Verifiche successive di confine, preflight e ciclo di rilascio: 494 superate.
+
+### Pubblicazione completata
+
+- Annullamento del job `wrk_1af3d8788cdb44628b4abaae657d08cb` concluso
+  cooperativamente alle 20:10:19 UTC: 969 batch confermati, zero tentativi
+  attivi. Cancellazione definitiva `run-72mho4nz`, 20:12:37 UTC: zero file
+  cancellati, nessuna copia creata, integrità SQLite e metadati protetti invariati.
+- Ciclo canonico concluso con codice 0: release **63**, stato
+  `PREFLIGHT_VERIFIED`, build
+  `sha256:c15a07e6767e731b6b91f201d9cdd75319ec703f796ab4fbd9dfb1fbc46f3bcc`,
+  head
+  `sha256:97649f3ac9813f4c15a2b0f0681cc2e84a4ae3f322941b960851df21213092e3`.
+- Un solo executor modificato fra 107 sorgenti: `create_images_indices`,
+  risultato `store_verified`, generazione
+  `sha256:5ce53f8a27189387eb690b1cebed1ea41ce300517a96cb838c34439117e9ba61`.
+  Codice candidato
+  `sha256:aa2f8617b3a2eb2d6792b3306624c0366d5102c768aaa23fdadb0714a7838eeb`.
+  Riavvio coordinato completato; prontezza e parità del catalogo 123/123.
+- Registro completo privato:
+  `/tmp/metnos-lre-release.SSgcNeOH/release-cross-1789589575330124566.log`.
+- Durante la preparazione, alle 20:12:56 UTC, è entrato un altro job,
+  `wrk_9c1e165f97284ac69b52b2ecf914cb6b`, ancora con il codice precedente
+  `sha256:03d778f04c1a93968ca0755247dd98b887c30a2596bee904c41c11e77d6c750d`.
+  Alla transizione risultava `needs_attention` per contabilità incompleta,
+  senza risultati confermati o tentativi attivi. Verifica del contratto
+  congelato `run-0xdwssxz`; incluso nella pulizia dei vecchi job richiesta
+  dall'utente: annullamento versione 7 (`run-2ijxjpby`), eliminazione
+  `run-jlj90j3m`, 20:23:50 UTC. Zero file cancellati, zero copie di recupero,
+  API vuota e dettaglio 404. Non sono stati riscritti contratti o consumi.
+  La finestra di ammissione durante un rilascio resta il limite operativo già
+  documentato per la release 62: questo rilascio non la rende atomica.
+- Console reale `run-qbcscofh`: HTTP 200, nuova tabella compatta, etichette
+  italiane risolte e gestione del dettaglio 404 presenti. LRE abilitato e
+  pronto, interruttore privato invariato, nessun job residuo.
+- Tutor ricompilato dall'avvio normale: 3.621 unità e altrettanti vettori,
+  tutti i sette tipi di fonte, 109 unità LRE; catalogo
+  `sha256:388b7660495573f46c1d9a93160485fdfb0aa5aadd9dc9c5aff6aa29d43b3eda`.
+  Turno reale `18cd730c07184830` (`run-w8a5v9pb`): distingue correttamente
+  fase corrente, totale noto e stima della sola fase; nessuna azione eseguita.
+- Guide pubbliche IT/EN pubblicate con le procedure Cloudflare/Wrangler in
+  modalità esclusivamente statica: 99 HTML validati, quattro file aggiornati,
+  distribuzione `https://0568de02.mykleos.pages.dev`. Le due guide LRE su
+  `metnos.com` rilette e confrontate byte per byte con le sorgenti pubblicate.
+  Nessun rapporto interno inviato.
+- Una prima sonda in linguaggio naturale, con nome dello strumento e più
+  negazioni (`c7a511dd0fe0429d`, `run-hwflvu25`), ha ricevuto un rifiuto di
+  capacità senza eseguire strumenti. Non viene conteggiata come collaudo
+  funzionale superato; non ha creato job o modificato indici.
+- Sonda ordinaria separata «Mostrami lo stato degli indici fotografici
+  esistenti.»: turno `47c1855d9a5d450b`, `run-9gmxmzet`, 4.575 ms,
+  `get_images_indices` eseguito con `ok=true`; nessun job prima o dopo.
+  La risposta sintetica della chat è poco informativa (elenco con trattino
+  vuoto): il collaudo prova l'esecuzione in lettura, non certifica quel riepilogo
+  come buona presentazione né risolve il rifiuto della prima formulazione.
+- Audit finale dei processi: nessun nostro processo orfano a consumo elevato.
+  Non sono programmati ulteriori riavvii. Roberto può avviare il nuovo test;
+  i nuovi job ammessi dopo la pubblicazione non rientrano nella pulizia.
+
+## Limite della certificazione
+
+Il rilascio, l'attivazione dell'executor, l'interfaccia e la prontezza sono
+verificati; retry e conservazione dei batch hanno superato i test isolati.
+Per scelta dell'utente non è stata avviata un'indicizzazione di collaudo in
+produzione. La copertura delle oltre 30.000 foto va quindi verificata sul
+nuovo lavoro reale, non dedotta dalla riuscita del rilascio.

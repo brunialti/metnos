@@ -91,6 +91,13 @@ I risultati completi delle prove di questo intervento sono in
 
 ## Prima del futuro rilascio
 
+**Chiusura successiva (16/9, release 63):** la tabella per fase è stata
+pubblicata insieme alla resilienza degli errori e verificata nella console
+reale. Tutor ricompilato e domanda reale superata. I dettagli di rilascio,
+le cancellazioni autorizzate e i limiti rimasti sono in
+`internal/reports/lre-error-resilience-20260916.md`. L'elenco seguente conserva
+le condizioni poste al candidato prima della pubblicazione.
+
 1. Accertare esplicitamente che non vi siano job/turni attivi: il solo
    `stack.quiescent` HTTP non include il lavoro del worker durevole.
 2. Risolvere o classificare formalmente la guardia i18n preesistente prima
