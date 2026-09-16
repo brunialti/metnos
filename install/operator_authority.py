@@ -54,17 +54,22 @@ def _status(path: Path) -> os.stat_result:
     return result
 
 
-def _require_directory(path: Path, *, owner: tuple[int, int], mode: int) -> None:
+def _require_directory(
+    path: Path, *, owner: tuple[int, int], modes: frozenset[int],
+) -> None:
     result = _status(path)
     if (
         not stat.S_ISDIR(result.st_mode)
         or (result.st_uid, result.st_gid) != owner
-        or stat.S_IMODE(result.st_mode) != mode
+        or stat.S_IMODE(result.st_mode) not in modes
     ):
         raise OperatorAuthorityError("operator_authority_unsafe_path", str(path))
 
 
-def _ensure_directory(path: Path, *, owner: tuple[int, int], mode: int) -> None:
+def _ensure_directory(
+    path: Path, *, owner: tuple[int, int], mode: int,
+    existing_modes: frozenset[int] | None = None,
+) -> None:
     try:
         path.mkdir(mode=mode)
         os.chown(path, *owner)
@@ -73,7 +78,9 @@ def _ensure_directory(path: Path, *, owner: tuple[int, int], mode: int) -> None:
         pass
     except OSError as exc:
         raise OperatorAuthorityError("operator_authority_io_error", str(path)) from exc
-    _require_directory(path, owner=owner, mode=mode)
+    _require_directory(
+        path, owner=owner, modes=existing_modes or frozenset({mode}),
+    )
 
 
 def _read_private(path: Path, *, owner: tuple[int, int]) -> Ed25519PrivateKey:
@@ -169,14 +176,14 @@ def _write_public(path: Path, payload: bytes, *, owner: tuple[int, int]) -> None
 
 
 def _verify_public(directory: Path, expected: dict[str, bytes], *, owner: tuple[int, int]) -> None:
-    _require_directory(directory, owner=owner, mode=0o755)
+    _require_directory(directory, owner=owner, modes=frozenset({0o755}))
     try:
         if {item.name for item in directory.iterdir()} != PUBLIC_FILES:
             raise OperatorAuthorityError("operator_authority_public_invalid", str(directory))
     except OSError as exc:
         raise OperatorAuthorityError("operator_authority_io_error", str(directory)) from exc
     semantic = directory / "semantic-public"
-    _require_directory(semantic, owner=owner, mode=0o755)
+    _require_directory(semantic, owner=owner, modes=frozenset({0o755}))
     if {item.name for item in semantic.iterdir()} != {"review.pub"}:
         raise OperatorAuthorityError("operator_authority_public_invalid", str(semantic))
     for path, payload in (
@@ -203,7 +210,10 @@ def provision_paths(
 
     if not target_config.is_absolute() or not private_base.is_absolute():
         raise OperatorAuthorityError("operator_authority_unsafe_path")
-    _ensure_directory(target_config.parent, owner=target_owner, mode=0o700)
+    _ensure_directory(
+        target_config.parent, owner=target_owner, mode=0o700,
+        existing_modes=frozenset({0o700, 0o755}),
+    )
     _ensure_directory(target_config, owner=target_owner, mode=0o700)
     birth = target_config / "birth"
     _ensure_directory(birth, owner=target_owner, mode=0o755)

@@ -59,6 +59,25 @@ def test_operator_procedure_separates_private_keys_and_is_idempotent(tmp_path: P
     assert repeated["private_created"] is False
 
 
+def test_operator_procedure_accepts_standard_xdg_parent_mode(tmp_path: Path) -> None:
+    owner = (os.getuid(), os.getgid())
+    config_parent = tmp_path / "home" / ".config"
+    config_parent.parent.mkdir(mode=0o700)
+    config_parent.mkdir(mode=0o755)
+    config_parent.chmod(0o755)
+
+    result = operator_authority.provision_paths(
+        target_config=config_parent / "metnos",
+        private_base=tmp_path / "root-private",
+        target_owner=owner,
+        private_owner=owner,
+    )
+
+    assert result["status"] == "created"
+    assert oct(config_parent.stat().st_mode & 0o777) == "0o755"
+    assert oct((config_parent / "metnos").stat().st_mode & 0o777) == "0o700"
+
+
 def test_operator_procedure_refuses_public_drift(tmp_path: Path) -> None:
     owner = (os.getuid(), os.getgid())
     config_parent = tmp_path / "home" / ".config"
