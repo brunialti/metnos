@@ -64,13 +64,18 @@ _FROZEN_WORKFLOW_SHA256 = (
     "3e953be12480be9a4e6dfa19812a053492b5e26e155c9ecb7b749c29bde135e9"
 )
 # Reviewed CI preparation only: install venv support and the full locked
-# wheelhouse. All six acceptance jobs and their blocking summary are unchanged.
+# wheelhouse, and bound diagnostic failure of the general Windows suite.
+# All six acceptance jobs and their blocking summary are unchanged.
 _REVIEWED_WORKFLOW_SHA256 = (
-    "5aeda2ff4b76d594f56baf9059550bbda74cc1b98fe9df30ac77c0a1f55f18eb"
+    "bee74beff7550b1ff9457037dc7e8fe0e3242501e4cfbd5ff42b5706edcfb8d4"
 )
 _REVIEWED_WORKFLOW_GIT_EDGE = (
     ("100644", "ce3bbd7e5097b23e4ad577ffa1b8af40b75618f7"),
-    ("100644", "fe5afb0b15d754d80f70d00838398ff305d825a8"),
+    ("100644", "0efeca0a71cb828b83db6babccfcd2bd87aa4ca4"),
+)
+_REVIEWED_TIMEOUT_REQUIREMENTS_GIT_EDGE = (
+    ("100644", "7f8078e8ce6ae4fa14b952c440efe3fc830c40c1"),
+    ("100644", "b611abd94706fd4b9db0a2e62189c87804028ed7"),
 )
 # Reviewed importlib-mode fixture lookup (329d51b3). No collection or oracle
 # changes are permitted by this exact prerequisite edge.
@@ -2763,6 +2768,11 @@ def _validate_reviewed_acceptance_tree_evolution(
         source_tree[portable_support], current_tree[portable_support],
     ) == _REVIEWED_PORTABLE_SUPPORT_GIT_EDGE:
         changed.remove(portable_support)
+    requirements = "tests/portable/requirements.txt"
+    if requirements in changed and (
+        source_tree[requirements], current_tree[requirements],
+    ) == _REVIEWED_TIMEOUT_REQUIREMENTS_GIT_EDGE:
+        changed.remove(requirements)
     if (
         missing
         or added != set(_FROZEN_CURRENT_EXACT_PATHS)

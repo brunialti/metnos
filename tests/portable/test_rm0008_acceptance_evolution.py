@@ -180,6 +180,31 @@ def test_productive_graph_negative_cases_remain_closed_and_guarded() -> None:
     _assert_closed_productive_graph_mutants(source)
 
 
+@pytest.mark.parametrize("path,edge", [
+    (".github/workflows/portable-contract-store.yml", certification._REVIEWED_WORKFLOW_GIT_EDGE),
+    ("tests/portable/requirements.txt", certification._REVIEWED_TIMEOUT_REQUIREMENTS_GIT_EDGE),
+])
+@pytest.mark.parametrize("variant", ("reviewed", "source", "target", "mode"))
+def test_timeout_diagnostics_accept_only_the_exact_reviewed_edge(path, edge, variant):
+    source = _baseline()
+    current = dict(source)
+    current[_CERTIFICATION] = ("100644", "d" * 40)
+    current[_NEGATIVE_CASES] = ("100644", "e" * 40)
+    current[_ANCHOR] = ("100644", "f" * 40)
+    source[path], current[path] = edge
+    if variant == "source":
+        source[path] = ("100644", "a" * 40)
+    elif variant == "target":
+        current[path] = ("100644", "a" * 40)
+    elif variant == "mode":
+        current[path] = ("100755", current[path][1])
+    if variant == "reviewed":
+        certification._validate_reviewed_acceptance_tree_evolution(source, current)
+    else:
+        with pytest.raises(certification.CertificationError, match="unreviewed evolution"):
+            certification._validate_reviewed_acceptance_tree_evolution(source, current)
+
+
 @pytest.mark.parametrize("variant", ("reviewed", "source", "target", "mode"))
 def test_portable_import_prerequisite_requires_the_exact_reviewed_edge(variant):
     source = _baseline()

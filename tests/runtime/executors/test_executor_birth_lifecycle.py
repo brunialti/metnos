@@ -8,7 +8,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from executor_birth_epoch_store import (
     BirthLifecycle, EpochCacheKey, EpochStoreError, open_epoch,
-    preserve_legacy_rows, record_execution, replace_current_epoch,
+    decode_legacy_row, preserve_legacy_rows, record_execution, replace_current_epoch,
 )
 from executor_birth_lifecycle import (
     CERTIFICATION_DOMAIN, LifecycleCoordinator, LifecycleError,
@@ -162,14 +162,14 @@ def test_counts_are_bound_to_exact_current_generation_and_version(tmp_path):
 def test_legacy_migration_is_lossless_unresolved_and_idempotent(tmp_path):
     db = tmp_path / "epochs.sqlite"
     rows = ({"name": "legacy-demo", "calls": 9, "enabled": True},)
-    assert preserve_legacy_rows(legacy_table="executors", rows=rows,
+    assert preserve_legacy_rows(source_id=G1, source_schema_id=G2, legacy_table="executors", rows=rows,
                                 migrated_at=NOW, db_path=db) == 1
-    assert preserve_legacy_rows(legacy_table="executors", rows=rows,
+    assert preserve_legacy_rows(source_id=G1, source_schema_id=G2, legacy_table="executors", rows=rows,
                                 migrated_at=NOW, db_path=db) == 0
     connection = sqlite3.connect(db)
     row = connection.execute(
         "SELECT legacy_name,legacy_row_json,resolution FROM executor_legacy_state").fetchone()
-    assert row == ("legacy-demo", '{"calls":9,"enabled":true,"name":"legacy-demo"}', "unresolved")
+    assert (row[0], decode_legacy_row(row[1]), row[2]) == ("legacy-demo", rows[0], "unresolved")
     connection.close()
 
 
