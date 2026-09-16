@@ -405,6 +405,82 @@ def enqueue_failure_review_inactive(
         connection.close()
 
 
+_REVIEW_REQUEST_FIELDS = frozenset({
+    "execution_receipt_id", "execution_receipt_hash", "candidate_id",
+    "generation_id", "failure_evidence_hash", "error_code",
+    "reduced_arguments", "reduced_output",
+})
+
+
+def _decode_failure_review_request(payload: bytes) -> FailureReviewRequest:
+    """Rebuild the exact enqueued request; reject anything else in that row."""
+    try:
+        value = json.loads(payload.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise FeedbackError("failure_review_queue_corrupt", "json") from exc
+    if not isinstance(value, dict) or set(value) != _REVIEW_REQUEST_FIELDS:
+        raise FeedbackError("failure_review_queue_corrupt", "fields")
+    if (not isinstance(value["reduced_arguments"], dict)
+            or not isinstance(value["reduced_output"], dict)):
+        raise FeedbackError("failure_review_queue_corrupt", "retained payload")
+    request = FailureReviewRequest(**value)
+    if _canonical({
+        "execution_receipt_id": request.execution_receipt_id,
+        "execution_receipt_hash": request.execution_receipt_hash,
+        "candidate_id": request.candidate_id,
+        "generation_id": request.generation_id,
+        "failure_evidence_hash": request.failure_evidence_hash,
+        "error_code": request.error_code,
+        "reduced_arguments": dict(request.reduced_arguments),
+        "reduced_output": dict(request.reduced_output),
+    }) != payload:
+        raise FeedbackError("failure_review_queue_corrupt", "noncanonical row")
+    return request
+
+
+def pending_failure_reviews(
+    *, db_path: Path, limit: int,
+) -> tuple[tuple[str, FailureReviewRequest], ...]:
+    """Read the oldest outstanding jobs without claiming or changing them."""
+    if not isinstance(limit, int) or isinstance(limit, bool) or limit <= 0:
+        raise FeedbackError("feedback_binding_invalid", "limit")
+    if not Path(db_path).is_file():
+        return ()
+    connection = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=5)
+    try:
+        rows = connection.execute(
+            "SELECT job_id,request_json FROM executor_failure_review_queue "
+            "ORDER BY created_at,job_id LIMIT ?", (limit,),
+        ).fetchall()
+    except sqlite3.OperationalError:
+        # The outbox table appears with the first enqueue; an installation
+        # that never quarantined anything simply has no work.
+        return ()
+    finally:
+        connection.close()
+    return tuple(
+        (job_id, _decode_failure_review_request(bytes(payload)))
+        for job_id, payload in rows
+    )
+
+
+def resolve_failure_review_job(job_id: str, *, db_path: Path) -> bool:
+    """Retire one finished job; repeating it is a no-op, never an error."""
+    _digest(job_id, "failure_job_id")
+    connection = sqlite3.connect(str(db_path), isolation_level=None, timeout=5)
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        removed = connection.execute(
+            "DELETE FROM executor_failure_review_queue WHERE job_id=?", (job_id,),
+        ).rowcount
+        connection.commit()
+        return bool(removed)
+    finally:
+        if connection.in_transaction:
+            connection.rollback()
+        connection.close()
+
+
 def apply_negative_feedback(
     receipt: ExecutionReceipt, *, failure_evidence_hash: str, error_code: str,
     quarantine_exact: Callable[[ContractId, str], QuarantineCAS],

@@ -578,6 +578,15 @@ def install_default_callbacks(scheduler) -> None:
         "W1 learning-loop: pota seed shadow stantii + conta proposte (ADR 0185)",
         replace=True,
     )
+    # RM-0008 F5: consuma la coda delle quarantene esatte. Nessuna autorita'
+    # di pubblicazione: la revisione classifica, non riattiva.
+    from jobs.birth_failure_reviews import task_birth_failure_reviews
+    cb.register(
+        "birth_failure_reviews",
+        _wrap_zero_arg(task_birth_failure_reviews),
+        "Revisione bounded delle esecuzioni messe in quarantena (RM-0008 F5)",
+        replace=True,
+    )
     cb.register(
         "apply_executor_ager",
         _wrap_zero_arg(task_apply_executor_ager),
