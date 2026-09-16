@@ -237,16 +237,26 @@ executor lifecycle state to the epoch store. It is not part of the six-phase
 installer, ordinary Birth or service startup, and it issues no certificate,
 publishes no executor and retires no file.
 
-It runs as two stages in one command, because dropping privilege is
-irreversible and the marker must be root-owned. `plan` reports exactly what
-`apply` would do. A child resolves the selected stores from the running
-`metnos-http.service` process — only `HOME`, `METNOS_USER_DATA`,
-`METNOS_USER_STATE`, `METNOS_EXECUTOR_STATS_DB` and `METNOS_PROMOTER_DB` are
-read, and the main PID is rechecked — then permanently drops to the service
-account before any database access. The selected sources are
-`executor_stats` in the state root and `proposal_promote` in the data root.
+It is two commands, because its halves need opposite conditions. `plan` runs
+while the services run: only a live process can say which stores this
+installation selected. A child reads that process's environment — only `HOME`,
+`METNOS_USER_DATA`, `METNOS_USER_STATE`, `METNOS_EXECUTOR_STATS_DB` and
+`METNOS_PROMOTER_DB`, with the main PID rechecked — drops permanently to the
+service account, censuses the stores and decides. The reviewed decision is
+recorded root-owned at `certification-v1/migration-plan.json` (0644). Planning
+changes nothing else. The selected sources are `executor_stats` in the state
+root and `proposal_promote` in the data root.
 
-Inside that child the epoch store must already exist at
+`apply` holds the existing maintenance barrier for the whole migration, so every
+service that writes those stores is quiescent. That is a precondition, not an
+optimisation: one executor call during the copy would write a row nobody
+preserves. It refuses a decision other than the reviewed one, whether the stores
+or the catalog selection moved. After the copy each source is made unwritable
+(0400) and the observed mode is reported; that stops the next ordinary writer
+and cannot close a handle a running process already holds, which is again why
+the barrier comes first.
+
+Inside the privileged child the epoch store must already exist at
 `birth/executor_epochs.sqlite`; it is not created here. Every selectable
 generation is admitted first, so no window exists in which a restricted
 executor becomes visible again. The stores are then read read-only and
@@ -256,7 +266,7 @@ not cross: **the inactivity clock restarts at cutover**, so nothing can be
 archived for `METNOS_EXECUTOR_DEPRECATED_DAYS` afterwards.
 
 The root parent writes `certification-v1/migration.json` (0644, root-owned)
-last, and only when every decision is settled. An open promotion or a
+last, inside the barrier, and only when every decision is settled. An open promotion or a
 restriction with no selectable generation blocks the marker: those cases need a
 disposition, and losing them silently is what retirement must not do. A
 different marker already present is a recovery operation with its own evidence,

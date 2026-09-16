@@ -178,7 +178,8 @@ BOUNDARY_API_OWNERS_V1 = (
     # service-owned stores through their existing owners and, last, the
     # root-owned marker; it issues no certificate and publishes no executor.
     BoundaryApiOwnerV1('birth_lifecycle_migration', (
-        ('run_cutover_v1', ('store_write',)),
+        ('plan_cutover_v1', ('store_write',)),
+        ('apply_cutover_v1', ('store_write',)),
         ('main', ('store_write',)),
     )),
     BoundaryApiOwnerV1('birth_certification_evidence', (

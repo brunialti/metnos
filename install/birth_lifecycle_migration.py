@@ -1,22 +1,26 @@
 """Administrative one-time cutover to the epoch lifecycle owner.
 
-One process cannot both write the service-owned stores and the root-owned
-marker, so the cutover is two stages in one command. A child resolves the
-selected sources from the running service, permanently drops to the service
-account before any database access, and reports what it preserved and decided.
-The root parent validates that report and only then records the marker that
-makes the epoch store authoritative.
+The cutover is two commands, because its two halves need opposite conditions.
+`plan` runs while the service runs: only a live process can say which stores
+this installation actually selected. `apply` runs with the stack quiescent,
+because every legacy writer lives in those services and a single call during
+the copy would write a row nobody preserves — silent loss is the one outcome a
+migration may not produce.
 
-The order is deliberate. The marker is the last thing written, so an
-interruption anywhere before it leaves an installation that still uses its
-name-based state and can simply be run again. Nothing here issues a
-certificate, publishes an executor, or retires a file.
+Within `apply`, privilege also splits. Dropping to the service account is
+irreversible, so the process that writes the service-owned stores cannot also
+write the root-owned marker: a child migrates, the parent records. The marker is
+the last thing written, so an interruption anywhere before it leaves an
+installation that still uses its name-based state and can simply be run again.
+
+Nothing here issues a certificate, publishes an executor or deletes a file.
 """
 from __future__ import annotations
 
 import json
 import os
 from pathlib import Path
+import stat
 import subprocess
 import sys
 
@@ -36,10 +40,16 @@ from install.birth_ownership_authority_provisioner import (
 
 ACTIVATION_DIRECTORY_V1 = DEFAULT_OWNERSHIP_ROOT_V1 / "certification-v1"
 MARKER_BASENAME_V1 = "migration.json"
+HANDOFF_BASENAME_V1 = "migration-plan.json"
+HANDOFF_PURPOSE_V1 = "f5_migration_plan_v1"
 SERVICE_UNIT_V1 = "metnos-http.service"
 # Filesystem seam for isolated tests; the productive value is fixed.
 _PROC_ROOT_V1 = Path("/proc")
 _MAX_REPORT_BYTES = 1 << 20
+_CARRIED_ENVIRONMENT_V1 = frozenset({
+    "HOME", "METNOS_USER_DATA", "METNOS_USER_STATE", "METNOS_USER_CONFIG",
+    "METNOS_EXECUTOR_STATS_DB", "METNOS_PROMOTER_DB",
+})
 # Every legacy store this cutover knows how to read, and the exact table in it.
 _SELECTED_SOURCES_V1 = (
     ("statistics", "METNOS_EXECUTOR_STATS_DB", "state", "executor_stats.db",
@@ -112,15 +122,8 @@ def selected_sources_v1(
     return tuple(resolved)
 
 
-def _child_migration(argv: list[str]) -> int:
-    """Run as the service account only: read the stores, preserve and decide."""
-    report_fd = int(argv[1])
-    account = resolve_posix_account_snapshot_v1(SERVICE_ACCOUNT_NAME_V1)
-    pid = _service_main_pid()
-    environment = _service_environment(pid, account)
-    sources = selected_sources_v1(environment, account)
-    if _service_main_pid() != pid:
-        raise LifecycleCutoverError("cutover_service_unavailable", "service changed")
+def _drop_to_service(account: PosixAccountSnapshotV1) -> None:
+    """Become the service account permanently, and prove it."""
     account.assert_unchanged(resolve_posix_account_snapshot_v1(SERVICE_ACCOUNT_NAME_V1))
     os.setgroups(list(account.supplementary_gids))
     os.setgid(account.record.gid)
@@ -128,18 +131,99 @@ def _child_migration(argv: list[str]) -> int:
     if os.geteuid() != account.record.uid or os.getuid() != account.record.uid:
         raise LifecycleCutoverError("cutover_privilege_retained")
     for key, value in metnos_xdg_layout_v1(account.record).environment().items():
-        os.environ[key] = environment.get(key, value)
-    report = _migrate_as_service(sources)
+        os.environ.setdefault(key, value)
+
+
+def _plan_as_service(report_fd: int) -> int:
+    """Observe the running installation: which stores, and what they mean."""
+    account = resolve_posix_account_snapshot_v1(SERVICE_ACCOUNT_NAME_V1)
+    pid = _service_main_pid()
+    environment = _service_environment(pid, account)
+    sources = selected_sources_v1(environment, account)
+    if _service_main_pid() != pid:
+        raise LifecycleCutoverError("cutover_service_unavailable", "service changed")
+    _drop_to_service(account)
+    for key, value in environment.items():
+        os.environ[key] = value
+    _write_report(report_fd, _observe_installation(sources))
+    return 0
+
+
+def _apply_as_service(report_fd: int, handoff: dict) -> int:
+    """Migrate with the stack already quiescent, against the planned stores."""
+    account = resolve_posix_account_snapshot_v1(SERVICE_ACCOUNT_NAME_V1)
+    _drop_to_service(account)
+    for key, value in handoff["environment"].items():
+        os.environ[key] = value
+    sources = tuple((item["kind"], Path(item["path"]), item["legacy_table"])
+                    for item in handoff["sources"])
+    observed = _observe_installation(sources)
+    if observed["migration_id"] != handoff["migration_id"]:
+        # The stores or the catalog moved between planning and applying. The
+        # plan is the reviewed decision; a different one is not a retry.
+        raise LifecycleCutoverError("cutover_plan_stale", handoff["migration_id"])
+    _write_report(report_fd, _migrate_as_service(sources, handoff))
+    return 0
+
+
+def _write_report(report_fd: int, report: dict) -> None:
     payload = json.dumps(report, ensure_ascii=True, sort_keys=True,
                          separators=(",", ":")).encode("ascii")
     if len(payload) > _MAX_REPORT_BYTES:
         raise LifecycleCutoverError("cutover_report_oversized")
     os.write(report_fd, payload)
     os.close(report_fd)
-    return 0
 
 
-def _migrate_as_service(sources: tuple[tuple[str, Path, str], ...]) -> dict:
+def _selectable_from_catalog() -> dict[str, tuple[str, str]]:
+    """The exact generations a verified catalog load currently selects."""
+    from loader import load_catalog
+
+    selectable = {}
+    for executor in load_catalog(verify=True, lang="en").executors.values():
+        contract_id = getattr(executor, "contract_id", None)
+        generation_id = getattr(executor, "generation_id", None)
+        if isinstance(contract_id, str) and isinstance(generation_id, str):
+            selectable[executor.name] = (contract_id, generation_id)
+    return selectable
+
+
+def _observe_installation(sources: tuple[tuple[str, Path, str], ...]) -> dict:
+    """Census every selected store and decide, writing nothing."""
+    from executor_birth_lifecycle_migration import (
+        LifecycleMigrationError, plan_digest_v1, plan_migration,
+    )
+
+    selectable = _selectable_from_catalog()
+    try:
+        plan = plan_migration([(path, table) for _kind, path, table in sources],
+                              selectable=selectable)
+    except LifecycleMigrationError as exc:
+        raise LifecycleCutoverError(exc.code, exc.detail) from exc
+    return {
+        "migration_id": plan.migration_id,
+        "environment": {key: value for key, value in os.environ.items()
+                        if key in _CARRIED_ENVIRONMENT_V1},
+        "sources": [{
+            "kind": kind, "path": str(source.identity.path),
+            "legacy_table": source.legacy_table,
+            "source_id": source.identity.source_id,
+            "content_id": source.identity.content_id,
+            "rows": len(source.rows),
+            "plan_id": plan_digest_v1(source.dispositions),
+            "pending": sum(1 for item in source.dispositions
+                           if item.kind.value == "pending_disposition"),
+            "restrictions": sum(1 for item in source.dispositions
+                                if item.kind.value == "current_restriction"),
+        } for (kind, _path, _table), source in zip(sources, plan.sources)],
+        "selectable": {name: list(identity)
+                       for name, identity in sorted(selectable.items())},
+    }
+
+
+def _migrate_as_service(
+    sources: tuple[tuple[str, Path, str], ...], handoff: dict,
+) -> dict:
     """Admit the selectable generations, then preserve, decide and restrict."""
     import config
     from executor_birth_lifecycle_migration import (
@@ -151,18 +235,15 @@ def _migrate_as_service(sources: tuple[tuple[str, Path, str], ...]) -> dict:
     epoch_db = Path(config.PATH_USER_STATE) / "birth" / "executor_epochs.sqlite"
     if not epoch_db.is_file():
         raise LifecycleCutoverError("cutover_epoch_store_absent", str(epoch_db))
-    catalog = load_catalog(verify=True, lang="en")
-    executors = tuple(catalog.executors.values())
+    executors = tuple(load_catalog(verify=True, lang="en").executors.values())
     # The epoch store must already hold every selectable generation before a
     # restriction is applied, or a restricted executor would be visible again
     # between this cutover and the first ordinary load.
     admitted = admit_generations(executors, db_path=epoch_db)
-    selectable = {}
-    for executor in executors:
-        contract_id = getattr(executor, "contract_id", None)
-        generation_id = getattr(executor, "generation_id", None)
-        if isinstance(contract_id, str) and isinstance(generation_id, str):
-            selectable[executor.name] = (contract_id, generation_id)
+    selectable = _selectable_from_catalog()
+    if {name: list(identity) for name, identity in sorted(selectable.items())} != \
+            handoff["selectable"]:
+        raise LifecycleCutoverError("cutover_plan_stale", "catalog selection")
     try:
         plan = plan_migration([(path, table) for _kind, path, table in sources],
                               selectable=selectable)
@@ -173,11 +254,33 @@ def _migrate_as_service(sources: tuple[tuple[str, Path, str], ...]) -> dict:
     return {
         "admitted_generations": admitted,
         "applied": applied,
+        "retired_sources": _retire_sources(sources),
         "installation_scope": {
             "epoch_db": str(epoch_db),
             "selectable": len(selectable),
         },
     }
+
+
+def _retire_sources(sources: tuple[tuple[str, Path, str], ...]) -> list[dict]:
+    """Make each copied store unwritable, and say so rather than assume it.
+
+    This refuses the ordinary writer that opens the file again. It cannot close
+    a handle a running process already holds, which is why the quiescent stack
+    is a precondition and not an optimisation.
+    """
+    retired = []
+    for kind, path, _table in sources:
+        try:
+            os.chmod(path, 0o400)
+            mode = stat.S_IMODE(path.lstat().st_mode)
+        except OSError as exc:
+            retired.append({"kind": kind, "read_only": False,
+                            "error": type(exc).__name__})
+            continue
+        retired.append({"kind": kind, "read_only": mode == 0o400,
+                        "mode": oct(mode)})
+    return retired
 
 
 def _utc_now() -> str:
@@ -244,19 +347,19 @@ def _installation_id() -> str:
     return _installation_id_v1(load_ownership_public_registries_v1())
 
 
-def _run_child_migration() -> dict:
-    """Run the privileged half in a child that can drop privilege for good.
+def _in_service_child(work) -> dict:
+    """Run one half in a child that can drop privilege for good.
 
     Dropping is irreversible, so it cannot happen in the process that must
-    still write a root-owned marker. The child reports through a pipe; it
-    returns no object and shares no handle.
+    still hold the maintenance barrier and write a root-owned marker. The child
+    reports through a pipe; it returns no object and shares no handle.
     """
     read_fd, write_fd = os.pipe()
     child = os.fork()
     if child == 0:  # pragma: no cover - the real child, exercised natively
         os.close(read_fd)
         try:
-            os._exit(_child_migration([sys.argv[0], str(write_fd)]))
+            os._exit(work(write_fd))
         except BaseException as exc:
             os.write(write_fd, json.dumps({
                 "error": getattr(exc, "code", type(exc).__name__),
@@ -280,7 +383,7 @@ def _run_child_migration() -> dict:
             raise ValueError("report shape")
     except (UnicodeDecodeError, ValueError) as exc:
         raise LifecycleCutoverError("cutover_report_invalid") from exc
-    if status != 0 or "applied" not in report:
+    if status != 0 or "error" in report:
         raise LifecycleCutoverError(
             str(report.get("error") or "cutover_child_failed"),
             str(report.get("detail") or ""),
@@ -288,24 +391,111 @@ def _run_child_migration() -> dict:
     return report
 
 
-def run_cutover_v1(*, apply: bool) -> dict:
-    """Perform the cutover, or report exactly what it would do."""
+def _require_root_v1() -> None:
     if not _managed_authority_platform_supported_v1():
         raise LifecycleCutoverError("cutover_platform_unsupported")
     if getattr(os, "geteuid", lambda: -1)() != 0:
         raise LifecycleCutoverError("cutover_root_required")
-    report = _run_child_migration()
-    applied = report["applied"]
-    if applied.get("pending"):
-        # An open case must receive a disposition before the marker makes the
-        # epoch store authoritative; otherwise retirement loses it in silence.
-        raise LifecycleCutoverError(
-            "cutover_pending_disposition", str(applied["pending"]))
-    if not apply:
-        report["marker"] = None
-        return report
-    report["marker"] = str(_install_marker(
-        _installation_id(), applied["migration_id"]))
+
+
+def _handoff_path() -> Path:
+    return ACTIVATION_DIRECTORY_V1 / HANDOFF_BASENAME_V1
+
+
+def plan_cutover_v1() -> dict:
+    """Observe the running installation and record the decision for review.
+
+    The plan is written while the services run because only a live process can
+    say which stores this installation selected. It changes nothing.
+    """
+    _require_root_v1()
+    observed = _in_service_child(_plan_as_service)
+    document = {
+        "schema_version": 1, "purpose": HANDOFF_PURPOSE_V1,
+        "service_user": SERVICE_ACCOUNT_NAME_V1, "planned_at": _utc_now(),
+        **observed,
+    }
+    _write_handoff(document)
+    return document
+
+
+def _write_handoff(document: dict) -> Path:
+    """Stage the reviewed decision under the same root custody as the marker."""
+    encoded = json.dumps(document, ensure_ascii=True, sort_keys=True,
+                         separators=(",", ":")).encode("ascii")
+    _root_owned_chain(DEFAULT_OWNERSHIP_ROOT_V1)
+    with _provisioning_lock(DEFAULT_OWNERSHIP_ROOT_V1, root_owned=True):
+        directory = ACTIVATION_DIRECTORY_V1
+        if not directory.exists():
+            directory.mkdir(mode=0o755)
+            directory.chmod(0o755)
+            _sync_directory(DEFAULT_OWNERSHIP_ROOT_V1)
+        _directory_metadata(directory, root_owned=True)
+        path = _handoff_path()
+        staged = directory / (HANDOFF_BASENAME_V1 + ".staged")
+        descriptor = os.open(staged, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
+        try:
+            os.write(descriptor, encoded)
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+        os.chmod(staged, 0o644)
+        os.replace(staged, path)
+        _sync_directory(directory)
+        if _read_regular(path, maximum=_MAX_REPORT_BYTES, mode=0o644,
+                         root_owned=True) != encoded:
+            raise LifecycleCutoverError("cutover_handoff_unsafe")
+        return path
+
+
+def read_handoff_v1() -> dict:
+    """Read the reviewed plan, refusing anything that is not exactly one."""
+    _root_owned_chain(DEFAULT_OWNERSHIP_ROOT_V1)
+    _directory_metadata(ACTIVATION_DIRECTORY_V1, root_owned=True)
+    encoded = _read_regular(_handoff_path(), maximum=_MAX_REPORT_BYTES,
+                            mode=0o644, root_owned=True)
+    try:
+        document = json.loads(encoded.decode("ascii"))
+    except (UnicodeDecodeError, ValueError) as exc:
+        raise LifecycleCutoverError("cutover_handoff_invalid", "document") from exc
+    required = {"schema_version", "purpose", "service_user", "planned_at",
+                "migration_id", "environment", "sources", "selectable"}
+    if (type(document) is not dict or set(document) != required
+            or document["schema_version"] != 1
+            or document["purpose"] != HANDOFF_PURPOSE_V1
+            or document["service_user"] != SERVICE_ACCOUNT_NAME_V1
+            or not isinstance(document["sources"], list)
+            or not document["sources"]
+            or not isinstance(document["selectable"], dict)
+            or not isinstance(document["environment"], dict)):
+        raise LifecycleCutoverError("cutover_handoff_invalid", "schema")
+    return document
+
+
+def apply_cutover_v1() -> dict:
+    """Migrate with the stack quiescent, then record the marker.
+
+    The barrier is not an optimisation. Every legacy writer lives in the
+    services it stops, and one call during the copy would write a row nobody
+    preserves.
+    """
+    _require_root_v1()
+    handoff = read_handoff_v1()
+    from contract_cutover_guard import _contract_cutover_guard_for_service_user_v1
+
+    with _contract_cutover_guard_for_service_user_v1(handoff["service_user"]):
+        report = _in_service_child(
+            lambda descriptor: _apply_as_service(descriptor, handoff))
+        applied = report["applied"]
+        if applied.get("pending"):
+            # An open case must receive a disposition before the marker makes
+            # the epoch store authoritative; otherwise retirement loses it.
+            raise LifecycleCutoverError(
+                "cutover_pending_disposition", str(applied["pending"]))
+        if applied["migration_id"] != handoff["migration_id"]:
+            raise LifecycleCutoverError("cutover_plan_stale", "applied migration")
+        report["marker"] = str(_install_marker(
+            _installation_id(), applied["migration_id"]))
     return report
 
 
@@ -315,7 +505,8 @@ def main(argv: list[str] | None = None) -> int:
         print("usage: birth_lifecycle_migration.py plan|apply", file=sys.stderr)
         return 64
     try:
-        report = run_cutover_v1(apply=arguments == ["apply"])
+        report = (apply_cutover_v1() if arguments == ["apply"]
+                  else plan_cutover_v1())
     except (LifecycleCutoverError, OwnershipAuthorityError) as exc:
         print(json.dumps({"error": exc.code, "detail": exc.detail}), file=sys.stderr)
         return 1

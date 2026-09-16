@@ -137,7 +137,37 @@
       "capabilities": [
         "live_artifact_read"
       ],
-      "destination": "read the verified catalog inside the privileged child so each legacy row binds to the generation currently selected",
+      "destination": "inside the privileged child, admit every selectable generation before any restriction is applied",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_lifecycle_migration.py",
+      "scope": "_selectable_from_catalog",
+      "role": "live_reader",
+      "capabilities": [
+        "live_artifact_read"
+      ],
+      "destination": "the exact generations a verified catalog load currently selects",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_lifecycle_migration.py",
+      "scope": "_write_handoff",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "stage the reviewed decision under the same root custody as the marker",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_lifecycle_migration.py",
+      "scope": "apply_cutover_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "migrate with the stack quiescent against the reviewed plan, then record the marker last",
       "phase": "M4"
     },
     {
@@ -147,17 +177,17 @@
       "capabilities": [
         "store_write"
       ],
-      "destination": "administrative entry point for the one-time cutover; plan only reports, apply records the marker last",
+      "destination": "administrative entry point; plan only observes, apply migrates and records",
       "phase": "M4"
     },
     {
       "path": "install/birth_lifecycle_migration.py",
-      "scope": "run_cutover_v1",
+      "scope": "plan_cutover_v1",
       "role": "store_owner",
       "capabilities": [
         "store_write"
       ],
-      "destination": "one-time cutover to the epoch lifecycle owner; issues no certificate, publishes no executor, retires no file",
+      "destination": "observe the running installation and record the decision for review; changes nothing else",
       "phase": "M4"
     },
     {

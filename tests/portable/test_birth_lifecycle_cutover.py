@@ -171,83 +171,186 @@ def test_a_damaged_marker_is_not_silently_rewritten(marker_root):
         cutover._install_marker(INSTALLATION, MIGRATION)
 
 
-# --- the two stages ----------------------------------------------------------
+# --- the two commands --------------------------------------------------------
 
-def test_the_cutover_refuses_without_administrative_privilege(monkeypatch):
+@pytest.mark.parametrize("command", ["plan", "apply"])
+def test_neither_command_runs_without_administrative_privilege(monkeypatch, command):
     monkeypatch.setattr(cutover.os, "geteuid", lambda: 1000)
     monkeypatch.setattr(cutover, "_managed_authority_platform_supported_v1", lambda: True)
+    entry = cutover.apply_cutover_v1 if command == "apply" else cutover.plan_cutover_v1
     with pytest.raises(cutover.LifecycleCutoverError) as raised:
-        cutover.run_cutover_v1(apply=True)
+        entry()
     assert raised.value.code == "cutover_root_required"
 
 
-def test_the_cutover_refuses_on_an_unsupported_platform(monkeypatch):
+def test_neither_command_runs_on_an_unsupported_platform(monkeypatch):
     monkeypatch.setattr(cutover, "_managed_authority_platform_supported_v1", lambda: False)
     with pytest.raises(cutover.LifecycleCutoverError) as raised:
-        cutover.run_cutover_v1(apply=True)
+        cutover.plan_cutover_v1()
     assert raised.value.code == "cutover_platform_unsupported"
 
 
-def _child_report(monkeypatch, report, *, failed=False):
-    """Replace only the privileged child, keeping the parent's own checks."""
+OBSERVED = {
+    "migration_id": MIGRATION,
+    "environment": {"HOME": "/srv/home"},
+    "sources": [{"kind": "statistics", "path": "/srv/home/stats.db",
+                 "legacy_table": "executor_stats", "source_id": "sha256:" + "3" * 64,
+                 "content_id": "sha256:" + "4" * 64, "rows": 2,
+                 "plan_id": "sha256:" + "5" * 64, "pending": 0, "restrictions": 1}],
+    "selectable": {"demo": ["user:demo/manifest.toml", "sha256:" + "6" * 64]},
+}
+
+
+def _as_root(monkeypatch):
     monkeypatch.setattr(cutover, "_managed_authority_platform_supported_v1", lambda: True)
     monkeypatch.setattr(cutover.os, "geteuid", lambda: 0)
 
-    def child():
-        if failed:
-            raise cutover.LifecycleCutoverError(
-                report.get("error", "cutover_child_failed"), report.get("detail", ""))
-        return dict(report)
 
-    monkeypatch.setattr(cutover, "_run_child_migration", child)
+@native
+def test_planning_records_the_decision_and_changes_nothing(marker_root, monkeypatch):
+    _as_root(monkeypatch)
+    monkeypatch.setattr(cutover, "_in_service_child", lambda work: dict(OBSERVED))
+    document = cutover.plan_cutover_v1()
+    assert document["purpose"] == cutover.HANDOFF_PURPOSE_V1
+    assert document["migration_id"] == MIGRATION
+    assert (marker_root / cutover.MARKER_BASENAME_V1).exists() is False
+    assert cutover.read_handoff_v1() == document
 
 
-def test_an_open_disposition_blocks_the_marker(monkeypatch):
-    _child_report(monkeypatch, {"applied": {
-        "migration_id": MIGRATION, "preserved": 3, "resolved": 3,
+@native
+def test_replanning_replaces_the_previous_plan(marker_root, monkeypatch):
+    _as_root(monkeypatch)
+    monkeypatch.setattr(cutover, "_in_service_child", lambda work: dict(OBSERVED))
+    cutover.plan_cutover_v1()
+    revised = dict(OBSERVED, migration_id="sha256:" + "7" * 64)
+    monkeypatch.setattr(cutover, "_in_service_child", lambda work: dict(revised))
+    assert cutover.plan_cutover_v1()["migration_id"] == revised["migration_id"]
+    assert cutover.read_handoff_v1()["migration_id"] == revised["migration_id"]
+
+
+@native
+@pytest.mark.parametrize("damage", ["purpose", "schema_version", "service_user",
+                                    "extra", "missing", "sources"])
+def test_a_document_that_is_not_exactly_a_plan_is_refused(marker_root, monkeypatch, damage):
+    _as_root(monkeypatch)
+    monkeypatch.setattr(cutover, "_in_service_child", lambda work: dict(OBSERVED))
+    document = cutover.plan_cutover_v1()
+    if damage == "extra":
+        document["unexpected"] = 1
+    elif damage == "missing":
+        document.pop("selectable")
+    elif damage == "sources":
+        document["sources"] = []
+    elif damage == "schema_version":
+        document["schema_version"] = 2
+    else:
+        document[damage] = "something else"
+    path = marker_root / cutover.HANDOFF_BASENAME_V1
+    path.write_text(json.dumps(document, sort_keys=True, separators=(",", ":")))
+    path.chmod(0o644)
+    with pytest.raises(cutover.LifecycleCutoverError) as raised:
+        cutover.read_handoff_v1()
+    assert raised.value.code == "cutover_handoff_invalid"
+
+
+@native
+def test_applying_without_a_plan_is_refused(marker_root, monkeypatch):
+    _as_root(monkeypatch)
+    with pytest.raises((cutover.LifecycleCutoverError, files.OwnershipAuthorityError)):
+        cutover.apply_cutover_v1()
+
+
+@pytest.fixture
+def planned(marker_root, monkeypatch):
+    _as_root(monkeypatch)
+    monkeypatch.setattr(cutover, "_in_service_child", lambda work: dict(OBSERVED))
+    cutover.plan_cutover_v1()
+    barrier = []
+
+    class _Barrier:
+        def __enter__(self):
+            barrier.append("held")
+            return self
+
+        def __exit__(self, *_exc):
+            barrier.append("released")
+            return False
+
+    import contract_cutover_guard
+    monkeypatch.setattr(
+        contract_cutover_guard, "_contract_cutover_guard_for_service_user_v1",
+        lambda user, **kw: _Barrier())
+    return barrier
+
+
+@native
+def test_the_migration_runs_inside_the_quiescent_barrier(planned, monkeypatch):
+    order = []
+    monkeypatch.setattr(cutover, "_in_service_child", lambda work: (
+        order.append("migrated") or {"applied": {
+            "migration_id": MIGRATION, "preserved": 2, "resolved": 2,
+            "restricted": 1, "pending": 0}}))
+    monkeypatch.setattr(cutover, "_installation_id", lambda: INSTALLATION)
+    monkeypatch.setattr(cutover, "_install_marker",
+                        lambda *a: order.append("marker") or Path("/marker"))
+    cutover.apply_cutover_v1()
+    assert planned == ["held", "released"]
+    assert order == ["migrated", "marker"]
+
+
+@native
+def test_an_open_disposition_blocks_the_marker(planned, monkeypatch):
+    monkeypatch.setattr(cutover, "_in_service_child", lambda work: {"applied": {
+        "migration_id": MIGRATION, "preserved": 2, "resolved": 2,
         "restricted": 1, "pending": 2}})
     monkeypatch.setattr(cutover, "_install_marker",
-                        lambda *a, **k: pytest.fail("marker written with open cases"))
+                        lambda *a: pytest.fail("marker written with open cases"))
     with pytest.raises(cutover.LifecycleCutoverError) as raised:
-        cutover.run_cutover_v1(apply=True)
+        cutover.apply_cutover_v1()
     assert raised.value.code == "cutover_pending_disposition"
     assert raised.value.detail == "2"
+    assert planned == ["held", "released"]
 
 
-def test_planning_reports_without_writing_the_marker(monkeypatch):
-    _child_report(monkeypatch, {"applied": {
-        "migration_id": MIGRATION, "preserved": 3, "resolved": 3,
+@native
+def test_a_different_decision_than_the_reviewed_one_blocks_the_marker(planned, monkeypatch):
+    monkeypatch.setattr(cutover, "_in_service_child", lambda work: {"applied": {
+        "migration_id": "sha256:" + "f" * 64, "preserved": 2, "resolved": 2,
         "restricted": 1, "pending": 0}})
     monkeypatch.setattr(cutover, "_install_marker",
-                        lambda *a, **k: pytest.fail("marker written while planning"))
-    report = cutover.run_cutover_v1(apply=False)
-    assert report["marker"] is None
-    assert report["applied"]["migration_id"] == MIGRATION
-
-
-def test_a_failed_child_never_reaches_the_marker(monkeypatch):
-    _child_report(monkeypatch, {"error": "cutover_epoch_store_absent", "detail": "/x"},
-                  failed=True)
-    monkeypatch.setattr(cutover, "_install_marker",
-                        lambda *a, **k: pytest.fail("marker written after a failure"))
+                        lambda *a: pytest.fail("marker written for another decision"))
     with pytest.raises(cutover.LifecycleCutoverError) as raised:
-        cutover.run_cutover_v1(apply=True)
-    assert raised.value.code == "cutover_epoch_store_absent"
+        cutover.apply_cutover_v1()
+    assert raised.value.code == "cutover_plan_stale"
 
 
-def test_the_marker_is_the_last_thing_written(monkeypatch):
-    _child_report(monkeypatch, {"applied": {
-        "migration_id": MIGRATION, "preserved": 3, "resolved": 3,
-        "restricted": 1, "pending": 0}})
-    order = []
-    monkeypatch.setattr(cutover, "_installation_id",
-                        lambda: order.append("installation") or INSTALLATION)
+@native
+def test_a_failed_child_never_reaches_the_marker(planned, monkeypatch):
+    def failing(_work):
+        raise cutover.LifecycleCutoverError("cutover_epoch_store_absent", "/x")
+
+    monkeypatch.setattr(cutover, "_in_service_child", failing)
     monkeypatch.setattr(cutover, "_install_marker",
-                        lambda installation, migration: order.append("marker")
-                        or Path("/var/lib/metnos/executor-birth/certification-v1/migration.json"))
-    report = cutover.run_cutover_v1(apply=True)
-    assert order == ["installation", "marker"]
-    assert report["marker"].endswith("migration.json")
+                        lambda *a: pytest.fail("marker written after a failure"))
+    with pytest.raises(cutover.LifecycleCutoverError) as raised:
+        cutover.apply_cutover_v1()
+    assert raised.value.code == "cutover_epoch_store_absent"
+    assert planned == ["held", "released"]
+
+
+# --- retiring the copied stores ----------------------------------------------
+
+def test_a_copied_store_is_made_unwritable_and_reported(tmp_path):
+    path = tmp_path / "executor_stats.db"
+    path.write_bytes(b"")
+    retired = cutover._retire_sources((("statistics", path, "executor_stats"),))
+    assert retired == [{"kind": "statistics", "read_only": True, "mode": "0o400"}]
+
+
+def test_a_store_that_cannot_be_retired_says_so(tmp_path):
+    missing = tmp_path / "absent.db"
+    retired = cutover._retire_sources((("statistics", missing, "executor_stats"),))
+    assert retired[0]["read_only"] is False and retired[0]["error"]
 
 
 def test_the_command_line_accepts_only_its_two_stages():
