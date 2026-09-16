@@ -223,6 +223,21 @@ no service, signing identity, publication permission or waiver of failed tests.
 The exact bounded schemas and entry points are frozen in the work plan before
 implementation. The approval is not a completed migration or F5 activation.
 
+### Focused routing profile — approved on 16 September 2026
+
+Roberto explicitly approved replacing the inherited 48 general cases per
+cycle with two complete cycles focused on Birth, exact generations, caches,
+feedback and durable recovery. Unchanged mail, calendar and contact paths
+are not repeated. Reuse their still-applicable regression evidence.
+
+The five real technical admissions, two authenticated producers, complete
+adjacent cycles, independent postconditions, defect closure and Linux/Windows
+requirements are unchanged. Freeze the focused case inventory before the
+first observation; partial selections and simulated success do not qualify.
+Reuse the existing external oracle and administrative evidence owner, not a
+new test framework. This supersedes only §6.4's selection of the complete
+general-purpose HTTP profile, not its ownership or evidence requirements.
+
 ## References
 
 - [Detailed handover](handover_rm0008_f5_f6_15_9_2026.md), sections 4–6.

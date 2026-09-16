@@ -1,28 +1,19 @@
-"""server.py — gestisce il lifecycle del server Metnos in subprocess
-con storage isolato (no contaminazione di prod).
+"""Own an unprivileged HTTP test process and its disposable storage.
 
-Pattern: ogni test session usa una tmp dir `tests/e2e/tmp/<run_id>/`. Server
-viene avviato con env `METNOS_USER_DATA` + `METNOS_USER_STATE` puntati
-li'. Porta random libera.
+Default inputs come from the shipped installation seed, not a personal
+configuration. The caller prepares the isolated installation's signing and
+Birth prerequisites through ``pre_spawn_hook``; failed bootstrap is never
+hidden by treating a maintenance listener as operational readiness.
 
-API:
-    server = E2EServer.spawn()                 # blocca finche' ready
-    server.url                                  # http://127.0.0.1:<port>
-    server.admin_key                            # 64-char hex
-    server.user_data                            # Path tmp data
-    server.user_state                           # Path tmp state
-    server.shutdown()                           # SIGTERM + wait
-
-Usage in pytest:
-    @pytest_asyncio.fixture(scope="session")
-    async def server():
-        s = E2EServer.spawn()
-        yield s
-        s.shutdown()
+``seed_realistic`` is an explicit legacy diagnostic mode. It imports personal
+data and links image storage; it is NOT isolated certification and must not
+be used for F5 qualification or destructive scenarios.
 """
 from __future__ import annotations
 
 import os
+import http.client
+import json
 import secrets
 import shutil
 import signal
@@ -30,7 +21,7 @@ import socket
 import subprocess
 import sys
 import time
-import uuid
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -64,43 +55,17 @@ _PYTHON = _runtime_python()
 
 
 def _seed_i18n_baseline(user_data: Path) -> None:
-    """Copia il DB i18n live in tmp come baseline.
+    """Use the same shipped message seed as a fresh installation.
 
-    Le 1000+ chiavi `MSG_*`/`ERR_*` sono runtime-essentials (formatting
-    health block, truncation notice, errori user-facing). Senza queste
-    chiavi il runtime emette `<missing:KEY>` ovunque. Necessario per
-    OGNI test, non solo con `seed_realistic=True`.
-
-    Idempotente: se gia' presente non sovrascrive.
+    Missing installation inputs are errors, not permission to borrow live
+    data. An explicitly supplied fixture may already contain its own seed.
     """
-    src = _LIVE_USER_DATA / "i18n.sqlite"
-    if not src.exists():
-        return
+    src = _REPO_ROOT / "install" / "data" / "i18n_seed.sqlite"
     dst = user_data / "i18n.sqlite"
     if dst.exists():
         return
     user_data.mkdir(parents=True, exist_ok=True)
-    try:
-        _copy_db_with_wal(src, dst)
-    except (OSError, shutil.Error):
-        pass
-
-
-def _seed_trusted_public_keys(user_config: Path) -> None:
-    """Copy only trusted public signing keys into the isolated config.
-
-    Planner-visible in-process builtins are admitted from signed contracts
-    even when the E2E handcrafted loader runs with verification disabled.
-    Without the public keys, the isolated catalog silently loses all builtins
-    (for example ``list_tasks``). Private signing material is never copied.
-    """
-    source = _LIVE_USER_CONFIG / "keys"
-    if not source.is_dir():
-        return
-    target = user_config / "keys"
-    target.mkdir(parents=True, exist_ok=True, mode=0o700)
-    for public_key in sorted(source.glob("*_pub.bin")):
-        shutil.copy2(public_key, target / public_key.name)
+    shutil.copyfile(src, dst)
 
 
 def _copy_db_with_wal(src: Path, dst: Path) -> None:
@@ -269,16 +234,59 @@ def _free_port() -> int:
     return port
 
 
-def _wait_ready(host: str, port: int, timeout_s: float = 30.0) -> bool:
-    """Polling TCP fino a connessione ok."""
-    deadline = time.time() + timeout_s
-    while time.time() < deadline:
+def _wait_ready(host: str, port: int, *, process: subprocess.Popen,
+                timeout_s: float = 30.0) -> bool:
+    """Require operational HTTP, not a listener or maintenance-only startup.
+
+    Use a direct connection: no environment proxy, redirects or credentials
+    from the invoking user's network configuration participate in readiness.
+    """
+    deadline = time.monotonic() + timeout_s
+    while (remaining := deadline - time.monotonic()) > 0:
+        if process.poll() is not None:
+            return False
+        connection = http.client.HTTPConnection(host, port, timeout=min(.5, remaining))
         try:
-            with socket.create_connection((host, port), timeout=0.5):
+            connection.request("GET", "/agent/health", headers={"Accept": "application/json"})
+            response = connection.getresponse()
+            body = response.read(65537)
+            value = json.loads(body) if len(body) <= 65536 else None
+            if (response.status == 200 and isinstance(value, dict)
+                    and value.get("ok") is True
+                    and value.get("operational") is True
+                    and value.get("maintenance_only") is False
+                    and process.poll() is None):
                 return True
-        except OSError:
-            time.sleep(0.2)
+        except (OSError, http.client.HTTPException, ValueError, RecursionError):
+            pass
+        finally:
+            connection.close()
+        time.sleep(min(.1, max(0, deadline - time.monotonic())))
     return False
+
+
+def _stop_process(process: subprocess.Popen, timeout_s: float = 3.0) -> None:
+    """Reap the owned child and terminate its session's remaining children."""
+    def send(sig: int) -> None:
+        try:
+            if os.name == "posix":
+                os.killpg(process.pid, sig)
+            elif process.poll() is None:
+                process.terminate() if sig == signal.SIGTERM else process.kill()
+        except ProcessLookupError:
+            pass
+
+    send(signal.SIGTERM)
+    try:
+        process.wait(timeout=timeout_s)
+    except subprocess.TimeoutExpired:
+        pass
+    # The parent can exit before a child that ignores SIGTERM. The group is
+    # private because spawn always creates a new session.
+    send(signal.SIGKILL if os.name == "posix" else signal.SIGTERM)
+    if process.poll() is None:
+        process.kill()
+    process.wait(timeout=2)
 
 
 @dataclass
@@ -312,25 +320,32 @@ class E2EServer:
               seed_realistic: bool = False,
               pre_spawn_hook: Optional[callable] = None,
               hide_executors: Optional[list] = None) -> "E2EServer":
-        """Avvia server subprocess. Blocca fino a ready_timeout_s.
+        """Start a disposable server and wait for operational HTTP.
 
-        seed_user_data: se passato, copia ricorsivamente la dir come
-        baseline di USER_DATA prima dell'avvio.
-
-        seed_realistic: se True, copia subset realistico dal sistema live
-        (`~/.local/share/metnos/`): turns history, mnest.sqlite,
-        multi_tool_paths, persons, executor_stats, telos_proposals.jsonl,
-        turn_feedback.jsonl, credentials. Per simulazioni high-fidelity di
-        funzioni introvertive (telos engine, introvertiva propose,
-        multi_tool L2 promotion). Zero contaminazione del live (copy →
-        tmp, tmp distrutto a teardown).
-
-        pre_spawn_hook: callable `fn(env, tmp_root) -> None` invocato
-        dopo seed e prima dello spawn. Use case: importare skill (subprocess
-        CLI) per popolare _imports/ → catalog vede gli executor al boot.
+        ``seed_user_data`` explicitly supplies a data fixture. Signing and
+        closed-build prerequisites belong to ``pre_spawn_hook(env, tmp_root)``.
+        ``seed_realistic`` borrows personal inputs and is never an F5 fixture.
+        Neither mode permits privileged execution of the HTTP test process.
         """
-        run_id = uuid.uuid4().hex[:8]
-        tmp_root = _REPO_ROOT / "tests" / "e2e" / "tmp" / run_id
+        if hasattr(os, "geteuid") and os.geteuid() == 0:
+            raise RuntimeError("HTTP test processes must run unprivileged")
+        parent = _REPO_ROOT / "tests" / "e2e" / "tmp"
+        parent.mkdir(parents=True, exist_ok=True)
+        tmp_root = Path(tempfile.mkdtemp(prefix="run-", dir=parent))
+        try:
+            return cls._spawn_at(
+                tmp_root, host=host, ready_timeout_s=ready_timeout_s,
+                seed_user_data=seed_user_data, seed_realistic=seed_realistic,
+                pre_spawn_hook=pre_spawn_hook, hide_executors=hide_executors,
+            )
+        except BaseException:
+            if os.environ.get("METNOS_E2E_KEEP_TMP") != "1":
+                shutil.rmtree(tmp_root)
+            raise
+
+    @classmethod
+    def _spawn_at(cls, tmp_root: Path, *, host, ready_timeout_s, seed_user_data,
+                  seed_realistic, pre_spawn_hook, hide_executors) -> "E2EServer":
         user_data = tmp_root / "data"
         user_state = tmp_root / "state"
         user_config = tmp_root / "config"
@@ -347,41 +362,42 @@ class E2EServer:
                 else:
                     shutil.copy2(src, dst)
 
-        # Baseline runtime: i18n.sqlite va SEMPRE seedato dal live, non
-        # solo con seed_realistic=True. Il DB contiene 1000+ chiavi
-        # `MSG_*`/`ERR_*` usate dal runtime per formatting user-facing
-        # (health, truncation, errori). Senza baseline il runtime emette
-        # `<missing:KEY>` cascading.
+        # Fresh installation input; explicit realistic diagnostics below are
+        # separate from isolated certification and are not qualifying cycles.
         _seed_i18n_baseline(user_data)
 
-        # Seed realistic: snapshot subset live → tmp. Read-only di natura
-        # (tmp viene cancellato). Permette test introvertivi/telos su
-        # corpus vero senza contaminare esercizio.
+        # Explicit legacy diagnostics only; linked image storage is not a
+        # copy and must not be mistaken for an isolated writable fixture.
         if seed_realistic:
             _seed_realistic_into(user_data, user_state, user_config)
 
         # Admin key: genera + scrive in user_config
-        _seed_trusted_public_keys(user_config)
         admin_key = secrets.token_hex(32)
         (user_config / "admin.key").write_text(admin_key)
         os.chmod(user_config / "admin.key", 0o600)
 
         port = _free_port()
 
-        env = os.environ.copy()
+        # Inherited DB/path overrides can escape all three disposable roots.
+        # Product configuration is supplied explicitly by the fixture hook.
+        env = {key: value for key, value in os.environ.items()
+               if not key.startswith("METNOS_")}
+        workspace = tmp_root / "workspace"
+        workspace.mkdir()
         env.update({
             "METNOS_USER_DATA": str(user_data),
             "METNOS_USER_STATE": str(user_state),
             "METNOS_USER_CONFIG": str(user_config),
+            "METNOS_WORKSPACE": str(workspace),
+            "METNOS_INSTALL_ROOT": str(_REPO_ROOT),
             # The parent pytest process may itself use a sandbox lock path.
             # Each E2E server must own a distinct lock or parallel lifecycle
             # tests falsely look like a live-server collision.
             "METNOS_HTTP_LOCKFILE": str(user_state / "http_server.lock"),
             "METNOS_E2E": "1",  # toggle interno: niente cron pesanti
             "METNOS_RUNTIME_PROFILE": "e2e",
-            # Skill imported via CLI test usa `--no-sign` → loader scarta
-            # silenziosamente per digest mismatch. Disable verify per E2E.
-            "METNOS_LOADER_VERIFY": "0",
+            # Fixtures must use the actual admission/bootstrap boundary.
+            "METNOS_LOADER_VERIFY": "1",
             "METNOS_HTTP_DISABLE_BUILD_TASKS": "1",  # niente async build
             # Mai chiamare frontier (Anthropic/OpenAI a pagamento) nei test
             "METNOS_DISABLE_FRONTIER": "1",
@@ -411,31 +427,25 @@ class E2EServer:
 
         # Spawn
         log_file = tmp_root / "server.log"
-        log_fp = log_file.open("w")
-        proc = subprocess.Popen(
-            [_PYTHON, "-u", "-m", "runtime.metnos_http_server",
-             "--host", host, "--port", str(port)],
-            cwd=str(_REPO_ROOT),
-            env=env,
-            stdout=log_fp,
-            stderr=subprocess.STDOUT,
-            start_new_session=True,
-        )
-
-        # Wait ready
-        ok = _wait_ready(host, port, timeout_s=ready_timeout_s)
-        if not ok:
-            # Cleanup + error
-            try:
-                proc.send_signal(signal.SIGTERM)
-                proc.wait(timeout=3)
-            except Exception:
-                pass
-            log_excerpt = log_file.read_text()[-2000:] if log_file.exists() else "(no log)"
-            raise RuntimeError(
-                f"server failed to start within {ready_timeout_s}s on {host}:{port}\n"
-                f"--- last 2KB of server.log ---\n{log_excerpt}"
+        with log_file.open("w") as log_fp:
+            proc = subprocess.Popen(
+                [_PYTHON, "-u", "-m", "runtime.metnos_http_server",
+                 "--host", host, "--port", str(port)],
+                cwd=str(_REPO_ROOT), env=env, stdout=log_fp,
+                stderr=subprocess.STDOUT, start_new_session=True,
             )
+        try:
+            if not _wait_ready(host, port, process=proc, timeout_s=ready_timeout_s):
+                with log_file.open("rb") as stream:
+                    stream.seek(max(0, os.fstat(stream.fileno()).st_size - 2000))
+                    excerpt = stream.read(2000).decode("utf-8", errors="replace")
+                raise RuntimeError(
+                    f"server not operational within {ready_timeout_s}s on {host}:{port}\n"
+                    f"Last 2KB of server.log:\n{excerpt}"
+                )
+        except BaseException:
+            _stop_process(proc)
+            raise
 
         return cls(
             process=proc, port=port, admin_key=admin_key,
@@ -446,15 +456,7 @@ class E2EServer:
 
     def shutdown(self, *, timeout_s: float = 5.0, cleanup: bool = True) -> None:
         """SIGTERM + wait. Se cleanup, rimuove tmp_root."""
-        if self.process.poll() is None:
-            try:
-                self.process.send_signal(signal.SIGTERM)
-                self.process.wait(timeout=timeout_s)
-            except subprocess.TimeoutExpired:
-                self.process.kill()
-                self.process.wait(timeout=2)
-            except Exception:
-                pass
+        _stop_process(self.process, timeout_s=timeout_s)
         if cleanup and os.environ.get("METNOS_E2E_KEEP_TMP") != "1":
             try:
                 shutil.rmtree(self.tmp_root, ignore_errors=True)

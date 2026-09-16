@@ -120,17 +120,11 @@ def _full_spawn_hook(locale: str, web_url: str, imap_port: int):
             "METNOS_AGENT_LOCKFILE": str(tmp_root / "state" / "agent-server.lock"),
             "PYTHONPATH": str(REPO_ROOT / "runtime"),
         })
-        # The isolated remote protocol must sign pairing and invocation data
-        # with the same author key that signed the checked-in executor bundles.
-        # The private half exists only in this disposable tree and is removed
-        # with it; it is never included in evidence or command output.
-        source = Path.home() / ".config" / "metnos" / "keys" / "author_priv.bin"
+        # Pairing must use the fresh installation's own authority. Never
+        # borrow the operator's private key to make a test fixture pass.
         target = tmp_root / "config" / "keys" / "author_priv.bin"
-        if not source.is_file():
-            raise RuntimeError("author signing key unavailable for remote fixture")
-        target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, target)
-        target.chmod(0o600)
+        if not target.is_file() or target.is_symlink():
+            raise RuntimeError("isolated installation signing authority is not provisioned")
 
     return hook
 
