@@ -1,7 +1,8 @@
 # Release limitata ai controlli backend — 16 settembre 2026
 
-**Esito: pubblicazione backend completata sulla release 55. LRE disabilitato,
-lavoro foto invariato; Tutor escluso e ancora non certificato.**
+**Esito: pubblicazione backend completata sulla release 55. LRE inizialmente
+disabilitato, poi abilitato su richiesta esplicita di Roberto (sezione finale).
+Lavoro foto invariato; Tutor escluso e ancora non certificato.**
 
 ## Mandato e perimetro
 
@@ -141,3 +142,36 @@ Pubblicazione confermata dal fornitore:
 stato riletto dal dominio pubblico in IT e EN. Cloudflare resta strumento privato di
 sviluppo/documentazione, non componente dell'installazione pubblica. Nessun
 push GitHub eseguito.
+
+## Abilitazione successiva di LRE su richiesta esplicita
+
+Dopo la chiusura del rilascio Roberto ha chiesto «attiva lre». Il comando
+amministrativo ufficiale `POST /admin/services/durable_workloads/feature/enable`
+è stato eseguito dopo la verifica di inattività dello stack, senza modificare
+direttamente unità o configurazione e senza riavviare HTTP o gli altri servizi.
+La procedura ha persistito l'abilitazione e riavviato il solo lavoratore.
+Accettazione alle 08:55:15 UTC, evidenza
+`/var/lib/metnos-admin/agent-runs/run-9hxcx8cd`.
+
+Alle **08:56:11 UTC** LRE è effettivamente `enabled=true`, `state=ready`,
+`worker_available=true`, presenza aggiornata e nessun motivo di errore;
+Metnos resta operativo. Evidenza
+`/var/lib/metnos-admin/agent-runs/run-i5lv3r8k`. PID lavoratore 400369,
+un thread, zero riavvii anomali. La configurazione persistente ora ha impronta
+`24b0ec70d4bce174a838d86c3dfd3a9e6e30c37731354df776223f5eb3f382e4`.
+
+L'abilitazione non equivale alla ripresa forzata della reindicizzazione:
+il lavoro foto rimane `needs_attention` con identica impronta
+`64f069dafa2f1adb942d8ea2b809cefcbd51c59d9dad9f35925f4843a3907468`.
+Inventario lavori: 3 conclusi, 2 falliti storici, 1 da verificare; nessun
+lavoro eseguibile in coda. Budget e consumi sconosciuti non sono stati alterati,
+nessun ritentativo o ripristino è stato richiesto. Rimane esclusa una prova
+di carico attivo; il Tutor non è stato modificato.
+
+Controllo di stabilità alle **08:57:16 UTC**, evidenza
+`/var/lib/metnos-admin/agent-runs/run-f50y_vtw`: stesso PID, un thread,
+nessun riavvio, motore pronto e presenza aggiornata, foto sempre invariata.
+Nei circa 64,66 secondi dall'osservazione precedente, CPU cumulativa da
+28.620.196.000 a 28.662.072.000 ns: circa **0,065% di un core** a motore
+abilitato senza lavori eseguibili. Il consumo di avvio è escluso da questa
+misura; non è una prova prestazionale della reindicizzazione.

@@ -232,3 +232,9 @@ attivazione completate, compresi gli otto residui già ammessi della release
 invariato. Verifica conclusiva alle 08:50:22 UTC. Il difetto Tutor e la
 ripresa delle elaborazioni restano esclusi dalla chiusura.
 Prove e identità complete: `lre-backend-release-20260916.md`.
+
+Successivamente Roberto ha richiesto esplicitamente l'abilitazione di LRE:
+motore pronto e disponibile verificato alle 08:56:11 UTC, configurazione
+persistente aggiornata tramite comando amministrativo ufficiale. Il lavoro
+foto resta invariato e da verificare, senza ripresa forzata o modifica budget.
+Evidenze nella sezione finale del medesimo rapporto di release 55.
