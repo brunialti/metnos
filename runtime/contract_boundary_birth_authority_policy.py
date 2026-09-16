@@ -49,8 +49,11 @@ BIRTH_AUTHORITY_POLICY_V1 = BirthAuthorityPolicyV1(
     coordinator_store_owners=(
         'install/birth_authority_provisioner.py:_publish_initial_predecessor_v2',
         'install/birth_authority_provisioner.py:abandon_unattestable_transition_v2',
+        'install/birth_certification_authority_provisioner.py:_provision_certification_at_v1',
+        'install/birth_certification_authority_provisioner.py:provision_certification_authority_v1',
         'install/birth_ownership_authority_provisioner.py:_discard_temporary',
         'install/birth_ownership_authority_provisioner.py:_load_or_create_pair',
+        'install/birth_ownership_authority_provisioner.py:_load_or_create_private',
         'install/birth_ownership_authority_provisioner.py:_provision_ownership_authorities_at_v1',
         'install/birth_ownership_authority_provisioner.py:_provision_ownership_authorities_locked_v1',
         'install/birth_ownership_authority_provisioner.py:_provisioning_lock',

@@ -465,19 +465,15 @@ def _checkpoint_prefix(
     return present[-1] if present else -1
 
 
-def _load_or_create_pair(
-    pending: Path, kind: str, *, root_owned: bool,
-    crash: _CrashHook | None,
-) -> None:
-    private_path = pending / _PRIVATE_BASENAMES[kind]
-    registry_path = pending / _REGISTRY_BASENAMES[kind]
-    private_exists = _path_present(private_path)
-    registry_exists = _path_present(registry_path)
-    if registry_exists and not private_exists:
-        raise OwnershipAuthorityError(
-            "birth_ownership_authority_recovery_required", "registry without key",
-        )
-    if private_exists:
+def _load_or_create_private(
+    private_path: Path, *, root_owned: bool, crash: _CrashHook | None,
+) -> Ed25519PrivateKey:
+    """Reuse a complete private file across interrupted initial provisioning.
+
+    The owning provisioner must reject a public registry without its private
+    file before calling this helper. A published key is never regenerated.
+    """
+    if _path_present(private_path):
         encoded_private = _read_regular(
             private_path, maximum=32, mode=0o600, root_owned=root_owned,
         )
@@ -509,8 +505,26 @@ def _load_or_create_pair(
             private_path, _private_bytes(private), 0o600,
             root_owned=root_owned, crash=crash,
         )
-        if crash is not None:
-            crash(f"after_{kind}_private")
+    return private
+
+
+def _load_or_create_pair(
+    pending: Path, kind: str, *, root_owned: bool,
+    crash: _CrashHook | None,
+) -> None:
+    private_path = pending / _PRIVATE_BASENAMES[kind]
+    registry_path = pending / _REGISTRY_BASENAMES[kind]
+    private_exists = _path_present(private_path)
+    registry_exists = _path_present(registry_path)
+    if registry_exists and not private_exists:
+        raise OwnershipAuthorityError(
+            "birth_ownership_authority_recovery_required", "registry without key",
+        )
+    private = _load_or_create_private(
+        private_path, root_owned=root_owned, crash=crash,
+    )
+    if not private_exists and crash is not None:
+        crash(f"after_{kind}_private")
     expected_registry = encode_ownership_registry_v1(kind, private.public_key())
     if registry_exists:
         encoded_registry = _read_regular(

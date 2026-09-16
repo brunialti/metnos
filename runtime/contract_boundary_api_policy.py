@@ -162,9 +162,14 @@ BOUNDARY_API_OWNERS_V1 = (
             'live_artifact_read', 'store_write', 'verified_store_read',
         )),
     )),
+    BoundaryApiOwnerV1('birth_certification_authority_provisioner', (
+        ('_provision_certification_at_v1', ('store_write',)),
+        ('provision_certification_authority_v1', ('store_write',)),
+    )),
     BoundaryApiOwnerV1('birth_ownership_authority_provisioner', (
         ('_discard_temporary', ('store_write',)),
         ('_load_or_create_pair', ('store_write',)),
+        ('_load_or_create_private', ('store_write',)),
         ('_publish_no_replace', ('store_write',)),
         ('_provision_ownership_authorities_at_v1', ('store_write',)),
         ('_provision_ownership_authorities_locked_v1', ('store_write',)),

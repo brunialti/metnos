@@ -76,6 +76,18 @@
  in preparazione. Resta da ottimizzare l'inventario dei registri del
  coordinatore di rilascio. La certificazione iniziale e un'indagine storica
  esplicita restano attività separate.</p>
+ <h2>La chiave di certificazione non concede permessi operativi</h2>
+ <p>La prova iniziale F5 usa un'identità amministrativa dedicata, separata
+ dalle chiavi che ammettono gli executor. La parte privata resta
+ all'amministratore; al verificatore basta la parte pubblica. Una chiave di
+ certificazione assente o revocata non deve fermare i componenti già
+ operativi con F4. Preparare la chiave non attiva F5.</p>
+ <p><strong>Stato dello sviluppo:</strong> le prove isolate su Linux coprono
+ la preparazione della chiave, la ripresa dopo l'arresto del processo e la
+ lettura della sola parte pubblica da un account senza privilegi. Restano da
+ completare la prova basata sulle ammissioni reali, la migrazione e
+ l'integrazione del ciclo di vita. F5 e F6 non sono concluse; la custodia
+ nativa su Windows non è implementata.</p>
  <h2>Le prove restano, le vecchie copie del programma no</h2>
  <p>La procedura di rilascio conserva normalmente la versione attiva e una
  precedente, oltre alle copie ancora utilizzate da processi, servizi o
