@@ -111,6 +111,56 @@
       "phase": "M4"
     },
     {
+      "path": "install/birth_lifecycle_migration.py",
+      "scope": "<module>",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "administrative cutover module; importing it performs no account lookup, no store access and no marker write",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_lifecycle_migration.py",
+      "scope": "_install_marker",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "record the root-owned migration marker last, verified with the reader the runtime will use",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_lifecycle_migration.py",
+      "scope": "_migrate_as_service",
+      "role": "live_reader",
+      "capabilities": [
+        "live_artifact_read"
+      ],
+      "destination": "read the verified catalog inside the privileged child so each legacy row binds to the generation currently selected",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_lifecycle_migration.py",
+      "scope": "main",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "administrative entry point for the one-time cutover; plan only reports, apply records the marker last",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_lifecycle_migration.py",
+      "scope": "run_cutover_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "one-time cutover to the epoch lifecycle owner; issues no certificate, publishes no executor, retires no file",
+      "phase": "M4"
+    },
+    {
       "path": "install/birth_certification_evidence.py",
       "scope": "_evidence_at_v1",
       "role": "store_owner",

@@ -230,6 +230,44 @@ These files are neither populated by ordinary F4 startup nor synthesized as
 replacement migration evidence. Live feedback wiring and final qualification
 remain development work; provisioning the optional capability does not enable it.
 
+### Optional one-time lifecycle cutover (development)
+
+`install.birth_lifecycle_migration` moves an installation from its name-based
+executor lifecycle state to the epoch store. It is not part of the six-phase
+installer, ordinary Birth or service startup, and it issues no certificate,
+publishes no executor and retires no file.
+
+It runs as two stages in one command, because dropping privilege is
+irreversible and the marker must be root-owned. `plan` reports exactly what
+`apply` would do. A child resolves the selected stores from the running
+`metnos-http.service` process — only `HOME`, `METNOS_USER_DATA`,
+`METNOS_USER_STATE`, `METNOS_EXECUTOR_STATS_DB` and `METNOS_PROMOTER_DB` are
+read, and the main PID is rechecked — then permanently drops to the service
+account before any database access. The selected sources are
+`executor_stats` in the state root and `proposal_promote` in the data root.
+
+Inside that child the epoch store must already exist at
+`birth/executor_epochs.sqlite`; it is not created here. Every selectable
+generation is admitted first, so no window exists in which a restricted
+executor becomes visible again. The stores are then read read-only and
+query-only, preserved byte-identically, decided, and finally restricted, with
+the exact source object rechecked before and after. Counters and instants do
+not cross: **the inactivity clock restarts at cutover**, so nothing can be
+archived for `METNOS_EXECUTOR_DEPRECATED_DAYS` afterwards.
+
+The root parent writes `certification-v1/migration.json` (0644, root-owned)
+last, and only when every decision is settled. An open promotion or a
+restriction with no selectable generation blocks the marker: those cases need a
+disposition, and losing them silently is what retirement must not do. A
+different marker already present is a recovery operation with its own evidence,
+never a retry. Until that marker exists the installation keeps using its
+name-based state and the command can simply be run again.
+
+The marker selects which store owns lifecycle state. It does not activate F5:
+the operations that need a derived qualification still require the separate
+certificate, and without it they refuse individually rather than reselecting the
+retired state.
+
 ### Private HTTP runtime settings
 
 The signed HTTP recipe selects `METNOS_ENGINE=v3`; its launcher does not inherit
