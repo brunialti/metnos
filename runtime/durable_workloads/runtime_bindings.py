@@ -308,7 +308,8 @@ class BoundExecutionBridge:
         self._next_maintenance = 0.0
         self._closed = False
 
-    def run_once(self, worker: DurableWorker):
+    def maintain(self) -> None:
+        """Run bounded retention/revocation even when no unit can execute."""
         if self._closed:
             raise RuntimeError("execution bridge is closed")
         now = time.monotonic()
@@ -316,6 +317,9 @@ class BoundExecutionBridge:
             for callback in self._maintenance:
                 callback()
             self._next_maintenance = now + self._maintenance_interval_s
+
+    def run_once(self, worker: DurableWorker):
+        self.maintain()
         return self._bridge.run_once(worker)
 
     def close(self) -> None:
@@ -370,6 +374,8 @@ class RuntimeFactory:
         self._lease_duration = lease_duration
         self._registry: RuntimeRegistry | None = None
         self._guard = threading.Lock()
+        self._maintenance_guard = threading.Lock()
+        self._next_source_maintenance = 0.0
 
     def registry(self) -> RuntimeRegistry:
         with self._guard:
@@ -391,7 +397,7 @@ class RuntimeFactory:
             raise StoreNotReadyError("runtime bindings require a file-backed store")
         from config import PATH_DURABLE_ARTIFACTS
 
-        repository = ArtifactRepository.open(database_path)
+        repository = ArtifactRepository.open_for_store(store)
         artifacts: ArtifactStore | None = None
         authority: SourceAuthority | None = None
         try:
@@ -417,11 +423,18 @@ class RuntimeFactory:
             )
 
             def maintain_source_authority() -> None:
-                authority.reconcile_workloads(
-                    store.source_authority_active,
-                    limit=100,
-                )
-                authority.prune(limit=1000)
+                # Bindings are short-lived per lane; retention cadence belongs
+                # to the shared factory, not to each newly opened connection.
+                with self._maintenance_guard:
+                    now = time.monotonic()
+                    if now < self._next_source_maintenance:
+                        return
+                    authority.reconcile_workloads(
+                        store.source_authority_active,
+                        limit=100,
+                    )
+                    authority.prune(limit=1000)
+                    self._next_source_maintenance = now + 60.0
 
             return BoundExecutionBridge(
                 bridge,

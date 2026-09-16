@@ -5069,7 +5069,7 @@ def _cross_head_boundary_core_v2(
 ) -> OwnershipCoordinatorRecordV2:
     """Advance sequence 3 to 5 around one recoverable required-head CAS."""
     from executor_birth_ownership_chain import (
-        OwnershipChainStore, OwnershipHead, VerifiedOwnershipChain,
+        OwnershipChainStore, OwnershipHead, VerifiedOwnershipChain, VerifiedOwnershipWindowV1,
     )
 
     if (
@@ -5213,7 +5213,7 @@ def _cross_head_boundary_core_v2(
     verified_chain = verify_required_chain(certificate)
     require()
     if (
-        type(verified_chain) is not VerifiedOwnershipChain
+        type(verified_chain) not in {VerifiedOwnershipChain, VerifiedOwnershipWindowV1}
         or type(verified_chain.required_head) is not OwnershipHead
         or verified_chain.required_head != material.head
         or (
@@ -5286,7 +5286,7 @@ def _cross_head_boundary_locked_v2(
             distribution.encoded, distribution.signature,
         ),
         verify_required_chain=lambda _certificate: (
-            store.read_required_chain_cold_v1()
+            store.read_required_window_v1()
         ),
         require_sessions=lambda: _require_product_sessions_v1(held),
         _crash_seam=_crash_seam,

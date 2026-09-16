@@ -43,6 +43,30 @@
  conservare formato, integrità e proprietà sicuri e corrispondere esattamente
  alla stessa transizione, installazione e catalogo. Non viene riscritto né
  presentato come una nuova verifica dello stato corrente.</p>
+ <h2>Controllare il presente senza rileggere tutta la storia</h2>
+ <p>Una nuova ammissione deve superare i controlli di sicurezza. Non deve
+ però ripetere il lavoro già verificato su tutte le versioni precedenti.
+ Il lettore ottimizzato usa il riferimento firmato alla versione corrente,
+ controlla il collegamento alla precedente e verifica i file effettivamente
+ installati. Firme alterate o un cambio di versione durante la lettura
+ continuano a causare un rifiuto.</p>
+ <p><strong>Stato del lavoro:</strong> questo percorso è implementato e
+ provato nello sviluppo, ma non ancora distribuito. Anche il verificatore
+ amministrativo di avvio ha superato una prova in sola lettura sull'impianto
+ reale: controlla la versione corrente, la precedente e l'eventuale successiva
+ in preparazione. Resta da ottimizzare l'inventario dei registri del
+ coordinatore di rilascio. La certificazione iniziale e un'indagine storica
+ esplicita restano attività separate.</p>
+ <h2>Le prove restano, le vecchie copie del programma no</h2>
+ <p>La procedura di rilascio conserva normalmente la versione attiva e una
+ precedente, oltre alle copie ancora utilizzate da processi, servizi o
+ operazioni in preparazione. Solo dopo un rilascio riuscito può eliminare
+ le altre copie. La copia precedente serve al recupero: non autorizza a
+ tornare automaticamente a una versione meno recente.</p>
+ <p>Questa pulizia riguarda soltanto il codice delle distribuzioni. Non
+ elimina ricevute firmate, dati personali, modelli o informazioni ancora
+ necessarie alla migrazione. Ridurre le copie non significa ridurre i
+ controlli di sicurezza.</p>
 </main>
 </body>
 </html>

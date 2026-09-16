@@ -31,10 +31,10 @@ def test_transition_snapshot_uses_explicit_historical_door_only_for_successor(
         if (encoded, signature) == (b"signed", b"sig") else pytest.fail("candidate changed"),
     )
     monkeypatch.setattr(
-        chain_module, "inspect_ownership_chain_state_v1", lambda: calls.append("ordinary") or chain,
+        chain_module, "inspect_required_ownership_v1", lambda: calls.append("ordinary") or chain,
     )
     monkeypatch.setattr(
-        chain_module, "inspect_transition_ownership_chain_v1",
+        chain_module, "inspect_transition_ownership_window_v1",
         lambda candidate: calls.append("transition") or chain
         if candidate is record else pytest.fail("authenticated record lost"),
     )

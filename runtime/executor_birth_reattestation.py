@@ -236,6 +236,80 @@ def _hash(domain: bytes, *values: bytes) -> str:
     return "sha256:" + hashlib.sha256(framed).hexdigest()
 
 
+@dataclass(frozen=True, slots=True)
+class HistoricalReattestationV2:
+    """Authenticated non-publishing evidence, always outside F5's count."""
+
+    producer_binding: object
+    continuity_receipt_hash: str | None
+    initial_adoption: bool
+
+
+def verify_historical_reattestation_v2(*, evidence, receipt_row, issuance_row, declarations):
+    """Verify the persisted V2 protocol, without current state or authority."""
+    from contract_store import verify_historical_birth_evidence_v1
+    from executor_birth_producer_store import verify_historical_reattestation_producer_v2
+
+    public = declarations.context.public_set
+    admission = verify_historical_birth_evidence_v1(
+        evidence, admission_verifier_keys=public.admission_verifier_keys,
+        author_verifier_keys=public.author_verifier_keys,
+    )
+    binding = verify_historical_reattestation_producer_v2(
+        evidence.receipt_bytes, receipt_row=receipt_row, issuance_row=issuance_row,
+        declarations=declarations,
+    )
+    if (evidence.admission_context_id != admission.admission_context_id
+            or admission.predecessor_id != admission.generation_id
+            or admission.revision_class is not ReceiptRevisionClass.REATTESTATION
+            or receipt_row.state != "committed" or receipt_row.rejection_code is not None
+            or receipt_row.terminal_envelope is not None or receipt_row.terminal_auth is not None
+            or receipt_row.result_binding != _hash(
+                b"metnos.executor-birth.reattestation-result/v1\0", evidence.receipt_bytes,
+            )):
+        raise BirthReattestationError("birth_history_reattestation_binding_invalid")
+    snapshot_hash = _hash(
+        b"metnos.executor-birth.reattestation-snapshot/v1\0",
+        admission.contract_id.encode("utf-8"), admission.generation_id.encode("ascii"),
+        admission.candidate_id.encode("ascii"),
+    )
+    checks = admission.check_results
+    marker = AdmissionCheck("1", AdmittedCheckStatus.PASSED, snapshot_hash)
+    if (checks.get("reattestation_current_generation_v1") != marker
+            or admission.authoring_journal_hash != snapshot_hash
+            or "authoring_install_journal_v1" in checks or admission.approval_hash is not None):
+        raise BirthReattestationError("birth_history_reattestation_checks_invalid")
+    semantic = checks.get("semantic_review")
+    if admission.semantic_review_hash != (
+        semantic.evidence_hash if semantic is not None
+        and semantic.status is AdmittedCheckStatus.PASSED else None
+    ):
+        raise BirthReattestationError("birth_history_reattestation_checks_invalid")
+    adoption = checks.get("initial_current_generation_adoption_v1")
+    continuity = checks.get("unchanged_current_continuity_v1")
+    if adoption is not None:
+        expected = _hash(
+            b"metnos.executor-birth.initial-current-adoption/v1\0",
+            declarations.context.transition_id.encode("ascii"),
+            admission.contract_id.encode("utf-8"), admission.generation_id.encode("ascii"),
+            binding.producer.candidate_source_id.encode("ascii"),
+            admission.candidate_id.encode("ascii"), admission.admission_context_id.encode("ascii"),
+        )
+        if (not declarations.context.initial_transition
+                or adoption != AdmissionCheck("1", AdmittedCheckStatus.PASSED, expected)):
+            raise BirthReattestationError("birth_history_reattestation_checks_invalid")
+    if continuity is not None and (
+        adoption is not None or continuity.rule_version != "1"
+        or continuity.status is not AdmittedCheckStatus.NOT_APPLICABLE
+        or continuity.evidence_hash is None
+    ):
+        raise BirthReattestationError("birth_history_reattestation_checks_invalid")
+    return HistoricalReattestationV2(
+        binding, continuity.evidence_hash if continuity is not None else None,
+        adoption is not None,
+    )
+
+
 def _sealed_reattestation_core_for_test(
     *, birth: _BirthCore, capture: Capture, persist: Persist,
     read_receipt: ReadReceipt, persist_v2: object | None = None,

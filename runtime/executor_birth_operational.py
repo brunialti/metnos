@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import hashlib
 import base64
-import json
 import re
 import threading
 from dataclasses import dataclass, replace
@@ -23,10 +22,17 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 
 if TYPE_CHECKING:
     from executor_birth_intent import BirthIntent, _ProducerCapability
+    from executor_birth_prepared_root import HistoricalProducerDeclarationsV1
+    from executor_birth_producer_store import (
+        HistoricalProducerBindingV1, ProducerReceiptRowV1, ProducerIssuanceRowV1,
+    )
+    from contract_store import HistoricalBirthEvidenceV1
 
 from contract_store import BirthCommitAuthorization, ManifestRef, PublicationResult
+from manifest_inventory import ContractId
 from executor_birth import ObservedCandidate, observe_candidate
 from executor_birth_approval import ApprovalEvidence, ApprovalSubject, approval_evidence_hash
+from executor_birth_canonical import decode_canonical_ascii_v1, encode_canonical_ascii_v1
 from executor_birth_identity import AdmissionContextV1, ExecutorOrigin, admission_context_id
 from executor_birth_predecessor import (
     AdmissionContextPin, AuthenticatedPredecessorSnapshot,
@@ -47,6 +53,10 @@ from executor_birth_shadow import (
     BirthOutcome, BirthReport, CheckResult, CheckStatus, RevisionClass, RevisionFacts, _BirthDependencies,
     _observe_birth_for_test, classify_revision,
 )
+
+
+MAX_TERMINAL_ENVELOPE_BYTES = 4 * 1024 * 1024
+_TERMINAL_SIGNATURE_DOMAIN = b"metnos.executor-birth.terminal/v1\0"
 
 
 def _digest(domain: bytes, fields: Mapping[str, bytes]) -> str:
@@ -171,6 +181,14 @@ class BirthResult:
     diagnostic: BirthDiagnostic | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class HistoricalPublicationV1:
+    """Authenticated ordinary publication facts, not a grant or F5 count."""
+
+    producer_binding: HistoricalProducerBindingV1
+    terminal: BirthResult
+
+
 def _terminal_envelope(
     core: "_BirthCore", result: BirthResult, admission_receipt: bytes | None = None,
 ) -> bytes:
@@ -209,68 +227,156 @@ def _terminal_envelope(
             "phase": result.diagnostic.phase, "code": result.diagnostic.code,
             "cause": result.diagnostic.cause,
         }
-    return json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")
+    encoded = encode_canonical_ascii_v1(value)
+    if len(encoded) > MAX_TERMINAL_ENVELOPE_BYTES:
+        raise ValueError("birth_terminal_envelope_invalid")
+    return encoded
 
 
-def _decode_terminal_envelope(encoded: bytes, request: BirthRequest) -> tuple[BirthResult, bytes | None, str]:
+def _terminal_text(value: object, *, nullable: bool = False, empty: bool = False):
+    if nullable and value is None:
+        return None
+    if type(value) is not str or (not empty and not value) or "\x00" in value:
+        raise ValueError("terminal text")
+    value.encode("utf-8")
+    return value
+
+
+def _terminal_fields(value: object, fields: set[str]) -> None:
+    if type(value) is not dict or set(value) != fields:
+        raise ValueError("terminal fields")
+
+
+def _decode_terminal_envelope(
+    encoded: bytes, *, expected_request_id: str, expected_contract_id: ContractId,
+) -> tuple[BirthResult, bytes | None, str]:
+    """Decode signed wire facts without inventing a current operational request.
+
+    The expected contract supplies report context. Only a publication carries
+    that contract on the wire. Report defaults and publication.repeated are
+    reconstruction details, never additional signed facts.
+    """
     try:
-        value = json.loads(encoded.decode("ascii"), object_pairs_hook=lambda pairs: _unique_object(pairs))
-        if json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii") != encoded:
-            raise ValueError("noncanonical")
-        if value["schema_version"] != 2 or value["request_id"] != request.request_id:
+        _require_digest(expected_request_id, "request_id")
+        if not isinstance(expected_contract_id, ContractId):
+            raise ValueError("expected contract")
+        value = decode_canonical_ascii_v1(encoded, maximum=MAX_TERMINAL_ENVELOPE_BYTES)
+        if type(value) is not dict or set(value) - {"diagnostic"} != {
+            "schema_version", "request_id", "signing_key_id", "report",
+            "publication", "admission_receipt", "error_code",
+        }:
+            raise ValueError("terminal fields")
+        if (type(value["schema_version"]) is not int or value["schema_version"] != 2
+                or value["request_id"] != expected_request_id):
             raise ValueError("binding")
-        signing_key_id = value["signing_key_id"]
-        if not isinstance(signing_key_id, str) or not signing_key_id or "\x00" in signing_key_id:
-            raise ValueError("signing key")
+        signing_key_id = _terminal_text(value["signing_key_id"])
+        _terminal_text(value["error_code"], nullable=True)
         item = value["report"]
-        checks = tuple(CheckResult(
-            check["check_id"], check["rule_version"], CheckStatus(check["status"]),
-            check["error_code"], check["evidence_hash"], check["redacted_detail"],
-        ) for check in item["checks"])
+        _terminal_fields(item, {
+            "admission_context_id", "candidate_id", "changed_dimensions", "checks",
+            "error_code", "outcome", "revision_class", "semantic_core_id",
+        })
+        for field in ("candidate_id", "semantic_core_id", "admission_context_id"):
+            if item[field] is not None:
+                _require_digest(item[field], field)
+        _terminal_text(item["error_code"], nullable=True)
+        dimensions = item["changed_dimensions"]
+        if type(dimensions) is not list or type(item["checks"]) is not list:
+            raise ValueError("terminal lists")
+        for dimension in dimensions:
+            _terminal_text(dimension)
+        if len(set(dimensions)) != len(dimensions):
+            raise ValueError("duplicate dimensions")
+        checks = []
+        for check in item["checks"]:
+            _terminal_fields(check, {
+                "check_id", "rule_version", "status", "error_code", "evidence_hash", "redacted_detail",
+            })
+            checks.append(CheckResult(
+                _terminal_text(check["check_id"]), _terminal_text(check["rule_version"]),
+                CheckStatus(check["status"]), _terminal_text(check["error_code"], nullable=True),
+                _require_digest(check["evidence_hash"], "evidence_hash"),
+                _terminal_text(check["redacted_detail"], empty=True),
+            ))
+        if len({check.check_id for check in checks}) != len(checks):
+            raise ValueError("duplicate checks")
         report = BirthReport(
-            1, request.manifest_ref.contract_id, item["candidate_id"], item["semantic_core_id"],
+            1, expected_contract_id, item["candidate_id"], item["semantic_core_id"],
             item["admission_context_id"],
-            RevisionClass(item["revision_class"]) if item["revision_class"] else None,
-            tuple(item["changed_dimensions"]), checks, BirthOutcome(item["outcome"]), item["error_code"],
+            RevisionClass(item["revision_class"]) if item["revision_class"] is not None else None,
+            tuple(dimensions), tuple(checks), BirthOutcome(item["outcome"]), item["error_code"],
         )
         pub = value["publication"]
+        if pub is not None:
+            _terminal_fields(pub, {
+                "contract_id", "previous_generation_id", "current_generation_id", "operation",
+            })
+            # Compare the signed fact before reconstructing its typed identity.
+            if pub["contract_id"] != expected_contract_id.value:
+                raise ValueError("publication contract binding")
+            _require_digest(pub["current_generation_id"], "current_generation_id")
+            if pub["previous_generation_id"] is not None:
+                _require_digest(pub["previous_generation_id"], "previous_generation_id")
+            _terminal_text(pub["operation"])
         publication = None if pub is None else PublicationResult(
-            request.manifest_ref.contract_id, pub["previous_generation_id"],
+            expected_contract_id, pub["previous_generation_id"],
             pub["current_generation_id"], pub["operation"], True,
         )
-        admission = (base64.b64decode(value["admission_receipt"], validate=True)
-                     if value["admission_receipt"] is not None else None)
-        diagnostic = value.get("diagnostic")
-        diagnostic = BirthDiagnostic(**diagnostic) if diagnostic is not None else None
-        return (BirthResult(request.request_id, report, publication, value["error_code"], diagnostic),
+        admission = None
+        if value["admission_receipt"] is not None:
+            text = _terminal_text(value["admission_receipt"])
+            admission = base64.b64decode(text, validate=True)
+            if base64.b64encode(admission).decode("ascii") != text:
+                raise ValueError("noncanonical admission bytes")
+        diagnostic = None
+        if "diagnostic" in value:
+            _terminal_fields(value["diagnostic"], {"phase", "code", "cause"})
+            diagnostic = BirthDiagnostic(**value["diagnostic"])
+        return (BirthResult(expected_request_id, report, publication, value["error_code"], diagnostic),
                 admission, signing_key_id)
     except Exception as exc:
         raise ValueError("birth_terminal_envelope_invalid") from exc
 
 
-def _unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
-    result: dict[str, object] = {}
-    for key, value in pairs:
-        if key in result:
-            raise ValueError("duplicate key")
-        result[key] = value
-    return result
-
-
 def _sign_terminal(core: "_BirthCore", encoded: bytes) -> bytes:
     """Sign with the sealed Birth admission key; no envelope-selectable key exists."""
-    return core.admission_private_key.sign(b"metnos.executor-birth.terminal/v1\0" + encoded)
+    return core.admission_private_key.sign(_TERMINAL_SIGNATURE_DOMAIN + encoded)
+
+
+def verify_terminal_evidence_v1(
+    encoded: bytes, signature: bytes, *, expected_request_id: str,
+    expected_contract_id: ContractId, verifier_keys: Mapping[str, Ed25519PublicKey],
+) -> tuple[BirthResult, bytes | None]:
+    """Verify wire evidence using public keys selected by the owning caller.
+
+    This does not establish the ring's authority, authenticate an embedded
+    Admission or prove a durable success. A report's contract is expected
+    context; only publication carries it on the wire. Reconstructed defaults
+    such as publication.repeated are not authenticated evidence.
+    """
+    if type(signature) is not bytes or len(signature) != 64:
+        raise ValueError("birth_terminal_signature_invalid")
+    result, admission, key_id = _decode_terminal_envelope(
+        encoded, expected_request_id=expected_request_id,
+        expected_contract_id=expected_contract_id,
+    )
+    if not isinstance(verifier_keys, Mapping):
+        raise ValueError("birth_terminal_key_untrusted")
+    verifier = verifier_keys.get(key_id)
+    if not isinstance(verifier, Ed25519PublicKey):
+        raise ValueError("birth_terminal_key_untrusted")
+    verifier.verify(signature, _TERMINAL_SIGNATURE_DOMAIN + encoded)
+    return result, admission
 
 
 def _verify_terminal(core: "_BirthCore", encoded: bytes, signature: bytes,
                      request: BirthRequest) -> tuple[BirthResult, bytes | None]:
     """Select a historical verifier only from the core-owned signed key id."""
-    result, admission, key_id = _decode_terminal_envelope(encoded, request)
-    verifier = core.admission_verifier_keys.get(key_id)
-    if verifier is None:
-        raise ValueError("birth_terminal_key_untrusted")
-    verifier.verify(signature, b"metnos.executor-birth.terminal/v1\0" + encoded)
-    return result, admission
+    return verify_terminal_evidence_v1(
+        encoded, signature, expected_request_id=request.request_id,
+        expected_contract_id=request.manifest_ref.contract_id,
+        verifier_keys=core.admission_verifier_keys,
+    )
 
 
 def _terminal_binding(encoded: bytes) -> str:
@@ -283,6 +389,24 @@ def _replay_terminal(core: "_BirthCore", request: BirthRequest, claim: object) -
     if encoded is None or signature is None:
         raise ValueError("birth_terminal_envelope_missing")
     result, admission = _verify_terminal(core, encoded, signature, request)
+    committed = claim.state == "committed"
+    if committed != (result.publication is not None):
+        raise ValueError("birth_terminal_state_mismatch")
+    if committed:
+        if (result.report.outcome not in {BirthOutcome.ADMITTED, BirthOutcome.PREEXERCISE}
+                or result.error_code is not None):
+            raise ValueError("birth_terminal_state_mismatch")
+        if claim.result_binding != _terminal_binding(encoded):
+            raise ValueError("birth_terminal_binding_mismatch")
+    elif (claim.state != "rejected"
+            or result.report.outcome not in {
+                BirthOutcome.REJECTED, BirthOutcome.NEEDS_HUMAN, BirthOutcome.QUARANTINED,
+            }
+            or not isinstance(result.error_code, str) or not result.error_code
+            or result.error_code != claim.rejection_code):
+        # An admitted recovery hint is not a terminal rejection. The operational
+        # error can differ from the original check error after finalization fails.
+        raise ValueError("birth_terminal_state_mismatch")
     if result.publication is not None:
         _publication_binding(request, result.publication)
         verified, verified_admission = _verified_postcondition(
@@ -513,6 +637,77 @@ def _receipt_checks(report: BirthReport) -> Mapping[str, AdmissionCheck]:
             check.rule_version, AdmittedCheckStatus(check.status.value), check.evidence_hash,
         )
     return MappingProxyType(result)
+
+
+def verify_historical_publication_v1(
+    *, evidence: HistoricalBirthEvidenceV1, receipt_row: ProducerReceiptRowV1,
+    issuance_row: ProducerIssuanceRowV1, declarations: HistoricalProducerDeclarationsV1,
+) -> HistoricalPublicationV1:
+    """Join durable, Producer and terminal evidence without operational access.
+
+    Public-ring provenance and a common complete frontier belong to the
+    acquiring owner. Valid nontechnical/preexercise publications remain facts,
+    not qualifying technical admissions. Missing original source/journal bytes
+    are not reconstructed from their signed cross-bindings.
+    """
+    from contract_store import HistoricalBirthEvidenceV1, verify_historical_birth_evidence_v1
+    from executor_birth_prepared_root import HistoricalProducerDeclarationsV1
+    from executor_birth_producer_store import verify_historical_producer_binding_v1
+
+    if (type(evidence) is not HistoricalBirthEvidenceV1
+            or type(declarations) is not HistoricalProducerDeclarationsV1):
+        raise ValueError("birth_history_terminal_input_invalid")
+    public = declarations.context.public_set
+    admission = verify_historical_birth_evidence_v1(
+        evidence, admission_verifier_keys=public.admission_verifier_keys,
+        author_verifier_keys=public.author_verifier_keys,
+    )
+    binding = verify_historical_producer_binding_v1(
+        evidence.receipt_bytes, receipt_row=receipt_row, issuance_row=issuance_row,
+        declarations=declarations,
+    )
+    if receipt_row.state != "committed" or receipt_row.rejection_code is not None:
+        raise ValueError("birth_history_terminal_state_invalid")
+    terminal, embedded = verify_terminal_evidence_v1(
+        receipt_row.terminal_envelope, receipt_row.terminal_auth,
+        expected_request_id=admission.birth_request_id,
+        expected_contract_id=evidence.contract_id,
+        verifier_keys=public.admission_verifier_keys,
+    )
+    if receipt_row.result_binding != _terminal_binding(receipt_row.terminal_envelope):
+        raise ValueError("birth_history_terminal_binding_invalid")
+    if embedded is not None and embedded != evidence.receipt_bytes:
+        raise ValueError("birth_history_terminal_receipt_mismatch")
+    report, publication = terminal.report, terminal.publication
+    lifecycles = {
+        BirthOutcome.ADMITTED: ApprovedLifecycle.ACTIVE,
+        BirthOutcome.PREEXERCISE: ApprovedLifecycle.PREEXERCISE,
+    }
+    if (publication is None or terminal.error_code is not None or report.error_code is not None
+            or lifecycles.get(report.outcome) != admission.approved_lifecycle
+            or publication.operation != "commit_birth_snapshot"
+            or publication.current_generation_id != admission.generation_id
+            or publication.previous_generation_id != admission.predecessor_id
+            or report.candidate_id != admission.candidate_id
+            or report.semantic_core_id != admission.semantic_core_id
+            or report.admission_context_id != admission.admission_context_id
+            or report.revision_class is None
+            or report.revision_class.value != admission.revision_class.value):
+        raise ValueError("birth_history_terminal_facts_mismatch")
+    checks = dict(_receipt_checks(report))
+    if "authoring_install_journal_v1" in checks:
+        raise ValueError("birth_history_terminal_reserved_check")
+    checks["authoring_install_journal_v1"] = AdmissionCheck(
+        "1", AdmittedCheckStatus.PASSED, admission.authoring_journal_hash,
+    )
+    semantic_hash = next((c.evidence_hash for c in report.checks
+                          if c.check_id == "semantic_review" and c.status is CheckStatus.PASSED), None)
+    approval = checks.get("approval")
+    if (checks != admission.check_results or semantic_hash != admission.semantic_review_hash
+            or (approval is not None and approval.status is AdmittedCheckStatus.PASSED
+                and approval.evidence_hash != admission.approval_hash)):
+        raise ValueError("birth_history_terminal_checks_mismatch")
+    return HistoricalPublicationV1(binding, terminal)
 
 
 _PREDECESSOR_UNSET = object()

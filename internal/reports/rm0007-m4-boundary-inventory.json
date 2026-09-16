@@ -1,6 +1,6 @@
 {
   "schema": "metnos.contract-boundary-inventory/2",
-  "source_census": "sha256:f771f128d60a440e4e6540e48a36e6d91c52024978e95a020c2cc2ae50b38e2d",
+  "source_census": "sha256:4fb4ae8b4afa8289bcd4757e430b34395f3334ea47bf466a2385ef396bef7fee",
   "scan_roots": [
     "runtime",
     "install",
@@ -1631,6 +1631,16 @@
     },
     {
       "path": "runtime/contract_store.py",
+      "scope": "_read_history_file_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "reviewed bounded read-only historical file acquisition; descriptor operations retain conservative store-owner classification",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
       "scope": "_read_windows_shared_regular_file",
       "role": "store_owner",
       "capabilities": [
@@ -2108,6 +2118,46 @@
         "verified_store_read"
       ],
       "destination": "sole exact-current authority for context-bound reattestation receipt persistence and reread",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
+      "scope": "read_historical_birth_evidence_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "raw read-only acquisition of one exact historical receipt and generation; no current-selection or publication authority",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
+      "scope": "read_historical_birth_inventory_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "complete bounded read-only receipt namespace inventory; no live selection, deduplication or publication authority",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
+      "scope": "read_historical_birth_inventory_v1.acquire_history_bytes",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "bounded raw binding/receipt acquisition using the existing read-only historical file guard",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
+      "scope": "read_historical_birth_inventory_v1.receipt",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "preserve each physical receipt locator and raw bytes without qualification or mutation",
       "phase": "M4"
     },
     {
@@ -2703,6 +2753,16 @@
         "store_write"
       ],
       "destination": "sealed root-owned ownership initial-state authority",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_ownership_chain.py",
+      "scope": "inspect_required_ownership_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "bounded signed current selection with the existing sealed initial-state check only before first publication",
       "phase": "M4"
     },
     {
@@ -5084,6 +5144,7 @@
       "runtime/executor_birth_ownership_chain.py:_replace_required_pointer",
       "runtime/executor_birth_ownership_chain.py:_required_head_lock",
       "runtime/executor_birth_ownership_chain.py:inspect_ownership_chain_state_v1",
+      "runtime/executor_birth_ownership_chain.py:inspect_required_ownership_v1",
       "runtime/executor_birth_ownership_chain.py:inspect_transition_ownership_chain_v1",
       "runtime/executor_birth_ownership_coordinator.py:OwnershipCoordinatorJournalV1.append",
       "runtime/executor_birth_ownership_coordinator.py:OwnershipCoordinatorJournalV1.load",

@@ -749,6 +749,7 @@ class DurableWorkloadStore:
             else None
         )
         self._checkpoint = checked_checkpoint(checkpoint)
+        self._idle_database_version: tuple[int, int] | None = None
 
     @classmethod
     def open(
@@ -767,6 +768,111 @@ class DurableWorkloadStore:
 
     def close(self) -> None:
         self._connection.close()
+
+    def service_lane_demand(
+        self, *, limit: int, resource_limits: Mapping[str, int] | None = None,
+    ) -> int:
+        """Read-only scheduling hint, never an admission or resource decision.
+
+        Only a fully quiescent database is cached. Active parents and orphaned
+        leases retain a maintenance lane even when no unit is runnable yet, so
+        retry deadlines, lease recovery and control transitions keep advancing.
+        External commits invalidate via data_version; local writes invalidate
+        via total_changes. The version is read BEFORE querying to avoid caching
+        a negative result across a concurrent admission.
+        """
+
+        _require_limit(limit, maximum=32)
+        connection = self._connection
+        version = (
+            int(connection.execute("PRAGMA data_version").fetchone()[0]),
+            connection.total_changes,
+        )
+        if self._idle_database_version == version:
+            return 0
+        _current, current_text = self._operation_now(None)
+        candidates = connection.execute(
+            """
+            SELECT w.owner_user_id, w.id AS workload_id, s.resources_json,
+                   json_extract(r.plan_json, '$.budgets.max_concurrency') AS concurrency_limit,
+                   COUNT(*) AS candidate_count
+            FROM workloads w
+            JOIN revisions r
+              ON r.owner_user_id=w.owner_user_id AND r.id=w.active_revision_id
+            JOIN units u
+              ON u.owner_user_id=w.owner_user_id AND u.revision_id=r.id
+            JOIN stages s
+              ON s.owner_user_id=u.owner_user_id AND s.revision_id=u.revision_id
+             AND s.id=u.stage_id
+            WHERE w.state IN ('queued', 'running') AND (
+                u.state IN ('leased', 'running')
+                OR (u.state IN ('pending', 'retry_wait') AND (
+                    u.next_attempt_at IS NULL OR u.next_attempt_at<=?
+                ))
+                OR (u.state='needs_attention'
+                    AND u.manual_retry_generation<r.manual_retry_generation)
+            )
+            GROUP BY w.owner_user_id, w.id, s.id
+            LIMIT ?
+            """, (current_text, limit + 1),
+        ).fetchall()
+        if candidates:
+            self._idle_database_version = None
+            if len(candidates) > limit:
+                # A truncated stage set must not starve an unobserved resource
+                # class behind a long-running saturated one. Fall back to the
+                # existing bounded pool, never treat the sample as complete.
+                return limit
+            limits = dict(resource_limits or {})
+            resources: set[str] = set()
+            unconstrained = False
+            per_workload: dict[tuple[str, str], int] = {}
+            demand = 0
+            for candidate in candidates:
+                workload_key = (str(candidate["owner_user_id"]), str(candidate["workload_id"]))
+                concurrent = per_workload.get(workload_key, 0)
+                claims = json.loads(str(candidate["resources_json"]))
+                claimed = {key for key, amount in claims.items() if int(amount) > 0}
+                resources.update(claimed)
+                unconstrained |= not claimed or not claimed.issubset(limits)
+                slots = min(
+                    int(candidate["candidate_count"]), limit - demand,
+                    max(0, int(candidate["concurrency_limit"]) - concurrent),
+                )
+                demand += slots
+                per_workload[workload_key] = concurrent + slots
+            # Use an upper bound, not greedy packing: choosing one pending
+            # stage's resource profile here could hide an independent stage
+            # while a different resource is already occupied. Real packing
+            # and admission belong exclusively to the central scheduler.
+            if limits and not unconstrained:
+                demand = min(demand, sum(limits[key] for key in resources))
+            return max(1, demand)
+        maintenance = connection.execute(
+            """
+            SELECT 1 FROM workloads w WHERE w.active_revision_id IS NOT NULL AND (
+                w.state IN (
+                    'admitted', 'queued', 'running', 'paused',
+                    'pause_requested', 'cancel_requested'
+                )
+                OR (w.state IN ('failed', 'cancelled') AND EXISTS (
+                    SELECT 1 FROM units u
+                    WHERE u.owner_user_id=w.owner_user_id
+                      AND u.revision_id=w.active_revision_id
+                      AND u.state IN ('pending', 'retry_wait', 'needs_attention')
+                      AND u.active_attempt_id IS NULL
+                ))
+            )
+            UNION ALL
+            SELECT 1 FROM units WHERE state IN ('leased', 'running')
+            LIMIT 1
+            """,
+        ).fetchone()
+        if maintenance is not None:
+            self._idle_database_version = None
+            return 1
+        self._idle_database_version = version
+        return 0
 
     @property
     def database_path(self) -> Path | None:
@@ -3816,6 +3922,8 @@ class DurableWorkloadStore:
                 "stages": [],
                 "error_categories": [],
                 "warnings": [],
+                "blocking_reason": None,
+                "last_committed_at": None,
             }
         revision = self._connection.execute(
             """
@@ -3940,6 +4048,25 @@ class DurableWorkloadStore:
         ).fetchone()[0]
         if int(unavailable):
             warnings.append("source_coverage_incomplete")
+        last_commit = self._connection.execute(
+            """
+            SELECT MAX(r.committed_at)
+            FROM units u JOIN results r
+              ON r.owner_user_id=u.owner_user_id AND r.unit_id=u.id
+             AND r.revision_id=u.revision_id
+            WHERE u.owner_user_id=? AND u.revision_id=?
+              AND u.state='committed'
+            """, (owner, revision_id),
+        ).fetchone()[0]
+        blocking_reason = None
+        if workload["state"] == "needs_attention":
+            current, _current_text = self._operation_now(None)
+            violation = self._budget_violation_in_transaction(
+                self._connection, owner=owner, workload_id=workload_id,
+                revision_id=str(revision_id), now=current,
+            )
+            if violation is not None:
+                blocking_reason = str(violation["reason_code"])
         return {
             "budget": budget,
             "stages": stages,
@@ -3948,6 +4075,8 @@ class DurableWorkloadStore:
                 for row in errors
             ],
             "warnings": warnings,
+            "blocking_reason": blocking_reason,
+            "last_committed_at": last_commit,
         }
 
     def evaluate_completion(

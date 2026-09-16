@@ -704,7 +704,7 @@ class DurableExecutionBridge:
     def _autonomy(effect: DurableEffect) -> str:
         return "readonly" if effect is DurableEffect.PURE else "supervised"
 
-    def _invoke(
+    def _prepare_executor(
         self,
         contract: FrozenRunnerContract,
         facts: Mapping[str, Any],
@@ -815,9 +815,34 @@ class DurableExecutionBridge:
                         "capability_unavailable", code="execution.model_resource_unavailable",
                         message_key="ERR_DURABLE_RUNNER_UNAVAILABLE", retry="manual",
                     ) from exc
-            return self._executor_invoker(
-                executor, args, context, self._remaining_timeout(context), device_id,
+            return (
+                executor, self._remaining_timeout(context),
                 self._autonomy(DurableEffect(stage["effect_profile"])),
+            )
+
+    def _invoke(
+        self,
+        contract: FrozenRunnerContract,
+        facts: Mapping[str, Any],
+        args: Mapping[str, Any],
+        context: ExecutionContext,
+        device_id: str | None,
+        *, usage_sink=None,
+    ) -> object:
+        if contract.kind == RunnerKind.EXECUTOR.value:
+            try:
+                executor, timeout, autonomy = self._prepare_executor(
+                    contract, facts, args, context, device_id, usage_sink=usage_sink,
+                )
+            except Exception:
+                # Preparation cannot enter executor transport. A refusal here
+                # proves that no child model call was dispatched; failures
+                # AFTER entering the invoker must still fail closed on usage.
+                if usage_sink is not None:
+                    usage_sink.complete_local_capture()
+                raise
+            return self._executor_invoker(
+                executor, args, context, timeout, device_id, autonomy,
             )
         if contract.kind == RunnerKind.WORKLOAD.value:
             if self._workload_invoker is None:
@@ -925,17 +950,33 @@ class DurableExecutionBridge:
                 raise ValueError("runner used an undeclared model binding")
         return cleaned
 
+    def _budget_failure(
+        self, violation: Mapping[str, Any],
+        cause: ExecutionFailure | None = None,
+    ) -> ExecutionFailure:
+        details = dict(violation)
+        if cause is not None:
+            # Keep only the bounded structured cause, never provider payloads.
+            details["cause_code"] = json.loads(cause.error.payload_json)["code"]
+            details["cause_error_class"] = cause.error.error_class
+        if violation.get("reason_code") == "budget_accounting_incomplete":
+            return self._failure(
+                "budget_exhausted",
+                code="execution.usage_accounting_incomplete",
+                message_key="ERR_DURABLE_USAGE_ACCOUNTING_INCOMPLETE",
+                retry="manual", details=details,
+            )
+        return self._failure(
+            "budget_exhausted", code="execution.budget_exhausted",
+            message_key="ERR_DURABLE_BUDGET_EXHAUSTED",
+            retry="manual", details=details,
+        )
+
     def __call__(self, lease: Lease) -> ExecutionResult:
         facts = self.store.execution_inputs(lease)
         budget_violation = self.store.budget_violation(lease)
         if budget_violation is not None:
-            raise self._failure(
-                "budget_exhausted",
-                code="execution.budget_exhausted",
-                message_key="ERR_DURABLE_BUDGET_EXHAUSTED",
-                retry="manual",
-                details=budget_violation,
-            )
+            raise self._budget_failure(budget_violation)
         contract, schema, expected = self._verify_frozen_contract(facts)
         context = self._context(lease, facts, contract)
         args, dependency_ids, source_resolution_digest = self._build_args(
@@ -1090,6 +1131,10 @@ class DurableExecutionBridge:
                 details={"exception_type": type(exc).__name__[:64]},
             )
 
+        if invocation_failure is None and isinstance(observation, Mapping):
+            if observation.get("ok") is False:
+                invocation_failure = self._observation_failure(observation)
+
         if usage_sink is not None:
             try:
                 usage_status = self.store.record_attempt_usage(
@@ -1106,7 +1151,7 @@ class DurableExecutionBridge:
                 raise self._failure(
                     "budget_exhausted",
                     code="execution.usage_accounting_failed",
-                    message_key="ERR_DURABLE_BUDGET_EXHAUSTED",
+                    message_key="ERR_DURABLE_USAGE_ACCOUNTING_INCOMPLETE",
                     retry="manual",
                     details={"accounting_persisted": False},
                 ) from exc
@@ -1117,19 +1162,13 @@ class DurableExecutionBridge:
                 raise self._failure(
                     "budget_exhausted",
                     code="execution.usage_accounting_rejected",
-                    message_key="ERR_DURABLE_BUDGET_EXHAUSTED",
+                    message_key="ERR_DURABLE_USAGE_ACCOUNTING_INCOMPLETE",
                     retry="manual",
                     details={"accounting_persisted": False},
                 )
             budget_violation = self.store.budget_violation(lease)
             if budget_violation is not None:
-                raise self._failure(
-                    "budget_exhausted",
-                    code="execution.budget_exhausted",
-                    message_key="ERR_DURABLE_BUDGET_EXHAUSTED",
-                    retry="manual",
-                    details=budget_violation,
-                )
+                raise self._budget_failure(budget_violation, invocation_failure)
 
         if invocation_failure is not None:
             raise invocation_failure

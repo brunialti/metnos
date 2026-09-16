@@ -208,7 +208,7 @@ def _required_chain_matches_target_v2(chain, observed) -> bool:
 def _transition_chain_authority_source_v2(observed) -> str:
     """Validate the crash-phase matrix and select historical or required trust."""
     from executor_birth_ownership_chain import (
-        VerifiedOwnershipChain, _InitialOwnershipChainStateV1,
+        VerifiedOwnershipChain, VerifiedOwnershipWindowV1, _InitialOwnershipChainStateV1,
     )
 
     distribution, phase, chain = (
@@ -228,7 +228,7 @@ def _transition_chain_authority_source_v2(observed) -> str:
             and state in _INITIAL_CHAIN_PHASES_V2
         ):
             return "historical"
-    elif type(chain) is VerifiedOwnershipChain:
+    elif type(chain) in {VerifiedOwnershipChain, VerifiedOwnershipWindowV1}:
         if (
             state in _TARGET_CHAIN_PHASES_V2
             and _required_chain_matches_target_v2(chain, observed)

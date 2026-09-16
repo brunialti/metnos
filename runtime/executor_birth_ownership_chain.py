@@ -122,6 +122,20 @@ class VerifiedOwnershipChain:
         return self.heads[-1]
 
 
+@dataclass(frozen=True, slots=True)
+class VerifiedOwnershipWindowV1:
+    """The signed required state and its immediate edge, not a history audit."""
+
+    heads: tuple[OwnershipHead, ...]
+    authenticated_records: tuple[AuthenticatedDistributionRecordV1, ...]
+    required_distribution: VerifiedDistribution
+    context_transitions: tuple[ContextTransitionV1, ...]
+
+    @property
+    def required_head(self) -> OwnershipHead:
+        return self.heads[-1]
+
+
 _TEST_INITIAL_CHAIN_STATE_SEAL_V1 = object()
 
 
@@ -1731,10 +1745,140 @@ class OwnershipChainStore:
             for_test=False,
         )
 
+    def _read_window_pair_v1(self, directory: str, stem: str, maximum: int):
+        """Read a named authenticated object without enumerating its history."""
+        parent = self.root / directory
+        if type(self) is OwnershipChainStore:
+            for suffix in (".json", ".sig"):
+                _require_product_file_metadata_v1(parent / (stem + suffix))
+        return self._read_pair(parent, stem, maximum=maximum)
+
+    def _read_window_member_v1(self, head: OwnershipHead, authenticate_record):
+        archived = self._read_window_pair_v1(
+            "heads-v1",
+            f"{head.release_sequence:020d}-{head.cutover_id.removeprefix('sha256:')}",
+            MAX_HEAD_BYTES,
+        )
+        if archived != (head.encoded, head.signature):
+            raise OwnershipChainError("birth_ownership_downgrade", "required head mismatch")
+        encoded, signature = self._read_window_pair_v1(
+            "builds-v1", head.closed_build_id.removeprefix("sha256:"), MAX_BUILD_BYTES,
+        )
+        record = authenticate_record(encoded, signature)
+        encoded, signature = self._read_window_pair_v1(
+            "cutovers-v1", head.cutover_id.removeprefix("sha256:"), MAX_PAYLOAD_BYTES,
+        )
+        cutover = verify_ownership_cutover_certificate(
+            encoded, signature, registry=self.cutover_registry,
+        )
+        if (
+            record.closed_build_id != head.closed_build_id
+            or record.release_sequence != head.release_sequence
+            or cutover.cutover_id != head.cutover_id
+            or cutover.closed_build_id != head.closed_build_id
+            or (head.release_sequence == 1) != (record.previous_closed_build_id is None)
+            or (head.release_sequence == 1) != (cutover.previous_cutover_id is None)
+        ):
+            raise OwnershipChainError(
+                "birth_ownership_distribution_chain_invalid", "selected object binding",
+            )
+        path = self.root / CONTEXT_TRANSITIONS_DIRECTORY_V1 / context_transition_basename_v1(
+            cutover.context_transition_id,
+        )
+        if type(self) is OwnershipChainStore:
+            _require_product_file_metadata_v1(path)
+        transition = verify_context_transition_v1(
+            _safe_read(path, MAX_CONTEXT_TRANSITION_BYTES_V1),
+            expected_transition_id=cutover.context_transition_id,
+            expected_inventory=cutover.as_proof().inventory,
+        )
+        _require_context_transition_binding_v1(cutover, transition, None)
+        return record, cutover, transition
+
+    def _read_required_window_core_v1(
+        self, *, authenticate_record, verify_live_record, for_test: bool,
+    ) -> VerifiedOwnershipWindowV1:
+        """Verify the certified selector and one edge; never replay earlier acts.
+
+        The root-owned, signed required pointer is advanced by the existing
+        compare-and-swap publisher. It is the durable baseline, not a cache.
+        Earlier records remain available to the explicit full-chain auditor.
+        Only the selected release's executable files must still be installed.
+        """
+        if (for_test and type(self) is not _OwnershipChainStoreForTest) or (
+            not for_test and type(self) is not OwnershipChainStore
+        ):
+            raise OwnershipChainError("birth_ownership_recovery_required", "window reader")
+        if not for_test:
+            _require_product_file_metadata_v1(self.root / REQUIRED_HEAD_BASENAME)
+        required = self.read_required_head()
+        try:
+            record, cutover, transition = self._read_window_member_v1(required, authenticate_record)
+            heads, records, transitions = [required], [record], [transition]
+            if required.release_sequence > 1:
+                previous_encoded, previous_signature = self._read_window_pair_v1(
+                    "heads-v1",
+                    f"{required.release_sequence - 1:020d}-"
+                    f"{cutover.previous_cutover_id.removeprefix('sha256:')}",
+                    MAX_HEAD_BYTES,
+                )
+                previous = verify_ownership_head(
+                    previous_encoded, previous_signature, registry=self.head_registry,
+                )
+                previous_record, _previous_cutover, previous_transition = (
+                    self._read_window_member_v1(previous, authenticate_record)
+                )
+                if (
+                    previous.head_id != required.previous_head_id
+                    or previous.release_sequence != required.release_sequence - 1
+                    or previous.cutover_id != cutover.previous_cutover_id
+                    or previous.closed_build_id != record.previous_closed_build_id
+                ):
+                    raise OwnershipChainError(
+                        "birth_ownership_distribution_chain_invalid", "selected predecessor",
+                    )
+                _require_context_transition_binding_v1(cutover, transition, previous_transition)
+                heads.insert(0, previous)
+                records.insert(0, previous_record)
+                transitions.insert(0, previous_transition)
+            live = verify_live_record(record)
+            if (
+                not is_verified_distribution(live)
+                or live.identity.closed_build_id != required.closed_build_id
+                or live.release_sequence != required.release_sequence
+                or live.encoded != record.encoded or live.signature != record.signature
+            ):
+                raise OwnershipChainError(
+                    "birth_ownership_distribution_chain_invalid", "live build binding",
+                )
+            if not for_test:
+                _require_product_file_metadata_v1(self.root / REQUIRED_HEAD_BASENAME)
+            if self.read_required_head() != required:
+                raise OwnershipChainError("birth_ownership_recovery_required", "required head changed")
+            return VerifiedOwnershipWindowV1(tuple(heads), tuple(records), live, tuple(transitions))
+        except OwnershipChainError:
+            raise
+        except Exception as exc:
+            raise OwnershipChainError(
+                "birth_ownership_distribution_chain_invalid", "required window",
+            ) from exc
+
+    def read_required_window_v1(self) -> VerifiedOwnershipWindowV1:
+        """Read current product trust with cost independent of retained history."""
+        self._require_product_reader_v1()
+        return self._read_required_window_core_v1(
+            authenticate_record=lambda encoded, signature:
+                _authenticate_distribution_record_from_fixed_snapshot_v1(
+                    encoded, signature, self._fixed_authority_snapshot,
+                ),
+            verify_live_record=verify_installed_distribution_record_v1,
+            for_test=False,
+        )
+
     def _read_transition_chain_cold_core_v1(
         self, current_record, *, authenticate_record, verify_current_record,
-        verify_previous_record, for_test: bool,
-    ) -> VerifiedOwnershipChain:
+        verify_previous_record, for_test: bool, bounded: bool = False,
+    ) -> VerifiedOwnershipChain | VerifiedOwnershipWindowV1:
         """Read the actual pointer, admitting historical bytes only for its N edge."""
         if (
             not _is_authenticated_distribution_record_v1(current_record, for_test=for_test)
@@ -1751,7 +1895,8 @@ class OwnershipChainStore:
                 return verify_current_record(record)
             return verify_previous_record(current_record, record)
 
-        return self._read_required_chain_cold_core_v1(
+        reader = self._read_required_window_core_v1 if bounded else self._read_required_chain_cold_core_v1
+        return reader(
             authenticate_record=authenticate_record, verify_live_record=verify_selected,
             for_test=for_test,
         )
@@ -1770,6 +1915,22 @@ class OwnershipChainStore:
             verify_current_record=verify_installed_distribution_record_v1,
             verify_previous_record=verify_previous_distribution_record_v1,
             for_test=False,
+        )
+
+    def read_transition_window_v1(self, current_record) -> VerifiedOwnershipWindowV1:
+        """Validate only the current release edge during an explicit update."""
+        from executor_birth_distribution_manifest import verify_previous_distribution_record_v1
+
+        self._require_product_reader_v1()
+        return self._read_transition_chain_cold_core_v1(
+            current_record,
+            authenticate_record=lambda encoded, signature:
+                _authenticate_distribution_record_from_fixed_snapshot_v1(
+                    encoded, signature, self._fixed_authority_snapshot,
+                ),
+            verify_current_record=verify_installed_distribution_record_v1,
+            verify_previous_record=verify_previous_distribution_record_v1,
+            for_test=False, bounded=True,
         )
 
 
@@ -2084,6 +2245,28 @@ def inspect_transition_ownership_chain_v1(current_record) -> VerifiedOwnershipCh
     if type(result) is not VerifiedOwnershipChain:
         raise OwnershipChainError("birth_ownership_recovery_required", "predecessor chain")
     return result
+
+
+def inspect_required_ownership_v1() -> (
+    _InitialOwnershipChainStateV1 | VerifiedOwnershipWindowV1
+):
+    """Select ordinary runtime state; full enumeration is only for initial setup."""
+    try:
+        store = OwnershipChainStore()
+    except Exception as exc:
+        raise OwnershipChainError("birth_ownership_recovery_required", "productive store") from exc
+    try:
+        (store.root / REQUIRED_HEAD_BASENAME).lstat()
+    except FileNotFoundError:
+        # Absence must be proved initial, never interpreted as permission to
+        # fall back from a damaged installed chain to bootstrap authorities.
+        return _inspect_ownership_chain_state_core_v1(store, for_test=False)
+    return store.read_required_window_v1()
+
+
+def inspect_transition_ownership_window_v1(current_record) -> VerifiedOwnershipWindowV1:
+    """Use the signed current baseline, not a full historical audit, for N→N+1."""
+    return OwnershipChainStore().read_transition_window_v1(current_record)
 
 
 def _inspect_ownership_chain_state_for_test_v1(

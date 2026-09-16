@@ -600,7 +600,7 @@ def test_previous_context_is_transition_evidence_on_either_side_of_pointer(
         inspections.append(chain.required_head.head_id)
         return chain
 
-    monkeypatch.setattr(chain_module, "inspect_transition_ownership_chain_v1", inspect)
+    monkeypatch.setattr(chain_module, "inspect_transition_ownership_window_v1", inspect)
     monkeypatch.setattr(
         chain_module, "inspect_ownership_chain_state_v1",
         lambda: pytest.fail("transition evidence changed the ordinary selector"),
@@ -637,6 +637,29 @@ def test_previous_context_rejects_nonexact_predecessor_prefix(monkeypatch, mutat
     assert checks == []
 
 
+@pytest.mark.parametrize("advanced", (False, True))
+@pytest.mark.parametrize("sequence", (2, 54))
+def test_previous_context_uses_window_positions_not_lifetime_sequence(monkeypatch, advanced, sequence):
+    import executor_birth_prepared_root as root
+    from executor_birth_ownership_chain import VerifiedOwnershipWindowV1
+
+    chain, current, checks = _previous_context_fixture(monkeypatch, advanced=advanced)
+    current.release_sequence = sequence
+    chain.authenticated_records[0].release_sequence = sequence - 1
+    chain.heads[0].release_sequence = sequence - 1
+    if advanced:
+        chain.heads[1].release_sequence = sequence
+    window = VerifiedOwnershipWindowV1(
+        chain.heads, chain.authenticated_records, chain.required_distribution,
+        chain.context_transitions,
+    )
+    previous = root._previous_chain_for_transition_v1(window, current)
+    assert type(previous) is VerifiedOwnershipWindowV1
+    assert previous.required_head.release_sequence == sequence - 1
+    assert previous.required_distribution == chain.required_distribution
+    assert checks == ["historical-byte-verification"]
+
+
 def test_previous_context_rejects_live_pointer_change_during_acquisition(monkeypatch):
     import executor_birth_ownership_chain as chain_module
     import executor_birth_prepared_root as root
@@ -648,7 +671,7 @@ def test_previous_context_rejects_live_pointer_change_during_acquisition(monkeyp
     )
     observations = iter((before, chain))
     monkeypatch.setattr(
-        chain_module, "inspect_transition_ownership_chain_v1", lambda _: next(observations),
+        chain_module, "inspect_transition_ownership_window_v1", lambda _: next(observations),
     )
     with pytest.raises(root.PreparedRootError, match="birth_context_selection_changed"):
         root.load_previous_context_runtime_v1(current)
@@ -661,9 +684,9 @@ def test_ordinary_context_has_no_historical_verification_fallback(monkeypatch):
     def strict_failure():
         raise chain_module.OwnershipChainError("birth_ownership_distribution_invalid", "current pins")
 
-    monkeypatch.setattr(chain_module, "inspect_ownership_chain_state_v1", strict_failure)
+    monkeypatch.setattr(chain_module, "inspect_required_ownership_v1", strict_failure)
     monkeypatch.setattr(
-        chain_module, "inspect_transition_ownership_chain_v1",
+        chain_module, "inspect_transition_ownership_window_v1",
         lambda _: pytest.fail("ordinary runtime tried the predecessor door"),
     )
     with pytest.raises(chain_module.OwnershipChainError, match="current pins"):

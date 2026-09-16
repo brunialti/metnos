@@ -20,6 +20,7 @@ import ctypes
 import errno
 import hashlib
 import json
+import math
 import os
 import re
 import shutil
@@ -33,7 +34,7 @@ import tomlkit
 from dataclasses import dataclass, replace
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from types import MappingProxyType
-from typing import Any, Callable, Iterable, Iterator, Mapping, TypeAlias
+from typing import TYPE_CHECKING, Any, Callable, Iterable, Iterator, Mapping, TypeAlias
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PrivateKey,
@@ -64,6 +65,9 @@ from sign import (
     sign_manifest_bytes,
     verify_manifest_bytes,
 )
+
+if TYPE_CHECKING:
+    from executor_birth_receipts import AdmissionReceipt
 
 
 SHADOW_RELATIVE = Path("contract-publications-shadow")
@@ -255,6 +259,59 @@ class SurfaceRemoval:
 class ContractBinding:
     contract_id: ContractId
     storage_key: str
+
+
+@dataclass(frozen=True, slots=True)
+class HistoricalBirthEvidenceV1:
+    """Raw durable bytes and their locators, not an authenticated admission."""
+
+    contract_id: ContractId
+    generation_id: str
+    admission_context_id: str | None
+    binding_bytes: bytes
+    receipt_bytes: bytes
+    manifest_bytes: bytes
+    signature_bytes: bytes
+    language_state_bytes: bytes
+
+
+@dataclass(frozen=True, slots=True)
+class HistoricalBirthReceiptV1:
+    """One physical receipt locator and unverified wire bytes; None means V1."""
+
+    generation_id: str
+    admission_context_id: str | None
+    encoded: bytes
+
+
+@dataclass(frozen=True, slots=True)
+class HistoricalContractHistoryV1:
+    """Complete raw contract namespace; revision kinds are structural only."""
+
+    contract_id: ContractId
+    binding_bytes: bytes
+    generation_ids: tuple[str, ...]
+    retirement_ids: tuple[str, ...]
+    receipts: tuple[HistoricalBirthReceiptV1, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class HistoricalUnboundNamespaceV1:
+    """Observed empty namespace, not an inferred contract or proven crash."""
+
+    storage_key: str
+    lock_bytes: bytes
+
+
+@dataclass(frozen=True, slots=True)
+class HistoricalBirthInventoryV1:
+    """Observed raw history, not authenticated admissions or a global frontier."""
+
+    source_path: Path
+    contracts: tuple[HistoricalContractHistoryV1, ...]
+    unbound_empty_namespaces: tuple[HistoricalUnboundNamespaceV1, ...]
+    entry_count: int
+    field_bytes: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -4197,6 +4254,378 @@ def _birth_receipt_path_v2(
     )
 
 
+def _history_file_identity_v1(info: os.stat_result) -> tuple[int, ...]:
+    return (info.st_dev, info.st_ino, info.st_mode, info.st_nlink,
+            info.st_uid, info.st_gid, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+
+
+def _read_history_file_v1(path: Path, *, maximum_bytes: int) -> bytes:
+    """Bounded, handle-stable read; no directory creation or metadata repair."""
+    code = "birth_history_file_invalid"
+    try:
+        before = path.lstat()
+        if (not stat.S_ISREG(before.st_mode) or _is_link_like(path)
+                or before.st_nlink != 1 or before.st_size > maximum_bytes
+                or (os.name != "nt" and (before.st_uid != os.geteuid()
+                                         or before.st_mode & 0o022))):
+            raise ContractStoreError(code)
+        if _windows_platform():
+            payload = _read_windows_shared_regular_file(
+                path, code=code, maximum_bytes=maximum_bytes,
+            )
+        else:
+            flags = (os.O_RDONLY | os.O_NONBLOCK | getattr(os, "O_CLOEXEC", 0)
+                     | os.O_NOFOLLOW)
+            descriptor = os.open(path, flags)
+            with os.fdopen(descriptor, "rb") as stream:
+                if _history_file_identity_v1(os.fstat(stream.fileno())) != _history_file_identity_v1(before):
+                    raise ContractStoreError(code)
+                payload = stream.read(maximum_bytes + 1)
+                if _history_file_identity_v1(os.fstat(stream.fileno())) != _history_file_identity_v1(before):
+                    raise ContractStoreError(code)
+        if (len(payload) != before.st_size or len(payload) > maximum_bytes
+                or _history_file_identity_v1(path.lstat()) != _history_file_identity_v1(before)):
+            raise ContractStoreError(code)
+        return payload
+    except OSError as exc:
+        raise ContractStoreError(code) from exc
+
+
+def _history_directory_identities_v1(paths: tuple[Path, ...]) -> tuple[tuple[int, ...], ...]:
+    result = []
+    for path in paths:
+        _require_no_link_components(path, code="birth_history_directory_invalid")
+        try:
+            info = path.lstat()
+        except OSError as exc:
+            raise ContractStoreError("birth_history_directory_invalid") from exc
+        if (not stat.S_ISDIR(info.st_mode) or _is_link_like(path)
+                or (os.name != "nt" and (info.st_uid != os.geteuid() or info.st_mode & 0o022))):
+            raise ContractStoreError("birth_history_directory_invalid")
+        # Other generations/receipts may be added normally. This is not a
+        # complete inventory, so directory timestamps are not its frontier.
+        result.append((info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_gid))
+    return tuple(result)
+
+
+def _require_history_generation_shape_v1(directory: Path) -> None:
+    names = set()
+    try:
+        with os.scandir(directory) as entries:
+            for entry in entries:
+                names.add(entry.name)
+                if len(names) > len(GENERATION_FILES):
+                    raise ContractStoreError("generation_structure")
+    except OSError as exc:
+        raise ContractStoreError("generation_structure") from exc
+    if names != set(GENERATION_FILES):
+        raise ContractStoreError("generation_structure")
+
+
+def read_historical_birth_evidence_v1(
+    contract_id: ContractId, generation_identifier: str, *,
+    admission_context_id: str | None,
+) -> HistoricalBirthEvidenceV1:
+    """Reread one exact historical receipt and generation in the selected store.
+
+    None explicitly selects V1; V2 never falls back to another receipt.
+    The content address is checked, but signatures/policy and complete history
+    enumeration belong to the enclosing verifier. Current pointers, today's
+    executor standard, original code and temporary journals are not consulted.
+    Requires initialized configuration; a cold certifier must guard imports.
+    Path observations do not prove a cross-store barrier or native ACL safety.
+    """
+    if type(contract_id) is not ContractId:
+        raise ContractStoreError("contract_id_invalid")
+    physical = generation_directory_name(generation_identifier)
+    if admission_context_id is not None:
+        _context_directory_name(admission_context_id)
+    root = _store_root(None)
+    directory = root / contract_storage_key(contract_id)
+    generation = directory / "generations" / physical
+    receipt = (
+        _birth_receipt_path(directory, generation_identifier)
+        if admission_context_id is None else
+        _birth_receipt_path_v2(directory, generation_identifier, admission_context_id)
+    )
+    parents = (root, directory, generation.parent, generation, receipt.parent)
+    if admission_context_id is not None:
+        parents += (receipt.parent.parent,)
+    before = _history_directory_identities_v1(parents)
+    binding_bytes = _read_history_file_v1(directory / BINDING_FILE, maximum_bytes=65536)
+    try:
+        binding = decode_binding(binding_bytes, storage_key=directory.name)
+    except (ValueError, TypeError, RecursionError) as exc:
+        raise ContractStoreError("binding_invalid") from exc
+    if binding.contract_id != contract_id:
+        raise ContractStoreError("binding_invalid")
+    encoded = _read_history_file_v1(receipt, maximum_bytes=1024 * 1024)
+    if not encoded:
+        raise ContractStoreError("birth_receipt_invalid", "empty wire receipt")
+    _require_history_generation_shape_v1(generation)
+    payloads = {
+        name: _read_history_file_v1(
+            generation / name, maximum_bytes=64 if name == "manifest.toml.sig" else 1024 * 1024,
+        ) for name in GENERATION_FILES
+    }
+    if len(payloads["manifest.toml.sig"]) != 64:
+        raise ContractStoreError("birth_history_file_invalid")
+    if generation_id(payloads) != generation_identifier:
+        raise ContractStoreError("generation_digest_mismatch")
+    if (_read_history_file_v1(directory / BINDING_FILE, maximum_bytes=65536) != binding_bytes
+            or _read_history_file_v1(receipt, maximum_bytes=1024 * 1024) != encoded):
+        raise ContractStoreError("birth_history_reread_mismatch")
+    _require_history_generation_shape_v1(generation)
+    if _history_directory_identities_v1(parents) != before:
+        raise ContractStoreError("birth_history_source_changed")
+    return HistoricalBirthEvidenceV1(
+        contract_id, generation_identifier, admission_context_id, binding_bytes, encoded,
+        payloads["manifest.toml"], payloads["manifest.toml.sig"],
+        payloads["manifest.lang_state.json"],
+    )
+
+
+def verify_historical_birth_evidence_v1(
+    evidence: HistoricalBirthEvidenceV1, *,
+    admission_verifier_keys: Mapping[str, Ed25519PublicKey],
+    author_verifier_keys: Mapping[str, Ed25519PublicKey],
+) -> AdmissionReceipt:
+    """Authenticate acquired payloads, not a current executable contract.
+
+    The owner supplies historical public rings and acquisition provenance.
+    Language bytes are bound by the signed generation digest; current policy,
+    original source and temporary authoring journals are never reconstructed.
+    This function does not open a store or prove a completed publication.
+    """
+    from executor_birth_receipts import ReceiptError, verify_admission_receipt
+
+    if type(evidence) is not HistoricalBirthEvidenceV1 or type(evidence.contract_id) is not ContractId:
+        raise ContractStoreError("birth_history_input_invalid")
+    for field, maximum in (
+        ("binding_bytes", 65536), ("receipt_bytes", 1024 * 1024),
+        ("manifest_bytes", 1024 * 1024), ("signature_bytes", 64),
+        ("language_state_bytes", 1024 * 1024),
+    ):
+        value = getattr(evidence, field)
+        if type(value) is not bytes or len(value) > maximum:
+            raise ContractStoreError("birth_history_file_invalid")
+    if len(evidence.signature_bytes) != 64:
+        raise ContractStoreError("birth_history_file_invalid")
+    try:
+        admission = verify_admission_receipt(
+            evidence.receipt_bytes, verifier_keys=admission_verifier_keys,
+        )
+        binding = decode_binding(
+            evidence.binding_bytes, storage_key=contract_storage_key(evidence.contract_id),
+        )
+    except ReceiptError:
+        raise
+    except (ValueError, TypeError, RecursionError, OverflowError) as exc:
+        raise ContractStoreError("birth_history_encoding_invalid") from exc
+    if (binding.contract_id != evidence.contract_id
+            or admission.contract_id != evidence.contract_id.value
+            or admission.generation_id != evidence.generation_id
+            or (evidence.admission_context_id is not None
+                and evidence.admission_context_id != admission.admission_context_id)):
+        raise ContractStoreError("birth_history_receipt_binding_invalid")
+    if generation_id({
+        "manifest.toml": evidence.manifest_bytes,
+        "manifest.toml.sig": evidence.signature_bytes,
+        "manifest.lang_state.json": evidence.language_state_bytes,
+    }) != admission.generation_id:
+        raise ContractStoreError("generation_digest_mismatch")
+    verify_manifest_bytes(
+        evidence.manifest_bytes, evidence.signature_bytes,
+        trusted_publics=author_verifier_keys.items(),
+    )
+    return admission
+
+
+def read_historical_birth_inventory_v1(
+    *, max_entries: int = 100_000, max_bytes: int = 128 * 1024 * 1024,
+    timeout_seconds: float = 15.0,
+) -> HistoricalBirthInventoryV1:
+    """Acquire all raw V1/V2 receipts without selecting live contracts.
+
+    Preserve empty, retired and unreachable histories and both physical
+    layouts. Exact empty-unbound namespaces remain separate opaque records,
+    not inferred contracts or certification waivers. Bounds or observed
+    mutations refuse the entire result. Revision
+    kinds come only from file shapes; payloads and signatures are not read.
+    This is not a cross-store snapshot, ABA defense or native ACL proof.
+    Configuration must be initialized; cold callers must guard imports.
+    """
+    try:
+        valid_timeout = (type(timeout_seconds) in (int, float)
+                         and math.isfinite(timeout_seconds) and timeout_seconds > 0)
+    except OverflowError:
+        valid_timeout = False
+    if (type(max_entries) is not int or max_entries < 1
+            or type(max_bytes) is not int or max_bytes < 1 or not valid_timeout):
+        raise ContractStoreError("birth_history_budget_invalid")
+    root = _store_root(None)
+    deadline = time.monotonic() + timeout_seconds
+    observed: dict[Path, tuple[int, ...]] = {}
+    directories: dict[Path, tuple[str, ...]] = {}
+    entry_count = field_bytes = 0
+
+    def check_time() -> None:
+        if time.monotonic() >= deadline:
+            raise ContractStoreError("birth_history_timeout")
+
+    def observe(path: Path, *, directory: bool = False) -> os.stat_result:
+        check_time()
+        info = path.lstat()
+        if directory:
+            protected = _history_directory_identities_v1((path,))[0]
+            if protected != (info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_gid):
+                raise ContractStoreError("birth_history_source_changed")
+        elif (not stat.S_ISREG(info.st_mode) or _is_link_like(path)
+              or info.st_nlink != 1 or (os.name != "nt" and (
+                  info.st_uid != os.geteuid() or info.st_mode & 0o022))):
+            raise ContractStoreError("birth_history_file_invalid")
+        observed[path] = _history_file_identity_v1(info)
+        return info
+
+    def scan(path: Path, remaining: int) -> tuple[str, ...]:
+        check_time()
+        names = []
+        with os.scandir(path) as entries:
+            for entry in entries:
+                check_time()
+                if len(names) >= remaining:
+                    raise ContractStoreError("birth_history_entry_limit")
+                names.append(entry.name)
+        return tuple(sorted(names))
+
+    def children(path: Path) -> tuple[str, ...]:
+        nonlocal entry_count
+        observe(path, directory=True)
+        names = scan(path, max_entries - entry_count)
+        entry_count += len(names)
+        directories[path] = names
+        return names
+
+    def acquire_history_bytes(path: Path, maximum: int) -> bytes:
+        nonlocal field_bytes
+        info = observe(path)
+        if info.st_size > max_bytes - field_bytes:
+            raise ContractStoreError("birth_history_byte_limit")
+        value = _read_history_file_v1(path, maximum_bytes=min(maximum, max_bytes - field_bytes))
+        field_bytes += len(value)
+        if field_bytes > max_bytes:
+            raise ContractStoreError("birth_history_byte_limit")
+        check_time()
+        return value
+
+    def physical_id(name: str, *, receipt: bool = False) -> str:
+        physical = name[:-5] if receipt and name.endswith(".json") else name
+        if (receipt and not name.endswith(".json")) or not _PHYSICAL_ID_RE.fullmatch(physical):
+            raise ContractStoreError("birth_history_namespace_invalid", f"entry={name}")
+        return "sha256:" + physical
+
+    try:
+        contracts = []
+        unbound = []
+        for name in children(root):
+            physical_id(name)
+            directory = root / name
+            names = set(children(directory))
+            if names == {"generations", "writer.lock"}:
+                generations_directory = directory / "generations"
+                if children(generations_directory):
+                    raise ContractStoreError("birth_history_unbound_invalid")
+                lock_path = directory / "writer.lock"
+                lock_bytes = acquire_history_bytes(lock_path, 1)
+                if lock_bytes != b"\0":
+                    raise ContractStoreError("birth_history_unbound_invalid")
+                if os.name == "posix":
+                    # These observed tuple fields are mode, owner and group;
+                    # timestamps/identity are still compared in the final pass.
+                    owner = observed[root][4:6]
+                    for path, mode in ((root, 0o700), (directory, 0o700),
+                                       (generations_directory, 0o700), (lock_path, 0o600)):
+                        identity = observed[path]
+                        if stat.S_IMODE(identity[2]) != mode or identity[4:6] != owner:
+                            raise ContractStoreError("birth_history_unbound_invalid")
+                unbound.append(HistoricalUnboundNamespaceV1(name, lock_bytes))
+                continue
+            required = {BINDING_FILE, "generations"}
+            unexpected = names - required - {
+                "current", "writer.lock", "admission-receipts", _ADMISSION_RECEIPTS_V2,
+            }
+            if not required <= names or unexpected:
+                raise ContractStoreError(
+                    "birth_history_namespace_invalid",
+                    f"contract={name};missing={','.join(sorted(required - names))};"
+                    f"unexpected={','.join(sorted(unexpected))}",
+                )
+            binding_bytes = acquire_history_bytes(directory / BINDING_FILE, 65536)
+            try:
+                binding = decode_binding(binding_bytes, storage_key=name)
+            except (ValueError, TypeError, RecursionError) as exc:
+                raise ContractStoreError("binding_invalid") from exc
+            for metadata in ("current", "writer.lock"):
+                if metadata in names:
+                    observe(directory / metadata)
+            generations, retirements = [], []
+            for revision_name in children(directory / "generations"):
+                identifier = physical_id(revision_name)
+                revision = directory / "generations" / revision_name
+                files = children(revision)
+                if set(files) == set(GENERATION_FILES):
+                    generations.append(identifier)
+                elif set(files) == set(RETIREMENT_FILES):
+                    retirements.append(identifier)
+                else:
+                    raise ContractStoreError("revision_structure")
+                for filename in files:
+                    observe(revision / filename)
+            generation_set = set(generations)
+            receipts = []
+
+            def receipt(path: Path, identifier: str, context: str | None) -> None:
+                if identifier not in generation_set:
+                    raise ContractStoreError("birth_history_generation_missing")
+                encoded = acquire_history_bytes(path, 1024 * 1024)
+                if not encoded:
+                    raise ContractStoreError("birth_receipt_invalid", "empty wire receipt")
+                receipts.append(HistoricalBirthReceiptV1(identifier, context, encoded))
+
+            if "admission-receipts" in names:
+                container = directory / "admission-receipts"
+                for filename in children(container):
+                    receipt(container / filename, physical_id(filename, receipt=True), None)
+            if _ADMISSION_RECEIPTS_V2 in names:
+                container = directory / _ADMISSION_RECEIPTS_V2
+                for generation_name in children(container):
+                    identifier = physical_id(generation_name)
+                    if identifier not in generation_set:
+                        raise ContractStoreError("birth_history_generation_missing")
+                    for filename in children(container / generation_name):
+                        receipt(container / generation_name / filename, identifier,
+                                physical_id(filename, receipt=True))
+            contracts.append(HistoricalContractHistoryV1(
+                binding.contract_id, binding_bytes, tuple(generations),
+                tuple(retirements), tuple(receipts),
+            ))
+        # Recheck every child set within the same aggregate scan budget. The
+        # final metadata pass also includes files that were not content-read.
+        remaining = max_entries
+        for directory, names in directories.items():
+            if scan(directory, remaining) != names:
+                raise ContractStoreError("birth_history_source_changed")
+            remaining -= len(names)
+        for path, identity in observed.items():
+            check_time()
+            if _history_file_identity_v1(path.lstat()) != identity:
+                raise ContractStoreError("birth_history_source_changed")
+        check_time()
+        return HistoricalBirthInventoryV1(root, tuple(contracts), tuple(unbound), entry_count, field_bytes)
+    except OSError as exc:
+        raise ContractStoreError("birth_history_inventory_invalid") from exc
+
+
 def _birth_receipt_path_for_context(
     contract_dir: Path, generation_identifier: str, selection: object | None,
 ) -> Path:
@@ -4224,9 +4653,9 @@ def _sealed_v2_triple(ref: ManifestRef, request: object) -> tuple[str, str]:
 
     The triple (contract, generation, context) is the identity of one V2
     receipt.  It arrives only inside ``ProducerRequestV2``, which can be built
-    solely from a context selection the F4 head has already sealed, so no
-    public entry point of this module accepts a context or a path as a free
-    selector.
+    solely from a context selection the F4 head has already sealed. Productive
+    reads and writes never accept a free context selector. The separate raw
+    historical reader grants no current-selection or publication authority.
     """
     from executor_birth_producer_context import ProducerRequestV2
 

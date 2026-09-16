@@ -2,17 +2,26 @@
 from __future__ import annotations
 
 import hashlib
+import math
+import os
 import sqlite3
+import stat
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable
 
 from executor_birth_identity import ExecutorOrigin, RevisionAuthor
-from executor_birth_receipts import IssuerRegistry, ProducerReceipt, ReceiptError, verify_producer_receipt
+from executor_birth_receipts import (
+    AdmissionReceipt, IssuerRegistry, ProducerReceipt, ReceiptError,
+    verify_producer_receipt,
+)
 
 _VERSION = 5
+BIRTH_STATE_BASENAME_V1 = "birth"
+PRODUCER_RECEIPTS_BASENAME_V1 = "producer_receipts.sqlite"
+_HISTORY_ROW_BYTES = 8 * 1024 * 1024
 _RECEIPT_SCHEMA = """
 CREATE TABLE IF NOT EXISTS birth_producer_receipts (
  receipt_id TEXT PRIMARY KEY, receipt_hash TEXT NOT NULL UNIQUE, encoded BLOB NOT NULL,
@@ -58,6 +67,384 @@ class ProducerReceiptClaim:
     @property
     def terminal(self) -> bool:
         return self.state in {"committed", "rejected"}
+
+
+@dataclass(frozen=True, slots=True)
+class ProducerReceiptRowV1:
+    """Exact, unauthenticated stored values; never a successful admission."""
+
+    row_id: int
+    receipt_id: str
+    receipt_hash: str
+    encoded: bytes
+    issuer_id: str
+    objective_hash: str
+    candidate_source_id: str
+    executor_origin: str
+    revision_authorship: str
+    expires_at: str
+    state: str
+    registered_at: str
+    request_id: str | None = None
+    claimed_at: str | None = None
+    lease_expires_at: str | None = None
+    finalized_at: str | None = None
+    result_binding: str | None = None
+    rejection_code: str | None = None
+    terminal_envelope: bytes | None = None
+    terminal_auth: bytes | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ProducerIssuanceRowV1:
+    """Exact issuance metadata, pending independent signed binding checks."""
+
+    row_id: int
+    request_id: str
+    issuer_id: str
+    capability_id: str
+    contract_id: str
+    objective_hash: str
+    candidate_source_id: str
+    receipt_id: str
+    encoded: bytes
+
+
+@dataclass(frozen=True, slots=True)
+class ProducerHistoryV1:
+    """One complete logical DB snapshot, not a cross-store frontier proof."""
+
+    source_path: Path
+    schema_version: int
+    table_definitions: tuple[tuple[str, str], ...]
+    receipts: tuple[ProducerReceiptRowV1, ...]
+    issuances: tuple[ProducerIssuanceRowV1, ...]
+    field_bytes: int
+
+
+@dataclass(frozen=True, slots=True)
+class HistoricalProducerBindingV1:
+    """A signed evidence join, not terminal success or a grant."""
+
+    admission: AdmissionReceipt
+    producer: ProducerReceipt
+    namespace: str
+
+
+def verify_historical_producer_binding_v1(
+    admission_encoded: bytes, *, receipt_row: ProducerReceiptRowV1,
+    issuance_row: ProducerIssuanceRowV1, declarations,
+) -> HistoricalProducerBindingV1:
+    """Join owner-acquired evidence without opening a store or a private key.
+
+    The acquiring owner establishes declaration provenance and the common
+    frontier. This pure verifier does not turn an evidence container into
+    operational authority, prove terminal success or reconstruct old source.
+    """
+    return _verify_historical_producer_binding_v1(
+        admission_encoded, receipt_row=receipt_row, issuance_row=issuance_row,
+        declarations=declarations, reattestation=False,
+    )
+
+
+def verify_historical_reattestation_producer_v2(
+    admission_encoded: bytes, *, receipt_row: ProducerReceiptRowV1,
+    issuance_row: ProducerIssuanceRowV1, declarations,
+) -> HistoricalProducerBindingV1:
+    """Authenticate V2's historical scope without minting a sealed request."""
+    return _verify_historical_producer_binding_v1(
+        admission_encoded, receipt_row=receipt_row, issuance_row=issuance_row,
+        declarations=declarations, reattestation=True,
+    )
+
+
+def _verify_historical_producer_binding_v1(
+    admission_encoded, *, receipt_row, issuance_row, declarations, reattestation,
+):
+    from executor_birth_prepared_root import HistoricalProducerDeclarationsV1
+    from executor_birth_receipts import (
+        AdmissionKind, IssuerKey, _parse_producer, _timestamp,
+        producer_request_id_v1, verify_admission_receipt,
+    )
+
+    if (type(receipt_row) is not ProducerReceiptRowV1
+            or type(issuance_row) is not ProducerIssuanceRowV1
+            or type(declarations) is not HistoricalProducerDeclarationsV1):
+        raise ReceiptError("producer_receipt_invalid", "history_binding_input")
+    if any(type(value) is not bytes or len(value) > limit for value, limit in (
+        (admission_encoded, 1024 * 1024),
+        (receipt_row.encoded, _HISTORY_ROW_BYTES),
+        (issuance_row.encoded, _HISTORY_ROW_BYTES),
+    )):
+        raise ReceiptError("producer_receipt_invalid", "history_binding_bytes")
+    public = declarations.context.public_set
+    try:
+        admission = verify_admission_receipt(
+            admission_encoded, verifier_keys=public.admission_verifier_keys,
+        )
+    except ReceiptError:
+        raise
+    except (ValueError, TypeError, RecursionError, OverflowError) as exc:
+        raise ReceiptError("producer_receipt_invalid", "history_admission_encoding") from exc
+    expected_kind = AdmissionKind.REATTESTATION if reattestation else AdmissionKind.ADMISSION
+    if (admission.admission_context_id != public.material.pin.admission_context_id
+            or admission.kind is not expected_kind):
+        raise ReceiptError("producer_receipt_invalid", "history_admission_context_or_kind")
+    encoded = receipt_row.encoded
+    receipt_hash = producer_receipt_hash(encoded)
+    if (receipt_hash != admission.producer_receipt_hash
+            or issuance_row.encoded != encoded):
+        raise ReceiptError("producer_receipt_invalid", "history_receipt_bytes")
+
+    try:
+        preview, _unsigned = _parse_producer(encoded, temporal_now=None)
+    except ReceiptError:
+        raise
+    except (ValueError, TypeError, RecursionError, OverflowError) as exc:
+        raise ReceiptError("producer_receipt_invalid", "history_producer_encoding") from exc
+    scope = None
+    if reattestation:
+        from executor_birth_prepared_root import HistoricalReattestationScopeV2
+        from executor_birth_producer_context import producer_request_identity_v2
+
+        scope = declarations.reattestation_scope
+        if (type(scope) is not HistoricalReattestationScopeV2
+                or declarations.reattestation_scope_error is not None
+                or declarations.context.binding_kind != "transition_target"):
+            raise ReceiptError("producer_receipt_invalid", "history_reattestation_scope_unavailable")
+        request, objective = producer_request_identity_v2(
+            contract_id=admission.contract_id, generation_id=admission.generation_id,
+            admission_context_id=admission.admission_context_id,
+            transition_id=declarations.context.transition_id,
+            set_id=public.set_id, context_epoch=public.material.pin.context_epoch,
+            candidate_source_id=preview.candidate_source_id,
+        )
+        if request != admission.birth_request_id or objective != preview.objective_hash:
+            raise ReceiptError("producer_receipt_invalid", "history_reattestation_request_binding")
+    matches = []
+    for namespace, keys in public.producers.items():
+        issuer, separator, operation = namespace.partition(":")
+        if (separator and issuer == preview.issuer_id
+                and preview.authentication.key_id in keys.verifier_keys
+                and ((scope is not None and namespace == scope.namespace)
+                     or (scope is None and producer_request_id_v1(
+                    issuer_id=issuer, operation=operation, contract_id=admission.contract_id,
+                    objective_hash=preview.objective_hash,
+                    candidate_source_id=preview.candidate_source_id,
+                ) == admission.birth_request_id))):
+            matches.append((namespace, keys.verifier_keys[preview.authentication.key_id]))
+    if len(matches) != 1:
+        raise ReceiptError("producer_receipt_invalid", "history_capability_binding")
+    namespace, key = matches[0]
+    try:
+        origin = ExecutorOrigin(declarations.executor_origins[
+            admission.contract_id.partition(":")[0]
+        ])
+        author = RevisionAuthor(declarations.authors[namespace])
+    except (KeyError, ValueError) as exc:
+        raise ReceiptError("producer_receipt_invalid", "history_scope_missing") from exc
+    # Constrain this verification to facts derived independently of the
+    # Producer's own declarations. This is not a historical runtime registry.
+    registry = IssuerRegistry({preview.issuer_id: (IssuerKey(
+        preview.authentication.key_id, key, frozenset({origin}), frozenset({author}),
+    ),)})
+    producer = verify_producer_receipt(
+        encoded, registry=registry, now=_timestamp(admission.issued_at, field="issued_at"),
+    )
+    if producer.nonce != hashlib.sha256(admission.birth_request_id.encode()).hexdigest()[:32]:
+        raise ReceiptError("producer_receipt_invalid", "history_nonce_binding")
+
+    receipt_fields = {
+        "receipt_id": producer.receipt_id, "receipt_hash": receipt_hash,
+        "issuer_id": producer.issuer_id, "objective_hash": producer.objective_hash,
+        "candidate_source_id": producer.candidate_source_id,
+        "executor_origin": producer.executor_origin.value,
+        "revision_authorship": producer.revision_authorship.value,
+        "expires_at": producer.expires_at, "request_id": admission.birth_request_id,
+    }
+    issuance_fields = {
+        "receipt_id": producer.receipt_id, "issuer_id": producer.issuer_id,
+        "objective_hash": producer.objective_hash,
+        "candidate_source_id": producer.candidate_source_id,
+        "request_id": admission.birth_request_id, "contract_id": admission.contract_id,
+        "capability_id": scope.capability_id if scope is not None else namespace,
+    }
+    for row, expected in ((receipt_row, receipt_fields), (issuance_row, issuance_fields)):
+        if any(getattr(row, field) != value for field, value in expected.items()):
+            raise ReceiptError("producer_receipt_invalid", "history_stored_binding")
+    return HistoricalProducerBindingV1(admission, producer, namespace)
+
+
+def _history_source_identity_v1(state_root: Path) -> tuple[tuple[int, ...], ...]:
+    """Observe selected objects without repairing them or claiming a barrier."""
+    if not state_root.is_absolute() or state_root.resolve(strict=True) != state_root:
+        raise ReceiptError("producer_receipt_store_invalid", "history_path")
+    directory = state_root / BIRTH_STATE_BASENAME_V1
+    database = directory / PRODUCER_RECEIPTS_BASENAME_V1
+    observed = []
+    for path, is_directory, optional in (
+        (state_root, True, False), (directory, True, False),
+        (database, False, False),
+        (database.with_name(database.name + "-wal"), False, True),
+        (database.with_name(database.name + "-shm"), False, True),
+    ):
+        try:
+            info = path.lstat()
+        except FileNotFoundError:
+            if optional:
+                continue
+            raise
+        if (not (stat.S_ISDIR(info.st_mode) if is_directory else stat.S_ISREG(info.st_mode))
+                or getattr(info, "st_file_attributes", 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT
+                or (not is_directory and info.st_nlink != 1)):
+            raise ReceiptError("producer_receipt_store_invalid", "history_file_kind")
+        if os.name != "nt" and (
+            info.st_uid != os.geteuid()
+            or info.st_mode & (0o022 if path == state_root else 0o077)
+        ):
+            raise ReceiptError("producer_receipt_store_invalid", "history_permissions")
+        # WAL sidecars may appear or disappear during normal use. Their shape
+        # is checked, but only the selected roots and DB must retain identity.
+        if not optional:
+            observed.append((info.st_dev, info.st_ino, info.st_mode,
+                             info.st_uid, info.st_gid, info.st_nlink))
+    return tuple(observed)
+
+
+def _read_history_table_v1(db, table, record_type, *, remaining_rows,
+                           remaining_bytes, deadline):
+    """Read fixed owner columns in one transaction, checking size before data."""
+    def query(statement, parameters=()):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise ReceiptError("producer_receipt_store_invalid", "history_timeout")
+        db.execute(f"PRAGMA busy_timeout={int(min(remaining, 3.0) * 1000)}")
+        return db.execute(statement, parameters)
+
+    columns = fields(record_type)[1:]
+    blobs = {"encoded", "terminal_envelope", "terminal_auth"}
+    definition = query(
+        "SELECT type,typeof(sql),length(CAST(sql AS BLOB)) FROM sqlite_schema WHERE name=?", (table,),
+    ).fetchone()
+    if (definition is None or definition[:2] != ("table", "text")
+            or type(definition[2]) is not int or not 0 < definition[2] <= 65536):
+        raise ReceiptError("producer_receipt_store_invalid", "history_schema")
+    schema = query("SELECT sql FROM sqlite_schema WHERE name=?", (table,)).fetchone()[0]
+    if not schema.lstrip().upper().startswith("CREATE TABLE"):
+        raise ReceiptError("producer_receipt_store_invalid", "history_schema")
+    actual = tuple((row[1], row[2], row[5], row[6]) for row in query(
+        f"PRAGMA table_xinfo({table})",
+    ))
+    expected = tuple((field.name, "BLOB" if field.name in blobs else "TEXT",
+                      int(index == 0), 0) for index, field in enumerate(columns))
+    if actual != expected:
+        raise ReceiptError("producer_receipt_store_invalid", "history_schema")
+    count = query(f"SELECT count(*) FROM {table}").fetchone()[0]
+    if count > remaining_rows:
+        raise ReceiptError("producer_receipt_store_invalid", "history_row_limit")
+    sizes = ",".join(f"typeof({field.name}),length(CAST({field.name} AS BLOB))"
+                     for field in columns)
+    names = ",".join(field.name for field in columns)
+    rows = []
+    used = 0
+    for metadata in query(f"SELECT rowid,{sizes} FROM {table} ORDER BY rowid"):
+        if time.monotonic() >= deadline:
+            raise ReceiptError("producer_receipt_store_invalid", "history_timeout")
+        row_bytes = 0
+        for index, field in enumerate(columns):
+            kind, length = metadata[1 + 2 * index:3 + 2 * index]
+            expected_kind = "blob" if field.name in blobs else "text"
+            if kind != expected_kind and not (kind == "null" and field.default is None):
+                raise ReceiptError("producer_receipt_store_invalid", "history_value_type")
+            row_bytes += length or 0
+        if row_bytes > _HISTORY_ROW_BYTES or used + row_bytes > remaining_bytes:
+            raise ReceiptError("producer_receipt_store_invalid", "history_byte_limit")
+        value = query(
+            f"SELECT rowid,{names} FROM {table} WHERE rowid=?", (metadata[0],),
+        ).fetchone()
+        if value is None:
+            raise ReceiptError("producer_receipt_store_invalid", "history_incomplete")
+        rows.append(record_type(*value))
+        used += row_bytes
+    if len(rows) != count:
+        raise ReceiptError("producer_receipt_store_invalid", "history_incomplete")
+    return tuple(rows), schema, used
+
+
+def read_producer_history_v1(*, max_rows: int = 100_000,
+                             max_bytes: int = 128 * 1024 * 1024,
+                             timeout_seconds: float = 15.0) -> ProducerHistoryV1:
+    """Acquire every raw receipt/issuance row from the selected schema-5 store.
+
+    Never migrates, signs, recovers or authenticates records. Limits refuse the
+    whole inventory, never truncate it. Normal SQLite locking retains pending
+    WAL commits; read-only refers to SQL data, not WAL shared-memory bookkeeping.
+    Requires the selected runtime configuration to be initialized already;
+    module imports are outside this guarantee. A cold administrative reader
+    must enforce its no-mutation boundary before any product imports.
+    The enclosing certifier still owns stable cross-store/namespace selection
+    and platform protection, including native Windows ACL verification.
+    """
+    try:
+        valid_timeout = (type(timeout_seconds) in (int, float)
+                         and math.isfinite(timeout_seconds) and timeout_seconds > 0)
+    except OverflowError:
+        valid_timeout = False
+    if (type(max_rows) is not int or max_rows < 1
+            or type(max_bytes) is not int or max_bytes < 1 or not valid_timeout):
+        raise ReceiptError("producer_receipt_store_invalid", "history_budget")
+    import config
+
+    deadline = time.monotonic() + timeout_seconds
+    root = Path(config.PATH_USER_STATE)
+    path = root / BIRTH_STATE_BASENAME_V1 / PRODUCER_RECEIPTS_BASENAME_V1
+    db = None
+    try:
+        before = _history_source_identity_v1(root)
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise ReceiptError("producer_receipt_store_invalid", "history_timeout")
+        db = sqlite3.connect(path.as_uri() + "?mode=ro&cache=private", uri=True,
+                             isolation_level=None, timeout=min(remaining, 3.0))
+        # SQLite also charges its record header; field bytes are bounded
+        # independently before materializing the row in Python.
+        db.setlimit(sqlite3.SQLITE_LIMIT_LENGTH, _HISTORY_ROW_BYTES + 4096)
+        db.set_progress_handler(lambda: int(time.monotonic() >= deadline), 1000)
+        db.execute("PRAGMA query_only=ON")
+        db.execute("PRAGMA trusted_schema=OFF")
+        wait_ms = int(max(0.0, min(deadline - time.monotonic(), 3.0)) * 1000)
+        db.execute(f"PRAGMA busy_timeout={wait_ms}")
+        db.execute("BEGIN")
+        version = db.execute("PRAGMA user_version").fetchone()[0]
+        if version != _VERSION:
+            raise ReceiptError("producer_receipt_store_invalid", "history_schema")
+        receipts, receipt_schema, receipt_bytes = _read_history_table_v1(
+            db, "birth_producer_receipts", ProducerReceiptRowV1,
+            remaining_rows=max_rows, remaining_bytes=max_bytes, deadline=deadline,
+        )
+        issuances, issuance_schema, issuance_bytes = _read_history_table_v1(
+            db, "birth_producer_issuance", ProducerIssuanceRowV1,
+            remaining_rows=max_rows - len(receipts),
+            remaining_bytes=max_bytes - receipt_bytes, deadline=deadline,
+        )
+        if time.monotonic() >= deadline:
+            raise ReceiptError("producer_receipt_store_invalid", "history_timeout")
+        if _history_source_identity_v1(root) != before:
+            raise ReceiptError("producer_receipt_store_invalid", "history_source_changed")
+        return ProducerHistoryV1(
+            path, version, (("birth_producer_receipts", receipt_schema),
+                            ("birth_producer_issuance", issuance_schema)),
+            receipts, issuances, receipt_bytes + issuance_bytes,
+        )
+    except FileNotFoundError as exc:
+        raise ReceiptError("producer_receipt_store_invalid", "history_missing") from exc
+    except (OSError, sqlite3.Error, UnicodeError) as exc:
+        detail = "history_timeout" if time.monotonic() >= deadline else "history_unreadable"
+        raise ReceiptError("producer_receipt_store_invalid", detail) from exc
+    finally:
+        if db is not None:
+            db.close()
+
 
 def producer_receipt_hash(encoded: bytes) -> str:
     if not isinstance(encoded, bytes):

@@ -31,10 +31,13 @@ from executor_birth_operational import (
     _runtime_bundle_snapshot, approval_scope, candidate_source_id,
 )
 from executor_birth_producer_store import (
+    BIRTH_STATE_BASENAME_V1, PRODUCER_RECEIPTS_BASENAME_V1,
     ProducerReceiptBinding, get_or_issue_and_claim_producer_receipt,
     get_or_issue_producer_receipt,
 )
-from executor_birth_receipts import IssuerKey, IssuerRegistry, issue_producer_receipt
+from executor_birth_receipts import (
+    IssuerKey, IssuerRegistry, issue_producer_receipt, producer_request_id_v1,
+)
 from executor_birth_shadow import _assemble_production_dependencies
 from manifest_inventory import ManifestRef
 
@@ -60,8 +63,6 @@ _BOOT_STATE = "cold"
 _BOOT_ERROR: BaseException | None = None
 
 
-BIRTH_STATE_BASENAME_V1 = "birth"
-PRODUCER_RECEIPTS_BASENAME_V1 = "producer_receipts.sqlite"
 APPROVALS_BASENAME_V1 = "approvals.sqlite"
 
 
@@ -177,9 +178,10 @@ def _request_factory(authority: _ProducerAuthority, registry: IssuerRegistry,
             source_id = candidate_source_id(observed)
         finally:
             observed.close()
-        request_id = _hash(
-            b"metnos.executor-birth.request/v1\0", authority.issuer_id,
-            authority.capability.operation, intent.contract_id.value, objective, source_id,
+        request_id = producer_request_id_v1(
+            issuer_id=authority.issuer_id, operation=authority.capability.operation,
+            contract_id=intent.contract_id.value, objective_hash=objective,
+            candidate_source_id=source_id,
         )
         instant = now().astimezone(timezone.utc).replace(microsecond=0)
         expires = instant + timedelta(seconds=ttl_seconds)
@@ -592,18 +594,18 @@ def _required_context_runtime_for_bootstrap_v1():
     """Select the new context only when the fixed chain already requires it."""
     from executor_birth_authority_gate import closed_build_enforcement
     from executor_birth_ownership_chain import (
-        OwnershipChainError, VerifiedOwnershipChain,
-        inspect_ownership_chain_state_v1,
+        OwnershipChainError, VerifiedOwnershipWindowV1,
+        inspect_required_ownership_v1,
     )
     from executor_birth_prepared_root import (
         PreparedRootError, load_required_context_runtime_v1,
     )
 
     try:
-        state = inspect_ownership_chain_state_v1()
+        state = inspect_required_ownership_v1()
     except OwnershipChainError as exc:
         raise BirthBootstrapError(exc.code, exc.detail) from exc
-    if not isinstance(state, VerifiedOwnershipChain):
+    if not isinstance(state, VerifiedOwnershipWindowV1):
         if closed_build_enforcement() is True:
             raise BirthBootstrapError("birth_context_transition_required")
         return None
@@ -1110,13 +1112,10 @@ def _initial_request_id_v1(
     objective = _hash(
         b"metnos.executor-birth.objective/v1\0", _INITIAL_INSTALL_REASON_V1,
     )
-    return _hash(
-        b"metnos.executor-birth.request/v1\0",
-        _INSTALLER.producer_id,
-        _INSTALLER.operation,
-        ref.contract_id.value,
-        objective,
-        source_id,
+    return producer_request_id_v1(
+        issuer_id=_INSTALLER.producer_id, operation=_INSTALLER.operation,
+        contract_id=ref.contract_id.value, objective_hash=objective,
+        candidate_source_id=source_id,
     )
 
 

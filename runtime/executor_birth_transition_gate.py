@@ -115,8 +115,8 @@ del _build_transition_gate_registry_v2
 def _transition_gate_snapshot_locked_v2(session, distribution):
     """Observe the coordinator phase and chain under one exact outer lock."""
     from executor_birth_ownership_chain import (
-        OwnershipChainError, inspect_ownership_chain_state_v1,
-        inspect_transition_ownership_chain_v1,
+        OwnershipChainError, inspect_required_ownership_v1,
+        inspect_transition_ownership_window_v1,
     )
 
     snapshot = _resolve_ownership_coordinator_locked_v2(session)
@@ -133,11 +133,11 @@ def _transition_gate_snapshot_locked_v2(session, distribution):
         if distribution.release_sequence > 1:
             from executor_birth_distribution_manifest import authenticate_distribution_record_v1
 
-            chain = inspect_transition_ownership_chain_v1(
+            chain = inspect_transition_ownership_window_v1(
                 authenticate_distribution_record_v1(distribution.encoded, distribution.signature),
             )
         else:
-            chain = inspect_ownership_chain_state_v1()
+            chain = inspect_required_ownership_v1()
     except OwnershipChainError as exc:
         if not (
             exc.code == "birth_ownership_recovery_required"

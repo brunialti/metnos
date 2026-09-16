@@ -236,13 +236,13 @@ def _decode(raw: bytes) -> dict[str, object]:
     """Read one canonical document and refuse a non-canonical encoding."""
     try:
         value = json.loads(raw.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        if not isinstance(value, dict) or json.dumps(
+            value, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8") != raw:
+            raise ValueError("noncanonical document")
+    except (UnicodeError, ValueError, TypeError, RecursionError) as exc:
         raise PreparedSetError("birth_prepared_set_invalid", exc) from None
-    if not isinstance(value, dict) or json.dumps(
-        value, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
-        allow_nan=False,
-    ).encode("utf-8") != raw:
-        raise PreparedSetError("birth_prepared_set_invalid")
     return value
 
 
@@ -259,21 +259,8 @@ def _read_integrity_document_v1(session, components: tuple[str, ...]) -> bytes:
         raise PreparedSetError("birth_prepared_set_unavailable", exc) from None
 
 
-def load_authority_set_v1(
-    session,
-    set_id: str,
-    *,
-    expected_set_json_sha256: str | None = None,
-    expected_transaction_id: str | None = None,
-    expected_context_material_sha256: str | None = None,
-    expected_author_inventory_sha256: str | None = None,
-) -> PreparedSetV1:
-    """Read back one exact immutable set without consulting the V1 marker."""
-    from executor_birth_keystore import (
-        BirthKeyStoreError, _load_birth_keystore_in_session, raw_public_key,
-    )
-    from executor_birth_secure_fs import BirthSecureFSError
-
+def _read_set_document_v1(session, set_id, expected_set_json_sha256):
+    """Share byte/schema identity checks without selecting any key loader."""
     if (
         not isinstance(set_id, str)
         or len(set_id) != 64
@@ -291,7 +278,9 @@ def load_authority_set_v1(
     ):
         raise PreparedSetError("birth_prepared_set_mismatch")
     document = _decode(payload)
-    if set(document) != SET_FIELDS_V1 or document["schema_version"] != 1:
+    if (set(document) != SET_FIELDS_V1
+            or type(document["schema_version"]) is not int
+            or document["schema_version"] != 1):
         raise PreparedSetError("birth_prepared_set_invalid")
     if document["set_id"] != set_id or document["state"] != "complete":
         raise PreparedSetError("birth_prepared_set_mismatch")
@@ -305,6 +294,28 @@ def load_authority_set_v1(
     ).hexdigest()
     if calculated_set_id != set_id:
         raise PreparedSetError("birth_prepared_set_mismatch")
+    return document, payload_sha256
+
+
+def load_authority_set_v1(
+    session,
+    set_id: str,
+    *,
+    expected_set_json_sha256: str | None = None,
+    expected_transaction_id: str | None = None,
+    expected_context_material_sha256: str | None = None,
+    expected_author_inventory_sha256: str | None = None,
+) -> PreparedSetV1:
+    """Read back one exact immutable set without consulting the V1 marker."""
+    from executor_birth_keystore import (
+        BirthKeyStoreError, _load_birth_keystore_in_session, raw_public_key,
+    )
+    from executor_birth_secure_fs import BirthSecureFSError
+
+    document, payload_sha256 = _read_set_document_v1(
+        session, set_id, expected_set_json_sha256,
+    )
+    location = (AUTHORITY_SETS_BASENAME_V1, set_id)
     if (
         expected_transaction_id is not None
         and document["provisioning_transaction_id"] != expected_transaction_id
@@ -395,6 +406,243 @@ def load_authority_set_v1(
         _artifact_binding=_prepared_set_artifact_binding_v1(prepared_values),
         _seal=_PREPARED_SET_SEAL_V1,
     )
+
+
+@dataclass(frozen=True, slots=True)
+class HistoricalProducerVerifiersV1:
+    """One historical namespace, not an operational Producer capability."""
+
+    store_name: str
+    verifier_keys: Mapping[str, object]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "verifier_keys", MappingProxyType(dict(self.verifier_keys)),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class HistoricalPublicSetV1:
+    """Read-back evidence only; cannot be passed as a prepared runtime set."""
+
+    set_id: str
+    set_json_sha256: str
+    provisioning_transaction_id: str
+    provisioner_build_id: str
+    material: object
+    author_verifier_keys: Mapping[str, object]
+    admission_verifier_keys: Mapping[str, object]
+    producers: Mapping[str, HistoricalProducerVerifiersV1]
+
+    def __post_init__(self) -> None:
+        for field_name in (
+            "author_verifier_keys", "admission_verifier_keys", "producers",
+        ):
+            object.__setattr__(
+                self, field_name, MappingProxyType(dict(getattr(self, field_name))),
+            )
+
+
+def _historical_key_ids_v1(active, key_ids) -> tuple[str, ...]:
+    from executor_birth_keystore import _KEY_ID_RE
+
+    if (type(key_ids) is not list or not key_ids
+            or any(type(key_id) is not str or _KEY_ID_RE.fullmatch(key_id) is None
+                   for key_id in key_ids)
+            or key_ids != sorted(set(key_ids)) or active not in key_ids):
+        raise PreparedSetError("birth_prepared_set_invalid")
+    return tuple(key_ids)
+
+
+def _read_historical_public_keys_v1(
+    session, directory, key_ids,
+) -> Mapping[str, object]:
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+    from executor_birth_keystore import _KEY_ID_RE, birth_key_id
+    from executor_birth_secure_fs import BirthSecureFSError, _BirthObjectRole
+
+    if not session._holds_global_lock():
+        raise PreparedSetError("birth_provisioning_lock_unsafe")
+    keys = {}
+    for key_id in key_ids:
+        if type(key_id) is not str or _KEY_ID_RE.fullmatch(key_id) is None:
+            raise PreparedSetError("birth_prepared_set_invalid")
+        try:
+            raw = session.read_file(
+                directory + ("public", f"{key_id}.pub"), maximum=32,
+                role=_BirthObjectRole.birth_integrity_only,
+            )
+        except BirthSecureFSError as exc:
+            raise PreparedSetError("birth_prepared_set_unavailable", exc) from None
+        if len(raw) != 32 or birth_key_id(raw) != key_id:
+            raise PreparedSetError("birth_prepared_set_mismatch")
+        keys[key_id] = Ed25519PublicKey.from_public_bytes(raw)
+    return MappingProxyType(keys)
+
+
+def load_historical_public_set_v1(
+    session, set_id: str, *, expected_set_json_sha256: str,
+    expected_context_material_sha256: str,
+) -> HistoricalPublicSetV1:
+    """Read evidence against owner-supplied pins through an already held lock.
+
+    Pins must come from the fixed marker or the authenticated ownership chain.
+    This helper does not authenticate its caller or grant a runtime authority.
+    """
+    from executor_birth_context_v1 import (
+        ContextMaterialError, decode_historical_context_material_v1,
+    )
+    from executor_birth_keystore import raw_public_key
+    from executor_birth_producer_table_v1 import producer_store_name_v1
+    from executor_birth_sandbox_registry_v1 import (
+        SANDBOX_CONTAINER_BASENAME_V1, SANDBOX_REGISTRY_BASENAME_V1,
+    )
+
+    if not session._holds_global_lock():
+        raise PreparedSetError("birth_provisioning_lock_unsafe")
+    if not all(_prepared_authority_hex_v2(value, 64) for value in (
+        expected_set_json_sha256, expected_context_material_sha256,
+    )):
+        raise PreparedSetError("birth_prepared_set_invalid")
+    document, payload_hash = _read_set_document_v1(
+        session, set_id, expected_set_json_sha256,
+    )
+    location = (AUTHORITY_SETS_BASENAME_V1, set_id)
+    try:
+        digest_fields = (
+            "approval_authority_sha256", "semantic_authority_sha256",
+            "sandbox_registry_sha256",
+            "approval_input_sha256", "semantic_input_sha256", "producer_catalog_sha256",
+            "context_source_inventory_sha256", "context_material_sha256",
+        )
+        if (not all(_prepared_authority_hex_v2(document[field], 64) for field in digest_fields)
+                or not _prepared_authority_hex_v2(
+                    document["provisioning_transaction_id"], 32,
+                )
+                or type(document["provisioner_build_id"]) is not str
+                or not document["provisioner_build_id"]
+                or "\x00" in document["provisioner_build_id"]):
+            raise PreparedSetError("birth_prepared_set_invalid")
+        semantic_ids = document["semantic_public_key_ids"]
+        if (type(semantic_ids) is not list
+                or any(type(key) is not str or not key or "\x00" in key for key in semantic_ids)
+                or semantic_ids != sorted(set(semantic_ids))):
+            raise PreparedSetError("birth_prepared_set_invalid")
+        encoded = _read_integrity_document_v1(session, location + (
+            CONTEXT_CONTAINER_BASENAME_V1, CONTEXT_MATERIAL_BASENAME_V1,
+        ))
+        if hashlib.sha256(encoded).hexdigest() != expected_context_material_sha256:
+            raise PreparedSetError("birth_prepared_set_mismatch")
+        material = decode_historical_context_material_v1(encoded)
+        if (material.material_sha256 != document["context_material_sha256"]
+                or material.pin.admission_context_id
+                != document["prepared_admission_context_id"]
+                or material.pin.context_epoch != document["prepared_context_epoch"]
+                or material.source_inventory_sha256
+                != document["context_source_inventory_sha256"]):
+            raise PreparedSetError("birth_prepared_set_mismatch")
+        registry = _decode(material.registry_document)
+        if (set(registry) != {"admission", "producers", "approval", "semantic"}
+                or type(registry["approval"]) is not dict
+                or type(registry["semantic"]) is not dict
+                or sorted(registry["semantic"]) != semantic_ids):
+            raise PreparedSetError("birth_prepared_set_invalid")
+
+        def store_publics(base, spec, active, key_ids):
+            ids = _historical_key_ids_v1(active, key_ids)
+            if (type(spec) is not dict or set(spec) != {
+                    "active_key_id", "verifier_key_ids", "public_keys",
+                }
+                    or spec["active_key_id"] != active
+                    or spec["verifier_key_ids"] != list(ids)
+                    or type(spec["public_keys"]) is not dict
+                    or set(spec["public_keys"]) != set(ids)):
+                raise PreparedSetError("birth_prepared_set_mismatch")
+            keys = _read_historical_public_keys_v1(session, base, ids)
+            if any(raw_public_key(keys[key]).hex() != spec["public_keys"][key] for key in ids):
+                raise PreparedSetError("birth_prepared_set_mismatch")
+            return keys
+
+        author_ids = _historical_key_ids_v1(
+            document["author_active_key_id"], document["author_verifier_key_ids"],
+        )
+        authors = _read_historical_public_keys_v1(
+            session, (AUTHOR_STORE_BASENAME_V1,), author_ids,
+        )
+        admission = store_publics(
+            location + ("admission",), registry["admission"],
+            document["admission_active_key_id"], document["admission_verifier_key_ids"],
+        )
+        producers, store_names = {}, set()
+        if (type(document["producer_keys"]) is not dict or not document["producer_keys"]
+                or type(registry["producers"]) is not dict):
+            raise PreparedSetError("birth_prepared_set_invalid")
+        for namespace, entry in document["producer_keys"].items():
+            if (namespace.count(":") != 1
+                    or any(not part or part.strip() != part or "\x00" in part
+                           for part in namespace.split(":"))
+                    or type(entry) is not dict or set(entry) != {
+                        "store_name", "active_key_id", "verifier_key_ids",
+                    }):
+                raise PreparedSetError("birth_prepared_set_invalid")
+            store_name = producer_store_name_v1(*namespace.split(":"))
+            if store_name != entry["store_name"] or store_name in store_names:
+                raise PreparedSetError("birth_prepared_set_mismatch")
+            store_names.add(store_name)
+            producers[namespace] = HistoricalProducerVerifiersV1(
+                store_name, store_publics(
+                    location + ("producers", store_name),
+                    registry["producers"][store_name],
+                    entry["active_key_id"], entry["verifier_key_ids"],
+                ),
+            )
+        if store_names != set(registry["producers"]):
+            raise PreparedSetError("birth_prepared_set_mismatch")
+        for path, field_name in (
+            (("approval", "authority.json"), "approval_authority_sha256"),
+            (("semantic", "authority.json"), "semantic_authority_sha256"),
+            (
+                (SANDBOX_CONTAINER_BASENAME_V1, SANDBOX_REGISTRY_BASENAME_V1),
+                "sandbox_registry_sha256",
+            ),
+        ):
+            raw = _read_integrity_document_v1(session, location + path)
+            if hashlib.sha256(raw).hexdigest() != document[field_name]:
+                raise PreparedSetError("birth_prepared_set_mismatch")
+        return HistoricalPublicSetV1(
+            set_id, payload_hash, document["provisioning_transaction_id"],
+            document["provisioner_build_id"], material, authors, admission, producers,
+        )
+    except (ContextMaterialError, KeyError, TypeError, ValueError) as exc:
+        raise PreparedSetError("birth_prepared_set_invalid", exc) from None
+
+
+def load_historical_marker_public_set_v1(session) -> HistoricalPublicSetV1:
+    """Read the fixed predecessor marker without loading signing material."""
+    from executor_birth_keystore import raw_public_key
+
+    if not session._holds_global_lock():
+        raise PreparedSetError("birth_provisioning_lock_unsafe")
+    marker = _decode(_read_integrity_document_v1(session, (MARKER_BASENAME_V1,)))
+    if (set(marker) != MARKER_FIELDS_V1 or type(marker["schema_version"]) is not int
+            or marker["schema_version"] != 1 or marker["state"] != PREPARED_STATE_V1
+            or marker["author_store"] != AUTHOR_STORE_BASENAME_V1
+            or not _prepared_authority_hex_v2(marker["set_id"], 64)
+            or marker["authority_set"]
+            != f"{AUTHORITY_SETS_BASENAME_V1}/{marker['set_id']}"):
+        raise PreparedSetError("birth_prepared_set_invalid")
+    public = load_historical_public_set_v1(
+        session, marker["set_id"], expected_set_json_sha256=marker["set_json_sha256"],
+        expected_context_material_sha256=marker["context_material_sha256"],
+    )
+    if (public.provisioning_transaction_id != marker["transaction_id"]
+            or public.provisioner_build_id != marker["provisioner_build_id"]
+            or _public_inventory_sha256_v1({
+                key_id: raw_public_key(key)
+                for key_id, key in public.author_verifier_keys.items()
+            }) != marker["author_store_public_inventory_sha256"]):
+        raise PreparedSetError("birth_prepared_set_mismatch")
+    return public
 
 
 def load_prepared_set_v1(session) -> PreparedSetV1:
