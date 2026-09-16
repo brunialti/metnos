@@ -53,6 +53,39 @@ original journal/source bytes actually reread. Available originals, if used,
 must match their authenticated binding. No new admissions, signing keys or
 artificial edits may be manufactured to populate the historical threshold.
 
+### Incremental certification and bounded retention — instructed on 16 September 2026
+
+Roberto explicitly rejected recurring examination of the entire history and
+indefinite retention of all release trees. Security certification remains
+required for Birth; its ordinary cost must follow the new act and affected
+dependencies, not the lifetime number of releases or admissions.
+
+- Reuse an authenticated certified baseline. Validate a new Birth against
+  the current policy, authorities and relevant predecessor; do not replay
+  every earlier Birth or recursively reopen earlier certification dossiers.
+- Historical reconciliation for the initial F5 entry/migration is a separate,
+  one-time workflow. Reuse unchanged evidence while preparing it. Once its
+  result is certified, ordinary activation and releases verify that result
+  and applicable changes, not the original full inventory again.
+- Keep current integrity, identity, revocation and compatibility checks.
+  Reopen the affected evidence when those checks invalidate its reuse; a
+  full historical audit is an explicit investigation/recovery operation,
+  not an automatic prerequisite for every request, restart or publication.
+- Separate compact proof records from executable release trees. Retain the
+  active tree, a small explicit recovery set and any tree still used by an
+  in-flight operation. Older trees must be removable after their necessary
+  evidence is preserved and live references are resolved. Do not mistake
+  removing old code for permission to discard unresolved migration data.
+- Reuse existing owners and certification mechanisms. This requirement does
+  not call for another service, signing authority or general audit framework.
+
+This updates the acceptance criteria, not the installed behavior: the
+current cold chain reader still traverses historical signed metadata, while
+checking live distribution bytes only for the selected head. No reusable
+certification baseline or release-pruning policy is claimed implemented by
+this clarification. Detailed changes must satisfy this bounded-cost goal
+without treating an unverified cache as certification.
+
 ## 2. Order and stopping condition
 
 The sequence remains:
