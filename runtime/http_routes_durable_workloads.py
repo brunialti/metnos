@@ -101,7 +101,8 @@ async def _invoke(request: web.Request, operation: Callable[[DurableWorkloadCont
         if not isinstance(store, DurableWorkloadStore):
             raise DurableControlError("durable_workload.unavailable", 503)
         try:
-            return operation(DurableWorkloadControl(store, cursor_secret=secret))
+            from durable_runtime_registry import describe_plan
+            return operation(DurableWorkloadControl(store, cursor_secret=secret, describe_plan=describe_plan))
         finally:
             store.close()
 
@@ -314,10 +315,25 @@ async def workload_console(request: web.Request) -> web.Response:
                 "waitingHelp": "WAITING_HELP", "progressHelp": "PROGRESS_HELP",
                 "lastResult": "LAST_RESULT", "noResult": "NO_RESULT",
                 "attempts": "ATTEMPTS",
-                "started": "STARTED", "percent": "KNOWN_UNITS_PERCENT",
-                "estimatedEnd": "ESTIMATED_END", "notAvailable": "NOT_AVAILABLE",
+                "started": "STARTED", "percent": "COMPLETED_KNOWN_BLOCKS",
+                "estimatedEnd": "ESTIMATED_FINISH", "notAvailable": "NOT_AVAILABLE",
                 "timingHelp": "TIMING_HELP",
+                "photoIndexing": "PHOTO_INDEXING", "genericJob": "GENERIC_JOB",
+                "folder": "FOLDER", "readProgress": "READ_PROGRESS",
+                "jobId": "JOB_ID", "operation": "OPERATION", "loading": "LOADING",
+                "blocksNotFiles": "BLOCKS_NOT_FILES", "discoveryHelp": "DISCOVERY_HELP",
+                "recoveryHelp": "RECOVERY_HELP", "phase": "CURRENT_PHASE",
+                "runningBlocks": "RUNNING_BLOCKS", "jobLimit": "JOB_LIMIT",
+                "reservedBlocks": "RESERVED_BLOCKS", "parallelismHelp": "PARALLELISM_HELP",
             }.items()
+        },
+        "phases": {
+            key: message("UI_DURABLE_PHASE_" + key.upper())
+            for key in ("discover", "folders", "analyze", "merge", "publish")
+        },
+        "estimateReasons": {
+            key: message("UI_DURABLE_ETA_" + key.upper())
+            for key in ("multi_phase", "not_running", "insufficient_data")
         },
         "empty": message("UI_DURABLE_EMPTY"),
         "state": message("UI_DURABLE_STATE"),

@@ -36,6 +36,24 @@ ADMISSION_NAMES = (PRESET_ID,)
 _INVOCATION_ADAPTERS = {image_indexing.PLAN_ID: image_indexing}
 
 
+def describe_plan(plan, phase):
+    """Pure, closed display projection; never resolve paths or load a catalog."""
+    generic = {"kind": "generic", "operation": None, "target_path": None, "phase": None}
+    if not isinstance(plan, dict):
+        return generic
+    adapter = _INVOCATION_ADAPTERS.get(plan.get("plan_id"))
+    projector = getattr(adapter, "describe_plan", None)
+    if callable(projector):
+        return projector(plan, phase)
+    names = {
+        stage["runner"]["name"] for stage in plan["stages"]
+        if stage["runner"]["kind"] != "internal"
+    }
+    if len(names) == 1:
+        generic["operation"] = next(iter(names))
+    return generic
+
+
 def invocation_plan_adapter(executor):
     """Resolve a signed adapter reference at the deployment boundary."""
     reference = getattr(executor, "lre_plan", "")
@@ -88,4 +106,4 @@ def production_factories() -> tuple[
     return factory.worker, factory.bridge
 
 
-__all__ = ["ADMISSION_NAMES", "default_runtime_registry", "production_factories", "invocation_plan_adapter"]
+__all__ = ["ADMISSION_NAMES", "default_runtime_registry", "production_factories", "invocation_plan_adapter", "describe_plan"]

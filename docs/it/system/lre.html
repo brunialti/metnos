@@ -131,6 +131,13 @@ pubblicazione della generazione completa; un indice completo precedente resta
 utilizzabile durante la ricostruzione. Un errore nei modelli o nei file rimane
 visibile come problema del lavoro, non come indicizzazione riuscita.</p>
 
+<p>La scansione iniziale è un solo blocco: il numero dei gruppi da analizzare
+si conosce dopo aver scoperto i file. Se quella scansione si interrompe prima
+di essere confermata, ricomincia; le parti intermedie non sono un cursore di
+ripresa. Dopo la conferma, le fasi e i gruppi già completati restano salvati.
+Un'interruzione con effetti o consumi incerti può richiedere una verifica
+prima di riprovare: riavviare il servizio non equivale a risolvere il lavoro.</p>
+
 <h3 id="photo-indexing-duration">Perché la prima preparazione può durare molto</h3>
 
 <p>Creare l'indice richiede di leggere e analizzare le fotografie. La durata
@@ -307,7 +314,7 @@ essere aggiunto senza perdere tracciabilità o sicurezza.</p>
 
 <p>La console è il registro operativo dei lavori, non il comando che li avvia.
 Si apre nella chat web da <code>Settings → Sistema → LRE</code>. Il riquadro a
-sinistra elenca i lavori visibili al proprietario: premi <strong>Apri</strong>
+sinistra elenca i lavori visibili al proprietario: seleziona un lavoro
 su una riga per caricare nel riquadro destro revisione, avanzamento, limiti,
 fasi, eventi, unità e artefatti. Se l'elenco è vuoto, non esistono lavori LRE
 per quell'identità; se la pagina è indisponibile, controlla il servizio in
@@ -328,11 +335,13 @@ console perché il lavoro continui.</p>
 </figure>
 <ol class="ui-callout-list">
  <li><strong>Navigazione generale.</strong> Apri <code>Settings → Sistema → LRE</code>; la voce resta visibile nella colonna di navigazione dell'interfaccia web.</li>
- <li><strong>Elenco dei lavori.</strong> Ogni riga mostra stato e avanzamento; il pulsante <strong>Apri</strong> carica il dettaglio senza avviare una nuova esecuzione.</li>
+ <li><strong>Elenco dei lavori.</strong> Ogni riga mostra attività, cartella disponibile, stato e avanzamento. Selezionarla carica il dettaglio senza avviare una nuova esecuzione. La fase osservata compare nel dettaglio.</li>
  <li><strong>Avvio, percentuale e fine prevista.</strong> Elenco e dettaglio mostrano il primo avvio effettivo della revisione corrente, senza includere l'attesa in coda. La percentuale conta le unità salvate tra quelle note, non il tempo trascorso: può diminuire quando emergono nuove unità. Non arriva al 100% prima del completamento del lavoro. La fine prevista è soltanto indicativa: richiede un inventario chiuso, una sola fase di elaborazione dopo l'inventario, almeno tre risultati recenti e nessun ritentativo, errore o artefatto finale ancora da verificare. Per lavori multifase come l'indicizzazione delle foto, campioni insufficienti, pausa, motore non pronto o dati non aggiornati, la stima è <strong>n.a.</strong> (non disponibile). Anche avvio e percentuale mostrano <strong>n.a.</strong> quando mancano i dati necessari.</li>
  <li><strong>Quadro del lavoro.</strong> Separa lo stato del motore da quello del lavoro: un motore disponibile non prova che il lavoro avanzi. Mostra i blocchi riusciti separatamente da quelli non conclusi, da verificare, falliti o annullati e saltati. I blocchi non corrispondono necessariamente a singole foto o file; il totale può crescere durante la scoperta.</li>
  <li><strong>Freschezza e problemi.</strong> La pagina ricontrolla periodicamente lo stato e segnala quando i dati non sono aggiornati. Una disconnessione non mantiene una falsa indicazione di avanzamento. Le cause disponibili sono in evidenza; un aggiornamento generico dello stato non è presentato come nuovo risultato. Dopo aver caricato altre pagine dell'elenco, usa <strong>Aggiorna elenco e stato</strong> per tornare alla prima pagina aggiornata.</li>
- <li><strong>Dettagli facoltativi.</strong> Impronte, piano, fasi e limiti restano consultabili in <strong>Dettagli tecnici</strong>. L'identificativo distingue i lavori senza mostrare il testo privato della richiesta.</li>
+ <li><strong>Parallelismo.</strong> I blocchi in esecuzione sono distinti dal limite di concorrenza ammesso per quel lavoro. Non sono un conteggio di thread o processi; altri lavori e limiti delle risorse possono ridurre il parallelismo effettivo.</li>
+ <li><strong>Scansione e stime mancanti.</strong> Durante la scoperta iniziale delle foto la percentuale è n.a.: il totale definitivo non è ancora noto. La fine prevista mostra un motivo quando manca; la stima complessiva dei lavori multifase non è attualmente disponibile.</li>
+ <li><strong>Dettagli facoltativi.</strong> Spiegazioni, eventi, impronte, piano, fasi e limiti sono in sezioni richiudibili. L'identificativo distingue i lavori senza mostrare il testo privato della richiesta.</li>
  <li><strong>Digest della revisione.</strong> I digest rendono riconoscibili il piano e l'inventario effettivamente ammessi.</li>
  <li><strong>Budget approvato.</strong> Espone tetti di unità, tentativi, durata, byte, token, artefatti e concorrenza.</li>
  <li><strong>Fasi.</strong> Per ogni fase indica executor, avanzamento, tempo massimo, obbligatorietà e risorse.</li>

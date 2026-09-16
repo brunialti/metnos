@@ -11,7 +11,9 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import json
+import logging
 import re
+import sqlite3
 from typing import Any
 
 from .compiler import (
@@ -69,6 +71,29 @@ _CAPABILITY_ERRORS = frozenset({
 })
 _SOURCE_AUTHORITY_RE = re.compile(r"[a-z0-9][a-z0-9._:-]{0,63}")
 _CONTROL_MUTATION_BATCH = 200
+log = logging.getLogger("metnos.durable_workloads.execution")
+
+
+def _loader_failure_cause(exc: Exception) -> str:
+    """Keep a closed diagnostic, never an arbitrary exception/path/message."""
+    code = getattr(exc, "sqlite_errorcode", None)
+    if isinstance(exc, sqlite3.OperationalError) and type(code) is int:
+        if code & 0xFF in {sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED}:
+            return "database_contention"
+    # These codes are descriptive only: they never grant retries or bypass
+    # contract verification, including for custom injected loaders.
+    code = getattr(exc, "code", None)
+    if isinstance(code, str) and code in {
+        "store_snapshot_unstable", "store_inventory_invalid",
+        "catalog_lock_timeout", "catalog_lock_invalid",
+        "lock_timeout", "signature_invalid", "digest_mismatch",
+    }:
+        return code
+    if isinstance(exc, PermissionError):
+        return "permission_denied"
+    if isinstance(exc, LookupError):
+        return "executor_missing"
+    return "unclassified"
 
 
 @dataclass(frozen=True, slots=True)
@@ -718,13 +743,19 @@ class DurableExecutionBridge:
             try:
                 executor = self._executor_loader(contract.name)
             except Exception as exc:
+                cause = _loader_failure_cause(exc)
+                log.warning(
+                    "durable_executor_load_failed workload_id=%s attempt_id=%s "
+                    "runner_name=%s cause=%s",
+                    context.workload_id, context.attempt_id, contract.name, cause,
+                )
                 raise self._failure(
                     "capability_unavailable",
                     code=("execution.runner_absent" if self._require_generation_attestation
                           else "execution.executor_unavailable"),
                     message_key="ERR_DURABLE_RUNNER_UNAVAILABLE",
                     retry="manual",
-                    details={"runner_name": contract.name},
+                    details={"runner_name": contract.name, "loader_cause": cause},
                 ) from exc
             lifecycle = str(getattr(executor, "lifecycle", "") or "")
             if self._require_generation_attestation and lifecycle == "quarantined":

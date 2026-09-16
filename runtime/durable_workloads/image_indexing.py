@@ -36,6 +36,25 @@ _GENERATION = re.compile(r"[A-Za-z0-9_-]{1,128}")
 _PUBLIC_ARGS = frozenset({"base_path", "recursive", "force", "max_files", "dry_run"})
 
 
+def describe_plan(plan: Mapping, phase: str | None) -> dict[str, Any]:
+    """Expose only the common literal corpus path from an admitted index plan."""
+    paths = []
+    for stage in plan["stages"]:
+        if stage["runner"] != {"kind": "executor", "name": EXECUTOR}:
+            continue
+        binding = stage["input_bindings"].get("base_path", {})
+        value = binding.get("value")
+        if binding.get("ref") != "literal" or not isinstance(value, str) or not value.startswith("/"):
+            paths.append(None)
+        else:
+            paths.append(value)
+    target = paths[0] if paths and paths[0] and all(value == paths[0] for value in paths) else None
+    return {
+        "kind": "image_indexing", "operation": EXECUTOR, "target_path": target,
+        "phase": phase if phase in {"discover", "folders", "analyze", "merge", "publish"} else None,
+    }
+
+
 def normalize_request(executor: object, args: Mapping[str, Any], target_device=None) -> dict:
     """Freeze only the public operation, never caller-supplied worker phases."""
     if (

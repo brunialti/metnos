@@ -966,13 +966,21 @@ def _validate_catalog_read_options(
         raise ValueError("catalog_trusted_owner is invalid")
 
 
+def _lifecycle_snapshot() -> tuple[tuple[str, str], ...]:
+    """Read the exact visibility state without creating/migrating its DB."""
+    from executor_aging import lifecycle_override_map
+
+    return tuple(sorted(lifecycle_override_map(read_only=True).items()))
+
+
 def _catalog_cache_signature(
     dirs: list, *, catalog_trusted_owner: tuple[int, int] | None = None,
     skill_state_signature: tuple[str, str, int, str] | None = None,
+    lifecycle_snapshot: tuple[tuple[str, str], ...] | None = None,
 ) -> tuple:
     """Firma deterministica per invalidazione cache: max mtime ricorsivo
-    di tutti i manifest.toml + .py + .sig nelle dirs + mtime del DB
-    executor_aging (lifecycle override puo' cambiare lo stato visibile).
+    di tutti i manifest.toml + .py + .sig nelle dirs e stato semantico
+    degli override di ciclo di vita (non i conteggi delle invocazioni).
 
     Costo: ~10-30ms per 55 executor (vs ~200-500ms per il full load).
     """
@@ -1007,17 +1015,16 @@ def _catalog_cache_signature(
                 except OSError:
                     pass
         sig.append((str(d), max_mt, n_files))
-    # Aging DB: modifica → lifecycle override map cambia → catalog visibility
-    # diversa. Includere il mtime fa SI' che apply_executor_ager invalidi
-    # automaticamente la cache (test_archived_executor_excluded_from_catalog).
-    try:
-        from executor_aging import DB_PATH as _aging_db
-        try:
-            sig.append(("aging_db", _aging_db.stat().st_mtime))
-        except OSError:
-            sig.append(("aging_db", 0.0))
-    except Exception:
-        sig.append(("aging_db", 0.0))
+    # Invocation accounting shares the aging database with lifecycle state.
+    # Its mtime changes whenever *any* caller records an execution: using it
+    # here invalidates every cache and can make both bounded authentication
+    # attempts look unstable under ordinary parallel traffic. Conversely,
+    # WAL commits need not change the main database's mtime at all. Read only
+    # the actual visibility state; unreadable state must not authorize a
+    # cached catalog or silently become an empty set of overrides.
+    if lifecycle_snapshot is None:
+        lifecycle_snapshot = _lifecycle_snapshot()
+    sig.append(("aging_lifecycle", lifecycle_snapshot))
     # Skill state (asse 2): enable/disable di una skill (skill_enabled.json)
     # cambia la dormancy first-party → visibility del catalog diversa. Il mtime
     # nella firma fa SÌ che set_skill_enabled invalidi la cache → gating live.
@@ -1055,6 +1062,7 @@ def _store_catalog_signature(
     revision_ids: Mapping[str, str] | None = None,
     catalog_trusted_owner: tuple[int, int] | None = None,
     skill_state_signature: tuple[str, str, int, str] | None = None,
+    lifecycle_snapshot: tuple[tuple[str, str], ...] | None = None,
 ) -> tuple:
     """Identify one structural inventory and its live revision pointers.
 
@@ -1100,11 +1108,12 @@ def _store_catalog_signature(
                 revision_id = "<current-missing>"
         rows.append((*base, revision_id))
     # Aging and skill visibility remain mutable application state.  Their
-    # existing signatures are appended separately; mtimes are never used as
+    # semantic signatures are appended separately; mtimes are never used as
     # a substitute for a contract revision identity.
     external_state = _catalog_cache_signature(
         [], catalog_trusted_owner=catalog_trusted_owner,
         skill_state_signature=skill_state_signature,
+        lifecycle_snapshot=lifecycle_snapshot,
     )
     return (
         "store-v1",
@@ -1234,6 +1243,7 @@ def _load_catalog_under_catalog_lock(
                 inventory,
                 include_synth=include_synth,
             )
+            lifecycle_snapshot = _lifecycle_snapshot()
             before = _store_catalog_signature(
                 inventory,
                 include_synth=include_synth,
@@ -1241,6 +1251,7 @@ def _load_catalog_under_catalog_lock(
                 revision_ids=expected_revisions,
                 catalog_trusted_owner=catalog_trusted_owner,
                 skill_state_signature=skill_state_signature,
+                lifecycle_snapshot=lifecycle_snapshot,
             )
             if not audit_only:
                 cached = _CATALOG_CACHE.get(cache_key)
@@ -1290,6 +1301,7 @@ def _load_catalog_under_catalog_lock(
                 after_inventory,
                 include_synth=include_synth,
             )
+            after_lifecycle_snapshot = _lifecycle_snapshot()
             after = _store_catalog_signature(
                 after_inventory,
                 include_synth=include_synth,
@@ -1297,6 +1309,7 @@ def _load_catalog_under_catalog_lock(
                 revision_ids=after_revisions,
                 catalog_trusted_owner=catalog_trusted_owner,
                 skill_state_signature=after_skill_state_signature,
+                lifecycle_snapshot=after_lifecycle_snapshot,
             )
             if before == after:
                 catalog = candidate
@@ -1312,7 +1325,10 @@ def _load_catalog_under_catalog_lock(
         dirs_for_sig = [Path(executors_dir)]
         if include_synth and SYNTHESIZED_EXECUTORS_DIR.exists():
             dirs_for_sig.append(SYNTHESIZED_EXECUTORS_DIR)
-        current_sig = _catalog_cache_signature(dirs_for_sig)
+        lifecycle_snapshot = _lifecycle_snapshot()
+        current_sig = _catalog_cache_signature(
+            dirs_for_sig, lifecycle_snapshot=lifecycle_snapshot,
+        )
         cached = _CATALOG_CACHE.get(cache_key)
         if cached is not None and cached[1] == current_sig:
             return cached[0]
@@ -1385,53 +1401,38 @@ def _load_catalog_under_catalog_lock(
         except Exception as e:
             log.warning("[loader] builtin-store registration failed: %s", e)
 
-    # Apply lifecycle override from executor_aging stats + register newly
-    # discovered executors with their source. Best-effort: if the module
-    # isn't available (dev mode) we silently skip the integration.
-    try:
-        from executor_aging import lifecycle_override_map
-        # Register each executor from its admitted metadata. Post-cutover the
-        # live manifest path belongs to the generation store, so path shape is
-        # neither provenance nor a reason to reopen authoring.
-        if not audit_only:
-            from executor_aging import register as _exec_register
+    # Registration is accounting only, not visibility authority. It remains
+    # best-effort and must never run during a side-effect-free cutover audit.
+    if not audit_only:
+        from executor_aging import register as _exec_register
 
-            for ex in catalog.executors.values():
-                try:
-                    if ex.source == "imported":
-                        src = "skill"
-                    elif ex.source == "synthesized":
-                        src = "synth:reactive"
-                    else:
-                        src = "handcrafted"
-                    _exec_register(ex.name, source=src)
-                except Exception:
-                    pass
-
-        overrides = lifecycle_override_map(read_only=audit_only)
-        if overrides:
-            to_archive = []
-            for name, target_state in overrides.items():
-                ex = catalog.executors.get(name)
-                if ex is None:
-                    continue
-                if target_state == "archived":
-                    to_archive.append(name)
+        for ex in catalog.executors.values():
+            try:
+                if ex.source == "imported":
+                    src = "skill"
+                elif ex.source == "synthesized":
+                    src = "synth:reactive"
                 else:
-                    ex.lifecycle = target_state
-            for name in to_archive:
-                ex = catalog.executors.pop(name, None)
-                if ex is not None:
-                    catalog.rejected.append(
-                        (str(ex.manifest_path),
-                         "archived by executor_aging (inactive too long)")
-                    )
-    except ImportError:
-        pass
-    except Exception as e:
-        if audit_only:
-            raise
-        log.warning("loader: executor_aging override failed: %s", e)
+                    src = "handcrafted"
+                _exec_register(ex.name, source=src)
+            except Exception:
+                pass
+
+    # Apply precisely the immutable state bound to current_sig. A fresh,
+    # best-effort read here could fail open (or race an unarchive) and cache
+    # active executors under a signature that says they are archived.
+    for name, target_state in lifecycle_snapshot:
+        ex = catalog.executors.get(name)
+        if ex is None:
+            continue
+        if target_state == "archived":
+            catalog.executors.pop(name)
+            catalog.rejected.append((
+                str(ex.manifest_path),
+                "archived by executor_aging (inactive too long)",
+            ))
+        else:
+            ex.lifecycle = target_state
 
     # Ogni reject è visibile almeno nel log anche quando nessuna UI admin è
     # aperta. Il Catalog conserva la stessa lista per la superficie HTTP.

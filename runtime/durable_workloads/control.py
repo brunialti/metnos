@@ -1,7 +1,9 @@
 """Owner-scoped, transport-neutral control façade for durable workloads.
 
 The façade is the only F9 read/control surface.  It returns closed DTOs rather
-than store rows, plans, source locators, result payloads or execution snapshots.
+than store rows, plans, result payloads or execution snapshots. A pure injected
+projector may expose an explicitly approved target path, never arbitrary args
+or per-source locators.
 HTTP, chat and any future approved executor are therefore thin adapters over
 the same owner-scoped operations.
 """
@@ -199,7 +201,8 @@ def _unit_dto(record: UnitReadRecord) -> UnitDTO:
 class DurableWorkloadControl:
     """Closed control/read model backed by one explicitly-owned store."""
 
-    def __init__(self, store: DurableWorkloadStore, *, cursor_secret: str | bytes) -> None:
+    def __init__(self, store: DurableWorkloadStore, *, cursor_secret: str | bytes,
+                 describe_plan: Callable[[dict[str, Any] | None, str | None], dict[str, Any]] | None = None) -> None:
         if not isinstance(store, DurableWorkloadStore):
             raise TypeError("store must be DurableWorkloadStore")
         secret = cursor_secret.encode("utf-8") if isinstance(cursor_secret, str) else cursor_secret
@@ -207,6 +210,9 @@ class DurableWorkloadControl:
             raise ValueError("cursor_secret must be non-empty bytes or text")
         self._store = store
         self._cursor_secret = secret
+        self._describe_plan = describe_plan or (lambda _plan, _phase: {
+            "kind": "generic", "operation": None, "target_path": None, "phase": None,
+        })
 
     @staticmethod
     def _page_size(value: int | None) -> int:
@@ -315,6 +321,10 @@ class DurableWorkloadControl:
             progress = self._store.progress_many(
                 owner_user_id, tuple(record.workload_id for record in visible),
             )
+            descriptions = self._store.descriptions_many(
+                owner_user_id, tuple(record.workload_id for record in visible),
+                projector=self._describe_plan,
+            )
             next_cursor = None
             if len(records) > page_size and visible:
                 last = visible[-1]
@@ -329,7 +339,8 @@ class DurableWorkloadControl:
                     {**_workload_dto(
                         record,
                         counters[record.workload_id],
-                    ).to_dict(), "progress": progress[record.workload_id]}
+                    ).to_dict(), "progress": progress[record.workload_id],
+                     "description": descriptions[record.workload_id]}
                     for record in visible
                 ],
                 "next_cursor": next_cursor,
@@ -355,6 +366,8 @@ class DurableWorkloadControl:
                     record, self._store.unit_counters(owner_user_id, workload_id),
                 ).to_dict(), "progress": self._store.progress_many(
                     owner_user_id, (workload_id,),
+                )[workload_id], "description": self._store.descriptions_many(
+                    owner_user_id, (workload_id,), projector=self._describe_plan,
                 )[workload_id]},
                 "revision": revision,
             }

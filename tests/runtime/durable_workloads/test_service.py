@@ -539,6 +539,11 @@ def test_repeated_parallel_failures_stay_degraded_and_converge(tmp_path, monkeyp
         service.run_cycle()
         assert service.health.state == "degraded"
         wait_until_finished()
+        # Two failing lanes in one observation are one failed cycle, not two.
+        service.run_cycle()
+        assert service.health.state == "degraded"
+        service.run_cycle()
+        wait_until_finished()
         with pytest.raises(RuntimeError, match="cycle failed repeatedly"):
             service.run_cycle()
     finally:

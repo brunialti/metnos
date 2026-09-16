@@ -235,6 +235,21 @@ indicativa solo per una fase di elaborazione già interamente materializzata,
 con risultati sufficienti e recenti. Piani multifase, errori, pausa, motore
 non pronto o dati non aggiornati non producono stime: la UI mostra n.a.</p>
 
+<p>L'elenco identifica attività e cartella, quando disponibili nel piano ammesso
+del proprietario; il dettaglio distingue fase osservata, blocchi in esecuzione
+e limite di concorrenza del lavoro. Questi conteggi non misurano thread o processi.
+Durante la scansione iniziale delle foto, un blocco rappresenta la scoperta,
+non l'intero archivio; il totale delle fasi successive non è ancora noto.
+Percentuale e previsione sono n.a., con motivo esplicito. Gli errori del lavoro
+restano evidenti anche quando il servizio è pronto.</p>
+
+<p>Una contesa temporanea di scrittura SQLite sospende le nuove ammissioni con
+attesa crescente e limitata, senza fermare immediatamente le altre corsie.
+Più errori simultanei contano come un singolo ciclo fallito. Corruzione e
+guasti diversi non vengono classificati come contesa. Il caricatore delle
+capacità distingue gli aggiornamenti delle statistiche d'uso dalle effettive
+modifiche di disponibilità, che continuano a invalidare il catalogo verificato.</p>
+
 <p>Un executor può riuscire, non produrre alcun elemento, produrre un risultato
 parziale oppure fallire. Questi casi non sono equivalenti. Il runtime conserva
 la distinzione e la usa per decidere se proseguire, tentare un recupero limitato

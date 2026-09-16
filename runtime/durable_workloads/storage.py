@@ -3928,7 +3928,8 @@ class DurableWorkloadStore:
             f"""
             WITH progress_selected AS (
                 SELECT w.owner_user_id, w.id, w.state, w.active_revision_id,
-                       r.inventory_sealed, r.usage_complete, r.plan_json
+                       r.inventory_sealed, r.usage_complete,
+                       CASE WHEN json_valid(r.plan_json) THEN r.plan_json END AS plan_json
                 FROM workloads w LEFT JOIN revisions r
                   ON r.owner_user_id=w.owner_user_id AND r.id=w.active_revision_id
                 WHERE w.owner_user_id=? AND w.id IN ({placeholders})
@@ -3944,6 +3945,8 @@ class DurableWorkloadStore:
                 GROUP BY w.id
             ), unit_facts AS (
                 SELECT w.id, COUNT(u.id) AS total,
+                       SUM(u.state='running') AS running_units,
+                       SUM(u.state='leased') AS leased_units,
                        SUM(u.state='committed') AS committed,
                        SUM(s.stage_type<>'inventory') AS estimate_total,
                        SUM(s.stage_type<>'inventory' AND u.state='committed') AS estimate_committed,
@@ -3973,7 +3976,10 @@ class DurableWorkloadStore:
             )
             SELECT w.id, w.state, w.inventory_sealed, w.usage_complete,
                    json_array_length(w.plan_json, '$.required_artifacts') AS artifacts,
+                   CASE WHEN json_type(w.plan_json, '$.budgets.max_concurrency')='integer'
+                       THEN json_extract(w.plan_json, '$.budgets.max_concurrency') END AS max_concurrency,
                    p.phases, p.materialized, p.timeout_s,
+                   u.running_units, u.leased_units,
                    u.total, u.committed, u.uncertain, u.estimate_total, u.estimate_committed,
                    a.started_at, a.samples, a.first_completion, a.last_completion
             FROM progress_selected w JOIN phase_facts p USING(id)
@@ -4024,8 +4030,75 @@ class DurableWorkloadStore:
                 "started_at": started_at,
                 "known_units_percent": percentage,
                 "estimated_end_at": estimated_end_at,
+                "estimated_end_reason": (
+                    None if estimated_end_at else
+                    "multi_phase" if (row["phases"] or 0) > 1 else
+                    "not_running" if row["state"] != "running" else "insufficient_data"
+                ),
+                "parallelism": {
+                    "running_units": int(row["running_units"] or 0),
+                    "leased_units": int(row["leased_units"] or 0),
+                    "max_concurrency": row["max_concurrency"] if (row["max_concurrency"] or 0) > 0 else None,
+                },
                 "observed_at": observed_at,
             }
+        return result
+
+    def descriptions_many(
+        self, owner_user_id: str, workload_ids: Sequence[str],
+        *, projector: Callable[[dict[str, Any] | None, str | None], dict[str, Any]],
+    ) -> dict[str, dict[str, Any]]:
+        """Project only the current admitted plan, in one owner-scoped page read.
+
+        The injected, pure composition callback owns domain-specific display
+        facts. Raw plans never leave this method. A mixed active stage has no
+        single phase; a lease is only a fallback when no unit is running.
+        """
+        owner = _require_owner(owner_user_id)
+        if isinstance(workload_ids, (str, bytes)) or not isinstance(workload_ids, Sequence):
+            raise TypeError("workload_ids must be a sequence")
+        identifiers = tuple(workload_ids)
+        if len(identifiers) > 200 or len(identifiers) != len(set(identifiers)) or any(
+            not isinstance(value, str) or not _ID_RE.fullmatch(value) for value in identifiers
+        ):
+            raise ValueError("workload_ids contains invalid or duplicate identifiers")
+        if not identifiers:
+            return {}
+        placeholders = ",".join("?" for _ in identifiers)
+        rows = self._connection.execute(f"""
+            WITH description_selected AS (
+                SELECT w.owner_user_id, w.id, r.id AS revision_id, r.plan_json
+                FROM workloads w LEFT JOIN revisions r
+                  ON r.owner_user_id=w.owner_user_id AND r.id=w.active_revision_id
+                 AND r.admitted_at IS NOT NULL
+                WHERE w.owner_user_id=? AND w.id IN ({placeholders})
+            )
+            SELECT w.id, w.plan_json,
+                   COUNT(DISTINCT CASE WHEN u.state='running' THEN s.stage_key END) AS running_phases,
+                   MIN(CASE WHEN u.state='running' THEN s.stage_key END) AS running_phase,
+                   COUNT(DISTINCT CASE WHEN u.state='leased' THEN s.stage_key END) AS leased_phases,
+                   MIN(CASE WHEN u.state='leased' THEN s.stage_key END) AS leased_phase
+            FROM description_selected w LEFT JOIN units u
+              ON u.owner_user_id=w.owner_user_id AND u.revision_id=w.revision_id
+             AND u.state IN ('running','leased')
+            LEFT JOIN stages s ON s.owner_user_id=u.owner_user_id
+              AND s.revision_id=u.revision_id AND s.id=u.stage_id
+            GROUP BY w.id
+        """, (owner, *identifiers)).fetchall()
+        if len(rows) != len(identifiers):
+            raise WorkloadNotFoundError("workload not found")
+        result = {}
+        for row in rows:
+            plan = None
+            try:
+                candidate = json.loads(row["plan_json"])
+                validate_plan(candidate)
+                plan = candidate
+            except (TypeError, ValueError):
+                pass
+            phase = (row["running_phase"] if row["running_phases"] == 1 else
+                     row["leased_phase"] if row["running_phases"] == 0 and row["leased_phases"] == 1 else None)
+            result[str(row["id"])] = projector(plan, phase if plan is not None else None)
         return result
 
     def execution_summary(
@@ -4973,6 +5046,32 @@ class DurableWorkloadStore:
         _require_limit(limit, maximum=1000)
         progressed = 0
         for _index in range(limit):
+            # This conservative read grants no reuse authority. In particular,
+            # a first revision has no historical result to adopt and must not
+            # repeatedly take the single SQLite writer away from live leases.
+            # Everything is reselected and verified under BEGIN below; a
+            # candidate committed after this snapshot is seen next cycle.
+            possible = self._connection.execute(
+                """
+                SELECT 1
+                FROM units current_unit
+                JOIN workloads workload
+                  ON workload.owner_user_id=current_unit.owner_user_id
+                 AND workload.active_revision_id=current_unit.revision_id
+                JOIN units prior_unit
+                  ON prior_unit.owner_user_id=current_unit.owner_user_id
+                 AND prior_unit.unit_key=current_unit.unit_key
+                 AND prior_unit.revision_id<>current_unit.revision_id
+                 AND prior_unit.state='committed'
+                WHERE workload.state IN ('queued', 'running')
+                  AND current_unit.state='pending'
+                  AND current_unit.attempt_count=0
+                  AND current_unit.active_attempt_id IS NULL
+                LIMIT 1
+                """,
+            ).fetchone()
+            if possible is None:
+                break
             now_text = utc_now()
             with self._transaction() as connection:
                 candidate = connection.execute(
@@ -8529,6 +8628,37 @@ class DurableWorkloadStore:
             or not 1 <= batch_size <= 1000
         ):
             raise ValueError("batch_size must be an integer in 1..1000")
+        # Read-only negative probe: include every revision and owner, both
+        # clock-regression signals, and due retries even without an active
+        # workload. LEFT JOIN deliberately permits harmless false positives
+        # for damaged/missing usage rows. The authoritative fenced selection
+        # remains unchanged inside the writer transaction below.
+        possible = self._connection.execute(
+            """
+            SELECT 1 FROM units u
+            LEFT JOIN revision_usage usage
+              ON usage.owner_user_id=u.owner_user_id
+             AND usage.revision_id=u.revision_id
+            WHERE u.state IN ('leased', 'running') AND (
+                u.lease_expires_at<=?
+                OR julianday(usage.clock_high_water_at)
+                    > julianday(?) + (? / 86400.0)
+                OR julianday(u.updated_at)
+                    > julianday(?) + (? / 86400.0)
+            )
+            UNION ALL
+            SELECT 1 FROM units WHERE state='retry_wait' AND next_attempt_at<=?
+            LIMIT 1
+            """,
+            (
+                current_text, current_text,
+                _CLOCK_REGRESSION_TOLERANCE.total_seconds(),
+                current_text, _CLOCK_REGRESSION_TOLERANCE.total_seconds(),
+                current_text,
+            ),
+        ).fetchone()
+        if possible is None:
+            return ReconcileOutcome()
         expired = returned = retrying = permanent = attention = 0
         with self._transaction() as connection:
             rows = connection.execute(

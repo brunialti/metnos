@@ -159,6 +159,7 @@ class DurableWorkloadApiTests(AioHTTPTestCase):
         self.assertNotIn("objective_redacted", payload["revision"])
 
         from durable_workloads.control import DurableWorkloadControl
+        from durable_runtime_registry import describe_plan
         from durable_workloads.coordinator import parse_instant
         from durable_workloads.storage import DurableWorkloadStore
 
@@ -170,7 +171,7 @@ class DurableWorkloadApiTests(AioHTTPTestCase):
             return_value=(parse_instant(observed_at), observed_at),
         ):
             direct = DurableWorkloadControl(
-                store, cursor_secret=ADMIN_KEY,
+                store, cursor_secret=ADMIN_KEY, describe_plan=describe_plan,
             ).detail(owner, workload.workload_id)
         self.assertEqual(payload, direct)
 

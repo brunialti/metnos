@@ -281,6 +281,50 @@ def _strict_invoke(bridge, contract):
     )
 
 
+@pytest.mark.parametrize("strict", [False, True])
+@pytest.mark.parametrize(("kind", "cause"), [
+    ("snapshot", "store_snapshot_unstable"),
+    ("busy", "database_contention"),
+    ("missing", "executor_missing"),
+    ("unknown", "unclassified"),
+])
+def test_executor_loader_failure_preserves_only_closed_cause(strict, kind, cause, caplog):
+    secret = "private/path/never-log-this-credential"
+    error = RuntimeError(secret)
+    if kind == "snapshot":
+        error.code = "store_snapshot_unstable"
+    elif kind == "busy":
+        error = sqlite3.OperationalError(secret)
+        error.sqlite_errorcode = sqlite3.SQLITE_BUSY | (2 << 8)
+    elif kind == "missing":
+        error = LookupError(secret)
+    else:
+        error.code = secret
+
+    def load(_name):
+        raise error
+
+    resolver = _ExactResolver()
+    bridge = DurableExecutionBridge(
+        SimpleNamespace(), runners=resolver, output_schemas=_schemas(),
+        executor_loader=load,
+        executor_invoker=lambda *_args: pytest.fail("loader failure invoked executor"),
+        executor_generation_attestor=lambda _executor: pytest.fail("loader failure attested"),
+        require_generation_attestation=strict,
+    )
+    with pytest.raises(ExecutionFailure) as raised:
+        _strict_invoke(bridge, resolver.map)
+    payload = json.loads(raised.value.error.payload_json)
+    assert payload["details_redacted"] == {
+        "runner_name": "read_files_ocr", "loader_cause": cause,
+    }
+    assert payload["error_class"] == "capability_unavailable"
+    assert payload["retry"] == "manual"
+    assert secret not in raised.value.error.payload_json
+    assert secret not in caplog.text
+    assert f"cause={cause}" in caplog.text
+
+
 @pytest.mark.parametrize(("lifecycle", "dormant", "code"), [
     ("preexercise", False, "execution.dormant"),
     ("active", True, "execution.dormant"),

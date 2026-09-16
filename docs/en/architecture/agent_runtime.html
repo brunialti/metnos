@@ -220,6 +220,19 @@ derives an indicative finish estimate only for one fully materialized processing
 phase with sufficient recent results. Multi-phase plans, errors, pauses,
 an unavailable engine or stale observations do not yield estimates: the UI shows n.a.</p>
 
+<p>The list identifies activity and folder when available in the owner's admitted
+plan; details distinguish the observed phase, running units and workload concurrency
+limit. These counts are not threads or processes. During initial photo discovery,
+one unit represents discovery, not the whole archive; totals for later phases
+are not yet known. Percentage and finish estimate show n.a. with an explicit
+reason. Job errors remain prominent even when the service is ready.</p>
+
+<p>Temporary SQLite writer contention pauses new admissions with increasing,
+bounded waits without immediately stopping other lanes. Simultaneous errors
+count as one failed cycle. Corruption and unrelated failures are not classified
+as contention. The capability loader distinguishes usage statistics updates
+from actual availability changes, which still invalidate the verified catalog.</p>
+
 <p>An executor may succeed, return no entries, produce a partial result, or fail.
 These states are not equivalent. The runtime preserves the distinction and uses
 it to decide whether to continue, attempt bounded recovery, or terminate.</p>

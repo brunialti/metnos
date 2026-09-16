@@ -423,3 +423,55 @@ Each unavailable field displays the requested exact `n.a.`, via bilingual
 catalog entries. Aggregate DTO, isolated real-store scenarios, executable
 browser behavior and IT/EN seed checks guard the semantics. Live deployment
 and production acceptance remain separate from these implementation tests.
+
+## 16 September 2026 — contention recovery and readable workload details
+
+The photo-analysis incident exposed two independent failure mechanisms.
+Concurrent SQLite writer contention from several lanes was counted as several
+consecutive supervisory failures, stopping healthy sibling attempts. Native
+SQLite BUSY/LOCKED errors now pause new admissions with interruptible bounded
+backoff (0.25 seconds exponentially capped at 5 seconds; eight observations or
+60 seconds exhaust the episode). A simultaneous burst counts as one failed
+cycle. Other errors retain the three-cycle limit. No interrupted invocation
+is replayed by this handling: persistent fences, usage accounting and recovery
+remain authoritative. `test_service_contention.py` includes a real writer lock.
+
+Conservative read-only negative probes avoid taking the SQLite writer for
+expired-lease recovery or historical result adoption when no candidate exists.
+All original authoritative selections and checks remain inside the transaction;
+new work arriving after a negative probe is observed on a later cycle. The
+recovery probe includes due retries, older revisions and both clock-regression
+signals. Tests cover a real external writer and state changes after a positive
+probe. The optional 31-lane/966-unit stress reproduced starvation without
+artificial sleeps; after the probes it completed without BUSY on the tested
+host. This does not promise contention-free operation under arbitrary load.
+
+Separately, ordinary invocation statistics invalidated the catalog via the
+aging database's mtime. The loader now authenticates and applies the same
+immutable semantic lifecycle snapshot; count-only changes do not invalidate,
+but archived/deprecated transitions and removals do, including WAL changes.
+Malformed or unreadable lifecycle state fails closed. This does not bypass
+signatures, generation checks, ownership or skill visibility. See ADR 0099
+and `test_loader_lifecycle_signature.py`. Executor loader failures retain a
+closed `loader_cause` diagnostic without arbitrary exception text or a new
+automatic retry grant. Historical errors without this field cannot be
+retroactively assigned a definite internal cause.
+
+The console presents an activity title, admitted owner-only folder when known,
+observed active phase and compact timing metrics. The pure display projector
+is injected at the composition boundary; universal storage/control do not
+import the photo domain or expose arbitrary plan arguments. Current admitted
+revisions are read in a bounded owner-scoped aggregate, also for existing jobs.
+Dynamic paths render as text, never markup or links. Explanations, events and
+technical details are collapsible and retain their expansion during refresh.
+The UI preserves i18n, keyboard access, state-specific actions and stale-data
+handling. Attention remains visible independently of service readiness.
+
+Parallelism separates running units, assigned units and admitted workload
+limit; it does not claim thread/process counts or the instance's actual free
+capacity. Initial photo discovery shows n.a. instead of treating its lone
+unit as a complete work estimate. Missing ETA states why; the estimator remains
+deliberately limited to homogeneous single-phase work. Discovery partial files
+are not a resumable scan cursor; committed phases/groups remain recoverable.
+Tests: `test_description.py`, `test_progress.py`, owner-scoped control/API and
+isolated Chromium IT/EN desktop/mobile in `test_durable_console_behavior.py`.

@@ -57,10 +57,15 @@ def test_start_excludes_admission_and_leasing(store):
     assert store.progress_many(OWNER, [wid], now=NOW)[wid]["started_at"] is None
     lease = claim(store, 0)
     assert store.progress_many(OWNER, [wid], now=NOW)[wid]["started_at"] is None
+    assert store.progress_many(OWNER, [wid], now=NOW)[wid]["parallelism"] == {
+        "running_units": 0, "leased_units": 1, "max_concurrency": 2,
+    }
     store.mark_running(lease, now=NOW + timedelta(seconds=2))
     result = store.progress_many(OWNER, [wid], now=NOW + timedelta(seconds=3))[wid]
     assert result["started_at"] == "2026-09-16T12:00:02.000000Z"
     assert result["estimated_end_at"] is None
+    assert result["parallelism"] == {"running_units": 1, "leased_units": 0, "max_concurrency": 2}
+    assert result["estimated_end_reason"] == "insufficient_data"
 
 
 def test_known_units_and_cautious_persisted_eta(store):
@@ -68,6 +73,7 @@ def test_known_units_and_cautious_persisted_eta(store):
     result = store.progress_many(OWNER, [wid], now=NOW + timedelta(seconds=51))[wid]
     assert result["known_units_percent"] == 30.0  # three saved units out of ten known units
     assert result["estimated_end_at"] == "2026-09-16T12:03:10.000000Z"
+    assert result["estimated_end_reason"] is None
     assert store.progress_many(OWNER, [wid], now=NOW + timedelta(seconds=52))[wid]["estimated_end_at"] == result["estimated_end_at"]
     assert store.progress_many(OWNER, [wid], now=NOW + timedelta(seconds=180))[wid]["estimated_end_at"] is None
     assert store.progress_many(OWNER, [wid], now=NOW - timedelta(seconds=1))[wid]["started_at"] is None
@@ -80,6 +86,7 @@ def test_inactive_or_uncertain_jobs_have_no_eta(store, state):
     result = store.progress_many(OWNER, [wid], now=NOW + timedelta(seconds=51))[wid]
     assert result["started_at"] is not None
     assert result["estimated_end_at"] is None
+    assert result["estimated_end_reason"] == "not_running"
 
 
 def test_partial_materialization_and_retries_have_no_eta(store):
@@ -98,6 +105,7 @@ def test_multi_phase_or_publication_plan_has_no_eta(store, options):
     assert result["started_at"] is not None
     assert result["known_units_percent"] is not None
     assert result["estimated_end_at"] is None
+    assert result["estimated_end_reason"] == ("multi_phase" if options.get("extra_phase") else "insufficient_data")
 
 
 def test_progress_owner_scope_and_bounded_empty_page(store):
