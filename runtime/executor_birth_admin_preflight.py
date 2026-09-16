@@ -230,8 +230,10 @@ _SERVICE_BOUNDING_STATUS_V1 = {
 # command on the allowed list (`ping`) can start (authorized by the owner).
 # 15/9/2026: the durable worker opts into the existing central scheduler;
 # resource limits and explicit serial overrides retain their authority.
+# 16/9/2026: the fresh-install operator setup belongs to the existing
+# install-metnos entry. No service command, unit or privilege is added.
 _EXPECTED_SERVICE_SOURCE_IDENTITY_V1 = (
-    "sha256:8d657fff0dbfff0c20aa650b5147598e26c481e697458064587d83962bb1bd4f"
+    "sha256:3b719b937c9d69dcefcad61809edc2b282ac632377758a879e5b18582ab185c9"
 )
 _ISOLATED_G6C_NAMESPACE_RE_V1 = re.compile(r"[0-9a-f]{16}")
 _ISOLATED_G6C_SOURCE_IDENTITY_V1 = (
@@ -855,7 +857,7 @@ _REQUIRED_MANIFEST_PATHS = {
 _BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:96b6049d43b197e6c420f6dd743073732757f24b86baf52d646f53cf36fcb838"
+_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:393f52c2ddab7fcef63364a759eb54962986f7436be626a211669bf1f5231b61"
 _SOURCE_REVIEW_PIN_VALUE_V1 = (
     rb'(?:(?:"sha256:" \+ "0" \* 64)|(?:"sha256:[0-9a-f]{64}"))'
 )

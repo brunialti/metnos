@@ -14,7 +14,7 @@ import time
 import types
 
 source = Path("/opt/metnos/.claude/worktrees/rm0009-development/runtime/executor_birth_admin_preflight.py")
-expected = "9474f2925d705c54545ff0dd0d9d3dae23ef3058a9ad423991051f2319cb5c78"
+expected = "b99c19a7cb43114af2e3d605a1d53f423225b594ba149cba5b7a763dfa7aac64"
 payload = source.read_bytes()
 if hashlib.sha256(payload).hexdigest() != expected:
     raise RuntimeError("reviewed_admin_source_changed")
