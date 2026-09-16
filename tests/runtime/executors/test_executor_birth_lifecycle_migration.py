@@ -198,7 +198,7 @@ def test_recording_the_same_decision_twice_writes_nothing(preserved):
     assert record_legacy_resolutions(
         migration_id=mid, resolutions=decisions(),
         recorded_at="2026-09-17T00:00:00Z", db_path=db_path) == 0
-    assert [(row["source_ordinal"], row["resolution_kind"]) for row in
+    assert [(row["ordinal"], row["kind"]) for row in
             read_legacy_resolutions(migration_id=mid, db_path=db_path)] == [
         (0, "current_restriction"), (1, "discarded")]
 
@@ -440,3 +440,83 @@ def test_the_migration_refuses_an_absent_epoch_store(installation, tmp_path):
         migration.apply_migration(
             plan, epoch_db_path=tmp_path / "absent.sqlite", applied_at=WHEN)
     assert raised.value.detail == "epoch store absent"
+
+
+# --- the record certification will bind --------------------------------------
+
+def test_the_completed_migration_is_reread_from_the_store(installation):
+    legacy, epochs, selectable = installation
+    plan = migration.plan_migration([(legacy, "executor_stats")], selectable=selectable)
+    # This installation has an open case, so settle it before verifying.
+    narrowed = [item for item in plan.sources[0].dispositions
+                if item.kind is not Disposition.PENDING_DISPOSITION]
+    del narrowed
+    with _sqlite3.connect(legacy) as connection:
+        connection.execute("DELETE FROM executor_stats WHERE name='gone'")
+    plan = migration.plan_migration([(legacy, "executor_stats")], selectable=selectable)
+    migration.apply_migration(plan, epoch_db_path=epochs, applied_at=WHEN)
+    record = migration.verify_migration_v1(plan.migration_id, epoch_db_path=epochs)
+    assert record["rows"] == 2
+    assert record["sources"][0]["decisions"] == {"attested": 1, "current_restriction": 1}
+
+
+def test_another_identity_cannot_claim_this_migration(installation):
+    legacy, epochs, selectable = installation
+    with _sqlite3.connect(legacy) as connection:
+        connection.execute("DELETE FROM executor_stats WHERE name='gone'")
+    plan = migration.plan_migration([(legacy, "executor_stats")], selectable=selectable)
+    migration.apply_migration(plan, epoch_db_path=epochs, applied_at=WHEN)
+    with pytest.raises(LifecycleMigrationError) as raised:
+        migration.verify_migration_v1("sha256:" + "9" * 64, epoch_db_path=epochs)
+    assert raised.value.code == "migration_record_mismatch"
+
+
+def test_a_decision_edited_after_the_fact_breaks_the_identity(installation):
+    legacy, epochs, selectable = installation
+    with _sqlite3.connect(legacy) as connection:
+        connection.execute("DELETE FROM executor_stats WHERE name='gone'")
+    plan = migration.plan_migration([(legacy, "executor_stats")], selectable=selectable)
+    migration.apply_migration(plan, epoch_db_path=epochs, applied_at=WHEN)
+    with _sqlite3.connect(epochs) as connection:
+        connection.execute(
+            "UPDATE executor_legacy_resolutions SET resolution_kind='discarded',"
+            "contract_id=NULL,generation_id=NULL "
+            "WHERE resolution_kind='current_restriction'")
+    with pytest.raises(LifecycleMigrationError) as raised:
+        migration.verify_migration_v1(plan.migration_id, epoch_db_path=epochs)
+    assert raised.value.code == "migration_record_mismatch"
+
+
+def test_an_open_case_keeps_the_migration_unverified(installation):
+    legacy, epochs, selectable = installation
+    plan = migration.plan_migration([(legacy, "executor_stats")], selectable=selectable)
+    migration.apply_migration(plan, epoch_db_path=epochs, applied_at=WHEN)
+    with pytest.raises(LifecycleMigrationError) as raised:
+        migration.verify_migration_v1(plan.migration_id, epoch_db_path=epochs)
+    assert raised.value.code == "migration_record_incomplete"
+    assert raised.value.detail == "pending_disposition=1"
+
+
+def test_a_copied_row_without_a_decision_keeps_it_unverified(installation):
+    legacy, epochs, selectable = installation
+    with _sqlite3.connect(legacy) as connection:
+        connection.execute("DELETE FROM executor_stats WHERE name='gone'")
+    plan = migration.plan_migration([(legacy, "executor_stats")], selectable=selectable)
+    migration.apply_migration(plan, epoch_db_path=epochs, applied_at=WHEN)
+    with _sqlite3.connect(epochs) as connection:
+        connection.execute("DELETE FROM executor_legacy_resolutions WHERE legacy_id=1")
+    with pytest.raises(LifecycleMigrationError) as raised:
+        migration.verify_migration_v1(plan.migration_id, epoch_db_path=epochs)
+    assert raised.value.code == "migration_record_incomplete"
+
+
+def test_a_store_with_no_preserved_copy_is_not_a_migration(tmp_path):
+    from executor_birth_epoch_store import open_epoch as open_one
+
+    epochs = tmp_path / "executor_epochs.sqlite"
+    open_one(contract_id=ContractId(ManifestOrigin.USER, "demo/manifest.toml"),
+             generation_id="sha256:" + "a" * 64, name="demo", source="synth:reactive",
+             lifecycle=BirthLifecycle.ACTIVE, observed_at=WHEN, db_path=epochs)
+    with pytest.raises(LifecycleMigrationError) as raised:
+        migration.verify_migration_v1("sha256:" + "9" * 64, epoch_db_path=epochs)
+    assert raised.value.detail == "no preserved source"

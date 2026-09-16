@@ -1284,13 +1284,58 @@ def record_legacy_resolutions(
         connection.close()
 
 
+def verify_preserved_migrations(*, db_path: Path) -> tuple[dict, ...]:
+    """Reread every preserved copy and check it against its own proof.
+
+    Certification must bind a migration it can read back, not a count a caller
+    reported. Each copy is verified with the same count and digest the
+    preservation recorded, and every copied row must carry exactly one decision.
+    """
+    connection = _open(db_path)
+    try:
+        migrations = connection.execute(
+            "SELECT migration_id,source_id,source_schema_id,legacy_table,source_count,"
+            "source_digest,migrated_at FROM executor_legacy_migrations "
+            "ORDER BY source_id,legacy_table"
+        ).fetchall()
+        verified = []
+        for row in migrations:
+            _verify_legacy_migration(
+                connection, migration_id=row["migration_id"],
+                expected_count=int(row["source_count"]),
+                expected_digest=row["source_digest"],
+            )
+            decided = connection.execute(
+                "SELECT x.resolution_kind,count(*) FROM executor_legacy_migration_rows r "
+                "JOIN executor_legacy_resolutions x ON x.legacy_id=r.legacy_id "
+                "WHERE r.migration_id=? GROUP BY x.resolution_kind",
+                (row["migration_id"],),
+            ).fetchall()
+            counts = {kind: int(total) for kind, total in decided}
+            verified.append({
+                "migration_id": row["migration_id"],
+                "source_id": row["source_id"],
+                "source_schema_id": row["source_schema_id"],
+                "legacy_table": row["legacy_table"],
+                "source_count": int(row["source_count"]),
+                "source_digest": row["source_digest"],
+                "migrated_at": row["migrated_at"],
+                "decisions": counts,
+                "undecided": int(row["source_count"]) - sum(counts.values()),
+            })
+        return tuple(verified)
+    finally:
+        connection.close()
+
+
 def read_legacy_resolutions(*, migration_id: str, db_path: Path) -> tuple[dict, ...]:
     """Read back the recorded decisions of one migration, in source order."""
     connection = _open(db_path)
     try:
         rows = connection.execute(
-            "SELECT r.source_ordinal,x.resolution_kind,x.contract_id,x.generation_id,"
-            "x.evidence_id,x.recorded_at FROM executor_legacy_migration_rows r "
+            "SELECT r.source_ordinal AS ordinal,x.resolution_kind AS kind,"
+            "x.contract_id,x.generation_id,x.evidence_id,x.recorded_at "
+            "FROM executor_legacy_migration_rows r "
             "JOIN executor_legacy_resolutions x ON x.legacy_id=r.legacy_id "
             "WHERE r.migration_id=? ORDER BY r.source_ordinal", (migration_id,),
         ).fetchall()

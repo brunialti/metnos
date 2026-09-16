@@ -176,6 +176,35 @@ def plan_dispositions(
     return tuple(_decide(item, selectable) for item in facts)
 
 
+def stored_decisions_digest_v1(
+    decisions: Sequence[Mapping[str, object]],
+) -> str:
+    """Digest the decision fields the store actually persists, and only those.
+
+    The migration identity must be recomputable from the copies themselves, or
+    certification would have to trust a number somebody reported. Effect and
+    reason are covered through each decision's evidence digest.
+    """
+    payload = json.dumps([{
+        "contract_id": item["contract_id"], "evidence_id": item["evidence_id"],
+        "generation_id": item["generation_id"], "kind": item["kind"],
+        "ordinal": item["ordinal"],
+    } for item in sorted(decisions, key=lambda item: item["ordinal"])],
+        ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")
+    return "sha256:" + hashlib.sha256(
+        LIFECYCLE_MIGRATION_DOMAIN_V1 + b"decisions\0" + payload).hexdigest()
+
+
+def _disposition_rows(
+    dispositions: Sequence[LegacyDispositionV1],
+) -> tuple[dict[str, object], ...]:
+    return tuple({
+        "contract_id": item.contract_id, "evidence_id": item.evidence_id,
+        "generation_id": item.generation_id, "kind": item.kind.value,
+        "ordinal": item.ordinal,
+    } for item in dispositions)
+
+
 def plan_digest_v1(dispositions: Sequence[LegacyDispositionV1]) -> str:
     """Bind a complete plan so the record and the replay name one decision."""
     payload = json.dumps([{
@@ -414,17 +443,30 @@ class MigrationPlanV1:
     @property
     def migration_id(self) -> str:
         """Name this exact decision over these exact sources."""
-        payload = json.dumps([{
-            "content_id": item.identity.content_id,
+        from executor_birth_epoch_store import legacy_rows_digest
+
+        return migration_identity_v1(tuple({
+            "decisions_id": stored_decisions_digest_v1(
+                _disposition_rows(item.dispositions)),
             "legacy_table": item.legacy_table,
-            "plan_id": plan_digest_v1(item.dispositions),
-            "schema_id": item.identity.schema_id,
+            "source_digest": legacy_rows_digest(item.rows),
             "source_id": item.identity.source_id,
-        } for item in sorted(
-            self.sources, key=lambda item: (item.identity.source_id, item.legacy_table))
-        ], ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")
-        return "sha256:" + hashlib.sha256(
-            LIFECYCLE_MIGRATION_DOMAIN_V1 + b"migration\0" + payload).hexdigest()
+            "source_schema_id": item.identity.schema_id,
+        } for item in self.sources))
+
+
+def migration_identity_v1(sources: Sequence[Mapping[str, object]]) -> str:
+    """Name a migration from facts the preserved copies retain by themselves."""
+    payload = json.dumps(sorted(({
+        "decisions_id": item["decisions_id"],
+        "legacy_table": item["legacy_table"],
+        "source_digest": item["source_digest"],
+        "source_id": item["source_id"],
+        "source_schema_id": item["source_schema_id"],
+    } for item in sources), key=lambda item: (item["source_id"], item["legacy_table"])),
+        ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")
+    return "sha256:" + hashlib.sha256(
+        LIFECYCLE_MIGRATION_DOMAIN_V1 + b"migration\0" + payload).hexdigest()
 
 
 def plan_migration(
@@ -536,6 +578,53 @@ def apply_migration(
     return report
 
 
+def verify_migration_v1(migration_id: str, *, epoch_db_path: Path) -> dict:
+    """Reread the completed migration the marker names, from the store itself.
+
+    Certification binds this, not a report. Every preserved copy is verified
+    against its own count and digest, every copied row must carry exactly one
+    decision, no decision may still be open, and the identity recomputed from
+    the copies must be the one the marker names. A caller cannot improve the
+    outcome by supplying a different number.
+    """
+    from executor_birth_epoch_store import (
+        EpochStoreError, read_legacy_resolutions, verify_preserved_migrations,
+    )
+
+    if not isinstance(migration_id, str) or not migration_id.startswith("sha256:"):
+        raise LifecycleMigrationError("migration_record_invalid", "migration_id")
+    try:
+        preserved = verify_preserved_migrations(db_path=Path(epoch_db_path))
+    except EpochStoreError as exc:
+        raise LifecycleMigrationError("migration_record_invalid", exc.code) from exc
+    if not preserved:
+        raise LifecycleMigrationError("migration_record_invalid", "no preserved source")
+    open_cases = 0
+    for item in preserved:
+        if item["undecided"]:
+            raise LifecycleMigrationError(
+                "migration_record_incomplete", item["legacy_table"])
+        open_cases += item["decisions"].get("pending_disposition", 0)
+    if open_cases:
+        raise LifecycleMigrationError(
+            "migration_record_incomplete", f"pending_disposition={open_cases}")
+    recomputed = migration_identity_v1(tuple({
+        "decisions_id": stored_decisions_digest_v1(read_legacy_resolutions(
+            migration_id=item["migration_id"], db_path=Path(epoch_db_path))),
+        "legacy_table": item["legacy_table"],
+        "source_digest": item["source_digest"],
+        "source_id": item["source_id"],
+        "source_schema_id": item["source_schema_id"],
+    } for item in preserved))
+    if recomputed != migration_id:
+        raise LifecycleMigrationError("migration_record_mismatch", recomputed)
+    return {
+        "migration_id": migration_id,
+        "sources": preserved,
+        "rows": sum(item["source_count"] for item in preserved),
+    }
+
+
 def _preserved_migration_id(source: SourcePlanV1) -> str:
     """The identity the preservation storage assigns to this exact copy."""
     from executor_birth_epoch_store import legacy_rows_digest
@@ -554,5 +643,7 @@ __all__ = [
     "LifecycleMigrationError", "MigrationPlanV1", "SourcePlanV1",
     "apply_migration", "census_source", "plan_digest_v1",
     "plan_dispositions", "plan_migration", "promoter_facts",
-    "source_unchanged", "statistics_facts",
+    "migration_identity_v1", "source_unchanged",
+    "statistics_facts", "stored_decisions_digest_v1",
+    "verify_migration_v1",
 ]
