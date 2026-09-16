@@ -81,41 +81,62 @@
   };
   const translated = (values, key) => values[key] || copy.unknown;
   const stateName = (state) => translated(copy.states, state);
+  const uiLocale = document.documentElement?.lang || undefined;
   // Domain codes are identifiers, not translation keys. Keep unknown approved
   // codes distinguishable without teaching the general console each domain.
   const errorName = (code) => copy.errorLabels[code] || (
     typeof code === "string" && /^[a-z][a-z0-9_.-]{2,95}$/.test(code)
       ? `${copy.errorUnknown} (${code})` : copy.errorUnknown);
-  const dateText = (value) => value ? new Date(value).toLocaleString() : "—";
+  const dateText = (value) => value ? new Date(value).toLocaleString(uiLocale) : "—";
   const availableDate = (value) => typeof value === "string" && Number.isFinite(Date.parse(value)) ? dateText(value) : copy.notAvailable;
-  const percentText = (value) => typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 100 ? `${value.toLocaleString()}%` : copy.notAvailable;
-  const estimateText = (progress, scope = "whole") => {
+  const percentText = (value) => typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 100 ? `${value.toLocaleString(uiLocale)}%` : copy.notAvailable;
+  const estimateReason = (progress, scope = "whole", stale = false) => {
+    if (stale) return "data_stale";
     const estimate = scope === "phase" ? progress?.current_phase?.estimated_end_at : progress?.estimated_end_at;
+    if (!Number.isFinite(Date.parse(estimate))) {
+      return (scope === "phase" ? progress?.current_phase?.estimated_end_reason : progress?.estimated_end_reason) || "insufficient_data";
+    }
+    if (!engine || engine.enabled !== true || engine.worker_available !== true || engine.state !== "ready") return "engine_unavailable";
     const age = Date.now() - Date.parse(progress?.observed_at);
-    if (!engine || engine.enabled !== true || engine.worker_available !== true || engine.state !== "ready"
-        || !Number.isFinite(age) || age < 0 || age > 30000 || Date.parse(estimate) <= Date.now()) return copy.notAvailable;
-    return availableDate(estimate);
+    if (!Number.isFinite(age) || age < 0 || age > 30000) return "data_stale";
+    if (Date.parse(estimate) <= Date.now()) return "estimate_overdue";
+    return null;
+  };
+  const estimateText = (progress, scope = "whole") => {
+    if (estimateReason(progress, scope)) return copy.notAvailable;
+    return new Date(scope === "phase" ? progress.current_phase.estimated_end_at : progress.estimated_end_at)
+      .toLocaleString(uiLocale, {dateStyle: "short", timeStyle: "short"});
   };
   function refreshEstimates(stale = false) {
     for (const element of root.querySelectorAll(".dw-estimate")) {
-      element.textContent = stale ? copy.notAvailable : estimateText(element.progress, element.estimateScope);
+      updateEstimate(element, stale);
     }
   }
-  function appendProgress(container, progress, compact = false) {
-    appendFact(container, copy.started, availableDate(progress?.started_at));
-    appendFact(container, copy.percent, percentText(progress?.known_units_percent));
-    appendEstimate(container, progress, "phase", compact);
+  function updateEstimate(element, stale = false) {
+    const reason = estimateReason(element.progress, element.estimateScope, stale);
+    element.textContent = reason ? copy.notAvailable : estimateText(element.progress, element.estimateScope);
+    element.reasonNode.textContent = reason ? (copy.estimateReasons[reason] || copy.estimateReasons.insufficient_data) : "";
+    element.reasonNode.hidden = !reason;
   }
-  function appendEstimate(container, progress, scope, compact = false) {
+  function appendProgress(container, progress) {
+    appendFact(container, copy.started, availableDate(progress?.started_at));
+    const phase = progress?.current_phase;
+    const fact = appendFact(container, copy.phaseProgress, percentText(phase?.known_units_percent));
+    if (Number.isInteger(phase?.committed_units) && phase.committed_units >= 0
+        && Number.isInteger(phase?.total_units) && phase.total_units > 0 && phase.committed_units <= phase.total_units) {
+      fact.append(node("small", copy.phaseCount.replace("{completed}", countText(phase.committed_units))
+        .replace("{total}", countText(phase.total_units)), "dw-phase-count"));
+    }
+    appendEstimate(container, progress, "phase");
+  }
+  function appendEstimate(container, progress, scope) {
     const fact = node("span", "", "dw-fact");
-    const value = node("span", estimateText(progress, scope), "dw-fact-value dw-estimate");
+    const value = node("span", "", "dw-fact-value dw-estimate");
     value.progress = progress;
     value.estimateScope = scope;
-    fact.append(node("span", scope === "phase" ? copy.phaseEstimatedEnd : copy.wholeEstimatedEnd, "dw-fact-label"), value);
-    if (!compact && estimateText(progress, scope) === copy.notAvailable) {
-      const reason = scope === "phase" ? progress?.current_phase?.estimated_end_reason : progress?.estimated_end_reason;
-      fact.append(node("small", copy.estimateReasons[reason] || copy.estimateReasons.insufficient_data, "dw-estimate-reason"));
-    }
+    value.reasonNode = node("small", "", "dw-estimate-reason");
+    fact.append(node("span", `${scope === "phase" ? copy.phaseEstimatedEnd : copy.wholeEstimatedEnd}: `, "dw-fact-label"), value, value.reasonNode);
+    updateEstimate(value);
     container.append(fact);
   }
   const countersText = (counters) => `${copy.saved}: ${counters.committed} / ${counters.total}`;
@@ -130,9 +151,23 @@
   const clear = (element) => element.replaceChildren();
   const jobTitle = (workload) => workload.description?.kind === "image_indexing" ? copy.photoIndexing : copy.genericJob;
   const jobFolder = (workload) => typeof workload.description?.target_path === "string" && workload.description.target_path ? workload.description.target_path : null;
-  const countText = (value) => Number.isInteger(value) && value >= 0 ? value.toLocaleString() : copy.notAvailable;
+  const countText = (value) => Number.isInteger(value) && value >= 0 ? value.toLocaleString(uiLocale) : copy.notAvailable;
   const displayedProgress = (workload) => workload.description?.kind === "image_indexing" && workload.description.phase === "discover"
-    ? {...workload.progress, known_units_percent: null, estimated_end_at: null} : workload.progress;
+    ? {...workload.progress, known_units_percent: null, estimated_end_at: null,
+      current_phase: {...workload.progress?.current_phase, known_units_percent: null, total_units: null}} : workload.progress;
+  function appendPhase(container, workload) {
+    const current = workload.progress?.current_phase;
+    const numberKnown = Number.isInteger(current?.number) && current.number > 0
+      && Number.isInteger(current?.count) && current.count >= current.number;
+    const phase = workload.description?.kind === "image_indexing" ? current?.stage_key || workload.description.phase : null;
+    const title = phase ? copy.phases[phase] : null;
+    if (numberKnown) {
+      const ordinal = copy.phaseNumber.replace("{number}", countText(current.number)).replace("{total}", countText(current.count));
+      container.append(node("span", `${ordinal}${title ? ` — ${title}` : ""}`, "dw-progress-summary dw-phase"));
+    } else if (title) {
+      container.append(node("span", `${copy.phase}: ${title}`, "dw-progress-summary dw-phase"));
+    }
+  }
   function appendFolder(container, workload, required = false) {
     const path = jobFolder(workload);
     if (!path && !required) return;
@@ -178,8 +213,9 @@
         heading.append(node("strong", jobTitle(workload)), stateBadge(workload.state));
         row.append(heading);
         appendFolder(row, workload);
+        appendPhase(row, workload);
         const meta = node("span", "", "dw-timing");
-        appendProgress(meta, displayedProgress(workload), true);
+        appendProgress(meta, displayedProgress(workload));
         row.append(meta);
         list.append(row);
       }
@@ -236,8 +272,9 @@
 
   function appendFact(container, label, value) {
     const fact = node("span", "", "dw-fact");
-    fact.append(node("span", label, "dw-fact-label"), node("span", value, "dw-fact-value"));
+    fact.append(node("span", `${label}: `, "dw-fact-label"), node("span", value, "dw-fact-value"));
     container.append(fact);
+    return fact;
   }
 
   function eventName(type) {
@@ -398,7 +435,7 @@
       detail.append(heading);
       appendFolder(detail, selected, true);
       const phase = selected.description?.kind === "image_indexing" ? selected.description.phase : null;
-      if (phase && copy.phases[phase]) detail.append(node("p", `${copy.phase}: ${copy.phases[phase]}`, "dw-progress-summary"));
+      appendPhase(detail, selected);
       if (selected.state === "needs_attention") detail.append(node("p", copy.blockedHelp, "dw-notice dw-warning"));
       if (["queued", "running", "admitted"].includes(selected.state) && (!engine || engine.enabled !== true || engine.worker_available !== true || engine.state !== "ready")) {
         detail.append(node("p", copy.waitingHelp, "dw-notice dw-warning"));
@@ -407,14 +444,15 @@
       appendProgress(facts, displayedProgress(selected));
       detail.append(facts);
       const progressSummary = node("div", "", "dw-progress-summary");
-      if (phase !== "discover" && percentText(selected.progress?.known_units_percent) !== copy.notAvailable) {
+      const phasePercent = displayedProgress(selected)?.current_phase?.known_units_percent;
+      if (percentText(phasePercent) !== copy.notAvailable) {
         const bar = node("progress");
-        bar.max = 100; bar.value = selected.progress.known_units_percent;
-        bar.setAttribute("aria-label", copy.percent);
+        bar.max = 100; bar.value = phasePercent;
+        bar.setAttribute("aria-label", copy.phaseProgress);
         progressSummary.append(bar);
       }
       if (phase === "discover") progressSummary.append(node("span", copy.discoveryHelp));
-      else progressSummary.append(node("span", countersText(selected.counters)), node("span", ` · ${copy.blocksNotFiles}`));
+      else progressSummary.append(node("span", copy.phaseScopeHelp));
       detail.append(progressSummary);
       const parallelism = selected.progress?.parallelism;
       if (parallelism) detail.append(node("p", `${copy.runningBlocks}: ${countText(parallelism.running_units)} · ${copy.jobLimit}: ${countText(parallelism.max_concurrency)}`, "dw-progress-summary"));
@@ -441,6 +479,7 @@
       appendFact(technicalFacts, copy.operation, selected.description?.operation || copy.notAvailable);
       appendFact(technicalFacts, copy.priority, translated(copy.priorities, selected.priority));
       appendFact(technicalFacts, copy.progress, countersText(selected.counters));
+      appendFact(technicalFacts, copy.percent, percentText(displayedProgress(selected)?.known_units_percent));
       if (parallelism) appendFact(technicalFacts, copy.reservedBlocks, countText(parallelism.leased_units));
       appendFact(technicalFacts, copy.units, breakdown(selected.counters));
       appendFact(technicalFacts, copy.created, availableDate(selected.created_at));

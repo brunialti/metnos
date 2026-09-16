@@ -81,10 +81,10 @@ def _guide_units(language):
         "IMAGE_NOT_INDEXED:image_decode_failed", "outside the translation system",
     )),
     ("it", "Completamento con errori espliciti", (
-        "completato con errori", "ciascun blocco", "senza essere ricontati", "non diventano foto da saltare",
+        "completato con errori", "ciascun batch", "senza essere ricontati", "non diventano foto da saltare",
     )),
     ("en", "Completion with explicit errors", (
-        "completed with errors", "each block", "without being counted again", "do not become skippable photos",
+        "completed with errors", "each batch", "without being counted again", "do not become skippable photos",
     )),
     ("it", "Identificare e riprovare le foto non indicizzate", (
         "IMAGE_NOT_INDEXED", "non viene avviata", "ciclo automatico", "non garantisce", "non vengono cancellati",
@@ -141,6 +141,16 @@ def test_tutor_guide_links_to_the_indexing_source(language):
     lre = documents[f"{language}/system/lre.html"]
     assert '../system/lre.html#photo-indexing' in tutor.path.read_text(encoding="utf-8")
     assert 'id="photo-indexing"' in lre.path.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("language,phrases", [
+    ("it", ("Fase x/y", "non ancora installata", "Che cos'è un batch", "non ha una dimensione", "solo la fase indicata", "non misurano il tempo rimanente")),
+    ("en", ("Phase x/y", "not installed yet", "What is a batch?", "no fixed size", "only the indicated phase", "do not measure time remaining")),
+])
+def test_generic_phase_and_batch_explanation_survives_tutor_source_compilation(language, phrases):
+    text = " ".join(unit.text for unit in _guide_units(language)).lower()
+    for phrase in phrases:
+        assert phrase.lower() in text
 
 
 @pytest.mark.parametrize("language,required,obsolete", [

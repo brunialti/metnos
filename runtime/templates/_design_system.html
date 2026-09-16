@@ -261,14 +261,16 @@ form.tp-filters label{display:inline-flex;gap:.35rem;align-items:center;
 .dw-job-choice .dw-folder{font-size:.8rem;margin:8px 0 12px}.dw-job-choice .dw-job-heading{gap:8px}
 .dw-timing{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px;padding:18px 0;margin:0;border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
 .dw-timing .dw-fact{background:none;border:0;padding:0;min-width:0}.dw-timing .dw-fact-label{font-size:.75rem;letter-spacing:0;text-transform:none}.dw-timing .dw-fact-value{font-size:1rem;font-weight:600;overflow-wrap:anywhere}
-.dw-estimate-reason{display:block;font-size:.75rem;color:var(--muted);font-weight:400;line-height:1.4;margin-top:5px}
-.dw-job-choice .dw-timing{gap:8px;padding:10px 0 0;border-bottom:0}.dw-job-choice .dw-fact-value{font-size:.75rem;font-weight:400}.dw-job-choice .dw-fact-label{font-size:.7rem}
+.dw-estimate-reason,.dw-phase-count{display:block;font-size:.75rem;color:var(--muted);font-weight:400;line-height:1.4;margin-top:5px}
+.dw-estimate-reason[hidden]{display:none}
+.dw-job-choice .dw-timing{grid-template-columns:1fr;gap:12px;padding:10px 0 0;border-bottom:0}.dw-job-choice .dw-fact-value{font-size:.85rem;font-weight:600}.dw-job-choice .dw-fact-label{font-size:.75rem}
 .dw-progress-summary{color:var(--muted);font-size:.85rem;margin:12px 0}.dw-progress-summary progress{display:block;width:100%;height:7px;accent-color:var(--accent,#127665);margin:0 0 8px}
+.dw-phase{display:block}
 .dw-detail>.dw-actions{padding:8px 0 16px;border-bottom:1px solid var(--border);gap:8px}.dw-detail>.dw-actions .bad{margin-left:auto}
 .dw-disclosure{border-top:1px solid var(--border);padding:14px 0}.dw-disclosure summary{cursor:pointer;font-weight:600}.dw-disclosure p{font-size:.85rem;line-height:1.6;color:var(--muted)}
 .dw-disclosure .dw-facts{margin-top:12px}.dw-detail .dw-subpanel{padding:14px 0}.dw-job-code{overflow-wrap:anywhere}
 @media(max-width:1000px){.dw-layout{grid-template-columns:1fr}.dw-job-choice .dw-timing{max-width:540px}}
-@media(max-width:520px){.dw-detail{padding:16px}.dw-timing{gap:10px}.dw-timing .dw-fact-value{font-size:.85rem}.dw-status-bar button{margin-left:0;width:100%}}
+@media(max-width:520px){.dw-detail{padding:16px}.dw-timing{grid-template-columns:1fr;gap:14px}.dw-timing .dw-fact-value{font-size:.85rem}.dw-status-bar button{margin-left:0;width:100%}}
 
 /* ---------- MOVIMENTO RIDOTTO -------------------------------------------- */
 @media (prefers-reduced-motion:reduce){

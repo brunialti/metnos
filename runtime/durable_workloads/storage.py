@@ -4092,6 +4092,7 @@ class DurableWorkloadStore:
                 FROM phase_attempt_facts GROUP BY id
             ), phase_unit_facts AS (
                 SELECT w.id, s.id AS stage_id, s.stage_key, s.timeout_s,
+                       ROW_NUMBER() OVER (PARTITION BY w.id ORDER BY s.position) AS phase_number,
                        COALESCE(m.completed, 0) AND m.attention_code IS NULL AS materialized,
                        COUNT(u.id) AS total, SUM(u.state='committed') AS committed,
                        SUM(u.state IN ('running','leased')) AS active
@@ -4116,7 +4117,7 @@ class DurableWorkloadStore:
                    u.running_units, u.leased_units,
                    u.total, u.committed, u.uncertain, u.estimate_total, u.estimate_committed,
                    a.started_at, a.samples, a.first_completion, a.last_completion,
-                   ap.active_phases, pu.stage_key AS current_stage_key,
+                   ap.active_phases, pu.stage_key AS current_stage_key, pu.phase_number,
                    pu.timeout_s AS phase_timeout_s, pu.materialized AS phase_materialized,
                    pu.total AS phase_total, pu.committed AS phase_committed,
                    pa.started_at AS phase_started_at, pa.samples AS phase_samples,
@@ -4172,6 +4173,17 @@ class DurableWorkloadStore:
             phase_end_at = None
             phase_key = row["current_stage_key"] if row["active_phases"] == 1 else None
             phase_committed = int(row["phase_committed"] or 0)
+            # Never mix cheap preparatory stages with expensive later work in
+            # the primary progress indicator. A denominator is final only for
+            # a single, fully materialized phase of a sealed inventory.
+            phase_total = (
+                int(row["phase_total"] or 0)
+                if phase_key and row["inventory_sealed"] and row["phase_materialized"]
+                else None
+            )
+            phase_percentage = (
+                (phase_committed * 1000 // phase_total) / 10 if phase_total else None
+            )
             if row["state"] == "needs_attention":
                 phase_reason = "needs_attention"
             elif row["state"] != "running":
@@ -4227,6 +4239,11 @@ class DurableWorkloadStore:
                 ),
                 "current_phase": {
                     "stage_key": phase_key,
+                    "number": int(row["phase_number"]) if phase_key else None,
+                    "count": int(row["phases"] or 0),
+                    "committed_units": phase_committed if phase_key else None,
+                    "total_units": phase_total,
+                    "known_units_percent": phase_percentage,
                     "estimated_end_at": phase_end_at,
                     "estimated_end_reason": phase_reason,
                 },

@@ -149,7 +149,11 @@ def test_current_phase_eta_is_distinct_and_persistently_anchored(store):
     wid = active_measured(store, extra_phase=True)
     result = store.progress_many(OWNER, [wid], now=NOW + timedelta(seconds=53))[wid]
     assert result["estimated_end_at"] is None  # Later unmaterialized phases are not forecast.
-    assert result["current_phase"] == {"stage_key": "map", "estimated_end_at": "2026-09-16T12:03:10.000000Z", "estimated_end_reason": None}
+    assert result["current_phase"] == {
+        "stage_key": "map", "number": 1, "count": 2,
+        "committed_units": 3, "total_units": 10, "known_units_percent": 30.0,
+        "estimated_end_at": "2026-09-16T12:03:10.000000Z", "estimated_end_reason": None,
+    }
     assert store.progress_many(OWNER, [wid], now=NOW + timedelta(seconds=54))[wid]["current_phase"] == result["current_phase"]
 
 
@@ -157,7 +161,11 @@ def test_between_claims_retains_whole_job_eta_without_inventing_active_phase(sto
     wid = measured(store)
     result = store.progress_many(OWNER, [wid], now=NOW + timedelta(seconds=51))[wid]
     assert result["estimated_end_at"] is not None
-    assert result["current_phase"] == {"stage_key": None, "estimated_end_at": None, "estimated_end_reason": "no_active_phase"}
+    assert result["current_phase"] == {
+        "stage_key": None, "number": None, "count": 1,
+        "committed_units": None, "total_units": None, "known_units_percent": None,
+        "estimated_end_at": None, "estimated_end_reason": "no_active_phase",
+    }
 
 
 @pytest.mark.parametrize("mutation,reason", [
@@ -188,7 +196,42 @@ def test_phase_eta_excludes_other_stage_samples_and_refuses_two_active_phases(st
     assert result["current_phase"]["estimated_end_reason"] == "insufficient_data"
     store._connection.execute("UPDATE units SET stage_id=?,state='leased' WHERE id=(SELECT id FROM units WHERE state='pending' LIMIT 1)", (next_stage,))
     result = store.progress_many(OWNER, [wid], now=NOW + timedelta(seconds=53))[wid]
-    assert result["current_phase"] == {"stage_key": None, "estimated_end_at": None, "estimated_end_reason": "multiple_active_phases"}
+    assert result["current_phase"] == {
+        "stage_key": None, "number": None, "count": 2,
+        "committed_units": None, "total_units": None, "known_units_percent": None,
+        "estimated_end_at": None, "estimated_end_reason": "multiple_active_phases",
+    }
+
+
+def test_phase_progress_does_not_mix_preparatory_work_with_current_work(store):
+    wid = active_measured(store, extra_phase=True)
+    next_stage = store._connection.execute("SELECT id FROM stages WHERE stage_key='another_map'").fetchone()[0]
+    store._connection.execute(
+        "UPDATE units SET stage_id=? WHERE id IN (SELECT id FROM units WHERE state='committed' LIMIT 2)",
+        (next_stage,),
+    )
+    result = store.progress_many(OWNER, [wid], now=NOW + timedelta(seconds=53))[wid]
+    assert result["known_units_percent"] == 30.0
+    assert result["current_phase"]["committed_units"] == 1
+    assert result["current_phase"]["total_units"] == 8
+    assert result["current_phase"]["known_units_percent"] == 12.5
+    assert result["current_phase"]["number"] == 1
+    assert result["current_phase"]["count"] == 2  # Synthetic inventory is not a user phase.
+    store._connection.execute("UPDATE units SET stage_id=? WHERE state='running'", (next_stage,))
+    reordered = store.progress_many(OWNER, [wid], now=NOW + timedelta(seconds=53))[wid]
+    assert reordered["current_phase"]["number"] == 2  # Frozen plan order, not alphabetic IDs.
+
+
+@pytest.mark.parametrize("mutation", [
+    "UPDATE stage_materialization SET completed=0",
+    "UPDATE stage_materialization SET attention_code='materialization_incomplete'",
+])
+def test_phase_progress_does_not_present_an_expanding_total_as_final(store, mutation):
+    wid = active_measured(store)
+    store._connection.execute(mutation)
+    phase = store.progress_many(OWNER, [wid], now=NOW + timedelta(seconds=53))[wid]["current_phase"]
+    assert phase["committed_units"] == 3
+    assert phase["total_units"] is phase["known_units_percent"] is None
 
 
 def test_phase_eta_survives_inflight_model_usage_without_weakening_accounting(store):
