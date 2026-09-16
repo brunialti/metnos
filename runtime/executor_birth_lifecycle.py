@@ -253,10 +253,11 @@ def apply_execution_failure(
 ) -> FeedbackResult:
     """Certified exact-feedback entry; no caller-selected store or publisher."""
     import config
+    from executor_birth_activation_mode import require_f5_certificate
     from executor_birth_bootstrap import bootstrap_birth_runtime, _secure_state_dir, _secure_state_db
     from executor_birth_feedback import utc_now_seconds
 
-    load_f5_activation()
+    require_f5_certificate()
     bundle = bootstrap_birth_runtime()
     state = _secure_state_dir(Path(config.PATH_USER_STATE) / "birth")
     epochs = state / "executor_epochs.sqlite"

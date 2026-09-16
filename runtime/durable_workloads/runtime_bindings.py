@@ -411,6 +411,12 @@ class RuntimeFactory:
             )
             registry = self.registry()
             from .resource_readiness import ensure_model_resource
+            from executor_birth_durable_guard import productive_birth_attempt_guard
+
+            # An installation that still owns its lifecycle state in the
+            # legacy stores composes exactly as before: the guard is absent
+            # and no durable attempt gains or loses authority.
+            birth_guard = productive_birth_attempt_guard()
 
             bridge = DurableExecutionBridge(
                 store,
@@ -420,6 +426,8 @@ class RuntimeFactory:
                 workload_invoker=registry.invoke_workload,
                 internal_runners=approved_internal_runners(artifacts),
                 resource_readiness=ensure_model_resource,
+                executor_generation_attestor=birth_guard,
+                require_generation_attestation=birth_guard is not None,
             )
 
             def maintain_source_authority() -> None:
