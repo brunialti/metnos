@@ -9,7 +9,7 @@ from tests.portable.test_rm0008_acceptance_evolution import _baseline
 
 WORKFLOW = ".github/workflows/portable-contract-store.yml"
 OLD_BLOB = ("100644", "ce3bbd7e5097b23e4ad577ffa1b8af40b75618f7")
-NEW_BLOB = ("100644", "fe5afb0b15d754d80f70d00838398ff305d825a8")
+NEW_BLOB = ("100644", "d4d7e8efcfc96f858f33cca52aeda4c9e79bf3e5")
 
 
 @pytest.mark.parametrize("variant", ("reviewed", "unknown", "mode", "predecessor"))
