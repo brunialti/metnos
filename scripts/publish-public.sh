@@ -119,6 +119,7 @@ write_pub_gitignore() {
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.venv/
 dist/
 build/
 google_token.json
