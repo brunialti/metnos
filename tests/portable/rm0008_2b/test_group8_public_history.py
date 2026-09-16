@@ -237,7 +237,8 @@ def test_historical_author_projection_selects_the_old_build_not_the_latest(
 
 
 @pytest.mark.parametrize("source", (
-    b"", b"x" * (1024 * 1024 + 1), b"(invalid", b"OTHER = {}",
+    b"", pytest.param(b"x" * (1024 * 1024 + 1), id="oversized-source"),
+    b"(invalid", b"OTHER = {}",
     b"PRODUCER_AUTHOR_V1 = {}",
     b"PRODUCER_AUTHOR_V1 = dict({('p', 'o'): RevisionAuthor.MODEL})",
     b"PRODUCER_AUTHOR_V1 = MappingProxyType({('p', 'o'): RevisionAuthor.MODEL}, {})",

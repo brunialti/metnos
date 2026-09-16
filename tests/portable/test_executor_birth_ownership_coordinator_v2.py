@@ -2848,7 +2848,7 @@ def test_translated_reason_preserves_a_canonical_contract_identity(code):
     "explicit:/alpha/manifest.toml",
     "explicit:../alpha/manifest.toml",
     "explicit:alpha/manifest.toml\nsecond line",
-    "explicit:" + "a" * 4096 + "/manifest.toml",
+    pytest.param("explicit:" + "a" * 4096 + "/manifest.toml", id="oversized-explicit-selector"),
 ])
 def test_translated_reason_rejects_noncanonical_contract_context(detail):
     from executor_birth_cutover import BirthCutoverError
