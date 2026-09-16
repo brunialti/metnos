@@ -96,6 +96,48 @@ candidate_payloads = {
     name: (source / "runtime" / name).read_bytes() for name in modules
 }
 before = {name: hashlib.sha256(raw).hexdigest() for name, raw in candidate_payloads.items()}
+archived_public_sources = []
+if sys.argv[2] == "historical-inventory":
+    # Git supplies untrusted public bytes, never historical authority. Read
+    # only these exact source paths as the checkout owner, before the service
+    # reader's stricter no-subprocess audit is installed. No checkout/export,
+    # filter, hook, network, private file or production write is involved.
+    owner = source.stat()
+    if owner.st_uid == 0:
+        raise RuntimeError("public_source_reader_requires_nonroot_owner")
+    git = ["/usr/bin/git", "--no-optional-locks", "--no-replace-objects",
+           "-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null", "-C", str(source)]
+    git_env = {**os.environ, "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": "/dev/null"}
+    git_deadline = time.monotonic() + 30
+
+    def read_git(*args):
+        remaining = git_deadline - time.monotonic()
+        if remaining <= 0:
+            raise RuntimeError("public_source_read_deadline")
+        return subprocess.check_output(
+            [*git, *args], timeout=min(5, remaining), env=git_env,
+            user=owner.st_uid, group=owner.st_gid, extra_groups=[],
+        )
+
+    for path in ("runtime/executor_birth_intent.py", "runtime/executor_birth_bootstrap.py"):
+        commits = read_git("log", "--all", "--diff-filter=AM", "--max-count=128", "--format=%H", "--", path).splitlines()
+        seen = set()
+        for commit in commits:
+            if len(commit) != 40 or any(char not in b"0123456789abcdef" for char in commit):
+                raise RuntimeError("public_source_object_invalid")
+            object_name = commit.decode("ascii") + ":" + path
+            length = int(read_git("cat-file", "-s", object_name))
+            if length > 1024 * 1024:
+                raise RuntimeError("public_source_byte_limit")
+            encoded = read_git("cat-file", "blob", object_name)
+            if len(encoded) != length:
+                raise RuntimeError("public_source_changed")
+            digest = hashlib.sha256(encoded).hexdigest()
+            if digest not in seen:
+                seen.add(digest)
+                archived_public_sources.append((path, encoded))
+            if sum(len(item[1]) for item in archived_public_sources) > 32 * 1024 * 1024:
+                raise RuntimeError("public_source_total_byte_limit")
 output = os.open(str(Path(sys.argv[1]) / "result.json"),
                  os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
 os.setgroups([])
@@ -408,6 +450,7 @@ try:
         known_contexts = {item.prepared_admission_context_id for item in chain.context_transitions}
         declarations = load_historical_producer_declarations_for_contexts_v1(
             tuple(sorted(wanted_contexts & known_contexts)), include_reattestation=True,
+            public_sources=tuple(archived_public_sources),
         )
         if any(item.context.required_head_id != chain.required_head.head_id for item in declarations):
             raise RuntimeError("proof_frontier_changed")
@@ -419,6 +462,8 @@ try:
             "producer_rows": joined.producer_rows, "issuance_rows": joined.issuance_rows,
             "contexts_observed": len(wanted_contexts), "contexts_with_declarations": len(declarations),
             "contexts_with_reattestation_scope": sum(item.reattestation_scope is not None for item in declarations),
+            "untrusted_archived_public_artifacts": len(archived_public_sources),
+            "untrusted_source_reader_uid": owner.st_uid,
             "scope_limitations": dict(Counter(item.reattestation_scope_error for item in declarations
                                                if item.reattestation_scope_error)),
             "authenticated_acts": len(joined.acts),

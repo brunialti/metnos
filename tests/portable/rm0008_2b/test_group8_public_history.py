@@ -821,3 +821,73 @@ def test_multiple_historical_contexts_require_final_chain_reread(tmp_path, monke
         root.load_historical_producer_declarations_for_contexts_v1(
             (chain.context_transitions[0].prepared_admission_context_id,),
         )
+
+
+@pytest.mark.parametrize("change", (None, "bytes", "path", "size", "role", "duplicate_entry"))
+def test_archived_public_source_needs_exact_historical_signed_entry(tmp_path, monkeypatch, change):
+    """Archive bytes have no trust; the signed record selects their address."""
+    from types import SimpleNamespace
+    import executor_birth_distribution_manifest as distribution
+
+    chain, _release, source = _producer_policy_fixture(tmp_path, monkeypatch)
+    record = chain.authenticated_records[0]
+    pair = (_POLICY_PATH, source)
+    if change == "bytes":
+        pair = (_POLICY_PATH, source + b"\n# Unbound edit.\n")
+    elif change == "path":
+        pair = ("runtime/another.py", source)
+    elif change in {"size", "role", "duplicate_entry"}:
+        original = next(entry for entry in record.files if entry.path == _POLICY_PATH)
+        changed = (replace(original, size=original.size + 1) if change == "size" else
+                   replace(original, role="documentation") if change == "role" else original)
+        entries = tuple(changed if entry is original else entry for entry in record.files)
+        if change == "duplicate_entry":
+            entries += (changed,)
+        # Mutated authenticated-view fields are a deliberate boundary seam;
+        # they cannot themselves be supplied through the public chain reader.
+        record = replace(record, files=entries)
+    before = SimpleNamespace(required_distribution=SimpleNamespace(files=()))
+    monkeypatch.setattr(distribution, "read_verified_distribution_file_v1",
+                        lambda *args, **kwargs: pytest.fail("archive proof selected a current file"))
+    cache = root._historical_source_candidates_v1((pair,))
+    if change:
+        with pytest.raises(root.PreparedRootError, match="birth_context_producer_policy_invalid"):
+            root._historical_public_source_v1(before, record, _POLICY_PATH, cache)
+    else:
+        encoded, content_hash = root._historical_public_source_v1(before, record, _POLICY_PATH, cache)
+        assert encoded == source
+        assert content_hash == distribution.file_content_hash(_POLICY_PATH, source)
+
+
+@pytest.mark.parametrize("public_sources", (
+    [], (("../source.py", b"x"),), (("/source.py", b"x"),),
+    (("runtime/./source.py", b"x"),), (("runtime\\source.py", b"x"),),
+    (("runtime/source.py", "not bytes"),), (("runtime/source.py", bytearray(b"x")),),
+    (("runtime/source.py", b"x", "extra"),), (("\ud800", b"x"),),
+    (("runtime/source.py", b"x"),) * 257,
+))
+def test_archived_public_source_input_is_bounded_inert_data(public_sources):
+    with pytest.raises(root.PreparedRootError, match="birth_context_public_sources_invalid"):
+        root._historical_source_candidates_v1(public_sources)
+
+
+def test_archived_public_source_budget_is_total_not_only_per_file():
+    import executor_birth_distribution_manifest as distribution
+    chunk = min(distribution.MAX_BOUNDARY_SOURCE_BYTES_V1, 1024 * 1024)
+    source = ("runtime/source.py", b"x" * chunk)
+    with pytest.raises(root.PreparedRootError, match="birth_context_public_sources_invalid"):
+        root._historical_source_candidates_v1((source,) * (32 * 1024 * 1024 // chunk + 1))
+
+
+def test_archived_public_source_crosses_the_multicontext_owner(tmp_path, monkeypatch):
+    import executor_birth_distribution_manifest as distribution
+
+    chain, _release, source = _producer_policy_fixture(tmp_path, monkeypatch)
+    monkeypatch.setattr(distribution, "read_verified_distribution_file_v1",
+                        lambda *args, **kwargs: pytest.fail("supplied exact source was not used"))
+    result, = root.load_historical_producer_declarations_for_contexts_v1(
+        (chain.context_transitions[0].prepared_admission_context_id,),
+        public_sources=((_POLICY_PATH, source),),
+    )
+    assert result.source_hash == distribution.file_content_hash(_POLICY_PATH, source)
+    assert result.authors

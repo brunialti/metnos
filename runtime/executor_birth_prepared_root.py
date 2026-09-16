@@ -945,12 +945,16 @@ def load_historical_producer_declarations_v1(
 def load_historical_producer_declarations_for_contexts_v1(
     admission_context_ids: tuple[str, ...],
     *, include_reattestation: bool = False,
+    public_sources: tuple[tuple[str, bytes], ...] = (),
 ) -> tuple[HistoricalProducerDeclarationsV1, ...]:
     """Acquire all requested target contexts under one observed chain.
 
     Cache only within this call and only after exact signed-file comparison.
     The final chain reread is shared, not omitted. Initial predecessor policy
     is not inferred from a successor. This is not a cross-store frontier.
+    Optional public source bytes are untrusted archive candidates: their exact
+    path, role, size and hash must match the historical signed distribution.
+    No archive path, Git command or filesystem root enters the product reader.
     """
     import re
     from executor_birth_ownership_chain import (
@@ -965,6 +969,7 @@ def load_historical_producer_declarations_for_contexts_v1(
                    for value in admission_context_ids)
             or len(set(admission_context_ids)) != len(admission_context_ids)):
         raise PreparedRootError("birth_context_selection_invalid")
+    cache = _historical_source_candidates_v1(public_sources)
     before = inspect_ownership_chain_state_v1()
     if type(before) is not VerifiedOwnershipChain or not before.context_transitions:
         raise PreparedRootError("birth_context_transition_required")
@@ -972,7 +977,6 @@ def load_historical_producer_declarations_for_contexts_v1(
     for transition in before.context_transitions:
         matches = by_context.setdefault(transition.prepared_admission_context_id, {})
         matches[transition.encoded] = transition
-    cache = {}
     results = []
     for identifier in admission_context_ids:
         matches = by_context.get(identifier, {})
@@ -1052,9 +1056,15 @@ def _historical_public_source_v1(before, record, path, cache):
 
     historical = [item for item in record.files if item.path == path]
     current = [item for item in before.required_distribution.files if item.path == path]
-    if (len(historical) != 1 or len(current) != 1 or historical != current
-            or historical[0].role != "runtime_code"
+    if (len(historical) != 1 or historical[0].role != "runtime_code"
             or historical[0].size > MAX_BOUNDARY_SOURCE_BYTES_V1):
+        raise PreparedRootError("birth_context_producer_policy_invalid")
+    candidate = cache.get(("supplied", path, historical[0].content_hash))
+    if candidate is not None:
+        if len(candidate) != historical[0].size:
+            raise PreparedRootError("birth_context_producer_policy_invalid")
+        return candidate, historical[0].content_hash
+    if len(current) != 1 or historical != current:
         raise PreparedRootError("birth_context_producer_policy_invalid")
     cache_key = ("source", path, historical[0].content_hash)
     source = cache.get(cache_key)
@@ -1067,6 +1077,35 @@ def _historical_public_source_v1(before, record, path, cache):
             raise PreparedRootError("birth_context_producer_policy_invalid")
         cache[cache_key] = source
     return source, historical[0].content_hash
+
+
+def _historical_source_candidates_v1(public_sources):
+    """Index bounded inert bytes; signed historical metadata selects them."""
+    from pathlib import PurePosixPath
+    from executor_birth_distribution_manifest import MAX_BOUNDARY_SOURCE_BYTES_V1, file_content_hash
+
+    if type(public_sources) is not tuple or len(public_sources) > 256:
+        raise PreparedRootError("birth_context_public_sources_invalid")
+    cache, size = {}, 0
+    for pair in public_sources:
+        if (type(pair) is not tuple or len(pair) != 2
+                or type(pair[0]) is not str or not pair[0] or len(pair[0]) > 1024
+                or "\0" in pair[0] or "\\" in pair[0]
+                or PurePosixPath(pair[0]).is_absolute()
+                or ".." in PurePosixPath(pair[0]).parts
+                or PurePosixPath(pair[0]).as_posix() != pair[0]
+                or type(pair[1]) is not bytes or len(pair[1]) > MAX_BOUNDARY_SOURCE_BYTES_V1):
+            raise PreparedRootError("birth_context_public_sources_invalid")
+        path, encoded = pair
+        size += len(encoded)
+        if size > 32 * 1024 * 1024:
+            raise PreparedRootError("birth_context_public_sources_invalid")
+        try:
+            content_hash = file_content_hash(path, encoded)
+        except (UnicodeError, ValueError) as exc:
+            raise PreparedRootError("birth_context_public_sources_invalid", exc) from None
+        cache[("supplied", path, content_hash)] = encoded
+    return cache
 
 
 def _historical_reattestation_scope_v2(before, record, cache):
