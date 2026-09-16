@@ -302,6 +302,18 @@ no LRE workloads; if the page is unavailable, inspect the service under
 <code>Settings → System → Services</code>. The console does not need to remain
 open for execution to continue.</p>
 
+<h3 id="activity-state">Engine, waiting and confirmed results</h3>
+<p><strong>Engine disabled</strong>: LRE accepts no new jobs and starts no new
+units; saved jobs and results remain available for inspection.
+<strong>Queued</strong> means a queued job; <strong>Pending</strong> means a
+unit not yet executed, which may await resources or dependencies. It does not
+mean awaiting approval; <strong>Needs attention</strong> is distinct.
+<strong>Confirmed results</strong> are the <strong>Successful units</strong>:
+durably saved results, not completion of the entire job. Failed, skipped and
+attention-required units are separate; the total may grow during discovery.
+Units are not necessarily individual files. <strong>Last successful unit</strong>
+refers to a confirmed result; <strong>Updated</strong> may change without new
+results and does not prove progress.</p>
 <figure class="ui-guide">
  <div class="ui-shot-frame">
   <img src="/assets/images/system-lre-ui-it.png" width="1440" height="1000" loading="lazy" decoding="async" alt="The real LRE console, showing workload list, detail, digests, budget, and stages in an Italian-language instance.">
