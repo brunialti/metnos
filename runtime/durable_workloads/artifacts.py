@@ -1244,7 +1244,9 @@ class ArtifactStore:
 
     @staticmethod
     def _open_regular(directory_fd: int, name: str) -> int:
-        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+        # Refuse special files after opening without ever waiting for a FIFO
+        # writer. Checking the path first would leave a replacement race.
+        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
         try:
             descriptor = os.open(name, flags, dir_fd=directory_fd)
         except FileNotFoundError:

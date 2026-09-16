@@ -266,7 +266,10 @@ class DurableWorkloadApiTests(AioHTTPTestCase):
         html = await response.text()
         self.assertIn('id="durableWorkloads"', html)
         self.assertIn("LRE (Long Run Engine)", html)
-        self.assertIn("Non ci sono attività LRE da mostrare.", html)
+        # Before the first API response, absence of data is not an empty list.
+        placeholder = html.split('id="dwPlaceholder">', 1)[1].split("</div>", 1)[0]
+        self.assertNotIn("Non ci sono attività LRE da mostrare.", placeholder)
+        self.assertIn("Caricamento", placeholder)
         self.assertIn("La politica di esecuzione ammette risultati parziali.", html)
         self.assertNotIn("La policy", html)
         self.assertIn("Errore non classificato", html)

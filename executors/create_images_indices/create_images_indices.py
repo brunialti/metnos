@@ -124,9 +124,9 @@ def _exif_gps(exif: dict) -> dict | None:
 # Camera-generated names carry no human labels. This is the existing lexical
 # policy, shared by every source instead of depending on a snapshot basename.
 _AUTO_FILENAME_PATTERNS = tuple(re.compile(pattern, re.I) for pattern in (
-    r"^DSC[NF_-]?\d+$", r"^IMG[_-]?\d+(?:[_-]?[A-Z]*\d*)*$",
+    r"^DSC[NF_-]?\d+$", r"^IMG[_-]?\d[\dA-Z_-]*$",
     r"^IMG-?\d{8}-?WA\d+$", r"^PI?C[T_]?\d+$", r"^P\d+$",
-    r"^(CIMG|CAM|SDC)\d+$", r"^\d{4}[-_]?\d{2}[-_]?\d{2}([-_]?\d+)*$",
+    r"^(CIMG|CAM|SDC)\d+$", r"^\d{4}[-_]?\d{2}[-_]?\d{2}(?:\d|[-_]\d)*$",
     r"^\d{14}$", r"^\d+$", r"^[0-9a-fA-F]{16,}$", r"^Thumbs$",
 ))
 

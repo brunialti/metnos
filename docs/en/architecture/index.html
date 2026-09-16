@@ -203,6 +203,15 @@ remote device.</p>
 worked well together does not authorise the second to read data that the first
 could not lawfully pass to it.</p>
 
+<p>LRE console reads use a coherent view of state and counters, distinguishing
+unavailable data from absent workloads. Deadlines are checked after acquiring
+the transaction: waiting for the database does not make a late result valid.
+Recovery checks contracts, authority and result integrity without clearing
+uncertain usage. Checks also cover immutable ledger constraints and errors
+after interruption; they are not a certification against power loss. The
+<a href="../system/lre.html#photo-indexing-integrity">LRE guide</a> distinguishes
+complete coverage, failures and checkpoint reuse limits.</p>
+
 <h2 id="extensions">How to add a capability</h2>
 
 <p>A new capability enters the system as an executor, not as a free-form prompt

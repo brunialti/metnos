@@ -88,10 +88,55 @@ def is_intrinsically_long(executor: object) -> bool:
     return type(timeout) is int and timeout >= AUTO_LRE_MIN_TIMEOUT_S
 
 
+def _require_persistable_schema(schema: Mapping[str, Any]) -> None:
+    """Reject authority/secret annotations at every schema depth, not data depth."""
+
+    pending: list[object] = [schema]
+    seen: set[int] = set()
+    while pending:
+        node = pending.pop()
+        if not isinstance(node, Mapping) or id(node) in seen:
+            continue
+        seen.add(id(node))
+        if len(seen) > 4096:
+            raise DirectInvocationUnsupported("executor argument schema is too complex")
+        if (
+            node.get("runtime_resolved") is True
+            or node.get("writeOnly") is True
+            or node.get("sensitive") is True
+            or node.get("format") in ("password", "secret")
+        ):
+            raise DirectInvocationUnsupported(
+                "executor argument requires non-literal runtime authority"
+            )
+        if any(key in node for key in ("$ref", "$dynamicRef", "$recursiveRef")):
+            raise DirectInvocationUnsupported("executor argument schema is not self-contained")
+        for key in ("properties", "patternProperties", "$defs", "definitions", "dependentSchemas"):
+            children = node.get(key)
+            if isinstance(children, Mapping):
+                pending.extend(children.values())
+        for key in (
+            "items", "additionalItems", "additionalProperties", "contains",
+            "propertyNames", "not", "if", "then", "else",
+            "unevaluatedItems", "unevaluatedProperties", "contentSchema",
+        ):
+            child = node.get(key)
+            pending.extend(child if isinstance(child, list) else (child,))
+        for key in ("allOf", "anyOf", "oneOf", "prefixItems"):
+            children = node.get(key)
+            if isinstance(children, list):
+                pending.extend(children)
+        # Draft-07 dependencies can be either schemas or arrays of names.
+        dependencies = node.get("dependencies")
+        if isinstance(dependencies, Mapping):
+            pending.extend(dependencies.values())
+
+
 def _argument_schema(executor: object) -> tuple[Mapping[str, Any], tuple[str, ...]]:
     schema = getattr(executor, "args_schema", None)
     if not isinstance(schema, Mapping) or schema.get("type") != "object":
         raise DirectInvocationUnsupported("executor argument schema is not an object")
+    _require_persistable_schema(schema)
     additional = schema.get("additionalProperties")
     if additional is not None and additional is not False:
         raise DirectInvocationUnsupported("executor argument schema is open")
@@ -105,15 +150,6 @@ def _argument_schema(executor: object) -> tuple[Mapping[str, Any], tuple[str, ..
             raise DirectInvocationUnsupported("executor argument declaration is invalid")
         if raw_definition.get("type") not in _JSON_TYPES:
             raise DirectInvocationUnsupported("executor argument type is not closed")
-        if (
-            raw_definition.get("runtime_resolved") is True
-            or raw_definition.get("writeOnly") is True
-            or raw_definition.get("sensitive") is True
-            or raw_definition.get("format") in {"password", "secret"}
-        ):
-            raise DirectInvocationUnsupported(
-                "executor argument requires non-literal runtime authority"
-            )
         normalized[name] = raw_definition
     required = schema.get("required") or ()
     if (

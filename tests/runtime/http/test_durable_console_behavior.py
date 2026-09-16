@@ -87,6 +87,14 @@ assert.ok(nodes.get("dwEngine").textContent.includes("engineUnavailable"));
 assert.equal(ui.estimateText(timing), "n.a.");
 const job = id => ({workload: {workload_id: id, state: "needs_attention", version: 1, counters, updated_at: null, created_at: null}, revision: {execution: {blocking_reason: "budget_accounting_incomplete", last_committed_at: null, error_categories: [{error_code: "budget_exhausted", count: 2}]}}});
 (async () => {
+  globalThis.fetch = async () => { throw new Error("offline"); };
+  assert.equal(await ui.loadList(true), false);
+  assert.equal(nodes.get("dwList").textContent, "readFailed");
+  assert.equal(nodes.get("dwPlaceholder").textContent, "readFailed");
+  globalThis.fetch = async () => response({items: []});
+  assert.equal(await ui.loadList(true), true);
+  assert.equal(nodes.get("dwList").textContent, "empty");
+  assert.equal(nodes.get("dwPlaceholder").textContent, "empty");
   let releaseA;
   globalThis.fetch = async url => {
     if (url === "/agent/workloads/A") return new Promise(resolve => { releaseA = () => resolve(response(job("A"))); });
@@ -142,9 +150,15 @@ const job = id => ({workload: {workload_id: id, state: "needs_attention", versio
   assert.ok(paths.includes("/agent/workloads"), "failed health must not prevent a list refresh");
   assert.ok(paths.includes("/agent/workloads/B"), "failed health must not prevent detail refresh");
   assert.equal(nodes.get("dwList").children[0].dataset.workloadId, "C");
+  assert.ok(nodes.get("dwFreshness").textContent.includes("fresh"));
+  const availableFetch = globalThis.fetch;
+  globalThis.fetch = async () => { throw new Error("offline"); };
+  await ui.loadList(true);
+  assert.equal(nodes.get("dwList").children[0].dataset.workloadId, "C", "failed refresh preserves the last known jobs");
+  globalThis.fetch = availableFetch;
   assert.ok(!nodes.get("dwList").textContent.includes("jobId"), "list uses human titles instead of technical identifiers");
   assert.ok(nodes.get("dwEngine").textContent.includes("engineUnavailable"));
-  assert.ok(nodes.get("dwFreshness").textContent.includes("fresh"));
+  assert.ok(nodes.get("dwFreshness").textContent.includes("stale"));
   ui.startPolling(); assert.equal(intervals.size, 2);
   ui.deactivatePage(); assert.equal(intervals.size, 0);
   paths.length = 0; await ui.refresh(); assert.equal(paths.length, 0);
@@ -171,7 +185,7 @@ const job = id => ({workload: {workload_id: id, state: "needs_attention", versio
 
 def test_console_labels_exist_in_both_seed_languages():
     with sqlite3.connect(f"file:{ROOT / 'install/data/i18n_seed.sqlite'}?mode=ro", uri=True) as conn:
-        for suffix in ("ATTENTION_HELP", "PHASE_ESTIMATED_FINISH", "WHOLE_ESTIMATED_FINISH", "PHASE_TIMING_HELP",
+        for suffix in ("READ_FAILED", "SELECT_JOB", "ATTENTION_HELP", "PHASE_ESTIMATED_FINISH", "WHOLE_ESTIMATED_FINISH", "PHASE_TIMING_HELP",
                        "ETA_NEEDS_ATTENTION", "ETA_NO_ACTIVE_PHASE", "ETA_MULTIPLE_ACTIVE_PHASES",
                        "ETA_INVENTORY_OPEN", "ETA_PHASE_EXPANDING", "ETA_UNCERTAIN_PROGRESS",
                        "ETA_STALE_PROGRESS", "ETA_ESTIMATE_OVERDUE"):

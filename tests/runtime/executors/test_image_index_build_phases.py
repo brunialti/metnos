@@ -115,6 +115,56 @@ def test_unreadable_image_is_explicit_and_never_published(corpus):
     assert not (builder._index_dir(root) / "meta.json").exists()
 
 
+@pytest.mark.parametrize("reader", ["artifact", "snapshot", "entries"])
+def test_special_files_are_rejected_without_waiting_for_a_writer(tmp_path, monkeypatch, reader):
+    """Inspect the open flags before a FIFO could hang the test process."""
+    path = tmp_path / "special"
+    os.mkfifo(path)
+    real_open = os.open
+
+    def guarded_open(target, flags, *args, **kwargs):
+        if Path(target) == path:
+            assert flags & os.O_NONBLOCK, "untrusted special file must not block open"
+        return real_open(target, flags, *args, **kwargs)
+
+    monkeypatch.setattr(os, "open", guarded_open)
+    with pytest.raises(storage.ImageIndexBuildError):
+        if reader == "artifact":
+            storage._read_bytes(path)
+        elif reader == "entries":
+            list(storage._read_entries(path))
+        else:
+            storage.validate_source(path, tmp_path / "original.jpg", tmp_path,
+                                    {"content_digest": "sha256:" + "0" * 64,
+                                     "size_bytes": 0, "mtime_ns": 0})
+
+
+def test_snapshot_hash_read_is_bounded_when_file_grows(tmp_path, monkeypatch):
+    path = tmp_path / "snapshot"
+    path.write_bytes(b"abc")
+    reads = []
+
+    class GrowingStream:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self, size):
+            reads.append(size)
+            assert len(reads) == 1, "a growing snapshot must not be read indefinitely"
+            assert size == 4, "read at most the frozen size plus one detection byte"
+            return b"abcd"
+
+    monkeypatch.setattr(os, "fdopen", lambda *_args, **_kwargs: GrowingStream())
+    with pytest.raises(storage.ImageIndexBuildError, match="source_changed"):
+        storage.validate_source(path, tmp_path / "original.jpg", tmp_path,
+                                {"content_digest": "sha256:" + hashlib.sha256(b"abc").hexdigest(),
+                                 "size_bytes": 3, "mtime_ns": 0})
+    assert reads == [4]
+
+
 def test_interrupted_group_resumes_completed_photos_without_model_calls(corpus, monkeypatch):
     root, calls = corpus
     for i in range(3):

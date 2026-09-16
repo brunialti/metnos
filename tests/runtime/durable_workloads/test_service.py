@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import time
+from concurrent.futures import Future
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Event, Lock, Thread
@@ -610,6 +611,65 @@ def test_overdue_in_process_execution_is_never_published_as_ready(
         bridge.release.set()
         if thread is not None:
             thread.join(timeout=1)
+        service.stop()
+
+
+def test_overdue_lane_blocks_admission_then_recovers_after_all_lanes_finish(tmp_path):
+    service = _service(tmp_path)
+    overdue = _Worker(_Coordinator(), execution_overdue=True)
+    sibling = _Worker(_Coordinator())
+    expired_future = Future()
+    sibling_future = Future()
+    try:
+        assert service.start()
+        initial_reconciliations = service.worker.coordinator.calls
+        with service._parallel_guard:
+            service._active_parallel_workers = {0: (overdue, None), 1: (sibling, None)}
+            service._parallel_futures = {expired_future: 0, sibling_future: 1}
+
+        service.run_cycle()
+        assert service.health.reason_code == "execution_deadline_exceeded"
+        assert service._bridge.calls == 0
+        overdue.execution_overdue = False
+        expired_future.set_result(None)
+        service.run_cycle()
+        assert service.health.reason_code == "execution_deadline_exceeded"
+        assert service._bridge.calls == 0
+        assert service.worker.coordinator.calls == initial_reconciliations
+
+        sibling_future.set_result(None)
+        with service._parallel_guard:
+            service._active_parallel_workers.clear()
+        service.run_cycle()
+        assert service.health.state == "ready"
+        assert service.worker.coordinator.calls == initial_reconciliations + 1
+        assert not service._parallel_futures
+        assert service._bridge.calls == 0  # Recovery precedes new admission.
+        service.run_cycle()
+        assert service._bridge.calls == 1
+    finally:
+        expired_future.cancel()
+        sibling_future.cancel()
+        with service._parallel_guard:
+            service._active_parallel_workers.clear()
+            service._parallel_futures.clear()
+        service.stop()
+
+
+def test_overdue_lane_exception_is_not_discarded_during_recovery(tmp_path):
+    service = _service(tmp_path)
+    finished = Future()
+    try:
+        assert service.start()
+        service._set_health(DurableServiceState.DEGRADED, "execution_deadline_exceeded")
+        finished.set_exception(RuntimeError("synthetic lane failure"))
+        with service._parallel_guard:
+            service._parallel_futures = {finished: 0}
+        service.run_cycle()
+        assert service.health.reason_code == "worker_cycle_failed"
+        assert service._consecutive_cycle_failures == 1
+        assert service._bridge.calls == 0
+    finally:
         service.stop()
 
 

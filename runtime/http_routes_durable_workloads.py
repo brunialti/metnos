@@ -321,6 +321,7 @@ async def workload_console(request: web.Request) -> web.Response:
                 "photoIndexing": "PHOTO_INDEXING", "genericJob": "GENERIC_JOB",
                 "folder": "FOLDER", "readProgress": "READ_PROGRESS",
                 "jobId": "JOB_ID", "operation": "OPERATION", "loading": "LOADING",
+                "selectJob": "SELECT_JOB", "readFailed": "READ_FAILED",
                 "blocksNotFiles": "BLOCKS_NOT_FILES", "discoveryHelp": "DISCOVERY_HELP",
                 "recoveryHelp": "RECOVERY_HELP", "phase": "CURRENT_PHASE",
                 "runningBlocks": "RUNNING_BLOCKS", "jobLimit": "JOB_LIMIT",

@@ -44,6 +44,8 @@ DESCRIPTION_SCHEMA = {
     "additionalProperties": False,
 }
 _AXES = ("text", "face", "image")
+_GENERATION_FILES = ("entries.jsonl", "lookup.sqlite", *(
+    f"embeddings_{axis}.npy" for axis in _AXES))
 _HASH = re.compile(r"[0-9a-f]{64}")
 _GENERATION = re.compile(r"[A-Za-z0-9_-]{1,128}")
 
@@ -70,7 +72,7 @@ def _safe_directory(path: Path, *, create=False) -> Path:
 
 def _read_bytes(path: Path, *, limit=MAX_PART_BYTES) -> bytes:
     _safe_directory(path.parent)
-    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     try:
         info = os.fstat(fd)
         if not stat.S_ISREG(info.st_mode) or info.st_size > limit:
@@ -90,6 +92,57 @@ def _sync_directory(path: Path) -> None:
         os.fsync(fd)
     finally:
         os.close(fd)
+
+
+def _generation_file_fact(path: Path) -> dict:
+    """Fingerprint one bounded regular output without trusting its pathname."""
+    _safe_directory(path.parent)
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    try:
+        before = os.fstat(fd)
+        if not stat.S_ISREG(before.st_mode) or not 0 <= before.st_size <= MAX_SOURCE_BYTES:
+            raise ImageIndexBuildError("generation_incomplete")
+        digest = hashlib.sha256()
+        remaining = before.st_size
+        while remaining:
+            chunk = os.read(fd, min(1024 * 1024, remaining))
+            if not chunk:
+                raise ImageIndexBuildError("generation_incomplete")
+            digest.update(chunk)
+            remaining -= len(chunk)
+        if os.read(fd, 1):
+            raise ImageIndexBuildError("generation_incomplete")
+        after, named = os.fstat(fd), path.lstat()
+        identity = lambda info: (
+            info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns,
+        )
+        if (not stat.S_ISREG(named.st_mode) or identity(before) != identity(after)
+                or identity(after) != identity(named)):
+            raise ImageIndexBuildError("generation_incomplete")
+        return {"size_bytes": before.st_size, "sha256": digest.hexdigest()}
+    finally:
+        os.close(fd)
+
+
+def _generation_files(directory: Path, *, expected=None) -> dict:
+    """Seal or verify the exact output-file set, including retry after rename."""
+    if expected is not None:
+        if not isinstance(expected, dict) or set(expected) != set(_GENERATION_FILES):
+            raise ImageIndexBuildError("generation_incomplete")
+        for fact in expected.values():
+            if (not isinstance(fact, dict) or set(fact) != {"size_bytes", "sha256"}
+                    or type(fact["size_bytes"]) is not int
+                    or not 0 <= fact["size_bytes"] <= MAX_SOURCE_BYTES
+                    or not isinstance(fact["sha256"], str)
+                    or _HASH.fullmatch(fact["sha256"]) is None):
+                raise ImageIndexBuildError("generation_incomplete")
+    try:
+        facts = {name: _generation_file_fact(directory / name) for name in _GENERATION_FILES}
+    except OSError as error:
+        raise ImageIndexBuildError("generation_incomplete") from error
+    if expected is not None and facts != expected:
+        raise ImageIndexBuildError("generation_incomplete")
+    return facts
 
 
 def _write_bytes(path: Path, data: bytes, *, immutable: bool) -> None:
@@ -146,15 +199,19 @@ def validate_source(snapshot, original, base_path, source) -> tuple[Path, Path, 
     if not path.is_absolute():
         raise ImageIndexBuildError("snapshot_path_invalid")
     _safe_directory(path.parent)
-    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     try:
         before = os.fstat(fd)
         if not stat.S_ISREG(before.st_mode) or before.st_size != source["size_bytes"]:
             raise ImageIndexBuildError("source_size_mismatch")
         hasher = hashlib.sha256()
+        remaining = source["size_bytes"]
         with os.fdopen(fd, "rb", closefd=False) as stream:
-            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            while chunk := stream.read(min(1024 * 1024, remaining + 1)):
+                if len(chunk) > remaining:
+                    raise ImageIndexBuildError("source_changed")
                 hasher.update(chunk)
+                remaining -= len(chunk)
         after = os.fstat(fd)
         if (before.st_size, before.st_mtime_ns, before.st_ino) != (
                 after.st_size, after.st_mtime_ns, after.st_ino):
@@ -622,10 +679,13 @@ class ImageIndexBuild:
                         or stored.get("base_path") != self.base_path
                         or stored.get("n_entries") != self._part(receipt)["count"]):
                     raise ImageIndexBuildError("generation_receipt_conflict")
-                for name in ("entries.jsonl", "lookup.sqlite", *(
-                        f"embeddings_{axis}.npy" for axis in _AXES)):
-                    if not stat.S_ISREG((target / name).lstat().st_mode):
-                        raise ImageIndexBuildError("generation_incomplete")
+                # Existence is not proof of a completed generation: a crash or
+                # later corruption may leave every filename but damaged bytes.
+                # Pre-seal generations remain readable by normal consumers;
+                # they cannot certify a publication retry without this proof.
+                if not isinstance(stored.get("generation_files"), dict):
+                    raise ImageIndexBuildError("generation_incomplete")
+                _generation_files(target, expected=stored["generation_files"])
                 metadata = stored
             active = self._active_bytes()
             current = json.loads(active) if active else {}
@@ -634,6 +694,8 @@ class ImageIndexBuild:
                     raise ImageIndexBuildError("generation_receipt_conflict")
                 if not target.exists():
                     raise ImageIndexBuildError("generation_incomplete")
+                if current != metadata:
+                    raise ImageIndexBuildError("generation_receipt_conflict")
                 return current
             if hashlib.sha256(active).hexdigest() != self.context["previous_digest"]:
                 raise ImageIndexBuildError("active_generation_changed")
@@ -739,6 +801,7 @@ class ImageIndexBuild:
                 "n_faces": counts["face"], "n_images_with_visual_emb": counts["image"],
                 "last_refresh_at": time.time(), "refreshed_count": total - reused,
                 "index_created": not bool(self.context["previous_meta"]),
+                "generation_files": _generation_files(temporary),
                 **(models or {}),
             }
             _write_bytes(temporary / "meta.json", _json_bytes(metadata), immutable=True)
@@ -758,7 +821,7 @@ class ImageIndexBuild:
 
 def _read_entries(path: Path):
     _safe_directory(path.parent)
-    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     try:
         if not stat.S_ISREG(os.fstat(fd).st_mode):
             raise ImageIndexBuildError("entries_type_invalid")

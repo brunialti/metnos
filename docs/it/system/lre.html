@@ -131,6 +131,21 @@ spegnersi per inattività. Il nuovo indice appare solo alla pubblicazione della
 generazione completa; il precedente indice completo resta utilizzabile.
 Un errore di modello o file rimane visibile come problema, non come successo.</p>
 
+<h3 id="photo-indexing-integrity">Integrità e limiti della ripresa</h3>
+
+<p>Una foto non decodificabile non è necessariamente danneggiata: il lettore
+potrebbe non supportarne il formato o la variante. La politica rigorosa corrente
+interrompe il lavoro invece di pubblicare silenziosamente un indice incompleto.
+I salvataggi intermedi verificati possono essere riutilizzati nella stessa
+generazione; avviare un nuovo lavoro non garantisce il riuso di quei salvataggi.
+Prima di riprovare, verifica la causa senza cancellare gli originali o lo storico.</p>
+
+<p>La pubblicazione verifica dimensioni e impronte dei cinque file dell'indice,
+anche quando riprende dopo un'interruzione: la sola presenza dei file non prova
+che la generazione sia integra. Gli indici precedenti restano leggibili; una
+generazione storica priva di queste prove non può certificare una nuova
+pubblicazione mediante il percorso di ripresa rapida.</p>
+
 <h3 id="photo-indexing-duration">Perché la prima preparazione può durare molto</h3>
 
 <p>Creare l'indice richiede di leggere e analizzare le fotografie. La durata
@@ -309,8 +324,10 @@ essere aggiunto senza perdere tracciabilità o sicurezza.</p>
 Si apre nella chat web da <code>Settings → Sistema → LRE</code>. Il riquadro a
 sinistra elenca i lavori visibili al proprietario: seleziona un lavoro
 su una riga per caricare nel riquadro destro revisione, avanzamento, limiti,
-fasi, eventi, unità e artefatti. Se l'elenco è vuoto, non esistono lavori LRE
-per quell'identità; se la pagina è indisponibile, controlla il servizio in
+fasi, eventi, unità e artefatti. Solo una lettura riuscita con elenco vuoto indica
+che non esistono lavori LRE per quell'identità. Un errore di lettura indica stato
+non disponibile, non assenza di lavori; gli ultimi dati disponibili restano
+visibili ma sono segnalati come non aggiornati. Se la pagina è indisponibile, controlla il servizio in
 <code>Settings → Sistema → Servizi</code>. Non occorre lasciare aperta la
 console perché il lavoro continui.</p>
 

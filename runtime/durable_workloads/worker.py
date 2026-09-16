@@ -521,7 +521,7 @@ class DurableWorker:
                 lease,
                 result,
                 dependency_result_ids=dependency_result_ids,
-                now=self._clock(),
+                clock=self._clock,
             )
         except BudgetExceededError as exc:
             error = StructuredAttemptError.create(

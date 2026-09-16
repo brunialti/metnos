@@ -801,6 +801,29 @@ class DurableWorkerService:
 
         if self._stop_event.is_set() or not self._started:
             return
+        if self._execution_overdue():
+            # Do not admit another lane after detecting an adapter that can no
+            # longer commit. Existing invocations retain their normal fences.
+            # Keep the original failure observation: an adapter that never
+            # returns still needs the external process-group supervisor.
+            if self._health.reason_code != "execution_deadline_exceeded":
+                self._set_health(
+                    DurableServiceState.DEGRADED, "execution_deadline_exceeded",
+                )
+            return
+        if self._health.reason_code == "execution_deadline_exceeded":
+            # A deadline is not a permanent service latch. Once every in-flight
+            # lane has returned, observe its outcome and reconcile the durable
+            # state before admitting more work. Never overlap recovery with a
+            # still-running adapter merely because its lease has expired.
+            with self._parallel_guard:
+                if any(not future.done() for future in self._parallel_futures):
+                    return
+            _completed, failures = self._reap_parallel()
+            if failures:
+                self._record_cycle_failures(failures, context="cycle")
+                return
+            self._set_health(DurableServiceState.RECOVERING, "recovery_incomplete")
         if self._contention_cycles and time.monotonic() < self._contention_retry_at:
             # Completion callbacks may wake the supervisor during backoff.
             # Do not let them issue more DB maintenance or admission probes.

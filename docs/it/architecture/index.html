@@ -206,6 +206,16 @@ locale sia su un dispositivo remoto.</p>
 funzionato bene insieme non autorizza il secondo a leggere dati che il primo non
 poteva consegnargli.</p>
 
+<p>Le letture della console LRE usano una vista coerente di stato e contatori,
+separando indisponibilità dei dati e assenza di lavori. Le scadenze vengono
+ricontrollate dopo l'acquisizione della transazione: un risultato tardivo non
+diventa valido perché ha atteso il database. La ripresa verifica contratti,
+autorità e integrità dei risultati, senza azzerare consumi incerti. I controlli
+coprono anche i vincoli immutabili del registro e gli errori dopo un'interruzione;
+non equivalgono a una certificazione contro perdita di alimentazione. La
+<a href="../system/lre.html#photo-indexing-integrity">guida LRE</a> distingue
+copertura completa, errori e limiti del riuso dei salvataggi.</p>
+
 <h2 id="estensioni">Come si aggiunge una capacità</h2>
 
 <p>Una capacità nuova entra nel sistema come executor, non come istruzione libera

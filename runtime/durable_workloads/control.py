@@ -277,8 +277,11 @@ class DurableWorkloadControl:
             return DurableControlError("durable_workload.invalid_request", 400)
         return DurableControlError("durable_workload.unavailable", 503)
 
-    def _read(self, operation: Callable[[], Any]) -> Any:
+    def _read(self, operation: Callable[[], Any], *, snapshot: bool = False) -> Any:
         try:
+            if snapshot:
+                with self._store.read_snapshot():
+                    return operation()
             return operation()
         except DurableControlError:
             raise
@@ -345,7 +348,7 @@ class DurableWorkloadControl:
                 ],
                 "next_cursor": next_cursor,
             }
-        return self._read(operation)
+        return self._read(operation, snapshot=True)
 
     def detail(self, owner_user_id: str, workload_id: str) -> dict[str, Any]:
         def operation() -> dict[str, Any]:
@@ -371,7 +374,7 @@ class DurableWorkloadControl:
                 )[workload_id]},
                 "revision": revision,
             }
-        return self._read(operation)
+        return self._read(operation, snapshot=True)
 
     def list_events(
         self,

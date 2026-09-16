@@ -512,3 +512,65 @@ cover separate phases, sample contamination, concurrent phases, materialization,
 attention/retries/usage, slow blocks, stale and overdue forecasts, and fixed
 polling anchors; `test_durable_console_behavior.py` covers scope separation,
 IT/EN catalog and isolated real-browser presentation.
+
+## 16 September 2026 — multidimensional robustness audit
+
+The audit corrects demonstrated defects without weakening ownership, accounting,
+result fencing, strict photo coverage or resource limits. It does not certify an
+installed release or authorize automatic restart of incompatible workloads.
+
+- `progress_many` aggregates selected-revision attempts once per phase and
+  derives whole-job totals from those facts. Indexed unit selection and explicit
+  join ordering avoid per-unit scans of owner history even without SQLite
+  statistics. Materialization searches the closed set of nonterminal states
+  instead of rescanning every completed parent; all nine states retain their
+  original semantics. Regression gates measure SQLite VM instructions, not
+  machine-dependent elapsed time.
+- List/detail projections share a deferred read transaction, producing a coherent
+  WAL snapshot without reserving the writer. Initial read failure is not an
+  empty job list; refresh failure retains prior rows but marks them stale. The
+  new messages use the canonical IT/EN catalog.
+- Recovery candidates must have actionable transitions. A draining pause or
+  cancellation cannot consume the entire limited reconciliation batch forever.
+  Cancellation remains dominant even when its wall-time budget has expired.
+- An overdue adapter prevents new lane admission while it is alive. Once all
+  outstanding futures return, the supervisor reaps outcomes and reconciles
+  before admitting more work. This does not kill an uncooperative Python thread.
+- `commit_result` reads its clock after acquiring the write transaction. The
+  worker supplies a callback, not a timestamp captured before possible writer
+  contention. Explicit timestamps remain only a deterministic testing seam.
+- Artifacts, inventories and photo parts reject special files after nonblocking
+  descriptor open. Snapshot hashing reads at most the frozen size plus one
+  detection byte. Source authority is checked again after local copying or remote
+  attestation; revoked private copies are not delivered to the executor.
+- Direct invocation checks nested schema authority/secret annotations using a
+  bounded walk. Unresolved references fail closed. Semantic schema normalization
+  distinguishes schema annotations from property names and literal data.
+- Frozen contracts include complete capability declarations, including `when`
+  and `hint`, not just capability names. Existing nonempty-capability digests
+  change intentionally: do not rewrite stored contracts or automatically retry
+  them against the new build. Use the canonical compatibility/revision workflow.
+- A failed Telegram send is retryable only when `delivery_ambiguous` is explicitly
+  boolean false; omitted or malformed evidence is not proof of non-delivery.
+- Schema validation checks required trigger definitions against the original
+  migration statements, rejecting removed or replaced immutable/transition
+  guards. One migration sequence replaces six duplicated upgrade branches;
+  transactional checkpoints and rollback semantics remain unchanged.
+
+Image publication fingerprints and bounded filename classification are detailed
+in ADR 0117. Redundant pre-transport accounting and unreachable repeated response
+checks were removed, without broad unrelated refactoring.
+
+Tests: `test_progress.py`, `test_materialization_read_bounds.py`,
+`test_service_recovery_fairness.py`, `test_commit_deadline_after_contention.py`,
+`test_service_parallel_progress.py`, `test_control.py`, `test_schema.py`,
+`test_security_boundaries.py`, `test_source_authority.py`,
+`test_direct_invocation.py`, `test_admission_compiler.py`, `test_outbox.py`,
+and console/API tests. Run `test_contention_scale.py` with
+`METNOS_TEST_CONTENTION_SCALE=1` to include the larger contention cases.
+
+Open boundaries: WAL `synchronous=NORMAL` is not power-loss durability
+certification; artifact retention cutoff is not automatic deletion of referenced
+blobs; strict photo decoding failure still stops the job. Generation attestation
+factory wiring remains a lifecycle integration item, not a demonstrated bypass
+of the verified loader and frozen-contract checks.

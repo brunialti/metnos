@@ -252,3 +252,36 @@ def test_phase_eta_overdue_and_future_clock_are_not_predictions(store):
     overdue = store.progress_many(OWNER, [wid], now=NOW + timedelta(seconds=71))[wid]["current_phase"]
     assert overdue["estimated_end_at"] is None and overdue["estimated_end_reason"] == "estimate_overdue"
     assert store.progress_many(OWNER, [wid], now=NOW - timedelta(seconds=1))[wid]["current_phase"]["estimated_end_at"] is None
+
+
+def test_progress_scales_without_database_statistics(store):
+    """Bound VM work, not wall time: a new archive must not need manual ANALYZE."""
+    wid = measured(store)
+    db = store._connection
+    unit = dict(db.execute("SELECT * FROM units WHERE state='committed' LIMIT 1").fetchone())
+    attempt = dict(db.execute("SELECT * FROM attempts WHERE unit_id=?", (unit["id"],)).fetchone())
+    # Clone persisted read fixtures; no worker, models or real archive involved.
+    with store._transaction():
+        for number in range(1200):
+            current_unit = {**unit, "id": f"unt_scale_{number:08d}",
+                            "unit_key": f"scale-key-{number:08d}",
+                            "committed_result_id": None, "active_attempt_id": None}
+            current_attempt = {**attempt, "id": f"att_scale_{number:08d}",
+                               "unit_id": current_unit["id"]}
+            for table, value in (("units", current_unit), ("attempts", current_attempt)):
+                db.execute(f"INSERT INTO {table} ({','.join(value)}) VALUES ({','.join('?' for _ in value)})", tuple(value.values()))
+    assert db.execute("PRAGMA foreign_key_check").fetchone() is None
+    assert not db.execute("SELECT 1 FROM sqlite_master WHERE name='sqlite_stat1'").fetchone()
+    ticks = 0
+
+    def budget():
+        nonlocal ticks
+        ticks += 1
+        return ticks > 2000  # Two million VM instructions, independent of CPU speed.
+
+    db.set_progress_handler(budget, 1000)
+    try:
+        result = store.progress_many(OWNER, [wid], now=NOW + timedelta(seconds=51))[wid]
+    finally:
+        db.set_progress_handler(None, 0)
+    assert result["known_units_percent"] == 99.4

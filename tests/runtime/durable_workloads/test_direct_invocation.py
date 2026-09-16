@@ -196,6 +196,49 @@ def test_registration_excludes_unknown_resource_contracts():
         build_direct_candidate(executor, {"root": "/fixture"}, None)
 
 
+@pytest.mark.parametrize("marker,value", [
+    ("sensitive", True), ("writeOnly", True), ("runtime_resolved", True),
+    ("format", "password"), ("format", "secret"),
+])
+@pytest.mark.parametrize("container", ["object", "array", "composition"])
+def test_direct_plan_never_persists_nested_secret_or_runtime_arguments(
+    marker, value, container,
+):
+    executor = _executor()
+    secret = {"type": "string", marker: value}
+    if container == "object":
+        definition = {"type": "object", "properties": {"token": secret}}
+    elif container == "array":
+        definition = {"type": "array", "items": secret}
+    else:
+        definition = {"type": "string", "allOf": [secret]}
+    executor.args_schema["properties"]["credentials"] = definition
+
+    assert direct_runtime_registration([executor]) is None
+    with pytest.raises(DirectInvocationUnsupported, match="not admissible"):
+        build_direct_candidate(
+            executor, {"root": "/fixture", "credentials": {"token": "private"}}, None,
+        )
+
+
+def test_direct_schema_annotation_scan_does_not_interpret_literal_defaults():
+    executor = _executor()
+    executor.args_schema["properties"]["options"] = {
+        "type": "object", "default": {"sensitive": True, "format": "secret"},
+    }
+
+    assert direct_runtime_registration([executor]) is not None
+
+
+def test_direct_schema_cannot_hide_authority_behind_a_reference():
+    executor = _executor()
+    executor.args_schema["properties"]["options"] = {
+        "type": "object", "$ref": "https://example.invalid/schema",
+    }
+
+    assert direct_runtime_registration([executor]) is None
+
+
 @pytest.mark.parametrize("resource_class", ["llm", "vlm"])
 def test_registration_excludes_model_resources_without_frozen_bindings(
     resource_class,

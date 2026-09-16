@@ -125,6 +125,20 @@ when idle. The new index appears only when its complete generation is published;
 the previous complete index remains usable. A model or file error remains visible
 as a problem, not a successful index.</p>
 
+<h3 id="photo-indexing-integrity">Integrity and recovery limits</h3>
+
+<p>An image that cannot be decoded is not necessarily damaged: the reader may
+not support its format or variant. The current strict policy stops the workload
+instead of silently publishing an incomplete index. Verified intermediate
+checkpoints can be reused within the same generation; starting a new workload
+does not guarantee reuse of those checkpoints. Before retrying, investigate the
+cause without deleting originals or history.</p>
+
+<p>Publication verifies the sizes and fingerprints of all five index files,
+including recovery after interruption: filenames alone do not prove generation
+integrity. Previous indexes remain readable; a historical generation without
+these proofs cannot certify a new publication through the fast recovery path.</p>
+
 <h3 id="photo-indexing-duration">Why initial preparation can take a long time</h3>
 
 <p>Building the index requires reading and analysing the photographs. Duration
@@ -298,8 +312,10 @@ can be added without losing traceability or safety.</p>
 starts them. Open it in web chat under <code>Settings → System → LRE</code>. The
 left panel lists workloads visible to the owner: select
 a row to load its revision, progress, limits, stages, events, units, and
-artifacts in the right panel. An empty list means that the current identity has
-no LRE workloads; if the page is unavailable, inspect the service under
+artifacts in the right panel. Only a successful read returning an empty list
+means that the current identity has no LRE workloads. A read error means status
+is unavailable, not that jobs are absent; previously loaded data remains visible
+but is marked as stale. If the page is unavailable, inspect the service under
 <code>Settings → System → Services</code>. The console does not need to remain
 open for execution to continue.</p>
 

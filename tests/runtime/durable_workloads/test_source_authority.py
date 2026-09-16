@@ -101,6 +101,35 @@ def test_local_authority_keeps_at_most_one_snapshot_per_lane(tmp_path):
         assert len(authority._snapshot_files) == 1
 
 
+@pytest.mark.parametrize("change", ["revoke", "expire"])
+def test_source_authority_is_rechecked_after_snapshot_io(tmp_path, change):
+    path = tmp_path / "source.png"
+    path.write_bytes(b"stable source")
+    current = [NOW]
+
+    def checkpoint(name):
+        if name != "source_snapshot_after_verification":
+            return
+        if change == "revoke":
+            authority.revoke_workload("owner-a", "workload-a")
+        else:
+            current[0] += timedelta(minutes=2)
+
+    with SourceAuthority.open(
+        tmp_path / "private" / "authority.sqlite3",
+        clock=lambda: current[0], checkpoint=checkpoint,
+    ) as authority:
+        source = authority.seal_and_register(
+            [path], owner_user_id="owner-a", workload_id="workload-a",
+            device_id="server", limits=_limits(),
+            valid_until=NOW + timedelta(minutes=1),
+        )["sources"][0]
+
+        with pytest.raises(SourceAuthorityError):
+            authority.resolve(source, _context("owner-a", "workload-a"))
+        assert authority._snapshot_files == []
+
+
 @pytest.mark.parametrize("recursive,expected", [(False, 1), (True, 2)])
 def test_selection_precedes_source_limits_and_authority_grants(tmp_path, recursive, expected):
     root = tmp_path / "input"
@@ -561,6 +590,31 @@ def test_remote_attestation_must_match_every_sealed_identity_field(tmp_path):
             valid_until=NOW + timedelta(days=1),
         )["sources"][0]
         with pytest.raises(SourceAuthorityError, match="does not match"):
+            authority.resolve(source, _context("owner-a", "workload-a"))
+
+
+def test_remote_authority_revoked_during_attestation_is_not_released(tmp_path):
+    path = tmp_path / "source.txt"
+    path.write_text("remote", encoding="utf-8")
+
+    def attest(device_id, locator, source, context):
+        authority.revoke_workload(context.owner_user_id, context.workload_id)
+        return SourceResolution(
+            value=locator, source_id=source["source_id"], device_id=device_id,
+            content_digest=source["content_digest"], size_bytes=source["size_bytes"],
+            mtime_ns=source["mtime_ns"], authority="remote-device-v1",
+        )
+
+    with SourceAuthority.open(
+        tmp_path / "private" / "remote.sqlite3", remote_attestor=attest,
+        clock=lambda: NOW,
+    ) as authority:
+        source = authority.seal_and_register(
+            [path], owner_user_id="owner-a", workload_id="workload-a",
+            device_id="device-a", limits=_limits(),
+            valid_until=NOW + timedelta(days=1),
+        )["sources"][0]
+        with pytest.raises(SourceAuthorityError, match="unavailable"):
             authority.resolve(source, _context("owner-a", "workload-a"))
 
 

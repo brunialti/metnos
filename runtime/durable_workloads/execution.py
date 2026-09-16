@@ -741,7 +741,6 @@ class DurableExecutionBridge:
         args: Mapping[str, Any],
         context: ExecutionContext,
         device_id: str | None,
-        *, usage_sink=None,
     ) -> object:
         stage = _mapping(facts["stage"], context="stage")
         if contract.kind == RunnerKind.EXECUTOR.value:
@@ -848,17 +847,11 @@ class DurableExecutionBridge:
                         deadline_at=time.monotonic() + self._remaining_timeout(context),
                     )
                 except ModelResourceChanged as exc:
-                    if usage_sink is not None:
-                        usage_sink.complete_local_capture()
                     raise self._failure(
                         "contract_violation", code="execution.model_resource_changed",
                         message_key="ERR_DURABLE_CONTRACT_CHANGED", retry="never",
                     ) from exc
                 except ModelResourceUnavailable as exc:
-                    if usage_sink is not None:
-                        # The host did not enter the executor transport. This
-                        # verifies zero calls without inventing usage records.
-                        usage_sink.complete_local_capture()
                     raise self._failure(
                         "capability_unavailable", code="execution.model_resource_unavailable",
                         message_key="ERR_DURABLE_RUNNER_UNAVAILABLE", retry="manual",
@@ -880,7 +873,7 @@ class DurableExecutionBridge:
         if contract.kind == RunnerKind.EXECUTOR.value:
             try:
                 executor, timeout, autonomy = self._prepare_executor(
-                    contract, facts, args, context, device_id, usage_sink=usage_sink,
+                    contract, facts, args, context, device_id,
                 )
             except Exception:
                 # Preparation cannot enter executor transport. A refusal here
@@ -1246,8 +1239,6 @@ class DurableExecutionBridge:
                 message_key="ERR_DURABLE_RESULT_CONTRACT_VIOLATION",
                 retry="never",
             )
-        if observation.get("ok") is False:
-            raise self._observation_failure(observation, schema)
         invocation_id = observation.get("invocation_id")
         remote = observation.get("_remote")
         if isinstance(remote, Mapping):

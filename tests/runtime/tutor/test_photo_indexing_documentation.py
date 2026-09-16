@@ -56,6 +56,16 @@ def _guide_units(language):
         "small groups", "resource limits", "survive", "restart",
         "when needed", "complete generation", "remains visible",
     )),
+    ("it", "Integrità e limiti della ripresa", (
+        "non è necessariamente danneggiata", "interrompe il lavoro",
+        "stessa generazione", "non garantisce", "cinque file",
+        "precedenti restano leggibili", "priva di queste prove",
+    )),
+    ("en", "Integrity and recovery limits", (
+        "not necessarily damaged", "stops the workload", "same generation",
+        "does not guarantee", "five index files", "Previous indexes remain readable",
+        "without these proofs",
+    )),
     ("it", "Perché la prima preparazione", (
         "numero", "dimensione", "risorse", "ore", "non una scadenza",
     )),

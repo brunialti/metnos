@@ -468,17 +468,33 @@ class RunnerContractResolver(Protocol):
 
 
 def _semantic_schema(value: Any) -> Any:
-    """Strip localized/presentational JSON-Schema fields before hashing."""
+    """Strip annotations from schema nodes, never property names or data."""
 
-    if isinstance(value, Mapping):
-        return {
-            str(key): _semantic_schema(item)
-            for key, item in value.items()
-            if key not in {"description", "title", "examples", "$comment"}
-        }
     if isinstance(value, list):
         return [_semantic_schema(item) for item in value]
-    return value
+    if not isinstance(value, Mapping):
+        return value
+    result: dict[str, Any] = {}
+    for key, item in value.items():
+        if key in {"description", "title", "examples", "$comment"}:
+            continue
+        if key in {
+            "properties", "patternProperties", "$defs", "definitions",
+            "dependentSchemas", "dependencies",
+        } and isinstance(item, Mapping):
+            result[key] = {
+                name: _semantic_schema(child) for name, child in item.items()
+            }
+        elif key in {
+            "items", "additionalItems", "additionalProperties", "contains",
+            "propertyNames", "not", "if", "then", "else", "allOf", "anyOf",
+            "oneOf", "prefixItems", "unevaluatedItems", "unevaluatedProperties",
+            "contentSchema",
+        }:
+            result[key] = _semantic_schema(item)
+        else:
+            result[key] = item
+    return result
 
 
 class VerifiedCatalogResolver:
@@ -578,9 +594,15 @@ class VerifiedCatalogResolver:
             "implementation_digest": implementation_digest,
             "args_schema": args_schema,
             "capabilities": sorted(
-                str(item.get("name"))
-                for item in (getattr(executor, "capabilities", ()) or ())
-                if isinstance(item, Mapping) and isinstance(item.get("name"), str)
+                (
+                    dict(item)
+                    for item in (getattr(executor, "capabilities", ()) or ())
+                    if isinstance(item, Mapping) and isinstance(item.get("name"), str)
+                ),
+                # Conditions and hints select authority, not presentation.
+                # Freeze the complete declaration; names alone cannot detect
+                # a changed provider or capability activation condition.
+                key=lambda item: canonical_json(item, max_bytes=MAX_SNAPSHOT_JSON_BYTES),
             ),
             "placement": getattr(executor, "placement", {}) or {},
             "transport": str(getattr(executor, "transport", "") or ""),

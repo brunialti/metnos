@@ -234,6 +234,34 @@ reale resta al coordinatore centrale, senza aumentare limiti o tempi massimi.
 Test: `test_service_idle.py`, `test_image_index_build_phases.py` (HEIC reale
 generato, ripresa dopo errore, contesto/generazione differenti e manomissione).
 
+### Addendum 2026-09-16 — integrità di pubblicazione e limiti di lettura
+
+Ogni nuova generazione registra in `generation_files` dimensione e SHA-256
+dei cinque output derivati: `entries.jsonl`, `lookup.sqlite` e le tre matrici
+di vettori. La ripetizione della pubblicazione rivalida tutti i file prima di
+dichiarare successo o cambiare il puntatore attivo. File mancanti, troncati,
+alterati anche a dimensione invariata, speciali o sostituiti durante la lettura
+sono rifiutati; l'indice precedente non viene sovrascritto da una generazione
+non valida. La lettura è a blocchi e controlla identità del descrittore e del
+percorso. Non è una firma contro un attore che controlli anche i metadati.
+
+Gli indici storici restano leggibili. Una generazione senza `generation_files`
+non può invece provare un successo attraverso la ripetizione rapida della
+pubblicazione. Nessuna migrazione distruttiva né cancellazione delle parti
+intermedie viene introdotta. La ripresa delle foglie resta limitata alla stessa
+generazione; un nuovo lavoro non riusa automaticamente checkpoint privati vecchi.
+
+Le aperture di parti, copie delle sorgenti ed entries rifiutano FIFO senza
+attendere uno scrittore. L'hash delle sorgenti ha un tetto di lettura pari alla
+dimensione congelata più un byte. Due espressioni regolari per nomi automatici
+sono state sostituite con forme equivalenti senza quantificatori ambigui annidati:
+nomi sintetici non corrispondenti non devono occupare un core indefinitamente.
+
+Prove: `test_image_index_publication_integrity.py`,
+`test_image_index_filename_bounds.py`, `test_image_index_build_phases.py`.
+La modifica dell'executor richiede il percorso canonico di release prima della
+distribuzione; non costituisce prova della causa di un errore di decodifica reale.
+
 - ADR 0086 — image domain indices (superseded scope: 3 separate IDX_TYPES).
 - ADR 0093 — async indexing build (riusato per migration spawn).
 - ADR 0098 — web crawl strategy (pattern di `error_class` + soft-fail).

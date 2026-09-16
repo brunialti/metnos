@@ -769,6 +769,19 @@ class DurableWorkloadStore:
     def close(self) -> None:
         self._connection.close()
 
+    @contextmanager
+    def read_snapshot(self) -> Iterator[None]:
+        """Keep a compound read coherent without reserving the SQLite writer."""
+        if self._connection.in_transaction:
+            raise DurableStoreError("nested durable-workload transactions are forbidden")
+        self._connection.execute("BEGIN")
+        try:
+            yield
+        finally:
+            # This boundary is read-only; never commit an accidental write.
+            if self._connection.in_transaction:
+                self._connection.execute("ROLLBACK")
+
     def service_lane_demand(
         self, *, limit: int, resource_limits: Mapping[str, int] | None = None,
     ) -> int:
@@ -3285,6 +3298,9 @@ class DurableWorkloadStore:
             """
             SELECT workload.owner_user_id, workload.id
             FROM workloads workload
+            JOIN revisions active_revision
+              ON active_revision.owner_user_id=workload.owner_user_id
+             AND active_revision.id=workload.active_revision_id
             WHERE workload.active_revision_id IS NOT NULL AND (
                 (
                   workload.state IN ('cancelled', 'failed')
@@ -3304,8 +3320,26 @@ class DurableWorkloadStore:
                     'completed_with_errors', 'needs_attention'
                   )
                   AND (
-                    workload.state IN ('pause_requested', 'cancel_requested')
-                OR EXISTS (
+                    (
+                      workload.state IN ('pause_requested', 'cancel_requested')
+                      AND (
+                        NOT EXISTS (
+                          SELECT 1 FROM units active_unit
+                          WHERE active_unit.owner_user_id=workload.owner_user_id
+                            AND active_unit.revision_id=workload.active_revision_id
+                            AND active_unit.state IN ('leased','running')
+                        )
+                        OR (workload.state='cancel_requested' AND EXISTS (
+                          SELECT 1 FROM units waiting_unit
+                          WHERE waiting_unit.owner_user_id=workload.owner_user_id
+                            AND waiting_unit.revision_id=workload.active_revision_id
+                            AND waiting_unit.state IN ('pending','retry_wait','needs_attention')
+                            AND waiting_unit.active_attempt_id IS NULL
+                        ))
+                      )
+                    )
+                OR (workload.state<>'cancel_requested' AND (
+                EXISTS (
                     SELECT 1
                     FROM revisions budget_revision
                     JOIN revision_usage usage
@@ -3362,7 +3396,29 @@ class DurableWorkloadStore:
                     WHERE unit.owner_user_id=workload.owner_user_id
                       AND unit.revision_id=workload.active_revision_id
                       AND (
-                        unit.state='failed_permanent'
+                        (unit.state='failed_permanent'
+                         AND (
+                           active_revision.failure_policy<>'declared'
+                           OR unit.error_class IS NULL
+                           OR unit.error_class NOT IN (
+                             SELECT value FROM json_each(active_revision.tolerated_error_classes_json)
+                           )
+                         )
+                         AND (
+                           NOT EXISTS (
+                             SELECT 1 FROM units active_unit
+                             WHERE active_unit.owner_user_id=workload.owner_user_id
+                               AND active_unit.revision_id=workload.active_revision_id
+                               AND active_unit.state IN ('leased','running')
+                           )
+                           OR EXISTS (
+                             SELECT 1 FROM units waiting_unit
+                             WHERE waiting_unit.owner_user_id=workload.owner_user_id
+                               AND waiting_unit.revision_id=workload.active_revision_id
+                               AND waiting_unit.state IN ('pending','retry_wait','needs_attention')
+                               AND waiting_unit.active_attempt_id IS NULL
+                           )
+                         ))
                         OR (
                           unit.state='needs_attention'
                           AND unit.manual_retry_generation >= COALESCE((
@@ -3402,6 +3458,7 @@ class DurableWorkloadStore:
                         json_extract(stage.retry_json, '$.max_attempts') AS INTEGER
                       )
                 )
+                ))
                   )
                 )
               )
@@ -3938,6 +3995,10 @@ class DurableWorkloadStore:
         Whole-job ETA is unavailable for heterogeneous/expanding plans. The
         separate current-phase ETA uses only that fully materialized phase.
         One aggregate statement covers the page, including attempt history.
+        Aggregate attempts once per phase, then reuse those small facts for
+        whole-job timing. Keep attempts before their unit lookup: SQLite can
+        otherwise rescan an owner's entire attempt history for every unit
+        when statistics are absent, making console reads quadratic.
         """
         owner = _require_owner(owner_user_id)
         if isinstance(workload_ids, (str, bytes)) or not isinstance(workload_ids, Sequence):
@@ -3954,7 +4015,7 @@ class DurableWorkloadStore:
         placeholders = ",".join("?" for _ in identifiers)
         rows = self._connection.execute(
             f"""
-            WITH progress_selected AS (
+            WITH progress_selected AS MATERIALIZED (
                 SELECT w.owner_user_id, w.id, w.state, w.active_revision_id,
                        r.inventory_sealed, r.usage_complete,
                        COALESCE(ru.usage_unknown, 1) AS usage_unknown,
@@ -3987,8 +4048,8 @@ class DurableWorkloadStore:
                   ON u.owner_user_id=w.owner_user_id AND u.revision_id=w.active_revision_id
                 LEFT JOIN stages s ON s.owner_user_id=u.owner_user_id AND s.id=u.stage_id
                 GROUP BY w.id
-            ), attempt_facts AS (
-                SELECT w.id,
+            ), phase_attempt_facts AS MATERIALIZED (
+                SELECT w.id, u.stage_id,
                        SUM(CASE WHEN json_extract(a.model_snapshot_json, '$.mode')='llm'
                            AND (json_extract(a.metrics_json, '$.usage_missing')=1
                              OR json_extract(a.metrics_json, '$.llm_usage.cost_unknown')=1
@@ -4009,11 +4070,24 @@ class DurableWorkloadStore:
                            THEN a.ended_at END) AS first_completion,
                        MAX(CASE WHEN s.stage_type<>'inventory' AND u.state='committed' AND a.state='succeeded'
                            THEN a.ended_at END) AS last_completion
-                FROM progress_selected w LEFT JOIN units u
-                  ON u.owner_user_id=w.owner_user_id AND u.revision_id=w.active_revision_id
-                LEFT JOIN attempts a ON a.owner_user_id=u.owner_user_id AND a.unit_id=u.id
+                FROM attempts a CROSS JOIN units u
+                  ON u.owner_user_id=a.owner_user_id AND u.id=a.unit_id
+                JOIN progress_selected w
+                  ON w.owner_user_id=u.owner_user_id AND w.active_revision_id=u.revision_id
                 LEFT JOIN stages s ON s.owner_user_id=u.owner_user_id AND s.id=u.stage_id
-                GROUP BY w.id
+                WHERE a.owner_user_id=? AND a.unit_id IN (
+                    SELECT selected_unit.id FROM progress_selected selected_job
+                    CROSS JOIN units selected_unit
+                      ON selected_unit.owner_user_id=selected_job.owner_user_id
+                     AND selected_unit.revision_id=selected_job.active_revision_id
+                )
+                GROUP BY w.id, u.stage_id
+            ), attempt_facts AS (
+                SELECT id, SUM(uncertain_model_usage) AS uncertain_model_usage,
+                       MIN(started_at) AS started_at, SUM(samples) AS samples,
+                       MIN(first_completion) AS first_completion,
+                       MAX(last_completion) AS last_completion
+                FROM phase_attempt_facts GROUP BY id
             ), phase_unit_facts AS (
                 SELECT w.id, s.id AS stage_id, s.stage_key, s.timeout_s,
                        COALESCE(m.completed, 0) AND m.attention_code IS NULL AS materialized,
@@ -4030,22 +4104,6 @@ class DurableWorkloadStore:
             ), active_phase AS (
                 SELECT id, COUNT(*) AS active_phases, MIN(stage_id) AS stage_id
                 FROM phase_unit_facts WHERE active>0 GROUP BY id
-            ), phase_attempt_facts AS (
-                SELECT w.id, u.stage_id,
-                       MIN(CASE WHEN json_type(a.metrics_json, '$.execution_started_at')='text'
-                           THEN json_extract(a.metrics_json, '$.execution_started_at') END) AS started_at,
-                       COUNT(CASE WHEN u.state='committed' AND a.state='succeeded'
-                           AND u.attempt_count=1 AND a.ended_at IS NOT NULL
-                           AND json_type(a.metrics_json, '$.execution_started_at')='text'
-                           THEN 1 END) AS samples,
-                       MIN(CASE WHEN u.state='committed' AND a.state='succeeded'
-                           THEN a.ended_at END) AS first_completion,
-                       MAX(CASE WHEN u.state='committed' AND a.state='succeeded'
-                           THEN a.ended_at END) AS last_completion
-                FROM progress_selected w JOIN units u
-                  ON u.owner_user_id=w.owner_user_id AND u.revision_id=w.active_revision_id
-                LEFT JOIN attempts a ON a.owner_user_id=u.owner_user_id AND a.unit_id=u.id
-                GROUP BY w.id, u.stage_id
             )
             SELECT w.id, w.state, w.inventory_sealed, w.usage_complete,
                    w.usage_unknown, a.uncertain_model_usage,
@@ -4063,12 +4121,12 @@ class DurableWorkloadStore:
                    pa.first_completion AS phase_first_completion,
                    pa.last_completion AS phase_last_completion
             FROM progress_selected w JOIN phase_facts p USING(id)
-            JOIN unit_facts u USING(id) JOIN attempt_facts a USING(id)
+            JOIN unit_facts u USING(id) LEFT JOIN attempt_facts a USING(id)
             LEFT JOIN active_phase ap USING(id)
             LEFT JOIN phase_unit_facts pu ON pu.id=w.id AND pu.stage_id=ap.stage_id
             LEFT JOIN phase_attempt_facts pa ON pa.id=w.id AND pa.stage_id=pu.stage_id
             """,
-            (owner, *identifiers),
+            (owner, *identifiers, owner),
         ).fetchall()
         if len(rows) != len(identifiers):
             raise WorkloadNotFoundError("workload not found")
@@ -6828,9 +6886,8 @@ class DurableWorkloadStore:
                     AND reduction_unit.revision_id=progress.revision_id
                     AND reduction_unit.stage_id=progress.stage_id
                     AND reduction_unit.reduction_level=progress.reduction_level
-                    AND reduction_unit.state NOT IN (
-                      'committed', 'failed_permanent', 'needs_attention',
-                      'cancelled', 'skipped'
+                    AND reduction_unit.state IN (
+                      'pending', 'leased', 'running', 'retry_wait'
                     )
                 )
               )
@@ -6856,8 +6913,9 @@ class DurableWorkloadStore:
                       WHERE parent_unit.owner_user_id=parent.owner_user_id
                         AND parent_unit.revision_id=parent.revision_id
                         AND parent_unit.stage_id=parent.id
-                        AND parent_unit.state NOT IN (
-                          'committed', 'failed_permanent', 'cancelled', 'skipped'
+                        AND parent_unit.state IN (
+                          'pending', 'leased', 'running', 'retry_wait',
+                          'needs_attention'
                         )
                     )
                   )
@@ -8083,9 +8141,8 @@ class DurableWorkloadStore:
                     AND reduction_unit.revision_id=progress.revision_id
                     AND reduction_unit.stage_id=progress.stage_id
                     AND reduction_unit.reduction_level=progress.reduction_level
-                    AND reduction_unit.state NOT IN (
-                      'committed', 'failed_permanent', 'needs_attention',
-                      'cancelled', 'skipped'
+                    AND reduction_unit.state IN (
+                      'pending', 'leased', 'running', 'retry_wait'
                     )
                 )
               )
@@ -8111,8 +8168,9 @@ class DurableWorkloadStore:
                       WHERE parent_unit.owner_user_id=parent.owner_user_id
                         AND parent_unit.revision_id=parent.revision_id
                         AND parent_unit.stage_id=parent.id
-                        AND parent_unit.state NOT IN (
-                          'committed', 'failed_permanent', 'cancelled', 'skipped'
+                        AND parent_unit.state IN (
+                          'pending', 'leased', 'running', 'retry_wait',
+                          'needs_attention'
                         )
                     )
                   )
@@ -8186,6 +8244,7 @@ class DurableWorkloadStore:
         *,
         dependency_result_ids: Sequence[str] = (),
         now: datetime | None = None,
+        clock: Callable[[], datetime] | None = None,
     ) -> CommitOutcome:
         if not isinstance(lease, Lease):
             raise TypeError("lease must be Lease")
@@ -8201,8 +8260,12 @@ class DurableWorkloadStore:
             for value in dependency_ids
         ) or len(dependency_ids) != len(set(dependency_ids)):
             raise ResultContractError("result dependency identifiers are invalid")
-        current, current_text = self._operation_now(now)
+        if clock is not None and (not callable(clock) or now is not None):
+            raise TypeError("clock must be callable and cannot be combined with now")
         with self._transaction() as connection:
+            # Waiting for the writer must not extend the attempt's deadline.
+            # Workers pass their clock, not an instant captured before BEGIN.
+            current, current_text = self._operation_now(clock() if clock else now)
             row = self._select_lease_row(connection, lease)
             existing = connection.execute(
                 """

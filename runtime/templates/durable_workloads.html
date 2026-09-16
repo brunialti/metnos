@@ -22,7 +22,7 @@
       <span class="dw-live" id="dwLive" aria-live="polite"></span>
     </div>
     <div class="dw-detail" id="dwDetail" hidden></div>
-    <div class="empty" id="dwPlaceholder">{{ msg("UI_DURABLE_EMPTY") }}</div>
+    <div class="empty" id="dwPlaceholder">{{ msg("UI_DURABLE_LOADING") }}</div>
   </section>
 </div>
 
@@ -183,8 +183,12 @@
       listCursor = payload.next_cursor || null;
       clear(listPager);
       if (listCursor) listPager.append(button(copy.loadMore, () => loadList(false)));
+      if (!selectedId) placeholder.textContent = list.querySelectorAll(".dw-job-choice").length ? copy.selectJob : copy.empty;
       return true;
     } catch (_) {
+      // No response is not an empty history. Keep any last-known jobs visible.
+      if (!list.querySelectorAll(".dw-job-choice").length) list.textContent = copy.readFailed;
+      if (!selectedId) placeholder.textContent = copy.readFailed;
       markStale();
       return false;
     } finally { listLoading = false; }
