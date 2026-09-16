@@ -1,6 +1,6 @@
 {
   "schema": "metnos.contract-boundary-inventory/2",
-  "source_census": "sha256:db39241a6b12a3c57a5a590aa089f81f4bb97ccdf71ecaa505a9c1d1e2a4b634",
+  "source_census": "sha256:5c5fb0d7ac56c4f1bc8f8368e474cdc438e33c0cab61869fd51f53a7aa259de5",
   "scan_roots": [
     "runtime",
     "install",
@@ -95,6 +95,22 @@
       "phase": "M4"
     },
     {
+      "path": "install/birth_certification_authority_provisioner.py",
+      "scope": "_provision_certification_at_v1",
+      "role": "store_owner",
+      "capabilities": ["store_write"],
+      "destination": "dedicated optional F5 key custody under the existing administrative lock; no certificate or executor publication",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_certification_authority_provisioner.py",
+      "scope": "provision_certification_authority_v1",
+      "role": "store_owner",
+      "capabilities": ["store_write"],
+      "destination": "fixed-root administrator-only F5 key provisioning; returns public material only",
+      "phase": "M4"
+    },
+    {
       "path": "install/birth_ownership_authority_provisioner.py",
       "scope": "_discard_temporary",
       "role": "store_owner",
@@ -112,6 +128,14 @@
         "store_write"
       ],
       "destination": "sealed root-owned ownership cutover coordinator",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_ownership_authority_provisioner.py",
+      "scope": "_load_or_create_private",
+      "role": "store_owner",
+      "capabilities": ["store_write"],
+      "destination": "shared installer-only private-file recovery under the existing administrative lock",
       "phase": "M4"
     },
     {
@@ -5136,8 +5160,11 @@
     "coordinator_store_owners": [
       "install/birth_authority_provisioner.py:_publish_initial_predecessor_v2",
       "install/birth_authority_provisioner.py:abandon_unattestable_transition_v2",
+      "install/birth_certification_authority_provisioner.py:_provision_certification_at_v1",
+      "install/birth_certification_authority_provisioner.py:provision_certification_authority_v1",
       "install/birth_ownership_authority_provisioner.py:_discard_temporary",
       "install/birth_ownership_authority_provisioner.py:_load_or_create_pair",
+      "install/birth_ownership_authority_provisioner.py:_load_or_create_private",
       "install/birth_ownership_authority_provisioner.py:_provision_ownership_authorities_at_v1",
       "install/birth_ownership_authority_provisioner.py:_provision_ownership_authorities_locked_v1",
       "install/birth_ownership_authority_provisioner.py:_provisioning_lock",

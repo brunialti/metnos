@@ -191,6 +191,24 @@ After cutover, an ordinary executor edit uses
 flag remains a command-line compatibility surface, but it now submits the
 candidate to Executor Birth and cannot select direct signing or publication.
 
+### Optional F5 certification custody (development)
+
+The dedicated certification key is not part of F4's mandatory three-key
+inventory. `install.birth_certification_authority_provisioner` owns its
+optional fixed-root Linux preparation under the existing administrative lock.
+It returns public verification material only and installs neither a
+certificate nor an activation. It is not called by the six-phase installer,
+ordinary Birth or service startup.
+
+The separate `certification-authority-v1` directory below the administrative
+Birth root contains root-owned `private.bin` (0600) and `registry.json` (0644).
+Exact retry reuses the key; interrupted preparation resumes the same complete
+staged key. Public-without-private or a mismatched pair requires explicit
+recovery, not automatic regeneration. A revoked registry stays revoked on
+retry. The public reader initializes no user directories and never reads the
+private file. Native Windows custody and the evidence-derived certificate
+remain unfinished; this procedure must not be presented as F5 activation.
+
 ### Private HTTP runtime settings
 
 The signed HTTP recipe selects `METNOS_ENGINE=v3`; its launcher does not inherit

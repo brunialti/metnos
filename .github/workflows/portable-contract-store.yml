@@ -118,7 +118,8 @@ jobs:
             "${pythonLocation}/bin/python" -m pytest -q -p no:cacheprovider \
             --import-mode=importlib \
             --confcutdir=tests/portable \
-            tests/portable/test_executor_birth_runner_linux_real.py
+            tests/portable/test_executor_birth_runner_linux_real.py \
+            tests/portable/test_executor_birth_certification_authority.py::test_native_root_custody_process_death_and_unprivileged_reader
 
       - name: Run the historical RM-0008 D diagnostic explicitly
         if: runner.os == 'Windows' && github.event_name == 'workflow_dispatch' && inputs.rm0008_run_diagnostic
