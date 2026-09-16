@@ -2,5 +2,4 @@
 # Keep this list minimal and exact; it is installed independently of Metnos.
 cryptography==47.0.0
 pytest==9.1.1
-pytest-timeout==2.4.0
 tomlkit==0.15.0

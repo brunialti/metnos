@@ -9,7 +9,7 @@ from tests.portable.test_rm0008_acceptance_evolution import _baseline
 
 WORKFLOW = ".github/workflows/portable-contract-store.yml"
 OLD_BLOB = ("100644", "ce3bbd7e5097b23e4ad577ffa1b8af40b75618f7")
-NEW_BLOB = ("100644", "fe5afb0b15d754d80f70d00838398ff305d825a8")
+NEW_BLOB = ("100644", "6e5ed2cae42bd53bf22c622d5d7eecd7dce7648d")
 
 
 @pytest.mark.parametrize("variant", ("reviewed", "unknown", "mode", "predecessor"))
@@ -17,8 +17,8 @@ def test_only_exact_reviewed_workflow_preparation_is_admitted(variant):
     source = _baseline()
     source[WORKFLOW] = OLD_BLOB
     current = dict(source)
-    for path in certification._REVIEWED_ACCEPTANCE_EVOLUTIONS:
-        current[path] = ("100644", "d" * 40)
+    for evolution in certification._REVIEWED_ACCEPTANCE_EVOLUTIONS:
+        current[evolution] = ("100644", "d" * 40)
     current["tests/portable/test_rm0008_acceptance_evolution.py"] = (
         "100644", "e" * 40,
     )
