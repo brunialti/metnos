@@ -410,3 +410,18 @@ def test_an_unreachable_store_drops_the_verdict_without_raising(monkeypatch, tmp
     executor = synth("demo")
     assert state.record_verdict(dispatch_receipt(executor), positive=False) is None
     assert state.record_invocation(executor, ok=True) is None
+
+
+def test_the_catalog_cache_follows_the_owning_store(monkeypatch, epochs, tmp_path):
+    import executor_aging
+
+    aging_db = tmp_path / "executor_stats.db"
+    aging_db.write_bytes(b"")
+    monkeypatch.setattr(executor_aging, "DB_PATH", aging_db)
+    owned_by(monkeypatch, mode.BirthStateOwner.LEGACY)
+    assert state.cache_signature()[0] == "aging_db"
+    owned_by(monkeypatch, mode.BirthStateOwner.EPOCH)
+    label, before = state.cache_signature()
+    assert label == "epoch_db" and before == 0.0
+    admit(epochs, loaded("demo"))
+    assert state.cache_signature()[1] > 0.0

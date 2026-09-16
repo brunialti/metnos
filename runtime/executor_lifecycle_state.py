@@ -211,6 +211,27 @@ def _epoch_admit(executors: Iterable[object]) -> int:
     return recorded
 
 
+def cache_signature() -> tuple[str, float]:
+    """Identify the owning store's current decisions for the catalog cache.
+
+    A restriction changes what the catalog contains or how an entry is ranked,
+    so a cached catalog that predates it is stale. The modification time of
+    whichever store holds those decisions is what makes the next load notice,
+    and reading it from here keeps the loader from naming one exact file that a
+    migrated installation no longer writes.
+    """
+    if read_birth_activation_state().owner is BirthStateOwner.LEGACY:
+        from executor_aging import DB_PATH
+
+        path, label = DB_PATH, "aging_db"
+    else:
+        path, label = _epoch_db_path(), "epoch_db"
+    try:
+        return (label, path.stat().st_mtime)
+    except OSError:
+        return (label, 0.0)
+
+
 def register_loaded_executors(executors: Iterable[object]) -> int:
     """Let the owning store record the executors this catalog load produced."""
     if read_birth_activation_state().owner is BirthStateOwner.LEGACY:
@@ -568,7 +589,8 @@ def revive_executor(executor_name: str, *, reason: str) -> bool:
 
 
 __all__ = ["RESTRICTED_REJECT_PREFIX", "Restriction", "apply_inactivity_decay",
-           "catalog_restrictions", "credit_uses", "record_invocation",
+           "cache_signature", "catalog_restrictions", "credit_uses",
+           "record_invocation",
            "record_verdict", "recorded_source", "register_loaded_executors",
            "restrict_executor",
            "revive_executor"]

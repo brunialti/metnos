@@ -1007,17 +1007,16 @@ def _catalog_cache_signature(
                 except OSError:
                     pass
         sig.append((str(d), max_mt, n_files))
-    # Aging DB: modifica → lifecycle override map cambia → catalog visibility
-    # diversa. Includere il mtime fa SI' che apply_executor_ager invalidi
-    # automaticamente la cache (test_archived_executor_excluded_from_catalog).
+    # Deposito delle restrizioni: una modifica cambia cosa contiene il catalogo
+    # o come vi e' classificato un elemento, quindi una cache precedente e'
+    # stantia. Quale deposito sia lo decide `executor_lifecycle_state`, non
+    # questo modulo: dopo la migrazione il file storico non viene piu' scritto
+    # (test_archived_executor_excluded_from_catalog).
     try:
-        from executor_aging import DB_PATH as _aging_db
-        try:
-            sig.append(("aging_db", _aging_db.stat().st_mtime))
-        except OSError:
-            sig.append(("aging_db", 0.0))
+        from executor_lifecycle_state import cache_signature
+        sig.append(cache_signature())
     except Exception:
-        sig.append(("aging_db", 0.0))
+        sig.append(("lifecycle_state", 0.0))
     # Skill state (asse 2): enable/disable di una skill (skill_enabled.json)
     # cambia la dormancy first-party → visibility del catalog diversa. Il mtime
     # nella firma fa SÌ che set_skill_enabled invalidi la cache → gating live.
