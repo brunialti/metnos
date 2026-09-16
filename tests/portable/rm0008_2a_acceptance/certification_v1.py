@@ -67,15 +67,11 @@ _FROZEN_WORKFLOW_SHA256 = (
 # wheelhouse, and bound diagnostic failure of the general Windows suite.
 # All six acceptance jobs and their blocking summary are unchanged.
 _REVIEWED_WORKFLOW_SHA256 = (
-    "bee74beff7550b1ff9457037dc7e8fe0e3242501e4cfbd5ff42b5706edcfb8d4"
+    "143fcd035710a919621f663a353b9d1d200599d8f4dc4111d353e21dde3a3884"
 )
 _REVIEWED_WORKFLOW_GIT_EDGE = (
     ("100644", "ce3bbd7e5097b23e4ad577ffa1b8af40b75618f7"),
-    ("100644", "0efeca0a71cb828b83db6babccfcd2bd87aa4ca4"),
-)
-_REVIEWED_TIMEOUT_REQUIREMENTS_GIT_EDGE = (
-    ("100644", "7f8078e8ce6ae4fa14b952c440efe3fc830c40c1"),
-    ("100644", "b611abd94706fd4b9db0a2e62189c87804028ed7"),
+    ("100644", "6e5ed2cae42bd53bf22c622d5d7eecd7dce7648d"),
 )
 # Reviewed importlib-mode fixture lookup (329d51b3). No collection or oracle
 # changes are permitted by this exact prerequisite edge.
@@ -2768,11 +2764,6 @@ def _validate_reviewed_acceptance_tree_evolution(
         source_tree[portable_support], current_tree[portable_support],
     ) == _REVIEWED_PORTABLE_SUPPORT_GIT_EDGE:
         changed.remove(portable_support)
-    requirements = "tests/portable/requirements.txt"
-    if requirements in changed and (
-        source_tree[requirements], current_tree[requirements],
-    ) == _REVIEWED_TIMEOUT_REQUIREMENTS_GIT_EDGE:
-        changed.remove(requirements)
     if (
         missing
         or added != set(_FROZEN_CURRENT_EXACT_PATHS)

@@ -79,9 +79,10 @@ jobs:
 
       - name: Run the portable certification suite
         env:
-          PYTEST_ADDOPTS: ${{ runner.os == 'Windows' && '--timeout=120 --session-timeout=600 --durations=30 -vv' || '' }}
+          PYTEST_ADDOPTS: ${{ runner.os == 'Windows' && '--durations=30 -vv' || '' }}
         run: >-
-          python -m pytest -q -p no:cacheprovider --import-mode=importlib
+          python -c "import faulthandler, os; faulthandler.dump_traceback_later(600, exit=True) if os.name == 'nt' else None; import pytest; raise SystemExit(pytest.main())"
+          -q -p no:cacheprovider --import-mode=importlib
           --confcutdir=tests/portable
           --ignore=tests/portable/rm0008_2a_acceptance
           tests/portable
