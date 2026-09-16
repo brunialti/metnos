@@ -342,6 +342,10 @@ def test_runtime_factory_builds_unique_workers_and_owned_lane_resources(
     )
 
     with DurableWorkloadStore.open(tmp_path / "state.sqlite3") as store:
+        def no_migration(_connection):
+            pytest.fail("ready lane bindings must not repeat full migrations")
+
+        monkeypatch.setattr("durable_workloads.artifacts.migrate", no_migration)
         first = factory.worker(store)
         second = factory.worker(store)
         assert first.worker_id != second.worker_id
@@ -362,7 +366,12 @@ def test_runtime_factory_builds_unique_workers_and_owned_lane_resources(
         assert artifacts._repository._owns_connection is False
 
 
-def test_runtime_factory_executes_an_admitted_generic_source_workload(tmp_path):
+def test_runtime_factory_executes_an_admitted_generic_source_workload(tmp_path, monkeypatch):
+    clock = [100.0]
+    monkeypatch.setattr(
+        "durable_workloads.runtime_bindings.time",
+        SimpleNamespace(monotonic=lambda: clock[0]),
+    )
     schema_name = "tests.factory-source/1"
     schema = ApprovedOutputSchema.create(
         schema_name,
@@ -460,7 +469,9 @@ def test_runtime_factory_executes_an_admitted_generic_source_workload(tmp_path):
         bridge = factory.bridge(store)
         try:
             bridge.run_once(worker)
-            bridge._next_maintenance = 0.0
+            # Advance the real maintenance contract, not a per-bridge private
+            # deadline: newly opened lanes now share the same factory cadence.
+            clock[0] += 61
             bridge.run_once(worker)
         finally:
             bridge.close()

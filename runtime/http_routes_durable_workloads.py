@@ -38,7 +38,9 @@ _MAX_COMMAND_BODY_BYTES = 4096
 _SSE_MAX_PER_OWNER = 4
 _SSE_MAX_TOTAL = 128
 _DURABLE_ERROR_MESSAGE_KEYS = {
-    "budget_exhausted": "UI_DURABLE_ERROR_BUDGET_EXHAUSTED",
+    "budget_accounting_incomplete": "UI_DURABLE_ERROR_ACCOUNTING_INCOMPLETE",
+    "usage_accounting_incomplete": "UI_DURABLE_ERROR_ACCOUNTING_INCOMPLETE",
+    "budget_exhausted": "UI_DURABLE_ERROR_BUDGET_GUARD",
     "cancelled": "UI_DURABLE_ERROR_CANCELLED",
     "capability_unavailable": "UI_DURABLE_ERROR_CAPABILITY_UNAVAILABLE",
     "contract_violation": "UI_DURABLE_ERROR_CONTRACT_VIOLATION",
@@ -290,6 +292,7 @@ async def workload_console(request: web.Request) -> web.Response:
         "draft", "admitted", "queued", "running", "pause_requested",
         "paused", "cancel_requested", "cancelled", "needs_attention",
         "failed", "completed_with_errors", "completed",
+        "pending", "leased", "retry_wait", "committed", "failed_permanent", "skipped",
     )
     priority_keys = ("low", "normal", "high")
     stage_type_keys = ("inventory", "map", "reduce", "validate", "publish")
@@ -299,6 +302,20 @@ async def workload_console(request: web.Request) -> web.Response:
     )
     resource_keys = ("cpu", "device", "llm", "local_io", "network_io", "vlm")
     copy = {
+        **{
+            key: message("UI_DURABLE_" + code)
+            for key, code in {
+                "engine": "ENGINE", "engineReady": "ENGINE_READY",
+                "engineDisabled": "ENGINE_DISABLED", "engineUnavailable": "ENGINE_UNAVAILABLE",
+                "fresh": "FRESH", "stale": "STALE", "refresh": "REFRESH",
+                "activity": "ACTIVITY", "technical": "TECHNICAL", "saved": "SAVED",
+                "pending": "PENDING", "failedCount": "FAILED_COUNT", "skipped": "SKIPPED",
+                "attention": "ATTENTION", "blockedHelp": "BLOCKED_HELP",
+                "waitingHelp": "WAITING_HELP", "progressHelp": "PROGRESS_HELP",
+                "lastResult": "LAST_RESULT", "noResult": "NO_RESULT",
+                "attempts": "ATTEMPTS",
+            }.items()
+        },
         "empty": message("UI_DURABLE_EMPTY"),
         "state": message("UI_DURABLE_STATE"),
         "priority": message("UI_DURABLE_PRIORITY"),

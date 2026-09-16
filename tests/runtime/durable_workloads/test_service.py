@@ -30,6 +30,13 @@ class _Store:
         self.completed = [0]
         self.pruned = [0]
         self.closed = False
+        self.peer_factory = _Store
+
+    def open_peer(self):
+        return self.peer_factory()
+
+    def service_lane_demand(self, *, limit: int, resource_limits=None) -> int:
+        return limit
 
     def adopt_reusable_results(self, *, limit: int) -> int:
         assert 1 <= limit <= 1000
@@ -441,6 +448,7 @@ def test_parallel_service_uses_bounded_central_lanes_and_thread_owned_stores(
 
     def store_factory(_path):
         store = _Store()
+        store.peer_factory = lambda: store_factory(_path)
         with factory_guard:
             stores.append(store)
         return store

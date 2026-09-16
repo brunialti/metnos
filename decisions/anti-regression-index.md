@@ -85,6 +85,11 @@
   linea se l'ammissione fallisce. Guard: `tests/runtime/durable_workloads/`,
   `tests/runtime/test_lre_submission.py` e
   `tests/runtime/engine/test_engine_core.py`.
+- **LRE inattivo senza contesa e progressi verificabili** (ADR 0213, 16/9/2026):
+  domanda in sola lettura, presenza aggiornata anche da disabilitato,
+  manutenzione indipendente dall'esecuzione e consumi sconosciuti bloccanti.
+  Guard: `test_service_idle.py`, `test_execution_accounting_safety.py`,
+  `test_service_parallel_progress.py`, `test_durable_console_behavior.py`.
 - **Tutor F2 pre-planner senza contaminazione** (ADR 0197-0198, RM-0003):
   `runtime/tutor_boundary.py` è l'unico adapter HTTP/Telegram; il detector
   richiede due segnali dal `detection_lexicon`, esclude allegati/segreti e

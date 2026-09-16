@@ -339,3 +339,36 @@ deployment all passed their recorded checks. Detailed private evidence is in
 F13 and permits RM-0004 to move to `implemented`; it does not change the
 default-disabled admission policy or promise exactly-once execution of
 arbitrary external effects.
+
+## Amendment — quiescent supervision and honest progress (2026-09-16)
+
+A live supervisor is not evidence of advancing work. Empty or attention-only
+queues must not repeatedly launch every hardware-derived lane. A bounded,
+read-only demand hint sizes lane submissions against the frozen per-workload
+concurrency and the central scheduler's host resource ceilings. Worker
+capabilities are per-invocation limits, not host-wide capacity. The authoritative
+claim, reservations, owner checks and fencing remain unchanged. Negative hints
+are cached only for a quiescent database, invalidated by SQLite data_version
+and connection total_changes. Active controls and outstanding leases retain
+a maintenance lane, including leases on attention-only workloads.
+
+The primary store migrates and checks integrity at startup. Worker connections
+use its existing independently validated open_peer path rather than repeating
+full migration checks. Disabled supervision refreshes feature_disabled health;
+this exemption does not refresh fatal or overdue-execution states. Retention
+and authorization reconciliation run independently of execution, with a shared
+factory cadence so rebuilding lane bindings cannot multiply those operations.
+
+Only a refusal proven to precede executor transport can certify no child model
+call. A missing child envelope after dispatch remains unknown usage and blocks
+automatic progress. Accounting-incomplete errors carry a distinct message and
+retain the bounded underlying error code where available. Historical unknown
+usage is not cleared, budgets are not increased, and failures are not replayed
+by this change.
+
+Console progress counts committed results only; errors, attention and skips
+remain separate. The last committed timestamp comes from actual result records,
+including adopted results, never generic updated_at. Presence, disabled state,
+work state and stale observations are separate. Read APIs remain owner-scoped.
+This amendment records candidate behavior, not deployment certification; live
+release and end-to-end evidence must be recorded separately.

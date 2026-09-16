@@ -142,7 +142,8 @@ def _schemas():
     ))
 
 
-def _admit(path, resolver, *, count=6, max_concurrency=3, resource="cpu"):
+def _admit(path, resolver, *, count=6, max_concurrency=3, resource="cpu",
+           request_key="parallel-progress"):
     candidate = plan(with_map=True)
     candidate["budgets"]["max_concurrency"] = max_concurrency
     mapping = candidate["stages"][1]
@@ -154,7 +155,7 @@ def _admit(path, resolver, *, count=6, max_concurrency=3, resource="cpu"):
         mapping["invalidation_keys"].extend(["model_binding.digest", "prompt.digest"])
     with DurableWorkloadStore.open(path) as store:
         draft = store.create_draft(
-            "fixture-owner", "parallel-progress",
+            "fixture-owner", request_key,
             redacted_request={"summary": "Synthetic independent work"},
         )
         admitted = admit_candidate(
@@ -182,10 +183,19 @@ def _launch(path, resolver, invoke, *, poll_interval_s=10, parallel_workers=None
     stores = []
     guard = Lock()
 
+    class TrackedStore(DurableWorkloadStore):
+        def open_peer(self):
+            peer = super().open_peer()
+            # Count supervisor-created lanes, not each lane's lease-heartbeat
+            # connection (which was never opened via the old store factory).
+            if self is stores[0]:
+                with guard:
+                    stores.append(peer)
+            return peer
+
     def store_factory(selected_path):
-        store = DurableWorkloadStore.open(selected_path)
-        with guard:
-            stores.append(store)
+        store = TrackedStore.open(selected_path)
+        stores.append(store)
         return store
 
     service = DurableWorkerService(

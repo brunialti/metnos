@@ -500,7 +500,10 @@ class DurableWorkerService:
         bridge = None
         registered = False
         try:
-            store = self._store_factory(self._store_path)
+            assert self._store is not None
+            # Startup already migrated and checked the database. Each lane
+            # still opens and validates its own thread-owned connection.
+            store = self._store.open_peer()
             if self._worker_factory is None or self._bridge_factory is None:
                 raise RuntimeError("durable parallel bindings are unavailable")
             worker = self._worker_factory(store)
@@ -586,12 +589,30 @@ class DurableWorkerService:
 
         from executor_scheduler import (
             SchedulerOrchestrationSaturated,
+            orchestration_resource_limits,
             submit_orchestration,
         )
 
         with self._parallel_guard:
             busy_lanes = set(self._parallel_futures.values())
+        assert self._store is not None
+        try:
+            demand = self._store.service_lane_demand(
+                limit=self._effective_parallel_workers,
+                resource_limits=orchestration_resource_limits(),
+            )
+        except Exception:
+            self._consecutive_cycle_failures += 1
+            self._set_health(DurableServiceState.DEGRADED, "worker_cycle_failed")
+            log.exception("durable_worker_demand_failed")
+            if self._consecutive_cycle_failures >= 3:
+                raise RuntimeError("durable worker demand failed repeatedly")
+            return
+        if not busy_lanes and demand == 0:
+            self._consecutive_cycle_failures = 0
         for lane in range(self._effective_parallel_workers):
+            if len(busy_lanes) >= demand:
+                break
             if lane in busy_lanes:
                 continue
             with self._parallel_guard:
@@ -744,6 +765,21 @@ class DurableWorkerService:
             self._health.state != DurableServiceState.READY.value
             and self._health.reason_code != "worker_cycle_failed"
         ):
+            if self._health.reason_code == "feature_disabled":
+                # Disabled is an intentional live sentinel, not a hung worker.
+                # Do not refresh fatal/deadline failures that require recovery.
+                self._set_health(DurableServiceState.DEGRADED, "feature_disabled")
+            return
+        try:
+            maintain = getattr(self._bridge, "maintain", None)
+            if callable(maintain):
+                maintain()
+        except Exception:
+            self._consecutive_cycle_failures += 1
+            self._set_health(DurableServiceState.DEGRADED, "worker_cycle_failed")
+            log.exception("durable_worker_maintenance_failed")
+            if self._consecutive_cycle_failures >= 3:
+                raise RuntimeError("durable worker maintenance failed repeatedly")
             return
         if self._effective_parallel_workers > 1:
             self._run_parallel_cycle()
@@ -751,6 +787,11 @@ class DurableWorkerService:
         assert self._worker is not None
         assert self._bridge is not None
         try:
+            assert self._store is not None
+            if self._store.service_lane_demand(limit=1) == 0:
+                self._consecutive_cycle_failures = 0
+                self._set_health(DurableServiceState.READY, "none")
+                return
             outcome = self._with_health_pulse(
                 lambda: self._bridge.run_once(self._worker),
                 state=DurableServiceState.READY,
