@@ -228,8 +228,10 @@ I dati restituiti da un executor non possono scegliere la destinazione.</p>
 <h2 id="esiti">Risultati, errori e registri</h2>
 
 <p>La console LRE ricava l'avvio dai tentativi realmente eseguiti nella revisione
-corrente, non dalla creazione del lavoro. La percentuale misura le unità salvate
-tra quelle note e resta sotto il 100% fino al completamento. Un'unica lettura
+corrente, non dalla creazione del lavoro. Una tabella compatta separa batch
+completati e previsti nella fase corrente dal totale noto di tutte le fasi, che
+può crescere. La percentuale principale riguarda la fase indicata come x/y,
+non il tempo; quella aggregata rimane nei dettagli tecnici. Un'unica lettura
 aggregata per pagina, circoscritta al proprietario, ricava una fine prevista
 indicativa della sola fase corrente già interamente materializzata, con almeno
 tre risultati della stessa fase sufficientemente recenti. Non somma fasi diverse:
@@ -240,9 +242,21 @@ con un motivo; un lavoro da verificare ha precedenza sugli altri motivi.</p>
 <p>L'analisi foto richiede una risposta del modello vincolata a uno schema e
 la convalida nuovamente prima di salvare. Una risposta troncata non diventa un
 risultato riuscito; il consumo effettivo resta registrato, senza aumentare
-automaticamente il limite né ripetere la chiamata. La diagnostica LRE conserva
+automaticamente il limite. Il dominio distingue descrizione indisponibile,
+troncata, non valida o vuota e dichiara una causa recuperabile; uno schema di
+richiesta non valido richiede invece una verifica. Non ripete la chiamata al
+proprio interno: LRE applica i tentativi e gli effetti già ammessi. La diagnostica LRE conserva
 solo codici dichiarati nello schema di uscita approvato e cause enumerate del
 caricatore, mai testo arbitrario delle eccezioni.</p>
+
+<p>Nel motore generale, l'esaurimento dei tentativi per un errore recuperabile
+porta a <strong>Richiede attenzione</strong>, conservando batch in attesa e
+risultati confermati. Una causa ignota richiede verifica senza retry automatici;
+errori permanenti espliciti e violazioni di contratto restano non recuperabili.
+La decisione di riprovare autorizza un solo tentativo, non un ciclo illimitato.
+Contabilità, autorizzazioni e sicurezza degli effetti restano obbligatorie.
+Lo storico può mostrare la causa approvata del tentativo senza confonderla con
+gli elementi che hanno prodotto un esito negativo di dominio.</p>
 
 <p>Il controllo delle cartelle vuote lasciate da una pubblicazione interrotta
 usa una lettura condivisa: altri lettori non rendono il catalogo non valido,

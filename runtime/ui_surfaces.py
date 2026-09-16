@@ -388,8 +388,8 @@ SURFACES: tuple[UiSurfaceSpec, ...] = (
         "Console for long-running work submitted to LRE, including progress, limits, events, and artifacts.",
         visible_it=(
             "elenco dei lavori visibili al proprietario, con attività, cartella disponibile, stato e avanzamento; fase osservata nel dettaglio",
-            "blocchi in esecuzione e limite di concorrenza del lavoro, distinti dai thread e dai processi",
-            "avvio effettivo della revisione, percentuale sulle unità note e fine prevista indicativa; n.a. per dati non disponibili o stima non affidabile, inclusi i lavori multifase",
+            "batch in esecuzione e limite di concorrenza del lavoro, distinti dai thread e dai processi",
+            "fase x/y e tabella valore/significato: batch completati e previsti nella fase corrente, totale noto di tutte le fasi, percentuale della fase, avvio effettivo e fine stimata della fase; n.a. e motivo quando non disponibile",
             "dettaglio del lavoro e della revisione selezionata",
             "digest di piano e inventario",
             "budget ammessi per unità, tentativi, tempo, byte, token, artefatti e concorrenza",
@@ -398,8 +398,8 @@ SURFACES: tuple[UiSurfaceSpec, ...] = (
         ),
         visible_en=(
             "owner-visible workload list with activity, available folder, state and progress; observed phase in detail",
-            "running units and workload concurrency limit, distinct from threads and processes",
-            "actual revision start, known-unit percentage and indicative finish estimate; n.a. for unavailable data or unreliable estimates, including multi-phase jobs",
+            "running batches and workload concurrency limit, distinct from threads and processes",
+            "phase x/y and value/meaning table: completed and total batches in the current phase, known total across phases, phase percentage, actual start and phase finish estimate; n.a. and a reason when unavailable",
             "selected workload and revision detail",
             "plan and inventory digests",
             "admitted budgets for units, attempts, time, bytes, tokens, artifacts, and concurrency",
@@ -418,7 +418,7 @@ SURFACES: tuple[UiSurfaceSpec, ...] = (
         procedure_it=(
             "Nella chat web apri Settings > Sistema > LRE. La console serve a osservare e governare i lavori; non abilita LRE e non crea un lavoro.",
             "Nell'elenco seleziona il lavoro tramite attività, cartella e stato.",
-            "Nel dettaglio verifica stato, fase, tempi e blocchi in esecuzione. Durante la scansione iniziale delle foto il totale definitivo non è noto: percentuale e stima sono n.a. Consulta poi i dettagli tecnici per piano e limiti.",
+            "Nel dettaglio verifica fase x/y, tabella dei batch e stima della fase. Il totale noto di tutte le fasi può crescere e non misura il tempo. Senza totale definitivo percentuale e stima sono n.a. Consulta i dettagli tecnici per piano e limiti.",
             "Usa la timeline per seguire i cambiamenti. Carica unità in errore o in attesa di attenzione soltanto quando devi diagnosticare un arresto.",
             "Pausa, ripresa, annullamento e ritentativo compaiono soltanto negli stati che li ammettono. La pagina può essere chiusa: il worker continua in modo indipendente.",
             "Quando il lavoro termina, verifica nome, dimensione, digest e stato di convalida dell'artefatto prima di scaricarlo.",
@@ -426,7 +426,7 @@ SURFACES: tuple[UiSurfaceSpec, ...] = (
         procedure_en=(
             "In the web chat, open Settings > System > LRE. The console observes and controls workloads; it neither enables LRE nor creates a workload.",
             "Select a workload in the list by activity, folder and state.",
-            "In the detail, check state, phase, timing and running units. During initial photo discovery the final total is unknown: percentage and estimate are n.a. Then inspect technical details for the plan and limits.",
+            "In the detail, check phase x/y, the batch table and phase estimate. The known total across phases may grow and does not measure time. Without a final total, percentage and estimate are n.a. Inspect technical details for the plan and limits.",
             "Use the timeline to follow changes. Load failed or attention-required units only when diagnosing halted progress.",
             "Pause, resume, cancel, and retry appear only in states that allow them. You may close the page: the worker continues independently.",
             "When the workload finishes, verify the artifact name, size, digest, and validation state before downloading it.",

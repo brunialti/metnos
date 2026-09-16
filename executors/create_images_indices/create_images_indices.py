@@ -27,7 +27,10 @@ from image_index_build import (  # noqa: E402
     analysis_identity, classify_folder_context, folder_label,
 )
 from index_schema import INDEX_SCHEMA_VERSION, image_corpus_dir  # noqa: E402
-from image_index_outcomes import DECODE_FAILURE_CODES, failure_description  # noqa: E402
+from image_index_outcomes import (  # noqa: E402
+    DECODE_FAILURE_CODES, DESCRIPTION_FAILURE_CLASSES,
+    description_failure_code, failure_description,
+)
 from messages import get as _msg  # noqa: E402
 from parallel_walk import parallel_walk  # noqa: E402
 
@@ -178,8 +181,8 @@ def _build_entry(snapshot: Path, original: Path, source: dict, *, face_engine, i
             entry["landmarks"] = [[float(value) for value in point] for point in landmarks]
         faces_out.append(entry)
     vlm = _call_vlm(snapshot, original_path=original)
-    if vlm.get("_vlm_error") or not isinstance(vlm.get("description"), str) or not vlm["description"].strip():
-        raise ImageIndexBuildError("image_description_unavailable")
+    if code := description_failure_code(vlm):
+        raise ImageIndexBuildError(code)
     return {
         **_source_entry(original, source), "indexing_status": "indexed",
         "image_w": int(width), "image_h": int(height),
@@ -209,8 +212,9 @@ def _analyze_one(store, record, *, context, identity, force):
         return store.analysis(entry, vectors, models, source, identity=identity, reused=True)
 
     # Only the decoder's two explicit file outcomes are recoverable here.
-    # Authority, source changes, model/usage failures and resource limits are
-    # still fatal. Never manufacture semantic vectors from an error message.
+    # Authority, source changes, model/usage failures and resource limits still
+    # fail the attempt. LRE, not this loop, decides whether another attempt is
+    # safe. Never manufacture semantic vectors from an error message.
     try:
         image, exif = _open_image_with_exif(snapshot)
     except ImageIndexBuildError as error:
@@ -262,7 +266,8 @@ def _analyze_one(store, record, *, context, identity, force):
 
 def _error(code, *, key="ERR_DURABLE_EXECUTION_FAILED", **parameters):
     return {"ok": False, "entries": [], "error_code": code,
-            "error_class": "invalid_input" if code.endswith("invalid") else "execution_failed",
+            "error_class": DESCRIPTION_FAILURE_CLASSES.get(
+                code, "invalid_input" if code.endswith("invalid") else "execution_failed"),
             "error": _msg(key, **parameters)}
 
 

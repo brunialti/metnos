@@ -395,7 +395,8 @@ def test_inventory_diagnostic_cause_chain_and_output_are_bounded():
     ({"type": "string", "enum": ["specific_failure"]}, {"secret": "private"}, "unknown"),
 ])
 @pytest.mark.parametrize(("error_class", "retry"), [
-    ("execution_failed", "never"), ("network", "automatic"), ("permission_denied", "manual"),
+    ("execution_failed", "manual"), ("network", "automatic"), ("permission_denied", "manual"),
+    ("executor_permanent", "never"), ("invalid_input", "never"),
 ])
 def test_observation_error_code_requires_exact_approved_enum(field, reported, expected, error_class, retry):
     schema = ApprovedOutputSchema.create("tests.diagnostic/1", {
@@ -425,9 +426,32 @@ def test_observation_unknown_error_class_is_not_copied_into_diagnostic():
     assert payload["details_redacted"] == {
         "reported_error_class": "unknown", "reported_error_code": "unknown",
     }
-    assert payload["error_class"] == "executor_permanent"
-    assert payload["retry"] == "never"
+    assert payload["error_class"] == "executor_unknown"
+    assert payload["retry"] == "manual"
     assert "private" not in failure.error.payload_json
+
+
+@pytest.mark.parametrize(("reported", "expected", "retry"), [
+    ("timeout", "executor_transient", "automatic"),
+    ("rate_limited", "executor_transient", "automatic"),
+    ("provider_unavailable", "executor_transient", "automatic"),
+    ("executor_transient", "executor_transient", "automatic"),
+    ("execution_failed", "executor_unknown", "manual"),
+    (None, "executor_unknown", "manual"),
+    ({"private": "data"}, "executor_unknown", "manual"),
+    ("capability_unavailable", "capability_unavailable", "manual"),
+    ("budget_exhausted", "budget_exhausted", "manual"),
+    ("publication_ambiguous", "publication_ambiguous", "manual"),
+    ("invalid_input", "executor_permanent", "never"),
+    ("executor_permanent", "executor_permanent", "never"),
+    ("schema_mismatch", "contract_violation", "never"),
+])
+def test_general_error_taxonomy_never_guesses_recoverability(reported, expected, retry):
+    bridge = DurableExecutionBridge(SimpleNamespace(), runners=_ExactResolver(), output_schemas=_schemas())
+    failure = bridge._observation_failure({"ok": False, "error_class": reported},
+                                           _schemas().resolve("metnos.test-map/1"))
+    assert failure.error.error_class == expected
+    assert json.loads(failure.error.payload_json)["retry"] == retry
 
 
 @pytest.mark.parametrize(("lifecycle", "dormant", "code"), [

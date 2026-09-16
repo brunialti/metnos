@@ -633,3 +633,40 @@ owner/revision boundaries, missing coverage/accounting, retry count, terminal
 reopen and totals beyond the category limit), `test_image_indexing_e2e.py`
 (mixed photo corpus and real durable restart with synthetic model responses),
 `test_durable_console_behavior.py` (Node and real isolated Chromium IT/EN).
+
+## 16 September 2026 — bounded recovery without cancelling the remaining queue
+
+User-approved policy: a declared retryable error uses only the admitted number
+of automatic attempts and only for a safe effect profile. Exhausting those
+attempts is not evidence that the cause is permanent: the unit and workload
+enter `needs_attention`. Pending batches and committed results remain stored;
+there is no implicit cancellation of their queue. The same rule covers an
+exhausted recoverable lease. An explicit retry decision grants one attempt,
+not a reset of the automatic allowance. A further failure requires review again.
+
+Missing or opaque failure classification and uncaught adapter exceptions become
+`executor_unknown`, with manual review and no automatic retry. Explicit invalid
+input, permanent failures and contract violations remain non-retryable; a plan
+cannot turn those classes into automatic retries. Unknown consumption, budgets,
+clock regression, capability changes and ambiguous effects retain precedence.
+No authority, source, accounting, fencing or frozen-contract check is bypassed.
+
+The persisted error receipt reflects `retry=manual` when attention is required.
+Historical categories may include `cause_code`, but only the bounded approved
+runner code already saved by the execution bridge; arbitrary diagnostic text is
+not projected. Counts remain attempts, distinct from `domain_errors.nitems`.
+The kernel contains no image-specific decision. It does not reopen old terminal
+jobs or rewrite their approved contracts.
+
+Console details use a compact localized value/meaning table: completed batches
+and total batches for the active phase, known total across materialized phases,
+phase percentage, revision start and phase finish estimate. Phase numbering and
+the existing conservative estimate remain authoritative; no time percentage is
+invented. Missing data stays `n.a.`. HTTP chat turns make registered internal
+page paths clickable, including saved LRE receipts, without changing their plain
+text, Telegram formatting or access checks.
+
+Regression evidence includes exhaustion/restart/manual-grant integration tests,
+synthetic image end-to-end tests with one and three model failures, and isolated
+Chromium IT/EN desktop/mobile checks. Installed release and real checks are
+recorded separately in `internal/reports/lre-error-resilience-20260916.md`.

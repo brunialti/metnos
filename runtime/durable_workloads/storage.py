@@ -67,6 +67,7 @@ from .models import (
 )
 from .schema import (
     ERROR_SCHEMA_VERSION,
+    MAX_ERROR_JSON_BYTES,
     MAX_EVENT_JSON_BYTES,
     MAX_PLAN_JSON_BYTES,
     MAX_SNAPSHOT_JSON_BYTES,
@@ -4355,14 +4356,19 @@ class DurableWorkloadStore:
         """Historical technical errors, independent of final domain item outcomes.
 
         Writer paths persist canonical StructuredAttemptError values. Read only
-        their versioned, bounded machine codes, never messages or details. The
+        their versioned, bounded machine codes and approved runner cause, never
+        messages or arbitrary details. The
         revision's units lead the indexed attempt lookup even without planner
         statistics; no scan of an owner's unrelated attempt history is needed.
         """
         rows = self._connection.execute(
             """
             WITH error_facts AS MATERIALIZED (
-                SELECT json_extract(attempt.structured_error_json, '$.code') AS code
+                SELECT json_extract(attempt.structured_error_json, '$.code') AS code,
+                       CASE WHEN json_extract(attempt.structured_error_json, '$.code')='execution.runner_failed'
+                         AND json_type(attempt.structured_error_json, '$.details_redacted.reported_error_code')='text'
+                       THEN json_extract(attempt.structured_error_json, '$.details_redacted.reported_error_code')
+                       END AS reported_cause
                 FROM units unit CROSS JOIN attempts attempt
                 WHERE unit.owner_user_id=? AND unit.revision_id=?
                   AND attempt.owner_user_id=unit.owner_user_id
@@ -4375,26 +4381,34 @@ class DurableWorkloadStore:
                   AND json_extract(attempt.structured_error_json, '$.schema_version')=?
                   AND json_extract(attempt.structured_error_json, '$.scope')='attempt'
                   AND json_type(attempt.structured_error_json, '$.code')='text'
-            ), categories AS (
-                SELECT code, COUNT(*) AS count
+            ), bounded_facts AS (
+                SELECT code, CASE WHEN reported_cause<>'unknown'
+                    AND length(reported_cause) BETWEEN 3 AND 96
+                    AND length(CAST(reported_cause AS BLOB))=length(reported_cause)
+                    AND reported_cause GLOB '[a-z]*'
+                    AND reported_cause NOT GLOB '*[^a-z0-9_.-]*'
+                    THEN reported_cause END AS cause
                 FROM error_facts
                 WHERE length(code) BETWEEN 3 AND 96
                   AND length(CAST(code AS BLOB))=length(code)
                   AND code GLOB '[a-z]*'
                   AND code NOT GLOB '*[^a-z0-9_.-]*'
-                GROUP BY code
+            ), categories AS (
+                SELECT code, cause, COUNT(*) AS count FROM bounded_facts
+                GROUP BY code, cause
             )
-            SELECT code, count, SUM(count) OVER () AS nattempts,
+            SELECT code, cause, count, SUM(count) OVER () AS nattempts,
                    COUNT(*) OVER () AS category_count
             FROM categories
-            ORDER BY count DESC, code ASC
+            ORDER BY count DESC, code ASC, cause ASC
             LIMIT 20
             """, (owner, revision_id, ERROR_SCHEMA_VERSION),
         ).fetchall()
         return {
             "nattempts": int(rows[0]["nattempts"]) if rows else 0,
             "categories": [
-                {"error_code": str(row["code"]), "count": int(row["count"])}
+                {"error_code": str(row["code"]), "count": int(row["count"]),
+                 **({"cause_code": str(row["cause"])} if row["cause"] is not None else {})}
                 for row in rows
             ],
             "truncated": bool(rows and int(rows[0]["category_count"]) > len(rows)),
@@ -8711,6 +8725,15 @@ class DurableWorkloadStore:
                 # accounting and time are authoritative.
                 derived = RetryDecision.NEEDS_ATTENTION
 
+            if derived is RetryDecision.NEEDS_ATTENTION:
+                payload = json.loads(structured_error.payload_json)
+                if payload["retry"] in {"automatic", "never"}:
+                    payload["retry"] = "manual"
+                    structured_error = StructuredAttemptError(
+                        structured_error.error_class,
+                        canonical_json(payload, max_bytes=MAX_ERROR_JSON_BYTES),
+                    )
+
             next_attempt_at: str | None = None
             if derived is RetryDecision.RETRY:
                 delay = deterministic_retry_delay_ms(
@@ -8971,7 +8994,7 @@ class DurableWorkloadStore:
         ).fetchone()
         if possible is None:
             return ReconcileOutcome()
-        expired = returned = retrying = permanent = attention = 0
+        expired = returned = retrying = attention = 0
         with self._transaction() as connection:
             rows = connection.execute(
                 """
@@ -9067,7 +9090,7 @@ class DurableWorkloadStore:
                 elif manual_retry:
                     retry_mode = "manual"
                 elif attempt_number >= policy.max_attempts:
-                    retry_mode = "manual" if before_execution else "never"
+                    retry_mode = "manual"
                 error = StructuredAttemptError.create(
                     "lease_lost",
                     code=error_code,
@@ -9140,9 +9163,9 @@ class DurableWorkloadStore:
                         target = "retry_wait"
                         retrying += 1
                     else:
-                        target = "failed_permanent"
+                        target = "needs_attention"
                         next_attempt_at = None
-                        permanent += 1
+                        attention += 1
                 changed_unit = connection.execute(
                     """
                     UPDATE units
@@ -9191,7 +9214,7 @@ class DurableWorkloadStore:
             expired=expired,
             returned_pending=returned,
             retry_scheduled=retrying,
-            failed_permanent=permanent,
+            failed_permanent=0,
             needs_attention=attention,
             retry_promoted=promoted,
         )

@@ -108,7 +108,7 @@ def _schema(name: str, entry: Mapping, *, extra: Mapping | None = None, required
 
 def output_schemas() -> OutputSchemaRegistry:
     from image_index_build import GROUP_SIZE
-    from image_index_outcomes import DECODE_FAILURE_CODES
+    from image_index_outcomes import DECODE_FAILURE_CODES, DESCRIPTION_FAILURE_CLASSES
     from .domain_outcome import DOMAIN_OUTCOME_SCHEMA
 
     error_counts = {
@@ -123,6 +123,7 @@ def output_schemas() -> OutputSchemaRegistry:
     # Diagnostic authority stays in the approved schema, not in the bridge
     # or a parallel runtime registry. Values are existing executor outcomes.
     error_code = {"type": "string", "enum": [
+        *sorted(DESCRIPTION_FAILURE_CLASSES),
         "active_generation_changed", "analysis_checkpoint_invalid", "analysis_group_invalid", "args_not_object",
         "artifact_size_or_type", "artifact_too_large", "base_path_invalid",
         "base_path_missing", "coverage_mismatch", "directory_unavailable",
@@ -132,7 +133,7 @@ def output_schemas() -> OutputSchemaRegistry:
         "face_embedding_unavailable", "face_model_unavailable",
         "folder_classification_invalid", "folder_contexts_invalid", "folder_label_invalid",
         "generation_context_mismatch", "generation_incomplete", "generation_invalid",
-        "generation_receipt_conflict", "image_corpus_empty", "image_description_unavailable",
+        "generation_receipt_conflict", "image_corpus_empty",
         "image_index_phase_failed", "image_decode_failed", "image_format_unreadable",
         "image_model_unavailable", "immutable_artifact_conflict",
         "incomplete_analysis", "invalid_indexing_failure", "inventory_limits_invalid", "max_files_invalid",

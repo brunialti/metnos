@@ -36,6 +36,17 @@ def test_image_diagnostic_enum_covers_literal_failures_and_versions_the_schemas(
             and node.args and isinstance(node.args[0], ast.Constant)
             and isinstance(node.args[0].value, str)
         )
+    # Description diagnostics are selected centrally from closed literal
+    # returns, rather than embedded in exception calls at each caller.
+    tree = ast.parse((root / "runtime/image_index_outcomes.py").read_text())
+    classifier = next(node for node in tree.body
+                      if isinstance(node, ast.FunctionDef) and node.name == "description_failure_code")
+    description_codes = {node.value.value for node in ast.walk(classifier)
+                         if isinstance(node, ast.Return) and isinstance(node.value, ast.Constant)
+                         and isinstance(node.value.value, str)}
+    from image_index_outcomes import DESCRIPTION_FAILURE_CLASSES
+    assert description_codes == set(DESCRIPTION_FAILURE_CLASSES)
+    emitted.update(description_codes)
     assert emitted == codes
     for name in (indexing.DISCOVERY_SCHEMA, indexing.PART_SCHEMA, indexing.PUBLISHED_SCHEMA):
         assert name.endswith("/3")

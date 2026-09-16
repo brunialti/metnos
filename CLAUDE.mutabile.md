@@ -6,6 +6,14 @@
 
 ## S. Stato corrente (15/9/2026)
 
+- **Resilienza LRE — candidato verificato, rilascio in corso** (16/9,
+  ADR 0213/0117): errori dichiarati recuperabili riprovati entro il contratto;
+  esaurimento e cause opache richiedono attenzione senza distruggere la coda.
+  Restano vincolanti contabilità, autorità ed effetti; la riprova manuale
+  concede un solo tentativo. Console IT/EN con tabella dei batch per fase e
+  collegamento dalla chat. Evidenze e stato della pubblicazione:
+  `internal/reports/lre-error-resilience-20260916.md`.
+
 - **Esiti negativi tipizzati LRE e foto — installato, release 62** (16/9,
   ADR 0213/0117): il nucleo riceve `domain_outcome` esplicitamente approvato,
   conta solo unità originatrici confermate e chiude con errori senza allentare

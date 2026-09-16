@@ -69,9 +69,11 @@ _CAPABILITY_ERRORS = frozenset({
     "placement", "permission_denied", "capability_unavailable",
     "missing_source_context",
 })
+_PERMANENT_ERRORS = frozenset({"invalid_input", "executor_permanent"})
 _REPORTED_ERROR_CLASSES = (
     _TRANSIENT_ERRORS | _CONTRACT_ERRORS | _CAPABILITY_ERRORS
-    | {"budget_exhausted", "publication_ambiguous", "execution_failed", "invalid_input"}
+    | _PERMANENT_ERRORS
+    | {"budget_exhausted", "publication_ambiguous", "execution_failed", "executor_unknown"}
 )
 _REPORTED_ERROR_CODE_RE = re.compile(r"[A-Za-z][A-Za-z0-9_.-]{0,95}\Z")
 _SOURCE_AUTHORITY_RE = re.compile(r"[a-z0-9][a-z0-9._:-]{0,63}")
@@ -952,8 +954,12 @@ class DurableExecutionBridge:
             error_class, retry = "contract_violation", "never"
         elif observed in _CAPABILITY_ERRORS:
             error_class, retry = "capability_unavailable", "manual"
-        else:
+        elif observed in _PERMANENT_ERRORS:
             error_class, retry = "executor_permanent", "never"
+        else:
+            # Missing/opaque diagnostics prove neither transience nor
+            # permanence. Never retry blindly or cancel the remaining work.
+            error_class, retry = "executor_unknown", "manual"
         # Only this attempt's already verified schema can name diagnostic
         # codes. A string/pattern schema is not a closed vocabulary, and a
         # syntactically plausible observation is never authority by itself.
@@ -1183,10 +1189,10 @@ class DurableExecutionBridge:
             )
         except Exception as exc:
             invocation_failure = self._failure(
-                "executor_permanent",
+                "executor_unknown",
                 code="execution.unhandled_exception",
                 message_key="ERR_DURABLE_EXECUTION_FAILED",
-                retry="never",
+                retry="manual",
                 details={"exception_type": type(exc).__name__[:64]},
             )
 

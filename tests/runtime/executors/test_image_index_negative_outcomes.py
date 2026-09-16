@@ -98,6 +98,32 @@ def test_non_decoder_errors_are_not_suppressed(corpus, monkeypatch, code):
     assert not (builder._index_dir(root) / "meta.json").exists()
 
 
+@pytest.mark.parametrize(("observation", "code", "error_class"), [
+    ({"_vlm_error": "output_truncated"}, "image_description_truncated", "executor_transient"),
+    ({"_vlm_error": "no_json_found"}, "image_description_invalid", "executor_transient"),
+    ({"_vlm_error": "response_schema_mismatch"}, "image_description_invalid", "executor_transient"),
+    ({"description": "  "}, "image_description_empty", "executor_transient"),
+    ({"_vlm_error": "http_failed: private diagnostic"}, "image_description_unavailable", "executor_transient"),
+    ({"_vlm_error": "response_schema_invalid"}, "image_description_schema_invalid", "capability_unavailable"),
+])
+def test_description_failures_keep_a_closed_cause_without_failing_the_archive_permanently(
+    corpus, monkeypatch, observation, code, error_class,
+):
+    root, _calls = corpus
+    _photo(root)
+    monkeypatch.setattr(builder, "_call_vlm", lambda *_args, **_kwargs: observation)
+    discovered = _discover(root)
+    group = discovered["entries"][0]
+    result = _invoke(root, "build-1", "analyze", entries=[{
+        "part": group["part"], "folder_contexts": {label: "Photos" for label in group["folder_labels"]},
+    }])
+    assert result["ok"] is False
+    assert result["error_code"] == code and result["error_class"] == error_class
+    assert "private diagnostic" not in json.dumps(result)
+    assert "domain_outcome" not in result  # Not an accepted negative file outcome.
+    assert not (builder._index_dir(root) / "meta.json").exists()
+
+
 @pytest.mark.parametrize("change", ["code", "description", "vectors", "models", "embedding"])
 def test_negative_leaf_cannot_hide_invalid_metadata_or_invented_vectors(corpus, change):
     root, _calls = corpus

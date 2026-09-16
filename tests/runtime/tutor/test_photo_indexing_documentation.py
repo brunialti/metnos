@@ -144,8 +144,8 @@ def test_tutor_guide_links_to_the_indexing_source(language):
 
 
 @pytest.mark.parametrize("language,phrases", [
-    ("it", ("Fase x/y", "non ancora installata", "Che cos'è un batch", "non ha una dimensione", "solo la fase indicata", "non misurano il tempo rimanente")),
-    ("en", ("Phase x/y", "not installed yet", "What is a batch?", "no fixed size", "only the indicated phase", "do not measure time remaining")),
+    ("it", ("Fase x/y", "Valore", "Significato", "Che cos'è un batch", "non ha una dimensione", "solo la fase indicata", "non misurano il tempo rimanente")),
+    ("en", ("Phase x/y", "Value", "Meaning", "What is a batch?", "no fixed size", "only the indicated phase", "do not measure time remaining")),
 ])
 def test_generic_phase_and_batch_explanation_survives_tutor_source_compilation(language, phrases):
     text = " ".join(unit.text for unit in _guide_units(language)).lower()

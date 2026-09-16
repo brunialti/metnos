@@ -42,6 +42,7 @@ _ERROR_CLASSES = frozenset({
     "source_missing",
     "executor_transient",
     "executor_permanent",
+    "executor_unknown",
     "contract_violation",
     "budget_exhausted",
     "lease_lost",
@@ -504,6 +505,7 @@ def decide_retry(
         "capability_unavailable",
         "publication_ambiguous",
         "source_missing",
+        "executor_unknown",
     }:
         # These conditions need restored authority, reconciliation or a new
         # revision.  Retrying the same frozen attempt automatically would
@@ -511,15 +513,14 @@ def decide_retry(
         return RetryDecision.NEEDS_ATTENTION
     if effect_profile in {DurableEffect.RECONCILABLE, DurableEffect.MANUAL_ONLY}:
         return RetryDecision.NEEDS_ATTENTION
-    if manual_retry and error_class in retry_policy.retryable_error_classes:
-        # The recorded owner decision grants exactly this attempt.  A further
-        # retryable failure needs another explicit grant; it never turns into
-        # an unbounded automatic loop.
-        return RetryDecision.NEEDS_ATTENTION
-    if (
-        error_class in retry_policy.retryable_error_classes
-        and attempt_number < retry_policy.max_attempts
-    ):
+    if error_class in {"executor_permanent", "contract_violation", "invalid_plan"}:
+        return RetryDecision.FAIL_PERMANENT
+    if error_class in retry_policy.retryable_error_classes:
+        # Exhausting the automatic grant does not prove a permanent failure.
+        # Preserve the queue; a later owner decision grants one attempt only,
+        # still subject to accounting, authority and effect checks.
+        if manual_retry or attempt_number >= retry_policy.max_attempts:
+            return RetryDecision.NEEDS_ATTENTION
         return RetryDecision.RETRY
     return RetryDecision.FAIL_PERMANENT
 

@@ -281,6 +281,17 @@ up to three attempts. An action that changes data has one automatic attempt:
 if the service stops after invoking it but before recording the result, LRE
 requests attention instead of risking a second effect.</p>
 
+<h3 id="error-recovery">Recoverable errors and attention requests</h3>
+<p>LRE automatically retries only declared recoverable errors, within the plan's
+attempt and effect limits. Exhausting those attempts does not make the cause
+permanent: the job becomes <strong>Needs attention</strong>, preserving pending
+batches and saved results. An unknown cause requires review immediately, without
+blind retries. After review, <strong>Retry</strong> grants one new attempt; it
+does not reset the limit. Unknown usage, missing authority or ambiguous effects
+can still prevent recovery. Explicit permanent errors and invalid contracts do
+not become recoverable. History distinguishes the general code and, when
+available, its approved cause; these counts are attempts, not items.</p>
+
 <div class="callout note"><p><strong>The precise guarantee.</strong> LRE uses
 attempts with <em>at least once</em> semantics and admits one valid commit per unit. It can make an
 observable effect effectively once when the operation is pure, idempotent, or
@@ -311,7 +322,7 @@ setting and should not be changed before each request.</p></div>
 <ol>
  <li><strong>Initial administrator configuration.</strong> Under <a href="services.html">System → Services</a>, check that the LRE worker is healthy and enable workload admission. It is disabled by default on new installations; the setting remains in force until changed.</li>
  <li><strong>Normal use.</strong> Describe the desired outcome and authorised sources in chat, without issuing commands to LRE.</li>
- <li><strong>Automatic selection.</strong> If the final plan contains an intrinsically long, compatible action, Metnos creates its LRE plan and returns a receipt containing the <code>workload_id</code>. You do not need to know or select a profile.</li>
+ <li><strong>Automatic selection.</strong> If the final plan contains an intrinsically long, compatible action, Metnos creates its LRE plan and returns a receipt containing the <code>workload_id</code>. In web chat, <code>/admin/lre</code> is a clickable link to the same installation's console, including saved receipts. You do not need to know or select a profile.</li>
  <li><strong>Transparent outcome.</strong> A short action remains in the turn. A long action that cannot yet be represented is stopped with an explanation and is not executed through the interactive path without the required guarantees.</li>
  <li><strong>Optional monitoring.</strong> You may close the page and keep using Metnos. Open <code>Settings → System → LRE</code> whenever you want to inspect state, denominator, budget, stages, and events.</li>
  <li><strong>Final verification.</strong> On completion, check artifact digests and validation before downloading them.</li>
@@ -374,12 +385,16 @@ open for execution to continue.</p>
  </div>
  <figcaption>Historical screenshot of a completed pilot workload; the new timing fields described below are not present in this image.</figcaption>
 </figure>
-<p><strong>Console update in preparation:</strong> the <em>Phase x/y</em> numbering and per-phase progress described below belong to the new UI, which is not installed yet. The previous console instead shows an aggregate percentage across all known phases: it must not be interpreted as elapsed-time percentage or final-result coverage.</p>
+<p>The compact table separates <strong>Value</strong> and <strong>Meaning</strong>.
+For example, 10 completed batches in the phase, 967 expected in that phase and
+1,935 known batches across the job are different measures: 10/967 is about 1%
+of the phase, not 50% of time. The known total may grow as other phases are
+prepared. Missing data is <strong>n.a.</strong>, not zero.</p>
 <ol class="ui-callout-list">
  <li><strong>General navigation.</strong> Open <code>Settings → System → LRE</code>; the entry remains visible in the web interface's navigation column.</li>
  <li><strong>Workload list and phase.</strong> Each row shows activity, available folder, state and progress. Selecting it loads details without starting another execution. List and detail identify the phase with <strong>Phase x/y</strong> and its name when available. Numbering follows the admitted plan and excludes internal inventory bookkeeping; it does not measure elapsed-time progress. If several phases are active together, no single phase is invented.</li>
  <li><strong>What is a batch?</strong> It is a part of the job that LRE executes and records separately. It has no fixed size or duration, and the concept is independent of the activity type. When the same revision resumes, completed batches remain saved; an interrupted batch may be retried. Partial checkpoints inside a batch depend on the capability executing it and are not guaranteed by the LRE count alone.</li>
- <li><strong>Start, progress and estimated finish.</strong> Start means the first actual execution of the current revision, excluding queue time. The main percentage and <strong>Batches completed: n of total</strong> cover only the indicated phase, once its total is final: they do not mix preparation with later processing and do not measure time remaining. Aggregate counts across all phases remain in technical details. The finish estimate covers the same phase and requires a sealed inventory, one fully prepared active phase and at least three completed batches in that phase. Errors, retries, uncertain usage, pauses, an unavailable engine, outdated data or stale progress produce <strong>n.a.</strong> (not available), with the reason visible in the list too. Estimate and reason refresh together. Refreshing the page alone does not push the estimate forward. The separate whole-job estimate remains in technical details and is available only for single-phase plans. Start and percentage also show <strong>n.a.</strong> when the necessary data is missing.</li>
+ <li><strong>Start, progress and estimated finish.</strong> Start means the first actual execution of the current revision, excluding queue time. The main percentage and completed and expected batches cover only the indicated phase, once its total is final: they do not mix preparation with later processing and do not measure time remaining. A separate row shows the known total across all phases, which may grow. The finish estimate covers the same phase and requires a sealed inventory, one fully prepared active phase and at least three completed batches in that phase. Errors, retries, uncertain usage, pauses, an unavailable engine, outdated data or stale progress produce <strong>n.a.</strong> (not available), with the reason visible in the list too. Estimate and reason refresh together. Refreshing the page alone does not push the estimate forward. The separate whole-job estimate remains in technical details and is available only for single-phase plans. Start and percentage also show <strong>n.a.</strong> when the necessary data is missing.</li>
  <li><strong>Workload facts.</strong> Engine state is separate from job state: an available engine does not prove a job is progressing. In technical details, completed batches remain distinct from unfinished batches, those needing attention, failed or cancelled batches, and skipped batches. The total may grow during preparation.</li>
  <li><strong>Attention required.</strong> New batches stop starting; batches already running may still finish and save results. Read the recorded cause before retrying: this state does not necessarily mean usage is unknown. Restarting does not correct the cause and may interrupt useful work.</li>
  <li><strong>Photo recovery.</strong> Complete analyses and explicit negative outcomes are saved even inside an unfinished batch and can be reused by an authorized retry within the same generation. Reuse checks the source and context; it does not make an incomplete index searchable. HEIC photos are supported too. Undecodable photos are recorded separately: completed batches do not equal successfully indexed photos.</li>

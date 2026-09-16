@@ -214,8 +214,10 @@ decisions nor the persistent feature setting.</p>
 <h2 id="outcomes">Outcomes, errors, and records</h2>
 
 <p>The LRE console derives start time from actual attempts in the current revision,
-not workload creation. Percentage measures saved units among known units and
-stays below 100% until completion. One owner-scoped aggregate read per page
+not workload creation. A compact table separates completed and total batches in
+the current phase from the known total across phases, which may grow. The main
+percentage covers the phase identified as x/y, not time; aggregate percentage
+remains in technical details. One owner-scoped aggregate read per page
 derives an indicative finish estimate for the current fully materialized phase,
 using at least three sufficiently recent results from that same phase. It never
 adds unlike phases: the whole-job estimate remains separate and available only
@@ -224,9 +226,20 @@ produce n.a. with a reason; a job requiring attention takes precedence.</p>
 
 <p>Photo analysis requests schema-constrained model output and validates it again
 before saving. A truncated response is not a successful result; actual usage
-remains recorded, without automatically increasing the limit or repeating the
-call. LRE diagnostics retain only codes declared by the approved output schema
+remains recorded, without automatically increasing the limit. The domain
+distinguishes unavailable, truncated, invalid and empty descriptions as
+recoverable causes; an invalid request schema requires review instead. It does
+not retry internally: LRE applies the already admitted attempt and effect limits.
+LRE diagnostics retain only codes declared by the approved output schema
 and enumerated loader causes, never arbitrary exception text.</p>
+
+<p>In the general engine, exhausting attempts for a recoverable error leads to
+<strong>Needs attention</strong>, preserving pending batches and committed
+results. An unknown cause requires review without automatic retries; explicit
+permanent errors and contract violations remain non-recoverable. A retry
+decision grants one attempt, not an unlimited loop. Accounting, authority and
+effect safety remain mandatory. History may show the approved attempt cause
+without confusing it with items that produced a negative domain outcome.</p>
 
 <p>Checking empty directories left by interrupted publication uses a shared
 read lock: concurrent readers do not invalidate the catalog, while writers

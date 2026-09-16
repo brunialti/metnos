@@ -18,7 +18,7 @@ def test_console_async_races_progress_and_disconnection(tmp_path):
     script = source.split("<script>", 1)[1].split("</script>", 1)[0]
     script = script.replace("{{ copy|tojson }}", "globalThis.copy")
     script = script.split('  document.getElementById("dwRefresh").addEventListener', 1)[0]
-    script += "globalThis.ui = {request, errorName, availableDate, percentText, estimateText, estimateReason, appendProgress, appendPhase, countersText, breakdown, jobTitle, jobFolder, loadList, loadDetail, refresh, markStale, renderEngine, startPolling, deactivatePage, restorePage, setEngine: value => {engine = value; renderEngine();}, selected: () => selected};})();"
+    script += "globalThis.ui = {request, errorName, availableDate, percentText, estimateText, estimateReason, appendProgress, appendProgressTable, appendPhase, countersText, breakdown, jobTitle, jobFolder, loadList, loadDetail, refresh, markStale, renderEngine, startPolling, deactivatePage, restorePage, setEngine: value => {engine = value; renderEngine();}, selected: () => selected};})();"
     harness = r'''
 const assert = require("node:assert/strict");
 const vm = require("node:vm");
@@ -84,6 +84,24 @@ assert.equal(ui.estimateText({...timing, estimated_end_at: new Date(Date.now() -
 ui.appendProgress(nodes.get("dwDetail"), timing);
 assert.ok(nodes.get("dwDetail").textContent.includes("phaseProgress: 0.8%8 of 967"));
 assert.ok(!nodes.get("dwDetail").textContent.includes("30%"), "primary progress excludes other phases");
+const tableContainer = new Element("div");
+ui.appendProgressTable(tableContainer, {counters: {total: 1935}, progress: {...timing,
+  current_phase: {...timing.current_phase, committed_units: 10}}});
+const progressTable = tableContainer.children[0];
+assert.equal(progressTable.tag, "table");
+assert.equal(progressTable["aria-label"], "progress");
+assert.deepEqual(progressTable.children[0].children[0].children.map(cell => [cell.textContent, cell.scope]),
+  [["metricValue", "col"], ["metricMeaning", "col"]]);
+const tableRows = table => table.children[1].children;
+const metric = (table, key) => tableRows(table).find(row => row.dataset.metric === key);
+assert.equal(tableRows(progressTable).length, 6);
+assert.deepEqual(tableRows(progressTable).slice(0, 3).map(row => row.children.map(cell => cell.textContent)),
+  [["10", "phaseCompletedMeaning"], ["967", "phaseTotalMeaning"], [(1935).toLocaleString(), "knownTotalMeaning"]]);
+assert.ok(tableRows(progressTable).every(row => row.children[1].tag === "th" && row.children[1].scope === "row"));
+const missingContainer = new Element("div");
+ui.appendProgressTable(missingContainer, {});
+assert.ok(tableRows(missingContainer.children[0]).every(row => row.children[0].textContent === "n.a."),
+  "missing counts, dates, percent and estimate are not represented as zero");
 const phaseHeading = new Element("div");
 ui.appendPhase(phaseHeading, {progress: timing});
 assert.equal(phaseHeading.textContent, "Phase 3/5", "phase numbering is generic, not photo-specific");
@@ -105,7 +123,8 @@ const job = id => ({
     blocking_reason: "budget_accounting_incomplete", last_committed_at: null,
     error_categories: [{error_code: "budget_exhausted", count: 2}],
     domain_errors: {nitems: 31, categories: [{error_code: "document_encrypted", count: 7}], truncated: true},
-    attempt_errors: {nattempts: 2, categories: [{error_code: "transport.temporarily_unavailable", count: 2}], truncated: false},
+    attempt_errors: {nattempts: 3, categories: [{error_code: "transport.temporarily_unavailable", count: 2},
+      {error_code: "execution.runner_failed", cause_code: "image_description_truncated", count: 1}], truncated: false},
   }},
 });
 (async () => {
@@ -133,15 +152,18 @@ const job = id => ({
   assert.ok(nodes.get("dwDetail").textContent.includes("itemsWithErrors: 31"));
   assert.ok(nodes.get("dwDetail").textContent.includes("document_encrypted) · 7"));
   assert.ok(nodes.get("dwDetail").textContent.includes("moreErrorCategories"));
-  assert.ok(nodes.get("dwDetail").textContent.includes("attemptErrors: 2"));
+  assert.ok(nodes.get("dwDetail").textContent.includes("attemptErrors: 3"));
   assert.ok(nodes.get("dwDetail").textContent.includes("transport.temporarily_unavailable) · 2"));
+  assert.ok(nodes.get("dwDetail").textContent.includes("execution.runner_failed) — errorUnknown (image_description_truncated) · 1"));
   assert.ok(nodes.get("dwDetail").textContent.includes("attemptErrorsHelp"));
   assert.ok(!nodes.get("dwDetail").textContent.includes("exhausted"));
   assert.ok(nodes.get("dwDetail").textContent.includes("noResult"));
-  assert.ok(nodes.get("dwDetail").textContent.includes("started: n.a."));
-  assert.ok(nodes.get("dwDetail").textContent.includes("phaseProgress: n.a."));
+  const missingTable = nodes.get("dwDetail").querySelectorAll(".dw-progress-table")[0];
+  for (const key of ["started", "phase-percent", "phase-end", "phase-completed", "phase-total"])
+    assert.equal(metric(missingTable, key).children[0].textContent, "n.a.");
+  assert.equal(metric(missingTable, "known-total").children[0].textContent, "11");
   assert.ok(nodes.get("dwDetail").textContent.includes("percent: n.a."));
-  assert.ok(nodes.get("dwDetail").textContent.includes("phaseEstimatedEnd: n.a."));
+  assert.ok(metric(missingTable, "phase-end").children[1].textContent.startsWith("phaseEstimatedEnd"));
   assert.ok(nodes.get("dwDetail").textContent.includes("wholeEstimatedEnd: n.a."));
   const sections = nodes.get("dwDetail").querySelectorAll("details[data-section]");
   assert.equal(sections.length, 5, "error history, help, events, technical metadata and artifacts are collapsible");
@@ -199,6 +221,17 @@ const job = id => ({
   assert.equal(intervals.size, 2, "returning from browser cache restores periodic checks");
   assert.ok(streamsOpened > previousStreams, "returning from browser cache restores event streaming");
   assert.ok(paths.includes("/agent/workloads"));
+  globalThis.fetch = async () => ({ok: false, status: 503});
+  assert.equal(await ui.loadDetail("B", false), false);
+  assert.equal(ui.selected().workload_id, "B", "transient read failure retains known detail");
+  globalThis.fetch = async url => url === "/agent/workloads/B"
+    ? {ok: false, status: 404} : response({items: []});
+  assert.equal(await ui.loadDetail("B", false), true);
+  assert.equal(ui.selected(), null, "confirmed deletion clears stale selection");
+  assert.equal(nodes.get("dwDetail").hidden, true);
+  assert.equal(nodes.get("dwDetail").childElementCount, 0);
+  assert.equal(nodes.get("dwPlaceholder").hidden, false);
+  assert.equal(nodes.get("dwPlaceholder").textContent, "empty");
   ui.deactivatePage();
   globalThis.fetch = async (_url, options) => new Promise((_resolve, reject) => options.signal.addEventListener("abort", () => reject(new Error("timeout"))));
   const hanging = ui.request("/stalled");
@@ -222,7 +255,11 @@ def test_console_labels_exist_in_both_seed_languages():
                        "ETA_NEEDS_ATTENTION", "ETA_NO_ACTIVE_PHASE", "ETA_MULTIPLE_ACTIVE_PHASES",
                        "ETA_INVENTORY_OPEN", "ETA_PHASE_EXPANDING", "ETA_UNCERTAIN_PROGRESS",
                        "ETA_STALE_PROGRESS", "ETA_ESTIMATE_OVERDUE", "ITEMS_WITH_ERRORS",
-                       "MORE_ERROR_CATEGORIES", "ATTEMPT_ERRORS", "ATTEMPT_ERRORS_HELP"):
+                       "MORE_ERROR_CATEGORIES", "ATTEMPT_ERRORS", "ATTEMPT_ERRORS_HELP",
+                       "METRIC_VALUE", "METRIC_MEANING", "PHASE_COMPLETED_MEANING", "PHASE_TOTAL_MEANING",
+                       "KNOWN_TOTAL_MEANING", "BATCH_DEFINITION", "ERROR_EXECUTOR_UNKNOWN", "ERROR_RUNNER_FAILED",
+                       "CAUSE_IMAGE_DESCRIPTION_UNAVAILABLE", "CAUSE_IMAGE_DESCRIPTION_TRUNCATED",
+                       "CAUSE_IMAGE_DESCRIPTION_INVALID", "CAUSE_IMAGE_DESCRIPTION_EMPTY", "CAUSE_IMAGE_DESCRIPTION_SCHEMA_INVALID"):
             rows = conn.execute("SELECT lang,text,needs_translation FROM i18n WHERE key=? AND lang IN ('it','en')", ("UI_DURABLE_" + suffix,)).fetchall()
             assert {row[0] for row in rows} == {"it", "en"}
             assert all(row[1] and not row[2] for row in rows)
@@ -249,7 +286,8 @@ def test_batch_wording_is_generic_and_can_refresh_released_translations():
     with sqlite3.connect(f"file:{ROOT / 'install/data/i18n_seed.sqlite'}?mode=ro", uri=True) as conn:
         rows = conn.execute("SELECT text FROM i18n WHERE key LIKE 'UI_DURABLE_%'").fetchall()
         assert not any(re.search(r"\b(blocco|blocchi|block|blocks)\b", row[0], re.I) for row in rows)
-        for key in ("WORK_UNITS_HELP", "PHASE_SCOPE_HELP", "PHASE_COMPLETED_UNITS"):
+        for key in ("WORK_UNITS_HELP", "PHASE_SCOPE_HELP", "PHASE_COMPLETED_UNITS", "BATCH_DEFINITION",
+                    "PHASE_COMPLETED_MEANING", "PHASE_TOTAL_MEANING", "KNOWN_TOTAL_MEANING"):
             rows = conn.execute("SELECT text FROM i18n WHERE key=?", ("UI_DURABLE_" + key,)).fetchall()
             assert not any(re.search(r"\b(foto|photo|photos|file|files)\b", row[0], re.I) for row in rows)
         for language, old_text in (("it", "Blocchi in esecuzione"), ("en", "Running blocks")):
@@ -292,6 +330,7 @@ def test_console_design_browser_isolated(monkeypatch, tmp_path, lang):
         "progress": {"started_at": "2026-09-16T10:00:02Z", "known_units_percent": 0, "estimated_end_at": None, "estimated_end_reason": "multi_phase", "parallelism": {"running_units": 1, "leased_units": 0, "max_concurrency": 8}},
     }
     payload = {"workload": workload, "revision": {"execution": {"last_committed_at": None}}}
+    removed = False
     workload["progress"]["current_phase"] = {"stage_key": "discover", "number": 1, "count": 5, "committed_units": 0, "total_units": 1, "known_units_percent": 0, "estimated_end_at": None, "estimated_end_reason": "insufficient_data"}
 
     def respond(route):
@@ -302,8 +341,11 @@ def test_console_design_browser_isolated(monkeypatch, tmp_path, lang):
         if path == "/agent/health":
             value = {"durable_workloads": {"enabled": True, "worker_available": True, "state": "ready"}}
         elif path == "/agent/workloads":
-            value = {"items": [workload]}
+            value = {"items": [] if removed else [workload]}
         elif path == "/agent/workloads/wrk_synthetic_photo_job":
+            if removed:
+                route.fulfill(status=404, body="{}", content_type="application/json")
+                return
             value = payload
         elif path.endswith("/stream"):
             route.fulfill(body="", content_type="text/event-stream")
@@ -345,12 +387,15 @@ def test_console_design_browser_isolated(monkeypatch, tmp_path, lang):
             assert page.locator("#dwDetail h3").first.inner_text() == texts["UI_DURABLE_PHOTO_INDEXING"]
             assert workload["description"]["target_path"] in page.locator("#dwDetail .dw-folder").inner_text()
             assert page.locator("#dwDetail .dw-folder script").count() == 0
-            assert page.locator("#dwDetail > .dw-timing").inner_text().count("n.a.") == 2
+            table = page.locator("#dwDetail > .dw-progress-table")
+            assert table.inner_text().count("n.a.") == 3
+            assert table.get_by_role("columnheader").all_text_contents() == [texts["UI_DURABLE_METRIC_VALUE"], texts["UI_DURABLE_METRIC_MEANING"]]
+            assert table.get_by_role("rowheader").count() == 6
             assert page.get_by_text(texts["UI_DURABLE_DISCOVERY_HELP"], exact=True).is_visible()
-            assert page.locator("#dwDetail > .dw-timing").get_by_text(texts["UI_DURABLE_ETA_INSUFFICIENT_DATA"], exact=True).is_visible()
+            assert table.get_by_text(texts["UI_DURABLE_ETA_INSUFFICIENT_DATA"], exact=True).is_visible()
             assert choice.get_by_text(texts["UI_DURABLE_ETA_INSUFFICIENT_DATA"], exact=True).is_visible()
             assert page.locator("#dwDetail > .dw-phase").inner_text().startswith(texts["UI_DURABLE_PHASE_NUMBER"].format(number=1, total=5))
-            assert page.locator("#dwDetail > .dw-timing").get_by_text(texts["UI_DURABLE_PHASE_FINISH_ESTIMATE"] + ":", exact=True).is_visible()
+            assert table.get_by_text(texts["UI_DURABLE_PHASE_FINISH_ESTIMATE"], exact=True).is_visible()
             assert not page.get_by_text(texts["UI_DURABLE_WHOLE_ESTIMATED_FINISH"] + ":", exact=True).is_visible()
             assert page.get_by_text(texts["UI_DURABLE_RUNNING_BLOCKS"] + ": 1 · " + texts["UI_DURABLE_JOB_LIMIT"] + ": 8", exact=True).is_visible()
             assert page.locator("#dwDetail progress").count() == 0
@@ -374,7 +419,7 @@ def test_console_design_browser_isolated(monkeypatch, tmp_path, lang):
             page.get_by_text(texts["UI_DURABLE_ATTENTION_HELP"], exact=True).wait_for()
             assert page.locator("#dwEngine").inner_text().endswith(texts["UI_DURABLE_ENGINE_READY"])
             assert page.locator("#dwDetail > .dw-job-heading .dw-state").get_attribute("data-tone") == "error"
-            assert page.locator("#dwDetail > .dw-timing").get_by_text(texts["UI_DURABLE_ETA_NEEDS_ATTENTION"], exact=True).is_visible()
+            assert table.get_by_text(texts["UI_DURABLE_ETA_NEEDS_ATTENTION"], exact=True).is_visible()
             assert page.get_by_role("button", name=texts["UI_DURABLE_RETRY"], exact=True).is_visible()
             assert page.get_by_role("button", name=texts["UI_DURABLE_PAUSE"], exact=True).count() == 0
             from datetime import datetime, timedelta, timezone
@@ -383,24 +428,27 @@ def test_console_design_browser_isolated(monkeypatch, tmp_path, lang):
             workload["progress"]["parallelism"]["running_units"] = 1
             workload["progress"].update(observed_at=observed.isoformat(), estimated_end_reason="multi_phase")
             workload["progress"]["known_units_percent"] = 50.4
+            workload["counters"].update(committed=976, total=1935, pending=959)
             workload["progress"]["current_phase"] = {"stage_key": "analyze", "number": 3, "count": 5, "committed_units": 8, "total_units": 967, "known_units_percent": 0.8, "estimated_end_at": (observed + timedelta(minutes=5)).isoformat(), "estimated_end_reason": None}
             page.locator("#dwRefresh").click()
-            page.wait_for_function("document.querySelector('#dwDetail > .dw-timing .dw-estimate').textContent !== 'n.a.'")
-            assert page.locator("#dwDetail > .dw-timing").get_by_text(texts["UI_DURABLE_PHASE_FINISH_ESTIMATE"] + ":", exact=True).is_visible()
+            page.wait_for_function("document.querySelector('#dwDetail > .dw-progress-table .dw-estimate').textContent !== 'n.a.'")
+            assert table.get_by_text(texts["UI_DURABLE_PHASE_FINISH_ESTIMATE"], exact=True).is_visible()
             assert page.locator("#dwDetail > .dw-phase").inner_text().startswith(texts["UI_DURABLE_PHASE_NUMBER"].format(number=3, total=5))
             assert choice.locator(".dw-phase").inner_text().startswith(texts["UI_DURABLE_PHASE_NUMBER"].format(number=3, total=5))
-            assert page.locator("#dwDetail > .dw-timing .dw-phase-count").inner_text() == texts["UI_DURABLE_PHASE_COMPLETED_UNITS"].format(completed=8, total=967)
+            assert table.locator("tr[data-metric='phase-completed'] td").inner_text() == "8"
+            assert table.locator("tr[data-metric='phase-total'] td").inner_text() == "967"
+            assert table.locator("tr[data-metric='known-total'] td").inner_text() == page.evaluate("(1935).toLocaleString(document.documentElement.lang)")
             assert page.locator("#dwDetail progress").get_attribute("value") == "0.8"
-            assert page.locator("#dwDetail > .dw-timing").get_by_text("0,8%" if lang == "it" else "0.8%", exact=True).is_visible()
-            assert page.locator("#dwDetail > .dw-timing .dw-estimate-reason").is_hidden()
+            assert table.get_by_text("0,8%" if lang == "it" else "0.8%", exact=True).is_visible()
+            assert table.locator(".dw-estimate-reason").is_hidden()
             assert not page.get_by_text(texts["UI_DURABLE_ALL_PHASES_PROGRESS"] + ":", exact=True).is_visible()
             page.evaluate("window.syntheticStreams.at(-1).onerror()")
-            assert page.locator("#dwDetail > .dw-timing .dw-estimate").inner_text() == "n.a."
-            assert page.locator("#dwDetail > .dw-timing").get_by_text(texts["UI_DURABLE_ETA_DATA_STALE"], exact=True).is_visible()
+            assert table.locator(".dw-estimate").inner_text() == "n.a."
+            assert table.get_by_text(texts["UI_DURABLE_ETA_DATA_STALE"], exact=True).is_visible()
             assert choice.get_by_text(texts["UI_DURABLE_ETA_DATA_STALE"], exact=True).is_visible()
             page.locator("#dwRefresh").click()
-            page.wait_for_function("document.querySelector('#dwDetail > .dw-timing .dw-estimate').textContent !== 'n.a.'")
-            assert page.locator("#dwDetail > .dw-timing .dw-estimate-reason").is_hidden()
+            page.wait_for_function("document.querySelector('#dwDetail > .dw-progress-table .dw-estimate').textContent !== 'n.a.'")
+            assert table.locator(".dw-estimate-reason").is_hidden()
             # Updated wording and layout stay readable in both languages.
             for width in (1440, 390):
                 page.set_viewport_size({"width": width, "height": 1000})
@@ -430,7 +478,7 @@ def test_console_design_browser_isolated(monkeypatch, tmp_path, lang):
             payload["revision"]["execution"]["domain_errors"] = {"nitems": 0, "categories": [], "truncated": False}
             payload["revision"]["execution"]["attempt_errors"] = {
                 "nattempts": 2,
-                "categories": [{"error_code": "transport.temporarily_unavailable", "count": 2}],
+                "categories": [{"error_code": "execution.runner_failed", "cause_code": "image_description_truncated", "count": 2}],
                 "truncated": False,
             }
             page.locator("#dwRefresh").click()
@@ -440,12 +488,18 @@ def test_console_design_browser_isolated(monkeypatch, tmp_path, lang):
             assert history.get_attribute("open") is None
             history.locator("summary").click()
             assert history.get_by_text(texts["UI_DURABLE_ATTEMPT_ERRORS_HELP"], exact=True).is_visible()
-            assert history.get_by_text(texts["UI_DURABLE_ERROR_UNKNOWN"] + " (transport.temporarily_unavailable) · 2", exact=True).is_visible()
+            assert history.get_by_text(texts["UI_DURABLE_ERROR_RUNNER_FAILED"] + " — " + texts["UI_DURABLE_CAUSE_IMAGE_DESCRIPTION_TRUNCATED"] + " · 2", exact=True).is_visible()
             assert page.get_by_role("heading", name=error_heading, exact=True).count() == 0
             page.reload()
             page.locator(".dw-job-choice").click()
             history.locator("summary").wait_for()
             assert history.locator("summary").inner_text().endswith(": 2")
+            removed = True
+            page.locator("#dwRefresh").click()
+            page.locator("#dwDetail[hidden]").wait_for(state="attached")
+            assert page.locator("#dwDetail").inner_html() == ""
+            assert page.locator("#dwList .dw-job-choice").count() == 0
+            assert page.locator("#dwPlaceholder").inner_text() == texts["UI_DURABLE_EMPTY"]
             assert not errors
         finally:
             browser.close()

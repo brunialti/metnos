@@ -293,6 +293,18 @@ tentativi. Un'azione che modifica dati ha un solo tentativo automatico: se il
 servizio si interrompe dopo averla invocata ma prima di registrarne il
 risultato, LRE richiede attenzione invece di rischiare un secondo effetto.</p>
 
+<h3 id="error-recovery">Errori recuperabili e richiesta di attenzione</h3>
+<p>LRE riprova automaticamente soltanto gli errori dichiarati recuperabili, entro
+i tentativi e gli effetti consentiti dal piano. Esaurire quei tentativi non rende
+permanente la causa: il lavoro passa a <strong>Richiede attenzione</strong>, con
+i batch in attesa e i risultati già salvati conservati. Un errore di causa ignota
+richiede subito una verifica, senza tentativi alla cieca. Dopo la verifica,
+<strong>Riprova</strong> autorizza un solo nuovo tentativo; non azzera il limite.
+Consumi sconosciuti, autorizzazioni mancanti o effetti ambigui possono ancora
+impedire la ripresa. Errori esplicitamente permanenti o contratti non validi non
+vengono trasformati in recuperabili. Lo storico distingue il codice generale e,
+quando disponibile, la causa approvata; i conteggi sono tentativi, non elementi.</p>
+
 <div class="callout note"><p><strong>Garanzia corretta.</strong> LRE usa
 tentativi con semantica <em>at least once</em> e ammette un solo commit valido per unità. Può rendere un
 effetto osservabile una sola volta quando l'operazione è pura, idempotente o
@@ -325,7 +337,7 @@ utente e non deve essere azionato prima di ogni richiesta.</p></div>
 <ol>
  <li><strong>Configurazione iniziale dell'amministratore.</strong> In <a href="services.html">Sistema → Servizi</a>, verifica che il worker LRE sia sano e abilita l'accettazione dei lavori. Nelle nuove installazioni è disattivata per impostazione predefinita; l'impostazione rimane valida finché non viene cambiata.</li>
  <li><strong>Uso normale.</strong> Descrivi in chat l'esito desiderato e indica le sorgenti autorizzate, senza impartire comandi a LRE.</li>
- <li><strong>Scelta automatica.</strong> Se il piano definitivo contiene un'azione intrinsecamente lunga e compatibile, Metnos crea il piano LRE e restituisce una ricevuta con il <code>workload_id</code>. Non devi conoscere né scegliere un profilo.</li>
+ <li><strong>Scelta automatica.</strong> Se il piano definitivo contiene un'azione intrinsecamente lunga e compatibile, Metnos crea il piano LRE e restituisce una ricevuta con il <code>workload_id</code>. Nella chat web, <code>/admin/lre</code> è un collegamento cliccabile alla console della stessa installazione, anche nelle ricevute salvate. Non devi conoscere né scegliere un profilo.</li>
  <li><strong>Esito trasparente.</strong> Un'azione breve continua nel turno. Un'azione lunga non ancora rappresentabile viene fermata con una spiegazione e non viene eseguita nel percorso interattivo senza le necessarie garanzie.</li>
  <li><strong>Controllo facoltativo.</strong> Puoi chiudere la pagina e continuare a usare Metnos. Quando vuoi, apri <code>Settings → Sistema → LRE</code> per controllare stato, denominatore, budget, fasi ed eventi.</li>
  <li><strong>Verifica finale.</strong> Al termine, controlla i digest e la convalida degli artefatti prima di scaricarli.</li>
@@ -389,12 +401,16 @@ console perché il lavoro continui.</p>
  </div>
  <figcaption>Schermata storica di un lavoro pilota completato; i nuovi campi temporali descritti sotto non sono presenti nell'immagine.</figcaption>
 </figure>
-<p><strong>Aggiornamento della console in preparazione:</strong> la numerazione <em>Fase x/y</em> e l'avanzamento per fase descritti sotto appartengono alla nuova UI, non ancora installata. La console precedente mostra invece una percentuale aggregata di tutte le fasi note: non va interpretata come percentuale del tempo trascorso o del risultato finale.</p>
+<p>La tabella compatta separa <strong>Valore</strong> e <strong>Significato</strong>.
+Per esempio, 10 batch completati nella fase, 967 previsti nella stessa fase e
+1.935 batch noti nell'intero lavoro sono tre misure diverse: 10/967 è circa l'1%
+della fase, non il 50% del tempo. Il totale noto può aumentare quando vengono
+preparate altre fasi. Un dato assente è <strong>n.a.</strong>, non zero.</p>
 <ol class="ui-callout-list">
  <li><strong>Navigazione generale.</strong> Apri <code>Settings → Sistema → LRE</code>; la voce resta visibile nella colonna di navigazione dell'interfaccia web.</li>
  <li><strong>Elenco dei lavori e fase.</strong> Ogni riga mostra attività, cartella disponibile, stato e avanzamento. Selezionarla carica il dettaglio senza avviare una nuova esecuzione. Elenco e dettaglio identificano la fase con <strong>Fase x/y</strong> e, quando disponibile, il suo nome. La numerazione segue il piano ammesso ed esclude l'inventario tecnico interno; non misura l'avanzamento temporale. Se più fasi sono attive insieme, non viene inventata una fase unica.</li>
  <li><strong>Che cos'è un batch.</strong> È una parte del lavoro che LRE esegue e registra separatamente. Non ha una dimensione o una durata fissa e il concetto è indipendente dal tipo di attività. Alla ripresa della stessa revisione, i batch già completati restano salvati; quello interrotto può essere ritentato. I salvataggi parziali interni a un batch dipendono dalla capacità che lo esegue, non sono garantiti dal solo conteggio LRE.</li>
- <li><strong>Avvio, avanzamento e fine stimata.</strong> L'avvio è il primo avvio effettivo della revisione corrente, senza includere la coda. La percentuale principale e <strong>Batch completati: n su totale</strong> riguardano solo la fase indicata, con totale definitivo: non sommano preparazione e lavorazioni successive e non misurano il tempo rimanente. Il conteggio aggregato di tutte le fasi rimane nei dettagli tecnici. La stima della fine riguarda la stessa fase e richiede inventario chiuso, una sola fase attiva interamente preparata e almeno tre batch completati in quella fase. Errori, ritentativi, consumi incerti, pausa, motore non pronto, dati non aggiornati o progressi non recenti producono <strong>n.a.</strong> (non disponibile), con il motivo visibile anche nell'elenco. Motivo e stima si aggiornano insieme. La previsione non si sposta semplicemente aggiornando la pagina. L'eventuale stima dell'intero lavoro resta separata nei dettagli tecnici ed è disponibile solo per piani a fase unica. Anche avvio e percentuale mostrano <strong>n.a.</strong> quando mancano i dati necessari.</li>
+ <li><strong>Avvio, avanzamento e fine stimata.</strong> L'avvio è il primo avvio effettivo della revisione corrente, senza includere la coda. La percentuale principale e i batch completati e previsti riguardano solo la fase indicata, con totale definitivo: non sommano preparazione e lavorazioni successive e non misurano il tempo rimanente. Una riga separata mostra il totale noto di tutte le fasi, che può crescere. La stima della fine riguarda la stessa fase e richiede inventario chiuso, una sola fase attiva interamente preparata e almeno tre batch completati in quella fase. Errori, ritentativi, consumi incerti, pausa, motore non pronto, dati non aggiornati o progressi non recenti producono <strong>n.a.</strong> (non disponibile), con il motivo visibile anche nell'elenco. Motivo e stima si aggiornano insieme. La previsione non si sposta semplicemente aggiornando la pagina. L'eventuale stima dell'intero lavoro resta separata nei dettagli tecnici ed è disponibile solo per piani a fase unica. Anche avvio e percentuale mostrano <strong>n.a.</strong> quando mancano i dati necessari.</li>
  <li><strong>Quadro del lavoro.</strong> Separa lo stato del motore da quello del lavoro: un motore disponibile non prova che il lavoro avanzi. Nei dettagli tecnici i batch completati restano distinti da quelli non conclusi, da verificare, falliti o annullati e saltati. Durante la preparazione il totale può crescere.</li>
  <li><strong>Richiesta di verifica.</strong> Sospende l'avvio di nuovi batch; quelli già avviati possono ancora terminare e salvare risultati. Leggi la causa registrata prima di riprovare: questo stato non significa necessariamente che i consumi siano sconosciuti. Un riavvio non corregge la causa e può interrompere lavoro ancora utile.</li>
  <li><strong>Recupero delle foto.</strong> Le analisi complete e gli esiti negativi espliciti sono salvati anche all'interno di un batch non ancora concluso e possono essere riusati in un tentativo autorizzato della stessa generazione. Il riuso verifica sorgente e contesto; non rende ricercabile un indice incompleto. Sono supportate anche le foto HEIC. Le foto non decodificabili sono registrate separatamente: il numero di batch completati non equivale al numero di foto indicizzate con successo.</li>

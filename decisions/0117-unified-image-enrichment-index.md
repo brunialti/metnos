@@ -320,3 +320,23 @@ Prove: `test_image_index_negative_outcomes.py`, `test_image_negative_records.py`
 `test_image_indexing_plan.py`, `test_image_indexing_e2e.py` e suite di integrità.
 Modifica in sviluppo: necessita di release canonica e prova limitata reale prima
 di distribuirla; i test con risposte sintetiche non certificano l'archivio reale.
+
+### Addendum 2026-09-16 — classificazione dei fallimenti del modello
+
+La precedente categoria unica `image_description_unavailable` perdeva il motivo
+e arrivava a LRE come errore permanente. Il dominio conserva ora codici chiusi
+distinti: descrizione indisponibile, troncata, non valida o vuota dichiarano
+`executor_transient`; uno schema di richiesta non valido dichiara invece
+`capability_unavailable`, da verificare senza ritentativi automatici.
+
+Non si aggiunge un ciclo interno al dominio: LRE applica i tentativi già ammessi
+e, se esauriti, conserva la coda in `needs_attention` (ADR 0213). La contabilità
+può comunque impedire la ripresa. Nessuno di questi errori produce un record
+`IMAGE_NOT_INDEXED`, riservato ai due errori di decodifica; non si inventano
+contenuti né si pubblica un indice parziale. I checkpoint compatibili della
+stessa generazione evitano di rifare le analisi già concluse nel batch.
+
+Il nuovo vocabolario fa parte dello schema approvato dell'executor e ne cambia
+l'impronta: non correggere retroattivamente i piani congelati. La causa precisa
+del vecchio tentativo di esercizio non è recuperabile dalla categoria generica;
+la prova del difetto è la classificazione permanente, non un timeout presunto.

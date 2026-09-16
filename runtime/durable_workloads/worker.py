@@ -455,10 +455,10 @@ class DurableWorker:
             adapter_attempt_state = AttemptState.TIMED_OUT
         except Exception:
             adapter_error = StructuredAttemptError.create(
-                "executor_permanent",
+                "executor_unknown",
                 code="execution.unhandled_exception",
                 message_key="ERR_DURABLE_EXECUTION_FAILED",
-                retry="never",
+                retry="manual",
                 occurred_at=self._clock(),
                 details_redacted={"exception_redacted": True},
             )

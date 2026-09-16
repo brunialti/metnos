@@ -256,6 +256,30 @@ def test_attempt_history_never_exposes_free_text_or_noncanonical_machine_codes(s
     assert "/private/path" not in json.dumps(projection)
 
 
+@pytest.mark.parametrize("cause,expected", [
+    ("document_temporarily_unavailable", "document_temporarily_unavailable"),
+    ("unknown", None), ("/private/path", None), ("x" * 97, None),
+    ("error\x00/private/path", None), ("error_é", None), (123, None), ({"secret": "value"}, None),
+])
+def test_attempt_history_retains_only_closed_machine_cause_and_keeps_the_count(store, cause, expected):
+    workload, revision = _admit(store, "reported-cause")
+    now = datetime.now(timezone.utc)
+    lease = store.claim_next("cause", now, timedelta(seconds=60), _capabilities())
+    store.mark_running(lease, now=now)
+    error = StructuredAttemptError.create(
+        "executor_unknown", code="execution.runner_failed",
+        message_key="ERR_DURABLE_EXECUTION_FAILED", retry="manual", occurred_at=now,
+        details_redacted={"reported_error_code": cause, "private": "/private/path"},
+    )
+    store.fail_attempt(lease, error, RetryDecision.NEEDS_ATTENTION, now=now)
+    category = {"error_code": "execution.runner_failed", "count": 1}
+    if expected:
+        category["cause_code"] = expected
+    assert store._attempt_errors("owner-a", revision) == {
+        "nattempts": 1, "categories": [category], "truncated": False,
+    }
+
+
 def test_attempt_history_vm_work_does_not_grow_with_unrelated_attempts(store):
     _, revision = _admit(store, "history-vm-target")
 

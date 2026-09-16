@@ -522,10 +522,14 @@ def test_attempt_budget_bounds_recovery_before_and_during_execution(db_path):
             BASE_TIME + timedelta(seconds=11), 10,
         )
         assert outcome.expired == 2
-        assert outcome.needs_attention == 1
-        assert outcome.failed_permanent == 1
+        assert outcome.needs_attention == 2
+        assert outcome.failed_permanent == 0
         assert _unit_row(store, before_workload)["state"] == "needs_attention"
-        assert _unit_row(store, running_workload)["state"] == "failed_permanent"
+        assert _unit_row(store, running_workload)["state"] == "needs_attention"
+        error = json.loads(store._connection.execute(
+            "SELECT structured_error_json FROM attempts WHERE id=?", (running.attempt_id,),
+        ).fetchone()[0])
+        assert error["retry"] == "manual"
         assert store.claim_next(
             "worker-late",
             BASE_TIME + timedelta(seconds=12),
@@ -1089,6 +1093,26 @@ def test_dummy_worker_records_output_contract_violation_with_message_key(db_path
         assert error["error_class"] == "contract_violation"
         assert error["message_key"] == "ERR_DURABLE_RESULT_CONTRACT_VIOLATION"
         assert "message" not in error
+
+
+def test_worker_unclassified_exception_preserves_the_job_without_automatic_retry(db_path):
+    with DurableWorkloadStore.open(db_path) as store:
+        workload_id = _prepare_one(store, "unknown-exception")
+        worker = DurableWorker(store, "worker-unknown", _capabilities(),
+                               lease_duration=timedelta(seconds=30),
+                               clock=lambda: BASE_TIME + timedelta(seconds=1))
+
+        def broken(_lease):
+            raise RuntimeError("private provider response")
+
+        outcome = worker.run_once(broken)
+        assert outcome.failure.status is FailureStatus.NEEDS_ATTENTION
+        assert store.get_workload("owner-a", workload_id).state is WorkloadState.NEEDS_ATTENTION
+        assert _unit_row(store, workload_id)["state"] == "needs_attention"
+        record = store._connection.execute("SELECT structured_error_json FROM attempts").fetchone()[0]
+        assert "private provider response" not in record
+        assert json.loads(record)["error_class"] == "executor_unknown"
+        assert worker.run_once(broken).status is WorkerRunStatus.IDLE
 
 
 def test_worker_records_a_missing_adapter_result_as_a_contract_violation(db_path):

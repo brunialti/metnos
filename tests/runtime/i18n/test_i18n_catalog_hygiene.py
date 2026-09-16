@@ -67,28 +67,21 @@ def test_seed_has_no_retired_or_redundant_namespaces():
     assert not retired
 
 
-def test_seed_latest_wins_metadata_is_aligned():
-    """Un futuro align_messages non deve ricreare pending dal nulla."""
+def test_seed_latest_wins_metadata_is_aligned(monkeypatch):
+    """Use the actual provenance-aware alignment, not timestamp-only ordering."""
+    import i18n_translator
+
     conn = _connect()
     try:
-        rows = conn.execute(
-            "SELECT key, lang, version_hash, source_text_hash, updated_at "
-            "FROM i18n ORDER BY key, updated_at DESC, lang DESC"
+        assert not conn.execute(
+            "SELECT key,lang FROM i18n WHERE version_hash IS NULL OR version_hash=''"
         ).fetchall()
+        monkeypatch.setattr(i18n_translator.i18n, "_open", lambda: conn)
+        # The seed is read-only and dry_run never calls a translator. Derived
+        # rows must not become authoritative merely because their timestamp
+        # equals or exceeds that of the editorial source (including EN).
+        report = i18n_translator.align_messages(dry_run=True)
+        assert report
+        assert not [item for item in report if item.get("marked_for_retranslate")]
     finally:
         conn.close()
-    grouped: dict[str, list[tuple]] = {}
-    for key, lang, version_hash, source_text_hash, updated_at in rows:
-        grouped.setdefault(key, []).append(
-            (lang, version_hash, source_text_hash, updated_at)
-        )
-    bad = []
-    for key, entries in grouped.items():
-        source = entries[0]
-        if not source[1]:
-            bad.append((key, "source_version_hash_missing"))
-            continue
-        for lang, _version, source_hash, _updated in entries[1:]:
-            if source_hash != source[1]:
-                bad.append((key, lang))
-    assert not bad[:20]
