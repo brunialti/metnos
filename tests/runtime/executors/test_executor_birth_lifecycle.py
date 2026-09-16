@@ -131,6 +131,30 @@ def test_replace_stale_generation_or_version_preserves_current(tmp_path):
     connection.close()
 
 
+@pytest.mark.parametrize("changed", [None, "name", "source", "lifecycle", "expected_state_version", "event_kind"])
+def test_epoch_retry_matches_exact_transition_without_resetting_counts(tmp_path, changed):
+    db = tmp_path / "epochs.sqlite"
+    open_epoch(contract_id=CID, generation_id=G1, name="demo", source="synt",
+               lifecycle=BirthLifecycle.PREEXERCISE, observed_at=NOW, db_path=db)
+    values = dict(contract_id=CID, expected_generation_id=G1, expected_state_version=1,
+                  generation_id=G2, name="demo", source="birth", lifecycle=BirthLifecycle.ACTIVE,
+                  observed_at=NOW, db_path=db, event_kind="lifecycle_active")
+    replace_current_epoch(**values)
+    record_execution(EpochCacheKey(CID, G2, BirthLifecycle.ACTIVE), expected_version=1,
+                     successful=True, occurred_at=NOW, db_path=db)
+    if changed is not None:
+        values[changed] = {"name": "other", "source": "other", "lifecycle": BirthLifecycle.QUARANTINED,
+                           "expected_state_version": 2, "event_kind": "other"}[changed]
+        with pytest.raises(EpochStoreError, match="successor replay mismatch"):
+            replace_current_epoch(**values)
+    else:
+        result = replace_current_epoch(**values)
+        assert result.repeated
+    with sqlite3.connect(db) as connection:
+        assert connection.execute("SELECT total_calls FROM executor_epochs WHERE generation_id=?", (G2,)).fetchone() == (1,)
+        assert connection.execute("SELECT COUNT(*) FROM executor_epoch_history").fetchone() == (3,)
+
+
 def test_counts_are_bound_to_exact_current_generation_and_version(tmp_path):
     db = tmp_path / "epochs.sqlite"
     open_epoch(contract_id=CID, generation_id=G1, name="demo", source="synt",

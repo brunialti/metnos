@@ -15,7 +15,8 @@ def test_the_table_covers_every_capability_and_nothing_else():
         for item in _producer_capabilities_for_bootstrap()
     }
     assert set(table.PRODUCER_AUTHOR_V1) == declared
-    assert len(declared) == 11
+    assert len(declared) == 12
+    assert table.PRODUCER_AUTHOR_V1[("promoter", "quarantine")] is RevisionAuthor.MAINTENANCE
     assert all(
         isinstance(value, RevisionAuthor)
         for value in table.PRODUCER_AUTHOR_V1.values()

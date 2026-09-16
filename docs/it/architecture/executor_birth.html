@@ -111,6 +111,16 @@
  ripete tutta l'indagine storica. Restano da completare la sua emissione a
  partire dalle verifiche concluse e il collegamento delle operazioni sul
  ciclo di vita.</p>
+ <p>Il percorso di quarantena in sviluppo crea ora una revisione firmata della
+ precisa versione dell'executor che è stata eseguita. Cambia soltanto lo stato
+ di esecuzione, senza rieseguire il codice sospetto né chiedere un'altra
+ conferma all'utente. Un riscontro su una versione precedente non può
+ disabilitare quella nuova o altri executor. Le prove isolate coprono anche
+ le interruzioni: la quarantena già pubblicata viene recuperata e il lavoro
+ di revisione del fallimento viene accodato una sola volta. Restano da
+ completare il collegamento ai riscontri reali, l'integrazione di tutte le
+ memorie temporanee e la certificazione finale F5; queste prove non attivano
+ la produzione.</p>
  <h2>Le prove restano, le vecchie copie del programma no</h2>
  <p>La procedura di rilascio conserva normalmente la versione attiva e una
  precedente, oltre alle copie ancora utilizzate da processi, servizi o

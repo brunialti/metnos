@@ -102,7 +102,15 @@
  belongs to the selected release; a list of successful tests supplied by a
  caller is not a certificate. Reading this compact proof does not repeat the
  entire historical investigation. Issuing the proof from the completed checks
- and connecting the lifecycle operations are still unfinished.</p>
+ and connecting all lifecycle operations are still unfinished.</p>
+ <p>The development quarantine path now creates a signed revision of the exact
+ executor version that was run. It changes only its execution status, without
+ running the suspect code again or asking for another user confirmation.
+ Feedback about an older version cannot disable its replacement or other
+ executors. Isolated tests also cover interruptions: an already published
+ quarantine is recovered, and its failure-review job is queued only once.
+ The live feedback connection, complete cache integration and final F5
+ certification are still pending; these tests do not activate production.</p>
  <h2>Keep the evidence, not every old program copy</h2>
  <p>The release procedure normally retains the active release and one
  predecessor, plus copies still referenced by processes, services or

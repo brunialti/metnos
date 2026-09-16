@@ -57,6 +57,9 @@ from executor_birth_shadow import (
 
 MAX_TERMINAL_ENVELOPE_BYTES = 4 * 1024 * 1024
 _TERMINAL_SIGNATURE_DOMAIN = b"metnos.executor-birth.terminal/v1\0"
+_PUBLISHED_OUTCOMES = frozenset({
+    BirthOutcome.ADMITTED, BirthOutcome.PREEXERCISE, BirthOutcome.QUARANTINED,
+})
 
 
 def _digest(domain: bytes, fields: Mapping[str, bytes]) -> str:
@@ -393,7 +396,7 @@ def _replay_terminal(core: "_BirthCore", request: BirthRequest, claim: object) -
     if committed != (result.publication is not None):
         raise ValueError("birth_terminal_state_mismatch")
     if committed:
-        if (result.report.outcome not in {BirthOutcome.ADMITTED, BirthOutcome.PREEXERCISE}
+        if (result.report.outcome not in _PUBLISHED_OUTCOMES
                 or result.error_code is not None):
             raise ValueError("birth_terminal_state_mismatch")
         if claim.result_binding != _terminal_binding(encoded):
@@ -474,6 +477,7 @@ class _BirthCore:
     commit_publisher: object
     postcondition_verifier: PostconditionVerifier
     _seal: object
+    quarantine_key_ids: frozenset[str] = frozenset()
 
     def __post_init__(self) -> None:
         if self._seal is not _CORE_SEAL:
@@ -497,6 +501,7 @@ class _BirthCore:
         if active_public != configured_public:
             raise ValueError("birth_core_admission_keyring_invalid")
         object.__setattr__(self, "admission_verifier_keys", MappingProxyType(verifiers))
+        object.__setattr__(self, "quarantine_key_ids", frozenset(self.quarantine_key_ids))
 
 
 def _is_birth_core(value: object) -> bool:
@@ -588,6 +593,7 @@ def _assemble_birth_core(
     admission_verifier_keys: Mapping[str, object], admission_key_id: str, policy_version: str,
     now: Callable[[], datetime], commit_publisher: object,
     postcondition_verifier: PostconditionVerifier,
+    quarantine_key_ids: frozenset[str] = frozenset(),
 ) -> _BirthCore:
     """Core bootstrap assembler; productive publication is not selectable.
 
@@ -606,7 +612,7 @@ def _assemble_birth_core(
         context_epoch_resolver, approval_resolver,
         shadow_dependencies, admission_private_key, admission_verifier_keys,
         admission_key_id, policy_version, now, commit_publisher,
-        postcondition_verifier, _CORE_SEAL,
+        postcondition_verifier, _CORE_SEAL, quarantine_key_ids,
     )
 
 
@@ -682,6 +688,7 @@ def verify_historical_publication_v1(
     lifecycles = {
         BirthOutcome.ADMITTED: ApprovedLifecycle.ACTIVE,
         BirthOutcome.PREEXERCISE: ApprovedLifecycle.PREEXERCISE,
+        BirthOutcome.QUARANTINED: ApprovedLifecycle.QUARANTINED,
     }
     if (publication is None or terminal.error_code is not None or report.error_code is not None
             or lifecycles.get(report.outcome) != admission.approved_lifecycle
@@ -747,7 +754,7 @@ def _rejected_report(request: BirthRequest, *, observed: ObservedCandidate | Non
     )
 
 
-def _execute(request: BirthRequest, core: _BirthCore) -> BirthResult:
+def _execute(request: BirthRequest, core: _BirthCore, *, quarantine_execution=None) -> BirthResult:
     observed: ObservedCandidate | None = None
     report: BirthReport | None = None
     facts: RevisionFacts | None = None
@@ -773,6 +780,13 @@ def _execute(request: BirthRequest, core: _BirthCore) -> BirthResult:
         with core.commit_publisher.admission_lock():
             phase = "candidate"
             producer_preview = _peek_receipt(core, request, instant)
+            if quarantine_execution is not None:
+                from executor_birth_quarantine import _validate_quarantine_request
+                _validate_quarantine_request(
+                    request, producer_preview, quarantine_execution, core.quarantine_key_ids,
+                )
+            elif producer_preview.authentication.key_id in core.quarantine_key_ids:
+                raise ValueError("birth_quarantine_execution_required")
             observed = observe_candidate(
                 request.candidate_source_root, contract_id=request.manifest_ref.contract_id,
                 executor_origin=producer_preview.executor_origin,
@@ -785,11 +799,22 @@ def _execute(request: BirthRequest, core: _BirthCore) -> BirthResult:
                 observed.executor_origin, observed.revision_authorship,
             )
             phase = "producer_claim"
-            claim = claim_producer_receipt(
-                request.producer_receipt, registry=core.producer_registry,
-                binding=receipt_binding, request_id=request.request_id,
-                now=instant, db_path=core.producer_db,
-            )
+            from executor_birth_receipts import ReceiptError
+            try:
+                claim = claim_producer_receipt(
+                    request.producer_receipt, registry=core.producer_registry,
+                    binding=receipt_binding, request_id=request.request_id,
+                    now=instant, db_path=core.producer_db,
+                )
+            except ReceiptError as exc:
+                if quarantine_execution is None or exc.code != "producer_receipt_lease_expired":
+                    raise
+                from executor_birth_producer_store import renew_producer_receipt_claim
+                claim = renew_producer_receipt_claim(
+                    request.producer_receipt, registry=core.producer_registry,
+                    binding=receipt_binding, request_id=request.request_id,
+                    now=instant, db_path=core.producer_db,
+                )
             producer = claim.receipt
             claimed = True
         phase = "recovery"
@@ -825,32 +850,24 @@ def _execute(request: BirthRequest, core: _BirthCore) -> BirthResult:
         )
         revision = classify_revision(facts).revision_class
         phase = "approval"
-        approval_subject, approval_evidence = core.approval_resolver(
-            request, observed, revision, instant,
-        )
-        shadow = core.shadow_dependencies
-        property_runner = shadow.property_runner or ObservedPropertyRunner(
-            observed, windows_registry=shadow.windows_sandbox_registry,
-            linux_registry=shadow.linux_sandbox_registry,
-        )
-        # Derived from the shadow container, never re-listed field by field:
-        # a new dependency would otherwise be silently dropped here.
-        borrowed_dependencies = replace(
-            shadow,
-            observer=lambda *_args, **_kwargs: _BorrowedObserved(observed),
-            property_runner=property_runner,
-            approval_subject=approval_subject,
-            approval_evidence=approval_evidence, now=instant,
-        )
+        approval_evidence = None
+        if quarantine_execution is not None:
+            from executor_birth_quarantine import _quarantine_report
+            phase = "checks"
+            report = _quarantine_report(
+                request, quarantine_execution, observed, predecessor_snapshot,
+                predecessor_payloads, facts, core.commit_publisher,
+            )
+        else:
+            approval_subject, approval_evidence = core.approval_resolver(request, observed, revision, instant)
+            phase = "checks"
+            report = _ordinary_admission_report(
+                request, core, observed, producer, context, facts, instant,
+                approval_subject, approval_evidence,
+            )
         phase = "checks"
-        report = _observe_birth_for_test(
-            request.candidate_source_root, contract_id=request.manifest_ref.contract_id,
-            executor_origin=producer.executor_origin,
-            revision_authorship=producer.revision_authorship,
-            objective_hash=producer.objective_hash, admission_context=context,
-            revision_facts=facts, _dependencies=borrowed_dependencies,
-        )
-        if report.outcome not in {BirthOutcome.ADMITTED, BirthOutcome.PREEXERCISE}:
+        if (report.outcome not in _PUBLISHED_OUTCOMES or report.error_code is not None
+                or (report.outcome is BirthOutcome.QUARANTINED and quarantine_execution is None)):
             rejected_result = BirthResult(
                 request.request_id, report, None, report.error_code,
                 BirthDiagnostic("checks", report.error_code or "birth_not_admitted", ""),
@@ -871,7 +888,11 @@ def _execute(request: BirthRequest, core: _BirthCore) -> BirthResult:
             approval_evidence_hash(approval_evidence)
             if approval_evidence is not None else None
         )
-        lifecycle = ApprovedLifecycle.PREEXERCISE if report.outcome is BirthOutcome.PREEXERCISE else ApprovedLifecycle.ACTIVE
+        lifecycle = {
+            BirthOutcome.ADMITTED: ApprovedLifecycle.ACTIVE,
+            BirthOutcome.PREEXERCISE: ApprovedLifecycle.PREEXERCISE,
+            BirthOutcome.QUARANTINED: ApprovedLifecycle.QUARANTINED,
+        }[report.outcome]
         predecessor = predecessor_snapshot.revision_id
 
         # The core hands over facts; the sealed publisher owns the keys, the
@@ -934,7 +955,7 @@ def _execute(request: BirthRequest, core: _BirthCore) -> BirthResult:
             report = _rejected_report(
                 request, observed=observed, facts=facts, error_code=error_code,
             )
-        elif report.outcome in {BirthOutcome.ADMITTED, BirthOutcome.PREEXERCISE}:
+        elif report.outcome in _PUBLISHED_OUTCOMES and report.error_code is None:
             # Admission is not an operational success until the atomic commit
             # returns its verified postcondition.
             report = BirthReport(
@@ -969,9 +990,32 @@ def _execute(request: BirthRequest, core: _BirthCore) -> BirthResult:
             observed.close()
 
 
+def _ordinary_admission_report(request, core, observed, producer, context, facts, instant,
+                               approval_subject, approval_evidence):
+    shadow = core.shadow_dependencies
+    property_runner = shadow.property_runner or ObservedPropertyRunner(
+        observed, windows_registry=shadow.windows_sandbox_registry,
+        linux_registry=shadow.linux_sandbox_registry,
+    )
+    # Preserve every dependency when lending the already-owned observation.
+    borrowed = replace(
+        shadow, observer=lambda *_args, **_kwargs: _BorrowedObserved(observed),
+        property_runner=property_runner, approval_subject=approval_subject,
+        approval_evidence=approval_evidence, now=instant,
+    )
+    report = _observe_birth_for_test(
+        request.candidate_source_root, contract_id=request.manifest_ref.contract_id,
+        executor_origin=producer.executor_origin, revision_authorship=producer.revision_authorship,
+        objective_hash=producer.objective_hash, admission_context=context,
+        revision_facts=facts, _dependencies=borrowed,
+    )
+    return report
+
+
 def _peek_receipt(core: _BirthCore, request: BirthRequest, instant: datetime):
-    from executor_birth_receipts import verify_producer_receipt
-    return verify_producer_receipt(request.producer_receipt, registry=core.producer_registry, now=instant)
+    from executor_birth_producer_store import _verify_claimed
+    return _verify_claimed(request.producer_receipt, registry=core.producer_registry,
+                           now=instant, db_path=core.producer_db)
 
 
 @dataclass(frozen=True, slots=True)
@@ -1075,11 +1119,13 @@ def _validate_synth_tests(data):
 def _execute_intent_with_capability(
     intent: "BirthIntent", capability: "_ProducerCapability",
 ) -> BirthResult:
-    from executor_birth_intent import BirthIntent, _is_producer_capability
+    from executor_birth_intent import BirthIntent, _is_producer_capability, _PROMOTER_QUARANTINE
     if not isinstance(intent, BirthIntent):
         raise ValueError("birth_intent_invalid")
     if not _is_producer_capability(capability):
         raise ValueError("birth_producer_capability_untrusted")
+    if capability is _PROMOTER_QUARANTINE:
+        raise ValueError("birth_quarantine_execution_required")
     bundle = _runtime_bundle_snapshot()
     if bundle is None:
         # Every mutating CLI/job facade crosses this same lazy boot gate.  A
@@ -1111,6 +1157,45 @@ def birth_executor(request: BirthRequest) -> BirthResult:
                              "birth_core_unavailable")
         return BirthResult(request.request_id, report, None, "birth_core_unavailable")
     return _execute(request, bundle.core)
+
+
+def _quarantine_execution_with_bundle(execution, bundle):
+    """Fixed-owner composition; a private seam for isolated integration tests."""
+    from executor_birth_intent import BirthIntent, _PROMOTER_QUARANTINE
+    from executor_birth_lifecycle import LifecycleError, LifecyclePublication
+    from executor_birth_quarantine import quarantine_reason
+
+    reason = quarantine_reason(execution)
+    factory = bundle.producer_factories.get(_PROMOTER_QUARANTINE)
+    if factory is None:
+        raise LifecycleError("birth_quarantine_capability_unavailable")
+    core = bundle.core
+    with core.commit_publisher.quarantine_candidate(execution) as (ref, stage):
+        request = factory(BirthIntent(stage, ref.contract_id, reason))
+        result = _execute(request, core, quarantine_execution=execution)
+        if result.error_code is not None or result.publication is None:
+            raise LifecycleError(result.error_code or "birth_quarantine_not_published")
+        publication, encoded = _verified_postcondition(
+            core.postcondition_verifier(request, result.publication, None),
+        )
+        if publication != result.publication or encoded is None:
+            raise LifecycleError("birth_quarantine_reread_invalid")
+        admission = verify_admission_receipt(encoded, verifier_keys=core.admission_verifier_keys)
+        if (admission.approved_lifecycle is not ApprovedLifecycle.QUARANTINED
+                or admission.predecessor_id != execution.generation_id
+                or admission.check_results["quarantine_execution"].evidence_hash != execution.receipt_id):
+            raise LifecycleError("birth_quarantine_reread_invalid")
+        return LifecyclePublication(admission, encoded, publication.current_generation_id,
+                                    publication.previous_generation_id, admission.approved_lifecycle)
+
+
+def _quarantine_execution_with_runtime(execution):
+    from executor_birth_lifecycle import load_f5_activation
+    from executor_birth_bootstrap import bootstrap_birth_runtime
+
+    load_f5_activation()
+    bundle = _runtime_bundle_snapshot() or bootstrap_birth_runtime()
+    return _quarantine_execution_with_bundle(execution, bundle)
 
 
 def _birth_executor_for_test(request: BirthRequest, *, _core: _BirthCore) -> BirthResult:

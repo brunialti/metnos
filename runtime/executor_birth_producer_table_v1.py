@@ -1,7 +1,7 @@
 """Who wrote a revision, and what kind of executor is being born (RM-0008).
 
-Two facts used to be chosen by ``bootstrap.json`` for each of the eleven
-producers.  Looking at the eleven one by one, only one of them is really a
+Two facts used to be chosen by ``bootstrap.json`` for each of the original
+producers. Looking at them individually, only one of them is really a
 property of the producer:
 
 - the **author** of the revision — model, importer, maintenance, human — is
@@ -48,6 +48,7 @@ PRODUCER_AUTHOR_V1 = MappingProxyType({
     ("change_rollback", "rollback"): RevisionAuthor.MAINTENANCE,
     ("promoter", "promote"): RevisionAuthor.MAINTENANCE,
     ("promoter", "rollback"): RevisionAuthor.MAINTENANCE,
+    ("promoter", "quarantine"): RevisionAuthor.MAINTENANCE,
     ("stack_reconcile", "restart_sign_first"): RevisionAuthor.MAINTENANCE,
 })
 

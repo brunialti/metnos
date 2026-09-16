@@ -27,7 +27,7 @@ ROOT = Path(__file__).resolve().parents[2]
 PREFLIGHT = ROOT / "runtime" / "executor_birth_admin_preflight.py"
 TOOL = ROOT / "internal" / "tools" / "render_contract_boundary_policy.py"
 GOLDEN_DIGEST_V1 = (
-    "sha256:2c905ae900677d15b21e2f2b0db5ad47a55426e69900ffff0a7bf6adf893cb8d"
+    "sha256:d427f30537434a8d8bc49b689345ff0025fd636750ba6b3f45ab0639a26ba16c"
 )
 
 POLICY_NAMES = (
@@ -81,6 +81,15 @@ def test_authoring_facts_are_immutable_and_facade_materializes_legacy_types() ->
     assert type(policy.BOUNDARY_APIS) is dict
     assert type(policy.BOUNDARY_MODULES) is dict
     assert type(policy.BOUNDARY_SOURCE_OWNERS) is dict
+
+
+def test_quarantine_facades_request_birth_without_low_level_authority() -> None:
+    for owner, entry in (
+        ("executor_birth_intent", "submit_promoter_quarantine_birth"),
+        ("executor_birth_operational", "_quarantine_execution_with_runtime"),
+    ):
+        assert policy.BOUNDARY_APIS[owner][entry] == ("birth",)
+        assert standalone.BOUNDARY_APIS[owner][entry] == ("birth",)
 
 
 def test_contract_convergence_owner_is_exact_in_all_three_registries() -> None:

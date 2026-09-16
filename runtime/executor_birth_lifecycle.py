@@ -12,7 +12,11 @@ import hashlib
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
+from typing import TYPE_CHECKING, Callable
+
+if TYPE_CHECKING:
+    from executor_birth_feedback import ExecutionReceipt, FeedbackResult
+    from executor_birth_operational import BirthRuntimeBundle
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
@@ -193,6 +197,77 @@ class LifecyclePublication:
 class LifecycleResult:
     publication: LifecyclePublication
     epochs: EpochReplacement
+
+
+def _apply_execution_failure_with_bundle(
+    execution: ExecutionReceipt, *, bundle: BirthRuntimeBundle, epoch_db: Path, queue_db: Path,
+    occurred_at: str, failure_evidence_hash: str, error_code: str,
+) -> FeedbackResult:
+    """Use the real publication/epoch/outbox owners with isolated fixture seams."""
+    from executor_birth_commit_publisher import BirthCommitLinkError
+    from executor_birth_epoch_store import read_epoch, EpochState, EpochStoreError
+    from executor_birth_feedback import (
+        QuarantineCAS, apply_negative_feedback, enqueue_failure_review_inactive,
+    )
+    from executor_birth_operational import _quarantine_execution_with_bundle
+
+    def quarantine_exact(contract_id, generation_id):
+        with bundle.core.commit_publisher.admission_lock():
+            prior = read_epoch(contract_id=contract_id, generation_id=generation_id, db_path=epoch_db)
+            if prior is None or prior.state is EpochState.ARCHIVED:
+                return QuarantineCAS.STALE
+            if prior.name != execution.executor_name:
+                raise LifecycleError("birth_quarantine_execution_invalid")
+            expected_version = prior.state_version - (prior.state is EpochState.DEPRECATED)
+            try:
+                publication = _quarantine_execution_with_bundle(execution, bundle)
+            except BirthCommitLinkError as exc:
+                if exc.code == "birth_quarantine_generation_stale":
+                    return QuarantineCAS.STALE
+                raise
+            try:
+                replacement = replace_current_epoch(
+                    contract_id=contract_id, expected_generation_id=generation_id,
+                    expected_state_version=expected_version,
+                    generation_id=publication.reread_generation_id,
+                    name=prior.name, source=prior.source, lifecycle=BirthLifecycle.QUARANTINED,
+                    observed_at=occurred_at, db_path=epoch_db, event_kind="lifecycle_quarantined",
+                )
+            except EpochStoreError as exc:
+                # A published quarantine cannot be undone because local
+                # selection disagrees. Leave it visible and require recovery.
+                raise LifecycleError("birth_quarantine_epoch_recovery_required", exc.code) from exc
+            return QuarantineCAS.ALREADY_QUARANTINED if replacement.repeated else QuarantineCAS.APPLIED
+
+    return apply_negative_feedback(
+        execution, failure_evidence_hash=failure_evidence_hash, error_code=error_code,
+        quarantine_exact=quarantine_exact,
+        enqueue_idempotent=lambda job, request: enqueue_failure_review_inactive(
+            job, request, created_at=occurred_at, db_path=queue_db,
+        ),
+    )
+
+
+def apply_execution_failure(
+    execution: ExecutionReceipt, *, failure_evidence_hash: str, error_code: str,
+) -> FeedbackResult:
+    """Certified exact-feedback entry; no caller-selected store or publisher."""
+    import config
+    from executor_birth_bootstrap import bootstrap_birth_runtime, _secure_state_dir, _secure_state_db
+    from executor_birth_feedback import utc_now_seconds
+
+    load_f5_activation()
+    bundle = bootstrap_birth_runtime()
+    state = _secure_state_dir(Path(config.PATH_USER_STATE) / "birth")
+    epochs = state / "executor_epochs.sqlite"
+    if not epochs.is_file():
+        raise LifecycleError("f5_epoch_migration_required")
+    return _apply_execution_failure_with_bundle(
+        execution, bundle=bundle, epoch_db=_secure_state_db(state, epochs.name),
+        queue_db=_secure_state_db(state, "failure_reviews.sqlite"),
+        occurred_at=utc_now_seconds(),
+        failure_evidence_hash=failure_evidence_hash, error_code=error_code,
+    )
 
 
 PublishRevision = Callable[[ContractId, str, BirthLifecycle, str | None], LifecyclePublication]

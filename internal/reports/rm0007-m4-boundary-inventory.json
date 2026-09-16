@@ -1952,6 +1952,16 @@
       "scope": "authenticate_execution_binding",
       "role": "store_owner",
       "capabilities": [
+        "store_write"
+      ],
+      "destination": "unchanged dispatch facade delegating to the exact receipt reader",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
+      "scope": "_authenticate_execution_binding_with_receipt",
+      "role": "store_owner",
+      "capabilities": [
         "authoring_read",
         "store_write",
         "verified_store_read"
@@ -2525,6 +2535,22 @@
     },
     {
       "path": "runtime/executor_birth_commit_publisher.py",
+      "scope": "_BirthCommitPublisher.authenticate_quarantine_predecessor",
+      "role": "store_owner",
+      "capabilities": ["store_write"],
+      "destination": "sealed read of the exact invoked generation and its prior admission; existing lock ownership only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_commit_publisher.py",
+      "scope": "_BirthCommitPublisher.quarantine_candidate",
+      "role": "store_owner",
+      "capabilities": ["authoring_read", "authoring_write", "store_write", "verified_store_read"],
+      "destination": "sealed authenticated capture and private reduce-only staging, including exact-successor recovery; no direct publication",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_commit_publisher.py",
       "scope": "_BirthCommitPublisher._read_current_reattestation",
       "role": "administrative_tool",
       "capabilities": [
@@ -2595,6 +2621,14 @@
     },
     {
       "path": "runtime/executor_birth_intent.py",
+      "scope": "submit_promoter_quarantine_birth",
+      "role": "administrative_tool",
+      "capabilities": ["birth"],
+      "destination": "data-only exact execution receipt routed to the fixed F5-gated Birth owner",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_intent.py",
       "scope": "submit_promoter_rollback_birth",
       "role": "administrative_tool",
       "capabilities": [
@@ -2631,6 +2665,14 @@
         "birth"
       ],
       "destination": "single compiled owner of the productive Executor Birth boundary",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_operational.py",
+      "scope": "_quarantine_execution_with_runtime",
+      "role": "administrative_tool",
+      "capabilities": ["birth"],
+      "destination": "fixed-certification entry into the existing sealed Birth core; no selectable publisher or authority",
       "phase": "M4"
     },
     {

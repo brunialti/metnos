@@ -465,3 +465,43 @@ caller-supplied success counts. It does not reopen the full historical dossier.
 This reader and its isolated filesystem tests do not issue a certificate or
 enable production F5; evidence-derived issuance and productive lifecycle
 composition remain unfinished.
+
+## Exact-execution quarantine and resumable feedback (16 September 2026)
+
+The approved maintenance capability `promoter:quarantine` uses the existing
+per-capability authority preparation and the single sealed Birth core. It is
+not promotion or rollback. Its absence does not disable F4; its productive
+facade requires the fixed F5 activation. Models receive no publication key,
+and the separate administrative certification key never publishes executors.
+
+The signed objective binds the exact retained execution receipt. Before
+publication, the owner authenticates the current generation and admission,
+checks contract/candidate/name identities, and proves unchanged code, language
+state and manifest fields except `lifecycle=quarantined`. It records reuse of
+the prior authenticated admission rather than rerunning suspect code or
+claiming new property/semantic passes. Store predecessor CAS prevents stale
+feedback from changing a successor. A committed quarantine is distinct from
+a rejected candidate report with the same outcome label.
+
+The owner reconstructs an exact retry from authenticated original manifest
+bytes and unchanged current code, accepting only the immediate quarantine
+successor bound to that execution. No staging directory must survive a crash.
+Producer expiry forbids a first claim but not authentication of an already
+claimed request; quarantine recovery renews only its own existing lease.
+The same terminal hint and independent persistent reread remain required.
+
+The feedback composition orders publication/reread, epoch replacement/cache
+invalidation and idempotent review enqueue. It reuses the existing catalog
+lock and SQLite owners. Epoch retry verifies the recorded transition and
+does not reset counters or append duplicate history. A failed queue leaves
+quarantine intact; a repeated receipt schedules the same job. The instance
+state paths are `birth/executor_epochs.sqlite` and `birth/failure_reviews.sqlite`;
+productive entry refuses a missing migrated epoch store instead of creating
+an empty replacement. Existing F4 startup does not enter this optional path.
+
+Real isolated store tests cover signatures, publication, source preservation,
+stale identities, expiration and interruption recovery, epoch/cache effects,
+outbox retry and unaffected executors. These are fixture proofs, not historical
+qualification. Live turn wiring, all cache layers, the review consumer,
+installed migration, focused HTTP cycles and certificate issuance remain
+required before productive F5 activation.

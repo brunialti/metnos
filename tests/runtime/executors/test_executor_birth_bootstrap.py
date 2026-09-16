@@ -60,9 +60,21 @@ def test_registry_is_closed_and_capability_specific(tmp_path: Path) -> None:
     assert set(registry.entries) == {cap.producer_id for cap in authorities}
     # A store the prepared set does not contain is a missing capability, not a
     # default: the registry is closed by the catalogue, not by a document.
-    partial = type("Sealed", (), {"producers": dict(list(sealed.producers.items())[:-1])})()
+    partial = type("Sealed", (), {"producers": dict(list(sealed.producers.items())[1:])})()
     with pytest.raises(bootstrap.BirthBootstrapError, match="registry_incomplete"):
         bootstrap._sealed_authorities(partial)
+
+
+def test_optional_quarantine_key_does_not_disable_existing_f4(tmp_path):
+    from executor_birth_intent import _PROMOTER_QUARANTINE
+    from executor_birth_producer_table_v1 import producer_store_name_v1
+
+    sealed = _sealed_producers(tmp_path)
+    sealed.producers.pop(producer_store_name_v1("promoter", "quarantine"))
+    authorities, registry = bootstrap._sealed_authorities(sealed)
+    assert _PROMOTER_QUARANTINE not in authorities
+    assert len(authorities) == len(_producer_capabilities_for_bootstrap()) - 1
+    assert "promoter" in registry.entries
 
 
 def test_reused_key_cannot_forge_a_second_capability(tmp_path: Path) -> None:

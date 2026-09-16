@@ -220,6 +220,16 @@ Only the administrator can open this context; ordinary Birth and startup do
 not read or write it. This persistence component does not yet run the HTTP
 harness, issue an F5 certificate, migrate state or activate lifecycle changes.
 
+New prepared sets also contain the maintenance capability
+`promoter:quarantine`, with its own producer key through the existing catalog.
+An older set without that optional F5 capability can still bootstrap F4.
+Quarantine itself requires the fixed F5 activation and an already migrated
+`birth/executor_epochs.sqlite` in the selected instance state. Its review
+outbox is `birth/failure_reviews.sqlite` in the same private directory.
+These files are neither populated by ordinary F4 startup nor synthesized as
+replacement migration evidence. Live feedback wiring and final qualification
+remain development work; provisioning the optional capability does not enable it.
+
 ### Private HTTP runtime settings
 
 The signed HTTP recipe selects `METNOS_ENGINE=v3`; its launcher does not inherit

@@ -44,12 +44,14 @@ BOUNDARY_API_OWNERS_V1 = (
         ('submit_installer_birth', ('birth',)),
         ('submit_promote_birth', ('birth',)),
         ('submit_promoter_rollback_birth', ('birth',)),
+        ('submit_promoter_quarantine_birth', ('birth',)),
         ('submit_skills_birth', ('birth',)),
         ('submit_stack_reconcile_birth', ('birth',)),
         ('submit_synth_producer_birth', ('birth',)),
     )),
     BoundaryApiOwnerV1('executor_birth_operational', (
         ('birth_executor', ('birth',)),
+        ('_quarantine_execution_with_runtime', ('birth',)),
     )),
     BoundaryApiOwnerV1('executor_birth_synth', (
         ('submit_synth_multistage', ('birth',)),

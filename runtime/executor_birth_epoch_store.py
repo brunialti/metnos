@@ -111,6 +111,7 @@ class EpochReplacement:
     closed_generation_id: str
     closed_state_version: int
     opened: EpochRecord
+    repeated: bool = False
 
 
 _SCHEMA = """
@@ -493,6 +494,23 @@ def open_epoch(*, contract_id: ContractId, generation_id: str, name: str,
         connection.close()
 
 
+def read_epoch(*, contract_id: ContractId, generation_id: str, db_path: Path) -> EpochRecord | None:
+    """Read one exact epoch, including a closed predecessor needed for recovery."""
+    cid, gid = _contract(contract_id), _generation(generation_id)
+    connection = _open(db_path)
+    try:
+        row = connection.execute(
+            "SELECT name,source,state,lifecycle,state_version FROM executor_epochs "
+            "WHERE contract_id=? AND generation_id=?", (cid, gid),
+        ).fetchone()
+        if row is None:
+            return None
+        return EpochRecord(cid, gid, row["name"], row["source"], EpochState(row["state"]),
+                           BirthLifecycle(row["lifecycle"]), row["state_version"])
+    finally:
+        connection.close()
+
+
 def attest_execution_epoch(
     *, contract_id: ContractId, generation_id: str, name: str, db_path: Path,
 ) -> ExecutionEpochAttestation:
@@ -563,9 +581,36 @@ def replace_current_epoch(
     try:
         connection.execute("BEGIN IMMEDIATE")
         current = connection.execute(
-            "SELECT generation_id,state_version FROM executor_epochs "
+            "SELECT * FROM executor_epochs "
             "WHERE contract_id=? AND state='current'", (cid,),
         ).fetchone()
+        if current is not None and current["generation_id"] == new_gid:
+            prior = connection.execute(
+                "SELECT state,lifecycle,state_version FROM executor_epochs "
+                "WHERE contract_id=? AND generation_id=?", (cid, old_gid),
+            ).fetchone()
+            opening = connection.execute(
+                "SELECT event_kind,source,detail_json FROM executor_epoch_history "
+                "WHERE contract_id=? AND generation_id=? AND event_seq=1", (cid, new_gid),
+            ).fetchone()
+            detail = json.loads(opening["detail_json"]) if opening is not None else {}
+            if (prior is None or prior["state"] != EpochState.DEPRECATED.value
+                    or prior["lifecycle"] != BirthLifecycle.DEPRECATED.value
+                    or prior["state_version"] != expected_state_version + 1
+                    or current["name"] != clean_name or current["source"] != clean_source
+                    or current["lifecycle"] != lifecycle.value
+                    or current["historic_epoch_ref"] != historic_epoch_ref
+                    or opening is None or opening["event_kind"] != event
+                    or opening["source"] != clean_source
+                    or detail != {"historic_epoch_ref": historic_epoch_ref,
+                                  "lifecycle": lifecycle.value, "predecessor_generation_id": old_gid}):
+                raise EpochStoreError("epoch_conflict", "successor replay mismatch")
+            connection.commit()
+            return EpochReplacement(
+                old_gid, expected_state_version + 1,
+                EpochRecord(cid, new_gid, clean_name, clean_source, EpochState.CURRENT,
+                            lifecycle, current["state_version"]), True,
+            )
         if (current is None or current["generation_id"] != old_gid
                 or int(current["state_version"]) != expected_state_version):
             raise EpochStoreError("epoch_conflict", "stale predecessor")

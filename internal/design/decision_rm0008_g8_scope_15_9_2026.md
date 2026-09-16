@@ -253,6 +253,15 @@ authority, platform checks and production exit conditions remain unchanged.
 This changes development order, not the threshold or execution authority.
 F6 still follows F5 and RM-0009 remains outside the assignment.
 
+### Exact-execution quarantine ownership — approved on 16 September 2026
+
+Roberto answered **approvo** to extending the existing promoter through the
+single Birth owner to quarantine the exact invoked generation. This is a
+maintenance operation, not promotion or reactivation. It adds no service,
+model publication authority or user confirmation. The dedicated certification
+key remains unrelated to publication. Work-plan §6.11 freezes the reduced
+authority, replay and compatibility contract before implementation.
+
 ## References
 
 - [Detailed handover](handover_rm0008_f5_f6_15_9_2026.md), sections 4–6.

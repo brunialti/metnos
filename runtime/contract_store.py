@@ -4857,6 +4857,25 @@ def authenticate_execution_binding(
     lock_timeout: float = DEFAULT_LOCK_TIMEOUT,
     context_selection: object | None = None,
 ) -> ExecutionContractBinding:
+    """Authenticate an exact served identity without exposing receipt bytes."""
+    binding, _encoded = _authenticate_execution_binding_with_receipt(
+        contract_id, generation_identifier, trusted_publics=trusted_publics,
+        admission_verifier_keys=admission_verifier_keys, store_root=store_root,
+        lock_timeout=lock_timeout, context_selection=context_selection,
+    )
+    return binding
+
+
+def _authenticate_execution_binding_with_receipt(
+    contract_id: ContractId,
+    generation_identifier: str,
+    *,
+    trusted_publics: Iterable[TrustedPublic],
+    admission_verifier_keys: Mapping[str, object],
+    store_root: Path | str | None = None,
+    lock_timeout: float = DEFAULT_LOCK_TIMEOUT,
+    context_selection: object | None = None,
+) -> tuple[ExecutionContractBinding, bytes]:
     """Authenticate the exact current generation and its AdmissionReceipt.
 
     The lookup starts from ``ContractId`` and the configured authoring
@@ -4943,7 +4962,7 @@ def authenticate_execution_binding(
             return ExecutionContractBinding(
                 contract_id, generation_identifier, executor_name,
                 receipt.candidate_id,
-            )
+            ), encoded
 
 
 def _validate_birth_receipt_binding(

@@ -62,6 +62,7 @@ _SKILLS = _ProducerCapability("skills_cli", "skill_import_or_reactivation", _CAP
 _INSTALLER = _ProducerCapability("installer_phase3", "install", _CAPABILITY_SEAL)
 _BUILTIN = _ProducerCapability("builtin_contract_generator", "generate_builtin", _CAPABILITY_SEAL)
 _PROMOTER_ROLLBACK = _ProducerCapability("promoter", "rollback", _CAPABILITY_SEAL)
+_PROMOTER_QUARANTINE = _ProducerCapability("promoter", "quarantine", _CAPABILITY_SEAL)
 
 
 def _submit(intent: BirthIntent, capability: _ProducerCapability) -> "BirthResult":
@@ -124,10 +125,16 @@ def submit_promoter_rollback_birth(intent: BirthIntent) -> "BirthResult":
     return _submit(intent, _PROMOTER_ROLLBACK)
 
 
+def submit_promoter_quarantine_birth(execution):
+    """Request only exact-execution quarantine, through the certified owner."""
+    from executor_birth_operational import _quarantine_execution_with_runtime
+    return _quarantine_execution_with_runtime(execution)
+
+
 def _producer_capabilities_for_bootstrap() -> tuple[_ProducerCapability, ...]:
     return (_CHANGE_EXTEND, _CHANGE_ROLLBACK, _SYNTH_MULTISTAGE,
             _SYNTH_SPECIALIZE, _SYNTH_APPROVE, _PROMOTE, _STACK_RECONCILE, _SKILLS,
-            _INSTALLER, _BUILTIN, _PROMOTER_ROLLBACK)
+            _INSTALLER, _BUILTIN, _PROMOTER_ROLLBACK, _PROMOTER_QUARANTINE)
 
 
 def _submit_birth_intent_for_test(
@@ -150,4 +157,5 @@ __all__ = [
     "submit_promote_birth", "submit_stack_reconcile_birth", "submit_skills_birth",
     "submit_installer_birth", "submit_builtin_generation_birth",
     "submit_promoter_rollback_birth",
+    "submit_promoter_quarantine_birth",
 ]
