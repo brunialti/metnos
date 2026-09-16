@@ -323,7 +323,9 @@ def _hash_text(value: str) -> str:
     return "sha256:" + hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
-def create_contract_source(tmp_path: Path):
+def create_contract_source(
+    tmp_path: Path, *, name: str = "read_files", directory_name: str = "sample",
+):
     """One signed manifest source, ready for a real publication."""
     import hashlib
     import importlib
@@ -336,7 +338,7 @@ def create_contract_source(tmp_path: Path):
     sign_module = importlib.import_module("sign")
 
     root = tmp_path / "sources"
-    directory = root / "sample"
+    directory = root / directory_name
     directory.mkdir(parents=True)
     code = directory / "sample.py"
     code.write_text(
@@ -346,7 +348,7 @@ def create_contract_source(tmp_path: Path):
     manifest = directory / "manifest.toml"
     manifest.write_text(
         _MANIFEST_TEMPLATE_V1.format(
-            name="read_files", code_file=code.name, code_digest=digest,
+            name=name, code_file=code.name, code_digest=digest,
         ),
         encoding="utf-8",
     )
@@ -382,7 +384,7 @@ def create_contract_source(tmp_path: Path):
         ),
     ))
     assert not inventory.problems, inventory.problems
-    ref = next(item for item in inventory.manifests if item.name == "read_files")
+    ref = next(item for item in inventory.manifests if item.name == name)
     return ref, private, (("author", private.public_key()),)
 
 

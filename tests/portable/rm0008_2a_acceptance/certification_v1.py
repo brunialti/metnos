@@ -72,10 +72,16 @@ _REVIEWED_WORKFLOW_GIT_EDGE = (
     ("100644", "ce3bbd7e5097b23e4ad577ffa1b8af40b75618f7"),
     ("100644", "fe5afb0b15d754d80f70d00838398ff305d825a8"),
 )
+# Reviewed importlib-mode fixture lookup (329d51b3). No collection or oracle
+# changes are permitted by this exact prerequisite edge.
+_REVIEWED_PORTABLE_SUPPORT_GIT_EDGE = (
+    ("100644", "255ae1beaceec12cfd9ae81a7484e95a62f07309"),
+    ("100644", "4451e8a45192011cb72d36a20e6ace51ec7096ed"),
+)
 _EFFECTIVE_PYTEST_SUPPORT_SHA256 = {
     "conftest.py": "c31a567f781dcbd3e1ce06c67c901a1b3be07c21a5d8c4030cc8bf262a753015",
     "tests/portable/conftest.py": (
-        "c4026c2a26baadf7e4a294d747abc97417ce50254d0319dcac0754fba8370fd9"
+        "553295e23b655086aae942f654bf87d62a2020a350bc0bc680f61cd130549a27"
     ),
     "tests/runtime/conftest.py": (
         "6c3c097efa2cf52334cb4fc40945c1b1d9c91bf7f774a768958809bd8c9086ab"
@@ -2752,6 +2758,11 @@ def _validate_reviewed_acceptance_tree_evolution(
         source_tree[workflow], current_tree[workflow],
     ) == _REVIEWED_WORKFLOW_GIT_EDGE:
         changed.remove(workflow)
+    portable_support = "tests/portable/conftest.py"
+    if portable_support in changed and (
+        source_tree[portable_support], current_tree[portable_support],
+    ) == _REVIEWED_PORTABLE_SUPPORT_GIT_EDGE:
+        changed.remove(portable_support)
     if (
         missing
         or added != set(_FROZEN_CURRENT_EXACT_PATHS)

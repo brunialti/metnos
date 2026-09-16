@@ -17,9 +17,10 @@ POLICY_NAMES = (
     "BIRTH_CLOSED_EXCEPTION_SCOPES", "BIRTH_CLOSED_EXCEPTION_CAPABILITIES",
     "VALID_ROLES", "LIVE_MUTATIONS",
 )
-POLICY_SHA256 = "b25b2c5da9b4895705e770ff5169e7142e8d6b95dceda3acb362cd87450507d1"
-INVENTORY_SHA256 = "85586f340e8ac34941858dc11f64ea1aa9b998017eb1ebd81b1e351783117020"
-FINDINGS_SHA256 = "c808ae0c09b7b608d8a6b1bbe1902139d2da08e40ac76868e36919650c7d7d64"
+# Includes the reviewed bounded ownership reader; no mutation scope was added.
+POLICY_SHA256 = "c5fe1977b81da4f146bf420942625dad2ae378de6402aef6dc6b329801fa37e9"
+INVENTORY_SHA256 = "f306a2aaead49ebf0ed19212ec75edbb9a54c12f863ccc6dcfba50309f269bb5"
+FINDINGS_SHA256 = "fc4e6342f33dc90ca16abf1fa033d5aa77ce458f2b8281f137c89f75e6c2695d"
 
 DIRECT_MANIFEST_ROLES = frozenset({
     "migration_boundary", "offline_authoring", "store_owner",
@@ -115,7 +116,7 @@ def test_inventory_and_findings_outputs_are_frozen() -> None:
     embedded = standalone.birth_closed_findings((), inventory)
     first = [(item.code, item.scope, item.message) for item in imported]
     second = [(item.code, item.scope, item.message) for item in embedded]
-    assert first == second and len(first) == 162
+    assert first == second and len(first) == 163
     assert _sha256(first) == FINDINGS_SHA256
 
 

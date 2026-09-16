@@ -18,6 +18,23 @@
  <p>When Metnos code changes, signatures on existing contracts must remain
  verifiable. This does not authorize new code to execute or publish using
  a previous authority context.</p>
+ <h2>One candidate, one admission procedure</h2>
+ <p>A capability proposed by Synt follows the common Birth procedure. Its
+ candidate is kept separate from the installed version until the required
+ checks succeed. Generating an executor is not a release of the whole
+ Metnos system and does not require replaying every past certification.</p>
+ <p>Property and semantic checks run outside the catalog publication lock.
+ The short publication step checks the candidate and reserves its name
+ against the signed identities already installed. It does not recheck the
+ executable code of unrelated components just to read their names. If an
+ unrelated component has damaged code, that component remains unusable;
+ its signed name is still reserved, but another component can be repaired.</p>
+ <p><strong>Verification status:</strong> the simplified name check is tested
+ in development, not yet deployed. An isolated test follows the real Birth,
+ signed-store and execution paths: the installed version remains callable
+ while a new candidate's check is deliberately paused, and after that check
+ fails. This is not a live chat or model-latency benchmark. Shared authority
+ integrity, candidate safety and name uniqueness remain mandatory.</p>
  <h2>The first coordinated transition</h2>
  <p>The initial path authenticates the historical set and its key bindings
  under one barrier. Readers receive only the set identity and public
