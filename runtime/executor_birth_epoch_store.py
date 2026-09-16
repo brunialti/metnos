@@ -92,6 +92,13 @@ class EpochRecord:
     state: EpochState
     lifecycle: BirthLifecycle
     state_version: int
+    # The inactivity decision is kept apart from the signed lifecycle, so it
+    # stays reversible and never rewrites what a generation was admitted as.
+    lifecycle_override: BirthLifecycle | None = None
+    override_reason: str | None = None
+    last_used_at: str | None = None
+    first_seen_at: str | None = None
+    inactivity_since: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -500,15 +507,28 @@ def read_epoch(*, contract_id: ContractId, generation_id: str, db_path: Path) ->
     connection = _open(db_path)
     try:
         row = connection.execute(
-            "SELECT name,source,state,lifecycle,state_version FROM executor_epochs "
-            "WHERE contract_id=? AND generation_id=?", (cid, gid),
+            "SELECT name,source,state,lifecycle,state_version,lifecycle_override,"
+            "override_reason,last_used_at,first_seen_at,inactivity_since "
+            "FROM executor_epochs WHERE contract_id=? AND generation_id=?", (cid, gid),
         ).fetchone()
         if row is None:
             return None
-        return EpochRecord(cid, gid, row["name"], row["source"], EpochState(row["state"]),
-                           BirthLifecycle(row["lifecycle"]), row["state_version"])
+        return _record_from_row(cid, gid, row)
     finally:
         connection.close()
+
+
+def _record_from_row(contract_id: str, generation_id: str, row) -> EpochRecord:
+    """One decoder, so no reader forgets the reversible restriction."""
+    override = row["lifecycle_override"]
+    return EpochRecord(
+        contract_id, generation_id, row["name"], row["source"],
+        EpochState(row["state"]), BirthLifecycle(row["lifecycle"]),
+        row["state_version"],
+        BirthLifecycle(override) if override else None,
+        row["override_reason"], row["last_used_at"], row["first_seen_at"],
+        row["inactivity_since"],
+    )
 
 
 def read_current_epoch(
@@ -519,14 +539,13 @@ def read_current_epoch(
     connection = _open(db_path)
     try:
         row = connection.execute(
-            "SELECT generation_id,name,source,state,lifecycle,state_version "
+            "SELECT generation_id,name,source,state,lifecycle,state_version,"
+            "lifecycle_override,override_reason,last_used_at,first_seen_at,inactivity_since "
             "FROM executor_epochs WHERE contract_id=? AND state='current'", (cid,),
         ).fetchone()
         if row is None:
             return None
-        return EpochRecord(cid, row["generation_id"], row["name"], row["source"],
-                           EpochState(row["state"]), BirthLifecycle(row["lifecycle"]),
-                           row["state_version"])
+        return _record_from_row(cid, row["generation_id"], row)
     finally:
         connection.close()
 
@@ -552,16 +571,14 @@ def read_epochs(
             chunk = wanted[start:start + 200]
             placeholders = ",".join("(?,?)" for _ in chunk)
             rows = connection.execute(
-                "SELECT contract_id,generation_id,name,source,state,lifecycle,state_version "
+                "SELECT contract_id,generation_id,name,source,state,lifecycle,state_version,"
+                "lifecycle_override,override_reason,last_used_at,first_seen_at,inactivity_since "
                 f"FROM executor_epochs WHERE (contract_id,generation_id) IN ({placeholders})",
                 [value for pair in chunk for value in pair],
             ).fetchall()
             for row in rows:
-                found[(row["contract_id"], row["generation_id"])] = EpochRecord(
-                    row["contract_id"], row["generation_id"], row["name"], row["source"],
-                    EpochState(row["state"]), BirthLifecycle(row["lifecycle"]),
-                    row["state_version"],
-                )
+                found[(row["contract_id"], row["generation_id"])] = _record_from_row(
+                    row["contract_id"], row["generation_id"], row)
     finally:
         connection.close()
     return found
@@ -581,8 +598,8 @@ def attest_execution_epoch(
     connection = _open(db_path)
     try:
         row = connection.execute(
-            "SELECT name,state,lifecycle,state_version FROM executor_epochs "
-            "WHERE contract_id=? AND generation_id=?",
+            "SELECT name,state,lifecycle,state_version,lifecycle_override "
+            "FROM executor_epochs WHERE contract_id=? AND generation_id=?",
             (cid, gid),
         ).fetchone()
         if row is None:
@@ -591,9 +608,14 @@ def attest_execution_epoch(
             raise EpochStoreError("execution.runner_absent", "name_mismatch")
         lifecycle = BirthLifecycle(row["lifecycle"])
         state = EpochState(row["state"])
+        override = row["lifecycle_override"]
         if lifecycle is BirthLifecycle.QUARANTINED:
             raise EpochStoreError("execution.quarantined")
         if lifecycle in {BirthLifecycle.DEPRECATED, BirthLifecycle.ARCHIVED} or state is not EpochState.CURRENT:
+            raise EpochStoreError("execution.retired")
+        # A deprecated generation is still offered, demoted, so only the
+        # archiving restriction removes execution authority here.
+        if override == BirthLifecycle.ARCHIVED.value:
             raise EpochStoreError("execution.retired")
         if lifecycle is not BirthLifecycle.ACTIVE:
             raise EpochStoreError("execution.dormant")
@@ -848,6 +870,167 @@ def record_execution(
         if connection.in_transaction:
             connection.rollback()
         connection.close()
+
+
+_RESTRICTION_OVERRIDES = frozenset({BirthLifecycle.DEPRECATED, BirthLifecycle.ARCHIVED})
+
+
+def _override_history(connection, cid: str, gid: str, ts: str, event_kind: str,
+                      prior_version: int, detail: dict) -> None:
+    connection.execute(
+        "INSERT INTO executor_epoch_history(contract_id,generation_id,event_seq,ts,event_kind,"
+        "prior_state_version,new_state_version,detail_json) "
+        "SELECT ?,?,COALESCE(MAX(event_seq),0)+1,?,?,?,?,? FROM executor_epoch_history "
+        "WHERE contract_id=? AND generation_id=?",
+        (cid, gid, ts, event_kind, prior_version, prior_version + 1,
+         json.dumps(detail, sort_keys=True, separators=(",", ":")), cid, gid),
+    )
+
+
+def restrict_generation(
+    *, contract_id: ContractId, generation_id: str, expected_version: int,
+    override: BirthLifecycle, reason: str, observed_at: str, db_path: Path,
+) -> int:
+    """Record a local restriction beside the signed lifecycle, not over it.
+
+    The admitted lifecycle is evidence of what the generation was published as
+    and is never rewritten here. The restriction is a separate, reversible
+    observation with its reason, exactly as the name-based store kept its
+    markers apart from the manifest. ``inactivity_since`` retains when the
+    deprecation began, whatever decided it, so the later archiving step
+    measures from a recorded instant rather than from the moment a job runs.
+    """
+    cid, gid = _contract(contract_id), _generation(generation_id)
+    if override not in _RESTRICTION_OVERRIDES:
+        raise EpochStoreError("epoch_invalid", "restriction override")
+    if type(expected_version) is not int or expected_version < 1:
+        raise EpochStoreError("epoch_invalid", "expected_version")
+    clean_reason, ts = _text(reason, "reason"), _text(observed_at, "observed_at")
+    connection = _open(db_path)
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        current = connection.execute(
+            "SELECT lifecycle_override,inactivity_since FROM executor_epochs "
+            "WHERE contract_id=? AND generation_id=? AND state='current' AND state_version=?",
+            (cid, gid, expected_version),
+        ).fetchone()
+        if current is None:
+            raise EpochStoreError("epoch_conflict", "stale restriction identity")
+        if current["lifecycle_override"] == override.value:
+            connection.commit()
+            return expected_version
+        # Deprecation starts a clock; archiving keeps the instant it started.
+        since = ts if override is BirthLifecycle.DEPRECATED else current["inactivity_since"]
+        updated = connection.execute(
+            "UPDATE executor_epochs SET lifecycle_override=?,override_reason=?,"
+            "inactivity_since=?,state_version=state_version+1,updated_at=? "
+            "WHERE contract_id=? AND generation_id=? AND state='current' AND state_version=?",
+            (override.value, clean_reason, since, ts, cid, gid, expected_version),
+        )
+        if updated.rowcount != 1:
+            raise EpochStoreError("epoch_conflict", "stale restriction identity")
+        connection.execute(
+            "DELETE FROM executor_preexercise_cache WHERE contract_id=? AND generation_id=?",
+            (cid, gid),
+        )
+        _override_history(connection, cid, gid, ts, "restricted_" + override.value,
+                          expected_version, {"reason": clean_reason})
+        connection.commit()
+        return expected_version + 1
+    finally:
+        if connection.in_transaction:
+            connection.rollback()
+        connection.close()
+
+
+def clear_restriction(
+    *, contract_id: ContractId, generation_id: str, expected_version: int,
+    reason: str, observed_at: str, db_path: Path,
+) -> int:
+    """Revive a generation a local restriction had removed or demoted."""
+    cid, gid = _contract(contract_id), _generation(generation_id)
+    if type(expected_version) is not int or expected_version < 1:
+        raise EpochStoreError("epoch_invalid", "expected_version")
+    clean_reason, ts = _text(reason, "reason"), _text(observed_at, "observed_at")
+    connection = _open(db_path)
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        current = connection.execute(
+            "SELECT lifecycle_override FROM executor_epochs WHERE contract_id=? "
+            "AND generation_id=? AND state='current' AND state_version=?",
+            (cid, gid, expected_version),
+        ).fetchone()
+        if current is None:
+            raise EpochStoreError("epoch_conflict", "stale restriction identity")
+        if current["lifecycle_override"] is None:
+            connection.commit()
+            return expected_version
+        updated = connection.execute(
+            "UPDATE executor_epochs SET lifecycle_override=NULL,override_reason=?,"
+            "inactivity_since=NULL,last_used_at=?,state_version=state_version+1,updated_at=? "
+            "WHERE contract_id=? AND generation_id=? AND state='current' AND state_version=?",
+            (clean_reason, ts, ts, cid, gid, expected_version),
+        )
+        if updated.rowcount != 1:
+            raise EpochStoreError("epoch_conflict", "stale restriction identity")
+        _override_history(connection, cid, gid, ts, "restriction_cleared",
+                          expected_version, {"reason": clean_reason})
+        connection.commit()
+        return expected_version + 1
+    finally:
+        if connection.in_transaction:
+            connection.rollback()
+        connection.close()
+
+
+def credit_uses(
+    *, contract_id: ContractId, generation_id: str, expected_version: int,
+    uses: int, occurred_at: str, db_path: Path,
+) -> int:
+    """Transfer demand a superseded cache row already proved to its heir.
+
+    The credit is usage evidence for the inactivity decision only. It cannot
+    claim successes or failures, because none were observed for this
+    generation; it moves the calls and the instant they were last needed.
+    """
+    cid, gid = _contract(contract_id), _generation(generation_id)
+    if type(uses) is not int or isinstance(uses, bool) or uses <= 0:
+        raise EpochStoreError("epoch_invalid", "uses")
+    if type(expected_version) is not int or expected_version < 1:
+        raise EpochStoreError("epoch_invalid", "expected_version")
+    ts = _text(occurred_at, "occurred_at")
+    connection = _open(db_path)
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        updated = connection.execute(
+            "UPDATE executor_epochs SET total_calls=total_calls+?,last_used_at=?,"
+            "updated_at=? WHERE contract_id=? AND generation_id=? AND state='current' "
+            "AND state_version=?",
+            (uses, ts, ts, cid, gid, expected_version),
+        )
+        if updated.rowcount != 1:
+            raise EpochStoreError("epoch_conflict", "stale credit identity")
+        connection.commit()
+        return uses
+    finally:
+        if connection.in_transaction:
+            connection.rollback()
+        connection.close()
+
+
+def selectable_epochs(*, db_path: Path) -> tuple[EpochRecord, ...]:
+    """Every epoch a catalog could select, for the restriction decisions."""
+    connection = _open(db_path)
+    try:
+        rows = connection.execute(
+            "SELECT contract_id,generation_id,name,source,state,lifecycle,state_version,"
+            "lifecycle_override,override_reason,last_used_at,first_seen_at,inactivity_since "
+            "FROM executor_epochs WHERE state='current' ORDER BY contract_id"
+        ).fetchall()
+    finally:
+        connection.close()
+    return tuple(_record_from_row(row["contract_id"], row["generation_id"], row)
+                 for row in rows)
 
 
 def preserve_legacy_rows(

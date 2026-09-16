@@ -91,6 +91,12 @@ BOUNDARY_API_OWNERS_V1 = (
         ('load_catalog', ('live_artifact_read',)),
         ('_load_catalog_for_cutover_audit_v1', ('live_artifact_read',)),
     )),
+    # The lifecycle-state owner resolves one executor name through the
+    # authenticated catalog so a restriction or a usage credit reaches an
+    # exact generation instead of a sibling. It reads; it publishes nothing.
+    BoundaryApiOwnerV1('executor_lifecycle_state', (
+        ('_catalog_executor', ('live_artifact_read',)),
+    )),
     BoundaryApiOwnerV1('invocations', (
         ('load_executor_artifact', ('live_artifact_read',)),
     )),

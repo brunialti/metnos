@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Callable
 
 import config as C
+from logging_setup import get_logger
 from change_intents import (
     KIND_CACHE_PATTERN,
     KIND_CREATE_EXECUTOR,
@@ -35,6 +36,9 @@ from change_intents import (
 from executor_birth_intent import (
     BirthIntent, require_birth_intent_adapter, submit_change_rollback_birth,
 )
+
+
+log = get_logger(__name__)
 
 
 def _iso_now() -> str:
@@ -83,21 +87,15 @@ def _rollback_create_executor(ci: ChangeIntent) -> dict:
         archive_root.mkdir(parents=True, exist_ok=True)
         dst = archive_root / f"{name}_{int(time.time())}"
         shutil.move(str(synth_dir), str(dst))
-    # mark in executor_stats
-    db = C.PATH_USER_STATE / "executor_stats.db"
-    if db.exists():
-        try:
-            cn = sqlite3.connect(str(db), timeout=10.0)
-            cn.execute(
-                "UPDATE executor_stats SET archived_at=? WHERE name=? "
-                "AND archived_at IS NULL",
-                (_iso_now(), name),
-            )
-            cn.commit()
-            cn.close()
-        except sqlite3.Error:
-            pass
-    return {"executor_name": name, "archived_to": str(dst)}
+    # Il ritiro locale passa dal deposito che possiede la decisione.
+    archived = False
+    try:
+        from executor_lifecycle_state import Restriction, restrict_executor
+        archived = restrict_executor(name, restriction=Restriction.REMOVED,
+                                     reason=f"rollback create_executor change_intent={ci.id}")
+    except Exception as exc:
+        log.warning("rollback create: %s not restricted: %r", name, exc)
+    return {"executor_name": name, "archived_to": str(dst), "restricted": archived}
 
 
 def _rollback_extend_executor(ci: ChangeIntent) -> dict:
@@ -166,20 +164,16 @@ def _rollback_dedupe_executors(ci: ChangeIntent) -> dict:
                 removed = True
         except (json.JSONDecodeError, OSError):
             pass
-    # Undeprecate B
-    db = C.PATH_USER_STATE / "executor_stats.db"
-    if db.exists():
-        try:
-            cn = sqlite3.connect(str(db), timeout=10.0)
-            cn.execute(
-                "UPDATE executor_stats SET deprecated_at=NULL WHERE name=?",
-                (b,),
-            )
-            cn.commit()
-            cn.close()
-        except sqlite3.Error:
-            pass
-    return {"alias_removed": removed, "undeprecated": b}
+    # Undeprecate B through the store that owns the lifecycle decision: the
+    # direct statement below used to write one exact file whatever the
+    # installation had migrated to, and it bypassed the owner's own history.
+    revived = False
+    try:
+        from executor_lifecycle_state import revive_executor
+        revived = revive_executor(b, reason="dedupe rollback")
+    except Exception as exc:
+        log.warning("rollback dedupe: %s not revived: %r", b, exc)
+    return {"alias_removed": removed, "undeprecated": b, "revived": revived}
 
 
 def _rollback_materialize_pipeline(ci: ChangeIntent) -> dict:

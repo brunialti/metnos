@@ -220,3 +220,134 @@ def test_inherited_uses_reach_the_legacy_store(monkeypatch):
     monkeypatch.setattr("executor_aging.touch", lambda name: seen.append(name))
     assert state.credit_uses("demo", 3) == 3
     assert seen == ["demo"] * 3
+
+
+# --- the one inactivity decision, against the store that owns it -------------
+
+def synth(name, *, generation="1"):
+    executor = loaded(name, generation=generation)
+    executor.source = "synthesized"
+    return executor
+
+
+def idle(epochs, executor, *, first_seen, last_used=None, source="synth:reactive"):
+    open_epoch(contract_id=contract_of(executor), generation_id=executor.generation_id,
+               name=executor.name, source=source, lifecycle=BirthLifecycle.ACTIVE,
+               observed_at=first_seen, db_path=epochs)
+    if last_used is not None:
+        import sqlite3
+        with sqlite3.connect(epochs) as connection:
+            connection.execute("UPDATE executor_epochs SET last_used_at=? WHERE generation_id=?",
+                               (last_used, executor.generation_id))
+
+
+def override_of(epochs, executor):
+    from executor_birth_epoch_store import read_current_epoch
+    record = read_current_epoch(contract_id=contract_of(executor), db_path=epochs)
+    return None if record.lifecycle_override is None else (
+        record.lifecycle_override.value, record.override_reason)
+
+
+def test_an_idle_generation_is_deprecated_then_archived(monkeypatch, epochs):
+    owned_by(monkeypatch, mode.BirthStateOwner.EPOCH)
+    executor = synth("demo")
+    idle(epochs, executor, first_seen="2026-01-01T00:00:00Z")
+    first = state.apply_inactivity_decay(
+        deprecate_days=30, archive_days=14, now_iso="2026-03-01T00:00:00Z")
+    assert first["deprecated"] == ["demo"] and first["archived"] == []
+    assert override_of(epochs, executor) == ("deprecated", "inactive too long")
+    # Too soon to archive: the clock starts when the deprecation was recorded.
+    middle = state.apply_inactivity_decay(
+        deprecate_days=30, archive_days=14, now_iso="2026-03-10T00:00:00Z")
+    assert middle["archived"] == [] and middle["already_deprecated"] == 1
+    late = state.apply_inactivity_decay(
+        deprecate_days=30, archive_days=14, now_iso="2026-04-01T00:00:00Z")
+    assert late["archived"] == ["demo"]
+    assert override_of(epochs, executor)[0] == "archived"
+    assert state.catalog_restrictions([executor], read_only=True)["demo"] == (
+        state.Restriction.REMOVED, "inactive too long")
+
+
+def test_the_signed_lifecycle_is_never_rewritten_by_the_decision(monkeypatch, epochs):
+    from executor_birth_epoch_store import read_current_epoch
+
+    owned_by(monkeypatch, mode.BirthStateOwner.EPOCH)
+    executor = synth("demo")
+    idle(epochs, executor, first_seen="2026-01-01T00:00:00Z")
+    state.apply_inactivity_decay(deprecate_days=30, archive_days=14,
+                                 now_iso="2026-03-01T00:00:00Z")
+    record = read_current_epoch(contract_id=contract_of(executor), db_path=epochs)
+    assert record.lifecycle is BirthLifecycle.ACTIVE
+    assert record.state.value == "current"
+
+
+def test_recent_use_and_curated_capabilities_never_decay(monkeypatch, epochs):
+    owned_by(monkeypatch, mode.BirthStateOwner.EPOCH)
+    recent = synth("recent")
+    idle(epochs, recent, first_seen="2026-01-01T00:00:00Z",
+         last_used="2026-02-28T00:00:00Z")
+    curated = loaded("curated", contract="curated")
+    idle(epochs, curated, first_seen="2026-01-01T00:00:00Z", source="handcrafted")
+    report = state.apply_inactivity_decay(
+        deprecate_days=30, archive_days=14, now_iso="2026-03-01T00:00:00Z")
+    assert report["deprecated"] == [] and report["handcrafted_skipped"] == 1
+    assert state.catalog_restrictions([recent, curated], read_only=True) == {}
+
+
+def test_a_restriction_is_reversible_and_keeps_its_reason(monkeypatch, epochs):
+    owned_by(monkeypatch, mode.BirthStateOwner.EPOCH)
+    executor = synth("demo")
+    idle(epochs, executor, first_seen="2026-01-01T00:00:00Z")
+    monkeypatch.setattr(state, "_catalog_executor", lambda name: executor)
+    assert state.restrict_executor(
+        "demo", restriction=state.Restriction.DEMOTED, reason="duplicate of other") is True
+    assert override_of(epochs, executor) == ("deprecated", "duplicate of other")
+    assert state.catalog_restrictions([executor], read_only=True)["demo"][0] is (
+        state.Restriction.DEMOTED)
+    assert state.revive_executor("demo", reason="dedupe rollback") is True
+    assert override_of(epochs, executor) is None
+    assert state.catalog_restrictions([executor], read_only=True) == {}
+    # Reviving twice is not an error and changes nothing.
+    assert state.revive_executor("demo", reason="dedupe rollback") is False
+
+
+def test_a_restricted_generation_loses_execution_authority_when_archived(monkeypatch, epochs):
+    from executor_birth_epoch_store import EpochStoreError, attest_execution_epoch
+
+    owned_by(monkeypatch, mode.BirthStateOwner.EPOCH)
+    executor = synth("demo")
+    idle(epochs, executor, first_seen="2026-01-01T00:00:00Z")
+    monkeypatch.setattr(state, "_catalog_executor", lambda name: executor)
+    state.restrict_executor("demo", restriction=state.Restriction.DEMOTED, reason="idle")
+    # Deprecated stays callable: it is demoted in the catalog, not removed.
+    assert attest_execution_epoch(
+        contract_id=contract_of(executor), generation_id=executor.generation_id,
+        name="demo", db_path=epochs).state_version >= 1
+    state.restrict_executor("demo", restriction=state.Restriction.REMOVED, reason="idle")
+    with pytest.raises(EpochStoreError) as raised:
+        attest_execution_epoch(
+            contract_id=contract_of(executor), generation_id=executor.generation_id,
+            name="demo", db_path=epochs)
+    assert raised.value.code == "execution.retired"
+
+
+def test_inherited_uses_reach_the_exact_current_generation(monkeypatch, epochs):
+    import sqlite3
+
+    owned_by(monkeypatch, mode.BirthStateOwner.EPOCH)
+    executor = synth("demo")
+    idle(epochs, executor, first_seen="2026-01-01T00:00:00Z")
+    monkeypatch.setattr(state, "_catalog_executor", lambda name: executor)
+    assert state.credit_uses("demo", 5) == 5
+    with sqlite3.connect(epochs) as connection:
+        totals = connection.execute(
+            "SELECT total_calls,successful_calls,last_used_at IS NOT NULL "
+            "FROM executor_epochs WHERE generation_id=?",
+            (executor.generation_id,)).fetchone()
+    assert totals == (5, 0, 1)
+
+
+def test_an_unresolvable_name_credits_nothing(monkeypatch, epochs):
+    owned_by(monkeypatch, mode.BirthStateOwner.EPOCH)
+    monkeypatch.setattr(state, "_catalog_executor", lambda name: None)
+    assert state.credit_uses("ghost", 5) == 0

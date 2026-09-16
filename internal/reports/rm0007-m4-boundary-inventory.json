@@ -4008,6 +4008,16 @@
       "phase": "M4"
     },
     {
+      "path": "runtime/executor_lifecycle_state.py",
+      "scope": "_catalog_executor",
+      "role": "live_reader",
+      "capabilities": [
+        "live_artifact_read"
+      ],
+      "destination": "resolve one executor name to its exact authenticated generation before a local restriction or usage credit",
+      "phase": "M4"
+    },
+    {
       "path": "runtime/loader.py",
       "scope": "_catalog_cache_signature",
       "role": "offline_authoring",

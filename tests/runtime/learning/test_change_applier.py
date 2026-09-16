@@ -225,15 +225,14 @@ class TestApplierHandlers(unittest.TestCase):
         self.assertEqual(n_lines, 1, "dedup deve impedire duplicato in jsonl")
 
     def test_dedupe_executors_creates_alias(self):
-        stats = self.ca.C.PATH_USER_STATE / "executor_stats.db"
-        with sqlite3.connect(str(stats)) as conn:
-            conn.execute(
-                "CREATE TABLE executor_stats (name TEXT PRIMARY KEY, "
-                "source TEXT, deprecated_at TEXT)")
-            conn.execute(
-                "INSERT INTO executor_stats(name, source) VALUES (?, ?)",
-                ("list_processes", "synth:reactive"),
-            )
+        # La provenienza si registra dal proprietario dello stato di ciclo di
+        # vita, non costruendo a mano la sua tabella privata: l'applier ora
+        # legge e scrive da quello stesso proprietario.
+        import executor_aging
+        original = executor_aging.DB_PATH
+        executor_aging.DB_PATH = self.ca.C.PATH_USER_STATE / "executor_stats.db"
+        self.addCleanup(lambda: setattr(executor_aging, "DB_PATH", original))
+        executor_aging.register("list_processes", source="synth:reactive")
         id_ = self._make_accepted(
             self.ci_mod.KIND_DEDUPE_EXECUTORS,
             "list_processes",
