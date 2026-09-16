@@ -20,6 +20,7 @@ import contract_boundary_projection as projection
 import contract_boundary_role_policy as role_policy
 import executor_birth_admin_preflight as standalone
 import executor_birth_distribution_manifest as distribution_manifest
+from policy_test_support import freeze_policy
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -49,27 +50,13 @@ POLICY_MODULE_PATHS = (
 )
 
 
-def _assert_type_order_exact(left: object, right: object) -> None:
-    assert type(left) is type(right)
-    if type(left) is dict:
-        assert tuple(left) == tuple(right)  # type: ignore[arg-type]
-        for key in left:  # type: ignore[union-attr]
-            _assert_type_order_exact(left[key], right[key])  # type: ignore[index]
-    elif type(left) is tuple:
-        assert len(left) == len(right)  # type: ignore[arg-type]
-        for one, two in zip(left, right, strict=True):  # type: ignore[arg-type]
-            _assert_type_order_exact(one, two)
-    else:
-        assert left == right
-
-
 @pytest.mark.parametrize("name", PUBLIC_NAMES)
 def test_facade_guard_and_standalone_preserve_public_type_value_order(
     name: str,
 ) -> None:
-    expected = getattr(facade, name)
-    _assert_type_order_exact(expected, getattr(guard, name))
-    _assert_type_order_exact(expected, getattr(standalone, name))
+    assert freeze_policy(getattr(facade, name)) == freeze_policy(
+        getattr(guard, name),
+    ) == freeze_policy(getattr(standalone, name))
 
 
 def test_standalone_preserves_private_public_aliases_and_order() -> None:

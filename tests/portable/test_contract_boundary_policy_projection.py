@@ -6,7 +6,6 @@ from dataclasses import FrozenInstanceError
 import importlib.util
 import os
 from pathlib import Path
-import re
 import shutil
 import stat
 import subprocess
@@ -21,6 +20,7 @@ import contract_boundary_projection as projection
 import contract_boundary_syntax_policy as syntax_policy
 import executor_birth_admin_preflight as standalone
 from executor_birth_crypto_framing import framed_sha256_v1
+from policy_test_support import freeze_policy
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -51,47 +51,25 @@ REGEX_NAMES = (
 )
 
 
-def _assert_type_order_exact(left: object, right: object) -> None:
-    assert type(left) is type(right)
-    if type(left) is dict:
-        assert tuple(left) == tuple(right)  # type: ignore[arg-type]
-        for key in left:  # type: ignore[union-attr]
-            _assert_type_order_exact(left[key], right[key])  # type: ignore[index]
-    elif type(left) is tuple:
-        assert len(left) == len(right)  # type: ignore[arg-type]
-        for first, second in zip(left, right, strict=True):  # type: ignore[arg-type]
-            _assert_type_order_exact(first, second)
-    elif type(left) is frozenset:
-        assert left == right
-    elif isinstance(left, re.Pattern):
-        assert left.pattern == right.pattern  # type: ignore[union-attr]
-        assert type(left.pattern) is type(right.pattern)  # type: ignore[union-attr]
-        assert left.flags == right.flags  # type: ignore[union-attr]
-    else:
-        assert left == right
-
-
 @pytest.mark.parametrize("name", POLICY_NAMES)
 def test_owner_guard_and_standalone_policy_are_type_order_exact(name: str) -> None:
-    owner = getattr(policy, name)
-    _assert_type_order_exact(owner, getattr(guard, name))
-    _assert_type_order_exact(owner, getattr(standalone, name))
+    assert freeze_policy(getattr(policy, name)) == freeze_policy(
+        getattr(guard, name),
+    ) == freeze_policy(getattr(standalone, name))
 
 
 @pytest.mark.parametrize("suffix", LIMIT_NAMES)
 def test_all_eight_limits_are_exact(suffix: str) -> None:
-    owner = getattr(policy, f"MAX_BOUNDARY_{suffix}")
-    _assert_type_order_exact(owner, getattr(guard, f"MAX_BOUNDARY_{suffix}"))
-    _assert_type_order_exact(
-        owner, getattr(standalone, f"MAX_BOUNDARY_{suffix}_V1"),
-    )
+    assert freeze_policy(getattr(policy, f"MAX_BOUNDARY_{suffix}")) == freeze_policy(
+        getattr(guard, f"MAX_BOUNDARY_{suffix}"),
+    ) == freeze_policy(getattr(standalone, f"MAX_BOUNDARY_{suffix}_V1"))
 
 
 @pytest.mark.parametrize("name", REGEX_NAMES)
 def test_regex_classification_preserves_pattern_type_value_and_flags(name: str) -> None:
-    owner = getattr(policy, name)
-    _assert_type_order_exact(owner, getattr(guard, name))
-    _assert_type_order_exact(owner, getattr(standalone, name))
+    assert freeze_policy(getattr(policy, name)) == freeze_policy(
+        getattr(guard, name),
+    ) == freeze_policy(getattr(standalone, name))
 
 
 def test_authoring_facts_are_immutable_and_facade_materializes_legacy_types() -> None:

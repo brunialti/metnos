@@ -9,12 +9,12 @@ from __future__ import annotations
 from dataclasses import asdict
 import json
 from pathlib import Path
-import re
 
 import pytest
 
 import contract_boundary_guard as guard
 import executor_birth_admin_preflight as standalone
+from policy_test_support import freeze_policy
 
 
 _CORPUS = {
@@ -126,57 +126,6 @@ _EXPECTED_NORMALIZED_SOURCE_REVIEW_SHA256 = (
     "sha256:117ed968866f3da95963f9d54ac333621f66db66ef218b81d078ba9a8c6aa742"
 )
 
-_ESSENTIAL_POLICY_NAMES = (
-    "SCHEMA",
-    "BIRTH_CLOSED_SCHEMA",
-    "BIRTH_CLOSED_GUARD_VERSION",
-    "BIRTH_CLOSED_SOURCE_REVIEW_SHA256",
-    "BIRTH_CLOSED_SEALED_MODULES",
-    "BIRTH_CLOSED_OWNER",
-    "BIRTH_CLOSED_COORDINATOR_STORE_OWNERS",
-    "BIRTH_CLOSED_EXCEPTION_SCOPES",
-    "BIRTH_CLOSED_EXCEPTION_CAPABILITIES",
-    "SCAN_ROOTS",
-    "AUTHORING_FILES",
-    "BOUNDARY_APIS",
-    "BOUNDARY_MODULES",
-    "BOUNDARY_SOURCE_OWNERS",
-    "READ_OPERATIONS",
-    "WRITE_OPERATIONS",
-    "PROCESS_CALLS",
-    "VALID_ROLES",
-    "LIVE_MUTATIONS",
-)
-
-_LIMIT_NAMES = (
-    "SOURCE_FILES",
-    "SOURCE_BYTES",
-    "TOTAL_SOURCE_BYTES",
-    "AST_NODES",
-    "TOTAL_AST_NODES",
-    "AST_DEPTH",
-    "SCOPES",
-    "CALLS",
-)
-
-
-def _frozen(value):
-    if type(value) is dict:
-        return ("dict", tuple((key, _frozen(item)) for key, item in value.items()))
-    if type(value) is tuple:
-        return ("tuple", tuple(_frozen(item) for item in value))
-    if type(value) is list:
-        return ("list", tuple(_frozen(item) for item in value))
-    if type(value) in (set, frozenset):
-        members = tuple(sorted((_frozen(item) for item in value), key=repr))
-        return (type(value).__name__, members)
-    if isinstance(value, re.Pattern):
-        return (
-            "regex", type(value).__module__, type(value).__qualname__,
-            type(value.pattern).__name__, value.pattern, value.flags,
-        )
-    return (type(value).__name__, value)
-
 
 def _serialized_model(value) -> str:
     return json.dumps(asdict(value), sort_keys=True, separators=(",", ":"))
@@ -256,15 +205,10 @@ def test_boundary_models_have_the_same_serialized_contract() -> None:
     assert str(imported_finding) == str(standalone_finding)
 
 
-@pytest.mark.parametrize("name", _ESSENTIAL_POLICY_NAMES)
-def test_boundary_essential_policy_is_identical(name: str) -> None:
-    assert _frozen(getattr(guard, name)) == _frozen(getattr(standalone, name))
-
-
-@pytest.mark.parametrize("suffix", _LIMIT_NAMES)
-def test_boundary_resource_limits_are_identical(suffix: str) -> None:
-    assert getattr(guard, f"MAX_BOUNDARY_{suffix}") == getattr(
-        standalone, f"MAX_BOUNDARY_{suffix}_V1",
+def test_boundary_source_review_pin_is_identical() -> None:
+    # Other policy values and limits belong to the projection/Birth families.
+    assert freeze_policy(guard.BIRTH_CLOSED_SOURCE_REVIEW_SHA256) == freeze_policy(
+        standalone.BIRTH_CLOSED_SOURCE_REVIEW_SHA256,
     )
 
 
