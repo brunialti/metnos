@@ -63,6 +63,10 @@ class LegacyRowFacts:
     name: str | None
     effect: LegacyEffect
     open_promotion: bool = False
+    # A row that records which generation it was about can be bound exactly.
+    # A row that records only a name cannot, and a present-time restriction is
+    # the only thing a name may still carry.
+    asserted_generation_id: str | None = None
 
     def __post_init__(self) -> None:
         if type(self.ordinal) is not int or isinstance(self.ordinal, bool) or self.ordinal < 0:
@@ -75,6 +79,11 @@ class LegacyRowFacts:
             raise LifecycleMigrationError("legacy_facts_invalid", "effect")
         if type(self.open_promotion) is not bool:
             raise LifecycleMigrationError("legacy_facts_invalid", "open_promotion")
+        if self.asserted_generation_id is not None and (
+                not isinstance(self.asserted_generation_id, str)
+                or not self.asserted_generation_id):
+            raise LifecycleMigrationError(
+                "legacy_facts_invalid", "asserted_generation_id")
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,6 +118,7 @@ def _evidence_id(facts: LegacyRowFacts, kind: Disposition,
         "generation_id": None if identity is None else identity[1],
         "kind": kind.value,
         "ordinal": facts.ordinal,
+        "row_generation_id": facts.asserted_generation_id,
     }, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")
     return "sha256:" + hashlib.sha256(
         LIFECYCLE_MIGRATION_DOMAIN_V1 + payload).hexdigest()
@@ -117,6 +127,12 @@ def _evidence_id(facts: LegacyRowFacts, kind: Disposition,
 def _decide(facts: LegacyRowFacts,
             selectable: Mapping[str, tuple[str, str]]) -> LegacyDispositionV1:
     identity = None if facts.name is None else selectable.get(facts.name)
+    if (identity is not None and facts.asserted_generation_id is not None
+            and facts.asserted_generation_id != identity[1]):
+        # The row is about a generation that is no longer the selected one.
+        # Binding it to the successor because the name matches is exactly the
+        # association this migration exists to avoid.
+        identity = None
     if facts.open_promotion:
         # An open grace case is neither carried nor closed here: draining it is
         # an operational decision, and guessing either way changes what a user
@@ -197,8 +213,12 @@ def statistics_facts(
     return tuple(facts)
 
 
-_PROMOTER_OPEN_STATES = frozenset({"promoted_grace", "review_needed"})
-_PROMOTER_ARCHIVED_STATES = frozenset({"archived"})
+# Closed set of settled promoter states. Everything else, including a state
+# this reader does not recognise, is treated as open: the retirement must not
+# close a case it cannot read.
+_PROMOTER_SETTLED_STATES = frozenset({
+    "archived", "rolled_back", "promoted_finalized",
+})
 
 
 def promoter_facts(
@@ -206,8 +226,9 @@ def promoter_facts(
 ) -> tuple[LegacyRowFacts, ...]:
     """Read open promotion cases out of preserved promoter rows.
 
-    An unknown state is treated as open rather than closed: the retirement must
-    not decide on a case it does not recognise.
+    A settled case is bound to the generation the row itself records, so the
+    association is exact rather than by name. An unrecognised state is treated
+    as open: the retirement must not close a case it cannot read.
     """
     if len(rows) != len(body_digests):
         raise LifecycleMigrationError("legacy_facts_invalid", "body_digests")
@@ -216,12 +237,14 @@ def promoter_facts(
         if not isinstance(row, Mapping):
             raise LifecycleMigrationError("legacy_facts_invalid", "row")
         state = row.get("state")
-        name = row.get("executor_name") or row.get("name")
-        closed = isinstance(state, str) and state in _PROMOTER_ARCHIVED_STATES
+        name = row.get("name")
+        generation = row.get("active_generation_id")
+        settled = isinstance(state, str) and state in _PROMOTER_SETTLED_STATES
         facts.append(LegacyRowFacts(
             ordinal, digest,
             name if isinstance(name, str) and name else None,
-            LegacyEffect.NONE, not closed,
+            LegacyEffect.NONE, not settled,
+            generation if isinstance(generation, str) and generation else None,
         ))
     return tuple(facts)
 
@@ -358,7 +381,7 @@ def source_unchanged(identity: LegacySourceIdentityV1) -> bool:
 # --- the one-time migration, as a plan and then as its application ------------
 
 _STATISTICS_TABLE = "executor_stats"
-_PROMOTER_TABLE = "promoter_state"
+_PROMOTER_TABLE = "proposal_promote"
 # Closed table: a legacy table is readable only by the reader written for it.
 # A dynamic lookup here would let a new name pick an arbitrary function.
 _TABLE_FACTS = {

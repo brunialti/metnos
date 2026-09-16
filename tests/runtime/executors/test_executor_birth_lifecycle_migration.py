@@ -93,18 +93,39 @@ def test_an_unrestricted_unknown_name_is_simply_discarded():
     assert plan[0].kind is Disposition.DISCARDED
 
 
-def test_an_open_promotion_is_never_decided_by_the_migration():
-    rows = [{"executor_name": "demo", "state": "promoted_grace"},
-            {"executor_name": "demo", "state": "archived"},
-            {"executor_name": "demo", "state": "a state nobody knows"}]
+@pytest.mark.parametrize("state,expected", [
+    ("promoted_grace", Disposition.PENDING_DISPOSITION),
+    ("review_needed", Disposition.PENDING_DISPOSITION),
+    ("a state nobody knows", Disposition.PENDING_DISPOSITION),
+    ("archived", Disposition.ATTESTED),
+    ("rolled_back", Disposition.ATTESTED),
+    ("promoted_finalized", Disposition.ATTESTED),
+])
+def test_only_a_settled_promotion_is_closed_by_the_migration(state, expected):
+    rows = [{"name": "demo", "state": state, "active_generation_id": GENERATION}]
     plan = migration.plan_dispositions(
-        migration.promoter_facts(rows, body_digests=["a", "b", "c"]),
-        selectable=selectable("demo"))
-    kinds = [item.kind for item in plan]
-    assert kinds[0] is Disposition.PENDING_DISPOSITION
-    assert kinds[1] is Disposition.ATTESTED
-    # An unrecognised state is treated as open, never as closed.
-    assert kinds[2] is Disposition.PENDING_DISPOSITION
+        migration.promoter_facts(rows, body_digests=["a"]),
+        selectable={"demo": (CONTRACT, GENERATION)})
+    assert plan[0].kind is expected
+
+
+def test_a_settled_promotion_about_another_generation_is_not_rebound():
+    """The row records which generation it was about; a name cannot move it."""
+    rows = [{"name": "demo", "state": "archived",
+             "active_generation_id": "sha256:" + "f" * 64}]
+    plan = migration.plan_dispositions(
+        migration.promoter_facts(rows, body_digests=["a"]),
+        selectable={"demo": (CONTRACT, GENERATION)})
+    assert plan[0].kind is Disposition.DISCARDED
+    assert plan[0].generation_id is None
+
+
+def test_a_restriction_about_another_generation_awaits_disposition():
+    rows = (LegacyRowFacts(0, "d0", "demo", LegacyEffect.REMOVED,
+                           asserted_generation_id="sha256:" + "f" * 64),)
+    plan = migration.plan_dispositions(rows, selectable={"demo": (CONTRACT, GENERATION)})
+    assert plan[0].kind is Disposition.PENDING_DISPOSITION
+    assert plan[0].effect is LegacyEffect.REMOVED
 
 
 def test_the_plan_digest_changes_with_any_decision():
