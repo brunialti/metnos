@@ -222,3 +222,13 @@ ancora gli stessi PID, senza riavvii; il lavoro foto conserva la stessa
 impronta. Le nuove schermate e le correzioni runtime sono installate, ma
 **né la pubblicazione complessiva né la ripresa delle elaborazioni sono
 certificate**. Il carico con LRE abilitato resta non provato.
+
+## Chiusura separata backend — release 55
+
+Il 16 settembre, con autorizzazione esplicita di Roberto, le due correzioni
+Birth sono state pubblicate senza gli esperimenti Tutor. Ammissione e
+attivazione completate, compresi gli otto residui già ammessi della release
+54; prova HTTP di compressione riuscita. LRE rimane disabilitato, lavoro foto
+invariato. Verifica conclusiva alle 08:50:22 UTC. Il difetto Tutor e la
+ripresa delle elaborazioni restano esclusi dalla chiusura.
+Prove e identità complete: `lre-backend-release-20260916.md`.
