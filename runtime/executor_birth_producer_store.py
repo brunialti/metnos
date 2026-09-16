@@ -124,7 +124,7 @@ class ProducerHistoryV1:
 
 @dataclass(frozen=True, slots=True)
 class HistoricalProducerBindingV1:
-    """An ordinary signed evidence join, not terminal success or a grant."""
+    """A signed evidence join, not terminal success or a grant."""
 
     admission: AdmissionReceipt
     producer: ProducerReceipt
@@ -141,6 +141,26 @@ def verify_historical_producer_binding_v1(
     frontier. This pure verifier does not turn an evidence container into
     operational authority, prove terminal success or reconstruct old source.
     """
+    return _verify_historical_producer_binding_v1(
+        admission_encoded, receipt_row=receipt_row, issuance_row=issuance_row,
+        declarations=declarations, reattestation=False,
+    )
+
+
+def verify_historical_reattestation_producer_v2(
+    admission_encoded: bytes, *, receipt_row: ProducerReceiptRowV1,
+    issuance_row: ProducerIssuanceRowV1, declarations,
+) -> HistoricalProducerBindingV1:
+    """Authenticate V2's historical scope without minting a sealed request."""
+    return _verify_historical_producer_binding_v1(
+        admission_encoded, receipt_row=receipt_row, issuance_row=issuance_row,
+        declarations=declarations, reattestation=True,
+    )
+
+
+def _verify_historical_producer_binding_v1(
+    admission_encoded, *, receipt_row, issuance_row, declarations, reattestation,
+):
     from executor_birth_prepared_root import HistoricalProducerDeclarationsV1
     from executor_birth_receipts import (
         AdmissionKind, IssuerKey, _parse_producer, _timestamp,
@@ -166,8 +186,9 @@ def verify_historical_producer_binding_v1(
         raise
     except (ValueError, TypeError, RecursionError, OverflowError) as exc:
         raise ReceiptError("producer_receipt_invalid", "history_admission_encoding") from exc
+    expected_kind = AdmissionKind.REATTESTATION if reattestation else AdmissionKind.ADMISSION
     if (admission.admission_context_id != public.material.pin.admission_context_id
-            or admission.kind is not AdmissionKind.ADMISSION):
+            or admission.kind is not expected_kind):
         raise ReceiptError("producer_receipt_invalid", "history_admission_context_or_kind")
     encoded = receipt_row.encoded
     receipt_hash = producer_receipt_hash(encoded)
@@ -181,16 +202,36 @@ def verify_historical_producer_binding_v1(
         raise
     except (ValueError, TypeError, RecursionError, OverflowError) as exc:
         raise ReceiptError("producer_receipt_invalid", "history_producer_encoding") from exc
+    scope = None
+    if reattestation:
+        from executor_birth_prepared_root import HistoricalReattestationScopeV2
+        from executor_birth_producer_context import producer_request_identity_v2
+
+        scope = declarations.reattestation_scope
+        if (type(scope) is not HistoricalReattestationScopeV2
+                or declarations.reattestation_scope_error is not None
+                or declarations.context.binding_kind != "transition_target"):
+            raise ReceiptError("producer_receipt_invalid", "history_reattestation_scope_unavailable")
+        request, objective = producer_request_identity_v2(
+            contract_id=admission.contract_id, generation_id=admission.generation_id,
+            admission_context_id=admission.admission_context_id,
+            transition_id=declarations.context.transition_id,
+            set_id=public.set_id, context_epoch=public.material.pin.context_epoch,
+            candidate_source_id=preview.candidate_source_id,
+        )
+        if request != admission.birth_request_id or objective != preview.objective_hash:
+            raise ReceiptError("producer_receipt_invalid", "history_reattestation_request_binding")
     matches = []
     for namespace, keys in public.producers.items():
         issuer, separator, operation = namespace.partition(":")
         if (separator and issuer == preview.issuer_id
                 and preview.authentication.key_id in keys.verifier_keys
-                and producer_request_id_v1(
+                and ((scope is not None and namespace == scope.namespace)
+                     or (scope is None and producer_request_id_v1(
                     issuer_id=issuer, operation=operation, contract_id=admission.contract_id,
                     objective_hash=preview.objective_hash,
                     candidate_source_id=preview.candidate_source_id,
-                ) == admission.birth_request_id):
+                ) == admission.birth_request_id))):
             matches.append((namespace, keys.verifier_keys[preview.authentication.key_id]))
     if len(matches) != 1:
         raise ReceiptError("producer_receipt_invalid", "history_capability_binding")
@@ -226,7 +267,7 @@ def verify_historical_producer_binding_v1(
         "objective_hash": producer.objective_hash,
         "candidate_source_id": producer.candidate_source_id,
         "request_id": admission.birth_request_id, "contract_id": admission.contract_id,
-        "capability_id": namespace,
+        "capability_id": scope.capability_id if scope is not None else namespace,
     }
     for row, expected in ((receipt_row, receipt_fields), (issuance_row, issuance_fields)):
         if any(getattr(row, field) != value for field, value in expected.items()):

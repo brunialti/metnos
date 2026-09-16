@@ -720,6 +720,8 @@ class HistoricalContextVerifiersV1:
     transition_id: str
     public_set: object
     binding_kind: Literal["transition_target", "initial_predecessor"] = "transition_target"
+    previous_admission_context_id: str | None = None
+    initial_transition: bool = False
 
 
 def _select_historical_context_v1(
@@ -805,7 +807,18 @@ def load_historical_context_verifiers_v1(
     return HistoricalContextVerifiersV1(
         before.required_head.head_id, transition.transition_id, public,
         "initial_predecessor" if initial else "transition_target",
+        None if initial else transition.previous_admission_context_id,
+        not initial and transition == before.context_transitions[0],
     )
+
+
+@dataclass(frozen=True, slots=True)
+class HistoricalReattestationScopeV2:
+    """Public source binding for the known non-publishing V2 protocol."""
+
+    namespace: str
+    capability_id: str
+    source_bindings: tuple[tuple[str, str], ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -818,6 +831,8 @@ class HistoricalProducerDeclarationsV1:
     source_hash: str
     authors: Mapping[str, str]
     executor_origins: Mapping[str, str]
+    reattestation_scope: HistoricalReattestationScopeV2 | None = None
+    reattestation_scope_error: str | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "authors", MappingProxyType(dict(self.authors)))
@@ -921,12 +936,62 @@ def load_historical_producer_declarations_v1(
     A matching current public copy can supply historical bytes. A differing
     copy is unsupported, never permission to reinterpret history as current.
     """
-    from executor_birth_distribution_manifest import (
-        AuthenticatedDistributionRecordV1, MAX_BOUNDARY_SOURCE_BYTES_V1,
-        file_content_hash, read_verified_distribution_file_v1,
+    before, transition = _select_historical_context_v1(admission_context_id)
+    result = _historical_producer_declarations_v1(before, transition, {})
+    _require_historical_frontier_unchanged_v1(before)
+    return result
+
+
+def load_historical_producer_declarations_for_contexts_v1(
+    admission_context_ids: tuple[str, ...],
+    *, include_reattestation: bool = False,
+) -> tuple[HistoricalProducerDeclarationsV1, ...]:
+    """Acquire all requested target contexts under one observed chain.
+
+    Cache only within this call and only after exact signed-file comparison.
+    The final chain reread is shared, not omitted. Initial predecessor policy
+    is not inferred from a successor. This is not a cross-store frontier.
+    """
+    import re
+    from executor_birth_ownership_chain import (
+        VerifiedOwnershipChain, inspect_ownership_chain_state_v1,
     )
 
-    before, transition = _select_historical_context_v1(admission_context_id)
+    if (type(include_reattestation) is not bool
+            or type(admission_context_ids) is not tuple or not admission_context_ids
+            or len(admission_context_ids) > 4096
+            or any(type(value) is not str
+                   or re.fullmatch(r"sha256:[0-9a-f]{64}", value) is None
+                   for value in admission_context_ids)
+            or len(set(admission_context_ids)) != len(admission_context_ids)):
+        raise PreparedRootError("birth_context_selection_invalid")
+    before = inspect_ownership_chain_state_v1()
+    if type(before) is not VerifiedOwnershipChain or not before.context_transitions:
+        raise PreparedRootError("birth_context_transition_required")
+    by_context = {}
+    for transition in before.context_transitions:
+        matches = by_context.setdefault(transition.prepared_admission_context_id, {})
+        matches[transition.encoded] = transition
+    cache = {}
+    results = []
+    for identifier in admission_context_ids:
+        matches = by_context.get(identifier, {})
+        if len(matches) != 1:
+            raise PreparedRootError("birth_context_selection_invalid")
+        results.append(_historical_producer_declarations_v1(
+            before, next(iter(matches.values())), cache,
+            include_reattestation=include_reattestation,
+        ))
+    _require_historical_frontier_unchanged_v1(before)
+    return tuple(results)
+
+
+def _historical_producer_declarations_v1(
+    before, transition, cache, *, include_reattestation=False,
+):
+    """Project one authenticated transition; the caller owns final reread."""
+    from executor_birth_distribution_manifest import AuthenticatedDistributionRecordV1
+
     public = _read_historical_context_set_v1(transition)
     if (before.required_distribution is None
             or len(before.authenticated_records) != len(before.heads)
@@ -948,25 +1013,178 @@ def load_historical_producer_declarations_v1(
             or before.required_distribution.identity.closed_build_id != before.required_head.closed_build_id):
         raise PreparedRootError("birth_context_producer_policy_invalid")
     path = "runtime/executor_birth_producer_table_v1.py"
+    source, source_hash = _historical_public_source_v1(before, record, path, cache)
+    cached = cache.get(("declarations", source_hash))
+    if cached is None:
+        cached = (
+            _historical_producer_author_declaration_v1(source),
+            _historical_executor_origin_declaration_v1(source),
+        )
+        cache[("declarations", source_hash)] = cached
+    declared, executor_origins = cached
+    if not set(public.producers) <= set(declared):
+        raise PreparedRootError("birth_context_producer_policy_invalid")
+    authors = {namespace: declared[namespace] for namespace in public.producers}
+    scope, scope_error = None, None
+    if include_reattestation:
+        try:
+            scope = _historical_reattestation_scope_v2(before, record, cache)
+        except PreparedRootError as exc:
+            # Preserve this limitation next to otherwise verified declarations.
+            # It cannot turn an unsupported protocol into a valid exclusion.
+            scope_error = exc.code
+    return HistoricalProducerDeclarationsV1(
+        HistoricalContextVerifiersV1(
+            before.required_head.head_id, transition.transition_id, public,
+            previous_admission_context_id=transition.previous_admission_context_id,
+            initial_transition=(record.release_sequence == 1),
+        ),
+        record.closed_build_id, path, source_hash, authors, executor_origins,
+        scope, scope_error,
+    )
+
+
+def _historical_public_source_v1(before, record, path, cache):
+    from executor_birth_distribution_manifest import (
+        MAX_BOUNDARY_SOURCE_BYTES_V1, file_content_hash,
+        read_verified_distribution_file_v1,
+    )
+
     historical = [item for item in record.files if item.path == path]
     current = [item for item in before.required_distribution.files if item.path == path]
     if (len(historical) != 1 or len(current) != 1 or historical != current
             or historical[0].role != "runtime_code"
             or historical[0].size > MAX_BOUNDARY_SOURCE_BYTES_V1):
         raise PreparedRootError("birth_context_producer_policy_invalid")
-    source = read_verified_distribution_file_v1(
-        before.required_distribution, expected_path=path, expected_role="runtime_code",
+    cache_key = ("source", path, historical[0].content_hash)
+    source = cache.get(cache_key)
+    if source is None:
+        source = read_verified_distribution_file_v1(
+            before.required_distribution, expected_path=path, expected_role="runtime_code",
+        )
+        if (len(source) != historical[0].size
+                or file_content_hash(path, source) != historical[0].content_hash):
+            raise PreparedRootError("birth_context_producer_policy_invalid")
+        cache[cache_key] = source
+    return source, historical[0].content_hash
+
+
+def _historical_reattestation_scope_v2(before, record, cache):
+    paths = (
+        "runtime/executor_birth_intent.py", "runtime/executor_birth_bootstrap.py",
     )
-    if (len(source) != historical[0].size
-            or file_content_hash(path, source) != historical[0].content_hash):
-        raise PreparedRootError("birth_context_producer_policy_invalid")
-    declared = _historical_producer_author_declaration_v1(source)
-    if not set(public.producers) <= set(declared):
-        raise PreparedRootError("birth_context_producer_policy_invalid")
-    authors = {namespace: declared[namespace] for namespace in public.producers}
-    executor_origins = _historical_executor_origin_declaration_v1(source)
-    _require_historical_frontier_unchanged_v1(before)
-    return HistoricalProducerDeclarationsV1(
-        HistoricalContextVerifiersV1(before.required_head.head_id, transition.transition_id, public),
-        record.closed_build_id, path, historical[0].content_hash, authors, executor_origins,
+    artifacts = tuple(_historical_public_source_v1(before, record, path, cache) for path in paths)
+    bindings = tuple((path, artifact[1]) for path, artifact in zip(paths, artifacts))
+    key = ("reattestation", bindings)
+    if key not in cache:
+        namespace, capability = _project_reattestation_scope_v2(*(item[0] for item in artifacts))
+        cache[key] = HistoricalReattestationScopeV2(namespace, capability, bindings)
+    return cache[key]
+
+
+def _project_reattestation_scope_v2(intent: bytes, bootstrap: bytes) -> tuple[str, str]:
+    """Recognize the closed protocol's source declarations, never run them.
+
+    These inputs must already be distribution-authenticated. This is not a
+    Python interpreter or a safety checker for arbitrary unsigned source.
+    Unsupported structural changes require a new reviewed protocol reader.
+    """
+    import ast
+    from contract_boundary_guard import _bounded_ast_metrics
+    from executor_birth_distribution_manifest import MAX_BOUNDARY_SOURCE_BYTES_V1
+
+    def one(values):
+        values = list(values)
+        if len(values) != 1:
+            raise ValueError("ambiguous protocol declaration")
+        return values[0]
+
+    def assignment(tree, name):
+        node = one(node for node in ast.walk(tree)
+                   if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store)
+                   and node.id == name)
+        return one(item.value for item in ast.walk(tree)
+                   if isinstance(item, ast.Assign) and item.targets == [node])
+
+    def expression(node, expected):
+        return ast.dump(node) == ast.dump(ast.parse(expected, mode="eval").body)
+
+    try:
+        trees = []
+        for encoded in (intent, bootstrap):
+            if type(encoded) is not bytes or len(encoded) > MAX_BOUNDARY_SOURCE_BYTES_V1:
+                raise ValueError("source size")
+            tree = ast.parse(encoded.decode("utf-8"))
+            _bounded_ast_metrics(tree)
+            trees.append(tree)
+        installer = assignment(trees[0], "_INSTALLER")
+        if (not isinstance(installer, ast.Call)
+                or not expression(installer.func, "_ProducerCapability")
+                or len(installer.args) != 3 or installer.keywords
+                or not expression(installer.args[2], "_CAPABILITY_SEAL")):
+            raise ValueError("installer declaration")
+        namespace_parts = [ast.literal_eval(value) for value in installer.args[:2]]
+        alias = ast.literal_eval(assignment(trees[1], "_REATTESTATION_CAPABILITY_V2"))
+        if any(type(value) is not str or not value or "\0" in value
+               or value.strip() != value or ":" in value for value in namespace_parts):
+            raise ValueError("installer namespace")
+        if type(alias) is not str or alias.count(":") != 1 or "\0" in alias or not all(alias.split(":")):
+            raise ValueError("alias")
+        _require_reattestation_flow_v2(trees)
+        return ":".join(namespace_parts), alias
+    except (UnicodeError, SyntaxError, RecursionError, ValueError, TypeError,
+            AttributeError, OverflowError, MemoryError) as exc:
+        raise PreparedRootError("birth_context_reattestation_policy_unsupported", exc) from None
+
+
+def _require_reattestation_flow_v2(trees):
+    """Recognize one reviewed protocol, not an allowlist of release builds.
+
+    The complete transfer includes constructors, inheritance, capture, issue
+    and prepared-carrier validation. Only docstrings and source positions are
+    omitted. An unknown semantic flow is evidence unavailable, not trusted by
+    finding a few familiar nodes among otherwise different statements.
+    """
+    import ast
+    import hashlib
+
+    profile = (
+        ("_ProducerCapability",),
+        ("_CutoverReattestationFactoryV1", "_CutoverReattestationFactoryV2",
+         "_PreparedReattestationV2", "_reattestation_factory_for_assembly_v1"),
     )
+    framed = bytearray(b"metnos.executor-birth.reattestation-flow/v2\0")
+    for tree, symbols in zip(trees, profile):
+        for symbol in symbols:
+            definitions = [node for node in ast.walk(tree)
+                           if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
+                           and node.name == symbol]
+            if len(definitions) != 1 or definitions[0] not in tree.body:
+                raise ValueError("protocol definition")
+            for node in ast.walk(tree):
+                if (isinstance(node, ast.Name) and node.id == symbol
+                        and isinstance(node.ctx, (ast.Store, ast.Del))):
+                    raise ValueError("protocol rebinding")
+                if isinstance(node, ast.alias) and (node.asname or node.name.split(".")[0]) == symbol:
+                    raise ValueError("protocol import rebinding")
+                if isinstance(node, ast.Attribute) and isinstance(node.ctx, (ast.Store, ast.Del)):
+                    target = node.value
+                    while isinstance(target, ast.Attribute):
+                        target = target.value
+                    if isinstance(target, ast.Name) and target.id == symbol:
+                        raise ValueError("protocol attribute rebinding")
+            selected = definitions[0]
+            for node in ast.walk(selected):
+                if (isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
+                        and node.body and isinstance(node.body[0], ast.Expr)
+                        and isinstance(node.body[0].value, ast.Constant)
+                        and isinstance(node.body[0].value.value, str)):
+                    node.body.pop(0)
+            encoded = ast.dump(selected, include_attributes=False).encode("utf-8")
+            framed.extend(len(encoded).to_bytes(8, "big"))
+            framed.extend(encoded)
+    # This versioned semantic protocol fingerprint is independent of file
+    # locations, release identifiers, comments and literal namespace values.
+    expected = "31c6e81661445814acf7db120a6457c07a698be24c4b55d32d2406b2720ddb40"
+    if hashlib.sha256(framed).hexdigest() != expected:
+        raise ValueError("unrecognized protocol flow")

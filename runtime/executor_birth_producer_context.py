@@ -37,6 +37,7 @@ __all__ = [
     "ProducerContextError",
     "ProducerRequestV2",
     "build_producer_request_v2",
+    "producer_request_identity_v2",
 ]
 
 # Domain separation.  Both values are derived from the same authenticated
@@ -145,6 +146,30 @@ def _contract_value(contract_id: object) -> str:
     return value
 
 
+def producer_request_identity_v2(
+    *, contract_id: str, generation_id: str, admission_context_id: str,
+    transition_id: str, set_id: str, context_epoch: str,
+    candidate_source_id: str,
+) -> tuple[str, str]:
+    """Encode public facts as request/objective hashes, never as authority.
+
+    Historical verification uses this same codec without fabricating a sealed
+    selection or request. Only ``build_producer_request_v2`` can mint one.
+    """
+    if not isinstance(contract_id, str) or not contract_id or "\0" in contract_id:
+        raise ProducerContextError("producer_request_v2_invalid", "contract_id")
+    fields = (
+        contract_id.encode("utf-8"),
+        _digest(generation_id, "generation_id").encode("ascii"),
+        _digest(admission_context_id, "admission_context_id").encode("ascii"),
+        _digest(transition_id, "transition_id").encode("ascii"),
+        _hex_digest(set_id, "set_id").encode("ascii"),
+        _digest(context_epoch, "context_epoch").encode("ascii"),
+        _digest(candidate_source_id, "candidate_source_id").encode("ascii"),
+    )
+    return _hash(_REQUEST_DOMAIN, *fields), _hash(_OBJECTIVE_DOMAIN, *fields)
+
+
 def build_producer_request_v2(
     selection: object,
     *,
@@ -181,18 +206,14 @@ def build_producer_request_v2(
     # Every authenticated fact of the selection enters the pre-image, so a
     # request cannot survive a change of transition, epoch, target set or
     # admission context even if the target generation is unchanged.
-    fields = (
-        contract_value.encode("utf-8"),
-        generation.encode("ascii"),
-        admission_context_id.encode("ascii"),
-        transition_id.encode("ascii"),
-        set_id.encode("ascii"),
-        context_epoch.encode("ascii"),
-        source.encode("ascii"),
+    request_id, objective_hash = producer_request_identity_v2(
+        contract_id=contract_value, generation_id=generation,
+        admission_context_id=admission_context_id, transition_id=transition_id,
+        set_id=set_id, context_epoch=context_epoch, candidate_source_id=source,
     )
     return ProducerRequestV2(
-        _hash(_REQUEST_DOMAIN, *fields),
-        _hash(_OBJECTIVE_DOMAIN, *fields),
+        request_id,
+        objective_hash,
         contract_value,
         generation,
         admission_context_id,

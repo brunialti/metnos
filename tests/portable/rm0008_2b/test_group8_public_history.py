@@ -746,3 +746,78 @@ def test_historical_set_requires_the_held_barrier_and_both_owner_pins(tmp_path, 
 def test_public_document_decoder_reports_malformed_input_consistently(encoded):
     with pytest.raises(PreparedSetError, match="birth_prepared_set_invalid"):
         _decode(encoded)
+
+
+def test_multiple_historical_contexts_share_only_call_local_verified_source(tmp_path, monkeypatch):
+    """Real source signature/read; chain and public-set selection are seams."""
+    import executor_birth_distribution_manifest as distribution
+
+    original, _release, _source = _producer_policy_fixture(tmp_path, monkeypatch)
+    first = original.context_transitions[0]
+    second = replace(first, closed_build_id=_digest("a"),
+                     prepared_admission_context_id=_digest("b"), encoded=b"second transition")
+    old_record = replace(original.authenticated_records[0], closed_build_id=_digest("a"))
+    old_head = replace(original.required_head, closed_build_id=_digest("a"), head_id=_digest("c"))
+    chain = replace(original, heads=(old_head, original.required_head),
+                    authenticated_records=(old_record, original.authenticated_records[0]),
+                    context_transitions=(second, first))
+    observations = []
+
+    def inspect():
+        observations.append(True)
+        return chain
+
+    monkeypatch.setattr(chain_module, "inspect_ownership_chain_state_v1", inspect)
+    public = root._read_historical_context_set_v1(first)
+
+    def public_for(transition):
+        from types import SimpleNamespace
+        return replace(public, material=SimpleNamespace(pin=SimpleNamespace(
+            admission_context_id=transition.prepared_admission_context_id,
+            context_epoch=transition.prepared_context_epoch,
+        )))
+
+    monkeypatch.setattr(root, "_read_historical_context_set_v1", public_for)
+    reads = []
+    read = distribution.read_verified_distribution_file_v1
+
+    def observed_read(*args, **kwargs):
+        reads.append(kwargs["expected_path"])
+        return read(*args, **kwargs)
+
+    monkeypatch.setattr(distribution, "read_verified_distribution_file_v1", observed_read)
+    selectors = (first.prepared_admission_context_id, second.prepared_admission_context_id)
+    for _ in range(2):
+        result = root.load_historical_producer_declarations_for_contexts_v1(selectors)
+        assert tuple(item.context.public_set.material.pin.admission_context_id for item in result) == selectors
+    assert len(observations) == 4  # Before and after each call, not each context.
+    assert reads == [_POLICY_PATH, _POLICY_PATH]  # No cache survives a call.
+
+
+def test_multiple_historical_contexts_retain_unavailable_reattestation_policy(tmp_path, monkeypatch):
+    chain, _release, _source = _producer_policy_fixture(tmp_path, monkeypatch)
+    selected = (chain.context_transitions[0].prepared_admission_context_id,)
+    result, = root.load_historical_producer_declarations_for_contexts_v1(
+        selected, include_reattestation=True,
+    )
+    assert result.authors
+    assert result.reattestation_scope is None
+    assert result.reattestation_scope_error == "birth_context_producer_policy_invalid"
+
+
+@pytest.mark.parametrize("selectors", ((), (_digest("1"),) * 2, ("bad",), ["a"], (_digest("1"),) * 4097))
+def test_multiple_historical_contexts_reject_unbounded_or_ambiguous_selectors(monkeypatch, selectors):
+    monkeypatch.setattr(chain_module, "inspect_ownership_chain_state_v1",
+                        lambda: pytest.fail("invalid selection entered chain acquisition"))
+    with pytest.raises(root.PreparedRootError, match="birth_context_selection_invalid"):
+        root.load_historical_producer_declarations_for_contexts_v1(selectors)
+
+
+def test_multiple_historical_contexts_require_final_chain_reread(tmp_path, monkeypatch):
+    chain, _release, _source = _producer_policy_fixture(tmp_path, monkeypatch)
+    observations = iter((chain, replace(chain, context_transitions=())))
+    monkeypatch.setattr(chain_module, "inspect_ownership_chain_state_v1", lambda: next(observations))
+    with pytest.raises(root.PreparedRootError, match="birth_context_selection_changed"):
+        root.load_historical_producer_declarations_for_contexts_v1(
+            (chain.context_transitions[0].prepared_admission_context_id,),
+        )

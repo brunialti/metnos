@@ -3,7 +3,7 @@
 # The administrative runner captures diagnostics privately. Only bounded
 # public identities, counts and error codes leave this process.
 set -euo pipefail
-case "${2:-}" in public-history|initial-public-history|initial-policy-binding|producer-policy|producer-declarations|producer-binding|publication-binding|producer-history|contract-history|contract-history-v1|contract-inventory|contract-residual) ;; *) exit 64 ;; esac
+case "${2:-}" in public-history|initial-public-history|initial-policy-binding|producer-policy|producer-declarations|producer-binding|publication-binding|producer-history|contract-history|contract-history-v1|contract-inventory|contract-residual|historical-inventory) ;; *) exit 64 ;; esac
 /opt/metnos/.venv/bin/python -I - "$1" "$2" <<'PY'
 import hashlib
 import importlib.util
@@ -23,19 +23,23 @@ modules = (
     "executor_birth_context_v1.py", "executor_birth_prepared_set.py",
     "executor_birth_prepared_root.py",
 )
-if sys.argv[2] in {"producer-declarations", "producer-binding", "publication-binding"}:
+if sys.argv[2] in {"producer-declarations", "producer-binding", "publication-binding", "historical-inventory"}:
     # This candidate helper was not present in the installed release. Measure
     # it explicitly; do not mistake the older source-availability probe for
     # an execution of the new exact-file owner interface.
     modules = ("executor_birth_distribution_manifest.py",) + modules
-if sys.argv[2] in {"producer-binding", "publication-binding"}:
+if sys.argv[2] in {"producer-binding", "publication-binding", "historical-inventory"}:
     modules = ("executor_birth_receipts.py",) + modules
-if sys.argv[2] in {"producer-history", "contract-history", "contract-history-v1", "producer-binding", "publication-binding"}:
+if sys.argv[2] == "historical-inventory":
+    modules += ("executor_birth_producer_context.py",)
+if sys.argv[2] in {"producer-history", "contract-history", "contract-history-v1", "producer-binding", "publication-binding", "historical-inventory"}:
     modules += ("executor_birth_producer_store.py",)
-if sys.argv[2] in {"contract-history", "contract-history-v1", "contract-inventory", "producer-binding", "publication-binding"}:
+if sys.argv[2] in {"contract-history", "contract-history-v1", "contract-inventory", "producer-binding", "publication-binding", "historical-inventory"}:
     modules += ("contract_store.py",)
-if sys.argv[2] == "publication-binding":
+if sys.argv[2] in {"publication-binding", "historical-inventory"}:
     modules += ("executor_birth_operational.py",)
+if sys.argv[2] == "historical-inventory":
+    modules += ("executor_birth_reattestation.py", "executor_birth_history.py")
 
 def source_hashes():
     return {
@@ -109,7 +113,7 @@ def read_only_audit(event, args):
         # event. Permit only the reviewed, logically read-only connection.
         allowed_database = (Path(os.environ["METNOS_USER_STATE"]) / "birth"
                             / "producer_receipts.sqlite")
-        if (sys.argv[2] not in {"producer-history", "contract-history", "contract-history-v1", "producer-binding", "publication-binding"}
+        if (sys.argv[2] not in {"producer-history", "contract-history", "contract-history-v1", "producer-binding", "publication-binding", "historical-inventory"}
                 or args[0] != allowed_database.as_uri() + "?mode=ro&cache=private"):
             denied["write_or_execution"] += 1
             denied_events.append({"event": event})
@@ -385,6 +389,52 @@ try:
             "qualification": "complete_logical_snapshot_only_no_signature_or_global_frontier_proof",
         }
         selectors = ()
+    if sys.argv[2] == "historical-inventory":
+        from collections import Counter
+        from contract_store import read_historical_birth_inventory_v1
+        from executor_birth_history import reconcile_historical_birth_v1
+        from executor_birth_prepared_root import load_historical_producer_declarations_for_contexts_v1
+        from executor_birth_producer_store import read_producer_history_v1
+
+        producer_history = read_producer_history_v1()
+        inventory = read_historical_birth_inventory_v1()
+        # These are selectors only. The join subsequently verifies each
+        # receipt, including its physical locator and independent reread.
+        wanted_contexts = set()
+        for contract in inventory.contracts:
+            for located in contract.receipts:
+                document = json.loads(located.encoded)
+                wanted_contexts.add(document["admission_context_id"])
+        known_contexts = {item.prepared_admission_context_id for item in chain.context_transitions}
+        declarations = load_historical_producer_declarations_for_contexts_v1(
+            tuple(sorted(wanted_contexts & known_contexts)), include_reattestation=True,
+        )
+        if any(item.context.required_head_id != chain.required_head.head_id for item in declarations):
+            raise RuntimeError("proof_frontier_changed")
+        joined = reconcile_historical_birth_v1(inventory, producer_history, declarations)
+        unchanged = (read_historical_birth_inventory_v1() == inventory
+                     and read_producer_history_v1() == producer_history)
+        result["historical_inventory"] = {
+            "contracts": len(inventory.contracts), "physical_receipts": joined.physical_receipts,
+            "producer_rows": joined.producer_rows, "issuance_rows": joined.issuance_rows,
+            "contexts_observed": len(wanted_contexts), "contexts_with_declarations": len(declarations),
+            "contexts_with_reattestation_scope": sum(item.reattestation_scope is not None for item in declarations),
+            "scope_limitations": dict(Counter(item.reattestation_scope_error for item in declarations
+                                               if item.reattestation_scope_error)),
+            "authenticated_acts": len(joined.acts),
+            "act_classifications": dict(Counter(item.classification for item in joined.acts)),
+            "technical_candidates": len(joined.technical_acts),
+            "technical_candidate_issuers": joined.technical_issuers,
+            "issues": dict(Counter(item.code for item in joined.issues)),
+            "issue_examples": [dict(source=item.source, identity=item.identity, code=item.code)
+                               for item in joined.issues[:5]],
+            "inventories_unchanged_on_reread": unchanged,
+            "original_source_journal_reread": False,
+            "qualification": "observed_complete_inventory_with_explicit_gaps_not_certification_frontier_or_f5",
+        }
+        if not unchanged:
+            raise RuntimeError("observed_inventories_changed")
+        selectors = ()
     if sys.argv[2] == "contract-inventory":
         from contract_store import read_historical_birth_inventory_v1
 
@@ -601,6 +651,7 @@ try:
         "producer-declarations": "verified_selected_historical_producer_declarations",
         "producer-binding": "verified_ordinary_producer_and_durable_receipt_binding_sample",
         "publication-binding": "verified_ordinary_historical_publication_sample",
+        "historical-inventory": "reconciled_observed_inventory_with_explicit_evidence_limits",
     }[sys.argv[2]]
 except Exception as exc:
     errors = []
