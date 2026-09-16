@@ -213,6 +213,13 @@ decisions nor the persistent feature setting.</p>
 
 <h2 id="outcomes">Outcomes, errors, and records</h2>
 
+<p>The LRE console derives start time from actual attempts in the current revision,
+not workload creation. Percentage measures saved units among known units and
+stays below 100% until completion. One owner-scoped aggregate read per page
+derives an indicative finish estimate only for one fully materialized processing
+phase with sufficient recent results. Multi-phase plans, errors, pauses,
+an unavailable engine or stale observations do not yield estimates: the UI shows n.a.</p>
+
 <p>An executor may succeed, return no entries, produce a partial result, or fail.
 These states are not equivalent. The runtime preserves the distinction and uses
 it to decide whether to continue, attempt bounded recovery, or terminate.</p>
@@ -231,6 +238,13 @@ only information compatible with their role and identity.</p>
 not decide what Metnos can do; admitted executors do. The runtime ensures that
 those capabilities are selected, controlled, executed, and reported in the
 same way, no matter which path produced the plan.</p></div>
+
+<p>A prerequisite preserves the placement defined by verified contracts:
+when both the search and its preparation are server-only, LRE preparation also
+runs on the server, independently of a device remembered in the conversation.
+If either component supports device execution, the requested destination is
+preserved and remains subject to normal checks. Executor output cannot choose
+the destination.</p>
 
 </body>
 </html>

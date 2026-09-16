@@ -391,3 +391,35 @@ disabled, enabled, mismatched, invalid, failed, missing and unprobed states;
 unknown information never yields green. UI registry and public documentation
 describe this implemented distinction; no experimental Tutor routing,
 composition or coverage change is included.
+
+## Amendment — persisted start, known-unit percentage and cautious ETA (2026-09-16)
+
+List and detail expose a closed progress projection for the active revision,
+computed by one owner-scoped aggregate per bounded page (maximum 200 IDs,
+HTTP maximum 100). No new store, schema, writes, model calls or per-job query
+loop is introduced. `execution_started_at` in persisted attempt metrics is
+the execution start; admission, workload creation and lease acquisition are
+not substitutes. Missing or invalid evidence remains unavailable.
+
+Percentage is committed units divided by all currently known units, floored
+to one decimal. It is neither elapsed time nor source coverage and may fall
+as dynamic units appear. Until successful workload completion it is capped
+at 99.9%, preserving the distinction from final publication and validation.
+
+An indicative ETA is produced only while running, with sealed inventory,
+complete accounting, fully materialized phases, no uncertain unit/retry and
+no required final artifact. Exactly one processing phase after the mandatory
+inventory is supported: heterogeneous multi-phase plans, including photo
+indexing, deliberately show `n.a.`. At least three first-attempt successful
+results must span ten seconds. Their completion cadence estimates remaining
+units from the last persisted completion, not from poll time. The latest
+result must be within the smaller of 120 seconds and stage timeout; an overdue
+prediction, reversed clock or prediction beyond seven days is unavailable.
+This is an observation-based indication, not a deadline or throughput promise.
+
+The browser additionally suppresses ETA unless engine health is ready and the
+observation is at most 30 seconds old; disconnection clears displayed estimates.
+Each unavailable field displays the requested exact `n.a.`, via bilingual
+catalog entries. Aggregate DTO, isolated real-store scenarios, executable
+browser behavior and IT/EN seed checks guard the semantics. Live deployment
+and production acceptance remain separate from these implementation tests.

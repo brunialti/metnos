@@ -66,7 +66,7 @@ def test_read_dtos_are_closed_owner_scoped_and_cursor_paged(store, control):
     assert page["next_cursor"]
     assert set(page["items"][0]) == {
         "workload_id", "state", "priority", "version", "active_revision_id",
-        "created_at", "updated_at", "counters",
+        "created_at", "updated_at", "counters", "progress",
     }
     following = control.list_workloads(OWNER, limit=1, cursor=page["next_cursor"])
     assert {page["items"][0]["workload_id"], following["items"][0]["workload_id"]} == {
@@ -125,6 +125,7 @@ def test_workload_list_reads_all_counters_with_one_aggregate_query(store, contro
         if "WITH selected AS" in statement
     ]
     assert len(counter_queries) == 1
+    assert len([statement for statement in statements if "WITH progress_selected AS" in statement]) == 1
 
 
 def test_owner_scope_and_cursors_fail_closed(store, control):

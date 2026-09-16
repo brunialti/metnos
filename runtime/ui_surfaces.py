@@ -388,6 +388,7 @@ SURFACES: tuple[UiSurfaceSpec, ...] = (
         "Console for long-running work submitted to LRE, including progress, limits, events, and artifacts.",
         visible_it=(
             "elenco dei lavori visibili al proprietario, con stato, avanzamento e ultimo aggiornamento",
+            "avvio effettivo della revisione, percentuale sulle unità note e fine prevista indicativa; n.a. per dati non disponibili o stima non affidabile, inclusi i lavori multifase",
             "dettaglio del lavoro e della revisione selezionata",
             "digest di piano e inventario",
             "budget ammessi per unità, tentativi, tempo, byte, token, artefatti e concorrenza",
@@ -396,6 +397,7 @@ SURFACES: tuple[UiSurfaceSpec, ...] = (
         ),
         visible_en=(
             "owner-visible workload list with state, progress, and last update",
+            "actual revision start, known-unit percentage and indicative finish estimate; n.a. for unavailable data or unreliable estimates, including multi-phase jobs",
             "selected workload and revision detail",
             "plan and inventory digests",
             "admitted budgets for units, attempts, time, bytes, tokens, artifacts, and concurrency",

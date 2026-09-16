@@ -312,11 +312,12 @@ open for execution to continue.</p>
   <span class="ui-badge" style="--x:77%;--y:62%" aria-hidden="true">5</span>
   <span class="ui-badge" style="--x:76%;--y:88%" aria-hidden="true">6</span>
  </div>
- <figcaption>A completed pilot workload: the console exposes the real denominator, admitted limits, and plan composition.</figcaption>
+ <figcaption>Historical screenshot of a completed pilot workload; the new timing fields described below are not present in this image.</figcaption>
 </figure>
 <ol class="ui-callout-list">
  <li><strong>General navigation.</strong> Open <code>Settings → System → LRE</code>; the entry remains visible in the web interface's navigation column.</li>
  <li><strong>Workload list.</strong> Each row shows state and progress; <strong>Open</strong> loads its detail without starting another execution.</li>
+ <li><strong>Start, percentage and estimated finish.</strong> List and detail show the first actual execution of the current revision, excluding queue time. The percentage counts saved units among known units, not elapsed time: it can decrease as new units appear. It does not reach 100% before workload completion. The finish estimate is indicative only: it requires a sealed inventory, a single processing phase after inventory, at least three recent results and no retry, error or final artifact still needing verification. For multi-phase jobs such as photo indexing, insufficient samples, pauses, an unavailable engine or stale data, the estimate is <strong>n.a.</strong> (not available). Start and percentage also show <strong>n.a.</strong> when the necessary data is missing.</li>
  <li><strong>Workload facts.</strong> Engine state is separate from job state: an available engine does not prove a job is progressing. Successful units are separate from unfinished units, those needing attention, failed or cancelled units, and skipped units. Units do not necessarily correspond to individual photos or files; the total may grow during discovery.</li>
  <li><strong>Freshness and problems.</strong> The page periodically checks state and warns when data is not refreshed. A disconnection does not preserve a false progress indication. Available causes are prominent; a generic state update is not presented as a new result. After loading further list pages, use <strong>Refresh list and status</strong> to return to the refreshed first page.</li>
  <li><strong>Optional details.</strong> Digests, plan, stages and limits remain available under <strong>Technical details</strong>. The identifier distinguishes jobs without exposing the private request text.</li>

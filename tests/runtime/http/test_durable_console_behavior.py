@@ -18,7 +18,7 @@ def test_console_async_races_progress_and_disconnection(tmp_path):
     script = source.split("<script>", 1)[1].split("</script>", 1)[0]
     script = script.replace("{{ copy|tojson }}", "globalThis.copy")
     script = script.split('  document.getElementById("dwRefresh").addEventListener', 1)[0]
-    script += "globalThis.ui = {request, countersText, breakdown, loadList, loadDetail, refresh, markStale, renderEngine, startPolling, deactivatePage, restorePage, setEngine: value => {engine = value; renderEngine();}, selected: () => selected};})();"
+    script += "globalThis.ui = {request, availableDate, percentText, estimateText, appendProgress, countersText, breakdown, loadList, loadDetail, refresh, markStale, renderEngine, startPolling, deactivatePage, restorePage, setEngine: value => {engine = value; renderEngine();}, selected: () => selected};})();"
     harness = r'''
 const assert = require("node:assert/strict");
 const vm = require("node:vm");
@@ -34,17 +34,19 @@ class Element {
   replaceChildren(...values) { this.children = values; this._text = ""; }
   addEventListener(key, value) { this.listeners[key] = value; }
   querySelector() { return null; }
+  querySelectorAll(selector) { return this.children.flatMap(child => [...(selector === '.dw-estimate' && child.className?.includes('dw-estimate') ? [child] : []), ...child.querySelectorAll(selector)]); }
   get childElementCount() { return this.children.length; }
   get lastChild() { return this.children.at(-1); }
 }
 for (const id of ["durableWorkloads", "dwList", "dwListPager", "dwDetail", "dwPlaceholder", "dwLive", "dwEngine", "dwFreshness"]) { const element = new Element("div"); element.id = id; }
 nodes.get("durableWorkloads").dataset.api = "/agent/workloads";
+nodes.get("durableWorkloads").append(nodes.get("dwList"), nodes.get("dwDetail"));
 const timers = new Map(); const intervals = new Map(); let timerId = 0;
 globalThis.window = {setTimeout(fn, delay) { timers.set(++timerId, {fn, delay}); return timerId; }, clearTimeout(id) { timers.delete(id); }, setInterval(fn, delay) {intervals.set(++timerId, {fn, delay}); return timerId;}, clearInterval(id) {intervals.delete(id);}};
 globalThis.document = {getElementById: id => nodes.get(id), createElement: tag => new Element(tag)};
 let streamsOpened = 0;
 globalThis.EventSource = class { constructor() {streamsOpened++;} addEventListener() {} close() {} };
-globalThis.copy = new Proxy({states: {running: "running", needs_attention: "blocked"}, priorities: {}, artifactStates: {}, errorLabels: {budget_exhausted: "exhausted", budget_accounting_incomplete: "accounting incomplete"}, warningsByCode: {}}, {get: (obj, key) => obj[key] || key});
+globalThis.copy = new Proxy({notAvailable: "n.a.", states: {running: "running", needs_attention: "blocked"}, priorities: {}, artifactStates: {}, errorLabels: {budget_exhausted: "exhausted", budget_accounting_incomplete: "accounting incomplete"}, warningsByCode: {}}, {get: (obj, key) => obj[key] || key});
 let fetchCount = 0;
 const response = value => ({ok: true, json: async () => value});
 globalThis.fetch = async () => { fetchCount++; return response({items: []}); };
@@ -52,12 +54,28 @@ vm.runInThisContext(SCRIPT);
 const counters = {committed: 3, failed: 2, skipped: 1, pending: 4, attention: 1, total: 11};
 assert.equal(ui.countersText(counters), "saved: 3 / 11");
 assert.ok(ui.breakdown(counters).includes("failedCount: 2"));
+assert.equal(ui.availableDate(null), "n.a.");
+assert.equal(ui.availableDate("invalid"), "n.a.");
+assert.equal(ui.percentText(null), "n.a.");
+assert.equal(ui.percentText(NaN), "n.a.");
+assert.equal(ui.percentText(0), "0%");
+assert.equal(ui.percentText(30), "30%");
+const timing = {started_at: new Date(Date.now() - 10000).toISOString(), known_units_percent: 30, observed_at: new Date().toISOString(), estimated_end_at: new Date(Date.now() + 60000).toISOString()};
 ui.setEngine({enabled: false, state: "degraded", reason_code: "feature_disabled", worker_available: false});
 assert.ok(nodes.get("dwEngine").textContent.includes("engineDisabled"));
+assert.equal(ui.estimateText(timing), "n.a.");
 ui.setEngine({enabled: true, state: "ready", worker_available: true});
 assert.ok(nodes.get("dwEngine").textContent.includes("engineReady"));
+assert.notEqual(ui.estimateText(timing), "n.a.");
+assert.equal(ui.estimateText({...timing, observed_at: new Date(Date.now() - 31000).toISOString()}), "n.a.");
+assert.equal(ui.estimateText({...timing, estimated_end_at: new Date(Date.now() - 1).toISOString()}), "n.a.");
+ui.appendProgress(nodes.get("dwDetail"), timing);
+assert.notEqual(nodes.get("dwDetail").querySelectorAll(".dw-estimate")[0].textContent, "n.a.");
+ui.markStale();
+assert.equal(nodes.get("dwDetail").querySelectorAll(".dw-estimate")[0].textContent, "n.a.");
 ui.setEngine({enabled: true, state: "ready", worker_available: false});
 assert.ok(nodes.get("dwEngine").textContent.includes("engineUnavailable"));
+assert.equal(ui.estimateText(timing), "n.a.");
 const job = id => ({workload: {workload_id: id, state: "needs_attention", version: 1, counters, updated_at: null, created_at: null}, revision: {execution: {blocking_reason: "budget_accounting_incomplete", last_committed_at: null, error_categories: [{error_code: "budget_exhausted", count: 2}]}}});
 (async () => {
   let releaseA;
@@ -75,6 +93,9 @@ const job = id => ({workload: {workload_id: id, state: "needs_attention", versio
   assert.ok(nodes.get("dwDetail").textContent.includes("accounting incomplete"));
   assert.ok(!nodes.get("dwDetail").textContent.includes("exhausted"));
   assert.ok(nodes.get("dwDetail").textContent.includes("noResult"));
+  assert.ok(nodes.get("dwDetail").textContent.includes("startedn.a."));
+  assert.ok(nodes.get("dwDetail").textContent.includes("percentn.a."));
+  assert.ok(nodes.get("dwDetail").textContent.includes("estimatedEndn.a."));
   let releaseHealth; fetchCount = 0;
   globalThis.fetch = async url => {
     fetchCount++;
@@ -134,3 +155,9 @@ def test_console_labels_exist_in_both_seed_languages():
             rows = conn.execute("SELECT lang,text,needs_translation FROM i18n WHERE key=? AND lang IN ('it','en')", ("UI_DURABLE_" + suffix,)).fetchall()
             assert {row[0] for row in rows} == {"it", "en"}
             assert all(row[1] and not row[2] for row in rows)
+        for suffix in ("STARTED", "KNOWN_UNITS_PERCENT", "ESTIMATED_END", "NOT_AVAILABLE", "TIMING_HELP"):
+            rows = conn.execute("SELECT lang,text,needs_translation FROM i18n WHERE key=? AND lang IN ('it','en')", ("UI_DURABLE_" + suffix,)).fetchall()
+            assert {row[0] for row in rows} == {"it", "en"}
+            assert all(row[1] and not row[2] for row in rows)
+            if suffix == "NOT_AVAILABLE":
+                assert all(row[1] == "n.a." for row in rows)

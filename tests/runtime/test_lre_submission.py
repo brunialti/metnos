@@ -494,9 +494,38 @@ def test_automatic_admission_replays_once_and_binds_idempotency_to_device(
         assert '"placement_digest":"sha256:' in redacted
 
 
-def test_natural_long_running_request_does_not_require_the_technical_profile():
+def test_natural_long_running_request_does_not_require_the_technical_profile(
+        tmp_path, monkeypatch, signed_builtin_contracts):
+    # Authoring checkout signatures are not an installation's authority.
+    # Verify private copies with an ephemeral test key, never live trust or
+    # verify=False; preserve the real signed-contract loader and routing.
+    from pathlib import Path
+    import shutil
+    import tomllib
+    import loader
+    import sign
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    from manifest_code_digest import prepare_manifest_digest_v1
+    from i18n_materializer import migrate_language_state_bytes
+
+    source = Path(__file__).resolve().parents[2] / 'executors/create_images_indices'
+    directory = tmp_path / 'executors/create_images_indices'
+    shutil.copytree(source, directory)
+    manifest_path = directory / 'manifest.toml'
+    manifest = manifest_path.read_bytes()
+    files = tomllib.loads(manifest.decode())['code']['files']
+    manifest = prepare_manifest_digest_v1(manifest, {name: (directory / name).read_bytes() for name in files})
+    manifest_path.write_bytes(manifest)
+    state_path = directory / 'manifest.lang_state.json'
+    state_path.write_bytes(migrate_language_state_bytes(
+        state_path.read_bytes(), manifest=tomllib.loads(manifest.decode())).state_bytes)
+    key = Ed25519PrivateKey.generate()
+    (directory / 'manifest.toml.sig').write_bytes(sign.sign_manifest_bytes(manifest, private_key=key))
+    trusted = [*sign.list_trusted_publics(), ('test-index-author', key.public_key())]
+    monkeypatch.setattr(loader, 'list_trusted_publics', lambda: trusted)
+    monkeypatch.setattr(sign, 'list_trusted_publics', lambda: trusted)
     invalidate_catalog_cache()
-    catalog = list(load_catalog(verify=True, include_synth=False))
+    catalog = list(load_catalog(executors_dir=directory.parent, verify=True, include_synth=False))
     image_indexer = next(
         executor for executor in catalog
         if executor.name == "create_images_indices"

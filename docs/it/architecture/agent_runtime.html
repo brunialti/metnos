@@ -218,7 +218,22 @@ errore del servizio o configurazione non valida. I dettagli tecnici conservano
 lo stato del processo. Questa distinzione visiva non cambia i controlli di
 salute, le decisioni del supervisore o l'abilitazione persistente.</p>
 
+<p>Un prerequisito conserva la collocazione prevista dai contratti verificati:
+se sia la ricerca sia la preparazione sono riservate al server, anche la
+preparazione LRE avviene sul server, indipendentemente dal dispositivo ricordato
+nella conversazione. Se uno dei componenti può lavorare su un dispositivo,
+la destinazione richiesta resta invariata e soggetta ai normali controlli.
+I dati restituiti da un executor non possono scegliere la destinazione.</p>
+
 <h2 id="esiti">Risultati, errori e registri</h2>
+
+<p>La console LRE ricava l'avvio dai tentativi realmente eseguiti nella revisione
+corrente, non dalla creazione del lavoro. La percentuale misura le unità salvate
+tra quelle note e resta sotto il 100% fino al completamento. Un'unica lettura
+aggregata per pagina, circoscritta al proprietario, ricava una fine prevista
+indicativa solo per una fase di elaborazione già interamente materializzata,
+con risultati sufficienti e recenti. Piani multifase, errori, pausa, motore
+non pronto o dati non aggiornati non producono stime: la UI mostra n.a.</p>
 
 <p>Un executor può riuscire, non produrre alcun elemento, produrre un risultato
 parziale oppure fallire. Questi casi non sono equivalenti. Il runtime conserva

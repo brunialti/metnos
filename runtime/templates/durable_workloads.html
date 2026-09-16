@@ -83,6 +83,28 @@
   const stateName = (state) => translated(copy.states, state);
   const errorName = (code) => copy.errorLabels[code] || copy.errorUnknown;
   const dateText = (value) => value ? new Date(value).toLocaleString() : "—";
+  const availableDate = (value) => typeof value === "string" && Number.isFinite(Date.parse(value)) ? dateText(value) : copy.notAvailable;
+  const percentText = (value) => typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 100 ? `${value.toLocaleString()}%` : copy.notAvailable;
+  const estimateText = (progress) => {
+    const age = Date.now() - Date.parse(progress?.observed_at);
+    if (!engine || engine.enabled !== true || engine.worker_available !== true || engine.state !== "ready"
+        || !Number.isFinite(age) || age < 0 || age > 30000 || Date.parse(progress?.estimated_end_at) <= Date.now()) return copy.notAvailable;
+    return availableDate(progress?.estimated_end_at);
+  };
+  function refreshEstimates(stale = false) {
+    for (const element of root.querySelectorAll(".dw-estimate")) {
+      element.textContent = stale ? copy.notAvailable : estimateText(element.progress);
+    }
+  }
+  function appendProgress(container, progress) {
+    appendFact(container, copy.started, availableDate(progress?.started_at));
+    appendFact(container, copy.percent, percentText(progress?.known_units_percent));
+    const fact = node("div", "", "dw-fact");
+    const value = node("span", estimateText(progress), "dw-fact-value dw-estimate");
+    value.progress = progress;
+    fact.append(node("span", copy.estimatedEnd, "dw-fact-label"), value);
+    container.append(fact);
+  }
   const countersText = (counters) => `${copy.saved}: ${counters.committed} / ${counters.total}`;
   const breakdown = (counters) => `${copy.pending}: ${counters.pending} · ${copy.attention}: ${counters.attention} · ${copy.failedCount}: ${counters.failed} · ${copy.skipped}: ${counters.skipped}`;
   const button = (text, handler, {disabled = false, danger = false} = {}) => {
@@ -115,6 +137,7 @@
         meta.append(node("span", `${copy.progress}: ${countersText(workload.counters)}`));
         meta.append(node("span", breakdown(workload.counters)));
         meta.append(node("span", `${copy.updated}: ${dateText(workload.updated_at)}`));
+        appendProgress(meta, workload.progress);
         body.append(meta);
         row.append(body, button(copy.open, () => loadDetail(workload.workload_id)));
         list.append(row);
@@ -130,6 +153,7 @@
   }
 
   function markStale() {
+    refreshEstimates(true);
     freshness.textContent = `${copy.stale}${lastRefreshAt ? ` · ${dateText(lastRefreshAt)}` : ""}`;
     freshness.classList.add("dw-warning");
   }
@@ -140,6 +164,7 @@
       : engine && engine.enabled === true && engine.worker_available === true && engine.state === "ready"
         ? copy.engineReady : copy.engineUnavailable;
     engineStatus.textContent = `${copy.engine}: ${label}`;
+    refreshEstimates();
   }
 
   async function refresh() {
@@ -306,8 +331,12 @@
     try {
       const payload = await request(`${api}/${encodeURIComponent(workloadId)}`);
       if (generation !== detailGeneration || selectedId !== workloadId) return false;
-      const signature = JSON.stringify([payload, engine]);
-      if (!restartStream && detailSignature === signature) return true;
+      const signature = JSON.stringify([payload, engine], (key, value) => key === "observed_at" ? undefined : value);
+      if (!restartStream && detailSignature === signature) {
+        for (const element of detail.querySelectorAll(".dw-estimate")) element.progress = payload.workload.progress;
+        refreshEstimates();
+        return true;
+      }
       const technicalOpen = detail.querySelector("details.dw-subpanel")?.open || false;
       const refreshUnits = Boolean(document.getElementById("dwUnits")?.childElementCount);
       const previousUnitsState = unitsState;
@@ -331,8 +360,10 @@
       appendFact(facts, copy.units, breakdown(selected.counters));
       appendFact(facts, copy.updated, dateText(selected.updated_at));
       appendFact(facts, copy.created, dateText(selected.created_at));
+      appendProgress(facts, selected.progress);
       detail.append(facts);
       detail.append(node("p", copy.progressHelp, "muted"));
+      detail.append(node("p", copy.timingHelp, "muted"));
       if (payload.revision) {
         const summary = payload.revision.execution;
         renderProblems(summary, detail);

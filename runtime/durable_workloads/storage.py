@@ -3901,6 +3901,133 @@ class DurableWorkloadStore:
     ) -> UnitCounters:
         return self.unit_counters_many(owner_user_id, (workload_id,))[workload_id]
 
+    def progress_many(
+        self, owner_user_id: str, workload_ids: Sequence[str],
+        *, now: datetime | None = None,
+    ) -> dict[str, dict[str, Any]]:
+        """Read bounded page telemetry; never use admission/lease time as start.
+
+        Percentages count committed *known* units, not time or source coverage.
+        ETA is deliberately unavailable for heterogeneous/expanding plans.
+        One aggregate statement covers the page, including attempt history.
+        """
+        owner = _require_owner(owner_user_id)
+        if isinstance(workload_ids, (str, bytes)) or not isinstance(workload_ids, Sequence):
+            raise TypeError("workload_ids must be a sequence")
+        identifiers = tuple(workload_ids)
+        if len(identifiers) > 200 or len(identifiers) != len(set(identifiers)) or any(
+            not isinstance(value, str) or not _ID_RE.fullmatch(value)
+            for value in identifiers
+        ):
+            raise ValueError("workload_ids contains invalid or duplicate identifiers")
+        if not identifiers:
+            return {}
+        current, observed_at = self._operation_now(now)
+        placeholders = ",".join("?" for _ in identifiers)
+        rows = self._connection.execute(
+            f"""
+            WITH progress_selected AS (
+                SELECT w.owner_user_id, w.id, w.state, w.active_revision_id,
+                       r.inventory_sealed, r.usage_complete, r.plan_json
+                FROM workloads w LEFT JOIN revisions r
+                  ON r.owner_user_id=w.owner_user_id AND r.id=w.active_revision_id
+                WHERE w.owner_user_id=? AND w.id IN ({placeholders})
+            ), phase_facts AS (
+                SELECT w.id, SUM(s.stage_type<>'inventory') AS phases,
+                       MIN(COALESCE(m.completed, 0) AND m.attention_code IS NULL) AS materialized,
+                       MAX(s.timeout_s) AS timeout_s
+                FROM progress_selected w LEFT JOIN stages s
+                  ON s.owner_user_id=w.owner_user_id AND s.revision_id=w.active_revision_id
+                LEFT JOIN stage_materialization m
+                  ON m.owner_user_id=s.owner_user_id AND m.stage_id=s.id
+                 AND m.revision_id=s.revision_id
+                GROUP BY w.id
+            ), unit_facts AS (
+                SELECT w.id, COUNT(u.id) AS total,
+                       SUM(u.state='committed') AS committed,
+                       SUM(s.stage_type<>'inventory') AS estimate_total,
+                       SUM(s.stage_type<>'inventory' AND u.state='committed') AS estimate_committed,
+                       SUM(u.state NOT IN ('pending','leased','running','committed')
+                           OR u.attempt_count>1) AS uncertain
+                FROM progress_selected w LEFT JOIN units u
+                  ON u.owner_user_id=w.owner_user_id AND u.revision_id=w.active_revision_id
+                LEFT JOIN stages s ON s.owner_user_id=u.owner_user_id AND s.id=u.stage_id
+                GROUP BY w.id
+            ), attempt_facts AS (
+                SELECT w.id,
+                       MIN(CASE WHEN json_type(a.metrics_json, '$.execution_started_at')='text'
+                           THEN json_extract(a.metrics_json, '$.execution_started_at') END) AS started_at,
+                       COUNT(CASE WHEN s.stage_type<>'inventory' AND u.state='committed' AND a.state='succeeded'
+                           AND u.attempt_count=1 AND a.ended_at IS NOT NULL
+                           AND json_type(a.metrics_json, '$.execution_started_at')='text'
+                           THEN 1 END) AS samples,
+                       MIN(CASE WHEN s.stage_type<>'inventory' AND u.state='committed' AND a.state='succeeded'
+                           THEN a.ended_at END) AS first_completion,
+                       MAX(CASE WHEN s.stage_type<>'inventory' AND u.state='committed' AND a.state='succeeded'
+                           THEN a.ended_at END) AS last_completion
+                FROM progress_selected w LEFT JOIN units u
+                  ON u.owner_user_id=w.owner_user_id AND u.revision_id=w.active_revision_id
+                LEFT JOIN attempts a ON a.owner_user_id=u.owner_user_id AND a.unit_id=u.id
+                LEFT JOIN stages s ON s.owner_user_id=u.owner_user_id AND s.id=u.stage_id
+                GROUP BY w.id
+            )
+            SELECT w.id, w.state, w.inventory_sealed, w.usage_complete,
+                   json_array_length(w.plan_json, '$.required_artifacts') AS artifacts,
+                   p.phases, p.materialized, p.timeout_s,
+                   u.total, u.committed, u.uncertain, u.estimate_total, u.estimate_committed,
+                   a.started_at, a.samples, a.first_completion, a.last_completion
+            FROM progress_selected w JOIN phase_facts p USING(id)
+            JOIN unit_facts u USING(id) JOIN attempt_facts a USING(id)
+            """,
+            (owner, *identifiers),
+        ).fetchall()
+        if len(rows) != len(identifiers):
+            raise WorkloadNotFoundError("workload not found")
+        result: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            total, committed = int(row["total"] or 0), int(row["committed"] or 0)
+            estimate_total = int(row["estimate_total"] or 0)
+            estimate_committed = int(row["estimate_committed"] or 0)
+            started_at, estimated_end_at = None, None
+            try:
+                start = parse_instant(row["started_at"])
+                if start <= current:
+                    started_at = instant_text(start, name="execution start")
+            except (TypeError, ValueError):
+                pass
+            percentage = None
+            if total:
+                # Floor, never round a not-yet-complete workload up to 100%.
+                percentage = min(100.0 if row["state"] == "completed" else 99.9,
+                                 (committed * 1000 // total) / 10)
+            if (
+                started_at and row["state"] == "running"
+                and row["inventory_sealed"] and row["usage_complete"]
+                and row["phases"] == 1 and row["materialized"] == 1
+                and row["artifacts"] == 0 and not row["uncertain"]
+                and row["samples"] == estimate_committed and estimate_committed >= 3
+                and estimate_total > estimate_committed
+            ):
+                try:
+                    first = parse_instant(row["first_completion"])
+                    last = parse_instant(row["last_completion"])
+                    span = (last - first).total_seconds()
+                    # Fixed persisted anchor: polling never pushes an overdue ETA forward.
+                    estimate = last + timedelta(seconds=span * (estimate_total - estimate_committed) / (estimate_committed - 1))
+                    if (start <= first < last <= current and span >= 10
+                            and (current - last).total_seconds() <= min(120, row["timeout_s"])
+                            and current < estimate <= current + timedelta(days=7)):
+                        estimated_end_at = instant_text(estimate, name="estimated end")
+                except (TypeError, ValueError, OverflowError):
+                    pass
+            result[str(row["id"])] = {
+                "started_at": started_at,
+                "known_units_percent": percentage,
+                "estimated_end_at": estimated_end_at,
+                "observed_at": observed_at,
+            }
+        return result
+
     def execution_summary(
         self, owner_user_id: str, workload_id: str,
     ) -> dict[str, Any]:

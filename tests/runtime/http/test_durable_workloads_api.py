@@ -159,9 +159,16 @@ class DurableWorkloadApiTests(AioHTTPTestCase):
         self.assertNotIn("objective_redacted", payload["revision"])
 
         from durable_workloads.control import DurableWorkloadControl
+        from durable_workloads.coordinator import parse_instant
         from durable_workloads.storage import DurableWorkloadStore
 
-        with DurableWorkloadStore.open(self._store_path) as store:
+        # Compare identical observation instants: the DTO now timestamps its
+        # progress read so browsers can suppress expired estimates.
+        observed_at = payload["workload"]["progress"]["observed_at"]
+        with DurableWorkloadStore.open(self._store_path) as store, mock.patch.object(
+            DurableWorkloadStore, "_operation_now",
+            return_value=(parse_instant(observed_at), observed_at),
+        ):
             direct = DurableWorkloadControl(
                 store, cursor_secret=ADMIN_KEY,
             ).detail(owner, workload.workload_id)

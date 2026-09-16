@@ -314,6 +314,9 @@ async def workload_console(request: web.Request) -> web.Response:
                 "waitingHelp": "WAITING_HELP", "progressHelp": "PROGRESS_HELP",
                 "lastResult": "LAST_RESULT", "noResult": "NO_RESULT",
                 "attempts": "ATTEMPTS",
+                "started": "STARTED", "percent": "KNOWN_UNITS_PERCENT",
+                "estimatedEnd": "ESTIMATED_END", "notAvailable": "NOT_AVAILABLE",
+                "timingHelp": "TIMING_HELP",
             }.items()
         },
         "empty": message("UI_DURABLE_EMPTY"),

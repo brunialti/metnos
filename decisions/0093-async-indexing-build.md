@@ -253,6 +253,26 @@ Production model artifacts live outside immutable releases and are selected
 through the existing embedding-tier configuration, including the face role;
 only declared artifact files cross the read-only sandbox boundary.
 
+## Server prerequisite placement correction — 2026-09-16
+
+The conversational destination is not necessarily the reader's execution
+location. Ordinary dispatch already keeps server-only readers on the server.
+When both verified contracts are server-only (including the default placement),
+`admit_prerequisite` now passes `server` to automatic admission. This preserves
+the location of the missing-index observation instead of forwarding an unrelated
+conversational device. No executor names or query words select this behavior.
+
+Either contract declaring device-only, hybrid or device-capable execution keeps
+the original target. Direct remote image indexing remains unsupported; no remote
+authority, owner boundary, path guard, approval or budget is relaxed. A result
+cannot set placement. Rejections before submission log the fixed boundary and
+exception type, never paths or arguments.
+
+Regression tests cover both contracts, remote targets, hostile result metadata,
+the real wrapper/guard/adapter/compiler/admission chain and deduplication across
+retries and subsequent turns. The latter creates one isolated job without
+models or production data. Live release evidence is recorded separately.
+
 ## Historical notes
 
 - Threshold 120s è euristico iniziale. Telemetria future può aggiornare.

@@ -312,6 +312,9 @@ class DurableWorkloadControl:
                 owner_user_id,
                 tuple(record.workload_id for record in visible),
             )
+            progress = self._store.progress_many(
+                owner_user_id, tuple(record.workload_id for record in visible),
+            )
             next_cursor = None
             if len(records) > page_size and visible:
                 last = visible[-1]
@@ -323,10 +326,10 @@ class DurableWorkloadControl:
             return {
                 "schema_version": DTO_SCHEMA_VERSION,
                 "items": [
-                    _workload_dto(
+                    {**_workload_dto(
                         record,
                         counters[record.workload_id],
-                    ).to_dict()
+                    ).to_dict(), "progress": progress[record.workload_id]}
                     for record in visible
                 ],
                 "next_cursor": next_cursor,
@@ -348,9 +351,11 @@ class DurableWorkloadControl:
                 )
             return {
                 "schema_version": DTO_SCHEMA_VERSION,
-                "workload": _workload_dto(
+                "workload": {**_workload_dto(
                     record, self._store.unit_counters(owner_user_id, workload_id),
-                ).to_dict(),
+                ).to_dict(), "progress": self._store.progress_many(
+                    owner_user_id, (workload_id,),
+                )[workload_id]},
                 "revision": revision,
             }
         return self._read(operation)
