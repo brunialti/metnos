@@ -4,6 +4,8 @@ import threading
 import time
 from dataclasses import dataclass, field
 
+import pytest
+
 from executor_metadata import DEFAULT_EXECUTION_POLICY, execution_policy
 from executor_scheduler import ExecutorScheduler
 
@@ -387,3 +389,52 @@ def test_agent_runtime_async_passes_create_only_isolation_key(monkeypatch) -> No
     assert result["thread"].startswith("metnos_executor")
     assert scheduler._identity_slots == {}
     scheduler.shutdown()
+
+
+@pytest.mark.parametrize("submitted", [False, True], ids=["sync", "submitted"])
+@pytest.mark.parametrize("allowed", [False, True], ids=["refused", "allowed"])
+def test_internal_attestation_runs_inside_admission_before_transport(
+    monkeypatch, submitted, allowed,
+):
+    import agent_runtime
+    import executor_scheduler
+
+    scheduler = ExecutorScheduler(
+        max_workers=1, max_in_flight=1, parallel_enabled=True, hardware_threads=2,
+    )
+    monkeypatch.setattr(executor_scheduler, "_DEFAULT_SCHEDULER", scheduler)
+    executor = _Executor(name="read_probe", execution_policy=_safe_policy(level=1))
+    observed = []
+
+    def guard():
+        acquired = scheduler._global_slots.acquire(blocking=False)
+        if acquired:
+            scheduler._global_slots.release()
+        assert not acquired, "attestation ran before scheduler admission"
+        observed.append("attest")
+        if not allowed:
+            raise RuntimeError("generation no longer selectable")
+
+    def transport(*args, **kwargs):
+        observed.append("transport")
+        return {"ok": True}
+
+    monkeypatch.setattr(agent_runtime, "_invoke_executor_impl_optional_context", transport)
+
+    def invoke():
+        if submitted:
+            return agent_runtime.submit_executor(executor, {}, _before_invoke=guard).result(timeout=2)
+        return agent_runtime.invoke_executor(executor, {}, _before_invoke=guard)
+
+    try:
+        if allowed:
+            assert invoke() == {"ok": True}
+            assert observed == ["attest", "transport"]
+        else:
+            with pytest.raises(RuntimeError, match="no longer selectable"):
+                invoke()
+            assert observed == ["attest"]
+        assert scheduler._global_slots.acquire(blocking=False), "refusal leaked admission slot"
+        scheduler._global_slots.release()
+    finally:
+        scheduler.shutdown()

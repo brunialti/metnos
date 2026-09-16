@@ -89,6 +89,20 @@
  a repeated turn cannot count twice. Closing a known defect requires its
  repair, verification and independent review. This record is implemented
  in development, but is not an F5 certificate or an activation switch.</p>
+ <p>The final checks focus on Birth, generations, caches, feedback and recovery,
+ rather than repeating unchanged mail or calendar tests. Integration is tested
+ in isolation first; certification must succeed before production activation.</p>
+ <p>One development check concerns waiting jobs: an executor can become
+ unavailable while a job waits for a model or an execution slot. The strict
+ attempt path therefore rereads its exact generation after waiting and before
+ execution. A quarantined generation is refused without running it. This
+ correction has passed isolated tests; F5 is not yet active in production.</p>
+ <p>The development activation reader accepts only the installation's own
+ signed attestation and public verification key. It checks that the attestation
+ belongs to the selected release; a list of successful tests supplied by a
+ caller is not a certificate. Reading this compact proof does not repeat the
+ entire historical investigation. Issuing the proof from the completed checks
+ and connecting the lifecycle operations are still unfinished.</p>
  <h2>Keep the evidence, not every old program copy</h2>
  <p>The release procedure normally retains the active release and one
  predecessor, plus copies still referenced by processes, services or

@@ -268,16 +268,19 @@ class _ExactResolver(_Resolver):
         return self.map
 
 
-def _strict_invoke(bridge, contract):
+def _strict_invoke(bridge, contract, *, usage_sink=None):
     return bridge._invoke(
         contract,
         {"stage": {"effect_profile": "pure"}},
         {},
         ExecutionContext(
             "owner", "workload", "revision", "stage", "unit", "attempt",
-            "normal", (), "2099-01-01T00:00:00Z",
+            "normal", tuple((name, 0) for name in (
+                "cpu", "device", "llm", "local_io", "network_io", "vlm",
+            )), "2099-01-01T00:00:00Z",
         ),
         None,
+        usage_sink=usage_sink,
     )
 
 
@@ -349,6 +352,92 @@ def test_strict_f5_guard_is_reexecuted_for_every_attempt_and_has_no_name_digest_
     assert json.loads(raised.value.error.payload_json)["code"] == (
         "execution.loaded_executor_changed"
     )
+
+
+@pytest.mark.parametrize("wait_site", ["resource", "scheduler"])
+def test_f5_quarantine_during_wait_prevents_transport(tmp_path, monkeypatch, wait_site):
+    """Use real epoch CAS and scheduler waiting, not a preselected refusal."""
+    from concurrent.futures import ThreadPoolExecutor
+    import threading
+    import agent_runtime
+    import executor_scheduler
+    from executor_birth_epoch_store import (
+        BirthLifecycle, EpochCacheKey, EpochState, attest_execution_epoch,
+        open_epoch, transition_epoch,
+    )
+    from manifest_inventory import ContractId, ManifestOrigin
+
+    contract_id = ContractId(ManifestOrigin.USER, "demo/manifest.toml")
+    generation = "sha256:" + "1" * 64
+    database = tmp_path / "epochs.sqlite"
+    open_epoch(contract_id=contract_id, generation_id=generation,
+               name="read_files_ocr", source="synth", lifecycle=BirthLifecycle.ACTIVE,
+               observed_at="2026-09-16T00:00:00Z", db_path=database)
+    executor = SimpleNamespace(
+        name="read_files_ocr", lifecycle="active", dormant=False,
+        contract_id=contract_id.value, generation_id=generation,
+    )
+    resolver = _ExactResolver()
+    transport = []
+    monkeypatch.setattr(agent_runtime, "_invoke_executor_impl_optional_context",
+                        lambda *args, **kwargs: transport.append("entered") or {"ok": True})
+    scheduler = executor_scheduler.ExecutorScheduler(
+        max_workers=1, max_in_flight=1, parallel_enabled=False,
+    )
+    monkeypatch.setattr(executor_scheduler, "_DEFAULT_SCHEDULER", scheduler)
+
+    def quarantine():
+        transition_epoch(
+            EpochCacheKey(contract_id, generation, BirthLifecycle.ACTIVE),
+            expected_version=1, new_state=EpochState.CURRENT,
+            new_lifecycle=BirthLifecycle.QUARANTINED, event_kind="quarantine",
+            occurred_at="2026-09-16T00:01:00Z", db_path=database,
+        )
+
+    def attest(loaded):
+        assert loaded is executor
+        return attest_execution_epoch(contract_id=contract_id, generation_id=generation,
+                                      name=loaded.name, db_path=database)
+
+    bridge = DurableExecutionBridge(
+        SimpleNamespace(), runners=resolver, output_schemas=_schemas(),
+        executor_loader=lambda _name: executor,
+        executor_generation_attestor=attest, require_generation_attestation=True,
+        resource_readiness=(lambda *args, **kwargs: quarantine()) if wait_site == "resource" else None,
+    )
+    usage = BoundedUsageSink()
+    try:
+        if wait_site == "resource":
+            with pytest.raises(ExecutionFailure) as raised:
+                _strict_invoke(bridge, resolver.map, usage_sink=usage)
+        else:
+            waiting = threading.Event()
+            acquire = scheduler._acquire
+
+            def observe_wait(slot, deadline):
+                if slot is scheduler._global_slots:
+                    waiting.set()
+                return acquire(slot, deadline)
+
+            monkeypatch.setattr(scheduler, "_acquire", observe_wait)
+            assert scheduler._global_slots.acquire(timeout=1)
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                future = pool.submit(_strict_invoke, bridge, resolver.map, usage_sink=usage)
+                try:
+                    assert waiting.wait(3), "attempt never reached scheduler admission"
+                    quarantine()
+                finally:
+                    scheduler._global_slots.release()
+                with pytest.raises(ExecutionFailure) as raised:
+                    future.result(timeout=3)
+        assert json.loads(raised.value.error.payload_json)["code"] == "execution.quarantined"
+        assert transport == []
+        assert usage._snapshot() == ([], 0, 0, True)
+        # The stale in-memory catalog object remained active; the persisted
+        # generation was reread, not merely the object's lifecycle attribute.
+        assert executor.lifecycle == "active"
+    finally:
+        scheduler.shutdown()
 
 
 def _reduce_stage() -> dict:

@@ -94,6 +94,23 @@
  noto servono la correzione, le verifiche e una revisione indipendente.
  Il registro è implementato nello sviluppo, ma non è un certificato F5
  né un interruttore di attivazione.</p>
+ <p>Le verifiche finali riguardano Birth, generazioni, memorie temporanee,
+ riscontri e ripresa, senza ripetere le prove di posta o calendari non modificati.
+ Prima si prova l'integrazione in un ambiente isolato; la certificazione deve
+ riuscire prima dell'attivazione in produzione.</p>
+ <p>Una verifica dello sviluppo riguarda i lavori in attesa: un executor può
+ diventare indisponibile mentre il lavoro aspetta un modello o un posto per
+ l'esecuzione. Il percorso con controllo delle generazioni rilegge quindi lo
+ stato esatto dopo l'attesa e prima di eseguire. Una generazione in quarantena
+ viene rifiutata senza avviarla. La correzione ha superato le prove isolate;
+ F5 non è ancora attiva in produzione.</p>
+ <p>Il lettore di attivazione in sviluppo accetta soltanto l'attestazione
+ firmata e la chiave pubblica dell'installazione. Controlla che l'attestazione
+ appartenga alla versione selezionata: un elenco di prove riuscite fornito
+ dal chiamante non è un certificato. La lettura di questa prova compatta non
+ ripete tutta l'indagine storica. Restano da completare la sua emissione a
+ partire dalle verifiche concluse e il collegamento delle operazioni sul
+ ciclo di vita.</p>
  <h2>Le prove restano, le vecchie copie del programma no</h2>
  <p>La procedura di rilascio conserva normalmente la versione attiva e una
  precedente, oltre alle copie ancora utilizzate da processi, servizi o

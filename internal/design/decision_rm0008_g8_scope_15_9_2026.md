@@ -238,6 +238,21 @@ Reuse the existing external oracle and administrative evidence owner, not a
 new test framework. This supersedes only §6.4's selection of the complete
 general-purpose HTTP profile, not its ownership or evidence requirements.
 
+### Integration and qualification order — approved on 16 September 2026
+
+Roberto explicitly approved: **isolated integration → focused verification →
+certification → production**. This supersedes the earlier requirement to
+finish G8 qualification before implementing and testing G9 in isolation.
+Complete the real F5 connections in an isolated installation, execute the two
+complete focused cycles, derive certification, and only then activate the
+installed product. No synthetic activation counts as qualification.
+
+The five real technical admissions, two authenticated producers, exact
+receipt rereads, zero relevant open defects, lossless migration, dedicated
+authority, platform checks and production exit conditions remain unchanged.
+This changes development order, not the threshold or execution authority.
+F6 still follows F5 and RM-0009 remains outside the assignment.
+
 ## References
 
 - [Detailed handover](handover_rm0008_f5_f6_15_9_2026.md), sections 4–6.

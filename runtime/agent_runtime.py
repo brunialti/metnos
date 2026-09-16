@@ -3750,7 +3750,7 @@ def _invoke_executor_impl_optional_context(
 
 def invoke_executor(executor, args, timeout_s=30, *, autonomy="supervised",
                     turn_id=None, actor=None, channel=None, target_device=None,
-                    owner_user_id=None, execution_context=None):
+                    owner_user_id=None, execution_context=None, _before_invoke=None):
     """Universal scheduled choke-point for local and remote executors.
 
     The scheduler is synchronous and serial-first by default, so this wrapper
@@ -3760,6 +3760,10 @@ def invoke_executor(executor, args, timeout_s=30, *, autonomy="supervised",
     from executor_scheduler import concurrency_identity_for, invoke_scheduled
 
     def call():
+        # An internal owner may require a fresh attestation after queueing.
+        # Refusal happens before transport, without replacing sandbox checks.
+        if _before_invoke is not None:
+            _before_invoke()
         return _invoke_executor_impl_optional_context(
             executor, args, timeout_s=timeout_s, autonomy=autonomy,
             turn_id=turn_id, actor=actor, channel=channel,
@@ -3779,7 +3783,7 @@ def invoke_executor(executor, args, timeout_s=30, *, autonomy="supervised",
 def submit_executor(executor, args, timeout_s=30, *, autonomy="supervised",
                     turn_id=None, actor=None, channel=None,
                     target_device=None, owner_user_id=None,
-                    execution_context=None):
+                    execution_context=None, _before_invoke=None):
     """Submit one admitted executor call to the single central pool.
 
     This is deliberately the asynchronous twin of :func:`invoke_executor`:
@@ -3790,6 +3794,8 @@ def submit_executor(executor, args, timeout_s=30, *, autonomy="supervised",
     from executor_scheduler import concurrency_identity_for, submit_scheduled
 
     def call():
+        if _before_invoke is not None:
+            _before_invoke()
         return _invoke_executor_impl_optional_context(
             executor, args, timeout_s=timeout_s, autonomy=autonomy,
             turn_id=turn_id, actor=actor, channel=channel,

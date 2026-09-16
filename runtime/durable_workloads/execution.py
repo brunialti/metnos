@@ -161,7 +161,7 @@ class DurableExecutionBridge:
         self.output_schemas = output_schemas
         self._source_resolver = source_resolver
         self._executor_loader = executor_loader or self._load_verified_executor
-        self._executor_invoker = executor_invoker or self._invoke_executor
+        self._executor_invoker = executor_invoker
         self._workload_invoker = workload_invoker
         self._internal_runners = dict(internal_runners or {})
         self._device_selector = device_selector or self._source_device
@@ -188,14 +188,15 @@ class DurableExecutionBridge:
         device_id = source.get("device_id")
         return str(device_id) if isinstance(device_id, str) and device_id else None
 
-    @staticmethod
     def _invoke_executor(
+        self,
         executor: object,
         args: Mapping[str, Any],
         context: ExecutionContext,
         timeout_s: int,
         device_id: str | None,
         autonomy: str,
+        *, usage_sink=None,
     ) -> object:
         from agent_runtime import invoke_executor
 
@@ -210,7 +211,34 @@ class DurableExecutionBridge:
             target_device=device_id,
             owner_user_id=context.owner_user_id,
             execution_context=context,
+            _before_invoke=(
+                lambda: self._attest_executor_generation(executor, usage_sink=usage_sink)
+            ) if self._require_generation_attestation else None,
         )
+
+    def _attest_executor_generation(self, executor: object, *, usage_sink=None) -> None:
+        """Reread the exact generation at a boundary after a possible wait."""
+        if not self._require_generation_attestation:
+            return
+        try:
+            assert self._executor_generation_attestor is not None
+            self._executor_generation_attestor(executor)
+        except Exception as exc:
+            if usage_sink is not None:
+                # Refusal at this hook proves transport was never entered,
+                # including when the scheduler waited after preparation.
+                usage_sink.complete_local_capture()
+            code = getattr(exc, "code", "execution.runner_absent")
+            if code not in {
+                "execution.runner_absent", "execution.dormant",
+                "execution.retired", "execution.quarantined",
+            }:
+                code = "execution.runner_absent"
+            raise self._failure(
+                "capability_unavailable", code=code,
+                message_key="ERR_DURABLE_RUNNER_UNAVAILABLE", retry="manual",
+                details={"runner_name": str(getattr(executor, "name", ""))},
+            ) from exc
 
     def _failure(
         self,
@@ -747,22 +775,6 @@ class DurableExecutionBridge:
                     message_key="ERR_DURABLE_RUNNER_UNAVAILABLE", retry="manual",
                     details={"runner_name": contract.name},
                 )
-            if self._require_generation_attestation:
-                try:
-                    assert self._executor_generation_attestor is not None
-                    self._executor_generation_attestor(executor)
-                except Exception as exc:
-                    code = getattr(exc, "code", "execution.runner_absent")
-                    if code not in {
-                        "execution.runner_absent", "execution.dormant",
-                        "execution.retired", "execution.quarantined",
-                    }:
-                        code = "execution.runner_absent"
-                    raise self._failure(
-                        "capability_unavailable", code=code,
-                        message_key="ERR_DURABLE_RUNNER_UNAVAILABLE", retry="manual",
-                        details={"runner_name": contract.name},
-                    ) from exc
             try:
                 attestor = getattr(self.runners, "attest_executor", None)
                 if callable(attestor):
@@ -815,6 +827,7 @@ class DurableExecutionBridge:
                         "capability_unavailable", code="execution.model_resource_unavailable",
                         message_key="ERR_DURABLE_RUNNER_UNAVAILABLE", retry="manual",
                     ) from exc
+            self._attest_executor_generation(executor)
             return (
                 executor, self._remaining_timeout(context),
                 self._autonomy(DurableEffect(stage["effect_profile"])),
@@ -841,6 +854,11 @@ class DurableExecutionBridge:
                 if usage_sink is not None:
                     usage_sink.complete_local_capture()
                 raise
+            if self._executor_invoker is None:
+                return self._invoke_executor(
+                    executor, args, context, timeout, device_id, autonomy,
+                    usage_sink=usage_sink,
+                )
             return self._executor_invoker(
                 executor, args, context, timeout, device_id, autonomy,
             )

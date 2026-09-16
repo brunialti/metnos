@@ -437,3 +437,31 @@ was restarted. This is not a general latency guarantee or deployment. The
 release coordinator's own journal inventory remains a separate follow-up
 before claiming bounded cost for the complete release cycle. The earlier
 code cleanup and this proof do not certify F5/F6 completion.
+
+## F5 isolated integration and execution waits (16 September 2026)
+
+The approved development order is isolated integration, two complete focused
+cycles, evidence-derived certification, then production activation. The
+historical admission threshold, producers, migration and platform requirements
+are unchanged. Unmodified mail/calendar/contact flows are not part of the
+focused F5 profile; their existing regression evidence remains applicable.
+
+The strict durable attempt path must reauthenticate the exact generation
+after model-resource readiness and after scheduler admission. A valid check
+before a wait is not permission to execute a generation quarantined during
+that wait. The synchronous and submitted runtime wrappers provide one internal
+pre-transport check within the admitted call. The durable owner supplies it;
+requests and manifests cannot select it. Refusal preserves existing structured
+errors and verifies zero model calls because transport was never entered.
+The same sandbox and Birth boundaries still apply. Tests cover actual queue
+contention and persisted epoch quarantine, with no transport on refusal.
+This is candidate integration code, not an installed F5 activation.
+
+The activation reader now accepts no caller document or key mapping. It reads
+the dedicated public authority, a compact signed installation attestation and
+the current authenticated F4 ownership window. The attestation binds the
+installation, required head/build, qualification and migration, rather than
+caller-supplied success counts. It does not reopen the full historical dossier.
+This reader and its isolated filesystem tests do not issue a certificate or
+enable production F5; evidence-derived issuance and productive lifecycle
+composition remain unfinished.

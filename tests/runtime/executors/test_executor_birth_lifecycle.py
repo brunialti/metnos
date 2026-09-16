@@ -1,5 +1,4 @@
 import base64
-import hashlib
 import json
 import sqlite3
 
@@ -12,8 +11,10 @@ from executor_birth_epoch_store import (
 )
 from executor_birth_lifecycle import (
     CERTIFICATION_DOMAIN, LifecycleCoordinator, LifecycleError,
-    LifecyclePublication, load_f5_activation,
+    LifecyclePublication, load_f5_activation, _decode_f5_activation_v1,
 )
+from executor_birth_certification_authority import CertificationPublicKeyV1
+from executor_birth_keystore import birth_key_id
 from executor_birth_receipts import AdmissionReceipt, ApprovedLifecycle
 from manifest_inventory import ContractId, ManifestOrigin
 
@@ -29,19 +30,15 @@ def canonical(value):
     return json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
 
 
-def certificate(private, *, receipts=5, producers=2, cycles=2, defects=0):
+def certificate(private):
+    """An isolated codec fixture, never qualifying historical evidence."""
     value = {
         "schema_version": 1,
-        "environment_id": "portable-linux-windows",
-        "admission_receipt_ids": [f"sha256:{number:064x}" for number in range(10, 10 + receipts)],
-        "producer_ids": [f"producer-{number}" for number in range(producers)],
-        "routing_cycles": cycles,
-        "unresolved_defects": defects,
-        "certified_at": NOW,
-        "key_id": "operator-2030",
+        "purpose": "f5_activation_v1",
+        "installation_id": G1, "qualification_id": G2,
+        "head_id": G1, "closed_build_id": G2, "migration_id": G3,
+        "policy_id": "rm0008-f5/1", "key_id": birth_key_id(private.public_key()),
     }
-    value["certificate_id"] = "sha256:" + hashlib.sha256(
-        CERTIFICATION_DOMAIN + canonical(value)).hexdigest()
     value["signature"] = base64.b64encode(private.sign(
         CERTIFICATION_DOMAIN + canonical(value))).decode()
     return canonical(value)
@@ -49,9 +46,15 @@ def certificate(private, *, receipts=5, producers=2, cycles=2, defects=0):
 
 def activation():
     private = Ed25519PrivateKey.generate()
-    return load_f5_activation(certificate(private), authorities={
-        "operator-2030": private.public_key(),
-    })
+    return decode_fixture(certificate(private), private)
+
+
+def decode_fixture(encoded, private):
+    public = private.public_key()
+    return _decode_f5_activation_v1(
+        encoded, authority=CertificationPublicKeyV1(birth_key_id(public), public, "active"),
+        installation_id=G1, head_id=G1, closed_build_id=G2,
+    )
 
 
 def fake_receipt(generation, predecessor, lifecycle):
@@ -64,46 +67,30 @@ def fake_receipt(generation, predecessor, lifecycle):
     return receipt
 
 
-def test_activation_is_fail_closed_and_threshold_is_authenticated():
+def test_activation_has_no_caller_selected_authority_or_counts():
     private = Ed25519PrivateKey.generate()
-    with pytest.raises(LifecycleError, match="threshold_not_met"):
-        load_f5_activation(certificate(private, receipts=4), authorities={
-            "operator-2030": private.public_key(),
-        })
+    with pytest.raises(TypeError):
+        load_f5_activation(certificate(private), authorities={"invented": private.public_key()})
     damaged = json.loads(certificate(private))
     damaged["routing_cycles"] = 99
-    with pytest.raises(LifecycleError, match="signature"):
-        load_f5_activation(canonical(damaged), authorities={
-            "operator-2030": private.public_key(),
-        })
+    with pytest.raises(LifecycleError, match="f5_activation_invalid"):
+        decode_fixture(canonical(damaged), private)
     with pytest.raises(LifecycleError, match="f5_activation_required"):
         LifecycleCoordinator(object(), db_path=None, publish_and_reread=lambda *_: None,
                              verify_admission=lambda _: None)
 
 
-def test_activation_rejects_noncanonical_evidence_order_and_base64():
+def test_activation_rejects_changed_binding_and_noncanonical_base64():
     private = Ed25519PrivateKey.generate()
-    unordered = json.loads(certificate(private))
-    unordered["admission_receipt_ids"].reverse()
-    unsigned = {key: value for key, value in unordered.items()
-                if key not in {"certificate_id", "signature"}}
-    unordered["certificate_id"] = "sha256:" + hashlib.sha256(
-        CERTIFICATION_DOMAIN + canonical(unsigned)).hexdigest()
-    unsigned_with_id = {key: value for key, value in unordered.items()
-                        if key != "signature"}
-    unordered["signature"] = base64.b64encode(private.sign(
-        CERTIFICATION_DOMAIN + canonical(unsigned_with_id))).decode()
-    with pytest.raises(LifecycleError, match="evidence order"):
-        load_f5_activation(canonical(unordered), authorities={
-            "operator-2030": private.public_key(),
-        })
+    changed = json.loads(certificate(private))
+    changed["qualification_id"] = G3
+    with pytest.raises(LifecycleError, match="f5_activation_invalid"):
+        decode_fixture(canonical(changed), private)
 
     noncanonical = json.loads(certificate(private))
     noncanonical["signature"] = noncanonical["signature"].rstrip("=")
-    with pytest.raises(LifecycleError, match="signature"):
-        load_f5_activation(canonical(noncanonical), authorities={
-            "operator-2030": private.public_key(),
-        })
+    with pytest.raises(LifecycleError, match="f5_activation_invalid"):
+        decode_fixture(canonical(noncanonical), private)
 
 
 def test_replace_current_epoch_is_one_transaction_and_resets_counts(tmp_path):
