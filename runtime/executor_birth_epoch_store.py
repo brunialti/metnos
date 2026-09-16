@@ -511,6 +511,26 @@ def read_epoch(*, contract_id: ContractId, generation_id: str, db_path: Path) ->
         connection.close()
 
 
+def read_current_epoch(
+    *, contract_id: ContractId, db_path: Path,
+) -> EpochRecord | None:
+    """Read the one selectable epoch of a contract, if it has one."""
+    cid = _contract(contract_id)
+    connection = _open(db_path)
+    try:
+        row = connection.execute(
+            "SELECT generation_id,name,source,state,lifecycle,state_version "
+            "FROM executor_epochs WHERE contract_id=? AND state='current'", (cid,),
+        ).fetchone()
+        if row is None:
+            return None
+        return EpochRecord(cid, row["generation_id"], row["name"], row["source"],
+                           EpochState(row["state"]), BirthLifecycle(row["lifecycle"]),
+                           row["state_version"])
+    finally:
+        connection.close()
+
+
 def read_epochs(
     keys: Sequence[tuple[ContractId, str]], *, db_path: Path,
 ) -> dict[tuple[str, str], EpochRecord]:

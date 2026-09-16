@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Callable, TypeVar
 
-from executor_aging import record_invocation
+from executor_lifecycle_state import record_invocation
 from executor_metadata import DEFAULT_EXECUTION_POLICY
 from logging_setup import get_logger
 
@@ -705,8 +705,7 @@ class ExecutorScheduler:
             # This common point covers local, remote, builtin and parallel calls.
             # Internal slots have no code_path and therefore no executor lifecycle.
             if getattr(executor, "code_path", None) is not None:
-                record_invocation(
-                    str(getattr(executor, "name", "") or ""), ok=not failed)
+                record_invocation(executor, ok=not failed)
 
     def _invoke_with_context(
             self, executor: object, call: Callable[[], T],
