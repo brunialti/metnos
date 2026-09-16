@@ -64,14 +64,13 @@ _FROZEN_WORKFLOW_SHA256 = (
     "3e953be12480be9a4e6dfa19812a053492b5e26e155c9ecb7b749c29bde135e9"
 )
 # Reviewed CI preparation only: install venv support and the full locked
-# wheelhouse, and bound diagnostic failure of the general Windows suite.
-# All six acceptance jobs and their blocking summary are unchanged.
+# wheelhouse. All six acceptance jobs and their blocking summary are unchanged.
 _REVIEWED_WORKFLOW_SHA256 = (
-    "b07b403438365653bd68004098dda0ec3c37ff4bef8e3da0d4a9bf9f7f806dff"
+    "5aeda2ff4b76d594f56baf9059550bbda74cc1b98fe9df30ac77c0a1f55f18eb"
 )
 _REVIEWED_WORKFLOW_GIT_EDGE = (
     ("100644", "ce3bbd7e5097b23e4ad577ffa1b8af40b75618f7"),
-    ("100644", "dc632bdfa0aa8ad30584a22aafeb5183b67978e4"),
+    ("100644", "fe5afb0b15d754d80f70d00838398ff305d825a8"),
 )
 # Reviewed importlib-mode fixture lookup (329d51b3). No collection or oracle
 # changes are permitted by this exact prerequisite edge.

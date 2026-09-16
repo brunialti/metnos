@@ -461,6 +461,7 @@ def _read_window(store, *, observed=None, after_live=None):
     )
 
 
+@pytest.mark.skipif(os.name == "nt", reason="cold ownership store is Linux-only")
 @pytest.mark.parametrize("count", (1, 3, 12))
 def test_required_window_has_bounded_work_without_old_release_trees(
     authority, tmp_path, monkeypatch, count,
@@ -487,6 +488,7 @@ def test_required_window_has_bounded_work_without_old_release_trees(
     assert not isinstance(result, chain_module.VerifiedOwnershipChain)
 
 
+@pytest.mark.skipif(os.name == "nt", reason="cold ownership store is Linux-only")
 def test_required_window_does_not_hide_historical_damage_from_explicit_audit(
     authority, tmp_path,
 ):
@@ -500,6 +502,7 @@ def test_required_window_does_not_hide_historical_damage_from_explicit_audit(
         store._read_required_chain_cold_for_test()
 
 
+@pytest.mark.skipif(os.name == "nt", reason="cold ownership store is Linux-only")
 @pytest.mark.parametrize("mutation", (
     "required_signature", "build_signature", "cutover_signature", "transition",
     "predecessor_signature", "live_code", "selector_changes", "selected_missing",
