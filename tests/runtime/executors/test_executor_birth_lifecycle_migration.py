@@ -291,3 +291,131 @@ def test_the_source_identity_is_the_migration_key(tmp_path):
     two, _ = migration.census_source(second, tables=("executor_stats",))
     assert one.content_id == two.content_id
     assert one.source_id != two.source_id
+
+
+# --- the whole one-time migration -------------------------------------------
+
+from executor_birth_epoch_store import (
+    BirthLifecycle, open_epoch, read_current_epoch,
+)
+from manifest_inventory import ContractId, ManifestOrigin
+
+
+@pytest.fixture
+def installation(tmp_path):
+    """One legacy store and an epoch store holding the selectable generations."""
+    legacy = tmp_path / "executor_stats.db"
+    with _sqlite3.connect(legacy) as connection:
+        connection.execute(
+            "CREATE TABLE executor_stats (name TEXT PRIMARY KEY, source TEXT, "
+            "deprecated_at TEXT, archived_at TEXT, total_calls INTEGER, last_used_at TEXT)")
+        connection.executemany(
+            "INSERT INTO executor_stats(name,source,deprecated_at,archived_at,"
+            "total_calls,last_used_at) VALUES(?,?,?,?,?,?)",
+            [("demo", "synth:reactive", WHEN, None, 900, WHEN),
+             ("gone", "synth:reactive", None, WHEN, 12, WHEN),
+             ("fine", "handcrafted", None, None, 30, WHEN)])
+    epochs = tmp_path / "executor_epochs.sqlite"
+    selectable = {}
+    for name, letter in (("demo", "a"), ("fine", "b")):
+        contract = ContractId(ManifestOrigin.USER, f"{name}/manifest.toml")
+        generation = "sha256:" + letter * 64
+        open_epoch(contract_id=contract, generation_id=generation, name=name,
+                   source="synth:reactive", lifecycle=BirthLifecycle.ACTIVE,
+                   observed_at=WHEN, db_path=epochs)
+        selectable[name] = (contract.value, generation)
+    return legacy, epochs, selectable
+
+
+def test_the_migration_preserves_decides_and_restricts_in_that_order(installation):
+    legacy, epochs, selectable = installation
+    plan = migration.plan_migration([(legacy, "executor_stats")], selectable=selectable)
+    assert [item.kind for item in plan.sources[0].dispositions] == [
+        Disposition.CURRENT_RESTRICTION, Disposition.PENDING_DISPOSITION,
+        Disposition.ATTESTED]
+    report = migration.apply_migration(plan, epoch_db_path=epochs, applied_at=WHEN)
+    assert (report["preserved"], report["resolved"], report["restricted"],
+            report["pending"]) == (3, 3, 1, 1)
+    restricted = read_current_epoch(
+        contract_id=ContractId(ManifestOrigin.USER, "demo/manifest.toml"), db_path=epochs)
+    assert restricted.lifecycle_override is BirthLifecycle.DEPRECATED
+    # The signed lifecycle is untouched and the counters did not cross.
+    assert restricted.lifecycle is BirthLifecycle.ACTIVE
+    with _sqlite3.connect(epochs) as connection:
+        totals = connection.execute(
+            "SELECT total_calls,last_used_at FROM executor_epochs "
+            "WHERE name='demo'").fetchone()
+    assert totals == (0, None)
+
+
+def test_replaying_the_migration_writes_nothing(installation):
+    legacy, epochs, selectable = installation
+    plan = migration.plan_migration([(legacy, "executor_stats")], selectable=selectable)
+    migration.apply_migration(plan, epoch_db_path=epochs, applied_at=WHEN)
+    again = migration.apply_migration(
+        plan, epoch_db_path=epochs, applied_at="2026-09-17T00:00:00Z")
+    assert (again["preserved"], again["resolved"], again["restricted"]) == (0, 0, 0)
+    assert again["migration_id"] == plan.migration_id
+
+
+def test_a_source_changed_between_plan_and_apply_is_refused(installation):
+    legacy, epochs, selectable = installation
+    plan = migration.plan_migration([(legacy, "executor_stats")], selectable=selectable)
+    with _sqlite3.connect(legacy) as connection:
+        connection.execute("INSERT INTO executor_stats(name) VALUES('later')")
+    with pytest.raises(LifecycleMigrationError) as raised:
+        migration.apply_migration(plan, epoch_db_path=epochs, applied_at=WHEN)
+    assert raised.value.code == "migration_source_changed"
+    # Nothing was preserved from a source that had already moved.
+    with _sqlite3.connect(epochs) as connection:
+        assert connection.execute(
+            "SELECT count(*) FROM executor_legacy_state").fetchone()[0] == 0
+
+
+def test_a_source_changed_during_apply_is_refused_after_the_copy(installation, monkeypatch):
+    legacy, epochs, selectable = installation
+    plan = migration.plan_migration([(legacy, "executor_stats")], selectable=selectable)
+    original = migration.source_unchanged
+    calls = []
+
+    def unchanged(identity):
+        calls.append(identity)
+        return original(identity) if len(calls) == 1 else False
+
+    monkeypatch.setattr(migration, "source_unchanged", unchanged)
+    with pytest.raises(LifecycleMigrationError) as raised:
+        migration.apply_migration(plan, epoch_db_path=epochs, applied_at=WHEN)
+    assert raised.value.code == "migration_source_changed"
+    # The evidence survives the refusal; only the conclusion is withheld.
+    with _sqlite3.connect(epochs) as connection:
+        assert connection.execute(
+            "SELECT count(*) FROM executor_legacy_state").fetchone()[0] == 3
+
+
+def test_the_migration_identity_covers_every_source_and_decision(installation, tmp_path):
+    legacy, _epochs, selectable = installation
+    first = migration.plan_migration([(legacy, "executor_stats")], selectable=selectable)
+    # The same stores and the same decisions name the same migration.
+    assert migration.plan_migration(
+        [(legacy, "executor_stats")], selectable=selectable).migration_id == first.migration_id
+    # A different decision for the same store does not.
+    narrowed = dict(selectable)
+    narrowed.pop("demo")
+    assert migration.plan_migration(
+        [(legacy, "executor_stats")], selectable=narrowed).migration_id != first.migration_id
+
+
+def test_an_unknown_legacy_table_has_no_default_reader(installation):
+    legacy, _epochs, selectable = installation
+    with pytest.raises(LifecycleMigrationError) as raised:
+        migration.plan_migration([(legacy, "something_else")], selectable=selectable)
+    assert raised.value.detail == "something_else"
+
+
+def test_the_migration_refuses_an_absent_epoch_store(installation, tmp_path):
+    legacy, _epochs, selectable = installation
+    plan = migration.plan_migration([(legacy, "executor_stats")], selectable=selectable)
+    with pytest.raises(LifecycleMigrationError) as raised:
+        migration.apply_migration(
+            plan, epoch_db_path=tmp_path / "absent.sqlite", applied_at=WHEN)
+    assert raised.value.detail == "epoch store absent"

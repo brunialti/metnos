@@ -355,10 +355,181 @@ def source_unchanged(identity: LegacySourceIdentityV1) -> bool:
             and content_id == identity.content_id)
 
 
+# --- the one-time migration, as a plan and then as its application ------------
+
+_STATISTICS_TABLE = "executor_stats"
+_PROMOTER_TABLE = "promoter_state"
+# Closed table: a legacy table is readable only by the reader written for it.
+# A dynamic lookup here would let a new name pick an arbitrary function.
+_TABLE_FACTS = {
+    _STATISTICS_TABLE: statistics_facts,
+    _PROMOTER_TABLE: promoter_facts,
+}
+
+
+@dataclass(frozen=True, slots=True)
+class SourcePlanV1:
+    """One legacy store: what it was, what it said, and what that means now."""
+
+    identity: LegacySourceIdentityV1
+    legacy_table: str
+    rows: tuple[Mapping[str, object], ...]
+    dispositions: tuple[LegacyDispositionV1, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class MigrationPlanV1:
+    """A complete, replayable decision about every selected legacy store."""
+
+    sources: tuple[SourcePlanV1, ...]
+
+    def __post_init__(self) -> None:
+        keys = [(item.identity.source_id, item.legacy_table) for item in self.sources]
+        if not keys or len(set(keys)) != len(keys):
+            raise LifecycleMigrationError("migration_plan_invalid", "sources")
+
+    @property
+    def migration_id(self) -> str:
+        """Name this exact decision over these exact sources."""
+        payload = json.dumps([{
+            "content_id": item.identity.content_id,
+            "legacy_table": item.legacy_table,
+            "plan_id": plan_digest_v1(item.dispositions),
+            "schema_id": item.identity.schema_id,
+            "source_id": item.identity.source_id,
+        } for item in sorted(
+            self.sources, key=lambda item: (item.identity.source_id, item.legacy_table))
+        ], ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")
+        return "sha256:" + hashlib.sha256(
+            LIFECYCLE_MIGRATION_DOMAIN_V1 + b"migration\0" + payload).hexdigest()
+
+
+def plan_migration(
+    sources: Sequence[tuple[Path, str]], *, selectable: Mapping[str, tuple[str, str]],
+) -> MigrationPlanV1:
+    """Read every selected store once and decide, without writing anything.
+
+    Reading and deciding are one pass so the plan and the rows it decided about
+    are the same observation. Applying it re-checks that the stores have not
+    moved since.
+    """
+    from executor_birth_epoch_store import _encode_legacy_rows
+
+    planned = []
+    for path, legacy_table in sources:
+        try:
+            reader = _TABLE_FACTS[legacy_table]
+        except KeyError as exc:
+            raise LifecycleMigrationError("migration_plan_invalid", legacy_table) from exc
+        identity, rows = census_source(path, tables=(legacy_table,))
+        table_rows = rows[legacy_table]
+        digests = [
+            "sha256:" + hashlib.sha256(body.encode("utf-8")).hexdigest()
+            for _name, body in _encode_legacy_rows(table_rows)
+        ]
+        facts = reader(table_rows, body_digests=digests)
+        planned.append(SourcePlanV1(
+            identity, legacy_table, table_rows,
+            plan_dispositions(facts, selectable=selectable),
+        ))
+    return MigrationPlanV1(tuple(planned))
+
+
+def apply_migration(
+    plan: MigrationPlanV1, *, epoch_db_path: Path, applied_at: str,
+) -> dict:
+    """Preserve, decide, restrict — in that order, and idempotently.
+
+    Preservation precedes every decision so a crash leaves the evidence and not
+    a conclusion without it. Restrictions come last because they are the only
+    step a user can observe, and they are applied through the same owner an
+    ordinary decision uses, so a generation that moved meanwhile is skipped
+    instead of forced.
+    """
+    from executor_birth_epoch_store import (
+        EpochStoreError, preserve_legacy_rows, read_legacy_resolutions,
+        record_legacy_resolutions,
+    )
+    from executor_lifecycle_state import Restriction, restrict_generation_exact
+
+    if not isinstance(plan, MigrationPlanV1):
+        raise LifecycleMigrationError("migration_plan_invalid", "type")
+    epoch_db_path = Path(epoch_db_path)
+    if not epoch_db_path.is_file():
+        raise LifecycleMigrationError("migration_plan_invalid", "epoch store absent")
+    report = {"migration_id": plan.migration_id, "preserved": 0, "resolved": 0,
+              "restricted": 0, "pending": 0, "sources": []}
+    for source in plan.sources:
+        if not source_unchanged(source.identity):
+            raise LifecycleMigrationError(
+                "migration_source_changed", source.identity.path)
+        report["preserved"] += preserve_legacy_rows(
+            source_id=source.identity.source_id,
+            source_schema_id=source.identity.schema_id,
+            legacy_table=source.legacy_table, rows=source.rows,
+            migrated_at=applied_at, db_path=epoch_db_path,
+        )
+        migration_id = _preserved_migration_id(source)
+        report["resolved"] += record_legacy_resolutions(
+            migration_id=migration_id,
+            resolutions=[(item.ordinal, item.kind.value, item.contract_id,
+                          item.generation_id, item.evidence_id)
+                         for item in source.dispositions],
+            recorded_at=applied_at, db_path=epoch_db_path,
+        )
+        recorded = len(read_legacy_resolutions(
+            migration_id=migration_id, db_path=epoch_db_path))
+        if recorded != len(source.dispositions):
+            raise LifecycleMigrationError(
+                "migration_resolution_incomplete", source.legacy_table)
+        for item in source.dispositions:
+            if item.kind is Disposition.PENDING_DISPOSITION:
+                report["pending"] += 1
+                continue
+            if item.kind is not Disposition.CURRENT_RESTRICTION:
+                continue
+            restriction = (Restriction.REMOVED if item.effect is LegacyEffect.REMOVED
+                           else Restriction.DEMOTED)
+            try:
+                if restrict_generation_exact(
+                    contract_id=item.contract_id, generation_id=item.generation_id,
+                    restriction=restriction, reason=item.reason,
+                    observed_at=applied_at, db_path=epoch_db_path,
+                ):
+                    report["restricted"] += 1
+            except EpochStoreError as exc:
+                raise LifecycleMigrationError(
+                    "migration_restriction_failed", exc.code) from exc
+        report["sources"].append({
+            "legacy_table": source.legacy_table,
+            "migration_id": migration_id,
+            "plan_id": plan_digest_v1(source.dispositions),
+            "rows": len(source.rows),
+            "source_id": source.identity.source_id,
+        })
+        if not source_unchanged(source.identity):
+            raise LifecycleMigrationError(
+                "migration_source_changed", source.identity.path)
+    return report
+
+
+def _preserved_migration_id(source: SourcePlanV1) -> str:
+    """The identity the preservation storage assigns to this exact copy."""
+    from executor_birth_epoch_store import legacy_rows_digest
+
+    return "sha256:" + hashlib.sha256(
+        b"metnos.executor-birth.legacy-migration-id/v2\0"
+        + json.dumps([source.identity.source_id, source.identity.schema_id,
+                      source.legacy_table, legacy_rows_digest(source.rows)],
+                     ensure_ascii=True, separators=(",", ":")).encode("ascii")
+    ).hexdigest()
+
+
 __all__ = [
     "Disposition", "LIFECYCLE_MIGRATION_DOMAIN_V1", "LegacyDispositionV1",
     "LegacyEffect", "LegacyRowFacts", "LegacySourceIdentityV1",
-    "LifecycleMigrationError", "census_source", "plan_digest_v1",
-    "plan_dispositions", "promoter_facts", "source_unchanged",
-    "statistics_facts",
+    "LifecycleMigrationError", "MigrationPlanV1", "SourcePlanV1",
+    "apply_migration", "census_source", "plan_digest_v1",
+    "plan_dispositions", "plan_migration", "promoter_facts",
+    "source_unchanged", "statistics_facts",
 ]

@@ -151,7 +151,7 @@ def _aging_register(executors: Iterable[object]) -> int:
     return recorded
 
 
-def _epoch_admit(executors: Iterable[object]) -> int:
+def admit_generations(executors: Iterable[object], *, db_path: Path | None = None) -> int:
     """Open or advance the epoch of each exact generation this load produced.
 
     Identity comes from the authenticated catalog, never from a name: the
@@ -167,7 +167,7 @@ def _epoch_admit(executors: Iterable[object]) -> int:
         replace_current_epoch,
     )
 
-    db_path = _epoch_db_path()
+    db_path = _epoch_db_path() if db_path is None else Path(db_path)
     if not db_path.is_file():
         raise FileNotFoundError(str(db_path))
     observed_at = _utc_now()
@@ -236,7 +236,7 @@ def register_loaded_executors(executors: Iterable[object]) -> int:
     """Let the owning store record the executors this catalog load produced."""
     if read_birth_activation_state().owner is BirthStateOwner.LEGACY:
         return _aging_register(executors)
-    return _epoch_admit(executors)
+    return admit_generations(executors)
 
 
 def _catalog_executor(executor_name: str):
@@ -495,6 +495,37 @@ def recorded_source(executor_name: str) -> str | None:
     return current.source
 
 
+def restrict_generation_exact(
+    *, contract_id: str, generation_id: str, restriction: Restriction,
+    reason: str, observed_at: str, db_path: Path,
+) -> bool:
+    """Restrict one exact generation the caller has already authenticated.
+
+    The migration owner already holds the identity it decided about, so it does
+    not resolve a name again here. The compare-and-swap is the ordinary one: a
+    generation that moved meanwhile is skipped, never forced.
+    """
+    from executor_birth_epoch_store import (
+        BirthLifecycle, read_current_epoch, restrict_generation,
+    )
+    from manifest_inventory import ContractId, ManifestOrigin
+
+    origin, relative = contract_id.split(":", 1)
+    contract = ContractId(ManifestOrigin(origin), relative)
+    target = (BirthLifecycle.ARCHIVED if restriction is Restriction.REMOVED
+              else BirthLifecycle.DEPRECATED)
+    current = read_current_epoch(contract_id=contract, db_path=db_path)
+    if (current is None or current.generation_id != generation_id
+            or current.lifecycle_override is target):
+        return False
+    restrict_generation(
+        contract_id=contract, generation_id=generation_id,
+        expected_version=current.state_version, override=target,
+        reason=reason, observed_at=observed_at, db_path=db_path,
+    )
+    return True
+
+
 def restrict_executor(executor_name: str, *, restriction: Restriction,
                       reason: str) -> bool:
     """Restrict one executor locally, through the store that owns the decision.
@@ -588,7 +619,8 @@ def revive_executor(executor_name: str, *, reason: str) -> bool:
         return False
 
 
-__all__ = ["RESTRICTED_REJECT_PREFIX", "Restriction", "apply_inactivity_decay",
+__all__ = ["RESTRICTED_REJECT_PREFIX", "Restriction", "admit_generations",
+           "apply_inactivity_decay",
            "cache_signature", "catalog_restrictions", "credit_uses",
            "record_invocation",
            "record_verdict", "recorded_source", "register_loaded_executors",
