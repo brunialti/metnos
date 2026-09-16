@@ -1205,6 +1205,100 @@ def migrate_legacy_rows(
         connection.close()
 
 
+_RESOLUTION_KINDS = frozenset({
+    "attested", "discarded", "current_restriction", "pending_disposition",
+})
+
+
+def record_legacy_resolutions(
+    *, migration_id: str, resolutions: Sequence[tuple[int, str, str | None, str | None, str]],
+    recorded_at: str, db_path: Path,
+) -> int:
+    """Record what each preserved row means now, without altering the row.
+
+    Preservation and resolution are separate on purpose: the copy stays exactly
+    as it was read, so its digest keeps verifying, and a later association or
+    disposition is an additional record rather than an edit. An exact repeat
+    verifies and writes nothing; a different decision for the same row fails
+    closed rather than overwriting the first.
+    """
+    if not isinstance(migration_id, str) or _DIGEST.fullmatch(migration_id) is None:
+        raise EpochStoreError("legacy_resolution_invalid", "migration_id")
+    ts = _text(recorded_at, "recorded_at")
+    prepared = []
+    for item in resolutions:
+        if not isinstance(item, tuple) or len(item) != 5:
+            raise EpochStoreError("legacy_resolution_invalid", "shape")
+        ordinal, kind, contract_id, generation_id, evidence_id = item
+        if type(ordinal) is not int or isinstance(ordinal, bool) or ordinal < 0:
+            raise EpochStoreError("legacy_resolution_invalid", "source_ordinal")
+        if kind not in _RESOLUTION_KINDS:
+            raise EpochStoreError("legacy_resolution_invalid", "resolution_kind")
+        if (contract_id is None) != (generation_id is None):
+            raise EpochStoreError("legacy_resolution_invalid", "identity pair")
+        if contract_id is not None:
+            if not isinstance(contract_id, str) or contract_id.count(":") != 1:
+                raise EpochStoreError("legacy_resolution_invalid", "contract_id")
+            _generation(generation_id)
+        if not isinstance(evidence_id, str) or _DIGEST.fullmatch(evidence_id) is None:
+            raise EpochStoreError("legacy_resolution_invalid", "evidence_id")
+        prepared.append((ordinal, kind, contract_id, generation_id, evidence_id))
+    if len({item[0] for item in prepared}) != len(prepared):
+        raise EpochStoreError("legacy_resolution_invalid", "duplicate ordinal")
+    connection = _open(db_path)
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        legacy_ids = dict(connection.execute(
+            "SELECT source_ordinal,legacy_id FROM executor_legacy_migration_rows "
+            "WHERE migration_id=?", (migration_id,),
+        ).fetchall())
+        written = 0
+        for ordinal, kind, contract_id, generation_id, evidence_id in prepared:
+            legacy_id = legacy_ids.get(ordinal)
+            if legacy_id is None:
+                raise EpochStoreError("legacy_resolution_invalid", "unknown ordinal")
+            prior = connection.execute(
+                "SELECT resolution_kind,contract_id,generation_id,evidence_id "
+                "FROM executor_legacy_resolutions WHERE legacy_id=?", (legacy_id,),
+            ).fetchone()
+            if prior is not None:
+                if (prior["resolution_kind"] != kind
+                        or prior["contract_id"] != contract_id
+                        or prior["generation_id"] != generation_id
+                        or prior["evidence_id"] != evidence_id):
+                    raise EpochStoreError("legacy_resolution_conflict", str(ordinal))
+                continue
+            connection.execute(
+                "INSERT INTO executor_legacy_resolutions(legacy_id,resolution_kind,"
+                "contract_id,generation_id,evidence_id,recorded_at) VALUES(?,?,?,?,?,?)",
+                (legacy_id, kind, contract_id, generation_id, evidence_id, ts),
+            )
+            written += 1
+        connection.commit()
+        return written
+    except sqlite3.IntegrityError as exc:
+        raise EpochStoreError("legacy_resolution_conflict", str(exc)) from exc
+    finally:
+        if connection.in_transaction:
+            connection.rollback()
+        connection.close()
+
+
+def read_legacy_resolutions(*, migration_id: str, db_path: Path) -> tuple[dict, ...]:
+    """Read back the recorded decisions of one migration, in source order."""
+    connection = _open(db_path)
+    try:
+        rows = connection.execute(
+            "SELECT r.source_ordinal,x.resolution_kind,x.contract_id,x.generation_id,"
+            "x.evidence_id,x.recorded_at FROM executor_legacy_migration_rows r "
+            "JOIN executor_legacy_resolutions x ON x.legacy_id=r.legacy_id "
+            "WHERE r.migration_id=? ORDER BY r.source_ordinal", (migration_id,),
+        ).fetchall()
+    finally:
+        connection.close()
+    return tuple(dict(row) for row in rows)
+
+
 def quarantine_for_feedback(*, contract_id: ContractId, generation_id: str,
                             occurred_at: str, db_path: Path) -> QuarantineCAS:
     """CAS the exact invoked generation to quarantine, never a successor."""
