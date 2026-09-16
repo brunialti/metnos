@@ -450,3 +450,63 @@ risorse vive `run-bxde469z` trova 13 descrittori e un solo thread sul lavoratore
 inattivo: nessuna evidenza di esaurimento dei descrittori. Nessun riavvio manuale
 eseguito durante la diagnosi. Il difetto di capacità include una regressione
 dedicata a profili indipendenti posti dopo gruppi già saturi.
+
+## Pubblicazione e prova reale della correzione
+
+- Commit prodotto **`318a5f15`**, release **61**,
+  build `sha256:97e00e58ce05e20d8f01f7c0482ec17a59d2829f91cf91b1aa582b9495f4f7f9`.
+  Ciclo canonico concluso con `CUTOVER_OK`, `RELEASE_EDITS_ADMITTED` e uscita 0.
+  Registro: `/tmp/metnos-lre-release.SSgcNeOH/release-cross-1789570311001799750.log`.
+- Durante il passaggio l'interfaccia ha avuto le finestre di riavvio controllato:
+  primo avvio 16:56:11–16:56:37 Europe/Rome, poi riavvio finale per attivare
+  l'executor aggiornato. Dopo la conclusione HTTP operativo, LRE `ready`,
+  pagina iniziale 302 e console `/admin/lre` 401 senza credenziali (accesso
+  protetto, non indisponibilità). Nessun riavvio aggiuntivo manuale.
+- Guide pubbliche IT/EN pubblicate con la procedura Cloudflare `--static-only`,
+  99 pagine validate, 4 file aggiornati; ricevuta
+  `https://b77cf8e2.mykleos.pages.dev`. Il lettore Web esterno ha rifiutato
+  l'apertura dell'URL: è verificato l'esito dell'invio, non una successiva
+  lettura esterna. Nessun rapporto interno o dato foto inviato.
+- Prova reale: turno **`0db4949d24c440ed`**, lavoro
+  **`wrk_426b37262d824fbeb3c6022755392a39`**, due JPEG e due HEIC copiati
+  localmente dal gruppo che falliva. Cinque unità completate, zero errori.
+  Verifica `run-0aylg319`: quattro percorsi attesi, quattro voci pubblicate,
+  digest esatti, descrizioni presenti, due HEIC. Non solo stato `completed`.
+- Solo dopo questa prova è stato annullato via API il vecchio lavoro
+  `wrk_9ff050ecc9b048098167041d559d6c04`, mantenendo storico, consumi e
+  frammenti. Il numero API `failed=960` include le unità annullate: non sono
+  960 nuovi errori di esecuzione. Nessuna foto o voce storica cancellata.
+- L'indice della prova è stato escluso dalla ricerca globale rinominando
+  recuperabilmente il solo `meta.json` in
+  `meta.validation-resilience-20260916.archived.json`; generazione, file e
+  storico della prova rimangono conservati. Poi ripetuta la richiesta
+  originale `cerca localmente foto con il mare`, turno **`259a079606b74e93`**.
+- Nuovo lavoro **`wrk_ab505a8a8a874f76a0029cfc0e5fd059`**: controllo
+  `run-b13ro748`, 17:02:23 Europe/Rome, `running/discover`, nessun errore,
+  consumi noti, 128 frammenti privati con nuova scrittura nello stesso secondo.
+  Non è ancora attestata l'indicizzazione completa delle oltre 30.000 foto.
+
+Controllo riproducibile del nuovo lavoro (sola lettura):
+`/tmp/metnos-lre-contention.O6Z8zp87/inspect-resilience-progress.sh`, SHA256
+`d998d6081a365058ef4b126f6ede95a4a4ca7506c742f2ed38626e828a3b13a5`.
+A completamento, `audit-photo-coverage.sh full` confronta insieme dei percorsi
+dell'inventario congelato, voci pubblicate, duplicati, mancanti e metadati
+correnti. Non attesta nuovi file comparsi dopo l'inventario senza una nuova
+scansione. Non azzerare mai i consumi incerti per forzare la ripresa.
+
+### Verifica del passaggio all'analisi sull'archivio completo
+
+La scansione si è conclusa alle 17:09:10 Europe/Rome con 967 gruppi; tutti i
+967 blocchi cartella risultano completati alle 17:11:53, senza errori
+(`run-gtxl8e8l`). La console ha esposto una previsione concreta della fase:
+alle 17:10:28 stimava 17:12:21 (`run-xijaf25f`), distinta dalla fine del lavoro.
+
+`run-gqx5dlym`, rilevazione 17:12:50–17:12:52: **una sola analisi in esecuzione,
+966 ancora in attesa**, zero errori, consumi non incerti. Sono già presenti
+sette analisi foto complete con sette riferimenti privati e otto copie sorgente:
+la produzione avanza realmente, non soltanto nel segnale di presenza.
+Queste sette foto non sono ancora un indice pubblicato; la completezza
+dell'intero archivio resta da attestare dopo la pubblicazione finale.
+HTTP e lavoratore risultano attivi, `NRestarts=0` dopo il passaggio canonico;
+i processi intensivi osservati sono servizi registrati (VLM e controllo dello
+stack), non residui dei comandi diagnostici.
