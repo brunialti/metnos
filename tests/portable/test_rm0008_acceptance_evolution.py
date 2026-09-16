@@ -180,6 +180,29 @@ def test_productive_graph_negative_cases_remain_closed_and_guarded() -> None:
     _assert_closed_productive_graph_mutants(source)
 
 
+@pytest.mark.parametrize("variant", ("reviewed", "source", "target", "mode"))
+def test_portable_import_prerequisite_requires_the_exact_reviewed_edge(variant):
+    source = _baseline()
+    current = dict(source)
+    current[_CERTIFICATION] = ("100644", "d" * 40)
+    current[_NEGATIVE_CASES] = ("100644", "e" * 40)
+    current[_ANCHOR] = ("100644", "f" * 40)
+    support = "tests/portable/conftest.py"
+    source[support] = ("100644", "255ae1beaceec12cfd9ae81a7484e95a62f07309")
+    current[support] = ("100644", "4451e8a45192011cb72d36a20e6ace51ec7096ed")
+    if variant == "source":
+        source[support] = ("100644", "a" * 40)
+    elif variant == "target":
+        current[support] = ("100644", "a" * 40)
+    elif variant == "mode":
+        current[support] = ("100755", current[support][1])
+    if variant == "reviewed":
+        certification._validate_reviewed_acceptance_tree_evolution(source, current)
+    else:
+        with pytest.raises(certification.CertificationError, match="unreviewed evolution"):
+            certification._validate_reviewed_acceptance_tree_evolution(source, current)
+
+
 def test_removing_a_productive_graph_negative_case_is_detected() -> None:
     source = (
         certification.REPO_ROOT / _NEGATIVE_CASES

@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import shutil
 import sys
+import threading
 import tomllib
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -55,13 +56,18 @@ def _candidate(ref, destination: Path) -> Path:
     return destination
 
 
+@pytest.mark.parametrize("candidate_succeeds", (True, False))
 def test_installer_intent_publishes_the_bytes_the_door_later_executes(
-        tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch, candidate_succeeds):
     import inspect
 
     import executor_birth_bootstrap as bootstrap
     import executor_birth_operational as operational
-    from contract_store import publish_signed_source
+    import executor_birth_shadow as shadow
+    from contract_store import (
+        ContractStoreError, catalog_admission_lock, current_manifest,
+        current_revision_id, publish_signed_source,
+    )
     from executor_birth import observe_candidate
     from executor_birth_commit_publisher import _build_prepared_bundle_v1
     from executor_birth_identity import (
@@ -92,12 +98,37 @@ def test_installer_intent_publishes_the_bytes_the_door_later_executes(
     work = tmp_path / "work"
     work.mkdir()
     ref, author_private, trusted = support.create_contract_source(work)
+    unrelated, _unrelated_key, unrelated_trusted = support.create_contract_source(
+        work, name="read_contacts", directory_name="unrelated",
+    )
+    trusted += (("unrelated", unrelated_trusted[0][1]),)
     store = work / "store"
     initial = publish_signed_source(
         ref, expected_generation_id=None,
         trusted_publics=trusted, store_root=store,
     )
+    publish_signed_source(
+        unrelated, expected_generation_id=None,
+        trusted_publics=trusted, store_root=store,
+    )
+    # Unrelated code is broken, but its authenticated name remains reserved.
+    (unrelated.manifest_dir / "sample.py").write_bytes(b"# tampered\n")
     candidate = _candidate(ref, work / "candidate")
+
+    checking = threading.Event()
+    continue_check = threading.Event()
+
+    real_properties = shadow.run_applicable_properties
+
+    def waiting_properties(*args, **kwargs):
+        # Delay the real check boundary, without inventing applicable cases
+        # for this simple fixture or substituting a successful check result.
+        checking.set()
+        if not continue_check.wait(10):
+            raise RuntimeError("test_reader_did_not_complete")
+        if not candidate_succeeds:
+            raise RuntimeError("test_candidate_check_failure")
+        return real_properties(*args, **kwargs)
 
     context = AdmissionContextV1(**{
         name: ContextComponent("v1", DIGEST)
@@ -213,24 +244,7 @@ def test_installer_intent_publishes_the_bytes_the_door_later_executes(
     assert reattested.repeated is False
     assert reattest_current_generation(legacy_current).repeated is True
 
-    result = submit_installer_birth(BirthIntent(
-        candidate, ref.contract_id, "G4-A authenticated dependency proof",
-    ))
-
-    assert result.error_code is None
-    assert result.publication.previous_generation_id == initial.current_generation_id
-    manifest = tomllib.loads(ref.manifest_path.read_text(encoding="utf-8"))
-    code_name = manifest["code"]["files"][0]
-    code_path = ref.manifest_dir / code_name
-    record = SimpleNamespace(
-        name=manifest["name"], manifest_path=ref.manifest_path,
-        code_path=code_path, code_files=tuple(manifest["code"]["files"]),
-        digest=manifest["code"]["digest"],
-    )
-    monkeypatch.setenv(
-        ADMITTED_EXECUTORS_ENV_V1,
-        encode_admitted_executor_records_v1([record]),
-    )
+    monkeypatch.setattr(shadow, "run_applicable_properties", waiting_properties)
     monkeypatch.setattr(
         "admitted_module_v1._trusted_public_keys_v1",
         lambda: tuple(public for _name, public in trusted),
@@ -239,9 +253,52 @@ def test_installer_intent_publishes_the_bytes_the_door_later_executes(
         "admitted_module_v1._projected_trusted_public_keys_v1",
         lambda: tuple(public for _name, public in trusted),
     )
-    projected = runtime_admitted_executor_v1(record.name)
-    module = load_admitted_module_v1(projected)
-    assert module.invoke({}) == {"results": []}
+
+    def invoke_current():
+        # Same shared lock and verified store reader used by catalog loading.
+        with catalog_admission_lock(store_root=store, exclusive=False, timeout=1):
+            live = current_manifest(ref, trusted_publics=trusted, store_root=store)
+            manifest = live.parsed
+            code_path = ref.manifest_dir / manifest["code"]["files"][0]
+            record = SimpleNamespace(
+                name=manifest["name"], manifest_path=ref.manifest_path,
+                code_path=code_path, code_files=tuple(manifest["code"]["files"]),
+                digest=manifest["code"]["digest"],
+            )
+            monkeypatch.setenv(
+                ADMITTED_EXECUTORS_ENV_V1,
+                encode_admitted_executor_records_v1([record]),
+            )
+            projected = runtime_admitted_executor_v1(record.name)
+            assert load_admitted_module_v1(projected).invoke({}) == {"results": []}
+            return live.generation_id, projected, code_path
+
+    results = []
+    worker = threading.Thread(target=lambda: results.append(submit_installer_birth(
+        BirthIntent(candidate, ref.contract_id, "G4-A authenticated dependency proof"),
+    )), daemon=True)
+    worker.start()
+    try:
+        assert checking.wait(5), f"candidate did not reach the check boundary: {results!r}"
+        assert invoke_current()[0] == initial.current_generation_id
+        assert worker.is_alive(), "the read must complete while Birth is waiting"
+    finally:
+        continue_check.set()
+        worker.join(timeout=10)
+    assert not worker.is_alive()
+    assert len(results) == 1
+    result = results[0]
+    if candidate_succeeds:
+        assert result.error_code is None
+        assert result.publication.previous_generation_id == initial.current_generation_id
+        assert current_revision_id(ref, store_root=store) == result.publication.current_generation_id
+    else:
+        assert result.error_code is not None
+        assert result.publication is None
+        assert current_revision_id(ref, store_root=store) == initial.current_generation_id
+    _identifier, projected, code_path = invoke_current()
+    with pytest.raises(ContractStoreError, match="code_digest_mismatch"):
+        current_manifest(unrelated, trusted_publics=trusted, store_root=store)
 
     code_path.write_bytes(b"raise RuntimeError('must not execute')\n")
     with pytest.raises(AdmittedModuleError, match="admitted_module_digest_mismatch"):

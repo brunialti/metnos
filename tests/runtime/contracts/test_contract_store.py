@@ -1240,13 +1240,13 @@ def test_publication_rejects_duplicate_installed_name_before_creating_binding(
 
 
 @pytest.mark.parametrize(
-    "unavailable_code",
-    ("code_file_missing", "code_file_invalid", "code_file_unreadable"),
+    "damage",
+    ("missing", "directory", "digest"),
 )
 def test_unavailable_payload_does_not_block_unrelated_contract_repair(
     tmp_path: Path,
     monkeypatch,
-    unavailable_code: str,
+    damage: str,
 ) -> None:
     root, first_ref, private, trusted = _create_source(tmp_path)
     second_ref = _add_source_contract(
@@ -1273,69 +1273,22 @@ def test_unavailable_payload_does_not_block_unrelated_contract_repair(
         encoding="utf-8",
     )
     draft = prepare_technical_draft(second_ref)
-    real_current = contract_store_module.current_contract
+    unrelated_code = first_ref.manifest_dir / "sample.py"
+    if damage == "digest":
+        unrelated_code.write_text("# changed outside publication\n", encoding="utf-8")
+    else:
+        unrelated_code.unlink()
+        if damage == "directory":
+            unrelated_code.mkdir()
+    real_digest = contract_store_module._code_digest
 
-    def current_with_unavailable_payload(current_ref, **kwargs):
-        if current_ref.contract_id == first_ref.contract_id:
-            raise ContractStoreError(unavailable_code)
-        return real_current(current_ref, **kwargs)
+    def candidate_digest_only(current_ref, parsed):
+        assert current_ref.contract_id != first_ref.contract_id
+        return real_digest(current_ref, parsed)
 
-    monkeypatch.setattr(
-        contract_store_module, "current_contract", current_with_unavailable_payload,
-    )
-    repaired = publish_technical_update(
-        second_ref,
-        expected_generation_id=second.current_generation_id,
-        draft=draft,
-        private_key=private,
-        trusted_publics=trusted,
-        store_root=store,
-    )
-
-    assert repaired.current_generation_id != second.current_generation_id
-
-
-def test_payload_digest_inconsistency_still_blocks_unrelated_repair(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    root, first_ref, private, trusted = _create_source(tmp_path)
-    second_ref = _add_source_contract(
-        root,
-        directory_name="second",
-        name="read_contacts",
-        private=private,
-    )
-    store = tmp_path / "store"
-    publish_signed_source(
-        first_ref,
-        expected_generation_id=None,
-        trusted_publics=trusted,
-        store_root=store,
-    )
-    second = publish_signed_source(
-        second_ref,
-        expected_generation_id=None,
-        trusted_publics=trusted,
-        store_root=store,
-    )
-    (second_ref.manifest_dir / "second.py").write_text(
-        "def invoke(args):\n    return {'results': ['candidate']}\n",
-        encoding="utf-8",
-    )
-    draft = prepare_technical_draft(second_ref)
-    real_current = contract_store_module.current_contract
-
-    def current_with_inconsistent_digest(current_ref, **kwargs):
-        if current_ref.contract_id == first_ref.contract_id:
-            raise ContractStoreError("code_digest_mismatch")
-        return real_current(current_ref, **kwargs)
-
-    monkeypatch.setattr(
-        contract_store_module, "current_contract", current_with_inconsistent_digest,
-    )
-    with pytest.raises(ContractStoreError, match="code_digest_mismatch"):
-        publish_technical_update(
+    with monkeypatch.context() as scope:
+        scope.setattr(contract_store_module, "_code_digest", candidate_digest_only)
+        repaired = publish_technical_update(
             second_ref,
             expected_generation_id=second.current_generation_id,
             draft=draft,
@@ -1344,9 +1297,46 @@ def test_payload_digest_inconsistency_still_blocks_unrelated_repair(
             store_root=store,
         )
 
-    assert current_revision_id(
-        second_ref, store_root=store,
-    ) == second.current_generation_id
+    assert repaired.current_generation_id != second.current_generation_id
+    assert current_manifest(
+        second_ref, trusted_publics=trusted, store_root=store,
+    ).generation_id == repaired.current_generation_id
+    error = {
+        "missing": "code_file_missing", "directory": "code_file_invalid",
+        "digest": "code_digest_mismatch",
+    }[damage]
+    with pytest.raises(ContractStoreError, match=error):
+        current_manifest(first_ref, trusted_publics=trusted, store_root=store)
+
+
+def test_signed_identity_inconsistency_still_blocks_name_reservation(tmp_path: Path) -> None:
+    root, first_ref, private, trusted = _create_source(tmp_path)
+    second_ref = _add_source_contract(
+        root,
+        directory_name="second",
+        name="read_contacts",
+        private=private,
+    )
+    store = tmp_path / "store"
+    first = publish_signed_source(
+        first_ref,
+        expected_generation_id=None,
+        trusted_publics=trusted,
+        store_root=store,
+    )
+    generation = (
+        store / contract_storage_key(first_ref.contract_id) / "generations"
+        / generation_directory_name(first.current_generation_id)
+    )
+    (generation / "manifest.toml.sig").write_bytes(b"invalid-signature")
+    with pytest.raises(ContractStoreError):
+        publish_signed_source(
+            second_ref,
+            expected_generation_id=None,
+            trusted_publics=trusted,
+            store_root=store,
+        )
+    assert not (store / contract_storage_key(second_ref.contract_id)).exists()
 
 
 def test_unavailable_payload_keeps_its_signed_name_reserved(

@@ -6,6 +6,13 @@
 
 ## S. Stato corrente (16/9/2026)
 
+- **Candidate-local Birth — in development** (16/9): one common admission
+  procedure; property/semantic checks remain outside catalog publication.
+  Name reservation authenticates other contracts' signed identities without
+  reopening their code. A broken unrelated payload no longer prevents repair
+  of another contract, but still cannot execute or release its reserved name.
+  Isolated real-path concurrency and refusal tests passed; this is not a live
+  Synt latency claim or a completed deployment. G8 work plan §5.18.
 - **Bounded Birth reads and release-code retention — in development** (16/9,
   ADR 0224 addendum): ordinary runtime selection checks the signed current
   head and its immediate edge, not the whole archive. The candidate is tested,

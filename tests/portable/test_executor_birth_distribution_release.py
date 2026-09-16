@@ -153,7 +153,8 @@ def test_assembly_derives_catalog_descriptor_manifest_and_exact_repetition(
         ).read_bytes()
     )
     assert descriptor.installation_root == document["installation_root"]
-    assert descriptor.python_executable == str(Path(sys.executable).resolve())
+    # The administrative interpreter belongs to the OS, not the build venv.
+    assert descriptor.python_executable == str(Path(release._PYTHON_LINK_V1).resolve())
     assert {item.source_path for item in descriptor.artifacts} == {
         release.ADMIN_PREFLIGHT_RELEASE_PATH_V1,
         *(item.path for item in files if item.role == "service_unit"),

@@ -73,9 +73,6 @@ if TYPE_CHECKING:
 SHADOW_RELATIVE = Path("contract-publications-shadow")
 BINDING_FILE = "binding.json"
 _ADMISSION_RECEIPTS_V2 = "admission-receipts-v2"
-_CODE_PAYLOAD_UNAVAILABLE_CODES = frozenset({
-    "code_file_missing", "code_file_invalid", "code_file_unreadable",
-})
 BINDING_VERSION = 1
 GENERATION_FILES = (
     "manifest.toml",
@@ -2298,11 +2295,13 @@ def _require_catalog_name_candidate(
     trusted_publics: tuple[TrustedPublic, ...],
     store_root: Path,
 ) -> None:
-    """Authenticate the complete visible candidate before a pointer commit.
+    """Reserve the candidate's name against authenticated current identities.
 
     The caller holds :func:`catalog_admission_lock`.  The candidate contract
     is substituted in memory, so a rejected first publication cannot leave a
-    new binding that makes the next boot incomplete.
+    new binding that makes the next boot incomplete. Other contracts reserve
+    names through signed metadata, not executable payloads: certifying one
+    candidate must not rehash unrelated code or prevent an unrelated repair.
     """
     if not isinstance(candidate_name, str) or not candidate_name.strip():
         raise ContractStoreError("published_name_invalid", ref.contract_id.value)
@@ -2351,67 +2350,34 @@ def _require_catalog_name_candidate(
     for current_ref in inventory.installed():
         if current_ref.contract_id == ref.contract_id:
             continue
-        try:
-            revision = current_contract(
-                current_ref,
-                trusted_publics=trusted_publics,
-                store_root=store_root,
-            )
-        except ContractStoreError as exc:
-            if exc.code not in _CODE_PAYLOAD_UNAVAILABLE_CODES:
-                raise
-            # The signed manifest reserves the public name even when its code
-            # payload cannot currently be read. Authenticate the immutable
-            # generation without its code binding so one unavailable contract
-            # cannot block an unrelated repair or release its name.
-            identifier = current_revision_id(
-                current_ref, store_root=store_root,
-            )
-            base = _load_generation_for_commit(
-                current_ref,
-                identifier,
-                trusted_publics=trusted_publics,
-                store_root=store_root,
-            )
-            try:
-                current_name = tomllib.loads(
-                    base["manifest.toml"].decode("utf-8")
-                ).get("name")
-            except (KeyError, UnicodeDecodeError, tomllib.TOMLDecodeError) as error:
-                raise ContractStoreError(
-                    "catalog_candidate_invalid",
-                    f"unbound_payload:{current_ref.contract_id.value}:{error}",
-                ) from error
-            if not isinstance(current_name, str) or not current_name.strip():
-                raise ContractStoreError(
-                    "published_name_invalid", current_ref.contract_id.value,
-                ) from exc
-            installed_names.append((current_ref.contract_id, current_name))
-            continue
+        identifier = current_revision_id(current_ref, store_root=store_root)
+        revision = _authenticate_revision_for_commit(
+            current_ref, identifier,
+            trusted_publics=trusted_publics, store_root=store_root,
+        )
         if isinstance(revision, ContractRetirement):
             # Retirement removes executable authority, not the stable public
             # identity used by the i18n registry.  Authenticate the immutable
             # predecessor and keep its name reserved; otherwise a different
             # ContractId can commit successfully and fail deterministically
             # during registry reconciliation against the retained rows.
-            predecessor = _load_generation_for_commit(
+            payloads = _load_generation_for_commit(
                 current_ref,
                 revision.previous_generation_id,
                 trusted_publics=trusted_publics,
                 store_root=store_root,
             )
-            try:
-                parsed = tomllib.loads(
-                    predecessor["manifest.toml"].decode("utf-8")
-                )
-            except (KeyError, UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
-                raise ContractStoreError(
-                    "catalog_candidate_invalid",
-                    f"retired_predecessor:{current_ref.contract_id.value}:{exc}",
-                ) from exc
-            current_name = parsed.get("name")
         else:
-            current_name = revision.parsed.get("name")
+            payloads = revision
+        try:
+            current_name = tomllib.loads(
+                payloads["manifest.toml"].decode("utf-8")
+            ).get("name")
+        except (KeyError, UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
+            raise ContractStoreError(
+                "catalog_candidate_invalid",
+                f"signed_name:{current_ref.contract_id.value}:{exc}",
+            ) from exc
         if not isinstance(current_name, str) or not current_name.strip():
             raise ContractStoreError(
                 "published_name_invalid", current_ref.contract_id.value,

@@ -103,7 +103,41 @@ suite. Source seals, signatures, current-state integrity and release
 postconditions remain mandatory; no new test scheduler or result cache is
 needed. This is evidence reuse, not permission to waive a failed check.
 
+### One candidate, one procedure, no global outage — instructed on 16 September 2026
+
+Roberto requires logical, architectural and operational simplification together:
+one Birth entry procedure; certification limited to the candidate and affected
+dependencies; reuse of still-valid evidence; and isolation of an unsuccessful
+or slow candidate from already available components. The approved dedicated
+F5 key is not a reason to add another ordinary admission procedure.
+
+The first concrete correction concerns catalog name uniqueness. Authenticating
+another contract's signed current identity is necessary to reserve its name;
+rehashing that contract's executable payload is not. A damaged unrelated
+payload must remain unavailable for execution without preventing publication
+or repair of a different contract. Name collisions, invalid signatures and
+invalid candidate code must still be refused. Expensive candidate checks must
+remain outside the catalog publication lock. Acceptance includes a concurrent
+read/use of an installed executor while another candidate is being checked.
+
+This does not waive authentication of shared authorities or introduce an
+unverified cache. Historical migration remains separate from ordinary Birth.
+
 ## 2. Order and stopping condition
+
+### Dedicated certification authority — approved on 16 September 2026
+
+Roberto explicitly answered **Approvo la chiave dedicata** to one dedicated
+administrative F5 certification identity. Its only scope is signing the
+evidence-derived certification result. It cannot publish executors, approve
+user actions, grant capabilities or delete objects. It introduces no service.
+Reuse the certified result while policy, installation binding and revocation
+checks remain valid; do not recursively reopen the historical dossier.
+This approves N1's separate key and limited purpose, not caller-supplied
+counts, fabricated evidence, activation before migration, or F6 deletion.
+The native installer owns custody; the ordinary runtime receives public
+verification material only. Exact codecs, custody/recovery and productive
+reader tests must precede installation of the key.
 
 The sequence remains:
 

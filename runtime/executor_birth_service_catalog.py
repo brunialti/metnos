@@ -845,6 +845,10 @@ SERVICE_SOURCE_V1 = tuple(sorted((
             _repository_entry(
                 "legacy-install-module", "python_module", "install/__main__.py",
             ),
+            _repository_entry(
+                "legacy-install-operator-authority", "python_module",
+                "install/operator_authority.py",
+            ),
     ),
     _entrypoint(
         "entry-install-git-hooks",
