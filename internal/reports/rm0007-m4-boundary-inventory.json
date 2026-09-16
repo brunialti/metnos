@@ -1,6 +1,6 @@
 {
   "schema": "metnos.contract-boundary-inventory/2",
-  "source_census": "sha256:5c5fb0d7ac56c4f1bc8f8368e474cdc438e33c0cab61869fd51f53a7aa259de5",
+  "source_census": "sha256:8d0437fc0ab12f9822088f1a5809b83a5e56a60c6b2dd3522fb8463a7db15e82",
   "scan_roots": [
     "runtime",
     "install",
@@ -108,6 +108,30 @@
       "role": "store_owner",
       "capabilities": ["store_write"],
       "destination": "fixed-root administrator-only F5 key provisioning; returns public material only",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_certification_evidence.py",
+      "scope": "_evidence_at_v1",
+      "role": "store_owner",
+      "capabilities": ["store_write"],
+      "destination": "administrator-owned F5 evidence chronology under the existing lock; no activation or executor publication",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_certification_evidence.py",
+      "scope": "_open_database",
+      "role": "store_owner",
+      "capabilities": ["store_write"],
+      "destination": "private append-only administrative evidence storage; no Birth store mutation",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_certification_evidence.py",
+      "scope": "administrative_evidence_v1",
+      "role": "store_owner",
+      "capabilities": ["store_write"],
+      "destination": "fixed-root Linux administrator-only evidence entry; no caller-selected authority",
       "phase": "M4"
     },
     {
@@ -5162,6 +5186,9 @@
       "install/birth_authority_provisioner.py:abandon_unattestable_transition_v2",
       "install/birth_certification_authority_provisioner.py:_provision_certification_at_v1",
       "install/birth_certification_authority_provisioner.py:provision_certification_authority_v1",
+      "install/birth_certification_evidence.py:_evidence_at_v1",
+      "install/birth_certification_evidence.py:_open_database",
+      "install/birth_certification_evidence.py:administrative_evidence_v1",
       "install/birth_ownership_authority_provisioner.py:_discard_temporary",
       "install/birth_ownership_authority_provisioner.py:_load_or_create_pair",
       "install/birth_ownership_authority_provisioner.py:_load_or_create_private",

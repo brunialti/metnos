@@ -211,6 +211,18 @@ authorities or running services. Subsequent source changes, tests and
 read-only installed observations are recorded in the work plan; none are
 retroactively claimed as evidence for the original approval.
 
+### Evidence ownership — approved on 16 September 2026
+
+Roberto answered **approvo** to the single administrative responsibility
+proposed in work-plan §6.4. The native administrative installation owner runs
+the existing complete external HTTP certification profile and maintains the
+append-only known-defect evidence. Successful cycles and defect closures must
+be derived from their recorded proofs; closures still require independent
+review. The dedicated key signs only the resulting certification. This adds
+no service, signing identity, publication permission or waiver of failed tests.
+The exact bounded schemas and entry points are frozen in the work plan before
+implementation. The approval is not a completed migration or F5 activation.
+
 ## References
 
 - [Detailed handover](handover_rm0008_f5_f6_15_9_2026.md), sections 4–6.
