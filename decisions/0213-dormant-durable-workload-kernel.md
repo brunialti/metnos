@@ -372,3 +372,22 @@ including adopted results, never generic updated_at. Presence, disabled state,
 work state and stale observations are separate. Read APIs remain owner-scoped.
 This amendment records candidate behavior, not deployment certification; live
 release and end-to-end evidence must be recorded separately.
+
+## Amendment — feature indicator separate from process health (2026-09-16)
+
+The Services card previously reused canonical process status for its dot.
+A deliberately disabled, healthy LRE worker therefore appeared green. The
+card now presents feature availability separately: confirmed disabled is gray;
+green requires valid configuration, matching observed enablement, healthy
+readiness and a running process; transitions or unverified observations are
+amber; service failure or invalid configuration are red. Text accompanies
+color and existing IT/EN message keys supply every displayed explanation.
+Process status, health and PID remain available under technical details.
+
+Canonical status, watchdog behavior, desired state and enable/disable controls
+are unchanged. A view must not turn an intentionally disabled supervisor into
+a runtime failure merely to change its color. Rendered IT/EN regressions cover
+disabled, enabled, mismatched, invalid, failed, missing and unprobed states;
+unknown information never yields green. UI registry and public documentation
+describe this implemented distinction; no experimental Tutor routing,
+composition or coverage change is included.

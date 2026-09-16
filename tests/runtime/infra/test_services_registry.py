@@ -772,6 +772,61 @@ def test_template_exposes_the_closed_lre_feature_control(monkeypatch, tmp_path):
     assert "feature_disabled" not in italian
     assert "Enable LRE" in english
     assert "missing:UI_SERVICES" not in italian + english
+    for rendered in (italian, english):
+        card = rendered.split('id="service-durable_workloads"', 1)[1].split("</article>", 1)[0]
+        assert 'class="dot disabled"' in card
+        assert 'class="dot running"' not in card
+        assert '<details class="service-process">' in card
+        assert card.index('role="status"') < card.index('<details')
+
+
+@pytest.mark.parametrize('lang', ['it', 'en'])
+@pytest.mark.parametrize('overrides, expected', [
+    ({}, 'running'),
+    ({'feature_enabled': False, 'health_detail': 'feature_disabled'}, 'disabled'),
+    ({'feature_enabled': False, 'feature_converged': False}, 'transitioning'),
+    ({'feature_converged': False, 'healthy': False}, 'transitioning'),
+    ({'feature_converged': None, 'healthy': None}, 'transitioning'),
+    ({'status': 'transitioning'}, 'transitioning'),
+    ({'feature_config_valid': False}, 'failed'),
+    ({'feature_config_valid': None}, 'degraded'),
+    ({'status': 'failed', 'feature_enabled': False}, 'failed'),
+    ({'status': 'degraded', 'healthy': False}, 'degraded'),
+    ({'feature_enabled': False, 'status': 'degraded', 'healthy': False}, 'degraded'),
+    ({'healthy': None}, 'degraded'),
+    ({'feature_enabled': None}, 'degraded'),
+    ({'installed': False, 'status': 'missing'}, 'missing'),
+])
+def test_lre_indicator_requires_verified_functional_readiness(monkeypatch, lang, overrides, expected):
+    import i18n
+
+    monkeypatch.setattr(i18n._C, 'INSTANCE_LANG', lang)
+    row = {
+        'key': 'durable_workloads', 'label': 'LRE', 'description': '',
+        'group': 'Test', 'scope': 'system', 'status': 'running',
+        'active_state': 'active', 'sub_state': 'running', 'healthy': True,
+        'health_detail': '', 'health_message_key': '', 'installed': True,
+        'unit': 'metnos-durable-worker.service', 'main_pid': '42',
+        'desired_state': 'running', 'in_desired_state': True,
+        'managed_by': '', 'active_since': '', 'actionable': False,
+        'allowed_actions': [], 'feature_enabled': True,
+        'feature_config_valid': True, 'feature_converged': True,
+        'feature_configurable': False, **overrides,
+    }
+    before = dict(row)
+    rendered = render_template('services.html', services=[row], notice='', notifications=[])
+    card = rendered.split('id="service-durable_workloads"', 1)[1].split('</article>', 1)[0]
+    assert f'class="dot {expected}"' in card
+    assert row == before  # Presentation never changes supervision/health semantics.
+    assert 'missing:UI_' not in card
+    if row['installed']:
+        main, technical = card.split('<details class="service-process">', 1)
+        assert 'role="status"' in main
+        assert ('Dettagli tecnici' if lang == 'it' else 'Technical details') in technical
+        if expected == 'disabled':
+            assert ('Disattivato' if lang == 'it' else 'Disabled') in main
+        if expected != 'running':
+            assert 'class="chip ok"' not in card
 
 
 def test_snapshot_failure_is_isolated(monkeypatch):

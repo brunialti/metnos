@@ -211,6 +211,13 @@ atomici di ammissione. La console separa risultati confermati, errori ed element
 saltati e indica quando i dati non sono aggiornati. Consumi non verificabili
 fermano il lavoro per sicurezza: non significano necessariamente spesa esaurita.</p>
 
+<p>Nella pagina Servizi, l'indicatore principale di LRE descrive la funzione,
+non il solo processo: grigio se disattivata con stato confermato, verde solo
+se abilitata e pronta, giallo se in transizione o non verificata, rosso per
+errore del servizio o configurazione non valida. I dettagli tecnici conservano
+lo stato del processo. Questa distinzione visiva non cambia i controlli di
+salute, le decisioni del supervisore o l'abilitazione persistente.</p>
+
 <h2 id="esiti">Risultati, errori e registri</h2>
 
 <p>Un executor può riuscire, non produrre alcun elemento, produrre un risultato

@@ -204,6 +204,13 @@ without replacing atomic admission checks. The console separates committed
 results, errors and skipped items and indicates stale data. Unverifiable usage
 stops work for safety; it does not necessarily mean the spending limit was reached.</p>
 
+<p>On the Services page, the primary LRE indicator describes the feature,
+not just its process: gray for confirmed disabled state, green only when
+enabled and ready, amber while transitioning or unverified, and red for
+service failure or invalid configuration. Technical details retain process
+state. This visual distinction changes neither health checks, supervisor
+decisions nor the persistent feature setting.</p>
+
 <h2 id="outcomes">Outcomes, errors, and records</h2>
 
 <p>An executor may succeed, return no entries, produce a partial result, or fail.
