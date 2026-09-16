@@ -333,3 +333,62 @@ consumi esplicitamente sconosciuti o tentativi terminali senza uso completo
 invalidano ancora la stima; chiamate attive non la invalidano da sole.
 Nessuna modifica alla contabilizzazione o ai gate di completamento. Nuova
 pubblicazione necessaria prima della partenza lunga per evitare di interromperla.
+
+Correzione del controllo ETA verificata: 28 prove progresso e 35 con controlli
+owner/API di controllo; suite LRE/API finale 564 superate, 4 stress opzionali
+saltate. Commit `426f67c1`. Accounting e immutabilità dei tentativi terminali
+non modificati. Release 60 in attivazione al presente checkpoint.
+
+### Verifica di copertura, non semplice stato «completato»
+
+`run-165sad__` e `run-cpw45n9v`: prova con sei foto, sei percorsi inventariati,
+sei voci uniche nell'indice pubblicato; zero mancanti, estranee o duplicate,
+metadati e ricevuta finale concordi. Nessun file modificato/rimosso tra scoperta
+e audit (dimensione/mtime). Il test **non** certifica l'archivio completo.
+
+Sonda amministrativa read-only riutilizzabile:
+`/tmp/metnos-lre-contention.O6Z8zp87/audit-photo-coverage.sh`, digest
+`79d58d006295c5e1faa1a7a4589fe0cfffbdc77147b80e174fadb2901c051c61`.
+Modalità `test` collaudata; `full` richiede un unico lavoro completato con
+base `Immagini` e fallisce in caso di assenza/ambiguità. Confronta ricevute
+discovery con hash verificato, insieme dei percorsi nell'indice, conteggi
+metadata/ricevuta e metadati correnti dei file. Legge al massimo 100.000 voci
+e 512 MiB; non modifica indice, storico o foto. Nessun contenuto/percorso
+individuale compare nell'output.
+
+Questo certifica la copertura dell'inventario sigillato. Per certificare anche
+l'archivio corrente va esclusa l'aggiunta di nuove foto dopo quella scansione:
+servono nuova ricognizione degli stessi percorsi/estensioni e confronto degli
+insiemi. Dimensione/mtime non sono una nuova verifica completa del contenuto.
+La pubblicazione del dominio passa già `source_count` della discovery come
+`expected_count`; conteggio errato e percorsi duplicati bloccano l'attivazione.
+
+## Ripartenza completa — 16 settembre, 15:52 Europe/Rome
+
+Release **60** attiva: build
+`sha256:ac6dc0ea7cd8c7ac473dd5f841ff82183763feee8a924ffcd837d89a60ff0321`,
+`CUTOVER_OK`, `RELEASE_EDITS_ADMITTED`, uscita 0. Nessun executor cambiato
+rispetto alla 59; differenza operativa limitata alla proiezione ETA. Ulteriori
+30/30 test sulle fasi immagine, inclusi copertura incompleta e duplicati.
+
+`run-jpqockg1`: vecchio lavoro annullato tramite API, senza cancellazioni,
+972 unità confermate ancora presenti. Il conteggio API `failed=963` aggrega
+anche le unità **annullate**, non indica 963 nuovi errori di analisi.
+La prima ricerca dopo l'annullamento ha trovato l'indice della prova e non ha
+ammesso il lavoro completo: rilevato prima di dichiarare la ripartenza.
+
+`run-fuuccnz5`: unico puntatore attivo dell'indice di prova (base verificata,
+generazione della prova, sei voci) rinominato reversibilmente da `meta.json`
+a `meta.validation-20260916.archived.json`. Foto, generazione pubblicata,
+ricevute e storico restano al loro posto; soltanto il corpus di collaudo
+non compare più nella ricerca globale. Nessuna modifica all'indice reale.
+
+Ripetuta la richiesta originale `cerca localmente foto con il mare`:
+turno **`e764cd5a451845c8`**, nuovo lavoro
+**`wrk_9ff050ecc9b048098167041d559d6c04`**, `running`, fase `discover`
+alle **15:52:21 Europe/Rome**, zero errori/attenzioni. Non è ancora completato
+e non è ancora attestata la copertura delle 30.942 foto; quel numero proviene
+dall'inventario precedente. La stima reale della fase di analisi dovrà essere
+osservata dopo almeno tre nuovi gruppi completati, non durante la scansione.
+I quattro errori transitori del catalogo restano non riprodotti e non attribuiti
+a una causa certa: la nuova diagnostica resta necessaria se si ripresentano.
