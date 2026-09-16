@@ -702,7 +702,7 @@ def _authenticated_fixed_ownership_fixture(
     from executor_birth_context_transition import issue_context_transition_v1
 
     if (
-        release_count not in (1, 2)
+        not 1 <= release_count <= 12
         or final_record_sequence not in (4, 5, 6)
         or (
             release_count == 1 and final_record_sequence == 4

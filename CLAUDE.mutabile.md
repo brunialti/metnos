@@ -9,11 +9,14 @@
 - **Bounded Birth reads and release-code retention — in development** (16/9,
   ADR 0224 addendum): ordinary runtime selection checks the signed current
   head and its immediate edge, not the whole archive. The candidate is tested,
-  not deployed; administrative startup/cutover history replay remains open.
+  not deployed. The standalone administrative verifier also reads only current,
+  previous and optional pending state; its installed read-only proof passed.
   The release tool now retains current + one recovery tree, preserving live,
   mounted, service and future references. Installed cleanup removed code
   trees 1–51, kept 52/53 and freed 1.70 GB; signed evidence and data are intact.
-  Exact proof and remaining work: G8 work plan §5.16. This is not F5/F6 closure.
+  Exact proof and remaining work: G8 work plan §§5.16–5.17. The release
+  coordinator's journal inventory remains a separate follow-up. This is not
+  F5/F6 closure.
 - **Shared temporal resolution — installed** (15/9,
   ADR 0176 addendum): schema-declared dates, instants and windows use one
   timezone-aware arithmetic. Versioned language resources handle common forms;

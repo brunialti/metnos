@@ -422,8 +422,18 @@ history, Birth stores, user data, models and unresolved migration evidence
 are outside the deletion scope. Recovery copies do not authorize head rollback.
 
 The runtime changes are development code, not an installed F5 activation.
-The standalone administrative startup/cutover verifier still replays compact
-historical metadata and must be adapted separately before claiming that every
-ordinary startup and release has bounded history cost. The one-time installed
-code cleanup succeeded while that unchanged verifier remained valid; this
-does not certify F5/F6 completion or the candidate runtime deployment.
+The standalone administrative startup/cutover verifier now captures the same
+current edge plus an optional pending successor, then reuses its existing
+signature, journal, claim, context and attestation validator. The first
+retained edge relies on the protected signed baseline; subsequent edges must
+match exactly. It checks at most three heads and transactions, without
+enumerating historical directories. Snapshot changes and selected corruption
+still fail. Initial installation and explicit audits retain the full reader.
+The internal snapshot records its scope rather than claiming a lifetime audit.
+
+The candidate passed the real installed HTTP startup attestation in read-only
+mode, selecting two heads and two transactions in 0.662 seconds; no service
+was restarted. This is not a general latency guarantee or deployment. The
+release coordinator's own journal inventory remains a separate follow-up
+before claiming bounded cost for the complete release cycle. The earlier
+code cleanup and this proof do not certify F5/F6 completion.

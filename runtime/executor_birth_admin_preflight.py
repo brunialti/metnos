@@ -855,7 +855,7 @@ _REQUIRED_MANIFEST_PATHS = {
 _BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:e3886975cee6fd0e2e88fdcb4aff2ce7b698825da1e414c00049ad0427ba4fa9"
+_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:46e0deb6bc87853abb08b12171ada3b329fb324a8fb3d86aa48a75580ada8e09"
 _SOURCE_REVIEW_PIN_VALUE_V1 = (
     rb'(?:(?:"sha256:" \+ "0" \* 64)|(?:"sha256:[0-9a-f]{64}"))'
 )
@@ -1413,6 +1413,7 @@ class _CapturedFixedOwnershipStateCandidateV1(NamedTuple):
     legacy_disposition: bytes | None
     predecessor: _DecodedPredecessorDescriptorV1 | None
     abandoned_crossings: tuple[_CapturedAbandonedCrossingCandidateV2, ...] = ()
+    history_start_sequence: int | None = None
 
 
 class _CapturedFixedOwnershipStateForTestV1(NamedTuple):
@@ -1432,7 +1433,11 @@ class _AuthenticatedTransactionSnapshotV2(NamedTuple):
 
 
 class _ReconciledFixedOwnershipSnapshotV1(NamedTuple):
-    """Authenticated durable bytes; not a live operational attestation."""
+    """Authenticated durable bytes with explicit scope, not live attestation.
+
+    A non-null history_start_sequence is a current-state window. It must not
+    be represented as a full audit of earlier releases.
+    """
 
     registries: tuple[
         OwnershipPublicKeyFactsV1,
@@ -1451,6 +1456,7 @@ class _ReconciledFixedOwnershipSnapshotV1(NamedTuple):
     legacy_disposition: _DecodedLegacyDispositionV2 | None
     predecessor: _DecodedPredecessorDescriptorV1 | None
     abandoned_crossings: tuple[_DecodedAbandonedCrossingV2, ...] = ()
+    history_start_sequence: int | None = None
 
 
 class _SelectedOwnershipEpochV1(NamedTuple):
@@ -7331,6 +7337,207 @@ def _capture_fixed_ownership_state_for_test_v1(
     return _CapturedFixedOwnershipStateForTestV1(candidate)
 
 
+def _capture_current_ownership_state_core_v1(
+    ownership_root: Path, *, uid: int, gid: int, chain_stop: Path | None,
+    between_for_test: Callable[[], None] | None = None,
+) -> _CapturedFixedOwnershipStateCandidateV1:
+    """Capture the selected edge and pending successor without archive scans.
+
+    The protected signed required head is the existing baseline. Decoded IDs
+    below select bounded named reads only; the shared validator authenticates
+    every binding before this candidate can become a productive snapshot.
+    """
+    files: dict[Path, tuple[_CapturedTrustedFileV1, int, int]] = {}
+    absent: set[Path] = set()
+
+    def read(name: str, maximum: int, *, optional: bool = False,
+             mode: int = 0o644) -> bytes | None:
+        path = ownership_root / name
+        if path in files:
+            return files[path][0].content
+        if optional:
+            try:
+                path.lstat()
+            except FileNotFoundError:
+                absent.add(path)
+                return None
+        captured = _capture_trusted_file_v1(
+            path, executable=False, uid=uid, gid=gid, chain_stop=chain_stop,
+            maximum=maximum, require_single_link=True,
+        )
+        if (stat.S_IMODE(captured.identity[2]) != mode
+                or any(item.link_target is not None for item in captured.resolved.components)):
+            raise _recovery("current ownership file metadata")
+        files[path] = (captured, maximum, mode)
+        return captured.content
+
+    def pair(directory: str, stem: str, maximum: int, *, optional: bool = False):
+        payload = read(f"{directory}/{stem}.json", maximum, optional=optional)
+        signature = read(f"{directory}/{stem}.sig", 64, optional=optional)
+        if payload is None and signature is None:
+            return None
+        if payload is None or signature is None or len(signature) != 64:
+            raise _recovery("current ownership incomplete pair")
+        return _CapturedSignedObjectCandidateV1(stem, payload, signature)
+
+    def head_object(head):
+        stem = f"{head.release_sequence:020d}-{head.cutover_id.removeprefix('sha256:')}"
+        return pair("chain-v1/heads-v1", stem, MAX_HEAD_BYTES_V1)
+
+    try:
+        required = _decode_fixed_required_head_frame_v1(read(
+            "chain-v1/required-head-v1.bin", MAX_REQUIRED_HEAD_BYTES_V1,
+        ))
+        first_sequence = max(1, required.release_sequence - 1)
+        registries = _decode_ownership_registry_set_v1(*(
+            read("authorities-v1/" + name, MAX_REGISTRY_BYTES)
+            for name in _AUTHORITY_REGISTRY_BASENAMES_V1
+        ))
+        for index, name in enumerate(_AUTHORITY_CHECKPOINT_BASENAMES_V1):
+            if read("authorities-v1/" + name, MAX_AUTHORITY_CHECKPOINT_BYTES_V1) != _authority_checkpoint_v1(index):
+                raise _recovery("authority checkpoint")
+        if read("chain-v1/.required-head-v1.lock", 1, mode=0o600, optional=True) not in {None, b"\0"}:
+            raise _recovery("required head lock")
+
+        builds, cutovers, heads, claims, transactions = [], [], [], [], []
+        transitions, attestations, abandonments = [], [], []
+
+        def capture_release(head):
+            heads.append(head_object(head))
+            builds.append(pair("chain-v1/builds-v1", head.closed_build_id.removeprefix("sha256:"), MAX_MANIFEST_BYTES))
+            captured = pair("chain-v1/cutovers-v1", head.cutover_id.removeprefix("sha256:"), MAX_CUTOVER_BYTES_V1)
+            cutovers.append(captured)
+            return _decode_ownership_cutover_v1(captured.encoded, captured.signature)
+
+        current_cutover = capture_release(required)
+        selected_heads = [required]
+        if required.release_sequence > 1:
+            previous_id = _require_digest(current_cutover.previous_cutover_id, "previous cutover")
+            previous = pair(
+                "chain-v1/heads-v1",
+                f"{required.release_sequence - 1:020d}-{previous_id.removeprefix('sha256:')}",
+                MAX_HEAD_BYTES_V1,
+            )
+            previous_head = _decode_ownership_head_v1(previous.encoded, previous.signature)
+            capture_release(previous_head)
+            selected_heads.insert(0, previous_head)
+
+        # The next slot is addressed by the current head, not by enumerating
+        # every old claim. Its presence also detects a rolled-back selector.
+        claim_slots = [
+            ("initial.json" if head.release_sequence == 1
+             else head.previous_head_id.removeprefix("sha256:") + ".json", False)
+            for head in selected_heads
+        ] + [(required.head_id.removeprefix("sha256:") + ".json", True)]
+        for basename, pending in claim_slots:
+            encoded = read("coordinator-v1/successor-claims-v1/" + basename,
+                           MAX_COORDINATOR_CONTROL_BYTES_V2, optional=pending)
+            if encoded is None:
+                continue
+            claim = _decode_successor_claim_v1(encoded)
+            expected_name = ("initial.json" if claim.release_sequence == 1
+                             else claim.previous_head_id.removeprefix("sha256:") + ".json")
+            if basename != expected_name:
+                raise _recovery("claim binding")
+            claims.append(_CapturedClaimCandidateV1(basename, encoded, claim))
+            transaction_path = "coordinator-v1/transactions-v2/" + claim.request_id
+            records = tuple(read(f"{transaction_path}/record-{index:03d}-v2.json",
+                                 MAX_COORDINATOR_RECORD_BYTES_V2, optional=True)
+                            for index in range(8))
+            present = tuple(item for item in records if item is not None)
+            if len(present) > 7 or records[:len(present)] != present:
+                raise _recovery("transaction record sequence")
+            if not present:
+                if not pending or (ownership_root / transaction_path).exists():
+                    raise _recovery("transaction prefix unavailable")
+                continue
+            prefix = _decode_coordinator_prefix_v2(present)
+            transactions.append(_CapturedTransactionCandidateV2(claim.request_id, present, prefix))
+            first, latest = prefix.records[0], prefix.records[-1]
+            if pending:
+                build = pair("chain-v1/builds-v1", first.closed_build_id.removeprefix("sha256:"),
+                             MAX_MANIFEST_BYTES, optional=True)
+                if build is not None:
+                    builds.append(build)
+                if latest.cutover_id is not None:
+                    cutover = pair("chain-v1/cutovers-v1", latest.cutover_id.removeprefix("sha256:"),
+                                   MAX_CUTOVER_BYTES_V1, optional=True)
+                    if cutover is not None:
+                        cutovers.append(cutover)
+                    head = pair("chain-v1/heads-v1",
+                                f"{first.release_sequence:020d}-{latest.cutover_id.removeprefix('sha256:')}",
+                                MAX_HEAD_BYTES_V1, optional=True)
+                    if head is not None:
+                        heads.append(head)
+            name = first.context_transition_id.removeprefix("sha256:") + ".json"
+            transition = read("chain-v1/context-transitions-v1/" + name,
+                              MAX_CONTEXT_TRANSITION_BYTES_V1, optional=True)
+            if transition is not None:
+                transitions.append(_CapturedContextTransitionCandidateV1(name, transition))
+            name = claim.request_id + ".json"
+            attestation = read("preflight-attestations-v1/" + name,
+                               MAX_PREFLIGHT_ATTESTATION_BYTES_V1, optional=True)
+            if attestation is not None:
+                attestations.append(_CapturedPreflightAttestationCandidateV1(name, attestation))
+            name = claim.request_id.removeprefix("sha256:") + ".json"
+            abandoned = read("coordinator-v1/abandoned-crossings-v2/" + name,
+                             MAX_COORDINATOR_CONTROL_BYTES_V2, optional=True)
+            if abandoned is not None:
+                abandonments.append(_CapturedAbandonedCrossingCandidateV2(
+                    name, abandoned, _decode_abandoned_crossing_v2(abandoned),
+                ))
+
+        anchor = None
+        if first_sequence == 1:
+            anchor = _decode_ownership_cutover_v1(
+                read("ownership-cutover-v1.json", MAX_CUTOVER_BYTES_V1),
+                read("ownership-cutover-v1.sig", 64),
+            )
+        legacy_state = tuple(read(LEGACY_STATE_ADOPTION_ROOT.name + "/" + name,
+                                  MAX_LEGACY_STATE_RECORD_BYTES_V1)
+                             for name in _LEGACY_STATE_RECORD_NAMES_V1)
+        if read(LEGACY_STATE_ADOPTION_ROOT.name + "/journal.lock", 0, mode=0o600) != b"":
+            raise _recovery("legacy state lock")
+        predecessor = _decode_predecessor_descriptor_v1(read(
+            "predecessor-v1.json", MAX_PREDECESSOR_DESCRIPTOR_BYTES_V1,
+        ))
+        if between_for_test is not None:
+            between_for_test()
+        for captured, maximum, _mode in files.values():
+            _revalidate_captured_file_v1(captured, executable=False, uid=uid, gid=gid,
+                                        chain_stop=chain_stop, maximum=maximum,
+                                        require_single_link=True)
+        for path in absent:
+            try:
+                path.lstat()
+            except FileNotFoundError:
+                continue
+            raise _recovery("current ownership object appeared")
+        claims.sort(key=lambda item: item.decoded.release_sequence)
+        return _CapturedFixedOwnershipStateCandidateV1(
+            registries, anchor, required, tuple(builds), tuple(cutovers), tuple(heads),
+            tuple(claims), tuple(transactions), legacy_state, tuple(transitions),
+            tuple(attestations), (), None, predecessor, tuple(abandonments), first_sequence,
+        )
+    except PreflightError as exc:
+        if exc.code == CODE_RECOVERY:
+            raise
+        raise _recovery("current ownership capture") from exc
+    except (OSError, ValueError, TypeError, AttributeError, MemoryError) as exc:
+        raise _recovery("current ownership capture") from exc
+
+
+def _capture_current_ownership_state_v1() -> _CapturedFixedOwnershipStateCandidateV1:
+    """Use full reconciliation only before the first required head exists."""
+    try:
+        (OWNERSHIP_ROOT / "chain-v1/required-head-v1.bin").lstat()
+    except FileNotFoundError:
+        return _capture_fixed_ownership_state_v1()
+    return _capture_current_ownership_state_core_v1(
+        OWNERSHIP_ROOT, uid=0, gid=0, chain_stop=None,
+    )
+
+
 def _authenticate_fixed_ownership_snapshot_core_v1(
     candidate: _CapturedFixedOwnershipStateCandidateV1, *,
     openssl_executable: Path,
@@ -7338,7 +7545,7 @@ def _authenticate_fixed_ownership_snapshot_core_v1(
     """Authenticate one coherent snapshot without asserting live effects.
 
     The candidate bytes are the only authority input.  In particular this
-    function never reopens a registry or ownership object by pathname.  The
+    function never reopens a registry or ownership object by pathname.
     The result intentionally does not attest installed-tree or live systemd.
     It does authenticate every durable preflight document and its record-006
     reference; the later operational pass independently repeats live checks.
@@ -7348,6 +7555,25 @@ def _authenticate_fixed_ownership_snapshot_core_v1(
     registries = {item.authority: item for item in candidate.registries}
     if set(registries) != set(_AUTHORITY_KINDS_V1):
         raise _invalid("fixed ownership registry set")
+    window_start = candidate.history_start_sequence
+    first_sequence = 1 if window_start is None else window_start
+    if window_start is not None:
+        required = candidate.required_head
+        if (
+            type(window_start) is not int or required is None
+            or window_start != max(1, required.release_sequence - 1)
+            or candidate.predecessor is None
+            or not 1 <= len(candidate.heads) <= 3
+            or not 1 <= len(candidate.claims) <= 3
+            or not 1 <= len(candidate.transactions) <= 3
+            or (window_start > 1 and candidate.anchor is not None)
+        ):
+            raise _recovery("current ownership scope")
+        claim_sequences = tuple(item.decoded.release_sequence for item in candidate.claims)
+        if (claim_sequences != tuple(range(first_sequence, first_sequence + len(claim_sequences)))
+                or required.release_sequence not in claim_sequences
+                or claim_sequences[-1] > required.release_sequence + 1):
+            raise _recovery("current ownership claim coverage")
 
     def durable(callable_, *arguments, **keywords):
         try:
@@ -7450,22 +7676,23 @@ def _authenticate_fixed_ownership_snapshot_core_v1(
             if builds or cutovers:
                 raise _recovery("partial authenticated ownership chain")
         else:
-            if anchor is None:
+            if anchor is None and first_sequence == 1:
                 raise _recovery("partial authenticated ownership chain")
-            verify_signature(
-                registries["cutover"], signing_key_id=anchor.signing_key_id,
-                domain=CUTOVER_SIGNATURE_DOMAIN_V1,
-                encoded=anchor.encoded, signature=anchor.signature,
-            )
-            archived_anchor = cutovers_by_id.get(anchor.cutover_id)
-            if (
-                archived_anchor is not None
-                and (
-                    archived_anchor.encoded != anchor.encoded
-                    or archived_anchor.signature != anchor.signature
+            if anchor is not None:
+                verify_signature(
+                    registries["cutover"], signing_key_id=anchor.signing_key_id,
+                    domain=CUTOVER_SIGNATURE_DOMAIN_V1,
+                    encoded=anchor.encoded, signature=anchor.signature,
                 )
-            ):
-                raise _recovery("anchor archive copy")
+                archived_anchor = cutovers_by_id.get(anchor.cutover_id)
+                if (
+                    archived_anchor is not None
+                    and (
+                        archived_anchor.encoded != anchor.encoded
+                        or archived_anchor.signature != anchor.signature
+                    )
+                ):
+                    raise _recovery("anchor archive copy")
             if required_head is not None:
                 verify_signature(
                     registries["head"],
@@ -7488,12 +7715,13 @@ def _authenticate_fixed_ownership_snapshot_core_v1(
                 maximum_sequence = 0
             else:
                 maximum_sequence = max(heads_by_sequence)
-            if set(heads_by_sequence) != set(range(1, maximum_sequence + 1)):
+            if (set(heads_by_sequence) != set(range(first_sequence, maximum_sequence + 1))
+                    or (window_start is not None and maximum_sequence > required_head.release_sequence + 1)):
                 raise _recovery("ownership head gap")
 
             previous_head = None
             previous_build = None
-            for sequence in range(1, maximum_sequence + 1):
+            for sequence in range(first_sequence, maximum_sequence + 1):
                 head = heads_by_sequence[sequence]
                 build = builds_by_id.get(head.closed_build_id)
                 cutover = cutovers_by_id.get(head.cutover_id)
@@ -7504,7 +7732,7 @@ def _authenticate_fixed_ownership_snapshot_core_v1(
                     or cutover.closed_build_id != head.closed_build_id
                 ):
                     raise _recovery("ownership chain object binding")
-                if previous_head is None:
+                if sequence == 1:
                     if (
                         head.previous_head_id is not None
                         or head.cutover_id != anchor.cutover_id
@@ -7512,6 +7740,13 @@ def _authenticate_fixed_ownership_snapshot_core_v1(
                         or build.facts.previous_closed_build_id is not None
                     ):
                         raise _recovery("ownership anchor link")
+                elif previous_head is None:
+                    # This is the already selected baseline's predecessor,
+                    # not a claim that its earlier ancestry was replayed.
+                    if (window_start is None or head.previous_head_id is None
+                            or cutover.previous_cutover_id is None
+                            or build.facts.previous_closed_build_id is None):
+                        raise _recovery("ownership window baseline")
                 elif (
                     head.previous_head_id != previous_head.head_id
                     or cutover.previous_cutover_id != previous_head.cutover_id
@@ -7600,6 +7835,14 @@ def _authenticate_fixed_ownership_snapshot_core_v1(
                 expected_request_id = _coordinator_request_id_v1(
                     claim.closed_build_id, None, None,
                 )
+            elif window_start is not None and index == 0:
+                if transaction is None:
+                    raise _recovery("current ownership baseline transaction")
+                first = transaction.prefix.records[0]
+                expected_request_id = _coordinator_request_id_v1(
+                    claim.closed_build_id, first.previous_closed_build_id,
+                    first.previous_cutover_id,
+                )
             else:
                 # A predecessor is admissible either because it completed
                 # its attestation or because the machine proved it never
@@ -7638,7 +7881,7 @@ def _authenticate_fixed_ownership_snapshot_core_v1(
                     or first.previous_cutover_id is not None
                 ):
                     raise _recovery("initial transaction predecessor")
-            else:
+            elif previous_transaction is not None:
                 previous_first = previous_transaction.prefix.records[0]
                 previous_latest = previous_transaction.prefix.records[-1]
                 if (
@@ -7918,8 +8161,8 @@ def _authenticate_fixed_ownership_snapshot_core_v1(
         if required_head is not None:
             required_sequence = required_head.release_sequence
             completed_sequences = set(completed_by_sequence)
-            stable_sequences = set(range(1, required_sequence + 1))
-            cas_predecessor_sequences = set(range(1, required_sequence))
+            stable_sequences = set(range(first_sequence, required_sequence + 1))
+            cas_predecessor_sequences = set(range(first_sequence, required_sequence))
             required_prefix = next((
                 transaction for transaction in transactions
                 if transaction.claim.release_sequence == required_sequence
@@ -7954,7 +8197,7 @@ def _authenticate_fixed_ownership_snapshot_core_v1(
                 != initial_record.service_coverage_hash
             ):
                 raise _recovery("predecessor transaction binding")
-        elif candidate.predecessor is not None:
+        elif candidate.predecessor is not None and window_start is None:
             raise _recovery("orphan predecessor")
 
         return _ReconciledFixedOwnershipSnapshotV1(
@@ -7964,6 +8207,7 @@ def _authenticate_fixed_ownership_snapshot_core_v1(
             tuple(heads_by_sequence[index] for index in sorted(heads_by_sequence)),
             claims, tuple(transactions), tuple(pending_claims), legacy_prefix,
             legacy_disposition, candidate.predecessor, abandoned_crossings,
+            window_start,
         )
     except PreflightError as exc:
         if exc.code == CODE_RECOVERY:
@@ -7975,9 +8219,9 @@ def _authenticate_fixed_ownership_snapshot_core_v1(
 
 def _authenticate_fixed_ownership_snapshot_v1(
 ) -> _AuthenticatedFixedOwnershipSnapshotV1:
-    """Authenticate only the fixed productive snapshot captured internally."""
+    """Authenticate fixed current state, not the complete lifetime archive."""
     administrative_tcb = _capture_administrative_tcb_v1()
-    candidate = _capture_fixed_ownership_state_v1()
+    candidate = _capture_current_ownership_state_v1()
     snapshot = _authenticate_fixed_ownership_snapshot_core_v1(
         candidate, openssl_executable=Path(
             administrative_tcb.capture.executables.openssl.resolved.canonical_path

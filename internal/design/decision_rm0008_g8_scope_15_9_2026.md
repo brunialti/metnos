@@ -83,10 +83,25 @@ This clarification itself changed the acceptance criteria, not installed
 behavior. The subsequent instruction **applica** authorizes implementing
 them. Work-plan section 5.16 records the bounded runtime reader and release
 code retention implementation, its tests and the actual cleanup. The
-standalone administrative verifier still traverses historical metadata;
-the runtime candidate is not deployed and F5 certification remains open.
+standalone administrative verifier is now also bounded and passed a read-only
+installed proof (§5.17). The release coordinator's own journal inventory is
+still a separate follow-up. The runtime candidate is not deployed and F5
+certification remains open.
 Do not confuse its signed required-state baseline with an unverified cache
 or a completed F5 entry certificate.
+
+### Proportionate checks — clarified on 16 September 2026
+
+Roberto explicitly requested a leaner checking procedure. Apply the existing
+group rules §8 directly: targeted tests while editing, one real traversal per
+affected boundary, and one final Linux/Windows matrix for the completed
+increment. Keep a compact record of source scope, command, outcome and reason
+to rerun; reuse an outcome while its relevant inputs and environment are
+unchanged. A documentation-only edit does not invalidate runtime tests.
+Repair a failed check and rerun its affected family, not every historical
+suite. Source seals, signatures, current-state integrity and release
+postconditions remain mandatory; no new test scheduler or result cache is
+needed. This is evidence reuse, not permission to waive a failed check.
 
 ## 2. Order and stopping condition
 
