@@ -17,8 +17,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import sqlite3
+import stat
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 from typing import Mapping, Sequence
 
 
@@ -222,8 +226,139 @@ def promoter_facts(
     return tuple(facts)
 
 
+# --- the exact source, read without changing it -------------------------------
+
+_MAX_SOURCE_BYTES = 256 * 1024 * 1024
+_MAX_SOURCE_ROWS = 100_000
+
+
+@dataclass(frozen=True, slots=True)
+class LegacySourceIdentityV1:
+    """Exactly which file was read, so a later claim names the same bytes.
+
+    The path alone is not the identity: two installations select different
+    files for the same logical store, and the same path can be replaced between
+    the census and the copy. Device and inode pin the object, the content digest
+    pins what it said, and the schema digest pins how to read it.
+    """
+
+    path: str
+    device: int
+    inode: int
+    size: int
+    mtime_ns: int
+    schema_id: str
+    content_id: str
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.path, str) or not self.path.startswith("/"):
+            raise LifecycleMigrationError("legacy_source_invalid", "path")
+        for field in ("device", "inode", "size", "mtime_ns"):
+            value = getattr(self, field)
+            if type(value) is not int or isinstance(value, bool) or value < 0:
+                raise LifecycleMigrationError("legacy_source_invalid", field)
+        for field in ("schema_id", "content_id"):
+            value = getattr(self, field)
+            if not isinstance(value, str) or not value.startswith("sha256:"):
+                raise LifecycleMigrationError("legacy_source_invalid", field)
+
+    @property
+    def source_id(self) -> str:
+        """One digest naming this exact object and its exact content."""
+        payload = json.dumps({
+            "content_id": self.content_id, "device": self.device,
+            "inode": self.inode, "path": self.path, "size": self.size,
+        }, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")
+        return "sha256:" + hashlib.sha256(
+            LIFECYCLE_MIGRATION_DOMAIN_V1 + b"source\0" + payload).hexdigest()
+
+
+def _file_identity(path: Path) -> tuple[os.stat_result, str]:
+    """Read the whole file once, refusing anything that is not a plain file."""
+    descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+                         | getattr(os, "O_CLOEXEC", 0))
+    try:
+        info = os.fstat(descriptor)
+        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+            raise LifecycleMigrationError("legacy_source_invalid", "not a plain file")
+        if info.st_size > _MAX_SOURCE_BYTES:
+            raise LifecycleMigrationError("legacy_source_invalid", "size")
+        digest = hashlib.sha256()
+        remaining = info.st_size
+        while remaining:
+            chunk = os.read(descriptor, min(1 << 20, remaining))
+            if not chunk:
+                break
+            digest.update(chunk)
+            remaining -= len(chunk)
+        if remaining:
+            raise LifecycleMigrationError("legacy_source_invalid", "short read")
+        if os.fstat(descriptor).st_mtime_ns != info.st_mtime_ns:
+            raise LifecycleMigrationError("legacy_source_invalid", "changed while read")
+        return info, "sha256:" + digest.hexdigest()
+    finally:
+        os.close(descriptor)
+
+
+def census_source(
+    path: Path, *, tables: Sequence[str],
+) -> tuple[LegacySourceIdentityV1, dict[str, tuple[Mapping[str, object], ...]]]:
+    """Read one legacy store without opening it for writing or migrating it.
+
+    The connection is read-only and query-only, so an unsupported journal or an
+    older schema cannot be silently upgraded by the act of looking at it. An
+    absent table is reported as absent rather than as empty: the difference
+    decides whether a store was ever used.
+    """
+    resolved = Path(path)
+    info, content_id = _file_identity(resolved)
+    connection = sqlite3.connect(f"file:{resolved}?mode=ro", uri=True, timeout=10)
+    try:
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA query_only=1")
+        declared = dict(connection.execute(
+            "SELECT name,sql FROM sqlite_master WHERE type='table' AND sql IS NOT NULL"
+        ).fetchall())
+        missing = [name for name in tables if name not in declared]
+        if missing:
+            raise LifecycleMigrationError("legacy_source_invalid", ",".join(missing))
+        schema_payload = json.dumps(
+            {name: " ".join((declared[name] or "").split()) for name in sorted(tables)},
+            ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")
+        rows: dict[str, tuple[Mapping[str, object], ...]] = {}
+        for name in tables:
+            fetched = connection.execute(
+                f"SELECT * FROM {name} LIMIT ?", (_MAX_SOURCE_ROWS + 1,)).fetchall()
+            if len(fetched) > _MAX_SOURCE_ROWS:
+                raise LifecycleMigrationError("legacy_source_invalid", "row budget")
+            rows[name] = tuple(dict(row) for row in fetched)
+    finally:
+        connection.close()
+    identity = LegacySourceIdentityV1(
+        str(resolved), info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns,
+        "sha256:" + hashlib.sha256(
+            LIFECYCLE_MIGRATION_DOMAIN_V1 + b"schema\0" + schema_payload).hexdigest(),
+        content_id,
+    )
+    return identity, rows
+
+
+def source_unchanged(identity: LegacySourceIdentityV1) -> bool:
+    """Say whether the exact object read earlier is still exactly that."""
+    try:
+        info, content_id = _file_identity(Path(identity.path))
+    except (LifecycleMigrationError, OSError):
+        return False
+    return (info.st_dev == identity.device and info.st_ino == identity.inode
+            and info.st_size == identity.size
+            and info.st_mtime_ns == identity.mtime_ns
+            and content_id == identity.content_id)
+
+
 __all__ = [
     "Disposition", "LIFECYCLE_MIGRATION_DOMAIN_V1", "LegacyDispositionV1",
-    "LegacyEffect", "LegacyRowFacts", "LifecycleMigrationError",
-    "plan_digest_v1", "plan_dispositions", "promoter_facts", "statistics_facts",
+    "LegacyEffect", "LegacyRowFacts", "LegacySourceIdentityV1",
+    "LifecycleMigrationError", "census_source", "plan_digest_v1",
+    "plan_dispositions", "promoter_facts", "source_unchanged",
+    "statistics_facts",
 ]

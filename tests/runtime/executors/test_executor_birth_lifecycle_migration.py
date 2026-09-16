@@ -215,3 +215,79 @@ def test_a_decision_for_another_migration_is_refused(preserved):
         record_legacy_resolutions(
             migration_id="sha256:" + "8" * 64, resolutions=decisions(),
             recorded_at=WHEN, db_path=db_path)
+
+
+# --- the exact source, read without changing it ------------------------------
+
+import sqlite3 as _sqlite3
+
+
+def legacy_store(tmp_path, *, rows=(("a", "synth:reactive", None),), name="executor_stats.db"):
+    path = tmp_path / name
+    with _sqlite3.connect(path) as connection:
+        connection.execute(
+            "CREATE TABLE executor_stats (name TEXT PRIMARY KEY, source TEXT, "
+            "deprecated_at TEXT, archived_at TEXT)")
+        connection.executemany(
+            "INSERT INTO executor_stats(name,source,deprecated_at) VALUES(?,?,?)", rows)
+    return path
+
+
+def test_the_census_reads_the_rows_and_pins_the_exact_object(tmp_path):
+    path = legacy_store(tmp_path, rows=(("a", "synth:reactive", WHEN), ("b", None, None)))
+    identity, rows = migration.census_source(path, tables=("executor_stats",))
+    assert [row["name"] for row in rows["executor_stats"]] == ["a", "b"]
+    assert identity.path == str(path) and identity.inode > 0
+    assert identity.source_id.startswith("sha256:")
+    assert migration.source_unchanged(identity) is True
+
+
+def test_the_census_never_opens_the_store_for_writing(tmp_path):
+    path = legacy_store(tmp_path)
+    identity, _rows = migration.census_source(path, tables=("executor_stats",))
+    # Reading must not touch the file, or the later unchanged check is worthless.
+    assert migration.source_unchanged(identity) is True
+    assert migration.census_source(path, tables=("executor_stats",))[0] == identity
+
+
+def test_a_write_after_the_census_is_detected(tmp_path):
+    path = legacy_store(tmp_path)
+    identity, _rows = migration.census_source(path, tables=("executor_stats",))
+    with _sqlite3.connect(path) as connection:
+        connection.execute("INSERT INTO executor_stats(name) VALUES('later')")
+    assert migration.source_unchanged(identity) is False
+
+
+def test_a_replaced_file_at_the_same_path_is_detected(tmp_path):
+    path = legacy_store(tmp_path)
+    identity, _rows = migration.census_source(path, tables=("executor_stats",))
+    replacement = legacy_store(tmp_path, name="other.db")
+    replacement.replace(path)
+    assert migration.source_unchanged(identity) is False
+
+
+def test_an_absent_table_is_refused_rather_than_read_as_empty(tmp_path):
+    path = legacy_store(tmp_path)
+    with pytest.raises(LifecycleMigrationError) as raised:
+        migration.census_source(path, tables=("executor_stats", "promoter_state"))
+    assert raised.value.detail == "promoter_state"
+
+
+def test_a_symlinked_or_absent_source_is_refused(tmp_path):
+    path = legacy_store(tmp_path)
+    link = tmp_path / "link.db"
+    link.symlink_to(path)
+    with pytest.raises((LifecycleMigrationError, OSError)):
+        migration.census_source(link, tables=("executor_stats",))
+    with pytest.raises(OSError):
+        migration.census_source(tmp_path / "absent.db", tables=("executor_stats",))
+
+
+def test_the_source_identity_is_the_migration_key(tmp_path):
+    """Two stores with identical rows are still two different sources."""
+    first = legacy_store(tmp_path, name="one.db")
+    second = legacy_store(tmp_path, name="two.db")
+    one, _ = migration.census_source(first, tables=("executor_stats",))
+    two, _ = migration.census_source(second, tables=("executor_stats",))
+    assert one.content_id == two.content_id
+    assert one.source_id != two.source_id
