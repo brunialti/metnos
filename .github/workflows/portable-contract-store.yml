@@ -81,7 +81,7 @@ jobs:
         env:
           PYTEST_ADDOPTS: ${{ runner.os == 'Windows' && '--durations=30 -vv' || '' }}
         run: >-
-          python -c "import faulthandler, os; faulthandler.dump_traceback_later(600, exit=True) if os.name == 'nt' else None; import pytest; raise SystemExit(pytest.main())"
+          python -c "import faulthandler, os; trace = os.fdopen(os.dup(2), 'w'); faulthandler.dump_traceback_later(600, file=trace, exit=True) if os.name == 'nt' else None; import pytest; raise SystemExit(pytest.main())"
           -q -p no:cacheprovider --import-mode=importlib
           --confcutdir=tests/portable
           --ignore=tests/portable/rm0008_2a_acceptance

@@ -67,11 +67,11 @@ _FROZEN_WORKFLOW_SHA256 = (
 # wheelhouse, and bound diagnostic failure of the general Windows suite.
 # All six acceptance jobs and their blocking summary are unchanged.
 _REVIEWED_WORKFLOW_SHA256 = (
-    "143fcd035710a919621f663a353b9d1d200599d8f4dc4111d353e21dde3a3884"
+    "b07b403438365653bd68004098dda0ec3c37ff4bef8e3da0d4a9bf9f7f806dff"
 )
 _REVIEWED_WORKFLOW_GIT_EDGE = (
     ("100644", "ce3bbd7e5097b23e4ad577ffa1b8af40b75618f7"),
-    ("100644", "6e5ed2cae42bd53bf22c622d5d7eecd7dce7648d"),
+    ("100644", "dc632bdfa0aa8ad30584a22aafeb5183b67978e4"),
 )
 # Reviewed importlib-mode fixture lookup (329d51b3). No collection or oracle
 # changes are permitted by this exact prerequisite edge.
