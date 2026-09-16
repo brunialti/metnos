@@ -166,6 +166,11 @@ BOUNDARY_API_OWNERS_V1 = (
         ('_provision_certification_at_v1', ('store_write',)),
         ('provision_certification_authority_v1', ('store_write',)),
     )),
+    BoundaryApiOwnerV1('birth_certification_evidence', (
+        ('_evidence_at_v1', ('store_write',)),
+        ('_open_database', ('store_write',)),
+        ('administrative_evidence_v1', ('store_write',)),
+    )),
     BoundaryApiOwnerV1('birth_ownership_authority_provisioner', (
         ('_discard_temporary', ('store_write',)),
         ('_load_or_create_pair', ('store_write',)),

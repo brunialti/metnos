@@ -213,7 +213,7 @@ def test_product_public_entry_is_fixed_root_and_refuses_revocation(monkeypatch):
     not sys.platform.startswith("linux") or getattr(os, "geteuid", lambda: -1)() != 0,
     reason="requires an explicitly delegated native administrator run",
 )
-def test_native_root_custody_process_death_and_unprivileged_reader():
+def test_native_root_custody_process_death_and_unprivileged_reader(monkeypatch):
     """Use real OS identities; never touch the productive authority root."""
     import pwd
 
@@ -247,6 +247,28 @@ def test_native_root_custody_process_death_and_unprivileged_reader():
         directory = _directory(root)
         assert (directory / authority.PRIVATE_BASENAME_V1).read_bytes() == original
         authority._root_owned_chain(directory)
+        # Extend the existing native traversal, not the whole CI workflow.
+        # These fixture observations prove custody/recovery, not real routing.
+        import install.birth_certification_evidence as evidence
+        from test_executor_birth_certification_evidence import _seed, _terminate_cycle_owner
+
+        monkeypatch.setattr(evidence, "DEFAULT_OWNERSHIP_ROOT_V1", root)
+        with evidence.administrative_evidence_v1() as owner:
+            _seed(owner)
+        _terminate_cycle_owner(root, environment, root_owned=True)
+        with evidence.administrative_evidence_v1() as owner:
+            assert owner.frontier.pending_cycle is None
+            assert not owner.frontier.consecutive_successes
+        database = root / evidence.DIRECTORY_V1 / "evidence.sqlite"
+        denied = subprocess.run([
+            sys.executable, "-I", "-B", "-c",
+            "import sys; from pathlib import Path; "
+            "exec('for mode in (\"rb\", \"ab\"):\\n try:\\n  Path(sys.argv[1]).open(mode)"
+            "\\n except PermissionError:\\n  pass\\n else:\\n  raise AssertionError(\"private evidence accessible\")')",
+            str(database),
+        ], env=environment, cwd=root, user=account.pw_uid, group=account.pw_gid,
+            extra_groups=[], capture_output=True, timeout=30)
+        assert denied.returncode == 0, denied.stderr.decode()
         # The reader must not depend on access to the administrator's checkout.
         source = root / "public-reader-source"
         source.mkdir(mode=0o755)

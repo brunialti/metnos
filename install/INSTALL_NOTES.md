@@ -209,6 +209,17 @@ retry. The public reader initializes no user directories and never reads the
 private file. Native Windows custody and the evidence-derived certificate
 remain unfinished; this procedure must not be presented as F5 activation.
 
+The optional `install.birth_certification_evidence.administrative_evidence_v1`
+context records the administrative evidence in a separate fixed-root directory.
+Its private, append-only SQLite store preserves the initial defect census,
+review proofs, frozen routing profiles and every cycle outcome. A process
+interruption remains an interrupted cycle on recovery; it cannot be skipped
+when looking for consecutive successes. The same completed turn cannot count
+twice. Exact retry/review and artifact hashes never confer publication power.
+Only the administrator can open this context; ordinary Birth and startup do
+not read or write it. This persistence component does not yet run the HTTP
+harness, issue an F5 certificate, migrate state or activate lifecycle changes.
+
 ### Private HTTP runtime settings
 
 The signed HTTP recipe selects `METNOS_ENGINE=v3`; its launcher does not inherit

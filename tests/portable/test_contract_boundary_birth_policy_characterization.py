@@ -17,10 +17,10 @@ POLICY_NAMES = (
     "BIRTH_CLOSED_EXCEPTION_SCOPES", "BIRTH_CLOSED_EXCEPTION_CAPABILITIES",
     "VALID_ROLES", "LIVE_MUTATIONS",
 )
-# Adds only the two optional F5 installer entries and their shared key helper.
-POLICY_SHA256 = "47d73630d2827be83de858e2f51573a8f4cc806c5aa997d67c594e0bd2378714"
-INVENTORY_SHA256 = "a8c5c55bdf647ed71b8dc01df7f9f49ab07d3b41d01941a150ff78ae77ef187d"
-FINDINGS_SHA256 = "a10d6685d5527835dba72da1819ec8f9cefab6d01d3c6e45f4a3b8b176fff9c3"
+# Adds exactly the three administrative evidence-store scopes; no exception.
+POLICY_SHA256 = "75b5637deb358c2da2659cc7c37b6cac3ea14d6389a013d01a5bd7feb9a465c4"
+INVENTORY_SHA256 = "e4d52c8d57127fa05a5ebfaf26d3a75373beb646fcdb56eec25d2c71b2b1b616"
+FINDINGS_SHA256 = "84eb23202e1bf478abc9aa86a7b5e046a2ffb3531a90d0210857dd24033117f6"
 
 DIRECT_MANIFEST_ROLES = frozenset({
     "migration_boundary", "offline_authoring", "store_owner",
@@ -116,7 +116,7 @@ def test_inventory_and_findings_outputs_are_frozen() -> None:
     embedded = standalone.birth_closed_findings((), inventory)
     first = [(item.code, item.scope, item.message) for item in imported]
     second = [(item.code, item.scope, item.message) for item in embedded]
-    assert first == second and len(first) == 166
+    assert first == second and len(first) == 169
     assert _sha256(first) == FINDINGS_SHA256
 
 
