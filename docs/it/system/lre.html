@@ -314,6 +314,20 @@ per quell'identità; se la pagina è indisponibile, controlla il servizio in
 <code>Settings → Sistema → Servizi</code>. Non occorre lasciare aperta la
 console perché il lavoro continui.</p>
 
+<h3 id="activity-state">Motore, attesa e risultati confermati</h3>
+<p><strong>Motore disabilitato</strong>: LRE non prende nuovi lavori né avvia
+nuove unità; lavori e risultati salvati restano consultabili.
+<strong>In coda</strong> indica un lavoro accodato; <strong>In attesa</strong>
+un'unità non ancora eseguita, che può attendere risorse o dipendenze.
+Non significa in attesa di approvazione; <strong>Richiede attenzione</strong>
+è distinto. I <strong>risultati confermati</strong> sono i <strong>Blocchi
+riusciti</strong>: risultati salvati definitivamente, non il completamento
+dell'intero lavoro. Falliti, saltati e da verificare sono separati; il totale
+può crescere durante la scoperta. I blocchi non sono necessariamente singoli
+file. <strong>Ultimo blocco riuscito</strong> indica un risultato confermato;
+<strong>Aggiornato</strong> può cambiare senza nuovi risultati e non dimostra
+avanzamento.</p>
+
 <figure class="ui-guide">
  <div class="ui-shot-frame">
   <img src="/assets/images/system-lre-ui-it.png" width="1440" height="1000" loading="lazy" decoding="async" alt="Schermata reale della console LRE con elenco dei lavori, dettaglio, digest, budget e fasi.">

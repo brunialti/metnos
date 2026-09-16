@@ -1166,8 +1166,9 @@ def _demote(account: _ServiceAccountV1):
 
 
 def _prepare_activation_catalog(tmp_path, account, monkeypatch) -> Path:
-    """Prepare a real service-owned catalog lock, outside root's own state."""
+    """Bind real locks to the isolated account, not runtime discovery."""
     import contract_store
+    import stack_reconcile
 
     state = tmp_path / "service-state"
     state.mkdir(mode=0o700)
@@ -1176,7 +1177,16 @@ def _prepare_activation_catalog(tmp_path, account, monkeypatch) -> Path:
     lock.touch(mode=0o600, exist_ok=False)
     os.chown(lock, account.uid, account.gid)
     monkeypatch.setattr(contract_store._C, "PATH_USER_STATE", state)
-    monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path / "runtime"))
+    # This cell certifies the standalone signed startup gate. It deliberately
+    # has no runtime Birth installation from which to discover a lock scope.
+    # Keep both real locks and their real service identity in the same fixture.
+    lock_type = stack_reconcile.ReconcileLock
+    monkeypatch.setattr(
+        stack_reconcile, "ReconcileLock",
+        lambda: lock_type(
+            state / "metnos-stack-reconcile.lock", owner_uid=account.uid,
+        ),
+    )
     return lock
 
 

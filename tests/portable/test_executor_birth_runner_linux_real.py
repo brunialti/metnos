@@ -251,6 +251,7 @@ def test_activation_catalog_uses_the_real_lock_in_isolated_state(
 ) -> None:
     from types import SimpleNamespace
     import contract_store
+    import stack_reconcile
 
     account = SimpleNamespace(uid=os.geteuid(), gid=os.getegid())
     original = contract_store._C.PATH_USER_STATE
@@ -261,10 +262,13 @@ def test_activation_catalog_uses_the_real_lock_in_isolated_state(
         assert lock.parent == tmp_path / "service-state"
         assert (lock.stat().st_uid, lock.stat().st_gid) == (account.uid, account.gid)
         assert lock.stat().st_mode & 0o777 == 0o600
-        with contract_store.catalog_admission_lock(
-            trusted_owner=(account.uid, account.gid),
+        with stack_reconcile.catalog_reconcile_lock(
+            catalog_trusted_owner=(account.uid, account.gid),
         ):
             assert lock.read_bytes() == b"\0"
+            lifecycle_lock = lock.parent / "metnos-stack-reconcile.lock"
+            assert lifecycle_lock.stat().st_uid == account.uid
+            assert lifecycle_lock.stat().st_mode & 0o777 == 0o600
     assert contract_store._C.PATH_USER_STATE == original
 
 
