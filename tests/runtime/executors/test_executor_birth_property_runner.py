@@ -218,6 +218,9 @@ def test_observed_runner_executes_exact_snapshot_with_closed_fixture(monkeypatch
         "candidate.py", "_metnos_birth_property_harness_v1.py",
         "_metnos_birth_property_stdio_v1.py", "_metnos_birth_helper_model_v1.py",
         "helper", "package-app", *supports,
+        "_metnos_birth_reverse_v1.py", "runtime/reverse_patterns.py",
+        "runtime/reverse_patterns_patch.py", "runtime/playwright_sidecar/__init__.py",
+        "runtime/playwright_sidecar/session_client.py", "runtime/playwright_sidecar/stealth.py",
     }
     assert all(captured["candidate_files"][name] == payload
                for name, payload in supports.items())
@@ -771,6 +774,122 @@ def test_missing_positive_case_never_invokes_the_candidate(monkeypatch, tmp_path
                                        linux_registry=_linux_registry(tmp_path)))
     assert evidence[0].status is PropertyStatus.UNAVAILABLE
     assert evidence[0].error_code == "property_case_unavailable"
+
+
+def _core_observation(tmp_path, name, mutation=""):
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[3] / 'executors' / name
+    source = (root / f'{name}.py').read_bytes()
+    if mutation:
+        marker = b'if __name__ == "__main__":'
+        assert source.count(marker) == 1
+        source = source.replace(marker, mutation.encode() + b'\n' + marker)
+    return ObservedCandidate(
+        ContractId(ManifestOrigin.CORE, f'{name}/manifest.toml'),
+        CandidateSnapshot(tmp_path, (root/'manifest.toml').read_bytes(), b'{}',
+                          MappingProxyType({f'{name}.py': source})),
+        SimpleNamespace(candidate_id=D), ExecutorOrigin.HUMAN, RevisionAuthor.HUMAN, D)
+
+
+def test_session_fixture_requires_the_declared_module_inverse(controlled_property_stdio, tmp_path):
+    import tomllib
+    from dataclasses import replace
+    from executor_birth_shadow import _profile
+    observed = _core_observation(tmp_path, 'open_sites')
+    observed = replace(observed, snapshot=replace(observed.snapshot,
+        manifest_bytes=observed.snapshot.manifest_bytes.replace(
+            b'reverse_pattern = "module.reverse"',
+            b'reverse_pattern = "delete_created_paths"')))
+    profile = _profile(tomllib.loads(observed.snapshot.manifest_bytes.decode()))
+    assert profile.domain_contract == ''
+    registry, outputs = controlled_property_stdio
+    evidence = run_property('undo.round_trip', profile,
+        _runner=ObservedPropertyRunner(observed, linux_registry=registry))
+    assert evidence and all(row.status is PropertyStatus.UNAVAILABLE for row in evidence)
+    assert not outputs
+
+
+@pytest.mark.parametrize('name,mutation,expected', [
+    ('compress_files', '', PropertyStatus.PASSED),
+    ('open_sites', '', PropertyStatus.PASSED),
+    ('compress_files', "original_invoke=invoke\ndef invoke(args):\n    out=original_invoke(args)\n    out['dirs_created']=[]\n    return out\n", PropertyStatus.FAILED),
+    ('open_sites', "original_close=session_client.session_close\ndef close_all(**kwargs):\n    return original_close(**{**kwargs, 'all':True})\nsession_client.session_close=close_all\n", PropertyStatus.FAILED),
+])
+def test_native_created_paths_and_sessions(tmp_path, monkeypatch, name, mutation, expected):
+    """Explicit native diagnostic: no registry injection, admission or publishing."""
+    import os
+    import tomllib
+    from executor_birth_shadow import _profile
+    from executor_birth_sandbox_registry_v1 import (
+        measure_sandbox_backend_v1, decode_sandbox_registry_v1,
+    )
+    if os.environ.get('METNOS_TEST_NATIVE_BIRTH') != '1':
+        pytest.skip('requires an explicitly delegated native test unit')
+    registry = decode_sandbox_registry_v1(measure_sandbox_backend_v1())
+    assert registry is not None
+    import executor_birth_property_runner as runner_module
+    native_run = runner_module.run_birth_phase
+    results = []
+    def capture(*args, **kwargs):
+        result = native_run(*args, **kwargs)
+        results.append(result)
+        return result
+    monkeypatch.setattr(runner_module, 'run_birth_phase', capture)
+    observed = _core_observation(tmp_path, name, mutation)
+    evidence = run_property('undo.round_trip',
+        _profile(tomllib.loads(observed.snapshot.manifest_bytes.decode())),
+        _runner=ObservedPropertyRunner(observed, linux_registry=registry))
+    assert len(evidence) >= 2
+    assert all(row.status is expected for row in evidence), [
+        (result.error_code, result.stderr, result.stdout) for result in results]
+
+
+@pytest.mark.parametrize('name', ['compress_files', 'open_sites'])
+def test_real_created_paths_and_sessions_roundtrip(controlled_property_stdio, tmp_path, name):
+    import tomllib
+    from executor_birth_shadow import _profile
+    observed = _core_observation(tmp_path, name)
+    registry, outputs = controlled_property_stdio
+    profile = _profile(tomllib.loads(observed.snapshot.manifest_bytes.decode()))
+    evidence = run_property('undo.round_trip', profile,
+                           _runner=ObservedPropertyRunner(observed, linux_registry=registry))
+    assert len(evidence) >= 2
+    assert all(row.status is PropertyStatus.PASSED for row in evidence), outputs
+    for result in outputs:
+        assert result['output']['ok'] is True
+        obs = result['observations']
+        assert obs['state_after_forward_hash'] != obs['state_before_hash']
+        assert obs['state_after_undo_hash'] == obs['state_before_hash']
+
+
+@pytest.mark.parametrize('name,mutation', [
+    ('compress_files', "original_invoke=invoke\ndef invoke(args):\n    out=original_invoke(args)\n    out['results']=[]\n    return out\n"),
+    ('compress_files', "original_invoke=invoke\ndef invoke(args):\n    out=original_invoke(args)\n    out['dirs_created']=[]\n    return out\n"),
+    ('compress_files', "original_invoke=invoke\ndef invoke(args):\n    out=original_invoke(args)\n    out['results'].append({'path':'fixture/source-1.bin','created':True})\n    return out\n"),
+    ('open_sites', "def reverse(plan, results):\n    return {'ok':True}\n"),
+    ('open_sites', "original_close=session_client.session_close\ndef close_all(**kwargs):\n    return original_close(**{**kwargs, 'all':True})\nsession_client.session_close=close_all\n"),
+    ('open_sites', "original_invoke=invoke\ndef invoke(args):\n    out=original_invoke(args)\n    out['_undo']['session_ids'].append('existing')\n    return out\n"),
+    ('open_sites', "original_invoke=invoke\ndef invoke(args):\n    out=original_invoke(args)\n    out['_undo']['session_ids']=['wrong-id']\n    return out\n"),
+])
+def test_created_paths_and_session_receipts_cannot_lie(
+        controlled_property_stdio, tmp_path, name, mutation):
+    import tomllib
+    from executor_birth_shadow import _profile
+    observed = _core_observation(tmp_path, name, mutation)
+    registry, _ = controlled_property_stdio
+    evidence = run_property('undo.round_trip', _profile(tomllib.loads(observed.snapshot.manifest_bytes.decode())),
+                           _runner=ObservedPropertyRunner(observed, linux_registry=registry))
+    assert evidence and all(row.status is PropertyStatus.FAILED for row in evidence)
+
+
+@pytest.mark.parametrize('path', [
+    '_metnos_birth_reverse_v1.py', 'runtime/reverse_patterns.py',
+    'runtime/playwright_sidecar/session_client.py', 'runtime/playwright_sidecar/stealth.py',
+])
+def test_new_property_support_cannot_be_replaced(path):
+    import executor_birth_property_runner as runner_module
+    with pytest.raises(PropertyContractError, match='property_candidate_invalid'):
+        runner_module._candidate_files_with_support({'candidate.py': b'pass\n', path: b'pass\n'})
 
 
 def test_real_linux_stdio_without_a_client_refuses_honestly(

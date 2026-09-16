@@ -365,3 +365,33 @@ The recipe now selects that directory, as other bare runtime modules do.
 A regression resolves every Python target from its signed directory without
 importing a parent package or inheriting ambient source paths. The launcher
 keeps its restricted path; no runtime fallback or readiness exception is added.
+
+## Private undo fixtures follow the declared inverse (16 September 2026)
+
+Release 54 correctly refused two incomplete property proofs: created paths
+were being undone through a nonexistent module inverse, while web sessions
+had no isolated positive case. The property runner now selects closed fixture
+semantics from capability, argument schema and the exact reverse declaration,
+never from an executor name. Created-path fixtures derive formats from declared
+successful cases but replace host paths and shell setup with seeded private
+files. They execute the actual central `delete_created_paths` implementation.
+The pure filesystem registry imports admitted-module authority only when an
+inverse actually dispatches another executor; authenticated dispatch is intact.
+
+The session fixture is an observer-owned protocol model in a separate process
+from candidate code, exposed through a bounded local socket inside the native
+sandbox. It covers one new session and a mixed reused/new collection, preserves
+pre-existing and other-owner state, and models owner-wide closure. It is selected
+only for `module.reverse`, so a different declared inverse cannot be certified
+by exercising a Python inverse that production would not use. This proves the
+candidate's session receipt/inverse protocol, not a live Playwright deployment.
+
+Read-only core support paths cannot be shadowed by candidate files. All original
+hash-based oracles, case budgets and native isolation checks remain mandatory.
+Regression mutants omit receipts or directory cleanup, delete existing state,
+name the wrong session, return a no-op inverse or close all owner sessions;
+each must fail. Native delegated tests separately execute valid file/session
+round trips and two mutants without publishing or accessing production state.
+The native run also exposed an inverse wrapper writing configuration beside
+read-only candidate code; it now uses the private work directory, like the
+ordinary stdio wrapper. No production authority or admission bypass was added.

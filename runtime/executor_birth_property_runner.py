@@ -71,6 +71,28 @@ def _attestation_hash(result: object, *, candidate_id: str, case_id: str,
 _HARNESS_PATH = "_metnos_birth_property_harness_v1.py"
 _STDIO_PATH = "_metnos_birth_property_stdio_v1.py"
 _HELPER_MODEL_PATH = "_metnos_birth_helper_model_v1.py"
+_REVERSE_PATH = "_metnos_birth_reverse_v1.py"
+_REVERSE_SOURCE = b'''import json, os, pathlib, sys
+os.environ['METNOS_WORKSPACE'] = str(pathlib.Path.cwd() / 'workspace')
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent / 'runtime'))
+from reverse_patterns import apply_patterns
+value = json.load(sys.stdin)
+print(json.dumps(apply_patterns(sys.argv[1], value['plan'], value['results'])))
+'''
+_SESSION_CLIENT_SOURCE = b'''import json, pathlib, socket
+def _request(operation, arguments):
+    address = pathlib.Path(__file__).resolve().parents[3] / 'helper.sock'
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
+        connection.settimeout(1.0)
+        connection.connect(str(address))
+        connection.sendall(json.dumps({'operation': operation, 'arguments': arguments}).encode() + b'\\n')
+        with connection.makefile('rb') as stream:
+            reply = stream.readline(65537)
+        if not reply or len(reply) > 65536: raise ValueError('fixture_frame_invalid')
+        return json.loads(reply)
+def session_open(**kwargs): return _request('open', kwargs)
+def session_close(**kwargs): return _request('close', kwargs)
+'''
 # The registered interpreter runs these read-only CLI entrypoints. No new
 # executable, executable permission, service or production helper is installed.
 _HELPER_CLIENT_SOURCE = r'''
@@ -200,6 +222,53 @@ class ManagedHelperFixture:
         self.server.server_close()
         self.thread.join(timeout=2)
         self.address.unlink(missing_ok=True)
+
+class SessionBrokerFixture(ManagedHelperFixture):
+    """Private session protocol model, never a connection to the live browser."""
+    def __init__(self, directory):
+        super().__init__(directory, ['fixture'])
+        self.sessions = {
+            'existing': {'owner': 'host', 'url': 'https://fixture.invalid/existing'},
+            'other-owner': {'owner': 'other', 'url': 'https://fixture.invalid/other'}}
+        self.allowed = frozenset(('https://fixture.invalid/existing',
+                                  'https://fixture.invalid/new',
+                                  'https://fixture.invalid/second'))
+
+    def digest(self):
+        with self.lock:
+            data = json.dumps(self.sessions, sort_keys=True, separators=(',', ':')).encode()
+        return 'sha256:' + hashlib.sha256(data).hexdigest()
+
+    def command(self, request):
+        fail = {'ok': False, 'error_class': 'fixture_request_invalid'}
+        if not isinstance(request, dict) or set(request) != {'operation', 'arguments'}:
+            return fail
+        args = request['arguments']
+        if not isinstance(args, dict) or args.get('owner') != 'host': return fail
+        with self.lock:
+            if request['operation'] == 'open':
+                url = args.get('url')
+                if url not in self.allowed or args.get('allowlist'): return fail
+                for key, session in self.sessions.items():
+                    if session == {'owner': 'host', 'url': url}:
+                        return {'ok': True, 'session_id': key, 'url': url, 'reused': True}
+                self.serial += 1
+                key = 'created-' + str(self.serial)
+                self.sessions[key] = {'owner': 'host', 'url': url}
+                return {'ok': True, 'session_id': key, 'url': url, 'reused': False}
+            if request['operation'] == 'close':
+                if args.get('all'):
+                    keys = [key for key, session in self.sessions.items()
+                            if session['owner'] == args['owner']]
+                    for key in keys: del self.sessions[key]
+                    return {'ok': True, 'count': len(keys)}
+                key = args.get('session_id')
+                if not isinstance(key, str): return fail
+                session = self.sessions.get(key)
+                if session is not None and session['owner'] != args['owner']: return fail
+                if session is not None: del self.sessions[key]
+                return {'ok': True, 'count': int(session is not None)}
+        return fail
 '''.encode("utf-8")
 _STDIO_SOURCE = r'''
 import os, pathlib, runpy, sys
@@ -240,7 +309,10 @@ def invoke(value, operation='invoke'):
     environment = dict(os.environ, METNOS_EXECUTOR_OPERATION=operation)
     if model is not None:
         environment.update(METNOS_CLIENT_EXE=sys.executable, PYTHONSAFEPATH='1')
-    result = subprocess.run([sys.executable, '-I', str(harness_dir / '@@STDIO_PATH@@'), entrypoint, str(work)],
+    command = [sys.executable, '-I', str(harness_dir / '@@STDIO_PATH@@'), entrypoint, str(work)]
+    if operation == 'reverse' and request.get('reverse_pattern'):
+        command = [sys.executable, '-I', str(harness_dir / '@@REVERSE_PATH@@'), request['reverse_pattern']]
+    result = subprocess.run(command,
                             input=json.dumps(value).encode(),
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                             env=environment, cwd=harness_dir if model is not None else work)
@@ -252,7 +324,12 @@ def invoke(value, operation='invoke'):
         raise RuntimeError('property_helper_unavailable')
     return parsed
 scope = contextlib.nullcontext()
-if request.get('helper_contract'):
+if request.get('session_contract'):
+    sys.path.insert(0, str(harness_dir))
+    from _metnos_birth_helper_model_v1 import SessionBrokerFixture
+    model = SessionBrokerFixture(work)
+    scope = model
+elif request.get('helper_contract'):
     # Only this fixed core support module is imported by the observer. The
     # candidate remains exclusively in its separate stdio child.
     sys.path.insert(0, str(harness_dir))
@@ -281,10 +358,12 @@ with scope:
             if reverse.get('ok') is True: restored = tree_hash()
         observations.update(state_before_hash=before, state_after_forward_hash=after,
                             state_after_undo_hash=restored)
-        if model is not None: observations['fixture_contract'] = 'managed_helper/v1'
+        if model is not None:
+            observations['fixture_contract'] = ('session_broker/v1' if request.get('session_contract')
+                                                 else 'managed_helper/v1')
 print(json.dumps({'output': output, 'observations': observations},
                  sort_keys=True, separators=(',', ':')))
-'''.replace('@@STDIO_PATH@@', _STDIO_PATH).encode("utf-8")
+'''.replace('@@STDIO_PATH@@', _STDIO_PATH).replace('@@REVERSE_PATH@@', _REVERSE_PATH).encode("utf-8")
 
 
 def _candidate_files_with_support(code_files: Mapping[str, bytes]) -> dict[str, bytes]:
@@ -295,7 +374,15 @@ def _candidate_files_with_support(code_files: Mapping[str, bytes]) -> dict[str, 
         owned = _support_files()
     except (OSError, ValueError) as exc:
         raise RuntimeError("property_support_unavailable") from exc
+    from pathlib import Path
+    runtime = Path(__file__).resolve().parent
     owned.update({_HARNESS_PATH: _HARNESS_SOURCE, _STDIO_PATH: _STDIO_SOURCE,
+                  _REVERSE_PATH: _REVERSE_SOURCE,
+                  "runtime/reverse_patterns.py": (runtime / "reverse_patterns.py").read_bytes(),
+                  "runtime/reverse_patterns_patch.py": (runtime / "reverse_patterns_patch.py").read_bytes(),
+                  "runtime/playwright_sidecar/__init__.py": b"",
+                  "runtime/playwright_sidecar/session_client.py": _SESSION_CLIENT_SOURCE,
+                  "runtime/playwright_sidecar/stealth.py": (runtime / "playwright_sidecar/stealth.py").read_bytes(),
                   _HELPER_MODEL_PATH: _HELPER_MODEL_SOURCE,
                   "helper": _HELPER_CLIENT_SOURCE, "package-app": _HELPER_CLIENT_SOURCE})
     reserved = tuple(PurePosixPath(name.casefold()) for name in owned)
@@ -328,6 +415,28 @@ def _uses_managed_helper(manifest: Mapping[str, object]) -> bool:
     return any(isinstance(cap, Mapping) and cap.get("name") == "system:admin"
                and isinstance(cap.get("hint"), list) and "managed-package-start" in cap["hint"]
                for cap in capabilities)
+
+
+def _domain_contract(manifest: Mapping[str, object]) -> str:
+    """Select fixed fixture semantics from declared contracts, never a tool name."""
+    args = manifest.get('args')
+    properties = args.get('properties', {}) if isinstance(args, Mapping) else {}
+    if not isinstance(properties, Mapping):
+        return ''
+    caps = manifest.get('capabilities')
+    caps = {cap['name'] for cap in caps if isinstance(cap, Mapping)
+            and isinstance(cap.get('name'), str)} if isinstance(caps, list) else set()
+    def typed(key, kind):
+        item = properties.get(key)
+        return isinstance(item, Mapping) and item.get('type') == kind
+    if (manifest.get('reverse_pattern') == 'module.reverse'
+            and 'network:sites' in caps and typed('urls', 'array')):
+        return 'session_broker'
+    if (manifest.get('reverse_pattern') == 'delete_created_paths'
+            and {'fs:read', 'fs:write'} <= caps
+            and typed('paths', 'array') and typed('dest', 'string')):
+        return 'created_paths'
+    return ''
 
 
 class ObservedPropertyRunner:
@@ -372,6 +481,10 @@ class ObservedPropertyRunner:
             request["state_path"] = "fixture/state.json"
             manifest = tomllib.loads(self._observed.snapshot.manifest_bytes.decode("utf-8"))
             request["helper_contract"] = _uses_managed_helper(manifest)
+            domain = _domain_contract(manifest)
+            request['session_contract'] = domain == 'session_broker'
+            if domain == 'created_paths':
+                request['reverse_pattern'] = manifest['reverse_pattern']
         if fixture_id == "private_deletion_tree":
             request.update(source_path="fixture/source.bin",
                            recovery_path="fixture/recovery.bin")
@@ -386,6 +499,10 @@ class ObservedPropertyRunner:
                                      f"fixture/entries/{index}.json", {"index": index}))
         if fixture_id == "private_mutable_state":
             ops.append(FixtureOp(FixtureOpKind.SEED_JSON, "fixture/state.json", {"value": "before"}))
+            if _domain_contract(manifest) == 'created_paths':
+                for index in range(3):
+                    ops.append(FixtureOp(FixtureOpKind.WRITE_BYTES,
+                                         f"fixture/source-{index}.bin", b"birth-fixture-v1"))
         if fixture_id == "private_deletion_tree":
             ops.append(FixtureOp(FixtureOpKind.WRITE_BYTES, "fixture/source.bin", b"birth-fixture-v1"))
         return tuple(ops)
@@ -448,8 +565,11 @@ class PropertyCandidateProfile:
     entries_and_results: bool = False
     positive_inputs: tuple[Mapping[str, object], ...] = ()
     helper_contract: bool = False
+    domain_contract: str = ""
 
     def __post_init__(self) -> None:
+        if self.domain_contract not in ('', 'created_paths', 'session_broker'):
+            raise PropertyContractError('property_candidate_invalid', 'domain_contract')
         allowed_types = {"array", "boolean", "integer", "null", "number", "object", "string"}
         keys: set[str] = set()
         for item in self.output_schema:
@@ -497,6 +617,32 @@ def _truncation_cases(_candidate: PropertyCandidateProfile) -> tuple[PropertyCas
 
 
 def _undo_cases(candidate: PropertyCandidateProfile) -> tuple[PropertyCase, ...]:
+    if candidate.domain_contract == 'session_broker':
+        return tuple(PropertyCase(f'undo.session_contract.{index}', {'urls': urls}, {'declared_input': True})
+                     for index, urls in enumerate((
+                         ['https://fixture.invalid/new'],
+                         ['https://fixture.invalid/existing', 'https://fixture.invalid/new',
+                          'https://fixture.invalid/second'])))
+    if candidate.domain_contract == 'created_paths':
+        # Existing successful cases supply formats, not host fixtures or shell commands.
+        formats = []
+        for value in candidate.positive_inputs:
+            paths, dest = value.get('paths'), value.get('dest')
+            if not isinstance(paths, list) or not paths or not isinstance(dest, str):
+                continue
+            suffix = ''.join(PurePosixPath(dest).suffixes)
+            fmt = value.get('format')
+            if fmt is not None and not isinstance(fmt, str): continue
+            item = (suffix, fmt)
+            if item not in formats: formats.append(item)
+        if not formats:
+            return _single('undo.round_trip')(candidate)
+        return tuple(PropertyCase(f'undo.created_paths.{index}',
+                         {'paths': ['fixture/source-0.bin'],
+                          'dest': f'fixture/new/nested/output{suffix}',
+                          **({'format': fmt} if fmt is not None else {})},
+                         {'declared_input': True})
+                     for index, (suffix, fmt) in enumerate(formats))
     if not candidate.positive_inputs:
         return _single("undo.round_trip")(candidate)
     prefix = "undo.helper_contract" if candidate.helper_contract else "undo.round_trip"

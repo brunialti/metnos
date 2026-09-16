@@ -525,6 +525,14 @@ ripristino richiede un'azione esplicita.</p>
 
 <h2>Il solo confine di nascita</h2>
 
+<p>La prova di annullamento usa risorse private e confronta lo stato prima,
+dopo l'operazione e dopo l'inversa. Per i contratti che creano percorsi esegue
+l'inversa dichiarata del catalogo centrale su file temporanei; per le sessioni
+web usa un modello privato del protocollo, senza browser produttivo o rete
+esterna. Verifica anche la conservazione delle sessioni preesistenti e di altri
+proprietari. Il modello non certifica il browser reale: una prova mancante,
+una mancata modifica dello stato o un ripristino incompleto restano bloccanti.</p>
+
 <p>Executor Birth acquisisce una fotografia privata del candidato completo,
 assegna identità stabili ai byte esatti e al contesto di ammissione e applica
 tutti i controlli obbligatori di struttura, politica, localizzazione,

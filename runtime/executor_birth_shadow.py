@@ -321,7 +321,7 @@ def _manifest(observed: ObservedCandidate) -> dict[str, object]:
 
 
 def _profile(manifest: Mapping[str, object]) -> PropertyCandidateProfile:
-    from executor_birth_property_runner import _uses_managed_helper
+    from executor_birth_property_runner import _uses_managed_helper, _domain_contract
     from naming_grammar import parse_name
 
     output = manifest.get("output")
@@ -357,6 +357,7 @@ def _profile(manifest: Mapping[str, object]) -> PropertyCandidateProfile:
                                and components is not None and components.verb == "delete"),
         entries_and_results={"entries", "results"}.issubset(names),
         positive_inputs=positive_inputs, helper_contract=_uses_managed_helper(manifest),
+        domain_contract=_domain_contract(manifest),
     )
 
 
