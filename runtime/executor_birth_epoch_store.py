@@ -6,10 +6,12 @@ real-admission threshold in RM-0008 section 10 has been certified.
 """
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import re
 import sqlite3
+import struct
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -20,13 +22,11 @@ from executor_birth_feedback import QuarantineCAS
 
 
 _DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
-# RM-0008 section 11 fixes the original epoch schema as version 1.  Version 2
-# is the explicit local extension that adds lifecycle/cache state and the
-# evidence tables needed to certify the one-time name-only migration.  There
-# is intentionally no implicit adoption of an unversioned/unknown epoch store.
+# Schema 3 separates immutable source preservation from later resolution.
+# It never adopts or reinterprets an older store implicitly.
 EPOCH_STORE_NORMATIVE_SCHEMA_VERSION = 1
-EPOCH_STORE_SCHEMA_VERSION = 2
-_LEGACY_DIGEST_DOMAIN = b"metnos.executor-birth.legacy-epoch-migration/v1\0"
+EPOCH_STORE_SCHEMA_VERSION = 3
+_LEGACY_DIGEST_DOMAIN = b"metnos.executor-birth.legacy-epoch-migration/v2\0"
 
 
 class EpochStoreError(RuntimeError):
@@ -150,7 +150,7 @@ CREATE TABLE IF NOT EXISTS executor_epoch_history (
 );
 CREATE TABLE IF NOT EXISTS executor_legacy_state (
   legacy_id INTEGER PRIMARY KEY AUTOINCREMENT,
-  legacy_name TEXT NOT NULL, legacy_table TEXT NOT NULL,
+  legacy_name TEXT, legacy_table TEXT NOT NULL,
   legacy_row_json TEXT NOT NULL,
   resolution TEXT NOT NULL DEFAULT 'unresolved'
     CHECK(resolution IN ('unresolved','attested','discarded')),
@@ -158,10 +158,12 @@ CREATE TABLE IF NOT EXISTS executor_legacy_state (
 );
 CREATE TABLE IF NOT EXISTS executor_legacy_migrations (
   migration_id TEXT PRIMARY KEY,
-  legacy_table TEXT NOT NULL UNIQUE,
+  source_id TEXT NOT NULL, source_schema_id TEXT NOT NULL,
+  legacy_table TEXT NOT NULL,
   source_count INTEGER NOT NULL CHECK(source_count>=0),
   source_digest TEXT NOT NULL,
-  migrated_at TEXT NOT NULL
+  migrated_at TEXT NOT NULL,
+  UNIQUE(source_id,legacy_table)
 );
 CREATE TABLE IF NOT EXISTS executor_legacy_migration_rows (
   migration_id TEXT NOT NULL,
@@ -182,6 +184,18 @@ CREATE TABLE IF NOT EXISTS executor_preexercise_cache (
   FOREIGN KEY(contract_id,generation_id)
     REFERENCES executor_epochs(contract_id,generation_id) ON DELETE RESTRICT
 );
+CREATE TABLE IF NOT EXISTS executor_legacy_resolutions (
+  legacy_id INTEGER PRIMARY KEY,
+  resolution_kind TEXT NOT NULL CHECK(resolution_kind IN
+    ('attested','discarded','current_restriction','pending_disposition')),
+  contract_id TEXT, generation_id TEXT,
+  evidence_id TEXT NOT NULL, recorded_at TEXT NOT NULL,
+  CHECK((contract_id IS NULL)=(generation_id IS NULL)),
+  CHECK(resolution_kind NOT IN ('attested','current_restriction')
+    OR contract_id IS NOT NULL),
+  FOREIGN KEY(legacy_id) REFERENCES executor_legacy_state(legacy_id)
+    ON DELETE RESTRICT
+);
 """
 
 _REQUIRED_COLUMNS = {
@@ -201,13 +215,18 @@ _REQUIRED_COLUMNS = {
         "migrated_at",
     }),
     "executor_legacy_migrations": frozenset({
-        "migration_id", "legacy_table", "source_count", "source_digest", "migrated_at",
+        "migration_id", "source_id", "source_schema_id", "legacy_table",
+        "source_count", "source_digest", "migrated_at",
     }),
     "executor_legacy_migration_rows": frozenset({
         "migration_id", "source_ordinal", "legacy_id",
     }),
     "executor_preexercise_cache": frozenset({
         "contract_id", "generation_id", "lifecycle", "payload", "created_at",
+    }),
+    "executor_legacy_resolutions": frozenset({
+        "legacy_id", "resolution_kind", "contract_id", "generation_id",
+        "evidence_id", "recorded_at",
     }),
 }
 _REQUIRED_INDEXES = frozenset({
@@ -315,41 +334,102 @@ def _text(value: object, field: str) -> str:
     return value
 
 
-def _canonical_legacy_value(value: object) -> object:
-    if value is None or type(value) in {bool, int, str}:
-        return value
+def _canonical_legacy_value(value: object) -> list:
+    """Tag every value so BLOBs and REALs cannot collide with ordinary JSON."""
+    if value is None:
+        return ["null"]
+    if type(value) is bool:
+        return ["bool", value]
+    if type(value) is int:
+        return ["int", str(value)]
+    if type(value) is float:
+        return ["real", struct.pack(">d", value).hex()]
+    if type(value) is str:
+        return ["text", value]
+    if type(value) is bytes:
+        return ["blob", base64.b64encode(value).decode("ascii")]
     if isinstance(value, (list, tuple)):
-        return [_canonical_legacy_value(item) for item in value]
+        return ["list", [_canonical_legacy_value(item) for item in value]]
     if isinstance(value, Mapping):
         if not all(isinstance(key, str) for key in value):
             raise EpochStoreError("legacy_migration_invalid", "non_string_key")
-        return {
-            key: _canonical_legacy_value(value[key])
-            for key in sorted(value)
-        }
-    # Floats (including NaN and signed zero) and implicit repr conversions are
-    # deliberately excluded from the v1 canonical form.
+        return ["object", [
+            [key, _canonical_legacy_value(value[key])] for key in sorted(value)
+        ]]
     raise EpochStoreError("legacy_migration_invalid", "non_canonical_value")
 
 
 def _encode_legacy_rows(
     rows: tuple[Mapping[str, object], ...],
-) -> tuple[tuple[str, str], ...]:
+) -> tuple[tuple[str | None, str], ...]:
     if not isinstance(rows, tuple):
         raise EpochStoreError("legacy_migration_invalid", "rows")
-    encoded: list[tuple[str, str]] = []
+    encoded: list[tuple[str | None, str]] = []
     for row in rows:
         if not isinstance(row, Mapping):
             raise EpochStoreError("legacy_migration_invalid", "row")
-        name = _text(row.get("name"), "legacy_name")
-        canonical = _canonical_legacy_value(row)
-        body = json.dumps(canonical, sort_keys=True, separators=(",", ":"),
-                          ensure_ascii=False, allow_nan=False)
+        name = row.get("name")
+        # This projection is informational only. The complete original value,
+        # including absent, malformed or non-text names, stays in the body.
+        if (type(name) is not str or not name or name != name.strip()
+                or "\0" in name or any(0xD800 <= ord(char) <= 0xDFFF for char in name)):
+            name = None
+        try:
+            canonical = _canonical_legacy_value(row)
+            body = json.dumps(canonical, sort_keys=True, separators=(",", ":"),
+                              ensure_ascii=True, allow_nan=False)
+        except (ValueError, RecursionError, OverflowError) as exc:
+            raise EpochStoreError("legacy_migration_invalid", "row_encoding") from exc
         encoded.append((name, body))
     # A table scan has no portable implicit order.  Sorting the full canonical
     # rows makes the digest and source ordinals repeatable while preserving
     # duplicate multiplicity.
-    return tuple(sorted(encoded, key=lambda item: (item[1].encode("utf-8"), item[0])))
+    return tuple(sorted(encoded, key=lambda item: item[1].encode("ascii")))
+
+
+def decode_legacy_row(encoded: str) -> dict[str, object]:
+    """Decode preserved data only; no name or lifecycle gains authority."""
+    def decode(value):
+        if not isinstance(value, list) or not value:
+            raise ValueError("tagged value")
+        tag = value[0]
+        if tag == "null" and len(value) == 1:
+            return None
+        if len(value) != 2:
+            raise ValueError("tagged value")
+        payload = value[1]
+        if tag == "bool" and type(payload) is bool:
+            return payload
+        if tag == "int" and type(payload) is str:
+            return int(payload)
+        if tag == "real" and type(payload) is str:
+            return struct.unpack(">d", bytes.fromhex(payload))[0]
+        if tag == "text" and type(payload) is str:
+            return payload
+        if tag == "blob" and type(payload) is str:
+            return base64.b64decode(payload, validate=True)
+        if tag == "list" and type(payload) is list:
+            return [decode(item) for item in payload]
+        if tag == "object" and type(payload) is list:
+            result = {}
+            for pair in payload:
+                if (type(pair) is not list or len(pair) != 2
+                        or type(pair[0]) is not str or pair[0] in result):
+                    raise ValueError("object field")
+                result[pair[0]] = decode(pair[1])
+            return result
+        raise ValueError("tagged value")
+
+    try:
+        if type(encoded) is not str:
+            raise ValueError("encoded row")
+        row = decode(json.loads(encoded))
+        if type(row) is not dict or _encode_legacy_rows((row,))[0][1] != encoded:
+            raise ValueError("noncanonical row")
+        return row
+    except (ValueError, TypeError, KeyError, struct.error, RecursionError,
+            OverflowError) as exc:
+        raise EpochStoreError("legacy_migration_invalid", "encoded_row") from exc
 
 
 def _legacy_digest_from_bodies(bodies: tuple[str, ...]) -> str:
@@ -670,7 +750,8 @@ def record_execution(
 
 
 def preserve_legacy_rows(
-    *, legacy_table: str, rows: tuple[Mapping[str, object], ...],
+    *, source_id: str, source_schema_id: str,
+    legacy_table: str, rows: tuple[Mapping[str, object], ...],
     migrated_at: str, db_path: Path,
 ) -> int:
     """Preserve legacy state without guessing an unauthenticated generation.
@@ -680,6 +761,7 @@ def preserve_legacy_rows(
     """
     digest = legacy_rows_digest(rows)
     return migrate_legacy_rows(
+        source_id=source_id, source_schema_id=source_schema_id,
         legacy_table=legacy_table, rows=rows, expected_count=len(rows),
         expected_digest=digest, migrated_at=migrated_at, db_path=db_path,
     )
@@ -687,7 +769,7 @@ def preserve_legacy_rows(
 
 def _insert_legacy_row(
     connection: sqlite3.Connection, *, migration_id: str, ordinal: int,
-    name: str, table: str, body: str, migrated_at: str,
+    name: str | None, table: str, body: str, migrated_at: str,
 ) -> None:
     inserted = connection.execute(
         "INSERT INTO executor_legacy_state(legacy_name,legacy_table,legacy_row_json,"
@@ -705,8 +787,10 @@ def _verify_legacy_migration(
     expected_count: int, expected_digest: str,
 ) -> None:
     rows = connection.execute(
-        "SELECT s.legacy_row_json,s.resolution FROM executor_legacy_migration_rows r "
+        "SELECT s.legacy_row_json,s.resolution,r.source_ordinal,s.legacy_name,"
+        "s.legacy_table,m.legacy_table FROM executor_legacy_migration_rows r "
         "JOIN executor_legacy_state s ON s.legacy_id=r.legacy_id "
+        "JOIN executor_legacy_migrations m ON m.migration_id=r.migration_id "
         "WHERE r.migration_id=? ORDER BY r.source_ordinal", (migration_id,),
     ).fetchall()
     if len(rows) != expected_count:
@@ -716,10 +800,15 @@ def _verify_legacy_migration(
     actual = _legacy_digest_from_bodies(tuple(row[0] for row in rows))
     if actual != expected_digest:
         raise EpochStoreError("legacy_migration_digest_mismatch", "target")
+    for ordinal, row in enumerate(rows):
+        projection = _encode_legacy_rows((decode_legacy_row(row[0]),))[0]
+        if row[2] != ordinal or row[3] != projection[0] or row[4] != row[5]:
+            raise EpochStoreError("legacy_migration_schema_mismatch", "row_binding")
 
 
 def migrate_legacy_rows(
-    *, legacy_table: str, rows: tuple[Mapping[str, object], ...],
+    *, source_id: str, source_schema_id: str,
+    legacy_table: str, rows: tuple[Mapping[str, object], ...],
     expected_count: int, expected_digest: str, migrated_at: str, db_path: Path,
 ) -> int:
     """Copy one complete name-only source into unresolved storage atomically.
@@ -731,6 +820,9 @@ def migrate_legacy_rows(
     """
     table = _text(legacy_table, "legacy_table")
     ts = _text(migrated_at, "migrated_at")
+    for field, identity in (("source_id", source_id), ("source_schema_id", source_schema_id)):
+        if type(identity) is not str or _DIGEST.fullmatch(identity) is None:
+            raise EpochStoreError("legacy_migration_invalid", field)
     if type(expected_count) is not int or expected_count < 0:
         raise EpochStoreError("legacy_migration_invalid", "expected_count")
     if not isinstance(expected_digest, str) or _DIGEST.fullmatch(expected_digest) is None:
@@ -742,19 +834,21 @@ def migrate_legacy_rows(
     if actual_digest != expected_digest:
         raise EpochStoreError("legacy_migration_digest_mismatch", "source")
     migration_id = "sha256:" + hashlib.sha256(
-        b"metnos.executor-birth.legacy-migration-id/v1\0"
-        + table.encode("utf-8") + b"\0" + expected_digest.encode("ascii")
+        b"metnos.executor-birth.legacy-migration-id/v2\0"
+        + json.dumps([source_id, source_schema_id, table, expected_digest],
+                     ensure_ascii=True, separators=(",", ":")).encode("ascii")
     ).hexdigest()
     connection = _open(db_path)
     try:
         connection.execute("BEGIN IMMEDIATE")
         prior = connection.execute(
-            "SELECT migration_id,source_count,source_digest FROM executor_legacy_migrations "
-            "WHERE legacy_table=?", (table,),
+            "SELECT migration_id,source_count,source_digest,source_schema_id "
+            "FROM executor_legacy_migrations WHERE source_id=? AND legacy_table=?",
+            (source_id, table),
         ).fetchone()
         if prior is not None:
             if (prior[0] != migration_id or int(prior[1]) != expected_count
-                    or prior[2] != expected_digest):
+                    or prior[2] != expected_digest or prior[3] != source_schema_id):
                 raise EpochStoreError("legacy_migration_source_mismatch", table)
             _verify_legacy_migration(
                 connection, migration_id=migration_id,
@@ -763,9 +857,9 @@ def migrate_legacy_rows(
             connection.commit()
             return 0
         connection.execute(
-            "INSERT INTO executor_legacy_migrations(migration_id,legacy_table,source_count,"
-            "source_digest,migrated_at) VALUES(?,?,?,?,?)",
-            (migration_id, table, expected_count, expected_digest, ts),
+            "INSERT INTO executor_legacy_migrations(migration_id,source_id,source_schema_id,"
+            "legacy_table,source_count,source_digest,migrated_at) VALUES(?,?,?,?,?,?,?)",
+            (migration_id, source_id, source_schema_id, table, expected_count, expected_digest, ts),
         )
         for ordinal, (name, body) in enumerate(encoded):
             _insert_legacy_row(
