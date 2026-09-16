@@ -7,6 +7,7 @@ runtime code must not create new test, benchmark or simulator trees elsewhere.
 |---|---|---|
 | `runtime/` | deterministic unit, component and contract tests, grouped by domain | `./.venv/bin/python -m pytest -q tests/runtime` |
 | `runtime/scheduler_v2/` | scheduler component tests | `./.venv/bin/python -m pytest -q tests/runtime/scheduler_v2` |
+| `portable/` | public cross-platform certification; focused development and complete release checks | see [portable verification](portable/README.md) |
 | `e2e/` | isolated HTTP/CLI end-to-end scenarios and live opt-in probes | `tests/e2e/run.sh` |
 | `simulator/` | planner research and opt-in domain simulators, including real-browser sites and web-UI lifecycle probes | `METNOS_SITES_SIM=1 ./.venv/bin/python -m pytest -q tests/simulator/sites` |
 | `benchmarks/` | reproducible performance and routing benches, frozen corpora and benchmark tools | see `benchmarks/README.md` |
