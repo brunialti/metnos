@@ -872,6 +872,49 @@ def record_execution(
         connection.close()
 
 
+def record_feedback(
+    key: EpochCacheKey, *, expected_version: int, positive: bool,
+    occurred_at: str, db_path: Path,
+) -> int:
+    """Count one explicit verdict against the exact generation that earned it.
+
+    A positive verdict clears the negative count, because the threshold that
+    restricts an executor asks how many verdicts in a row were negative, not
+    how many ever were. Returning that count lets the caller compare it with
+    the threshold without a second read of a row that could move meanwhile.
+    """
+    if type(expected_version) is not int or expected_version < 1:
+        raise EpochStoreError("epoch_invalid", "expected_version")
+    if type(positive) is not bool:
+        raise EpochStoreError("epoch_invalid", "positive")
+    ts = _text(occurred_at, "occurred_at")
+    connection = _open(db_path)
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        updated = connection.execute(
+            "UPDATE executor_epochs SET positive_feedback=positive_feedback+?,"
+            "negative_feedback=CASE WHEN ? THEN 0 ELSE negative_feedback+1 END,"
+            "updated_at=? WHERE contract_id=? AND generation_id=? AND lifecycle=? "
+            "AND state='current' AND state_version=?",
+            (1 if positive else 0, 1 if positive else 0, ts,
+             key.contract_id.value, key.generation_id, key.lifecycle.value,
+             expected_version),
+        )
+        if updated.rowcount != 1:
+            raise EpochStoreError("epoch_conflict", "stale feedback identity")
+        consecutive = connection.execute(
+            "SELECT negative_feedback FROM executor_epochs "
+            "WHERE contract_id=? AND generation_id=?",
+            (key.contract_id.value, key.generation_id),
+        ).fetchone()["negative_feedback"]
+        connection.commit()
+        return int(consecutive)
+    finally:
+        if connection.in_transaction:
+            connection.rollback()
+        connection.close()
+
+
 _RESTRICTION_OVERRIDES = frozenset({BirthLifecycle.DEPRECATED, BirthLifecycle.ARCHIVED})
 
 

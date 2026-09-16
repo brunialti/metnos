@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from enum import Enum
 from pathlib import Path
+import sqlite3
 from typing import Iterable
 
 from executor_birth_activation_mode import BirthStateOwner, read_birth_activation_state
@@ -26,6 +27,17 @@ log = get_logger(__name__)
 # the loader that writes it and the cutover guard that reads it back. A load
 # failure and a deliberate restriction must never be told apart by prose.
 RESTRICTED_REJECT_PREFIX = "restricted by the lifecycle owner"
+
+
+def _store_faults() -> tuple[type[BaseException], ...]:
+    """Every way the owning store can be unreachable, in one place.
+
+    A telemetry write or a restriction that cannot reach its store is reported
+    and dropped; it never breaks the turn that produced the signal.
+    """
+    from executor_birth_epoch_store import EpochStoreError
+
+    return (EpochStoreError, OSError, sqlite3.Error)
 
 
 class Restriction(str, Enum):
@@ -217,6 +229,41 @@ def _catalog_executor(executor_name: str):
         return None
 
 
+def record_verdict(receipt: object, *, positive: bool) -> int | None:
+    """Count one explicit user verdict, and report the consecutive negatives.
+
+    The generation comes from the receipt the runtime retained for that exact
+    dispatch, so the verdict cannot land on a sibling that happens to share
+    the name. ``None`` means the owning store keeps no such counter and the
+    caller's own history remains the source.
+    """
+    if read_birth_activation_state().owner is BirthStateOwner.LEGACY:
+        return None
+    from executor_birth_epoch_store import (
+        EpochCacheKey, EpochStoreError, read_current_epoch, record_feedback,
+    )
+
+    contract_id = getattr(receipt, "contract_id", None)
+    generation_id = getattr(receipt, "generation_id", None)
+    if contract_id is None or not isinstance(generation_id, str):
+        return None
+    db_path = _epoch_db_path()
+    try:
+        current = read_current_epoch(contract_id=contract_id, db_path=db_path)
+        if current is None or current.generation_id != generation_id:
+            log.warning("lifecycle state: verdict on a superseded generation of %s dropped",
+                        getattr(receipt, "executor_name", ""))
+            return None
+        return record_feedback(
+            EpochCacheKey(contract_id, generation_id, current.lifecycle),
+            expected_version=current.state_version, positive=positive,
+            occurred_at=_utc_now(), db_path=db_path,
+        )
+    except _store_faults() as ex:
+        log.warning("lifecycle state: verdict not counted: %r", ex)
+        return None
+
+
 def credit_uses(executor_name: str, uses: int) -> int:
     """Transfer proven demand to the executor that superseded a cache row.
 
@@ -255,7 +302,7 @@ def credit_uses(executor_name: str, uses: int) -> int:
             expected_version=current.state_version, uses=int(uses),
             occurred_at=_utc_now(), db_path=db_path,
         )
-    except (EpochStoreError, OSError) as ex:
+    except _store_faults() as ex:
         log.warning("lifecycle state: inherited uses for %s not credited: %r",
                     executor_name, ex)
         return 0
@@ -293,7 +340,7 @@ def record_invocation(executor: object, *, ok: bool | None) -> None:
             expected_version=current.state_version, successful=bool(ok),
             occurred_at=_utc_now(), db_path=db_path,
         )
-    except (EpochStoreError, OSError) as ex:
+    except _store_faults() as ex:
         log.warning("lifecycle state: call on %s not counted: %r",
                     getattr(executor, "name", ""), ex)
 
@@ -419,7 +466,7 @@ def recorded_source(executor_name: str) -> str | None:
         return None
     try:
         current = read_current_epoch(contract_id=identity[0], db_path=_epoch_db_path())
-    except (EpochStoreError, OSError) as ex:
+    except _store_faults() as ex:
         log.warning("lifecycle state: provenance of %s unreadable: %r", executor_name, ex)
         return None
     if current is None or current.generation_id != identity[1]:
@@ -480,7 +527,7 @@ def restrict_executor(executor_name: str, *, restriction: Restriction,
             reason=reason, observed_at=_utc_now(), db_path=db_path,
         )
         return True
-    except (EpochStoreError, OSError) as ex:
+    except _store_faults() as ex:
         log.warning("lifecycle state: %s not restricted: %r", executor_name, ex)
         return False
 
@@ -515,12 +562,13 @@ def revive_executor(executor_name: str, *, reason: str) -> bool:
             observed_at=_utc_now(), db_path=db_path,
         )
         return True
-    except (EpochStoreError, OSError) as ex:
+    except _store_faults() as ex:
         log.warning("lifecycle state: %s not revived: %r", executor_name, ex)
         return False
 
 
 __all__ = ["RESTRICTED_REJECT_PREFIX", "Restriction", "apply_inactivity_decay",
            "catalog_restrictions", "credit_uses", "record_invocation",
-           "recorded_source", "register_loaded_executors", "restrict_executor",
+           "record_verdict", "recorded_source", "register_loaded_executors",
+           "restrict_executor",
            "revive_executor"]

@@ -165,8 +165,8 @@ def apply_feedback(turn_id: str, action: str, by: str = "user") -> dict:
     # solo synth non-protetti (ADR 0114 L3, enforcement in apply_feedback_ager).
     # RM-0008 F5: la soglia resta una sola, l'effetto segue il proprietario
     # dello stato di ciclo di vita (nome storico vs generazione esatta).
-    if action == "error" and pipeline:
-        effects.extend(_negative_tool_effects(turn, steps, pipeline))
+    if pipeline and action in ("ok", "error"):
+        effects.extend(_tool_verdict_effects(turn, steps, pipeline, action))
 
     # ── Fastpath L0 valve (12/6/2026, §2.8) ───────────────────────────
     # Un ✗ cancella la riga L0 della query del turno (qualunque layer
@@ -300,11 +300,12 @@ def _exact_generation_demote(turn: dict, steps: list, tool_name: str,
             "quarantine_applied": outcome.quarantine_applied}
 
 
-def _negative_tool_effects(turn: dict, steps: list, pipeline: list) -> list[dict]:
-    """Apply the one consecutive-error threshold to the owning store.
+def _tool_verdict_effects(turn: dict, steps: list, pipeline: list,
+                          action: str) -> list[dict]:
+    """Record the verdict per tool and apply the one consecutive-✗ threshold.
 
     An installation that cannot say which store owns its lifecycle state gets
-    neither effect: writing the name-based demote there would update exactly
+    no effect at all: writing the name-based demote there would update exactly
     the store a completed migration retired.
     """
     try:
@@ -312,9 +313,7 @@ def _negative_tool_effects(turn: dict, steps: list, pipeline: list) -> list[dict
         threshold = feedback_error_demote_threshold()
     except Exception as ex:
         log.warning("turn_feedback: demote setup failed: %r", ex)
-        return []
-    if threshold <= 0:
-        return []
+        threshold = 0
     try:
         from executor_birth_activation_mode import (
             BirthStateOwner, read_birth_activation_state,
@@ -326,7 +325,14 @@ def _negative_tool_effects(turn: dict, steps: list, pipeline: list) -> list[dict
                  "reason": getattr(ex, "code", "birth_activation_unreadable")}]
     effects: list[dict] = []
     for tool_name in dict.fromkeys(pipeline):  # dedup preservando ordine
-        consecutive = count_consecutive_errors_for_tool(tool_name) + 1
+        counted = (_record_exact_verdict(steps, tool_name, action)
+                   if exact else None)
+        if action != "error" or threshold <= 0:
+            continue
+        # Il conteggio esatto della generazione ha precedenza sullo storico
+        # per nome: e' lo stesso segnale, contato dove l'esecuzione e' avvenuta.
+        consecutive = (counted if counted is not None
+                       else count_consecutive_errors_for_tool(tool_name) + 1)
         if consecutive < threshold:
             continue
         effects.append(
@@ -334,6 +340,22 @@ def _negative_tool_effects(turn: dict, steps: list, pipeline: list) -> list[dict
             if exact else _aged_demote(tool_name, consecutive)
         )
     return effects
+
+
+def _record_exact_verdict(steps: list, tool_name: str, action: str) -> int | None:
+    """Count the verdict against the generation that actually ran."""
+    from executor_birth_feedback import FeedbackError, execution_receipt_from_record
+    from executor_lifecycle_state import record_verdict
+
+    record = _last_execution_receipt(steps, tool_name)
+    if record is None:
+        return None
+    try:
+        receipt = execution_receipt_from_record(record)
+    except FeedbackError as ex:
+        log.warning("turn_feedback: verdict for %s not counted: %r", tool_name, ex)
+        return None
+    return record_verdict(receipt, positive=action == "ok")
 
 
 def _append_feedback(record: dict) -> None:

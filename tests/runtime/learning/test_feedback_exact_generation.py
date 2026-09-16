@@ -172,3 +172,66 @@ def test_an_unmigrated_installation_keeps_the_name_based_demote(env, monkeypatch
     demote = [effect for effect in effects if effect["type"] == "feedback_demote"]
     assert demote and demote[0]["action"] == "demoted"
     assert aging.lookup(TOOL).deprecated_at is not None
+
+
+# --- the threshold counts where the execution happened, not by name ----------
+
+@pytest.fixture
+def epoch_store(tmp_path, monkeypatch):
+    from executor_birth_epoch_store import BirthLifecycle, open_epoch
+    import executor_lifecycle_state as lifecycle_state
+
+    path = tmp_path / "executor_epochs.sqlite"
+    monkeypatch.setattr(lifecycle_state, "_epoch_db_path", lambda: path)
+    monkeypatch.setattr(
+        lifecycle_state, "read_birth_activation_state",
+        lambda: mode.BirthActivationState(
+            mode.BirthStateOwner.EPOCH, "sha256:" + "2" * 64, None, None),
+    )
+    exact = receipt()
+    open_epoch(contract_id=CID, generation_id=exact.generation_id, name=TOOL,
+               source="synth:reactive", lifecycle=BirthLifecycle.ACTIVE,
+               observed_at="2026-09-16T10:00:00Z", db_path=path)
+    return path, exact
+
+
+def test_the_threshold_uses_the_exact_count_not_the_history_by_name(
+    env, monkeypatch, epoch_store,
+):
+    turn_feedback, aging, turns = env
+    _path, exact = epoch_store
+    owned_by(monkeypatch, mode.BirthStateOwner.EPOCH)
+    monkeypatch.setenv("METNOS_FEEDBACK_DEMOTE_THRESHOLD", "2")
+    # The name-based history claims many failures; the exact generation has none.
+    monkeypatch.setattr(turn_feedback, "count_consecutive_errors_for_tool",
+                        lambda *_a, **_k: pytest.fail("counted by name"))
+    quarantined = []
+    monkeypatch.setattr(lifecycle, "apply_execution_failure",
+                        lambda value, **_k: quarantined.append(value) or FeedbackResult(
+                            FeedbackStatus.QUARANTINED, value.receipt_id, None, True))
+
+    write_turn(turns, "t0", execution_receipt=exact)
+    turn_feedback.apply_feedback("t0", "error")
+    assert quarantined == []
+
+    write_turn(turns, "t1", execution_receipt=exact)
+    turn_feedback.apply_feedback("t1", "error")
+    assert len(quarantined) == 1
+    assert aging.lookup(TOOL).deprecated_at is None
+
+
+def test_a_positive_verdict_clears_the_exact_count(env, monkeypatch, epoch_store):
+    turn_feedback, _aging, turns = env
+    _path, exact = epoch_store
+    owned_by(monkeypatch, mode.BirthStateOwner.EPOCH)
+    monkeypatch.setenv("METNOS_FEEDBACK_DEMOTE_THRESHOLD", "2")
+    monkeypatch.setattr(turn_feedback, "count_consecutive_errors_for_tool",
+                        lambda *_a, **_k: pytest.fail("counted by name"))
+    quarantined = []
+    monkeypatch.setattr(lifecycle, "apply_execution_failure",
+                        lambda value, **_k: quarantined.append(value) or FeedbackResult(
+                            FeedbackStatus.QUARANTINED, value.receipt_id, None, True))
+    for index, action in enumerate(("error", "ok", "error")):
+        write_turn(turns, f"t{index}", execution_receipt=exact)
+        turn_feedback.apply_feedback(f"t{index}", action)
+    assert quarantined == []

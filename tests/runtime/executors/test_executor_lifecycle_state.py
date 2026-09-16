@@ -351,3 +351,62 @@ def test_an_unresolvable_name_credits_nothing(monkeypatch, epochs):
     owned_by(monkeypatch, mode.BirthStateOwner.EPOCH)
     monkeypatch.setattr(state, "_catalog_executor", lambda name: None)
     assert state.credit_uses("ghost", 5) == 0
+
+
+# --- explicit verdicts, counted where the execution happened -----------------
+
+def dispatch_receipt(executor):
+    from executor_birth_feedback import make_execution_receipt
+
+    return make_execution_receipt(
+        request_id="sha256:" + "a" * 64, turn_id="sha256:" + "b" * 64,
+        reduced_query_ref="sha256:" + "c" * 64,
+        arguments={}, reduced_output={"ok": False},
+        contract_id=contract_of(executor), executor_name=executor.name,
+        generation_id=executor.generation_id, candidate_id="sha256:" + "e" * 64,
+        dispatched_at="2026-09-16T10:00:00Z", completed_at="2026-09-16T10:00:01Z",
+    )
+
+
+def test_a_negative_verdict_counts_consecutively_and_a_positive_one_clears_it(
+    monkeypatch, epochs,
+):
+    import sqlite3
+
+    owned_by(monkeypatch, mode.BirthStateOwner.EPOCH)
+    executor = synth("demo")
+    idle(epochs, executor, first_seen="2026-01-01T00:00:00Z")
+    receipt = dispatch_receipt(executor)
+    assert state.record_verdict(receipt, positive=False) == 1
+    assert state.record_verdict(receipt, positive=False) == 2
+    assert state.record_verdict(receipt, positive=True) == 0
+    assert state.record_verdict(receipt, positive=False) == 1
+    with sqlite3.connect(epochs) as connection:
+        counters = connection.execute(
+            "SELECT positive_feedback,negative_feedback FROM executor_epochs "
+            "WHERE generation_id=?", (executor.generation_id,)).fetchone()
+    assert counters == (1, 1)
+
+
+def test_a_verdict_on_a_superseded_generation_is_dropped(monkeypatch, epochs):
+    owned_by(monkeypatch, mode.BirthStateOwner.EPOCH)
+    stale = synth("demo", generation="1")
+    idle(epochs, stale, first_seen="2026-01-01T00:00:00Z")
+    successor = synth("demo", generation="7")
+    state.register_loaded_executors([successor])
+    assert state.record_verdict(dispatch_receipt(stale), positive=False) is None
+
+
+def test_the_legacy_owner_keeps_no_verdict_counter(monkeypatch, epochs):
+    owned_by(monkeypatch, mode.BirthStateOwner.LEGACY)
+    executor = synth("demo")
+    assert state.record_verdict(dispatch_receipt(executor), positive=False) is None
+
+
+def test_an_unreachable_store_drops_the_verdict_without_raising(monkeypatch, tmp_path):
+    owned_by(monkeypatch, mode.BirthStateOwner.EPOCH)
+    monkeypatch.setattr(state, "_epoch_db_path",
+                        lambda: tmp_path / "absent" / "executor_epochs.sqlite")
+    executor = synth("demo")
+    assert state.record_verdict(dispatch_receipt(executor), positive=False) is None
+    assert state.record_invocation(executor, ok=True) is None
