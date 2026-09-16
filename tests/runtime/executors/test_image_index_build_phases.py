@@ -82,6 +82,86 @@ def _publish(root, discovery, receipts, generation="build-1"):
     return result
 
 
+def test_heic_snapshot_decodes_without_extension_and_preserves_source(corpus):
+    from pillow_heif import register_heif_opener
+    register_heif_opener()
+    root, calls = corpus
+    original = root / "portrait.heic"
+    image = Image.new("RGB", (20, 20), "blue")
+    image.save(original, format="HEIF", quality=90)
+    before = original.read_bytes()
+    discovered = _discover(root)
+    receipts = _analyze(root, discovered)
+    result = _publish(root, discovered, receipts)
+    assert result["n_entries_total"] == 1
+    assert len(calls) == 1 and calls[0][0].suffix == ""
+    assert original.read_bytes() == before
+    entry = json.loads((Path(result["index_path"]) / "entries.jsonl").read_text())
+    assert entry["path"] == str(original)
+    assert entry["sha256"] == hashlib.sha256(before).hexdigest()
+    assert (entry["image_w"], entry["image_h"]) == (20, 20)
+
+
+def test_unreadable_image_is_explicit_and_never_published(corpus):
+    root, calls = corpus
+    (root / "broken.jpg").write_bytes(b"not an image")
+    discovered = _discover(root)
+    group = discovered["entries"][0]
+    result = _invoke(root, "build-1", "analyze", entries=[{
+        "part": group["part"], "folder_contexts": {label: "Photos." for label in group["folder_labels"]},
+    }])
+    assert not result["ok"] and result["error_code"] == "image_format_unreadable"
+    assert not calls
+    assert not (builder._index_dir(root) / "meta.json").exists()
+
+
+def test_interrupted_group_resumes_completed_photos_without_model_calls(corpus, monkeypatch):
+    root, calls = corpus
+    for i in range(3):
+        _photo(root, f"photo-{i}.jpg")
+    discovered = _discover(root)
+    describe = builder._call_vlm
+    def interrupted(path, *, original_path):
+        if original_path.name == "photo-1.jpg":
+            raise storage.ImageIndexBuildError("image_description_unavailable")
+        return describe(path, original_path=original_path)
+    monkeypatch.setattr(builder, "_call_vlm", interrupted)
+    group = discovered["entries"][0]
+    args = {"entries": [{"part": group["part"], "folder_contexts": {
+        label: f"Photos: {label}." for label in group["folder_labels"]
+    }}]}
+    failed = _invoke(root, "build-1", "analyze", **args)
+    assert not failed["ok"] and len(calls) == 1
+    assert not (builder._index_dir(root) / "meta.json").exists()
+    monkeypatch.setattr(builder, "_call_vlm", describe)
+    resumed = _invoke(root, "build-1", "analyze", **args)
+    assert resumed["ok"] and len(calls) == 3
+    repeated = _invoke(root, "build-1", "analyze", **args)
+    assert repeated == resumed and len(calls) == 3
+    result = _publish(root, discovered, resumed["entries"])
+    assert result["n_entries_total"] == 3
+
+
+def test_checkpoint_rejects_tampering_and_does_not_cross_context_or_generation(corpus):
+    root, calls = corpus
+    _photo(root)
+    discovered = _discover(root)
+    _analyze(root, discovered)
+    store = storage.ImageIndexBuild(root, "build-1")
+    record = store._part(discovered["entries"][0])["records"][0]
+    _, original, source = store.snapshot(record)
+    context = f"Photos: {root.name}."
+    assert store.analysis_checkpoint(original, source, identity="fixture-policy", folder_context=context)
+    assert store.analysis_checkpoint(original, source, identity="changed", folder_context=context) is None
+    assert store.analysis_checkpoint(original, source, identity="fixture-policy", folder_context="changed") is None
+    other = storage.ImageIndexBuild(root, "build-2")
+    assert other.analysis_checkpoint(original, source, identity="fixture-policy", folder_context=context) is None
+    checkpoint = next((store.work / "checkpoints").glob("*.json"))
+    checkpoint.write_text(json.dumps({"part": "0" * 64}))
+    with pytest.raises((OSError, storage.ImageIndexBuildError)):
+        store.analysis_checkpoint(original, source, identity="fixture-policy", folder_context=context)
+
+
 def test_phase_omitted_never_builds_or_launches_processes(corpus, monkeypatch):
     root, calls = corpus
     _photo(root)

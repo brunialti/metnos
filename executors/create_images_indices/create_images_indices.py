@@ -77,12 +77,22 @@ def folder_path_context(parent_dir: str, lang: str) -> str:
 
 
 def _open_image_with_exif(path: Path):
-    from PIL import Image
+    from PIL import Image, UnidentifiedImageError
     from PIL.ExifTags import GPSTAGS, TAGS
+    from pillow_heif import register_heif_opener
 
-    image = Image.open(path)
+    # Snapshots are digest-named: detect by bytes, never by extension. The
+    # registered decoder is also used by local face/image models and VLM.
+    register_heif_opener(thumbnails=False)
     try:
-        image.load()
+        image = Image.open(path)
+    except UnidentifiedImageError as error:
+        raise ImageIndexBuildError("image_format_unreadable") from error
+    try:
+        try:
+            image.load()
+        except OSError as error:
+            raise ImageIndexBuildError("image_decode_failed") from error
         raw = image.getexif() or {}
         named = {TAGS.get(key, key): value for key, value in raw.items()}
         gps = raw.get_ifd(34853) if hasattr(raw, "get_ifd") and 34853 in raw else named.get("GPSInfo")
@@ -185,6 +195,9 @@ def _analyze_one(store, record, *, context, identity, force):
     from vlm_client import model_binding_facts
 
     snapshot, original, source = store.snapshot(record)
+    checkpoint = store.analysis_checkpoint(original, source, identity=identity, folder_context=context)
+    if checkpoint is not None:
+        return checkpoint
     reused = None if force else store.reusable(original, source, identity=identity,
                                                folder_context=context)
     if reused is not None:

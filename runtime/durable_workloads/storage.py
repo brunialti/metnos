@@ -827,20 +827,47 @@ class DurableWorkloadStore:
             resources: set[str] = set()
             unconstrained = False
             per_workload: dict[tuple[str, str], int] = {}
+            workload_limits: dict[tuple[str, str], int] = {}
+            profiles: list[tuple[dict, int]] = []
             demand = 0
             for candidate in candidates:
                 workload_key = (str(candidate["owner_user_id"]), str(candidate["workload_id"]))
-                concurrent = per_workload.get(workload_key, 0)
                 claims = json.loads(str(candidate["resources_json"]))
                 claimed = {key for key, amount in claims.items() if int(amount) > 0}
                 resources.update(claimed)
                 unconstrained |= not claimed or not claimed.issubset(limits)
                 slots = min(
-                    int(candidate["candidate_count"]), limit - demand,
-                    max(0, int(candidate["concurrency_limit"]) - concurrent),
+                    int(candidate["candidate_count"]), limit,
+                    int(candidate["concurrency_limit"]),
                 )
+                # Every unit needs ALL its resources together. Summing cpu,
+                # I/O and VLM capacities leases many units that can only wait
+                # behind one VLM, burning their execution deadlines. Bound
+                # each stage by its bottleneck, then sum independent stages;
+                # this is still an upper bound, never a resource reservation.
+                if claimed and claimed.issubset(limits):
+                    slots = min(slots, min(
+                        limits[key] // int(claims[key]) for key in claimed
+                    ))
                 demand += slots
-                per_workload[workload_key] = concurrent + slots
+                profiles.append((claims, slots))
+                per_workload[workload_key] = per_workload.get(workload_key, 0) + slots
+                workload_limits[workload_key] = int(candidate["concurrency_limit"])
+            # Do not consume the lane/workload allowance while enumerating:
+            # later profiles may use an independent resource. Bound totals only
+            # after every observed profile has contributed its alternatives.
+            demand = min(limit, sum(min(count, workload_limits[key])
+                                    for key, count in per_workload.items()))
+            # Shared bottlenecks also span different workloads/stages. Bound
+            # resource users together, while retaining every non-user's lane
+            # allowance so unrelated work cannot be hidden by saturation.
+            for key, capacity in limits.items():
+                amounts = [int(claims.get(key, 0)) for claims, slots in profiles
+                           if slots and int(claims.get(key, 0)) > 0]
+                if amounts:
+                    non_users = sum(slots for claims, slots in profiles
+                                    if not int(claims.get(key, 0)))
+                    demand = min(demand, non_users + capacity // min(amounts))
             # Use an upper bound, not greedy packing: choosing one pending
             # stage's resource profile here could hide an independent stage
             # while a different resource is already occupied. Real packing

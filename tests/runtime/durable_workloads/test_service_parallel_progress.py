@@ -143,7 +143,7 @@ def _schemas():
 
 
 def _admit(path, resolver, *, count=6, max_concurrency=3, resource="cpu",
-           request_key="parallel-progress"):
+           request_key="parallel-progress", resources=None, workload_id=None):
     candidate = plan(with_map=True)
     candidate["budgets"]["max_concurrency"] = max_concurrency
     mapping = candidate["stages"][1]
@@ -151,12 +151,14 @@ def _admit(path, resolver, *, count=6, max_concurrency=3, resource="cpu",
     mapping["input_bindings"] = {"record": {"ref": "source.record"}}
     mapping["output_schema"]["name"] = "metnos.fixture-parallel-map/1"
     mapping["resources"][resource] = 1
-    if resource in {"llm", "vlm"}:
+    mapping["resources"].update(resources or {})
+    if any(mapping["resources"].get(key, 0) for key in ("llm", "vlm")):
         mapping["invalidation_keys"].extend(["model_binding.digest", "prompt.digest"])
     with DurableWorkloadStore.open(path) as store:
         draft = store.create_draft(
             "fixture-owner", request_key,
             redacted_request={"summary": "Synthetic independent work"},
+            workload_id=workload_id,
         )
         admitted = admit_candidate(
             store, "fixture-owner", draft.workload_id,

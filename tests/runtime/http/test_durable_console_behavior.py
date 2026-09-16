@@ -171,7 +171,7 @@ const job = id => ({workload: {workload_id: id, state: "needs_attention", versio
 
 def test_console_labels_exist_in_both_seed_languages():
     with sqlite3.connect(f"file:{ROOT / 'install/data/i18n_seed.sqlite'}?mode=ro", uri=True) as conn:
-        for suffix in ("PHASE_ESTIMATED_FINISH", "WHOLE_ESTIMATED_FINISH", "PHASE_TIMING_HELP",
+        for suffix in ("ATTENTION_HELP", "PHASE_ESTIMATED_FINISH", "WHOLE_ESTIMATED_FINISH", "PHASE_TIMING_HELP",
                        "ETA_NEEDS_ATTENTION", "ETA_NO_ACTIVE_PHASE", "ETA_MULTIPLE_ACTIVE_PHASES",
                        "ETA_INVENTORY_OPEN", "ETA_PHASE_EXPANDING", "ETA_UNCERTAIN_PROGRESS",
                        "ETA_STALE_PROGRESS", "ETA_ESTIMATE_OVERDUE"):
@@ -293,7 +293,7 @@ def test_console_design_browser_isolated(monkeypatch, tmp_path, lang):
             workload["progress"]["current_phase"] = {"stage_key": None, "estimated_end_at": None, "estimated_end_reason": "needs_attention"}
             workload["progress"]["estimated_end_reason"] = "needs_attention"
             page.locator("#dwRefresh").click()
-            page.get_by_text(texts["UI_DURABLE_BLOCKED_HELP"], exact=True).wait_for()
+            page.get_by_text(texts["UI_DURABLE_ATTENTION_HELP"], exact=True).wait_for()
             assert page.locator("#dwEngine").inner_text().endswith(texts["UI_DURABLE_ENGINE_READY"])
             assert page.locator("#dwDetail > .dw-job-heading .dw-state").get_attribute("data-tone") == "error"
             assert page.locator("#dwDetail > .dw-timing").get_by_text(texts["UI_DURABLE_ETA_NEEDS_ATTENTION"], exact=True).is_visible()

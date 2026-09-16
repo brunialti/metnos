@@ -633,7 +633,8 @@ def _is_empty_unbound_publication_residue_v1(
     keep every deviation visible as ``binding_invalid``.
 
     The check is POSIX-only because its safety argument depends on exact Unix
-    ownership, modes, link count and advisory locking.  It never repairs or
+    ownership, modes, link count and a shared advisory lock. Readers may
+    coexist; the publisher's exclusive writer lock remains excluded. It never repairs or
     removes the residue; a later publication of the same contract can resume
     through the existing writer lock.
     """
@@ -681,7 +682,7 @@ def _is_empty_unbound_publication_residue_v1(
                 return False
             import fcntl
             try:
-                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                fcntl.flock(descriptor, fcntl.LOCK_SH | fcntl.LOCK_NB)
             except BlockingIOError:
                 return False
             locked = True

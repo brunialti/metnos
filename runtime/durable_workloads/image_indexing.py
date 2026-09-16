@@ -111,7 +111,7 @@ def output_schemas() -> OutputSchemaRegistry:
     # Diagnostic authority stays in the approved schema, not in the bridge
     # or a parallel runtime registry. Values are existing executor outcomes.
     error_code = {"type": "string", "enum": [
-        "active_generation_changed", "analysis_group_invalid", "args_not_object",
+        "active_generation_changed", "analysis_checkpoint_invalid", "analysis_group_invalid", "args_not_object",
         "artifact_size_or_type", "artifact_too_large", "base_path_invalid",
         "base_path_missing", "coverage_mismatch", "directory_unavailable",
         "discovery_output_too_large", "duplicate_part", "duplicate_source_path",
@@ -121,7 +121,8 @@ def output_schemas() -> OutputSchemaRegistry:
         "folder_classification_invalid", "folder_contexts_invalid", "folder_label_invalid",
         "generation_context_mismatch", "generation_incomplete", "generation_invalid",
         "generation_receipt_conflict", "image_corpus_empty", "image_description_unavailable",
-        "image_index_phase_failed", "image_model_unavailable", "immutable_artifact_conflict",
+        "image_index_phase_failed", "image_decode_failed", "image_format_unreadable",
+        "image_model_unavailable", "immutable_artifact_conflict",
         "incomplete_analysis", "inventory_limits_invalid", "max_files_invalid",
         "mixed_model_generations", "mixed_vector_dimensions", "model_dimension_mismatch",
         "model_metadata_invalid", "part_context_mismatch", "part_count_invalid",

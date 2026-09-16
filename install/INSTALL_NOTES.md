@@ -125,6 +125,10 @@ explicitly configured watchdog values are still checked against the signature.
 The complete Linux x86_64 CPython 3.12 release uses
 `requirements-linux-x86_64.lock`, including Playwright and its pinned runtime
 dependencies because the signed catalog installs the browser sidecar. The
+image-indexing decoder also includes pinned `pillow-heif`: HEIC sources are
+decoded in process, including digest-named private snapshots. The corresponding
+hash-verified wheel must be present in the offline wheelhouse before building.
+No source photo is converted or overwritten on disk. The
 offline builder verifies wheel hashes and publishes a new content-addressed
 Python environment; it never patches an existing environment. Sealing keeps
 packaged executable files executable, normalizes permissions to 0755/0644,

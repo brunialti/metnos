@@ -331,11 +331,45 @@ class ImageIndexBuild:
             axis: hashlib.sha256(matrix.tobytes()).hexdigest()
             for axis, matrix in matrices.items()
         }
-        return self._store_part({
+        receipt = self._store_part({
             "kind": "analysis", "count": 1, "entry": entry, "models": models,
             "source": source, "reused": bool(reused),
             "vectors": {axis: matrix.tolist() for axis, matrix in matrices.items()},
         })
+        # Each completed photo survives an interruption of its enclosing group.
+        # This is a private resume hint, never an accepted LRE result or an
+        # active index. The receipt and full source relationship are rechecked.
+        checkpoint = self._analysis_checkpoint_path(
+            entry["path"], source, identity=identity,
+            folder_context=entry.get("path_context", ""),
+        )
+        _write_bytes(checkpoint, _json_bytes(receipt), immutable=False)
+        return receipt
+
+    def _analysis_checkpoint_path(self, original, source, *, identity, folder_context):
+        key = hashlib.sha256(_json_bytes({
+            "path": str(original), "source": source, "identity": identity,
+            "folder_context": folder_context,
+        })).hexdigest()
+        return self.work / "checkpoints" / (key + ".json")
+
+    def analysis_checkpoint(self, original, source, *, identity, folder_context):
+        """Resume only fully validated leaves from this exact build generation."""
+        path = self._analysis_checkpoint_path(
+            original, source, identity=identity, folder_context=folder_context,
+        )
+        if not path.exists():
+            return None
+        receipt = json.loads(_read_bytes(path, limit=1024))
+        leaf = self._part(receipt)
+        if (leaf.get("kind") != "analysis" or leaf.get("count") != 1
+                or leaf.get("source") != source
+                or leaf.get("entry", {}).get("path") != str(original)
+                or leaf["entry"].get("_analysis_identity") != identity
+                or leaf["entry"].get("path_context", "") != folder_context):
+            raise ImageIndexBuildError("analysis_checkpoint_invalid")
+        _validate_analysis(leaf, self.base_path)
+        return receipt
 
     def merge(self, entries) -> dict:
         if not isinstance(entries, list) or len(entries) > MAX_CHILDREN:

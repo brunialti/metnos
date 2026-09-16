@@ -463,3 +463,19 @@ reference installation. The complete certification is recorded in
 `internal/reports/rm0007-final-certification-20260825.md`; this decision is
 therefore accepted. RM-0002 subsequently completed its publication-time gates.
 Localization of `affinity` remains outside this ADR.
+
+## 16 September 2026 — concurrent inspection of empty publication residue
+
+The exact unbound crash scaffold remains ignorable only after ownership,
+permissions, link count, immutable empty layout and one-byte lock validation.
+Its inspector takes a non-blocking **shared** lock on `writer.lock`: the
+publisher still takes the exclusive lock. The previous exclusive reader lock
+made simultaneous inventories mistake each other's inspection for an invalid
+binding. Real reproduction: 42/62 inventories failed under 31 readers; the
+corrected isolated reader passed 310/310 against the same untouched store.
+
+No file is removed or repaired, no invalid contract is admitted, and writer
+contention remains fail-closed. Tests hold a real shared lock while 32 reads
+run in eight threads, refuse an actual exclusive writer, and verify that a
+writer cannot acquire the lock during inspection but can after release.
+Existing malformed-residue tests retain their original assertions.

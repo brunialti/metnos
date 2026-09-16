@@ -392,3 +392,61 @@ dall'inventario precedente. La stima reale della fase di analisi dovrà essere
 osservata dopo almeno tre nuovi gruppi completati, non durante la scansione.
 I quattro errori transitori del catalogo restano non riprodotti e non attribuiti
 a una causa certa: la nuova diagnostica resta necessaria se si ripresentano.
+
+## Diagnosi successiva: tre cause distinte, 16 settembre pomeriggio
+
+La precedente incertezza sul catalogo è stata risolta con una riproduzione:
+un residuo di pubblicazione legittimo (cartella `generations` vuota e
+`writer.lock` NUL di un byte, senza binding) veniva verificato prendendo un
+blocco esclusivo. Lettori contemporanei si respingevano a vicenda. Il catalogo
+conservava 123 contratti validi, ma segnalava `binding_invalid` sul solo residuo.
+Prova iniziale: 42 errori su 62 letture con 31 lettori (`run-8f40rq1x`, riepilogo
+`run-zs2tc_3w`). Funzione candidata con blocco condiviso: 310 letture su 310
+riuscite (`run-3kpmeufa`), senza cambiare dati o codice del lavoratore vivo.
+Lo scrittore resta escluso; proprietà, permessi e contenuti sono rivalidati.
+233 test del catalogo/caricatore superati, inclusi lettori concorrenti e
+scrittore attivo. Il nuovo testo amministrativo IT/EN non attribuisce più ogni
+richiesta di verifica a contabilità incompleta.
+
+Il nuovo lavoro `wrk_9ff050ecc9b048098167041d559d6c04` ha scoperto 30.942 foto,
+967 gruppi. Cinque tentativi hanno incontrato il conflitto del catalogo, con
+consumi noti pari a zero. Un sesto è fallito dopo 13 chiamate VLM: il file
+successivo è HEIC. La prova su tutti i 32 file di quel gruppo ha trovato dieci
+HEIC non decodificabili dal lettore precedente (`run-t6d79ofr`), non prove di
+foto corrotte. Con il decoder HEIF candidato tutti i 32 file sono leggibili
+(`run-av13qtqb`), senza chiamate a modelli o modifiche agli originali.
+
+La domanda di corsie sommava CPU=2, disco=16 e VLM=1 per unità che richiedono
+tutte queste risorse insieme: fino a 19 tentativi per una sola analisi visiva.
+Al controllo `run-w33mu1vr` (14:34:56 UTC) restavano 7 gruppi analizzati,
+1 errore permanente, 11 richieste di verifica (5 catalogo e 6 scadenze),
+948 in attesa, nessun tentativo vivo. Le sei scadenze a 1800 secondi hanno
+reso incerti i consumi: non si azzera o riscrive quella contabilità.
+Il nuovo limite di domanda usa il collo di bottiglia per profilo e condiviso
+tra lavori; il coordinatore conserva l'ammissione reale. Nessun limite o
+tempo massimo viene aumentato. 58 test di supervisione/concorrenza superati.
+
+Ulteriore protezione: ogni foto completata salva un riferimento privato
+rivalidabile nella stessa generazione. Prova di interruzione a metà gruppo:
+il nuovo tentativo richiama i modelli solo per le foto mancanti; nessun indice
+parziale viene pubblicato. Testano anche sorgente/contesto/generazione diversi,
+riferimenti alterati e file illeggibili. 68 test foto/LRE superati.
+Il recupero non aggira la contabilità incerta e non importa automaticamente
+vecchi frammenti senza riferimento: lo storico rimane conservato.
+
+Dipendenza `pillow-heif==1.7.0`, wheel CPython 3.12 Linux hash
+`7c4751fcffb55f555a7559cfa6721bdfb30f50f14b7f0cbd2b1cba3b5d5961b7`,
+inserita nel deposito offline (`run-yyl6sqnn`). Nessun ambiente installato
+modificato; la distribuzione canonica costruisce un nuovo ambiente immutabile.
+La suite complessiva ha 645 test superati e 4 stress opzionali non eseguiti;
+due prove browser sono state bloccate dal contenitore di sviluppo e vengono
+rieseguite fuori da quel contenitore. Attivazione e prova reale ancora da
+registrare: questi risultati non attestano l'indicizzazione completa del corpus.
+
+Verifica conclusiva del candidato: **913 test superati, 4 stress opzionali
+non eseguiti**; suite interfaccia con browser reale IT/EN **4/4 superate** fuori
+dal contenitore limitato (nessun test disabilitato). Il controllo delle
+risorse vive `run-bxde469z` trova 13 descrittori e un solo thread sul lavoratore
+inattivo: nessuna evidenza di esaurimento dei descrittori. Nessun riavvio manuale
+eseguito durante la diagnosi. Il difetto di capacità include una regressione
+dedicata a profili indipendenti posti dopo gruppi già saturi.

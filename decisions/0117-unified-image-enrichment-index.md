@@ -209,6 +209,31 @@ ma il vero engine e' uno solo.
 
 ## References
 
+### Addendum 2026-09-16 — decodifica e recupero LRE
+
+Il lettore include `pillow-heif` (dipendenza bloccata e verificata nella
+distribuzione), registrato prima di aprire la copia privata senza estensione.
+Il medesimo processo usa il lettore per metadati, volti, VLM e vettori immagine.
+Nessun originale viene convertito o sovrascritto. Formati non riconosciuti e
+decodifica fallita hanno codici distinti e non diventano risultati riusciti.
+Riferimento del decoder: <https://pillow-heif.readthedocs.io/en/stable/pillow-plugin.html>.
+
+Ogni foglia di analisi completa salva atomicamente un riferimento privato,
+indirizzato da percorso, sorgente completa, identità di analisi e contesto
+cartella. Un tentativo della **stessa generazione** rivalida digest del frammento,
+metadati, vettori e identità prima del riuso. Il riferimento non è un risultato
+LRE accettato né una pubblicazione; non aggira ammissione o contabilità. Vale
+anche per riprendere un lavoro richiesto con `force`: non riusa una generazione
+precedente. I frammenti storici senza riferimento restano conservati, ma non
+si promette il loro riuso automatico.
+
+La domanda di corsie è limitata per profilo dalla risorsa più restrittiva e
+poi dai vincoli comuni ai diversi lavori. Le risorse necessarie insieme non
+sono capacità additive. I profili indipendenti restano visibili; l'ammissione
+reale resta al coordinatore centrale, senza aumentare limiti o tempi massimi.
+Test: `test_service_idle.py`, `test_image_index_build_phases.py` (HEIC reale
+generato, ripresa dopo errore, contesto/generazione differenti e manomissione).
+
 - ADR 0086 — image domain indices (superseded scope: 3 separate IDX_TYPES).
 - ADR 0093 — async indexing build (riusato per migration spawn).
 - ADR 0098 — web crawl strategy (pattern di `error_class` + soft-fail).

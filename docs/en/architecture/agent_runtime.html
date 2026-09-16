@@ -228,6 +228,23 @@ remains recorded, without automatically increasing the limit or repeating the
 call. LRE diagnostics retain only codes declared by the approved output schema
 and enumerated loader causes, never arbitrary exception text.</p>
 
+<p>Checking empty directories left by interrupted publication uses a shared
+read lock: concurrent readers do not invalidate the catalog, while writers
+remain excluded during inspection. Format, ownership, permissions and absence
+of payload remain mandatory; inspection neither repairs nor removes directories.
+An LRE attention state stops new blocks from starting but permits already
+running blocks to save their results.</p>
+
+<p>Parallel execution demand respects each block's tightest required resource
+and bottlenecks shared across workloads: CPU, disk and VLM capacities are not
+added when they are needed together. Actual admission remains with the central
+scheduler. Photo analysis also decodes HEIC without changing originals; an
+unreadable format remains an explicit error, never an indexed photo. Each
+complete analysis saves a verifiable private receipt: another attempt within
+the same generation reuses only results matching the source, models, prompt
+and folder context. These receipts do not publish a partial index or bypass
+usage accounting checks.</p>
+
 <p>The list identifies activity and folder when available in the owner's admitted
 plan; details distinguish the observed phase, running units and workload concurrency
 limit. These counts are not threads or processes. During initial photo discovery,

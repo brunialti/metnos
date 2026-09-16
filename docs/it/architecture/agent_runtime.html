@@ -244,6 +244,23 @@ automaticamente il limite né ripetere la chiamata. La diagnostica LRE conserva
 solo codici dichiarati nello schema di uscita approvato e cause enumerate del
 caricatore, mai testo arbitrario delle eccezioni.</p>
 
+<p>Il controllo delle cartelle vuote lasciate da una pubblicazione interrotta
+usa una lettura condivisa: altri lettori non rendono il catalogo non valido,
+mentre lo scrittore resta escluso durante la verifica. Formato, proprietà,
+permessi e assenza di contenuti restano obbligatori; il controllo non ripara
+né elimina le cartelle. Uno stato LRE da verificare sospende nuovi blocchi,
+ma consente a quelli già avviati di salvare il proprio risultato.</p>
+
+<p>La domanda di esecuzioni parallele rispetta la risorsa più limitata richiesta
+da ciascun blocco e i vincoli condivisi tra lavori: le capacità CPU, disco e VLM
+non si sommano quando servono contemporaneamente. L'ammissione effettiva resta
+del coordinatore centrale. L'analisi foto decodifica anche HEIC, senza modificare
+gli originali; un formato illeggibile resta un errore esplicito, mai una foto
+indicizzata. Ogni analisi completa salva un riferimento privato verificabile:
+un nuovo tentativo della stessa generazione riusa solo risultati con sorgente,
+modelli, istruzioni e contesto cartella corrispondenti. I riferimenti non
+pubblicano un indice parziale e non eliminano i controlli sui consumi.</p>
+
 <p>L'elenco identifica attività e cartella, quando disponibili nel piano ammesso
 del proprietario; il dettaglio distingue fase osservata, blocchi in esecuzione
 e limite di concorrenza del lavoro. Questi conteggi non misurano thread o processi.

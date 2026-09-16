@@ -311,7 +311,7 @@ async def workload_console(request: web.Request) -> web.Response:
                 "fresh": "FRESH", "stale": "STALE", "refresh": "REFRESH",
                 "activity": "ACTIVITY", "technical": "TECHNICAL", "saved": "SAVED",
                 "pending": "PENDING", "failedCount": "FAILED_COUNT", "skipped": "SKIPPED",
-                "attention": "ATTENTION", "blockedHelp": "BLOCKED_HELP",
+                "attention": "ATTENTION", "blockedHelp": "ATTENTION_HELP",
                 "waitingHelp": "WAITING_HELP", "progressHelp": "PROGRESS_HELP",
                 "lastResult": "LAST_RESULT", "noResult": "NO_RESULT",
                 "attempts": "ATTEMPTS",
