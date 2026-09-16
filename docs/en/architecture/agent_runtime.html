@@ -196,6 +196,14 @@ messages, or ordinary records.</p>
 <p>A resumption does not continue blindly. The runtime checks the owner, expiry,
 dialogue state, catalog, and operating conditions again before proceeding.</p>
 
+<p>LRE distinguishes service presence from work progress. A disabled service
+continues reporting its presence without executing activities; when no units
+can run, it avoids opening concurrent workers. Periodic authorization
+maintenance remains active. Worker count follows demand and central limits,
+without replacing atomic admission checks. The console separates committed
+results, errors and skipped items and indicates stale data. Unverifiable usage
+stops work for safety; it does not necessarily mean the spending limit was reached.</p>
+
 <h2 id="outcomes">Outcomes, errors, and records</h2>
 
 <p>An executor may succeed, return no entries, produce a partial result, or fail.

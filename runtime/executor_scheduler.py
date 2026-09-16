@@ -974,6 +974,11 @@ def orchestration_capacity() -> int:
     return _DEFAULT_SCHEDULER.orchestration_capacity
 
 
+def orchestration_resource_limits() -> dict[str, int]:
+    """Snapshot host ceilings for sizing controllers, never for admission."""
+    return dict(_DEFAULT_SCHEDULER._resource_limits)
+
+
 def submit_orchestration(call: Callable[[], T]) -> Future[T]:
     """Submit bounded controller work without granting execution resources."""
 
