@@ -352,6 +352,10 @@ async def workload_console(request: web.Request) -> web.Response:
         "budget": message("UI_DURABLE_BUDGET"),
         "stages": message("UI_DURABLE_STAGES"),
         "errors": message("UI_DURABLE_ERROR_CATEGORIES"),
+        "itemsWithErrors": message("UI_DURABLE_ITEMS_WITH_ERRORS"),
+        "attemptErrors": message("UI_DURABLE_ATTEMPT_ERRORS"),
+        "attemptErrorsHelp": message("UI_DURABLE_ATTEMPT_ERRORS_HELP"),
+        "moreErrorCategories": message("UI_DURABLE_MORE_ERROR_CATEGORIES"),
         "errorUnknown": message("UI_DURABLE_ERROR_UNKNOWN"),
         "unknown": message("UI_DURABLE_VALUE_UNKNOWN"),
         "errorLabels": {

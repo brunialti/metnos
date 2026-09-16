@@ -574,3 +574,62 @@ certification; artifact retention cutoff is not automatic deletion of referenced
 blobs; strict photo decoding failure still stops the job. Generation attestation
 factory wiring remains a lifecycle integration item, not a demonstrated bypass
 of the verified loader and frozen-contract checks.
+
+## 16 September 2026 — generic item error receipts and persistent final trace
+
+The user's subsequent decision supersedes the strict photo-decoding stop noted
+above: domain-specific handling belongs to the producer, while LRE records a
+general-purpose outcome. This implementation is a development candidate, not
+evidence of an installed release or successful real-archive indexing.
+
+An approved output schema may explicitly declare the reserved `domain_outcome`
+field: version 1 and `error_counts`, a closed bounded map of stable identifiers
+to positive integer counts. At most twenty codes and one million affected items
+are accepted per receipt; booleans, arbitrary text, nested detail and malformed
+or undeclared fields are rejected. An open output schema alone does not approve
+this field. Identifiers are not translation keys. The kernel contains no decoder,
+photo marker, retry policy or content interpretation.
+
+Only the originating unit emits the receipt. Each original item has exactly one
+primary error code; counts are affected items, not exceptions or attempts.
+Reducers and publishers may preserve their own domain summaries but must not
+re-emit the same generic outcome. Item identity and primary-code selection belong
+to the approved producer: the aggregate-only kernel cannot infer or enforce
+cross-phase item identity. The photo adapter reports only during analysis.
+
+`ValidatedResult` verifies the reserved shape; the receipt is bound to the result
+digest. Fresh commit and semantic reuse share the same projection into the
+existing `terminal_detail_json`, atomically with the committed unit. Replay does
+not increment a counter. There is no database migration and no counter updated
+independently from the accepted result. Failed/unconfirmed attempts do not enter
+this projection.
+
+The owner/current-revision execution summary exposes `domain_errors` with
+`nitems`, `categories` (`error_code`, `count`) and `truncated`. SQL aggregates only
+committed units, computes the complete total before the twenty-category display
+limit and does not load result bodies. The console displays the localized item
+count and stable category codes independently of technical attempt errors.
+Completed jobs retain the trace after database reopening and page reload, while
+their history is retained. Historical jobs without these receipts show no domain
+items; the system does not invent or backfill counts from old error messages.
+
+Current `error_categories` remain the active unit/materialization problems;
+successful retry legitimately clears them. A separate `attempt_errors` projection
+retains `nattempts`, categories and truncation from persisted structured attempt
+errors in the same owner/revision. Its total is computed before the category
+limit. Only stable codes are exposed, never free-form messages, source paths or
+exception text. The console's collapsible history remains available even for a
+successful terminal workload. Recovered technical errors do not inflate item
+counts or change a clean `completed` state into `completed_with_errors`.
+
+Committed negative outcomes select `completed_with_errors` only after the usual
+source coverage, materialization, dependencies, artifacts and usage checks pass.
+They neither mark units failed/partial nor authorize missing output, unknown
+usage or unverified sources. This is not a blanket catch-and-continue policy.
+Normal restart persistence is tested; power-loss durability is not certified.
+
+Regression evidence: `test_domain_outcome.py` (shape, approval, replay, reuse,
+owner/revision boundaries, missing coverage/accounting, retry count, terminal
+reopen and totals beyond the category limit), `test_image_indexing_e2e.py`
+(mixed photo corpus and real durable restart with synthetic model responses),
+`test_durable_console_behavior.py` (Node and real isolated Chromium IT/EN).

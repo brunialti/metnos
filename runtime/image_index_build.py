@@ -20,6 +20,7 @@ import tempfile
 import time
 
 from index_schema import INDEX_SCHEMA_VERSION, image_corpus_dir
+from image_index_outcomes import DECODE_FAILURE_CODES, FAILURE_MARKER, is_not_indexed
 
 MAX_PART_BYTES = 8 * 1024 * 1024
 MAX_CHILDREN = 256
@@ -305,6 +306,19 @@ def _validate_analysis(leaf: dict, base_path: str) -> dict:
             or not isinstance(entry.get("description"), str) or not entry["description"].strip()
             or "_vlm_error" in entry):
         raise ImageIndexBuildError("entry_source_mismatch")
+    if entry.get("indexing_status") == "not_indexed":
+        code = entry.get("indexing_error_code")
+        matrices = _vectors(leaf["vectors"])
+        if (not isinstance(code, str) or code not in DECODE_FAILURE_CODES
+                or not entry["description"].startswith(f"{FAILURE_MARKER}:{code} ")
+                or not entry["description"].split(" ", 1)[1].strip()
+                or models != {} or any(len(matrix) for matrix in matrices.values())
+                or entry["faces"] or entry.get("keywords") != []
+                or any(entry.get(f"embedding_{axis}_idx") is not None for axis in ("text", "image"))):
+            raise ImageIndexBuildError("invalid_indexing_failure")
+        return matrices
+    if entry.get("indexing_status") not in (None, "indexed") or "indexing_error_code" in entry:
+        raise ImageIndexBuildError("invalid_indexing_failure")
     strings = {"model_text", "model_face", "model_image", "model_vlm"}
     if (not isinstance(models, dict) or set(models) != strings | {"dim_text", "dim_image"}
             or any(not isinstance(models[key], str) or not models[key] or len(models[key]) > 1024 for key in strings)):
@@ -622,7 +636,8 @@ class ImageIndexBuild:
         if not found:
             return None
         entry = json.loads(found[0])
-        if (entry.get("sha256") != source["content_digest"][7:]
+        if (entry.get("indexing_status") == "not_indexed"
+                or entry.get("sha256") != source["content_digest"][7:]
                 or entry.get("size") != source["size_bytes"]
                 or not entry.get("description") or "_vlm_error" in entry
                 or entry.get("path_context", "") != folder_context):
@@ -685,6 +700,15 @@ class ImageIndexBuild:
                 # they cannot certify a publication retry without this proof.
                 if not isinstance(stored.get("generation_files"), dict):
                     raise ImageIndexBuildError("generation_incomplete")
+                failures = stored.get("indexing_error_counts")
+                if (not isinstance(failures, dict) or set(failures) - DECODE_FAILURE_CODES
+                        or any(type(count) is not int or count < 1 for count in failures.values())
+                        or type(stored.get("n_indexed")) is not int
+                        or type(stored.get("n_not_indexed")) is not int
+                        or stored["n_indexed"] < 0
+                        or stored["n_not_indexed"] != sum(failures.values())
+                        or stored["n_entries"] != stored["n_indexed"] + stored["n_not_indexed"]):
+                    raise ImageIndexBuildError("generation_incomplete")
                 _generation_files(target, expected=stored["generation_files"])
                 metadata = stored
             active = self._active_bytes()
@@ -712,8 +736,9 @@ class ImageIndexBuild:
     def _published_result(self, receipt, target, metadata):
         return {"ok": True, "entries": [receipt], "schema_version": INDEX_SCHEMA_VERSION,
                 "base_path": self.base_path, "index_path": str(target),
-                "ok_count": metadata["n_entries"], "fail_count": 0,
-                "n_entries_total": metadata["n_entries"], **metadata}
+                "ok_count": metadata["n_indexed"], "fail_count": metadata["n_not_indexed"],
+                "n_entries_total": metadata["n_entries"],
+                **metadata}
 
     def publish(self, entries, *, expected_count=None) -> dict:
         import numpy as np
@@ -736,6 +761,7 @@ class ImageIndexBuild:
                 database.execute("CREATE TABLE parts(part TEXT PRIMARY KEY)")
                 database.execute("CREATE TABLE entries(path TEXT PRIMARY KEY, data TEXT NOT NULL, part TEXT UNIQUE)")
                 counts, dimensions, models, reused = dict.fromkeys(_AXES, 0), {}, None, 0
+                error_counts = {}
                 for part, leaf in self._leaves(receipt, database):
                     entry = leaf["entry"]
                     original = Path(entry["path"])
@@ -743,9 +769,13 @@ class ImageIndexBuild:
                             or not original.is_relative_to(self.base_path) or str(original) == self.base_path):
                         raise ImageIndexBuildError("entry_path_invalid")
                     vectors = _validate_analysis(leaf, self.base_path)
-                    if models is not None and models != leaf["models"]:
-                        raise ImageIndexBuildError("mixed_model_generations")
-                    models = leaf["models"]
+                    if is_not_indexed(entry):
+                        code = entry["indexing_error_code"]
+                        error_counts[code] = error_counts.get(code, 0) + 1
+                    else:
+                        if models is not None and models != leaf["models"]:
+                            raise ImageIndexBuildError("mixed_model_generations")
+                        models = leaf["models"]
                     for axis, matrix in vectors.items():
                         if len(matrix):
                             if axis in dimensions and dimensions[axis] != matrix.shape[1]:
@@ -782,7 +812,7 @@ class ImageIndexBuild:
                             if axis == "face":
                                 for index, face in enumerate(entry.get("faces", [])):
                                     face["embedding_face_idx"] = start + index
-                            else:
+                            elif len(matrix):
                                 entry[f"embedding_{axis}_idx"] = start
                             offsets[axis] = stop
                         data = _json_bytes(entry)
@@ -798,8 +828,11 @@ class ImageIndexBuild:
                 "schema_version": INDEX_SCHEMA_VERSION, "version": INDEX_SCHEMA_VERSION,
                 "active_generation": self.generation, "root_part": receipt["part"],
                 "base_path": self.base_path, "n_entries": total,
+                "n_indexed": total - sum(error_counts.values()),
+                "n_not_indexed": sum(error_counts.values()),
+                "indexing_error_counts": error_counts,
                 "n_faces": counts["face"], "n_images_with_visual_emb": counts["image"],
-                "last_refresh_at": time.time(), "refreshed_count": total - reused,
+                "last_refresh_at": time.time(), "refreshed_count": total - reused - sum(error_counts.values()),
                 "index_created": not bool(self.context["previous_meta"]),
                 "generation_files": _generation_files(temporary),
                 **(models or {}),

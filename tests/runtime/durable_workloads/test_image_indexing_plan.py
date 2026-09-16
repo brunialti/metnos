@@ -38,12 +38,12 @@ def test_image_diagnostic_enum_covers_literal_failures_and_versions_the_schemas(
         )
     assert emitted == codes
     for name in (indexing.DISCOVERY_SCHEMA, indexing.PART_SCHEMA, indexing.PUBLISHED_SCHEMA):
-        assert name.endswith("/2")
+        assert name.endswith("/3")
         current = registry.resolve(name)
         assert set(current.field_schema("error_code")["enum"]) == codes
         previous = json.loads(json.dumps(current.schema))
         del previous["properties"]["error_code"]
-        old_name = name.removesuffix("/2") + "/1"
+        old_name = name.removesuffix("/3") + "/2"
         assert ApprovedOutputSchema.create(old_name, previous).digest != current.digest
         with pytest.raises(CompilationError):
             registry.resolve(old_name)

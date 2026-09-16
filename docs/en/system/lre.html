@@ -69,6 +69,25 @@ least ten minutes. This decision uses structured metadata, not words such as
  </tbody>
 </table>
 
+<h2 id="error-history">Error history after completion</h2>
+
+<p>The job detail retains <strong>items with errors</strong>: the total
+(<code>nitems</code>) and the count per code, including after a restart. These
+are items reported by committed results, not repeated attempts. When there are
+many categories, the console shows the twenty most frequent ones, but the total
+includes them all. Technical attempt errors remain separate. This summary works
+for any workload declaring these outcomes; LRE does not interpret domain files
+or codes. The trace remains available while the job history is retained.</p>
+
+<h3 id="attempt-error-history">Attempt errors, including recovered errors</h3>
+
+<p>The collapsible <strong>Attempts with errors (history)</strong> section
+retains counts and codes of errors recorded during attempts, even when a later
+attempt succeeds. It counts attempts, not photos or items: it is not added to
+<code>nitems</code> and does not necessarily indicate an ongoing problem. A fully
+successful job may therefore have a history of recovered errors without being
+declared failed.</p>
+
 <h2 id="photo-indexing">Photo indexing: first use and subsequent searches</h2>
 
 <p>Searching the <strong>content of photographs</strong> uses a persistent
@@ -128,11 +147,35 @@ as a problem, not a successful index.</p>
 <h3 id="photo-indexing-integrity">Integrity and recovery limits</h3>
 
 <p>An image that cannot be decoded is not necessarily damaged: the reader may
-not support its format or variant. The current strict policy stops the workload
-instead of silently publishing an incomplete index. Verified intermediate
-checkpoints can be reused within the same generation; starting a new workload
-does not guarantee reuse of those checkpoints. Before retrying, investigate the
-cause without deleting originals or history.</p>
+not support its format or variant. Indexing records a negative outcome for that
+photo and continues with the others. Its description starts with
+<code>IMAGE_NOT_INDEXED:image_decode_failed</code>, or
+<code>IMAGE_NOT_INDEXED:image_format_unreadable</code> when the format is not
+recognized. The prefix is fixed, English and outside the translation system;
+only the following explanation is translated. No content or vectors are
+invented: the photo remains distinct from successfully indexed images.</p>
+
+<h3 id="photo-indexing-outcomes">Completion with explicit errors</h3>
+
+<p>At completion, the source total must equal indexed photos plus photos not
+indexed. Negative outcomes make LRE report <strong>completed with errors</strong>,
+even when every block is finished. Errors become visible when each block is
+committed, without being counted again during merging and publication. Model,
+authority, accounting and source-integrity errors do not become skippable photos.</p>
+
+<h3 id="photo-indexing-diagnostics">Identifying and retrying photos not indexed</h3>
+
+<p>To identify affected photos, search the index using the exact keyword
+<code>IMAGE_NOT_INDEXED</code> or either complete prefix. This returns a diagnostic
+list of paths and reasons, without semantic analysis or image previews; it does
+not start indexing. Ordinary searches exclude these records. A new incremental
+refresh retries photos not indexed and reuses compatible valid results; it does
+not create an automatic retry loop. Verified intermediate checkpoints can be
+reused within the same generation; a new workload does not guarantee reuse of
+private checkpoints from a failed generation. Originals and history are not
+deleted.</p>
+
+<h3 id="photo-indexing-publication">Verifying published files</h3>
 
 <p>Publication verifies the sizes and fingerprints of all five index files,
 including recovery after interruption: filenames alone do not prove generation
@@ -337,7 +380,7 @@ open for execution to continue.</p>
  <li><strong>Start, percentage and estimated finish of the current phase.</strong> List and detail show the first actual execution of the current revision, excluding queue time. The percentage counts saved units among known units, not elapsed time: it can decrease as new units appear. It does not reach 100% before workload completion. The main estimate covers only the current phase, such as photo analysis: it requires a sealed inventory, one fully prepared active phase and at least three completed blocks in that phase. Errors, retries, uncertain usage, pauses, an unavailable engine or stale progress produce <strong>n.a.</strong> (not available), with a reason. Refreshing the page alone does not push the estimate forward. Technical details retain a separate whole-job estimate, available only for single-phase plans. Start and percentage also show <strong>n.a.</strong> when the necessary data is missing.</li>
  <li><strong>Workload facts.</strong> Engine state is separate from job state: an available engine does not prove a job is progressing. Successful units are separate from unfinished units, those needing attention, failed or cancelled units, and skipped units. Units do not necessarily correspond to individual photos or files; the total may grow during discovery.</li>
  <li><strong>Attention required.</strong> New blocks stop starting; blocks already running may still finish and save results. Read the recorded cause before retrying: this state does not necessarily mean usage is unknown. Restarting does not correct the cause and may interrupt useful work.</li>
- <li><strong>Photo recovery.</strong> Complete analyses are saved even inside an unfinished block and can be reused by an authorized retry within the same generation. Reuse checks the source and context; it does not make an incomplete index searchable. HEIC photos are supported too. Unreadable files remain explicit errors, never successful skipped items.</li>
+ <li><strong>Photo recovery.</strong> Complete analyses and explicit negative outcomes are saved even inside an unfinished block and can be reused by an authorized retry within the same generation. Reuse checks the source and context; it does not make an incomplete index searchable. HEIC photos are supported too. Undecodable photos are recorded separately: completed blocks do not equal successfully indexed photos.</li>
  <li><strong>Freshness and problems.</strong> The page periodically checks state and warns when data is not refreshed. A disconnection does not preserve a false progress indication. Available causes are prominent; a generic state update is not presented as a new result. After loading further list pages, use <strong>Refresh list and status</strong> to return to the refreshed first page.</li>
  <li><strong>Parallelism.</strong> Running units are distinct from the workload's admitted concurrency limit. They do not count threads or processes; other jobs and resource limits may reduce actual parallelism.</li>
  <li><strong>Discovery and missing estimates.</strong> During initial photo discovery, percentage is n.a.: the final total is not known yet. A missing finish estimate displays a reason, giving priority to a job requiring intervention. The current-phase estimate is not an overall estimate for multi-phase jobs, which remains unavailable.</li>

@@ -168,6 +168,15 @@ class ApprovedOutputSchema:
         return current
 
     def validate(self, value: Any) -> None:
+        # Open JSON Schemas do not implicitly opt into execution semantics.
+        if isinstance(value, Mapping) and "domain_outcome" in value:
+            from .domain_outcome import domain_outcome
+            if self.field_schema("domain_outcome") is None:
+                raise OutputValidationError("domain_outcome is not explicitly approved")
+            try:
+                domain_outcome(value)
+            except ValueError as exc:
+                raise OutputValidationError("domain_outcome is invalid") from exc
         if self.validator is not None:
             self.validator(value)
         try:

@@ -16,6 +16,7 @@ from types import SimpleNamespace
 import tomllib
 
 import numpy as np
+import pytest
 from PIL import Image
 
 from durable_workloads import image_indexing as indexing
@@ -67,8 +68,9 @@ def _model_usage(*, model, kind="chat", tier="middle"):
            result=SimpleNamespace(text="fixture", in_tokens=7, out_tokens=3, latency_ms=1))
 
 
+@pytest.mark.parametrize("with_unreadable_photo", [False, True])
 def test_new_plan_publishes_and_searches_after_restart_without_repeating_accepted_groups(
-    tmp_path, monkeypatch,
+    tmp_path, monkeypatch, with_unreadable_photo,
 ):
     photos = tmp_path / "photos"
     folder = photos / "event"
@@ -79,6 +81,11 @@ def test_new_plan_publishes_and_searches_after_restart_without_repeating_accepte
         path = folder / name
         Image.new("RGB", (20, 20), "blue").save(path)
         originals.append(path)
+    if with_unreadable_photo:
+        originals[0].write_bytes(b"not a decodable image")
+    indexed_count = len(originals) - int(with_unreadable_photo)
+    expected_state = (WorkloadState.COMPLETED_WITH_ERRORS if with_unreadable_photo
+                      else WorkloadState.COMPLETED)
     monkeypatch.setenv("METNOS_INDEX_ROOT", str(tmp_path / "index"))
     monkeypatch.setenv("METNOS_USER_DATA", str(tmp_path / "user-data"))
     monkeypatch.setattr(builder, "analysis_identity", lambda _lang: "fixture-model-policy")
@@ -186,12 +193,12 @@ def test_new_plan_publishes_and_searches_after_restart_without_repeating_accepte
             for _step in range(30):
                 outcome = bridge.run_once(worker)
                 assert outcome.status in {WorkerRunStatus.COMMITTED, WorkerRunStatus.CONTROL_PROGRESS}, outcome
-                if store.get_workload("fixture-owner", workload_id).state is WorkloadState.COMPLETED:
+                if store.get_workload("fixture-owner", workload_id).state is expected_state:
                     break
             else:
                 raise AssertionError("resumed image pipeline never completed")
             worker.request_stop()
-            assert len(calls["vision"]) == len(originals)
+            assert len(calls["vision"]) == indexed_count
             assert len(calls["folder"]) == 1
             assert all(Counter(calls["phases"])[item] == 1 for item in accepted)
             assert Counter(phase for phase, _entries in calls["phases"]) == {
@@ -205,9 +212,21 @@ def test_new_plan_publishes_and_searches_after_restart_without_repeating_accepte
             usage = [(row["stage_key"], json.loads(row["metrics_json"])["llm_usage"])
                      for row in rows if row["stage_key"] != "inventory"]
             assert all(not item["usage_missing"] for _stage, item in usage)
-            assert sum(len(item["records"]) for stage, item in usage if stage == "analyze") == len(originals)
+            assert sum(len(item["records"]) for stage, item in usage if stage == "analyze") == indexed_count
             assert sum(len(item["records"]) for stage, item in usage if stage == "folders") == 1
             assert all(item["zero_calls_verified"] for stage, item in usage if stage in {"discover", "merge", "publish"})
+
+        # Persist the item-level error ledger at completion, independently of
+        # technical attempts and without recounting merge/publication summaries.
+        with DurableWorkloadStore.open(database) as store:
+            summary = store.execution_summary("fixture-owner", workload_id)
+            assert summary["domain_errors"] == {
+                "nitems": int(with_unreadable_photo),
+                "categories": [{"error_code": "image_format_unreadable", "count": 1}]
+                if with_unreadable_photo else [],
+                "truncated": False,
+            }
+            assert summary["error_categories"] == []
 
         active = resolve_image_index_dir(index)
         assert active.name == "fixture-generation"
@@ -215,6 +234,14 @@ def test_new_plan_publishes_and_searches_after_restart_without_repeating_accepte
         result = search.invoke({"base_path": str(photos), "query_text": "computer"})
         assert result["ok"], result
         assert [entry["path"] for entry in result["entries"]] == [str(originals[-1])]
-        assert len(calls["vision"]) == len(originals)
+        assert len(calls["vision"]) == indexed_count
+        diagnostics = search.invoke({"base_path": str(photos), "query_text": "IMAGE_NOT_INDEXED"})
+        assert diagnostics["ok"], diagnostics
+        assert [entry["path"] for entry in diagnostics["entries"]] == (
+            [str(originals[0])] if with_unreadable_photo else [])
+        assert not diagnostics.get("attachments")
+        metadata = json.loads((active / "meta.json").read_text())
+        assert (metadata["n_indexed"], metadata["n_not_indexed"]) == (
+            indexed_count, int(with_unreadable_photo))
     finally:
         scheduler.shutdown()

@@ -72,6 +72,26 @@ parole come “lungo”, “in background” o “molti file”.</p>
  </tbody>
 </table>
 
+<h2 id="error-history">Traccia degli errori dopo la conclusione</h2>
+
+<p>Nel dettaglio del lavoro rimangono gli <strong>elementi con errore</strong>:
+il totale (<code>nitems</code>) e il conteggio per codice, anche dopo un riavvio.
+Si contano gli elementi segnalati dai risultati confermati, non i tentativi
+ripetuti. Se le categorie sono molte, la console mostra le venti più frequenti,
+ma il totale le comprende tutte. Gli errori tecnici dei tentativi restano
+separati. Il riepilogo vale per ogni tipo di lavoro che dichiara questi esiti;
+LRE non interpreta i file o i codici dei singoli domini. La traccia resta
+disponibile finché viene conservato lo storico del lavoro.</p>
+
+<h3 id="attempt-error-history">Errori dei tentativi, anche se superati</h3>
+
+<p>La sezione richiudibile <strong>Tentativi con errore (storico)</strong>
+conserva numero e codici degli errori registrati durante i tentativi, anche se
+un tentativo successivo riesce. Conta tentativi, non foto o elementi: non si
+somma a <code>nitems</code> e non indica necessariamente un problema ancora
+presente. Un lavoro completamente riuscito può quindi avere una storia di
+errori recuperati senza essere dichiarato fallito.</p>
+
 <h2 id="photo-indexing">Indicizzazione delle foto: primo utilizzo e ricerche successive</h2>
 
 <p>La ricerca nel <strong>contenuto delle fotografie</strong> usa un indice
@@ -134,11 +154,37 @@ Un errore di modello o file rimane visibile come problema, non come successo.</p
 <h3 id="photo-indexing-integrity">Integrità e limiti della ripresa</h3>
 
 <p>Una foto non decodificabile non è necessariamente danneggiata: il lettore
-potrebbe non supportarne il formato o la variante. La politica rigorosa corrente
-interrompe il lavoro invece di pubblicare silenziosamente un indice incompleto.
-I salvataggi intermedi verificati possono essere riutilizzati nella stessa
-generazione; avviare un nuovo lavoro non garantisce il riuso di quei salvataggi.
-Prima di riprovare, verifica la causa senza cancellare gli originali o lo storico.</p>
+potrebbe non supportarne il formato o la variante. L'indicizzazione registra un
+esito negativo per quella foto e continua sulle altre. La descrizione comincia
+con <code>IMAGE_NOT_INDEXED:image_decode_failed</code>, oppure con
+<code>IMAGE_NOT_INDEXED:image_format_unreadable</code> se il formato non viene
+riconosciuto. Il prefisso è fisso, in inglese e fuori dal sistema di traduzione;
+solo la spiegazione successiva è tradotta. Non vengono inventati contenuti o
+vettori: la foto resta distinta da quelle indicizzate con successo.</p>
+
+<h3 id="photo-indexing-outcomes">Completamento con errori espliciti</h3>
+
+<p>A fine lavoro il totale delle sorgenti deve coincidere con foto indicizzate
+più foto non indicizzate. Se esistono esiti negativi, LRE indica
+<strong>completato con errori</strong>, anche se tutti i blocchi sono conclusi.
+Gli errori diventano visibili alla conferma di ciascun blocco, senza essere
+ricontati nelle fasi di unione e pubblicazione. Errori di modelli, autorità,
+contabilità o integrità delle sorgenti non diventano foto da saltare.</p>
+
+<h3 id="photo-indexing-diagnostics">Identificare e riprovare le foto non indicizzate</h3>
+
+<p>Per identificare le foto interessate usa nella ricerca dell'indice la parola
+esatta <code>IMAGE_NOT_INDEXED</code>, oppure uno dei due prefissi completi.
+Ottieni un elenco diagnostico con percorso e motivo, senza analisi semantica o
+anteprime delle immagini; non viene avviata una nuova indicizzazione. Le ricerche
+ordinarie escludono questi record. Un nuovo aggiornamento incrementale riprova
+le foto non indicizzate e riusa i risultati validi compatibili: non viene creato
+un ciclo automatico di ritentativi. Nella stessa generazione i salvataggi
+intermedi verificati possono essere riutilizzati; un nuovo lavoro non garantisce
+il riuso di checkpoint privati di una generazione fallita. Gli originali e lo
+storico non vengono cancellati.</p>
+
+<h3 id="photo-indexing-publication">Verifica dei file pubblicati</h3>
 
 <p>La pubblicazione verifica dimensioni e impronte dei cinque file dell'indice,
 anche quando riprende dopo un'interruzione: la sola presenza dei file non prova
@@ -349,7 +395,7 @@ console perché il lavoro continui.</p>
  <li><strong>Avvio, percentuale e fine prevista della fase corrente.</strong> Elenco e dettaglio mostrano il primo avvio effettivo della revisione corrente, senza includere l'attesa in coda. La percentuale conta le unità salvate tra quelle note, non il tempo trascorso: può diminuire quando emergono nuove unità. Non arriva al 100% prima del completamento del lavoro. La stima principale riguarda solo la fase corrente, per esempio l'analisi delle foto: richiede inventario chiuso, una sola fase attiva già interamente preparata e almeno tre blocchi completati in quella fase. Errori, ritentativi, consumi incerti, pausa, motore non pronto o progressi non recenti producono <strong>n.a.</strong> (non disponibile), con il motivo. La previsione non si sposta semplicemente aggiornando la pagina. Nei dettagli tecnici rimane distinta l'eventuale stima dell'intero lavoro, disponibile solo per piani a fase unica. Anche avvio e percentuale mostrano <strong>n.a.</strong> quando mancano i dati necessari.</li>
  <li><strong>Quadro del lavoro.</strong> Separa lo stato del motore da quello del lavoro: un motore disponibile non prova che il lavoro avanzi. Mostra i blocchi riusciti separatamente da quelli non conclusi, da verificare, falliti o annullati e saltati. I blocchi non corrispondono necessariamente a singole foto o file; il totale può crescere durante la scoperta.</li>
  <li><strong>Richiesta di verifica.</strong> Sospende l'avvio di nuovi blocchi; quelli già avviati possono ancora terminare e salvare risultati. Leggi la causa registrata prima di riprovare: questo stato non significa necessariamente che i consumi siano sconosciuti. Un riavvio non corregge la causa e può interrompere lavoro ancora utile.</li>
- <li><strong>Recupero delle foto.</strong> Le analisi complete sono salvate anche all'interno di un blocco non ancora concluso e possono essere riusate in un tentativo autorizzato della stessa generazione. Il riuso verifica sorgente e contesto; non rende ricercabile un indice incompleto. Sono supportate anche le foto HEIC. File illeggibili sono segnalati come errori, non saltati come se fossero riusciti.</li>
+ <li><strong>Recupero delle foto.</strong> Le analisi complete e gli esiti negativi espliciti sono salvati anche all'interno di un blocco non ancora concluso e possono essere riusati in un tentativo autorizzato della stessa generazione. Il riuso verifica sorgente e contesto; non rende ricercabile un indice incompleto. Sono supportate anche le foto HEIC. Le foto non decodificabili sono registrate separatamente: il numero di blocchi completati non equivale al numero di foto indicizzate con successo.</li>
  <li><strong>Freschezza e problemi.</strong> La pagina ricontrolla periodicamente lo stato e segnala quando i dati non sono aggiornati. Una disconnessione non mantiene una falsa indicazione di avanzamento. Le cause disponibili sono in evidenza; un aggiornamento generico dello stato non è presentato come nuovo risultato. Dopo aver caricato altre pagine dell'elenco, usa <strong>Aggiorna elenco e stato</strong> per tornare alla prima pagina aggiornata.</li>
  <li><strong>Parallelismo.</strong> I blocchi in esecuzione sono distinti dal limite di concorrenza ammesso per quel lavoro. Non sono un conteggio di thread o processi; altri lavori e limiti delle risorse possono ridurre il parallelismo effettivo.</li>
  <li><strong>Scansione e stime mancanti.</strong> Durante la scoperta iniziale delle foto la percentuale è n.a.: il totale definitivo non è ancora noto. La fine prevista mostra un motivo quando manca, dando precedenza a un lavoro che richiede intervento. La stima della fase corrente non è la stima complessiva dei lavori multifase, che rimane non disponibile.</li>

@@ -18,7 +18,7 @@ def test_console_async_races_progress_and_disconnection(tmp_path):
     script = source.split("<script>", 1)[1].split("</script>", 1)[0]
     script = script.replace("{{ copy|tojson }}", "globalThis.copy")
     script = script.split('  document.getElementById("dwRefresh").addEventListener', 1)[0]
-    script += "globalThis.ui = {request, availableDate, percentText, estimateText, appendProgress, countersText, breakdown, jobTitle, jobFolder, loadList, loadDetail, refresh, markStale, renderEngine, startPolling, deactivatePage, restorePage, setEngine: value => {engine = value; renderEngine();}, selected: () => selected};})();"
+    script += "globalThis.ui = {request, errorName, availableDate, percentText, estimateText, appendProgress, countersText, breakdown, jobTitle, jobFolder, loadList, loadDetail, refresh, markStale, renderEngine, startPolling, deactivatePage, restorePage, setEngine: value => {engine = value; renderEngine();}, selected: () => selected};})();"
     harness = r'''
 const assert = require("node:assert/strict");
 const vm = require("node:vm");
@@ -62,6 +62,9 @@ assert.equal(ui.percentText(NaN), "n.a.");
 assert.equal(ui.percentText(0), "0%");
 assert.equal(ui.percentText(30), "30%");
 assert.equal(ui.jobTitle({}), "genericJob");
+assert.equal(ui.errorName("document_encrypted"), "errorUnknown (document_encrypted)");
+assert.equal(ui.errorName("budget_exhausted"), "exhausted");
+assert.equal(ui.errorName("<script>private/path</script>"), "errorUnknown");
 assert.equal(ui.jobTitle({description: {kind: "unknown", operation: "untrusted"}}), "genericJob");
 assert.equal(ui.jobTitle({description: {kind: "image_indexing"}}), "photoIndexing");
 assert.equal(ui.jobFolder({}), null);
@@ -85,7 +88,15 @@ assert.equal(nodes.get("dwDetail").querySelectorAll(".dw-estimate")[0].textConte
 ui.setEngine({enabled: true, state: "ready", worker_available: false});
 assert.ok(nodes.get("dwEngine").textContent.includes("engineUnavailable"));
 assert.equal(ui.estimateText(timing), "n.a.");
-const job = id => ({workload: {workload_id: id, state: "needs_attention", version: 1, counters, updated_at: null, created_at: null}, revision: {execution: {blocking_reason: "budget_accounting_incomplete", last_committed_at: null, error_categories: [{error_code: "budget_exhausted", count: 2}]}}});
+const job = id => ({
+  workload: {workload_id: id, state: "needs_attention", version: 1, counters, updated_at: null, created_at: null},
+  revision: {execution: {
+    blocking_reason: "budget_accounting_incomplete", last_committed_at: null,
+    error_categories: [{error_code: "budget_exhausted", count: 2}],
+    domain_errors: {nitems: 31, categories: [{error_code: "document_encrypted", count: 7}], truncated: true},
+    attempt_errors: {nattempts: 2, categories: [{error_code: "transport.temporarily_unavailable", count: 2}], truncated: false},
+  }},
+});
 (async () => {
   globalThis.fetch = async () => { throw new Error("offline"); };
   assert.equal(await ui.loadList(true), false);
@@ -108,6 +119,12 @@ const job = id => ({workload: {workload_id: id, state: "needs_attention", versio
   assert.ok(nodes.get("dwDetail").textContent.includes("blockedHelp"));
   assert.ok(nodes.get("dwDetail").textContent.includes("3 / 11"));
   assert.ok(nodes.get("dwDetail").textContent.includes("accounting incomplete"));
+  assert.ok(nodes.get("dwDetail").textContent.includes("itemsWithErrors: 31"));
+  assert.ok(nodes.get("dwDetail").textContent.includes("document_encrypted) · 7"));
+  assert.ok(nodes.get("dwDetail").textContent.includes("moreErrorCategories"));
+  assert.ok(nodes.get("dwDetail").textContent.includes("attemptErrors: 2"));
+  assert.ok(nodes.get("dwDetail").textContent.includes("transport.temporarily_unavailable) · 2"));
+  assert.ok(nodes.get("dwDetail").textContent.includes("attemptErrorsHelp"));
   assert.ok(!nodes.get("dwDetail").textContent.includes("exhausted"));
   assert.ok(nodes.get("dwDetail").textContent.includes("noResult"));
   assert.ok(nodes.get("dwDetail").textContent.includes("startedn.a."));
@@ -115,14 +132,16 @@ const job = id => ({workload: {workload_id: id, state: "needs_attention", versio
   assert.ok(nodes.get("dwDetail").textContent.includes("phaseEstimatedEndn.a."));
   assert.ok(nodes.get("dwDetail").textContent.includes("wholeEstimatedEndn.a."));
   const sections = nodes.get("dwDetail").querySelectorAll("details[data-section]");
-  assert.equal(sections.length, 4, "help, events, technical metadata and artifacts are collapsible");
+  assert.equal(sections.length, 5, "error history, help, events, technical metadata and artifacts are collapsible");
   assert.ok(sections.every(section => !section.open), "verbose details start collapsed");
   const technical = sections.find(section => section.dataset.section === "technical");
   assert.ok(technical.textContent.includes("jobIdB"), "long identifiers stay in technical details");
   assert.ok(technical.textContent.includes("3 / 11"));
   technical.open = true;
+  sections.find(section => section.dataset.section === "attempt-errors").open = true;
   await ui.loadDetail("B");
   assert.ok(nodes.get("dwDetail").querySelectorAll("details[data-section]").find(section => section.dataset.section === "technical").open, "refresh preserves opened details");
+  assert.ok(nodes.get("dwDetail").querySelectorAll("details[data-section]").find(section => section.dataset.section === "attempt-errors").open, "refresh preserves opened error history");
   let releaseHealth; fetchCount = 0;
   globalThis.fetch = async url => {
     fetchCount++;
@@ -188,7 +207,8 @@ def test_console_labels_exist_in_both_seed_languages():
         for suffix in ("READ_FAILED", "SELECT_JOB", "ATTENTION_HELP", "PHASE_ESTIMATED_FINISH", "WHOLE_ESTIMATED_FINISH", "PHASE_TIMING_HELP",
                        "ETA_NEEDS_ATTENTION", "ETA_NO_ACTIVE_PHASE", "ETA_MULTIPLE_ACTIVE_PHASES",
                        "ETA_INVENTORY_OPEN", "ETA_PHASE_EXPANDING", "ETA_UNCERTAIN_PROGRESS",
-                       "ETA_STALE_PROGRESS", "ETA_ESTIMATE_OVERDUE"):
+                       "ETA_STALE_PROGRESS", "ETA_ESTIMATE_OVERDUE", "ITEMS_WITH_ERRORS",
+                       "MORE_ERROR_CATEGORIES", "ATTEMPT_ERRORS", "ATTEMPT_ERRORS_HELP"):
             rows = conn.execute("SELECT lang,text,needs_translation FROM i18n WHERE key=? AND lang IN ('it','en')", ("UI_DURABLE_" + suffix,)).fetchall()
             assert {row[0] for row in rows} == {"it", "en"}
             assert all(row[1] and not row[2] for row in rows)
@@ -324,6 +344,43 @@ def test_console_design_browser_isolated(monkeypatch, tmp_path, lang):
             page.locator("#dwDetail details[data-section='technical'] summary").click()
             assert page.locator("#dwDetail details[data-section='technical'] .dw-estimate").inner_text() == "n.a."
             assert page.get_by_text(texts["UI_DURABLE_ETA_MULTI_PHASE"], exact=True).is_visible()
+            workload["state"] = "completed_with_errors"
+            workload["progress"]["parallelism"]["running_units"] = 0
+            payload["revision"]["execution"]["domain_errors"] = {
+                "nitems": 31, "categories": [{"error_code": "document_encrypted", "count": 7}],
+                "truncated": True,
+            }
+            page.locator("#dwRefresh").click()
+            error_heading = texts["UI_DURABLE_ITEMS_WITH_ERRORS"] + ": 31"
+            page.get_by_role("heading", name=error_heading, exact=True).wait_for()
+            assert page.get_by_text(texts["UI_DURABLE_ERROR_UNKNOWN"] + " (document_encrypted) · 7", exact=True).is_visible()
+            assert page.get_by_text(texts["UI_DURABLE_MORE_ERROR_CATEGORIES"], exact=True).is_visible()
+            # A completed job remains inspectable after leaving/reloading the console.
+            page.reload()
+            page.locator(".dw-job-choice").click()
+            page.get_by_role("heading", name=error_heading, exact=True).wait_for()
+            # A recovered transient error remains history, not an active fault
+            # or a false item error in an otherwise successful job.
+            workload["state"] = "completed"
+            payload["revision"]["execution"]["domain_errors"] = {"nitems": 0, "categories": [], "truncated": False}
+            payload["revision"]["execution"]["attempt_errors"] = {
+                "nattempts": 2,
+                "categories": [{"error_code": "transport.temporarily_unavailable", "count": 2}],
+                "truncated": False,
+            }
+            page.locator("#dwRefresh").click()
+            history = page.locator("#dwDetail details[data-section='attempt-errors']")
+            history.locator("summary").wait_for()
+            assert history.locator("summary").inner_text() == texts["UI_DURABLE_ATTEMPT_ERRORS"] + ": 2"
+            assert history.get_attribute("open") is None
+            history.locator("summary").click()
+            assert history.get_by_text(texts["UI_DURABLE_ATTEMPT_ERRORS_HELP"], exact=True).is_visible()
+            assert history.get_by_text(texts["UI_DURABLE_ERROR_UNKNOWN"] + " (transport.temporarily_unavailable) · 2", exact=True).is_visible()
+            assert page.get_by_role("heading", name=error_heading, exact=True).count() == 0
+            page.reload()
+            page.locator(".dw-job-choice").click()
+            history.locator("summary").wait_for()
+            assert history.locator("summary").inner_text().endswith(": 2")
             assert not errors
         finally:
             browser.close()

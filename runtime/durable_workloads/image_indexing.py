@@ -27,10 +27,10 @@ from .schema import inventory_digest
 PLAN_ID = "images.index.v1"
 EXECUTOR = "create_images_indices"
 FOLDER_WORKLOAD = "images.folder_classify"
-DISCOVERY_SCHEMA = "metnos.images.index-discovery/2"
+DISCOVERY_SCHEMA = "metnos.images.index-discovery/3"
 FOLDER_SCHEMA = "metnos.images.index-folders/1"
-PART_SCHEMA = "metnos.images.index-part/2"
-PUBLISHED_SCHEMA = "metnos.images.index-published/2"
+PART_SCHEMA = "metnos.images.index-part/3"
+PUBLISHED_SCHEMA = "metnos.images.index-published/3"
 _PART = {"type": "string", "pattern": "^[a-f0-9]{64}$"}
 _GENERATION = re.compile(r"[A-Za-z0-9_-]{1,128}")
 _PUBLIC_ARGS = frozenset({"base_path", "recursive", "force", "max_files", "dry_run"})
@@ -108,6 +108,18 @@ def _schema(name: str, entry: Mapping, *, extra: Mapping | None = None, required
 
 def output_schemas() -> OutputSchemaRegistry:
     from image_index_build import GROUP_SIZE
+    from image_index_outcomes import DECODE_FAILURE_CODES
+    from .domain_outcome import DOMAIN_OUTCOME_SCHEMA
+
+    error_counts = {
+        "type": "object", "additionalProperties": False,
+        "properties": {code: {"type": "integer", "minimum": 1, "maximum": 1_000_000}
+                       for code in sorted(DECODE_FAILURE_CODES)},
+    }
+    domain_outcome = {
+        **DOMAIN_OUTCOME_SCHEMA,
+        "properties": {**DOMAIN_OUTCOME_SCHEMA["properties"], "error_counts": error_counts},
+    }
     # Diagnostic authority stays in the approved schema, not in the bridge
     # or a parallel runtime registry. Values are existing executor outcomes.
     error_code = {"type": "string", "enum": [
@@ -123,7 +135,7 @@ def output_schemas() -> OutputSchemaRegistry:
         "generation_receipt_conflict", "image_corpus_empty", "image_description_unavailable",
         "image_index_phase_failed", "image_decode_failed", "image_format_unreadable",
         "image_model_unavailable", "immutable_artifact_conflict",
-        "incomplete_analysis", "inventory_limits_invalid", "max_files_invalid",
+        "incomplete_analysis", "invalid_indexing_failure", "inventory_limits_invalid", "max_files_invalid",
         "mixed_model_generations", "mixed_vector_dimensions", "model_dimension_mismatch",
         "model_metadata_invalid", "part_context_mismatch", "part_count_invalid",
         "part_count_mismatch", "part_digest_mismatch", "part_invalid", "part_kind_invalid",
@@ -155,10 +167,13 @@ def output_schemas() -> OutputSchemaRegistry:
                                     "additionalProperties": {"type": "string", "maxLength": 8192}},
             }, "required": ["part", "folder_contexts"],
         }),
-        _schema(PART_SCHEMA, part, extra={"error_code": error_code}),
+        _schema(PART_SCHEMA, part, extra={"error_code": error_code, "domain_outcome": domain_outcome}),
         _schema(PUBLISHED_SCHEMA, part,
-                extra={"n_entries_total": {"type": "integer", "minimum": 1}, "error_code": error_code},
-                required=("n_entries_total",)),
+                extra={"n_entries_total": {"type": "integer", "minimum": 1}, "error_code": error_code,
+                       "n_indexed": {"type": "integer", "minimum": 0},
+                       "n_not_indexed": {"type": "integer", "minimum": 0},
+                       "indexing_error_counts": error_counts},
+                required=("n_entries_total", "n_indexed", "n_not_indexed", "indexing_error_counts")),
     ))
 
 

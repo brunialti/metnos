@@ -212,6 +212,16 @@ after interruption; they are not a certification against power loss. The
 <a href="../system/lre.html#photo-indexing-integrity">LRE guide</a> distinguishes
 complete coverage, failures and checkpoint reuse limits.</p>
 
+<p>LRE remains a general-purpose engine: it does not recognize photographs,
+decoders or other domain content. Functions report typed outcomes through their
+contracts; the engine preserves handled errors, shows them during execution and
+distinguishes clean completion from completion with errors. Only originating
+units report counts, not downstream aggregators. Technical errors, retries,
+requests for intervention and stops remain governed by workload policies: no
+handled outcome authorizes incomplete accounting or coverage. After completion,
+the console retains affected item counts and a separate history of failed
+attempts, including those followed by successful recovery.</p>
+
 <h2 id="extensions">How to add a capability</h2>
 
 <p>A new capability enters the system as an executor, not as a free-form prompt

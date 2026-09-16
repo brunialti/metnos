@@ -81,7 +81,11 @@
   };
   const translated = (values, key) => values[key] || copy.unknown;
   const stateName = (state) => translated(copy.states, state);
-  const errorName = (code) => copy.errorLabels[code] || copy.errorUnknown;
+  // Domain codes are identifiers, not translation keys. Keep unknown approved
+  // codes distinguishable without teaching the general console each domain.
+  const errorName = (code) => copy.errorLabels[code] || (
+    typeof code === "string" && /^[a-z][a-z0-9_.-]{2,95}$/.test(code)
+      ? `${copy.errorUnknown} (${code})` : copy.errorUnknown);
   const dateText = (value) => value ? new Date(value).toLocaleString() : "—";
   const availableDate = (value) => typeof value === "string" && Number.isFinite(Date.parse(value)) ? dateText(value) : copy.notAvailable;
   const percentText = (value) => typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 100 ? `${value.toLocaleString()}%` : copy.notAvailable;
@@ -416,7 +420,7 @@
       if (parallelism) detail.append(node("p", `${copy.runningBlocks}: ${countText(parallelism.running_units)} · ${copy.jobLimit}: ${countText(parallelism.max_concurrency)}`, "dw-progress-summary"));
       if (payload.revision) {
         const summary = payload.revision.execution;
-        renderProblems(summary, detail);
+        renderProblems(summary, detail, openSections);
       }
       const actions = node("div", "", "dw-actions");
       if (["queued", "running"].includes(selected.state)) actions.append(button(copy.pause, () => runAction("pause")));
@@ -470,8 +474,29 @@
     finally { if (generation === detailGeneration) detailLoading = false; }
   }
 
-  function renderProblems(summary, target) {
+  function appendErrorCategories(target, errors) {
+    for (const category of errors.categories || []) {
+      target.append(node("p", `${errorName(category.error_code)} · ${category.count}`));
+    }
+    if (errors.truncated) target.append(node("p", copy.moreErrorCategories));
+  }
+
+  function renderProblems(summary, target, openSections) {
     if (!summary) return;
+    const domain = summary.domain_errors;
+    if (domain && domain.nitems > 0) {
+      const items = node("section", "", "dw-notice dw-warning");
+      items.append(node("h3", `${copy.itemsWithErrors}: ${domain.nitems}`));
+      appendErrorCategories(items, domain);
+      target.append(items);
+    }
+    const history = summary.attempt_errors;
+    if (history && history.nattempts > 0) {
+      const attempts = disclosure("attempt-errors", `${copy.attemptErrors}: ${history.nattempts}`, openSections);
+      attempts.append(node("p", copy.attemptErrorsHelp));
+      appendErrorCategories(attempts, history);
+      target.append(attempts);
+    }
     const errors = node("section", "", "dw-notice dw-warning");
     if (summary.blocking_reason) errors.append(node("p", errorName(summary.blocking_reason)));
     for (const error of summary.error_categories || []) {

@@ -102,7 +102,7 @@ def test_heic_snapshot_decodes_without_extension_and_preserves_source(corpus):
     assert (entry["image_w"], entry["image_h"]) == (20, 20)
 
 
-def test_unreadable_image_is_explicit_and_never_published(corpus):
+def test_unreadable_image_is_published_only_as_explicit_negative_record(corpus):
     root, calls = corpus
     (root / "broken.jpg").write_bytes(b"not an image")
     discovered = _discover(root)
@@ -110,9 +110,22 @@ def test_unreadable_image_is_explicit_and_never_published(corpus):
     result = _invoke(root, "build-1", "analyze", entries=[{
         "part": group["part"], "folder_contexts": {label: "Photos." for label in group["folder_labels"]},
     }])
-    assert not result["ok"] and result["error_code"] == "image_format_unreadable"
+    assert result["ok"] and result["ok_count"] == 0 and result["fail_count"] == 1
+    assert result["domain_outcome"] == {
+        "version": 1, "error_counts": {"image_format_unreadable": 1},
+    }
     assert not calls
     assert not (builder._index_dir(root) / "meta.json").exists()
+    published = _publish(root, discovered, result["entries"])
+    assert published["n_indexed"] == 0 and published["n_not_indexed"] == 1
+    assert published["ok_count"] == 0 and published["refreshed_count"] == 0
+    entry = json.loads((Path(published["index_path"]) / "entries.jsonl").read_text())
+    assert entry["indexing_status"] == "not_indexed"
+    assert entry["indexing_error_code"] == "image_format_unreadable"
+    assert entry["description"].startswith("IMAGE_NOT_INDEXED:image_format_unreadable ")
+    assert entry["path"] == str(root / "broken.jpg")
+    for axis in ("text", "image", "face"):
+        assert np.load(Path(published["index_path"]) / f"embeddings_{axis}.npy").shape == (0, 0)
 
 
 @pytest.mark.parametrize("reader", ["artifact", "snapshot", "entries"])

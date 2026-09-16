@@ -45,7 +45,7 @@ en = "SCOPO: search indexed photos by content, person or face. PATTERN: find_ima
 
 [code]
 files  = ["find_images_indices.py"]
-digest = "sha256:9d8c26ba452e9a7ce26a435f3dfc46999edb9de428143456baef18a9789b9617"
+digest = "sha256:a77d04d077da1bcfd0a5bc033314e755b0c3f7229ec8f73ef84879769af10d96"
 
 [args]
 type     = "object"
@@ -74,8 +74,8 @@ en = "If true, enumerate ALL indexed photos in the corpus, with no search criter
 type        = "string"
 
 [args.properties.query_text.description]
-it = "Query testuale per ricerca semantica del CONTENUTO. La VLM ha descritto ogni foto al build time (description + keywords); il match e' cosine su embedding_text + BM25 su description+keywords. Es. 'compleanno', 'mare al tramonto', 'bambini che corrono'."
-en = "Textual query for semantic CONTENT search. The VLM has described each photo at build time (description + keywords); match is cosine on embedding_text + BM25 on description+keywords. E.g. 'birthday', 'sea at sunset', 'kids running'."
+it = "Query testuale per ricerca semantica del CONTENUTO delle foto indicizzate. I record non indicizzati sono esclusi dalle ricerche normali. Per elencarli usare ESATTAMENTE IMAGE_NOT_INDEXED, oppure IMAGE_NOT_INDEXED:image_decode_failed o IMAGE_NOT_INDEXED:image_format_unreadable. Questi elenchi diagnostici non usano modelli né allegati immagine; ammettono base_path, paths_filter e limiti risultati, non criteri di contenuto, persone, volti, GPS o tempo. Il codice è immutabile e non va tradotto."
+en = "Text query for semantic CONTENT search of indexed photos. Non-indexed records are excluded from ordinary searches. To list them use EXACTLY IMAGE_NOT_INDEXED, IMAGE_NOT_INDEXED:image_decode_failed or IMAGE_NOT_INDEXED:image_format_unreadable. These diagnostic lists use neither models nor image attachments; base_path, paths_filter and result limits are allowed, but content, person, face, GPS and time criteria are not. The code is immutable and must not be translated."
 
 [args.properties.name]
 type        = "string"
@@ -217,10 +217,12 @@ schema_inline = """
   ok: bool,
   entries: Array<{
     path: str, name?: str, score: number,
-    match_type: 'text' | 'face' | 'gps' | 'compose',
+    match_type: 'text' | 'face' | 'gps' | 'compose' | 'indexing_failure',
     description: str, keywords: Array<str>, size_bytes?: int,
     location_hint?: str, activity_hint?: str, gps?: object,
-    taken_at?: str, bbox?: Array<number>
+    taken_at?: str, bbox?: Array<number>,
+    indexing_status?: 'not_indexed',
+    indexing_error_code?: 'image_decode_failed' | 'image_format_unreadable'
   }>,
   attachments?: Array<{kind: 'image', path: str, basename: str, score?: number, caption?: str, date?: str}>,
   n_above_threshold?: int,

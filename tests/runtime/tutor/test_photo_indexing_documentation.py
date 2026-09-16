@@ -28,6 +28,22 @@ def _guide_units(language):
 
 
 @pytest.mark.parametrize("language,heading,required", [
+    ("it", "Traccia degli errori dopo la conclusione", (
+        "nitems", "anche dopo un riavvio", "non i tentativi ripetuti",
+        "totale le comprende tutte", "ogni tipo di lavoro", "conservato lo storico",
+    )),
+    ("en", "Error history after completion", (
+        "nitems", "after a restart", "not repeated attempts", "total includes them all",
+        "any workload", "job history is retained",
+    )),
+    ("it", "Errori dei tentativi, anche se superati", (
+        "storico", "un tentativo successivo riesce", "non si somma a nitems",
+        "senza essere dichiarato fallito",
+    )),
+    ("en", "Attempt errors, including recovered errors", (
+        "history", "a later attempt succeeds", "not added to nitems",
+        "without being declared failed",
+    )),
     ("it", "Indicizzazione delle foto: primo utilizzo", (
         "contenuto delle fotografie", "indice persistente", "nome di file",
     )),
@@ -57,14 +73,30 @@ def _guide_units(language):
         "when needed", "complete generation", "remains visible",
     )),
     ("it", "Integrità e limiti della ripresa", (
-        "non è necessariamente danneggiata", "interrompe il lavoro",
-        "stessa generazione", "non garantisce", "cinque file",
-        "precedenti restano leggibili", "priva di queste prove",
+        "non è necessariamente danneggiata", "continua sulle altre",
+        "IMAGE_NOT_INDEXED:image_decode_failed", "fuori dal sistema di traduzione",
     )),
     ("en", "Integrity and recovery limits", (
-        "not necessarily damaged", "stops the workload", "same generation",
-        "does not guarantee", "five index files", "Previous indexes remain readable",
-        "without these proofs",
+        "not necessarily damaged", "continues with the others",
+        "IMAGE_NOT_INDEXED:image_decode_failed", "outside the translation system",
+    )),
+    ("it", "Completamento con errori espliciti", (
+        "completato con errori", "ciascun blocco", "senza essere ricontati", "non diventano foto da saltare",
+    )),
+    ("en", "Completion with explicit errors", (
+        "completed with errors", "each block", "without being counted again", "do not become skippable photos",
+    )),
+    ("it", "Identificare e riprovare le foto non indicizzate", (
+        "IMAGE_NOT_INDEXED", "non viene avviata", "ciclo automatico", "non garantisce", "non vengono cancellati",
+    )),
+    ("en", "Identifying and retrying photos not indexed", (
+        "IMAGE_NOT_INDEXED", "not start indexing", "automatic retry loop", "does not guarantee", "not deleted",
+    )),
+    ("it", "Verifica dei file pubblicati", (
+        "cinque file", "precedenti restano leggibili", "priva di queste prove",
+    )),
+    ("en", "Verifying published files", (
+        "five index files", "Previous indexes remain readable", "without these proofs",
     )),
     ("it", "Perché la prima preparazione", (
         "numero", "dimensione", "risorse", "ore", "non una scadenza",

@@ -16,6 +16,7 @@ from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
 
 from .models import ClosedStringEnum, DurableEffect, RESOURCE_KEYS, RunnerKind
+from .domain_outcome import domain_outcome
 from .schema import (
     ERROR_SCHEMA_VERSION,
     MAX_ERROR_JSON_BYTES,
@@ -344,6 +345,7 @@ class ValidatedResult:
             raise SchemaValidationError("result payload_json is invalid") from exc
         if not isinstance(payload, dict):
             raise SchemaValidationError("v1 result payload must be an object")
+        domain_outcome(payload)
         rebuilt_json, rebuilt_digest = _canonical_result(self.schema_version, payload)
         if rebuilt_json != self.payload_json or rebuilt_digest != self.digest:
             raise SchemaValidationError("validated result is not canonical or digest-bound")

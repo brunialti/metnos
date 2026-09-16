@@ -29,6 +29,7 @@ sys.path.insert(0, str(_ROOT / "executors" / "create_images_indices"))
 import create_images_indices as C  # noqa: E402
 import config as MC  # noqa: E402
 from virt import get_embedder  # noqa: E402
+from image_index_maintenance import legacy_image_paths  # noqa: E402
 
 _BATCH = 256
 
@@ -63,6 +64,7 @@ def _save_cache(idx_dir: Path) -> None:
 
 
 def reembed(idx_dir: Path, lang: str, dry: bool) -> None:
+    legacy_image_paths(idx_dir)
     ents_path = idx_dir / "entries.jsonl"
     emb_path = idx_dir / "embeddings_text.npy"
     entries = [json.loads(ln) for ln in ents_path.read_text("utf-8").splitlines()

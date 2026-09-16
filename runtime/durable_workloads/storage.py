@@ -66,6 +66,7 @@ from .models import (
     control_transition,
 )
 from .schema import (
+    ERROR_SCHEMA_VERSION,
     MAX_EVENT_JSON_BYTES,
     MAX_PLAN_JSON_BYTES,
     MAX_SNAPSHOT_JSON_BYTES,
@@ -78,6 +79,7 @@ from .schema import (
     validate_plan,
 )
 from .transactions import checked_checkpoint, immediate_transaction
+from .domain_outcome import domain_terminal_detail
 
 
 _ID_RE = re.compile(r"^[A-Za-z0-9_-]{8,128}$")
@@ -4294,6 +4296,93 @@ class DurableWorkloadStore:
             result[str(row["id"])] = projector(plan, phase if plan is not None else None)
         return result
 
+    def _domain_errors(
+        self, owner: str, revision_id: str,
+    ) -> dict[str, Any]:
+        """Aggregate committed domain receipts, never attempt failures or history.
+
+        Commit/reuse write only the validated bounded projection. SQL aggregates
+        it without loading result payloads or an unbounded unit list into Python.
+        Window totals include ALL categories before the display limit. Each
+        original item has one primary domain code, so nitems counts items,
+        never attempts or propagated summaries from later processing phases.
+        """
+        rows = self._connection.execute(
+            """
+            WITH categories AS (
+                SELECT error.key AS code, SUM(error.value) AS count
+                FROM units unit,
+                     json_each(unit.terminal_detail_json,
+                               '$.domain_outcome.error_counts') error
+                WHERE unit.owner_user_id=? AND unit.revision_id=?
+                  AND unit.state='committed'
+                GROUP BY error.key
+            )
+            SELECT code, count, SUM(count) OVER () AS nitems,
+                   COUNT(*) OVER () AS category_count
+            FROM categories
+            ORDER BY count DESC, code ASC
+            LIMIT 20
+            """, (owner, revision_id),
+        ).fetchall()
+        return {
+            "nitems": int(rows[0]["nitems"]) if rows else 0,
+            "categories": [
+                {"error_code": str(row["code"]), "count": int(row["count"])}
+                for row in rows
+            ],
+            "truncated": bool(rows and int(rows[0]["category_count"]) > len(rows)),
+        }
+
+    def _attempt_errors(self, owner: str, revision_id: str) -> dict[str, Any]:
+        """Historical technical errors, independent of final domain item outcomes.
+
+        Writer paths persist canonical StructuredAttemptError values. Read only
+        their versioned, bounded machine codes, never messages or details. The
+        revision's units lead the indexed attempt lookup even without planner
+        statistics; no scan of an owner's unrelated attempt history is needed.
+        """
+        rows = self._connection.execute(
+            """
+            WITH error_facts AS MATERIALIZED (
+                SELECT json_extract(attempt.structured_error_json, '$.code') AS code
+                FROM units unit CROSS JOIN attempts attempt
+                WHERE unit.owner_user_id=? AND unit.revision_id=?
+                  AND attempt.owner_user_id=unit.owner_user_id
+                  AND attempt.unit_id=unit.id
+                  -- The always-true range also selects the existing
+                  -- (owner, unit, number) index when statistics are absent.
+                  AND attempt.number>=1
+                  AND attempt.ended_at IS NOT NULL
+                  AND attempt.structured_error_json IS NOT NULL
+                  AND json_extract(attempt.structured_error_json, '$.schema_version')=?
+                  AND json_extract(attempt.structured_error_json, '$.scope')='attempt'
+                  AND json_type(attempt.structured_error_json, '$.code')='text'
+            ), categories AS (
+                SELECT code, COUNT(*) AS count
+                FROM error_facts
+                WHERE length(code) BETWEEN 3 AND 96
+                  AND length(CAST(code AS BLOB))=length(code)
+                  AND code GLOB '[a-z]*'
+                  AND code NOT GLOB '*[^a-z0-9_.-]*'
+                GROUP BY code
+            )
+            SELECT code, count, SUM(count) OVER () AS nattempts,
+                   COUNT(*) OVER () AS category_count
+            FROM categories
+            ORDER BY count DESC, code ASC
+            LIMIT 20
+            """, (owner, revision_id, ERROR_SCHEMA_VERSION),
+        ).fetchall()
+        return {
+            "nattempts": int(rows[0]["nattempts"]) if rows else 0,
+            "categories": [
+                {"error_code": str(row["code"]), "count": int(row["count"])}
+                for row in rows
+            ],
+            "truncated": bool(rows and int(rows[0]["category_count"]) > len(rows)),
+        }
+
     def execution_summary(
         self, owner_user_id: str, workload_id: str,
     ) -> dict[str, Any]:
@@ -4314,6 +4403,8 @@ class DurableWorkloadStore:
                 "budget": {},
                 "stages": [],
                 "error_categories": [],
+                "domain_errors": {"nitems": 0, "categories": [], "truncated": False},
+                "attempt_errors": {"nattempts": 0, "categories": [], "truncated": False},
                 "warnings": [],
                 "blocking_reason": None,
                 "last_committed_at": None,
@@ -4467,6 +4558,8 @@ class DurableWorkloadStore:
                 {"error_code": str(row["error_code"]), "count": int(row["count"])}
                 for row in errors
             ],
+            "domain_errors": self._domain_errors(owner, str(revision_id)),
+            "attempt_errors": self._attempt_errors(owner, str(revision_id)),
             "warnings": warnings,
             "blocking_reason": blocking_reason,
             "last_committed_at": last_commit,
@@ -4817,6 +4910,7 @@ class DurableWorkloadStore:
                 or accepted_partial
                 or accepted_source_skip
                 or counters.skipped
+                or self._domain_errors(owner, revision_id)["nitems"]
             )
             target = (
                 WorkloadState.COMPLETED_WITH_ERRORS
@@ -5631,13 +5725,14 @@ class DurableWorkloadStore:
                     SET state='committed', attempt_count=?, fence=?,
                         committed_result_id=?, next_attempt_at=NULL,
                         error_class=NULL, partial_output=0,
-                        terminal_detail_json=NULL, updated_at=?
+                        terminal_detail_json=?, updated_at=?
                     WHERE owner_user_id=? AND id=? AND revision_id=?
                       AND state='pending' AND attempt_count=? AND fence=?
                       AND active_attempt_id IS NULL
                     """,
                     (
-                        attempt_number, fence, result_id, now_text,
+                        attempt_number, fence, result_id,
+                        domain_terminal_detail(json.loads(validated.payload_json)), now_text,
                         owner, unit_id, revision_id,
                         candidate["attempt_count"], candidate["fence"],
                     ),
@@ -8464,12 +8559,14 @@ class DurableWorkloadStore:
                     lease_worker_id=NULL, active_attempt_id=NULL,
                     lease_expires_at=NULL, next_attempt_at=NULL,
                     error_class=NULL, partial_output=0,
-                    terminal_detail_json=NULL, updated_at=?
+                    terminal_detail_json=?, updated_at=?
                 WHERE owner_user_id=? AND id=? AND state='running'
                   AND active_attempt_id=? AND fence=? AND lease_worker_id=?
                 """,
                 (
-                    result_id, current_text, lease.owner_user_id,
+                    result_id,
+                    domain_terminal_detail(json.loads(validated_result.payload_json)),
+                    current_text, lease.owner_user_id,
                     lease.unit_id, lease.attempt_id, lease.fence,
                     lease.worker_id,
                 ),

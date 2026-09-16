@@ -268,3 +268,55 @@ distribuzione; non costituisce prova della causa di un errore di decodifica real
 - ADR 0112 — scheduler v2 asyncio (boot hook spawn).
 - ADR 0113 — named persons registry (capabilities di composizione).
 - ADR 0114 — synth admission policy (politiche di admission).
+
+### Addendum 2026-09-16 — foto non indicizzabili come esiti espliciti
+
+Decisione successiva richiesta dall'utente: il fallimento di decodifica di una
+singola foto non deve arrestare l'intero archivio, né trasformare quella foto in
+un contenuto indicizzato. Supera esclusivamente il precedente arresto rigoroso
+sui due codici `image_decode_failed` e `image_format_unreadable`. La causa reale
+del file osservato in esercizio rimane non diagnosticata: non si presume danno.
+
+Il dominio conserva un record per la sorgente con `indexing_status=not_indexed`,
+`indexing_error_code`, identità/percorso e descrizione standard. Il prefisso
+`IMAGE_NOT_INDEXED:<codice>` è fisso, inglese e fuori i18n; soltanto la spiegazione
+successiva usa il catalogo IT/EN. Nessun contenuto visivo, volto, parola chiave,
+modello o vettore viene inventato. Il tentativo di decodifica precede la richiesta
+dei modelli: una foto non leggibile non consuma chiamate ai modelli. Gli errori di
+modelli, autorità, sorgenti, contabilità o integrità continuano a fallire secondo
+il proprio contratto; non vengono catturati come foto non indicizzabili.
+
+I record negativi sono copertura esplicita delle sorgenti, non omissioni. La
+pubblicazione esige `n_entries = n_indexed + n_not_indexed`, conteggi per codice
+coerenti e i cinque file integri; `ok_count` e `fail_count` rimangono distinti.
+Un archivio interamente non leggibile può pubblicare un registro diagnostico con
+matrici vuote, non un indice visivo riuscito. Solo i gruppi di analisi emettono il
+`domain_outcome` generale (ADR 0213): unione e pubblicazione non lo ricontano.
+LRE conserva totale e categorie e termina con errori anche con tutti i blocchi
+confermati. Non conosce il prefisso né i due codici specifici.
+
+`find_images_indices` accetta la ricerca esatta `IMAGE_NOT_INDEXED` o uno dei due
+prefissi completi per elencare percorsi e motivi. Non invoca modelli, non allega
+immagini, non avvia automaticamente un indice mancante e non combina filtri
+semantici incompatibili. La spiegazione è resa nella lingua corrente. Ricerche
+ordinarie, lessico del corpus e confronti vettoriali escludono i record negativi;
+`get_images_indices` separa totale record, indicizzati e non indicizzati.
+
+Dentro la stessa generazione i checkpoint negativi sono verificati e riusabili,
+evitando di ripetere lo stesso errore a ogni ripresa del gruppo. Un nuovo
+aggiornamento incrementale riprova tali foto e riusa quelle valide compatibili.
+Non viene introdotto un ciclo automatico di retry o il trasferimento implicito
+di checkpoint privati da una generazione fallita. Nessuna foto o storia cancellata.
+
+Gli schemi di scoperta, parti e pubblicazione passano a `/3`: non riscrivere i
+contratti dei lavori precedenti. Vecchi indici restano leggibili; la ripetizione
+rapida della pubblicazione richiede anche i nuovi contatori coerenti oltre al
+sigillo dei file. Gli strumenti manuali di completamento vettori/contesto negano
+generazioni sigillate e record negativi prima di caricare modelli o scrivere:
+per aggiornarli serve il normale percorso `create_images_indices`.
+
+Prove: `test_image_index_negative_outcomes.py`, `test_image_negative_records.py`,
+`test_image_backfill_guard.py`, `test_image_index_build_phases.py`,
+`test_image_indexing_plan.py`, `test_image_indexing_e2e.py` e suite di integrità.
+Modifica in sviluppo: necessita di release canonica e prova limitata reale prima
+di distribuirla; i test con risposte sintetiche non certificano l'archivio reale.
