@@ -310,3 +310,26 @@ bloccata dal server locale; replica autorizzata conclusa positivamente.
 Guide Tutor: corretta segmentazione che separava condizioni e promessa
 di ripresa; 20/20 controlli documentali riusciti. Review VLM indipendente:
 nessun difetto bloccante, limiti del formato e del riuso legacy esplicitati.
+
+## Pubblicazione e prova limitata — 16 settembre, 15:37 Europe/Rome
+
+Release 59 pubblicata tramite autorità canonica: build
+`sha256:23e1dc2ae7ab669c245b35a717eaeeee51b210597acef2fb2f775b70a9814609`,
+`CUTOVER_OK`, `RELEASE_EDITS_ADMITTED`, uscita 0. Guide statiche IT/EN
+pubblicate su Pages (`1e9ac020`); verifica HTTP dal client di controllo
+rifiutata con 403, quindi non attestata la lettura dal dominio pubblico.
+
+`run-lw518ckd`: prova autorizzata su sei copie private, inclusa la foto del
+guasto riprodotto; turno `1e66f8c5402a4ea4`, lavoro
+`wrk_495453140014412a9c70792b4a23c21f`. `run-bhfdribe` e `run-0_env7fh`:
+completato, 5/5 unità confermate, zero errori/attenzioni. Il vecchio lavoro
+resta fermo e conservato; l'archivio completo **non è ancora ripartito**.
+La prova terminata non equivale all'indicizzazione delle 30.942 foto.
+
+La prova ha anche mostrato `uncertain_progress` durante una chiamata modello
+regolare: `refresh_usage_complete` include tentativi ancora vivi, il cui uso
+finale non è ancora registrabile. Correzione successiva del solo proiettore ETA:
+consumi esplicitamente sconosciuti o tentativi terminali senza uso completo
+invalidano ancora la stima; chiamate attive non la invalidano da sole.
+Nessuna modifica alla contabilizzazione o ai gate di completamento. Nuova
+pubblicazione necessaria prima della partenza lunga per evitare di interromperla.

@@ -43,12 +43,16 @@ def claim(store, seconds):
                                 {key: 0 for key in ("cpu", "device", "llm", "local_io", "network_io", "vlm")}))
 
 
-def measured(store, **options):
+def measured(store, *, model_usage=None, **options):
     workload_id = prepare(store, **options)
     for offset in (0, 20, 40):
         lease = claim(store, offset)
         assert lease
         store.mark_running(lease, now=NOW + timedelta(seconds=offset + 2))
+        if model_usage is not None:
+            store._connection.execute("UPDATE attempts SET model_snapshot_json=json_set(model_snapshot_json, '$.mode', 'llm') WHERE state='running'")
+            assert model_usage == "known"
+            store._connection.execute("UPDATE attempts SET metrics_json=json_set(metrics_json, '$.usage_missing', 0, '$.llm_usage', json('{\"schema_version\":\"metnos.durable-model-usage/2\",\"records\":[],\"zero_calls_verified\":true,\"usage_missing\":false,\"cost_unknown\":false}')) WHERE state='running'")
         store.commit_result(lease, ValidatedResult.from_payload(lease.output_schema_version, {"ok": True}),
                             now=NOW + timedelta(seconds=offset + 10))
     return workload_id
@@ -158,7 +162,7 @@ def test_between_claims_retains_whole_job_eta_without_inventing_active_phase(sto
 
 @pytest.mark.parametrize("mutation,reason", [
     ("UPDATE stage_materialization SET completed=0", "phase_expanding"),
-    ("UPDATE revisions SET usage_complete=0", "uncertain_progress"),
+    ("UPDATE revision_usage SET usage_unknown=1", "uncertain_progress"),
     ("UPDATE units SET attempt_count=2 WHERE state='pending'", "uncertain_progress"),
     ("UPDATE units SET state='needs_attention' WHERE state='pending'", "uncertain_progress"),
     ("UPDATE workloads SET state='needs_attention'", "needs_attention"),
@@ -185,6 +189,45 @@ def test_phase_eta_excludes_other_stage_samples_and_refuses_two_active_phases(st
     store._connection.execute("UPDATE units SET stage_id=?,state='leased' WHERE id=(SELECT id FROM units WHERE state='pending' LIMIT 1)", (next_stage,))
     result = store.progress_many(OWNER, [wid], now=NOW + timedelta(seconds=53))[wid]
     assert result["current_phase"] == {"stage_key": None, "estimated_end_at": None, "estimated_end_reason": "multiple_active_phases"}
+
+
+def test_phase_eta_survives_inflight_model_usage_without_weakening_accounting(store):
+    wid = active_measured(store, extra_phase=True)
+    # Reproduce the production lifecycle: a live model attempt has a frozen
+    # model but cannot report final consumption until its response arrives.
+    store._connection.execute("UPDATE attempts SET model_snapshot_json=json_set(model_snapshot_json, '$.mode', 'llm') WHERE state='running'")
+    assert store.refresh_usage_complete(OWNER, wid) is False
+    result = store.progress_many(OWNER, [wid], now=NOW + timedelta(seconds=53))[wid]
+    assert result["current_phase"]["estimated_end_at"] == "2026-09-16T12:03:10.000000Z"
+    assert store._connection.execute("SELECT usage_complete FROM revisions").fetchone()[0] == 0
+    assert store.refresh_usage_complete(OWNER, wid) is False
+
+
+@pytest.mark.parametrize("state", ["running", "failed"])
+def test_phase_eta_rejects_explicit_unknown_model_consumption(store, state):
+    wid = active_measured(store, extra_phase=True)
+    store._connection.execute("UPDATE attempts SET model_snapshot_json=json_set(model_snapshot_json, '$.mode', 'llm'), metrics_json=json_set(metrics_json, '$.usage_missing', 1), state=? WHERE state='running'", (state,))
+    assert store.refresh_usage_complete(OWNER, wid) is False
+    result = store.progress_many(OWNER, [wid], now=NOW + timedelta(seconds=53))[wid]
+    assert result["current_phase"]["estimated_end_reason"] == "uncertain_progress"
+
+
+def test_phase_eta_rejects_terminal_model_attempts_without_usage(store):
+    wid = active_measured(store, extra_phase=True)
+    # Defense in depth: reject the persisted terminal attempt even if the
+    # enclosing unit state has not yet been reconciled to needs_attention.
+    store._connection.execute("UPDATE attempts SET model_snapshot_json=json_set(model_snapshot_json, '$.mode', 'llm'), state='failed' WHERE state='running'")
+    assert store.refresh_usage_complete(OWNER, wid) is False
+    result = store.progress_many(OWNER, [wid], now=NOW + timedelta(seconds=53))[wid]
+    assert result["current_phase"]["estimated_end_reason"] == "uncertain_progress"
+
+
+def test_phase_eta_accepts_accounted_model_samples_while_next_call_runs(store):
+    wid = active_measured(store, extra_phase=True, model_usage="known")
+    store._connection.execute("UPDATE attempts SET model_snapshot_json=json_set(model_snapshot_json, '$.mode', 'llm') WHERE state='running'")
+    assert store.refresh_usage_complete(OWNER, wid) is False
+    result = store.progress_many(OWNER, [wid], now=NOW + timedelta(seconds=53))[wid]
+    assert result["current_phase"]["estimated_end_at"] == "2026-09-16T12:03:10.000000Z"
 
 
 def test_phase_eta_freshness_handles_slow_blocks_but_never_extends_forecast(store):

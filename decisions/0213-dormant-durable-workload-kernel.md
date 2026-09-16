@@ -484,8 +484,12 @@ Only one actively leased/running phase qualifies. Its inventory must be sealed
 and its own materialization complete; at least three first-attempt successful
 completions from that phase are required. A future phase, incomplete later
 materialization or heterogeneous earlier completions never enter its rate.
-Any current-revision uncertain unit, retry or incomplete usage invalidates the
-estimate. `needs_attention` has priority over all lesser unavailability reasons.
+Any current-revision uncertain unit, retry, explicitly unknown usage or terminal
+model attempt without complete usage invalidates the estimate. An in-flight
+model call need not have its final consumption yet: `usage_complete` includes
+these live calls and is therefore not the phase-estimate gate. Its stronger
+completion/accounting semantics remain unchanged. `needs_attention` has
+priority over all lesser unavailability reasons.
 
 The rate is `(last_success - first_success) / (success_count - 1)`; remaining
 phase units use that cadence, anchored at `last_success`, never the poll time.

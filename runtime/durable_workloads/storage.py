@@ -3930,9 +3930,12 @@ class DurableWorkloadStore:
             WITH progress_selected AS (
                 SELECT w.owner_user_id, w.id, w.state, w.active_revision_id,
                        r.inventory_sealed, r.usage_complete,
+                       COALESCE(ru.usage_unknown, 1) AS usage_unknown,
                        CASE WHEN json_valid(r.plan_json) THEN r.plan_json END AS plan_json
                 FROM workloads w LEFT JOIN revisions r
                   ON r.owner_user_id=w.owner_user_id AND r.id=w.active_revision_id
+                LEFT JOIN revision_usage ru
+                  ON ru.owner_user_id=w.owner_user_id AND ru.revision_id=w.active_revision_id
                 WHERE w.owner_user_id=? AND w.id IN ({placeholders})
             ), phase_facts AS (
                 SELECT w.id, SUM(s.stage_type<>'inventory') AS phases,
@@ -3959,6 +3962,16 @@ class DurableWorkloadStore:
                 GROUP BY w.id
             ), attempt_facts AS (
                 SELECT w.id,
+                       SUM(CASE WHEN json_extract(a.model_snapshot_json, '$.mode')='llm'
+                           AND (json_extract(a.metrics_json, '$.usage_missing')=1
+                             OR json_extract(a.metrics_json, '$.llm_usage.cost_unknown')=1
+                             OR ((a.state NOT IN ('leased','running') OR a.ended_at IS NOT NULL)
+                               AND (json_extract(a.metrics_json, '$.usage_missing') IS NOT 0
+                                 OR json_type(a.metrics_json, '$.llm_usage') IS NOT 'object'
+                                 OR json_extract(a.metrics_json, '$.llm_usage.schema_version') IS NOT 'metnos.durable-model-usage/2'
+                                 OR json_extract(a.metrics_json, '$.llm_usage.usage_missing') IS NOT 0
+                                 OR json_extract(a.metrics_json, '$.llm_usage.cost_unknown') IS NOT 0)))
+                           THEN 1 ELSE 0 END) AS uncertain_model_usage,
                        MIN(CASE WHEN json_type(a.metrics_json, '$.execution_started_at')='text'
                            THEN json_extract(a.metrics_json, '$.execution_started_at') END) AS started_at,
                        COUNT(CASE WHEN s.stage_type<>'inventory' AND u.state='committed' AND a.state='succeeded'
@@ -4008,6 +4021,7 @@ class DurableWorkloadStore:
                 GROUP BY w.id, u.stage_id
             )
             SELECT w.id, w.state, w.inventory_sealed, w.usage_complete,
+                   w.usage_unknown, a.uncertain_model_usage,
                    json_array_length(w.plan_json, '$.required_artifacts') AS artifacts,
                    CASE WHEN json_type(w.plan_json, '$.budgets.max_concurrency')='integer'
                        THEN json_extract(w.plan_json, '$.budgets.max_concurrency') END AS max_concurrency,
@@ -4083,7 +4097,11 @@ class DurableWorkloadStore:
                 phase_reason = "inventory_open"
             elif not row["phase_materialized"]:
                 phase_reason = "phase_expanding"
-            elif not row["usage_complete"] or row["uncertain"]:
+            # usage_complete also includes in-flight model calls whose final
+            # usage cannot exist yet. Forecasts depend on completed samples;
+            # block genuinely unknown/terminal missing usage, not live calls.
+            # Keep the stricter completion/accounting gate unchanged elsewhere.
+            elif row["usage_unknown"] or row["uncertain_model_usage"] or row["uncertain"]:
                 phase_reason = "uncertain_progress"
             else:
                 phase_reason = "insufficient_data"
