@@ -281,6 +281,50 @@ def make_execution_receipt(
                             dispatched_at, completed_at)
 
 
+_RECEIPT_RECORD_FIELDS = frozenset({
+    "schema_version", "receipt_id", "request_id", "turn_id", "reduced_query_ref",
+    "arguments_hash", "arguments", "output_hash", "reduced_output", "contract_id",
+    "executor_name", "candidate_id", "generation_id", "dispatched_at", "completed_at",
+})
+
+
+def execution_receipt_from_record(value: object) -> ExecutionReceipt:
+    """Rebuild the exact receipt the runtime retained in one persisted step.
+
+    Feedback arrives long after the turn, from another process, so the typed
+    value cannot survive in memory.  The record is the runtime's own
+    serialization and not a caller's claim: the field set is closed, nothing
+    is coerced, and the self-verifying identity is recomputed by the
+    constructor before the receipt can reach any mutating owner.
+    """
+    if not isinstance(value, Mapping) or set(value) != _RECEIPT_RECORD_FIELDS:
+        raise FeedbackError("feedback_binding_invalid", "execution_receipt record")
+    contract = value["contract_id"]
+    if (not isinstance(contract, Mapping)
+            or set(contract) != {"origin", "relative_manifest"}):
+        raise FeedbackError("feedback_binding_invalid", "contract_id")
+    arguments, output = value["arguments"], value["reduced_output"]
+    if not isinstance(arguments, Mapping) or not isinstance(output, Mapping):
+        raise FeedbackError("feedback_binding_invalid", "retained payload")
+    try:
+        from manifest_inventory import ManifestOrigin
+
+        contract_id = ContractId(
+            ManifestOrigin(contract["origin"]), contract["relative_manifest"])
+    except (TypeError, ValueError) as exc:
+        raise FeedbackError("feedback_binding_invalid", "contract_id") from exc
+    try:
+        return ExecutionReceipt(
+            value["schema_version"], value["receipt_id"], value["request_id"],
+            value["turn_id"], value["reduced_query_ref"], value["arguments_hash"],
+            dict(arguments), value["output_hash"], dict(output), contract_id,
+            value["executor_name"], value["candidate_id"], value["generation_id"],
+            value["dispatched_at"], value["completed_at"],
+        )
+    except TypeError as exc:
+        raise FeedbackError("feedback_binding_invalid", "execution_receipt record") from exc
+
+
 class QuarantineCAS(str, Enum):
     APPLIED = "applied"
     ALREADY_QUARANTINED = "already_quarantined"
