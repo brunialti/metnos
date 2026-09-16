@@ -1,6 +1,11 @@
 # LRE: traccia degli errori ed esiti foto — 16 settembre 2026
 
-Stato: **implementazione in sviluppo; produzione non aggiornata**.
+Stato aggiornato: **pubblicato in produzione con la release 62**. Il collaudo
+reale limitato e la successiva pulizia richiesta dall'utente sono documentati in
+`lre-outcomes-production-20260916.md`.
+
+Il resto di questo documento descrive la chiusura dello sviluppo, precedente
+alla pubblicazione: i riferimenti a produzione non aggiornata sono storici.
 Base: `a590f564`, successiva all'audit multidimensionale LRE.
 Nessun rilancio di lavori reali, riavvio del servizio, modifica degli indici di
 esercizio o cancellazione di foto/storico durante questo intervento.

@@ -6,7 +6,7 @@
 
 ## S. Stato corrente (15/9/2026)
 
-- **Esiti negativi tipizzati LRE e foto — sviluppo, non installato** (16/9,
+- **Esiti negativi tipizzati LRE e foto — installato, release 62** (16/9,
   ADR 0213/0117): il nucleo riceve `domain_outcome` esplicitamente approvato,
   conta solo unità originatrici confermate e chiude con errori senza allentare
   copertura/contabilità. Console e storico conservano `domain_errors.nitems` e
@@ -15,6 +15,11 @@
   prefisso fisso `IMAGE_NOT_INDEXED`, fuori i18n, e motivo tradotto; niente
   vettori inventati o retry automatico. Ricerca diagnostica esatta separata dalle
   foto valide; il successivo aggiornamento riprova gli esiti negativi.
+  Collaudo reale su tre file: uno indicizzato, due esiti negativi espliciti,
+  cinque blocchi confermati e zero errori tecnici; ricerca diagnostica e Tutor
+  verificati. Non certifica la copertura dell'archivio completo. Evidenze e
+  limite del job ammesso durante il rilascio:
+  `internal/reports/lre-outcomes-production-20260916.md`.
 
 - **Shared temporal resolution — installed** (15/9,
   ADR 0176 addendum): schema-declared dates, instants and windows use one
