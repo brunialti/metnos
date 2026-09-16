@@ -13,6 +13,7 @@ import sys
 import threading
 
 from executor_birth_maintenance_units import QUIESCENT_LOAD_STATES_V1
+from executor_lifecycle_state import RESTRICTED_REJECT_PREFIX
 
 
 class ContractCutoverGuardError(RuntimeError):
@@ -383,7 +384,7 @@ def _verify_store_only_catalog_locked(
     fatal = [
         (path, reason)
         for path, reason in catalog.rejected
-        if not reason.startswith("archived by executor_aging")
+        if not reason.startswith(RESTRICTED_REJECT_PREFIX)
         and not reason.startswith("contract_retired:")
     ]
     if fatal:
@@ -397,7 +398,7 @@ def _verify_store_only_catalog_locked(
         if executor is not None and executor.generation_id == generation:
             continue
         intentionally_archived = any(
-            reason.startswith("archived by executor_aging")
+            reason.startswith(RESTRICTED_REJECT_PREFIX)
             and storage_key in path and generation in path
             for path, reason in catalog.rejected
         )

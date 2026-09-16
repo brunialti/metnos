@@ -1385,53 +1385,45 @@ def _load_catalog_under_catalog_lock(
         except Exception as e:
             log.warning("[loader] builtin-store registration failed: %s", e)
 
-    # Apply lifecycle override from executor_aging stats + register newly
-    # discovered executors with their source. Best-effort: if the module
-    # isn't available (dev mode) we silently skip the integration.
+    # Apply the restrictions of whichever store owns this installation's
+    # executor lifecycle state, and let that same owner record newly
+    # discovered executors. Best-effort: if the module isn't available
+    # (dev mode) we silently skip the integration.
     try:
-        from executor_aging import lifecycle_override_map
+        from executor_lifecycle_state import (
+            RESTRICTED_REJECT_PREFIX, Restriction, catalog_restrictions,
+            register_loaded_executors,
+        )
         # Register each executor from its admitted metadata. Post-cutover the
         # live manifest path belongs to the generation store, so path shape is
         # neither provenance nor a reason to reopen authoring.
         if not audit_only:
-            from executor_aging import register as _exec_register
+            register_loaded_executors(tuple(catalog.executors.values()))
 
-            for ex in catalog.executors.values():
-                try:
-                    if ex.source == "imported":
-                        src = "skill"
-                    elif ex.source == "synthesized":
-                        src = "synth:reactive"
-                    else:
-                        src = "handcrafted"
-                    _exec_register(ex.name, source=src)
-                except Exception:
-                    pass
-
-        overrides = lifecycle_override_map(read_only=audit_only)
-        if overrides:
-            to_archive = []
-            for name, target_state in overrides.items():
-                ex = catalog.executors.get(name)
-                if ex is None:
-                    continue
-                if target_state == "archived":
-                    to_archive.append(name)
-                else:
-                    ex.lifecycle = target_state
-            for name in to_archive:
-                ex = catalog.executors.pop(name, None)
-                if ex is not None:
-                    catalog.rejected.append(
-                        (str(ex.manifest_path),
-                         "archived by executor_aging (inactive too long)")
-                    )
+        restrictions = catalog_restrictions(
+            tuple(catalog.executors.values()), read_only=audit_only)
+        to_remove = []
+        for name, (restriction, reason) in restrictions.items():
+            ex = catalog.executors.get(name)
+            if ex is None:
+                continue
+            if restriction is Restriction.REMOVED:
+                to_remove.append((name, reason))
+            else:
+                ex.lifecycle = restriction.value
+        for name, reason in to_remove:
+            ex = catalog.executors.pop(name, None)
+            if ex is not None:
+                catalog.rejected.append(
+                    (str(ex.manifest_path),
+                     f"{RESTRICTED_REJECT_PREFIX}: {reason}")
+                )
     except ImportError:
         pass
     except Exception as e:
         if audit_only:
             raise
-        log.warning("loader: executor_aging override failed: %s", e)
+        log.warning("loader: lifecycle restriction pass failed: %s", e)
 
     # Ogni reject è visibile almeno nel log anche quando nessuna UI admin è
     # aperta. Il Catalog conserva la stessa lista per la superficie HTTP.

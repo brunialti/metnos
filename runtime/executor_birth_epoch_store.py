@@ -15,7 +15,7 @@ import struct
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Mapping
+from typing import Mapping, Sequence
 
 from manifest_inventory import ContractId
 from executor_birth_feedback import QuarantineCAS
@@ -509,6 +509,42 @@ def read_epoch(*, contract_id: ContractId, generation_id: str, db_path: Path) ->
                            BirthLifecycle(row["lifecycle"]), row["state_version"])
     finally:
         connection.close()
+
+
+def read_epochs(
+    keys: Sequence[tuple[ContractId, str]], *, db_path: Path,
+) -> dict[tuple[str, str], EpochRecord]:
+    """Read many exact epochs in one pass, never resolving by executor name.
+
+    Catalog loading asks about every generation it actually loaded, so the
+    answer must cost one bounded traversal rather than one open per executor.
+    Absent keys are simply missing from the result: their meaning belongs to
+    the caller, not to this reader.
+    """
+    wanted = [(_contract(contract_id), _generation(generation_id))
+              for contract_id, generation_id in keys]
+    if not wanted:
+        return {}
+    found: dict[tuple[str, str], EpochRecord] = {}
+    connection = _open(db_path)
+    try:
+        for start in range(0, len(wanted), 200):
+            chunk = wanted[start:start + 200]
+            placeholders = ",".join("(?,?)" for _ in chunk)
+            rows = connection.execute(
+                "SELECT contract_id,generation_id,name,source,state,lifecycle,state_version "
+                f"FROM executor_epochs WHERE (contract_id,generation_id) IN ({placeholders})",
+                [value for pair in chunk for value in pair],
+            ).fetchall()
+            for row in rows:
+                found[(row["contract_id"], row["generation_id"])] = EpochRecord(
+                    row["contract_id"], row["generation_id"], row["name"], row["source"],
+                    EpochState(row["state"]), BirthLifecycle(row["lifecycle"]),
+                    row["state_version"],
+                )
+    finally:
+        connection.close()
+    return found
 
 
 def attest_execution_epoch(
