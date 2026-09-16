@@ -475,3 +475,36 @@ deliberately limited to homogeneous single-phase work. Discovery partial files
 are not a resumable scan cursor; committed phases/groups remain recoverable.
 Tests: `test_description.py`, `test_progress.py`, owner-scoped control/API and
 isolated Chromium IT/EN desktop/mobile in `test_durable_console_behavior.py`.
+
+## 16 September 2026 — phase estimate is not a whole-job promise
+
+`progress.current_phase` exposes a persisted stage key, estimated end and a
+closed unavailable-reason code, separately from the original whole-job ETA.
+Only one actively leased/running phase qualifies. Its inventory must be sealed
+and its own materialization complete; at least three first-attempt successful
+completions from that phase are required. A future phase, incomplete later
+materialization or heterogeneous earlier completions never enter its rate.
+Any current-revision uncertain unit, retry or incomplete usage invalidates the
+estimate. `needs_attention` has priority over all lesser unavailability reasons.
+
+The rate is `(last_success - first_success) / (success_count - 1)`; remaining
+phase units use that cadence, anchored at `last_success`, never the poll time.
+The sample span must be at least ten seconds. Freshness is bounded by
+`min(1800 seconds, phase timeout, max(120 seconds, 2 * cadence))`, accommodating
+multi-minute blocks without treating an indefinitely quiet phase as progress.
+Overdue, future-clock and forecasts beyond seven days produce no ETA. This is
+an indicative throughput estimate, not a claim that individual blocks have
+equal costs or that later phases finish at the same time. No schema or scheduler
+change is required; the bounded owner-scoped page query aggregates only the
+current admitted revision. The original cautious single-phase whole-job ETA
+remains available between claims without inventing an active phase.
+
+The main console metric explicitly names the current phase in Italian and
+English. The distinct whole-job estimate remains in collapsed technical
+details; unavailable estimates explain why, and readiness/freshness protections
+still suppress display. Existing percentage remains a count of known committed
+units and is never used to extrapolate this forecast. Tests in `test_progress.py`
+cover separate phases, sample contamination, concurrent phases, materialization,
+attention/retries/usage, slow blocks, stale and overdue forecasts, and fixed
+polling anchors; `test_durable_console_behavior.py` covers scope separation,
+IT/EN catalog and isolated real-browser presentation.

@@ -3908,7 +3908,8 @@ class DurableWorkloadStore:
         """Read bounded page telemetry; never use admission/lease time as start.
 
         Percentages count committed *known* units, not time or source coverage.
-        ETA is deliberately unavailable for heterogeneous/expanding plans.
+        Whole-job ETA is unavailable for heterogeneous/expanding plans. The
+        separate current-phase ETA uses only that fully materialized phase.
         One aggregate statement covers the page, including attempt history.
         """
         owner = _require_owner(owner_user_id)
@@ -3973,6 +3974,38 @@ class DurableWorkloadStore:
                 LEFT JOIN attempts a ON a.owner_user_id=u.owner_user_id AND a.unit_id=u.id
                 LEFT JOIN stages s ON s.owner_user_id=u.owner_user_id AND s.id=u.stage_id
                 GROUP BY w.id
+            ), phase_unit_facts AS (
+                SELECT w.id, s.id AS stage_id, s.stage_key, s.timeout_s,
+                       COALESCE(m.completed, 0) AND m.attention_code IS NULL AS materialized,
+                       COUNT(u.id) AS total, SUM(u.state='committed') AS committed,
+                       SUM(u.state IN ('running','leased')) AS active
+                FROM progress_selected w JOIN stages s
+                  ON s.owner_user_id=w.owner_user_id AND s.revision_id=w.active_revision_id
+                 AND s.stage_type<>'inventory'
+                LEFT JOIN units u ON u.owner_user_id=s.owner_user_id
+                  AND u.revision_id=s.revision_id AND u.stage_id=s.id
+                LEFT JOIN stage_materialization m ON m.owner_user_id=s.owner_user_id
+                  AND m.revision_id=s.revision_id AND m.stage_id=s.id
+                GROUP BY w.id, s.id
+            ), active_phase AS (
+                SELECT id, COUNT(*) AS active_phases, MIN(stage_id) AS stage_id
+                FROM phase_unit_facts WHERE active>0 GROUP BY id
+            ), phase_attempt_facts AS (
+                SELECT w.id, u.stage_id,
+                       MIN(CASE WHEN json_type(a.metrics_json, '$.execution_started_at')='text'
+                           THEN json_extract(a.metrics_json, '$.execution_started_at') END) AS started_at,
+                       COUNT(CASE WHEN u.state='committed' AND a.state='succeeded'
+                           AND u.attempt_count=1 AND a.ended_at IS NOT NULL
+                           AND json_type(a.metrics_json, '$.execution_started_at')='text'
+                           THEN 1 END) AS samples,
+                       MIN(CASE WHEN u.state='committed' AND a.state='succeeded'
+                           THEN a.ended_at END) AS first_completion,
+                       MAX(CASE WHEN u.state='committed' AND a.state='succeeded'
+                           THEN a.ended_at END) AS last_completion
+                FROM progress_selected w JOIN units u
+                  ON u.owner_user_id=w.owner_user_id AND u.revision_id=w.active_revision_id
+                LEFT JOIN attempts a ON a.owner_user_id=u.owner_user_id AND a.unit_id=u.id
+                GROUP BY w.id, u.stage_id
             )
             SELECT w.id, w.state, w.inventory_sealed, w.usage_complete,
                    json_array_length(w.plan_json, '$.required_artifacts') AS artifacts,
@@ -3981,9 +4014,18 @@ class DurableWorkloadStore:
                    p.phases, p.materialized, p.timeout_s,
                    u.running_units, u.leased_units,
                    u.total, u.committed, u.uncertain, u.estimate_total, u.estimate_committed,
-                   a.started_at, a.samples, a.first_completion, a.last_completion
+                   a.started_at, a.samples, a.first_completion, a.last_completion,
+                   ap.active_phases, pu.stage_key AS current_stage_key,
+                   pu.timeout_s AS phase_timeout_s, pu.materialized AS phase_materialized,
+                   pu.total AS phase_total, pu.committed AS phase_committed,
+                   pa.started_at AS phase_started_at, pa.samples AS phase_samples,
+                   pa.first_completion AS phase_first_completion,
+                   pa.last_completion AS phase_last_completion
             FROM progress_selected w JOIN phase_facts p USING(id)
             JOIN unit_facts u USING(id) JOIN attempt_facts a USING(id)
+            LEFT JOIN active_phase ap USING(id)
+            LEFT JOIN phase_unit_facts pu ON pu.id=w.id AND pu.stage_id=ap.stage_id
+            LEFT JOIN phase_attempt_facts pa ON pa.id=w.id AND pa.stage_id=pu.stage_id
             """,
             (owner, *identifiers),
         ).fetchall()
@@ -4026,15 +4068,63 @@ class DurableWorkloadStore:
                         estimated_end_at = instant_text(estimate, name="estimated end")
                 except (TypeError, ValueError, OverflowError):
                     pass
+            phase_end_at = None
+            phase_key = row["current_stage_key"] if row["active_phases"] == 1 else None
+            phase_committed = int(row["phase_committed"] or 0)
+            if row["state"] == "needs_attention":
+                phase_reason = "needs_attention"
+            elif row["state"] != "running":
+                phase_reason = "not_running"
+            elif not row["active_phases"]:
+                phase_reason = "no_active_phase"
+            elif row["active_phases"] != 1:
+                phase_reason = "multiple_active_phases"
+            elif not row["inventory_sealed"]:
+                phase_reason = "inventory_open"
+            elif not row["phase_materialized"]:
+                phase_reason = "phase_expanding"
+            elif not row["usage_complete"] or row["uncertain"]:
+                phase_reason = "uncertain_progress"
+            else:
+                phase_reason = "insufficient_data"
+                if (row["phase_samples"] == phase_committed and phase_committed >= 3
+                        and row["phase_total"] > phase_committed):
+                    try:
+                        phase_start = parse_instant(row["phase_started_at"])
+                        first = parse_instant(row["phase_first_completion"])
+                        last = parse_instant(row["phase_last_completion"])
+                        span = (last - first).total_seconds()
+                        if phase_start <= first < last <= current and span >= 10:
+                            cadence = span / (phase_committed - 1)
+                            # Recent means at most two measured completion
+                            # intervals, at least 120s, bounded by the frozen
+                            # unit timeout and an absolute 30-minute ceiling.
+                            freshness_s = min(1800, row["phase_timeout_s"], max(120, 2 * cadence))
+                            estimate = last + timedelta(seconds=cadence * (row["phase_total"] - phase_committed))
+                            if (current - last).total_seconds() > freshness_s:
+                                phase_reason = "stale_progress"
+                            elif estimate <= current:
+                                phase_reason = "estimate_overdue"
+                            elif estimate <= current + timedelta(days=7):
+                                phase_end_at = instant_text(estimate, name="estimated phase end")
+                                phase_reason = None
+                    except (TypeError, ValueError, OverflowError):
+                        pass
             result[str(row["id"])] = {
                 "started_at": started_at,
                 "known_units_percent": percentage,
                 "estimated_end_at": estimated_end_at,
                 "estimated_end_reason": (
                     None if estimated_end_at else
-                    "multi_phase" if (row["phases"] or 0) > 1 else
-                    "not_running" if row["state"] != "running" else "insufficient_data"
+                    "needs_attention" if row["state"] == "needs_attention" else
+                    "not_running" if row["state"] != "running" else
+                    "multi_phase" if (row["phases"] or 0) > 1 else "insufficient_data"
                 ),
+                "current_phase": {
+                    "stage_key": phase_key,
+                    "estimated_end_at": phase_end_at,
+                    "estimated_end_reason": phase_reason,
+                },
                 "parallelism": {
                     "running_units": int(row["running_units"] or 0),
                     "leased_units": int(row["leased_units"] or 0),

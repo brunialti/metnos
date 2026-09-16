@@ -114,22 +114,16 @@ enroll a person do not have to belong to the archive being searched.</p>
 
 <h3 id="photo-indexing-resume">Small, resumable steps</h3>
 
-<p>LRE discovers the files in the background, prepares folder context and
-analyses the photos in small groups. Independent units may overlap within the
-configured resource limits; model capacity is not unlimited. Completed units
-and their verified outputs survive a worker restart, so processing can resume
-without repeating accepted work. The local vision model starts when needed
-and may stop after an idle period. The new index becomes visible only when its
-complete generation is published; an earlier complete index remains usable
-during a rebuild. A model or file error remains visible as a workload problem,
-not a successful index.</p>
-
-<p>Initial discovery is a single unit: the number of analysis groups is known
-only after files have been discovered. If that scan stops before it is committed,
-it starts over; intermediate parts are not a resumable cursor. Once committed,
-completed phases and groups remain saved. An interruption with uncertain effects
-or usage may require review before retrying: restarting the service does not
-resolve the workload itself.</p>
+<p>LRE discovers files in the background, prepares folder context and analyses
+photos in small groups, in parallel within configured resource limits. Only
+completed, accepted units and verified outputs survive a worker restart without repetition.
+Initial discovery is one unit: it establishes the group count and starts over
+if interrupted before commit; intermediate parts are not a resumable cursor.
+Uncertain effects or usage may require review before retrying: a restart does not
+resolve the problem. The local vision model starts when needed and may stop
+when idle. The new index appears only when its complete generation is published;
+the previous complete index remains usable. A model or file error remains visible
+as a problem, not a successful index.</p>
 
 <h3 id="photo-indexing-duration">Why initial preparation can take a long time</h3>
 
@@ -324,11 +318,11 @@ open for execution to continue.</p>
 <ol class="ui-callout-list">
  <li><strong>General navigation.</strong> Open <code>Settings → System → LRE</code>; the entry remains visible in the web interface's navigation column.</li>
  <li><strong>Workload list.</strong> Each row shows activity, available folder, state and progress. Selecting it loads details without starting another execution. The observed phase appears in the detail.</li>
- <li><strong>Start, percentage and estimated finish.</strong> List and detail show the first actual execution of the current revision, excluding queue time. The percentage counts saved units among known units, not elapsed time: it can decrease as new units appear. It does not reach 100% before workload completion. The finish estimate is indicative only: it requires a sealed inventory, a single processing phase after inventory, at least three recent results and no retry, error or final artifact still needing verification. For multi-phase jobs such as photo indexing, insufficient samples, pauses, an unavailable engine or stale data, the estimate is <strong>n.a.</strong> (not available). Start and percentage also show <strong>n.a.</strong> when the necessary data is missing.</li>
+ <li><strong>Start, percentage and estimated finish of the current phase.</strong> List and detail show the first actual execution of the current revision, excluding queue time. The percentage counts saved units among known units, not elapsed time: it can decrease as new units appear. It does not reach 100% before workload completion. The main estimate covers only the current phase, such as photo analysis: it requires a sealed inventory, one fully prepared active phase and at least three completed blocks in that phase. Errors, retries, uncertain usage, pauses, an unavailable engine or stale progress produce <strong>n.a.</strong> (not available), with a reason. Refreshing the page alone does not push the estimate forward. Technical details retain a separate whole-job estimate, available only for single-phase plans. Start and percentage also show <strong>n.a.</strong> when the necessary data is missing.</li>
  <li><strong>Workload facts.</strong> Engine state is separate from job state: an available engine does not prove a job is progressing. Successful units are separate from unfinished units, those needing attention, failed or cancelled units, and skipped units. Units do not necessarily correspond to individual photos or files; the total may grow during discovery.</li>
  <li><strong>Freshness and problems.</strong> The page periodically checks state and warns when data is not refreshed. A disconnection does not preserve a false progress indication. Available causes are prominent; a generic state update is not presented as a new result. After loading further list pages, use <strong>Refresh list and status</strong> to return to the refreshed first page.</li>
  <li><strong>Parallelism.</strong> Running units are distinct from the workload's admitted concurrency limit. They do not count threads or processes; other jobs and resource limits may reduce actual parallelism.</li>
- <li><strong>Discovery and missing estimates.</strong> During initial photo discovery, percentage is n.a.: the final total is not known yet. A missing finish estimate displays a reason; overall estimates for multi-phase jobs are not currently available.</li>
+ <li><strong>Discovery and missing estimates.</strong> During initial photo discovery, percentage is n.a.: the final total is not known yet. A missing finish estimate displays a reason, giving priority to a job requiring intervention. The current-phase estimate is not an overall estimate for multi-phase jobs, which remains unavailable.</li>
  <li><strong>Optional details.</strong> Explanations, events, digests, plan, stages and limits are in collapsible sections. The identifier distinguishes jobs without exposing the private request text.</li>
  <li><strong>Revision digests.</strong> Identify the plan and inventory that were actually admitted.</li>
  <li><strong>Admitted budget.</strong> Ceilings for units, attempts, duration, bytes, tokens, artifacts, and concurrency.</li>

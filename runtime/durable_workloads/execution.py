@@ -69,6 +69,11 @@ _CAPABILITY_ERRORS = frozenset({
     "placement", "permission_denied", "capability_unavailable",
     "missing_source_context",
 })
+_REPORTED_ERROR_CLASSES = (
+    _TRANSIENT_ERRORS | _CONTRACT_ERRORS | _CAPABILITY_ERRORS
+    | {"budget_exhausted", "publication_ambiguous", "execution_failed", "invalid_input"}
+)
+_REPORTED_ERROR_CODE_RE = re.compile(r"[A-Za-z][A-Za-z0-9_.-]{0,95}\Z")
 _SOURCE_AUTHORITY_RE = re.compile(r"[a-z0-9][a-z0-9._:-]{0,63}")
 _CONTROL_MUTATION_BATCH = 200
 log = logging.getLogger("metnos.durable_workloads.execution")
@@ -744,10 +749,22 @@ class DurableExecutionBridge:
                 executor = self._executor_loader(contract.name)
             except Exception as exc:
                 cause = _loader_failure_cause(exc)
+                from manifest_inventory import closed_inventory_diagnostics
+
+                diagnostics = closed_inventory_diagnostics(
+                    getattr(exc, "inventory_diagnostics", ()),
+                ) if cause == "store_inventory_invalid" else ()
+                details: dict[str, Any] = {"runner_name": contract.name, "loader_cause": cause}
+                if diagnostics:
+                    details["inventory_diagnostics"] = [
+                        {"code": code, "cause_code": nested, "os_errno": number}
+                        for code, nested, number in diagnostics
+                    ]
                 log.warning(
                     "durable_executor_load_failed workload_id=%s attempt_id=%s "
-                    "runner_name=%s cause=%s",
+                    "runner_name=%s cause=%s inventory_diagnostics=%s",
                     context.workload_id, context.attempt_id, contract.name, cause,
+                    diagnostics,
                 )
                 raise self._failure(
                     "capability_unavailable",
@@ -755,7 +772,7 @@ class DurableExecutionBridge:
                           else "execution.executor_unavailable"),
                     message_key="ERR_DURABLE_RUNNER_UNAVAILABLE",
                     retry="manual",
-                    details={"runner_name": contract.name, "loader_cause": cause},
+                    details=details,
                 ) from exc
             lifecycle = str(getattr(executor, "lifecycle", "") or "")
             if self._require_generation_attestation and lifecycle == "quarantined":
@@ -926,8 +943,12 @@ class DurableExecutionBridge:
         )
         return envelope["observation"]
 
-    def _observation_failure(self, observation: Mapping[str, Any]) -> ExecutionFailure:
+    def _observation_failure(
+        self, observation: Mapping[str, Any], schema: ApprovedOutputSchema,
+    ) -> ExecutionFailure:
         observed = observation.get("error_class")
+        if type(observed) is not str or observed not in _REPORTED_ERROR_CLASSES:
+            observed = "unknown"
         if observed in _TRANSIENT_ERRORS:
             error_class, retry = "executor_transient", "automatic"
         elif observed == "budget_exhausted":
@@ -940,12 +961,26 @@ class DurableExecutionBridge:
             error_class, retry = "capability_unavailable", "manual"
         else:
             error_class, retry = "executor_permanent", "never"
+        # Only this attempt's already verified schema can name diagnostic
+        # codes. A string/pattern schema is not a closed vocabulary, and a
+        # syntactically plausible observation is never authority by itself.
+        code = observation.get("error_code")
+        code_schema = schema.field_schema("error_code")
+        allowed = code_schema.get("enum") if code_schema is not None else None
+        reported_code = "unknown"
+        if (
+            type(code) is str and _REPORTED_ERROR_CODE_RE.fullmatch(code)
+            and code_schema is not None and code_schema.get("type") == "string"
+            and isinstance(allowed, (tuple, list))
+            and any(type(item) is str and item == code for item in allowed)
+        ):
+            reported_code = code
         return self._failure(
             error_class,
             code="execution.runner_failed",
             message_key="ERR_DURABLE_EXECUTION_FAILED",
             retry=retry,
-            details={"reported_error_class": str(observed or "unknown")[:64]},
+            details={"reported_error_class": observed, "reported_error_code": reported_code},
         )
 
     @staticmethod
@@ -1164,7 +1199,7 @@ class DurableExecutionBridge:
 
         if invocation_failure is None and isinstance(observation, Mapping):
             if observation.get("ok") is False:
-                invocation_failure = self._observation_failure(observation)
+                invocation_failure = self._observation_failure(observation, schema)
 
         if usage_sink is not None:
             try:
@@ -1212,7 +1247,7 @@ class DurableExecutionBridge:
                 retry="never",
             )
         if observation.get("ok") is False:
-            raise self._observation_failure(observation)
+            raise self._observation_failure(observation, schema)
         invocation_id = observation.get("invocation_id")
         remote = observation.get("_remote")
         if isinstance(remote, Mapping):

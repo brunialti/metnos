@@ -122,9 +122,11 @@ def _describe_prompt(lang: str) -> str:
     return prompt_loader.get("vlm_describe_image", lang or "it")
 
 
-def _parse_vlm_text(text: str) -> dict:
+def _parse_vlm_text(text: str, *, response_schema: dict | None = None) -> dict:
     """Estrae JSON dall'output VLM. Robusto a wrapping ```json ...```."""
-    s = (text or "").strip()
+    if not isinstance(text, str):
+        return _vlm_fail("invalid_response_type")
+    s = text.strip()
     if s.startswith("```"):
         lines = s.split("\n")
         if len(lines) >= 2:
@@ -143,6 +145,14 @@ def _parse_vlm_text(text: str) -> dict:
             return _vlm_fail("no_json_found")
     if not isinstance(d, dict):
         return _vlm_fail("not_dict")
+    if response_schema is not None:
+        import jsonschema
+        try:
+            jsonschema.validate(d, response_schema)
+        except (jsonschema.ValidationError, jsonschema.SchemaError):
+            return _vlm_fail("response_schema_mismatch")
+    if not isinstance(d.get("keywords", []), list):
+        return _vlm_fail("invalid_keywords")
     return {
         "description": str(d.get("description", "")).strip(),
         "keywords": [str(k).strip() for k in d.get("keywords", [])
@@ -179,7 +189,8 @@ def describe_image(img_path, *, lang: str | None = None,
                    timeout_s: float | None = None,
                    max_tokens: int | None = None,
                    deadline_at: float | None = None,
-                   allow_lazy_start: bool = True) -> dict:
+                   allow_lazy_start: bool = True,
+                   response_schema: dict | None = None) -> dict:
     """Descrive il CONTENUTO di un'immagine col VLM. Ritorna dict
     {description, keywords, location_hint, activity_hint} (+`_vlm_error` su
     fallimento, mai solleva — fail-safe §2.8). `lang` usa per default la
@@ -190,7 +201,9 @@ def describe_image(img_path, *, lang: str | None = None,
     ``deadline_at`` è un deadline monotono condiviso: preprocessing, lazy
     start e retry non possono rinnovare il budget a ogni fase.
     ``allow_lazy_start=False`` permits a durable unit to make one request
-    without launching a model process or retrying inside the unit."""
+    without launching a model process or retrying inside the unit.
+    ``response_schema`` constrains generation and is validated locally too;
+    unsupported structured output never triggers an unconstrained retry."""
     import base64
     from io import BytesIO
 
@@ -253,6 +266,13 @@ def describe_image(img_path, *, lang: str | None = None,
         "temperature": 0.2, "max_tokens": max_tokens,
         "top_p": 0.8, "top_k": 20, "presence_penalty": 0.0, "repeat_penalty": 1.0,
     }
+    if response_schema is not None:
+        import jsonschema
+        try:
+            jsonschema.Draft202012Validator.check_schema(response_schema)
+        except jsonschema.SchemaError:
+            return _vlm_fail("response_schema_invalid")
+        payload["response_format"] = {"type": "json_object", "schema": response_schema}
     try:
         from utf8_safe import safe_json_dumps as _safe_dumps  # type: ignore
         body = _safe_dumps(payload).encode("utf-8")
@@ -327,6 +347,12 @@ def describe_image(img_path, *, lang: str | None = None,
         # Telemetry is observational; missing counters are handled fail-closed
         # by the durable bridge when a plan requires model accounting.
         pass
+    # Account the actual call above even when generation stopped at its cap.
+    # A syntactically complete object may still be an incomplete answer.
+    if isinstance(out, dict) and isinstance(out.get("choices"), list) and out["choices"]:
+        choice = out["choices"][0]
+        if isinstance(choice, dict) and choice.get("finish_reason") == "length":
+            return _vlm_fail("output_truncated")
     if not text:
         return _vlm_fail("resp_unparseable")
-    return _parse_vlm_text(text)
+    return _parse_vlm_text(text, response_schema=response_schema)

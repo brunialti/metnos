@@ -91,7 +91,9 @@ def test_new_plan_publishes_and_searches_after_restart_without_repeating_accepte
     monkeypatch.setattr("vlm_client.model_binding_facts", lambda: dict(vision_binding))
     calls = {"vision": [], "folder": [], "phases": []}
 
-    def describe(snapshot, *, prompt, max_tokens, allow_lazy_start):
+    def describe(snapshot, *, prompt, max_tokens, allow_lazy_start, response_schema):
+        from image_index_build import DESCRIPTION_SCHEMA
+        assert response_schema == DESCRIPTION_SCHEMA
         assert Path(snapshot).is_file() and not allow_lazy_start and max_tokens == 512
         computer = "workstation-computer.jpg" in prompt
         calls["vision"].append("computer" if computer else "landscape")

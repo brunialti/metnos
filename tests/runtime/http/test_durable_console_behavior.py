@@ -67,12 +67,15 @@ assert.equal(ui.jobTitle({description: {kind: "image_indexing"}}), "photoIndexin
 assert.equal(ui.jobFolder({}), null);
 assert.equal(ui.jobFolder({description: {target_path: "/photos/<script>alert(1)</script>"}}), "/photos/<script>alert(1)</script>");
 const timing = {started_at: new Date(Date.now() - 10000).toISOString(), known_units_percent: 30, observed_at: new Date().toISOString(), estimated_end_at: new Date(Date.now() + 60000).toISOString()};
+timing.current_phase = {stage_key: "analyze", estimated_end_at: new Date(Date.now() + 30000).toISOString(), estimated_end_reason: null};
 ui.setEngine({enabled: false, state: "degraded", reason_code: "feature_disabled", worker_available: false});
 assert.ok(nodes.get("dwEngine").textContent.includes("engineDisabled"));
 assert.equal(ui.estimateText(timing), "n.a.");
 ui.setEngine({enabled: true, state: "ready", worker_available: true});
 assert.ok(nodes.get("dwEngine").textContent.includes("engineReady"));
 assert.notEqual(ui.estimateText(timing), "n.a.");
+assert.notEqual(ui.estimateText(timing, "phase"), ui.estimateText(timing));
+assert.equal(ui.estimateText({...timing, current_phase: null}, "phase"), "n.a.");
 assert.equal(ui.estimateText({...timing, observed_at: new Date(Date.now() - 31000).toISOString()}), "n.a.");
 assert.equal(ui.estimateText({...timing, estimated_end_at: new Date(Date.now() - 1).toISOString()}), "n.a.");
 ui.appendProgress(nodes.get("dwDetail"), timing);
@@ -101,7 +104,8 @@ const job = id => ({workload: {workload_id: id, state: "needs_attention", versio
   assert.ok(nodes.get("dwDetail").textContent.includes("noResult"));
   assert.ok(nodes.get("dwDetail").textContent.includes("startedn.a."));
   assert.ok(nodes.get("dwDetail").textContent.includes("percentn.a."));
-  assert.ok(nodes.get("dwDetail").textContent.includes("estimatedEndn.a."));
+  assert.ok(nodes.get("dwDetail").textContent.includes("phaseEstimatedEndn.a."));
+  assert.ok(nodes.get("dwDetail").textContent.includes("wholeEstimatedEndn.a."));
   const sections = nodes.get("dwDetail").querySelectorAll("details[data-section]");
   assert.equal(sections.length, 4, "help, events, technical metadata and artifacts are collapsible");
   assert.ok(sections.every(section => !section.open), "verbose details start collapsed");
@@ -167,6 +171,13 @@ const job = id => ({workload: {workload_id: id, state: "needs_attention", versio
 
 def test_console_labels_exist_in_both_seed_languages():
     with sqlite3.connect(f"file:{ROOT / 'install/data/i18n_seed.sqlite'}?mode=ro", uri=True) as conn:
+        for suffix in ("PHASE_ESTIMATED_FINISH", "WHOLE_ESTIMATED_FINISH", "PHASE_TIMING_HELP",
+                       "ETA_NEEDS_ATTENTION", "ETA_NO_ACTIVE_PHASE", "ETA_MULTIPLE_ACTIVE_PHASES",
+                       "ETA_INVENTORY_OPEN", "ETA_PHASE_EXPANDING", "ETA_UNCERTAIN_PROGRESS",
+                       "ETA_STALE_PROGRESS", "ETA_ESTIMATE_OVERDUE"):
+            rows = conn.execute("SELECT lang,text,needs_translation FROM i18n WHERE key=? AND lang IN ('it','en')", ("UI_DURABLE_" + suffix,)).fetchall()
+            assert {row[0] for row in rows} == {"it", "en"}
+            assert all(row[1] and not row[2] for row in rows)
         for suffix in ("ENGINE", "ENGINE_READY", "ENGINE_DISABLED", "ENGINE_UNAVAILABLE", "FRESH", "STALE", "REFRESH", "ACTIVITY", "TECHNICAL", "SAVED", "PENDING", "FAILED_COUNT", "SKIPPED", "ATTENTION", "BLOCKED_HELP", "WAITING_HELP", "PROGRESS_HELP", "LAST_RESULT", "NO_RESULT", "ERROR_ACCOUNTING_INCOMPLETE", "ERROR_BUDGET_GUARD", "STATE_PENDING", "STATE_LEASED", "STATE_RETRY_WAIT", "STATE_COMMITTED", "STATE_FAILED_PERMANENT", "STATE_SKIPPED", "ATTEMPTS"):
             rows = conn.execute("SELECT lang,text,needs_translation FROM i18n WHERE key=? AND lang IN ('it','en')", ("UI_DURABLE_" + suffix,)).fetchall()
             assert {row[0] for row in rows} == {"it", "en"}
@@ -215,6 +226,7 @@ def test_console_design_browser_isolated(monkeypatch, tmp_path, lang):
         "progress": {"started_at": "2026-09-16T10:00:02Z", "known_units_percent": 0, "estimated_end_at": None, "estimated_end_reason": "multi_phase", "parallelism": {"running_units": 1, "leased_units": 0, "max_concurrency": 8}},
     }
     payload = {"workload": workload, "revision": {"execution": {"last_committed_at": None}}}
+    workload["progress"]["current_phase"] = {"stage_key": "discover", "estimated_end_at": None, "estimated_end_reason": "insufficient_data"}
 
     def respond(route):
         path = route.request.url.split("example.test", 1)[-1]
@@ -259,7 +271,9 @@ def test_console_design_browser_isolated(monkeypatch, tmp_path, lang):
             assert page.locator("#dwDetail .dw-folder script").count() == 0
             assert page.locator("#dwDetail > .dw-timing").inner_text().count("n.a.") == 2
             assert page.get_by_text(texts["UI_DURABLE_DISCOVERY_HELP"], exact=True).is_visible()
-            assert page.get_by_text(texts["UI_DURABLE_ETA_MULTI_PHASE"], exact=True).is_visible()
+            assert page.locator("#dwDetail > .dw-timing").get_by_text(texts["UI_DURABLE_ETA_INSUFFICIENT_DATA"], exact=True).is_visible()
+            assert page.locator("#dwDetail > .dw-timing").get_by_text(texts["UI_DURABLE_PHASE_ESTIMATED_FINISH"], exact=True).is_visible()
+            assert not page.get_by_text(texts["UI_DURABLE_WHOLE_ESTIMATED_FINISH"], exact=True).is_visible()
             assert page.get_by_text(texts["UI_DURABLE_RUNNING_BLOCKS"] + ": 1 · " + texts["UI_DURABLE_JOB_LIMIT"] + ": 8", exact=True).is_visible()
             assert page.locator("#dwDetail progress").count() == 0
             assert page.locator("#dwDetail details[open]").count() == 0
@@ -276,12 +290,26 @@ def test_console_design_browser_isolated(monkeypatch, tmp_path, lang):
             workload["state"] = "needs_attention"
             workload["description"]["phase"] = "analyze"
             workload["progress"]["parallelism"]["running_units"] = 0
+            workload["progress"]["current_phase"] = {"stage_key": None, "estimated_end_at": None, "estimated_end_reason": "needs_attention"}
+            workload["progress"]["estimated_end_reason"] = "needs_attention"
             page.locator("#dwRefresh").click()
             page.get_by_text(texts["UI_DURABLE_BLOCKED_HELP"], exact=True).wait_for()
             assert page.locator("#dwEngine").inner_text().endswith(texts["UI_DURABLE_ENGINE_READY"])
             assert page.locator("#dwDetail > .dw-job-heading .dw-state").get_attribute("data-tone") == "error"
+            assert page.locator("#dwDetail > .dw-timing").get_by_text(texts["UI_DURABLE_ETA_NEEDS_ATTENTION"], exact=True).is_visible()
             assert page.get_by_role("button", name=texts["UI_DURABLE_RETRY"], exact=True).is_visible()
             assert page.get_by_role("button", name=texts["UI_DURABLE_PAUSE"], exact=True).count() == 0
+            from datetime import datetime, timedelta, timezone
+            observed = datetime.now(timezone.utc)
+            workload["state"] = "running"
+            workload["progress"].update(observed_at=observed.isoformat(), estimated_end_reason="multi_phase")
+            workload["progress"]["current_phase"] = {"stage_key": "analyze", "estimated_end_at": (observed + timedelta(minutes=5)).isoformat(), "estimated_end_reason": None}
+            page.locator("#dwRefresh").click()
+            page.wait_for_function("document.querySelector('#dwDetail > .dw-timing .dw-estimate').textContent !== 'n.a.'")
+            assert page.locator("#dwDetail > .dw-timing").get_by_text(texts["UI_DURABLE_PHASE_ESTIMATED_FINISH"], exact=True).is_visible()
+            page.locator("#dwDetail details[data-section='technical'] summary").click()
+            assert page.locator("#dwDetail details[data-section='technical'] .dw-estimate").inner_text() == "n.a."
+            assert page.get_by_text(texts["UI_DURABLE_ETA_MULTI_PHASE"], exact=True).is_visible()
             assert not errors
         finally:
             browser.close()

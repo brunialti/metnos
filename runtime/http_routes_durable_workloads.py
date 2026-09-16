@@ -316,8 +316,8 @@ async def workload_console(request: web.Request) -> web.Response:
                 "lastResult": "LAST_RESULT", "noResult": "NO_RESULT",
                 "attempts": "ATTEMPTS",
                 "started": "STARTED", "percent": "COMPLETED_KNOWN_BLOCKS",
-                "estimatedEnd": "ESTIMATED_FINISH", "notAvailable": "NOT_AVAILABLE",
-                "timingHelp": "TIMING_HELP",
+                "phaseEstimatedEnd": "PHASE_ESTIMATED_FINISH", "wholeEstimatedEnd": "WHOLE_ESTIMATED_FINISH",
+                "notAvailable": "NOT_AVAILABLE", "timingHelp": "PHASE_TIMING_HELP",
                 "photoIndexing": "PHOTO_INDEXING", "genericJob": "GENERIC_JOB",
                 "folder": "FOLDER", "readProgress": "READ_PROGRESS",
                 "jobId": "JOB_ID", "operation": "OPERATION", "loading": "LOADING",
@@ -333,7 +333,9 @@ async def workload_console(request: web.Request) -> web.Response:
         },
         "estimateReasons": {
             key: message("UI_DURABLE_ETA_" + key.upper())
-            for key in ("multi_phase", "not_running", "insufficient_data")
+            for key in ("multi_phase", "not_running", "insufficient_data", "needs_attention",
+                        "no_active_phase", "multiple_active_phases", "inventory_open", "phase_expanding",
+                        "uncertain_progress", "stale_progress", "estimate_overdue")
         },
         "empty": message("UI_DURABLE_EMPTY"),
         "state": message("UI_DURABLE_STATE"),

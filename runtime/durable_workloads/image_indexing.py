@@ -27,10 +27,10 @@ from .schema import inventory_digest
 PLAN_ID = "images.index.v1"
 EXECUTOR = "create_images_indices"
 FOLDER_WORKLOAD = "images.folder_classify"
-DISCOVERY_SCHEMA = "metnos.images.index-discovery/1"
+DISCOVERY_SCHEMA = "metnos.images.index-discovery/2"
 FOLDER_SCHEMA = "metnos.images.index-folders/1"
-PART_SCHEMA = "metnos.images.index-part/1"
-PUBLISHED_SCHEMA = "metnos.images.index-published/1"
+PART_SCHEMA = "metnos.images.index-part/2"
+PUBLISHED_SCHEMA = "metnos.images.index-published/2"
 _PART = {"type": "string", "pattern": "^[a-f0-9]{64}$"}
 _GENERATION = re.compile(r"[A-Za-z0-9_-]{1,128}")
 _PUBLIC_ARGS = frozenset({"base_path", "recursive", "force", "max_files", "dry_run"})
@@ -108,6 +108,32 @@ def _schema(name: str, entry: Mapping, *, extra: Mapping | None = None, required
 
 def output_schemas() -> OutputSchemaRegistry:
     from image_index_build import GROUP_SIZE
+    # Diagnostic authority stays in the approved schema, not in the bridge
+    # or a parallel runtime registry. Values are existing executor outcomes.
+    error_code = {"type": "string", "enum": [
+        "active_generation_changed", "analysis_group_invalid", "args_not_object",
+        "artifact_size_or_type", "artifact_too_large", "base_path_invalid",
+        "base_path_missing", "coverage_mismatch", "directory_unavailable",
+        "discovery_output_too_large", "duplicate_part", "duplicate_source_path",
+        "entries_type_invalid", "entry_limit", "entry_path_invalid",
+        "entry_source_mismatch", "entry_too_large", "expected_count_invalid",
+        "face_embedding_unavailable", "face_model_unavailable",
+        "folder_classification_invalid", "folder_contexts_invalid", "folder_label_invalid",
+        "generation_context_mismatch", "generation_incomplete", "generation_invalid",
+        "generation_receipt_conflict", "image_corpus_empty", "image_description_unavailable",
+        "image_index_phase_failed", "image_model_unavailable", "immutable_artifact_conflict",
+        "incomplete_analysis", "inventory_limits_invalid", "max_files_invalid",
+        "mixed_model_generations", "mixed_vector_dimensions", "model_dimension_mismatch",
+        "model_metadata_invalid", "part_context_mismatch", "part_count_invalid",
+        "part_count_mismatch", "part_digest_mismatch", "part_invalid", "part_kind_invalid",
+        "phase_invalid", "previous_generation_invalid", "reduction_depth_invalid",
+        "reduction_fanout_invalid", "requires_lre", "snapshot_path_invalid",
+        "source_changed", "source_changed_since_discovery", "source_digest_invalid",
+        "source_digest_mismatch", "source_metadata_invalid", "source_path_invalid",
+        "source_record_invalid", "source_size_mismatch", "source_unreadable",
+        "symlink_directory", "symlink_lookup", "symlink_reference", "symlink_vectors",
+        "vectors_invalid",
+    ]}
     part = {"type": "object", "additionalProperties": False,
             "properties": {"part": _PART}, "required": ["part"]}
     return OutputSchemaRegistry((
@@ -118,7 +144,7 @@ def output_schemas() -> OutputSchemaRegistry:
                 "folder_labels": {"type": "array", "maxItems": GROUP_SIZE,
                                   "items": {"type": "string", "maxLength": 4096}},
             }, "required": ["part", "folder_labels"],
-        }, extra={"source_count": {"type": "integer", "minimum": 1}},
+        }, extra={"source_count": {"type": "integer", "minimum": 1}, "error_code": error_code},
             required=("source_count",)),
         _schema(FOLDER_SCHEMA, {
             "type": "object", "additionalProperties": False,
@@ -128,9 +154,9 @@ def output_schemas() -> OutputSchemaRegistry:
                                     "additionalProperties": {"type": "string", "maxLength": 8192}},
             }, "required": ["part", "folder_contexts"],
         }),
-        _schema(PART_SCHEMA, part),
+        _schema(PART_SCHEMA, part, extra={"error_code": error_code}),
         _schema(PUBLISHED_SCHEMA, part,
-                extra={"n_entries_total": {"type": "integer", "minimum": 1}},
+                extra={"n_entries_total": {"type": "integer", "minimum": 1}, "error_code": error_code},
                 required=("n_entries_total",)),
     ))
 

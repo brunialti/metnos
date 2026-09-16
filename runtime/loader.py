@@ -2263,7 +2263,13 @@ def _load_store_into_catalog(
             f"{problem.code}:{problem.path}:{problem.detail}"
             for problem in inventory.problems[:12]
         )
-        raise ManifestBootstrapError("store_inventory_invalid", detail)
+        raise ManifestBootstrapError(
+            "store_inventory_invalid", detail,
+            inventory_diagnostics=tuple(
+                (problem.code, problem.cause_code, problem.os_errno)
+                for problem in inventory.problems[:12]
+            ),
+        )
 
     if trusted_publics is None:
         try:

@@ -22,7 +22,7 @@ sys.path.insert(0, _RUNTIME)
 
 from executor_helpers import run_stdio  # noqa: E402
 from image_index_build import (  # noqa: E402
-    IMAGE_EXTENSIONS, MAX_SOURCE_BYTES, MAX_SOURCE_DEPTH,
+    DESCRIPTION_SCHEMA, IMAGE_EXTENSIONS, MAX_SOURCE_BYTES, MAX_SOURCE_DEPTH,
     ImageIndexBuild, ImageIndexBuildError,
     analysis_identity, classify_folder_context, folder_label,
 )
@@ -63,6 +63,7 @@ def _call_vlm(image_path: Path, *, original_path: Path) -> dict:
         image_path,
         prompt=_vlm_prompt(i18n.current_lang(), original_path.name, original_path.parent.name),
         max_tokens=facts["max_tokens"], allow_lazy_start=False,
+        response_schema=DESCRIPTION_SCHEMA,
     )
 
 

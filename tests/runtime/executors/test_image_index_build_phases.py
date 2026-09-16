@@ -388,6 +388,20 @@ def test_index_prompt_uses_original_filename_and_disables_service_start(monkeypa
     assert "Ada.jpg" in seen["prompt"] and "Graduation 2024" in seen["prompt"]
     assert "opaque-snapshot" not in seen["prompt"]
     assert seen["allow_lazy_start"] is False
+    assert seen["response_schema"] == storage.DESCRIPTION_SCHEMA
+
+
+def test_analysis_identity_covers_the_response_schema(monkeypatch):
+    monkeypatch.setattr("virt.local_models.model_spec", lambda _role: {"provider": "fixture"})
+    monkeypatch.setattr("virt.local_models.projected_embedding_spec", lambda _role: {"provider": "fixture"})
+    monkeypatch.setattr("virt.local_models.model_artifacts", lambda _spec: [])
+    monkeypatch.setattr("prompt_loader.prompt_identity", lambda *_args: SimpleNamespace(digest="fixture-prompt"))
+    monkeypatch.setattr("vlm_client.model_binding_facts", lambda: {"model": "fixture"})
+    before = storage.analysis_identity("it")
+    changed = json.loads(json.dumps(storage.DESCRIPTION_SCHEMA))
+    changed["properties"]["description"]["maxLength"] += 1
+    monkeypatch.setattr(storage, "DESCRIPTION_SCHEMA", changed)
+    assert storage.analysis_identity("it") != before
 
 
 def test_vlm_connection_failure_cannot_start_services_or_retry(monkeypatch, tmp_path):

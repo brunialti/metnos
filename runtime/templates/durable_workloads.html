@@ -85,26 +85,32 @@
   const dateText = (value) => value ? new Date(value).toLocaleString() : "—";
   const availableDate = (value) => typeof value === "string" && Number.isFinite(Date.parse(value)) ? dateText(value) : copy.notAvailable;
   const percentText = (value) => typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 100 ? `${value.toLocaleString()}%` : copy.notAvailable;
-  const estimateText = (progress) => {
+  const estimateText = (progress, scope = "whole") => {
+    const estimate = scope === "phase" ? progress?.current_phase?.estimated_end_at : progress?.estimated_end_at;
     const age = Date.now() - Date.parse(progress?.observed_at);
     if (!engine || engine.enabled !== true || engine.worker_available !== true || engine.state !== "ready"
-        || !Number.isFinite(age) || age < 0 || age > 30000 || Date.parse(progress?.estimated_end_at) <= Date.now()) return copy.notAvailable;
-    return availableDate(progress?.estimated_end_at);
+        || !Number.isFinite(age) || age < 0 || age > 30000 || Date.parse(estimate) <= Date.now()) return copy.notAvailable;
+    return availableDate(estimate);
   };
   function refreshEstimates(stale = false) {
     for (const element of root.querySelectorAll(".dw-estimate")) {
-      element.textContent = stale ? copy.notAvailable : estimateText(element.progress);
+      element.textContent = stale ? copy.notAvailable : estimateText(element.progress, element.estimateScope);
     }
   }
   function appendProgress(container, progress, compact = false) {
     appendFact(container, copy.started, availableDate(progress?.started_at));
     appendFact(container, copy.percent, percentText(progress?.known_units_percent));
+    appendEstimate(container, progress, "phase", compact);
+  }
+  function appendEstimate(container, progress, scope, compact = false) {
     const fact = node("span", "", "dw-fact");
-    const value = node("span", estimateText(progress), "dw-fact-value dw-estimate");
+    const value = node("span", estimateText(progress, scope), "dw-fact-value dw-estimate");
     value.progress = progress;
-    fact.append(node("span", copy.estimatedEnd, "dw-fact-label"), value);
-    if (!compact && estimateText(progress) === copy.notAvailable) {
-      fact.append(node("small", copy.estimateReasons[progress?.estimated_end_reason] || copy.estimateReasons.insufficient_data, "dw-estimate-reason"));
+    value.estimateScope = scope;
+    fact.append(node("span", scope === "phase" ? copy.phaseEstimatedEnd : copy.wholeEstimatedEnd, "dw-fact-label"), value);
+    if (!compact && estimateText(progress, scope) === copy.notAvailable) {
+      const reason = scope === "phase" ? progress?.current_phase?.estimated_end_reason : progress?.estimated_end_reason;
+      fact.append(node("small", copy.estimateReasons[reason] || copy.estimateReasons.insufficient_data, "dw-estimate-reason"));
     }
     container.append(fact);
   }
@@ -431,6 +437,7 @@
       appendFact(technicalFacts, copy.units, breakdown(selected.counters));
       appendFact(technicalFacts, copy.created, availableDate(selected.created_at));
       appendFact(technicalFacts, copy.updated, availableDate(selected.updated_at));
+      appendEstimate(technicalFacts, displayedProgress(selected), "whole");
       if (payload.revision) {
         const summary = payload.revision.execution;
         appendFact(technicalFacts, copy.lastResult, summary?.last_committed_at ? dateText(summary.last_committed_at) : copy.noResult);

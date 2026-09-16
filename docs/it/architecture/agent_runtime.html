@@ -231,9 +231,18 @@ I dati restituiti da un executor non possono scegliere la destinazione.</p>
 corrente, non dalla creazione del lavoro. La percentuale misura le unità salvate
 tra quelle note e resta sotto il 100% fino al completamento. Un'unica lettura
 aggregata per pagina, circoscritta al proprietario, ricava una fine prevista
-indicativa solo per una fase di elaborazione già interamente materializzata,
-con risultati sufficienti e recenti. Piani multifase, errori, pausa, motore
-non pronto o dati non aggiornati non producono stime: la UI mostra n.a.</p>
+indicativa della sola fase corrente già interamente materializzata, con almeno
+tre risultati della stessa fase sufficientemente recenti. Non somma fasi diverse:
+la previsione dell'intero lavoro resta separata e disponibile solo per piani a
+fase unica. Errori, pausa, motore non pronto o dati non aggiornati producono n.a.
+con un motivo; un lavoro da verificare ha precedenza sugli altri motivi.</p>
+
+<p>L'analisi foto richiede una risposta del modello vincolata a uno schema e
+la convalida nuovamente prima di salvare. Una risposta troncata non diventa un
+risultato riuscito; il consumo effettivo resta registrato, senza aumentare
+automaticamente il limite né ripetere la chiamata. La diagnostica LRE conserva
+solo codici dichiarati nello schema di uscita approvato e cause enumerate del
+caricatore, mai testo arbitrario delle eccezioni.</p>
 
 <p>L'elenco identifica attività e cartella, quando disponibili nel piano ammesso
 del proprietario; il dettaglio distingue fase osservata, blocchi in esecuzione

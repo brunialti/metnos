@@ -216,9 +216,17 @@ decisions nor the persistent feature setting.</p>
 <p>The LRE console derives start time from actual attempts in the current revision,
 not workload creation. Percentage measures saved units among known units and
 stays below 100% until completion. One owner-scoped aggregate read per page
-derives an indicative finish estimate only for one fully materialized processing
-phase with sufficient recent results. Multi-phase plans, errors, pauses,
-an unavailable engine or stale observations do not yield estimates: the UI shows n.a.</p>
+derives an indicative finish estimate for the current fully materialized phase,
+using at least three sufficiently recent results from that same phase. It never
+adds unlike phases: the whole-job estimate remains separate and available only
+for single-phase plans. Errors, pauses, an unavailable engine or stale observations
+produce n.a. with a reason; a job requiring attention takes precedence.</p>
+
+<p>Photo analysis requests schema-constrained model output and validates it again
+before saving. A truncated response is not a successful result; actual usage
+remains recorded, without automatically increasing the limit or repeating the
+call. LRE diagnostics retain only codes declared by the approved output schema
+and enumerated loader causes, never arbitrary exception text.</p>
 
 <p>The list identifies activity and folder when available in the owner's admitted
 plan; details distinguish the observed phase, running units and workload concurrency

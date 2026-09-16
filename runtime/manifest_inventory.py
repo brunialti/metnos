@@ -10,7 +10,7 @@ import os
 import re
 import stat
 import tomllib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path, PurePosixPath
 from typing import Callable, Iterable, Mapping
@@ -56,14 +56,64 @@ _REPOSITORY_AUTHORING_ORIGINS = frozenset({
 })
 _STORE_AUTHORING_RELATIVE = Path("contract-authoring") / "v1"
 _STORAGE_KEY_RE = re.compile(r"[0-9a-f]{64}\Z")
+_INVENTORY_DIAGNOSTIC_CODES = frozenset({
+    "origin_map_duplicate", "binding_invalid", "duplicate_contract_id",
+    "origin_unknown", "skill_status_error",
+})
+_INVENTORY_CAUSE_CODES = frozenset({
+    "binding_invalid", "contract_directory_invalid", "skill_state_invalid",
+    "skill_state_parent_invalid", "skill_definition_conflict",
+})
+
+
+def closed_inventory_diagnostics(
+    value: object,
+) -> tuple[tuple[str, str | None, int | None], ...]:
+    """Bounded diagnostic facts, never exception text or filesystem names."""
+    if not isinstance(value, tuple):
+        return ()
+    result = []
+    for item in value[:12]:
+        if not isinstance(item, tuple) or len(item) != 3:
+            continue
+        code, cause, number = item
+        if type(code) is not str or code not in _INVENTORY_DIAGNOSTIC_CODES:
+            continue
+        cause = cause if type(cause) is str and cause in _INVENTORY_CAUSE_CODES else None
+        number = number if type(number) is int and 0 < number <= 4095 else None
+        result.append((code, cause, number))
+    return tuple(result)
+
+
+def _exception_facts(exc: BaseException) -> dict[str, object]:
+    cause_code = None
+    os_errno = None
+    seen: set[int] = set()
+    for _ in range(8):
+        if id(exc) in seen:
+            break
+        seen.add(id(exc))
+        code = getattr(exc, "code", None)
+        if cause_code is None and type(code) is str and code in _INVENTORY_CAUSE_CODES:
+            cause_code = code
+        number = exc.errno if isinstance(exc, OSError) else None
+        if os_errno is None and type(number) is int and 0 < number <= 4095:
+            os_errno = number
+        if exc.__cause__ is None:
+            break
+        exc = exc.__cause__
+    return {"cause_code": cause_code, "os_errno": os_errno}
 
 
 class ManifestBootstrapError(RuntimeError):
     """Fail-closed error at the irreversible publication boundary."""
 
-    def __init__(self, code: str, detail: str = "") -> None:
+    def __init__(
+        self, code: str, detail: str = "", *, inventory_diagnostics: tuple = (),
+    ) -> None:
         self.code = code
         self.detail = detail
+        self.inventory_diagnostics = closed_inventory_diagnostics(inventory_diagnostics)
         super().__init__(f"{code}: {detail}" if detail else code)
 
 
@@ -147,6 +197,8 @@ class InventoryProblem:
     detail: str
     origin: ManifestOrigin | None = None
     contracts: tuple[str, ...] = ()
+    cause_code: str | None = field(default=None, kw_only=True)
+    os_errno: int | None = field(default=None, kw_only=True)
 
 
 @dataclass(frozen=True, slots=True)
@@ -749,6 +801,7 @@ def inventory_store_manifests(
                 "binding_invalid",
                 str(contract_dir),
                 str(exc),
+                **_exception_facts(exc),
             ))
             continue
         if contract_id in seen_contracts:
@@ -798,6 +851,7 @@ def inventory_store_manifests(
                     str(exc),
                     contract_id.origin,
                     (str(contract_id),),
+                    **_exception_facts(exc),
                 ))
         manifests.append(ManifestRef(
             contract_id=contract_id,
@@ -864,6 +918,7 @@ __all__ = [
     "ManifestRef",
     "ManifestSource",
     "ManifestStatus",
+    "closed_inventory_diagnostics",
     "default_manifest_sources",
     "inventory_authoring_manifests",
     "prospective_manifest_ref",

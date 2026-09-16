@@ -30,6 +30,19 @@ GROUP_SIZE = 32
 MAX_SOURCE_BYTES = 1_099_511_627_776
 MAX_SOURCE_DEPTH = 64
 IMAGE_EXTENSIONS = frozenset({".jpg", ".jpeg", ".png", ".heic", ".webp", ".tiff", ".bmp"})
+# Constrain the model's generation, not just its prompt. The existing token
+# ceiling remains authoritative: incomplete responses still fail explicitly.
+DESCRIPTION_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "description": {"type": "string", "minLength": 1, "maxLength": 400},
+        "keywords": {"type": "array", "items": {"type": "string", "maxLength": 40}, "maxItems": 15},
+        "location_hint": {"type": "string", "maxLength": 100},
+        "activity_hint": {"type": "string", "maxLength": 100},
+    },
+    "required": ["description", "keywords", "location_hint", "activity_hint"],
+    "additionalProperties": False,
+}
 _AXES = ("text", "face", "image")
 _HASH = re.compile(r"[0-9a-f]{64}")
 _GENERATION = re.compile(r"[A-Za-z0-9_-]{1,128}")
@@ -201,7 +214,8 @@ def analysis_identity(lang: str) -> str:
             files.append([str(relative), info.st_size, info.st_mtime_ns])
         local[role] = {"provider": spec["provider"], "files": files}
     facts = {"prompt": prompt_loader.prompt_identity("image_index_describe", lang).digest,
-             "vlm": vlm_client.model_binding_facts(), "local": local}
+             "vlm": vlm_client.model_binding_facts(), "local": local,
+             "description_schema": DESCRIPTION_SCHEMA}
     return hashlib.sha256(_json_bytes(facts)).hexdigest()
 
 

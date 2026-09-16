@@ -1,8 +1,11 @@
 # Arresto dell'analisi foto LRE — 16 settembre 2026
 
-Stato: cause riprodotte e correzioni candidate verificate; pubblicazione e
-recupero operativo da verificare separatamente. Nessuna ripetizione del
-lavoro durante la diagnosi. Release osservata inizialmente: 57.
+Stato: correzioni e nuova console pubblicate nella release 58; vecchio lavoro
+cancellato con copia recuperabile su richiesta di Roberto. **Stabilità non
+certificata:** la nuova indicizzazione è nuovamente `needs_attention`.
+La protezione del servizio ha retto la contesa senza riavvio, ma rimangono
+errori del catalogo e dell'analisi. Nessuna ripetizione durante la diagnosi.
+Release osservata inizialmente: 57.
 
 ## Esito alle 12:22 (Europe/Rome)
 
@@ -147,3 +150,163 @@ Chiesta a Roberto una scelta: nuova procedura esplicita di riconciliazione
 prudenziale conservando i risultati, oppure nuovo lavoro con vecchio storico
 intatto e preparazione ripetuta. Nel frattempo si possono pubblicare le
 correzioni preventive senza sbloccare arbitrariamente il lavoro esistente.
+
+## Decisione e pubblicazione — 16 settembre, 12:54 Europe/Rome
+
+Roberto ha scelto la soluzione semplice: nuovo lavoro, **cancellazione del
+vecchio e pulizia dello storico**, senza nuova procedura contabile. Ha chiesto
+di attendere il ridisegno della UI: era già incluso nella candidata; la
+pulizia è avvenuta soltanto dopo il riscontro della nuova console viva.
+
+- Codice e prove: `61ea468c`; impronte riviste: `910c6761`.
+- Release 58: `sha256:4e6ed3ff9093e443aef9b8306e4fb3248d656b259c8d4e7561b7287d2e08b0af`.
+  Procedura canonica conclusa con `CUTOVER_OK`, `RELEASE_EDITS_ADMITTED`,
+  uscita 0. Nessuna modifica diretta alla release installata.
+- Suite principale: 723 superati, 6 saltati; le quattro prove di carico
+  opzionali e le prove Chromium sono state eseguite separatamente.
+  Browser IT/EN e desktop/mobile: 4 superati. Altri 33 controlli su guide,
+  riferimenti, integrazione immagini e caricatore superati.
+- Riscontro `run-3hdikc1d` alle 12:53:08: HTTP, Telegram, browser e LRE
+  attivi, motore pronto, nuova descrizione/cartella/parallelismo nell'API,
+  nessuna chiave i18n irrisolta nella pagina. Il vecchio job restava fermo,
+  con zero unità in esecuzione: disponibilità del servizio non scambiata
+  per avanzamento del lavoro.
+- Guide pubbliche IT/EN pubblicate via `deploy.sh --static-only`, controllo
+  di 99 pagine indicizzabili; distribuzione `55f459ce.mykleos.pages.dev`.
+  Nessuna pubblicazione di questo rapporto, foto o dati interni; nessun push
+  GitHub. Cloudflare resta solo distribuzione della documentazione.
+
+### Cancellazione autorizzata e recuperabilità
+
+Riscontro amministrativo `run-vvz4rgfo`: copia SQLite online verificata,
+annullamento tramite API ordinaria, attesa dello stato terminale, nuova
+verifica dell'esatto job/revisione e assenza di unità vive sotto transazione.
+Rimosso soltanto `wrk_b7a73e10713b4c15a720d264cf8fd98a` con cancellazione
+in cascata dello storico correlato; controllati tutti i residui e le chiavi
+esterne. Nessun flag contabile azzerato per riabilitare tentativi scaduti.
+
+Copia privata recuperabile:
+`/var/lib/metnos-admin/agent-runs/run-vvz4rgfo/lre-before-reset.sqlite3`.
+I file intermedi del vecchio lavoro restano conservati su disco, separati
+per identificativo; non sono un indice completo pubblicato e non diventano
+risultati del nuovo job. Foto originali, conversazioni, configurazione e
+altri dati non sono stati cancellati. Un eventuale ripristino deve essere
+selettivo: non sovrascrivere il DB vivo dopo l'avvio di nuovi lavori.
+
+### Nuovo avvio reale e verifica in corso
+
+Turno `c0f620dae1f5402c`, stessa richiesta letterale
+`cerca localmente foto con il mare`, inviato una sola volta dopo aver
+verificato il deposito vuoto. Nuovo lavoro
+`wrk_515d36161628473e8b5bd54218023af6`, revisione
+`rev_0d75db80950c4426adee56b91e2ba939`, avviato alle 12:54:26.
+Alle 12:57:27 la scansione ha scritto 437 parti, 13.984 sorgenti:
+avanzamento effettivo osservato, non soltanto heartbeat. Motore pronto,
+nessun riavvio dei quattro servizi, analisi non ancora cominciata.
+
+Roberto ha approvato l'aspetto della nuova interfaccia. Test e seed IT/EN
+verificati; percorsi e identificativi non si traducono. Review finale del
+design: 4 prove browser nuovamente superate. Rilievo minore residuo,
+**non corretto in questa release**: il rinnovo dell'elenco ricrea i pulsanti
+e può perdere il fuoco della tastiera sull'attività selezionata. Non influisce
+sul lavoro o sulla persistenza; da preservare in un prossimo intervento UI.
+
+Roberto ha chiesto di non aggiungere conteggi tecnici di processi/thread:
+resta soltanto il conteggio semplice dei blocchi simultanei già disponibile.
+Non viene introdotta una percentuale sintetica di parallelismo, né vengono
+confusi thread esistenti, unità avviate e uso effettivo di CPU/GPU.
+
+### Regressione reale osservata — certificazione respinta
+
+- 13:02:10: scansione confermata, 30.942 sorgenti in 967 gruppi.
+- 13:04:37: preparazione dei 967 gruppi conclusa.
+- 13:04:43–44: due cicli di contesa SQLite (1 e 5 corsie). Il nuovo
+  supervisore mantiene i lavori vivi; nessun riavvio né consumo reso ignoto
+  mediante arresto forzato. Motore torna `ready` alle 13:05:50.
+- 13:05:49–50: quattro caricamenti falliscono con causa conservata
+  `store_inventory_invalid`. **Non** è `store_snapshot_unstable`, e non è
+  una prova che la correzione della firma delle statistiche sia inefficace.
+  Il sottocodice dell'inventario è ancora perso: lacuna diagnostica da chiudere.
+- 13:21:12 (`run-mp8j6m5m`): 2 gruppi di analisi confermati, 6 falliti
+  permanentemente, 4 da verificare, 7 ancora in esecuzione e 948 pendenti.
+  Scritte 127 parti immagine e 2 aggregazioni da 32. Il lavoro è parziale e
+  non può essere presentato come sano o completato.
+
+Le letture amministrative non hanno riavviato servizi né ripetuto unità.
+Quattro inventari concorrenti a coppie come utente `metnos` sono puliti;
+quattro audit completi senza effetti autenticano 123 contratti ciascuno
+(`run-howu0a9u`). Il fallimento storico non è perciò un contratto
+persistentemente assente; la sua causa transitoria precisa resta indimostrata.
+
+Limite file aperti del worker: soft 1024, hard 524288; campione attuale
+134 descrittori, di cui 126 SQLite. Prova isolata con composizione reale
+di 31 corsie per tre cicli, garbage collector disabilitato: picco 231,
+76 dopo ogni chiusura, nessuna crescita tra cicli. **Non** attribuire
+il guasto a esaurimento descrittori né aumentare limiti come presunto fix.
+
+`run-h1d5tcp7`: le 32 foto del primo gruppo fallito sono JPEG leggibili
+da Pillow, con dimensione e mtime uguali all'inventario. Nessuna analisi
+modello né scrittura eseguita dalla sonda. Il motivo applicativo esatto
+non è persistito: il collegamento conserva solo `execution_failed`.
+
+La previsione di fine dell'intero piano multifase rimane **non implementata**;
+`n.a.` non è un aggiornamento mancato. Non confondere questo limite con
+l'arresto del lavoro e non dichiarare conclusa la richiesta originale di ETA.
+
+## Ripresa delle correzioni — 16 settembre, 15:08 Europe/Rome
+
+`run-ls88n451`: servizio pronto, nessun blocco vivo; analisi con 4 gruppi
+confermati, 11 falliti, 4 da verificare, 948 pendenti. Ultimo progresso alle
+13:32. Conservate 216 parti immagine e quattro aggregazioni. Nessun riavvio.
+La decodifica completa delle 32 foto del primo gruppo fallito è riuscita
+(`run-c6_aulkv`), non soltanto la verifica delle intestazioni JPEG.
+
+`run-ywk6_jc7`: tutti gli undici fallimenti applicativi terminano la loro ultima
+chiamata VLM con 512 token in uscita; i quattro gruppi riusciti hanno 32 chiamate
+ciascuno e ultima risposta inferiore al limite. Uso noto in tutti i tentativi.
+
+Riproduzione locale limitata alla sesta foto del primo gruppo fallito, senza
+scrivere all'indice e senza rendere pubblici percorso o risposta:
+
+- `run-k3rxvy4r`: modello fermato per inattività, nessuna risposta; nessun
+  avvio implicito durante l'invocazione diagnostica.
+- `run-znv97_3p`: normale avvio gestito del modello, stessa politica installata;
+  `finish_reason=length`, 512 token, 1694 caratteri, JSON non valido,
+  `no_json_found`. Guasto riprodotto.
+- `run-5kw780ns`: stessa foto/prompt/modello/limite, risposta vincolata a schema;
+  `finish_reason=stop`, 186 token, JSON valido, descrizione presente.
+
+Correzione candidata: schema di descrizione nel dominio foto, parametro
+generico nel client VLM, validazione della risposta e rifiuto esplicito di
+`length` dopo la contabilizzazione. Nessun aumento automatico dei limiti,
+nessuna ripetizione nascosta o ripiego libero. Lo schema entra nell'identità
+dell'analisi; il preesistente riuso legacy senza identità resta distinto.
+Un formato vincolato non garantisce che qualsiasi risposta/lingua stia in 512
+token; l'eccesso rimane un errore onesto. Prova reale del backend locale,
+non certificazione di ogni provider configurabile.
+
+Diagnostica candidata: sottocodici inventario ed errno enumerati; codici errore
+executor conservati solo dall'enum dello schema approvato. Gli schemi immagini
+discovery/part/published passano a /2: il vecchio lavoro non è migrabile in modo
+implicito. Quattro errori del catalogo restano di causa non ancora dimostrata.
+
+Roberto ha approvato la stima della **fase corrente**, separata dalla fine
+dell'intero piano. Implementazione e prove IT/EN disponibili; almeno tre
+completamenti della medesima fase, inventario chiuso, nessuna incertezza,
+ancora temporale persistita e freschezza limitata. Stato di attenzione prioritario.
+
+Roberto ha inoltre autorizzato: pubblicazione, prova limitata, quindi annullamento
+del lavoro attuale e nuova indicizzazione completa **conservando storico e
+risultati intermedi**. Nessuna nuova cancellazione di foto, indice o storico.
+Attivazione ancora da eseguire al presente checkpoint.
+
+Verifiche candidate: 661 test superati, 4 prove di carico opzionali saltate;
+la replica senza HTTP ne supera 649. Ulteriori due prove aggiunte su rifiuto
+HTTP dello schema senza ripetizione e identità dell'analisi: gruppo mirato
+47/47. Console: prove Node/catalogo e browser reale IT/EN desktop/mobile
+superate dall'agente UI (63 test complessivi con API e aggregazioni).
+Una prima suite nel sandbox è stata interrotta dopo 547 successi perché
+bloccata dal server locale; replica autorizzata conclusa positivamente.
+Guide Tutor: corretta segmentazione che separava condizioni e promessa
+di ripresa; 20/20 controlli documentali riusciti. Review VLM indipendente:
+nessun difetto bloccante, limiti del formato e del riuso legacy esplicitati.
