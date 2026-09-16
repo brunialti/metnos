@@ -204,7 +204,7 @@ def readiness_catalog() -> tuple[ServiceSpec, ...]:
     """
     from executor_birth_ownership_chain import (
         DEFAULT_OWNERSHIP_CHAIN_ROOT_V1, REQUIRED_HEAD_BASENAME,
-        OwnershipChainStore, VerifiedOwnershipChain,
+        OwnershipChainStore, VerifiedOwnershipWindowV1,
         inspect_ownership_chain_state_v1,
     )
     from executor_birth_service_catalog import capture_current_service_catalog_v1
@@ -218,12 +218,10 @@ def readiness_catalog() -> tuple[ServiceSpec, ...]:
     except FileNotFoundError:
         chain = inspect_ownership_chain_state_v1()
     else:
-        # The public cold reader authenticates the required chain without
-        # opening the coordinator's root-only mutation lock.
-        chain = OwnershipChainStore().read_required_chain_cold_v1()
-    # The public inspector returns a verified chain or a validated initial
-    # state; corrupt or partial chains raise before a profile is selected.
-    if not isinstance(chain, VerifiedOwnershipChain):
+        # The signed current selection and one edge suffice; old releases
+        # are audit evidence, not a prerequisite for observing live services.
+        chain = OwnershipChainStore().read_required_window_v1()
+    if not isinstance(chain, VerifiedOwnershipWindowV1):
         return SERVICES
     distribution = chain.required_distribution
     if Path(distribution.installation_root) != Path(_C.PATH_ROOT):

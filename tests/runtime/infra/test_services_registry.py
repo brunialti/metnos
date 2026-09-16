@@ -96,7 +96,7 @@ def _verified_readiness_chain(monkeypatch, tmp_path):
         required_distribution = SimpleNamespace(installation_root=str(tmp_path))
 
     class PublicStore:
-        def read_required_chain_cold_v1(self):
+        def read_required_window_v1(self):
             return VerifiedChain()
 
     entries = tuple(SimpleNamespace(
@@ -105,7 +105,7 @@ def _verified_readiness_chain(monkeypatch, tmp_path):
     ) for item in catalog.SERVICE_SOURCE_V1)
     monkeypatch.setattr(registry._C, "PATH_ROOT", tmp_path)
     monkeypatch.setattr(ownership, "DEFAULT_OWNERSHIP_CHAIN_ROOT_V1", tmp_path)
-    monkeypatch.setattr(ownership, "VerifiedOwnershipChain", VerifiedChain)
+    monkeypatch.setattr(ownership, "VerifiedOwnershipWindowV1", VerifiedChain)
     (tmp_path / ownership.REQUIRED_HEAD_BASENAME).write_bytes(b"required")
     monkeypatch.setattr(ownership, "OwnershipChainStore", PublicStore)
     monkeypatch.setattr(
@@ -233,7 +233,7 @@ def test_readiness_catalog_never_falls_back_after_cold_chain_failure(
         raise ownership.OwnershipChainError("invalid-required-chain")
 
     monkeypatch.setattr(
-        ownership.OwnershipChainStore, "read_required_chain_cold_v1", invalid_chain,
+        ownership.OwnershipChainStore, "read_required_window_v1", invalid_chain,
     )
     with pytest.raises(ownership.OwnershipChainError):
         registry.readiness_catalog()

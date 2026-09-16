@@ -399,3 +399,31 @@ temporary journals and source snapshots may no longer exist. A verified
 signed hash is not evidence that those original bytes were reread. This
 clarifies the evidence contract without enabling F5 or lowering its admission,
 producer, cycle or defect thresholds.
+
+## Incremental current-state verification and code retention (16 September 2026)
+
+Reuse the existing signed, protected required-head pointer as the baseline
+for ordinary runtime selection and the next transition. The new owner reader
+authenticates that head, its distribution/cutover/context records and the
+immediate predecessor edge. It verifies the current installed tree and rereads
+the selector before returning. Its nominal result is a verified **window**,
+not a claim that the entire history has just been audited. It introduces no
+new key, persistent cache or service. A missing pointer still requires proof
+of an initial state; corrupt installed state cannot fall back to bootstrap.
+
+The full historical reader remains available for explicit reconciliation
+and audit. Older executable trees are not historical authority. The existing
+administrative release procedure now prunes obsolete code after successful
+publication, normally keeping the current tree and one recovery predecessor.
+Future, process-referenced, mounted and service-referenced trees are retained.
+Existing deployment/startup locks and current attestation protect the plan;
+an unsafe plan is deferred without undoing a completed release. Compact signed
+history, Birth stores, user data, models and unresolved migration evidence
+are outside the deletion scope. Recovery copies do not authorize head rollback.
+
+The runtime changes are development code, not an installed F5 activation.
+The standalone administrative startup/cutover verifier still replays compact
+historical metadata and must be adapted separately before claiming that every
+ordinary startup and release has bounded history cost. The one-time installed
+code cleanup succeeded while that unchanged verifier remained valid; this
+does not certify F5/F6 completion or the candidate runtime deployment.

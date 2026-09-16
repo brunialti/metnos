@@ -4,8 +4,16 @@
 >
 > **QUANDO AGGIORNARLO** (ex §13): nuova decisione di runtime (tier LLM, helper universale, vincolo dominio, gate/env); chiusura fase o nuovo macro-topic; sezione contraddetta dal codice (aggiornare PRIMA della PR). **NON aggiornarlo per**: bug fix puntuali (commit message); decisioni temporanee/sperimentali e stato di sessione (→ memorie); dettagli di un singolo ADR (→ l'ADR). Stile: una decisione = poche righe operative + puntatore ADR/spec/test.
 
-## S. Stato corrente (15/9/2026)
+## S. Stato corrente (16/9/2026)
 
+- **Bounded Birth reads and release-code retention — in development** (16/9,
+  ADR 0224 addendum): ordinary runtime selection checks the signed current
+  head and its immediate edge, not the whole archive. The candidate is tested,
+  not deployed; administrative startup/cutover history replay remains open.
+  The release tool now retains current + one recovery tree, preserving live,
+  mounted, service and future references. Installed cleanup removed code
+  trees 1–51, kept 52/53 and freed 1.70 GB; signed evidence and data are intact.
+  Exact proof and remaining work: G8 work plan §5.16. This is not F5/F6 closure.
 - **Shared temporal resolution — installed** (15/9,
   ADR 0176 addendum): schema-declared dates, instants and windows use one
   timezone-aware arithmetic. Versioned language resources handle common forms;

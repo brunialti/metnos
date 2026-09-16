@@ -724,7 +724,7 @@ def test_transition_selector_rejects_nonexact_partial_chain_error(
         "_require_deployment_lock_session_v1", lambda _: None,
     )
     monkeypatch.setattr(
-        ownership_chain, "inspect_ownership_chain_state_v1",
+        ownership_chain, "inspect_required_ownership_v1",
         lambda: (_ for _ in ()).throw(
             ownership_chain.OwnershipChainError(code, detail)
         ),

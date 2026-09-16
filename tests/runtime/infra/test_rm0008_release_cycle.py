@@ -83,6 +83,124 @@ def run_edits(release, *, plan=False):
                                     release.catalog, plan_only=plan)
 
 
+@pytest.fixture
+def retention_tree(monkeypatch, tmp_path):
+    root = tmp_path / "ownership"
+    releases = root / "releases-v1"
+    for sequence in range(1, 6):
+        deployment = releases / f"{sequence:020d}" / "deployment"
+        deployment.mkdir(parents=True)
+        (deployment / "executor-birth-deployment-v1.json").write_text(
+            json.dumps({"release_sequence": sequence}),
+        )
+    for path in releases.rglob("*"):
+        path.chmod(0o755 if path.is_dir() else 0o644)
+    history = root / "chain-v1"
+    history.mkdir()
+    (history / "proof").write_bytes(b"preserve signed history")
+    monkeypatch.setattr(cycle, "ROOT", root)
+    monkeypatch.setattr(cycle, "OWNERS", {(os.getuid(), os.getgid())})
+    monkeypatch.setattr(cycle.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(cycle, "acquire_locks", lambda stack: None)
+    monkeypatch.setattr(cycle, "open_parent", lambda path: os.open(path, os.O_RDONLY | os.O_DIRECTORY))
+    monkeypatch.setattr(cycle, "startup_fingerprint", lambda: ("attested", 4, "head"))
+    monkeypatch.setattr(cycle, "referenced_release_sequences", lambda path: frozenset({1}))
+    return releases
+
+
+@pytest.mark.parametrize("apply", (False, True))
+def test_release_retention_preserves_current_recovery_references_and_future(retention_tree, apply):
+    result = cycle.prune_releases(apply=apply)
+    assert result["candidates"] == [f"{2:020d}"]
+    assert result["removed"] == ([f"{2:020d}"] if apply else [])
+    for sequence in (1, 3, 4, 5):
+        assert (retention_tree / f"{sequence:020d}").is_dir()
+    assert (retention_tree / f"{2:020d}").exists() is not apply
+    assert (retention_tree.parent / "chain-v1/proof").read_bytes() == b"preserve signed history"
+
+
+@pytest.mark.parametrize("keep,expected", ((1, (1, 2, 3)), (2, (1, 2)), (5, ())))
+def test_release_retention_limit_is_explicit(retention_tree, keep, expected):
+    result = cycle.release_retention_candidates(retention_tree, 4, keep=keep)
+    assert tuple(int(path.name) for path in result) == expected
+
+
+@pytest.mark.parametrize("invalid", (0, -1, True, 1.5))
+def test_release_retention_refuses_invalid_limits(retention_tree, invalid):
+    with pytest.raises(RuntimeError, match="keep at least"):
+        cycle.release_retention_candidates(retention_tree, 4, keep=invalid)
+
+
+@pytest.mark.parametrize("mutation", ("descriptor", "symlink", "mode", "selection", "unverified"))
+def test_release_retention_refuses_unsafe_plan_before_deletion(retention_tree, monkeypatch, mutation):
+    target = retention_tree / f"{2:020d}"
+    if mutation == "descriptor":
+        (target / "deployment/executor-birth-deployment-v1.json").write_text('{"release_sequence":99}')
+    elif mutation == "symlink":
+        (target / "foreign").symlink_to(retention_tree.parent / "chain-v1")
+    elif mutation == "mode":
+        target.chmod(0o777)
+    elif mutation == "selection":
+        states = iter((("attested", 4, "head"), ("attested", 5, "new-head")))
+        monkeypatch.setattr(cycle, "startup_fingerprint", lambda: next(states))
+    else:
+        monkeypatch.setattr(cycle, "startup_fingerprint", lambda: ("refused", "invalid"))
+    with pytest.raises(RuntimeError):
+        cycle.prune_releases(apply=True)
+    assert target.is_dir()
+    assert (retention_tree.parent / "chain-v1/proof").read_bytes() == b"preserve signed history"
+
+
+def test_retention_failure_does_not_reverse_successful_publication(applying, monkeypatch, capsys):
+    def refuse(**_kw):
+        raise RuntimeError("retention deferred")
+
+    monkeypatch.setattr(cycle, "prune_releases", refuse)
+    assert cycle.apply_cycle(True) == 0
+    assert "RELEASE_RETENTION_DEFERRED" in capsys.readouterr().out
+
+
+def test_release_references_cover_processes_mounts_and_service_recipes(monkeypatch, tmp_path):
+    releases = tmp_path / "releases"
+    proc, units = tmp_path / "proc", tmp_path / "units"
+    task = proc / "101"
+    (task / "fd").mkdir(parents=True)
+    units.mkdir()
+
+    def target(sequence):
+        return releases / f"{sequence:020d}"
+
+    (task / "cwd").symlink_to(target(1) / "runtime")
+    (task / "exe").symlink_to(target(2) / "managed/bin/python")
+    (task / "fd/3").symlink_to(target(3) / "executor.py")
+    (task / "maps").write_text(f"000-fff r-xp 0 0:0 0 {target(4)}/library.so\n")
+    (task / "cmdline").write_bytes(os.fsencode(target(5)) + b"\0--flag\0")
+    (proc / "102").mkdir()  # An exited process is not a fatal read error.
+    (proc / "self").mkdir()
+    (proc / "self/mountinfo").write_text(f"1 0 0:1 / {target(6)}/mount rw - tmpfs tmpfs rw\n")
+    (units / "example.service").write_text(f"WorkingDirectory={target(7)}\n")
+    (units / "linked.service").symlink_to(target(8) / "example.service")
+    (units / "not-a-reference.service").write_text(f"Description={target(9)}-unrelated\n")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "ignored.service").write_text(f"WorkingDirectory={target(10)}\n")
+    (units / "external-directory").symlink_to(outside, target_is_directory=True)
+    paths = {"/proc": proc, "/proc/self/mountinfo": proc / "self/mountinfo",
+             "/etc/systemd/system": units}
+    monkeypatch.setattr(cycle, "Path", lambda path: paths[path])
+    assert cycle.referenced_release_sequences(releases) == frozenset(range(1, 9))
+
+
+def test_release_reference_read_failure_defers_retention(retention_tree, monkeypatch):
+    def unavailable(_root):
+        raise PermissionError("process reference unavailable")
+
+    monkeypatch.setattr(cycle, "referenced_release_sequences", unavailable)
+    with pytest.raises(PermissionError):
+        cycle.prune_releases(apply=True)
+    assert len(tuple(retention_tree.iterdir())) == 5
+
+
 def _unit_parts(argv):
     """Split a transient-unit argv into flags, properties and service argv."""
     split = argv.index("--")
@@ -785,6 +903,8 @@ def applying(monkeypatch, release, tmp_path):
     monkeypatch.setattr(builder, "build_and_install_received_source_v1", lambda s: release.distribution)
     monkeypatch.setattr(cycle, "publish_evidence", lambda *args: None)
     calls = []
+    prunes = []
+    monkeypatch.setattr(cycle, "prune_releases", lambda **kw: prunes.append(kw))
     control = {"audit": 0, "complete": 0}
 
     def child(command):
@@ -793,7 +913,7 @@ def applying(monkeypatch, release, tmp_path):
 
     monkeypatch.setattr(cycle, "run_child", child)
     monkeypatch.setattr(cycle, "_run_cutover_child", child)
-    return NS(calls=calls, control=control)
+    return NS(calls=calls, control=control, prunes=prunes)
 
 
 def test_cutover_checks_run_before_stopping_services(crossing, monkeypatch):
@@ -1182,8 +1302,10 @@ def test_parent_stops_on_every_audit_refusal(applying, cross, audit_result):
     modes = [command[-1] for command in applying.calls]
     if cross and audit_result == 0:
         assert result == 0 and modes == ["audit", "complete"]
+        assert applying.prunes == [{"apply": True}]
     else:
         assert result == (0 if audit_result == 0 else 78) and modes == ["audit"]
+        assert applying.prunes == []
     if len(applying.calls) == 2:
         assert applying.calls[0][:-1] == applying.calls[1][:-1]
 
@@ -1257,8 +1379,8 @@ def test_successor_cutover_lock_uses_bound_previous_catalog(monkeypatch, tmp_pat
     selected = {"distribution": old}
     monkeypatch.setattr(ownership, "DEFAULT_OWNERSHIP_CHAIN_ROOT_V1", root)
     monkeypatch.setattr(ownership, "OwnershipChainStore", lambda: NS(
-        read_required_chain_cold_v1=lambda: ownership.VerifiedOwnershipChain(
-            "test-anchor", (), required_distribution=selected["distribution"])))
+        read_required_window_v1=lambda: ownership.VerifiedOwnershipWindowV1(
+            (), (), selected["distribution"], ())))
     monkeypatch.setattr(services_registry._C, "PATH_ROOT", tmp_path / "successor-release")
     # This refusal must remain intact for ordinary consumers; cutover instead
     # already has the authenticated previous catalog bound by its caller.

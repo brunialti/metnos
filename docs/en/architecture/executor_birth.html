@@ -43,6 +43,26 @@
  integrity and safe ownership and match the same transition, installation
  and catalog exactly. It is neither rewritten nor treated as a fresh
  verification of current state.</p>
+ <h2>Check the present without replaying the entire history</h2>
+ <p>A new admission must pass its safety checks. It should not repeat work
+ already verified for every earlier release. The optimized reader uses the
+ signed current-release reference, checks its link to the predecessor and
+ verifies the actual installed files. Altered signatures or a release
+ change during the read still cause refusal.</p>
+ <p><strong>Work status:</strong> this path is implemented and tested in
+ development, but not yet deployed. The administrative startup verifier
+ still needs adaptation: it continues to read metadata from the entire
+ history. Initial certification and an explicit historical investigation
+ remain separate activities.</p>
+ <h2>Keep the evidence, not every old program copy</h2>
+ <p>The release procedure normally retains the active release and one
+ predecessor, plus copies still referenced by processes, services or
+ operations being prepared. It may remove other copies only after a
+ successful release. The predecessor is recovery material, not permission
+ to downgrade the selected release automatically.</p>
+ <p>This cleanup removes distribution code only. It does not remove signed
+ receipts, personal data, models or information still needed for migration.
+ Fewer program copies do not mean fewer safety checks.</p>
 </main>
 </body>
 </html>

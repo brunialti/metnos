@@ -54,6 +54,7 @@ import json
 import re
 import os
 import secrets
+import shutil
 from pathlib import Path
 import pwd
 import stat
@@ -1085,7 +1086,124 @@ def apply_cycle(cross: bool) -> int:
     if not cross:
         say("APPLY_OK; PREVIEW_COMPLETE; NO HEAD CHANGE OR SERVICE STOP")
         return 0
-    return _run_cutover_child(child + ["complete"])
+    outcome = _run_cutover_child(child + ["complete"])
+    if outcome == 0:
+        try:
+            prune_releases(apply=True)
+        except Exception as exc:
+            # Successful publication is not undone by deferred disk maintenance.
+            say("RELEASE_RETENTION_DEFERRED", type(exc).__name__, str(exc)[:200])
+    return outcome
+
+
+def release_retention_candidates(
+    releases: Path, selected: int, *, keep: int = 2,
+    referenced: frozenset[int] = frozenset(),
+) -> tuple[Path, ...]:
+    """Keep the selected release, recent recovery copies and every live reference."""
+    require(type(selected) is int and selected > 0, "invalid selected release")
+    require(type(keep) is int and keep >= 1, "keep at least the current release")
+    versions = {}
+    for path in releases.iterdir():
+        if re.fullmatch(r"[0-9]{20}", path.name) is None:
+            continue  # Staging and unrecognised entries are never deletion targets.
+        info = path.lstat()
+        require(stat.S_ISDIR(info.st_mode) and not stat.S_ISLNK(info.st_mode),
+                "release entry is not a real directory")
+        versions[int(path.name)] = path
+    require(selected in versions, "selected release tree missing")
+    recent = set(sorted((n for n in versions if n <= selected), reverse=True)[:keep])
+    return tuple(versions[n] for n in sorted(versions)
+                 if n < selected and n not in recent and n not in referenced)
+
+
+def referenced_release_sequences(releases: Path) -> frozenset[int]:
+    """Observe process and service references; do not read process environments."""
+    pattern = re.compile(re.escape(os.fsencode(releases)) + rb"/([0-9]{20})(?=/|[\s\x22\x27]|$)")
+    found = set()
+
+    def observe(raw):
+        found.update(int(match) for match in pattern.findall(raw))
+
+    for process in Path("/proc").iterdir():
+        if not process.name.isdecimal():
+            continue
+        try:
+            for name in ("cwd", "exe"):
+                try:
+                    observe(os.fsencode(os.readlink(process / name)))
+                except FileNotFoundError:
+                    pass  # Kernel threads have neither; an exiting task may lose either.
+            with (process / "maps").open("rb") as stream:
+                for line in stream:
+                    observe(line)
+            observe((process / "cmdline").read_bytes().replace(b"\0", b"\n"))
+            for descriptor in (process / "fd").iterdir():
+                try:
+                    observe(os.fsencode(os.readlink(descriptor)))
+                except FileNotFoundError:
+                    pass
+        except (FileNotFoundError, ProcessLookupError):
+            continue
+    # Mounted descendants (including bind mounts) are never recursive-delete
+    # targets, regardless of whether a process currently has an open file.
+    with Path("/proc/self/mountinfo").open("rb") as stream:
+        for line in stream:
+            fields = line.split()
+            if len(fields) >= 5:
+                observe(fields[4])
+    # Loaded or disabled service recipes can retain a recovery tree even when
+    # no process currently uses it. Never follow a directory symlink here.
+    total = 0
+    for path in Path("/etc/systemd/system").rglob("*"):
+        if path.is_symlink():
+            observe(os.fsencode(os.readlink(path)))
+            observe(os.fsencode(path.resolve()))
+        elif path.is_file():
+            size = path.stat().st_size
+            total += size
+            require(size <= 1024 * 1024 and total <= 16 * 1024 * 1024,
+                    "service reference inventory exceeds read budget")
+            observe(path.read_bytes())
+    return frozenset(found)
+
+
+def prune_releases(*, keep: int = 2, apply: bool = False) -> dict:
+    """Prune obsolete code only; signed history and all Birth data stay intact."""
+    require(os.geteuid() == 0, "release retention requires root")
+    releases = ROOT / "releases-v1"
+    with ExitStack() as locks:
+        acquire_locks(locks)  # No deployment or service start can race this decision.
+        parent = open_parent(releases)
+        locks.callback(os.close, parent)
+        first = startup_fingerprint()
+        require(first[0] == "attested", "current release is not ready for retention")
+        candidates = release_retention_candidates(
+            releases, first[1], keep=keep,
+            referenced=referenced_release_sequences(releases),
+        )
+        result = {"selected": first[1], "keep": keep, "apply": apply,
+                  "candidates": [path.name for path in candidates], "removed": []}
+        # Validate every target before the first deletion. These are immutable
+        # product trees, not user data; metadata history is outside this root.
+        for path in candidates:
+            descriptor = path / "deployment/executor-birth-deployment-v1.json"
+            info = path.lstat()
+            require((info.st_uid, info.st_gid) in OWNERS
+                    and not info.st_mode & 0o7022, "unsafe release tree")
+            census(path)  # Reject symlinks, special files and mutable tree layouts.
+            require(json.loads(descriptor.read_bytes()).get("release_sequence") == int(path.name),
+                    "release descriptor identity mismatch")
+        require(startup_fingerprint() == first, "startup selection changed during retention")
+        if apply:
+            require(shutil.rmtree.avoids_symlink_attacks, "descriptor-based removal unavailable")
+            for path in candidates:
+                shutil.rmtree(path.name, dir_fd=parent)
+                result["removed"].append(path.name)
+            os.fsync(parent)
+            require(startup_fingerprint() == first, "startup verification failed after retention")
+        say("RELEASE_RETENTION", json.dumps(result, sort_keys=True))
+        return result
 
 
 def run_child(command: list[str]) -> int:
@@ -1709,9 +1827,18 @@ def main() -> int:
         return cross(*arguments[1:])
     if arguments == ["prepare"]:
         return prepare()
+    if arguments[:1] == ["prune"]:
+        import argparse
+
+        parser = argparse.ArgumentParser(prog="rm0008_release_cycle.py prune")
+        parser.add_argument("--keep", type=int, default=2)
+        parser.add_argument("--apply", action="store_true")
+        options = parser.parse_args(arguments[1:])
+        prune_releases(keep=options.keep, apply=options.apply)
+        return 0
     if arguments[:1] == ["apply"] and set(arguments[1:]) <= {"--cross"}:
         return apply_cycle("--cross" in arguments)
-    raise RuntimeError("usage: rm0008_release_cycle.py prepare | apply [--cross]")
+    raise RuntimeError("usage: rm0008_release_cycle.py prepare | apply [--cross] | prune [--keep N] [--apply]")
 
 
 if __name__ == "__main__":

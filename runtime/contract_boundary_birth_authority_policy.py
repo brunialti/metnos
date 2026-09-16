@@ -121,6 +121,7 @@ BIRTH_AUTHORITY_POLICY_V1 = BirthAuthorityPolicyV1(
         'runtime/executor_birth_ownership_chain.py:_replace_required_pointer',
         'runtime/executor_birth_ownership_chain.py:_required_head_lock',
         'runtime/executor_birth_ownership_chain.py:inspect_ownership_chain_state_v1',
+        'runtime/executor_birth_ownership_chain.py:inspect_required_ownership_v1',
         'runtime/executor_birth_ownership_chain.py:inspect_transition_ownership_chain_v1',
         'runtime/executor_birth_ownership_coordinator.py:OwnershipCoordinatorJournalV1.append',
         'runtime/executor_birth_ownership_coordinator.py:OwnershipCoordinatorJournalV1.load',

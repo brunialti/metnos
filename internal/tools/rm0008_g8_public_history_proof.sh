@@ -3,7 +3,7 @@
 # The administrative runner captures diagnostics privately. Only bounded
 # public identities, counts and error codes leave this process.
 set -euo pipefail
-case "${2:-}" in public-history|initial-public-history|initial-policy-binding|producer-policy|producer-declarations|producer-binding|publication-binding|producer-history|contract-history|contract-history-v1|contract-inventory|contract-residual|historical-inventory) ;; *) exit 64 ;; esac
+case "${2:-}" in public-history|initial-public-history|initial-policy-binding|producer-policy|producer-declarations|producer-binding|publication-binding|producer-history|contract-history|contract-history-v1|contract-inventory|contract-residual|historical-inventory|required-window) ;; *) exit 64 ;; esac
 /opt/metnos/.venv/bin/python -I - "$1" "$2" <<'PY'
 import hashlib
 import importlib.util
@@ -40,6 +40,10 @@ if sys.argv[2] in {"publication-binding", "historical-inventory"}:
     modules += ("executor_birth_operational.py",)
 if sys.argv[2] == "historical-inventory":
     modules += ("executor_birth_reattestation.py", "executor_birth_history.py")
+if sys.argv[2] == "required-window":
+    # The already-tested public-only prepared readers also replace the older
+    # installed reader that opens private Birth material during registry checks.
+    modules = ("executor_birth_ownership_chain.py",) + modules
 
 def source_hashes():
     return {
@@ -248,7 +252,8 @@ try:
     from executor_birth_ownership_chain import (
         VerifiedOwnershipChain, inspect_ownership_chain_state_v1,
     )
-    from executor_birth_prepared_root import load_historical_context_verifiers_v1
+    if sys.argv[2] != "required-window":
+        from executor_birth_prepared_root import load_historical_context_verifiers_v1
 
     import contract_boundary_guard
 
@@ -256,8 +261,15 @@ try:
         contract_boundary_guard.BIRTH_CLOSED_SOURCE_REVIEW_SHA256
     )
 
-    chain = inspect_ownership_chain_state_v1()
-    if type(chain) is not VerifiedOwnershipChain or not chain.context_transitions:
+    if sys.argv[2] == "required-window":
+        from executor_birth_ownership_chain import OwnershipChainStore, VerifiedOwnershipWindowV1
+
+        chain = OwnershipChainStore().read_required_window_v1()
+        if type(chain) is not VerifiedOwnershipWindowV1 or len(chain.heads) > 2:
+            raise RuntimeError("required_window_invalid")
+    else:
+        chain = inspect_ownership_chain_state_v1()
+    if not chain.context_transitions:
         raise RuntimeError("required_context_transition_missing")
     if (chain.required_distribution is None
             or Path(chain.required_distribution.installation_root) != dependency_root):
@@ -271,6 +283,8 @@ try:
         transition.prepared_admission_context_id
         for transition in (chain.context_transitions[0], chain.context_transitions[-1])
     )
+    if sys.argv[2] == "required-window":
+        selectors = ()
     if sys.argv[2] == "initial-public-history":
         selectors = (chain.context_transitions[0].previous_admission_context_id,)
     if sys.argv[2] == "initial-policy-binding":
@@ -697,6 +711,7 @@ try:
         "producer-binding": "verified_ordinary_producer_and_durable_receipt_binding_sample",
         "publication-binding": "verified_ordinary_historical_publication_sample",
         "historical-inventory": "reconciled_observed_inventory_with_explicit_evidence_limits",
+        "required-window": "verified_current_release_and_immediate_edge_without_history_replay",
     }[sys.argv[2]]
 except Exception as exc:
     errors = []

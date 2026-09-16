@@ -79,12 +79,14 @@ dependencies, not the lifetime number of releases or admissions.
 - Reuse existing owners and certification mechanisms. This requirement does
   not call for another service, signing authority or general audit framework.
 
-This updates the acceptance criteria, not the installed behavior: the
-current cold chain reader still traverses historical signed metadata, while
-checking live distribution bytes only for the selected head. No reusable
-certification baseline or release-pruning policy is claimed implemented by
-this clarification. Detailed changes must satisfy this bounded-cost goal
-without treating an unverified cache as certification.
+This clarification itself changed the acceptance criteria, not installed
+behavior. The subsequent instruction **applica** authorizes implementing
+them. Work-plan section 5.16 records the bounded runtime reader and release
+code retention implementation, its tests and the actual cleanup. The
+standalone administrative verifier still traverses historical metadata;
+the runtime candidate is not deployed and F5 certification remains open.
+Do not confuse its signed required-state baseline with an unverified cache
+or a completed F5 entry certificate.
 
 ## 2. Order and stopping condition
 

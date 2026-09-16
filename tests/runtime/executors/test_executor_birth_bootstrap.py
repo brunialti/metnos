@@ -82,7 +82,7 @@ def test_required_context_preserves_chain_inspection_failure(monkeypatch) -> Non
         )
 
     monkeypatch.setattr(
-        ownership_chain, "inspect_ownership_chain_state_v1", fail_inspection,
+        ownership_chain, "inspect_required_ownership_v1", fail_inspection,
     )
     monkeypatch.setattr(
         prepared_root, "load_required_context_runtime_v1",
@@ -102,7 +102,7 @@ def test_closed_bootstrap_refuses_the_historical_context_without_a_head(
     import executor_birth_prepared_root as prepared_root
 
     monkeypatch.setattr(
-        ownership_chain, "inspect_ownership_chain_state_v1", lambda: object(),
+        ownership_chain, "inspect_required_ownership_v1", lambda: object(),
     )
     monkeypatch.setattr(authority_gate, "closed_build_enforcement", lambda: True)
     monkeypatch.setattr(
@@ -133,7 +133,7 @@ def test_open_bootstrap_retains_the_initial_context_before_transition(
     import executor_birth_ownership_chain as ownership_chain
 
     monkeypatch.setattr(
-        ownership_chain, "inspect_ownership_chain_state_v1", lambda: object(),
+        ownership_chain, "inspect_required_ownership_v1", lambda: object(),
     )
     monkeypatch.setattr(authority_gate, "closed_build_enforcement", lambda: False)
 
@@ -144,9 +144,9 @@ def test_required_context_preserves_context_load_failure(monkeypatch) -> None:
     import executor_birth_ownership_chain as ownership_chain
     import executor_birth_prepared_root as prepared_root
 
-    state = ownership_chain.VerifiedOwnershipChain("cutover", ())
+    state = ownership_chain.VerifiedOwnershipWindowV1((), (), None, ())
     monkeypatch.setattr(
-        ownership_chain, "inspect_ownership_chain_state_v1", lambda: state,
+        ownership_chain, "inspect_required_ownership_v1", lambda: state,
     )
 
     def fail_load():
@@ -167,9 +167,9 @@ def test_required_context_preserves_prepared_root_failure(monkeypatch) -> None:
     import executor_birth_ownership_chain as ownership_chain
     import executor_birth_prepared_root as prepared_root
 
-    state = ownership_chain.VerifiedOwnershipChain("cutover", ())
+    state = ownership_chain.VerifiedOwnershipWindowV1((), (), None, ())
     monkeypatch.setattr(
-        ownership_chain, "inspect_ownership_chain_state_v1", lambda: state,
+        ownership_chain, "inspect_required_ownership_v1", lambda: state,
     )
 
     def fail_load():

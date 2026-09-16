@@ -398,6 +398,152 @@ def _cold_chain_worker(
         ))
 
 
+def _window_history(tmp_path, authority, count):
+    ownership = tmp_path / "ownership"
+    ownership.mkdir(mode=0o755)
+    store = initialize_test_store(ownership / "chain-v1", authority)
+    previous_head = previous_cutover = previous_transition = previous_build = None
+    builds = []
+    for sequence in range(1, count + 1):
+        build = _cold_distribution(
+            ownership / "releases-v1" / f"{sequence:020d}", authority,
+            sequence=sequence, previous_closed_build_id=previous_build,
+        )
+        store.append_authenticated_build(build)
+        encoded, signature, certificate, transition = cutover(
+            authority, previous=previous_cutover,
+            build=build.identity.closed_build_id,
+            request="sha256:" + hashlib.sha256(str(sequence).encode()).hexdigest(),
+            previous_transition=previous_transition,
+        )
+        store.append_cutover(encoded, signature)
+        store.append_context_transition(transition.encoded, expected_proof=certificate.as_proof())
+        if sequence == 1:
+            (ownership / PAYLOAD_BASENAME).write_bytes(encoded)
+            (ownership / SIGNATURE_BASENAME).write_bytes(signature)
+        encoded, signature = issue_ownership_head(
+            release_sequence=sequence, cutover_id=certificate.cutover_id,
+            closed_build_id=build.identity.closed_build_id,
+            previous_head_id=previous_head, signing_key_id=authority.head_key_id,
+            private_key=authority.head_private,
+        )
+        head = store.append_head(encoded, signature)
+        store.update_required_head(encoded, signature, expected_head_id=previous_head)
+        previous_head, previous_cutover, previous_transition, previous_build = (
+            head.head_id, certificate.cutover_id, transition, build.identity.closed_build_id,
+        )
+        builds.append(build)
+    return store, builds
+
+
+def _read_window(store, *, observed=None, after_live=None):
+    def authenticate(encoded, signature):
+        record = distribution_module._authenticate_distribution_record_for_test(
+            encoded, signature, registry=store.distribution_registry,
+        )
+        if observed is not None:
+            observed.append(record.release_sequence)
+        return record
+
+    def verify_live(record):
+        verified = distribution_module._verify_authenticated_distribution_record_for_test(
+            record, environment=distribution_module._environment_for_test(
+                "linux", "x86_64",
+                store.root.parent / "releases-v1" / f"{record.release_sequence:020d}",
+            ),
+        )
+        if after_live is not None:
+            after_live()
+        return verified
+
+    return store._read_required_window_core_v1(
+        authenticate_record=authenticate, verify_live_record=verify_live, for_test=True,
+    )
+
+
+@pytest.mark.parametrize("count", (1, 3, 12))
+def test_required_window_has_bounded_work_without_old_release_trees(
+    authority, tmp_path, monkeypatch, count,
+):
+    store, builds = _window_history(tmp_path, authority, count)
+    for build in builds[:-1]:
+        shutil.rmtree(build.installation_root)
+    # An ordinary read must not even enumerate historical object names.
+    original_iterdir = Path.iterdir
+
+    def no_history_enumeration(path):
+        if path == store.root or store.root in path.parents:
+            pytest.fail("ordinary selection enumerated historical objects")
+        return original_iterdir(path)
+
+    monkeypatch.setattr(Path, "iterdir", no_history_enumeration)
+    observed = []
+    result = _read_window(store, observed=observed)
+    expected = tuple(range(max(1, count - 1), count + 1))
+    assert tuple(head.release_sequence for head in result.heads) == expected
+    assert sorted(observed) == list(expected)
+    assert result.required_distribution == builds[-1]
+    assert isinstance(result, chain_module.VerifiedOwnershipWindowV1)
+    assert not isinstance(result, chain_module.VerifiedOwnershipChain)
+
+
+def test_required_window_does_not_hide_historical_damage_from_explicit_audit(
+    authority, tmp_path,
+):
+    store, builds = _window_history(tmp_path, authority, 3)
+    old_signature = store.root / "builds-v1" / (
+        builds[0].identity.closed_build_id.removeprefix("sha256:") + ".sig"
+    )
+    old_signature.write_bytes(b"x" * 64)
+    assert _read_window(store).required_distribution == builds[-1]
+    with pytest.raises(OwnershipChainError, match="build object"):
+        store._read_required_chain_cold_for_test()
+
+
+@pytest.mark.parametrize("mutation", (
+    "required_signature", "build_signature", "cutover_signature", "transition",
+    "predecessor_signature", "live_code", "selector_changes", "selected_missing",
+))
+def test_required_window_rejects_damage_to_its_actual_dependencies(
+    authority, tmp_path, mutation,
+):
+    store, builds = _window_history(tmp_path, authority, 3)
+    required = store.read_required_head()
+    callback = None
+    if mutation == "required_signature":
+        target = store.root / REQUIRED_HEAD_BASENAME
+        target.write_bytes(target.read_bytes()[:-1] + bytes([target.read_bytes()[-1] ^ 1]))
+    elif mutation in {"build_signature", "predecessor_signature", "selected_missing"}:
+        build = builds[-2] if mutation == "predecessor_signature" else builds[-1]
+        target = store.root / "builds-v1" / (
+            build.identity.closed_build_id.removeprefix("sha256:") + ".sig"
+        )
+        if mutation == "selected_missing":
+            target.unlink()
+        else:
+            target.write_bytes(b"x" * 64)
+    elif mutation == "cutover_signature":
+        target = store.root / "cutovers-v1" / (
+            required.cutover_id.removeprefix("sha256:") + ".sig"
+        )
+        target.write_bytes(b"x" * 64)
+    elif mutation == "transition":
+        transition = _read_window(store).context_transitions[-1]
+        target = store.root / chain_module.CONTEXT_TRANSITIONS_DIRECTORY_V1 / context_transition_basename_v1(
+            transition.transition_id,
+        )
+        target.write_bytes(b"{}")
+    elif mutation == "live_code":
+        (Path(builds[-1].installation_root) / "runtime/__version__.py").write_bytes(b"tampered")
+    else:
+        previous = _read_window(store).heads[0]
+        callback = lambda: (store.root / REQUIRED_HEAD_BASENAME).write_bytes(
+            encode_required_head(previous),
+        )
+    with pytest.raises(OwnershipChainError):
+        _read_window(store, after_live=callback)
+
+
 def test_head_codec_is_canonical_signed_and_purpose_separated(authority):
     private, key_id, registry = authority
     encoded, signature = issue_ownership_head(

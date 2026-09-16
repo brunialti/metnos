@@ -530,11 +530,11 @@ def _load_context_runtime_from_chain_v1(chain) -> RequiredContextRuntimeV1:
         _context_selection_from_required_chain_v1,
     )
     from executor_birth_distribution_manifest import is_verified_distribution
-    from executor_birth_ownership_chain import VerifiedOwnershipChain
+    from executor_birth_ownership_chain import VerifiedOwnershipChain, VerifiedOwnershipWindowV1
     from executor_birth_prepared_set import load_authority_set_v1
 
     if (
-        not isinstance(chain, VerifiedOwnershipChain)
+        not isinstance(chain, (VerifiedOwnershipChain, VerifiedOwnershipWindowV1))
         or not is_verified_distribution(chain.required_distribution)
         or not chain.context_transitions
     ):
@@ -576,16 +576,16 @@ def _load_context_runtime_from_chain_v1(chain) -> RequiredContextRuntimeV1:
 def load_required_context_runtime_v1() -> RequiredContextRuntimeV1:
     """Read the required selector twice around one exact context acquisition."""
     from executor_birth_ownership_chain import (
-        VerifiedOwnershipChain, inspect_ownership_chain_state_v1,
+        VerifiedOwnershipWindowV1, inspect_required_ownership_v1,
     )
 
-    before = inspect_ownership_chain_state_v1()
-    if not isinstance(before, VerifiedOwnershipChain):
+    before = inspect_required_ownership_v1()
+    if not isinstance(before, VerifiedOwnershipWindowV1):
         raise PreparedRootError("birth_context_transition_required")
     loaded = _load_context_runtime_from_chain_v1(before)
-    after = inspect_ownership_chain_state_v1()
+    after = inspect_required_ownership_v1()
     if (
-        not isinstance(after, VerifiedOwnershipChain)
+        not isinstance(after, VerifiedOwnershipWindowV1)
         or after.required_head.head_id != before.required_head.head_id
         or after.required_distribution is None
         or before.required_distribution is None
@@ -604,11 +604,20 @@ def load_required_context_runtime_v1() -> RequiredContextRuntimeV1:
 def _previous_chain_for_transition_v1(chain, current_record):
     """Select an already authenticated prefix as evidence, never as a live head."""
     from executor_birth_distribution_manifest import verify_previous_distribution_record_v1
-    from executor_birth_ownership_chain import VerifiedOwnershipChain
+    from executor_birth_ownership_chain import VerifiedOwnershipChain, VerifiedOwnershipWindowV1
 
-    count = current_record.release_sequence - 1
+    previous_sequence = current_record.release_sequence - 1
+    count = previous_sequence
+    window = type(chain) is VerifiedOwnershipWindowV1
+    if window:
+        if (
+            not 1 <= len(chain.heads) <= 2
+            or chain.required_head.release_sequence not in {previous_sequence, current_record.release_sequence}
+        ):
+            raise PreparedRootError("birth_context_selection_invalid")
+        count = len(chain.heads) - (chain.required_head.release_sequence == current_record.release_sequence)
     if (
-        type(chain) is not VerifiedOwnershipChain or count < 1
+        type(chain) not in {VerifiedOwnershipChain, VerifiedOwnershipWindowV1} or count < 1
         or len(chain.heads) not in {count, count + 1}
         or len(chain.authenticated_records) != len(chain.heads)
         or len(chain.context_transitions) != len(chain.heads)
@@ -617,7 +626,7 @@ def _previous_chain_for_transition_v1(chain, current_record):
     previous = chain.authenticated_records[count - 1]
     if (
         previous.closed_build_id != current_record.previous_closed_build_id
-        or previous.release_sequence != count
+        or previous.release_sequence != previous_sequence
         or chain.heads[count - 1].closed_build_id != previous.closed_build_id
         or len(chain.heads) == count + 1 and (
             chain.authenticated_records[-1] != current_record
@@ -626,6 +635,11 @@ def _previous_chain_for_transition_v1(chain, current_record):
     ):
         raise PreparedRootError("birth_context_selection_invalid")
     distribution = verify_previous_distribution_record_v1(current_record, previous)
+    if window:
+        return VerifiedOwnershipWindowV1(
+            chain.heads[:count], chain.authenticated_records[:count], distribution,
+            chain.context_transitions[:count],
+        )
     return VerifiedOwnershipChain(
         chain.anchor_cutover_id, chain.heads[:count],
         chain.authenticated_records[:count], distribution,
@@ -635,12 +649,12 @@ def _previous_chain_for_transition_v1(chain, current_record):
 
 def load_previous_context_runtime_v1(current_record) -> PreviousContextRuntimeV1:
     """Read N's exact context twice around acquisition during an explicit N+1 update."""
-    from executor_birth_ownership_chain import inspect_transition_ownership_chain_v1
+    from executor_birth_ownership_chain import inspect_transition_ownership_window_v1
 
-    before = inspect_transition_ownership_chain_v1(current_record)
+    before = inspect_transition_ownership_window_v1(current_record)
     previous = _previous_chain_for_transition_v1(before, current_record)
     loaded = _load_context_runtime_from_chain_v1(previous)
-    after = inspect_transition_ownership_chain_v1(current_record)
+    after = inspect_transition_ownership_window_v1(current_record)
     repeated = _previous_chain_for_transition_v1(after, current_record)
     if after != before or repeated != previous:
         raise PreparedRootError("birth_context_selection_changed")
