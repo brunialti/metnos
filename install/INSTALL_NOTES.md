@@ -288,6 +288,40 @@ the operations that need a derived qualification still require the separate
 certificate, and without it they refuse individually rather than reselecting the
 retired state.
 
+### Optional evidence-derived F5 certificate (development)
+
+`install.birth_certification_issuer` signs the F5 activation document. It is
+not part of the six-phase installer, ordinary Birth or service startup, and it
+publishes no executor and grants no capability.
+
+`derive` reports exactly what `issue` would sign. Both refuse before the
+migration: a certificate authorising a lifecycle the installation has not moved
+to is the one thing this order exists to prevent. The migration marker is read
+first, the migration it names must verify against the epoch store, and only
+then is the qualification derived.
+
+The issuer composes the historical reconciliation itself, through the owner
+readers, and rereads both raw inventories afterwards. Its only input is the
+bounded public archive candidates, which remain untrusted bytes: the
+declaration owner accepts them where path, role, size and hash match the
+historical signed distribution. No count, receipt list or cycle outcome is
+accepted from a caller, and the signed payload carries none.
+
+The threshold is the approved one — at least five genuine technical
+admissions, at least two authenticated producers, two complete consecutive
+cycles and no open defect in the declared scope. A quarantine is not an
+admission. The declared evidence scope is recomputed from the history observed
+now and must equal the one the census recorded, so a gap that appeared since
+refuses the certificate instead of signing a review of something else. Every
+refusal names itself: `census_absent`, `open_defect`, `cycle_interrupted`,
+`profile_absent`, `consecutive_cycles_insufficient`,
+`technical_admissions_insufficient`, `authenticated_producers_insufficient`,
+`duplicate_admission`.
+
+The dedicated key never leaves the signing function, a revoked authority never
+signs, and the published document is read back through the runtime's own
+`load_f5_activation` before the issuer reports success.
+
 ### Private HTTP runtime settings
 
 The signed HTTP recipe selects `METNOS_ENGINE=v3`; its launcher does not inherit
