@@ -130,3 +130,73 @@ Le fallite sono quelle che in questo albero falliscono comunque, perche' il
 catalogo qui non e' firmato (le ho verificate togliendo le mie modifiche), piu'
 `test_i_test_di_nascita_passano[...]` che e' instabile di suo e l'impronta
 sorgente qui sopra.
+
+---
+
+# Aggiornamento del 17/9, dopo la vostra risposta
+
+## Il difetto che avete trovato: confermato, e la causa e' piu' profonda
+
+Avete ragione, e vi ringrazio: era un buco vero. La causa pero' non e' «il
+controllo guarda il vecchio servizio utente». E' che la barriera di manutenzione
+che avevo riusato **controlla l'elenco dei vecchi punti d'ingresso che la
+transizione F4 doveva ritirare**. Quelle unita' sono mascherate: chiedere se
+sono ferme risponde sempre di si'.
+
+| unita' | elenco controllato | in esercizio |
+|---|---|---|
+| `metnos-http` | sistema ✅ | sistema |
+| `metnos-durable-worker` | **utente** ❌ | **sistema** |
+| `metnos-telegram-daemon` | **utente** ❌ | **sistema** |
+
+Solo HTTP era coperto, per l'accidente di essere gia' allora un'unita' di
+sistema — ed e' per questo che sembrava funzionare. Il vostro worker e Telegram,
+cioe' i due che scrivono su `executor_stats.db` a ogni chiamata, non erano
+coperti affatto.
+
+**Corretto** in `1df7197d`: il passaggio ora chiede al catalogo installato quali
+unita' esegue questo prodotto e pretende che ognuna sia ferma prima di copiare
+qualsiasi cosa. Le dipendenze esterne (llama-server, searxng, photon) sono
+escluse di proposito: non scrivono stato di questa installazione e una finestra
+di manutenzione non ha motivo di fermarle. Catalogo illeggibile = rifiuto
+(`cutover_topology_unknown`), non un'ipotesi. Unita' viva =
+`cutover_writer_running`, con nome e stato.
+
+**Conseguenza pratica per voi: non dovete fermare niente.** Se il vostro job e'
+in esecuzione, il passaggio si rifiuta da solo e vi dice quale unita' lo blocca.
+L'attesa non e' piu' una cortesia da ricordare, e' una condizione verificata.
+
+## Un difetto piu' grande che vi lascio, non risolto
+
+**Lo stesso buco e' nel controllo condiviso** `contract_cutover_guard
+._prove_stack_stopped_v1`, quindi **e' sul percorso di rilascio**, non solo sul
+mio. Chiunque chiami `prove_stack_stopped` oggi riceve una prova piu' debole di
+quanto il nome prometta.
+
+Ho scritto e **misurato** la correzione generale (unire le unita' del catalogo
+installato all'elenco storico): rende rosse **15 prove isolate**, perche'
+dimostrano la quiescenza senza un catalogo installato e con la correzione
+dovrebbero installarne uno. E' un lavoro a se', su un percorso che state usando
+per rilasciare adesso: non lo faccio di nascosto mentre avete un batch in corso.
+
+Il lettore che serve esiste gia' ed e' additivo:
+`services_registry.owned_service_units_v1()`. Se volete prenderlo in carico
+voi, o preferite che lo faccia io dopo il vostro batch, ditelo.
+
+## Un rosso preesistente sul vostro percorso
+
+`tests/runtime/infra/test_rm0008_release_cycle.py::
+test_early_recipe_check_uses_real_canonical_and_independent_codecs[False]`
+fallisce sull'albero fuso. **Non e' della fusione**: l'ho riprodotto togliendo
+tutte le mie modifiche. Potrebbe essere «l'errore di catalogo riprodotto anche
+sul ramo precedente» che citate. Ve lo segnalo perche' sta sul ciclo di
+rilascio, non sul mio.
+
+## Stato delle quattro richieste
+
+| | |
+|---|---|
+| Allineare i rami | **fatto da me**, `0f922c5c`. Il vostro ramo e' interamente contenuto nel mio. A voi resta solo la verifica di una riga prima del vostro prossimo rilascio. |
+| Documento non committato | resta vostro, non l'ho toccato |
+| Rivedere le fusioni | fatto, grazie: 266 prove |
+| Coordinare arresti | **non serve piu' coordinarsi a voce**: il passaggio si rifiuta da solo se qualcosa gira |
