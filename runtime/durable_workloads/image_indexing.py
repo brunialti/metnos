@@ -403,4 +403,45 @@ def build_candidate(request: Mapping, generation: str, runners, *, max_concurren
     return candidate, inventory
 
 
-__all__ = ["PLAN_ID", "EXECUTOR", "registration", "normalize_request", "build_candidate"]
+def build_recovery_candidate(original, references, *, source_count, remaining_budgets):
+    """Continue the same sealed generation from verified folder-result inputs.
+
+    The operator verifies complete historical folder coverage before admission.
+    LRE treats the referenced results as data; each analysis still checks its
+    source and private checkpoint under the newly frozen executor contract.
+    """
+    import copy
+    from .schema import validate_plan
+
+    if (original.get("plan_id") != PLAN_ID or type(source_count) is not int or source_count < 1
+            or not isinstance(references, list) or not 1 <= len(references) <= 1024):
+        raise ValueError("image continuation evidence is invalid")
+    if any(ref.get("schema_version") != FOLDER_SCHEMA for ref in references):
+        raise ValueError("image continuation requires folder result references")
+    stages = {stage["key"]: copy.deepcopy(stage) for stage in original["stages"]}
+    if set(stages) != {"inventory", "discover", "folders", "analyze", "merge", "publish"}:
+        raise ValueError("image continuation requires the complete original plan")
+    for name, limit in remaining_budgets.items():
+        if type(limit) is not int or limit < 0 or limit > original["budgets"][name]:
+            raise ValueError("image continuation cannot expand a budget")
+    folders = stages["folders"]
+    folders.update(type="validate", depends_on=["inventory"],
+                   runner={"kind": "internal", "name": "committed_entries"},
+                   cardinality={"mode": "singleton", "max_units": 1},
+                   input_bindings={"references": {"ref": "literal", "value": references}},
+                   resources={name: int(name == "local_io") for name in RESOURCE_KEYS},
+                   invalidation_keys=["semantic_args.digest", "runner.contract_digest"])
+    stages["analyze"]["cardinality"]["max_units"] = len(references)
+    stages["merge"]["cardinality"]["max_units"] = max(1, 2 * len(references))
+    stages["publish"]["depends_on"] = ["merge"]
+    stages["publish"]["input_bindings"]["expected_count"] = {"ref": "literal", "value": source_count}
+    selected = [stages[key] for key in ("inventory", "folders", "analyze", "merge", "publish")]
+    for stage in selected:
+        stage["retry"]["max_attempts"] = 1
+        stage["retry"]["retryable_error_classes"] = []
+    candidate = {**copy.deepcopy(original), "budgets": dict(remaining_budgets), "stages": selected}
+    validate_plan(candidate)
+    return candidate
+
+
+__all__ = ["PLAN_ID", "EXECUTOR", "registration", "normalize_request", "build_candidate", "build_recovery_candidate"]

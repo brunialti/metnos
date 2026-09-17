@@ -858,11 +858,13 @@ class CompositeRunnerResolver:
 
 
 _INTERNAL_EFFECTS = {
+    "committed_entries": DurableEffect.PURE.value,
     "sealed_inventory": DurableEffect.PURE.value,
     "schema_and_coverage_validator": DurableEffect.PURE.value,
     "artifact_store_publish": DurableEffect.IDEMPOTENT.value,
 }
 _INTERNAL_INPUT_TYPES = {
+    "committed_entries": {"references": "array"},
     "sealed_inventory": {"inventory": "object"},
     "schema_and_coverage_validator": {"assembled": "object"},
     "artifact_store_publish": {"artifacts": "array", "validation": "array"},

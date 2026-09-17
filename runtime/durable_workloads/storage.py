@@ -70,6 +70,7 @@ from .schema import (
     MAX_ERROR_JSON_BYTES,
     MAX_EVENT_JSON_BYTES,
     MAX_PLAN_JSON_BYTES,
+    MAX_RESULT_JSON_BYTES,
     MAX_SNAPSHOT_JSON_BYTES,
     SchemaValidationError,
     canonical_json,
@@ -5357,6 +5358,59 @@ class DurableWorkloadStore:
             and isinstance(manual_retry, bool)
             and manual_retry is lease.manual_retry
         )
+
+    def read_committed_entries(self, owner_user_id: str, references: object) -> list[dict]:
+        """Read explicitly selected, digest-bound historical data, never replay effects.
+
+        A newly admitted plan freezes these references as ordinary input. This
+        is not a claim that an old attempt ran under a new executor contract,
+        and it does not alter historical results, usage or completion status.
+        """
+        owner = _require_owner(owner_user_id)
+        if not isinstance(references, list) or not 1 <= len(references) <= 1024:
+            raise DurableStoreError("committed result references must be bounded")
+        seen = set()
+        entries = []
+        size = 0
+        for reference in references:
+            if (not isinstance(reference, dict)
+                    or set(reference) != {"result_id", "digest", "schema_version"}
+                    or not all(isinstance(value, str) for value in reference.values())
+                    or not _ID_RE.fullmatch(reference["result_id"])
+                    or not _SHA256_RE.fullmatch(reference["digest"])
+                    or len(reference["schema_version"]) > 128
+                    or reference["result_id"] in seen):
+                raise DurableStoreError("committed result reference is invalid")
+            seen.add(reference["result_id"])
+            row = self._connection.execute(
+                """
+                SELECT result.schema_version, result.digest, result.payload_json
+                FROM results result
+                JOIN units unit ON unit.owner_user_id=result.owner_user_id
+                  AND unit.revision_id=result.revision_id
+                  AND unit.committed_result_id=result.id AND unit.state='committed'
+                JOIN revisions revision ON revision.owner_user_id=result.owner_user_id
+                  AND revision.id=result.revision_id AND revision.admitted_at IS NOT NULL
+                WHERE result.owner_user_id=? AND result.id=?
+                """, (owner, reference["result_id"]),
+            ).fetchone()
+            if (row is None or row["schema_version"] != reference["schema_version"]
+                    or row["digest"] != reference["digest"]
+                    or not isinstance(row["payload_json"], str)):
+                raise DurableStoreError("committed result reference is unavailable")
+            size += len(row["payload_json"].encode("utf-8"))
+            if size > MAX_RESULT_JSON_BYTES:
+                raise DurableStoreError("committed result input exceeds the byte limit")
+            validated = ValidatedResult(row["schema_version"], row["payload_json"], row["digest"])
+            payload = json.loads(validated.payload_json)
+            selected = payload.get("entries")
+            if (payload.get("ok") is False or not isinstance(selected, list)
+                    or any(not isinstance(item, dict) for item in selected)
+                    or len(entries) + len(selected) > 1_000_000):
+                raise DurableStoreError("committed result has no valid entries")
+            entries.extend(selected)
+        canonical_json({"entries": entries}, max_bytes=MAX_RESULT_JSON_BYTES)
+        return entries
 
     def adopt_reusable_results(self, *, limit: int = 200) -> int:
         """Commit prior results for unchanged pure units without re-execution.

@@ -33,7 +33,7 @@ def test_internal_artifact_runner_is_private_and_idempotent(tmp_path):
         repository = ArtifactRepository.open(database)
         try:
             artifacts = ArtifactStore(tmp_path / "artifacts", repository)
-            publish = approved_internal_runners(artifacts)["artifact_store_publish"]
+            publish = approved_internal_runners(artifacts, store)["artifact_store_publish"]
             args = {
                 "validation": [{"valid": True, "reason": ""}],
                 "artifacts": [{

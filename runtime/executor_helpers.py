@@ -226,7 +226,9 @@ def run_stdio(invoke, *, default=None, error_extra=None,
 
     `invoke` e' chiamato SOLO dopo un parse riuscito (fuori dal try sul
     JSONDecodeError): un eventuale errore interno di `invoke` propaga come
-    prima (niente mascheramento «JSON non valido» di bug applicativi).
+    prima, salvo nel trasporto gestito dei consumi: qui un errore interno
+    restituisce un fallimento strutturato con i consumi raccolti fino ad allora.
+    Non viene mai classificato come «JSON non valido».
 
     Sul device il client puo' impostare `METNOS_EXECUTOR_OPERATION=reverse`
     esclusivamente da un campo wire firmato. In quel caso questa stessa
@@ -275,7 +277,14 @@ def run_stdio(invoke, *, default=None, error_extra=None,
         )
         sink = BoundedTransportUsageSink()
         with transport_usage_context(sink):
-            result = invoke(args)
+            try:
+                result = invoke(args)
+            except Exception:
+                # Preserve completed calls even when application code fails
+                # afterwards. Started but unreported calls stay unknown in the
+                # sink; never include exception text or private input here.
+                result = {"ok": False, "error_class": "executor_unknown",
+                          "error": _msg("MSG_ERR_UNKNOWN")}
         if isinstance(result, dict):
             result = dict(result)
             result[TRANSPORT_USAGE_KEY] = sink.export()

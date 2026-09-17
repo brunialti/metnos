@@ -134,13 +134,13 @@ def _registry() -> RuntimeRegistry:
     return RuntimeRegistry((registration,))
 
 
-def _delayed_internal_runners(artifacts: ArtifactStore) -> dict[str, object]:
+def _delayed_internal_runners(artifacts: ArtifactStore, store) -> dict[str, object]:
     """Wrap every internal runner with the same bounded fault-injection delay."""
 
     delay_ms = int(os.environ.get("METNOS_RM0006_INTERNAL_DELAY_MS", "0") or 0)
     if delay_ms < 0 or delay_ms > 30_000:
         raise ValueError("METNOS_RM0006_INTERNAL_DELAY_MS must be between 0 and 30000")
-    runners = approved_internal_runners(artifacts)
+    runners = approved_internal_runners(artifacts, store)
     if not delay_ms:
         return runners
 
@@ -192,7 +192,7 @@ def main() -> int:
             executor_loader=lambda name: catalog.executors.get(name),
             executor_invoker=lambda _executor, args, *_rest: _ocr(args),
             workload_invoker=registry.invoke_workload,
-            internal_runners=_delayed_internal_runners(artifacts),
+            internal_runners=_delayed_internal_runners(artifacts, store),
         )
         return BoundExecutionBridge(bridge, (authority, artifacts))
 

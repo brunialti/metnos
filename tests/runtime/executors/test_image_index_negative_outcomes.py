@@ -11,6 +11,39 @@ from image_index_outcomes import FAILURE_MARKER, failure_description
 from test_image_index_build_phases import builder, corpus, _analyze, _discover, _invoke, _photo, _publish
 
 
+@pytest.mark.parametrize("numerator", [0, 1])
+def test_invalid_gps_rational_does_not_discard_a_valid_photo_or_repeat_models(corpus, monkeypatch, numerator):
+    from PIL.TiffImagePlugin import IFDRational
+
+    root, calls = corpus
+    _photo(root)
+    original_open = builder._open_image_with_exif
+
+    def invalid_gps(path):
+        image, exif = original_open(path)
+        exif["GPSInfo"] = {"GPSLatitude": (IFDRational(numerator, 0), 0, 0),
+                           "GPSLongitude": (12, 30, 0)}
+        return image, exif
+
+    monkeypatch.setattr(builder, "_open_image_with_exif", invalid_gps)
+    discovery = _discover(root)
+    receipts = _analyze(root, discovery)
+    assert _analyze(root, discovery) == receipts
+    result = _publish(root, discovery, receipts)
+    assert len(calls) == 1
+    assert result["n_indexed"] == 1 and result["n_not_indexed"] == 0
+    assert _entries(result)[0]["exif_gps"] is None
+
+
+def test_valid_gps_rationals_preserve_coordinates():
+    from PIL.TiffImagePlugin import IFDRational
+
+    assert builder._exif_gps({"GPSInfo": {
+        "GPSLatitude": (IFDRational(45, 1), 30, 0), "GPSLatitudeRef": "S",
+        "GPSLongitude": (12, 15, 0), "GPSLongitudeRef": "W",
+    }}) == {"lat": -45.5, "lon": -12.25}
+
+
 def _entries(result):
     return [json.loads(line) for line in (Path(result["index_path"]) / "entries.jsonl").read_text().splitlines()]
 

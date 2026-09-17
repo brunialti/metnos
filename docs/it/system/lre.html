@@ -164,6 +164,24 @@ vettori: la foto resta distinta da quelle indicizzate con successo.</p>
 
 <h3 id="photo-indexing-outcomes">Completamento con errori espliciti</h3>
 
+<p>Coordinate GPS EXIF non leggibili, comprese frazioni con denominatore zero,
+vengono omesse: una fotografia decodificabile continua a essere analizzata e
+indicizzata. Se un executor gestito termina con un'eccezione applicativa,
+conserva i consumi delle chiamate al modello già registrate e segnala il
+fallimento. Le chiamate iniziate senza un resoconto restano consumi incerti;
+la correzione non ricostruisce automaticamente contatori persi in passato.</p>
+
+<p>Un recupero amministrativo può ammettere una continuazione con riferimenti
+espliciti a risultati già confermati: proprietario, schema e impronta vengono
+verificati prima di leggerne le voci. Il vecchio lavoro e i suoi consumi non
+vengono riscritti. Quando manca un resoconto, la continuazione può riservare
+l'intero massimo del contratto locale a costo zero e sottrarlo, insieme ai
+consumi noti, dal budget precedente. Questa riserva non è un consumo misurato.
+Senza un limite verificabile o budget sufficiente il recupero si ferma.
+Per le foto, classificazioni già confermate e salvataggi intermedi compatibili
+permettono di continuare la stessa generazione senza ripetere le analisi riuscite.
+Non è una riprova automatica della revisione bloccata.</p>
+
 <p>A fine lavoro il totale delle sorgenti deve coincidere con foto indicizzate
 più foto non indicizzate. Se esistono esiti negativi, LRE indica
 <strong>completato con errori</strong>, anche se tutti i batch sono conclusi.

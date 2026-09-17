@@ -23,7 +23,7 @@ from durable_workloads import image_indexing as indexing
 from durable_workloads.admission import submit_candidate
 from durable_workloads.execution import DurableExecutionBridge
 from durable_workloads.coordinator import FailureStatus, instant_text
-from durable_workloads.internal_runners import sealed_inventory
+from durable_workloads.internal_runners import committed_entries, sealed_inventory
 from durable_workloads.models import RESOURCE_KEYS, WorkloadState
 from durable_workloads.runtime_bindings import RuntimeRegistry
 from durable_workloads.storage import DurableWorkloadStore
@@ -71,9 +71,12 @@ def _model_usage(*, model, kind="chat", tier="middle"):
 
 @pytest.mark.parametrize("with_unreadable_photo", [False, True])
 @pytest.mark.parametrize("description_failures", [0, 1, 3])
+@pytest.mark.parametrize("recovery", [False, True])
 def test_new_plan_publishes_and_searches_after_restart_without_repeating_accepted_groups(
-    tmp_path, monkeypatch, with_unreadable_photo, description_failures,
+    tmp_path, monkeypatch, with_unreadable_photo, description_failures, recovery,
 ):
+    if recovery and description_failures:
+        pytest.skip("continuation grants one attempt; retry behavior is exercised separately")
     photos = tmp_path / "photos"
     folder = photos / "event"
     folder.mkdir(parents=True)
@@ -165,13 +168,14 @@ def test_new_plan_publishes_and_searches_after_restart_without_repeating_accepte
             store, runners=selected_registry.runners, output_schemas=selected_registry.output_schemas,
             executor_loader=lambda _name: executor, executor_invoker=invoke_executor,
             workload_invoker=selected_registry.invoke_workload,
-            internal_runners={"sealed_inventory": sealed_inventory},
+            internal_runners={"sealed_inventory": sealed_inventory, "committed_entries": committed_entries(store)},
             clock=lambda: clock[0],
         )
         return bridge, worker
 
     database = tmp_path / "state/durable.sqlite3"
-    request = indexing.normalize_request(executor, {"base_path": str(photos), "max_files": len(originals)})
+    request = indexing.normalize_request(executor, {"base_path": str(photos),
+        "max_files": 50_000 if recovery else len(originals)})
     candidate, inventory = indexing.build_candidate(request, "fixture-generation", registry.runners, max_concurrency=2)
     index = builder._index_dir(photos)
     attention_seen = []
@@ -224,13 +228,47 @@ def test_new_plan_publishes_and_searches_after_restart_without_repeating_accepte
             assert 0 < successful_calls < indexed_count
             worker.request_stop()
 
+            if recovery:
+                from durable_workloads.recovery import remaining_recovery_budgets
+                original_id = workload_id
+                old_revision = submitted.revision.revision_id
+                committed_before = list(store._connection.execute(
+                    "SELECT id, committed_result_id FROM units WHERE revision_id=? AND state='committed' ORDER BY id",
+                    (old_revision,)))
+                old_work = store.get_workload("fixture-owner", original_id)
+                store.request_cancel("fixture-owner", original_id, expected_version=old_work.version,
+                                     idempotency_key="continuation-fixture")
+                store.settle_workloads()
+                usage = dict(store._connection.execute(
+                    "SELECT * FROM revision_usage WHERE revision_id=?", (old_revision,)).fetchone())
+                attempts = [{"attempt_id": row["id"], "state": row["state"],
+                             "model": json.loads(row["model_snapshot_json"]),
+                             "usage": json.loads(row["metrics_json"]).get("llm_usage")}
+                            for row in store._connection.execute("SELECT * FROM attempts")]
+                remaining, assessment = remaining_recovery_budgets(candidate, usage, attempts,
+                    unit_count=store._connection.execute("SELECT count(*) FROM units").fetchone()[0], now=clock[0])
+                references = [{"result_id": row["id"], "digest": row["digest"], "schema_version": row["schema_version"]}
+                              for row in store._connection.execute(
+                                  "SELECT r.* FROM results r JOIN units u ON u.committed_result_id=r.id "
+                                  "JOIN stages s ON s.id=u.stage_id WHERE s.stage_key='folders' ORDER BY u.unit_key")]
+                assert len(references) == 2
+                candidate = indexing.build_recovery_candidate(candidate, references,
+                    source_count=len(originals), remaining_budgets=remaining)
+                # Different signed implementation; checkpoint content/prompt identity stays valid.
+                executor.digest = "sha256:" + "9" * 64
+
         # Recreate the registry, bridge and worker: only durable accepted results
         # carry progress across this boundary, not an in-memory unit queue.
         resumed_registry = _registry(executor, vision_binding)
         with DurableWorkloadStore.open(database) as store:
-            duplicate = submit_candidate(store, resumed_registry, "fixture-owner", "fixture-request",
+            duplicate = submit_candidate(store, resumed_registry, "fixture-owner",
+                                         "fixture-continuation" if recovery else "fixture-request",
                                          candidate, inventory, redacted_request={"summary": "synthetic photo indexing"})
-            assert duplicate.workload.workload_id == workload_id
+            if recovery:
+                workload_id = duplicate.workload.workload_id
+                assert workload_id != original_id
+            else:
+                assert duplicate.workload.workload_id == workload_id
             bridge, worker = bindings(store, resumed_registry, "fixture-after-restart")
             for _step in range(30):
                 outcome = step(bridge, worker, store, workload_id)
@@ -244,9 +282,9 @@ def test_new_plan_publishes_and_searches_after_restart_without_repeating_accepte
             assert len(calls["folder"]) == 1
             # A committed group may already have failed attempts before the
             # restart; recovery must not invoke that group again afterwards.
-            assert all(Counter(calls["phases"])[item] == count for item, count in accepted.items())
+            assert all(Counter(calls["phases"])[item] == count + int(recovery) for item, count in accepted.items())
             assert Counter(phase for phase, _entries in calls["phases"]) == {
-                "discover": 1, "analyze": 2 + description_failures, "merge": 1, "publish": 1,
+                "discover": 1, "analyze": 2 + description_failures + int(recovery), "merge": 1, "publish": 1,
             }
             rows = store._connection.execute(
                 "SELECT stages.stage_key, attempts.metrics_json FROM attempts "
@@ -254,11 +292,16 @@ def test_new_plan_publishes_and_searches_after_restart_without_repeating_accepte
                 "WHERE attempts.owner_user_id=?", ("fixture-owner",),
             ).fetchall()
             usage = [(row["stage_key"], json.loads(row["metrics_json"])["llm_usage"])
-                     for row in rows if row["stage_key"] != "inventory"]
+                     for row in rows if "llm_usage" in json.loads(row["metrics_json"])]
             assert all(not item["usage_missing"] for _stage, item in usage)
             assert sum(len(item["records"]) for stage, item in usage if stage == "analyze") == indexed_count + description_failures
             assert sum(len(item["records"]) for stage, item in usage if stage == "folders") == 1
             assert all(item["zero_calls_verified"] for stage, item in usage if stage in {"discover", "merge", "publish"})
+            if recovery:
+                assert store.get_workload("fixture-owner", original_id).state is WorkloadState.CANCELLED
+                assert committed_before == list(store._connection.execute(
+                    "SELECT id, committed_result_id FROM units WHERE revision_id=? AND state='committed' ORDER BY id",
+                    (old_revision,)))
 
         # Persist the item-level error ledger at completion, independently of
         # technical attempts and without recounting merge/publication summaries.

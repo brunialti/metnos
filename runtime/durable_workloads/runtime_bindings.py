@@ -42,6 +42,7 @@ from .worker import DurableWorker
 
 _CORE_RUNNER_BINDINGS = (
     (RunnerKind.INTERNAL, "artifact_store_publish"),
+    (RunnerKind.INTERNAL, "committed_entries"),
     (RunnerKind.INTERNAL, "schema_and_coverage_validator"),
     (RunnerKind.INTERNAL, "sealed_inventory"),
 )
@@ -446,7 +447,7 @@ class RuntimeFactory:
                 output_schemas=registry.output_schemas,
                 source_resolver=authority.resolve,
                 workload_invoker=registry.invoke_workload,
-                internal_runners=approved_internal_runners(artifacts),
+                internal_runners=approved_internal_runners(artifacts, store),
                 resource_readiness=ensure_model_resource,
                 executor_generation_attestor=birth_guard,
                 require_generation_attestation=birth_guard is not None,

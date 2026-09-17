@@ -157,6 +157,24 @@ invented: the photo remains distinct from successfully indexed images.</p>
 
 <h3 id="photo-indexing-outcomes">Completion with explicit errors</h3>
 
+<p>Unreadable EXIF GPS coordinates, including fractions with a zero denominator,
+are omitted: a decodable photograph is still analyzed and indexed. If a managed
+executor ends with an application exception, it preserves already recorded model
+call usage and reports the failure. Calls started without a usage report remain
+uncertain; the correction does not automatically reconstruct counters lost in
+earlier attempts.</p>
+
+<p>Administrative recovery can admit a continuation with explicit references to
+committed results: ownership, schema and digest are checked before reading their
+entries. The original workload and its usage are not rewritten. For a missing
+report, the continuation can reserve the entire frozen zero-cost local contract
+allowance and subtract it, together with known consumption, from the original
+budget. This reservation is not measured usage. Recovery stops without a
+verifiable bound or enough remaining budget. For photos, committed folder
+classifications and compatible intermediate checkpoints allow the same generation
+to continue without repeating successful analyses. This does not automatically
+retry the blocked revision.</p>
+
 <p>At completion, the source total must equal indexed photos plus photos not
 indexed. Negative outcomes make LRE report <strong>completed with errors</strong>,
 even when every batch is finished. Errors become visible when each batch is

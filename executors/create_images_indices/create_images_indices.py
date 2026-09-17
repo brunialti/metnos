@@ -121,7 +121,9 @@ def _exif_gps(exif: dict) -> dict | None:
     try:
         return {"lat": decimal(gps["GPSLatitude"], gps.get("GPSLatitudeRef", "N")),
                 "lon": decimal(gps["GPSLongitude"], gps.get("GPSLongitudeRef", "E"))}
-    except (KeyError, TypeError, ValueError):
+    except (KeyError, TypeError, ValueError, ZeroDivisionError):
+        # EXIF rationals can legally reach the decoder with denominator zero.
+        # Invalid optional coordinates do not invalidate the decoded photograph.
         return None
 
 

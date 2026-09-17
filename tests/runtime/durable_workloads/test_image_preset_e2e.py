@@ -163,7 +163,7 @@ def _make_bridge(
         executor_loader=lambda name: _catalog().get(name),
         executor_invoker=executor,
         workload_invoker=ImagePresetWorkloadInvoker(model),
-        internal_runners=approved_internal_runners(artifacts),
+        internal_runners=approved_internal_runners(artifacts, store),
     )
 
 

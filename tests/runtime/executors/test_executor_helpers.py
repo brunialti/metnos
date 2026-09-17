@@ -15,6 +15,8 @@ import sys
 import unittest
 from pathlib import Path
 
+import pytest
+
 _RUNTIME = (Path(__file__).resolve().parents[3] / "runtime")
 
 from messages import get as _msg  # noqa: E402
@@ -86,6 +88,53 @@ def test_run_stdio_captures_only_bounded_model_usage_when_requested(monkeypatch)
     assert "private prompt" not in str(wire)
     assert "private input" not in str(wire)
     assert "private output" not in str(wire)
+
+
+@pytest.mark.parametrize("call_state", ["none", "completed", "unreported"])
+def test_managed_exception_preserves_honest_usage_without_private_details(monkeypatch, call_state):
+    import llm_telemetry as telemetry
+
+    monkeypatch.setenv("METNOS_CAPTURE_MODEL_USAGE", "1")
+
+    def invoke(_args):
+        if call_state != "none":
+            telemetry.mark_call_started()
+        if call_state == "completed":
+            telemetry.record(provider="llamacpp", model="private-model", result=type("Result", (), {
+                "text": "private output", "in_tokens": 3, "out_tokens": 2, "latency_ms": 1,
+            })())
+        raise ZeroDivisionError("private image path and prompt")
+
+    output = _run_stdio(invoke, "{}")
+    result = json.loads(output)
+    assert result["ok"] is False
+    assert result["error_class"] == "executor_unknown"
+    assert "private" not in output
+    sink = telemetry.BoundedUsageSink()
+    sink.ingest_transport(result[telemetry.TRANSPORT_USAGE_KEY], workload_id="workload",
+                          stage_id="stage", unit_key="unit", attempt_id="attempt")
+    summary = sink.summary()
+    assert summary["usage_missing"] is (call_state == "unreported")
+    assert summary["zero_calls_verified"] is (call_state == "none")
+    assert summary["input_tokens"] == (3 if call_state == "completed" else 0)
+    assert summary["output_tokens"] == (2 if call_state == "completed" else 0)
+    assert summary["cost_micros"] == 0
+
+
+def test_unmanaged_exception_still_propagates(monkeypatch):
+    monkeypatch.delenv("METNOS_CAPTURE_MODEL_USAGE", raising=False)
+    with pytest.raises(ZeroDivisionError):
+        _run_stdio(lambda _args: 1 / 0, "{}")
+
+
+def test_managed_interruption_is_not_reported_as_a_completed_invocation(monkeypatch):
+    monkeypatch.setenv("METNOS_CAPTURE_MODEL_USAGE", "1")
+
+    def interrupted(_args):
+        raise KeyboardInterrupt
+
+    with pytest.raises(KeyboardInterrupt):
+        _run_stdio(interrupted, "{}")
 
 
 def test_vector_result_distinguishes_complete_partial_and_empty_success():

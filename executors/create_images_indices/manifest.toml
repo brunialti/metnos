@@ -2,7 +2,7 @@
 manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 name = "create_images_indices"
-version = "0.5.0"
+version = "0.5.1"
 timeout_s = 14400
 intelligence = "llm"
 author = "Roberto Brunialti"
@@ -24,7 +24,7 @@ en = "SCOPO: builds or refreshes the photo index through resumable LRE units; re
 
 [code]
 files = ["create_images_indices.py"]
-digest = "sha256:03d778f04c1a93968ca0755247dd98b887c30a2596bee904c41c11e77d6c750d"
+digest = "sha256:8dd5acd0f341011648d74e03fd1f76ed7998ef019eb98cad18d3190587e2d00b"
 
 [args]
 type = "object"
