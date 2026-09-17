@@ -101,15 +101,21 @@ def test_an_unmigrated_installation_cannot_be_certified(monkeypatch):
     assert raised.value.code == "certification_before_migration"
 
 
-def test_an_unverifiable_migration_cannot_be_certified(monkeypatch, tmp_path):
-    import config
-    import executor_birth_lifecycle_migration as migration
+def _migrated(monkeypatch, tmp_path):
+    import install.birth_lifecycle_migration as cutover
 
     monkeypatch.setattr(issuer, "_require_root_v1", lambda: None)
     monkeypatch.setattr(mode, "read_birth_activation_state",
                         lambda: mode.BirthActivationState(
                             mode.BirthStateOwner.EPOCH, MIGRATION, None, None))
-    monkeypatch.setattr(config, "PATH_USER_STATE", tmp_path)
+    monkeypatch.setattr(cutover, "read_handoff_v1",
+                        lambda: {"environment": {"METNOS_USER_STATE": str(tmp_path)}})
+
+
+def test_an_unverifiable_migration_cannot_be_certified(monkeypatch, tmp_path):
+    import executor_birth_lifecycle_migration as migration
+
+    _migrated(monkeypatch, tmp_path)
 
     def refuse(*_a, **_k):
         raise migration.LifecycleMigrationError(
@@ -119,6 +125,26 @@ def test_an_unverifiable_migration_cannot_be_certified(monkeypatch, tmp_path):
     with pytest.raises(issuer.CertificationIssueError) as raised:
         issuer.issue_certificate_v1(apply=True)
     assert raised.value.code == "migration_record_incomplete"
+
+
+def test_the_issuer_rereads_the_store_the_migration_used(monkeypatch, tmp_path):
+    """Root has its own state directory; the service's is the one that counts."""
+    import executor_birth_lifecycle_migration as migration
+
+    _migrated(monkeypatch, tmp_path)
+    seen = {}
+    monkeypatch.setattr(migration, "verify_migration_v1",
+                        lambda migration_id, *, epoch_db_path: seen.update(
+                            path=epoch_db_path, identity=migration_id))
+    monkeypatch.setattr(issuer, "_installation_frontier_v1",
+                        lambda: (INSTALLATION, HEAD, BUILD))
+    monkeypatch.setattr(issuer, "observe_history_v1",
+                        lambda **_k: (_ for _ in ()).throw(
+                            issuer.CertificationIssueError("stop", "after the reread")))
+    with pytest.raises(issuer.CertificationIssueError):
+        issuer.issue_certificate_v1(apply=False)
+    assert seen["path"] == tmp_path / "birth" / "executor_epochs.sqlite"
+    assert seen["identity"] == MIGRATION
 
 
 @pytest.mark.parametrize("command", ["derive", "issue"])

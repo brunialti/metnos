@@ -106,20 +106,23 @@ def observe_history_v1(
 
 def _completed_migration_id() -> str:
     """Read the marker, then prove the migration it names is really complete."""
-    import config
     from executor_birth_activation_mode import (
         BirthStateOwner, read_birth_activation_state,
     )
     from executor_birth_lifecycle_migration import (
         LifecycleMigrationError, verify_migration_v1,
     )
+    from install.birth_lifecycle_migration import read_handoff_v1, service_epoch_db_v1
 
     state = read_birth_activation_state()
     if state.owner is BirthStateOwner.LEGACY:
         # Certifying here would authorise a lifecycle this installation has
         # not moved to. The migration comes first, always.
         raise CertificationIssueError("certification_before_migration")
-    epoch_db = Path(config.PATH_USER_STATE) / "birth" / "executor_epochs.sqlite"
+    # This tool runs as root, and root has its own state directory. The store
+    # to reread is the one the migration actually used, which its reviewed plan
+    # recorded.
+    epoch_db = service_epoch_db_v1(read_handoff_v1()["environment"])
     try:
         verify_migration_v1(state.migration_id, epoch_db_path=epoch_db)
     except LifecycleMigrationError as exc:

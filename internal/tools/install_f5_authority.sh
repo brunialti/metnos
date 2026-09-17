@@ -75,13 +75,13 @@ case "${1:-}${2:+ $2}" in
   "provision-key"|"evidence"|"migrate plan"|"migrate apply"|"certify derive"|"certify issue") ;;
   *) echo "refused: provision-key | evidence | migrate plan|apply | certify derive|issue" >&2; exit 2 ;;
 esac
-exec /usr/bin/python3.12 -I - "$@" <<'BOOTSTRAP'
+exec /usr/bin/python3.12 -I -c '
 import importlib.util, json, os, sys
 from pathlib import Path
 
+# Ask the installed verifier. It owns the signed chain; nothing is
+# reimplemented here and no pointer of our own is kept or trusted.
 VERIFIER = "/usr/libexec/metnos/executor-birth-v1/preflight.py"
-# Ask the installed verifier. It owns the signed chain; nothing is reimplemented
-# here and no pointer of our own is kept or trusted.
 spec = importlib.util.spec_from_file_location("installed_preflight", VERIFIER)
 verifier = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = verifier
@@ -90,22 +90,28 @@ snapshot = verifier._authenticate_fixed_ownership_snapshot_v1()
 selected, _materials = verifier._load_installed_preflight_materials_v1(
     snapshot, review_sources=False)
 release = Path(selected.build.facts.installation_root)
-catalog = json.loads(
-    (release / "deployment/executor-birth-service-catalog-v1.json").read_bytes())
+
 # One entry names the interpreter this release runs. Two would mean the
 # catalog disagrees with itself, which is not something to pick a side on.
+catalog = json.loads(
+    (release / "deployment/executor-birth-service-catalog-v1.json").read_bytes())
 named = {entry["target_executable"] for entry in catalog["entries"]
          if entry.get("entry_id") == "service-http"}
 if len(named) != 1:
     raise SystemExit("refused: the selected release names no single interpreter")
 interpreter = named.pop()
+
+# Isolation is kept, so PYTHONPATH is ignored on purpose and the paths of the
+# verified release are inserted explicitly instead. Standard input is left
+# alone: the evidence document arrives on it.
+stage = (
+    "import sys; sys.path[:0] = [%r, %r]\n"
+    "from install.f5_authority import main\n"
+    "raise SystemExit(main())\n"
+) % (str(release), str(release / "runtime"))
 os.chdir(release)
-os.execve(interpreter,
-          [interpreter, "-I", "-s", "-B", "-m", "install.f5_authority", *sys.argv[1:]],
-          {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C", "LC_ALL": "C",
-           "PYTHONDONTWRITEBYTECODE": "1",
-           "PYTHONPATH": f"{release}:{release}/runtime"})
-BOOTSTRAP
+os.execv(interpreter, [interpreter, "-I", "-c", stage, *sys.argv[1:]])
+' "$@"
 LAUNCHER_EOF
 chown root:root "$LAUNCHER.incoming"
 chmod 0755 "$LAUNCHER.incoming"

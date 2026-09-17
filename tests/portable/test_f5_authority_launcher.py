@@ -30,7 +30,7 @@ def launcher_text() -> str:
 
 
 def bootstrap_text() -> str:
-    return _between(launcher_text(), "<<'BOOTSTRAP'\n", "\nBOOTSTRAP")
+    return _between(launcher_text(), "exec /usr/bin/python3.12 -I -c '", "\n' \"$@\"")
 
 
 # --- the closed argument set -------------------------------------------------
@@ -38,8 +38,8 @@ def bootstrap_text() -> str:
 @pytest.fixture
 def launcher(tmp_path):
     """The installed launcher, with its interpreter replaced by an echo."""
-    text = launcher_text().replace(
-        "exec /usr/bin/python3.12 -I - \"$@\"", 'echo "ACCEPTED $*"; cat >/dev/null; exit 0')
+    start = launcher_text().split("exec /usr/bin/python3.12", 1)[0]
+    text = start + 'echo "ACCEPTED $*"\nexit 0\n'
     path = tmp_path / "metnos-f5-authority"
     path.write_text(text)
     path.chmod(0o755)
@@ -79,12 +79,31 @@ def test_the_sudoers_rule_names_exactly_the_accepted_forms():
 
 @pytest.fixture
 def installation(tmp_path):
-    """A fake verifier naming a fake release that names its interpreter."""
+    """A fake release with a real interpreter and a real module to import.
+
+    The interpreter is real on purpose: an echoing stub cannot tell whether
+    `-m` would have found anything, and the first version of this launcher was
+    unrunnable for exactly that reason.
+    """
     release = tmp_path / "release"
     (release / "deployment").mkdir(parents=True)
+    (release / "install").mkdir(parents=True)
+    (release / "runtime").mkdir(parents=True)
+    (release / "install/__init__.py").write_text("")
+    (release / "install/f5_authority.py").write_text(
+        "import sys\n"
+        "def main(argv=None):\n"
+        "    import runtime_marker\n"
+        "    payload = sys.stdin.read()\n"
+        "    print('ARGV', *sys.argv[1:])\n"
+        "    print('STDIN', payload.strip() or '<empty>')\n"
+        "    print('RUNTIME', runtime_marker.NAME)\n"
+        "    return 0\n"
+        "if __name__ == '__main__':\n"
+        "    raise SystemExit(main())\n")
+    (release / "runtime/runtime_marker.py").write_text("NAME = 'release-runtime'\n")
     interpreter = tmp_path / "env-python"
-    interpreter.write_text(
-        "#!/bin/sh\necho \"RAN $* in $(pwd) path=$PYTHONPATH\"\n")
+    interpreter.write_text(f"#!/bin/sh\nexec {sys.executable} \"$@\"\n")
     interpreter.chmod(0o755)
     (release / "deployment/executor-birth-service-catalog-v1.json").write_text(
         json.dumps({"entries": [
@@ -108,23 +127,58 @@ def _load_installed_preflight_materials_v1(snapshot, *, review_sources):
     return release, interpreter, verifier
 
 
-def run_bootstrap(verifier, argv, tmp_path):
+def run_bootstrap(verifier, argv, tmp_path, stdin=""):
+    """Run the real bootstrap, with a real interpreter, exactly as installed."""
     script = bootstrap_text().replace(
         '"/usr/libexec/metnos/executor-birth-v1/preflight.py"', f'"{verifier}"')
-    path = tmp_path / "bootstrap.py"
-    path.write_text(script)
-    return subprocess.run([sys.executable, "-I", str(path), *argv],
-                          capture_output=True, text=True, timeout=60)
+    return subprocess.run([sys.executable, "-I", "-c", script, *argv],
+                          input=stdin, capture_output=True, text=True, timeout=60)
+
+
+def run_launcher(installer_launcher, verifier, argv, stdin=""):
+    """Run the whole launcher, shell guard included, end to end."""
+    return subprocess.run(["/bin/sh", str(installer_launcher), *argv],
+                          input=stdin, capture_output=True, text=True, timeout=60)
 
 
 @native
-def test_the_launcher_runs_the_release_the_verifier_named(installation, tmp_path):
-    release, _interpreter, verifier = installation
+def test_the_launcher_really_imports_the_release_it_was_told_about(
+    installation, tmp_path,
+):
+    """A real interpreter, so an unimportable module cannot look like success."""
+    _release, _interpreter, verifier = installation
     result = run_bootstrap(verifier, ["certify", "derive"], tmp_path)
     assert result.returncode == 0, result.stderr
-    assert "-m install.f5_authority certify derive" in result.stdout
-    assert f"in {release}" in result.stdout
-    assert f"path={release}:{release}/runtime" in result.stdout
+    assert "ARGV certify derive" in result.stdout
+    # The release's own runtime is importable too, not only its install package.
+    assert "RUNTIME release-runtime" in result.stdout
+
+
+@native
+def test_the_evidence_document_survives_the_whole_launcher(installation, tmp_path):
+    """The bootstrap must not eat standard input: the document arrives on it."""
+    _release, _interpreter, verifier = installation
+    document = json.dumps({"kind": "start_cycle"})
+    result = run_bootstrap(verifier, ["evidence"], tmp_path, stdin=document)
+    assert result.returncode == 0, result.stderr
+    assert f"STDIN {document}" in result.stdout
+
+
+@native
+def test_the_document_survives_the_shell_guard_as_well(installation, tmp_path):
+    """End to end: through the argument guard and into the tool."""
+    _release, _interpreter, verifier = installation
+    launcher = tmp_path / "metnos-f5-authority"
+    launcher.write_text(launcher_text().replace(
+        "/usr/libexec/metnos/executor-birth-v1/preflight.py", str(verifier)
+    ).replace("exec /usr/bin/python3.12 -I -c", f"exec {sys.executable} -I -c"))
+    launcher.chmod(0o755)
+    document = json.dumps({"kind": "start_cycle"})
+    result = run_launcher(launcher, verifier, ["evidence"], stdin=document)
+    assert result.returncode == 0, result.stderr
+    assert f"STDIN {document}" in result.stdout
+    refused = run_launcher(launcher, verifier, ["evidence", "extra"], stdin=document)
+    assert refused.returncode == 2
 
 
 @native
@@ -154,8 +208,13 @@ def test_a_verifier_that_refuses_stops_the_launcher(installation, tmp_path):
 @native
 def test_the_launcher_keeps_no_pointer_and_reimplements_no_chain():
     """The whole point of the shape: it asks, and it asks only the verifier."""
-    bootstrap = bootstrap_text()
+    # Prose may name what the code avoids; the assertion is about the code.
+    bootstrap = "\n".join(line for line in bootstrap_text().splitlines()
+                          if not line.lstrip().startswith("#"))
     for forbidden in ("releases-v1", "required-head", "selected-release",
-                      "systemctl", "chain-v1", "sorted", "max("):
+                      "systemctl", "chain-v1", "sorted", "max(", "PYTHONPATH"):
         assert forbidden not in bootstrap, forbidden
     assert bootstrap.count("_load_installed_preflight_materials_v1") == 1
+    # Isolation is kept and the paths are explicit, which is the only way both
+    # can be true at once.
+    assert "-I" in bootstrap and "sys.path[:0]" in bootstrap

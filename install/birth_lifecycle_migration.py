@@ -122,6 +122,22 @@ def selected_sources_v1(
     return tuple(resolved)
 
 
+def service_epoch_db_v1(environment: dict[str, str]) -> Path:
+    """Locate the service's epoch store, never the caller's own home.
+
+    Root has its own state directory, so a root-run tool that resolves the path
+    from its own environment looks in the wrong place and reports the migration
+    missing. The overrides recorded when the migration ran are the ones that
+    found it then.
+    """
+    account = resolve_posix_account_snapshot_v1(SERVICE_ACCOUNT_NAME_V1)
+    layout = metnos_xdg_layout_v1(account.record)
+    state = Path(environment.get("METNOS_USER_STATE") or (
+        Path(environment["HOME"]) / ".local/state/metnos"
+        if environment.get("HOME") else layout.state))
+    return state / "birth" / "executor_epochs.sqlite"
+
+
 def _drop_to_service(account: PosixAccountSnapshotV1) -> None:
     """Become the service account permanently, and prove it."""
     account.assert_unchanged(resolve_posix_account_snapshot_v1(SERVICE_ACCOUNT_NAME_V1))

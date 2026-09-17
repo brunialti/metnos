@@ -447,3 +447,22 @@ def test_a_store_that_cannot_be_retired_says_so(tmp_path):
 def test_the_command_line_accepts_only_its_two_stages():
     assert cutover.main([]) == 64
     assert cutover.main(["apply", "--force"]) == 64
+
+
+# --- locating the service's store from a root-run tool -----------------------
+
+@pytest.mark.parametrize("environment,expected", [
+    ({"METNOS_USER_STATE": "/srv/state"}, "/srv/state/birth/executor_epochs.sqlite"),
+    ({"HOME": "/srv/home"}, "/srv/home/.local/state/metnos/birth/executor_epochs.sqlite"),
+    ({"METNOS_USER_STATE": "/srv/state", "HOME": "/ignored"},
+     "/srv/state/birth/executor_epochs.sqlite"),
+])
+def test_the_epoch_store_is_located_by_the_recorded_overrides(environment, expected):
+    assert str(cutover.service_epoch_db_v1(environment)) == expected
+
+
+def test_without_an_override_the_service_account_decides_not_the_caller():
+    """Root has its own state directory, and it is never the answer."""
+    located = str(cutover.service_epoch_db_v1({}))
+    assert located.endswith("/.local/state/metnos/birth/executor_epochs.sqlite")
+    assert not located.startswith("/root/")
