@@ -1,9 +1,8 @@
 # Dichiarazione delle lacune storiche residue — F5, 17 settembre 2026
 
 **Scopo.** L'emittente del certificato F5 rifiuta finché le lacune della storia
-non sono **dichiarate** e **riviste**. Questo documento è la dichiarazione. Non
-è una certificazione, non attiva nulla e non registra nulla: serve alla
-revisione avversariale che Roberto ha chiesto.
+non sono **dichiarate**. Questo documento è la dichiarazione. Non è una
+certificazione, non attiva nulla e non registra nulla.
 
 **Come leggere il documento, in breve.** La storia della nascita degli executor
 viene ricomposta e ogni pezzo che non si incastra viene lasciato scritto invece
@@ -74,8 +73,19 @@ ammissione durevole verificata ha usato.
 
 **Disposizione proposta: esclusione, e sono in larga parte una conseguenza.**
 Quando una ricevuta viene esclusa (§2.1), le sue righe di produttore e di
-emissione restano non usate. I due numeri sono uguali, come ci si aspetta da
-righe appaiate. Non sono 538 guasti nuovi.
+emissione restano non usate. I due numeri sono uguali fra loro, come ci si
+aspetta da righe appaiate. Non sono 538 guasti nuovi.
+
+**I 18 che avanzano, perché 538 ≠ 520.** Le 520 ricevute escluse spiegano 520
+delle 538 righe. Le altre **18** sono stati di produttore che non appartengono a
+nessuna ricevuta esclusa: righe registrate dal produttore per cui l'ammissione
+durevole corrispondente non è mai stata verificata. Alla misura precedente
+(§5.15 del piano G8) erano 16 su 536; ne sono comparse due mentre la produzione
+avanzava alla release 63. **Vanno guardate**: sono l'unica parte di questo
+elenco che non è una conseguenza aritmetica di §2.1, e sono quelle che il §3
+deve reggere per conto proprio. Restano comunque un'esclusione — una riga di
+produttore senza ammissione verificata non porta ammissioni — ma la loro
+provenienza non è spiegata da questa dichiarazione.
 
 ### 2.5 `unbound_namespace_not_reconciled` — 1
 
@@ -93,7 +103,7 @@ candidati; nessuna ne aggiunge. La soglia è un **minimo**. Una lacuna che
 esclude prove può solo rendere la qualifica più difficile, mai più facile.
 Dichiararle non indebolisce la soglia: la rende conservativa.
 
-**Il contrario, che il revisore deve premere.** Una lacuna potrebbe nascondere
+**Il contrario, che va premuto.** Una lacuna potrebbe nascondere
 non una prova in più ma una **revoca**: un ritiro o una quarantena che avrebbe
 dovuto *togliere* autorità e che non è stato ricongiunto. In quel caso
 l'esclusione non sarebbe conservativa — starebbe ignorando una sottrazione.
@@ -135,19 +145,23 @@ classificata `quarantine` ed esclusa da `technical_acts`.
 
 ---
 
-## 5. Cosa chiedo al revisore avversariale
+## 5. Chi ha riletto questo documento
 
-1. **Attaccare l'argomento del §3**, non il conteggio. Il conteggio è misurato;
+Roberto ha deciso il 17 settembre che la revisione avversariale **non serve**.
+La dichiarazione vale quindi come è scritta, con i suoi limiti dichiarati in §4
+e il punto aperto dei 18 stati di produttore in §2.3-2.4.
+
+Se un domani qualcuno la rivede, i punti da attaccare sono questi, in ordine di
+resa attesa:
+
+1. **I cinque codici assenti (§3)**: sono a zero perché non c'è nulla da
+   segnalare, o perché in questa configurazione il codice non può emetterli?
+   Un'assenza del secondo tipo non prova niente.
+2. **I 18 stati di produttore** di §2.3-2.4, l'unica parte non derivata.
+3. **I 40 candidati tecnici**: che nessuna quarantena o ritiro vi sia rientrato
+   per un'altra strada.
+4. **L'argomento del §3**, non i conteggi: i conteggi sono misurati,
    l'argomento è un giudizio.
-2. Cercare un caso in cui una delle cinque lacune possa **nascondere una
-   sottrazione** nonostante i cinque codici a zero.
-3. Verificare che i 40 candidati tecnici non contengano nulla che non sia
-   un'ammissione genuina — in particolare che nessuna quarantena o ritiro sia
-   rientrato per un'altra strada.
-4. Dire se l'impronta `sha256:fd18f7dc…7a65` è sufficiente come promessa che
-   l'insieme rivisto sia lo stesso più avanti, o se serve di più.
-
----
 
 ## 6. Come rifare la misura
 
