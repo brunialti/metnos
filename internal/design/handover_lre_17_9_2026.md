@@ -1,6 +1,52 @@
 # Passaggio di consegne LRE — ripresa con contesto nuovo
 
-## Aggiornamento della ripresa — sera del 17/9
+## Stato prioritario dopo il rilascio autorizzato — 17/9, ore 20:10
+
+Roberto ha autorizzato esplicitamente installazione e riavvio sicuro delle
+ottimizzazioni verificate. **Release 65 installata**, identità
+`sha256:e915f3db77a3a2d10badef56e6a91b8f6c94e8aad118b7854358d6868fb2d528`,
+commit sorgente `b268eba1`. Ciclo ufficiale `run-34859hs6` concluso con
+`PREFLIGHT_VERIFIED`; HTTP, worker e Telegram attivi dalle 19:49:38 CEST.
+107 executor invariati; sei contratti del job verificati identici, CPU/VLM 4/4,
+F5 `LEGACY`. Tutor ricompilato/verificato, retrieval IT/EN e due turni HTTP
+riusciti, compreso `get_now`. Guide pubblicate: `a00f7b1d.mykleos.pages.dev`.
+
+**Il job è invece `needs_attention`, versione 44**, stessa revisione
+`rev_d8d3982283a140bf993f2517731ad00d`, stesso piano e **1.306 risultati
+confermati conservati** (338 analisi). Pausa cooperativa terminata alle
+19:45:21; ripresa ordinaria sulla 65 alle 19:52:55. Il primo dei quattro
+tentativi nuovi ha perso l'envelope dei consumi dopo un errore non catturato:
+`execution.usage_accounting_incomplete`, causa `execution.runner_failed` /
+`contract_violation`, `usage_unknown=true`. Gli altri tre hanno terminato
+correttamente e rendicontato i consumi, ma il blocco contabile globale ne ha
+impedito la conferma; alle 20:05:10 nessun tentativo era ancora attivo.
+
+Causa riprodotta in sola lettura (`run-uxrb7d9v`), senza chiamare modelli:
+quinta immagine del gruppo fallito, GPS EXIF razionale con denominatore zero;
+`create_images_indices.py::_exif_gps` riga 122 → `decimal` riga 117 →
+`numbers.Rational.__float__` solleva `ZeroDivisionError`. Prime quattro foto
+con checkpoint; quinta con snapshot ma senza checkpoint. Il VLM è chiamato
+prima della conversione GPS: non dedurre zero consumi dall'envelope assente.
+Il codice dell'executor è invariato rispetto alla 64. Nessun OOM o crash kernel
+osservato; tre subprocessi hanno completato normalmente sulla 65.
+
+**Non premere semplicemente Riprendi o Riprova, non modificare SQL/consumi e
+non presentare il job come ripartito con successo.** La protezione della
+revisione rifiuta la riprova con consumi ignoti. Restano da realizzare la
+correzione GPS e una strategia esplicita di recupero con nuova revisione;
+nessuna nuova revisione o contabilità sostitutiva è stata ammessa. Tutte le
+ricevute sono protette sotto `/var/lib/metnos-admin/agent-runs/`; checkpoint
+del rilascio in `/var/lib/metnos-admin/lre-install-20260917-2f81443e`.
+Dettagli nel rapporto `internal/reports/lre-cpu-model-resources-20260917.md`.
+
+Limite operativo da non nascondere: `admit_revision` ammette solo la prima
+revisione di un workload `draft`; l'API pubblica corrente espone pausa/ripresa
+e risoluzione dell'attenzione, non una sostituzione di revisione su questo job.
+«Nuova revisione» è quindi una strategia di recupero ancora da preparare e
+verificare, non un pulsante già disponibile o un permesso di riscrivere lo
+stato. La guardia suggerisce quel percorso ma non lo implementa da sola.
+
+## Fotografia precedente della ripresa — sera del 17/9, prima del rilascio
 
 Ultimo controllo **19:26:03 CEST**, `run-ccx8_o09`: job `running`, versione 39,
 330 analisi / 1.298 risultati conservati, quattro attivi, contabilità nota,

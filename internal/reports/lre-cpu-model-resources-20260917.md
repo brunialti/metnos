@@ -8,11 +8,15 @@ agnostico: i requisiti derivano dai contratti degli executor; scelta, riuso e
 ciclo di vita dei servizi appartengono a Virt. Nessun riconoscimento del tipo di
 job tramite nomi, contenuti o un altro LLM.
 
-Il candidato è nel worktree `lre-general-parallel-f5`; la release in esercizio
-resta 64. Non sono state attivate GPU, F5 o nuove chiavi. Non confondere test del
-candidato, misure sull'installazione esistente e installazione di nuovo codice.
+Le ottimizzazioni sono installate nella **release 65**, dal worktree
+`lre-general-parallel-f5`, dopo autorizzazione esplicita di Roberto. Il riavvio
+e i servizi sono verificati; il job è in attenzione per un errore GPS EXIF
+preesistente emerso nel collaudo, con consumi del primo nuovo tentativo ignoti.
+Tutti i 1.306 risultati precedenti restano conservati. La sezione finale
+documenta rilascio e blocco: le misure precedenti sulla 64 non sono prove della
+ripresa sulla 65. Non sono state attivate GPU, F5 o nuove chiavi.
 
-## Modifiche candidate implementate
+## Modifiche implementate e installate
 
 - Lo scheduler riserva atomicamente l'intero vettore di risorse, dopo le
   esclusioni dell'executor e dei percorsi. Un lavoro in attesa di VLM, rete o
@@ -146,9 +150,9 @@ fissa a due o quattro nel singolo job violerebbe il requisito ricevuto.
   isolare il contributo ONNX. Durate singole 2,32 e 2,96 secondi, non un
   confronto prestazionale significativo. Non prova equivalenza su ogni input
   né prestazioni del job completo.
-- Non ancora effettuati: installazione del candidato e turno reale
-  `/agent/turn` che ne attraversi il percorso completo. Nessuna certificazione
-  di rilascio viene dedotta dai soli test o dal turno della vecchia release.
+- Al termine delle prove del candidato, installazione e turno reale erano
+  ancora da effettuare. Il rilascio successivo e il suo collaudo sono descritti
+  sotto; nessuna prova della vecchia release certifica quella nuova.
 - Guide IT/EN validate localmente (99 pagine indicizzabili) e pubblicate con
   `deploy.sh --static-only` dopo consenso esplicito di Roberto. Distribuzione
   confermata dal fornitore: `https://429ed0b8.mykleos.pages.dev`. La verifica
@@ -201,10 +205,10 @@ o server temporanei delle prove.
 Ulteriori controlli del percorso di avvio reale dei figli, delle quote native
 e della diagnostica: **25 passati**, 1,83 secondi. Comprendono invocazioni
 ordinarie e durevoli, quote ereditate non attendibili e ambiente del padre
-invariato. Il candidato è salvato nel commit `1e8eed24`; nessuna installazione
-è stata eseguita. Restano installazione/prova completa del candidato e gestione
-automatica delle repliche; il relativo confine architetturale non è una
-certificazione di quelle funzioni.
+invariato. Il candidato è salvato nel commit `1e8eed24`; a quel momento non era
+installato. Il rilascio successivo è descritto sotto. La gestione automatica
+delle repliche resta da implementare; il relativo confine architetturale non
+è una certificazione di quella funzione.
 
 
 ## Pulizia richiesta da Roberto
@@ -222,5 +226,94 @@ assenza della specifica prenotazione parziale che tratteneva CPU in attesa di
 altre risorse. Non dimostrano un'accelerazione del job completo. Il beneficio
 atteso principale è il contenimento della contesa e la disponibilità per altri
 lavori; la separazione Virt migliora il confine architetturale. Il VLM resta la
-componente dominante osservata. Nessuna ottimizzazione candidata è ancora in
-esercizio.
+componente dominante osservata. Al momento di quelle misure le ottimizzazioni
+non erano ancora in esercizio.
+
+## Rilascio 65 autorizzato e limite della ripresa reale
+
+Sorgente `b268eba1` (codice `1e8eed24`, preparazione `68be8143`), censimento
+pubblico 1.808 file, `fc411f29c90984cc47a0fd2cafc3348dee6088e463671108e19fabaa68104bea`.
+Identità installata:
+`sha256:e915f3db77a3a2d10badef56e6a91b8f6c94e8aad118b7854358d6868fb2d528`.
+Il ciclo ufficiale `run-34859hs6` ha concluso `PREFLIGHT_VERIFIED`, verificato
+12 unità e 107 executor invariati; il normale criterio di conservazione ha
+rimosso la release 63, mantenendo 64 e 65. Nessuna modifica manuale ad alberi
+firmati, catena, chiavi, configurazione CPU/VLM o F5.
+
+- Ulteriori test di ciclo/ritiro/documentazione: **277 passati**. Tutor:
+  96 prove isolate passate; quattro prove richiedevano i pesi BGE assenti nel
+  worktree e sono passate con il percorso reale configurato. Due prove
+  dipendevano dal catalogo executor firmato dell'installazione, non disponibile
+  nel checkout; i relativi fatti su `read_messages` e i suoi parametri sono
+  stati verificati nel catalogo installato insieme alla prova Tutor reale.
+  Non dichiarare l'intera suite Tutor verde nel checkout.
+- `run-8hd08dwz`: stato iniziale 1.302 risultati, 334 analisi, quattro attivi.
+  `run-2ud624dn`: pausa cooperativa conclusa alle 19:45:21, **1.306 risultati /
+  338 analisi**, zero attivi, tutti i consumi noti. Archivio privato:
+  `/var/lib/metnos-admin/lre-install-20260917-2f81443e`.
+- HTTP PID 2014640, worker 2014636 e Telegram 2014711 riavviati alle
+  **19:49:38 CEST** sulla 65. `run-7z1zhetq`: stack pronto, contratti HTTP e
+  browser allineati, worker disponibile, catalogo HTTP 123 voci.
+- Primo controllo supplementare dei contratti (`run-45egcg83`) anticipato
+  rispetto alla fine del ciclo: timeout del lock di ammissione, senza mutazioni.
+  Dopo la finalizzazione, `run-_ci8u4rc` verifica tutti i **sei contratti
+  congelati identici**, CPU/VLM 4/4 e proprietario F5 `LEGACY`.
+- `run-xcrtlho1`: catalogo Tutor firmato, 3.648 unità, impronta sorgenti
+  `sha256:2e58e24eaec0d7b5a8bf8e7ce5a87e15cbb3a33d29e05734138a35ad5e1afd97`,
+  retrieval LRE IT/EN riuscito. `run-tvdfl3h6`: console HTTP 200, turno
+  informativo `bbee4b8cf7ab4e2d` e turno esecutivo `09b451d2f4c0404e`
+  (`get_now`, esito positivo). Guide pubblicate su
+  `https://a00f7b1d.mykleos.pages.dev`; 99 HTML validati, quattro file caricati.
+  Il lettore web della sessione ha rifiutato l'apertura del dominio pubblico e
+  della distribuzione: pubblicazione confermata dal fornitore, contenuti
+  remoti non ricontrollati dalla sessione.
+- `run-nnsyd279`: ripresa ordinaria alle **19:52:55**, stessi piano/revisione
+  e 1.306 riferimenti ai risultati. `run-kceq_9gi`: quattro tentativi attivi;
+  nuovi figli con `METNOS_EXECUTOR_NATIVE_THREADS=1` e limiti OMP/BLAS/MKL/Rayon
+  a 1, due thread OS osservati per processo Python. Sono quote della libreria,
+  non un limite globale a tutti i thread o al server VLM.
+
+**Collaudo dell'avanzamento non riuscito.** Alle 19:54:57 il tentativo
+`att_6b81c2e51b9e49a59593f0662d8e5421` è fallito senza envelope dei consumi;
+causa registrata `execution.runner_failed` / `contract_violation`, poi
+`execution.usage_accounting_incomplete`. La rendicontazione vuota non prova
+assenza di chiamate: `zero_calls_verified=false`, `usage_unknown=true`.
+Gli altri tre processi sono terminati normalmente (497,6 / 513,8 / 533,0 s),
+con consumi completi, ma il blocco contabile globale ha impedito la conferma
+dei risultati. Non dedurre un miglioramento prestazionale da queste durate su
+input diversi. Alle **20:05:10**, `run-_u8vgj99`: stesso job `needs_attention`,
+versione 44, 1.306 risultati conservati, quattro unità in attenzione, zero
+tentativi attivi. Nessun risultato precedente eliminato o sostituito.
+
+Diagnosi `run-hwnziwei` / `run-f93ad7lo`: nessun evento OOM, tutti i contatori
+OOM del cgroup worker a zero. `run-uxrb7d9v` riproduce senza modelli né
+scritture sui dati la causa: nella quinta immagine del gruppo, una coordinata
+GPS EXIF contiene un razionale con denominatore zero. `_exif_gps` riga 122,
+`decimal` riga 117 e `numbers.Rational.__float__` sollevano `ZeroDivisionError`.
+La prima parte del blocco ha quattro checkpoint salvati; la quinta immagine ha
+snapshot ma non checkpoint. L'executor è invariato rispetto alla 64; questo
+errore non dipende dall'allocazione di thread. `_build_entry` chiama il VLM
+prima di convertire il GPS, quindi anche la quinta immagine può aver consumato
+inferenza. Il wrapper perde l'envelope quando un'eccezione esce da `invoke`.
+
+La riprova ordinaria rifiuta correttamente revisioni con contabilità ignota
+(`storage.py::record_attention_resolution`). **Non sono stati azzerati consumi,
+modificati record SQL o concesse nuove revisioni/budget.** Restano da correggere
+la conversione GPS e la conservazione della telemetria su eccezioni, e da
+preparare un recupero esplicito tramite nuova revisione. Rilascio e riavvio
+sono effettuati; ripresa completa del job **non** verificata.
+
+L'API corrente non espone una sostituzione di revisione sul job in attenzione;
+`admit_revision` richiede un workload `draft` per la prima ammissione. Il
+recupero deve quindi essere preparato e verificato come intervento distinto,
+con conservazione dello storico e autorità di budget esplicita. Non basta
+invocare `admit_revision` su questa riga o trasformarla manualmente in `draft`.
+
+Audit finale `run-kev49b7d`, **20:15:47 CEST**: release 65 nuovamente attestata,
+configurazione byte-identica, piano e revisione invariati, tutti i **1.306
+riferimenti unità/risultato della pausa** presenti, zero tentativi attivi;
+stato ancora `needs_attention`, versione 44, consumi ignoti. Rapporti XML delle
+tre sessioni di test archiviati nella directory amministrativa del rilascio.
+Ripuliti 42 file di cache ignorati nel solo worktree (473.027 byte) e la
+directory temporanea delle sonde di installazione. Ricevute, test archiviati,
+codice, dati e checkpoint produttivi conservati.

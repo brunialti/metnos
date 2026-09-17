@@ -891,3 +891,29 @@ quattro attivi, stessa revisione/piano/worker, consumo sconosciuto falso. Prova
 CPU 1/2/4 server: 29,70 / 29,84 / 37,19 secondi, con 16 thread totali; non
 emerge beneficio dalle repliche. Tutti i server temporanei arrestati. Candidato
 salvato in `1e8eed24`, non installato; F5 e GPU invariati.
+
+## Aggiornamento dopo il rilascio autorizzato — 17/9, ore 20:10
+
+Roberto ha poi autorizzato installazione e riavvio sicuro. **Release 65 in
+esercizio**, sorgente `b268eba1`, identità
+`sha256:e915f3db77a3a2d10badef56e6a91b8f6c94e8aad118b7854358d6868fb2d528`.
+Il ramo include ancora l'intero `codex/rm0009-development` (`e581e6c4`).
+Ciclo ufficiale `run-34859hs6`, 107 executor invariati, F5 ancora `LEGACY`.
+HTTP/worker/Telegram riavviati alle 19:49:38, sei contratti del job identici,
+Tutor IT/EN e turni reali riusciti. Nessuna modifica GPU o nuova chiave.
+
+**Non dichiarare il job ripartito con successo:** dopo pausa a 1.306 risultati
+e ripresa ordinaria alle 19:52:55, un blocco ha incontrato una coordinata GPS
+EXIF con denominatore zero. Errore riprodotto in sola lettura nella quinta
+immagine (`run-uxrb7d9v`): `_exif_gps` → `numbers.Rational.__float__`,
+`ZeroDivisionError`. Il codice dell'executor era già identico sulla 64.
+L'eccezione non catturata perde la rendicontazione; gli altri tre tentativi
+hanno elaborato e rendicontato correttamente, ma il blocco contabile globale
+ne impedisce la conferma. Alle 20:05:10 tutti terminati; stato
+`needs_attention`, versione 44, `usage_unknown=true`, tutti i 1.306 risultati
+precedenti conservati. Nessun OOM osservato.
+
+Non azzerare i consumi, non ripetere la vecchia riprova e non mutare i record
+SQL. Il recupero richiede correzione GPS/telemetria e nuova revisione esplicita;
+nessuna nuova ammissione eseguita. Prove e dettagli nel rapporto
+`internal/reports/lre-cpu-model-resources-20260917.md` e in testa al handover.

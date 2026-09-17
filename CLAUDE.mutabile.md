@@ -6,10 +6,14 @@
 
 ## S. Stato corrente (17/9/2026)
 
-- **Risorse CPU e confine Virt/LRE — candidato verificato, non installato**:
+- **Risorse CPU e confine Virt/LRE — installato, release 65** (17/9):
   prenotazione atomica delle quote dopo le esclusioni, budget dei thread nativi
   nei subprocessi locali e ciclo di vita dei modelli risolto da Virt. Non è
-  ancora un gestore automatico di repliche. GPU invariata. Stato, misure e limiti:
+  ancora un gestore automatico di repliche. GPU e F5 invariati. Riavvio, sei
+  contratti congelati, Tutor IT/EN e turni HTTP verificati. Il collaudo del job
+  ha incontrato un errore preesistente su GPS EXIF con denominatore zero:
+  risultati precedenti conservati, revisione in attenzione per consumi ignoti.
+  Non azzerare la contabilità né ripetere la vecchia riprova. Stato e prove:
   `internal/reports/lre-cpu-model-resources-20260917.md`.
 
 - **Parallelismo generale LRE — installato, release 64** (17/9,
