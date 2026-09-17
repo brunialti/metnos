@@ -73,6 +73,21 @@ def test_bounded_control_progress_is_never_reported_as_idle():
     assert calls == {"worker": 0, "completion": 1}
 
 
+def test_semantic_argument_digest_accepts_admitted_literals_larger_than_an_event():
+    """A real continuation carries hundreds of digest-bound result references."""
+    references = [{"result_id": f"res_{number:032d}", "digest": _digest(str(number)),
+                   "schema_version": "metnos.images.index-folders/1"} for number in range(967)]
+    assert len(json.dumps(references).encode()) > 65_536
+    bridge = DurableExecutionBridge(SimpleNamespace(), runners=SimpleNamespace(), output_schemas=SimpleNamespace())
+    facts = {"stage": {"key": "saved", "input_bindings": {
+        "references": {"ref": "literal", "value": references}}}}
+    digest = bridge._semantic_arguments_digest(facts)
+    assert re.fullmatch(r"sha256:[a-f0-9]{64}", digest)
+    assert bridge._semantic_arguments_digest(facts) == digest
+    references[-1]["digest"] = _digest("changed")
+    assert bridge._semantic_arguments_digest(facts) != digest
+
+
 def test_all_structured_lre_errors_are_localized_in_the_shipped_catalog():
     root = Path(__file__).resolve().parents[3]
     message_keys: set[str] = set()

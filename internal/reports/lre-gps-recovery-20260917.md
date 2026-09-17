@@ -60,3 +60,37 @@ con 1.306 riferimenti confermati e nessun tentativo attivo. Una nuova
 ammissione non è ancora stata eseguita. Rilascio, prova GPS reale, documento
 di recupero e avanzamento della continuazione vanno registrati qui dopo
 verifica; non dedurli dal solo esito dei test.
+
+## Risultati reali e correzione del limite di impronta
+
+Release 66 installata tramite `run-mkm08rgv`, build
+`sha256:295b52dabfe3cbc0b88c0d168fb8cd09a5116278c1902bdd47792aeaff9a3f1d`.
+Executor 0.5.1 pubblicato attraverso Birth; HTTP, worker e Telegram verificati.
+La prova sullo snapshot originale (`run-1vb3gu7f`) passa: immagine decodificabile,
+GPS omesso, nessuna chiamata al modello. Tutor IT/EN verificato con 3.652 unità
+(`run-2bv7_zq_`); turno HTTP `get_now` riuscito (`run-cm8_oe8j`). Guide LRE
+pubblicate IT/EN: `https://d105bf72.mykleos.pages.dev`.
+
+La prova reale ha validato 967 risultati cartella, 30.942 sorgenti e 10.914
+checkpoint. Conservati i 1.306 riferimenti precedenti; riserva prudenziale di
+169.885.696 token per il tentativo senza resoconto, sottratta dal budget insieme
+a 12.521.184 token misurati. Il predecessore è stato annullato tramite controllo
+ordinario, senza cancellare risultati o riscrivere consumi: versione 46,
+`usage_unknown=true`. L'assistente avrebbe dovuto chiarire il cambio di stato
+visibile prima di eseguirlo; Roberto ha giustamente segnalato il timore di perdere
+il lavoro. La prima procedura si fermava aspettandosi cancellazione sincrona:
+il worker ha concluso la transizione; la ripresa usa la stessa ammissione.
+
+Continuazione già ammessa:
+`wrk_c8bd069c0d82476d9f252a79c622d3a3`, revisione
+`rev_707ccf0f116c4d26af9d4d1b45c82088`, piano
+`sha256:07b5fcc405a3eb1915f914de509cee9ce0604cadd29abfcb0d852a2605207146`.
+Alle 21:24 CEST è andata in attenzione, versione 5, prima delle analisi:
+`_semantic_arguments_digest` applicava il limite di 64 KiB degli eventi a input
+letterali già ammessi fino a 1 MiB. Il riferimento a 967 risultati supera il
+limite; il piccolo corpus di collaudo non lo riproduceva. Correzione generale:
+usare il limite già esistente degli snapshot per calcolare l'impronta; il
+contenuto non viene salvato nell'evento. Nuova regressione con 967 riferimenti.
+La funzione hash e gli input restano identici: nessun cambio dei contratti
+congelati. Installare la correzione e riprovare questa stessa continuazione;
+non creare né annullare un altro job.

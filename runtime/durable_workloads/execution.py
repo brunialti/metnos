@@ -707,7 +707,9 @@ class DurableExecutionBridge:
         return digest_json(
             "durable-execution-arguments",
             semantic,
-            max_bytes=MAX_EVENT_JSON_BYTES,
+            # Admitted literal inputs can exceed the small event envelope.
+            # This transient object is hashed, never persisted as an event.
+            max_bytes=MAX_SNAPSHOT_JSON_BYTES,
         )
 
     def _context(
