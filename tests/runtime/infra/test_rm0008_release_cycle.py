@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 from pathlib import Path
 import subprocess
 import sys
@@ -1021,6 +1022,99 @@ def test_cutover_checks_run_before_stopping_services(crossing, monkeypatch):
     with pytest.raises(RuntimeError, match="native runner unavailable"):
         crossing.run("complete")
     assert crossing.events == []
+
+
+@pytest.fixture
+def unclaimed_withdrawal(monkeypatch, tmp_path):
+    from install import executor_birth_distribution_release as builder
+    root = tmp_path / "root"
+    release = root / "releases-v1" / f"{64:020d}"
+    (release / "deployment").mkdir(parents=True)
+    (release / "deployment/executor-birth-deployment-v1.json").write_text(
+        json.dumps({"release_sequence": 64}))
+    (release / "payload.py").write_bytes(b"verified candidate bytes\n")
+    preserved = tmp_path / "selected-history"
+    preserved.write_bytes(b"selected head and signed history stay unchanged")
+    for item in tmp_path.rglob("*"):
+        item.chmod(0o755 if item.is_dir() else 0o644)
+    for name, value in {
+            "ROOT": root, "COORD": root / "coordinator-v1",
+            "WITHDRAWN_ROOT": tmp_path / "archive",
+            "OWNERS": {(os.getuid(), os.getgid())}}.items():
+        monkeypatch.setattr(cycle, name, value)
+    # Only the outer temporary parent differs from the root-owned deployment;
+    # content, metadata checks, census and no-replace renames stay real.
+    monkeypatch.setattr(cycle, "open_parent", lambda path, owners=None:
+                        os.open(path, cycle.READ | os.O_DIRECTORY))
+    monkeypatch.setattr(cycle, "preserved_paths", lambda: (preserved,))
+    monkeypatch.setattr(cycle, "startup_fingerprint", lambda: ("attested", 63, "head"))
+    monkeypatch.setattr(builder, "_resolve_ownership_coordinator_at_v2",
+                        lambda *args, **kw: NS(pending_claims=(), claims=()))
+    monkeypatch.setattr(builder, "_next_release_edge_v1", lambda *args: NS(sequence=64))
+    return NS(release=release, preserved=preserved)
+
+
+def test_rebuilt_identical_unclaimed_release_never_overwrites_an_archive(unclaimed_withdrawal):
+    fixture = unclaimed_withdrawal
+    preserved = cycle.snapshot(fixture.preserved)
+    expected = cycle.census(fixture.release)
+    first = Path(cycle.withdraw_unclaimed_release("test-source"))
+    before = cycle.snapshot(first)
+    for number in (1, 2):
+        shutil.copytree(first / "unselected-release", fixture.release)
+        other = Path(cycle.withdraw_unclaimed_release("test-source"))
+        assert other.name == first.name + f".repeated-{number:02d}"
+        assert cycle.census(other / "unselected-release") == expected
+        assert cycle.snapshot(first) == before
+        assert cycle.snapshot(fixture.preserved) == preserved
+        assert not fixture.release.exists()
+        assert cycle.withdraw_unclaimed_release("test-source") is None
+
+
+@pytest.mark.parametrize("bad", ("content", "extra", "permissions", "symlink", "selected", "unattested"))
+def test_repeated_archive_refuses_ambiguity_without_moving_current(unclaimed_withdrawal, monkeypatch, bad):
+    fixture = unclaimed_withdrawal
+    first = Path(cycle.withdraw_unclaimed_release("test-source"))
+    parked = first / "unselected-release"
+    shutil.copytree(parked, fixture.release)
+    before = cycle.snapshot(fixture.release)
+    if bad == "content":
+        (parked / "payload.py").write_bytes(b"different bytes\n")
+    elif bad == "extra":
+        (first / "unexpected").write_bytes(b"not an archive member")
+    elif bad == "permissions":
+        first.chmod(0o755)
+    elif bad == "symlink":
+        saved = first.with_name(first.name + ".original")
+        first.rename(saved)
+        first.symlink_to(saved, target_is_directory=True)
+    else:
+        monkeypatch.setattr(cycle, "startup_fingerprint", lambda:
+                            ("attested", 64, "new-head") if bad == "selected"
+                            else ("refused", "test", "unobservable"))
+    with pytest.raises(RuntimeError):
+        cycle.withdraw_unclaimed_release("test-source")
+    assert cycle.snapshot(fixture.release) == before
+
+
+@pytest.mark.parametrize("during_build", (False, True))
+def test_helper_baseline_follows_verified_recovery_not_the_builder(applying, monkeypatch, release, during_build):
+    from install import executor_birth_distribution_release as builder
+    def recover(_source):
+        cycle.LIVE_HELPER.write_bytes(b"verified selected administrative helper")
+    def build(_source):
+        if during_build:
+            cycle.LIVE_HELPER.write_bytes(b"unexpected mutation during build")
+        return release.distribution
+    monkeypatch.setattr(cycle, "withdraw_superseded_prepared", recover)
+    monkeypatch.setattr(builder, "build_and_install_received_source_v1", build)
+    if during_build:
+        with pytest.raises(RuntimeError, match="live helper changed during the build"):
+            cycle.apply_cycle(False)
+        assert applying.calls == []
+    else:
+        assert cycle.apply_cycle(False) == 0
+        assert [call[-1] for call in applying.calls] == ["audit"]
 
 
 @pytest.fixture(params=(0, 1), ids=("prepared", "receipts_complete"))

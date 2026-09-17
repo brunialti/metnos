@@ -775,7 +775,8 @@ def withdraw_unclaimed_release(source_id: str) -> str | None:
     its descriptor and the service is positively attested to start another
     release. Nothing is deleted: one no-replace rename moves it under an
     archive named by its number and the census of the whole tree, which is
-    measured again once it has moved.
+    measured again once it has moved. A byte-identical rebuild is parked in
+    a fresh bounded sibling after verifying the earlier archive, never over it.
     """
     from install.executor_birth_distribution_release import (
         _next_release_edge_v1, _resolve_ownership_coordinator_at_v2,
@@ -811,12 +812,23 @@ def withdraw_unclaimed_release(source_id: str) -> str | None:
     archive = WITHDRAWN_ROOT / f"unclaimed-{release.name}-{measured[1][:16]}"
     archive.mkdir(mode=0o700, parents=True, exist_ok=True)
     folder = archive.lstat()
-    require((folder.st_uid, folder.st_gid) in OWNERS
+    require(stat.S_ISDIR(folder.st_mode)
+            and (folder.st_uid, folder.st_gid) in OWNERS
             and stat.S_IMODE(folder.st_mode) == 0o700, "unsafe archive")
+    require({item.name for item in archive.iterdir()} <= {"unselected-release"},
+            "unexpected unclaimed archive member")
     parked = archive / "unselected-release"
-    require(not os.path.lexists(parked), "archive slot already taken")
+    earlier = None
+    if os.path.lexists(parked):
+        earlier = (archive, snapshot(archive))
+        require(census(parked) == measured, "unclaimed archive census mismatch")
+        archive = unique_sibling(archive, "repeated")
+        archive.mkdir(mode=0o700)
+        parked = archive / "unselected-release"
     rename_no_replace(release, parked)
     require(census(parked) == measured, "the parked release measures differently")
+    require(earlier is None or snapshot(earlier[0]) == earlier[1],
+            "earlier unclaimed archive changed")
     after = {str(item): snapshot(item) for item in preserved_paths()}
     require(after == before, "preserved history changed during the withdrawal")
     require(startup_fingerprint() == first, "service startup selection moved")
@@ -1030,7 +1042,6 @@ def apply_cycle(cross: bool) -> int:
     staging = adopt_candidate(staging, files, digest)
     say("CANDIDATE_ADOPTED", str(staging))
 
-    live_before = hashlib.sha256(LIVE_HELPER.read_bytes()).hexdigest()
     sys.dont_write_bytecode = True
     os.environ.update(PYTHONDONTWRITEBYTECODE="1")
     sys.path[:0] = [str(staging), str(staging / "runtime")]
@@ -1064,6 +1075,9 @@ def apply_cycle(cross: bool) -> int:
         withdraw_unclaimed_release(source_id)
         for journal in retire_orphan_journals(withdrawn):
             say("RETIRED_JOURNAL", journal)
+        # Recovery can restore the authenticated selected helper. The build
+        # itself must leave that post-recovery administrative artifact intact.
+        live_before = hashlib.sha256(LIVE_HELPER.read_bytes()).hexdigest()
 
     from install.executor_birth_distribution_release import (
         build_and_install_received_source_v1,
