@@ -15,6 +15,7 @@ from durable_workloads.schema import SchemaValidationError
 from durable_workloads.storage import (
     DurableWorkloadStore,
     IdempotencyConflictError,
+    InvalidTransitionError,
     OwnerRequiredError,
     VersionConflictError,
     WorkloadNotFoundError,
@@ -710,6 +711,65 @@ def test_owner_purge_is_selective_cascading_and_repeatable(store):
         store.get_workload("owner-a", first.workload_id)
     assert store.get_workload("owner-b", second.workload_id).owner_user_id == "owner-b"
     assert store.purge_owner("owner-a") == 0
+
+
+def test_terminal_history_dismissal_hides_only_the_owner_view_and_keeps_rows(store):
+    draft, revision = _admit(store, owner="owner-a", request_key="dismiss-a")
+    admitted = store.get_workload("owner-a", draft.workload_id)
+    cancelled = store.request_cancel(
+        "owner-a", draft.workload_id,
+        expected_version=admitted.version,
+        idempotency_key="cancel-before-dismiss",
+    )
+    assert cancelled.state is WorkloadState.CANCELLED
+
+    dismissed = store.dismiss_terminal_workload(
+        "owner-a", draft.workload_id,
+        expected_version=cancelled.version,
+        idempotency_key="dismiss-terminal-a",
+    )
+    assert dismissed == cancelled
+    assert store.list_workloads("owner-a") == ()
+    with pytest.raises(WorkloadNotFoundError):
+        store.get_visible_workload("owner-a", draft.workload_id)
+
+    # Dismissal is a repeatable presentation action.  Durable history,
+    # admission identity and recovery material remain authoritative.
+    replay = store.dismiss_terminal_workload(
+        "owner-a", draft.workload_id,
+        expected_version=cancelled.version,
+        idempotency_key="dismiss-terminal-a-replayed",
+    )
+    assert replay == cancelled
+    assert store.get_workload("owner-a", draft.workload_id) == cancelled
+    assert store.get_revision("owner-a", revision.revision_id) == revision
+    assert store._connection.execute(
+        "SELECT COUNT(*) FROM events WHERE owner_user_id=? AND workload_id=?",
+        ("owner-a", draft.workload_id),
+    ).fetchone()[0] > 0
+
+
+def test_nonterminal_or_stale_workload_cannot_be_dismissed(store):
+    draft, _revision = _admit(store, owner="owner-a", request_key="dismiss-running")
+    admitted = store.get_workload("owner-a", draft.workload_id)
+    with pytest.raises(InvalidTransitionError, match="terminal"):
+        store.dismiss_terminal_workload(
+            "owner-a", draft.workload_id,
+            expected_version=admitted.version,
+            idempotency_key="dismiss-nonterminal",
+        )
+    cancelled = store.request_cancel(
+        "owner-a", draft.workload_id,
+        expected_version=admitted.version,
+        idempotency_key="cancel-for-stale-dismiss",
+    )
+    with pytest.raises(VersionConflictError):
+        store.dismiss_terminal_workload(
+            "owner-a", draft.workload_id,
+            expected_version=admitted.version,
+            idempotency_key="dismiss-stale",
+        )
+    assert cancelled.state is WorkloadState.CANCELLED
 
 
 def test_database_terminal_guard_rejects_unproven_completion(store):

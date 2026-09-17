@@ -395,10 +395,12 @@ async def workload_console(request: web.Request) -> web.Response:
         "pause": message("UI_DURABLE_PAUSE"),
         "resume": message("UI_DURABLE_RESUME"),
         "cancel": message("UI_DURABLE_CANCEL"),
+        "dismiss": message("UI_DURABLE_DISMISS"),
         "retry": message("UI_DURABLE_RETRY"),
         "download": message("UI_DURABLE_DOWNLOAD"),
         "unavailable": message("UI_DURABLE_UNAVAILABLE"),
         "cancelConfirm": message("UI_DURABLE_CANCEL_CONFIRM"),
+        "dismissConfirm": message("UI_DURABLE_DISMISS_CONFIRM"),
         "actionFailed": message("UI_DURABLE_ACTION_FAILED"),
         "live": message("UI_DURABLE_LIVE"),
         "reconnecting": message("UI_DURABLE_RECONNECTING"),
@@ -764,6 +766,12 @@ async def workload_cancel(request: web.Request) -> web.Response:
     return await _command(request, "cancel", DurableWorkloadControl.cancel)
 
 
+async def workload_dismiss(request: web.Request) -> web.Response:
+    """POST /agent/workloads/{workload_id}/dismiss — hide terminal history."""
+
+    return await _command(request, "dismiss", DurableWorkloadControl.dismiss)
+
+
 async def workload_attention_retry(request: web.Request) -> web.Response:
     """POST /agent/workloads/{workload_id}/attention/retry — closed decision."""
 
@@ -832,6 +840,7 @@ ROUTES = (
     ("POST", "/agent/workloads/{workload_id}/pause", workload_pause),
     ("POST", "/agent/workloads/{workload_id}/resume", workload_resume),
     ("POST", "/agent/workloads/{workload_id}/cancel", workload_cancel),
+    ("POST", "/agent/workloads/{workload_id}/dismiss", workload_dismiss),
     ("POST", "/agent/workloads/{workload_id}/attention/retry", workload_attention_retry),
     ("POST", "/agent/workloads/{workload_id}/attention/cancel", workload_attention_cancel),
 )

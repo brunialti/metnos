@@ -106,6 +106,7 @@ def test_double_migration_is_idempotent_and_dump_is_stable():
         assert migrate(connection) == CURRENT_SCHEMA_VERSION
         assert schema_dump(connection) == first
         assert "CREATE TABLE workloads" in first
+        assert "CREATE TABLE workload_dismissals" in first
         assert "CREATE TRIGGER workloads_terminal_event_guard" in first
     finally:
         connection.close()
@@ -401,6 +402,9 @@ def test_upgrade_from_every_supported_schema_version(source_version):
         assert connection.execute(
             "SELECT COUNT(*) FROM stage_placements"
         ).fetchone()[0] == 0
+        assert connection.execute(
+            "SELECT COUNT(*) FROM workload_dismissals"
+        ).fetchone()[0] == 0
         ownership = {
             (row[2], row[3], row[4], row[6].upper())
             for row in connection.execute(
@@ -431,6 +435,27 @@ def test_v7_migration_rolls_back_partial_placement_schema():
         assert schema_version(connection) == 6
         assert connection.execute(
             "SELECT 1 FROM sqlite_master WHERE name='stage_placements'"
+        ).fetchone() is None
+        assert migrate(connection) == CURRENT_SCHEMA_VERSION
+    finally:
+        connection.close()
+
+
+def test_v8_migration_rolls_back_partial_dismissal_schema():
+    connection = open_db(":memory:")
+    try:
+        _prepare_schema_version(connection, 7)
+
+        def fail_first_statement(statement_number, _statement):
+            if statement_number == 1:
+                raise RuntimeError("injected v8 migration fault")
+
+        with pytest.raises(RuntimeError, match="injected v8"):
+            migrate(connection, _before_statement=fail_first_statement)
+
+        assert schema_version(connection) == 7
+        assert connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE name='workload_dismissals'"
         ).fetchone() is None
         assert migrate(connection) == CURRENT_SCHEMA_VERSION
     finally:

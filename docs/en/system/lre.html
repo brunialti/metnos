@@ -157,6 +157,14 @@ invented: the photo remains distinct from successfully indexed images.</p>
 
 <h3 id="photo-indexing-outcomes">Completion with explicit errors</h3>
 
+<p>At completion, the source total must equal indexed photos plus photos not
+indexed. Negative outcomes make LRE report <strong>completed with errors</strong>,
+even when every batch is finished. Errors become visible when each batch is
+committed, without being counted again during merging and publication. Model,
+authority, accounting and source-integrity errors do not become skippable photos.</p>
+
+<h3 id="photo-indexing-recovery-evidence">Accounting and recovery evidence</h3>
+
 <p>Unreadable EXIF GPS coordinates, including fractions with a zero denominator,
 are omitted: a decodable photograph is still analyzed and indexed. If a managed
 executor ends with an application exception, it preserves already recorded model
@@ -174,12 +182,6 @@ verifiable bound or enough remaining budget. For photos, committed folder
 classifications and compatible intermediate checkpoints allow the same generation
 to continue without repeating successful analyses. This does not automatically
 retry the blocked revision.</p>
-
-<p>At completion, the source total must equal indexed photos plus photos not
-indexed. Negative outcomes make LRE report <strong>completed with errors</strong>,
-even when every batch is finished. Errors become visible when each batch is
-committed, without being counted again during merging and publication. Model,
-authority, accounting and source-integrity errors do not become skippable photos.</p>
 
 <h3 id="photo-indexing-diagnostics">Identifying and retrying photos not indexed</h3>
 
@@ -414,6 +416,7 @@ prepared. Missing data is <strong>n.a.</strong>, not zero.</p>
  <li><strong>What is a batch?</strong> It is a part of the job that LRE executes and records separately. It has no fixed size or duration, and the concept is independent of the activity type. When the same revision resumes, completed batches remain saved; an interrupted batch may be retried. Partial checkpoints inside a batch depend on the capability executing it and are not guaranteed by the LRE count alone.</li>
  <li><strong>Start, progress and estimated finish.</strong> Start means the first actual execution of the current revision, excluding queue time. The main percentage and completed and expected batches cover only the indicated phase, once its total is final: they do not mix preparation with later processing and do not measure time remaining. A separate row shows the known total across all phases, which may grow. The finish estimate covers the same phase and requires a sealed inventory, one fully prepared active phase and at least three completed batches in that phase. Unresolved errors or retries, uncertain usage, pauses, an unavailable engine, outdated data or stale progress produce <strong>n.a.</strong> (not available), with the reason visible in the list too. After a successful retry, the batch contributes to the estimate once: time spent recovering remains part of the observed cadence and the error stays in history. Estimate and reason refresh together. Refreshing the page alone does not push the estimate forward. The separate whole-job estimate remains in technical details and is available only for single-phase plans. Start and percentage also show <strong>n.a.</strong> when the necessary data is missing.</li>
  <li><strong>Workload facts.</strong> Engine state is separate from job state: an available engine does not prove a job is progressing. In technical details, completed batches remain distinct from unfinished batches, those needing attention, failed or cancelled batches, and skipped batches. The total may grow during preparation.</li>
+ <li><strong>Removal from the list.</strong> When a workload has finished, <strong>Remove from list</strong> hides it from the owner's console. Results, artifacts, technical history, and references needed for recovery remain subject to their retention rules. A workload that can still execute must be cancelled first.</li>
  <li><strong>Attention required.</strong> New batches stop starting; batches already running may still finish and save results. Read the recorded cause before retrying: this state does not necessarily mean usage is unknown. Restarting does not correct the cause and may interrupt useful work.</li>
  <li><strong>Photo recovery.</strong> Complete analyses and explicit negative outcomes are saved even inside an unfinished batch and can be reused by an authorized retry within the same generation. Reuse checks the source and context; it does not make an incomplete index searchable. HEIC photos are supported too. Undecodable photos are recorded separately: completed batches do not equal successfully indexed photos.</li>
  <li><strong>Freshness and problems.</strong> The page periodically checks state and warns when data is not refreshed. A disconnection does not preserve a false progress indication. Available causes are prominent; a generic state update is not presented as a new result. After loading further list pages, use <strong>Refresh list and status</strong> to return to the refreshed first page.</li>

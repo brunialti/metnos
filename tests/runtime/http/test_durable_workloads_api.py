@@ -408,6 +408,84 @@ class DurableWorkloadApiTests(AioHTTPTestCase):
             "durable_workload.invalid_request",
         )
 
+    async def test_terminal_workload_can_be_removed_from_ui_without_erasing_history(self):
+        from durable_workloads.storage import DurableWorkloadStore
+
+        owner = self.owner()
+        workload = self._create_admitted(owner, 23)
+        with DurableWorkloadStore.open(self._store_path) as store:
+            cancelled = store.request_cancel(
+                owner, workload.workload_id,
+                expected_version=workload.version,
+                idempotency_key="cancel-before-http-dismiss",
+            )
+        body = {
+            "expected_version": cancelled.version,
+            "idempotency_key": "http-dismiss-23",
+        }
+        response = await self.client.post(
+            f"/agent/workloads/{workload.workload_id}/dismiss",
+            headers=self.headers(), json=body,
+        )
+        self.assertEqual(response.status, 200)
+        payload = await response.json()
+        self.assertEqual(payload["command"], "dismiss")
+        self.assertTrue(payload["dismissed"])
+
+        listing = await self.client.get("/agent/workloads", headers=self.headers())
+        self.assertNotIn(
+            workload.workload_id,
+            {item["workload_id"] for item in (await listing.json())["items"]},
+        )
+        for suffix in ("", "/events", "/units"):
+            hidden = await self.client.get(
+                f"/agent/workloads/{workload.workload_id}{suffix}",
+                headers=self.headers(),
+            )
+            self.assertEqual(hidden.status, 404)
+
+        # A lost HTTP response may be retried, while the underlying durable
+        # admission and events remain available to internal recovery.
+        replay = await self.client.post(
+            f"/agent/workloads/{workload.workload_id}/dismiss",
+            headers=self.headers(), json=body,
+        )
+        self.assertEqual(replay.status, 200)
+        with DurableWorkloadStore.open(self._store_path) as store:
+            self.assertEqual(
+                store.get_workload(owner, workload.workload_id).state.value,
+                "cancelled",
+            )
+            self.assertGreater(
+                len(store.list_events(owner, workload.workload_id)), 0,
+            )
+
+        active = self._create_admitted(owner, 24)
+        refused = await self.client.post(
+            f"/agent/workloads/{active.workload_id}/dismiss",
+            headers=self.headers(),
+            json={
+                "expected_version": active.version,
+                "idempotency_key": "http-dismiss-active-24",
+            },
+        )
+        self.assertEqual(refused.status, 409)
+        self.assertEqual(
+            (await refused.json())["error"]["code"],
+            "durable_workload.illegal_state",
+        )
+
+        foreign = self._create_admitted("foreign-dismiss-owner", 25)
+        denied = await self.client.post(
+            f"/agent/workloads/{foreign.workload_id}/dismiss",
+            headers=self.headers(),
+            json={
+                "expected_version": foreign.version,
+                "idempotency_key": "http-dismiss-foreign-25",
+            },
+        )
+        self.assertEqual(denied.status, 404)
+
     async def test_attention_resolution_uses_closed_owner_scoped_routes(self):
         from durable_workloads.models import WorkloadState
         from durable_workloads.storage import DurableWorkloadStore

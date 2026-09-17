@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Final
 
 
-CURRENT_SCHEMA_VERSION: Final[int] = 7
+CURRENT_SCHEMA_VERSION: Final[int] = 8
 BUSY_TIMEOUT_MS: Final[int] = 5_000
 
 
@@ -1390,9 +1390,33 @@ _V7_STATEMENTS: tuple[str, ...] = (
 )
 
 
+# Removing a terminal workload from the owner's console is a presentation
+# lifecycle action.  Keep the durable execution, request idempotency, results,
+# artifacts and recovery references intact instead of deleting their rows.
+_V8_STATEMENTS: tuple[str, ...] = (
+    """
+    CREATE TABLE workload_dismissals (
+        owner_user_id TEXT NOT NULL,
+        workload_id TEXT NOT NULL,
+        expected_version INTEGER NOT NULL CHECK (expected_version >= 1),
+        idempotency_key TEXT NOT NULL CHECK (
+            length(idempotency_key) BETWEEN 1 AND 256
+            AND idempotency_key = trim(idempotency_key)
+        ),
+        dismissed_at TEXT NOT NULL CHECK (
+            dismissed_at LIKE '____-__-__T__:__:__%Z'
+        ),
+        PRIMARY KEY (owner_user_id, workload_id),
+        FOREIGN KEY (owner_user_id, workload_id)
+            REFERENCES workloads(owner_user_id, id) ON DELETE CASCADE
+    ) WITHOUT ROWID
+    """,
+)
+
+
 _MIGRATIONS = (
     _V1_STATEMENTS, _V2_STATEMENTS, _V3_STATEMENTS, _V4_STATEMENTS,
-    _V5_STATEMENTS, _V6_STATEMENTS, _V7_STATEMENTS,
+    _V5_STATEMENTS, _V6_STATEMENTS, _V7_STATEMENTS, _V8_STATEMENTS,
 )
 
 _REQUIRED_V1_TABLES = frozenset({
@@ -1602,6 +1626,30 @@ def _validate_schema_shape(connection: sqlite3.Connection, version: int) -> None
             ("stages", "revision_id", "revision_id", "CASCADE"),
         }:
             raise MigrationError("schema v7 has incompatible placement ownership")
+    if version >= 8:
+        if "workload_dismissals" not in present:
+            raise MigrationError("schema v8 is missing workload dismissals")
+        dismissal_columns = {
+            str(row[1])
+            for row in connection.execute("PRAGMA table_info(workload_dismissals)")
+        }
+        if dismissal_columns != {
+            "owner_user_id", "workload_id", "expected_version",
+            "idempotency_key", "dismissed_at",
+        }:
+            raise MigrationError("schema v8 has incompatible dismissal columns")
+        dismissal_foreign_keys = connection.execute(
+            "PRAGMA foreign_key_list(workload_dismissals)"
+        ).fetchall()
+        dismissal_ownership = {
+            (str(row[2]), str(row[3]), str(row[4]), str(row[6]).upper())
+            for row in dismissal_foreign_keys
+        }
+        if dismissal_ownership != {
+            ("workloads", "owner_user_id", "owner_user_id", "CASCADE"),
+            ("workloads", "workload_id", "id", "CASCADE"),
+        }:
+            raise MigrationError("schema v8 has incompatible dismissal ownership")
 
 
 def migrate(

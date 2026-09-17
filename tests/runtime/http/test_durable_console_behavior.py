@@ -319,6 +319,7 @@ def test_console_labels_exist_in_both_seed_languages():
                        "MORE_ERROR_CATEGORIES", "ATTEMPT_ERRORS", "ATTEMPT_ERRORS_HELP",
                        "METRIC_VALUE", "METRIC_MEANING", "PHASE_COMPLETED_MEANING", "PHASE_TOTAL_MEANING",
                        "KNOWN_TOTAL_MEANING", "BATCH_DEFINITION", "ERROR_EXECUTOR_UNKNOWN", "ERROR_RUNNER_FAILED",
+                       "DISMISS", "DISMISS_CONFIRM",
                        "CAUSE_IMAGE_DESCRIPTION_UNAVAILABLE", "CAUSE_IMAGE_DESCRIPTION_TRUNCATED",
                        "CAUSE_IMAGE_DESCRIPTION_INVALID", "CAUSE_IMAGE_DESCRIPTION_EMPTY", "CAUSE_IMAGE_DESCRIPTION_SCHEMA_INVALID"):
             rows = conn.execute("SELECT lang,text,needs_translation FROM i18n WHERE key=? AND lang IN ('it','en')", ("UI_DURABLE_" + suffix,)).fetchall()
@@ -392,10 +393,13 @@ def test_console_design_browser_isolated(monkeypatch, tmp_path, lang):
     }
     payload = {"workload": workload, "revision": {"execution": {"last_committed_at": None}}}
     removed = False
+    seen_requests = []
     workload["progress"]["current_phase"] = {"stage_key": "discover", "number": 1, "count": 5, "committed_units": 0, "total_units": 1, "known_units_percent": 0, "estimated_end_at": None, "estimated_end_reason": "insufficient_data"}
 
     def respond(route):
+        nonlocal removed
         path = route.request.url.split("example.test", 1)[-1]
+        seen_requests.append((route.request.method, path))
         if path == "/admin/workloads":
             route.fulfill(body=html, content_type="text/html")
             return
@@ -408,6 +412,10 @@ def test_console_design_browser_isolated(monkeypatch, tmp_path, lang):
                 route.fulfill(status=404, body="{}", content_type="application/json")
                 return
             value = payload
+        elif path == "/agent/workloads/wrk_synthetic_photo_job/dismiss" and route.request.method == "POST":
+            assert workload["state"] in {"cancelled", "failed", "completed_with_errors", "completed"}
+            removed = True
+            value = {"command": "dismiss", "dismissed": True}
         elif path.endswith("/stream"):
             route.fulfill(body="", content_type="text/event-stream")
             return
@@ -468,6 +476,7 @@ def test_console_design_browser_isolated(monkeypatch, tmp_path, lang):
             assert not page.get_by_text(texts["UI_DURABLE_WORK_UNITS_HELP"], exact=True).is_visible()
             assert page.get_by_role("button", name=texts["UI_DURABLE_PAUSE"], exact=True).is_visible()
             assert page.get_by_role("button", name=texts["UI_DURABLE_RESUME"], exact=True).count() == 0
+            assert page.get_by_role("button", name=texts["UI_DURABLE_DISMISS"], exact=True).count() == 0
             page.screenshot(path=str(tmp_path / f"lre-design-{lang}-desktop.png"), full_page=True)
             for width in (1000, 390):
                 page.set_viewport_size({"width": width, "height": 844})
@@ -486,6 +495,7 @@ def test_console_design_browser_isolated(monkeypatch, tmp_path, lang):
             assert table.get_by_text(texts["UI_DURABLE_ETA_NEEDS_ATTENTION"], exact=True).is_visible()
             assert page.get_by_role("button", name=texts["UI_DURABLE_RETRY"], exact=True).is_visible()
             assert page.get_by_role("button", name=texts["UI_DURABLE_PAUSE"], exact=True).count() == 0
+            assert page.get_by_role("button", name=texts["UI_DURABLE_DISMISS"], exact=True).count() == 0
             from datetime import datetime, timedelta, timezone
             observed = datetime.now(timezone.utc)
             workload["state"] = "running"
@@ -570,9 +580,18 @@ def test_console_design_browser_isolated(monkeypatch, tmp_path, lang):
             page.locator(".dw-job-choice").click()
             history.locator("summary").wait_for()
             assert history.locator("summary").inner_text().endswith(": 2")
-            removed = True
-            page.locator("#dwRefresh").click()
+            remove = page.get_by_role("button", name=texts["UI_DURABLE_DISMISS"], exact=True)
+            assert remove.is_visible()
+            dialogs = []
+            def accept_dialog(dialog):
+                dialogs.append((dialog.type, dialog.message))
+                dialog.accept()
+            page.once("dialog", accept_dialog)
+            remove.click()
             page.locator("#dwDetail[hidden]").wait_for(state="attached")
+            assert dialogs, json.dumps(seen_requests[-12:])
+            assert ("POST", "/agent/workloads/wrk_synthetic_photo_job/dismiss") in seen_requests
+            assert removed
             assert page.locator("#dwDetail").inner_html() == ""
             assert page.locator("#dwList .dw-job-choice").count() == 0
             assert page.locator("#dwPlaceholder").inner_text() == texts["UI_DURABLE_EMPTY"]

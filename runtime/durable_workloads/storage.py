@@ -1075,6 +1075,24 @@ class DurableWorkloadStore:
             self._select_workload(self._connection, owner, workload_id)
         )
 
+    def get_visible_workload(
+        self, owner_user_id: str, workload_id: str,
+    ) -> WorkloadRecord:
+        """Return an owner-visible workload or the same opaque absence error."""
+
+        owner = _require_owner(owner_user_id)
+        row = self._select_workload(self._connection, owner, workload_id)
+        dismissed = self._connection.execute(
+            """
+            SELECT 1 FROM workload_dismissals
+            WHERE owner_user_id=? AND workload_id=?
+            """,
+            (owner, workload_id),
+        ).fetchone()
+        if dismissed is not None:
+            raise WorkloadNotFoundError("workload not found")
+        return _row_to_workload(row)
+
     def find_active_submission(
         self, owner_user_id: str, scope_digest: str,
     ) -> WorkloadRecord | None:
@@ -1164,7 +1182,12 @@ class DurableWorkloadStore:
         owner = _require_owner(owner_user_id)
         _require_limit(limit, maximum=200)
         parameters: list[Any] = [owner]
-        where = "owner_user_id=?"
+        where = (
+            "owner_user_id=? AND NOT EXISTS ("
+            "SELECT 1 FROM workload_dismissals dismissal "
+            "WHERE dismissal.owner_user_id=workloads.owner_user_id "
+            "AND dismissal.workload_id=workloads.id)"
+        )
         if state is not None:
             normalized = WorkloadState(state)
             where += " AND state=?"
@@ -1198,7 +1221,12 @@ class DurableWorkloadStore:
         _require_limit(limit, maximum=200)
         normalized_state = WorkloadState(state) if state is not None else None
         parameters: list[Any] = [owner]
-        clauses = ["owner_user_id=?"]
+        clauses = [
+            "owner_user_id=?",
+            "NOT EXISTS (SELECT 1 FROM workload_dismissals dismissal "
+            "WHERE dismissal.owner_user_id=workloads.owner_user_id "
+            "AND dismissal.workload_id=workloads.id)",
+        ]
         if normalized_state is not None:
             clauses.append("state=?")
             parameters.append(normalized_state.value)
@@ -3704,6 +3732,67 @@ class DurableWorkloadStore:
             idempotency_key=idempotency_key, expected_version=expected_version,
             now=now,
         )
+
+    def dismiss_terminal_workload(
+        self,
+        owner_user_id: str,
+        workload_id: str,
+        *,
+        expected_version: int,
+        idempotency_key: str,
+        now: datetime | None = None,
+    ) -> WorkloadRecord:
+        """Hide terminal history while retaining every durable execution row.
+
+        A queued, paused or attention state must first use the ordinary cancel
+        lifecycle.  This keeps an executable job from disappearing from its
+        owner's control surface and preserves request/recovery idempotency.
+        """
+
+        owner = _require_owner(owner_user_id)
+        expected = _require_version(expected_version)
+        key = _require_key(idempotency_key, name="idempotency_key")
+        _current, current_text = self._operation_now(now)
+        with self._transaction() as connection:
+            row = self._select_workload(connection, owner, workload_id)
+            if int(row["version"]) != expected:
+                raise VersionConflictError("workload version precondition failed")
+            state = WorkloadState(str(row["state"]))
+            if state not in _TERMINAL_WORKLOAD_STATES:
+                raise InvalidTransitionError(
+                    "only a terminal workload can be dismissed"
+                )
+            active_attempts = int(connection.execute(
+                """
+                SELECT COUNT(*)
+                FROM attempts attempt
+                JOIN units unit
+                  ON unit.owner_user_id=attempt.owner_user_id
+                 AND unit.id=attempt.unit_id
+                JOIN revisions revision
+                  ON revision.owner_user_id=unit.owner_user_id
+                 AND revision.id=unit.revision_id
+                WHERE revision.owner_user_id=?
+                  AND revision.workload_id=?
+                  AND attempt.state IN ('leased', 'running')
+                """,
+                (owner, workload_id),
+            ).fetchone()[0])
+            if active_attempts:
+                raise InvalidTransitionError(
+                    "a workload with active attempts cannot be dismissed"
+                )
+            connection.execute(
+                """
+                INSERT INTO workload_dismissals(
+                    owner_user_id, workload_id, expected_version,
+                    idempotency_key, dismissed_at
+                ) VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(owner_user_id, workload_id) DO NOTHING
+                """,
+                (owner, workload_id, expected, key, current_text),
+            )
+            return _row_to_workload(row)
 
     def record_attention_resolution(
         self,
@@ -9297,6 +9386,7 @@ class DurableWorkloadStore:
                 "results", "unit_dependencies", "dependencies",
                 "artifacts", "publications", "events", "outbox",
                 "scheduler_credits", "commands", "attention_resolutions",
+                "workload_dismissals",
             ):
                 residue = int(connection.execute(
                     f"SELECT COUNT(*) FROM {table} WHERE owner_user_id=?",

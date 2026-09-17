@@ -59,9 +59,21 @@
   let pageActive = true;
   let pollTimer = null;
   let staleTimer = null;
+  let actionSequence = 0;
   const engineStatus = document.getElementById("dwEngine");
   const freshness = document.getElementById("dwFreshness");
   const observationTick = Symbol("observationTick");
+  function idempotencyKey() {
+    if (globalThis.crypto && typeof globalThis.crypto.randomUUID === "function") {
+      return globalThis.crypto.randomUUID();
+    }
+    actionSequence += 1;
+    const entropy = new Uint32Array(4);
+    if (globalThis.crypto && typeof globalThis.crypto.getRandomValues === "function") {
+      globalThis.crypto.getRandomValues(entropy);
+    }
+    return `ui-${Date.now().toString(36)}-${actionSequence.toString(36)}-${[...entropy].map(value => value.toString(36)).join("-")}`;
+  }
   function observeProgress(progress, startedAt = performance.now()) {
     // Client-only metadata survives the discovery projection's object spread,
     // but is excluded from JSON signatures and never sent back to the server.
@@ -239,6 +251,20 @@
   function highlightSelection() {
     for (const row of list.querySelectorAll(".dw-job-choice")) row.setAttribute("aria-current", String(row.dataset.workloadId === selectedId));
   }
+  function clearRemovedSelection() {
+    if (stream) stream.close();
+    stream = null;
+    window.clearTimeout(refreshTimer);
+    refreshTimer = null;
+    selectedId = null; selected = null; detailSignature = null;
+    lastEventId = 0; unitsCursor = null; unitsState = null;
+    detailGeneration += 1; detailRenderGeneration += 1; unitsGeneration += 1;
+    detailLoading = false;
+    clear(detail); detail.hidden = true;
+    live.textContent = ""; placeholder.hidden = false;
+    placeholder.textContent = list.querySelectorAll(".dw-job-choice").length ? copy.selectJob : copy.empty;
+    highlightSelection();
+  }
   function disclosure(key, label, openSections) {
     const section = node("details", "", "dw-disclosure");
     section.dataset.section = key;
@@ -381,8 +407,8 @@
     stream.onerror = () => { if (selectedId === workloadId) { live.textContent = copy.reconnecting; markStale(); } };
   }
 
-  async function runAction(command, destructive = false) {
-    if (!selected || selected.workload_id !== selectedId || (destructive && !window.confirm(copy.cancelConfirm))) return;
+  async function runAction(command, confirmation = null) {
+    if (!selected || selected.workload_id !== selectedId || (confirmation && !window.confirm(confirmation))) return;
     const workloadId = selected.workload_id;
     const url = command === "retry"
       ? `${api}/${encodeURIComponent(selected.workload_id)}/attention/retry`
@@ -390,8 +416,13 @@
     try {
       await request(url, {
         method: "POST",
-        body: JSON.stringify({expected_version: selected.version, idempotency_key: crypto.randomUUID()})
+        body: JSON.stringify({expected_version: selected.version, idempotency_key: idempotencyKey()})
       });
+      if (command === "dismiss") {
+        if (selectedId === workloadId) clearRemovedSelection();
+        await loadList(true);
+        return;
+      }
       if (selectedId === workloadId) await loadDetail(workloadId, true);
       await loadList(true);
     } catch (_) { live.textContent = copy.actionFailed; }
@@ -517,7 +548,9 @@
       if (["queued", "running"].includes(selected.state)) actions.append(button(copy.pause, () => runAction("pause")));
       if (selected.state === "paused") actions.append(button(copy.resume, () => runAction("resume")));
       if (selected.state === "needs_attention") actions.append(button(copy.retry, () => runAction("retry")));
-      if (!["cancelled", "completed", "completed_with_errors", "failed"].includes(selected.state)) actions.append(button(copy.cancel, () => runAction("cancel", true), {danger: true}));
+      const terminal = ["cancelled", "completed", "completed_with_errors", "failed"].includes(selected.state);
+      if (!terminal) actions.append(button(copy.cancel, () => runAction("cancel", copy.cancelConfirm), {danger: true}));
+      if (terminal) actions.append(button(copy.dismiss, () => runAction("dismiss", copy.dismissConfirm), {danger: true}));
       if (actions.childElementCount) detail.append(actions);
       const help = disclosure("help", copy.readProgress, openSections);
       help.append(node("p", copy.progressHelp), node("p", copy.phaseScopeHelp), node("p", copy.timingHelp));
@@ -567,16 +600,7 @@
       if (error.status === 404) {
         // Confirmed absence is not a temporary read failure. Drop the stale
         // open detail and its controls after an authorized history deletion.
-        if (stream) stream.close();
-        stream = null;
-        window.clearTimeout(refreshTimer);
-        selectedId = null; selected = null; detailSignature = null;
-        lastEventId = 0; unitsCursor = null;
-        detailRenderGeneration += 1; unitsGeneration += 1;
-        clear(detail); detail.hidden = true;
-        live.textContent = ""; placeholder.hidden = false;
-        placeholder.textContent = list.querySelectorAll(".dw-job-choice").length ? copy.selectJob : copy.empty;
-        highlightSelection();
+        clearRemovedSelection();
         await loadList(true);
         return true;
       }

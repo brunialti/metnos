@@ -409,18 +409,20 @@ SURFACES: tuple[UiSurfaceSpec, ...] = (
         controls_it=(
             "apri un lavoro", "carica altre righe o unità",
             "metti in pausa", "riprendi", "annulla",
-            "ritenta dopo una decisione", "scarica un artefatto",
+            "ritenta dopo una decisione", "rimuovi dalla lista un lavoro terminato",
+            "scarica un artefatto",
         ),
         controls_en=(
             "open a workload", "load more rows or units", "pause", "resume",
-            "cancel", "retry after a decision", "download an artifact",
+            "cancel", "retry after a decision", "remove a finished workload from the list",
+            "download an artifact",
         ),
         procedure_it=(
             "Nella chat web apri Settings > Sistema > LRE. La console serve a osservare e governare i lavori; non abilita LRE e non crea un lavoro.",
             "Nell'elenco seleziona il lavoro tramite attività, cartella e stato.",
             "Nel dettaglio verifica fase x/y, tabella dei batch e stima della fase. Il totale noto di tutte le fasi può crescere e non misura il tempo. Senza totale definitivo percentuale e stima sono n.a. Consulta i dettagli tecnici per piano e limiti.",
             "Usa la timeline per seguire i cambiamenti. Carica unità in errore o in attesa di attenzione soltanto quando devi diagnosticare un arresto.",
-            "Pausa, ripresa, annullamento e ritentativo compaiono soltanto negli stati che li ammettono. La pagina può essere chiusa: il worker continua in modo indipendente.",
+            "Pausa, ripresa, annullamento e ritentativo compaiono soltanto negli stati che li ammettono. Un lavoro terminato può essere rimosso dalla lista senza cancellarne risultati e cronologia tecnica. La pagina può essere chiusa: il worker continua in modo indipendente.",
             "Quando il lavoro termina, verifica nome, dimensione, digest e stato di convalida dell'artefatto prima di scaricarlo.",
         ),
         procedure_en=(
@@ -428,7 +430,7 @@ SURFACES: tuple[UiSurfaceSpec, ...] = (
             "Select a workload in the list by activity, folder and state.",
             "In the detail, check phase x/y, the batch table and phase estimate. The known total across phases may grow and does not measure time. Without a final total, percentage and estimate are n.a. Inspect technical details for the plan and limits.",
             "Use the timeline to follow changes. Load failed or attention-required units only when diagnosing halted progress.",
-            "Pause, resume, cancel, and retry appear only in states that allow them. You may close the page: the worker continues independently.",
+            "Pause, resume, cancel, and retry appear only in states that allow them. A finished workload can be removed from the list without deleting its results or technical history. You may close the page: the worker continues independently.",
             "When the workload finishes, verify the artifact name, size, digest, and validation state before downloading it.",
         ),
         stop_it=(
