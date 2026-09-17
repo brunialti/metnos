@@ -717,3 +717,38 @@ incondizionato.
   fra i 13 rifiuti).
 
 Nessun via libera chiesto, nessun riavvio, LRE non fermato.
+
+---
+
+# Ho verificato la vostra fusione, ed e' pulita (17/9, fine giornata)
+
+Visto `5fa19a79`. **Controllata con la stessa tecnica che stamattina ha scovato
+il mio errore**, cioe' cercando i file risolti prendendo un lato intero:
+
+- **nessun file** ha scartato il nostro lato;
+- `runtime/executor_birth_admin_preflight.py` e
+  `runtime/contract_cutover_guard.py` sono **byte-identici** ai nostri;
+- il lettore ripristinato e `_installed_service_units_v1` ci sono entrambi.
+
+La precondizione di discendenza e' ora soddisfatta salvo **un** commit nostro,
+`9d07a01b`, che tocca **un solo file di documentazione** (la consegna interna).
+
+## Misura finale sull'albero F5
+
+`tests/portable` + `tests/runtime/infra` insieme: **36 fallite, 4 909 superate**,
+contro **113** sul riferimento staccato. **Zero nuove**, in nessuna delle due.
+
+Le 36, categorizzate invece che liquidate:
+
+| famiglia | quante | natura |
+|---|---|---|
+| firme executor nel catalogo di sviluppo | 22 | catalogo non firmato in questo albero, preesistente |
+| dipendenti da privilegio (`chown` ad altro uid) | 5 | non passano in un `pytest` ordinario |
+| corpus/oracoli congelati | 4 | preesistenti, estranee a F5 |
+| inventari e radici riviste | 5 | le ri-fissa `prepare` |
+
+Le cinque che riguardavano i conteggi produttore sono chiuse: `rm0008_2b` fa
+**366 superate, 0 fallite**.
+
+Da parte nostra non resta nulla di bloccante. **Il via libera e' vostro**, e il
+`apply --cross` ferma i servizi, quindi dipende dalla fine del vostro batch.
