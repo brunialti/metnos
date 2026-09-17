@@ -9,6 +9,11 @@ Evidence is the one operation with a payload, and it arrives on standard input
 as a closed document rather than as arguments. Artifacts are bytes, and bytes
 do not belong in an argument vector an operator can mistype or a process list
 can leak.
+
+There is deliberately no ``__main__`` guard here or in the two modules this one
+drives. The launcher imports ``main`` from the verified release; a guard would
+advertise a second, undeclared way to run an administrative operation, and the
+single topology source enumerates every entry point that exists.
 """
 from __future__ import annotations
 
@@ -179,7 +184,3 @@ def main(argv: list[str] | None = None) -> int:
     print(json.dumps(report, ensure_ascii=True, indent=2, sort_keys=True,
                      default=str))
     return 0
-
-
-if __name__ == "__main__":  # pragma: no cover - administrative entry point
-    raise SystemExit(main())

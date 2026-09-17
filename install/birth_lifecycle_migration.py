@@ -581,7 +581,3 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     print(json.dumps(report, ensure_ascii=True, indent=2, sort_keys=True))
     return 0
-
-
-if __name__ == "__main__":  # pragma: no cover - administrative entry point
-    raise SystemExit(main())

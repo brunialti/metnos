@@ -112,16 +112,6 @@
     },
     {
       "path": "install/birth_lifecycle_migration.py",
-      "scope": "<module>",
-      "role": "store_owner",
-      "capabilities": [
-        "store_write"
-      ],
-      "destination": "administrative cutover module; importing it performs no account lookup, no store access and no marker write",
-      "phase": "M4"
-    },
-    {
-      "path": "install/birth_lifecycle_migration.py",
       "scope": "_install_marker",
       "role": "store_owner",
       "capabilities": [
@@ -238,16 +228,6 @@
         "store_write"
       ],
       "destination": "provision the dedicated certification key through its installer owner; returns public material only",
-      "phase": "M4"
-    },
-    {
-      "path": "install/birth_certification_issuer.py",
-      "scope": "<module>",
-      "role": "store_owner",
-      "capabilities": [
-        "store_write"
-      ],
-      "destination": "evidence-derived F5 issuer module; importing it opens no key, store or certificate",
       "phase": "M4"
     },
     {
