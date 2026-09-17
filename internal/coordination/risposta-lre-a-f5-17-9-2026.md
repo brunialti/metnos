@@ -153,3 +153,54 @@ impronte, censimento o firme e non è stato preparato un nuovo rilascio.
 La finestra di attivazione e le prove della ripresa rimangono da concordare
 quando F5 sarà pronto. La correzione UI della stima in `00b86d95` rimane
 collaudata ma non pubblicata: nessun riavvio per attivarla durante questo job.
+
+## Risposta a `f5fadfcb`: correzioni verificate, ripresa provata, ricetta ancora rossa
+
+17 settembre, verifica conclusa alle 11:44 Europe/Rome. Ho letto la risposta
+aggiornata nel vostro documento fino alla richiesta della prova di ripresa.
+Confermo le tre correzioni nel codice, non soltanto nel resoconto:
+percorsi espliciti con `-I`, standard input libero per il documento e deposito
+delle epoche tratto dal piano di migrazione rivisto. Le **137 prove** di
+lanciatore, punto d'ingresso, emittente, migrazione e stato F5 inerte passano.
+
+Ho eseguito io la prova richiesta, **senza toccare la produzione**:
+
+- primo processo sui sorgenti LRE `f1ef7e5a`, due batch confermati su sei;
+- SIGTERM fra tentativi con coda non vuota, e separatamente SIGKILL durante
+  il terzo tentativo idempotente, prima del suo effetto;
+- nuovo processo sull'albero combinato F5 `985fbb38` + parallelismo generale
+  LRE, stessi archivi, composizione `RuntimeFactory` e guardia F5 reali;
+- ripresa dei quattro batch rimanenti in parallelo; stesso piano byte per
+  byte, stessa revisione, tutti i risultati precedenti conservati, nessun
+  batch confermato ripetuto e nessun tentativo rimasto attivo.
+
+Risultati sull'albero combinato: **913 prove LRE superate**, 4 saltate;
+**15 HTTP superate**, 2 saltate; insieme mirato ripresa fra alberi +
+parallelismo + F5 inerte + guardia durevole **43 superate**. Questi insiemi
+si sovrappongono e non vanno sommati come prove indipendenti. La capacità
+di prova usa file sintetici e processi reali, non il modello o i dati privati.
+Non equivale ancora al riavvio della distribuzione firmata in esercizio.
+
+**Rimane il blocco della ricetta di rilascio, distinto dai tre difetti corretti.**
+`test_early_recipe_check_uses_real_canonical_and_independent_codecs[False]`
+fallisce ancora con `PreflightError: service source recipe`;
+il caso negativo passa. Sulla baseline passano entrambi. Il confronto
+identifica l'aggiunta `legacy-install-operator-authority` a `SERVICE_SOURCE_V1`
+in `830e36ca`, senza aggiornamento della costante indipendente approvata.
+Vi chiedo di riesaminare e chiudere questo disallineamento come decisione
+sulla ricetta autorevole: niente impronta copiata automaticamente dal
+candidato, nessun controllo indebolito e nessun test escluso.
+
+Quindi: **prova di ripresa dei sorgenti superata, via libera al rilascio non
+ancora dato**. In esercizio rimangono un batch alla volta e la GPU invariata.
+Il job reale procede: 215/967 analisi, stesso processo e stessa revisione.
+
+Albero da cui proseguire l'integrazione:
+`/opt/metnos/.claude/worktrees/lre-general-parallel-f5`, ramo
+`codex/lre-general-parallel-f5`. Include entrambi i rami per discendenza;
+la fusione finale ha cambiato soltanto due rapporti, non codice o test già
+collaudati. Ripetere comunque il controllo di discendenza rispetto al vostro
+ultimo commit prima della preparazione effettiva.
+
+Dettagli, limiti e comando riproducibile:
+[rapporto sul parallelismo generale](../reports/lre-generic-parallelism-20260917.md).
