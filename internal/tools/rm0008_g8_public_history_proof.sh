@@ -471,6 +471,10 @@ try:
         joined = reconcile_historical_birth_v1(inventory, producer_history, declarations)
         unchanged = (read_historical_birth_inventory_v1() == inventory
                      and read_producer_history_v1() == producer_history)
+        issue_groups = {}
+        for item in joined.issues:
+            issue_groups.setdefault(item.code, []).append(
+                f"{item.source}|{item.identity}")
         result["historical_inventory"] = {
             "contracts": len(inventory.contracts), "physical_receipts": joined.physical_receipts,
             "producer_rows": joined.producer_rows, "issuance_rows": joined.issuance_rows,
@@ -487,6 +491,27 @@ try:
             "issues": dict(Counter(item.code for item in joined.issues)),
             "issue_examples": [dict(source=item.source, identity=item.identity, code=item.code)
                                for item in joined.issues[:5]],
+            # A gap set is declared and reviewed once; what must be checkable
+            # later is that the same set came back, not merely the same count.
+            # These are fingerprints of the identities, so the declaration stays
+            # inside the runner's bounded public result: compact triples, a
+            # fixed cap, and half-length digests, which distinguish a changed
+            # set without pretending to be a signature. They are NOT the
+            # evidence scope identity: that one is domain separated and is
+            # recomputed by its own owner from the live history at recording
+            # time, and is deliberately not reimplemented here.
+            "issue_census": [
+                [code, len(rows),
+                 hashlib.sha256("\n".join(sorted(rows)).encode("utf-8")).hexdigest()[:32]]
+                for code, rows in sorted(issue_groups.items())[:32]
+            ],
+            "issue_census_codes": len(issue_groups),
+            "issue_census_fingerprint": "sha256:" + hashlib.sha256(
+                "\n".join(sorted(
+                    f"{item.source}|{item.identity}|{item.code}"
+                    for item in joined.issues
+                )).encode("utf-8")
+            ).hexdigest(),
             "inventories_unchanged_on_reread": unchanged,
             "original_source_journal_reread": False,
             "qualification": "observed_complete_inventory_with_explicit_gaps_not_certification_frontier_or_f5",
