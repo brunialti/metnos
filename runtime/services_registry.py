@@ -195,6 +195,34 @@ def catalog() -> tuple[ServiceSpec, ...]:
     return readiness_catalog()
 
 
+def owned_service_units_v1() -> tuple[tuple[str, str], ...]:
+    """The units this product runs itself, with the scope the catalog signs.
+
+    External dependencies are deliberately absent: they are declared through
+    `external_unit_name`, they write none of this installation's state, and a
+    maintenance window has no business requiring them to stop. Unlike the
+    readiness projection this refuses instead of falling back, because a
+    caller that must prove something about the running topology cannot be
+    handed a guess about it.
+    """
+    from executor_birth_ownership_chain import (
+        OwnershipChainStore, VerifiedOwnershipWindowV1,
+    )
+    from executor_birth_service_catalog import capture_current_service_catalog_v1
+
+    chain = OwnershipChainStore().read_required_window_v1()
+    if not isinstance(chain, VerifiedOwnershipWindowV1):
+        raise ValueError("installed ownership window is not verified")
+    distribution = chain.required_distribution
+    if Path(distribution.installation_root) != Path(_C.PATH_ROOT):
+        raise ValueError("installed distribution root mismatch")
+    loaded = capture_current_service_catalog_v1(distribution)
+    return tuple(sorted({
+        (entry.scope, entry.unit_name)
+        for entry in loaded.catalog.entries if entry.unit_name is not None
+    }))
+
+
 def readiness_catalog() -> tuple[ServiceSpec, ...]:
     """Project installed targets from the required signed deployment.
 

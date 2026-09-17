@@ -251,8 +251,14 @@ recorded root-owned at `certification-v1/migration-plan.json` (0644). Planning
 changes nothing else. The selected sources are `executor_stats` in the state
 root and `proposal_promote` in the data root.
 
-`apply` holds the existing maintenance barrier for the whole migration, so every
-service that writes those stores is quiescent. That is a precondition, not an
+`apply` holds the existing maintenance barrier for the whole migration and then
+proves separately that the services which write those stores are stopped. The
+barrier's own target list is the legacy bindings the F4 transition retired;
+those units are masked, so asking whether they are stopped always answers yes,
+and after that transition the services that really run carry the same names in
+system scope. The cutover therefore asks the installed catalog which units this
+product runs, and refuses with `cutover_topology_unknown` when it cannot read
+them or with `cutover_writer_running` when one is alive. That is a precondition, not an
 optimisation: one executor call during the copy would write a row nobody
 preserves. It refuses a decision other than the reviewed one, whether the stores
 or the catalog selection moved. After the copy each source is made unwritable

@@ -260,6 +260,94 @@ def test_applying_without_a_plan_is_refused(marker_root, monkeypatch):
         cutover.apply_cutover_v1()
 
 
+# --- the writers must actually be stopped -----------------------------------
+
+def _units(monkeypatch, units):
+    monkeypatch.setattr("services_registry.owned_service_units_v1", lambda: units)
+
+
+def _systemctl(monkeypatch, states):
+    class _Fake:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def show(self, unit, scope):
+            return dict(states[(scope, unit)])
+
+    monkeypatch.setattr("stack_reconcile.Systemctl", _Fake)
+
+
+IDLE = {"LoadState": "loaded", "ActiveState": "inactive", "MainPID": "0"}
+RUNNING = {"LoadState": "loaded", "ActiveState": "active", "MainPID": "4242"}
+
+
+def test_the_running_system_worker_blocks_the_migration(monkeypatch):
+    """The defect this exists for: the retired user unit answers for nobody."""
+    units = (("system", "metnos-durable-worker.service"),
+             ("system", "metnos-http.service"))
+    _units(monkeypatch, units)
+    _systemctl(monkeypatch, {units[0]: RUNNING, units[1]: IDLE})
+    with pytest.raises(cutover.LifecycleCutoverError) as raised:
+        cutover._prove_productive_services_stopped_v1("metnos")
+    assert raised.value.code == "cutover_writer_running"
+    assert "metnos-durable-worker.service" in raised.value.detail
+
+
+def test_a_stopped_stack_is_reported_unit_by_unit(monkeypatch):
+    units = (("system", "metnos-durable-worker.service"),
+             ("system", "metnos-telegram-daemon.service"))
+    _units(monkeypatch, units)
+    _systemctl(monkeypatch, {unit: IDLE for unit in units})
+    observed = cutover._prove_productive_services_stopped_v1("metnos")
+    assert [item["unit"] for item in observed] == [unit for _scope, unit in units]
+
+
+def test_a_masked_unit_counts_as_idle_but_a_live_one_does_not(monkeypatch):
+    units = (("user", "metnos-http.service"), ("system", "metnos-http.service"))
+    _units(monkeypatch, units)
+    _systemctl(monkeypatch, {
+        units[0]: {"LoadState": "masked", "ActiveState": "inactive", "MainPID": "0"},
+        units[1]: RUNNING,
+    })
+    with pytest.raises(cutover.LifecycleCutoverError) as raised:
+        cutover._prove_productive_services_stopped_v1("metnos")
+    assert raised.value.code == "cutover_writer_running"
+
+
+@pytest.mark.parametrize("state,expected", [
+    ({"LoadState": "error", "ActiveState": "inactive", "MainPID": "0"},
+     "cutover_topology_unknown"),
+    ({"LoadState": "loaded", "ActiveState": "inactive", "MainPID": "0",
+      "ManagerError": "no bus"}, "cutover_topology_unknown"),
+    ({"LoadState": "loaded", "ActiveState": "inactive", "MainPID": "77"},
+     "cutover_writer_running"),
+])
+def test_an_unreadable_or_busy_unit_is_never_read_as_idle(monkeypatch, state, expected):
+    units = (("system", "metnos-http.service"),)
+    _units(monkeypatch, units)
+    _systemctl(monkeypatch, {units[0]: state})
+    with pytest.raises(cutover.LifecycleCutoverError) as raised:
+        cutover._prove_productive_services_stopped_v1("metnos")
+    assert raised.value.code == expected
+
+
+def test_an_unreadable_catalog_refuses_rather_than_guessing(monkeypatch):
+    def unreadable():
+        raise ValueError("installed ownership window is not verified")
+
+    monkeypatch.setattr("services_registry.owned_service_units_v1", unreadable)
+    with pytest.raises(cutover.LifecycleCutoverError) as raised:
+        cutover._prove_productive_services_stopped_v1("metnos")
+    assert raised.value.code == "cutover_topology_unknown"
+
+
+def test_an_empty_topology_is_not_a_quiescent_one(monkeypatch):
+    _units(monkeypatch, ())
+    with pytest.raises(cutover.LifecycleCutoverError) as raised:
+        cutover._prove_productive_services_stopped_v1("metnos")
+    assert raised.value.detail == "no declared unit"
+
+
 @pytest.fixture
 def planned(marker_root, monkeypatch):
     _as_root(monkeypatch)
@@ -280,6 +368,9 @@ def planned(marker_root, monkeypatch):
     monkeypatch.setattr(
         contract_cutover_guard, "_contract_cutover_guard_for_service_user_v1",
         lambda user, **kw: _Barrier())
+    monkeypatch.setattr(cutover, "_prove_productive_services_stopped_v1",
+                        lambda user: ({"scope": "system", "unit": "metnos-http.service",
+                                       "active_state": "inactive"},))
     return barrier
 
 

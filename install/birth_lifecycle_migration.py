@@ -391,6 +391,54 @@ def _in_service_child(work) -> dict:
     return report
 
 
+def _prove_productive_services_stopped_v1(service_user: str) -> tuple[dict, ...]:
+    """Prove the services that write these stores are actually stopped.
+
+    The maintenance barrier proves its own target list quiescent, and that list
+    is the legacy bindings: the entry points the F4 transition retired. They are
+    masked, so asking whether they are stopped always answers yes, and after
+    that transition the services that really run carry the same names in system
+    scope. Observing the retired user counterparts proves nothing about the
+    worker and the daemon that write the statistics database on every call.
+
+    This asks the installed catalog which units this product runs, and refuses
+    when it cannot read them: a quiescence claim over an unknown topology is
+    not a claim.
+    """
+    from executor_birth_maintenance_units import QUIESCENT_LOAD_STATES_V1
+    from services_registry import owned_service_units_v1
+    from stack_reconcile import Systemctl
+
+    try:
+        units = owned_service_units_v1()
+    except Exception as exc:
+        raise LifecycleCutoverError(
+            "cutover_topology_unknown", "installed service catalog is unreadable",
+        ) from exc
+    if not units:
+        raise LifecycleCutoverError("cutover_topology_unknown", "no declared unit")
+    systemctl = Systemctl(service_user=service_user)
+    observed = []
+    for scope, unit in units:
+        state = systemctl.show(unit, scope)
+        load_state = str(state.get("LoadState") or "")
+        active_state = str(state.get("ActiveState") or "")
+        try:
+            main_pid = int(state.get("MainPID") or 0)
+        except (TypeError, ValueError):
+            main_pid = -1
+        if load_state not in QUIESCENT_LOAD_STATES_V1 or state.get("ManagerError"):
+            raise LifecycleCutoverError(
+                "cutover_topology_unknown", f"cannot inspect {scope} unit {unit}")
+        if active_state not in {"inactive", "failed"} or main_pid != 0:
+            raise LifecycleCutoverError(
+                "cutover_writer_running",
+                f"{scope} unit {unit} is {active_state or load_state}")
+        observed.append({"scope": scope, "unit": unit, "load_state": load_state,
+                         "active_state": active_state, "main_pid": main_pid})
+    return tuple(observed)
+
+
 def _require_root_v1() -> None:
     if not _managed_authority_platform_supported_v1():
         raise LifecycleCutoverError("cutover_platform_unsupported")
@@ -484,6 +532,10 @@ def apply_cutover_v1() -> dict:
     from contract_cutover_guard import _contract_cutover_guard_for_service_user_v1
 
     with _contract_cutover_guard_for_service_user_v1(handoff["service_user"]):
+        # The barrier holds lifecycle exclusion and proves the retired entry
+        # points idle. It does not prove the current ones idle, so that is
+        # asked here, of the installed catalog, before anything is copied.
+        stopped = _prove_productive_services_stopped_v1(handoff["service_user"])
         report = _in_service_child(
             lambda descriptor: _apply_as_service(descriptor, handoff))
         applied = report["applied"]
@@ -494,6 +546,7 @@ def apply_cutover_v1() -> dict:
                 "cutover_pending_disposition", str(applied["pending"]))
         if applied["migration_id"] != handoff["migration_id"]:
             raise LifecycleCutoverError("cutover_plan_stale", "applied migration")
+        report["stopped_services"] = list(stopped)
         report["marker"] = str(_install_marker(
             _installation_id(), applied["migration_id"]))
     return report
