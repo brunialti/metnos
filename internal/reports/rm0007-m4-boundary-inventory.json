@@ -191,6 +191,56 @@
       "phase": "M4"
     },
     {
+      "path": "install/f5_authority.py",
+      "scope": "<module>",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "administrative F5 entry point module; importing it opens no key, store or document",
+      "phase": "M4"
+    },
+    {
+      "path": "install/f5_authority.py",
+      "scope": "_certify",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "derive or issue the F5 certificate through its own issuer owner",
+      "phase": "M4"
+    },
+    {
+      "path": "install/f5_authority.py",
+      "scope": "_evidence",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "append one closed evidence document to the administrative ledger through its owner",
+      "phase": "M4"
+    },
+    {
+      "path": "install/f5_authority.py",
+      "scope": "_migrate",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "run the one-time cutover through its own two-stage owner",
+      "phase": "M4"
+    },
+    {
+      "path": "install/f5_authority.py",
+      "scope": "_provision_key",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "provision the dedicated certification key through its installer owner; returns public material only",
+      "phase": "M4"
+    },
+    {
       "path": "install/birth_certification_issuer.py",
       "scope": "<module>",
       "role": "store_owner",

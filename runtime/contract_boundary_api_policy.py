@@ -184,6 +184,14 @@ BOUNDARY_API_OWNERS_V1 = (
     )),
     # The evidence-derived F5 issuer. It signs one derived qualification and
     # one completed migration; it publishes no executor and grants no capability.
+    # One entry point for the four administrative F5 operations. It adds no
+    # authority: each subcommand calls the owner that already holds it.
+    BoundaryApiOwnerV1('f5_authority', (
+        ('_provision_key', ('store_write',)),
+        ('_evidence', ('store_write',)),
+        ('_migrate', ('store_write',)),
+        ('_certify', ('store_write',)),
+    )),
     BoundaryApiOwnerV1('birth_certification_issuer', (
         ('issue_certificate_v1', ('store_write',)),
         ('main', ('store_write',)),
