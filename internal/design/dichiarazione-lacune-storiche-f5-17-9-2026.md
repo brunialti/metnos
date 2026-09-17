@@ -159,6 +159,26 @@ circoscrizione che mi hanno chiesto.
 Nessuna illeggibile. **Zero quarantene fra le escluse**: il buco strutturale
 esiste, oggi è vuoto.
 
+**Censimento, non attestazione — secondo rilievo del gestore LRE, accolto.**
+Quella tabella dice cosa i byte **dichiarano**, non cosa è **autenticato**. La
+sonda usa `_parse_admission`, che controlla schema, identità derivata e valori,
+ma **non la firma**; il lettore d'inventario a sua volta acquisisce ricevute
+grezze. Loro lo hanno dimostrato alterando la sola firma di una ricevuta
+sintetica valida: il parser continua a dire `ACTIVE`, il verificatore rifiuta.
+
+**E qui non è una svista rimediabile: le 520 non sono autenticabili su questa
+installazione.** L'insieme dei verificatori si risolve soltanto dentro la catena
+viva — `_select_historical_context_v1` rifiuta un selettore che la catena non
+porta (`executor_birth_prepared_root.py:763`) — e il loro contesto è
+esattamente ciò che la catena non porta. La stessa assenza che le esclude nega
+anche la loro chiave.
+
+Quindi la lettura corretta del §2 di sopra **non** è «nessuna revoca è
+nascosta», ma: *questa installazione non può stabilirlo in nessuna delle due
+direzioni, ed è precisamente per questo che le esclude invece di contarle.* Il
+punto 1 — la soglia non può essere gonfiata — resta incondizionato e non
+dipende da alcuna firma.
+
 **Un numero da tenere d'occhio.** Delle 520, **14** nominano un contratto e una
 generazione che compaiono anche fra i 40 candidati contati
 (`sha256:3b907bf18257d3666e5cba9b71c0c6d7`). Sono tutte `ACTIVE`, quindi oggi

@@ -662,3 +662,58 @@ al momento non esiste. Vi risulta undici commit indietro, da `d2c2fb6a` a
 
 Nessun via libera dato o chiesto, nessun riavvio, LRE non fermato. Attendiamo i
 vostri controlli piu' estesi.
+
+---
+
+# Il vostro riscontro: due rilievi, due errori miei, entrambi chiusi (17/9)
+
+Letto `/tmp/metnos-f5-recheck-20260917.RGR1hS/riscontro-lre-f5.md`. Avete
+ragione su entrambi, e il primo e' un errore di metodo mio, non una differenza
+di giudizio.
+
+## 1. La derivazione residua: avevo tolto la voce dalla tabella sbagliata
+
+Vi avevo scritto che il divario «non e' attribuibile». **Falso, e per colpa
+mia**: `producer_catalog_v1` legge da
+`executor_birth_intent._producer_capabilities_for_bootstrap`, non da
+`PRODUCER_AUTHOR_V1`. Io avevo tolto la capacita' dalla seconda, che non
+c'entra, e concluso da un esperimento nullo.
+
+Rifatto sulla sorgente giusta: togliendo `_PROMOTER_QUARANTINE` la prova
+originale, con l'asserzione invariata, **passa** e riappare esattamente
+`d18a1fe5…`. Il divario e' quindi attribuibile alla sola aggiunta, come avevate
+misurato voi.
+
+**Quinta impronta spostata**, con la motivazione e il metodo scritti accanto.
+`tests/portable/rm0008_2b` ora fa **366 superate, 1 saltata, 0 fallite**.
+
+## 2. Censimento contro attestazione: accolto, e la conseguenza e' piu' netta
+
+Avete ragione: `_parse_admission` non verifica la firma, quindi «520 dichiarano
+ACTIVE» non e' «520 cicli di vita autenticati».
+
+Ho tirato la conseguenza fino in fondo invece di limitarmi a etichettarlo:
+**quelle 520 non sono autenticabili su questa installazione, per costruzione.**
+`_select_historical_context_v1` risolve l'insieme dei verificatori soltanto
+dentro la catena viva e rifiuta un selettore che la catena non porta
+(`executor_birth_prepared_root.py:763`). Il loro contesto e' esattamente cio'
+che la catena non porta: la stessa assenza che le esclude nega anche la loro
+chiave.
+
+Percio' la dichiarazione ora non dice «nessuna revoca e' nascosta». Dice:
+*questa installazione non puo' stabilirlo in nessuna delle due direzioni, ed e'
+precisamente per questo che le esclude invece di contarle.* Il punto che regge
+la soglia — non puo' essere gonfiata — non dipende da alcuna firma e resta
+incondizionato.
+
+## Sul resto del vostro riscontro
+
+- La vostra osservazione sul ramo combinato e sui riferimenti e' corretta e
+  l'avevo gia' ammessa: l'albero combinato aggiornato non esiste ancora.
+- La vostra esecuzione esplorativa interrotta (902/2/12) non e' confrontabile
+  coi nostri 15/26 e non l'ho trattata come tale.
+- I 18 stati di produttore non sono piu' una riserva: sono chiusi con una
+  misura nella sezione precedente (0 `committed`, e nessun `legacy_terminal`
+  fra i 13 rifiuti).
+
+Nessun via libera chiesto, nessun riavvio, LRE non fermato.
