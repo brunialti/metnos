@@ -1,6 +1,12 @@
 # Arresto dell'analisi foto LRE — 16 settembre 2026
 
-Stato: correzioni e nuova console pubblicate nella release 58; vecchio lavoro
+> Cronologia storica delle release 57–61, consolidata il 17 settembre senza
+> rieseguire gli interventi descritti. Per le correzioni successive e lo stato
+> della release 63 consultare `lre-outcomes-production-20260916.md` e
+> `lre-error-resilience-20260916.md`. Gli arresti dei vecchi job qui riportati
+> non descrivono il nuovo lavoro avviato dopo la release 63.
+
+Stato del primo aggiornamento: correzioni e nuova console pubblicate nella release 58; vecchio lavoro
 cancellato con copia recuperabile su richiesta di Roberto. **Stabilità non
 certificata:** la nuova indicizzazione è nuovamente `needs_attention`.
 La protezione del servizio ha retto la contesa senza riavvio, ma rimangono
@@ -510,3 +516,45 @@ dell'intero archivio resta da attestare dopo la pubblicazione finale.
 HTTP e lavoratore risultano attivi, `NRestarts=0` dopo il passaggio canonico;
 i processi intensivi osservati sono servizi registrati (VLM e controllo dello
 stack), non residui dei comandi diagnostici.
+
+### Console senza elenco: ripristino del 16 settembre, 17:30 Europe/Rome
+
+La segnalazione «ui non mostra job lre attivi» aveva inizialmente una causa
+di lettura, non un arresto del lavoro. Alle 17:22 il lavoro era `running`, con
+tre gruppi di analisi confermati, uno in corso e 111 ricevute foto private.
+La salute HTTP rispondeva immediatamente, ma l'elenco superava il limite
+del browser (10 secondi). Il profilo in sola lettura `run-3gqcyrck` misura
+elenco, contatori e descrizioni in pochi millisecondi; `progress_many` viene
+interrotto dopo 12 secondi. Nessuna statistica SQLite era presente: il piano
+sceglieva la chiave primaria dei tentativi sul solo proprietario, rileggendo
+i tentativi del proprietario per ciascuna unità, invece dell'indice per unità.
+
+Prova isolata `run-6djwcvq6`: copia del database in memoria, `ANALYZE` delle
+sole tabelle `attempts`, `units`, `stages` in 0,014 secondi. Identica query
+di avanzamento in 0,066 secondi e uso dell'indice proprietario/unità.
+Ripristino mirato `run-lim2_i74`: stessa manutenzione in esercizio in
+0,009 secondi, transazione con attesa e durata limitate. Modificate soltanto
+le statistiche interne del motore SQL; nessun dato applicativo, foto,
+stato di lavoro o storico modificato. API elenco HTTP 200 in 0,102 secondi,
+salute operativa, PID HTTP 852984 e lavoratore 852228 invariati.
+Non è una nuova release né una correzione permanente della manutenzione
+automatica delle statistiche; tale prevenzione resta da implementare e provare.
+
+**Nuovo arresto distinto, precedente al ripristino:** alle 17:30:28 il sesto
+gruppo `analyze` ha restituito `image_decode_failed`, classificato
+`executor_permanent`. La politica rigorosa ha chiuso il lavoro in `failed`
+alle 17:30:29, annullando le 961 unità restanti. Non sono 962 foto guaste:
+ci sono un gruppo fallito e 961 gruppi annullati. Cinque gruppi di analisi,
+scansione e 967 gruppi cartella restano confermati; 174 ricevute foto private
+sono conservate, consumi non incerti. Evidenza: `run-9k7qhg_0`.
+Il ripristino delle statistiche è delle 17:30:51, dopo l'arresto; nessun
+riavvio o ritentativo è stato eseguito. La decodifica fallita non dimostra
+ancora se la foto sia corrotta o se manchi un supporto del decodificatore.
+Non saltare silenziosamente la foto né dichiarare completo l'archivio.
+
+Sonda aggiornata, con il dettaglio chiuso dell'errore:
+`inspect-resilience-progress.sh`, SHA256
+`a5f7cfa44a6df815c7930cb116016e4e4ff6fa1d0efbc56c269c0d257e88d015`.
+Intervento amministrativo:
+`/tmp/metnos-lre-contention.O6Z8zp87/refresh-console-statistics.sh`, SHA256
+`a366395509e0501ab9591f91d99baba1ab1cb4a6d3548c823e7c543328991d19`.
