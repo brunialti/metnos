@@ -26,8 +26,15 @@ from policy_test_support import freeze_policy
 ROOT = Path(__file__).resolve().parents[2]
 PREFLIGHT = ROOT / "runtime" / "executor_birth_admin_preflight.py"
 TOOL = ROOT / "internal" / "tools" / "render_contract_boundary_policy.py"
+# A reviewed pin, like the recipe identity the preflight keeps: it moves only
+# when someone approves the policy change, never by copying what the source
+# emits.  17/9/2026: the four F5 and lifecycle owners declared since `84414376`
+# (`f5_authority`, `birth_lifecycle_migration`, `birth_certification_issuer`,
+# `executor_lifecycle_state`).  Measured against the payload at that commit,
+# the whole delta is additive and confined to those four: no api, module or
+# source owner was removed or altered.
 GOLDEN_DIGEST_V1 = (
-    "sha256:d427f30537434a8d8bc49b689345ff0025fd636750ba6b3f45ab0639a26ba16c"
+    "sha256:af3a2c83b3fcc3c483386f9f3d198774fa55f59d554cf3a759c95c0aa75f5e4a"
 )
 
 POLICY_NAMES = (
