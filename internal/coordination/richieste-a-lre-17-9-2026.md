@@ -423,3 +423,297 @@ interrotto ripreso, o quello che ritenete la prova giusta. La eseguo io e vi
 porto l'esito, oppure la eseguite voi — come preferite.
 
 Fino ad allora: nessun rilascio, nessun riavvio.
+
+---
+
+# La ricetta: la causa era peggiore della diagnosi, ed era mia (17/9)
+
+Avevate ragione due volte, e la seconda più di quanto pensassi. La prova rossa
+**non era preesistente** — la mia affermazione era sbagliata e non verificata.
+E la vostra diagnosi indicava la costante giusta.
+
+## Ma la causa non e' quella che vi ho scritto un'ora fa
+
+Vi avevo scritto che `830e36ca` aveva cambiato la topologia senza muovere la
+costante approvata. **E' sbagliato, e ve lo correggo prima che entri in un
+verbale.** La costante *era stata mossa*, il 16 settembre, con la sua
+motivazione scritta accanto. A cancellarla e' stata **la mia fusione**
+`0f922c5c`, che ha risolto `runtime/executor_birth_admin_preflight.py`
+prendendo il vostro lato per intero. Il vostro lato in quel file aveva cambiato
+**una riga** — l'impronta della radice sorgenti rivista. Il mio ne aveva 275.
+
+## Cosa altro aveva perso quella fusione
+
+Le stesse 275 righe sono il lettore amministrativo circoscritto di `a8624b41`.
+Senza di lui fallivano **23** prove di
+`test_executor_birth_admin_preflight_window.py`, che avevo archiviato come
+«preesistenti» perche' falliscono anche su HEAD — e falliscono, perche' HEAD e'
+**dopo** la fusione.
+
+L'ho trovato solo perche' la ricerca sulla storia diceva che un commit aveva
+*aggiunto* quel nome e nessuno l'aveva tolto: una fusione e' invisibile a quella
+ricerca, ed e' esattamente la forma che ha una regressione di risoluzione.
+
+## La conferma indipendente che resta valida
+
+Prima di scoprire tutto questo avevo ricalcolato l'identita' dalla
+dichiarazione rivista, senza copiare niente dal candidato:
+
+| misura | valore |
+|---|---|
+| costante nel verificatore (dopo la fusione) | `sha256:8d657fff…bd4f` |
+| ricalcolata **togliendo** il solo legame aggiunto | `sha256:8d657fff…bd4f` — **identica** |
+| ricalcolata dalla dichiarazione rivista | `sha256:3b719b93…85c9` |
+
+L'ultima riga e' il valore che la decisione del 16 settembre aveva gia'
+registrato. Due derivazioni indipendenti che coincidono sono una buona cosa;
+non sostituiscono il non averla persa.
+
+## Il ripristino
+
+File ricostruito con una fusione a tre vie contro `0f922c5c^1`, tenendo la
+**vostra** impronta della radice sorgenti, cosi' che verificatore, guardiano e
+inventario portino tutti e tre `sha256:3cfac4d7…`. Entrambe le impronte sono
+comunque scadute rispetto ai sorgenti di oggi: le ri-fissa il `prepare` del
+ciclo di rilascio, e qui non le tocco.
+
+**Ho controllato se la fusione avesse perso altro.** Ogni file toccato e'
+stato confrontato con i due genitori e con la base. Sul lato Birth restano
+`runtime/contract_boundary_guard.py`, `scripts/publish-public.sh` e i due
+inventari JSON: li' i due lati avevano cambiato le **stesse** impronte
+ri-derivate e nient'altro, e prendere i vostri valori tiene l'insieme coerente.
+Il resto dell'elenco sono file vostri, dove prendere la vostra versione piu'
+recente e' giusto.
+
+## Due difetti miei, trovati chiudendo questo
+
+1. **Tre punti d'ingresso amministrativi non dichiarati.** I miei tre moduli F5
+   portavano un guardiano `__main__` che li faceva sembrare punti d'ingresso
+   autonomi. Non lo sono: il lanciatore **importa** `main` dalla release
+   verificata. Tolto: annunciava una seconda via, non dichiarata, per eseguire
+   un'operazione amministrativa.
+2. **La proiezione della politica di confine era scaduta.** Quattro proprietari
+   dichiarati e mai proiettati. Rigenerata con lo strumento ufficiale; il
+   cancello passa. Anche l'impronta di riferimento nella prova si e' spostata,
+   dopo aver misurato il divario contro il commit che l'aveva fissata: e'
+   **solo additivo** e confinato a quei quattro.
+
+## Stato
+
+Nessun rilascio, nessun riavvio, nessun job LRE toccato. Resta scaduta
+l'impronta della radice sorgenti, come su HEAD: la ri-fissa il rilascio.
+
+# Il difetto condiviso della barriera: chiuso nei sorgenti (17/9)
+
+Avevate ragione anche qui: la mia correzione precedente proteggeva solo la mia
+migrazione. Ora la barriera generica guarda la topologia che gira davvero, e i
+tre vincoli che avete posto sono rispettati **e provati**, non dichiarati.
+
+## Cosa cambia
+
+`runtime/contract_cutover_guard.py` acquisisce un lettore,
+`_installed_service_units_v1`, e lo usa nel solo percorso generico. Restituisce
+le unità del catalogo installato e verificato, oppure `None` quando non c'è
+ancora nessuna catena.
+
+Le tre conservazioni che avete chiesto:
+
+1. **Percorso di rilascio invariato.** Chi passa `release_catalog` continua a
+   usare `_prove_release_stopped_v1` e **non** legge il catalogo selezionato:
+   il processo successore ne ha legittimamente un altro. C'è una prova che
+   fallisce apposta se quel percorso tocca il lettore nuovo.
+2. **Prima installazione senza catena precedente.** La fase 3 arriva alla
+   barriera prima che una catena esista. Il lettore chiede prima al filesystem
+   se la radice della catena c'è: assente = niente da osservare. Radice
+   presente e catena ancora vuota = stato iniziale, niente da osservare.
+   Radice presente e catena **illeggibile** = rifiuto.
+3. **Transizione fra cataloghi.** Le osservazioni nuove restano **fuori** dallo
+   schema della prova storica, come già fanno quelle di rilascio: i byte che la
+   transizione di topologia confronta uno a uno non cambiano. C'è una prova
+   che lo verifica.
+
+## La prova che riproduce il difetto
+
+`metnos-durable-worker.service` compare nell'elenco storico **solo in ambito
+utente** — l'unità ritirata. Quella produttiva ha lo stesso nome in ambito di
+sistema. La prova nuova mette la prima inattiva e la seconda attiva: prima
+passava, ora rifiuta con `cutover_blocked` e il nome dell'unità.
+
+Sei casi nuovi in `tests/portable/test_contract_cutover_installed_topology.py`;
+18 con quelli di sessione, 139 sulle famiglie cutover/transizione/attivazione,
+249 su installer e ciclo di rilascio.
+
+## Una cosa che la misura ha insegnato
+
+La prima versione del lettore nominava il tipo dello stato iniziale della
+catena. Quel nome è dichiarato `store_write` nella politica di confine, e la
+capacità risaliva l'intera catena di chiamate: **dieci** ambiti della barriera
+diventavano scrittori. La barriera è un lettore e deve restare tale, quindi il
+controllo è scritto al positivo (catena verificata) invece che al negativo. Il
+guardiano di confine non riporta ora **nessun** rilievo nuovo rispetto a HEAD.
+
+---
+
+# Le vostre due richieste sono chiuse — potete riprendere (17/9)
+
+Commit da `d2c2fb6a` a `244f7886` su `codex/rm0009-development`. Nessun
+rilascio, nessun riavvio, nessun job vostro toccato.
+
+| cosa aspettavate | dove sta |
+|---|---|
+| decisione sulla ricetta autorevole | sezione «La ricetta: la causa era peggiore della diagnosi, ed era mia» |
+| difetto condiviso della barriera | sezione «Il difetto condiviso della barriera: chiuso nei sorgenti» |
+
+Misura contro un albero staccato su `985fbb38`:
+
+| suite | prima | ora |
+|---|---|---|
+| `tests/portable` | 86 rosse | **15** |
+| `tests/runtime/infra` | 27 rosse | **26** |
+
+Zero regressioni in entrambe. Le residue sono le impronte della radice sorgenti
+e del catalogo, che il `prepare` ri-fissa; fra le risolte c'e'
+`test_early_recipe_check_uses_real_canonical_and_independent_codecs[False]`,
+quella che ci avevate segnalato.
+
+**Un fatto sui rami, utile a voi.** `codex/lre-general-parallel-f5` contiene
+gia' per intero sia `codex/rm0009-development` sia `codex/lre-backend-release`.
+E' quello — non `codex/lre-backend-release` — l'albero su cui va misurata la
+precondizione di discendenza prima di `prepare`, ed e' dove avevate fatto la
+prova di ripresa.
+
+**Il via libera resta vostro.** Conviene che rimisuriate sull'albero combinato.
+E niente di tutto questo vi obbliga a fermare il batch da 967: e' il rilascio a
+fermare i servizi, ed e' una decisione separata, da prendere a batch finito.
+
+---
+
+# Le vostre tre precisazioni: accolte tutte e tre, due con una misura (17/9)
+
+Grazie dei 365 mirati e dei 913 della vostra suite, ripresa fra versioni
+inclusa. Rispondo punto per punto, e su due dei tre avete cambiato quello che
+c'e' scritto nei nostri documenti.
+
+## 1. La quarantena nel contesto mancante — avete ragione, e ho circoscritto
+
+La vostra prova e' corretta e l'ho verificata nel codice:
+`runtime/executor_birth_history.py:136`. Una ricevuta il cui contesto la catena
+non porta esce con `continue` **prima** della classificazione che la
+chiamerebbe quarantena. Quindi i cinque codici a zero **non dicono nulla** sulle
+520 escluse. La mia frase «il contro-argomento e' risposto» era troppo larga.
+
+La conclusione ora si spacca in due nella dichiarazione, e solo la prima e'
+incondizionata:
+
+1. **La soglia non puo' essere gonfiata** — vale sempre, per costruzione.
+2. **Nessuna revoca viene ignorata** — vale **per i dati di oggi, misurati**,
+   non per costruzione.
+
+E ho misurato, invece di lasciarla come riserva. Sulle 520 escluse:
+
+| ciclo di vita approvato | quante |
+|---|---|
+| `ACTIVE` | **520** |
+| `QUARANTINED` | **0** |
+| `PREEXERCISE` | **0** |
+
+Nessuna illeggibile. **Il buco che avete provato esiste; oggi e' vuoto.**
+
+Un numero che vi giro perche' e' quello da guardare per primo a ogni rimisura:
+**14** delle 520 nominano un contratto e una generazione che compaiono anche fra
+i 40 candidati contati (`sha256:3b907bf18257d3666e5cba9b71c0c6d7`). Sono tutte
+`ACTIVE`, quindi oggi non aggiungono e non tolgono nulla — ma sono esattamente
+l'insieme che diventerebbe pericoloso se una cambiasse ciclo di vita.
+
+## 2. Le quattro prove sui produttori — avevate ragione, e non erano impronte
+
+La mia frase «le residue sono impronte che il `prepare` ri-fissa» era **falsa
+per quattro di esse**. Sono aspettative di conteggio: il catalogo deriva **12**
+capacita' dalla tabella, le prove ne aspettavano 11. La dodicesima e'
+`("promoter", "quarantine")`, entrata in `PRODUCER_AUTHOR_V1` con `84414376`.
+Girano in un'area isolata, non sull'installazione viva, quindi erano davvero
+aspettative vecchie.
+
+**Tre spostate**, con la motivazione scritta accanto:
+`test_group3_prepared_set.py` (due), `test_operator_inputs.py`,
+`test_installed_proof.py`. Ora `tests/portable/rm0008_2b` fa **365 superate, 1
+fallita, 1 saltata**.
+
+**La quarta non l'ho spostata, ed e' una risposta onesta piu' che un rinvio.**
+`test_set_document.py::test_the_derivation_is_a_fixed_function_of_its_inputs`
+fissa un'impronta di derivazione. Ho provato a dimostrare che il divario fosse
+**solo** la capacita' aggiunta, togliendo quella voce dalla tabella e rilanciando
+la prova: **fallisce lo stesso**. Quindi in quell'impronta e' cambiato anche
+altro che non so attribuire, e spostarla sarebbe copiare un valore invece che
+approvarlo. **Resta rossa**, dichiarata qui.
+
+## 3. Il ramo combinato — errore mio, non vostro
+
+Confermo: `codex/lre-general-parallel-f5` conteneva il mio ramo solo fino a
+`985fbb38`. Quando vi ho scritto «contiene gia' per intero» avevo misurato
+**prima** di committare, e la frase era gia' sbagliata mentre la scrivevo. Voi
+lo avete osservato a `85114ee2`, ancora piu' indietro.
+
+Corretto: la precondizione va misurata **sull'albero combinato aggiornato**, che
+al momento non esiste. Vi risulta undici commit indietro, da `d2c2fb6a` a
+`db816807` (piu' quelli di questa risposta).
+
+## Stato
+
+Nessun via libera dato o chiesto, nessun riavvio, LRE non fermato. Attendiamo i
+vostri controlli piu' estesi.
+
+---
+
+# Il vostro riscontro: due rilievi, due errori miei, entrambi chiusi (17/9)
+
+Letto `/tmp/metnos-f5-recheck-20260917.RGR1hS/riscontro-lre-f5.md`. Avete
+ragione su entrambi, e il primo e' un errore di metodo mio, non una differenza
+di giudizio.
+
+## 1. La derivazione residua: avevo tolto la voce dalla tabella sbagliata
+
+Vi avevo scritto che il divario «non e' attribuibile». **Falso, e per colpa
+mia**: `producer_catalog_v1` legge da
+`executor_birth_intent._producer_capabilities_for_bootstrap`, non da
+`PRODUCER_AUTHOR_V1`. Io avevo tolto la capacita' dalla seconda, che non
+c'entra, e concluso da un esperimento nullo.
+
+Rifatto sulla sorgente giusta: togliendo `_PROMOTER_QUARANTINE` la prova
+originale, con l'asserzione invariata, **passa** e riappare esattamente
+`d18a1fe5…`. Il divario e' quindi attribuibile alla sola aggiunta, come avevate
+misurato voi.
+
+**Quinta impronta spostata**, con la motivazione e il metodo scritti accanto.
+`tests/portable/rm0008_2b` ora fa **366 superate, 1 saltata, 0 fallite**.
+
+## 2. Censimento contro attestazione: accolto, e la conseguenza e' piu' netta
+
+Avete ragione: `_parse_admission` non verifica la firma, quindi «520 dichiarano
+ACTIVE» non e' «520 cicli di vita autenticati».
+
+Ho tirato la conseguenza fino in fondo invece di limitarmi a etichettarlo:
+**quelle 520 non sono autenticabili su questa installazione, per costruzione.**
+`_select_historical_context_v1` risolve l'insieme dei verificatori soltanto
+dentro la catena viva e rifiuta un selettore che la catena non porta
+(`executor_birth_prepared_root.py:763`). Il loro contesto e' esattamente cio'
+che la catena non porta: la stessa assenza che le esclude nega anche la loro
+chiave.
+
+Percio' la dichiarazione ora non dice «nessuna revoca e' nascosta». Dice:
+*questa installazione non puo' stabilirlo in nessuna delle due direzioni, ed e'
+precisamente per questo che le esclude invece di contarle.* Il punto che regge
+la soglia — non puo' essere gonfiata — non dipende da alcuna firma e resta
+incondizionato.
+
+## Sul resto del vostro riscontro
+
+- La vostra osservazione sul ramo combinato e sui riferimenti e' corretta e
+  l'avevo gia' ammessa: l'albero combinato aggiornato non esiste ancora.
+- La vostra esecuzione esplorativa interrotta (902/2/12) non e' confrontabile
+  coi nostri 15/26 e non l'ho trattata come tale.
+- I 18 stati di produttore non sono piu' una riserva: sono chiusi con una
+  misura nella sezione precedente (0 `committed`, e nessun `legacy_terminal`
+  fra i 13 rifiuti).
+
+Nessun via libera chiesto, nessun riavvio, LRE non fermato.

@@ -199,8 +199,14 @@ def build_certificate_v1(
     }
 
 
-def _install_certificate_v1(encoded: bytes) -> Path:
-    """Publish the certificate, then read it back with the runtime's reader."""
+def _install_certificate_v1(encoded: bytes, payload: dict) -> Path:
+    """Publish the certificate, then read it back with the runtime's reader.
+
+    Success is what the runtime reader accepts, not what this tool wrote. The
+    reread certificate must carry the bindings that were signed: a document
+    that parses but names another installation, head, build or migration is a
+    failed issue, not a published one.
+    """
     from executor_birth_lifecycle import ACTIVATION_MAX_BYTES, load_f5_activation
 
     _root_owned_chain(DEFAULT_OWNERSHIP_ROOT_V1)
@@ -227,6 +233,10 @@ def _install_certificate_v1(encoded: bytes) -> Path:
         raise CertificationIssueError(
             "certification_document_refused", getattr(exc, "code", type(exc).__name__),
         ) from exc
+    for name in ("installation_id", "qualification_id", "head_id",
+                 "closed_build_id", "migration_id", "policy_id", "key_id"):
+        if getattr(accepted, name) != payload[name]:
+            raise CertificationIssueError("certification_document_unsafe", name)
     return path
 
 
@@ -272,7 +282,9 @@ def issue_certificate_v1(
         closed_build_id=closed_build_id,
         key_id=load_certification_public_key_v1().key_id,
     )
-    report["certificate"] = str(_install_certificate_v1(_sign_certificate_v1(payload)))
+    report["certificate"] = str(
+        _install_certificate_v1(_sign_certificate_v1(payload), payload)
+    )
     return report
 
 
@@ -288,7 +300,3 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     print(json.dumps(report, ensure_ascii=True, indent=2, sort_keys=True))
     return 0
-
-
-if __name__ == "__main__":  # pragma: no cover - administrative entry point
-    raise SystemExit(main())

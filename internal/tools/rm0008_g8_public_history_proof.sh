@@ -471,6 +471,84 @@ try:
         joined = reconcile_historical_birth_v1(inventory, producer_history, declarations)
         unchanged = (read_historical_birth_inventory_v1() == inventory
                      and read_producer_history_v1() == producer_history)
+        issue_groups = {}
+        for item in joined.issues:
+            issue_groups.setdefault(item.code, []).append(
+                f"{item.source}|{item.identity}")
+        # An excluded receipt leaves its producer row unused, so most unused
+        # rows are a consequence of the receipts that did not join. The rest
+        # belong to no receipt at all, and they are the only part of the gap
+        # list the first code does not account for. Say which is which instead
+        # of leaving the difference between two totals unexplained.
+        from executor_birth_receipts import _parse_admission
+        claimed, unparsed_receipts = set(), 0
+        for contract in inventory.contracts:
+            for located in contract.receipts:
+                try:
+                    admission, _ = _parse_admission(located.encoded)
+                except Exception:
+                    unparsed_receipts += 1
+                    continue
+                claimed.add(admission.producer_receipt_hash)
+        unused_ids = {item.identity for item in joined.issues
+                      if item.code == "producer_without_verified_durable_admission"}
+        unused_rows = [row for row in producer_history.receipts
+                       if str(row.row_id) in unused_ids]
+        orphan_rows = [row for row in unused_rows if row.receipt_hash not in claimed]
+        result["historical_inventory_producer_rows"] = {
+            "unused": len(unused_rows),
+            "claimed_by_a_receipt_that_did_not_join": len(unused_rows) - len(orphan_rows),
+            "claimed_by_no_receipt_at_all": len(orphan_rows),
+            "receipts_that_could_not_be_parsed": unparsed_receipts,
+            "orphan_rows": "sha256:" + hashlib.sha256(
+                "\n".join(sorted(str(row.row_id) for row in orphan_rows)).encode("utf-8")
+            ).hexdigest()[:32],
+            "orphan_issuers": sorted({str(row.issuer_id) for row in orphan_rows})[:4],
+            "orphan_states": dict(Counter(str(row.state) for row in orphan_rows)),
+            # The v1-to-v2 schema migration mapped every non-available legacy
+            # row to `rejected` with the code `legacy_terminal`, so `rejected`
+            # alone cannot say whether a row was refused or was a committed
+            # admission the old schema could not distinguish. Separate the two
+            # rather than read the state as if it still meant one thing.
+            "orphan_rejection_codes": dict(Counter(
+                str(row.rejection_code) for row in orphan_rows
+                if row.state == "rejected"
+            )),
+        }
+        # A receipt whose admission context this chain does not carry leaves the
+        # join at executor_birth_history.py:136 with `continue`, BEFORE the
+        # classification that would call it a quarantine. So the codes that are
+        # absent from the census say nothing about those receipts: a withdrawal
+        # sitting among them would be invisible to every one of them. Measure
+        # that set directly instead of concluding from an absence.
+        from executor_birth_receipts import ApprovedLifecycle
+        carried = {item.context.public_set.material.pin.admission_context_id
+                   for item in declarations}
+        counted = {(act.admission.contract_id, act.admission.generation_id)
+                   for act in joined.technical_acts}
+        excluded_lifecycles, excluded_over_counted, excluded_unparsed = Counter(), [], 0
+        for contract in inventory.contracts:
+            for located in contract.receipts:
+                try:
+                    admission, _ = _parse_admission(located.encoded)
+                except Exception:
+                    excluded_unparsed += 1
+                    continue
+                if admission.admission_context_id in carried:
+                    continue
+                excluded_lifecycles[str(admission.approved_lifecycle.name)] += 1
+                if (admission.contract_id, admission.generation_id) in counted:
+                    excluded_over_counted.append(
+                        f"{admission.contract_id}|{admission.generation_id}")
+        result["historical_inventory_excluded_receipts"] = {
+            "total": sum(excluded_lifecycles.values()),
+            "unparsed": excluded_unparsed,
+            "approved_lifecycles": dict(excluded_lifecycles),
+            "targeting_a_counted_admission": len(excluded_over_counted),
+            "targeted_pairs": "sha256:" + hashlib.sha256(
+                "\n".join(sorted(set(excluded_over_counted))).encode("utf-8")
+            ).hexdigest()[:32],
+        }
         result["historical_inventory"] = {
             "contracts": len(inventory.contracts), "physical_receipts": joined.physical_receipts,
             "producer_rows": joined.producer_rows, "issuance_rows": joined.issuance_rows,
@@ -485,8 +563,27 @@ try:
             "technical_candidates": len(joined.technical_acts),
             "technical_candidate_issuers": joined.technical_issuers,
             "issues": dict(Counter(item.code for item in joined.issues)),
-            "issue_examples": [dict(source=item.source, identity=item.identity, code=item.code)
-                               for item in joined.issues[:5]],
+            # A gap set is declared and reviewed once; what must be checkable
+            # later is that the same set came back, not merely the same count.
+            # These are fingerprints of the identities, so the declaration stays
+            # inside the runner's bounded public result: compact triples, a
+            # fixed cap, and half-length digests, which distinguish a changed
+            # set without pretending to be a signature. They are NOT the
+            # evidence scope identity: that one is domain separated and is
+            # recomputed by its own owner from the live history at recording
+            # time, and is deliberately not reimplemented here.
+            "issue_census": [
+                [code, len(rows),
+                 hashlib.sha256("\n".join(sorted(rows)).encode("utf-8")).hexdigest()[:32]]
+                for code, rows in sorted(issue_groups.items())[:32]
+            ],
+            "issue_census_codes": len(issue_groups),
+            "issue_census_fingerprint": "sha256:" + hashlib.sha256(
+                "\n".join(sorted(
+                    f"{item.source}|{item.identity}|{item.code}"
+                    for item in joined.issues
+                )).encode("utf-8")
+            ).hexdigest(),
             "inventories_unchanged_on_reread": unchanged,
             "original_source_journal_reread": False,
             "qualification": "observed_complete_inventory_with_explicit_gaps_not_certification_frontier_or_f5",

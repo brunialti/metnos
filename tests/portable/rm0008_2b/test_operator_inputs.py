@@ -205,7 +205,10 @@ def test_a_revoked_verifier_needs_no_key(tmp_path: Path, monkeypatch):
 
 def test_the_producer_catalogue_is_closed_and_distinct():
     catalog = provisioning.producer_catalog_v1()
-    assert len(catalog) == 11
+    # 12, not 11: ('promoter', 'quarantine') joined PRODUCER_AUTHOR_V1 in
+    # 84414376, which publishes exact-execution quarantine through Birth.
+    # This expectation is a reviewed pin and moving it is the approval.
+    assert len(catalog) == 12
     names = {provisioning.producer_store_name_v1(*item) for item in catalog}
     assert len(names) == len(catalog)
     assert all(

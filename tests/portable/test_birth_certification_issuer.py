@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import base64
 import json
+from pathlib import Path
 import sys
 from dataclasses import dataclass
 from types import SimpleNamespace
@@ -238,3 +239,73 @@ def test_a_payload_naming_another_key_never_signs(authority):
             installation_id=INSTALLATION, head_id=HEAD, closed_build_id=BUILD,
             key_id="somebody-elses-key"))
     assert raised.value.code == "certification_authority_mismatch"
+
+
+# --- what the runtime reader gives back ---------------------------------------
+
+@pytest.fixture
+def published(monkeypatch, tmp_path):
+    """Publish into a temporary directory, with the custody helpers stubbed."""
+    from contextlib import contextmanager
+
+    directory = tmp_path / "certification-v1"
+    directory.mkdir()
+    monkeypatch.setattr(issuer, "ACTIVATION_DIRECTORY_V1", directory)
+    monkeypatch.setattr(issuer, "_root_owned_chain", lambda _root: None)
+    monkeypatch.setattr(issuer, "_directory_metadata", lambda *a, **kw: None)
+    monkeypatch.setattr(issuer, "_sync_directory", lambda _path: None)
+    monkeypatch.setattr(issuer, "_read_regular",
+                        lambda path, **kw: Path(path).read_bytes())
+
+    @contextmanager
+    def lock(_root, **_kw):
+        yield
+
+    monkeypatch.setattr(issuer, "_provisioning_lock", lock)
+    return directory
+
+
+def _certificate(**overrides):
+    payload = issuer.build_certificate_v1(
+        qualification_id=QUALIFICATION, migration_id=MIGRATION,
+        installation_id=INSTALLATION, head_id=HEAD, closed_build_id=BUILD,
+        key_id="key-1")
+    return payload, SimpleNamespace(**{**payload, **overrides})
+
+
+def test_a_published_certificate_is_the_one_that_was_signed(monkeypatch, published):
+    payload, accepted = _certificate()
+    monkeypatch.setattr(lifecycle, "load_f5_activation",
+                        lambda: SimpleNamespace(certificate=accepted))
+    path = issuer._install_certificate_v1(encode(payload), payload)
+    assert path == published / issuer.CERTIFICATE_BASENAME_V1
+    assert json.loads(path.read_bytes()) == payload
+
+
+@pytest.mark.parametrize("field", [
+    "installation_id", "qualification_id", "head_id", "closed_build_id",
+    "migration_id", "policy_id", "key_id",
+])
+def test_a_reread_that_names_another_binding_is_not_a_published_issue(
+        monkeypatch, published, field):
+    """A document that parses but binds something else is a failed issue."""
+    payload, accepted = _certificate(**{field: digest("something else")})
+    monkeypatch.setattr(lifecycle, "load_f5_activation",
+                        lambda: SimpleNamespace(certificate=accepted))
+    with pytest.raises(issuer.CertificationIssueError) as refused:
+        issuer._install_certificate_v1(encode(payload), payload)
+    assert refused.value.code == "certification_document_unsafe"
+    assert refused.value.detail == field
+
+
+def test_a_reader_that_refuses_the_document_is_reported_as_such(
+        monkeypatch, published):
+    payload, _accepted = _certificate()
+
+    def refuse():
+        raise lifecycle.LifecycleError("f5_activation_invalid", "signature")
+
+    monkeypatch.setattr(lifecycle, "load_f5_activation", refuse)
+    with pytest.raises(issuer.CertificationIssueError) as refused:
+        issuer._install_certificate_v1(encode(payload), payload)
+    assert refused.value.code == "certification_document_refused"

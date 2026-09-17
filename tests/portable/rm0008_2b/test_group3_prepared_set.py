@@ -63,7 +63,10 @@ def test_a_prepared_set_reads_back_and_stays_inactive(
     assert observed.admission_active_key_id == document["admission_active_key_id"]
     assert observed.set_json_sha256 == marker["set_json_sha256"]
     assert observed.provisioning_transaction_id == marker["transaction_id"]
-    assert len(observed.producer_keys) == 11
+    # 12, not 11: ('promoter', 'quarantine') joined PRODUCER_AUTHOR_V1 in
+    # 84414376, which publishes exact-execution quarantine through Birth.
+    # This expectation is a reviewed pin and moving it is the approval.
+    assert len(observed.producer_keys) == 12
     assert observed.prepared_admission_context_id.startswith("sha256:")
     with pytest.raises(TypeError):
         observed.producer_keys["x"] = None
@@ -212,7 +215,7 @@ def test_every_authority_is_read_once_under_the_barrier(
     assert sealed.admission.active_key_id == (
         sealed.prepared.admission_active_key_id
     )
-    assert len(sealed.producers) == 11
+    assert len(sealed.producers) == 12
     assert sealed.approval.revision >= 1
     assert sealed.context_epoch == sealed.prepared.prepared_context_epoch
     request = SemanticReviewRequest(

@@ -88,6 +88,94 @@ def _prove_transition_stack_stopped_v1(reconciler) -> dict:
     )
 
 
+def _installed_service_units_v1() -> tuple[tuple[str, str], ...] | None:
+    """The units this installation runs, or None when none is installed yet.
+
+    A genuinely initial installation reaches the barrier before any chain
+    exists, and the reader cannot tell absent state from damaged state when
+    even its own root is missing.  Asking the filesystem first keeps that one
+    case distinct without softening anything else: a chain that is there and
+    unreadable still refuses, and removing the root to get past here destroys
+    the authority every other guard depends on.
+    """
+    from executor_birth_ownership_chain import (
+        DEFAULT_OWNERSHIP_CHAIN_ROOT_V1, VerifiedOwnershipChain,
+        inspect_ownership_chain_state_v1,
+    )
+    from services_registry import owned_service_units_v1
+
+    try:
+        installed = DEFAULT_OWNERSHIP_CHAIN_ROOT_V1.exists()
+    except OSError as exc:
+        raise ContractCutoverGuardError(
+            "quiescence_unknown", "installed ownership chain is unreadable",
+        ) from exc
+    if not installed:
+        return None
+    try:
+        chain = inspect_ownership_chain_state_v1()
+    except Exception as exc:
+        raise ContractCutoverGuardError(
+            "quiescence_unknown", "installed ownership chain is unreadable",
+        ) from exc
+    # The reader returns either a verified chain or the initial state. Testing
+    # for the verified one keeps this a reader: naming the initial type would
+    # exercise a `store_write` API and carry that capability up through every
+    # caller of the barrier.
+    if type(chain) is not VerifiedOwnershipChain:
+        return None
+    try:
+        units = owned_service_units_v1()
+    except Exception as exc:
+        raise ContractCutoverGuardError(
+            "quiescence_unknown", "installed service catalog is unreadable",
+        ) from exc
+    if not units:
+        raise ContractCutoverGuardError(
+            "quiescence_unknown", "installed service catalog declares no unit",
+        )
+    return units
+
+
+def _prove_installed_topology_stopped_v1(reconciler) -> None:
+    """Prove the units this installation actually runs are idle.
+
+    `MAINTENANCE_TARGETS_V1` is the legacy bindings list: the entry points the
+    F4 transition retired.  They are masked, so asking whether they are stopped
+    always answers yes, while the services that really run now carry the same
+    names in system scope.  Observing the retired counterparts proves nothing
+    about the worker and the daemon that write this installation's stores.
+
+    Observations stay outside the historical proof schema, like the release
+    ones, so the evidence a topology transition compares byte for byte is
+    unchanged.  The caller that already passes a release catalog is served by
+    `_prove_release_stopped_v1`: its successor process legitimately holds a
+    different catalog from the one still selected here.
+    """
+    from executor_birth_maintenance_units import QUIESCENT_LOAD_STATES_V1
+
+    units = _installed_service_units_v1()
+    if units is None:
+        return
+    for scope, unit in units:
+        state = reconciler.systemctl.show(unit, scope)
+        load_state = str(state.get("LoadState") or "")
+        try:
+            main_pid = int(state.get("MainPID") or 0)
+        except (TypeError, ValueError):
+            main_pid = -1
+        if load_state not in QUIESCENT_LOAD_STATES_V1 or state.get("ManagerError"):
+            raise ContractCutoverGuardError(
+                "quiescence_unknown", f"cannot inspect {scope} unit {unit}",
+            )
+        active_state = str(state.get("ActiveState") or "")
+        if active_state not in _QUIESCENT_STATES or main_pid != 0:
+            raise ContractCutoverGuardError(
+                "cutover_blocked",
+                f"{scope} unit {unit} is {active_state or load_state}",
+            )
+
+
 def _prove_release_stopped_v1(reconciler, catalog) -> None:
     """Keep successor-only observations outside the historical proof schema."""
     from install.executor_birth_systemd_quiescence import (
@@ -142,6 +230,8 @@ class _MaintenanceProofV1:
     def observe(self) -> dict:
         if self._release_catalog is not None:
             _prove_release_stopped_v1(self._reconciler, self._release_catalog)
+        else:
+            _prove_installed_topology_stopped_v1(self._reconciler)
         if self._transition_evidence is not None:
             return _prove_transition_stack_stopped_v1(self._reconciler)
         return prove_stack_stopped(self._reconciler)
