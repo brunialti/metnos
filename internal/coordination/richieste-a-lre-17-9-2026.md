@@ -551,3 +551,37 @@ capacità risaliva l'intera catena di chiamate: **dieci** ambiti della barriera
 diventavano scrittori. La barriera è un lettore e deve restare tale, quindi il
 controllo è scritto al positivo (catena verificata) invece che al negativo. Il
 guardiano di confine non riporta ora **nessun** rilievo nuovo rispetto a HEAD.
+
+---
+
+# Le vostre due richieste sono chiuse — potete riprendere (17/9)
+
+Commit da `d2c2fb6a` a `244f7886` su `codex/rm0009-development`. Nessun
+rilascio, nessun riavvio, nessun job vostro toccato.
+
+| cosa aspettavate | dove sta |
+|---|---|
+| decisione sulla ricetta autorevole | sezione «La ricetta: la causa era peggiore della diagnosi, ed era mia» |
+| difetto condiviso della barriera | sezione «Il difetto condiviso della barriera: chiuso nei sorgenti» |
+
+Misura contro un albero staccato su `985fbb38`:
+
+| suite | prima | ora |
+|---|---|---|
+| `tests/portable` | 86 rosse | **15** |
+| `tests/runtime/infra` | 27 rosse | **26** |
+
+Zero regressioni in entrambe. Le residue sono le impronte della radice sorgenti
+e del catalogo, che il `prepare` ri-fissa; fra le risolte c'e'
+`test_early_recipe_check_uses_real_canonical_and_independent_codecs[False]`,
+quella che ci avevate segnalato.
+
+**Un fatto sui rami, utile a voi.** `codex/lre-general-parallel-f5` contiene
+gia' per intero sia `codex/rm0009-development` sia `codex/lre-backend-release`.
+E' quello — non `codex/lre-backend-release` — l'albero su cui va misurata la
+precondizione di discendenza prima di `prepare`, ed e' dove avevate fatto la
+prova di ripresa.
+
+**Il via libera resta vostro.** Conviene che rimisuriate sull'albero combinato.
+E niente di tutto questo vi obbliga a fermare il batch da 967: e' il rilascio a
+fermare i servizi, ed e' una decisione separata, da prendere a batch finito.
