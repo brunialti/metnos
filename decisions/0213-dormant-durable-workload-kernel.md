@@ -481,10 +481,10 @@ isolated Chromium IT/EN desktop/mobile in `test_durable_console_behavior.py`.
 `progress.current_phase` exposes a persisted stage key, estimated end and a
 closed unavailable-reason code, separately from the original whole-job ETA.
 Only one actively leased/running phase qualifies. Its inventory must be sealed
-and its own materialization complete; at least three first-attempt successful
+and its own materialization complete; at least three final successful
 completions from that phase are required. A future phase, incomplete later
 materialization or heterogeneous earlier completions never enter its rate.
-Any current-revision uncertain unit, retry, explicitly unknown usage or terminal
+Any current-revision uncertain unit, unresolved retry, explicitly unknown usage or terminal
 model attempt without complete usage invalidates the estimate. An in-flight
 model call need not have its final consumption yet: `usage_complete` includes
 these live calls and is therefore not the phase-estimate gate. Its stronger
@@ -670,3 +670,20 @@ Regression evidence includes exhaustion/restart/manual-grant integration tests,
 synthetic image end-to-end tests with one and three model failures, and isolated
 Chromium IT/EN desktop/mobile checks. Installed release and real checks are
 recorded separately in `internal/reports/lre-error-resilience-20260916.md`.
+
+## 17 September 2026 — recovered attempts do not disable forecasts forever
+
+The original telemetry predicate treated every `attempt_count > 1` as unresolved,
+including committed units. One recovered error therefore disabled forecasts for
+the remaining lifetime of the revision. Only uncommitted repeated attempts now
+carry that uncertainty; the final successful attempt contributes one sample.
+Completion intervals retain time spent on failures and retry waits between
+successful completions. Historical errors are neither removed nor counted twice.
+
+This changes only the read-side progress projection. Unknown model consumption
+in any attempt, unresolved states, stale samples, sealed-inventory requirements,
+and the stronger completion/accounting checks remain binding. No schema, plan,
+budget, retry allowance, model setting or scheduler policy changes. Four real
+failure/retry storage tests cover single and multiple phases, known model usage,
+unchanged history, fixed polling anchors, and refusal when accounting is unknown.
+Deployment status is recorded separately in the LRE parallelism report.

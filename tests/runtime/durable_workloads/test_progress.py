@@ -3,7 +3,9 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from durable_workloads.coordinator import ValidatedResult, WorkerCapabilities
+from durable_workloads.coordinator import (
+    RetryDecision, StructuredAttemptError, ValidatedResult, WorkerCapabilities,
+)
 from durable_workloads.models import RunnerKind, WorkloadState
 from durable_workloads.storage import DurableWorkloadStore, WorkloadNotFoundError
 from helpers import artifact_requirement, inventory, map_stage, plan, source
@@ -18,7 +20,7 @@ def store(tmp_path):
         yield value
 
 
-def prepare(store, *, extra_phase=False, artifacts=False, timeout_s=60):
+def prepare(store, *, extra_phase=False, artifacts=False, timeout_s=60, max_attempts=1):
     draft = store.create_draft(OWNER, "request-progress", redacted_request={})
     selected_plan = plan(with_map=True, required_artifacts=[artifact_requirement()] if artifacts else [])
     if extra_phase:
@@ -27,6 +29,9 @@ def prepare(store, *, extra_phase=False, artifacts=False, timeout_s=60):
         selected_plan["stages"].append(following)
     for stage in selected_plan["stages"]:
         stage["timeout_s"] = timeout_s
+        if stage["type"] == "map" and max_attempts > 1:
+            stage["retry"].update(max_attempts=max_attempts,
+                                  retryable_error_classes=["executor_transient"])
     store.admit_revision(OWNER, draft.workload_id, selected_plan,
                          inventory([source(i) for i in range(10)]),
                          expected_version=draft.version, usage_complete=True)
@@ -286,6 +291,70 @@ def test_phase_eta_freshness_handles_slow_blocks_but_never_extends_forecast(stor
     assert store.progress_many(OWNER, [wid], now=NOW + timedelta(seconds=900))[wid]["current_phase"] == result["current_phase"]
     stale = store.progress_many(OWNER, [wid], now=NOW + timedelta(seconds=971))[wid]["current_phase"]
     assert stale["estimated_end_at"] is None and stale["estimated_end_reason"] == "stale_progress"
+
+
+def recovered_retry(store, *, extra_phase, model_failure):
+    """Exercise a real failed attempt and its policy-authorized successful retry."""
+    wid = prepare(store, extra_phase=extra_phase, max_attempts=2)
+    for offset in (0, 20):
+        lease = claim(store, offset)
+        store.mark_running(lease, now=NOW + timedelta(seconds=offset + 2))
+        store.commit_result(lease, ValidatedResult.from_payload(
+            lease.output_schema_version, {"ok": True}),
+            now=NOW + timedelta(seconds=offset + 10))
+    failed = claim(store, 40)
+    store.mark_running(failed, now=NOW + timedelta(seconds=42))
+    if model_failure:
+        # A verified zero-call failure has complete accounting before retry.
+        # Unknown usage is separately covered by the refusal tests above.
+        store._connection.execute("""UPDATE attempts
+            SET model_snapshot_json=json_set(model_snapshot_json, '$.mode', 'llm'),
+                metrics_json=json_set(metrics_json, '$.usage_missing', 0,
+                    '$.llm_usage', json('{"schema_version":"metnos.durable-model-usage/2",
+                        "records":[],"zero_calls_verified":true,
+                        "usage_missing":false,"cost_unknown":false}'))
+            WHERE id=?""", (failed.attempt_id,))
+    error = StructuredAttemptError.create(
+        "executor_transient", code="executor.transient_fixture",
+        message_key="ERR_DURABLE_EXECUTOR_TRANSIENT", retry="automatic",
+        occurred_at=NOW + timedelta(seconds=45))
+    store.fail_attempt(failed, error, RetryDecision.RETRY,
+                       now=NOW + timedelta(seconds=45))
+    retry = claim(store, 46)
+    assert retry.unit_id == failed.unit_id and retry.attempt_number == 2
+    store.mark_running(retry, now=NOW + timedelta(seconds=48))
+    during = store.progress_many(OWNER, [wid], now=NOW + timedelta(seconds=49))[wid]
+    assert during["current_phase"]["estimated_end_reason"] == "uncertain_progress"
+    store.commit_result(retry, ValidatedResult.from_payload(
+        retry.output_schema_version, {"ok": True}), now=NOW + timedelta(seconds=60))
+    following = claim(store, 61)
+    store.mark_running(following, now=NOW + timedelta(seconds=62))
+    return wid, failed
+
+
+@pytest.mark.parametrize("extra_phase", [False, True])
+@pytest.mark.parametrize("model_failure", [False, True])
+def test_recovered_retry_restores_eta_without_erasing_failure_or_elapsed_time(store, extra_phase, model_failure):
+    wid, failed = recovered_retry(store, extra_phase=extra_phase, model_failure=model_failure)
+    result = store.progress_many(OWNER, [wid], now=NOW + timedelta(seconds=63))[wid]
+    # Successful completions at 10, 30, 60: the 25s cadence includes retry time,
+    # counts the recovered unit once, and does not erase the failed attempt.
+    expected = "2026-09-16T12:03:55.000000Z"
+    assert result["current_phase"]["estimated_end_at"] == expected
+    assert result["current_phase"]["estimated_end_reason"] is None
+    assert result["current_phase"]["committed_units"] == 3
+    assert result["estimated_end_at"] == (None if extra_phase else expected)
+    assert store.progress_many(OWNER, [wid], now=NOW + timedelta(seconds=64))[wid]["current_phase"] == result["current_phase"]
+    assert store._connection.execute(
+        "SELECT state FROM attempts WHERE id=?", (failed.attempt_id,)).fetchone()[0] == "failed"
+    assert store._connection.execute(
+        "SELECT state,attempt_count FROM units WHERE id=?", (failed.unit_id,)).fetchone()[:] == ("committed", 2)
+    # The result is telemetry, not permission to bypass unresolved accounting.
+    store._connection.execute("UPDATE revision_usage SET usage_unknown=1")
+    assert store.refresh_usage_complete(OWNER, wid) is False
+    uncertain = store.progress_many(OWNER, [wid], now=NOW + timedelta(seconds=65))[wid]
+    assert uncertain["current_phase"]["estimated_end_at"] is None
+    assert uncertain["current_phase"]["estimated_end_reason"] == "uncertain_progress"
 
 
 def test_phase_eta_overdue_and_future_clock_are_not_predictions(store):

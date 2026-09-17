@@ -2,6 +2,38 @@
 
 ## Stato effettivo
 
+**Aggiornamento 17/9, pomeriggio:** F5 fino a `7b56f414` è integrato nel ramo
+combinato, commit `5fa19a79`; verificata la discendenza sia da F5 sia da LRE
+`ab763e66`. Il blocco sulla ricetta descritto più sotto è storico e chiuso:
+la causa reale era la regressione di fusione `0f922c5c`, che aveva perso il
+lettore amministrativo e la costante già approvata; `d2c2fb6a` li ripristina.
+Non è stata copiata un'impronta candidata per far passare il controllo.
+
+Rimisura sull'albero combinato aggiornato: 365 prove mirate F5/rilascio/ripresa
+superate; `rm0008_2b` 365 superate in sandbox più una prova di sottoprocesso
+superata fuori sandbox (resta esclusa soltanto Windows). Suite LRE estesa:
+917 superate, quattro profili di carico volontari esclusi. Include quattro
+nuove regressioni sulla stima dopo recupero: un batch confermato dopo ritentativo
+torna a contare una sola volta, mantenendo tempo perso e storico; consumi ignoti
+e problemi ancora aperti continuano a negare la previsione. Il cambiamento è
+solo nella lettura dei progressi, senza schema, contratti o budget nuovi.
+61 prove mirate su progressi e contabilità superate. HTTP/console: 15 superate,
+due prove Chromium non attivate; il primo tentativo HTTP in sandbox ha raggiunto
+il limite di 180 secondi ed è stato ripetuto con successo su server temporanei
+locali fuori sandbox. Nessun processo di collaudo orfano osservato.
+I gruppi si sovrappongono e non vanno sommati come casi unici.
+
+Evidenze: `/tmp/metnos-lre-final-recheck-20260917.XvyLFu/`;
+`f5-targeted.xml`, `f5-subprocess.xml`, `lre-core-final.xml`, `eta-after.xml`,
+`http-host.xml`. La prova di ripresa usa come precedente `f1ef7e5a`, non due
+avvii dello stesso albero. Le guide IT/EN sono state pubblicate in modalità
+esclusivamente statica: `3ee11a30.mykleos.pages.dev`; Tutor locale invariato.
+
+Roberto ha autorizzato la pubblicazione con pausa ordinata e ripresa dello
+stesso job, senza perdere i risultati. Preparazione e passaggio produttivo
+restano da registrare: i collaudi dei sorgenti non certificano ancora
+l'artefatto firmato. Nessuna attivazione o migrazione F5 è implicita.
+
 Implementazione e prove isolate concluse; **non attivata in produzione**.
 Nessuna pausa, cancellazione, riscrittura di piano, configurazione produttiva,
 chiave, migrazione F5, rilascio applicativo o utilizzo della GPU in questa fase.

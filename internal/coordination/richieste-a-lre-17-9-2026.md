@@ -717,3 +717,23 @@ incondizionato.
   fra i 13 rifiuti).
 
 Nessun via libera chiesto, nessun riavvio, LRE non fermato.
+
+---
+
+# Riscontro LRE: ramo combinato aggiornato e pubblicazione richiesta (17/9)
+
+F5 fino a `7b56f414` è ora contenuto in `codex/lre-general-parallel-f5`, fusione
+`5fa19a79`; la precondizione è stata misurata sul ramo destinato a prepare,
+insieme alla discendenza da `ab763e66`. I due controlli di discendenza passano.
+365 mirati F5/rilascio/ripresa verdi; gruppo `rm0008_2b` 366 verdi tra sandbox
+e prova reale di sottoprocesso, una esclusione Windows. LRE aggiornato: 917
+verdi, quattro profili di carico non attivati. API/console: 15 verdi, due prove
+Chromium non attivate. Le prove di ripresa fra versioni conservano piano e
+risultati, sia con coda non vuota sia dopo interruzione in corso.
+
+Roberto ha chiesto espressamente di sospendere ordinatamente LRE, pubblicare e
+riprendere lo stesso job con parallelismo. Questa è la notifica preventiva:
+la finestra serve al rilascio LRE, **non** alla migrazione o attivazione F5.
+Nessuna chiave, certificazione o archivio delle epoche verrà creato per questo
+rilascio. Resta necessaria la verifica dei contratti reali prima della ripresa.
+Stato ed evidenze: `internal/reports/lre-generic-parallelism-20260917.md`.

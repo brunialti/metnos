@@ -3997,6 +3997,9 @@ class DurableWorkloadStore:
         Percentages count committed *known* units, not time or source coverage.
         Whole-job ETA is unavailable for heterogeneous/expanding plans. The
         separate current-phase ETA uses only that fully materialized phase.
+        A recovered unit contributes its final successful attempt once; elapsed
+        completion intervals still include retry time. Unresolved retries and
+        unknown model usage remain disqualifying, including historical usage.
         One aggregate statement covers the page, including attempt history.
         Aggregate attempts once per phase, then reuse those small facts for
         whole-job timing. Keep attempts before their unit lookup: SQLite can
@@ -4046,7 +4049,7 @@ class DurableWorkloadStore:
                        SUM(s.stage_type<>'inventory') AS estimate_total,
                        SUM(s.stage_type<>'inventory' AND u.state='committed') AS estimate_committed,
                        SUM(u.state NOT IN ('pending','leased','running','committed')
-                           OR u.attempt_count>1) AS uncertain
+                           OR (u.attempt_count>1 AND u.state<>'committed')) AS uncertain
                 FROM progress_selected w LEFT JOIN units u
                   ON u.owner_user_id=w.owner_user_id AND u.revision_id=w.active_revision_id
                 LEFT JOIN stages s ON s.owner_user_id=u.owner_user_id AND s.id=u.stage_id
@@ -4066,12 +4069,14 @@ class DurableWorkloadStore:
                        MIN(CASE WHEN json_type(a.metrics_json, '$.execution_started_at')='text'
                            THEN json_extract(a.metrics_json, '$.execution_started_at') END) AS started_at,
                        COUNT(CASE WHEN s.stage_type<>'inventory' AND u.state='committed' AND a.state='succeeded'
-                           AND u.attempt_count=1 AND a.ended_at IS NOT NULL
+                           AND a.number=u.attempt_count AND a.ended_at IS NOT NULL
                            AND json_type(a.metrics_json, '$.execution_started_at')='text'
                            THEN 1 END) AS samples,
                        MIN(CASE WHEN s.stage_type<>'inventory' AND u.state='committed' AND a.state='succeeded'
+                           AND a.number=u.attempt_count
                            THEN a.ended_at END) AS first_completion,
                        MAX(CASE WHEN s.stage_type<>'inventory' AND u.state='committed' AND a.state='succeeded'
+                           AND a.number=u.attempt_count
                            THEN a.ended_at END) AS last_completion
                 FROM attempts a CROSS JOIN units u
                   ON u.owner_user_id=a.owner_user_id AND u.id=a.unit_id
