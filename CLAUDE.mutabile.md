@@ -6,14 +6,23 @@
 
 ## S. Stato corrente (17/9/2026)
 
-- **Risorse CPU e confine Virt/LRE — installato, release 65** (17/9):
+- **Recupero LRE da risultati verificati — installato, release 67** (17/9):
+  `committed_entries` legge riferimenti espliciti dello stesso proprietario
+  senza riscrivere contratti o storico. Una continuazione sottrae i consumi
+  noti e riserva l'intero massimo finito dei tentativi senza rendiconto;
+  l'incertezza storica resta tale. Il dominio foto riutilizza checkpoint
+  validati nella stessa generazione. Eccezioni applicative conservano i
+  consumi registrati; GPS opzionale non convertibile viene omesso. Contratti,
+  Tutor IT/EN e turno HTTP verificati; continuazione reale in avanzamento.
+  Prove e identità dei due job: `internal/reports/lre-gps-recovery-20260917.md`.
+
+- **Risorse CPU e confine Virt/LRE — installato dalla release 65** (17/9):
   prenotazione atomica delle quote dopo le esclusioni, budget dei thread nativi
   nei subprocessi locali e ciclo di vita dei modelli risolto da Virt. Non è
   ancora un gestore automatico di repliche. GPU e F5 invariati. Riavvio, sei
-  contratti congelati, Tutor IT/EN e turni HTTP verificati. Il collaudo del job
-  ha incontrato un errore preesistente su GPS EXIF con denominatore zero:
-  risultati precedenti conservati, revisione in attenzione per consumi ignoti.
-  Non azzerare la contabilità né ripetere la vecchia riprova. Stato e prove:
+  contratti congelati, Tutor IT/EN e turni HTTP verificati. Il primo collaudo
+  ha incontrato il difetto GPS e contabile descritto nel recupero sopra.
+  Non azzerare la contabilità storica né riattivare il predecessore. Prove CPU:
   `internal/reports/lre-cpu-model-resources-20260917.md`.
 
 - **Parallelismo generale LRE — installato, release 64** (17/9,

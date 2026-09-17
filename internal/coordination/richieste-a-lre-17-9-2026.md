@@ -917,3 +917,24 @@ Non azzerare i consumi, non ripetere la vecchia riprova e non mutare i record
 SQL. Il recupero richiede correzione GPS/telemetria e nuova revisione esplicita;
 nessuna nuova ammissione eseguita. Prove e dettagli nel rapporto
 `internal/reports/lre-cpu-model-resources-20260917.md` e in testa al handover.
+
+## Aggiornamento del recupero — 17/9, ore 21:42
+
+**Release 67 operativa**, build
+`sha256:6dddac7b5aedb354d9fa464d4303c7d9d56f17f8b8d22ad55a5c427c28fd6a0c`,
+ciclo `run-c6omqkrm`. Risolti GPS opzionale non convertibile, perdita dei
+consumi su eccezione ordinaria e limite improprio dell'impronta per input
+letterali grandi. `committed_entries` e budget residui conservativi permettono
+una continuazione esplicita; LRE resta indipendente dal dominio foto.
+
+Il predecessore è ora annullato, con 1.306 risultati integralmente conservati
+e consumi ignoti storici non alterati. Continuazione
+`wrk_c8bd069c0d82476d9f252a79c622d3a3` in esecuzione, v7, 56 gruppi confermati
+alle 21:42:01; 10.914 checkpoint validati prima della ripresa. Il gruppo prima
+bloccante è confermato, con 32 checkpoint verificati e nuovi consumi noti:
+24.262 token input e 5.969 output. Nessun nuovo errore dopo la riprova.
+Non riattivare il predecessore, non creare ulteriori job e non toccare SQL.
+
+HTTP/worker/Telegram operativi; cinque contratti invariati, CPU/VLM 4/4,
+F5 ancora `LEGACY`, Tutor IT/EN e turno reale riusciti. Prove e cronologia
+complete nel rapporto `internal/reports/lre-gps-recovery-20260917.md`.

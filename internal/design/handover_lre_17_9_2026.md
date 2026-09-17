@@ -1,6 +1,47 @@
 # Passaggio di consegne LRE — ripresa con contesto nuovo
 
-## Stato prioritario dopo il rilascio autorizzato — 17/9, ore 20:10
+## Stato prioritario dopo il recupero — 17/9, ore 21:42
+
+**Release 67 installata; continuazione in esecuzione**, build
+`sha256:6dddac7b5aedb354d9fa464d4303c7d9d56f17f8b8d22ad55a5c427c28fd6a0c`,
+ciclo ufficiale `run-c6omqkrm`. HTTP/worker/Telegram attivi, CPU/VLM 4/4,
+F5 `LEGACY`, nessuna modifica GPU o configurazione. Cinque contratti congelati
+verificati identici (`run-9uuqtddx`), Tutor IT/EN e turno HTTP `get_now` riusciti.
+
+Job corrente: **`wrk_c8bd069c0d82476d9f252a79c622d3a3`**, revisione
+`rev_707ccf0f116c4d26af9d4d1b45c82088`, piano
+`sha256:07b5fcc405a3eb1915f914de509cee9ce0604cadd29abfcb0d852a2605207146`.
+Alle 21:42:01 (`run-4_gctxbf`): `running`, versione 7, 56 gruppi confermati,
+quattro attivi, consumi ignoti falsi. I gruppi già salvati sono verificati e
+riusati senza ripetere le chiamate al modello. La fotografia che causava il
+blocco GPS ha ora un checkpoint valido, scritto alle 21:38:30: immagine
+conservata, GPS opzionale omesso (`run-be4gwhnu`). Il relativo gruppo è ora
+**confermato**, con tutti i 32 checkpoint validi (`run-4k5lmj55`). Nuovi consumi
+registrati: 24.262 token input e 5.969 output; nessun nuovo errore dopo la
+riprova. Il recupero è dimostrato, l'intero archivio non è ancora completato.
+
+**Il vecchio job `wrk_4121cc6258c447759e94ccc6f8090e5c` è `cancelled`, v46**:
+annullato tramite controllo ordinario prima di avviare la continuazione per
+evitare scrittori concorrenti della stessa generazione. Roberto ha segnalato
+il timore di perdere 24 ore di lavoro: il cambio visibile andava chiarito prima.
+I **1.306 risultati precedenti sono tutti conservati**, così come i **10.914
+checkpoint validati** prima della ripresa. I consumi storici ignoti restano
+ignoti; una riserva prudenziale, non una misura inventata, riduce il budget
+della continuazione. Non riattivare il predecessore e non azzerare contatori.
+
+La prima continuazione era andata in attenzione alle 21:24: 967 riferimenti
+letterali superavano il limite errato di 64 KiB usato per l'impronta degli
+argomenti. Correzione generale e regressione installate nella 67; riprova
+ordinaria dello **stesso** job `run-tk7d2tm8`. **Non creare né annullare altri
+job, non riscrivere contratti o stati SQL, non seguire i vecchi inviti alla
+riprova sotto.** Il precedente errore resta nello storico dei tentativi.
+
+Prove e dettagli: `internal/reports/lre-gps-recovery-20260917.md`.
+Archivio privato: `/var/lib/metnos-admin/lre-repair-20260917-1bae2964`.
+Guide LRE IT/EN aggiornate per GPS, rendiconto su eccezioni e recupero esplicito,
+pubblicate in `d105bf72.mykleos.pages.dev`; nessuna ripubblicazione per la 67.
+
+## Stato storico dopo il rilascio autorizzato — 17/9, ore 20:10
 
 Roberto ha autorizzato esplicitamente installazione e riavvio sicuro delle
 ottimizzazioni verificate. **Release 65 installata**, identità
