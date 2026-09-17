@@ -200,3 +200,99 @@ rilascio, non sul mio.
 | Documento non committato | resta vostro, non l'ho toccato |
 | Rivedere le fusioni | fatto, grazie: 266 prove |
 | Coordinare arresti | **non serve piu' coordinarsi a voce**: il passaggio si rifiuta da solo se qualcosa gira |
+
+---
+
+# Proposta: un puntatore alla release selezionata (17/9, decisa da Roberto di
+# sottoporvela)
+
+## Il problema, in breve
+
+I quattro comandi amministrativi F5 (crea la chiave, registra le prove, esegui
+il passaggio, emetti il certificato) sono scritti e provati. **Nessuno puo'
+girare**, e non e' codice che manca: non c'e' modo di sapere *quale* release e'
+quella selezionata senza rifare la logica della catena firmata.
+
+Verificato, non supposto:
+
+- `releases-v1/` non ha nessun puntatore `current`;
+- la selezione e' un blocco binario firmato in `chain-v1/required-head-v1.bin`;
+- `WorkingDirectory` dell'unita' HTTP e' `/`, e il suo `ExecStart` nomina solo
+  l'interprete di sistema e `preflight.py`;
+- «il numero piu' alto» non e' la risposta, perche' il ritiro esiste;
+- la strada del prodotto (ingresso amministrativo con cancello) e' chiusa due
+  volte: `parse_cli_v1` accetta solo `check-all|check|launch`, `launch` rifiuta
+  tutto cio' che non e' `gated_service`, e i 16 ingressi amministrativi
+  restituiscono tutti `birth_ownership_closed_enforcement_required`. Sono
+  dichiarati e irraggiungibili: lavoro del Gruppo 7 mai fatto.
+
+L'unica alternativa che funziona oggi e' un lanciatore `sudo` che punta al mio
+albero di lavoro. **Non la voglio**: farebbe girare tre moduli inesistenti nella
+release e otto in versione piu' vecchia, cioe' due alberi sorgente mescolati —
+esattamente cio' che la build chiusa esiste per impedire — e regalerebbe root
+per via di file che posso riscrivere.
+
+## La proposta
+
+Che `rm0008_release_cycle.py` scriva, **alla fine della crociera riuscita**, un
+puntatore di root in chiaro alla release selezionata.
+
+**Dove**: in `cross()`, subito dopo `say("CUTOVER_OK", ...)` (riga 1814), quando
+la transizione e' completata e quella release *e'* la selezionata.
+
+**Cosa**:
+
+    percorso   /var/lib/metnos/executor-birth/selected-release-v1
+    contenuto  il percorso assoluto della release, piu' un ritorno a capo
+    proprieta' root:root, modo 0644
+    scrittura  file temporaneo + os.replace + fsync della directory
+
+**Forma** (da rivedere, non da accettare cosi' com'e'):
+
+```python
+def _publish_selected_release_v1(release: Path) -> None:
+    """Say which release is selected, for tools that must locate it.
+
+    This is a convenience, never an authority: whoever needs to *trust* a
+    release still reads the signed chain. It exists because locating the
+    installed tree currently requires reimplementing that chain in shell,
+    and the alternative is running administrative tools from a worktree.
+    """
+    pointer = Path("/var/lib/metnos/executor-birth/selected-release-v1")
+    staged = pointer.with_suffix(".staged")
+    descriptor = os.open(staged, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
+    try:
+        os.write(descriptor, (str(release) + "\n").encode("ascii"))
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+    os.chmod(staged, 0o644)
+    os.replace(staged, pointer)
+```
+
+## Cosa NON e'
+
+Non e' autorita'. Chi deve *fidarsi* di una release continua a leggere la catena
+firmata; questo dice soltanto **dove guardare**. Un puntatore sbagliato o
+mancante non deve far passare niente: i lettori che contano (catena, testa
+richiesta, distribuzione verificata) restano quelli di adesso. Se preferite,
+posso far rifiutare esplicitamente ogni consumatore quando il puntatore non
+coincide con la release che la catena seleziona.
+
+## Cosa costa a voi
+
+Una funzione e una chiamata nello strumento che usate per rilasciare. Nessun
+cambiamento alla semantica della crociera, nessun controllo tolto, nessun
+ordine diverso. Serve anche a voi: qualunque strumento amministrativo futuro ha
+lo stesso problema.
+
+## Tre risposte possibili
+
+1. **Lo aggiungo io** e lo rivedete voi prima del vostro prossimo rilascio.
+2. **Lo aggiungete voi**, e io mi limito a consumarlo.
+3. **No**: allora i comandi F5 restano non eseguibili finche' il Gruppo 7 non
+   apre gli ingressi amministrativi con cancello, che e' la strada durevole ma
+   e' lavoro a se'. In quel caso ditelo, cosi' lo scrivo nel piano come
+   bloccante dichiarato invece di cercare scorciatoie.
+
+Non tocco `rm0008_release_cycle.py` finche' non rispondete.
