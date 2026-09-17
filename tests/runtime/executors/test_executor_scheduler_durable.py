@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import ast
 import random
+import subprocess
+import sys
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -71,25 +73,68 @@ def _context(
     )
 
 
-class _RecordingSlot:
-    def __init__(self, name: str, events: list[str]):
-        self.name = name
-        self.events = events
-
-    def acquire(self, timeout=None):
-        self.events.append(f"+{self.name}")
-        return True
-
-    def release(self):
-        self.events.append(f"-{self.name}")
-
-
 def _wait_for_waiters(scheduler: ExecutorScheduler, count: int) -> None:
     limit = datetime.now(timezone.utc) + timedelta(seconds=2)
     while scheduler._fair_gate.waiting_count < count:
         if datetime.now(timezone.utc) >= limit:
             raise AssertionError("scheduler waiters did not reach the expected count")
         threading.Event().wait(0.002)
+
+
+@pytest.mark.parametrize("blocked_resource", ["vlm", "network_io", "local_io"])
+def test_waiting_for_one_resource_does_not_hold_unrelated_cpu(blocked_resource, monkeypatch):
+    """A mixed-resource job must not obstruct a different CPU-only job."""
+    scheduler = ExecutorScheduler(
+        max_in_flight=8, resource_limits={"cpu": 1, blocked_resource: 1})
+    blocked = scheduler._resource_slots[blocked_resource]
+    assert blocked.acquire(timeout=0)
+    waiting = threading.Event()
+    finished = threading.Event()
+    errors = []
+
+    original_wait = blocked._condition.wait
+
+    def observe_wait(timeout=None):
+        waiting.set()
+        return original_wait(timeout)
+
+    monkeypatch.setattr(blocked._condition, "wait", observe_wait)
+
+    def mixed_job():
+        try:
+            scheduler.invoke(
+                _Executor(name="mixed", execution_policy=_safe_policy()),
+                lambda: {"ok": True}, admission_timeout_s=2,
+                execution_context=replace(
+                    _context("mixed-owner", resources={"cpu": 1, blocked_resource: 1}),
+                    workload_id="wrk-mixed"),
+            )
+            finished.set()
+        except Exception as error:
+            errors.append(error)
+
+    thread = threading.Thread(target=mixed_job)
+    thread.start()
+    try:
+        assert waiting.wait(1)
+        assert not finished.is_set()
+        def compute():
+            result = subprocess.run(
+                [sys.executable, "-I", "-S", "-c", "print(sum(range(10000)))"],
+                capture_output=True, text=True, check=True, timeout=2)
+            return {"ok": result.stdout.strip() == "49995000"}
+
+        assert scheduler.invoke(
+            _Executor(name="cpu-only", execution_policy=_safe_policy()),
+            compute, admission_timeout_s=0.2,
+            execution_context=replace(_context("cpu-owner", resources={"cpu": 1}),
+                                      workload_id="wrk-cpu"),
+        ) == {"ok": True}
+    finally:
+        blocked.release()
+        thread.join(3)
+        scheduler.shutdown()
+    assert not thread.is_alive() and not errors and finished.is_set()
 
 
 def test_scheduler_has_no_runtime_import_of_the_durable_package():
@@ -108,30 +153,69 @@ def test_scheduler_has_no_runtime_import_of_the_durable_package():
     assert not any(name.startswith("durable_workloads") for name in imported)
 
 
-def test_context_resources_acquire_and_release_in_canonical_order():
-    events: list[str] = []
+@pytest.mark.parametrize("durable", [True, False])
+def test_executor_exclusion_wait_does_not_reserve_cpu(durable, monkeypatch):
+    scheduler = ExecutorScheduler(max_in_flight=8, parallel_enabled=True,
+                                  hardware_threads=4, resource_limits={"cpu": 1})
+    policy = {**_safe_policy(1), "resource_class": "cpu"}
+    executor = _Executor(name="busy-capability", execution_policy=policy)
+    slot = scheduler._executor_slot(executor)
+    capacity = scheduler.parallelism_limit(scheduler.effective_parallelism_class(executor))
+    for _ in range(capacity):
+        assert slot.acquire(timeout=0)
+    waiting = threading.Event()
+    original_acquire = slot.acquire
+
+    def observe_acquire(*args, **kwargs):
+        waiting.set()
+        return original_acquire(*args, **kwargs)
+
+    monkeypatch.setattr(slot, "acquire", observe_acquire)
+    errors = []
+
+    def blocked_call():
+        try:
+            scheduler.invoke(executor, lambda: {"ok": True}, admission_timeout_s=2,
+                             execution_context=_context(resources={"cpu": 1}) if durable else None)
+        except Exception as error:
+            errors.append(error)
+
+    thread = threading.Thread(target=blocked_call)
+    thread.start()
+    try:
+        assert waiting.wait(1)
+        assert scheduler.invoke(
+            _Executor(name="unrelated", execution_policy=policy), lambda: {"ok": True},
+            admission_timeout_s=0.2, execution_context=_context(resources={"cpu": 1}),
+        )["ok"]
+    finally:
+        for _ in range(capacity):
+            slot.release()
+        thread.join(3)
+        scheduler.shutdown()
+    assert not thread.is_alive() and not errors
+
+
+def test_context_resources_are_reserved_together_and_released_after_failure():
+    # Partial resource acquisition was deliberately removed: observe real
+    # capacities inside the call rather than mocking independent acquires.
     scheduler = ExecutorScheduler(
-        max_in_flight=4,
-        parallel_enabled=False,
-        resource_limits={"cpu": 2, "llm": 2},
+        max_in_flight=4, parallel_enabled=False,
+        resource_limits={"cpu": 3, "llm": 2},
     )
     executor = _Executor(execution_policy=dict(DEFAULT_EXECUTION_POLICY))
-    scheduler._global_slots = _RecordingSlot("global", events)
-    scheduler._resource_slots = {
-        "cpu": _RecordingSlot("cpu", events),
-        "llm": _RecordingSlot("llm", events),
-    }
-    scheduler._policy_slots[(executor.name, 1)] = _RecordingSlot("executor", events)
 
-    assert scheduler.invoke(
-        executor,
-        lambda: {"ok": True},
-        execution_context=_context(resources={"cpu": 1, "llm": 1}),
-    ) == {"ok": True}
-    assert events == [
-        "+global", "+cpu", "+llm", "+executor",
-        "-executor", "-llm", "-cpu", "-global",
-    ]
+    def fail_after_admission():
+        assert scheduler._resource_slots["cpu"]._available == 1
+        assert scheduler._resource_slots["llm"]._available == 1
+        raise RuntimeError("fixture failure")
+
+    with pytest.raises(RuntimeError, match="fixture failure"):
+        scheduler.invoke(executor, fail_after_admission,
+                         execution_context=_context(resources={"cpu": 2, "llm": 1}))
+    assert scheduler._resource_slots["cpu"]._available == 3
+    assert scheduler._resource_slots["llm"]._available == 2
+    assert scheduler._fair_gate._active == 0
     scheduler.shutdown()
 
 

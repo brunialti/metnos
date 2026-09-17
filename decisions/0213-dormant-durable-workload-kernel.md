@@ -687,3 +687,22 @@ budget, retry allowance, model setting or scheduler policy changes. Four real
 failure/retry storage tests cover single and multiple phases, known model usage,
 unchanged history, fixed polling anchors, and refusal when accounting is unknown.
 Deployment status is recorded separately in the LRE parallelism report.
+
+## 17 September 2026 — CPU admission and model lifecycle boundary (candidate)
+
+Resource vectors are reserved atomically after executor and target exclusions.
+A caller waiting for a model, network or disk must not retain CPU claims that
+another admitted workload could use. The global admission bound and deadlines
+remain unchanged; this does not claim general starvation freedom.
+
+LRE checks the frozen model binding, effective capability and resource claim.
+Virt owns provider selection and host lifecycle through `ModelResource`; the
+kernel does not inspect model names, endpoints or launch commands. Local vision
+uses the existing shared process startup. Additional lifecycle adapters belong
+to Virt. Automatic multi-replica management is not implemented by this change.
+
+Managed local children derive native thread ceilings from affinity, visible
+cgroup-v2 quotas, logical CPU shares and item concurrency. The parent environment
+and already loaded daemon pools are untouched. This is not exclusive CPU or
+memory reservation. Candidate tests and deployment limits are recorded in
+`internal/reports/lre-cpu-model-resources-20260917.md`.

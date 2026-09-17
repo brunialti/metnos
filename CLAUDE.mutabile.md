@@ -4,7 +4,21 @@
 >
 > **QUANDO AGGIORNARLO** (ex §13): nuova decisione di runtime (tier LLM, helper universale, vincolo dominio, gate/env); chiusura fase o nuovo macro-topic; sezione contraddetta dal codice (aggiornare PRIMA della PR). **NON aggiornarlo per**: bug fix puntuali (commit message); decisioni temporanee/sperimentali e stato di sessione (→ memorie); dettagli di un singolo ADR (→ l'ADR). Stile: una decisione = poche righe operative + puntatore ADR/spec/test.
 
-## S. Stato corrente (16/9/2026)
+## S. Stato corrente (17/9/2026)
+
+- **Risorse CPU e confine Virt/LRE — candidato verificato, non installato**:
+  prenotazione atomica delle quote dopo le esclusioni, budget dei thread nativi
+  nei subprocessi locali e ciclo di vita dei modelli risolto da Virt. Non è
+  ancora un gestore automatico di repliche. GPU invariata. Stato, misure e limiti:
+  `internal/reports/lre-cpu-model-resources-20260917.md`.
+
+- **Parallelismo generale LRE — installato, release 64** (17/9,
+  ADR 0213/0224): batch indipendenti concorrenti entro contratti e risorse;
+  installazione corrente CPU/VLM a quattro. Pausa cooperativa e ripresa dello
+  stesso job verificate, sei contratti e tutti i risultati precedenti conservati;
+  quattro tentativi reali simultanei osservati. Nessuna attivazione F5 o GPU.
+  Evidenze, limiti e avanzamento dopo la ripresa:
+  `internal/reports/lre-generic-parallelism-20260917.md`.
 
 - **Resilienza LRE — installato, release 63** (16/9,
   ADR 0213/0117): errori dichiarati recuperabili riprovati entro il contratto;

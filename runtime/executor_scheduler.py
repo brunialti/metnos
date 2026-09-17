@@ -228,10 +228,10 @@ class _FairGate:
 class _CapacitySlot:
     """One atomic weighted resource counter shared by all scheduler paths."""
 
-    def __init__(self, capacity: int) -> None:
+    def __init__(self, capacity: int, *, condition: threading.Condition | None = None) -> None:
         self.capacity = max(1, int(capacity))
         self._available = self.capacity
-        self._condition = threading.Condition()
+        self._condition = condition if condition is not None else threading.Condition()
 
     def acquire(self, timeout: float | None = None) -> bool:
         deadline = None if timeout is None else time.monotonic() + max(0.0, timeout)
@@ -406,8 +406,9 @@ class ExecutorScheduler:
         self._resource_limits = {
             str(name): max(1, int(limit)) for name, limit in limits.items()
         }
+        self._resource_condition = threading.Condition()
         self._resource_slots = {
-            name: _CapacitySlot(limit)
+            name: _CapacitySlot(limit, condition=self._resource_condition)
             for name, limit in self._resource_limits.items()
         }
         self._fair_gate = _FairGate(max(1, self.max_in_flight - 1))
@@ -553,15 +554,6 @@ class ExecutorScheduler:
         return remaining > 0 and bool(slot.acquire(timeout=remaining))
 
     @staticmethod
-    def _acquire_amount(slot, amount: int, deadline: float | None) -> bool:
-        acquire_many = getattr(slot, "acquire_many", None)
-        if callable(acquire_many):
-            return bool(acquire_many(amount, deadline))
-        if amount != 1:
-            raise SchedulerContextError("resource slot does not support atomic claims")
-        return ExecutorScheduler._acquire(slot, deadline)
-
-    @staticmethod
     def _release_amount(slot, amount: int) -> None:
         if amount == 1:
             slot.release()
@@ -609,11 +601,6 @@ class ExecutorScheduler:
             if not global_acquired:
                 raise SchedulerAdmissionTimeout(
                     f"scheduler admission timed out for {name}")
-            if resource_slot is not None:
-                resource_acquired = self._acquire(resource_slot, deadline)
-                if not resource_acquired:
-                    raise SchedulerAdmissionTimeout(
-                        f"resource admission timed out for {name}")
             if executor_slot is not None:
                 executor_acquired = self._acquire(executor_slot, deadline)
                 if not executor_acquired:
@@ -623,6 +610,11 @@ class ExecutorScheduler:
             if identity_token is None:
                 raise SchedulerAdmissionTimeout(
                     f"identity admission timed out for {name}")
+            if resource_slot is not None:
+                resource_acquired = self._acquire(resource_slot, deadline)
+                if not resource_acquired:
+                    raise SchedulerAdmissionTimeout(
+                        f"resource admission timed out for {name}")
         except BaseException:
             if identity_token is not None:
                 self._isolation.release(identity_token)
@@ -695,7 +687,7 @@ class ExecutorScheduler:
         deadlines = [item for item in (facts.deadline, explicit_deadline) if item is not None]
         deadline = min(deadlines) if deadlines else None
         name = str(getattr(executor, "name", "unknown") or "unknown")
-        claims: list[tuple[str, object, int]] = []
+        claims: list[tuple[str, _CapacitySlot, int]] = []
         for resource_name, amount in facts.resources:
             if amount == 0:
                 continue
@@ -725,12 +717,6 @@ class ExecutorScheduler:
                 raise SchedulerAdmissionTimeout(
                     f"scheduler admission timed out for {name}"
                 )
-            for resource_name, resource_slot, amount in claims:
-                if not self._acquire_amount(resource_slot, amount, deadline):
-                    raise SchedulerAdmissionTimeout(
-                        f"resource admission timed out for {name}:{resource_name}"
-                    )
-                acquired_resources.append((resource_slot, amount))
             executor_acquired = self._acquire(executor_slot, deadline)
             if not executor_acquired:
                 raise SchedulerAdmissionTimeout(
@@ -741,6 +727,13 @@ class ExecutorScheduler:
                 raise SchedulerAdmissionTimeout(
                     f"identity admission timed out for {name}"
                 )
+            # Reserve the complete vector only after execution exclusion is
+            # available. Waiting for a model, device or conflicting writer
+            # must not hold CPU/IO capacity needed by an unrelated job.
+            if not self._acquire_resource_claims(claims, deadline):
+                raise SchedulerAdmissionTimeout(
+                    f"resource admission timed out for {name}")
+            acquired_resources = [(slot, amount) for _, slot, amount in claims]
         except BaseException:
             if identity_token is not None:
                 self._isolation.release(identity_token)
@@ -767,6 +760,29 @@ class ExecutorScheduler:
             executor, call, name=name, queued_at=queued_at,
             release_slots=release_slots,
         )
+
+    def _acquire_resource_claims(
+            self, claims: list[tuple[str, _CapacitySlot, int]],
+            deadline: float | None) -> bool:
+        """Reserve all resources together, without polling or holding a subset.
+
+        The condition also protects ordinary single-resource calls. Claims
+        and host limits retain their existing logical (not physical) units.
+        """
+        with self._resource_condition:
+            while any(slot._available < amount for _, slot, amount in claims):
+                if deadline is None:
+                    self._resource_condition.wait()
+                else:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        return False
+                    self._resource_condition.wait(remaining)
+            if deadline is not None and time.monotonic() >= deadline:
+                return False
+            for _, slot, amount in claims:
+                slot._available -= amount
+            return True
 
     def _thread_pool(self) -> ThreadPoolExecutor:
         with self._pool_lock:

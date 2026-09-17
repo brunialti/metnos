@@ -146,6 +146,38 @@ def test_durable_invocation_maps_an_output_breach_to_a_localized_contract_error(
     assert isinstance(result["error"], str) and result["error"]
 
 
+@pytest.mark.parametrize("durable,expected", [(False, 8), (True, 16)])
+def test_runtime_projects_native_limits_into_a_real_child(tmp_path, monkeypatch, durable, expected):
+    import os
+    from dataclasses import replace
+    import agent_runtime
+    import native_threads
+    import sandbox
+
+    monkeypatch.setattr(sandbox, "wrap_command", lambda _executor, command, **_kwargs: command)
+    monkeypatch.setattr(native_threads, "effective_cpus", lambda: 32)
+    monkeypatch.setattr("executor_scheduler.orchestration_resource_limits", lambda: {"cpu": 4})
+    monkeypatch.setattr("executor_scheduler.assigned_worker_budget", lambda _executor: 1)
+    for name in (*native_threads._LIBRARIES, native_threads._ENV):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("METNOS_EXECUTOR_ASSIGNED_CPU", "untrusted-inherited-value")
+    executor = replace(_executor(tmp_path), execution_policy_declared=True)
+    executor.code_path.write_text(
+        "import json, os\n"
+        "print(json.dumps({'ok':True,'entries':[int(os.environ[key]) for key in "
+        "('METNOS_EXECUTOR_NATIVE_THREADS','OPENBLAS_NUM_THREADS','RAYON_NUM_THREADS')]}))\n")
+    context = _context() if durable else None
+    if context is not None:
+        context = replace(context, resource_claims=tuple(
+            (name, 2 if name == "cpu" else amount) for name, amount in context.resource_claims))
+    before = dict(os.environ)
+    result = agent_runtime._invoke_executor_impl(
+        executor, {}, timeout_s=5, execution_context=context, owner_user_id="owner-bounded")
+    assert result["ok"] is True
+    assert result["entries"] == [expected] * 3
+    assert dict(os.environ) == before
+
+
 def test_durable_invocation_converts_subprocess_timeout_for_retry_classification(
     tmp_path,
     monkeypatch,

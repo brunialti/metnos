@@ -399,7 +399,7 @@ prepared. Missing data is <strong>n.a.</strong>, not zero.</p>
  <li><strong>Attention required.</strong> New batches stop starting; batches already running may still finish and save results. Read the recorded cause before retrying: this state does not necessarily mean usage is unknown. Restarting does not correct the cause and may interrupt useful work.</li>
  <li><strong>Photo recovery.</strong> Complete analyses and explicit negative outcomes are saved even inside an unfinished batch and can be reused by an authorized retry within the same generation. Reuse checks the source and context; it does not make an incomplete index searchable. HEIC photos are supported too. Undecodable photos are recorded separately: completed batches do not equal successfully indexed photos.</li>
  <li><strong>Freshness and problems.</strong> The page periodically checks state and warns when data is not refreshed. A disconnection does not preserve a false progress indication. Available causes are prominent; a generic state update is not presented as a new result. After loading further list pages, use <strong>Refresh list and status</strong> to return to the refreshed first page.</li>
- <li><strong>Parallelism.</strong> Running units are distinct from the workload's admitted concurrency limit. They do not count threads or processes; other jobs and resource limits may reduce actual parallelism.</li>
+ <li><strong>Parallelism.</strong> Running units are distinct from the workload's admitted concurrency limit. They do not count threads or processes; other jobs and resource limits may reduce actual parallelism. The engine can execute independent batches from any compatible activity together, within their contracts and assigned resources. Raising the limit neither changes the plan nor repeats saved batches. Resuming the same job after an update still requires compatible contracts.</li>
  <li><strong>Discovery and missing estimates.</strong> During initial photo discovery, percentage is n.a.: the final total is not known yet. A missing finish estimate displays a reason, giving priority to a job requiring intervention. The current-phase estimate is not an overall estimate for multi-phase jobs, which remains unavailable.</li>
  <li><strong>Optional details.</strong> Explanations, events, digests, plan, stages and limits are in collapsible sections. The identifier distinguishes jobs without exposing the private request text.</li>
  <li><strong>Revision digests.</strong> Identify the plan and inventory that were actually admitted.</li>
@@ -407,6 +407,13 @@ prepared. Missing data is <strong>n.a.</strong>, not zero.</p>
  <li><strong>Stages.</strong> Each stage reports executor, progress, timeout, requirement status, and resources.</li>
 </ol>
 <p class="ui-privacy-note">The displayed corpus is synthetic and non-sensitive; its operational identifier contains no personal data.</p>
+
+<p><strong>Candidate optimization, not yet deployed.</strong> Joint resource
+reservation avoids holding CPU capacity while waiting for a model or another
+resource. New managed local processes bound numerical-library threads using
+effective CPU capacity, assigned shares and internal concurrency. These are
+concurrency ceilings, not exclusive core reservations. Model lifecycle is
+separate from LRE scheduling: <a href="../architecture/virtualization.html#resource-lifecycle">Virt boundary</a>.</p>
 
 </body>
 </html>

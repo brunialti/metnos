@@ -115,6 +115,8 @@ class FaceEngine:
             opts = ort.SessionOptions()
             opts.inter_op_num_threads = 2
             opts.intra_op_num_threads = 2
+            from native_threads import configure_onnx_threads
+            configure_onnx_threads(opts)
 
             det_path = self._model_dir / "det_10g.onnx"
             emb_path = self._model_dir / "w600k_r50.onnx"

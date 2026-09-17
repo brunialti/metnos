@@ -564,4 +564,15 @@ all prior-step mutations, aliasing, filesystem races, permissions, links,
 historical-census omissions and unbound early-preview inputs. The real signed
 previous/candidate catalogs and initial census also passed the patched observer
 twice in a read-only diagnostic. This does not certify a newly built distribution
-or a completed service restart; production remains on its prior release.
+or a completed service restart; production remained on its prior release at
+that diagnostic checkpoint. The later signed 63-to-64 transition passed on
+17 September, with all six live job contracts and every saved result retained;
+F5 remained inactive. Deployment evidence is recorded separately in
+`internal/reports/lre-generic-parallelism-20260917.md`.
+
+The development release tool also preserves repeated byte-identical unclaimed
+builds in bounded, fresh archive siblings after validating the existing
+archive's metadata and census. It never overwrites an earlier archive. The
+administrative helper invariant starts after authenticated predecessor
+recovery, while mutations by the builder still refuse the release. These
+orchestration fixes do not change the signed runtime or weaken cutover checks.

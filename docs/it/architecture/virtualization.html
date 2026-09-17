@@ -396,6 +396,23 @@ dall'amministratore. Cambiarlo cambia le chiamate successive di tutte le righe c
 lo usano: per questo &egrave; chi configura i tier a valutarne capacit&agrave;, costo,
 riservatezza e disponibilit&agrave;.</p>
 
+<h2 id="resource-lifecycle">LRE e ciclo di vita dei modelli</h2>
+<p>LRE usa requisiti espliciti dei contratti. La scelta del fornitore e il ciclo
+di vita del servizio appartengono alla virtualizzazione dei modelli. Un job non
+sceglie programmi da avviare, porte o file dei pesi. Il modello e la politica
+ammessi restano verificabili anche dopo l&rsquo;avvio del servizio.</p>
+<p><strong>Candidato verificato, non ancora installato:</strong> il confine fra
+LRE e Virt espone risorse, identit&agrave; del modello e disponibilit&agrave;.
+L&rsquo;adattatore locale visivo riutilizza l&rsquo;avvio condiviso esistente;
+gli altri fornitori mantengono il proprio ciclo di vita. Non &egrave; ancora
+implementato l&rsquo;aumento automatico del numero di repliche.</p>
+<p>Pi&ugrave; repliche richiedono un indirizzo logico stabile, distribuzione delle
+richieste e prenotazione delle risorse fra tutti i lavori. Sulla stessa CPU,
+replicare un modello &egrave; utile solo se aumenta la capacit&agrave; misurata;
+RAM, memoria GPU condivisa e altri processi devono rientrare nella decisione.
+Un servizio disponibile non costituisce da solo una garanzia contro
+l&rsquo;esaurimento della memoria.</p>
+
 <h1 id="cap9">9. Riferimenti tecnici</h1>
 
 <ul>

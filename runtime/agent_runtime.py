@@ -3578,11 +3578,20 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
     env.pop("METNOS_ADMITTED_EXECUTORS_V1", None)
     if _admitted_dependencies:
         env["METNOS_ADMITTED_EXECUTORS_V1"] = _admitted_dependencies
-    # Executor generated under the central execution contract receive one
-    # runtime-owned item-worker budget. Legacy/handcrafted manifests without
-    # [execution] keep their exact historical internal-concurrency behavior.
+    # Item workers follow the signed execution contract. Native library pools
+    # in managed local children also share the host CPU allowance; neither
+    # projection mutates the daemon's process-wide environment.
     from executor_scheduler import assigned_worker_environment
-    env.update(assigned_worker_environment(executor, execution_context))
+    worker_environment = assigned_worker_environment(executor, execution_context)
+    env.update(worker_environment)
+    if execution_context is not None or getattr(executor, "execution_policy_declared", False):
+        from executor_scheduler import orchestration_resource_limits
+        from native_threads import child_environment
+        env.update(child_environment(
+            cpu_slots=orchestration_resource_limits()["cpu"],
+            claimed_cpu=int(worker_environment.get("METNOS_EXECUTOR_ASSIGNED_CPU", "1")),
+            item_workers=int(worker_environment.get("METNOS_EXECUTOR_ASSIGNED_WORKERS", "1")),
+        ))
     runtime_path = str(Path(__file__).resolve().parent)
     existing_pp = env.get("PYTHONPATH", "")
     dependency_pp = os.pathsep.join(

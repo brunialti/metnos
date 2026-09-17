@@ -74,3 +74,17 @@ administrator configures `[creative]`, inherits the physical binding of
 Tests cover the closed tier vocabulary, the three fast-level defaults,
 level-specific configuration, Models-page round trips, installer output, and
 the absence of production per-call decoding-policy overrides.
+
+## 17 September 2026 — lifecycle ownership (candidate)
+
+The host lifecycle boundary is `virt.resources.ModelResource`: a generic claim,
+binding facts and bounded readiness operation. LRE validates admitted facts
+before and after calling it; provider-specific endpoint and launcher decisions
+remain in Virt. The existing local vision lifecycle is the first adapter.
+Externally supervised and remote services retain their current lifecycle.
+
+Dynamic replicas require stable public model identity and endpoint, measured
+resource profiles, shared reservations including pending launches, bounded
+routing and drain-before-stop. They are not implemented or enabled by this
+boundary refactor. In particular, an available endpoint is not proof of GPU
+memory headroom while other processes use the same device.

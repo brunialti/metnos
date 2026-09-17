@@ -1,5 +1,115 @@
 # LRE: parallelismo generale e compatibilità F5 — 17 settembre 2026
 
+> **Aggiornamento operativo della sera del 17/9:** la riprova ordinaria unica
+> ha rimesso in avanzamento la release 64; al controllo delle 18:45 erano
+> conservati tutti i risultati precedenti e risultavano 16 nuovi blocchi di
+> analisi. Le successive pause sono prove CPU deliberate, con ripresa del
+> medesimo job. Stato e limiti del nuovo candidato sono nel rapporto
+> `lre-cpu-model-resources-20260917.md`. Le sezioni sottostanti conservano la
+> cronologia e non vanno lette come ultimo stato.
+
+
+## Passaggio di consegne: job in attenzione — 17/9 ore 17:26 Europe/Rome
+
+**La release 64 è installata, ma il job non sta avanzando.** Ultima lettura
+`run-2i3j6xef`: HTTP/worker/Telegram attivi, LRE pronto; stesso job in
+`needs_attention`, versione 21, **1.266/1.935** batch salvati, uno in attenzione,
+668 in attesa, nessuno in esecuzione, consumi non incerti. I quattro batch
+partiti dopo il rilascio hanno concluso: analisi da 294 a **298/967**.
+
+La nostra sonda dei salvataggi ha creato involontariamente un file Python
+compilato nell'albero immutabile alle 17:09:03; il controllo di integrità ha
+correttamente rifiutato il caricamento successivo. Attribuzione verificata
+(`run-dnl4pvl0`), cache esatta rimossa e tre servizi nuovamente attestati
+(`run-qckouwkx`), senza cambiare dati o codice firmato. Sonde corrette con
+disabilitazione esplicita della scrittura del bytecode.
+
+La successiva prova concorrente del caricatore (`run-r5n5l7pn`) è scaduta
+dopo 120 secondi: **non è un esito positivo**, resta da chiarire. La normale
+«Riprova» non è stata ancora chiamata. Su richiesta di Roberto la sessione
+si ferma al passaggio di consegne, senza ulteriori riavvii o azioni sul job.
+Dettagli, evidenze e passi vincolanti:
+`internal/design/handover_lre_17_9_2026.md`. Le sezioni seguenti sono storiche
+e non sostituiscono questo ultimo stato.
+
+## Release 64 installata, job ripreso — 17/9 ore 17:02 Europe/Rome
+
+**La nuova versione è in esercizio.** `run-sfv9_bnw` ha completato passaggio,
+piano degli aggiornamenti e riconciliazione: stato `PREFLIGHT_VERIFIED`,
+head `sha256:617454f2376751973fd9239230283f41f28536788263f6a4ab0d448e6984deac`,
+cutover `sha256:20098df44827ff5dc3eb6f87fc553d1e0f423ae8a6229db90c498ae94b1e475c`.
+HTTP/worker avviati alle 16:58:46, Telegram alle 16:58:47; tutti attivi,
+nessun riavvio automatico. Attestazione indipendente dei tre servizi positiva
+sulla 64 (`run-o_0lenkf`). La conservazione automatica ha rimosso esclusivamente
+i vecchi alberi di codice 52–62, mantenendo 63/64, dati e storia firmata.
+
+`run-8uh6iqe9`: verifica come account di esercizio sui contratti effettivamente
+installati; tutte le sei fasi coincidono con il catalogo congelato nel job.
+Limiti CPU/VLM quattro, proprietario Birth `LEGACY`: nessuna migrazione o
+attivazione F5, nessuna chiave o certificazione F5 emessa. Nessuna variazione GPU.
+
+Ripresa `run-pb7bnt8k`, ore 17:00:52: **stesso job**, stessa revisione e piano,
+tutti i **1.262** riferimenti unità/risultato della pausa identici, nessun nuovo
+job o azzeramento. Worker 1909652 dalla release 64. Alle 17:01:34, quattro
+batch realmente in esecuzione, nessun batch fallito/in attenzione, consumi non
+incerti. I quattro esiti fotografici negativi e i due errori tecnici recuperati
+restano nello storico; non sono stati cancellati o presentati come successi.
+La verifica dei nuovi salvataggi è in corso e sarà registrata separatamente.
+
+Turno reale `93b2c6c540714e38` (`run-b7usl93b`): risposta informativa in 20,754 s,
+zero executor, salute operativa e console HTTP 200. È una prova di funzionamento
+della chat dopo il rilascio, non una misura della copertura fotografica finale.
+Guide pubbliche IT/EN: `https://53507c0c.mykleos.pages.dev`, quattro HTML
+aggiornati; nessun rapporto interno o dato operativo pubblicato. Il deploy
+statico non modifica l'archivio Tutor locale.
+
+## Nuovo candidato verificato e pausa conclusa, 17/9 ore 16:55 Europe/Rome
+
+Fusione documentale F5 `55c62222`: contiene anche `e581e6c4`, senza modifiche
+al runtime verificato. Correzione del ritiro `bc103678`; preparazione `a996d02c`.
+Esportazione: 1.806 file, censimento
+`08cd82c896ac835b7ff5a05025d9bb7d0572d9e9037e2a093b4c37bb7f7be8f8`.
+Sorgente ricevuta `sha256:3d5cc47fd52e17a997350de260fb63b7fc9f1b0cfa26ebbdd34f8c6369239ad9`;
+nuovo candidato 64 `sha256:4cc8a5d2cf0cd8f499e67a8238da6b5ebfbd40137cbe545f885dcde4b7644ab4`.
+Non è il candidato 64 fallito alle 15:40: quello è stato archiviato dal percorso
+ufficiale, mantenendo storia firmata, ricevute e selezione 63.
+
+Prove ripetute dopo `prepare`: 287 transizione/ritiro/topologia, 742 LRE
+(quattro profili di carico facoltativi esclusi), 18 API/console (due prove
+Chromium facoltative escluse). La suite LRE comprende due vere riprese fra
+alberi distinti, con coda non vuota e tentativo interrotto. La prima esecuzione
+HTTP è rimasta in attesa nella sandbox di rete senza eseguire prove: interrotta,
+poi ripetuta nel profilo host corretto; nessun processo di prova orfano.
+
+Anteprima firmata `run-zhq36w9g` positiva: 12 unità di servizio, 107 contratti,
+verifica anticipata completa del ritiro; nessun servizio fermato. La pausa
+cooperativa `run-_b0zb52p` si è conclusa alle 16:47:42 a **294/967** analisi,
+**1.262** risultati totali: zero tentativi attivi o con contabilità incompleta,
+consumi non incerti, piano e revisione invariati. Riferimenti conservati in
+`/var/lib/metnos-admin/lre-rollout-20260917-bc103678`. Solo i limiti CPU/VLM
+sono passati a quattro; tutti gli altri parametri invariati (`run-nxvkx13o`).
+La copia temporanea utente della configurazione è stata eliminata dopo l'uso;
+resta quella privata amministrativa necessaria al recupero del rilascio.
+
+### Due rifiuti dello strumento, prima di fermare servizi
+
+Il recupero del vecchio candidato ripristina legittimamente il verificatore
+amministrativo della selezione corrente. Il confronto del costruttore prendeva
+l'impronta troppo presto e rifiutava quel ripristino come modifica del build
+(`run-p_y4t07t`). Dopo nuova attestazione della 63, la seconda anteprima è riuscita.
+
+Il primo `apply --cross` (`run-4hv711_d`) ha poi rifiutato `archive slot already
+taken`: due ricostruzioni identiche producono lo stesso nome d'archivio. Nessuna
+selezione o servizio è stato modificato da quel tentativo. Correzione `4080f48d`:
+un archivio già presente deve essere protetto, privo di membri estranei e avere
+lo stesso censimento; la nuova copia va in un fratello numerato libero, senza
+sovrascrivere o eliminare la precedente. Il confronto del verificatore ora
+parte dopo il recupero autenticato e continua a vietare modifiche nel build.
+Entrambe le regressioni sono state riprodotte prima del fix; **213** prove del
+ciclo verdi dopo, incluse nove nuove. Nessuna modifica al pacchetto firmato,
+nessun cambiamento ai controlli della transizione. Nuovo passaggio avviato dopo
+queste prove; esito produttivo da registrare qui al termine.
+
 ## Correzione del rilascio verificata, 17/9 ore 16:30 Europe/Rome
 
 **Sorgenti corretti; produzione ancora sulla 63.** Roberto ha autorizzato

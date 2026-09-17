@@ -415,7 +415,7 @@ preparate altre fasi. Un dato assente è <strong>n.a.</strong>, non zero.</p>
  <li><strong>Richiesta di verifica.</strong> Sospende l'avvio di nuovi batch; quelli già avviati possono ancora terminare e salvare risultati. Leggi la causa registrata prima di riprovare: questo stato non significa necessariamente che i consumi siano sconosciuti. Un riavvio non corregge la causa e può interrompere lavoro ancora utile.</li>
  <li><strong>Recupero delle foto.</strong> Le analisi complete e gli esiti negativi espliciti sono salvati anche all'interno di un batch non ancora concluso e possono essere riusati in un tentativo autorizzato della stessa generazione. Il riuso verifica sorgente e contesto; non rende ricercabile un indice incompleto. Sono supportate anche le foto HEIC. Le foto non decodificabili sono registrate separatamente: il numero di batch completati non equivale al numero di foto indicizzate con successo.</li>
  <li><strong>Freschezza e problemi.</strong> La pagina ricontrolla periodicamente lo stato e segnala quando i dati non sono aggiornati. Una disconnessione non mantiene una falsa indicazione di avanzamento. Le cause disponibili sono in evidenza; un aggiornamento generico dello stato non è presentato come nuovo risultato. Dopo aver caricato altre pagine dell'elenco, usa <strong>Aggiorna elenco e stato</strong> per tornare alla prima pagina aggiornata.</li>
- <li><strong>Parallelismo.</strong> I batch in esecuzione sono distinti dal limite di concorrenza ammesso per quel lavoro. Non sono un conteggio di thread o processi; altri lavori e limiti delle risorse possono ridurre il parallelismo effettivo.</li>
+ <li><strong>Parallelismo.</strong> I batch in esecuzione sono distinti dal limite di concorrenza ammesso per quel lavoro. Non sono un conteggio di thread o processi; altri lavori e limiti delle risorse possono ridurre il parallelismo effettivo. Il motore può eseguire insieme batch indipendenti di qualunque attività compatibile, rispettando contratti e risorse assegnate. Aumentare il limite non modifica il piano né ripete i batch già salvati. Dopo un aggiornamento, la ripresa dello stesso job richiede ancora contratti compatibili.</li>
  <li><strong>Scansione e stime mancanti.</strong> Durante la scoperta iniziale delle foto la percentuale è n.a.: il totale definitivo non è ancora noto. La fine prevista mostra un motivo quando manca, dando precedenza a un lavoro che richiede intervento. La stima della fase corrente non è la stima complessiva dei lavori multifase, che rimane non disponibile.</li>
  <li><strong>Dettagli facoltativi.</strong> Spiegazioni, eventi, impronte, piano, fasi e limiti sono in sezioni richiudibili. L'identificativo distingue i lavori senza mostrare il testo privato della richiesta.</li>
  <li><strong>Digest della revisione.</strong> I digest rendono riconoscibili il piano e l'inventario effettivamente ammessi.</li>
@@ -423,6 +423,14 @@ preparate altre fasi. Un dato assente è <strong>n.a.</strong>, non zero.</p>
  <li><strong>Fasi.</strong> Per ogni fase indica executor, avanzamento, tempo massimo, obbligatorietà e risorse.</li>
 </ol>
 <p class="ui-privacy-note">Il corpus mostrato è sintetico e non sensibile; l'identificativo è operativo e non contiene dati personali.</p>
+
+<p><strong>Ottimizzazione candidata, non ancora installata.</strong> La
+prenotazione congiunta delle risorse evita di trattenere CPU mentre si attende
+un modello o un&rsquo;altra risorsa. Nei nuovi processi locali gestiti, i thread
+delle librerie numeriche sono limitati dalla capacit&agrave; CPU effettiva,
+dalle quote assegnate e dal parallelismo interno. Sono limiti di concorrenza,
+non core riservati in esclusiva. Il ciclo di vita dei modelli &egrave; separato
+dalla pianificazione LRE: <a href="../architecture/virtualization.html#resource-lifecycle">confine con Virt</a>.</p>
 
 </body>
 </html>

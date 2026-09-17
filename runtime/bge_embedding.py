@@ -46,6 +46,8 @@ class BGEEmbeddingService:
         # ORT session (cpu provider su Strix Halo basta).
         opts = ort.SessionOptions()
         opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+        from native_threads import configure_onnx_threads
+        configure_onnx_threads(opts)
         self._sess = ort.InferenceSession(
             str(onnx_path), sess_options=opts,
             providers=["CPUExecutionProvider"],

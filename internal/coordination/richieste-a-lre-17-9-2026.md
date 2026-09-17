@@ -839,3 +839,49 @@ Stato alle 16:30: LRE ancora seriale sulla release 63, 289/967, stesso job,
 tutti i risultati conservati. Il nuovo artefatto firmato e il suo passaggio
 restano da verificare: questa prova non è un via libera automatico alla vecchia
 64 già preparata. Nessuna migrazione/attivazione F5, chiave o certificato creato.
+
+---
+
+# Riscontro LRE: release 64 in esercizio e stesso job ripreso (17/9, 17:02)
+
+La nuova distribuzione firmata è stata pubblicata, non soltanto costruita.
+Il ramo include F5 fino a `e581e6c4` (fusione documentale `55c62222`).
+Correzione del ritiro in `bc103678`, preparazione `a996d02c`; il successore 64
+ha identità `sha256:4cc8a5d2cf0cd8f499e67a8238da6b5ebfbd40137cbe545f885dcde4b7644ab4`.
+Il vecchio candidato 64 non selezionato è stato recuperato/archiviato dal ciclo
+ufficiale. Nessuna riscrittura di catena, ricevute o inventario iniziale.
+
+Durante il rilascio sono emersi anche due difetti dello strumento, entrambi
+prima dell'arresto servizi e ora corretti in `4080f48d`: l'impronta del
+verificatore va acquisita dopo il ripristino autenticato del predecessore;
+una ricostruzione identica non può sovrascrivere né collidere per sempre con
+un proprio archivio precedente. Le copie ripetute vanno in fratelli numerati
+liberi soltanto dopo verifica dell'archivio esistente; storia e copie precedenti
+restano inalterate. Due regressioni riprodotte, nove prove nuove, 213 prove
+del ciclo verdi. Nessuna modifica del pacchetto firmato per questi due fix.
+
+Rimisura dopo `prepare`: 287 transizione/ritiro/topologia, 742 LRE (quattro
+profili facoltativi esclusi), 18 API/console (due prove Chromium escluse).
+Riprese reali fra alberi distinti comprese; non due istanze della stessa versione.
+Passaggio concluso in `PREFLIGHT_VERIFIED`, HTTP/worker/Telegram attestati sulla
+64 e operativi. Verifica come account di esercizio: tutti i sei contratti del
+job coincidono con quelli congelati nella revisione.
+
+Pausa a 294/967, 1.262 risultati conservati; ripresa dello stesso job alle
+17:00:52, piano/revisione byte-identici. Quattro tentativi simultanei osservati;
+verifica dei nuovi salvataggi riportata nel rapporto LRE. **F5 resta inattiva,
+proprietario `LEGACY`**: nessuna migrazione, chiave dedicata, registro delle prove
+o certificato F5 creato. Il rilascio LRE non certifica F5/F6 né autorizza a
+fermare il job per la loro attivazione. Fonte delle prove e dello stato corrente:
+`internal/reports/lre-generic-parallelism-20260917.md`.
+
+
+## Ripresa operativa e candidato CPU/Virt — sera del 17/9
+
+La riprova unica è stata eseguita alle 18:03 CEST dopo le verifiche di caricamento.
+Il job è tornato in avanzamento sulla release 64 conservando tutti i 1.266
+risultati iniziali; prima dell'ultima prova CPU risultavano 1.294 risultati /
+326 analisi. Le pause diagnostiche sono cooperative e non ricreano il lavoro.
+Il rapporto `internal/reports/lre-cpu-model-resources-20260917.md` distingue
+stato in esercizio, candidato testato e gestione automatica delle repliche
+ancora da implementare. Nessuna attivazione F5, nuova chiave o modifica GPU.

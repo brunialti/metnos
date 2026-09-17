@@ -106,6 +106,47 @@ def test_startup_failure_is_an_explicit_unavailable_dependency(model_fixture, mo
         ensure_model_resource(executor, {"phase": "analyze"}, contract, context, None, deadline_at=10)
 
 
+def test_lre_uses_the_resource_contract_without_provider_or_model_logic(model_fixture, monkeypatch):
+    """A different model lifecycle plugs in without adding a branch to LRE."""
+    from dataclasses import replace
+    from virt.resources import ModelResource
+
+    executor, contract, context, _binding, vision_calls = model_fixture
+    facts = {"family": "text", "model": "fixture-text", "endpoint": "fixture-service"}
+    contract.model_kind = "text"
+    contract.model_binding_digest = digest_json(
+        "durable-executor-model-binding", facts, max_bytes=MAX_SNAPSHOT_JSON_BYTES)
+    context = replace(context, resource_claims=(("llm", 1),))
+    calls = []
+
+    def resolve(kind, **limits):
+        assert kind == "text"
+        assert limits == {"max_output_tokens": 512, "max_calls": 32}
+        return ModelResource("llm", lambda: dict(facts),
+                             lambda binding, **kwargs: calls.append((binding, kwargs)) or True)
+
+    monkeypatch.setattr("virt.resources.resolve_model_resource", resolve)
+    ensure_model_resource(executor, {"phase": "analyze"}, contract, context, None, deadline_at=10)
+    assert calls == [(facts, {"deadline_at": 10})]
+    assert not vision_calls
+    with pytest.raises(ModelResourceChanged):
+        ensure_model_resource(executor, {"phase": "analyze"}, contract,
+                              replace(context, resource_claims=(("vlm", 1),)), None, deadline_at=10)
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize("endpoint", ["https://example.invalid/v1/chat/completions",
+                                    "http://user:password@127.0.0.1:8081/v1/chat/completions"])
+def test_virt_does_not_launch_for_an_unmanaged_endpoint(model_fixture, endpoint):
+    executor, contract, context, binding, calls = model_fixture
+    binding["endpoint"] = endpoint
+    contract.model_binding_digest = digest_json(
+        "durable-executor-model-binding", binding, max_bytes=MAX_SNAPSHOT_JSON_BYTES)
+    with pytest.raises(ModelResourceUnavailable):
+        ensure_model_resource(executor, {"phase": "analyze"}, contract, context, None, deadline_at=10)
+    assert not calls
+
+
 @pytest.mark.parametrize("failed", [False, True])
 def test_bridge_prepares_after_recording_fence_and_never_invokes_on_failure(tmp_path, failed):
     resolver = _Resolver()
