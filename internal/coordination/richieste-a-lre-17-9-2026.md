@@ -366,3 +366,60 @@ affermazioni in `tests/runtime/infra/test_f5_is_inert_before_migration.py` lo
 verificano su un'installazione senza contrassegno — quindi si puo' spedire
 dormiente. Ma il rilascio ferma e riavvia i servizi, quindi aspetta la fine del
 vostro batch. Ditemi quando.
+
+---
+
+# Le vostre due prove avevano ragione, e ce n'era una terza (17/9)
+
+Corretto in `f5fadfcb`. Nessun riavvio, nessun job toccato.
+
+## I tre difetti
+
+1. **`-I` ignora `PYTHONPATH`** — quindi `-m install.f5_authority` non sarebbe
+   stato trovato mai: **il lanciatore era ineseguibile**. Tenuto l'isolamento,
+   che e' il motivo di `-I`, e inseriti **esplicitamente** i due percorsi della
+   release verificata in `sys.path`.
+2. **Il bootstrap arrivava da standard input**, cioe' proprio dove `evidence`
+   legge il suo documento: avrebbe ricevuto un flusso vuoto. Ora il bootstrap
+   passa come argomento e standard input resta libero.
+3. **Trovato ragionando sul vostro punto 2**: l'emittente risolveva il deposito
+   delle epoche dal *proprio* ambiente, e gira come root — la cui directory di
+   stato non e' quella del servizio. Ora usa gli override che la migrazione ha
+   registrato nel proprio piano rivisto, cioe' quelli che quel deposito
+   l'hanno trovato davvero.
+
+## Perche' le mie 47 prove non li vedevano
+
+Usavano **un interprete finto** che si limitava a stampare i suoi argomenti: un
+eco non puo' dire se `-m` avrebbe trovato qualcosa. E **non passavano mai un
+documento** attraverso il lanciatore intero.
+
+Ora ci sono: interprete Python reale, un modulo vero da importare dentro la
+release finta (compreso il suo `runtime/`, per verificare che entrambi i
+percorsi funzionino), e il documento JSON spinto attraverso tutto il lanciatore,
+guardia della shell inclusa. La prova sulla *forma* ora verifica anche che
+isolamento e percorsi espliciti reggano **insieme**, non uno dei due.
+
+23 casi sul lanciatore, 126 sull'insieme lanciatore + punto d'ingresso +
+emittente + passaggio.
+
+## Sulla vostra ultima osservazione, che accetto
+
+> «La fine di un batch, da sola, non garantisce una ripresa sicura dopo
+> l'aggiornamento.»
+
+D'accordo, e non lo tratto come una formalita'. Prima di concordare il rilascio
+serve una verifica esplicita che un lavoro LRE **in coda o interrotto**
+riprenda correttamente dopo l'aggiornamento — non solo che nessuno stia girando
+in quel momento. Il codice F5 e' inerte prima della migrazione (11 affermazioni
+in `tests/runtime/infra/test_f5_is_inert_before_migration.py`, fra cui che il
+ponte durevole si compone senza guardia e senza rifiuti nuovi), ma inerte
+**non** significa che il vostro riavvio e la vostra ripresa siano stati provati
+con questo albero.
+
+Chiedo a voi di dire **come** volete che sia verificata, visto che il contratto
+di ripresa e' vostro: una coda non vuota attraverso un riavvio, un tentativo
+interrotto ripreso, o quello che ritenete la prova giusta. La eseguo io e vi
+porto l'esito, oppure la eseguite voi — come preferite.
+
+Fino ad allora: nessun rilascio, nessun riavvio.
