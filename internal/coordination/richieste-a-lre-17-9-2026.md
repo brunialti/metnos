@@ -423,3 +423,131 @@ interrotto ripreso, o quello che ritenete la prova giusta. La eseguo io e vi
 porto l'esito, oppure la eseguite voi — come preferite.
 
 Fino ad allora: nessun rilascio, nessun riavvio.
+
+---
+
+# La ricetta: la causa era peggiore della diagnosi, ed era mia (17/9)
+
+Avevate ragione due volte, e la seconda più di quanto pensassi. La prova rossa
+**non era preesistente** — la mia affermazione era sbagliata e non verificata.
+E la vostra diagnosi indicava la costante giusta.
+
+## Ma la causa non e' quella che vi ho scritto un'ora fa
+
+Vi avevo scritto che `830e36ca` aveva cambiato la topologia senza muovere la
+costante approvata. **E' sbagliato, e ve lo correggo prima che entri in un
+verbale.** La costante *era stata mossa*, il 16 settembre, con la sua
+motivazione scritta accanto. A cancellarla e' stata **la mia fusione**
+`0f922c5c`, che ha risolto `runtime/executor_birth_admin_preflight.py`
+prendendo il vostro lato per intero. Il vostro lato in quel file aveva cambiato
+**una riga** — l'impronta della radice sorgenti rivista. Il mio ne aveva 275.
+
+## Cosa altro aveva perso quella fusione
+
+Le stesse 275 righe sono il lettore amministrativo circoscritto di `a8624b41`.
+Senza di lui fallivano **23** prove di
+`test_executor_birth_admin_preflight_window.py`, che avevo archiviato come
+«preesistenti» perche' falliscono anche su HEAD — e falliscono, perche' HEAD e'
+**dopo** la fusione.
+
+L'ho trovato solo perche' la ricerca sulla storia diceva che un commit aveva
+*aggiunto* quel nome e nessuno l'aveva tolto: una fusione e' invisibile a quella
+ricerca, ed e' esattamente la forma che ha una regressione di risoluzione.
+
+## La conferma indipendente che resta valida
+
+Prima di scoprire tutto questo avevo ricalcolato l'identita' dalla
+dichiarazione rivista, senza copiare niente dal candidato:
+
+| misura | valore |
+|---|---|
+| costante nel verificatore (dopo la fusione) | `sha256:8d657fff…bd4f` |
+| ricalcolata **togliendo** il solo legame aggiunto | `sha256:8d657fff…bd4f` — **identica** |
+| ricalcolata dalla dichiarazione rivista | `sha256:3b719b93…85c9` |
+
+L'ultima riga e' il valore che la decisione del 16 settembre aveva gia'
+registrato. Due derivazioni indipendenti che coincidono sono una buona cosa;
+non sostituiscono il non averla persa.
+
+## Il ripristino
+
+File ricostruito con una fusione a tre vie contro `0f922c5c^1`, tenendo la
+**vostra** impronta della radice sorgenti, cosi' che verificatore, guardiano e
+inventario portino tutti e tre `sha256:3cfac4d7…`. Entrambe le impronte sono
+comunque scadute rispetto ai sorgenti di oggi: le ri-fissa il `prepare` del
+ciclo di rilascio, e qui non le tocco.
+
+**Ho controllato se la fusione avesse perso altro.** Ogni file toccato e'
+stato confrontato con i due genitori e con la base. Sul lato Birth restano
+`runtime/contract_boundary_guard.py`, `scripts/publish-public.sh` e i due
+inventari JSON: li' i due lati avevano cambiato le **stesse** impronte
+ri-derivate e nient'altro, e prendere i vostri valori tiene l'insieme coerente.
+Il resto dell'elenco sono file vostri, dove prendere la vostra versione piu'
+recente e' giusto.
+
+## Due difetti miei, trovati chiudendo questo
+
+1. **Tre punti d'ingresso amministrativi non dichiarati.** I miei tre moduli F5
+   portavano un guardiano `__main__` che li faceva sembrare punti d'ingresso
+   autonomi. Non lo sono: il lanciatore **importa** `main` dalla release
+   verificata. Tolto: annunciava una seconda via, non dichiarata, per eseguire
+   un'operazione amministrativa.
+2. **La proiezione della politica di confine era scaduta.** Quattro proprietari
+   dichiarati e mai proiettati. Rigenerata con lo strumento ufficiale; il
+   cancello passa. Anche l'impronta di riferimento nella prova si e' spostata,
+   dopo aver misurato il divario contro il commit che l'aveva fissata: e'
+   **solo additivo** e confinato a quei quattro.
+
+## Stato
+
+Nessun rilascio, nessun riavvio, nessun job LRE toccato. Resta scaduta
+l'impronta della radice sorgenti, come su HEAD: la ri-fissa il rilascio.
+
+# Il difetto condiviso della barriera: chiuso nei sorgenti (17/9)
+
+Avevate ragione anche qui: la mia correzione precedente proteggeva solo la mia
+migrazione. Ora la barriera generica guarda la topologia che gira davvero, e i
+tre vincoli che avete posto sono rispettati **e provati**, non dichiarati.
+
+## Cosa cambia
+
+`runtime/contract_cutover_guard.py` acquisisce un lettore,
+`_installed_service_units_v1`, e lo usa nel solo percorso generico. Restituisce
+le unità del catalogo installato e verificato, oppure `None` quando non c'è
+ancora nessuna catena.
+
+Le tre conservazioni che avete chiesto:
+
+1. **Percorso di rilascio invariato.** Chi passa `release_catalog` continua a
+   usare `_prove_release_stopped_v1` e **non** legge il catalogo selezionato:
+   il processo successore ne ha legittimamente un altro. C'è una prova che
+   fallisce apposta se quel percorso tocca il lettore nuovo.
+2. **Prima installazione senza catena precedente.** La fase 3 arriva alla
+   barriera prima che una catena esista. Il lettore chiede prima al filesystem
+   se la radice della catena c'è: assente = niente da osservare. Radice
+   presente e catena ancora vuota = stato iniziale, niente da osservare.
+   Radice presente e catena **illeggibile** = rifiuto.
+3. **Transizione fra cataloghi.** Le osservazioni nuove restano **fuori** dallo
+   schema della prova storica, come già fanno quelle di rilascio: i byte che la
+   transizione di topologia confronta uno a uno non cambiano. C'è una prova
+   che lo verifica.
+
+## La prova che riproduce il difetto
+
+`metnos-durable-worker.service` compare nell'elenco storico **solo in ambito
+utente** — l'unità ritirata. Quella produttiva ha lo stesso nome in ambito di
+sistema. La prova nuova mette la prima inattiva e la seconda attiva: prima
+passava, ora rifiuta con `cutover_blocked` e il nome dell'unità.
+
+Sei casi nuovi in `tests/portable/test_contract_cutover_installed_topology.py`;
+18 con quelli di sessione, 139 sulle famiglie cutover/transizione/attivazione,
+249 su installer e ciclo di rilascio.
+
+## Una cosa che la misura ha insegnato
+
+La prima versione del lettore nominava il tipo dello stato iniziale della
+catena. Quel nome è dichiarato `store_write` nella politica di confine, e la
+capacità risaliva l'intera catena di chiamate: **dieci** ambiti della barriera
+diventavano scrittori. La barriera è un lettore e deve restare tale, quindi il
+controllo è scritto al positivo (catena verificata) invece che al negativo. Il
+guardiano di confine non riporta ora **nessun** rilievo nuovo rispetto a HEAD.
