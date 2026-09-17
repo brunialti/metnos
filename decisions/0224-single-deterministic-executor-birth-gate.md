@@ -534,3 +534,34 @@ round trips and two mutants without publishing or accessing production state.
 The native run also exposed an inverse wrapper writing configuration beside
 read-only candidate code; it now uses the private work directory, like the
 ordinary stdio wrapper. No production authority or admission bypass was added.
+
+## Read-only successor retirement extension (17 September 2026)
+
+The exact-plan successor check rejected a signed catalog adding one repository
+entry, after maintenance had already stopped services. The source recipe was
+valid; the missing behavior was transition between the two reviewed recipes.
+
+Keep every prior retirement step byte-for-field identical. Permit additional
+repository scripts/modules only, with no destination aliasing or new unit
+retirements. The successor remains an observer, never an initial neutralizer.
+Every known predecessor file still needs its exact retired size/hash. Historical
+absence is admissible only within the initial complete census's source roots,
+excluding bytecode and cache omissions, and must be matched by live absence of
+the original and all retirement/preservation artifacts. Owned, non-writable
+directory handles are traversed without links and revalidated after the read.
+No synthetic tombstone and no mutation of historical evidence is introduced.
+
+The complete plan digest includes added entries. Each successor, including an
+exact replay or the following release, re-proves the evidence under deployment,
+startup and maintenance locks. Initial transition requirements are unchanged.
+The development release tool runs the same observer before maintenance and
+binds the immutable census ID to authenticated current startup materials; this
+is only early refusal, never a completion capability or a substitute for the
+locked product check.
+
+Tests cover real retirement files, absent and already-retired additions, replay,
+all prior-step mutations, aliasing, filesystem races, permissions, links,
+historical-census omissions and unbound early-preview inputs. The real signed
+previous/candidate catalogs and initial census also passed the patched observer
+twice in a read-only diagnostic. This does not certify a newly built distribution
+or a completed service restart; production remains on its prior release.

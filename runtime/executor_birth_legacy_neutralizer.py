@@ -21,6 +21,7 @@ import json
 import os
 import stat
 import sys
+from contextlib import ExitStack
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Mapping, Sequence
@@ -543,6 +544,54 @@ def _observe_revoked_v1(path: Path, expected: object) -> None:
         raise _invalid("neutralizer_entrypoint_invalid", path.name)
 
 
+def _observe_absent_repository_v1(root: Path, locator: str) -> None:
+    """Prove absence beneath unchanged owned directories; never follow links.
+
+    Only the wrapper can supply historical absence from its authenticated full
+    census. A missing live pathname alone is not a retirement receipt.
+    """
+    parts = locator.split("/")
+    if any(part in {"", ".", ".."} for part in parts):
+        raise _invalid("neutralizer_locator_invalid", locator)
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+
+    def stamp(info):
+        return (info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_gid,
+                info.st_nlink, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+
+    with ExitStack() as handles:
+        chain = []
+        parent = None
+        for name in (root, *parts[:-1]):
+            fd = os.open(name, flags, dir_fd=parent)
+            handles.callback(os.close, fd)
+            info = os.fstat(fd)
+            if (
+                not stat.S_ISDIR(info.st_mode) or info.st_mode & 0o022
+                or (info.st_uid, info.st_gid) != (os.geteuid(), os.getegid())
+            ):
+                raise _invalid("neutralizer_absence_parent_invalid", locator)
+            chain.append((parent, name, fd, stamp(info)))
+            parent = fd
+        # An old artifact is ambiguous evidence, not an absent entry point.
+        for name in (
+            parts[-1], parts[-1] + RETIRED_EXTENSION_V1,
+            parts[-1] + PRESERVED_EXTENSION_V1,
+            parts[-1] + PRESERVED_EXTENSION_V1 + ".receipt.json",
+        ):
+            try:
+                os.stat(name, dir_fd=parent, follow_symlinks=False)
+            except FileNotFoundError:
+                continue
+            raise _invalid("neutralizer_absence_unconfirmed", locator)
+        for parent, name, fd, before in reversed(chain):
+            if (
+                stamp(os.fstat(fd)) != before
+                or stamp(os.stat(name, dir_fd=parent, follow_symlinks=False)) != before
+            ):
+                raise _invalid("neutralizer_evidence_changed", locator)
+
+
 def _observe_replaced_v1(path: Path, legacy_id: str, choices: tuple) -> None:
     _observe_preserved_v1(path, legacy_id, required=True)
     observed = _observe_regular_v1(path)
@@ -595,27 +644,42 @@ def _observe_retired_core_v1(
     previous_replacement_fragments: Mapping[tuple[str, str], bytes],
     replacement_fragments: Mapping[tuple[str, str], bytes],
     expected_retired_files: Mapping[str, tuple[int, str]],
+    absent_repository_locators: frozenset[str] = frozenset(),
 ) -> str:
     """Verify an existing retirement for a successor, with no filesystem writes.
 
     The wrapper binds both plans and replacement maps to authenticated releases,
     and ``expected_retired_files`` to the initial predecessor's signed size/hash
-    census.  An overlap accepts exactly N or N+1, never a missing current unit.
+    census. Explicit historical absences must come from that same full census,
+    never from a live existence check. An overlap accepts exactly N or N+1,
+    never a missing current unit.
     Masks created from absent names legitimately have no preservation pair; this
     observer cannot reconstruct a historical pair omitted from durable evidence.
     """
-    from executor_birth_legacy_retirement import plan_digest_v1
+    from executor_birth_legacy_retirement import (
+        LegacyRetirementError, plan_digest_v1, require_successor_retirement_v1,
+    )
 
     _require_supported_platform_v1()
     if (
         not isinstance(root, Path) or not root.is_absolute()
         or root.is_symlink() or not root.is_dir()
-        or not steps or tuple(steps) != tuple(previous_steps)
+        or not steps or type(absent_repository_locators) is not frozenset
         or any(not isinstance(value, Mapping) for value in (
             previous_replacement_fragments, replacement_fragments,
             expected_retired_files,
         ))
     ):
+        raise _invalid("neutralizer_successor_plan_invalid")
+    try:
+        require_successor_retirement_v1(previous_steps, steps)
+    except LegacyRetirementError as exc:
+        raise _invalid("neutralizer_successor_plan_invalid") from exc
+    if not absent_repository_locators.issubset({
+        step.locator for step in steps
+        if step.scope == "repository" and step.action in _REVOKE_ACTIONS_V1
+        and step.locator not in expected_retired_files
+    }):
         raise _invalid("neutralizer_successor_plan_invalid")
     digest = plan_digest_v1(steps)
     for step in steps:
@@ -623,7 +687,10 @@ def _observe_retired_core_v1(
         if step.action in _MASK_ACTIONS_V1:
             _observe_mask_v1(path, step.legacy_id)
         elif step.action in _REVOKE_ACTIONS_V1:
-            _observe_revoked_v1(path, expected_retired_files.get(step.locator))
+            if step.locator in absent_repository_locators:
+                _observe_absent_repository_v1(root, step.locator)
+            else:
+                _observe_revoked_v1(path, expected_retired_files.get(step.locator))
         elif step.action == _PRESERVE_ACTION_V1:
             choices = tuple(mapping.get((step.scope, step.locator)) for mapping in (
                 previous_replacement_fragments, replacement_fragments,

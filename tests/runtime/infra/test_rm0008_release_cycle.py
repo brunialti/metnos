@@ -39,17 +39,74 @@ def _retirement_catalog_pair():
 
 
 def test_unchanged_retirement_plan_can_pass_the_early_release_check():
+    from executor_birth_legacy_retirement import plan_catalog_retirement_v1, require_successor_retirement_v1
     previous, current = _retirement_catalog_pair()
-    cycle._verify_retirement_plan_unchanged(previous, previous)
-    cycle._verify_retirement_plan_unchanged(current, current)
+    for left, right in ((previous, previous), (current, current), (previous, current)):
+        require_successor_retirement_v1(
+            plan_catalog_retirement_v1(left.catalog).steps,
+            plan_catalog_retirement_v1(right.catalog).steps,
+        )
 
 
-@pytest.mark.parametrize("direction", ("added", "removed"))
-def test_real_retirement_plan_delta_is_refused_before_release(direction):
+def test_real_retirement_plan_removal_is_refused_before_live_reads(monkeypatch):
     previous, current = _retirement_catalog_pair()
-    pair = (previous, current) if direction == "added" else (current, previous)
-    with pytest.raises(RuntimeError, match="birth_transition_legacy_plan_changed"):
-        cycle._verify_retirement_plan_unchanged(*pair)
+    monkeypatch.setattr(cycle, "load_live_helper", lambda: pytest.fail("read after unsupported change"))
+    with pytest.raises(RuntimeError, match="removed or changed"):
+        cycle._verify_retirement_transition(current, previous, "legacy-test")
+
+
+@pytest.mark.parametrize("mismatch", (None, "catalog", "census"))
+def test_early_retirement_binds_census_to_attested_selection(tmp_path, monkeypatch, mismatch):
+    import executor_birth_distribution_assembler as assembler
+    import executor_birth_ownership_coordinator as coordinator
+    from install import birth_authority_provisioner as provisioner
+
+    previous, current = _retirement_catalog_pair()
+    predecessor = assembler.build_predecessor_descriptor_v1(
+        transaction_id="sha256:" + "1" * 64, installation_root=str(tmp_path),
+        files=(assembler.PredecessorFileV1("runtime/historical.py", 1, "sha256:" + "2" * 64),),
+        service_commands=(assembler.PredecessorServiceCommandV1(
+            "historical", "none", None, None, None, (), None, (),
+        ),), administrative_bundle_hash="sha256:" + "3" * 64,
+        service_catalog_id=previous.catalog.catalog_id,
+        service_coverage_hash=previous.catalog.service_coverage_hash,
+    )
+    anchor = tmp_path / "predecessor-v1.json"
+    anchor.write_bytes(assembler.encode_predecessor_descriptor_v1(predecessor))
+    anchor.chmod(0o644)
+    monkeypatch.setattr(cycle, "ROOT", tmp_path)
+    original_read = coordinator._read_control_file_v2
+
+    def read(path, maximum, *, root_owned):
+        assert path == anchor and root_owned is True
+        return original_read(path, maximum, root_owned=False)
+
+    monkeypatch.setattr(coordinator, "_read_control_file_v2", read)
+    materials = NS(
+        catalog=NS(catalog_id=previous.catalog.catalog_id if mismatch != "catalog" else "changed"),
+        prerequisite=NS(predecessor_id=predecessor.predecessor_id if mismatch != "census" else "changed"),
+        descriptor=object(),
+    )
+    monkeypatch.setattr(cycle, "load_live_helper", lambda: NS(
+        _attest_service_startup_v1=lambda entry: (materials, None),
+    ))
+    identity, roots = object(), object()
+    monkeypatch.setattr(provisioner, "_resolve_legacy_service_identity_v2", lambda name: identity if name == "legacy-test" else None)
+    def get_roots(prepared, observed_identity):
+        assert prepared.materials.predecessor == predecessor
+        assert prepared.materials.descriptor is materials.descriptor
+        assert observed_identity is identity
+        return roots
+    monkeypatch.setattr(provisioner, "_transition_roots_v2", get_roots)
+    calls = []
+    monkeypatch.setattr(provisioner, "_observe_previous_retirement_v2", lambda *args: calls.append(args))
+    if mismatch:
+        with pytest.raises(RuntimeError, match="retirement"):
+            cycle._verify_retirement_transition(previous, current, "legacy-test")
+        assert calls == []
+    else:
+        cycle._verify_retirement_transition(previous, current, "legacy-test")
+        assert calls == [(current, previous, predecessor, roots)]
 
 
 @pytest.fixture
@@ -741,7 +798,7 @@ def crossing(monkeypatch, release, tmp_path):
     monkeypatch.setattr(catalogs, "load_service_catalog_v1", lambda d: release.catalog)
     monkeypatch.setattr(cycle, "_verify_autonomous_service_recipe", lambda *args: None)
     monkeypatch.setattr(cycle, "_verify_live_administrative_artifact", lambda *args: None)
-    monkeypatch.setattr(cycle, "_verify_retirement_plan_unchanged", lambda *args: None)
+    monkeypatch.setattr(cycle, "_verify_retirement_transition", lambda *args: None)
     monkeypatch.setattr(stack_reconcile, "StackReconciler", lambda **kw: NS(
         require_quiescent=lambda: {"ok": True, "source": "test-idle"}))
     monkeypatch.setattr(transition, "_handoff_frame_v1", lambda **kw: None)
@@ -791,7 +848,7 @@ def test_recipe_disagreement_is_refused_before_effects(crossing, monkeypatch, mo
 def test_retirement_disagreement_is_refused_before_effects(crossing, monkeypatch, mode):
     def refuse(*args):
         raise RuntimeError("birth_transition_legacy_plan_changed")
-    monkeypatch.setattr(cycle, "_verify_retirement_plan_unchanged", refuse)
+    monkeypatch.setattr(cycle, "_verify_retirement_transition", refuse)
     with pytest.raises(RuntimeError, match="birth_transition_legacy_plan_changed"):
         crossing.run(mode)
     assert crossing.events == []

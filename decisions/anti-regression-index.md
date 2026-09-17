@@ -6,6 +6,10 @@
 > Aggiornare QUI (non in CLAUDE.md) quando si aggiunge/rimuove un meccanismo.
 
 **Naming / vocab / grammatica**
+- **Ritiro storico estendibile senza riscrittura** (ADR 0224):
+  `require_successor_retirement_v1`, `_observe_previous_retirement_v2` e
+  `_observe_absent_repository_v1`; aggiunte solo nel codice, prove storiche e
+  lettura attuale obbligatorie, verifica anticipata prima dell'arresto servizi.
 - **Avvio e manutenzione separati dalla certificazione** (ADR 0225):
   `executor_birth_admin_preflight._attest_service_startup_v1`,
   `metnos_http_server.maintenance_middleware`, `sandbox.mail_extras`;

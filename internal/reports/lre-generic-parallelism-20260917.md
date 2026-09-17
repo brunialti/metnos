@@ -1,5 +1,60 @@
 # LRE: parallelismo generale e compatibilità F5 — 17 settembre 2026
 
+## Correzione del rilascio verificata, 17/9 ore 16:30 Europe/Rome
+
+**Sorgenti corretti; produzione ancora sulla 63.** Roberto ha autorizzato
+la nuova pubblicazione se sicura. Prima si ricostruisce e verifica il candidato,
+poi si eseguiranno una nuova pausa cooperativa e la ripresa dello stesso job.
+Nessun altro originale fotografico è stato cancellato in questo intervento.
+
+Il piano può ora aggiungere soltanto punti d'ingresso repository senza cambiare
+o rimuovere alcuna voce precedente. Ogni file storico conserva l'obbligo della
+propria copia ritirata con dimensione e impronta esatte. Per un file assente dal
+censimento iniziale autenticato, e soltanto entro la copertura completa di quel
+censimento, occorre anche provarne l'assenza attuale: cartelle protette,
+descrittori senza collegamenti, proprietà rilette, nessun artefatto di ritiro
+ambiguo. Non si costruiscono ricevute false, non si riscrive l'inventario e il
+successore non modifica alcun file ritirato. Nuovi ritiri di unità restano
+rifiutati; la prima transizione conserva tutti i requisiti precedenti.
+
+Lo strumento esegue la stessa osservazione prima di fermare i servizi; lega
+il censimento all'identità attestata dell'avvio attuale. Il prodotto ripete la
+verifica sotto i tre lock e include le nuove voci nell'impronta del piano.
+
+Prove eseguite:
+
+- Regressione comportamentale prima della modifica: rifiuto riprodotto da
+  `_retire_bound_catalog_v2`, con file ritirati reali in area isolata.
+- 287 prove di transizione/ritiro/topologia verdi in spazio utenti isolato
+  con proprietà root simulate dal sistema, non `chown` di dati di esercizio.
+- 204 prove dello strumento di rilascio verdi nel profilo utente ordinario.
+- 28 prove del contratto installer/credenziali/avvio verdi; corpus pubblico
+  valido, 99 documenti IT/EN.
+- Controprova sul riferimento `4e478e62`: 13 prove root-only già rosse perché
+  la fixture storica usava i 40 binding del catalogo corrente contro i 39
+  precedenti. Fixture ora esplicitamente storica; una prova aggiuntiva vieta
+  di tollerare un file dichiarato ma assente nella prima transizione. Nessuna
+  asserzione di sicurezza attenuata. Un tentativo di eseguire anche il gruppo
+  runtime sotto uid/gid 0 ha prodotto 7 errori di fixture (il servizio non può
+  avere gid 0); quel gruppo è stato ripetuto nel suo corretto profilo, 204/0.
+- Sonda produttiva **sola lettura** `run-_5x9ovuz`: cataloghi firmati 63/64,
+  inventario iniziale autentico, tutti i file ritirati verificati e aggiunta
+  39→40 accettata due volte. Selezione 63 invariata. La sonda usa gli
+  autenticatori della distribuzione firmata e soltanto gli osservatori candidati
+  fissati per SHA256; non è una nuova distribuzione certificata. Le prime
+  invocazioni avevano un ambiente/import di prova incoerente e sono state
+  rifiutate; nessuna firma o verifica è stata saltata per correggerle.
+- Turno informativo reale `58d2d383d26145b6`: risposta, zero executor,
+  HTTP/console disponibili. Prova di continuità della 63, non del binario nuovo.
+- Alle 16:30:29, `run-w2fefozo`: 289/967 analisi, 1.257 risultati totali,
+  un tentativo attivo, stesso PID 1844179, piano/revisione invariati e tutti
+  i risultati della precedente pausa conservati.
+
+Evidenze isolate: `/tmp/metnos-retirement-fix-20260917.lRNlWz/`.
+Documentazione pubblicata solo staticamente:
+`https://a9cb3fa7.mykleos.pages.dev`; Tutor locale non modificato.
+Nessuna attivazione F5 o variazione GPU.
+
 ## Esito produttivo aggiornato, 17/9 ore 15:50 Europe/Rome
 
 **Release 63 ripristinata e LRE nuovamente in avanzamento. Release 64 costruita,

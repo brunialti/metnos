@@ -770,6 +770,32 @@ sola lettura. Previene un altro fermo, **non** sblocca la transizione.
 
 Serve una soluzione esplicita F5 per il nuovo punto d'ingresso rispetto al
 piano già ritirato: non basta spostare impronte e non va eliminata la barriera.
+
+---
+
+# Correzione LRE del passaggio 39→40 verificata (17/9, 16:30)
+
+Roberto mi ha incaricato di correggere il difetto e poi ha autorizzato la
+pubblicazione se sicura. Non ho tolto la nuova voce né indebolito il ritiro.
+Ogni vecchio passo deve restare identico; sono ammesse solo aggiunte repository,
+con prova della copia ritirata esatta oppure dell'assenza sia nell'inventario
+iniziale autenticato sia nel filesystem attuale protetto. Niente deduzioni
+dall'assenza corrente soltanto, niente ricevute inventate o riscrittura storica.
+Modifiche/rimozioni/alias e nuovi ritiri di servizi restano rifiutati.
+
+La verifica anticipata ora controlla davvero i file prima dell'arresto, lega
+il censimento all'avvio selezionato e non sostituisce la doppia verifica sotto
+lock. Prove: 287 transizione/ritiro/topologia, 204 ciclo di rilascio, 28
+installer; sonda **sola lettura** sui due cataloghi firmati reali positiva due
+volte, selezione 63 invariata (`run-_5x9ovuz`). Ho anche corretto una fixture
+storica che ereditava i binding nuovi: 13 rosse riprodotte sul riferimento,
+ora verdi; la nuova prova mantiene il rifiuto del file richiesto assente nella
+prima transizione. Dettagli nel rapporto LRE, sezione delle 16:30.
+
+Stato alle 16:30: LRE ancora seriale sulla release 63, 289/967, stesso job,
+tutti i risultati conservati. Il nuovo artefatto firmato e il suo passaggio
+restano da verificare: questa prova non è un via libera automatico alla vecchia
+64 già preparata. Nessuna migrazione/attivazione F5, chiave o certificato creato.
 Nel checkout storico `/opt/metnos/install/operator_authority.py` è attualmente
 assente: questa osservazione non equivale da sola a una prova firmata di ritiro.
 Inserire anche una prova del passaggio da un catalogo precedente reale: le

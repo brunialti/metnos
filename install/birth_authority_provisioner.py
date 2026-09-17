@@ -5079,23 +5079,37 @@ def _observe_previous_retirement_v2(loaded, previous, predecessor, roots) -> str
     """Reread initial retirement without repeating any legacy mutation."""
     from executor_birth_legacy_neutralizer import _observe_retired_core_v1
     from executor_birth_legacy_retirement import (
-        plan_catalog_retirement_v1, plan_digest_v1,
+        LegacyRetirementError, plan_catalog_retirement_v1, plan_digest_v1,
+        require_successor_retirement_v1,
     )
 
     plan = plan_catalog_retirement_v1(loaded.catalog)
     old_plan = plan_catalog_retirement_v1(previous.catalog)
-    if plan.steps != old_plan.steps:
-        raise _reject("birth_transition_legacy_plan_changed")
+    try:
+        require_successor_retirement_v1(old_plan.steps, plan.steps)
+    except LegacyRetirementError as exc:
+        raise _reject("birth_transition_legacy_plan_changed", exc) from None
     old_units = dict(previous.unit_fragments)
     new_units = dict(loaded.unit_fragments)
     retired_files = {
         item.path: (item.size, item.content_hash) for item in predecessor.files
     }
+    # The initial immutable census includes every file under these roots except
+    # bytecode/cache. Do not infer historical absence outside that coverage, or
+    # fabricate a retirement artifact for an entry that never existed there.
+    absent = frozenset(
+        step.locator for step in plan.steps
+        if step.scope == "repository" and step.locator not in retired_files
+        and step.locator.split("/")[0] in _PREDECESSOR_SOURCE_ROOTS_V2
+        and "__pycache__" not in step.locator.split("/")
+        and Path(step.locator).suffix not in {".pyc", ".pyo"}
+    )
     for scope in ("repository", "user", "system"):
         steps = tuple(step for step in plan.steps if step.scope == scope)
         if steps:
             _observe_retired_core_v1(
-                roots[scope], steps, previous_steps=steps,
+                roots[scope], steps,
+                previous_steps=tuple(step for step in old_plan.steps if step.scope == scope),
                 previous_replacement_fragments={
                     (scope, name): content for name, content in old_units.items()
                 },
@@ -5103,6 +5117,7 @@ def _observe_previous_retirement_v2(loaded, previous, predecessor, roots) -> str
                     (scope, name): content for name, content in new_units.items()
                 },
                 expected_retired_files=retired_files,
+                absent_repository_locators=absent if scope == "repository" else frozenset(),
             )
     return plan_digest_v1(plan.steps)
 

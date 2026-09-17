@@ -1720,20 +1720,48 @@ def _verify_live_administrative_artifact(previous, distribution) -> None:
         os.close(parent)
 
 
-def _verify_retirement_plan_unchanged(previous, current) -> None:
-    """Apply the existing successor constraint before stopping any service.
+def _verify_retirement_transition(previous, current, legacy_service_user) -> None:
+    """Observe the full successor retirement before stopping any service.
 
-    The authoritative crossing repeats this under its locks. A new legacy
-    binding needs an explicitly supported transition, not a late refusal
-    after the installed catalog has already been quiesced.
+    This is an early refusal only: the authoritative crossing independently
+    repeats the observations under its locks. The predecessor's immutable census
+    is bound to the currently attested startup, never inferred from live absence.
     """
-    from executor_birth_legacy_retirement import plan_catalog_retirement_v1
-
-    require(
-        plan_catalog_retirement_v1(previous.catalog).steps
-        == plan_catalog_retirement_v1(current.catalog).steps,
-        "birth_transition_legacy_plan_changed",
+    from types import SimpleNamespace
+    from executor_birth_legacy_retirement import (
+        plan_catalog_retirement_v1, require_successor_retirement_v1,
     )
+    from executor_birth_distribution_assembler import (
+        MAX_PREDECESSOR_DESCRIPTOR_BYTES_V1, decode_predecessor_descriptor_v1,
+    )
+    from executor_birth_ownership_coordinator import _read_control_file_v2
+    from install.birth_authority_provisioner import (
+        _observe_previous_retirement_v2, _resolve_legacy_service_identity_v2,
+        _transition_roots_v2,
+    )
+
+    require_successor_retirement_v1(
+        plan_catalog_retirement_v1(previous.catalog).steps,
+        plan_catalog_retirement_v1(current.catalog).steps,
+    )
+    materials, _entry = load_live_helper()._attest_service_startup_v1("service-http")
+    require(materials.catalog.catalog_id == previous.catalog.catalog_id,
+            "retirement predecessor is not the selected service catalog")
+    predecessor = decode_predecessor_descriptor_v1(_read_control_file_v2(
+        ROOT / "predecessor-v1.json", MAX_PREDECESSOR_DESCRIPTOR_BYTES_V1,
+        root_owned=True,
+    ))
+    require(
+        predecessor.predecessor_id == materials.prerequisite.predecessor_id,
+        "retirement census is not the attested initial predecessor",
+    )
+    roots = _transition_roots_v2(
+        SimpleNamespace(materials=SimpleNamespace(
+            descriptor=materials.descriptor, predecessor=predecessor,
+        )),
+        _resolve_legacy_service_identity_v2(legacy_service_user),
+    )
+    _observe_previous_retirement_v2(current, previous, predecessor, roots)
 
 
 def cross(release_root: str, source_id: str, evidence: str, mode: str) -> int:
@@ -1788,9 +1816,9 @@ def cross(release_root: str, source_id: str, evidence: str, mode: str) -> int:
     old_artifacts = capture_previous_release_artifacts_v1(current, old)
     old_catalog = load_previous_service_catalog_v1(old_artifacts)
     new_catalog = load_service_catalog_v1(current)
-    _verify_retirement_plan_unchanged(old_catalog, new_catalog)
     _verify_autonomous_service_recipe(descriptor, new_catalog)
     _verify_live_administrative_artifact(old_artifacts, distribution)
+    _verify_retirement_transition(old_catalog, new_catalog, "roberto")
     old_units, new_units = dict(old_catalog.unit_fragments), dict(
         new_catalog.unit_fragments)
     require(old_units.keys() == new_units.keys(), "unit names changed")

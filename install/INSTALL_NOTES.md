@@ -161,6 +161,20 @@ transition bindings are checked against the current authenticated inputs.
 It is not rebuilt from paths that retirement may already have renamed, and it
 does not replace current quiescence or topology checks.
 
+A successor may add a repository retirement binding without rewriting that
+initial census. Every previous step must remain identical; removals, changed
+identities, duplicate destinations and additional unit retirements are refused.
+An additional repository entry must either have the exact preserved size/hash
+from the authenticated initial census, or be absent from that census within its
+complete source-root coverage and also absent on disk. The latter observation
+uses unchanged owned directory handles without following links and refuses
+stray retirement/preservation artifacts. Entries known to the census still need
+their preserved file. No file is fabricated, deleted or renamed by a successor.
+Both observations are repeated under the transition locks; the release tool
+also checks them before stopping services, binding the census to the attested
+current startup. This early refusal is not authorization to cross. The first
+transition still requires all declared legacy repository files.
+
 The transition is resumable and exact repetition is idempotent. The live
 user-level HTTP unit is stopped inside the coordinated switch and the signed
 system unit takes ownership; the same-name system unit is preserved as the

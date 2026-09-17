@@ -60,6 +60,18 @@
  integrity and safe ownership and match the same transition, installation
  and catalog exactly. It is neither rewritten nor treated as a fresh
  verification of current state.</p>
+ <h2>Extending checks on retired components</h2>
+ <p>Successor releases may add checks on legacy code entry points while
+ keeping every previous entry unchanged. A file present in the authenticated
+ historical inventory still requires its exact retired copy. If it was absent
+ from that inventory, its absence must also be proved now beneath protected
+ directories, without following links. A missing file alone is not proof of
+ retirement.</p>
+ <p>Verification neither creates nor deletes files. The release tool runs it
+ before stopping services, and the transition repeats it under its exclusive
+ controls. Removal or modification of previous entries and additional service
+ retirements remain refused. <strong>Status:</strong> fix verified in
+ development, not yet deployed.</p>
  <h2>Check the present without replaying the entire history</h2>
  <p>A new admission must pass its safety checks. It should not repeat work
  already verified for every earlier release. The optimized reader uses the

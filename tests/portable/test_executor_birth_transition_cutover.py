@@ -252,7 +252,37 @@ def historical_repository(tmp_path: Path):
             for path in (python, "/usr/bin/systemctl", "/usr/bin/Xvfb")
         ),
     )
-    return root, service_catalog.decode_service_catalog_v1(built.encoded)
+    candidate = service_catalog.decode_service_catalog_v1(built.encoded)
+    # This fixture is the fixed initial installation, not today's recipe.
+    # The operator-authority binding was added later; mixing it into the old
+    # catalog made thirteen root-only history tests fail before their oracle.
+    initial_bindings = tuple(
+        binding for binding in candidate.legacy_bindings
+        if binding.legacy_id != "legacy-install-operator-authority"
+    )
+    assert len(initial_bindings) == 39
+    assert {binding.locator for binding in initial_bindings if binding.scope == "repository"} == set(old_paths)
+    return root, service_catalog.decode_service_catalog_v1(
+        service_catalog._encode_service_catalog_v1(candidate.entries, initial_bindings),
+    )
+
+
+@LINUX_ONLY
+def test_first_transition_still_requires_every_declared_repository_entry(historical_repository):
+    root, catalog = historical_repository
+    binding = ServiceLegacyBindingV1(
+        "legacy-install-operator-authority", "entry-installer", "python_module",
+        "repository", "install/operator_authority.py", "retire_in_group7",
+    )
+    current = replace(catalog, legacy_bindings=(*catalog.legacy_bindings, binding))
+    with pytest.raises(provisioner.BirthProvisioningError, match="birth_transition_predecessor_invalid"):
+        provisioner._predecessor_file_locators_v2(root, current)
+    # The initial census has no authenticated earlier inventory from which to
+    # prove absence. It must not silently inherit the successor-only rule.
+    path = root / binding.locator
+    path.write_bytes(b"# historical operator entry\n")
+    path.chmod(0o644)
+    assert binding.locator in provisioner._predecessor_file_locators_v2(root, current)
 
 
 @LINUX_ONLY
@@ -805,6 +835,102 @@ def test_successor_retirement_wrapper_only_observes_exact_preserved_files(
             repeated.st_ino, repeated.st_mode, repeated.st_uid, repeated.st_gid, repeated.st_mtime_ns,
         )
         assert repeated_content == content
+
+
+@LINUX_ONLY
+@pytest.mark.parametrize("case", [
+    "absent", "retired", "present", "dangling_link", "directory", "artifact",
+    "preserved", "receipt", "known_missing", "outside_census", "bytecode",
+    "cache", "linked_parent", "writable_parent", "old_missing", "old_recreated",
+])
+def test_successor_can_add_a_proven_absent_repository_entry_and_replay(
+    tmp_path, monkeypatch, case,
+):
+    """The 39 -> 40 failure reduced to real retirement files, not an echo."""
+    import executor_birth_legacy_neutralizer as neutralizer
+    from executor_birth_legacy_retirement import plan_catalog_retirement_v1, plan_digest_v1
+
+    roots = {scope: tmp_path / scope for scope in ("system", "user", "repository")}
+    for root in roots.values():
+        root.mkdir(mode=0o755)
+    (roots["repository"] / "install").mkdir(mode=0o755)
+    script = roots["repository"] / "legacy.sh"
+    script.write_bytes(b"historical script")
+    script.chmod(0o644)
+    (roots["system"] / "metnos-http.service").write_bytes(b"historical unit")
+    catalog = _minimal_catalog()
+    previous = SimpleNamespace(catalog=catalog, unit_fragments=(("metnos-http.service", b"signed unit"),))
+    binding = ServiceLegacyBindingV1(
+        "legacy-new-module", "entry-installer", "python_module", "repository",
+        "install/new_module.py", "retire_in_group7",
+    )
+    current = SimpleNamespace(catalog=replace(catalog, legacy_bindings=tuple(sorted(
+        (*catalog.legacy_bindings, binding), key=lambda item: item.legacy_id,
+    ))), unit_fragments=previous.unit_fragments)
+    predecessor = SimpleNamespace(files=(SimpleNamespace(
+        path=script.name, size=script.stat().st_size,
+        content_hash="sha256:" + hashlib.sha256(script.read_bytes()).hexdigest(),
+    ),))
+    prepared = SimpleNamespace(materials=SimpleNamespace(predecessor=predecessor))
+    monkeypatch.setattr(provisioner, "_capture_bound_transition_catalog_v2", lambda *_: previous)
+    monkeypatch.setattr(provisioner, "_transition_roots_v2", lambda *_: roots)
+    monkeypatch.setattr(provisioner, "_process_tree_references_entries_v2", lambda *_: False)
+    provisioner._retire_bound_catalog_v2(object(), prepared, _Maintenance(), object())
+    (roots["system"] / "metnos-http.service").write_bytes(b"signed unit")
+    (roots["system"] / "metnos-http.service").chmod(0o644)
+    added_path = roots["repository"] / binding.locator
+    if case in {"retired", "known_missing"}:
+        predecessor.files += (SimpleNamespace(
+            path=binding.locator, size=6,
+            content_hash="sha256:" + hashlib.sha256(b"retire").hexdigest(),
+        ),)
+        if case == "retired":
+            retired = added_path.with_name(added_path.name + neutralizer.RETIRED_EXTENSION_V1)
+            retired.write_bytes(b"retire")
+            retired.chmod(0o644)
+    elif case == "present":
+        added_path.write_bytes(b"unexpected")
+    elif case == "dangling_link":
+        added_path.symlink_to("missing-target")
+    elif case == "directory":
+        added_path.mkdir()
+    elif case in {"artifact", "preserved", "receipt"}:
+        suffix = {"artifact": neutralizer.RETIRED_EXTENSION_V1,
+                  "preserved": neutralizer.PRESERVED_EXTENSION_V1,
+                  "receipt": neutralizer.PRESERVED_EXTENSION_V1 + ".receipt.json"}[case]
+        added_path.with_name(added_path.name + suffix).write_bytes(b"unbound")
+    elif case in {"outside_census", "bytecode", "cache"}:
+        locator = {"outside_census": "uncensused/new.py", "bytecode": "install/new.pyc",
+                   "cache": "install/__pycache__/new.py"}[case]
+        (roots["repository"] / locator).parent.mkdir(parents=True, exist_ok=True)
+        current.catalog = replace(current.catalog, legacy_bindings=tuple(
+            replace(item, locator=locator) if item == binding else item
+            for item in current.catalog.legacy_bindings
+        ))
+    elif case == "linked_parent":
+        added_path.parent.rename(roots["repository"] / "other-install")
+        added_path.parent.symlink_to("other-install")
+    elif case == "writable_parent":
+        added_path.parent.chmod(0o777)
+    elif case == "old_missing":
+        script.with_name(script.name + neutralizer.RETIRED_EXTENSION_V1).unlink()
+    elif case == "old_recreated":
+        script.write_bytes(b"recreated")
+    monkeypatch.setattr(neutralizer, "_neutralize_core_v1", lambda *_a, **_k: pytest.fail("observer wrote"))
+    monkeypatch.setattr(provisioner, "_capture_bound_transition_catalog_v2", lambda *_: current)
+    if case not in {"absent", "retired"}:
+        with pytest.raises((neutralizer.LegacyNeutralizerError, OSError)):
+            provisioner._retire_bound_catalog_v2(
+                object(), prepared, _Maintenance(), object(), previous_catalog=previous,
+            )
+        return
+    expected = plan_digest_v1(plan_catalog_retirement_v1(current.catalog).steps)
+    for old in (previous, previous, current):
+        assert provisioner._retire_bound_catalog_v2(
+            object(), prepared, _Maintenance(), object(), previous_catalog=old,
+        ) == expected
+    if case == "absent":
+        assert list((roots["repository"] / "install").iterdir()) == []
 
 
 @LINUX_ONLY

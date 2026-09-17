@@ -62,6 +62,18 @@
  conservare formato, integrità e proprietà sicuri e corrispondere esattamente
  alla stessa transizione, installazione e catalogo. Non viene riscritto né
  presentato come una nuova verifica dello stato corrente.</p>
+ <h2>Estendere il controllo dei componenti ritirati</h2>
+ <p>Negli aggiornamenti successivi si possono aggiungere controlli su vecchi
+ punti d'ingresso del codice, conservando identiche tutte le voci precedenti.
+ Se il file esisteva nell'inventario storico autenticato, occorre ancora la
+ sua copia ritirata esatta. Se non vi esisteva, l'assenza va provata anche
+ oggi, in cartelle protette e senza seguire collegamenti. Un file mancante,
+ da solo, non dimostra che sia stato ritirato.</p>
+ <p>La verifica non crea né cancella file. Lo strumento di rilascio la esegue
+ prima di fermare i servizi e la transizione la ripete sotto i propri
+ controlli esclusivi. Rimozioni o modifiche delle vecchie voci e nuovi ritiri
+ di servizi restano rifiutati. <strong>Stato:</strong> correzione verificata
+ nello sviluppo, non ancora distribuita.</p>
  <h2>Controllare il presente senza rileggere tutta la storia</h2>
  <p>Una nuova ammissione deve superare i controlli di sicurezza. Non deve
  però ripetere il lavoro già verificato su tutte le versioni precedenti.
