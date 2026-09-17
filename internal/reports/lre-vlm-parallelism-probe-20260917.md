@@ -101,6 +101,13 @@ tentativo. Il lavoratore usa però limiti di risorsa predefiniti pari a uno
 fra cui VLM=1 e CPU=2. Le corrispondenti variabili non risultavano impostate
 nell'ambiente del lavoratore osservato.
 
+Precisazione successiva, verificata nel coordinatore: i valori di
+`runtime_bindings._resource_limits` sono capacità **per singolo tentativo**,
+non il limite aggregato del gruppo. Quattro tentativi che richiedono ciascuno
+CPU=1 e VLM=1 non richiedono di alzare quelle capacità a quattro. Il tetto
+aggregato, separato, appartiene allo scheduler centrale. Non moltiplicare
+indiscriminatamente entrambi i livelli.
+
 Inoltre `ExecutorScheduler.can_parallelize` richiede un'identità verificabile
 per le scritture. `concurrency_identity_for` per una politica `path` cerca
 `dest`, `path`, `output_path` o un solo elemento di `paths`. L'indicizzatore

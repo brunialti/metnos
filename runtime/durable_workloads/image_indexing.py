@@ -235,6 +235,25 @@ class FolderContextInvoker:
         return {"entries": [{"part": group["part"], "folder_contexts": contexts}]}
 
 
+def concurrency_targets(contract, args, context, device_id):
+    """Supply local exclusion evidence without changing a frozen job contract."""
+    if (contract.kind != "executor" or contract.name != EXECUTOR
+            or args.get("phase") != "analyze" or args.get("dry_run")
+            or device_id not in {None, "", "server"}
+            or not isinstance(context, ExecutionContext) or not context.language):
+        return ()
+    from image_index_build import ImageIndexBuild, analysis_identity
+
+    try:
+        build = ImageIndexBuild(args.get("base_path"), args.get("generation"), create=False)
+        return build.analysis_write_targets(
+            args.get("entries"), identity=analysis_identity(context.language))
+    except (OSError, ValueError, TypeError, KeyError, IndexError):
+        # A missing or invalid proof grants no concurrency. The ordinary
+        # executor still reports its precise domain error through LRE.
+        return ()
+
+
 def registration(*, catalog_loader=None, binding_resolver=None, language=None,
                  vlm_binding=None, prompt_digests=None) -> RuntimeRegistration:
     import config
@@ -282,6 +301,7 @@ def registration(*, catalog_loader=None, binding_resolver=None, language=None,
             lang, identities[FOLDER_WORKLOAD],
             binding_identity=lambda: runners.resolve("workload", FOLDER_WORKLOAD).model_binding_digest,
         ),
+        concurrency_targets_resolver=concurrency_targets,
     )
 
 

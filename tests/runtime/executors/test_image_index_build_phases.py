@@ -82,6 +82,113 @@ def _publish(root, discovery, receipts, generation="build-1"):
     return result
 
 
+def test_analysis_target_proof_reads_exact_checkpoint_paths_without_writes(corpus):
+    root, _calls = corpus
+    for number in range(storage.GROUP_SIZE + 1):
+        _photo(root, f"picture-{number:03}.jpg")
+    discovery = _discover(root)
+    build = storage.ImageIndexBuild(root, "build-1", create=False)
+    before = {path: path.read_bytes() for path in build.work.rglob("*") if path.is_file()}
+    target_groups = []
+    for receipt in discovery["entries"]:
+        entries = [{"part": receipt["part"], "folder_contexts": {
+            label: f"Photos: {label}." for label in receipt["folder_labels"]}}]
+        targets = build.analysis_write_targets(entries, identity="fixture-policy")
+        records, contexts = build.discovery_group(entries)
+        expected = tuple(sorted(str(build._analysis_checkpoint_path(
+            record["original_path"], record["source"], identity="fixture-policy",
+            folder_context=contexts[storage.folder_label(Path(record["original_path"]).parent.name)]
+        )) for record in records))
+        assert targets == expected
+        target_groups.append(set(targets))
+    assert len(target_groups[0]) == storage.GROUP_SIZE
+    assert len(target_groups[1]) == 1
+    assert target_groups[0].isdisjoint(target_groups[1])
+    assert before == {path: path.read_bytes() for path in build.work.rglob("*") if path.is_file()}
+
+
+def test_target_proof_does_not_create_missing_builds(corpus):
+    root, _calls = corpus
+    index = builder._index_dir(root)
+    assert not index.exists()
+    with pytest.raises(storage.ImageIndexBuildError):
+        storage.ImageIndexBuild(root, "absent", create=False)
+    assert not index.exists()
+
+
+def test_distinct_receipts_with_overlapping_sources_share_target_identities(corpus):
+    root, _calls = corpus
+    for number in range(3):
+        _photo(root, f"picture-{number}.jpg")
+    discovery = _discover(root)
+    build = storage.ImageIndexBuild(root, "build-1", create=False)
+    group = build._part(discovery["entries"][0])
+    identities = []
+    receipts = []
+    for records in (group["records"][:2], group["records"][1:]):
+        receipt = build._store_part({
+            "kind": "discovery", "count": len(records), "records": records,
+            "folder_labels": group["folder_labels"],
+        })
+        receipts.append(receipt)
+        identities.append(set(build.analysis_write_targets([{
+            **receipt, "folder_contexts": {label: "shared" for label in group["folder_labels"]},
+        }], identity="fixture-policy")))
+    assert receipts[0] != receipts[1]
+    assert len(identities[0] & identities[1]) == 1
+
+
+def test_four_analysis_groups_publish_the_same_complete_index_and_resume(corpus, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+    from durable_workloads.image_indexing import concurrency_targets, EXECUTOR
+    from durable_workloads.models import ExecutionContext, RESOURCE_KEYS
+    from executor_scheduler import ExecutorScheduler
+
+    root, calls = corpus
+    monkeypatch.setattr(storage, "GROUP_SIZE", 2)
+    monkeypatch.setattr(storage, "analysis_identity", lambda _lang: "fixture-policy")
+    for number in range(8):
+        _photo(root, f"picture-{number:03}.jpg")
+    discovery = _discover(root)
+    assert len(discovery["entries"]) == 4
+    barrier = Barrier(4)
+    executor = SimpleNamespace(name=EXECUTOR, execution_policy={
+        "effect": "mutating", "parallelism_class": 3, "resource_class": "local_io",
+        "concurrency_key": "path", "equivalence_gate": "verified",
+    })
+    scheduler = ExecutorScheduler(max_workers=8, max_in_flight=8, hardware_threads=8,
+                                  parallel_enabled=True, resource_limits={key: 4 for key in RESOURCE_KEYS})
+    def analyze(receipt):
+        from dataclasses import replace
+        args = {"base_path": str(root), "generation": "build-1", "phase": "analyze", "entries": [{
+            "part": receipt["part"], "folder_contexts": {label: f"Photos: {label}." for label in receipt["folder_labels"]}}]}
+        context = ExecutionContext("owner", "workload", "revision", "stage", "unit", "attempt", "normal",
+                                   tuple((key, int(key in {"cpu", "local_io", "vlm"})) for key in RESOURCE_KEYS), None, "en")
+        targets = concurrency_targets(SimpleNamespace(kind="executor", name=EXECUTOR), args, context, None)
+        assert len(targets) == 2
+        def invoke():
+            barrier.wait(timeout=3)
+            return builder.invoke(args)
+        return scheduler.invoke(executor, invoke, execution_context=replace(context, concurrency_targets=targets))
+    try:
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            outcomes = list(pool.map(analyze, discovery["entries"]))
+        assert all(item["ok"] for item in outcomes), outcomes
+        assert len(calls) == 8
+        receipts = [entry for item in outcomes for entry in item["entries"]]
+        # A fresh builder reuses every completed checkpoint, including after
+        # concurrent writes; no model is called and the receipts are identical.
+        assert _analyze(root, discovery) == receipts
+        assert len(calls) == 8
+        published = _publish(root, discovery, receipts)
+        assert published["n_indexed"] == published["n_entries_total"] == 8
+        assert published["n_not_indexed"] == 0
+        assert scheduler._isolation.counts() == (0, 0)
+    finally:
+        scheduler.shutdown()
+
+
 def test_heic_snapshot_decodes_without_extension_and_preserves_source(corpus):
     from pillow_heif import register_heif_opener
     register_heif_opener()

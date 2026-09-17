@@ -8,7 +8,7 @@ other capability enter through the same registered runner interfaces.
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 import json
 import logging
@@ -877,6 +877,7 @@ class DurableExecutionBridge:
                 executor, timeout, autonomy = self._prepare_executor(
                     contract, facts, args, context, device_id,
                 )
+                context = self._with_concurrency_targets(contract, args, context, device_id)
             except Exception:
                 # Preparation cannot enter executor transport. A refusal here
                 # proves that no child model call was dispatched; failures
@@ -916,6 +917,8 @@ class DurableExecutionBridge:
         # success metrics without changing the runner's output contract.
         from executor_scheduler import invoke_scheduled
 
+        context = self._with_concurrency_targets(contract, args, context, device_id)
+
         scheduled = _ScheduledRunner(
             name=f"{contract.kind}:{contract.name}",
             execution_policy=dict(contract.execution_policy),
@@ -937,6 +940,22 @@ class DurableExecutionBridge:
             execution_context=context,
         )
         return envelope["observation"]
+
+    def _with_concurrency_targets(self, contract, args, context, device_id):
+        resolver = getattr(self.runners, "concurrency_targets_for", None)
+        if resolver is None:
+            return context
+        from execution_isolation import validate_targets
+
+        try:
+            targets = validate_targets(resolver(contract, args, context, device_id))
+        except Exception as exc:
+            raise self._failure(
+                "contract_violation", code="execution.isolation_invalid",
+                message_key="ERR_DURABLE_CONTRACT_CHANGED", retry="never",
+                details={"runner_name": contract.name},
+            ) from exc
+        return replace(context, concurrency_targets=targets)
 
     def _observation_failure(
         self, observation: Mapping[str, Any], schema: ApprovedOutputSchema,
