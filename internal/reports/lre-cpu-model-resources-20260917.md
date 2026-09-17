@@ -155,3 +155,72 @@ fissa a due o quattro nel singolo job violerebbe il requisito ricevuto.
   HTTP successiva dalla sessione ha ricevuto 403 sia dalla distribuzione sia
   dal dominio canonico: non dichiarare verifica remota del contenuto riuscita.
   Tutor, dati privati, immagini e rapporti interni esclusi dalla pubblicazione.
+
+## Confronto concluso: uno, due e quattro server sulla stessa CPU
+
+Banco finale `run-zoelqyon`, concluso alle **19:25:13 CEST**. Otto input congelati,
+medesimi pesi, prompt e limiti; 16 thread CPU, quattro richieste e 16.384 token di
+contesto totali in ogni configurazione. GPU disabilitata. Riscaldamento per ogni
+replica, servizio temporaneo limitato a 28 GiB senza swap, riserva osservata
+host di almeno 16 GiB. Il job era in pausa cooperativa; gli altri servizi host
+non sono stati arrestati. Nessun evento OOM nel gruppo di prova.
+
+| Server | Thread per server | Otto input, secondi | Token generati | Picco del cgroup, GiB |
+|---|---:|---:|---:|---:|
+| 1, controllo finale | 16 | 29,70 | 1.682 | 4,52 |
+| 2 | 8 | 29,84 | 1.645 | 6,52 |
+| 4 | 4 | 37,19 | 1.743 | 10,02 |
+
+Non emerge un vantaggio da due server; quattro hanno impiegato circa il 25%
+in più del controllo finale e più del doppio della memoria misurata. I due
+precedenti riferimenti con un server erano 31,52 e 29,16 secondi. La seconda
+sessione si era interrotta sul controllo della porta in TIME_WAIT; la terza
+aveva misurato solo il riferimento per rispettare il termine complessivo. Il
+banco finale ha corretto il riuso della porta e incluso tutti i profili previsti.
+Questi problemi appartenevano al banco diagnostico, non al runtime LRE.
+
+Tutti gli output rispettano lo schema, ma due/quattro server hanno prodotto
+impronte diverse dal riferimento in 8 casi su 8; i token generati differiscono.
+Non è una dimostrazione di equivalenza semantica né un confronto a identico
+numero di token. Nessuna replica permanente o regola fissa per il job è stata
+introdotta. Su questa misura non è giustificato aggiungere repliche; eventuali
+altri modelli, hardware o forme di input richiedono il proprio profilo.
+
+Il picco del cgroup non è la somma degli RSS né una stima garantita per tutte
+le immagini: pagine dei pesi possono essere già condivise con altri processi,
+e forme diverse degli input cambiano i buffer temporanei. Non usare questi
+otto campioni come limite sicuro universale della memoria.
+
+Controllo finale `run-ccx8_o09`, **19:26:03 CEST**: job `running`, versione 39,
+330 analisi salvate, quattro tentativi attivi, **1.298 risultati conservati**,
+32 nuove analisi dalla riprova iniziale; stessa revisione, stesso piano e worker
+PID 1909652. Nessun tentativo concluso con contabilità incompleta, consumi
+sconosciuti falsi. `run-0mpvc_fr` conferma che non rimangono unità di servizio
+o server temporanei delle prove.
+
+Ulteriori controlli del percorso di avvio reale dei figli, delle quote native
+e della diagnostica: **25 passati**, 1,83 secondi. Comprendono invocazioni
+ordinarie e durevoli, quote ereditate non attendibili e ambiente del padre
+invariato. Il candidato è salvato nel commit `1e8eed24`; nessuna installazione
+è stata eseguita. Restano installazione/prova completa del candidato e gestione
+automatica delle repliche; il relativo confine architetturale non è una
+certificazione di quelle funzioni.
+
+
+## Pulizia richiesta da Roberto
+
+Rimossi i file del banco temporaneo di questa ripresa, gli array sintetici e
+il registro locale di Wrangler; rimossi 562 file di cache ignorati da Git nel
+solo worktree dedicato (18.711.466 byte). Nessun processo del banco ancora
+attivo e nessun server/unità temporaneo residuo. Codice, test e rapporti sono
+conservati nel ramo dedicato; le ricevute amministrative protette restano
+nell'archivio di controllo. Nessuna modifica ai dati del job, ai modelli in
+esercizio, ad altri worktree o alle cache dell'installazione firmata.
+
+Risposta prestazionale: i test provano minore moltiplicazione dei thread e
+assenza della specifica prenotazione parziale che tratteneva CPU in attesa di
+altre risorse. Non dimostrano un'accelerazione del job completo. Il beneficio
+atteso principale è il contenimento della contesa e la disponibilità per altri
+lavori; la separazione Virt migliora il confine architetturale. Il VLM resta la
+componente dominante osservata. Nessuna ottimizzazione candidata è ancora in
+esercizio.

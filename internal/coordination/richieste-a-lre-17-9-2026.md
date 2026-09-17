@@ -885,3 +885,9 @@ risultati iniziali; prima dell'ultima prova CPU risultavano 1.294 risultati /
 Il rapporto `internal/reports/lre-cpu-model-resources-20260917.md` distingue
 stato in esercizio, candidato testato e gestione automatica delle repliche
 ancora da implementare. Nessuna attivazione F5, nuova chiave o modifica GPU.
+
+Controllo conclusivo ore 19:26: job `running`, 330 analisi / 1.298 risultati,
+quattro attivi, stessa revisione/piano/worker, consumo sconosciuto falso. Prova
+CPU 1/2/4 server: 29,70 / 29,84 / 37,19 secondi, con 16 thread totali; non
+emerge beneficio dalle repliche. Tutti i server temporanei arrestati. Candidato
+salvato in `1e8eed24`, non installato; F5 e GPU invariati.

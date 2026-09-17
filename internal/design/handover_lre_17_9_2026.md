@@ -2,6 +2,13 @@
 
 ## Aggiornamento della ripresa — sera del 17/9
 
+Ultimo controllo **19:26:03 CEST**, `run-ccx8_o09`: job `running`, versione 39,
+330 analisi / 1.298 risultati conservati, quattro attivi, contabilità nota,
+worker invariato. Confronto concluso: 1/2/4 server → 29,70 / 29,84 / 37,19
+secondi sugli stessi otto campioni, sempre 16 thread complessivi. Nessun
+vantaggio osservato dalla replica; nessun server temporaneo rimasto
+(`run-0mpvc_fr`). Codice candidato nel commit `1e8eed24`, non installato.
+
 **Le sezioni 1–10 sotto conservano la fotografia precedente delle 17:26.**
 Il blocco di caricamento è stato verificato e la riprova amministrativa unica
 è già stata eseguita alle 18:03 CEST: **non ripeterla seguendo il vecchio stato**.
