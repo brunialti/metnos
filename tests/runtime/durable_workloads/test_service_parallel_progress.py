@@ -143,20 +143,24 @@ def _schemas():
 
 
 def _admit(path, resolver, *, count=6, max_concurrency=3, resource="cpu",
-           request_key="parallel-progress"):
+           request_key="parallel-progress", resources=None, workload_id=None,
+           timeout_s=60):
     candidate = plan(with_map=True)
     candidate["budgets"]["max_concurrency"] = max_concurrency
     mapping = candidate["stages"][1]
+    mapping["timeout_s"] = timeout_s
     mapping["runner"] = {"kind": "workload", "name": resolver.contract.name}
     mapping["input_bindings"] = {"record": {"ref": "source.record"}}
     mapping["output_schema"]["name"] = "metnos.fixture-parallel-map/1"
     mapping["resources"][resource] = 1
-    if resource in {"llm", "vlm"}:
+    mapping["resources"].update(resources or {})
+    if any(mapping["resources"].get(key, 0) for key in ("llm", "vlm")):
         mapping["invalidation_keys"].extend(["model_binding.digest", "prompt.digest"])
     with DurableWorkloadStore.open(path) as store:
         draft = store.create_draft(
             "fixture-owner", request_key,
             redacted_request={"summary": "Synthetic independent work"},
+            workload_id=workload_id,
         )
         admitted = admit_candidate(
             store, "fixture-owner", draft.workload_id,
@@ -231,6 +235,55 @@ def _wait_completed(path, workload_id):
                 return
             time.sleep(0.005)
         pytest.fail("synthetic workload did not complete before the idle polling interval")
+
+
+def test_real_overdue_lane_returns_and_service_executes_new_work_without_restart(
+    tmp_path, scheduler_factory,
+):
+    scheduler_factory(cpu=2)
+    resolver = _Resolver(3)
+    path = tmp_path / "state.sqlite3"
+    timed_out_job, timed_out_revision = _admit(
+        path, resolver, count=1, timeout_s=1, request_key="deadline-first",
+    )
+    entered, release = Event(), Event()
+
+    def invoke(_name, args, context):
+        if context.workload_id == timed_out_job:
+            entered.set()
+            assert release.wait(timeout=5)
+        return {"source_id": args["record"]["source_id"]}
+
+    service, thread, exit_codes, _stores = _launch(
+        path, resolver, invoke, poll_interval_s=0.05, parallel_workers=2,
+    )
+    try:
+        assert entered.wait(timeout=2)
+        deadline = time.monotonic() + 3
+        while service.health.reason_code != "execution_deadline_exceeded":
+            assert time.monotonic() < deadline
+            time.sleep(0.005)
+        next_job, _revision = _admit(
+            path, resolver, count=1, request_key="deadline-following",
+        )
+        release.set()
+        _wait_completed(path, next_job)
+        assert thread.is_alive()  # The same supervisor recovered.
+        with DurableWorkloadStore.open(path) as store:
+            assert store._connection.execute(
+                "SELECT COUNT(*) FROM results WHERE revision_id=?",
+                (timed_out_revision,),
+            ).fetchone()[0] == 0
+            attempt = store._connection.execute(
+                "SELECT a.state FROM attempts a JOIN units u "
+                "ON u.owner_user_id=a.owner_user_id AND u.id=a.unit_id "
+                "WHERE u.revision_id=?",
+                (timed_out_revision,),
+            ).fetchone()
+            assert attempt["state"] == "timed_out"
+    finally:
+        release.set()
+        _stop(service, thread, exit_codes)
 
 
 @pytest.mark.parametrize(("plan_limit", "cpu_limit", "policy_class", "expected"), [

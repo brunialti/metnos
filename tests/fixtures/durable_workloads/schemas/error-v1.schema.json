@@ -23,6 +23,7 @@
         "source_missing",
         "executor_transient",
         "executor_permanent",
+        "executor_unknown",
         "contract_violation",
         "budget_exhausted",
         "lease_lost",

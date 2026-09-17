@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import errno
 from pathlib import Path
 
 import pytest
@@ -20,6 +21,55 @@ from manifest_inventory import (
     resolve_manifest_layout,
 )
 from contract_store import encode_binding
+
+
+@pytest.mark.parametrize("failure", ["io", "corrupt", "skill"])
+def test_store_failure_keeps_closed_diagnostics_through_loader(tmp_path, monkeypatch, failure):
+    import contract_store
+    import loader
+    from skill_registry import SkillEnablementError
+
+    secret = "private-path-secret-never-publish"
+    contract_id = ContractId(ManifestOrigin.USER_SKILL, "sample/read_files/manifest.toml")
+    store_root = tmp_path / "store"
+    directory = store_root / contract_id.storage_key
+    directory.mkdir(parents=True)
+    binding = directory / "binding.json"
+    binding.write_bytes(encode_binding(contract_id))
+    source = ManifestSource(
+        ManifestOrigin.USER_SKILL, tmp_path / "authoring",
+        min_depth=2, max_depth=2, skill_scoped=True,
+    )
+    enabled = lambda _name: True
+    if failure == "io":
+        def read(*_args, **_kwargs):
+            try:
+                raise OSError(errno.EMFILE, secret)
+            except OSError as cause:
+                raise contract_store.ContractStoreError("binding_invalid", secret) from cause
+        monkeypatch.setattr(contract_store, "_read_regular_file", read)
+        expected = ("binding_invalid", "binding_invalid", errno.EMFILE)
+    elif failure == "corrupt":
+        binding.write_bytes(b"not-json")
+        expected = ("binding_invalid", "binding_invalid", None)
+    else:
+        def enabled(_name):
+            try:
+                raise PermissionError(errno.EACCES, secret)
+            except PermissionError as cause:
+                raise SkillEnablementError("skill_state_invalid", secret) from cause
+        expected = ("skill_status_error", "skill_state_invalid", errno.EACCES)
+    inventory = inventory_module.inventory_store_manifests(
+        (source,), store_root=store_root, skill_enabled=enabled,
+    )
+    assert len(inventory.problems) == 1
+    with pytest.raises(ManifestBootstrapError) as raised:
+        loader._load_store_into_catalog(
+            loader.Catalog(), include_synth=True, current_lang="en", inventory=inventory,
+        )
+    assert raised.value.code == "store_inventory_invalid"
+    assert raised.value.inventory_diagnostics == (expected,)
+    assert secret not in repr(raised.value.inventory_diagnostics)
 
 
 def _manifest(directory: Path, name: str, *, lifecycle: str = "active") -> Path:

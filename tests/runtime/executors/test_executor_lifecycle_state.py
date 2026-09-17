@@ -27,6 +27,11 @@ def contract_of(executor):
     return ContractId(ManifestOrigin(origin), relative)
 
 
+def restrictions(executors):
+    """What one catalog load would conclude, through the two real steps."""
+    return state.restrictions_from_snapshot(executors, state.restriction_snapshot())
+
+
 def owned_by(monkeypatch, owner):
     monkeypatch.setattr(state, "read_birth_activation_state", lambda: mode.BirthActivationState(
         owner, "sha256:" + "2" * 64 if owner is mode.BirthStateOwner.EPOCH else None, None, None))
@@ -47,13 +52,13 @@ def admit(path, executor, lifecycle=BirthLifecycle.ACTIVE):
 
 def test_the_legacy_owner_answers_by_name(monkeypatch):
     owned_by(monkeypatch, mode.BirthStateOwner.LEGACY)
-    monkeypatch.setattr(state, "_epoch_restrictions",
-                        lambda _executors: pytest.fail("epoch read on a legacy owner"))
+    monkeypatch.setattr(state, "_epoch_snapshot",
+                        lambda: pytest.fail("epoch read on a legacy owner"))
     monkeypatch.setattr("executor_aging.lifecycle_override_map",
                         lambda *, read_only: {"gone": "archived", "old": "deprecated"})
-    assert state.catalog_restrictions([loaded("gone")], read_only=True) == {
+    # "old" is not in this load, so only the loaded name is decided.
+    assert restrictions([loaded("gone")]) == {
         "gone": (state.Restriction.REMOVED, "inactive too long"),
-        "old": (state.Restriction.DEMOTED, "deprecated"),
     }
 
 
@@ -79,15 +84,16 @@ def test_the_epoch_owner_answers_for_the_exact_generation(
     owned_by(monkeypatch, mode.BirthStateOwner.EPOCH)
     executor = loaded("demo")
     admit(epochs, executor, lifecycle)
-    observed = state.catalog_restrictions([executor], read_only=True)
+    observed = restrictions([executor])
     assert (observed.get("demo") or (None,))[0] == expected
 
 
 def test_a_restriction_never_reaches_the_successor_generation(monkeypatch, epochs):
-    """The predecessor stays restricted and the successor is admitted."""
+    """The snapshot names a generation, so the successor cannot inherit it."""
     owned_by(monkeypatch, mode.BirthStateOwner.EPOCH)
     restricted = loaded("demo", generation="1")
-    admit(epochs, restricted)
+    admit(epochs, restricted, BirthLifecycle.DEPRECATED)
+    assert restrictions([restricted])["demo"][0] is state.Restriction.DEMOTED
     successor = loaded("demo", generation="7")
     replace_current_epoch(
         contract_id=contract_of(restricted),
@@ -96,32 +102,34 @@ def test_a_restriction_never_reaches_the_successor_generation(monkeypatch, epoch
         lifecycle=BirthLifecycle.ACTIVE, observed_at="2026-09-16T11:00:00Z",
         db_path=epochs, event_kind="lifecycle_active",
     )
-    assert state.catalog_restrictions([successor], read_only=True) == {}
-    assert state.catalog_restrictions([restricted], read_only=True)["demo"][0] is (
-        state.Restriction.REMOVED)
+    assert restrictions([successor]) == {}
+    # Even loading the old generation cannot pick up the successor's row.
+    assert restrictions([restricted]) == {}
 
 
 def test_no_decision_yet_is_not_a_restriction(monkeypatch, epochs):
     """A writable load records the generation first, so this is the audit case."""
     owned_by(monkeypatch, mode.BirthStateOwner.EPOCH)
     admit(epochs, loaded("other"))
-    assert state.catalog_restrictions([loaded("demo")], read_only=True) == {}
+    assert restrictions([loaded("demo")]) == {}
 
 
-def test_an_executor_without_its_exact_identity_is_not_admitted(monkeypatch, epochs):
+def test_an_entry_without_a_generation_is_untouched_by_a_generation_rule(
+    monkeypatch, epochs,
+):
+    """Builtins carry no generation; a generation-keyed rule cannot mean them."""
     owned_by(monkeypatch, mode.BirthStateOwner.EPOCH)
-    admit(epochs, loaded("other"))
-    nameless = SimpleNamespace(name="legacy", source="handcrafted",
-                               contract_id=None, generation_id=None)
-    assert state.catalog_restrictions([nameless], read_only=True)["legacy"] == (
-        state.Restriction.REMOVED, "no authenticated identity")
+    admit(epochs, loaded("other"), BirthLifecycle.DEPRECATED)
+    builtin = SimpleNamespace(name="other", source="handcrafted",
+                              contract_id=None, generation_id=None)
+    assert restrictions([builtin]) == {}
 
 
 def test_a_missing_epoch_database_is_a_fault_not_an_empty_answer(monkeypatch, tmp_path):
     owned_by(monkeypatch, mode.BirthStateOwner.EPOCH)
     monkeypatch.setattr(state, "_epoch_db_path", lambda: tmp_path / "absent.sqlite")
     with pytest.raises(FileNotFoundError):
-        state.catalog_restrictions([loaded("demo")], read_only=True)
+        restrictions([loaded("demo")])
 
 
 def test_the_epoch_owner_records_the_exact_generation_it_loaded(monkeypatch, epochs):
@@ -144,7 +152,7 @@ def test_an_existing_decision_survives_every_later_load(monkeypatch, epochs):
     executor = loaded("demo")
     admit(epochs, executor, BirthLifecycle.DEPRECATED)
     assert state.register_loaded_executors([executor]) == 0
-    assert state.catalog_restrictions([executor], read_only=True)["demo"][0] is (
+    assert restrictions([executor])["demo"][0] is (
         state.Restriction.DEMOTED)
 
 
@@ -264,7 +272,7 @@ def test_an_idle_generation_is_deprecated_then_archived(monkeypatch, epochs):
         deprecate_days=30, archive_days=14, now_iso="2026-04-01T00:00:00Z")
     assert late["archived"] == ["demo"]
     assert override_of(epochs, executor)[0] == "archived"
-    assert state.catalog_restrictions([executor], read_only=True)["demo"] == (
+    assert restrictions([executor])["demo"] == (
         state.Restriction.REMOVED, "inactive too long")
 
 
@@ -291,7 +299,7 @@ def test_recent_use_and_curated_capabilities_never_decay(monkeypatch, epochs):
     report = state.apply_inactivity_decay(
         deprecate_days=30, archive_days=14, now_iso="2026-03-01T00:00:00Z")
     assert report["deprecated"] == [] and report["handcrafted_skipped"] == 1
-    assert state.catalog_restrictions([recent, curated], read_only=True) == {}
+    assert restrictions([recent, curated]) == {}
 
 
 def test_a_restriction_is_reversible_and_keeps_its_reason(monkeypatch, epochs):
@@ -302,11 +310,11 @@ def test_a_restriction_is_reversible_and_keeps_its_reason(monkeypatch, epochs):
     assert state.restrict_executor(
         "demo", restriction=state.Restriction.DEMOTED, reason="duplicate of other") is True
     assert override_of(epochs, executor) == ("deprecated", "duplicate of other")
-    assert state.catalog_restrictions([executor], read_only=True)["demo"][0] is (
+    assert restrictions([executor])["demo"][0] is (
         state.Restriction.DEMOTED)
     assert state.revive_executor("demo", reason="dedupe rollback") is True
     assert override_of(epochs, executor) is None
-    assert state.catalog_restrictions([executor], read_only=True) == {}
+    assert restrictions([executor]) == {}
     # Reviving twice is not an error and changes nothing.
     assert state.revive_executor("demo", reason="dedupe rollback") is False
 
@@ -412,16 +420,32 @@ def test_an_unreachable_store_drops_the_verdict_without_raising(monkeypatch, tmp
     assert state.record_invocation(executor, ok=True) is None
 
 
-def test_the_catalog_cache_follows_the_owning_store(monkeypatch, epochs, tmp_path):
-    import executor_aging
-
-    aging_db = tmp_path / "executor_stats.db"
-    aging_db.write_bytes(b"")
-    monkeypatch.setattr(executor_aging, "DB_PATH", aging_db)
+def test_the_snapshot_follows_the_owning_store(monkeypatch, epochs, tmp_path):
+    """One read, from one owner, and semantic rather than a timestamp."""
+    monkeypatch.setattr("executor_aging.lifecycle_override_map",
+                        lambda *, read_only: {"legacy_name": "archived"})
     owned_by(monkeypatch, mode.BirthStateOwner.LEGACY)
-    assert state.cache_signature()[0] == "aging_db"
+    assert state.restriction_snapshot() == (
+        ("legacy_name", "", "archived", "inactive too long"),)
     owned_by(monkeypatch, mode.BirthStateOwner.EPOCH)
-    label, before = state.cache_signature()
-    assert label == "epoch_db" and before == 0.0
-    admit(epochs, loaded("demo"))
-    assert state.cache_signature()[1] > 0.0
+    executor = loaded("demo")
+    admit(epochs, executor, BirthLifecycle.ACTIVE)
+    assert state.restriction_snapshot() == ()
+    state.restrict_generation_exact(
+        contract_id=executor.contract_id, generation_id=executor.generation_id,
+        restriction=state.Restriction.DEMOTED, reason="deprecated",
+        observed_at="2026-09-17T08:00:00Z", db_path=epochs)
+    assert state.restriction_snapshot() == (
+        ("demo", executor.generation_id, "deprecated", "deprecated"),)
+
+
+def test_the_snapshot_is_applied_exactly_as_it_was_taken(monkeypatch, epochs):
+    """A later revival must not leak into a load already signed as restricted."""
+    owned_by(monkeypatch, mode.BirthStateOwner.EPOCH)
+    executor = loaded("demo")
+    admit(epochs, executor, BirthLifecycle.DEPRECATED)
+    snapshot = state.restriction_snapshot()
+    monkeypatch.setattr(state, "_epoch_snapshot",
+                        lambda: pytest.fail("the snapshot was read a second time"))
+    assert state.restrictions_from_snapshot([executor], snapshot)["demo"][0] is (
+        state.Restriction.DEMOTED)

@@ -75,58 +75,83 @@ def _utc_now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _epoch_restrictions(executors) -> dict[str, tuple[Restriction, str]]:
-    """Answer from the exact generations this catalog load produced."""
-    from executor_birth_epoch_store import BirthLifecycle, EpochState, read_epochs
+def _epoch_snapshot() -> tuple[tuple[str, str, str, str], ...]:
+    """Every restriction the epoch owner currently asserts, per exact row."""
+    from executor_birth_epoch_store import BirthLifecycle, EpochState, selectable_epochs
 
     db_path = _epoch_db_path()
     if not db_path.is_file():
         raise FileNotFoundError(str(db_path))
-    keys, by_key = [], {}
-    for executor in executors:
-        identity = _exact_identity(executor)
-        if identity is None:
-            # A loaded executor without its exact identity cannot be checked
-            # against the owning store, so it cannot be admitted either.
-            by_key[executor.name] = None
+    entries = []
+    for record in selectable_epochs(db_path=db_path):
+        if record.state is not EpochState.CURRENT:
             continue
-        keys.append(identity)
-        by_key[executor.name] = (identity[0].value, identity[1])
-    found = read_epochs(keys, db_path=db_path)
-    restricted: dict[str, tuple[Restriction, str]] = {}
-    for name, key in by_key.items():
-        if key is None:
-            restricted[name] = (Restriction.REMOVED, "no authenticated identity")
-            continue
-        record = found.get(key)
-        if record is None:
-            # The epoch owner has no decision about this generation yet, which
-            # is not a restriction. A writable load records it first, so the
-            # ordinary case never reaches here.
-            continue
-        if (record.lifecycle in {BirthLifecycle.QUARANTINED, BirthLifecycle.ARCHIVED}
-                or record.state is not EpochState.CURRENT):
-            restricted[name] = (Restriction.REMOVED, record.lifecycle.value)
+        if record.lifecycle in {BirthLifecycle.QUARANTINED, BirthLifecycle.ARCHIVED}:
+            restriction, reason = Restriction.REMOVED, record.lifecycle.value
         elif record.lifecycle is BirthLifecycle.DEPRECATED:
-            restricted[name] = (Restriction.DEMOTED, record.lifecycle.value)
+            restriction, reason = Restriction.DEMOTED, record.lifecycle.value
         elif record.lifecycle_override is BirthLifecycle.ARCHIVED:
-            restricted[name] = (Restriction.REMOVED,
-                                record.override_reason or "inactive too long")
+            restriction = Restriction.REMOVED
+            reason = record.override_reason or "inactive too long"
         elif record.lifecycle_override is BirthLifecycle.DEPRECATED:
-            restricted[name] = (Restriction.DEMOTED,
-                                record.override_reason or "inactive too long")
-    return restricted
+            restriction = Restriction.DEMOTED
+            reason = record.override_reason or "inactive too long"
+        else:
+            continue
+        entries.append((record.name, record.generation_id, restriction.value, reason))
+    return tuple(sorted(entries))
 
 
-def _aging_restrictions(*, read_only: bool) -> dict[str, tuple[Restriction, str]]:
-    """Answer from the name-based store, the only identity it has."""
+def _aging_snapshot() -> tuple[tuple[str, str, str, str], ...]:
+    """The same question asked of the store that can only answer by name."""
     from executor_aging import lifecycle_override_map
 
-    return {
-        name: ((Restriction.REMOVED, "inactive too long") if state == "archived"
-               else (Restriction.DEMOTED, state))
-        for name, state in lifecycle_override_map(read_only=read_only).items()
-    }
+    return tuple(sorted(
+        (name, "",
+         Restriction.REMOVED.value if state == "archived" else Restriction.DEMOTED.value,
+         "inactive too long" if state == "archived" else state)
+        for name, state in lifecycle_override_map(read_only=True).items()
+    ))
+
+
+def restriction_snapshot() -> tuple[tuple[str, str, str, str], ...]:
+    """Read the restrictions once, from the store that owns them.
+
+    The snapshot is semantic and never a modification time: invocation
+    accounting shares the same database, and its mtime changes on every
+    recorded call, so a time-based signature invalidates every cache and makes
+    bounded authentication look unstable under ordinary traffic. Reading once
+    also lets the caller apply exactly what it signed, rather than rereading
+    and racing a revival.
+    """
+    if read_birth_activation_state().owner is BirthStateOwner.LEGACY:
+        return _aging_snapshot()
+    return _epoch_snapshot()
+
+
+def restrictions_from_snapshot(
+    executors: Iterable[object],
+    snapshot: Iterable[tuple[str, str, str, str]],
+) -> dict[str, tuple[Restriction, str]]:
+    """Decide this catalog load's restrictions from one taken snapshot.
+
+    An entry that names a generation applies to that exact generation only, so
+    a restriction never reaches the successor that replaced it. An entry with
+    no generation comes from the store that has only names, which is the only
+    identity it can offer.
+    """
+    loaded = {}
+    for executor in executors:
+        identity = _exact_identity(executor)
+        loaded[executor.name] = None if identity is None else identity[1]
+    restricted: dict[str, tuple[Restriction, str]] = {}
+    for name, generation_id, restriction, reason in snapshot:
+        if name not in loaded:
+            continue
+        if generation_id and loaded[name] != generation_id:
+            continue
+        restricted[name] = (Restriction(restriction), reason)
+    return restricted
 
 
 def _source_tag(executor: object) -> str:
@@ -209,27 +234,6 @@ def admit_generations(executors: Iterable[object], *, db_path: Path | None = Non
             continue
         recorded += 1
     return recorded
-
-
-def cache_signature() -> tuple[str, float]:
-    """Identify the owning store's current decisions for the catalog cache.
-
-    A restriction changes what the catalog contains or how an entry is ranked,
-    so a cached catalog that predates it is stale. The modification time of
-    whichever store holds those decisions is what makes the next load notice,
-    and reading it from here keeps the loader from naming one exact file that a
-    migrated installation no longer writes.
-    """
-    if read_birth_activation_state().owner is BirthStateOwner.LEGACY:
-        from executor_aging import DB_PATH
-
-        path, label = DB_PATH, "aging_db"
-    else:
-        path, label = _epoch_db_path(), "epoch_db"
-    try:
-        return (label, path.stat().st_mtime)
-    except OSError:
-        return (label, 0.0)
 
 
 def register_loaded_executors(executors: Iterable[object]) -> int:
@@ -364,15 +368,6 @@ def record_invocation(executor: object, *, ok: bool | None) -> None:
     except _store_faults() as ex:
         log.warning("lifecycle state: call on %s not counted: %r",
                     getattr(executor, "name", ""), ex)
-
-
-def catalog_restrictions(
-    executors: Iterable[object], *, read_only: bool,
-) -> dict[str, tuple[Restriction, str]]:
-    """Return the restricted executors of this catalog load, by owning store."""
-    if read_birth_activation_state().owner is BirthStateOwner.LEGACY:
-        return _aging_restrictions(read_only=read_only)
-    return _epoch_restrictions(executors)
 
 
 def apply_inactivity_decay(
@@ -620,9 +615,8 @@ def revive_executor(executor_name: str, *, reason: str) -> bool:
 
 
 __all__ = ["RESTRICTED_REJECT_PREFIX", "Restriction", "admit_generations",
-           "apply_inactivity_decay",
-           "cache_signature", "catalog_restrictions", "credit_uses",
-           "record_invocation",
+           "apply_inactivity_decay", "credit_uses", "record_invocation",
            "record_verdict", "recorded_source", "register_loaded_executors",
-           "restrict_executor",
+           "restrict_executor", "restrict_generation_exact",
+           "restriction_snapshot", "restrictions_from_snapshot",
            "revive_executor"]

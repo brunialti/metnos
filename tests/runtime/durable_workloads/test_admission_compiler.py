@@ -19,6 +19,7 @@ from durable_workloads.compiler import (
     OutputSchemaRegistry,
     RegisteredWorkloadResolver,
     VerifiedCatalogResolver,
+    _semantic_schema,
     affected_stages,
     compile_plan,
     invalidated_stages,
@@ -371,6 +372,65 @@ def test_inline_output_prose_is_not_an_approved_schema():
             plan(with_map=True), inventory([source(0)]),
             runners=_Resolver(), output_schemas=OutputSchemaRegistry(()),
         )
+
+
+def test_semantic_schema_preserves_property_names_and_literal_data():
+    schema = {
+        "type": "object", "title": "Translated heading",
+        "properties": {
+            "title": {"type": "string", "description": "Translated help"},
+            "description": {"type": "object", "default": {"title": "literal"}},
+            "examples": {"type": "array", "items": {
+                "type": "object", "properties": {"title": {"type": "string"}},
+                "const": {"description": "actual data"},
+            }},
+        },
+    }
+    semantic = _semantic_schema(schema)
+
+    assert set(semantic["properties"]) == {"title", "description", "examples"}
+    assert "title" not in semantic
+    assert "description" not in semantic["properties"]["title"]
+    assert semantic["properties"]["description"]["default"] == {"title": "literal"}
+    item = semantic["properties"]["examples"]["items"]
+    assert item["properties"] == {"title": {"type": "string"}}
+    assert item["const"] == {"description": "actual data"}
+
+
+def test_capability_scope_changes_invalidate_the_frozen_contract():
+    executor = SimpleNamespace(
+        signed_by="fixture-authority", lifecycle="active", dormant=False,
+        digest="sha256:" + "a" * 64, version="1.0.0",
+        args_schema={"type": "object", "properties": {"client": {"type": "string"}}},
+        capabilities=({"name": "provider:access", "hint": ["provider-a"],
+                       "when": {"arg": "client", "values": ["provider-a"]}},),
+        placement={}, transport="local-subprocess", intelligence="deterministic",
+    )
+    resolver = VerifiedCatalogResolver(
+        durable_effects={"read_fixture": ("pure",)},
+        durable_output_schemas={"read_fixture": ("metnos.fixture/1",)},
+    )
+    before = resolver.attest_executor("read_fixture", executor)
+    executor.capabilities = ({"name": "provider:access", "hint": ["provider-b"],
+                              "when": {"arg": "client", "values": ["provider-b"]}},)
+    after = resolver.attest_executor("read_fixture", executor)
+    assert before.contract_digest != after.contract_digest
+
+
+def test_capability_order_does_not_change_the_frozen_contract():
+    executor = SimpleNamespace(
+        signed_by="fixture-authority", lifecycle="active", dormant=False,
+        digest="sha256:" + "a" * 64, version="1.0.0",
+        args_schema={"type": "object", "properties": {}},
+        capabilities=({"name": "files:read"}, {"name": "files:write"}),
+    )
+    resolver = VerifiedCatalogResolver(
+        durable_effects={"read_fixture": ("pure",)},
+        durable_output_schemas={"read_fixture": ("metnos.fixture/1",)},
+    )
+    before = resolver.attest_executor("read_fixture", executor)
+    executor.capabilities = tuple(reversed(executor.capabilities))
+    assert resolver.attest_executor("read_fixture", executor) == before
 
 
 def test_missing_dependency_field_and_effect_authority_are_rejected():

@@ -322,6 +322,35 @@ def test_explicit_retryable_rejection_can_be_sent_once_later(store, monkeypatch)
     assert len(sender.messages) == 1
 
 
+@pytest.mark.parametrize("outcome", [
+    {"ok": False},
+    {"ok": False, "retryable": True},
+    {"ok": False, "retryable": True, "delivery_ambiguous": None},
+    {"ok": False, "retryable": True, "delivery_ambiguous": "false"},
+    {"ok": False, "retryable": True, "delivery_ambiguous": 0},
+])
+def test_retry_requires_explicit_evidence_that_nothing_was_sent(store, monkeypatch, outcome):
+    event = _event(store, number=33, event_type=EventType.COMPLETED)
+    row = _enqueue(store, event)
+    monkeypatch.setattr(
+        "durable_workloads.events.terminal_notice", lambda *_args, **_kwargs: "done",
+    )
+    sender = _Sender(outcome)
+    adapter = TelegramOutboxAdapter(
+        store, sender, recipient_resolver=lambda _owner: "chat-a",
+        retry_delay=timedelta(),
+    )
+
+    assert adapter.deliver_once(now=NOW).cancelled == 1
+    assert adapter.deliver_once(now=NOW + timedelta(minutes=2)).claimed == 0
+    assert len(sender.messages) == 1
+    stored = store._connection.execute(
+        "SELECT ack_json FROM outbox WHERE owner_user_id=? AND id=?",
+        (OWNER, row.outbox_id),
+    ).fetchone()
+    assert "delivery_ambiguous" in stored["ack_json"]
+
+
 def test_revoked_or_missing_telegram_association_never_sends(store, monkeypatch):
     event = _event(store, number=4, event_type=EventType.COMPLETED)
     _enqueue(store, event)

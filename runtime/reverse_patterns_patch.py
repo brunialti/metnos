@@ -34,9 +34,6 @@ Esempio per `set_events` -> `delete_events_by_id`:
 """
 from __future__ import annotations
 
-from admitted_module_v1 import AdmittedModuleError, load_admitted_module_v1
-
-
 # ---------------------------------------------------------------------------
 # Catalogo: object plurale -> (singolare, scope_field, delete_verb_template)
 # ---------------------------------------------------------------------------
@@ -188,6 +185,9 @@ def _validate_undo_blob_with_fallback(results, id_field, scope_field):
 
 def _dispatch_call(call, catalog):
     """Invoke one delete executor admitted by the caller's verified catalog."""
+    # Filesystem inverses do not load another executor or need its authority.
+    from admitted_module_v1 import AdmittedModuleError, load_admitted_module_v1
+
     name = call["executor"]
     args = call["args"]
     failed = len(args.get(

@@ -6,6 +6,28 @@
 
 ## S. Stato corrente (16/9/2026)
 
+- **Resilienza LRE — installato, release 63** (16/9,
+  ADR 0213/0117): errori dichiarati recuperabili riprovati entro il contratto;
+  esaurimento e cause opache richiedono attenzione senza distruggere la coda.
+  Restano vincolanti contabilità, autorità ed effetti; la riprova manuale
+  concede un solo tentativo. Console IT/EN con tabella dei batch per fase e
+  collegamento dalla chat. Evidenze e stato della pubblicazione:
+  `internal/reports/lre-error-resilience-20260916.md`.
+
+- **Esiti negativi tipizzati LRE e foto — installato, release 62** (16/9,
+  ADR 0213/0117): il nucleo riceve `domain_outcome` esplicitamente approvato,
+  conta solo unità originatrici confermate e chiude con errori senza allentare
+  copertura/contabilità. Console e storico conservano `domain_errors.nitems` e
+  conteggi per codice; `attempt_errors` conserva anche i tentativi tecnici poi
+  recuperati, senza cambiare lo stato riuscito. Il dominio foto registra i due errori di decodifica con
+  prefisso fisso `IMAGE_NOT_INDEXED`, fuori i18n, e motivo tradotto; niente
+  vettori inventati o retry automatico. Ricerca diagnostica esatta separata dalle
+  foto valide; il successivo aggiornamento riprova gli esiti negativi.
+  Collaudo reale su tre file: uno indicizzato, due esiti negativi espliciti,
+  cinque blocchi confermati e zero errori tecnici; ricerca diagnostica e Tutor
+  verificati. Non certifica la copertura dell'archivio completo. Evidenze e
+  limite del job ammesso durante il rilascio:
+  `internal/reports/lre-outcomes-production-20260916.md`.
 - **Candidate-local Birth — in development** (16/9): one common admission
   procedure; property/semantic checks remain outside catalog publication.
   Name reservation authenticates other contracts' signed identities without

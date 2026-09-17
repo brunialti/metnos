@@ -51,6 +51,24 @@ def store(tmp_path):
         repository.close()
 
 
+@pytest.mark.parametrize("trigger", ["results_immutable", "units_fence_monotonic",
+                                     "admitted_stages_update_guard",
+                                     "admitted_stage_placements_update_guard"])
+@pytest.mark.parametrize("replacement", [False, True])
+def test_current_schema_rejects_missing_or_replaced_integrity_trigger(trigger, replacement):
+    connection = open_db(":memory:")
+    try:
+        migrate(connection)
+        connection.execute(f"DROP TRIGGER {trigger}")
+        if replacement:
+            connection.execute(f"CREATE TRIGGER {trigger} BEFORE UPDATE ON results BEGIN SELECT 1; END")
+        with pytest.raises(MigrationError, match="trigger"):
+            migrate(connection)
+        assert not connection.in_transaction
+    finally:
+        connection.close()
+
+
 def test_import_has_no_database_or_directory_side_effect(tmp_path):
     state = tmp_path / "state-not-created"
     environment = dict(os.environ)

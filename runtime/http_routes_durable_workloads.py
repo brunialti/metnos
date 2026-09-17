@@ -53,6 +53,14 @@ _DURABLE_ERROR_MESSAGE_KEYS = {
     "entry_identity_invalid": "UI_DURABLE_ERROR_ENTRY_IDENTITY",
     "executor_permanent": "UI_DURABLE_ERROR_EXECUTOR_PERMANENT",
     "executor_transient": "UI_DURABLE_ERROR_EXECUTOR_TRANSIENT",
+    "executor_unknown": "UI_DURABLE_ERROR_EXECUTOR_UNKNOWN",
+    "execution.unhandled_exception": "UI_DURABLE_ERROR_EXECUTOR_UNKNOWN",
+    "execution.runner_failed": "UI_DURABLE_ERROR_RUNNER_FAILED",
+    "image_description_unavailable": "UI_DURABLE_CAUSE_IMAGE_DESCRIPTION_UNAVAILABLE",
+    "image_description_truncated": "UI_DURABLE_CAUSE_IMAGE_DESCRIPTION_TRUNCATED",
+    "image_description_invalid": "UI_DURABLE_CAUSE_IMAGE_DESCRIPTION_INVALID",
+    "image_description_empty": "UI_DURABLE_CAUSE_IMAGE_DESCRIPTION_EMPTY",
+    "image_description_schema_invalid": "UI_DURABLE_CAUSE_IMAGE_DESCRIPTION_SCHEMA_INVALID",
     "invalid_plan": "UI_DURABLE_ERROR_INVALID_PLAN",
     "inventory_unstable": "UI_DURABLE_ERROR_INVENTORY_UNSTABLE",
     "lease_lost": "UI_DURABLE_ERROR_LEASE_LOST",
@@ -101,7 +109,8 @@ async def _invoke(request: web.Request, operation: Callable[[DurableWorkloadCont
         if not isinstance(store, DurableWorkloadStore):
             raise DurableControlError("durable_workload.unavailable", 503)
         try:
-            return operation(DurableWorkloadControl(store, cursor_secret=secret))
+            from durable_runtime_registry import describe_plan
+            return operation(DurableWorkloadControl(store, cursor_secret=secret, describe_plan=describe_plan))
         finally:
             store.close()
 
@@ -308,13 +317,41 @@ async def workload_console(request: web.Request) -> web.Response:
                 "engine": "ENGINE", "engineReady": "ENGINE_READY",
                 "engineDisabled": "ENGINE_DISABLED", "engineUnavailable": "ENGINE_UNAVAILABLE",
                 "fresh": "FRESH", "stale": "STALE", "refresh": "REFRESH",
-                "activity": "ACTIVITY", "technical": "TECHNICAL", "saved": "SAVED",
+                "activity": "ACTIVITY", "technical": "TECHNICAL", "saved": "COMPLETED_WORK_UNITS",
                 "pending": "PENDING", "failedCount": "FAILED_COUNT", "skipped": "SKIPPED",
-                "attention": "ATTENTION", "blockedHelp": "BLOCKED_HELP",
-                "waitingHelp": "WAITING_HELP", "progressHelp": "PROGRESS_HELP",
+                "attention": "ATTENTION", "blockedHelp": "ATTENTION_HELP",
+                "waitingHelp": "WAITING_HELP", "progressHelp": "WORK_UNITS_HELP",
                 "lastResult": "LAST_RESULT", "noResult": "NO_RESULT",
                 "attempts": "ATTEMPTS",
+                "started": "STARTED", "percent": "ALL_PHASES_PROGRESS",
+                "phaseEstimatedEnd": "PHASE_FINISH_ESTIMATE", "wholeEstimatedEnd": "WHOLE_ESTIMATED_FINISH",
+                "phaseProgress": "PHASE_PROGRESS", "phaseCount": "PHASE_COMPLETED_UNITS",
+                "phaseScopeHelp": "PHASE_SCOPE_HELP",
+                "phaseNumber": "PHASE_NUMBER",
+                "metricValue": "METRIC_VALUE", "metricMeaning": "METRIC_MEANING",
+                "phaseCompletedMeaning": "PHASE_COMPLETED_MEANING", "phaseTotalMeaning": "PHASE_TOTAL_MEANING",
+                "knownTotalMeaning": "KNOWN_TOTAL_MEANING", "batchDefinition": "BATCH_DEFINITION",
+                "notAvailable": "NOT_AVAILABLE", "timingHelp": "PHASE_TIMING_HELP",
+                "photoIndexing": "PHOTO_INDEXING", "genericJob": "GENERIC_JOB",
+                "folder": "FOLDER", "readProgress": "READ_PROGRESS",
+                "jobId": "JOB_ID", "operation": "OPERATION", "loading": "LOADING",
+                "selectJob": "SELECT_JOB", "readFailed": "READ_FAILED",
+                "discoveryHelp": "DISCOVERY_HELP",
+                "recoveryHelp": "RECOVERY_HELP", "phase": "CURRENT_PHASE",
+                "runningBlocks": "RUNNING_BLOCKS", "jobLimit": "JOB_LIMIT",
+                "reservedBlocks": "RESERVED_BLOCKS", "parallelismHelp": "PARALLELISM_HELP",
             }.items()
+        },
+        "phases": {
+            key: message("UI_DURABLE_PHASE_" + key.upper())
+            for key in ("discover", "folders", "analyze", "merge", "publish")
+        },
+        "estimateReasons": {
+            key: message("UI_DURABLE_ETA_" + key.upper())
+            for key in ("multi_phase", "not_running", "insufficient_data", "needs_attention",
+                        "no_active_phase", "multiple_active_phases", "inventory_open", "phase_expanding",
+                        "uncertain_progress", "stale_progress", "estimate_overdue",
+                        "data_stale", "engine_unavailable")
         },
         "empty": message("UI_DURABLE_EMPTY"),
         "state": message("UI_DURABLE_STATE"),
@@ -330,6 +367,10 @@ async def workload_console(request: web.Request) -> web.Response:
         "budget": message("UI_DURABLE_BUDGET"),
         "stages": message("UI_DURABLE_STAGES"),
         "errors": message("UI_DURABLE_ERROR_CATEGORIES"),
+        "itemsWithErrors": message("UI_DURABLE_ITEMS_WITH_ERRORS"),
+        "attemptErrors": message("UI_DURABLE_ATTEMPT_ERRORS"),
+        "attemptErrorsHelp": message("UI_DURABLE_ATTEMPT_ERRORS_HELP"),
+        "moreErrorCategories": message("UI_DURABLE_MORE_ERROR_CATEGORIES"),
         "errorUnknown": message("UI_DURABLE_ERROR_UNKNOWN"),
         "unknown": message("UI_DURABLE_VALUE_UNKNOWN"),
         "errorLabels": {

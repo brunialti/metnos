@@ -209,9 +209,134 @@ ma il vero engine e' uno solo.
 
 ## References
 
+### Addendum 2026-09-16 — decodifica e recupero LRE
+
+Il lettore include `pillow-heif` (dipendenza bloccata e verificata nella
+distribuzione), registrato prima di aprire la copia privata senza estensione.
+Il medesimo processo usa il lettore per metadati, volti, VLM e vettori immagine.
+Nessun originale viene convertito o sovrascritto. Formati non riconosciuti e
+decodifica fallita hanno codici distinti e non diventano risultati riusciti.
+Riferimento del decoder: <https://pillow-heif.readthedocs.io/en/stable/pillow-plugin.html>.
+
+Ogni foglia di analisi completa salva atomicamente un riferimento privato,
+indirizzato da percorso, sorgente completa, identità di analisi e contesto
+cartella. Un tentativo della **stessa generazione** rivalida digest del frammento,
+metadati, vettori e identità prima del riuso. Il riferimento non è un risultato
+LRE accettato né una pubblicazione; non aggira ammissione o contabilità. Vale
+anche per riprendere un lavoro richiesto con `force`: non riusa una generazione
+precedente. I frammenti storici senza riferimento restano conservati, ma non
+si promette il loro riuso automatico.
+
+La domanda di corsie è limitata per profilo dalla risorsa più restrittiva e
+poi dai vincoli comuni ai diversi lavori. Le risorse necessarie insieme non
+sono capacità additive. I profili indipendenti restano visibili; l'ammissione
+reale resta al coordinatore centrale, senza aumentare limiti o tempi massimi.
+Test: `test_service_idle.py`, `test_image_index_build_phases.py` (HEIC reale
+generato, ripresa dopo errore, contesto/generazione differenti e manomissione).
+
+### Addendum 2026-09-16 — integrità di pubblicazione e limiti di lettura
+
+Ogni nuova generazione registra in `generation_files` dimensione e SHA-256
+dei cinque output derivati: `entries.jsonl`, `lookup.sqlite` e le tre matrici
+di vettori. La ripetizione della pubblicazione rivalida tutti i file prima di
+dichiarare successo o cambiare il puntatore attivo. File mancanti, troncati,
+alterati anche a dimensione invariata, speciali o sostituiti durante la lettura
+sono rifiutati; l'indice precedente non viene sovrascritto da una generazione
+non valida. La lettura è a blocchi e controlla identità del descrittore e del
+percorso. Non è una firma contro un attore che controlli anche i metadati.
+
+Gli indici storici restano leggibili. Una generazione senza `generation_files`
+non può invece provare un successo attraverso la ripetizione rapida della
+pubblicazione. Nessuna migrazione distruttiva né cancellazione delle parti
+intermedie viene introdotta. La ripresa delle foglie resta limitata alla stessa
+generazione; un nuovo lavoro non riusa automaticamente checkpoint privati vecchi.
+
+Le aperture di parti, copie delle sorgenti ed entries rifiutano FIFO senza
+attendere uno scrittore. L'hash delle sorgenti ha un tetto di lettura pari alla
+dimensione congelata più un byte. Due espressioni regolari per nomi automatici
+sono state sostituite con forme equivalenti senza quantificatori ambigui annidati:
+nomi sintetici non corrispondenti non devono occupare un core indefinitamente.
+
+Prove: `test_image_index_publication_integrity.py`,
+`test_image_index_filename_bounds.py`, `test_image_index_build_phases.py`.
+La modifica dell'executor richiede il percorso canonico di release prima della
+distribuzione; non costituisce prova della causa di un errore di decodifica reale.
+
 - ADR 0086 — image domain indices (superseded scope: 3 separate IDX_TYPES).
 - ADR 0093 — async indexing build (riusato per migration spawn).
 - ADR 0098 — web crawl strategy (pattern di `error_class` + soft-fail).
 - ADR 0112 — scheduler v2 asyncio (boot hook spawn).
 - ADR 0113 — named persons registry (capabilities di composizione).
 - ADR 0114 — synth admission policy (politiche di admission).
+
+### Addendum 2026-09-16 — foto non indicizzabili come esiti espliciti
+
+Decisione successiva richiesta dall'utente: il fallimento di decodifica di una
+singola foto non deve arrestare l'intero archivio, né trasformare quella foto in
+un contenuto indicizzato. Supera esclusivamente il precedente arresto rigoroso
+sui due codici `image_decode_failed` e `image_format_unreadable`. La causa reale
+del file osservato in esercizio rimane non diagnosticata: non si presume danno.
+
+Il dominio conserva un record per la sorgente con `indexing_status=not_indexed`,
+`indexing_error_code`, identità/percorso e descrizione standard. Il prefisso
+`IMAGE_NOT_INDEXED:<codice>` è fisso, inglese e fuori i18n; soltanto la spiegazione
+successiva usa il catalogo IT/EN. Nessun contenuto visivo, volto, parola chiave,
+modello o vettore viene inventato. Il tentativo di decodifica precede la richiesta
+dei modelli: una foto non leggibile non consuma chiamate ai modelli. Gli errori di
+modelli, autorità, sorgenti, contabilità o integrità continuano a fallire secondo
+il proprio contratto; non vengono catturati come foto non indicizzabili.
+
+I record negativi sono copertura esplicita delle sorgenti, non omissioni. La
+pubblicazione esige `n_entries = n_indexed + n_not_indexed`, conteggi per codice
+coerenti e i cinque file integri; `ok_count` e `fail_count` rimangono distinti.
+Un archivio interamente non leggibile può pubblicare un registro diagnostico con
+matrici vuote, non un indice visivo riuscito. Solo i gruppi di analisi emettono il
+`domain_outcome` generale (ADR 0213): unione e pubblicazione non lo ricontano.
+LRE conserva totale e categorie e termina con errori anche con tutti i blocchi
+confermati. Non conosce il prefisso né i due codici specifici.
+
+`find_images_indices` accetta la ricerca esatta `IMAGE_NOT_INDEXED` o uno dei due
+prefissi completi per elencare percorsi e motivi. Non invoca modelli, non allega
+immagini, non avvia automaticamente un indice mancante e non combina filtri
+semantici incompatibili. La spiegazione è resa nella lingua corrente. Ricerche
+ordinarie, lessico del corpus e confronti vettoriali escludono i record negativi;
+`get_images_indices` separa totale record, indicizzati e non indicizzati.
+
+Dentro la stessa generazione i checkpoint negativi sono verificati e riusabili,
+evitando di ripetere lo stesso errore a ogni ripresa del gruppo. Un nuovo
+aggiornamento incrementale riprova tali foto e riusa quelle valide compatibili.
+Non viene introdotto un ciclo automatico di retry o il trasferimento implicito
+di checkpoint privati da una generazione fallita. Nessuna foto o storia cancellata.
+
+Gli schemi di scoperta, parti e pubblicazione passano a `/3`: non riscrivere i
+contratti dei lavori precedenti. Vecchi indici restano leggibili; la ripetizione
+rapida della pubblicazione richiede anche i nuovi contatori coerenti oltre al
+sigillo dei file. Gli strumenti manuali di completamento vettori/contesto negano
+generazioni sigillate e record negativi prima di caricare modelli o scrivere:
+per aggiornarli serve il normale percorso `create_images_indices`.
+
+Prove: `test_image_index_negative_outcomes.py`, `test_image_negative_records.py`,
+`test_image_backfill_guard.py`, `test_image_index_build_phases.py`,
+`test_image_indexing_plan.py`, `test_image_indexing_e2e.py` e suite di integrità.
+Modifica in sviluppo: necessita di release canonica e prova limitata reale prima
+di distribuirla; i test con risposte sintetiche non certificano l'archivio reale.
+
+### Addendum 2026-09-16 — classificazione dei fallimenti del modello
+
+La precedente categoria unica `image_description_unavailable` perdeva il motivo
+e arrivava a LRE come errore permanente. Il dominio conserva ora codici chiusi
+distinti: descrizione indisponibile, troncata, non valida o vuota dichiarano
+`executor_transient`; uno schema di richiesta non valido dichiara invece
+`capability_unavailable`, da verificare senza ritentativi automatici.
+
+Non si aggiunge un ciclo interno al dominio: LRE applica i tentativi già ammessi
+e, se esauriti, conserva la coda in `needs_attention` (ADR 0213). La contabilità
+può comunque impedire la ripresa. Nessuno di questi errori produce un record
+`IMAGE_NOT_INDEXED`, riservato ai due errori di decodifica; non si inventano
+contenuti né si pubblica un indice parziale. I checkpoint compatibili della
+stessa generazione evitano di rifare le analisi già concluse nel batch.
+
+Il nuovo vocabolario fa parte dello schema approvato dell'executor e ne cambia
+l'impronta: non correggere retroattivamente i piani congelati. La causa precisa
+del vecchio tentativo di esercizio non è recuperabile dalla categoria generica;
+la prova del difetto è la classificazione permanente, non un timeout presunto.

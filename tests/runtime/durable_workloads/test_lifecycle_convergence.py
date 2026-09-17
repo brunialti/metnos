@@ -36,6 +36,7 @@ BASE_TIME = datetime(2026, 8, 20, 14, 0, 0, tzinfo=timezone.utc)
         "capability_unavailable",
         "publication_ambiguous",
         "source_missing",
+        "executor_unknown",
     ),
 )
 def test_errors_requiring_changed_facts_never_retry_automatically(error_class):
@@ -46,6 +47,28 @@ def test_errors_requiring_changed_facts_never_retry_automatically(error_class):
         error_class=error_class,
     )
     assert decision is RetryDecision.NEEDS_ATTENTION
+
+
+@pytest.mark.parametrize("effect", [DurableEffect.PURE, DurableEffect.IDEMPOTENT])
+@pytest.mark.parametrize("attempt,manual,expected", [
+    (1, False, RetryDecision.RETRY), (2, False, RetryDecision.RETRY),
+    (3, False, RetryDecision.NEEDS_ATTENTION), (4, False, RetryDecision.NEEDS_ATTENTION),
+    (1, True, RetryDecision.NEEDS_ATTENTION), (4, True, RetryDecision.NEEDS_ATTENTION),
+])
+def test_transient_retry_limit_requires_attention_not_permanent_failure(effect, attempt, manual, expected):
+    assert decide_retry(
+        effect_profile=effect, retry_policy=RetryPolicy(3, 0, 0, ("executor_transient",)),
+        attempt_number=attempt, error_class="executor_transient", manual_retry=manual,
+    ) is expected
+
+
+@pytest.mark.parametrize("error_class", ["executor_permanent", "contract_violation", "invalid_plan"])
+def test_declaring_a_permanent_error_retryable_does_not_change_its_classification(error_class):
+    assert decide_retry(
+        effect_profile=DurableEffect.IDEMPOTENT,
+        retry_policy=RetryPolicy(3, 0, 0, (error_class,)), attempt_number=1,
+        error_class=error_class,
+    ) is RetryDecision.FAIL_PERMANENT
 
 
 @pytest.fixture
@@ -245,6 +268,55 @@ def _claim_and_run(
         now=BASE_TIME + timedelta(seconds=offset, microseconds=1),
     ) is LeaseMutationStatus.APPLIED
     return lease
+
+
+@pytest.mark.parametrize("effect", [DurableEffect.PURE, DurableEffect.IDEMPOTENT])
+def test_exhausted_transient_preserves_results_and_queue_until_one_manual_grant(store, effect):
+    workload_id = _prepare(store, "recoverable-exhaustion", count=3, effect=effect, max_attempts=3)
+    saved = _claim_and_run(store, "saved", effect=effect)
+    receipt = _result(saved, "saved-before-error")
+    assert store.commit_result(saved, receipt, now=BASE_TIME + timedelta(seconds=1)).status is CommitStatus.COMMITTED
+    last = None
+    for number in range(1, 4):
+        # Keep another pending batch untouched even if normal scheduling could
+        # otherwise choose it: the failing batch is oldest and retry is due.
+        lease = _claim_and_run(store, f"failed-{number}", effect=effect, offset=number * 2)
+        if last is not None:
+            assert lease.unit_id == last.unit_id
+        decision = decide_retry(effect_profile=lease.effect_profile, retry_policy=lease.retry_policy,
+                                attempt_number=lease.attempt_number, error_class="executor_transient")
+        status = store.fail_attempt(lease, _error(offset=number * 2), decision,
+                                   now=BASE_TIME + timedelta(seconds=number * 2, microseconds=2)).status
+        assert status is (FailureStatus.RETRY_SCHEDULED if number < 3 else FailureStatus.NEEDS_ATTENTION)
+        store.reconcile_expired(BASE_TIME + timedelta(seconds=number * 2 + 1), 10)
+        last = lease
+    attention = store.get_workload("owner-a", workload_id)
+    assert attention.state is WorkloadState.NEEDS_ATTENTION
+    assert sorted(row["state"] for row in _unit_rows(store, workload_id)) == ["committed", "needs_attention", "pending"]
+    for offset in (8, 9, 10):
+        assert store.claim_next("no-loop", BASE_TIME + timedelta(seconds=offset), timedelta(seconds=30),
+                                _capabilities(effect)) is None
+    error = json.loads(store._connection.execute(
+        "SELECT structured_error_json FROM attempts WHERE id=?", (last.attempt_id,),
+    ).fetchone()[0])
+    assert error["retry"] == "manual"
+    assert error["error_class"] == "executor_transient"
+    assert store.commit_result(saved, receipt, now=BASE_TIME + timedelta(seconds=10)).status is CommitStatus.IDEMPOTENT_REPLAY
+    resumed = store.record_attention_resolution(
+        "owner-a", workload_id, decision="retry", expected_version=attention.version,
+        idempotency_key="one-approved-retry", now=BASE_TIME + timedelta(seconds=11),
+    )
+    assert resumed.state is WorkloadState.QUEUED
+    retry = _claim_and_run(store, "owner-approved", effect=effect, offset=12)
+    assert retry.unit_id == last.unit_id and retry.attempt_number == 4 and retry.manual_retry
+    # An owner's retry is not a fresh automatic retry budget.
+    decision = decide_retry(effect_profile=retry.effect_profile, retry_policy=retry.retry_policy,
+                            attempt_number=retry.attempt_number, error_class="executor_transient",
+                            manual_retry=retry.manual_retry)
+    assert decision is RetryDecision.NEEDS_ATTENTION
+    store.fail_attempt(retry, _error(offset=13), decision, now=BASE_TIME + timedelta(seconds=13))
+    assert store.get_workload("owner-a", workload_id).state is WorkloadState.NEEDS_ATTENTION
+    assert sorted(row["state"] for row in _unit_rows(store, workload_id)) == ["committed", "needs_attention", "pending"]
 
 
 def test_quiescent_workload_does_not_retain_scheduler_credit(store):

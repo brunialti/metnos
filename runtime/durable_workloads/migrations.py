@@ -1390,6 +1390,11 @@ _V7_STATEMENTS: tuple[str, ...] = (
 )
 
 
+_MIGRATIONS = (
+    _V1_STATEMENTS, _V2_STATEMENTS, _V3_STATEMENTS, _V4_STATEMENTS,
+    _V5_STATEMENTS, _V6_STATEMENTS, _V7_STATEMENTS,
+)
+
 _REQUIRED_V1_TABLES = frozenset({
     "durable_schema",
     "workloads",
@@ -1414,6 +1419,19 @@ _REQUIRED_V1_TABLES = frozenset({
 def _validate_schema_shape(connection: sqlite3.Connection, version: int) -> None:
     if version < 1:
         return
+    # The protections themselves are part of the schema, not just table names.
+    # Reuse the migration source rather than maintaining a second trigger list.
+    triggers = dict(connection.execute(
+        "SELECT name, sql FROM sqlite_master WHERE type='trigger'"
+    ).fetchall())
+    for statements in _MIGRATIONS[:version]:
+        for statement in statements:
+            expected = statement.strip().rstrip(";").strip()
+            if expected.startswith("CREATE TRIGGER "):
+                name = expected.split(None, 3)[2]
+                actual = triggers.get(name)
+                if actual is None or actual.strip().rstrip(";").strip() != expected:
+                    raise MigrationError(f"schema integrity trigger is missing or changed: {name}")
     present = frozenset(
         str(row[0]) for row in connection.execute(
             "SELECT name FROM sqlite_master WHERE type='table'"
@@ -1619,66 +1637,16 @@ def migrate(
                     _before_statement(index, statement)
                 connection.execute(statement)
             current = 1
-        if current == 1:
-            for index, statement in enumerate(_V2_STATEMENTS, start=1):
+        for target in range(current + 1, CURRENT_SCHEMA_VERSION + 1):
+            for index, statement in enumerate(_MIGRATIONS[target - 1], start=1):
                 if _before_statement is not None:
                     _before_statement(index, statement)
                 connection.execute(statement)
             connection.execute(
                 "UPDATE durable_schema SET version=?, applied_at=? WHERE singleton=1",
-                (2, utc_now()),
+                (target, utc_now()),
             )
-            current = 2
-        if current == 2:
-            for index, statement in enumerate(_V3_STATEMENTS, start=1):
-                if _before_statement is not None:
-                    _before_statement(index, statement)
-                connection.execute(statement)
-            connection.execute(
-                "UPDATE durable_schema SET version=?, applied_at=? WHERE singleton=1",
-                (3, utc_now()),
-            )
-            current = 3
-        if current == 3:
-            for index, statement in enumerate(_V4_STATEMENTS, start=1):
-                if _before_statement is not None:
-                    _before_statement(index, statement)
-                connection.execute(statement)
-            connection.execute(
-                "UPDATE durable_schema SET version=?, applied_at=? WHERE singleton=1",
-                (4, utc_now()),
-            )
-            current = 4
-        if current == 4:
-            for index, statement in enumerate(_V5_STATEMENTS, start=1):
-                if _before_statement is not None:
-                    _before_statement(index, statement)
-                connection.execute(statement)
-            connection.execute(
-                "UPDATE durable_schema SET version=?, applied_at=? WHERE singleton=1",
-                (5, utc_now()),
-            )
-            current = 5
-        if current == 5:
-            for index, statement in enumerate(_V6_STATEMENTS, start=1):
-                if _before_statement is not None:
-                    _before_statement(index, statement)
-                connection.execute(statement)
-            connection.execute(
-                "UPDATE durable_schema SET version=?, applied_at=? WHERE singleton=1",
-                (6, utc_now()),
-            )
-            current = 6
-        if current == 6:
-            for index, statement in enumerate(_V7_STATEMENTS, start=1):
-                if _before_statement is not None:
-                    _before_statement(index, statement)
-                connection.execute(statement)
-            connection.execute(
-                "UPDATE durable_schema SET version=?, applied_at=? WHERE singleton=1",
-                (7, utc_now()),
-            )
-            current = 7
+            current = target
         _validate_schema_shape(connection, current)
         # A corrupted database may contain an arbitrary number of violations;
         # startup needs only bounded evidence to fail closed.

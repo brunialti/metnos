@@ -58,6 +58,15 @@ The worker may be running and healthy while waiting with LRE disabled.
 prevents new activity without deleting previously recorded state, history, or
 artifacts. If the configuration is invalid, the gate remains closed.</p>
 
+<p>The LRE card dot indicates feature availability:
+<strong>gray</strong> when disabled and that state is confirmed;
+<strong>green</strong> only when enabled and ready;
+<strong>amber</strong> during a state change or when availability is not
+verified; <strong>red</strong> for service failure or invalid configuration.
+The same information appears as text on the card: color is not the only
+signal. Process state, technical health and PID are under
+<em>Technical details</em>. Green does not mean a workload is progressing.</p>
+
 <div class="callout warning"><p><strong>Before restarting.</strong> Check for
 active interactive turns and read any warning shown by the page. A restart is
 not a visual refresh: it actually interrupts the selected process.</p></div>
@@ -73,7 +82,7 @@ not a visual refresh: it actually interrupts the selected process.</p></div>
   <span class="ui-badge" style="--x:61%;--y:66%" aria-hidden="true">4</span>
   <span class="ui-badge" style="--x:55%;--y:90%" aria-hidden="true">5</span>
  </div>
- <figcaption>LRE is disabled in this capture while its worker is healthy and waiting: those are separate states.</figcaption>
+ <figcaption>Capture from before the color distinction: LRE is disabled but its service is healthy. In the current interface this confirmed state has a gray dot, and process state is under Technical details.</figcaption>
 </figure>
 <ol class="ui-callout-list">
  <li><strong>System section.</strong> Collects the links to models, services, safety, users, and devices.</li>

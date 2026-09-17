@@ -27,13 +27,32 @@ from .schema import inventory_digest
 PLAN_ID = "images.index.v1"
 EXECUTOR = "create_images_indices"
 FOLDER_WORKLOAD = "images.folder_classify"
-DISCOVERY_SCHEMA = "metnos.images.index-discovery/1"
+DISCOVERY_SCHEMA = "metnos.images.index-discovery/3"
 FOLDER_SCHEMA = "metnos.images.index-folders/1"
-PART_SCHEMA = "metnos.images.index-part/1"
-PUBLISHED_SCHEMA = "metnos.images.index-published/1"
+PART_SCHEMA = "metnos.images.index-part/3"
+PUBLISHED_SCHEMA = "metnos.images.index-published/3"
 _PART = {"type": "string", "pattern": "^[a-f0-9]{64}$"}
 _GENERATION = re.compile(r"[A-Za-z0-9_-]{1,128}")
 _PUBLIC_ARGS = frozenset({"base_path", "recursive", "force", "max_files", "dry_run"})
+
+
+def describe_plan(plan: Mapping, phase: str | None) -> dict[str, Any]:
+    """Expose only the common literal corpus path from an admitted index plan."""
+    paths = []
+    for stage in plan["stages"]:
+        if stage["runner"] != {"kind": "executor", "name": EXECUTOR}:
+            continue
+        binding = stage["input_bindings"].get("base_path", {})
+        value = binding.get("value")
+        if binding.get("ref") != "literal" or not isinstance(value, str) or not value.startswith("/"):
+            paths.append(None)
+        else:
+            paths.append(value)
+    target = paths[0] if paths and paths[0] and all(value == paths[0] for value in paths) else None
+    return {
+        "kind": "image_indexing", "operation": EXECUTOR, "target_path": target,
+        "phase": phase if phase in {"discover", "folders", "analyze", "merge", "publish"} else None,
+    }
 
 
 def normalize_request(executor: object, args: Mapping[str, Any], target_device=None) -> dict:
@@ -89,6 +108,46 @@ def _schema(name: str, entry: Mapping, *, extra: Mapping | None = None, required
 
 def output_schemas() -> OutputSchemaRegistry:
     from image_index_build import GROUP_SIZE
+    from image_index_outcomes import DECODE_FAILURE_CODES, DESCRIPTION_FAILURE_CLASSES
+    from .domain_outcome import DOMAIN_OUTCOME_SCHEMA
+
+    error_counts = {
+        "type": "object", "additionalProperties": False,
+        "properties": {code: {"type": "integer", "minimum": 1, "maximum": 1_000_000}
+                       for code in sorted(DECODE_FAILURE_CODES)},
+    }
+    domain_outcome = {
+        **DOMAIN_OUTCOME_SCHEMA,
+        "properties": {**DOMAIN_OUTCOME_SCHEMA["properties"], "error_counts": error_counts},
+    }
+    # Diagnostic authority stays in the approved schema, not in the bridge
+    # or a parallel runtime registry. Values are existing executor outcomes.
+    error_code = {"type": "string", "enum": [
+        *sorted(DESCRIPTION_FAILURE_CLASSES),
+        "active_generation_changed", "analysis_checkpoint_invalid", "analysis_group_invalid", "args_not_object",
+        "artifact_size_or_type", "artifact_too_large", "base_path_invalid",
+        "base_path_missing", "coverage_mismatch", "directory_unavailable",
+        "discovery_output_too_large", "duplicate_part", "duplicate_source_path",
+        "entries_type_invalid", "entry_limit", "entry_path_invalid",
+        "entry_source_mismatch", "entry_too_large", "expected_count_invalid",
+        "face_embedding_unavailable", "face_model_unavailable",
+        "folder_classification_invalid", "folder_contexts_invalid", "folder_label_invalid",
+        "generation_context_mismatch", "generation_incomplete", "generation_invalid",
+        "generation_receipt_conflict", "image_corpus_empty",
+        "image_index_phase_failed", "image_decode_failed", "image_format_unreadable",
+        "image_model_unavailable", "immutable_artifact_conflict",
+        "incomplete_analysis", "invalid_indexing_failure", "inventory_limits_invalid", "max_files_invalid",
+        "mixed_model_generations", "mixed_vector_dimensions", "model_dimension_mismatch",
+        "model_metadata_invalid", "part_context_mismatch", "part_count_invalid",
+        "part_count_mismatch", "part_digest_mismatch", "part_invalid", "part_kind_invalid",
+        "phase_invalid", "previous_generation_invalid", "reduction_depth_invalid",
+        "reduction_fanout_invalid", "requires_lre", "snapshot_path_invalid",
+        "source_changed", "source_changed_since_discovery", "source_digest_invalid",
+        "source_digest_mismatch", "source_metadata_invalid", "source_path_invalid",
+        "source_record_invalid", "source_size_mismatch", "source_unreadable",
+        "symlink_directory", "symlink_lookup", "symlink_reference", "symlink_vectors",
+        "vectors_invalid",
+    ]}
     part = {"type": "object", "additionalProperties": False,
             "properties": {"part": _PART}, "required": ["part"]}
     return OutputSchemaRegistry((
@@ -99,7 +158,7 @@ def output_schemas() -> OutputSchemaRegistry:
                 "folder_labels": {"type": "array", "maxItems": GROUP_SIZE,
                                   "items": {"type": "string", "maxLength": 4096}},
             }, "required": ["part", "folder_labels"],
-        }, extra={"source_count": {"type": "integer", "minimum": 1}},
+        }, extra={"source_count": {"type": "integer", "minimum": 1}, "error_code": error_code},
             required=("source_count",)),
         _schema(FOLDER_SCHEMA, {
             "type": "object", "additionalProperties": False,
@@ -109,10 +168,13 @@ def output_schemas() -> OutputSchemaRegistry:
                                     "additionalProperties": {"type": "string", "maxLength": 8192}},
             }, "required": ["part", "folder_contexts"],
         }),
-        _schema(PART_SCHEMA, part),
+        _schema(PART_SCHEMA, part, extra={"error_code": error_code, "domain_outcome": domain_outcome}),
         _schema(PUBLISHED_SCHEMA, part,
-                extra={"n_entries_total": {"type": "integer", "minimum": 1}},
-                required=("n_entries_total",)),
+                extra={"n_entries_total": {"type": "integer", "minimum": 1}, "error_code": error_code,
+                       "n_indexed": {"type": "integer", "minimum": 0},
+                       "n_not_indexed": {"type": "integer", "minimum": 0},
+                       "indexing_error_counts": error_counts},
+                required=("n_entries_total", "n_indexed", "n_not_indexed", "indexing_error_counts")),
     ))
 
 

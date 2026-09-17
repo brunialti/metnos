@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from contextlib import nullcontext
+import ast
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -11,11 +12,54 @@ import pytest
 
 import lre_submission as submission
 from durable_workloads import image_indexing as indexing
-from durable_workloads.compiler import CompilationError, compile_plan
+from durable_workloads.compiler import ApprovedOutputSchema, CompilationError, compile_plan
 from durable_workloads.direct_invocation import DirectInvocationUnsupported
 from durable_workloads.runtime_bindings import RuntimeRegistry
 from durable_workloads.storage import DurableWorkloadStore
 from engine.types import Framework, StepSpec
+
+
+def test_image_diagnostic_enum_covers_literal_failures_and_versions_the_schemas():
+    registry = indexing.output_schemas()
+    codes = set(registry.resolve(indexing.PART_SCHEMA).field_schema("error_code")["enum"])
+    root = Path(__file__).resolve().parents[3]
+    emitted = {"image_index_phase_failed"}
+    for path in (
+        root / "runtime/image_index_build.py",
+        root / "executors/create_images_indices/create_images_indices.py",
+    ):
+        tree = ast.parse(path.read_text())
+        emitted.update(
+            node.args[0].value for node in ast.walk(tree)
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+            and node.func.id in {"ImageIndexBuildError", "_error"}
+            and node.args and isinstance(node.args[0], ast.Constant)
+            and isinstance(node.args[0].value, str)
+        )
+    # Description diagnostics are selected centrally from closed literal
+    # returns, rather than embedded in exception calls at each caller.
+    tree = ast.parse((root / "runtime/image_index_outcomes.py").read_text())
+    classifier = next(node for node in tree.body
+                      if isinstance(node, ast.FunctionDef) and node.name == "description_failure_code")
+    description_codes = {node.value.value for node in ast.walk(classifier)
+                         if isinstance(node, ast.Return) and isinstance(node.value, ast.Constant)
+                         and isinstance(node.value.value, str)}
+    from image_index_outcomes import DESCRIPTION_FAILURE_CLASSES
+    assert description_codes == set(DESCRIPTION_FAILURE_CLASSES)
+    emitted.update(description_codes)
+    assert emitted == codes
+    for name in (indexing.DISCOVERY_SCHEMA, indexing.PART_SCHEMA, indexing.PUBLISHED_SCHEMA):
+        assert name.endswith("/3")
+        current = registry.resolve(name)
+        assert set(current.field_schema("error_code")["enum"]) == codes
+        previous = json.loads(json.dumps(current.schema))
+        del previous["properties"]["error_code"]
+        old_name = name.removesuffix("/3") + "/2"
+        assert ApprovedOutputSchema.create(old_name, previous).digest != current.digest
+        with pytest.raises(CompilationError):
+            registry.resolve(old_name)
+    assert indexing.FOLDER_SCHEMA.endswith("/1")
+    assert registry.resolve(indexing.FOLDER_SCHEMA).field_schema("error_code") is None
 
 
 def _executor():

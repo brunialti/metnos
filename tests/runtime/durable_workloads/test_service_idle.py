@@ -1,6 +1,7 @@
 """Idle supervision must stay alive without launching empty database workers."""
 
 from datetime import datetime, timedelta, timezone
+from dataclasses import replace
 from types import SimpleNamespace
 
 import pytest
@@ -131,6 +132,65 @@ def test_large_saturated_group_does_not_hide_independent_resource(tmp_path):
         assert store.service_lane_demand(
             limit=31, resource_limits={"cpu": 1, "local_io": 1},
         ) == 2
+
+
+@pytest.mark.parametrize(("claims", "expected"), [
+    ({"cpu": 1, "local_io": 1, "vlm": 1}, 1),
+    ({"cpu": 2, "local_io": 1, "vlm": 0}, 1),
+    ({"cpu": 1, "local_io": 1, "vlm": 0}, 2),
+])
+def test_multi_resource_lane_hint_uses_bottleneck_not_capacity_sum(tmp_path, claims, expected):
+    path = tmp_path / "state.sqlite3"
+    resolver = _Resolver(3)
+    if claims["vlm"]:
+        from test_execution_bridge import _contract
+        resolver.contract = replace(_contract(
+            "workload", resolver.contract.name, "metnos.fixture-parallel-map/1",
+            inputs=("record",), input_types=(("record", "object"),),
+            model=True, model_kind="vision",
+        ), execution_policy=resolver.contract.execution_policy,
+            execution_policy_declared=True)
+    _admit(path, resolver, count=31, max_concurrency=31, resources=claims)
+    with DurableWorkloadStore.open(path) as store:
+        assert store.service_lane_demand(
+            limit=31, resource_limits={"cpu": 2, "local_io": 16, "vlm": 1},
+        ) == expected
+
+        # An independent stage must remain schedulable while VLM is busy.
+        _admit(path, _Resolver(3), count=1, max_concurrency=1, resource="network_io",
+               request_key="independent-network")
+        assert store.service_lane_demand(
+            limit=31, resource_limits={"cpu": 2, "local_io": 16, "vlm": 1, "network_io": 1},
+        ) == expected + 1
+
+
+def test_lane_hint_shares_bottleneck_across_workloads(tmp_path):
+    path = tmp_path / "state.sqlite3"
+    for key in ("first", "second", "third"):
+        _admit(path, _Resolver(3), count=31, max_concurrency=31,
+               request_key=key, resources={"cpu": 2, "local_io": 1})
+    with DurableWorkloadStore.open(path) as store:
+        assert store.service_lane_demand(
+            limit=31, resource_limits={"cpu": 2, "local_io": 16},
+        ) == 1
+        _admit(path, _Resolver(3), count=1, max_concurrency=1,
+               request_key="independent", resource="network_io")
+        assert store.service_lane_demand(
+            limit=31, resource_limits={"cpu": 2, "local_io": 16, "network_io": 1},
+        ) == 2
+
+
+def test_lane_hint_does_not_clip_later_independent_profiles(tmp_path):
+    path = tmp_path / "state.sqlite3"
+    for key in ("a", "b"):
+        _admit(path, _Resolver(3), count=31, max_concurrency=31,
+               request_key=key, workload_id=f"wrk_profile_{key}", resources={"cpu": 1, "local_io": 1})
+    _admit(path, _Resolver(3), count=1, max_concurrency=1, resource="network_io",
+           request_key="z", workload_id="wrk_profile_z")
+    with DurableWorkloadStore.open(path) as store:
+        assert store.service_lane_demand(
+            limit=31, resource_limits={"cpu": 32, "local_io": 16, "network_io": 1},
+        ) == 17
 
 
 @pytest.mark.parametrize("state", ["needs_attention", "failed", "cancelled"])

@@ -966,13 +966,28 @@ def _validate_catalog_read_options(
         raise ValueError("catalog_trusted_owner is invalid")
 
 
+def _lifecycle_snapshot() -> tuple:
+    """Read the exact visibility state without creating/migrating its DB.
+
+    Which store holds that state is `executor_lifecycle_state`'s decision, not
+    this module's: after the migration the historical file is no longer
+    written. The snapshot stays semantic rather than a modification time,
+    because invocation accounting shares that database and its mtime changes
+    on every recorded call.
+    """
+    from executor_lifecycle_state import restriction_snapshot
+
+    return restriction_snapshot()
+
+
 def _catalog_cache_signature(
     dirs: list, *, catalog_trusted_owner: tuple[int, int] | None = None,
     skill_state_signature: tuple[str, str, int, str] | None = None,
+    lifecycle_snapshot: tuple[tuple[str, str], ...] | None = None,
 ) -> tuple:
     """Firma deterministica per invalidazione cache: max mtime ricorsivo
-    di tutti i manifest.toml + .py + .sig nelle dirs + mtime del DB
-    executor_aging (lifecycle override puo' cambiare lo stato visibile).
+    di tutti i manifest.toml + .py + .sig nelle dirs e stato semantico
+    degli override di ciclo di vita (non i conteggi delle invocazioni).
 
     Costo: ~10-30ms per 55 executor (vs ~200-500ms per il full load).
     """
@@ -1007,16 +1022,16 @@ def _catalog_cache_signature(
                 except OSError:
                     pass
         sig.append((str(d), max_mt, n_files))
-    # Deposito delle restrizioni: una modifica cambia cosa contiene il catalogo
-    # o come vi e' classificato un elemento, quindi una cache precedente e'
-    # stantia. Quale deposito sia lo decide `executor_lifecycle_state`, non
-    # questo modulo: dopo la migrazione il file storico non viene piu' scritto
-    # (test_archived_executor_excluded_from_catalog).
-    try:
-        from executor_lifecycle_state import cache_signature
-        sig.append(cache_signature())
-    except Exception:
-        sig.append(("lifecycle_state", 0.0))
+    # Invocation accounting shares the aging database with lifecycle state.
+    # Its mtime changes whenever *any* caller records an execution: using it
+    # here invalidates every cache and can make both bounded authentication
+    # attempts look unstable under ordinary parallel traffic. Conversely,
+    # WAL commits need not change the main database's mtime at all. Read only
+    # the actual visibility state; unreadable state must not authorize a
+    # cached catalog or silently become an empty set of overrides.
+    if lifecycle_snapshot is None:
+        lifecycle_snapshot = _lifecycle_snapshot()
+    sig.append(("aging_lifecycle", lifecycle_snapshot))
     # Skill state (asse 2): enable/disable di una skill (skill_enabled.json)
     # cambia la dormancy first-party → visibility del catalog diversa. Il mtime
     # nella firma fa SÌ che set_skill_enabled invalidi la cache → gating live.
@@ -1054,6 +1069,7 @@ def _store_catalog_signature(
     revision_ids: Mapping[str, str] | None = None,
     catalog_trusted_owner: tuple[int, int] | None = None,
     skill_state_signature: tuple[str, str, int, str] | None = None,
+    lifecycle_snapshot: tuple[tuple[str, str], ...] | None = None,
 ) -> tuple:
     """Identify one structural inventory and its live revision pointers.
 
@@ -1099,11 +1115,12 @@ def _store_catalog_signature(
                 revision_id = "<current-missing>"
         rows.append((*base, revision_id))
     # Aging and skill visibility remain mutable application state.  Their
-    # existing signatures are appended separately; mtimes are never used as
+    # semantic signatures are appended separately; mtimes are never used as
     # a substitute for a contract revision identity.
     external_state = _catalog_cache_signature(
         [], catalog_trusted_owner=catalog_trusted_owner,
         skill_state_signature=skill_state_signature,
+        lifecycle_snapshot=lifecycle_snapshot,
     )
     return (
         "store-v1",
@@ -1233,6 +1250,7 @@ def _load_catalog_under_catalog_lock(
                 inventory,
                 include_synth=include_synth,
             )
+            lifecycle_snapshot = _lifecycle_snapshot()
             before = _store_catalog_signature(
                 inventory,
                 include_synth=include_synth,
@@ -1240,6 +1258,7 @@ def _load_catalog_under_catalog_lock(
                 revision_ids=expected_revisions,
                 catalog_trusted_owner=catalog_trusted_owner,
                 skill_state_signature=skill_state_signature,
+                lifecycle_snapshot=lifecycle_snapshot,
             )
             if not audit_only:
                 cached = _CATALOG_CACHE.get(cache_key)
@@ -1289,6 +1308,7 @@ def _load_catalog_under_catalog_lock(
                 after_inventory,
                 include_synth=include_synth,
             )
+            after_lifecycle_snapshot = _lifecycle_snapshot()
             after = _store_catalog_signature(
                 after_inventory,
                 include_synth=include_synth,
@@ -1296,6 +1316,7 @@ def _load_catalog_under_catalog_lock(
                 revision_ids=after_revisions,
                 catalog_trusted_owner=catalog_trusted_owner,
                 skill_state_signature=after_skill_state_signature,
+                lifecycle_snapshot=after_lifecycle_snapshot,
             )
             if before == after:
                 catalog = candidate
@@ -1311,7 +1332,10 @@ def _load_catalog_under_catalog_lock(
         dirs_for_sig = [Path(executors_dir)]
         if include_synth and SYNTHESIZED_EXECUTORS_DIR.exists():
             dirs_for_sig.append(SYNTHESIZED_EXECUTORS_DIR)
-        current_sig = _catalog_cache_signature(dirs_for_sig)
+        lifecycle_snapshot = _lifecycle_snapshot()
+        current_sig = _catalog_cache_signature(
+            dirs_for_sig, lifecycle_snapshot=lifecycle_snapshot,
+        )
         cached = _CATALOG_CACHE.get(cache_key)
         if cached is not None and cached[1] == current_sig:
             return cached[0]
@@ -1384,45 +1408,36 @@ def _load_catalog_under_catalog_lock(
         except Exception as e:
             log.warning("[loader] builtin-store registration failed: %s", e)
 
-    # Apply the restrictions of whichever store owns this installation's
-    # executor lifecycle state, and let that same owner record newly
-    # discovered executors. Best-effort: if the module isn't available
-    # (dev mode) we silently skip the integration.
-    try:
-        from executor_lifecycle_state import (
-            RESTRICTED_REJECT_PREFIX, Restriction, catalog_restrictions,
-            register_loaded_executors,
-        )
-        # Register each executor from its admitted metadata. Post-cutover the
-        # live manifest path belongs to the generation store, so path shape is
-        # neither provenance nor a reason to reopen authoring.
-        if not audit_only:
+    # Registration is accounting only, not visibility authority. It remains
+    # best-effort and must never run during a side-effect-free cutover audit.
+    # The owning store decides what registration means: the name-based store
+    # learns a name, the epoch store records the exact loaded generation.
+    if not audit_only:
+        try:
+            from executor_lifecycle_state import register_loaded_executors
             register_loaded_executors(tuple(catalog.executors.values()))
+        except Exception as exc:
+            log.warning("loader: lifecycle registration failed: %s", exc)
 
-        restrictions = catalog_restrictions(
-            tuple(catalog.executors.values()), read_only=audit_only)
-        to_remove = []
-        for name, (restriction, reason) in restrictions.items():
-            ex = catalog.executors.get(name)
-            if ex is None:
-                continue
-            if restriction is Restriction.REMOVED:
-                to_remove.append((name, reason))
-            else:
-                ex.lifecycle = restriction.value
-        for name, reason in to_remove:
-            ex = catalog.executors.pop(name, None)
-            if ex is not None:
-                catalog.rejected.append(
-                    (str(ex.manifest_path),
-                     f"{RESTRICTED_REJECT_PREFIX}: {reason}")
-                )
-    except ImportError:
-        pass
-    except Exception as e:
-        if audit_only:
-            raise
-        log.warning("loader: lifecycle restriction pass failed: %s", e)
+    # Apply precisely the immutable state bound to current_sig. A fresh,
+    # best-effort read here could fail open (or race an unarchive) and cache
+    # active executors under a signature that says they are archived.
+    from executor_lifecycle_state import (
+        RESTRICTED_REJECT_PREFIX, Restriction, restrictions_from_snapshot,
+    )
+
+    restrictions = restrictions_from_snapshot(
+        tuple(catalog.executors.values()), lifecycle_snapshot)
+    for name, (restriction, reason) in restrictions.items():
+        ex = catalog.executors.get(name)
+        if ex is None:
+            continue
+        if restriction is Restriction.REMOVED:
+            catalog.executors.pop(name)
+            catalog.rejected.append(
+                (str(ex.manifest_path), f"{RESTRICTED_REJECT_PREFIX}: {reason}"))
+        else:
+            ex.lifecycle = restriction.value
 
     # Ogni reject è visibile almeno nel log anche quando nessuna UI admin è
     # aperta. Il Catalog conserva la stessa lista per la superficie HTTP.
@@ -2253,7 +2268,13 @@ def _load_store_into_catalog(
             f"{problem.code}:{problem.path}:{problem.detail}"
             for problem in inventory.problems[:12]
         )
-        raise ManifestBootstrapError("store_inventory_invalid", detail)
+        raise ManifestBootstrapError(
+            "store_inventory_invalid", detail,
+            inventory_diagnostics=tuple(
+                (problem.code, problem.cause_code, problem.os_errno)
+                for problem in inventory.problems[:12]
+            ),
+        )
 
     if trusted_publics is None:
         try:

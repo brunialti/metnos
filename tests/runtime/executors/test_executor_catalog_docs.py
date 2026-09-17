@@ -68,6 +68,10 @@ def test_executor_catalog_exposes_three_state_undo_contract():
     assert by_name["read_files"].undo_state == module.NOT_APPLICABLE
     assert by_name["consult_frontier"].undo_state == module.NOT_APPLICABLE
     assert by_name["consult_frontier"].execution_effect == "read_only"
+    # The durable image-generation contract has no declared inverse; count the
+    # current manifest, not the old in-place builder's historical undo census.
+    assert by_name["create_images_indices"].undo_state == module.NOT_UNDOABLE
+    assert by_name["create_images_indices"].reverse_patterns == ()
 
     assert all(
         entry.reverse_patterns
@@ -86,8 +90,8 @@ def test_executor_catalog_exposes_three_state_undo_contract():
             module.UNDOABLE, module.NOT_UNDOABLE, module.NOT_APPLICABLE)
     }
     assert counts == {
-        module.UNDOABLE: 24,
-        module.NOT_UNDOABLE: 13,
+        module.UNDOABLE: 23,
+        module.NOT_UNDOABLE: 14,
         module.NOT_APPLICABLE: 49,
     }
 

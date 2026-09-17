@@ -623,7 +623,7 @@ def test_image_preset_keeps_an_unreadable_source_in_the_failed_denominator(
             assert outcome.status is WorkerRunStatus.FAILED
             assert store.get_workload(
                 "owner-images", draft.workload_id,
-            ).state is WorkloadState.FAILED
+            ).state is WorkloadState.NEEDS_ATTENTION
             source_row = store._connection.execute(
                 "SELECT state, accounted FROM sources "
                 "WHERE owner_user_id=? AND revision_id=?",
@@ -635,7 +635,7 @@ def test_image_preset_keeps_an_unreadable_source_in_the_failed_denominator(
                 "WHERE owner_user_id=? AND revision_id=?",
                 ("owner-images", admitted.revision.revision_id),
             ).fetchone()
-            assert tuple(unit_row) == ("failed_permanent", "executor_permanent")
+            assert tuple(unit_row) == ("needs_attention", "executor_unknown")
             assert artifacts.list_workload_artifacts(
                 "owner-images", draft.workload_id,
             ) == ()

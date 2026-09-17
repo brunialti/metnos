@@ -107,7 +107,9 @@ Positive:
 - ~50-100s/turn risparmiati su reasoning_budget dinamico.
 - Sommando: turn tipico da 30s di pure overhead → 5-10s.
 - Cache key include `DEFAULT_LANG` → multilingua compatibile.
-- Invalidate automatica via aging DB mtime → no stale catalog.
+- Invalidazione automatica via stato effettivo degli override di ciclo di vita
+  (correzione 16/9/2026): i conteggi d'uso non invalidano il catalogo;
+  deprecazione e archiviazione sì, anche con WAL o mtime invariato.
 
 Open / future:
 - Validation live del seed-step su prompt federvolley (richiede daemon

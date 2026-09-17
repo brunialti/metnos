@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from collections import Counter
 from contextvars import Context
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 import json
 from pathlib import Path
 import sys
@@ -16,11 +16,13 @@ from types import SimpleNamespace
 import tomllib
 
 import numpy as np
+import pytest
 from PIL import Image
 
 from durable_workloads import image_indexing as indexing
 from durable_workloads.admission import submit_candidate
 from durable_workloads.execution import DurableExecutionBridge
+from durable_workloads.coordinator import FailureStatus, instant_text
 from durable_workloads.internal_runners import sealed_inventory
 from durable_workloads.models import RESOURCE_KEYS, WorkloadState
 from durable_workloads.runtime_bindings import RuntimeRegistry
@@ -67,8 +69,10 @@ def _model_usage(*, model, kind="chat", tier="middle"):
            result=SimpleNamespace(text="fixture", in_tokens=7, out_tokens=3, latency_ms=1))
 
 
+@pytest.mark.parametrize("with_unreadable_photo", [False, True])
+@pytest.mark.parametrize("description_failures", [0, 1, 3])
 def test_new_plan_publishes_and_searches_after_restart_without_repeating_accepted_groups(
-    tmp_path, monkeypatch,
+    tmp_path, monkeypatch, with_unreadable_photo, description_failures,
 ):
     photos = tmp_path / "photos"
     folder = photos / "event"
@@ -79,6 +83,11 @@ def test_new_plan_publishes_and_searches_after_restart_without_repeating_accepte
         path = folder / name
         Image.new("RGB", (20, 20), "blue").save(path)
         originals.append(path)
+    if with_unreadable_photo:
+        originals[0].write_bytes(b"not a decodable image")
+    indexed_count = len(originals) - int(with_unreadable_photo)
+    expected_state = (WorkloadState.COMPLETED_WITH_ERRORS if with_unreadable_photo
+                      else WorkloadState.COMPLETED)
     monkeypatch.setenv("METNOS_INDEX_ROOT", str(tmp_path / "index"))
     monkeypatch.setenv("METNOS_USER_DATA", str(tmp_path / "user-data"))
     monkeypatch.setattr(builder, "analysis_identity", lambda _lang: "fixture-model-policy")
@@ -90,12 +99,23 @@ def test_new_plan_publishes_and_searches_after_restart_without_repeating_accepte
     }
     monkeypatch.setattr("vlm_client.model_binding_facts", lambda: dict(vision_binding))
     calls = {"vision": [], "folder": [], "phases": []}
+    failures_left = [description_failures]
+    clock = [datetime.now(timezone.utc)]
+    operation_now = DurableWorkloadStore._operation_now
+    monkeypatch.setattr(DurableWorkloadStore, "_operation_now", staticmethod(
+        lambda now: operation_now(now if now is not None else clock[0])))
+    monkeypatch.setattr("durable_workloads.storage.utc_now", lambda: instant_text(clock[0]))
 
-    def describe(snapshot, *, prompt, max_tokens, allow_lazy_start):
+    def describe(snapshot, *, prompt, max_tokens, allow_lazy_start, response_schema):
+        from image_index_build import DESCRIPTION_SCHEMA
+        assert response_schema == DESCRIPTION_SCHEMA
         assert Path(snapshot).is_file() and not allow_lazy_start and max_tokens == 512
         computer = "workstation-computer.jpg" in prompt
         calls["vision"].append("computer" if computer else "landscape")
         _model_usage(model="fixture-vision", kind="vision", tier="vlm:default")
+        if "landscape-002.jpg" in prompt and failures_left[0]:
+            failures_left[0] -= 1
+            return {"description": "", "_vlm_error": "output_truncated"}
         return {"description": "A computer on a desk." if computer else "A natural mountain landscape.",
                 "keywords": ["computer"] if computer else ["mountain"],
                 "location_hint": "", "activity_hint": ""}
@@ -140,12 +160,13 @@ def test_new_plan_publishes_and_searches_after_restart_without_repeating_accepte
     def bindings(store, selected_registry, worker_id):
         worker = DurableWorker(store, worker_id,
                                selected_registry.capabilities({key: 2 for key in RESOURCE_KEYS}),
-                               lease_duration=timedelta(seconds=120))
+                               lease_duration=timedelta(seconds=120), clock=lambda: clock[0])
         bridge = DurableExecutionBridge(
             store, runners=selected_registry.runners, output_schemas=selected_registry.output_schemas,
             executor_loader=lambda _name: executor, executor_invoker=invoke_executor,
             workload_invoker=selected_registry.invoke_workload,
             internal_runners={"sealed_inventory": sealed_inventory},
+            clock=lambda: clock[0],
         )
         return bridge, worker
 
@@ -153,6 +174,36 @@ def test_new_plan_publishes_and_searches_after_restart_without_repeating_accepte
     request = indexing.normalize_request(executor, {"base_path": str(photos), "max_files": len(originals)})
     candidate, inventory = indexing.build_candidate(request, "fixture-generation", registry.runners, max_concurrency=2)
     index = builder._index_dir(photos)
+    attention_seen = []
+
+    def step(bridge, worker, store, workload_id):
+        clock[0] += timedelta(seconds=2)
+        outcome = bridge.run_once(worker)
+        assert outcome.status in {WorkerRunStatus.COMMITTED, WorkerRunStatus.CONTROL_PROGRESS,
+                                  WorkerRunStatus.FAILED, WorkerRunStatus.IDLE}, outcome
+        if outcome.status is WorkerRunStatus.FAILED:
+            assert description_failures
+            assert outcome.failure.status in {FailureStatus.RETRY_SCHEDULED, FailureStatus.NEEDS_ATTENTION}
+        workload = store.get_workload("fixture-owner", workload_id)
+        if workload.state is WorkloadState.NEEDS_ATTENTION:
+            assert description_failures == 3 and not failures_left[0]
+            assert not attention_seen and not (index / "meta.json").exists()
+            attention_seen.append(workload.version)
+            previous_calls = len(calls["vision"])
+            # A fresh connection still sees attention; polling never grants
+            # more attempts. No test writes synthetic state into production.
+            with DurableWorkloadStore.open(database) as reopened:
+                assert reopened.get_workload("fixture-owner", workload_id).state is WorkloadState.NEEDS_ATTENTION
+            for _ in range(3):
+                clock[0] += timedelta(seconds=2)
+                assert bridge.run_once(worker).status is WorkerRunStatus.IDLE
+            assert len(calls["vision"]) == previous_calls
+            assert store.execution_summary("fixture-owner", workload_id)["attempt_errors"]["nattempts"] == 3
+            store.record_attention_resolution("fixture-owner", workload_id, decision="retry",
+                                              expected_version=workload.version,
+                                              idempotency_key="explicit-fixture-retry", now=clock[0])
+        return outcome
+
     try:
         with DurableWorkloadStore.open(database) as store:
             submitted = submit_candidate(store, registry, "fixture-owner", "fixture-request", candidate, inventory,
@@ -162,15 +213,15 @@ def test_new_plan_publishes_and_searches_after_restart_without_repeating_accepte
             assert not index.exists() and not calls["vision"]
             bridge, worker = bindings(store, registry, "fixture-before-restart")
             for _step in range(20):
-                outcome = bridge.run_once(worker)
-                assert outcome.status in {WorkerRunStatus.COMMITTED, WorkerRunStatus.CONTROL_PROGRESS}, outcome
-                if any(phase == "analyze" for phase, _entries in calls["phases"]):
+                outcome = step(bridge, worker, store, workload_id)
+                if outcome.status is WorkerRunStatus.COMMITTED and outcome.lease.stage_key == "analyze":
                     break
             else:
                 raise AssertionError("first analysis unit never committed")
-            accepted = list(calls["phases"])
+            accepted = {calls["phases"][-1]: Counter(calls["phases"])[calls["phases"][-1]]}
             assert not (index / "meta.json").exists()
-            assert 0 < len(calls["vision"]) < len(originals)
+            successful_calls = len(calls["vision"]) - (description_failures - failures_left[0])
+            assert 0 < successful_calls < indexed_count
             worker.request_stop()
 
         # Recreate the registry, bridge and worker: only durable accepted results
@@ -182,18 +233,20 @@ def test_new_plan_publishes_and_searches_after_restart_without_repeating_accepte
             assert duplicate.workload.workload_id == workload_id
             bridge, worker = bindings(store, resumed_registry, "fixture-after-restart")
             for _step in range(30):
-                outcome = bridge.run_once(worker)
-                assert outcome.status in {WorkerRunStatus.COMMITTED, WorkerRunStatus.CONTROL_PROGRESS}, outcome
-                if store.get_workload("fixture-owner", workload_id).state is WorkloadState.COMPLETED:
+                outcome = step(bridge, worker, store, workload_id)
+                if store.get_workload("fixture-owner", workload_id).state is expected_state:
                     break
             else:
                 raise AssertionError("resumed image pipeline never completed")
             worker.request_stop()
-            assert len(calls["vision"]) == len(originals)
+            assert len(calls["vision"]) == indexed_count + description_failures
+            assert bool(attention_seen) == (description_failures == 3)
             assert len(calls["folder"]) == 1
-            assert all(Counter(calls["phases"])[item] == 1 for item in accepted)
+            # A committed group may already have failed attempts before the
+            # restart; recovery must not invoke that group again afterwards.
+            assert all(Counter(calls["phases"])[item] == count for item, count in accepted.items())
             assert Counter(phase for phase, _entries in calls["phases"]) == {
-                "discover": 1, "analyze": 2, "merge": 1, "publish": 1,
+                "discover": 1, "analyze": 2 + description_failures, "merge": 1, "publish": 1,
             }
             rows = store._connection.execute(
                 "SELECT stages.stage_key, attempts.metrics_json FROM attempts "
@@ -203,9 +256,27 @@ def test_new_plan_publishes_and_searches_after_restart_without_repeating_accepte
             usage = [(row["stage_key"], json.loads(row["metrics_json"])["llm_usage"])
                      for row in rows if row["stage_key"] != "inventory"]
             assert all(not item["usage_missing"] for _stage, item in usage)
-            assert sum(len(item["records"]) for stage, item in usage if stage == "analyze") == len(originals)
+            assert sum(len(item["records"]) for stage, item in usage if stage == "analyze") == indexed_count + description_failures
             assert sum(len(item["records"]) for stage, item in usage if stage == "folders") == 1
             assert all(item["zero_calls_verified"] for stage, item in usage if stage in {"discover", "merge", "publish"})
+
+        # Persist the item-level error ledger at completion, independently of
+        # technical attempts and without recounting merge/publication summaries.
+        with DurableWorkloadStore.open(database) as store:
+            summary = store.execution_summary("fixture-owner", workload_id)
+            assert summary["domain_errors"] == {
+                "nitems": int(with_unreadable_photo),
+                "categories": [{"error_code": "image_format_unreadable", "count": 1}]
+                if with_unreadable_photo else [],
+                "truncated": False,
+            }
+            assert summary["error_categories"] == []
+            assert summary["attempt_errors"] == {
+                "nattempts": description_failures,
+                "categories": [{"error_code": "execution.runner_failed", "count": description_failures,
+                                "cause_code": "image_description_truncated"}] if description_failures else [],
+                "truncated": False,
+            }
 
         active = resolve_image_index_dir(index)
         assert active.name == "fixture-generation"
@@ -213,6 +284,14 @@ def test_new_plan_publishes_and_searches_after_restart_without_repeating_accepte
         result = search.invoke({"base_path": str(photos), "query_text": "computer"})
         assert result["ok"], result
         assert [entry["path"] for entry in result["entries"]] == [str(originals[-1])]
-        assert len(calls["vision"]) == len(originals)
+        assert len(calls["vision"]) == indexed_count + description_failures
+        diagnostics = search.invoke({"base_path": str(photos), "query_text": "IMAGE_NOT_INDEXED"})
+        assert diagnostics["ok"], diagnostics
+        assert [entry["path"] for entry in diagnostics["entries"]] == (
+            [str(originals[0])] if with_unreadable_photo else [])
+        assert not diagnostics.get("attachments")
+        metadata = json.loads((active / "meta.json").read_text())
+        assert (metadata["n_indexed"], metadata["n_not_indexed"]) == (
+            indexed_count, int(with_unreadable_photo))
     finally:
         scheduler.shutdown()

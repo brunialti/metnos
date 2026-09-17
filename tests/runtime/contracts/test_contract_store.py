@@ -4182,6 +4182,61 @@ def test_cutover_externalizes_repository_authoring_and_birth_keeps_release_uncha
     assert not tuple(root.rglob("*.birth-control-*"))
 
 
+def _empty_publication_residue(tmp_path: Path) -> tuple[Path, Path]:
+    store = tmp_path / "v1"
+    store.mkdir(mode=0o700)
+    contract_dir = store / ("a" * 64)
+    generations = contract_dir / "generations"
+    generations.mkdir(parents=True, mode=0o700)
+    contract_dir.chmod(0o700)
+    lock_path = contract_dir / "writer.lock"
+    lock_path.write_bytes(b"\0")
+    lock_path.chmod(0o600)
+    return store, lock_path
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX residue locking")
+@pytest.mark.parametrize("exclusive", [False, True])
+def test_residue_inventory_shares_readers_but_refuses_active_writer(tmp_path, exclusive):
+    import fcntl
+    from concurrent.futures import ThreadPoolExecutor
+
+    store, lock_path = _empty_publication_residue(tmp_path)
+    with lock_path.open("rb") as held:
+        # Independent open descriptions model another process's lock too.
+        fcntl.flock(held, fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH)
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            results = list(pool.map(
+                lambda _: manifest_inventory_module.inventory_store_manifests(
+                    sources=(), store_root=store), range(32),
+            ))
+    assert all(not result.manifests for result in results)
+    assert all([p.code for p in result.problems] ==
+               (["binding_invalid"] if exclusive else []) for result in results)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX residue locking")
+def test_residue_reader_keeps_writer_excluded_through_validation(tmp_path, monkeypatch):
+    import fcntl
+
+    store, lock_path = _empty_publication_residue(tmp_path)
+    original_read = os.read
+    checked = []
+
+    def inspect_while_reading(fd, count):
+        with lock_path.open("rb") as writer:
+            with pytest.raises(BlockingIOError):
+                fcntl.flock(writer, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        checked.append(True)
+        return original_read(fd, count)
+
+    monkeypatch.setattr(manifest_inventory_module.os, "read", inspect_while_reading)
+    result = manifest_inventory_module.inventory_store_manifests(sources=(), store_root=store)
+    assert checked and not result.problems
+    with lock_path.open("rb") as writer:
+        fcntl.flock(writer, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+
 def test_store_inventory_ignores_only_exact_empty_unbound_publication_residue(
     tmp_path: Path,
 ) -> None:

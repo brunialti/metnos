@@ -497,7 +497,9 @@ def _stable_file_digest(
     checkpoint: Callable[[str], None] | None = None,
 ) -> tuple[str, os.stat_result]:
     fault = checked_checkpoint(checkpoint)
-    flags = os.O_RDONLY
+    # A candidate can become a FIFO after discovery. Validate its descriptor
+    # before any blocking read; O_NONBLOCK does not change regular-file I/O.
+    flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0)
     if hasattr(os, "O_CLOEXEC"):
         flags |= os.O_CLOEXEC
     if hasattr(os, "O_NOFOLLOW"):

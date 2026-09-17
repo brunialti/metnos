@@ -82,6 +82,149 @@ def _publish(root, discovery, receipts, generation="build-1"):
     return result
 
 
+def test_heic_snapshot_decodes_without_extension_and_preserves_source(corpus):
+    from pillow_heif import register_heif_opener
+    register_heif_opener()
+    root, calls = corpus
+    original = root / "portrait.heic"
+    image = Image.new("RGB", (20, 20), "blue")
+    image.save(original, format="HEIF", quality=90)
+    before = original.read_bytes()
+    discovered = _discover(root)
+    receipts = _analyze(root, discovered)
+    result = _publish(root, discovered, receipts)
+    assert result["n_entries_total"] == 1
+    assert len(calls) == 1 and calls[0][0].suffix == ""
+    assert original.read_bytes() == before
+    entry = json.loads((Path(result["index_path"]) / "entries.jsonl").read_text())
+    assert entry["path"] == str(original)
+    assert entry["sha256"] == hashlib.sha256(before).hexdigest()
+    assert (entry["image_w"], entry["image_h"]) == (20, 20)
+
+
+def test_unreadable_image_is_published_only_as_explicit_negative_record(corpus):
+    root, calls = corpus
+    (root / "broken.jpg").write_bytes(b"not an image")
+    discovered = _discover(root)
+    group = discovered["entries"][0]
+    result = _invoke(root, "build-1", "analyze", entries=[{
+        "part": group["part"], "folder_contexts": {label: "Photos." for label in group["folder_labels"]},
+    }])
+    assert result["ok"] and result["ok_count"] == 0 and result["fail_count"] == 1
+    assert result["domain_outcome"] == {
+        "version": 1, "error_counts": {"image_format_unreadable": 1},
+    }
+    assert not calls
+    assert not (builder._index_dir(root) / "meta.json").exists()
+    published = _publish(root, discovered, result["entries"])
+    assert published["n_indexed"] == 0 and published["n_not_indexed"] == 1
+    assert published["ok_count"] == 0 and published["refreshed_count"] == 0
+    entry = json.loads((Path(published["index_path"]) / "entries.jsonl").read_text())
+    assert entry["indexing_status"] == "not_indexed"
+    assert entry["indexing_error_code"] == "image_format_unreadable"
+    assert entry["description"].startswith("IMAGE_NOT_INDEXED:image_format_unreadable ")
+    assert entry["path"] == str(root / "broken.jpg")
+    for axis in ("text", "image", "face"):
+        assert np.load(Path(published["index_path"]) / f"embeddings_{axis}.npy").shape == (0, 0)
+
+
+@pytest.mark.parametrize("reader", ["artifact", "snapshot", "entries"])
+def test_special_files_are_rejected_without_waiting_for_a_writer(tmp_path, monkeypatch, reader):
+    """Inspect the open flags before a FIFO could hang the test process."""
+    path = tmp_path / "special"
+    os.mkfifo(path)
+    real_open = os.open
+
+    def guarded_open(target, flags, *args, **kwargs):
+        if Path(target) == path:
+            assert flags & os.O_NONBLOCK, "untrusted special file must not block open"
+        return real_open(target, flags, *args, **kwargs)
+
+    monkeypatch.setattr(os, "open", guarded_open)
+    with pytest.raises(storage.ImageIndexBuildError):
+        if reader == "artifact":
+            storage._read_bytes(path)
+        elif reader == "entries":
+            list(storage._read_entries(path))
+        else:
+            storage.validate_source(path, tmp_path / "original.jpg", tmp_path,
+                                    {"content_digest": "sha256:" + "0" * 64,
+                                     "size_bytes": 0, "mtime_ns": 0})
+
+
+def test_snapshot_hash_read_is_bounded_when_file_grows(tmp_path, monkeypatch):
+    path = tmp_path / "snapshot"
+    path.write_bytes(b"abc")
+    reads = []
+
+    class GrowingStream:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self, size):
+            reads.append(size)
+            assert len(reads) == 1, "a growing snapshot must not be read indefinitely"
+            assert size == 4, "read at most the frozen size plus one detection byte"
+            return b"abcd"
+
+    monkeypatch.setattr(os, "fdopen", lambda *_args, **_kwargs: GrowingStream())
+    with pytest.raises(storage.ImageIndexBuildError, match="source_changed"):
+        storage.validate_source(path, tmp_path / "original.jpg", tmp_path,
+                                {"content_digest": "sha256:" + hashlib.sha256(b"abc").hexdigest(),
+                                 "size_bytes": 3, "mtime_ns": 0})
+    assert reads == [4]
+
+
+def test_interrupted_group_resumes_completed_photos_without_model_calls(corpus, monkeypatch):
+    root, calls = corpus
+    for i in range(3):
+        _photo(root, f"photo-{i}.jpg")
+    discovered = _discover(root)
+    describe = builder._call_vlm
+    def interrupted(path, *, original_path):
+        if original_path.name == "photo-1.jpg":
+            raise storage.ImageIndexBuildError("image_description_unavailable")
+        return describe(path, original_path=original_path)
+    monkeypatch.setattr(builder, "_call_vlm", interrupted)
+    group = discovered["entries"][0]
+    args = {"entries": [{"part": group["part"], "folder_contexts": {
+        label: f"Photos: {label}." for label in group["folder_labels"]
+    }}]}
+    failed = _invoke(root, "build-1", "analyze", **args)
+    assert not failed["ok"] and len(calls) == 1
+    assert not (builder._index_dir(root) / "meta.json").exists()
+    monkeypatch.setattr(builder, "_call_vlm", describe)
+    resumed = _invoke(root, "build-1", "analyze", **args)
+    assert resumed["ok"] and len(calls) == 3
+    repeated = _invoke(root, "build-1", "analyze", **args)
+    assert repeated == resumed and len(calls) == 3
+    result = _publish(root, discovered, resumed["entries"])
+    assert result["n_entries_total"] == 3
+
+
+def test_checkpoint_rejects_tampering_and_does_not_cross_context_or_generation(corpus):
+    root, calls = corpus
+    _photo(root)
+    discovered = _discover(root)
+    _analyze(root, discovered)
+    store = storage.ImageIndexBuild(root, "build-1")
+    record = store._part(discovered["entries"][0])["records"][0]
+    _, original, source = store.snapshot(record)
+    context = f"Photos: {root.name}."
+    assert store.analysis_checkpoint(original, source, identity="fixture-policy", folder_context=context)
+    assert store.analysis_checkpoint(original, source, identity="changed", folder_context=context) is None
+    assert store.analysis_checkpoint(original, source, identity="fixture-policy", folder_context="changed") is None
+    other = storage.ImageIndexBuild(root, "build-2")
+    assert other.analysis_checkpoint(original, source, identity="fixture-policy", folder_context=context) is None
+    checkpoint = next((store.work / "checkpoints").glob("*.json"))
+    checkpoint.write_text(json.dumps({"part": "0" * 64}))
+    with pytest.raises((OSError, storage.ImageIndexBuildError)):
+        store.analysis_checkpoint(original, source, identity="fixture-policy", folder_context=context)
+
+
 def test_phase_omitted_never_builds_or_launches_processes(corpus, monkeypatch):
     root, calls = corpus
     _photo(root)
@@ -388,6 +531,20 @@ def test_index_prompt_uses_original_filename_and_disables_service_start(monkeypa
     assert "Ada.jpg" in seen["prompt"] and "Graduation 2024" in seen["prompt"]
     assert "opaque-snapshot" not in seen["prompt"]
     assert seen["allow_lazy_start"] is False
+    assert seen["response_schema"] == storage.DESCRIPTION_SCHEMA
+
+
+def test_analysis_identity_covers_the_response_schema(monkeypatch):
+    monkeypatch.setattr("virt.local_models.model_spec", lambda _role: {"provider": "fixture"})
+    monkeypatch.setattr("virt.local_models.projected_embedding_spec", lambda _role: {"provider": "fixture"})
+    monkeypatch.setattr("virt.local_models.model_artifacts", lambda _spec: [])
+    monkeypatch.setattr("prompt_loader.prompt_identity", lambda *_args: SimpleNamespace(digest="fixture-prompt"))
+    monkeypatch.setattr("vlm_client.model_binding_facts", lambda: {"model": "fixture"})
+    before = storage.analysis_identity("it")
+    changed = json.loads(json.dumps(storage.DESCRIPTION_SCHEMA))
+    changed["properties"]["description"]["maxLength"] += 1
+    monkeypatch.setattr(storage, "DESCRIPTION_SCHEMA", changed)
+    assert storage.analysis_identity("it") != before
 
 
 def test_vlm_connection_failure_cannot_start_services_or_retry(monkeypatch, tmp_path):

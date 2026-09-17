@@ -13,7 +13,7 @@ from pathlib import Path
 
 _RUNTIME = (Path(__file__).resolve().parents[3] / "runtime")
 
-from html_sanitizer import to_safe_html_full  # noqa: E402
+from html_sanitizer import to_safe_html, to_safe_html_full  # noqa: E402
 from http_routes_agent import _safe_final_html  # noqa: E402
 
 
@@ -66,6 +66,40 @@ class TestSafeFinalHtml(unittest.TestCase):
             'rel="noopener noreferrer">ciao</a>',
             html,
         )
+
+    def test_lre_receipt_links_in_both_languages_without_changing_plain_text(self):
+        import sqlite3
+
+        seed = _RUNTIME.parent / "install/data/i18n_seed.sqlite"
+        with sqlite3.connect(f"file:{seed}?mode=ro", uri=True) as conn:
+            rows = conn.execute(
+                "SELECT key,lang,text FROM i18n WHERE key IN (?,?) AND lang IN ('it','en')",
+                ("MSG_LRE_SUBMITTED", "MSG_LRE_SUBMITTED_WITH_SUMMARY"),
+            ).fetchall()
+        self.assertEqual(len(rows), 4)
+        for key, lang, text in rows:
+            with self.subTest(key=key, lang=lang):
+                message = text.format(workload_id="wrk_fixture", status_url="/admin/lre",
+                                      source_count=12, stage_count=5, max_concurrency=2)
+                html = _safe_final_html(message)
+                self.assertIn('<a href="/admin/lre">/admin/lre</a>', html)
+                self.assertIn("wrk_fixture", html)
+                self.assertNotIn("href=", to_safe_html(message), "Telegram/plain receipts stay unchanged")
+
+    def test_internal_links_preserve_existing_anchors_code_and_url_boundaries(self):
+        for message in ("`/admin/lre`", "```\n/admin/lre\n```",
+                        "https://example.test/admin/lre", "/admin/lre/secret",
+                        "/admin/lre?next=https://example.test", "/admin/lre.html",
+                        "not/admin/lre", "//admin/lre", "/admin/not-registered"):
+            with self.subTest(message=message):
+                self.assertNotIn('href="/admin/lre"', _safe_final_html(message))
+        existing = _safe_final_html("[/admin/lre](/admin/lre)")
+        self.assertEqual(existing.count("<a "), 1)
+        self.assertIn('href="/admin/lre"', existing)
+        escaped = _safe_final_html('<script>/admin/lre</script> & "safe"')
+        self.assertNotIn("<script>", escaped)
+        self.assertIn("&lt;script&gt;", escaped)
+        self.assertIn("&amp;", escaped)
 
     def test_code_block_renders_as_pre_code(self):
         md = "```\nx = 1\nprint(x)\n```"

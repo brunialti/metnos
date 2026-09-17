@@ -284,6 +284,179 @@ def _strict_invoke(bridge, contract, *, usage_sink=None):
     )
 
 
+@pytest.mark.parametrize("strict", [False, True])
+@pytest.mark.parametrize(("kind", "cause"), [
+    ("snapshot", "store_snapshot_unstable"),
+    ("busy", "database_contention"),
+    ("missing", "executor_missing"),
+    ("unknown", "unclassified"),
+])
+def test_executor_loader_failure_preserves_only_closed_cause(strict, kind, cause, caplog):
+    secret = "private/path/never-log-this-credential"
+    error = RuntimeError(secret)
+    if kind == "snapshot":
+        error.code = "store_snapshot_unstable"
+    elif kind == "busy":
+        error = sqlite3.OperationalError(secret)
+        error.sqlite_errorcode = sqlite3.SQLITE_BUSY | (2 << 8)
+    elif kind == "missing":
+        error = LookupError(secret)
+    else:
+        error.code = secret
+
+    def load(_name):
+        raise error
+
+    resolver = _ExactResolver()
+    bridge = DurableExecutionBridge(
+        SimpleNamespace(), runners=resolver, output_schemas=_schemas(),
+        executor_loader=load,
+        executor_invoker=lambda *_args: pytest.fail("loader failure invoked executor"),
+        executor_generation_attestor=lambda _executor: pytest.fail("loader failure attested"),
+        require_generation_attestation=strict,
+    )
+    with pytest.raises(ExecutionFailure) as raised:
+        _strict_invoke(bridge, resolver.map)
+    payload = json.loads(raised.value.error.payload_json)
+    assert payload["details_redacted"] == {
+        "runner_name": "read_files_ocr", "loader_cause": cause,
+    }
+    assert payload["error_class"] == "capability_unavailable"
+    assert payload["retry"] == "manual"
+    assert secret not in raised.value.error.payload_json
+    assert secret not in caplog.text
+    assert f"cause={cause}" in caplog.text
+
+
+@pytest.mark.parametrize("strict", [False, True])
+@pytest.mark.parametrize("tampered", [False, True])
+def test_inventory_loader_diagnostics_are_bounded_closed_and_never_grant_retry(strict, tampered, caplog):
+    from manifest_inventory import ManifestBootstrapError
+
+    secret = "private/path/secret-credential"
+    facts = (
+        ("binding_invalid", "binding_invalid", 24),
+        ("skill_status_error", "skill_state_invalid", 13),
+        (secret, secret, 24),
+        ("binding_invalid", secret, secret),
+        ("binding_invalid", None, True),
+        ("binding_invalid", None, -1),
+        ("binding_invalid", None, 999999),
+    )
+    error = ManifestBootstrapError("store_inventory_invalid", secret, inventory_diagnostics=facts)
+    if tampered:
+        # Injected loaders cannot smuggle a mutable or unsanitized diagnostic.
+        error.inventory_diagnostics = facts
+
+    def load(_name):
+        raise error
+
+    resolver = _ExactResolver()
+    bridge = DurableExecutionBridge(
+        SimpleNamespace(), runners=resolver, output_schemas=_schemas(),
+        executor_loader=load,
+        executor_invoker=lambda *_args: pytest.fail("invalid inventory invoked executor"),
+        executor_generation_attestor=lambda _executor: pytest.fail("invalid inventory attested"),
+        require_generation_attestation=strict,
+    )
+    with pytest.raises(ExecutionFailure) as raised:
+        _strict_invoke(bridge, resolver.map)
+    payload = json.loads(raised.value.error.payload_json)
+    rows = payload["details_redacted"]["inventory_diagnostics"]
+    assert rows[:2] == [
+        {"code": "binding_invalid", "cause_code": "binding_invalid", "os_errno": 24},
+        {"code": "skill_status_error", "cause_code": "skill_state_invalid", "os_errno": 13},
+    ]
+    assert rows[2:] == [
+        {"code": "binding_invalid", "cause_code": None, "os_errno": None},
+    ] * 4
+    assert payload["retry"] == "manual"
+    assert payload["error_class"] == "capability_unavailable"
+    assert secret not in raised.value.error.payload_json
+    assert secret not in caplog.text
+    assert "skill_state_invalid" in caplog.text
+
+
+def test_inventory_diagnostic_cause_chain_and_output_are_bounded():
+    from manifest_inventory import ManifestBootstrapError, _exception_facts
+
+    error = RuntimeError("private")
+    error.__cause__ = error
+    assert _exception_facts(error) == {"cause_code": None, "os_errno": None}
+    facts = (("binding_invalid", "binding_invalid", 24),) * 100
+    assert len(ManifestBootstrapError("store_inventory_invalid", inventory_diagnostics=facts).inventory_diagnostics) == 12
+
+
+@pytest.mark.parametrize(("field", "reported", "expected"), [
+    ({"type": "string", "enum": ["specific_failure"]}, "specific_failure", "specific_failure"),
+    ({"type": "string", "enum": ["other_failure"]}, "specific_failure", "unknown"),
+    ({"type": "string"}, "specific_failure", "unknown"),
+    ({"type": "string", "pattern": ".*"}, "secret_token", "unknown"),
+    ({"type": "integer", "enum": [24]}, 24, "unknown"),
+    ({"type": "string", "enum": ["/private/path"]}, "/private/path", "unknown"),
+    ({"type": "string", "enum": ["specific_failure"]}, "private/path/password", "unknown"),
+    ({"type": "string", "enum": ["specific_failure"]}, {"secret": "private"}, "unknown"),
+])
+@pytest.mark.parametrize(("error_class", "retry"), [
+    ("execution_failed", "manual"), ("network", "automatic"), ("permission_denied", "manual"),
+    ("executor_permanent", "never"), ("invalid_input", "never"),
+])
+def test_observation_error_code_requires_exact_approved_enum(field, reported, expected, error_class, retry):
+    schema = ApprovedOutputSchema.create("tests.diagnostic/1", {
+        "type": "object", "properties": {"error_code": field},
+    })
+    bridge = DurableExecutionBridge(SimpleNamespace(), runners=_ExactResolver(), output_schemas=_schemas())
+    failure = bridge._observation_failure({
+        "ok": False, "error_class": error_class, "error_code": reported,
+        "error": "secret message with /private/path",
+    }, schema)
+    payload = json.loads(failure.error.payload_json)
+    assert payload["details_redacted"] == {
+        "reported_error_class": error_class, "reported_error_code": expected,
+    }
+    assert payload["code"] == "execution.runner_failed"
+    assert payload["retry"] == retry
+    assert "private" not in failure.error.payload_json
+    assert "secret" not in failure.error.payload_json
+
+
+def test_observation_unknown_error_class_is_not_copied_into_diagnostic():
+    bridge = DurableExecutionBridge(SimpleNamespace(), runners=_ExactResolver(), output_schemas=_schemas())
+    failure = bridge._observation_failure({
+        "ok": False, "error_class": "/private/secret", "error_code": "private_token",
+    }, _schemas().resolve("metnos.test-map/1"))
+    payload = json.loads(failure.error.payload_json)
+    assert payload["details_redacted"] == {
+        "reported_error_class": "unknown", "reported_error_code": "unknown",
+    }
+    assert payload["error_class"] == "executor_unknown"
+    assert payload["retry"] == "manual"
+    assert "private" not in failure.error.payload_json
+
+
+@pytest.mark.parametrize(("reported", "expected", "retry"), [
+    ("timeout", "executor_transient", "automatic"),
+    ("rate_limited", "executor_transient", "automatic"),
+    ("provider_unavailable", "executor_transient", "automatic"),
+    ("executor_transient", "executor_transient", "automatic"),
+    ("execution_failed", "executor_unknown", "manual"),
+    (None, "executor_unknown", "manual"),
+    ({"private": "data"}, "executor_unknown", "manual"),
+    ("capability_unavailable", "capability_unavailable", "manual"),
+    ("budget_exhausted", "budget_exhausted", "manual"),
+    ("publication_ambiguous", "publication_ambiguous", "manual"),
+    ("invalid_input", "executor_permanent", "never"),
+    ("executor_permanent", "executor_permanent", "never"),
+    ("schema_mismatch", "contract_violation", "never"),
+])
+def test_general_error_taxonomy_never_guesses_recoverability(reported, expected, retry):
+    bridge = DurableExecutionBridge(SimpleNamespace(), runners=_ExactResolver(), output_schemas=_schemas())
+    failure = bridge._observation_failure({"ok": False, "error_class": reported},
+                                           _schemas().resolve("metnos.test-map/1"))
+    assert failure.error.error_class == expected
+    assert json.loads(failure.error.payload_json)["retry"] == retry
+
+
 @pytest.mark.parametrize(("lifecycle", "dormant", "code"), [
     ("preexercise", False, "execution.dormant"),
     ("active", True, "execution.dormant"),
@@ -1186,6 +1359,30 @@ def test_changed_frozen_runner_contract_fails_before_invocation(tmp_path):
         assert store.get_workload(
             "owner-f7", workload_id,
         ).state is WorkloadState.FAILED
+
+
+def test_adding_error_enum_does_not_silently_change_an_admitted_schema(tmp_path):
+    resolver = _Resolver()
+    original = _schemas()
+    changed = json.loads(json.dumps(original.resolve("metnos.test-map/1").schema))
+    changed["properties"]["error_code"] = {"type": "string", "enum": ["specific_failure"]}
+    replacement = ApprovedOutputSchema.create("metnos.test-map/1", changed)
+    assert replacement.digest != original.resolve("metnos.test-map/1").digest
+    schemas = OutputSchemaRegistry(tuple(
+        replacement if item.name == replacement.name else item for item in original.schemas
+    ))
+    with DurableWorkloadStore.open(tmp_path / "durable" / "state.sqlite3") as store:
+        _admit(store, resolver, candidate=_pipeline(with_reduce=False))
+        bridge = DurableExecutionBridge(
+            store, runners=resolver, output_schemas=schemas,
+            executor_loader=lambda _name: pytest.fail("changed schema invoked executor"),
+        )
+        outcome = bridge.run_once(_worker(store, resolver))
+        assert outcome.status is WorkerRunStatus.FAILED
+        row = store._connection.execute(
+            "SELECT state,error_class FROM units WHERE owner_user_id='owner-f7'",
+        ).fetchone()
+        assert tuple(row) == (UnitState.FAILED_PERMANENT.value, "contract_violation")
 
 
 def test_exact_loaded_executor_is_attested_before_invocation(tmp_path):

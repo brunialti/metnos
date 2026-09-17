@@ -159,11 +159,19 @@ class DurableWorkloadApiTests(AioHTTPTestCase):
         self.assertNotIn("objective_redacted", payload["revision"])
 
         from durable_workloads.control import DurableWorkloadControl
+        from durable_runtime_registry import describe_plan
+        from durable_workloads.coordinator import parse_instant
         from durable_workloads.storage import DurableWorkloadStore
 
-        with DurableWorkloadStore.open(self._store_path) as store:
+        # Compare identical observation instants: the DTO now timestamps its
+        # progress read so browsers can suppress expired estimates.
+        observed_at = payload["workload"]["progress"]["observed_at"]
+        with DurableWorkloadStore.open(self._store_path) as store, mock.patch.object(
+            DurableWorkloadStore, "_operation_now",
+            return_value=(parse_instant(observed_at), observed_at),
+        ):
             direct = DurableWorkloadControl(
-                store, cursor_secret=ADMIN_KEY,
+                store, cursor_secret=ADMIN_KEY, describe_plan=describe_plan,
             ).detail(owner, workload.workload_id)
         self.assertEqual(payload, direct)
 
@@ -258,13 +266,18 @@ class DurableWorkloadApiTests(AioHTTPTestCase):
         html = await response.text()
         self.assertIn('id="durableWorkloads"', html)
         self.assertIn("LRE (Long Run Engine)", html)
-        self.assertIn("Non ci sono attività LRE da mostrare.", html)
+        # Before the first API response, absence of data is not an empty list.
+        placeholder = html.split('id="dwPlaceholder">', 1)[1].split("</div>", 1)[0]
+        self.assertNotIn("Non ci sono attività LRE da mostrare.", placeholder)
+        self.assertIn("Caricamento", placeholder)
         self.assertIn("La politica di esecuzione ammette risultati parziali.", html)
         self.assertNotIn("La policy", html)
         self.assertIn("Errore non classificato", html)
         self.assertIn('id="dwEngine"', html)
         self.assertIn('id="dwFreshness"', html)
-        self.assertIn("Blocchi riusciti", html)
+        self.assertIn("Batch completati", html)
+        self.assertIn("Fase {number}/{total}", html)
+        self.assertIn("Avanzamento di questa fase", html)
         self.assertIn("Contabilizzazione dei consumi incompleta", html)
         self.assertIn("Dettagli tecnici", html)
         template = (RUNTIME / "templates" / "durable_workloads.html").read_text("utf-8")

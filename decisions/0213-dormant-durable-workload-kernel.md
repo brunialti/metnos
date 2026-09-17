@@ -372,3 +372,301 @@ including adopted results, never generic updated_at. Presence, disabled state,
 work state and stale observations are separate. Read APIs remain owner-scoped.
 This amendment records candidate behavior, not deployment certification; live
 release and end-to-end evidence must be recorded separately.
+
+## Amendment — feature indicator separate from process health (2026-09-16)
+
+The Services card previously reused canonical process status for its dot.
+A deliberately disabled, healthy LRE worker therefore appeared green. The
+card now presents feature availability separately: confirmed disabled is gray;
+green requires valid configuration, matching observed enablement, healthy
+readiness and a running process; transitions or unverified observations are
+amber; service failure or invalid configuration are red. Text accompanies
+color and existing IT/EN message keys supply every displayed explanation.
+Process status, health and PID remain available under technical details.
+
+Canonical status, watchdog behavior, desired state and enable/disable controls
+are unchanged. A view must not turn an intentionally disabled supervisor into
+a runtime failure merely to change its color. Rendered IT/EN regressions cover
+disabled, enabled, mismatched, invalid, failed, missing and unprobed states;
+unknown information never yields green. UI registry and public documentation
+describe this implemented distinction; no experimental Tutor routing,
+composition or coverage change is included.
+
+## Amendment — persisted start, known-unit percentage and cautious ETA (2026-09-16)
+
+List and detail expose a closed progress projection for the active revision,
+computed by one owner-scoped aggregate per bounded page (maximum 200 IDs,
+HTTP maximum 100). No new store, schema, writes, model calls or per-job query
+loop is introduced. `execution_started_at` in persisted attempt metrics is
+the execution start; admission, workload creation and lease acquisition are
+not substitutes. Missing or invalid evidence remains unavailable.
+
+Percentage is committed units divided by all currently known units, floored
+to one decimal. It is neither elapsed time nor source coverage and may fall
+as dynamic units appear. Until successful workload completion it is capped
+at 99.9%, preserving the distinction from final publication and validation.
+
+An indicative ETA is produced only while running, with sealed inventory,
+complete accounting, fully materialized phases, no uncertain unit/retry and
+no required final artifact. Exactly one processing phase after the mandatory
+inventory is supported: heterogeneous multi-phase plans, including photo
+indexing, deliberately show `n.a.`. At least three first-attempt successful
+results must span ten seconds. Their completion cadence estimates remaining
+units from the last persisted completion, not from poll time. The latest
+result must be within the smaller of 120 seconds and stage timeout; an overdue
+prediction, reversed clock or prediction beyond seven days is unavailable.
+This is an observation-based indication, not a deadline or throughput promise.
+
+The browser additionally suppresses ETA unless engine health is ready and the
+observation is at most 30 seconds old; disconnection clears displayed estimates.
+Each unavailable field displays the requested exact `n.a.`, via bilingual
+catalog entries. Aggregate DTO, isolated real-store scenarios, executable
+browser behavior and IT/EN seed checks guard the semantics. Live deployment
+and production acceptance remain separate from these implementation tests.
+
+## 16 September 2026 — contention recovery and readable workload details
+
+The photo-analysis incident exposed two independent failure mechanisms.
+Concurrent SQLite writer contention from several lanes was counted as several
+consecutive supervisory failures, stopping healthy sibling attempts. Native
+SQLite BUSY/LOCKED errors now pause new admissions with interruptible bounded
+backoff (0.25 seconds exponentially capped at 5 seconds; eight observations or
+60 seconds exhaust the episode). A simultaneous burst counts as one failed
+cycle. Other errors retain the three-cycle limit. No interrupted invocation
+is replayed by this handling: persistent fences, usage accounting and recovery
+remain authoritative. `test_service_contention.py` includes a real writer lock.
+
+Conservative read-only negative probes avoid taking the SQLite writer for
+expired-lease recovery or historical result adoption when no candidate exists.
+All original authoritative selections and checks remain inside the transaction;
+new work arriving after a negative probe is observed on a later cycle. The
+recovery probe includes due retries, older revisions and both clock-regression
+signals. Tests cover a real external writer and state changes after a positive
+probe. The optional 31-lane/966-unit stress reproduced starvation without
+artificial sleeps; after the probes it completed without BUSY on the tested
+host. This does not promise contention-free operation under arbitrary load.
+
+Separately, ordinary invocation statistics invalidated the catalog via the
+aging database's mtime. The loader now authenticates and applies the same
+immutable semantic lifecycle snapshot; count-only changes do not invalidate,
+but archived/deprecated transitions and removals do, including WAL changes.
+Malformed or unreadable lifecycle state fails closed. This does not bypass
+signatures, generation checks, ownership or skill visibility. See ADR 0099
+and `test_loader_lifecycle_signature.py`. Executor loader failures retain a
+closed `loader_cause` diagnostic without arbitrary exception text or a new
+automatic retry grant. Historical errors without this field cannot be
+retroactively assigned a definite internal cause.
+
+The console presents an activity title, admitted owner-only folder when known,
+observed active phase and compact timing metrics. The pure display projector
+is injected at the composition boundary; universal storage/control do not
+import the photo domain or expose arbitrary plan arguments. Current admitted
+revisions are read in a bounded owner-scoped aggregate, also for existing jobs.
+Dynamic paths render as text, never markup or links. Explanations, events and
+technical details are collapsible and retain their expansion during refresh.
+The UI preserves i18n, keyboard access, state-specific actions and stale-data
+handling. Attention remains visible independently of service readiness.
+
+Parallelism separates running units, assigned units and admitted workload
+limit; it does not claim thread/process counts or the instance's actual free
+capacity. Initial photo discovery shows n.a. instead of treating its lone
+unit as a complete work estimate. Missing ETA states why; the estimator remains
+deliberately limited to homogeneous single-phase work. Discovery partial files
+are not a resumable scan cursor; committed phases/groups remain recoverable.
+Tests: `test_description.py`, `test_progress.py`, owner-scoped control/API and
+isolated Chromium IT/EN desktop/mobile in `test_durable_console_behavior.py`.
+
+## 16 September 2026 — phase estimate is not a whole-job promise
+
+`progress.current_phase` exposes a persisted stage key, estimated end and a
+closed unavailable-reason code, separately from the original whole-job ETA.
+Only one actively leased/running phase qualifies. Its inventory must be sealed
+and its own materialization complete; at least three first-attempt successful
+completions from that phase are required. A future phase, incomplete later
+materialization or heterogeneous earlier completions never enter its rate.
+Any current-revision uncertain unit, retry, explicitly unknown usage or terminal
+model attempt without complete usage invalidates the estimate. An in-flight
+model call need not have its final consumption yet: `usage_complete` includes
+these live calls and is therefore not the phase-estimate gate. Its stronger
+completion/accounting semantics remain unchanged. `needs_attention` has
+priority over all lesser unavailability reasons.
+
+The rate is `(last_success - first_success) / (success_count - 1)`; remaining
+phase units use that cadence, anchored at `last_success`, never the poll time.
+The sample span must be at least ten seconds. Freshness is bounded by
+`min(1800 seconds, phase timeout, max(120 seconds, 2 * cadence))`, accommodating
+multi-minute blocks without treating an indefinitely quiet phase as progress.
+Overdue, future-clock and forecasts beyond seven days produce no ETA. This is
+an indicative throughput estimate, not a claim that individual blocks have
+equal costs or that later phases finish at the same time. No schema or scheduler
+change is required; the bounded owner-scoped page query aggregates only the
+current admitted revision. The original cautious single-phase whole-job ETA
+remains available between claims without inventing an active phase.
+
+The main console metric explicitly names the current phase in Italian and
+English. The distinct whole-job estimate remains in collapsed technical
+details; unavailable estimates explain why, and readiness/freshness protections
+still suppress display. Existing percentage remains a count of known committed
+units and is never used to extrapolate this forecast. Tests in `test_progress.py`
+cover separate phases, sample contamination, concurrent phases, materialization,
+attention/retries/usage, slow blocks, stale and overdue forecasts, and fixed
+polling anchors; `test_durable_console_behavior.py` covers scope separation,
+IT/EN catalog and isolated real-browser presentation.
+
+## 16 September 2026 — multidimensional robustness audit
+
+The audit corrects demonstrated defects without weakening ownership, accounting,
+result fencing, strict photo coverage or resource limits. It does not certify an
+installed release or authorize automatic restart of incompatible workloads.
+
+- `progress_many` aggregates selected-revision attempts once per phase and
+  derives whole-job totals from those facts. Indexed unit selection and explicit
+  join ordering avoid per-unit scans of owner history even without SQLite
+  statistics. Materialization searches the closed set of nonterminal states
+  instead of rescanning every completed parent; all nine states retain their
+  original semantics. Regression gates measure SQLite VM instructions, not
+  machine-dependent elapsed time.
+- List/detail projections share a deferred read transaction, producing a coherent
+  WAL snapshot without reserving the writer. Initial read failure is not an
+  empty job list; refresh failure retains prior rows but marks them stale. The
+  new messages use the canonical IT/EN catalog.
+- Recovery candidates must have actionable transitions. A draining pause or
+  cancellation cannot consume the entire limited reconciliation batch forever.
+  Cancellation remains dominant even when its wall-time budget has expired.
+- An overdue adapter prevents new lane admission while it is alive. Once all
+  outstanding futures return, the supervisor reaps outcomes and reconciles
+  before admitting more work. This does not kill an uncooperative Python thread.
+- `commit_result` reads its clock after acquiring the write transaction. The
+  worker supplies a callback, not a timestamp captured before possible writer
+  contention. Explicit timestamps remain only a deterministic testing seam.
+- Artifacts, inventories and photo parts reject special files after nonblocking
+  descriptor open. Snapshot hashing reads at most the frozen size plus one
+  detection byte. Source authority is checked again after local copying or remote
+  attestation; revoked private copies are not delivered to the executor.
+- Direct invocation checks nested schema authority/secret annotations using a
+  bounded walk. Unresolved references fail closed. Semantic schema normalization
+  distinguishes schema annotations from property names and literal data.
+- Frozen contracts include complete capability declarations, including `when`
+  and `hint`, not just capability names. Existing nonempty-capability digests
+  change intentionally: do not rewrite stored contracts or automatically retry
+  them against the new build. Use the canonical compatibility/revision workflow.
+- A failed Telegram send is retryable only when `delivery_ambiguous` is explicitly
+  boolean false; omitted or malformed evidence is not proof of non-delivery.
+- Schema validation checks required trigger definitions against the original
+  migration statements, rejecting removed or replaced immutable/transition
+  guards. One migration sequence replaces six duplicated upgrade branches;
+  transactional checkpoints and rollback semantics remain unchanged.
+
+Image publication fingerprints and bounded filename classification are detailed
+in ADR 0117. Redundant pre-transport accounting and unreachable repeated response
+checks were removed, without broad unrelated refactoring.
+
+Tests: `test_progress.py`, `test_materialization_read_bounds.py`,
+`test_service_recovery_fairness.py`, `test_commit_deadline_after_contention.py`,
+`test_service_parallel_progress.py`, `test_control.py`, `test_schema.py`,
+`test_security_boundaries.py`, `test_source_authority.py`,
+`test_direct_invocation.py`, `test_admission_compiler.py`, `test_outbox.py`,
+and console/API tests. Run `test_contention_scale.py` with
+`METNOS_TEST_CONTENTION_SCALE=1` to include the larger contention cases.
+
+Open boundaries: WAL `synchronous=NORMAL` is not power-loss durability
+certification; artifact retention cutoff is not automatic deletion of referenced
+blobs; strict photo decoding failure still stops the job. Generation attestation
+factory wiring remains a lifecycle integration item, not a demonstrated bypass
+of the verified loader and frozen-contract checks.
+
+## 16 September 2026 — generic item error receipts and persistent final trace
+
+The user's subsequent decision supersedes the strict photo-decoding stop noted
+above: domain-specific handling belongs to the producer, while LRE records a
+general-purpose outcome. This implementation is a development candidate, not
+evidence of an installed release or successful real-archive indexing.
+
+An approved output schema may explicitly declare the reserved `domain_outcome`
+field: version 1 and `error_counts`, a closed bounded map of stable identifiers
+to positive integer counts. At most twenty codes and one million affected items
+are accepted per receipt; booleans, arbitrary text, nested detail and malformed
+or undeclared fields are rejected. An open output schema alone does not approve
+this field. Identifiers are not translation keys. The kernel contains no decoder,
+photo marker, retry policy or content interpretation.
+
+Only the originating unit emits the receipt. Each original item has exactly one
+primary error code; counts are affected items, not exceptions or attempts.
+Reducers and publishers may preserve their own domain summaries but must not
+re-emit the same generic outcome. Item identity and primary-code selection belong
+to the approved producer: the aggregate-only kernel cannot infer or enforce
+cross-phase item identity. The photo adapter reports only during analysis.
+
+`ValidatedResult` verifies the reserved shape; the receipt is bound to the result
+digest. Fresh commit and semantic reuse share the same projection into the
+existing `terminal_detail_json`, atomically with the committed unit. Replay does
+not increment a counter. There is no database migration and no counter updated
+independently from the accepted result. Failed/unconfirmed attempts do not enter
+this projection.
+
+The owner/current-revision execution summary exposes `domain_errors` with
+`nitems`, `categories` (`error_code`, `count`) and `truncated`. SQL aggregates only
+committed units, computes the complete total before the twenty-category display
+limit and does not load result bodies. The console displays the localized item
+count and stable category codes independently of technical attempt errors.
+Completed jobs retain the trace after database reopening and page reload, while
+their history is retained. Historical jobs without these receipts show no domain
+items; the system does not invent or backfill counts from old error messages.
+
+Current `error_categories` remain the active unit/materialization problems;
+successful retry legitimately clears them. A separate `attempt_errors` projection
+retains `nattempts`, categories and truncation from persisted structured attempt
+errors in the same owner/revision. Its total is computed before the category
+limit. Only stable codes are exposed, never free-form messages, source paths or
+exception text. The console's collapsible history remains available even for a
+successful terminal workload. Recovered technical errors do not inflate item
+counts or change a clean `completed` state into `completed_with_errors`.
+
+Committed negative outcomes select `completed_with_errors` only after the usual
+source coverage, materialization, dependencies, artifacts and usage checks pass.
+They neither mark units failed/partial nor authorize missing output, unknown
+usage or unverified sources. This is not a blanket catch-and-continue policy.
+Normal restart persistence is tested; power-loss durability is not certified.
+
+Regression evidence: `test_domain_outcome.py` (shape, approval, replay, reuse,
+owner/revision boundaries, missing coverage/accounting, retry count, terminal
+reopen and totals beyond the category limit), `test_image_indexing_e2e.py`
+(mixed photo corpus and real durable restart with synthetic model responses),
+`test_durable_console_behavior.py` (Node and real isolated Chromium IT/EN).
+
+## 16 September 2026 — bounded recovery without cancelling the remaining queue
+
+User-approved policy: a declared retryable error uses only the admitted number
+of automatic attempts and only for a safe effect profile. Exhausting those
+attempts is not evidence that the cause is permanent: the unit and workload
+enter `needs_attention`. Pending batches and committed results remain stored;
+there is no implicit cancellation of their queue. The same rule covers an
+exhausted recoverable lease. An explicit retry decision grants one attempt,
+not a reset of the automatic allowance. A further failure requires review again.
+
+Missing or opaque failure classification and uncaught adapter exceptions become
+`executor_unknown`, with manual review and no automatic retry. Explicit invalid
+input, permanent failures and contract violations remain non-retryable; a plan
+cannot turn those classes into automatic retries. Unknown consumption, budgets,
+clock regression, capability changes and ambiguous effects retain precedence.
+No authority, source, accounting, fencing or frozen-contract check is bypassed.
+
+The persisted error receipt reflects `retry=manual` when attention is required.
+Historical categories may include `cause_code`, but only the bounded approved
+runner code already saved by the execution bridge; arbitrary diagnostic text is
+not projected. Counts remain attempts, distinct from `domain_errors.nitems`.
+The kernel contains no image-specific decision. It does not reopen old terminal
+jobs or rewrite their approved contracts.
+
+Console details use a compact localized value/meaning table: completed batches
+and total batches for the active phase, known total across materialized phases,
+phase percentage, revision start and phase finish estimate. Phase numbering and
+the existing conservative estimate remain authoritative; no time percentage is
+invented. Missing data stays `n.a.`. HTTP chat turns make registered internal
+page paths clickable, including saved LRE receipts, without changing their plain
+text, Telegram formatting or access checks.
+
+Regression evidence includes exhaustion/restart/manual-grant integration tests,
+synthetic image end-to-end tests with one and three model failures, and isolated
+Chromium IT/EN desktop/mobile checks. Installed release and real checks are
+recorded separately in `internal/reports/lre-error-resilience-20260916.md`.

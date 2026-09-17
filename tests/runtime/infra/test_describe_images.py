@@ -4,12 +4,94 @@ from __future__ import annotations
 
 import json
 import unittest
+import pytest
 from pathlib import Path
 from unittest import mock
 
 _RUNTIME = (Path(__file__).resolve().parents[3] / "runtime")
 
 import describe_images as di  # noqa: E402
+
+
+@pytest.mark.parametrize("content,finish,expected", [
+    ({"description": "A beach", "keywords": ["sea"], "location_hint": "coast", "activity_hint": ""}, "stop", None),
+    ({"description": "A beach", "keywords": ["sea"], "location_hint": "coast", "activity_hint": ""}, "length", "output_truncated"),
+    ('{"description":"cut off', "length", "output_truncated"),
+    ({"description": "x" * 401, "keywords": [], "location_hint": "", "activity_hint": ""}, "stop", "response_schema_mismatch"),
+    ({"description": None, "keywords": None}, "stop", "response_schema_mismatch"),
+    ({"description": "x", "keywords": [], "location_hint": "", "activity_hint": "", "extra": "private"}, "stop", "response_schema_mismatch"),
+])
+def test_structured_vision_is_bounded_validated_and_accounted(
+    monkeypatch, tmp_path, content, finish, expected,
+):
+    import llm_telemetry
+    import vlm_client
+    from image_index_build import DESCRIPTION_SCHEMA
+    from PIL import Image
+
+    path = tmp_path / "photo.png"
+    Image.new("RGB", (8, 8), "blue").save(path)
+    calls = []
+    wire = json.dumps({"choices": [{"message": {"content": content if isinstance(content, str) else json.dumps(content)}, "finish_reason": finish}],
+                       "usage": {"prompt_tokens": 23, "completion_tokens": 512 if finish == "length" else 20}}).encode()
+
+    class Response:
+        def __enter__(self): return self
+        def __exit__(self, *_args): pass
+        def read(self): return wire
+
+    def request(req, **_kwargs):
+        calls.append(json.loads(req.data))
+        return Response()
+
+    monkeypatch.setattr(vlm_client.urllib.request, "urlopen", request)
+    usage = llm_telemetry.BoundedTransportUsageSink()
+    with llm_telemetry.transport_usage_context(usage):
+        result = vlm_client.describe_image(path, prompt="fixture", max_tokens=512,
+                                          allow_lazy_start=False, response_schema=DESCRIPTION_SCHEMA)
+    assert len(calls) == 1
+    assert calls[0]["max_tokens"] == 512
+    assert calls[0]["response_format"] == {"type": "json_object", "schema": DESCRIPTION_SCHEMA}
+    assert result.get("_vlm_error") == expected
+    assert usage.export()["records"][0]["out_tokens"] == (512 if finish == "length" else 20)
+    if expected:
+        assert result["description"] == ""
+
+
+def test_malformed_vision_values_fail_without_exception():
+    import vlm_client
+    assert vlm_client._parse_vlm_text('{"keywords":null}')["_vlm_error"] == "invalid_keywords"
+    assert vlm_client._parse_vlm_text(["private"])["_vlm_error"] == "invalid_response_type"
+
+
+def test_structured_vision_rejection_does_not_retry_or_claim_zero_usage(monkeypatch, tmp_path):
+    import urllib.error
+    import llm_telemetry
+    import vlm_client
+    from image_index_build import DESCRIPTION_SCHEMA
+    from PIL import Image
+
+    path = tmp_path / "photo.png"
+    Image.new("RGB", (8, 8)).save(path)
+    calls = []
+
+    def rejected(request, **_kwargs):
+        calls.append(request)
+        raise urllib.error.HTTPError(request.full_url, 400, "unsupported schema", {}, None)
+
+    monkeypatch.setattr(vlm_client.urllib.request, "urlopen", rejected)
+    sink = llm_telemetry.BoundedTransportUsageSink()
+    with llm_telemetry.transport_usage_context(sink):
+        result = vlm_client.describe_image(path, allow_lazy_start=False,
+                                          response_schema=DESCRIPTION_SCHEMA, max_tokens=512)
+    assert result["_vlm_error"]
+    assert len(calls) == sink.export()["calls_started"] == 1
+    assert sink.export()["records"] == []
+    parent = llm_telemetry.BoundedUsageSink()
+    parent.ingest_transport(sink.export(), workload_id="wrk-test", stage_id="stage-test",
+                            unit_key="unit-test", attempt_id="attempt-test")
+    assert parent.summary()["usage_missing"] is True
+    assert parent.summary()["zero_calls_verified"] is False
 
 
 def test_vlm_client_reports_bounded_provider_usage(monkeypatch, tmp_path):

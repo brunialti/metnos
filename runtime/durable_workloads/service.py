@@ -43,6 +43,10 @@ _HEALTH_PULSE_INTERVAL_S = 30.0
 _HEALTH_PULSE_JOIN_TIMEOUT_S = 1.0
 _PARALLEL_SHUTDOWN_TIMEOUT_S = 30.0
 _MAX_PARALLEL_WORKERS = 32
+_MAX_CONTENTION_CYCLES = 8
+_MAX_CONTENTION_DURATION_S = 60.0
+_CONTENTION_BACKOFF_INITIAL_S = 0.25
+_CONTENTION_BACKOFF_MAX_S = 5.0
 _HEALTH_MAX_BYTES = 16_384
 _HEALTH_REASONS = frozenset({
     "none",
@@ -270,6 +274,9 @@ class DurableWorkerService:
         self._stop_event = threading.Event()
         self._cycle_wakeup = threading.Event()
         self._consecutive_cycle_failures = 0
+        self._contention_cycles = 0
+        self._contention_started_at: float | None = None
+        self._contention_retry_at = 0.0
         self._cycle_guard = threading.Lock()
         self._parallel_guard = threading.Lock()
         self._parallel_futures: dict[Future[Any], int] = {}
@@ -553,8 +560,62 @@ class DurableWorkerService:
                 if store is not None:
                     store.close()
 
-    def _reap_parallel(self) -> tuple[int, int]:
-        """Return ``(completed, failed)`` for finished controller futures."""
+    @staticmethod
+    def _is_database_contention(exc: BaseException) -> bool:
+        # Messages are neither stable nor proof of contention. SQLite extended
+        # result codes retain their primary result in the low byte.
+        code = getattr(exc, "sqlite_errorcode", None)
+        return (
+            isinstance(exc, sqlite3.OperationalError)
+            and type(code) is int
+            and code & 0xFF in {sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED}
+        )
+
+    def _reset_cycle_failures(self) -> None:
+        self._consecutive_cycle_failures = 0
+        self._contention_cycles = 0
+        self._contention_started_at = None
+        self._contention_retry_at = 0.0
+
+    def _record_cycle_failures(
+        self, failures: tuple[BaseException, ...], *, context: str,
+    ) -> None:
+        """Bound admission retries, never replay an interrupted invocation.
+
+        A burst from N lanes is one failed supervisory observation. Existing
+        lanes and their lease heartbeats continue during the admission pause;
+        durable recovery/fencing decides the disposition of any failed unit.
+        """
+
+        self._set_health(DurableServiceState.DEGRADED, "worker_cycle_failed")
+        if all(self._is_database_contention(exc) for exc in failures):
+            now = time.monotonic()
+            if self._contention_started_at is None:
+                self._contention_started_at = now
+            self._contention_cycles += 1
+            if (
+                self._contention_cycles >= _MAX_CONTENTION_CYCLES
+                or now - self._contention_started_at >= _MAX_CONTENTION_DURATION_S
+            ):
+                raise RuntimeError("durable worker database contention exhausted")
+            delay = min(
+                _CONTENTION_BACKOFF_INITIAL_S * 2 ** (self._contention_cycles - 1),
+                _CONTENTION_BACKOFF_MAX_S,
+            )
+            self._contention_retry_at = now + delay
+            log.warning(
+                "durable_worker_database_contention context=%s cycle=%d "
+                "lanes=%d retry_after_s=%.2f",
+                context, self._contention_cycles, len(failures), delay,
+            )
+            return
+        # A busy sibling must not hide corruption, I/O errors or broken code.
+        self._consecutive_cycle_failures += 1
+        if self._consecutive_cycle_failures >= 3:
+            raise RuntimeError(f"durable worker {context} failed repeatedly")
+
+    def _reap_parallel(self) -> tuple[int, tuple[BaseException, ...]]:
+        """Return completed count and exceptions from finished controller futures."""
 
         with self._parallel_guard:
             completed = tuple(
@@ -562,28 +623,24 @@ class DurableWorkerService:
             )
             for future in completed:
                 self._parallel_futures.pop(future, None)
-        failures = 0
+        failures: list[BaseException] = []
         for future in completed:
             try:
                 future.result()
-            except CancelledError:
+            except CancelledError as exc:
                 if not self._stop_event.is_set():
-                    failures += 1
-            except Exception:
-                failures += 1
-                log.exception("durable_worker_parallel_cycle_failed")
-        return len(completed), failures
+                    failures.append(exc)
+            except Exception as exc:
+                failures.append(exc)
+                if not self._is_database_contention(exc):
+                    log.exception("durable_worker_parallel_cycle_failed")
+        return len(completed), tuple(failures)
 
     def _run_parallel_cycle(self) -> None:
         completed, failures = self._reap_parallel()
         if failures:
-            self._consecutive_cycle_failures += failures
-            self._set_health(DurableServiceState.DEGRADED, "worker_cycle_failed")
-            if self._consecutive_cycle_failures >= 3:
-                raise RuntimeError("durable worker cycle failed repeatedly")
+            self._record_cycle_failures(failures, context="cycle")
             return
-        if completed:
-            self._consecutive_cycle_failures = 0
         if self._stop_event.is_set():
             return
 
@@ -601,15 +658,13 @@ class DurableWorkerService:
                 limit=self._effective_parallel_workers,
                 resource_limits=orchestration_resource_limits(),
             )
-        except Exception:
-            self._consecutive_cycle_failures += 1
-            self._set_health(DurableServiceState.DEGRADED, "worker_cycle_failed")
-            log.exception("durable_worker_demand_failed")
-            if self._consecutive_cycle_failures >= 3:
-                raise RuntimeError("durable worker demand failed repeatedly")
+        except Exception as exc:
+            if not self._is_database_contention(exc):
+                log.exception("durable_worker_demand_failed")
+            self._record_cycle_failures((exc,), context="demand")
             return
-        if not busy_lanes and demand == 0:
-            self._consecutive_cycle_failures = 0
+        if completed or (not busy_lanes and demand == 0):
+            self._reset_cycle_failures()
         for lane in range(self._effective_parallel_workers):
             if len(busy_lanes) >= demand:
                 break
@@ -631,7 +686,7 @@ class DurableWorkerService:
                 )
             )
             busy_lanes.add(lane)
-        if self._consecutive_cycle_failures:
+        if self._consecutive_cycle_failures or self._contention_cycles:
             self._set_health(
                 DurableServiceState.DEGRADED,
                 "worker_cycle_failed",
@@ -746,6 +801,34 @@ class DurableWorkerService:
 
         if self._stop_event.is_set() or not self._started:
             return
+        if self._execution_overdue():
+            # Do not admit another lane after detecting an adapter that can no
+            # longer commit. Existing invocations retain their normal fences.
+            # Keep the original failure observation: an adapter that never
+            # returns still needs the external process-group supervisor.
+            if self._health.reason_code != "execution_deadline_exceeded":
+                self._set_health(
+                    DurableServiceState.DEGRADED, "execution_deadline_exceeded",
+                )
+            return
+        if self._health.reason_code == "execution_deadline_exceeded":
+            # A deadline is not a permanent service latch. Once every in-flight
+            # lane has returned, observe its outcome and reconcile the durable
+            # state before admitting more work. Never overlap recovery with a
+            # still-running adapter merely because its lease has expired.
+            with self._parallel_guard:
+                if any(not future.done() for future in self._parallel_futures):
+                    return
+            _completed, failures = self._reap_parallel()
+            if failures:
+                self._record_cycle_failures(failures, context="cycle")
+                return
+            self._set_health(DurableServiceState.RECOVERING, "recovery_incomplete")
+        if self._contention_cycles and time.monotonic() < self._contention_retry_at:
+            # Completion callbacks may wake the supervisor during backoff.
+            # Do not let them issue more DB maintenance or admission probes.
+            self._set_health(DurableServiceState.DEGRADED, "worker_cycle_failed")
+            return
         if self._health.state == DurableServiceState.RECOVERING.value:
             try:
                 recovered = self._with_health_pulse(
@@ -774,12 +857,10 @@ class DurableWorkerService:
             maintain = getattr(self._bridge, "maintain", None)
             if callable(maintain):
                 maintain()
-        except Exception:
-            self._consecutive_cycle_failures += 1
-            self._set_health(DurableServiceState.DEGRADED, "worker_cycle_failed")
-            log.exception("durable_worker_maintenance_failed")
-            if self._consecutive_cycle_failures >= 3:
-                raise RuntimeError("durable worker maintenance failed repeatedly")
+        except Exception as exc:
+            if not self._is_database_contention(exc):
+                log.exception("durable_worker_maintenance_failed")
+            self._record_cycle_failures((exc,), context="maintenance")
             return
         if self._effective_parallel_workers > 1:
             self._run_parallel_cycle()
@@ -789,7 +870,7 @@ class DurableWorkerService:
         try:
             assert self._store is not None
             if self._store.service_lane_demand(limit=1) == 0:
-                self._consecutive_cycle_failures = 0
+                self._reset_cycle_failures()
                 self._set_health(DurableServiceState.READY, "none")
                 return
             outcome = self._with_health_pulse(
@@ -797,15 +878,12 @@ class DurableWorkerService:
                 state=DurableServiceState.READY,
                 reason_code="none",
             )
-            self._consecutive_cycle_failures = 0
+            self._reset_cycle_failures()
             self._set_health(DurableServiceState.READY, "none")
             if self._made_progress(outcome):
                 self._notify_progress()
-        except Exception:
-            self._consecutive_cycle_failures += 1
-            self._set_health(DurableServiceState.DEGRADED, "worker_cycle_failed")
-            if self._consecutive_cycle_failures >= 3:
-                raise RuntimeError("durable worker cycle failed repeatedly")
+        except Exception as exc:
+            self._record_cycle_failures((exc,), context="cycle")
 
     def run_forever(self) -> int:
         """Run until SIGTERM/interrupt; a duplicate supervisor exits cleanly."""
@@ -821,7 +899,13 @@ class DurableWorkerService:
                 except RuntimeError:
                     exit_code = 1
                     break
-                self._cycle_wakeup.wait(self._poll_interval_s)
+                contention_delay = self._contention_retry_at - time.monotonic()
+                if contention_delay > 0:
+                    # Progress wakeups must not collapse a contention pause;
+                    # shutdown, unlike progress, must interrupt it immediately.
+                    self._stop_event.wait(contention_delay)
+                else:
+                    self._cycle_wakeup.wait(self._poll_interval_s)
         finally:
             self.stop()
         return exit_code

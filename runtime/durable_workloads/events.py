@@ -293,8 +293,13 @@ class TelegramOutboxAdapter:
                         count_cancel(record, "delivery_ambiguous")
                     elif outcome.get("retryable") is False:
                         count_cancel(record, "provider_rejected")
-                    else:
+                    elif outcome.get("delivery_ambiguous") is False:
                         count_retry(record)
+                    else:
+                        # Retryability alone does not prove that the provider
+                        # sent nothing. Missing/malformed delivery evidence
+                        # must not duplicate an externally visible notice.
+                        count_cancel(record, "delivery_ambiguous")
                     continue
                 if self._store.confirm_outbox(
                     record,

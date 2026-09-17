@@ -253,6 +253,56 @@ Production model artifacts live outside immutable releases and are selected
 through the existing embedding-tier configuration, including the face role;
 only declared artifact files cross the read-only sandbox boundary.
 
+## Server prerequisite placement correction — 2026-09-16
+
+The conversational destination is not necessarily the reader's execution
+location. Ordinary dispatch already keeps server-only readers on the server.
+When both verified contracts are server-only (including the default placement),
+`admit_prerequisite` now passes `server` to automatic admission. This preserves
+the location of the missing-index observation instead of forwarding an unrelated
+conversational device. No executor names or query words select this behavior.
+
+Either contract declaring device-only, hybrid or device-capable execution keeps
+the original target. Direct remote image indexing remains unsupported; no remote
+authority, owner boundary, path guard, approval or budget is relaxed. A result
+cannot set placement. Rejections before submission log the fixed boundary and
+exception type, never paths or arguments.
+
+Regression tests cover both contracts, remote targets, hostile result metadata,
+the real wrapper/guard/adapter/compiler/admission chain and deduplication across
+retries and subsequent turns. The latter creates one isolated job without
+models or production data. Live release evidence is recorded separately.
+
+## Bounded structured photo descriptions — 2026-09-16
+
+All eleven failed analysis attempts in the inspected production job ended their
+last model call at the configured 512-token ceiling. A bounded local replay of
+the first affected photo reproduced `finish_reason=length`, invalid JSON and no
+usable description. With the same model, prompt and token ceiling, a constrained
+JSON response completed at 186 tokens. This proves one reproducible failure;
+the separate four catalog inventory failures remain under investigation.
+
+The photo domain now supplies a bounded description schema to the shared vision
+client. The request uses `response_format={type:json_object,schema:...}`, as in
+the [upstream example](https://github.com/ggml-org/llama.cpp/blob/master/examples/json_schema_pydantic_example.py).
+The client validates the response locally and rejects `finish_reason=length`
+even if the returned object happens to parse. Actual provider usage is recorded
+before rejection. No larger token budget, unconstrained fallback or hidden retry
+is introduced. Ad-hoc descriptions retain their existing unconstrained policy.
+The schema participates in the analysis identity, preventing reuse across policy
+changes. Publication still requires complete, validated coverage.
+
+LRE preserves executor error codes only when enumerated in the attempt's already
+approved output schema. Image discovery/part/publication schemas are revision 2;
+the folder schema stays revision 1. Existing revision-1 jobs are not migrated or
+silently reinterpreted: new execution requires a newly admitted job. Loader
+inventory diagnostics are separately bounded and enumerated, with optional errno,
+without filesystem paths or exception text. Neither change grants retry authority.
+
+Regression coverage: `test_describe_images.py`, `test_image_index_build_phases.py`,
+`test_image_indexing_e2e.py`, `test_execution_bridge.py`, `test_manifest_inventory.py`.
+Release and live acceptance remain tracked in the private incident report.
+
 ## Historical notes
 
 - Threshold 120s è euristico iniziale. Telemetria future può aggiornare.

@@ -28,6 +28,22 @@ def _guide_units(language):
 
 
 @pytest.mark.parametrize("language,heading,required", [
+    ("it", "Traccia degli errori dopo la conclusione", (
+        "nitems", "anche dopo un riavvio", "non i tentativi ripetuti",
+        "totale le comprende tutte", "ogni tipo di lavoro", "conservato lo storico",
+    )),
+    ("en", "Error history after completion", (
+        "nitems", "after a restart", "not repeated attempts", "total includes them all",
+        "any workload", "job history is retained",
+    )),
+    ("it", "Errori dei tentativi, anche se superati", (
+        "storico", "un tentativo successivo riesce", "non si somma a nitems",
+        "senza essere dichiarato fallito",
+    )),
+    ("en", "Attempt errors, including recovered errors", (
+        "history", "a later attempt succeeds", "not added to nitems",
+        "without being declared failed",
+    )),
     ("it", "Indicizzazione delle foto: primo utilizzo", (
         "contenuto delle fotografie", "indice persistente", "nome di file",
     )),
@@ -55,6 +71,32 @@ def _guide_units(language):
     ("en", "Small, resumable steps", (
         "small groups", "resource limits", "survive", "restart",
         "when needed", "complete generation", "remains visible",
+    )),
+    ("it", "Integrità e limiti della ripresa", (
+        "non è necessariamente danneggiata", "continua sulle altre",
+        "IMAGE_NOT_INDEXED:image_decode_failed", "fuori dal sistema di traduzione",
+    )),
+    ("en", "Integrity and recovery limits", (
+        "not necessarily damaged", "continues with the others",
+        "IMAGE_NOT_INDEXED:image_decode_failed", "outside the translation system",
+    )),
+    ("it", "Completamento con errori espliciti", (
+        "completato con errori", "ciascun batch", "senza essere ricontati", "non diventano foto da saltare",
+    )),
+    ("en", "Completion with explicit errors", (
+        "completed with errors", "each batch", "without being counted again", "do not become skippable photos",
+    )),
+    ("it", "Identificare e riprovare le foto non indicizzate", (
+        "IMAGE_NOT_INDEXED", "non viene avviata", "ciclo automatico", "non garantisce", "non vengono cancellati",
+    )),
+    ("en", "Identifying and retrying photos not indexed", (
+        "IMAGE_NOT_INDEXED", "not start indexing", "automatic retry loop", "does not guarantee", "not deleted",
+    )),
+    ("it", "Verifica dei file pubblicati", (
+        "cinque file", "precedenti restano leggibili", "priva di queste prove",
+    )),
+    ("en", "Verifying published files", (
+        "five index files", "Previous indexes remain readable", "without these proofs",
     )),
     ("it", "Perché la prima preparazione", (
         "numero", "dimensione", "risorse", "ore", "non una scadenza",
@@ -99,6 +141,16 @@ def test_tutor_guide_links_to_the_indexing_source(language):
     lre = documents[f"{language}/system/lre.html"]
     assert '../system/lre.html#photo-indexing' in tutor.path.read_text(encoding="utf-8")
     assert 'id="photo-indexing"' in lre.path.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("language,phrases", [
+    ("it", ("Fase x/y", "Valore", "Significato", "Che cos'è un batch", "non ha una dimensione", "solo la fase indicata", "non misurano il tempo rimanente")),
+    ("en", ("Phase x/y", "Value", "Meaning", "What is a batch?", "no fixed size", "only the indicated phase", "do not measure time remaining")),
+])
+def test_generic_phase_and_batch_explanation_survives_tutor_source_compilation(language, phrases):
+    text = " ".join(unit.text for unit in _guide_units(language)).lower()
+    for phrase in phrases:
+        assert phrase.lower() in text
 
 
 @pytest.mark.parametrize("language,required,obsolete", [

@@ -216,7 +216,83 @@ approvazione e un risultato salvato non implica completamento dell'intero
 lavoro. La lettura di stati e contatori è una domanda informativa, non una
 richiesta di avviare operazioni.</p>
 
+<p>Nella pagina Servizi, l'indicatore principale di LRE descrive la funzione,
+non il solo processo: grigio se disattivata con stato confermato, verde solo
+se abilitata e pronta, giallo se in transizione o non verificata, rosso per
+errore del servizio o configurazione non valida. I dettagli tecnici conservano
+lo stato del processo. Questa distinzione visiva non cambia i controlli di
+salute, le decisioni del supervisore o l'abilitazione persistente.</p>
+
+<p>Un prerequisito conserva la collocazione prevista dai contratti verificati:
+se sia la ricerca sia la preparazione sono riservate al server, anche la
+preparazione LRE avviene sul server, indipendentemente dal dispositivo ricordato
+nella conversazione. Se uno dei componenti può lavorare su un dispositivo,
+la destinazione richiesta resta invariata e soggetta ai normali controlli.
+I dati restituiti da un executor non possono scegliere la destinazione.</p>
 <h2 id="esiti">Risultati, errori e registri</h2>
+
+<p>La console LRE ricava l'avvio dai tentativi realmente eseguiti nella revisione
+corrente, non dalla creazione del lavoro. Una tabella compatta separa batch
+completati e previsti nella fase corrente dal totale noto di tutte le fasi, che
+può crescere. La percentuale principale riguarda la fase indicata come x/y,
+non il tempo; quella aggregata rimane nei dettagli tecnici. Un'unica lettura
+aggregata per pagina, circoscritta al proprietario, ricava una fine prevista
+indicativa della sola fase corrente già interamente materializzata, con almeno
+tre risultati della stessa fase sufficientemente recenti. Non somma fasi diverse:
+la previsione dell'intero lavoro resta separata e disponibile solo per piani a
+fase unica. Errori, pausa, motore non pronto o dati non aggiornati producono n.a.
+con un motivo; un lavoro da verificare ha precedenza sugli altri motivi.</p>
+
+<p>L'analisi foto richiede una risposta del modello vincolata a uno schema e
+la convalida nuovamente prima di salvare. Una risposta troncata non diventa un
+risultato riuscito; il consumo effettivo resta registrato, senza aumentare
+automaticamente il limite. Il dominio distingue descrizione indisponibile,
+troncata, non valida o vuota e dichiara una causa recuperabile; uno schema di
+richiesta non valido richiede invece una verifica. Non ripete la chiamata al
+proprio interno: LRE applica i tentativi e gli effetti già ammessi. La diagnostica LRE conserva
+solo codici dichiarati nello schema di uscita approvato e cause enumerate del
+caricatore, mai testo arbitrario delle eccezioni.</p>
+
+<p>Nel motore generale, l'esaurimento dei tentativi per un errore recuperabile
+porta a <strong>Richiede attenzione</strong>, conservando batch in attesa e
+risultati confermati. Una causa ignota richiede verifica senza retry automatici;
+errori permanenti espliciti e violazioni di contratto restano non recuperabili.
+La decisione di riprovare autorizza un solo tentativo, non un ciclo illimitato.
+Contabilità, autorizzazioni e sicurezza degli effetti restano obbligatorie.
+Lo storico può mostrare la causa approvata del tentativo senza confonderla con
+gli elementi che hanno prodotto un esito negativo di dominio.</p>
+
+<p>Il controllo delle cartelle vuote lasciate da una pubblicazione interrotta
+usa una lettura condivisa: altri lettori non rendono il catalogo non valido,
+mentre lo scrittore resta escluso durante la verifica. Formato, proprietà,
+permessi e assenza di contenuti restano obbligatori; il controllo non ripara
+né elimina le cartelle. Uno stato LRE da verificare sospende nuovi blocchi,
+ma consente a quelli già avviati di salvare il proprio risultato.</p>
+
+<p>La domanda di esecuzioni parallele rispetta la risorsa più limitata richiesta
+da ciascun blocco e i vincoli condivisi tra lavori: le capacità CPU, disco e VLM
+non si sommano quando servono contemporaneamente. L'ammissione effettiva resta
+del coordinatore centrale. L'analisi foto decodifica anche HEIC, senza modificare
+gli originali; un formato illeggibile resta un errore esplicito, mai una foto
+indicizzata. Ogni analisi completa salva un riferimento privato verificabile:
+un nuovo tentativo della stessa generazione riusa solo risultati con sorgente,
+modelli, istruzioni e contesto cartella corrispondenti. I riferimenti non
+pubblicano un indice parziale e non eliminano i controlli sui consumi.</p>
+
+<p>L'elenco identifica attività e cartella, quando disponibili nel piano ammesso
+del proprietario; il dettaglio distingue fase osservata, blocchi in esecuzione
+e limite di concorrenza del lavoro. Questi conteggi non misurano thread o processi.
+Durante la scansione iniziale delle foto, un blocco rappresenta la scoperta,
+non l'intero archivio; il totale delle fasi successive non è ancora noto.
+Percentuale e previsione sono n.a., con motivo esplicito. Gli errori del lavoro
+restano evidenti anche quando il servizio è pronto.</p>
+
+<p>Una contesa temporanea di scrittura SQLite sospende le nuove ammissioni con
+attesa crescente e limitata, senza fermare immediatamente le altre corsie.
+Più errori simultanei contano come un singolo ciclo fallito. Corruzione e
+guasti diversi non vengono classificati come contesa. Il caricatore delle
+capacità distingue gli aggiornamenti delle statistiche d'uso dalle effettive
+modifiche di disponibilità, che continuano a invalidare il catalogo verificato.</p>
 
 <p>Un executor può riuscire, non produrre alcun elemento, produrre un risultato
 parziale oppure fallire. Questi casi non sono equivalenti. Il runtime conserva
