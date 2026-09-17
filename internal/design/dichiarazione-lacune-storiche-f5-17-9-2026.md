@@ -76,16 +76,34 @@ Quando una ricevuta viene esclusa (§2.1), le sue righe di produttore e di
 emissione restano non usate. I due numeri sono uguali fra loro, come ci si
 aspetta da righe appaiate. Non sono 538 guasti nuovi.
 
-**I 18 che avanzano, perché 538 ≠ 520.** Le 520 ricevute escluse spiegano 520
-delle 538 righe. Le altre **18** sono stati di produttore che non appartengono a
-nessuna ricevuta esclusa: righe registrate dal produttore per cui l'ammissione
-durevole corrispondente non è mai stata verificata. Alla misura precedente
-(§5.15 del piano G8) erano 16 su 536; ne sono comparse due mentre la produzione
-avanzava alla release 63. **Vanno guardate**: sono l'unica parte di questo
-elenco che non è una conseguenza aritmetica di §2.1, e sono quelle che il §3
-deve reggere per conto proprio. Restano comunque un'esclusione — una riga di
-produttore senza ammissione verificata non porta ammissioni — ma la loro
-provenienza non è spiegata da questa dichiarazione.
+**I 18 che avanzano, perché 538 ≠ 520 — misurati, non dedotti.** Le 520
+ricevute escluse spiegano esattamente **520** delle 538 righe. Le altre **18**
+non appartengono a nessuna ricevuta dell'inventario, e nessuna ricevuta è
+risultata illeggibile: non esiste una terza categoria nascosta.
+
+| stato registrato | quante | cosa vuol dire |
+|---|---|---|
+| `rejected` | 13 | una richiesta al produttore **rifiutata** |
+| `in_progress` | 4 | presa in carico e mai conclusa |
+| `available` | 1 | registrata e mai presa in carico |
+| `committed` | **0** | — |
+
+`committed` è l'**unico** stato che corrisponde a un'ammissione conclusa, e non
+ce n'è nessuna.
+
+**Il tranello che ho controllato invece di dare per buono.** La migrazione di
+schema da v1 a v2 mappava *ogni* riga non `available` su `rejected`, con codice
+`legacy_terminal`. Se fra le 13 ce ne fossero di quelle, `rejected` non
+distinguerebbe un rifiuto vero da un'ammissione conclusa che il vecchio schema
+non sapeva più riconoscere. **Non ce ne sono**: tutti e 13 portano un codice di
+rifiuto reale (7 `property_runner_unavailable`, cioè un guasto d'ambiente, e sei
+altri fra lint, staging, postcondizione e oracolo).
+
+**Disposizione: esclusione, e qui è l'unica lettura corretta.** Una richiesta
+rifiutata, una in corso e una mai presa in carico non hanno **mai** conferito
+autorità: non c'è nulla da sottrarre che l'esclusione stia ignorando.
+
+Impronta delle 18 righe: `sha256:dce834db9afe7408982db3f55ebfe962`.
 
 ### 2.5 `unbound_namespace_not_reconciled` — 1
 
@@ -108,22 +126,52 @@ non una prova in più ma una **revoca**: un ritiro o una quarantena che avrebbe
 dovuto *togliere* autorità e che non è stato ricongiunto. In quel caso
 l'esclusione non sarebbe conservativa — starebbe ignorando una sottrazione.
 
-**La risposta, verificabile.** I codici che segnalerebbero esattamente questo
-**non compaiono nel censimento**, cioè sono a zero:
+**La risposta, e il suo confine — corretto il 17/9 su rilievo del gestore LRE.**
 
-| codice assente | cosa avrebbe segnalato |
+I codici che segnalerebbero una revoca **non compaiono nel censimento**, cioè
+sono a zero: `retirement_not_reconciled`, `conflicting_admission_identity`,
+`continuity_predecessor_not_reconciled`, `duplicate_stored_identity`,
+`durable_inventory_reread_mismatch`.
+
+**Ma quell'assenza vale meno di quanto avevo scritto.** Una ricevuta il cui
+contesto questa catena non porta esce dal ricongiungimento a
+`runtime/executor_birth_history.py:136` con `continue`, **prima** della
+classificazione che la chiamerebbe quarantena. Perciò i cinque codici **non
+dicono nulla** sulle 520 escluse: una revoca che stesse lì dentro sarebbe
+invisibile a tutti e cinque. Il gestore LRE lo ha dimostrato con una prova
+riproducibile a firme reali. La mia formulazione precedente — «il
+contro-argomento è risposto» — era **troppo larga**, ed è questa la
+circoscrizione che mi hanno chiesto.
+
+**Quindi la conclusione si spacca in due, e solo la prima è incondizionata.**
+
+1. **La soglia non può essere gonfiata.** Vale sempre: una ricevuta esclusa non
+   entra fra i candidati, qualunque cosa sia.
+2. **Nessuna revoca viene ignorata.** Vale **per i dati di oggi, misurati**, non
+   per costruzione. Misura del 17/9 sulle 520 escluse:
+
+| ciclo di vita approvato | quante |
 |---|---|
-| `retirement_not_reconciled` | un ritiro dichiarato e non ricongiunto |
-| `conflicting_admission_identity` | due ammissioni che si contendono la stessa identità |
-| `continuity_predecessor_not_reconciled` | una catena di continuità spezzata |
-| `duplicate_stored_identity` | una identità memorizzata due volte |
-| `durable_inventory_reread_mismatch` | un inventario che cambia mentre lo si legge |
+| `ACTIVE` | **520** |
+| `QUARANTINED` | **0** |
+| `PREEXERCISE` | **0** |
+
+Nessuna illeggibile. **Zero quarantene fra le escluse**: il buco strutturale
+esiste, oggi è vuoto.
+
+**Un numero da tenere d'occhio.** Delle 520, **14** nominano un contratto e una
+generazione che compaiono anche fra i 40 candidati contati
+(`sha256:3b907bf18257d3666e5cba9b71c0c6d7`). Sono tutte `ACTIVE`, quindi oggi
+non aggiungono e non tolgono nulla — ma sono esattamente l'insieme che
+diventerebbe pericoloso se una di esse cambiasse ciclo di vita. **Chi rimisura
+deve guardare prima questo numero.**
 
 Inoltre la quarantena è stata **tolta dai candidati tecnici alla fonte** (17/9,
 `executor_birth_history.py`): una quarantena cambia un campo del manifest, e la
 classe di revisione la chiamava «revisione di contratto». Contarla avrebbe
-lasciato che una **revoca alzasse** la soglia che non deve toccare. Ora è
-classificata `quarantine` ed esclusa da `technical_acts`.
+lasciato che una **revoca alzasse** la soglia che non deve toccare. Questo vale
+però solo per le ricevute che **entrano** nel ricongiungimento, che è
+precisamente il confine appena descritto.
 
 ---
 

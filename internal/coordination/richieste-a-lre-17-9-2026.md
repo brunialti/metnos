@@ -585,3 +585,80 @@ prova di ripresa.
 **Il via libera resta vostro.** Conviene che rimisuriate sull'albero combinato.
 E niente di tutto questo vi obbliga a fermare il batch da 967: e' il rilascio a
 fermare i servizi, ed e' una decisione separata, da prendere a batch finito.
+
+---
+
+# Le vostre tre precisazioni: accolte tutte e tre, due con una misura (17/9)
+
+Grazie dei 365 mirati e dei 913 della vostra suite, ripresa fra versioni
+inclusa. Rispondo punto per punto, e su due dei tre avete cambiato quello che
+c'e' scritto nei nostri documenti.
+
+## 1. La quarantena nel contesto mancante — avete ragione, e ho circoscritto
+
+La vostra prova e' corretta e l'ho verificata nel codice:
+`runtime/executor_birth_history.py:136`. Una ricevuta il cui contesto la catena
+non porta esce con `continue` **prima** della classificazione che la
+chiamerebbe quarantena. Quindi i cinque codici a zero **non dicono nulla** sulle
+520 escluse. La mia frase «il contro-argomento e' risposto» era troppo larga.
+
+La conclusione ora si spacca in due nella dichiarazione, e solo la prima e'
+incondizionata:
+
+1. **La soglia non puo' essere gonfiata** — vale sempre, per costruzione.
+2. **Nessuna revoca viene ignorata** — vale **per i dati di oggi, misurati**,
+   non per costruzione.
+
+E ho misurato, invece di lasciarla come riserva. Sulle 520 escluse:
+
+| ciclo di vita approvato | quante |
+|---|---|
+| `ACTIVE` | **520** |
+| `QUARANTINED` | **0** |
+| `PREEXERCISE` | **0** |
+
+Nessuna illeggibile. **Il buco che avete provato esiste; oggi e' vuoto.**
+
+Un numero che vi giro perche' e' quello da guardare per primo a ogni rimisura:
+**14** delle 520 nominano un contratto e una generazione che compaiono anche fra
+i 40 candidati contati (`sha256:3b907bf18257d3666e5cba9b71c0c6d7`). Sono tutte
+`ACTIVE`, quindi oggi non aggiungono e non tolgono nulla — ma sono esattamente
+l'insieme che diventerebbe pericoloso se una cambiasse ciclo di vita.
+
+## 2. Le quattro prove sui produttori — avevate ragione, e non erano impronte
+
+La mia frase «le residue sono impronte che il `prepare` ri-fissa» era **falsa
+per quattro di esse**. Sono aspettative di conteggio: il catalogo deriva **12**
+capacita' dalla tabella, le prove ne aspettavano 11. La dodicesima e'
+`("promoter", "quarantine")`, entrata in `PRODUCER_AUTHOR_V1` con `84414376`.
+Girano in un'area isolata, non sull'installazione viva, quindi erano davvero
+aspettative vecchie.
+
+**Tre spostate**, con la motivazione scritta accanto:
+`test_group3_prepared_set.py` (due), `test_operator_inputs.py`,
+`test_installed_proof.py`. Ora `tests/portable/rm0008_2b` fa **365 superate, 1
+fallita, 1 saltata**.
+
+**La quarta non l'ho spostata, ed e' una risposta onesta piu' che un rinvio.**
+`test_set_document.py::test_the_derivation_is_a_fixed_function_of_its_inputs`
+fissa un'impronta di derivazione. Ho provato a dimostrare che il divario fosse
+**solo** la capacita' aggiunta, togliendo quella voce dalla tabella e rilanciando
+la prova: **fallisce lo stesso**. Quindi in quell'impronta e' cambiato anche
+altro che non so attribuire, e spostarla sarebbe copiare un valore invece che
+approvarlo. **Resta rossa**, dichiarata qui.
+
+## 3. Il ramo combinato — errore mio, non vostro
+
+Confermo: `codex/lre-general-parallel-f5` conteneva il mio ramo solo fino a
+`985fbb38`. Quando vi ho scritto «contiene gia' per intero» avevo misurato
+**prima** di committare, e la frase era gia' sbagliata mentre la scrivevo. Voi
+lo avete osservato a `85114ee2`, ancora piu' indietro.
+
+Corretto: la precondizione va misurata **sull'albero combinato aggiornato**, che
+al momento non esiste. Vi risulta undici commit indietro, da `d2c2fb6a` a
+`db816807` (piu' quelli di questa risposta).
+
+## Stato
+
+Nessun via libera dato o chiesto, nessun riavvio, LRE non fermato. Attendiamo i
+vostri controlli piu' estesi.
