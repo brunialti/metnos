@@ -14,7 +14,53 @@ def runtime_config(monkeypatch, tmp_path):
     monkeypatch.setattr(settings, "_CACHE_MTIME", 0.0)
     monkeypatch.delenv("METNOS_DEFAULT_MAIL_ACCOUNT", raising=False)
     monkeypatch.delenv("METNOS_TELOS_NIGHTLY", raising=False)
+    for environment_name, _default, _maximum in settings._EXECUTION_RESOURCE_LIMITS.values():
+        monkeypatch.delenv(environment_name, raising=False)
     return path
+
+
+def test_execution_resources_preserve_defaults_and_do_not_select_hardware(runtime_config):
+    assert settings.execution_resource_limits() == {
+        "local_io": 16, "network_io": 16, "cpu": 2, "llm": 1,
+        "vlm": 1, "browser": 4, "device": 8,
+    }
+
+
+def test_private_execution_capacity_survives_new_scheduler_but_does_not_resize_existing(
+    runtime_config, monkeypatch,
+):
+    from executor_scheduler import ExecutorScheduler
+    first = ExecutorScheduler()
+    runtime_config.write_text('[execution_resources]\ncpu = 4\nvlm = 4\n')
+    second = ExecutorScheduler()
+    try:
+        assert first._resource_limits["cpu"] == 2
+        assert first._resource_limits["vlm"] == 1
+        assert second._resource_limits["cpu"] == second._resource_limits["vlm"] == 4
+        assert second._resource_limits["llm"] == 1
+        monkeypatch.setenv("METNOS_VLM_MAX_IN_FLIGHT", "2")
+        assert settings.execution_resource_limits()["vlm"] == 2
+    finally:
+        first.shutdown()
+        second.shutdown()
+
+
+@pytest.mark.parametrize("value", ['true', '4.5', '"4"', '0', '-1', '33', '[]'])
+def test_invalid_persistent_capacity_is_serial_not_a_larger_fallback(runtime_config, value):
+    runtime_config.write_text(f'[execution_resources]\nvlm = {value}\n')
+    assert settings.execution_resource_limits()["vlm"] == 1
+
+
+@pytest.mark.parametrize("value", ["invalid", "0", "33", "4.5"])
+def test_invalid_capacity_override_never_falls_back_to_an_enabled_toml(runtime_config, monkeypatch, value):
+    runtime_config.write_text('[execution_resources]\nvlm = 4\n')
+    monkeypatch.setenv("METNOS_VLM_MAX_IN_FLIGHT", value)
+    assert settings.execution_resource_limits()["vlm"] == 1
+
+
+def test_malformed_resource_file_is_conservative_without_stopping_other_runtime(runtime_config):
+    runtime_config.write_text('not a TOML document')
+    assert set(settings.execution_resource_limits().values()) == {1}
 
 
 def test_missing_settings_keep_defaults_and_nightly_disabled(runtime_config):

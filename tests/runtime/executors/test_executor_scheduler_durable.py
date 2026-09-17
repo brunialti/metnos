@@ -246,11 +246,8 @@ def test_one_deadline_covers_global_executor_and_identity_slots():
         for _index in range(executor_limit):
             executor_slot.release()
 
-    identity = scheduler._identity_slot(
-        executor, concurrency_identity="same"
-    )
+    identity = scheduler._isolation.acquire(executor.name, "path", ("same",), None)
     assert identity is not None
-    identity[1].lock.acquire()
     try:
         with pytest.raises(SchedulerAdmissionTimeout):
             scheduler.invoke(
@@ -261,8 +258,8 @@ def test_one_deadline_covers_global_executor_and_identity_slots():
                 execution_context=_context(),
             )
     finally:
-        scheduler._release_identity_slot(identity)
-    assert scheduler._identity_slots == {}
+        scheduler._isolation.release(identity)
+    assert scheduler._isolation.counts() == (0, 0)
     assert scheduler.invoke(
         executor,
         lambda: {"ok": True},

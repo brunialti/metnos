@@ -217,7 +217,7 @@ def test_keyed_policy_requires_identity_and_serializes_same_identity() -> None:
     ]
     assert all(future.result(timeout=1) for future in futures)
     assert maximum == 1
-    assert scheduler._identity_slots == {}
+    assert scheduler._isolation.counts() == (0, 0)
     scheduler.shutdown()
 
 
@@ -236,7 +236,7 @@ def test_keyed_identity_registry_is_reclaimed_after_many_unique_keys() -> None:
         for index in range(200)
     ]
     assert all(future.result(timeout=2)["ok"] for future in futures)
-    assert scheduler._identity_slots == {}
+    assert scheduler._isolation.counts() == (0, 0)
     scheduler.shutdown()
 
 
@@ -387,7 +387,7 @@ def test_agent_runtime_async_passes_create_only_isolation_key(monkeypatch) -> No
 
     assert result["ok"] is True
     assert result["thread"].startswith("metnos_executor")
-    assert scheduler._identity_slots == {}
+    assert scheduler._isolation.counts() == (0, 0)
     scheduler.shutdown()
 
 

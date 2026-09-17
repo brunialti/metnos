@@ -88,3 +88,49 @@ dal motore centrale e i risultati sono ricomposti nell'ordine di ingresso.
 - test di scheduler, retropressione, isolamento, generazione e equivalenza;
 - integrazione al choke-point `agent_runtime.invoke_executor`, senza modifica
   dei manifest e senza attivazione della concorrenza in produzione.
+
+## Estensione LRE: bersagli multipli verificati (17 settembre 2026)
+
+Il pacchetto registrato di una capacità può fornire un
+`concurrency_targets_resolver`. Dopo la verifica del contratto congelato,
+il ponte raccoglie le identità canoniche di **tutti** i bersagli mutabili
+dell'invocazione. Sono fatti di ammissione locali: non modificano il piano,
+non viaggiano al dispositivo, non derivano da dichiarazioni libere del job
+e non aumentano classe firmata, autorità, budget o risorse.
+
+Lo scheduler usa `InvocationIsolation`: prenotazione atomica dell'insieme,
+esclusione di sovrapposizioni anche parziali e, per percorsi, di antenati e
+discendenti. Un'identità mancante conserva l'esclusione seriale; anche una
+chiamata ordinaria senza identità esclude quelle partizionate dello stesso
+executor. Le richieste disgiunte possono procedere, quelle in conflitto
+rispettano l'ordine di arrivo. Errori e scadenze liberano ogni prenotazione.
+Il registro conserva soltanto detentori e attese correnti, limitati dai posti
+centrali; massimo 256 identità e 64 KiB per insieme.
+
+Il confine resta **il singolo scheduler di processo e la stessa identità di
+executor**, non un blocco distribuito del filesystem. Il pacchetto deve
+dimostrare stabilità delle identità, copertura di ogni scrittura, assenza di
+alias e sicurezza delle eventuali scritture condivise. Operazioni esterne,
+altri executor e altri processi richiedono le loro garanzie preesistenti;
+questa estensione non le inventa.
+
+Primo consumatore: la fase di analisi dell'indice immagini verifica la ricevuta
+del gruppo e restituisce i percorsi effettivi dei checkpoint per sorgente.
+Parti immutabili, archivio dei contenuti e consultazione della generazione
+precedente conservano le protezioni esistenti. Scoperta, riduzione e
+pubblicazione non ricevono questa prova e restano seriali. Il nucleo generale
+non contiene nomi di domini o controlli specifici sulle immagini.
+
+Le capacità centrali possono essere configurate all'avvio nella sezione
+`[execution_resources]` del `runtime.toml` privato; le variabili già esistenti
+restano prioritarie. Valori espliciti invalidi riducono la risorsa a uno;
+nessuna modifica di semafori in uso. I valori predefiniti restano invariati.
+Sono posti logici per processo, non core o scelta CPU/GPU. Le capacità dei
+singoli lavoratori LRE sono invece requisiti per tentativo: non vanno
+moltiplicate per il numero di lavoratori.
+
+Prove: quattro scrittori indipendenti realmente concorrenti, sovrapposizioni
+e percorsi con prefissi ambigui, ritorno seriale, scadenze, integrità dell'indice
+e riuso dei checkpoint, ripresa della stessa revisione e degli stessi risultati.
+La prova tra release usa processi Python distinti e archivi sintetici isolati:
+non certifica da sola il rilascio firmato né la configurazione produttiva.

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -98,6 +99,31 @@ def _registration(
         workload_invoker=invoker,
         candidate_plan_factory=candidate_plan_factory,
     )
+
+
+def test_target_resolver_is_owned_by_its_registration_and_does_not_change_contract():
+    first = _registration("tests.first-targets.v1", runner_name="first_writer", schema_name="tests.first/1")
+    second = _registration("tests.second-targets.v1", runner_name="second_writer", schema_name="tests.second/1")
+    calls = []
+    registered = replace(first, concurrency_targets_resolver=lambda contract, args, context, device: (
+        calls.append((contract.name, args, context, device)) or ("/records/one", "/records/two")))
+    old = RuntimeRegistry((first, second))
+    new = RuntimeRegistry((registered, second))
+    contract = new.runners.resolve("executor", "first_writer")
+    assert contract == old.runners.resolve("executor", "first_writer")
+    assert new.runners.concurrency_targets_for(contract, {"key": "value"}, "context", None) == ("/records/one", "/records/two")
+    other = new.runners.resolve("executor", "second_writer")
+    assert new.runners.concurrency_targets_for(other, {}, None, None) == ()
+    assert len(calls) == 1
+
+
+def test_target_resolver_rejects_malformed_declarations():
+    entry = _registration("tests.invalid-targets.v1", runner_name="test_writer", schema_name="tests.writer/1")
+    with pytest.raises(TypeError, match="target resolver"):
+        replace(entry, concurrency_targets_resolver="untrusted-callback-name")
+    registry = RuntimeRegistry((replace(entry, concurrency_targets_resolver=lambda *_: ("/b", "/a")),))
+    with pytest.raises(ValueError, match="sorted"):
+        registry.runners.concurrency_targets_for(registry.runners.resolve("executor", "test_writer"), {}, None, None)
 
 
 def test_default_registry_exposes_generic_core_and_registered_capabilities():

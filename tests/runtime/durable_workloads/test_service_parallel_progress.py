@@ -6,6 +6,7 @@ import time
 from collections import Counter
 from concurrent.futures import Future
 from datetime import timedelta
+from dataclasses import replace
 from itertools import count
 from threading import Event, Lock, Thread
 from types import SimpleNamespace
@@ -144,10 +145,11 @@ def _schemas():
 
 def _admit(path, resolver, *, count=6, max_concurrency=3, resource="cpu",
            request_key="parallel-progress", resources=None, workload_id=None,
-           timeout_s=60):
+           timeout_s=60, effect="pure"):
     candidate = plan(with_map=True)
     candidate["budgets"]["max_concurrency"] = max_concurrency
     mapping = candidate["stages"][1]
+    mapping["effect_profile"] = effect
     mapping["timeout_s"] = timeout_s
     mapping["runner"] = {"kind": "workload", "name": resolver.contract.name}
     mapping["input_bindings"] = {"record": {"ref": "source.record"}}
@@ -176,13 +178,13 @@ def _admit(path, resolver, *, count=6, max_concurrency=3, resource="cpu",
 
 
 def _launch(path, resolver, invoke, *, poll_interval_s=10, parallel_workers=None,
-            worker_resources=None):
+            worker_resources=None, effect_profiles=("pure",)):
     capabilities = WorkerCapabilities.create(
         (("workload", resolver.contract.name),),
         worker_resources or {
             "cpu": 1, "device": 0, "llm": 0, "local_io": 0, "network_io": 0, "vlm": 0,
         },
-        effect_profiles=("pure",),
+        effect_profiles=effect_profiles,
     )
     stores = []
     guard = Lock()
@@ -235,6 +237,94 @@ def _wait_completed(path, workload_id):
                 return
             time.sleep(0.005)
         pytest.fail("synthetic workload did not complete before the idle polling interval")
+
+
+def test_same_job_changes_from_serial_to_four_independent_writers_without_losing_results(
+    tmp_path, monkeypatch,
+):
+    scheduler = ExecutorScheduler(max_workers=8, max_in_flight=8, hardware_threads=8,
+                                  parallel_enabled=True, resource_limits={"cpu": 4, "default": 8})
+    monkeypatch.setattr(executor_scheduler, "_DEFAULT_SCHEDULER", scheduler)
+    resolver = _Resolver(3)
+    resolver.contract = replace(resolver.contract, allowed_effects=("idempotent",),
+                                execution_policy=_freeze_execution_policy({
+        "effect": "mutating", "parallelism_class": 3, "resource_class": "cpu",
+        "concurrency_key": "path", "equivalence_gate": "verified",
+    }))
+    frozen_contract = resolver.contract
+    path = tmp_path / "state.sqlite3"
+    workload_id, revision_id = _admit(path, resolver, count=6, max_concurrency=4, effect="idempotent")
+    output = tmp_path / "output"
+    output.mkdir()
+    calls = []
+
+    def invoke(_name, args, context):
+        key = args["record"]["source_id"]
+        calls.append(key)
+        (output / key).write_text(key)
+        return {"source_id": key}
+
+    resources = {"cpu": 4, "device": 0, "llm": 0, "local_io": 0, "network_io": 0, "vlm": 0}
+    capabilities = WorkerCapabilities.create((("workload", resolver.contract.name),), resources,
+                                               effect_profiles=("pure", "idempotent"))
+    with DurableWorkloadStore.open(path) as store:
+        worker = DurableWorker(store, "before-parallelism", capabilities,
+                               lease_duration=timedelta(seconds=120))
+        bridge = DurableExecutionBridge(store, runners=resolver, output_schemas=_schemas(), workload_invoker=invoke)
+        for _ in range(20):
+            bridge.run_once(worker)
+            if len(calls) == 2:
+                break
+        assert len(calls) == 2
+        before_plan = store._connection.execute("SELECT plan_json FROM revisions WHERE id=?", (revision_id,)).fetchone()[0]
+        before = set(tuple(row) for row in store._connection.execute(
+            "SELECT id,committed_result_id FROM units WHERE revision_id=? AND state='committed'", (revision_id,)))
+
+    # New scheduling evidence, but exactly the same signed/frozen contract,
+    # original revision, pending units, and output files.
+    resolver.concurrency_targets_for = lambda contract, args, context, device: (
+        (str(output / args["record"]["source_id"]),)
+        if contract.name == resolver.contract.name else ())
+    assert resolver.contract == frozen_contract
+    entered, release, guard = Event(), Event(), Lock()
+    active = maximum = 0
+
+    def parallel_invoke(name, args, context):
+        nonlocal active, maximum
+        assert context.concurrency_targets == (str(output / args["record"]["source_id"]),)
+        with guard:
+            active += 1
+            maximum = max(maximum, active)
+            if active == 4:
+                entered.set()
+        try:
+            assert release.wait(timeout=5)
+            return invoke(name, args, context)
+        finally:
+            with guard:
+                active -= 1
+
+    service, thread, exit_codes, _stores = _launch(
+        path, resolver, parallel_invoke, poll_interval_s=0.05, parallel_workers=4,
+        worker_resources=resources, effect_profiles=("pure", "idempotent"))
+    try:
+        assert entered.wait(timeout=5)
+        release.set()
+        _wait_completed(path, workload_id)
+    finally:
+        release.set()
+        _stop(service, thread, exit_codes)
+        scheduler.shutdown()
+    assert maximum == 4 and len(calls) == len(set(calls)) == 6
+    with DurableWorkloadStore.open(path) as store:
+        assert store.get_workload("fixture-owner", workload_id).active_revision_id == revision_id
+        assert store._connection.execute("SELECT plan_json FROM revisions WHERE id=?", (revision_id,)).fetchone()[0] == before_plan
+        after = set(tuple(row) for row in store._connection.execute(
+            "SELECT id,committed_result_id FROM units WHERE revision_id=? AND state='committed'", (revision_id,)))
+        assert before <= after
+        assert not store._connection.execute(
+            "SELECT id FROM attempts WHERE state IN ('leased','running','failed')").fetchall()
+    assert scheduler._isolation.counts() == (0, 0)
 
 
 def test_real_overdue_lane_returns_and_service_executes_new_work_without_restart(

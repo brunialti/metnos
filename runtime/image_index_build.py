@@ -337,7 +337,7 @@ def _validate_analysis(leaf: dict, base_path: str) -> dict:
 class ImageIndexBuild:
     """One opaque build generation, bound to the previously active reference."""
 
-    def __init__(self, base_path, generation):
+    def __init__(self, base_path, generation, *, create=True):
         if not isinstance(generation, str) or not _GENERATION.fullmatch(generation):
             raise ImageIndexBuildError("generation_invalid")
         base = Path(base_path)
@@ -346,9 +346,9 @@ class ImageIndexBuild:
         self.base_path, self.generation = str(base), generation
         self.root = image_corpus_dir(base) / "unified"
         self.work = self.root / ".builds" / generation
-        self.parts = _safe_directory(self.work / "parts", create=True)
+        self.parts = _safe_directory(self.work / "parts", create=create)
         context_path = self.work / "context.json"
-        if not context_path.exists():
+        if create and not context_path.exists():
             previous = self._active_bytes()
             context = {"base_path": self.base_path, "generation": generation,
                        "previous_digest": hashlib.sha256(previous).hexdigest(),
@@ -423,6 +423,29 @@ class ImageIndexBuild:
             "folder_context": folder_context,
         })).hexdigest()
         return self.work / "checkpoints" / (key + ".json")
+
+    def analysis_write_targets(self, entries, *, identity):
+        """Read and verify a group's exact mutable checkpoint destinations.
+
+        Immutable parts and source snapshots already use no-replace creation;
+        the optional previous-generation lookup has its own filesystem lock.
+        The per-source checkpoint is the remaining mutable analysis target.
+        A batch ID or receipt alone is not an exclusion proof: groups can
+        overlap, so return every target and let the common scheduler compare
+        their sets. This method neither writes nor opens model/source bytes.
+        """
+        records, contexts = self.discovery_group(entries)
+        targets = []
+        for record in records:
+            original, source = _source_record(
+                record["original_path"], self.base_path, record["source"])
+            target = self._analysis_checkpoint_path(
+                original, source, identity=identity,
+                folder_context=contexts[folder_label(original.parent.name)])
+            targets.append(os.path.abspath(target))
+        if len(set(targets)) != len(targets):
+            raise ImageIndexBuildError("duplicate_source_path")
+        return tuple(sorted(targets))
 
     def analysis_checkpoint(self, original, source, *, identity, folder_context):
         """Resume only fully validated leaves from this exact build generation."""
