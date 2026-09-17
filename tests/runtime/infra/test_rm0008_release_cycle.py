@@ -22,6 +22,36 @@ spec.loader.exec_module(cycle)
 ORIGINAL_RELEASE_PREVIEW = cycle._run_release_preview
 
 
+def _retirement_catalog_pair():
+    from dataclasses import replace
+    fixture_path = SOURCE.parents[2] / "tests/portable/test_executor_birth_legacy_retirement.py"
+    fixture_spec = importlib.util.spec_from_file_location("release_retirement_fixtures", fixture_path)
+    fixtures = importlib.util.module_from_spec(fixture_spec)
+    fixture_spec.loader.exec_module(fixtures)
+    current = fixtures._product_catalog()
+    # This is the exact 63 -> candidate 64 delta found in the signed catalogs:
+    # all 39 previous bindings are unchanged, one repository entry was added.
+    previous = replace(current, legacy_bindings=tuple(
+        binding for binding in current.legacy_bindings
+        if binding.legacy_id != "legacy-install-operator-authority"))
+    assert len(current.legacy_bindings) == len(previous.legacy_bindings) + 1
+    return NS(catalog=previous), NS(catalog=current)
+
+
+def test_unchanged_retirement_plan_can_pass_the_early_release_check():
+    previous, current = _retirement_catalog_pair()
+    cycle._verify_retirement_plan_unchanged(previous, previous)
+    cycle._verify_retirement_plan_unchanged(current, current)
+
+
+@pytest.mark.parametrize("direction", ("added", "removed"))
+def test_real_retirement_plan_delta_is_refused_before_release(direction):
+    previous, current = _retirement_catalog_pair()
+    pair = (previous, current) if direction == "added" else (current, previous)
+    with pytest.raises(RuntimeError, match="birth_transition_legacy_plan_changed"):
+        cycle._verify_retirement_plan_unchanged(*pair)
+
+
 @pytest.fixture
 def release(monkeypatch, tmp_path):
     import executor_birth_account_identity as accounts
@@ -711,6 +741,7 @@ def crossing(monkeypatch, release, tmp_path):
     monkeypatch.setattr(catalogs, "load_service_catalog_v1", lambda d: release.catalog)
     monkeypatch.setattr(cycle, "_verify_autonomous_service_recipe", lambda *args: None)
     monkeypatch.setattr(cycle, "_verify_live_administrative_artifact", lambda *args: None)
+    monkeypatch.setattr(cycle, "_verify_retirement_plan_unchanged", lambda *args: None)
     monkeypatch.setattr(stack_reconcile, "StackReconciler", lambda **kw: NS(
         require_quiescent=lambda: {"ok": True, "source": "test-idle"}))
     monkeypatch.setattr(transition, "_handoff_frame_v1", lambda **kw: None)
@@ -752,6 +783,16 @@ def test_recipe_disagreement_is_refused_before_effects(crossing, monkeypatch, mo
         raise RuntimeError("service source recipe")
     monkeypatch.setattr(cycle, check, refuse)
     with pytest.raises(RuntimeError, match="service source recipe"):
+        crossing.run(mode)
+    assert crossing.events == []
+
+
+@pytest.mark.parametrize("mode", ("audit", "complete"))
+def test_retirement_disagreement_is_refused_before_effects(crossing, monkeypatch, mode):
+    def refuse(*args):
+        raise RuntimeError("birth_transition_legacy_plan_changed")
+    monkeypatch.setattr(cycle, "_verify_retirement_plan_unchanged", refuse)
+    with pytest.raises(RuntimeError, match="birth_transition_legacy_plan_changed"):
         crossing.run(mode)
     assert crossing.events == []
 

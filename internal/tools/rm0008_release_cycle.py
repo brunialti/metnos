@@ -1720,6 +1720,22 @@ def _verify_live_administrative_artifact(previous, distribution) -> None:
         os.close(parent)
 
 
+def _verify_retirement_plan_unchanged(previous, current) -> None:
+    """Apply the existing successor constraint before stopping any service.
+
+    The authoritative crossing repeats this under its locks. A new legacy
+    binding needs an explicitly supported transition, not a late refusal
+    after the installed catalog has already been quiesced.
+    """
+    from executor_birth_legacy_retirement import plan_catalog_retirement_v1
+
+    require(
+        plan_catalog_retirement_v1(previous.catalog).steps
+        == plan_catalog_retirement_v1(current.catalog).steps,
+        "birth_transition_legacy_plan_changed",
+    )
+
+
 def cross(release_root: str, source_id: str, evidence: str, mode: str) -> int:
     require(os.geteuid() == 0, "the crossing requires root")
     release = Path(release_root)
@@ -1772,6 +1788,7 @@ def cross(release_root: str, source_id: str, evidence: str, mode: str) -> int:
     old_artifacts = capture_previous_release_artifacts_v1(current, old)
     old_catalog = load_previous_service_catalog_v1(old_artifacts)
     new_catalog = load_service_catalog_v1(current)
+    _verify_retirement_plan_unchanged(old_catalog, new_catalog)
     _verify_autonomous_service_recipe(descriptor, new_catalog)
     _verify_live_administrative_artifact(old_artifacts, distribution)
     old_units, new_units = dict(old_catalog.unit_fragments), dict(

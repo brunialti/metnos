@@ -737,3 +737,44 @@ la finestra serve al rilascio LRE, **non** alla migrazione o attivazione F5.
 Nessuna chiave, certificazione o archivio delle epoche verrà creato per questo
 rilascio. Resta necessaria la verifica dei contratti reali prima della ripresa.
 Stato ed evidenze: `internal/reports/lre-generic-parallelism-20260917.md`.
+
+---
+
+# Riscontro produttivo LRE: blocco nuovo nel ritiro, servizi ripristinati (17/9, 15:50)
+
+Il ramo combinato includeva F5 `7b56f414`; `prepare` e collaudi sono stati
+eseguiti lì, non su un albero precedente. La release 64 è stata costruita e
+firmata; anteprima positiva, 107 contratti invariati. Il passaggio ha però
+rifiutato `birth_transition_legacy_plan_changed` **dopo** l'arresto dei servizi.
+
+La causa è distinta dalla costante già corretta: catalogo installato 63 con
+39 `legacy_bindings`, candidato 64 con 40. Unica aggiunta:
+`legacy-install-operator-authority` → `install/operator_authority.py`,
+introdotta da `830e36ca`; gli altri 39 sono identici.
+`install/birth_authority_provisioner.py::_observe_previous_retirement_v2`
+richiede `plan.steps == old_plan.steps`. La ricetta nuova è valida, ma il
+passaggio dalla ricetta precedente non è supportato da quel vincolo.
+
+Ripristino completato senza aggirare controlli: selezione 63 attestata per
+HTTP/worker/Telegram, configurazione precedente ripristinata byte per byte,
+avvio normale di `metnos.target`. HTTP e worker di nuovo attivi alle 15:44:16.
+Stesso job ripreso a 277/967, primo nuovo batch 278 salvato alle 15:49:19:
+tutti i 1.245 risultati della pausa conservati, stesso piano e revisione.
+Nessuna migrazione/attivazione F5. Parallelismo a quattro **non attivato**.
+
+Ho aggiunto a `internal/tools/rm0008_release_cycle.py` una guardia anticipata:
+confronta gli stessi piani già nell'audit, prima di qualsiasi arresto, senza
+allentare il controllo finale sotto lock. Cinque prove nuove, 216 del gruppo
+ciclo/ritiro verdi; riscontro anche contro i due cataloghi produttivi letti in
+sola lettura. Previene un altro fermo, **non** sblocca la transizione.
+
+Serve una soluzione esplicita F5 per il nuovo punto d'ingresso rispetto al
+piano già ritirato: non basta spostare impronte e non va eliminata la barriera.
+Nel checkout storico `/opt/metnos/install/operator_authority.py` è attualmente
+assente: questa osservazione non equivale da sola a una prova firmata di ritiro.
+Inserire anche una prova del passaggio da un catalogo precedente reale: le
+prove che compilano entrambe le parti dalla ricetta corrente non lo coprono.
+Non fermare LRE per diagnosi e non ripetere il candidato 64 attuale. Il tentativo
+non selezionato va recuperato attraverso il ciclo ufficiale per il successore,
+senza riscritture manuali di ricevute/catena. Il rapporto LRE sopra contiene
+impronte, orari e identificativi delle prove private.

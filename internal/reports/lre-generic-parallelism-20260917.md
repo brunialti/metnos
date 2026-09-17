@@ -1,5 +1,88 @@
 # LRE: parallelismo generale e compatibilità F5 — 17 settembre 2026
 
+## Esito produttivo aggiornato, 17/9 ore 15:50 Europe/Rome
+
+**Release 63 ripristinata e LRE nuovamente in avanzamento. Release 64 costruita,
+ma non selezionata: parallelismo a quattro e correzione della previsione non
+sono in esercizio.** Le sezioni successive descrivono i collaudi e gli stati
+storici, non un via libera al candidato attuale.
+
+- Pausa cooperativa del job `wrk_4121cc6258c447759e94ccc6f8090e5c` a 277/967
+  batch di analisi: nessun tentativo attivo, 1.245 risultati conservati e
+  contabilità dei tentativi completa. `revisions.usage_complete` resta falso
+  finché viene materializzato al completamento: non è il criterio della pausa.
+  Il primo banco pretendeva erroneamente quel riepilogo; la verifica successiva
+  ha letto tutti i fatti dei tentativi, senza scrivere il database.
+- Piano SHA256 `a96bc10667200eb04d1b1f6f0637f206df147ff3725cc19e328ed9bf6c484421`
+  e revisione `rev_d8d3982283a140bf993f2517731ad00d` invariati. Dopo il ripristino
+  e la ripresa ordinaria è stato confermato il batch 278, alle 15:49:19:
+  tutti i 1.245 riferimenti unità/risultato precedenti sono ancora presenti,
+  più il risultato nuovo. Nessun job ricreato, indice azzerato o batch salvato
+  ripetuto dalla manutenzione.
+- Al controllo delle 15:50: 278/967 analisi, 1.246/1.935 batch complessivi,
+  uno attivo, nessun batch fallito o in attenzione. Restano quattro esiti
+  fotografici negativi e due tentativi tecnici già recuperati, entrambi
+  `image_description_truncated`; nessun nuovo errore causato dalla ripresa.
+  La previsione resta `n.a./uncertain_progress` nella release 63.
+- HTTP, worker e Telegram attivi, zero riavvii automatici; console HTTP 200.
+  Il turno informativo `3231f85c9de6457e` ha risposto senza executor. È una
+  prova di raggiungibilità della chat, non una certificazione semantica del
+  Tutor: la sua risposta suggerisce una stima recuperabile, mentre il difetto
+  concreto della release 63 continua a impedirla in questo job.
+- In quest'ultima cancellazione è stato rimosso **solo**
+  `/mnt/nas_public/media/Immagini/2014/2014-03-14-1054.jpg`, dopo riscontro di
+  percorso, dimensione e SHA256 nel risultato negativo. La copia di lavoro
+  LRE è ancora presente per la ripresa, non è un backup permanente.
+
+### Blocco emerso durante la transizione
+
+Preparazione `aa1214ce`, esportazione di 1.806 file,
+`542bf7220e164cb45a447fd76720d1562ea2128799a5c2c22dbc81a4f985c886`.
+Release 64 firmata:
+`sha256:f68ac65fe1fdaef21a0bb28d47d2c0809aa2706f62c045b05e5b03988fd3a458`.
+Anteprima positiva: 107 contratti, **nessun cambiamento**. Questo non copriva
+però la transizione del piano di ritiro amministrativo.
+
+Il confronto dei due cataloghi firmati trova 39 vecchi punti d'ingresso nella
+63 e 40 nella 64: unica aggiunta `legacy-install-operator-authority`, percorso
+`install/operator_authority.py`, da `830e36ca`. Nessuna rimozione o modifica
+degli altri 39. `_observe_previous_retirement_v2` richiede l'identità dei due
+piani e rifiuta con `birth_transition_legacy_plan_changed`. La costante della
+ricetta è allineata: **non** è il precedente errore d'impronta/fusione.
+
+La barriera aveva già fermato il worker alle 15:40:14 e HTTP alle 15:40:20.
+La selezione è rimasta 63, attestata indipendentemente prima del ripristino.
+Ripristinata byte per byte la configurazione precedente, riavviato normalmente
+`metnos.target`: HTTP e worker avviati alle 15:44:16. Job ripreso alle 15:45:31.
+Nessuna forzatura delle firme o della catena, nessuna migrazione/attivazione F5,
+nessuna variazione GPU. Il tentativo 64 resta non selezionato, da gestire con
+il normale recupero del ciclo al prossimo candidato, non cancellando registri.
+
+È stato aggiunto allo strumento di rilascio il confronto anticipato dei due
+piani, prima di qualsiasi arresto, mantenendo anche il controllo autorevole
+sotto lock. Cinque prove nuove; 216 prove del ciclo/ritiro superate. La nuova
+guardia rifiuta anche i due cataloghi produttivi 63/64 letti in sola lettura e
+accetta 63/63. **Previene il fermo, non autorizza il passaggio F5 incompatibile.**
+
+Durante la costruzione erano inoltre emersi due lock temporaneamente occupati
+e la maschera 077 ereditata dal lanciatore amministrativo: il costruttore
+richiede directory pubbliche 0755. Corretta solo la cartella temporanea vuota
+da esso appena creata e impostata 022 nel processo figlio. Nessun segreto o
+directory dati è stato reso pubblico. Nessuna vecchia release è stata eliminata.
+
+Evidenze private: `run-k2vptjwa` (foto), `run-gcyth69y` (pausa),
+`run-9jzyxswb` (build), `run-1osip_f6` (contratti), `run-3lkt5_yg`
+(transizione rifiutata), `run-u71pu1v9` (63 attestata), `run-eppza0an`
+(servizi/configurazione ripristinati), `run-srlt5gnz` (ripresa),
+`run-b6y08l9p` (nuovo batch e conservazione), `run-21dargbq` (stato finale),
+`run-jay0g5qv` (HTTP/chat). Checkpoint operativo, non copia dell'archivio foto:
+`/var/lib/metnos-admin/lre-rollout-20260917-6c99f9b9`.
+
+**Prossimo passo:** F5 deve risolvere esplicitamente la compatibilità del piano
+di ritiro, oppure Roberto deve scegliere un rilascio LRE separato. Non togliere
+la nuova voce o il controllo per ottenere il verde; non ripetere il passaggio
+del candidato 64 attuale e non fermare nuovamente LRE per sola diagnosi.
+
 ## Stato effettivo
 
 **Aggiornamento 17/9, pomeriggio:** F5 fino a `7b56f414` è integrato nel ramo
