@@ -182,6 +182,12 @@ BOUNDARY_API_OWNERS_V1 = (
         ('apply_cutover_v1', ('store_write',)),
         ('main', ('store_write',)),
     )),
+    # The evidence-derived F5 issuer. It signs one derived qualification and
+    # one completed migration; it publishes no executor and grants no capability.
+    BoundaryApiOwnerV1('birth_certification_issuer', (
+        ('issue_certificate_v1', ('store_write',)),
+        ('main', ('store_write',)),
+    )),
     BoundaryApiOwnerV1('birth_certification_evidence', (
         ('_evidence_at_v1', ('store_write',)),
         ('_open_database', ('store_write',)),

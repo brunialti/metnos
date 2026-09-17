@@ -191,6 +191,46 @@
       "phase": "M4"
     },
     {
+      "path": "install/birth_certification_issuer.py",
+      "scope": "<module>",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "evidence-derived F5 issuer module; importing it opens no key, store or certificate",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_certification_issuer.py",
+      "scope": "_install_certificate_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "publish the signed certificate and read it back with the reader that will trust it",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_certification_issuer.py",
+      "scope": "issue_certificate_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "derive the qualification from composed history and evidence, bind the completed migration, and sign",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_certification_issuer.py",
+      "scope": "main",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "administrative entry point; derive only reports, issue signs and publishes",
+      "phase": "M4"
+    },
+    {
       "path": "install/birth_certification_evidence.py",
       "scope": "_evidence_at_v1",
       "role": "store_owner",
