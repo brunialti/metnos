@@ -203,8 +203,11 @@ rilascio, non sul mio.
 
 ---
 
-# Proposta: un puntatore alla release selezionata (17/9, decisa da Roberto di
-# sottoporvela)
+# Proposta: un puntatore alla release selezionata — RITIRATA
+
+> **La vostra risposta e' migliore e l'ho adottata.** Niente file nuovo.
+> Dettaglio in fondo, sezione «Adottata la vostra strada». Il testo qui
+> sotto resta come storia della proposta, non come richiesta aperta.
 
 ## Il problema, in breve
 
@@ -296,3 +299,70 @@ lo stesso problema.
    bloccante dichiarato invece di cercare scorciatoie.
 
 Non tocco `rm0008_release_cycle.py` finche' non rispondete.
+
+
+---
+
+# Adottata la vostra strada (17/9)
+
+Niente `selected-release-v1`. Il lanciatore chiede al verificatore installato
+quale release e' selezionata e usa esclusivamente quella. Committato in
+`2593692d`, insieme alle prove.
+
+## Verificato prima in sola lettura, come avete chiesto
+
+Non ho eseguito niente come root, non ho toccato produzione e non ho fermato
+nulla. Osservato:
+
+- `/usr/libexec/metnos/executor-birth-v1/preflight.py` si importa senza errori
+  da fuori qualunque release, **a patto di registrare il modulo in
+  `sys.modules` prima di eseguirlo** — altrimenti `dataclasses` fallisce con
+  `AttributeError: 'NoneType' object has no attribute '__dict__'`. E' un
+  cavillo di Python, non un vostro difetto; l'ho gestito nel chiamante.
+- il risolutore e' raggiungibile e si ferma **esattamente** sul controllo
+  dell'identita' effettiva (`_capture_administrative_tcb_v1` →
+  `PreflightError: effective identity`), cioe' pretende root. Il lanciatore
+  gira sotto `sudo`, quindi lo soddisfa per costruzione.
+
+Limite dichiarato: **non ho potuto provare la risoluzione completa**, perche'
+per farlo servirebbe root, che e' proprio cio' che questo lavoro deve ancora
+ottenere. Ho provato tutto il resto contro un verificatore finto.
+
+## La modifica minima
+
+Un solo script: `internal/tools/install_f5_authority.sh`, da lanciare una
+volta con `sudo` **dopo** il rilascio che porta il codice F5. Scrive un
+lanciatore di root e una regola `sudo` ristretta a sei forme esatte.
+
+Il lanciatore, in tutto: valida gli argomenti, importa il verificatore, prende
+`installation_root` dalla sua risposta, legge l'interprete dal catalogo di
+distribuzione **di quella release**, ed esegue `install.f5_authority`. Nessun
+percorso di release scritto da nessuna parte, nessuna catena reimplementata,
+nessun codice da albero di lavoro.
+
+## Prove
+
+21 casi sul lanciatore, 26 sul punto d'ingresso. Fra questi:
+
+- le sei forme passano, **dieci** varianti no;
+- la regola `sudo` nomina esattamente le stesse sei forme (confrontate col
+  testo dello script, non con una copia);
+- il bootstrap gira contro un verificatore finto e finisce nella release che
+  *quello* ha nominato, con l'interprete che *quel* catalogo nomina;
+- un verificatore che rifiuta ferma il lanciatore;
+- una prova asserisce la **forma**: nel bootstrap non compaiono `releases-v1`,
+  `required-head`, `selected-release`, `chain-v1`, `systemctl`, `sorted` o
+  `max(`, e il verificatore viene interrogato una volta sola.
+
+Un difetto trovato dalle prove e corretto: la prima versione confrontava solo i
+primi due argomenti e lasciava passare un terzo. Ora il lanciatore rifiuta gli
+argomenti in eccesso da solo, cosi' una chiamata diretta e' stretta quanto una
+via `sudo`.
+
+## Resta a voi una sola cosa
+
+Il rilascio. Il codice F5 e' **inerte** prima della migrazione — undici
+affermazioni in `tests/runtime/infra/test_f5_is_inert_before_migration.py` lo
+verificano su un'installazione senza contrassegno — quindi si puo' spedire
+dormiente. Ma il rilascio ferma e riavvia i servizi, quindi aspetta la fine del
+vostro batch. Ditemi quando.
