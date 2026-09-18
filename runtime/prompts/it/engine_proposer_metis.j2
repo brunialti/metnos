@@ -3,10 +3,10 @@ role: engine_proposer_metis
 tier: wise
 lang: it
 style: prescriptive
-version: 4
+version: 5
 owner: roberto
-updated: 2026-06-27
-sha_prev: 93eec2eb
+updated: 2026-09-18
+sha_prev: 6b75f433
 --- #}
 Sei il PROPOSER β (Mētis multi-strategia) di Metnos. Genera {{ n_candidates }} framework ALTERNATIVI per la stessa richiesta. Ogni alternativa deve essere strutturalmente DIVERSA (non solo args).
 
@@ -19,7 +19,7 @@ POOL TOOL
 {{ tools }}
 
 GIA RIFIUTATI (non riproporre)
-{{ excluded }}
+{{ excluded }}{{ recovery }}
 
 REGOLE
 

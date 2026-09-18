@@ -4065,6 +4065,10 @@ class TurnLog:
     steps: list = field(default_factory=list)
     final_message: str = ""
     final_kind: str = ""
+    # Esito semantico separato dallo stato di protocollo. ``answer`` significa
+    # che esiste un testo da mostrare; non implica che il lavoro sia riuscito.
+    # Valori: completed | partial | failed | awaiting_input.
+    outcome: str = ""
     # Versione prodotto e origine del routing, necessarie per trend affidabili.
     # Non contengono testo utente e restano vuote sui record storici.
     metnos_version: str = ""
@@ -5601,6 +5605,25 @@ class TurnLog:
         # Scrubbing credenziali prima della serializzazione (ADR 0082):
         # passiamo da asdict (snapshot) e ri-iniettiamo le entry pulite.
         record = asdict(self)
+        try:
+            from reliability import classify_turn as _classify_turn
+            self.outcome = str(_classify_turn(record)["outcome"])
+        except Exception as ex:
+            # La persistenza del turno non deve dipendere dalla telemetria. Il
+            # ripiego usa soltanto segnali strutturati e resta conservativo.
+            log.warning("turn outcome classification failed: %r", ex)
+            _has_failed_step = any(
+                isinstance(getattr(step, "result", None), dict)
+                and step.result.get("ok") is False
+                for step in self.steps
+            )
+            if self.final_kind in ("ask", "needs_inputs", "input_required"):
+                self.outcome = "awaiting_input"
+            elif _has_failed_step or self.final_kind != "answer":
+                self.outcome = "failed"
+            else:
+                self.outcome = "completed"
+        record["outcome"] = self.outcome
         n_redacted_total = [0]
         cleaned_query, _n = _scrub_credentials(record.get("user_query", "") or "")
         n_redacted_total[0] += _n

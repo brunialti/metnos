@@ -49,6 +49,41 @@ def test_il_contratto_del_sidecar_e_un_guasto_operativo() -> None:
     assert "sidecar_contract_mismatch" in OPERATIONAL_ERROR_CLASSES
 
 
+@pytest.mark.parametrize("classe", [
+    "search_backend_unavailable",
+    "search_backend_invalid",
+    "search_relevance_unavailable",
+])
+def test_search_service_failures_do_not_trigger_query_replanning(classe):
+    run = _run_fallito(classe)
+    assert classe in OPERATIONAL_ERROR_CLASSES
+    assert classify_error(run) == "out_of_scope"
+    assert not is_recoverable(classify_error(run))
+
+
+def test_empty_search_gets_specific_action_without_double_period(monkeypatch):
+    import engine.terminator as term
+    from messages import get as _msg
+
+    monkeypatch.setattr(term, "_record_lacuna", lambda *args: "isolated-test")
+    run = RunResult(
+        steps=[StepRun(
+            step_idx=1, tool="find_urls", args={"search_query": "x"},
+            result={"ok": False, "error_class": "search_no_results",
+                    "error": _msg("MSG_NO_RESULTS"), "entries": []},
+            ok=False, latency_ms=1,
+        )],
+        final_kind="error", ok_count=0,
+    )
+    response = SimpleTerminator().explain(
+        query="cerca x", intent=Intent(verb="find", object="urls"),
+        failed_run=run, error_class=classify_error(run),
+    )
+    assert _msg("MSG_LOOP_BREAK_HINT_URLS") in response.final_text
+    assert _msg("MSG_TERM_WRONG_ARGS_ACTION") not in response.final_text
+    assert ".." not in response.final_text
+
+
 def test_operation_failed_is_operational_and_does_not_replan():
     run = _run_fallito("operation_failed")
     assert "operation_failed" in OPERATIONAL_ERROR_CLASSES

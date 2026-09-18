@@ -29,6 +29,26 @@ def test_false_success_is_a_failure_even_after_user_message_was_corrected():
     assert item["false_success"] is True
 
 
+def test_answer_with_failed_executor_and_zero_effects_is_failed():
+    record = _turn(
+        result={"ok": False, "error_class": "search_no_results"},
+        effect_counts={"items": 0, "mutations": 0, "failures": 1},
+    )
+    assert record["final_kind"] == "answer"
+    assert classify_turn(record)["outcome"] == "failed"
+
+
+def test_final_answer_step_does_not_turn_failure_into_partial_success():
+    record = _turn(
+        result={"ok": False, "error_class": "search_no_results"},
+        effect_counts=None,
+    )
+    record["steps"].append({
+        "chosen_tool": "final_answer", "result": {"ok": True},
+    })
+    assert classify_turn(record)["outcome"] == "failed"
+
+
 def test_snapshot_contains_no_turn_text_or_identifiers():
     record = _turn(user_query="private", final_message="secret", turn_id="abc")
     payload = build_snapshot([record])

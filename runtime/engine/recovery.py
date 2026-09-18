@@ -50,6 +50,12 @@ def classify_error(failed_run: RunResult) -> str:
     ec = classes[0] if classes else ""
     if ec in ERROR_CLASSES:
         return ec
+    # Una ricerca conclusa senza risultati pertinenti non prova che gli
+    # argomenti siano malformati. La classe strutturale piu' vicina e'
+    # ``missing_input``: abilita un unico tentativo alternativo, poi il
+    # terminatore conserva il codice executor concreto ``search_no_results``.
+    if ec == "search_no_results":
+        return "missing_input"
     # Un errore operativo puo' essere annidato in ``failed[]`` nei producer
     # vettoriali. Un piano alternativo non ripara DNS, timeout o sidecar:
     # chiudi senza recovery invece di etichettarlo come argomenti errati.
@@ -71,6 +77,69 @@ def is_recoverable(err_class: str) -> bool:
     return err_class in RECOVERABLE
 
 
+def recovery_signal_for(failed_run: RunResult) -> dict | None:
+    """Return bounded, structured context for a failure-specific retry.
+
+    The signal contains no snippets or URLs.  It lets the proposer distinguish
+    a backend with zero candidates from candidates rejected by relevance or by
+    later filters, without parsing localized error prose.
+    """
+    for step in reversed(failed_run.steps or []):
+        result = step.result if isinstance(step.result, dict) else {}
+        if "search_no_results" not in result_error_classes(result):
+            continue
+        metadata = result.get("metadata")
+        metadata = metadata if isinstance(metadata, dict) else {}
+        rerank = metadata.get("rerank")
+        rerank = rerank if isinstance(rerank, dict) else {}
+        backend_count = metadata.get("backend_result_count")
+        accepted_count = metadata.get("search_results_used")
+        if backend_count == 0:
+            stage = "backend_empty"
+        elif rerank.get("reason") == "no_relevant_candidates":
+            stage = "relevance_rejected"
+        elif isinstance(accepted_count, int) and accepted_count > 0:
+            stage = "post_filter_empty"
+        else:
+            stage = "no_accepted_results"
+        args = step.args if isinstance(step.args, dict) else {}
+        attempted_query = (
+            args.get("search_query") or args.get("query")
+            or result.get("search_query") or metadata.get("search_query") or ""
+        )
+        return {
+            "kind": "search_no_results",
+            "failure_stage": stage,
+            "attempted_query": str(attempted_query).strip(),
+            "candidate_count": (
+                int(backend_count) if isinstance(backend_count, int) else None
+            ),
+            "accepted_count": (
+                int(accepted_count) if isinstance(accepted_count, int) else 0
+            ),
+        }
+    return None
+
+
+def propose_with_recovery_signal(*, proposer, intent: Intent,
+                                 signal: dict | None, **kwargs):
+    """Expose retry context only for the duration of one proposer call."""
+    marker = object()
+    previous = getattr(intent, "_recovery_signal", marker)
+    try:
+        if signal:
+            setattr(intent, "_recovery_signal", signal)
+        return proposer.propose(intent=intent, **kwargs)
+    finally:
+        if previous is marker:
+            try:
+                delattr(intent, "_recovery_signal")
+            except AttributeError:
+                pass
+        else:
+            setattr(intent, "_recovery_signal", previous)
+
+
 # ── SimpleRecovery ────────────────────────────────────────────────────────
 
 class SimpleRecovery:
@@ -84,18 +153,23 @@ class SimpleRecovery:
         err = classify_error(failed_run)
         if not is_recoverable(err):
             return None  # out_of_scope → terminator
-        # Esclude framework_hash del fallito
+        signal = recovery_signal_for(failed_run)
+        # Le esclusioni normali sono per SHAPE. Una ricerca riformulata usa per
+        # forza la stessa shape ``find_urls(search_query)``: in quel caso lascia
+        # la shape disponibile e demanda il blocco del duplicato esatto al
+        # fingerprint esecutivo del dispatcher.
         failed_hash = failed_run.framework_hash
-        excluded = {failed_hash} if failed_hash else set()
+        excluded = ({failed_hash} if failed_hash else set()) if not signal else set()
         # Esclude anche tool del last step (probabile causa)
         excluded_pool = pool
-        if failed_run.steps:
+        if failed_run.steps and not signal:
             failed_tool = failed_run.steps[-1].tool
             if failed_tool:
                 excluded_pool = [t for t in pool if t != failed_tool]
         try:
-            return proposer.propose(
-                query=query, intent=intent, pool=excluded_pool,
+            return propose_with_recovery_signal(
+                proposer=proposer, intent=intent, signal=signal,
+                query=query, pool=excluded_pool,
                 excluded_hashes=excluded, llm_call=llm_call, lang=lang,
                 catalog=catalog,
             )

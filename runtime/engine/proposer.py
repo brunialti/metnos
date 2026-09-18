@@ -233,6 +233,51 @@ def _render_excluded_signal(excluded_hashes: set[str], lang: str = "it") -> str:
     ).strip()
 
 
+def _render_recovery_signal(intent: Intent, lang: str = "it") -> str:
+    """Render one transient, structured recovery instruction.
+
+    Empty during ordinary planning, so the normal prompt remains byte-for-byte
+    unchanged.  Values come from executor fields and are bounded before they
+    enter the prompt; no snippets or result URLs are included.
+    """
+    signal = getattr(intent, "_recovery_signal", None)
+    if not isinstance(signal, dict) or signal.get("kind") != "search_no_results":
+        return ""
+    attempted = str(signal.get("attempted_query") or "").replace("\n", " ")[:500]
+    attempted_json = json.dumps(attempted, ensure_ascii=False)
+    stage = str(signal.get("failure_stage") or "no_accepted_results")
+    candidates = signal.get("candidate_count")
+    accepted = signal.get("accepted_count")
+    facts = f"stage={stage}; candidates={candidates}; accepted={accepted}"
+    if str(lang or "").lower().startswith("it"):
+        return (
+            "\n\nRECUPERO RICERCA SENZA RISULTATI " + facts + "\n"
+            "DEVI: eseguire un solo nuovo find_urls con search_query "
+            "materialmente riformulata, mantenendo soggetto, luogo, periodo e "
+            f"altri vincoli; la query gia tentata era {attempted_json}.\n"
+            "NON DEVI: ripetere la query tentata, cambiarne solo ordine o "
+            "sinonimi banali, allentare i vincoli di pertinenza, oppure fare "
+            "piu di un nuovo tentativo.\n"
+            "OK: usa una formulazione di ricerca alternativa ricavata dai "
+            "dettagli reali della richiesta; se anche questa fallisce, chiudi "
+            "con una risposta onesta.\n"
+            "ERRORE: fermarti prima del tentativo alternativo o accettare "
+            "risultati fuori tema."
+        )
+    return (
+        "\n\nRECOVERY AFTER EMPTY SEARCH " + facts + "\n"
+        "YOU MUST: run exactly one new find_urls with a materially reformulated "
+        "search_query while preserving subject, place, time and every other "
+        f"constraint; the attempted query was {attempted_json}.\n"
+        "YOU MUST NOT: repeat the attempted query, change only word order or "
+        "trivial synonyms, relax relevance constraints, or make more than one "
+        "new attempt.\n"
+        "OK: derive an alternative retrieval formulation from the request's "
+        "actual details; if it also fails, finish with an honest answer.\n"
+        "WRONG: stop before the alternative attempt or accept off-topic results."
+    )
+
+
 def _render_skeleton(intent, lang: str = "it") -> str:
     """Skeleton SEMANTICO da `intent.actions` come PROPOSTA NON VINCOLANTE
     (Roberto 17/6). Su query compound (>=2 clausole) l'intent extractor produce
@@ -559,6 +604,7 @@ class SimpleProposer:
             # B15: forma leggibile dei piani esclusi + istruzione di
             # diversificazione (non hash sha opachi che il modello ignora).
             excluded=_render_excluded_signal(excluded_hashes, lang),
+            recovery=_render_recovery_signal(intent, lang),
             skeleton=_render_skeleton(intent, lang),
             # «FATTO FINORA» continuazione (ADR 0177 M1): vuoto se non è una
             # ripresa (seed kind="done" assente) → prompt byte-identico.

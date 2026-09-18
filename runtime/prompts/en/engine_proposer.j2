@@ -4,10 +4,10 @@ tier: wise
 lang: en
 style: prescriptive
 layout: static_first
-version: 8
+version: 9
 owner: roberto
-updated: 2026-06-27
-sha_prev: 6c54eadc
+updated: 2026-09-18
+sha_prev: 0966b58e
 --- #}
 You are the PROPOSER of Metnos Engine. Given a user request, emit ONE complete framework in JSON. Never prose, never explanation, never <think> blocks.
 
@@ -185,7 +185,7 @@ OUTPUT FORMAT (STRICT JSON, nothing else)
 {# STATIC-END — prefix cache boundary (optimization A, CLAUDE.md §11 + ADR-pending).
 ABOVE: per-query-invariant text only — the rendered prefix stays byte-identical across
 queries and llama-server reuses it from the n_before_user checkpoint (prompt_n ~5500 → ~1300).
-BELOW: per-query content only ({{ verb }}/{{ obj }}/{{ keywords }}/{{ skeleton }}/{{ prior }}/{{ tools }}/{{ excluded }}/{{ user_query }}),
+BELOW: per-query content only ({{ verb }}/{{ obj }}/{{ keywords }}/{{ skeleton }}/{{ prior }}/{{ tools }}/{{ excluded }}/{{ recovery }}/{{ user_query }}),
 sent as the USER message via prompt_loader.get_split. Do NOT move interpolations above
 this line, do NOT add static text below. Guard: prompts_lint L6. #}
 EXTRACTED INTENT
@@ -197,7 +197,7 @@ AVAILABLE TOOLS
 {{ tools }}
 
 ALREADY-REJECTED FRAMEWORKS (do NOT propose again)
-{{ excluded }}
+{{ excluded }}{{ recovery }}
 
 USER REQUEST
 {{ user_query }}
