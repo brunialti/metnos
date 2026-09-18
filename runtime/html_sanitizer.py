@@ -18,6 +18,7 @@ Pipeline tipica di un canale:
 from __future__ import annotations
 
 import html as _html
+from html.parser import HTMLParser
 import re
 
 
@@ -52,6 +53,56 @@ _LATEX_DISPLAY_RE = re.compile(r"\$\$([^$]+?)\$\$", flags=re.DOTALL)
 # frammenti sono consentiti perche' privi di schema attivo.
 _SAFE_URL_SCHEMES = ("http", "https", "mailto", "tel")
 _SCHEME_RE = re.compile(r"^([a-zA-Z][a-zA-Z0-9+.\-]*):")
+
+
+def link_internal_routes(safe_html: str, routes: tuple[str, ...]) -> str:
+    """Link registered pages in browser prose, including saved plain receipts.
+
+    Input must already be sanitized HTML. Only supplied root-relative paths
+    become links; existing anchors/code, URL prefixes and path extensions stay
+    untouched. No origin is invented, and non-browser channels are unchanged.
+    """
+    paths = sorted({route for route in routes if re.fullmatch(r"/[a-z0-9][a-z0-9/_-]*", route)}, key=len, reverse=True)
+    if not paths:
+        return safe_html
+    pattern = re.compile(
+        r"(?<![\w/.:?&#=%-])(?:" + "|".join(map(re.escape, paths))
+        + r")(?=$|[\s,;)\]}]|[.!?:](?:\s|$))"
+    )
+
+    class PageLinks(HTMLParser):
+        def __init__(self):
+            super().__init__(convert_charrefs=False)
+            self.parts: list[str] = []
+            self.protected: list[str] = []
+
+        def handle_starttag(self, tag, attrs):
+            self.parts.append(self.get_starttag_text())
+            if tag in {"a", "code", "pre"}:
+                self.protected.append(tag)
+
+        def handle_endtag(self, tag):
+            self.parts.append(f"</{tag}>")
+            if self.protected and self.protected[-1] == tag:
+                self.protected.pop()
+
+        def handle_startendtag(self, tag, attrs):
+            self.parts.append(self.get_starttag_text())
+
+        def handle_data(self, data):
+            self.parts.append(data if self.protected else pattern.sub(
+                lambda match: f'<a href="{match[0]}">{match[0]}</a>', data))
+
+        def handle_entityref(self, name):
+            self.parts.append(f"&{name};")
+
+        def handle_charref(self, name):
+            self.parts.append(f"&#{name};")
+
+    parser = PageLinks()
+    parser.feed(safe_html)
+    parser.close()
+    return "".join(parser.parts)
 
 
 def _safe_href(url: str) -> str | None:

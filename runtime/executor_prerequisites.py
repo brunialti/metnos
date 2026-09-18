@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+import logging
 import re
 from typing import Any
 
@@ -16,6 +17,7 @@ from typing import Any
 _FIELD = re.compile(r"[a-z][a-z0-9_]{0,63}")
 _EXECUTOR = re.compile(r"[a-z][a-z0-9_]{1,127}")
 _PLAN = re.compile(r"[a-z][a-z0-9_.-]{2,63}")
+_LOG = logging.getLogger("metnos.executor_prerequisites")
 
 
 def normalize_lre_plan(value: object) -> str:
@@ -113,6 +115,14 @@ def resolve_prerequisite(
     return None
 
 
+def _server_only(executor: object) -> bool:
+    """Mirror the dispatch default; never infer placement from tool output."""
+    placement = getattr(executor, "placement", None) or {}
+    return (isinstance(placement, Mapping)
+            and placement.get("scope", "server") == "server"
+            and not placement.get("device_ok", False))
+
+
 def admit_prerequisite(executor, arguments, observation, *, catalog_loader,
                        validate_args, guard, owner_user_id, turn_id,
                        target_device=None):
@@ -131,29 +141,47 @@ def admit_prerequisite(executor, arguments, observation, *, catalog_loader,
     from policy import CAPABILITY_REGISTRY
     from vaglio import check_executor_guard
 
+    boundary = "catalog"
     try:
         catalog = _catalog_by_name(catalog_loader(verify=True))
+        boundary = "declaration"
         resolved = resolve_prerequisite(executor, arguments, observation, catalog)
         if resolved is None:
             return observation
         target, args = resolved
+        boundary = "registered_plan"
         if invocation_plan_adapter(target) is None:
             raise ValueError("prerequisite_has_no_registered_plan")
+        boundary = "arguments_and_guard"
         if validate_args(args, target.args_schema) or not check_executor_guard(
                 guard, target.name, args, executor=target)[0]:
             raise ValueError("prerequisite_arguments_not_admissible")
+        boundary = "capabilities"
         for capability in effective_capabilities(target.capabilities, target.args_schema, args):
             spec = CAPABILITY_REGISTRY.get(capability.get("name"))
             if spec is None or spec.critical or spec.default_approval == "always":
                 raise ValueError("prerequisite_needs_explicit_approval")
+        # Dispatch already runs server-only readers on the server, regardless
+        # of the conversational device. A server-only prerequisite must keep
+        # that same location. Both contracts have passed signature checks;
+        # remote-capable/device-only operations retain their original target.
+        prerequisite_device = (
+            "server" if _server_only(executor) and _server_only(target)
+            else target_device
+        )
+        boundary = "submission"
         admitted = submit_automatic_lre(
             Framework(steps=[StepSpec(target.name, args)]), catalog=catalog,
-            owner_user_id=owner_user_id, turn_id=turn_id, target_device=target_device,
+            owner_user_id=owner_user_id, turn_id=turn_id, target_device=prerequisite_device,
         )
         if admitted is None:
             raise ValueError("prerequisite_not_admitted")
         return admitted
-    except (ValueError, TypeError, OSError, RuntimeError):
+    except (ValueError, TypeError, OSError, RuntimeError) as exc:
+        # No arguments, paths or exception text: diagnostic boundaries are
+        # fixed identifiers, not executor-controlled or sensitive content.
+        _LOG.warning("prerequisite_rejected boundary=%s exception_type=%s",
+                     boundary, type(exc).__name__)
         return _automatic_error("ERR_LRE_EXECUTOR_CONTRACT_UNSUPPORTED",
                                 error_class="contract_unsupported")
 

@@ -63,6 +63,45 @@ def test_every_real_binding_receives_exactly_one_action() -> None:
     assert len({step.legacy_id for step in steps}) == len(steps)
 
 
+@pytest.mark.parametrize("change", [
+    "removed", "locator", "entry_id", "kind", "scope", "action", "duplicate",
+    "new_unit", "alias", "new_alias",
+])
+def test_successor_never_drops_retargets_or_aliases_retirement(change):
+    old = retirement.plan_catalog_retirement_v1(_product_catalog()).steps
+    target = next(step for step in old if step.scope == "repository")
+    if change == "removed":
+        current = tuple(step for step in old if step != target)
+    elif change in {"locator", "entry_id", "kind", "scope", "action"}:
+        current = tuple(replace(step, **{change: "changed"}) if step == target else step for step in old)
+    elif change == "duplicate":
+        current = (*old, target)
+    elif change == "new_unit":
+        current = (*old, retirement.LegacyRetirementStepV1(
+            "new-unit", "service-new", "user_unit", "user", "new.service", "mask_user_unit",
+        ))
+    elif change == "alias":
+        current = (*old, replace(target, legacy_id="new-alias"))
+    else:
+        added = replace(target, legacy_id="new-one", locator="install/new.py")
+        current = (*old, added, replace(added, legacy_id="new-two"))
+    with pytest.raises(retirement.LegacyRetirementError) as refused:
+        retirement.require_successor_retirement_v1(old, current)
+    assert refused.value.code == "legacy_retirement_successor_changed"
+
+
+@pytest.mark.parametrize("kind", ["script", "python_module"])
+def test_successor_can_strengthen_repository_plan_but_grants_no_completion(kind):
+    current = retirement.plan_catalog_retirement_v1(_product_catalog()).steps
+    previous = tuple(step for step in current if step.legacy_id != "legacy-install-operator-authority")
+    retirement.require_successor_retirement_v1(previous, current)
+    added = retirement.LegacyRetirementStepV1(
+        "future-entry", "entry-future", kind, "repository", "scripts/future", "revoke_repository_entrypoint",
+    )
+    retirement.require_successor_retirement_v1(current, (*current, added))
+    retirement.require_successor_retirement_v1(current, current)
+
+
 def test_a_second_same_destination_overlap_is_refused() -> None:
     product = _product_catalog()
     second = catalog.ServiceLegacyBindingV1(

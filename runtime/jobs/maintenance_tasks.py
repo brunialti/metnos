@@ -29,10 +29,12 @@ log = logging.getLogger(__name__)
 def task_apply_executor_ager() -> dict:
     """Deprecate/archive executor inattivi (ADR executor_lifecycle).
 
-    Avvolge `executor_aging.apply_executor_ager()` con i default di soglia.
+    La decisione e' UNA: soglie, esclusioni e i due passi restano quelli
+    storici. Cambia soltanto il deposito che la riceve, risolto da
+    `executor_lifecycle_state`, non da questo job.
     """
-    from executor_aging import apply_executor_ager
-    return apply_executor_ager()
+    from executor_lifecycle_state import apply_inactivity_decay
+    return apply_inactivity_decay()
 
 
 def task_apply_ager() -> dict:

@@ -15,7 +15,7 @@ import struct
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Mapping
+from typing import Mapping, Sequence
 
 from manifest_inventory import ContractId
 from executor_birth_feedback import QuarantineCAS
@@ -92,6 +92,13 @@ class EpochRecord:
     state: EpochState
     lifecycle: BirthLifecycle
     state_version: int
+    # The inactivity decision is kept apart from the signed lifecycle, so it
+    # stays reversible and never rewrites what a generation was admitted as.
+    lifecycle_override: BirthLifecycle | None = None
+    override_reason: str | None = None
+    last_used_at: str | None = None
+    first_seen_at: str | None = None
+    inactivity_since: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -111,6 +118,7 @@ class EpochReplacement:
     closed_generation_id: str
     closed_state_version: int
     opened: EpochRecord
+    repeated: bool = False
 
 
 _SCHEMA = """
@@ -493,6 +501,89 @@ def open_epoch(*, contract_id: ContractId, generation_id: str, name: str,
         connection.close()
 
 
+def read_epoch(*, contract_id: ContractId, generation_id: str, db_path: Path) -> EpochRecord | None:
+    """Read one exact epoch, including a closed predecessor needed for recovery."""
+    cid, gid = _contract(contract_id), _generation(generation_id)
+    connection = _open(db_path)
+    try:
+        row = connection.execute(
+            "SELECT name,source,state,lifecycle,state_version,lifecycle_override,"
+            "override_reason,last_used_at,first_seen_at,inactivity_since "
+            "FROM executor_epochs WHERE contract_id=? AND generation_id=?", (cid, gid),
+        ).fetchone()
+        if row is None:
+            return None
+        return _record_from_row(cid, gid, row)
+    finally:
+        connection.close()
+
+
+def _record_from_row(contract_id: str, generation_id: str, row) -> EpochRecord:
+    """One decoder, so no reader forgets the reversible restriction."""
+    override = row["lifecycle_override"]
+    return EpochRecord(
+        contract_id, generation_id, row["name"], row["source"],
+        EpochState(row["state"]), BirthLifecycle(row["lifecycle"]),
+        row["state_version"],
+        BirthLifecycle(override) if override else None,
+        row["override_reason"], row["last_used_at"], row["first_seen_at"],
+        row["inactivity_since"],
+    )
+
+
+def read_current_epoch(
+    *, contract_id: ContractId, db_path: Path,
+) -> EpochRecord | None:
+    """Read the one selectable epoch of a contract, if it has one."""
+    cid = _contract(contract_id)
+    connection = _open(db_path)
+    try:
+        row = connection.execute(
+            "SELECT generation_id,name,source,state,lifecycle,state_version,"
+            "lifecycle_override,override_reason,last_used_at,first_seen_at,inactivity_since "
+            "FROM executor_epochs WHERE contract_id=? AND state='current'", (cid,),
+        ).fetchone()
+        if row is None:
+            return None
+        return _record_from_row(cid, row["generation_id"], row)
+    finally:
+        connection.close()
+
+
+def read_epochs(
+    keys: Sequence[tuple[ContractId, str]], *, db_path: Path,
+) -> dict[tuple[str, str], EpochRecord]:
+    """Read many exact epochs in one pass, never resolving by executor name.
+
+    Catalog loading asks about every generation it actually loaded, so the
+    answer must cost one bounded traversal rather than one open per executor.
+    Absent keys are simply missing from the result: their meaning belongs to
+    the caller, not to this reader.
+    """
+    wanted = [(_contract(contract_id), _generation(generation_id))
+              for contract_id, generation_id in keys]
+    if not wanted:
+        return {}
+    found: dict[tuple[str, str], EpochRecord] = {}
+    connection = _open(db_path)
+    try:
+        for start in range(0, len(wanted), 200):
+            chunk = wanted[start:start + 200]
+            placeholders = ",".join("(?,?)" for _ in chunk)
+            rows = connection.execute(
+                "SELECT contract_id,generation_id,name,source,state,lifecycle,state_version,"
+                "lifecycle_override,override_reason,last_used_at,first_seen_at,inactivity_since "
+                f"FROM executor_epochs WHERE (contract_id,generation_id) IN ({placeholders})",
+                [value for pair in chunk for value in pair],
+            ).fetchall()
+            for row in rows:
+                found[(row["contract_id"], row["generation_id"])] = _record_from_row(
+                    row["contract_id"], row["generation_id"], row)
+    finally:
+        connection.close()
+    return found
+
+
 def attest_execution_epoch(
     *, contract_id: ContractId, generation_id: str, name: str, db_path: Path,
 ) -> ExecutionEpochAttestation:
@@ -507,8 +598,8 @@ def attest_execution_epoch(
     connection = _open(db_path)
     try:
         row = connection.execute(
-            "SELECT name,state,lifecycle,state_version FROM executor_epochs "
-            "WHERE contract_id=? AND generation_id=?",
+            "SELECT name,state,lifecycle,state_version,lifecycle_override "
+            "FROM executor_epochs WHERE contract_id=? AND generation_id=?",
             (cid, gid),
         ).fetchone()
         if row is None:
@@ -517,9 +608,14 @@ def attest_execution_epoch(
             raise EpochStoreError("execution.runner_absent", "name_mismatch")
         lifecycle = BirthLifecycle(row["lifecycle"])
         state = EpochState(row["state"])
+        override = row["lifecycle_override"]
         if lifecycle is BirthLifecycle.QUARANTINED:
             raise EpochStoreError("execution.quarantined")
         if lifecycle in {BirthLifecycle.DEPRECATED, BirthLifecycle.ARCHIVED} or state is not EpochState.CURRENT:
+            raise EpochStoreError("execution.retired")
+        # A deprecated generation is still offered, demoted, so only the
+        # archiving restriction removes execution authority here.
+        if override == BirthLifecycle.ARCHIVED.value:
             raise EpochStoreError("execution.retired")
         if lifecycle is not BirthLifecycle.ACTIVE:
             raise EpochStoreError("execution.dormant")
@@ -563,9 +659,36 @@ def replace_current_epoch(
     try:
         connection.execute("BEGIN IMMEDIATE")
         current = connection.execute(
-            "SELECT generation_id,state_version FROM executor_epochs "
+            "SELECT * FROM executor_epochs "
             "WHERE contract_id=? AND state='current'", (cid,),
         ).fetchone()
+        if current is not None and current["generation_id"] == new_gid:
+            prior = connection.execute(
+                "SELECT state,lifecycle,state_version FROM executor_epochs "
+                "WHERE contract_id=? AND generation_id=?", (cid, old_gid),
+            ).fetchone()
+            opening = connection.execute(
+                "SELECT event_kind,source,detail_json FROM executor_epoch_history "
+                "WHERE contract_id=? AND generation_id=? AND event_seq=1", (cid, new_gid),
+            ).fetchone()
+            detail = json.loads(opening["detail_json"]) if opening is not None else {}
+            if (prior is None or prior["state"] != EpochState.DEPRECATED.value
+                    or prior["lifecycle"] != BirthLifecycle.DEPRECATED.value
+                    or prior["state_version"] != expected_state_version + 1
+                    or current["name"] != clean_name or current["source"] != clean_source
+                    or current["lifecycle"] != lifecycle.value
+                    or current["historic_epoch_ref"] != historic_epoch_ref
+                    or opening is None or opening["event_kind"] != event
+                    or opening["source"] != clean_source
+                    or detail != {"historic_epoch_ref": historic_epoch_ref,
+                                  "lifecycle": lifecycle.value, "predecessor_generation_id": old_gid}):
+                raise EpochStoreError("epoch_conflict", "successor replay mismatch")
+            connection.commit()
+            return EpochReplacement(
+                old_gid, expected_state_version + 1,
+                EpochRecord(cid, new_gid, clean_name, clean_source, EpochState.CURRENT,
+                            lifecycle, current["state_version"]), True,
+            )
         if (current is None or current["generation_id"] != old_gid
                 or int(current["state_version"]) != expected_state_version):
             raise EpochStoreError("epoch_conflict", "stale predecessor")
@@ -749,6 +872,210 @@ def record_execution(
         connection.close()
 
 
+def record_feedback(
+    key: EpochCacheKey, *, expected_version: int, positive: bool,
+    occurred_at: str, db_path: Path,
+) -> int:
+    """Count one explicit verdict against the exact generation that earned it.
+
+    A positive verdict clears the negative count, because the threshold that
+    restricts an executor asks how many verdicts in a row were negative, not
+    how many ever were. Returning that count lets the caller compare it with
+    the threshold without a second read of a row that could move meanwhile.
+    """
+    if type(expected_version) is not int or expected_version < 1:
+        raise EpochStoreError("epoch_invalid", "expected_version")
+    if type(positive) is not bool:
+        raise EpochStoreError("epoch_invalid", "positive")
+    ts = _text(occurred_at, "occurred_at")
+    connection = _open(db_path)
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        updated = connection.execute(
+            "UPDATE executor_epochs SET positive_feedback=positive_feedback+?,"
+            "negative_feedback=CASE WHEN ? THEN 0 ELSE negative_feedback+1 END,"
+            "updated_at=? WHERE contract_id=? AND generation_id=? AND lifecycle=? "
+            "AND state='current' AND state_version=?",
+            (1 if positive else 0, 1 if positive else 0, ts,
+             key.contract_id.value, key.generation_id, key.lifecycle.value,
+             expected_version),
+        )
+        if updated.rowcount != 1:
+            raise EpochStoreError("epoch_conflict", "stale feedback identity")
+        consecutive = connection.execute(
+            "SELECT negative_feedback FROM executor_epochs "
+            "WHERE contract_id=? AND generation_id=?",
+            (key.contract_id.value, key.generation_id),
+        ).fetchone()["negative_feedback"]
+        connection.commit()
+        return int(consecutive)
+    finally:
+        if connection.in_transaction:
+            connection.rollback()
+        connection.close()
+
+
+_RESTRICTION_OVERRIDES = frozenset({BirthLifecycle.DEPRECATED, BirthLifecycle.ARCHIVED})
+
+
+def _override_history(connection, cid: str, gid: str, ts: str, event_kind: str,
+                      prior_version: int, detail: dict) -> None:
+    connection.execute(
+        "INSERT INTO executor_epoch_history(contract_id,generation_id,event_seq,ts,event_kind,"
+        "prior_state_version,new_state_version,detail_json) "
+        "SELECT ?,?,COALESCE(MAX(event_seq),0)+1,?,?,?,?,? FROM executor_epoch_history "
+        "WHERE contract_id=? AND generation_id=?",
+        (cid, gid, ts, event_kind, prior_version, prior_version + 1,
+         json.dumps(detail, sort_keys=True, separators=(",", ":")), cid, gid),
+    )
+
+
+def restrict_generation(
+    *, contract_id: ContractId, generation_id: str, expected_version: int,
+    override: BirthLifecycle, reason: str, observed_at: str, db_path: Path,
+) -> int:
+    """Record a local restriction beside the signed lifecycle, not over it.
+
+    The admitted lifecycle is evidence of what the generation was published as
+    and is never rewritten here. The restriction is a separate, reversible
+    observation with its reason, exactly as the name-based store kept its
+    markers apart from the manifest. ``inactivity_since`` retains when the
+    deprecation began, whatever decided it, so the later archiving step
+    measures from a recorded instant rather than from the moment a job runs.
+    """
+    cid, gid = _contract(contract_id), _generation(generation_id)
+    if override not in _RESTRICTION_OVERRIDES:
+        raise EpochStoreError("epoch_invalid", "restriction override")
+    if type(expected_version) is not int or expected_version < 1:
+        raise EpochStoreError("epoch_invalid", "expected_version")
+    clean_reason, ts = _text(reason, "reason"), _text(observed_at, "observed_at")
+    connection = _open(db_path)
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        current = connection.execute(
+            "SELECT lifecycle_override,inactivity_since FROM executor_epochs "
+            "WHERE contract_id=? AND generation_id=? AND state='current' AND state_version=?",
+            (cid, gid, expected_version),
+        ).fetchone()
+        if current is None:
+            raise EpochStoreError("epoch_conflict", "stale restriction identity")
+        if current["lifecycle_override"] == override.value:
+            connection.commit()
+            return expected_version
+        # Deprecation starts a clock; archiving keeps the instant it started.
+        since = ts if override is BirthLifecycle.DEPRECATED else current["inactivity_since"]
+        updated = connection.execute(
+            "UPDATE executor_epochs SET lifecycle_override=?,override_reason=?,"
+            "inactivity_since=?,state_version=state_version+1,updated_at=? "
+            "WHERE contract_id=? AND generation_id=? AND state='current' AND state_version=?",
+            (override.value, clean_reason, since, ts, cid, gid, expected_version),
+        )
+        if updated.rowcount != 1:
+            raise EpochStoreError("epoch_conflict", "stale restriction identity")
+        connection.execute(
+            "DELETE FROM executor_preexercise_cache WHERE contract_id=? AND generation_id=?",
+            (cid, gid),
+        )
+        _override_history(connection, cid, gid, ts, "restricted_" + override.value,
+                          expected_version, {"reason": clean_reason})
+        connection.commit()
+        return expected_version + 1
+    finally:
+        if connection.in_transaction:
+            connection.rollback()
+        connection.close()
+
+
+def clear_restriction(
+    *, contract_id: ContractId, generation_id: str, expected_version: int,
+    reason: str, observed_at: str, db_path: Path,
+) -> int:
+    """Revive a generation a local restriction had removed or demoted."""
+    cid, gid = _contract(contract_id), _generation(generation_id)
+    if type(expected_version) is not int or expected_version < 1:
+        raise EpochStoreError("epoch_invalid", "expected_version")
+    clean_reason, ts = _text(reason, "reason"), _text(observed_at, "observed_at")
+    connection = _open(db_path)
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        current = connection.execute(
+            "SELECT lifecycle_override FROM executor_epochs WHERE contract_id=? "
+            "AND generation_id=? AND state='current' AND state_version=?",
+            (cid, gid, expected_version),
+        ).fetchone()
+        if current is None:
+            raise EpochStoreError("epoch_conflict", "stale restriction identity")
+        if current["lifecycle_override"] is None:
+            connection.commit()
+            return expected_version
+        updated = connection.execute(
+            "UPDATE executor_epochs SET lifecycle_override=NULL,override_reason=?,"
+            "inactivity_since=NULL,last_used_at=?,state_version=state_version+1,updated_at=? "
+            "WHERE contract_id=? AND generation_id=? AND state='current' AND state_version=?",
+            (clean_reason, ts, ts, cid, gid, expected_version),
+        )
+        if updated.rowcount != 1:
+            raise EpochStoreError("epoch_conflict", "stale restriction identity")
+        _override_history(connection, cid, gid, ts, "restriction_cleared",
+                          expected_version, {"reason": clean_reason})
+        connection.commit()
+        return expected_version + 1
+    finally:
+        if connection.in_transaction:
+            connection.rollback()
+        connection.close()
+
+
+def credit_uses(
+    *, contract_id: ContractId, generation_id: str, expected_version: int,
+    uses: int, occurred_at: str, db_path: Path,
+) -> int:
+    """Transfer demand a superseded cache row already proved to its heir.
+
+    The credit is usage evidence for the inactivity decision only. It cannot
+    claim successes or failures, because none were observed for this
+    generation; it moves the calls and the instant they were last needed.
+    """
+    cid, gid = _contract(contract_id), _generation(generation_id)
+    if type(uses) is not int or isinstance(uses, bool) or uses <= 0:
+        raise EpochStoreError("epoch_invalid", "uses")
+    if type(expected_version) is not int or expected_version < 1:
+        raise EpochStoreError("epoch_invalid", "expected_version")
+    ts = _text(occurred_at, "occurred_at")
+    connection = _open(db_path)
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        updated = connection.execute(
+            "UPDATE executor_epochs SET total_calls=total_calls+?,last_used_at=?,"
+            "updated_at=? WHERE contract_id=? AND generation_id=? AND state='current' "
+            "AND state_version=?",
+            (uses, ts, ts, cid, gid, expected_version),
+        )
+        if updated.rowcount != 1:
+            raise EpochStoreError("epoch_conflict", "stale credit identity")
+        connection.commit()
+        return uses
+    finally:
+        if connection.in_transaction:
+            connection.rollback()
+        connection.close()
+
+
+def selectable_epochs(*, db_path: Path) -> tuple[EpochRecord, ...]:
+    """Every epoch a catalog could select, for the restriction decisions."""
+    connection = _open(db_path)
+    try:
+        rows = connection.execute(
+            "SELECT contract_id,generation_id,name,source,state,lifecycle,state_version,"
+            "lifecycle_override,override_reason,last_used_at,first_seen_at,inactivity_since "
+            "FROM executor_epochs WHERE state='current' ORDER BY contract_id"
+        ).fetchall()
+    finally:
+        connection.close()
+    return tuple(_record_from_row(row["contract_id"], row["generation_id"], row)
+                 for row in rows)
+
+
 def preserve_legacy_rows(
     *, source_id: str, source_schema_id: str,
     legacy_table: str, rows: tuple[Mapping[str, object], ...],
@@ -876,6 +1203,145 @@ def migrate_legacy_rows(
         if connection.in_transaction:
             connection.rollback()
         connection.close()
+
+
+_RESOLUTION_KINDS = frozenset({
+    "attested", "discarded", "current_restriction", "pending_disposition",
+})
+
+
+def record_legacy_resolutions(
+    *, migration_id: str, resolutions: Sequence[tuple[int, str, str | None, str | None, str]],
+    recorded_at: str, db_path: Path,
+) -> int:
+    """Record what each preserved row means now, without altering the row.
+
+    Preservation and resolution are separate on purpose: the copy stays exactly
+    as it was read, so its digest keeps verifying, and a later association or
+    disposition is an additional record rather than an edit. An exact repeat
+    verifies and writes nothing; a different decision for the same row fails
+    closed rather than overwriting the first.
+    """
+    if not isinstance(migration_id, str) or _DIGEST.fullmatch(migration_id) is None:
+        raise EpochStoreError("legacy_resolution_invalid", "migration_id")
+    ts = _text(recorded_at, "recorded_at")
+    prepared = []
+    for item in resolutions:
+        if not isinstance(item, tuple) or len(item) != 5:
+            raise EpochStoreError("legacy_resolution_invalid", "shape")
+        ordinal, kind, contract_id, generation_id, evidence_id = item
+        if type(ordinal) is not int or isinstance(ordinal, bool) or ordinal < 0:
+            raise EpochStoreError("legacy_resolution_invalid", "source_ordinal")
+        if kind not in _RESOLUTION_KINDS:
+            raise EpochStoreError("legacy_resolution_invalid", "resolution_kind")
+        if (contract_id is None) != (generation_id is None):
+            raise EpochStoreError("legacy_resolution_invalid", "identity pair")
+        if contract_id is not None:
+            if not isinstance(contract_id, str) or contract_id.count(":") != 1:
+                raise EpochStoreError("legacy_resolution_invalid", "contract_id")
+            _generation(generation_id)
+        if not isinstance(evidence_id, str) or _DIGEST.fullmatch(evidence_id) is None:
+            raise EpochStoreError("legacy_resolution_invalid", "evidence_id")
+        prepared.append((ordinal, kind, contract_id, generation_id, evidence_id))
+    if len({item[0] for item in prepared}) != len(prepared):
+        raise EpochStoreError("legacy_resolution_invalid", "duplicate ordinal")
+    connection = _open(db_path)
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        legacy_ids = dict(connection.execute(
+            "SELECT source_ordinal,legacy_id FROM executor_legacy_migration_rows "
+            "WHERE migration_id=?", (migration_id,),
+        ).fetchall())
+        written = 0
+        for ordinal, kind, contract_id, generation_id, evidence_id in prepared:
+            legacy_id = legacy_ids.get(ordinal)
+            if legacy_id is None:
+                raise EpochStoreError("legacy_resolution_invalid", "unknown ordinal")
+            prior = connection.execute(
+                "SELECT resolution_kind,contract_id,generation_id,evidence_id "
+                "FROM executor_legacy_resolutions WHERE legacy_id=?", (legacy_id,),
+            ).fetchone()
+            if prior is not None:
+                if (prior["resolution_kind"] != kind
+                        or prior["contract_id"] != contract_id
+                        or prior["generation_id"] != generation_id
+                        or prior["evidence_id"] != evidence_id):
+                    raise EpochStoreError("legacy_resolution_conflict", str(ordinal))
+                continue
+            connection.execute(
+                "INSERT INTO executor_legacy_resolutions(legacy_id,resolution_kind,"
+                "contract_id,generation_id,evidence_id,recorded_at) VALUES(?,?,?,?,?,?)",
+                (legacy_id, kind, contract_id, generation_id, evidence_id, ts),
+            )
+            written += 1
+        connection.commit()
+        return written
+    except sqlite3.IntegrityError as exc:
+        raise EpochStoreError("legacy_resolution_conflict", str(exc)) from exc
+    finally:
+        if connection.in_transaction:
+            connection.rollback()
+        connection.close()
+
+
+def verify_preserved_migrations(*, db_path: Path) -> tuple[dict, ...]:
+    """Reread every preserved copy and check it against its own proof.
+
+    Certification must bind a migration it can read back, not a count a caller
+    reported. Each copy is verified with the same count and digest the
+    preservation recorded, and every copied row must carry exactly one decision.
+    """
+    connection = _open(db_path)
+    try:
+        migrations = connection.execute(
+            "SELECT migration_id,source_id,source_schema_id,legacy_table,source_count,"
+            "source_digest,migrated_at FROM executor_legacy_migrations "
+            "ORDER BY source_id,legacy_table"
+        ).fetchall()
+        verified = []
+        for row in migrations:
+            _verify_legacy_migration(
+                connection, migration_id=row["migration_id"],
+                expected_count=int(row["source_count"]),
+                expected_digest=row["source_digest"],
+            )
+            decided = connection.execute(
+                "SELECT x.resolution_kind,count(*) FROM executor_legacy_migration_rows r "
+                "JOIN executor_legacy_resolutions x ON x.legacy_id=r.legacy_id "
+                "WHERE r.migration_id=? GROUP BY x.resolution_kind",
+                (row["migration_id"],),
+            ).fetchall()
+            counts = {kind: int(total) for kind, total in decided}
+            verified.append({
+                "migration_id": row["migration_id"],
+                "source_id": row["source_id"],
+                "source_schema_id": row["source_schema_id"],
+                "legacy_table": row["legacy_table"],
+                "source_count": int(row["source_count"]),
+                "source_digest": row["source_digest"],
+                "migrated_at": row["migrated_at"],
+                "decisions": counts,
+                "undecided": int(row["source_count"]) - sum(counts.values()),
+            })
+        return tuple(verified)
+    finally:
+        connection.close()
+
+
+def read_legacy_resolutions(*, migration_id: str, db_path: Path) -> tuple[dict, ...]:
+    """Read back the recorded decisions of one migration, in source order."""
+    connection = _open(db_path)
+    try:
+        rows = connection.execute(
+            "SELECT r.source_ordinal AS ordinal,x.resolution_kind AS kind,"
+            "x.contract_id,x.generation_id,x.evidence_id,x.recorded_at "
+            "FROM executor_legacy_migration_rows r "
+            "JOIN executor_legacy_resolutions x ON x.legacy_id=r.legacy_id "
+            "WHERE r.migration_id=? ORDER BY r.source_ordinal", (migration_id,),
+        ).fetchall()
+    finally:
+        connection.close()
+    return tuple(dict(row) for row in rows)
 
 
 def quarantine_for_feedback(*, contract_id: ContractId, generation_id: str,

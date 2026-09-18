@@ -61,6 +61,15 @@ disattivare la funzione impedisce nuove attività senza eliminare stato,
 cronologia o artefatti già registrati. In presenza di una configurazione non
 valida, il gate rimane chiuso.</p>
 
+<p>Il pallino della scheda LRE indica la disponibilità della funzione:
+<strong>grigio</strong> quando è disattivata e lo stato è confermato;
+<strong>verde</strong> soltanto quando è abilitata e pronta;
+<strong>giallo</strong> durante il cambio di stato o quando la disponibilità
+non è verificata; <strong>rosso</strong> per errore del servizio o configurazione
+non valida. La stessa informazione è scritta accanto alla scheda: il colore
+non è l'unico segnale. Processo, salute tecnica e PID si trovano nei
+<em>Dettagli tecnici</em>. Verde non significa che un lavoro stia avanzando.</p>
+
 <div class="callout warning"><p><strong>Prima di un riavvio.</strong> Controlla
 se sono in corso turni interattivi e leggi l'eventuale avviso della pagina. Un
 riavvio non è un semplice aggiornamento visivo: interrompe davvero il processo
@@ -77,7 +86,7 @@ selezionato.</p></div>
   <span class="ui-badge" style="--x:61%;--y:66%" aria-hidden="true">4</span>
   <span class="ui-badge" style="--x:55%;--y:90%" aria-hidden="true">5</span>
  </div>
- <figcaption>La funzione LRE è disattivata nell'immagine, mentre il relativo worker è sano e in attesa: i due stati sono distinti.</figcaption>
+ <figcaption>Immagine precedente alla distinzione dei colori: LRE è disattivato ma il servizio è sano. Nell'interfaccia attuale questo stato confermato ha il pallino grigio e il processo è nei Dettagli tecnici.</figcaption>
 </figure>
 <ol class="ui-callout-list">
  <li><strong>Sezione Sistema.</strong> Raccoglie gli accessi a modelli, servizi, safety, utenti e dispositivi.</li>

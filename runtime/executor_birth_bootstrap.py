@@ -156,7 +156,8 @@ def _request_factory(authority: _ProducerAuthority, registry: IssuerRegistry,
     def create(intent: BirthIntent) -> BirthRequest:
         if not isinstance(intent, BirthIntent):
             raise BirthBootstrapError("birth_intent_invalid")
-        objective = _hash(b"metnos.executor-birth.objective/v1\0", intent.reason, *intent.approval_refs)
+        from executor_birth_receipts import producer_objective_hash_v1
+        objective = producer_objective_hash_v1(intent.reason, intent.approval_refs)
         if release_build_id is not None:
             # Same-build retries retain their identity; a new verified build
             # gets its own release edit without replacing any old receipt.
@@ -562,6 +563,7 @@ def _sealed_authorities(sealed):
     prepared: no name, no origin and no key is chosen by a document.
     """
     from executor_birth_producer_table_v1 import producer_store_name_v1
+    from executor_birth_intent import _PROMOTER_QUARANTINE
 
     authorities: dict[_ProducerCapability, _ProducerAuthority] = {}
     entries: dict[str, list[IssuerKey]] = {}
@@ -570,6 +572,9 @@ def _sealed_authorities(sealed):
         name = producer_store_name_v1(capability.producer_id, capability.operation)
         loaded = sealed.producers.get(name)
         if loaded is None:
+            # F5 is optional until certified. Its absence cannot disable F4.
+            if capability is _PROMOTER_QUARANTINE:
+                continue
             raise BirthBootstrapError("birth_producer_registry_incomplete")
         author = producer_author_v1(capability.producer_id, capability.operation)
         private = loaded.active_private_key
@@ -722,6 +727,10 @@ def _prepare_sealed_birth_assembly_v1(
         policy_version=BIRTH_POLICY_VERSION_V1, now=canonical_now,
         commit_publisher=bundle.publisher,
         postcondition_verifier=verifier.verify,
+        quarantine_key_ids=frozenset(
+            authority.key_id for capability, authority in authorities.items()
+            if capability.producer_id == "promoter" and capability.operation == "quarantine"
+        ),
     )
     ttl = birth_receipt_ttl_seconds_v1()
     return _SealedBirthAssemblyV1(

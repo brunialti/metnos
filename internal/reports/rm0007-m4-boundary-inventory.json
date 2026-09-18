@@ -1,6 +1,6 @@
 {
   "schema": "metnos.contract-boundary-inventory/2",
-  "source_census": "sha256:3877c40e90e2e263f7c266a77aff254571a994d7a51df2e4f6e3e855f42f8433",
+  "source_census": "sha256:7e5e0416402271232c166794190411b1d09426266dffc4fa535eea6d650bbda6",
   "scan_roots": [
     "runtime",
     "install",
@@ -142,6 +142,106 @@
         "store_write"
       ],
       "destination": "fixed-root Linux administrator-only evidence entry; no caller-selected authority",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_certification_issuer.py",
+      "scope": "_install_certificate_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "publish the signed certificate and read it back with the reader that will trust it",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_certification_issuer.py",
+      "scope": "issue_certificate_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "derive the qualification from composed history and evidence, bind the completed migration, and sign",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_certification_issuer.py",
+      "scope": "main",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "administrative entry point; derive only reports, issue signs and publishes",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_lifecycle_migration.py",
+      "scope": "_install_marker",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "record the root-owned migration marker last, verified with the reader the runtime will use",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_lifecycle_migration.py",
+      "scope": "_migrate_as_service",
+      "role": "live_reader",
+      "capabilities": [
+        "live_artifact_read"
+      ],
+      "destination": "inside the privileged child, admit every selectable generation before any restriction is applied",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_lifecycle_migration.py",
+      "scope": "_selectable_from_catalog",
+      "role": "live_reader",
+      "capabilities": [
+        "live_artifact_read"
+      ],
+      "destination": "the exact generations a verified catalog load currently selects",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_lifecycle_migration.py",
+      "scope": "_write_handoff",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "stage the reviewed decision under the same root custody as the marker",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_lifecycle_migration.py",
+      "scope": "apply_cutover_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "migrate with the stack quiescent against the reviewed plan, then record the marker last",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_lifecycle_migration.py",
+      "scope": "main",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "administrative entry point; plan only observes, apply migrates and records",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_lifecycle_migration.py",
+      "scope": "plan_cutover_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "observe the running installation and record the decision for review; changes nothing else",
       "phase": "M4"
     },
     {
@@ -989,6 +1089,56 @@
       "phase": "M4"
     },
     {
+      "path": "install/f5_authority.py",
+      "scope": "<module>",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "administrative F5 entry point module; importing it opens no key, store or document",
+      "phase": "M4"
+    },
+    {
+      "path": "install/f5_authority.py",
+      "scope": "_certify",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "derive or issue the F5 certificate through its own issuer owner",
+      "phase": "M4"
+    },
+    {
+      "path": "install/f5_authority.py",
+      "scope": "_evidence",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "append one closed evidence document to the administrative ledger through its owner",
+      "phase": "M4"
+    },
+    {
+      "path": "install/f5_authority.py",
+      "scope": "_migrate",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "run the one-time cutover through its own two-stage owner",
+      "phase": "M4"
+    },
+    {
+      "path": "install/f5_authority.py",
+      "scope": "_provision_key",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "provision the dedicated certification key through its installer owner; returns public material only",
+      "phase": "M4"
+    },
+    {
       "path": "install/phases/phase3_code.py",
       "scope": "_activate_prepared_report",
       "role": "migration_boundary",
@@ -1552,6 +1702,18 @@
     },
     {
       "path": "runtime/contract_store.py",
+      "scope": "_authenticate_execution_binding_with_receipt",
+      "role": "store_owner",
+      "capabilities": [
+        "authoring_read",
+        "store_write",
+        "verified_store_read"
+      ],
+      "destination": "sealed exact-generation and admission-receipt authority for dispatch",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
       "scope": "_code_digest",
       "role": "store_owner",
       "capabilities": [
@@ -1964,11 +2126,9 @@
       "scope": "authenticate_execution_binding",
       "role": "store_owner",
       "capabilities": [
-        "authoring_read",
-        "store_write",
-        "verified_store_read"
+        "store_write"
       ],
-      "destination": "sealed exact-generation and admission-receipt authority for dispatch",
+      "destination": "unchanged dispatch facade delegating to the exact receipt reader",
       "phase": "M4"
     },
     {
@@ -2546,6 +2706,29 @@
       "phase": "M4"
     },
     {
+      "path": "runtime/executor_birth_commit_publisher.py",
+      "scope": "_BirthCommitPublisher.authenticate_quarantine_predecessor",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sealed read of the exact invoked generation and its prior admission; existing lock ownership only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_commit_publisher.py",
+      "scope": "_BirthCommitPublisher.quarantine_candidate",
+      "role": "store_owner",
+      "capabilities": [
+        "authoring_read",
+        "authoring_write",
+        "store_write",
+        "verified_store_read"
+      ],
+      "destination": "sealed authenticated capture and private reduce-only staging, including exact-successor recovery; no direct publication",
+      "phase": "M4"
+    },
+    {
       "path": "runtime/executor_birth_cutover.py",
       "scope": "enumerate_authenticated_current_generations",
       "role": "administrative_tool",
@@ -2607,6 +2790,16 @@
     },
     {
       "path": "runtime/executor_birth_intent.py",
+      "scope": "submit_promoter_quarantine_birth",
+      "role": "administrative_tool",
+      "capabilities": [
+        "birth"
+      ],
+      "destination": "data-only exact execution receipt routed to the fixed F5-gated Birth owner",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_intent.py",
       "scope": "submit_promoter_rollback_birth",
       "role": "administrative_tool",
       "capabilities": [
@@ -2633,6 +2826,16 @@
         "birth"
       ],
       "destination": "reviewed administrative authoring scope without live publication authority",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_operational.py",
+      "scope": "_quarantine_execution_with_runtime",
+      "role": "administrative_tool",
+      "capabilities": [
+        "birth"
+      ],
+      "destination": "fixed-certification entry into the existing sealed Birth core; no selectable publisher or authority",
       "phase": "M4"
     },
     {
@@ -3718,6 +3921,16 @@
         "store_write"
       ],
       "destination": "service-identity-bound receipt proof for the frozen transition inventory",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_lifecycle_state.py",
+      "scope": "_catalog_executor",
+      "role": "live_reader",
+      "capabilities": [
+        "live_artifact_read"
+      ],
+      "destination": "resolve one executor name to its exact authenticated generation before a local restriction or usage credit",
       "phase": "M4"
     },
     {

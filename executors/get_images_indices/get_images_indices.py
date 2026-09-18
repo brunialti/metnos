@@ -92,7 +92,15 @@ def _status_for(idx_dir: Path, idx: str, *, base_path: str = "") -> tuple[dict |
     if meta_path.exists():
         try:
             meta = json.loads(meta_path.read_text(encoding="utf-8"))
-            entry["n_entries"] = int(meta.get("n_entries", 0))
+            total = meta.get("n_entries", 0)
+            not_indexed = meta.get("n_not_indexed", 0)
+            indexed = meta.get("n_indexed", total - not_indexed
+                               if type(total) is int and type(not_indexed) is int else None)
+            if (any(type(value) is not int or value < 0
+                    for value in (total, indexed, not_indexed))
+                    or indexed + not_indexed != total):
+                raise ValueError("inconsistent image outcome counters")
+            entry.update(n_entries=total, n_indexed=indexed, n_not_indexed=not_indexed)
             entry["n_faces"] = int(meta.get("n_faces", 0) or 0)
             entry["last_refresh_at"] = (
                 meta.get("last_refresh_at") or meta.get("updated_at")
@@ -104,7 +112,7 @@ def _status_for(idx_dir: Path, idx: str, *, base_path: str = "") -> tuple[dict |
             entry["version"] = meta.get("schema_version") or meta.get("version")
             if not entry.get("base_path") and isinstance(meta.get("base_path"), str):
                 entry["base_path"] = meta["base_path"]
-        except json.JSONDecodeError as exc:
+        except (ValueError, TypeError, AttributeError) as exc:
             return None, {
                 "idx": idx,
                 "index_path": str(idx_dir),
@@ -184,9 +192,11 @@ def invoke(args):
         else:
             entries.append(entry)
     indexed_entries_total = sum(
-        int(entry.get("n_entries", 0) or 0)
+        int(entry.get("n_indexed", 0) or 0)
         for entry in entries if entry.get("exists")
     )
+    total_records = sum(int(entry.get("n_entries", 0) or 0) for entry in entries)
+    not_indexed_entries_total = sum(int(entry.get("n_not_indexed", 0) or 0) for entry in entries)
     out = {
         "ok": not failed,
         "index_root": str(
@@ -196,6 +206,8 @@ def invoke(args):
         "entries": entries,
         "n_entries": len(entries),
         "indexed_entries_total": indexed_entries_total,
+        "total_records": total_records,
+        "not_indexed_entries_total": not_indexed_entries_total,
         "ok_count": len(entries),
         "fail_count": len(failed),
         "failed": failed,

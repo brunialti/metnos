@@ -83,6 +83,19 @@ _ENV_MAP: dict[str, str] = {
 }
 
 
+# Logical process-local admission slots, not OS threads or CPU/GPU selection.
+# Historical defaults remain unchanged unless this deployment opts in.
+_EXECUTION_RESOURCE_LIMITS = {
+    "local_io": ("METNOS_EXECUTOR_LOCAL_IO_LIMIT", 16, 256),
+    "network_io": ("METNOS_EXECUTOR_NETWORK_IO_LIMIT", 16, 256),
+    "cpu": ("METNOS_EXECUTOR_CPU_LIMIT", 2, 64),
+    "llm": ("METNOS_LLM_MAX_IN_FLIGHT", 1, 32),
+    "vlm": ("METNOS_VLM_MAX_IN_FLIGHT", 1, 32),
+    "browser": ("METNOS_EXECUTOR_BROWSER_LIMIT", 4, 64),
+    "device": ("METNOS_EXECUTOR_DEVICE_LIMIT", 8, 128),
+}
+
+
 # ── Cache loader ────────────────────────────────────────────────────────────
 
 _CACHE: dict[str, Any] = {}
@@ -216,6 +229,36 @@ def get_float(key: str, default: float | None = None) -> float:
 
 
 # ── Typed accessors per i flag canonici (riducono boilerplate al caller) ───
+
+def execution_resource_limits() -> dict[str, int]:
+    """Read bounded startup capacities; malformed settings reduce to one.
+
+    Environment overrides [execution_resources] in the existing private TOML.
+    The scheduler snapshots these values when constructed: changing a file
+    never resizes live semaphores or alters active attempt reservations.
+    """
+    try:
+        document = _load_toml(strict=True)
+        malformed = False
+    except ValueError:
+        document, malformed = {}, True
+        _LOG.warning("execution_resource_configuration_invalid: using serial limits")
+    limits = {}
+    for resource, (environment_name, default, maximum) in _EXECUTION_RESOURCE_LIMITS.items():
+        key = f"execution_resources.{resource}"
+        if environment_name in os.environ:
+            try:
+                value = int(os.environ[environment_name])
+            except (TypeError, ValueError):
+                value = None
+        else:
+            value = document.get(key, 1 if malformed else default)
+        if type(value) is not int or not 1 <= value <= maximum:
+            _LOG.warning("execution_resource_limit_invalid resource=%s: using one", resource)
+            value = 1
+        limits[resource] = value
+    return limits
+
 
 def mail_default_account() -> str:
     """SMTP default: env > TOML > default; invalid explicit values fail."""

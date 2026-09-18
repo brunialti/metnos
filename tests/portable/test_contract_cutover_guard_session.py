@@ -17,6 +17,21 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+@pytest.fixture(autouse=True)
+def installed_topology(monkeypatch):
+    """Give the generic barrier a topology these isolated cases can observe.
+
+    These cases exercise session semantics with a stub systemctl, on a machine
+    whose real installation this account cannot read. The units the barrier
+    now proves idle are supplied here, the way the reconciler and the lock
+    already are; the reader itself is covered by its own cases.
+    """
+    monkeypatch.setattr(guard, "_installed_service_units_v1", lambda: (
+        ("system", "metnos-http.service"),
+        ("system", "metnos-durable-worker.service"),
+    ))
+
+
 @pytest.fixture
 def service_binding(monkeypatch, tmp_path):
     import config

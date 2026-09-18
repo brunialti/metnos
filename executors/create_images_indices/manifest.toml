@@ -2,7 +2,7 @@
 manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 name = "create_images_indices"
-version = "0.4.0"
+version = "0.5.1"
 timeout_s = 14400
 intelligence = "llm"
 author = "Roberto Brunialti"
@@ -19,12 +19,12 @@ concurrency_key = "path"
 equivalence_gate = "verified"
 
 [description]
-it = "SCOPO: costruisce o aggiorna l'indice foto con unità LRE riprendibili. PATTERN: create_images_indices(base_path='~/foto', force=false). NON: ricerca foto o lettura file. OUT: ricevuta LRE; al completamento n_entries_total e index_path."
-en = "SCOPO: builds or refreshes the photo index through resumable LRE units. PATTERN: create_images_indices(base_path='~/photos', force=false). NON: photo searches or file reading. OUT: LRE receipt; on completion n_entries_total and index_path."
+it = "SCOPO: costruisce o aggiorna l'indice foto con unità LRE riprendibili; registra foto non decodificabili e continua. PATTERN: create_images_indices(base_path='~/foto', force=false). NON: ricerca foto o omissioni silenziose. OUT: ricevuta LRE; al completamento n_indexed, n_not_indexed, n_entries_total e index_path."
+en = "SCOPO: builds or refreshes the photo index through resumable LRE units; records undecodable images without stopping other photos. PATTERN: create_images_indices(base_path='~/photos', force=false). NON: photo searches or silent omissions. OUT: LRE receipt; on completion n_indexed, n_not_indexed, n_entries_total and index_path."
 
 [code]
 files = ["create_images_indices.py"]
-digest = "sha256:37ecb38bf6089379e22528026ad3d10286bd0bc039c6f317b1f42662c672e1f5"
+digest = "sha256:8dd5acd0f341011648d74e03fd1f76ed7998ef019eb98cad18d3190587e2d00b"
 
 [args]
 type = "object"
@@ -47,8 +47,8 @@ en = "Include subdirectories when discovering files."
 type = "boolean"
 default = false
 [args.properties.force.description]
-it = "Rianalizza tutte le foto; altrimenti riusa solo risultati completi con contenuto verificato identico."
-en = "Analyze every photo again; otherwise reuse only complete results with verified identical content."
+it = "Rianalizza tutte le foto; altrimenti riusa solo risultati completi con contenuto verificato identico. Un nuovo lavoro riprova comunque le foto non indicizzate."
+en = "Analyze every photo again; otherwise reuse only complete results with verified identical content. A new workload always retries photos previously not indexed."
 
 [args.properties.max_files]
 type = "integer"
@@ -150,7 +150,7 @@ hint = ["127.0.0.1"]
 when = {arg = "phase", values = ["analyze"]}
 
 [output]
-schema_inline = "{ ok: bool, entries: array, source_count?: integer, inventory_digest?: string, schema_version?: integer, base_path?: string, ok_count?: integer, fail_count?: integer, n_entries_total?: integer, refreshed_count?: integer, last_refresh_at?: number, index_path?: string, index_created?: bool, active_generation?: string, root_part?: string, n_entries?: integer, n_faces?: integer, n_images_with_visual_emb?: integer, version?: integer, model_text?: string, model_vlm?: string, model_face?: string, model_image?: string, dim_text?: integer, dim_image?: integer, dry_run?: bool, would_index_count?: integer, n_other_files?: integer, visited_dirs?: integer, walk_workers?: integer, error?: string, error_class?: string, error_code?: string }"
+schema_inline = "{ ok: bool, entries: array, source_count?: integer, inventory_digest?: string, schema_version?: integer, base_path?: string, ok_count?: integer, fail_count?: integer, n_entries_total?: integer, n_indexed?: integer, n_not_indexed?: integer, indexing_error_counts?: object, domain_outcome?: object, generation_files?: object, refreshed_count?: integer, last_refresh_at?: number, index_path?: string, index_created?: bool, active_generation?: string, root_part?: string, n_entries?: integer, n_faces?: integer, n_images_with_visual_emb?: integer, version?: integer, model_text?: string, model_vlm?: string, model_face?: string, model_image?: string, dim_text?: integer, dim_image?: integer, dry_run?: bool, would_index_count?: integer, n_other_files?: integer, visited_dirs?: integer, walk_workers?: integer, error?: string, error_class?: string, error_code?: string }"
 
 # Worker entries are opaque artifact receipts, never image-gallery results.
 # Public requests present the LRE status; this list is for receipt inspection.

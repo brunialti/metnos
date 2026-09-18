@@ -152,6 +152,51 @@ def test_successor_observer_accepts_mask_created_from_absent_name(tmp_path):
     assert _observe_retired((root, steps, {}, {}, {})).startswith("sha256:")
 
 
+@POSIX_ONLY
+@pytest.mark.parametrize("case", ["permission", "replacement", "appeared", "wrong_owner"])
+def test_absence_observer_refuses_unsafe_or_racing_directories(tmp_path, monkeypatch, case):
+    root = _tree(tmp_path)
+    parent = root / "scripts"
+    parent.chmod(0o755)
+    stat_call = neutralizer.os.stat
+    changed = False
+
+    def race(path, *args, **kwargs):
+        nonlocal changed
+        if path == "absent.py" and kwargs.get("dir_fd") is not None and not changed:
+            changed = True
+            if case == "permission":
+                parent.chmod(0o777)
+            elif case == "replacement":
+                parent.rename(root / "previous-scripts")
+                parent.mkdir(mode=0o755)
+            elif case == "appeared":
+                (parent / "absent.py").write_bytes(b"appeared")
+            raise FileNotFoundError(path)
+        return stat_call(path, *args, **kwargs)
+
+    if case == "wrong_owner":
+        monkeypatch.setattr(neutralizer.os, "geteuid", lambda: 98765)
+    else:
+        monkeypatch.setattr(neutralizer.os, "stat", race)
+    with pytest.raises(neutralizer.LegacyNeutralizerError):
+        neutralizer._observe_absent_repository_v1(root, "scripts/absent.py")
+
+
+@POSIX_ONLY
+@pytest.mark.parametrize("locator", ["/scripts/absent.py", "scripts/../absent.py", "scripts//absent.py", "scripts/./absent.py"])
+def test_absence_proof_rejects_noncanonical_locators(tmp_path, locator):
+    with pytest.raises(neutralizer.LegacyNeutralizerError, match="scripts"):
+        neutralizer._observe_absent_repository_v1(_tree(tmp_path), locator)
+
+
+@POSIX_ONLY
+def test_absence_cannot_replace_evidence_for_a_known_historical_file(retired_successor):
+    _root, steps, *_rest = retired_successor
+    with pytest.raises(neutralizer.LegacyNeutralizerError, match="neutralizer_successor_plan_invalid"):
+        _observe_retired(retired_successor, absent_repository_locators=frozenset({steps[0].locator}))
+
+
 class _Step:
     __slots__ = ("legacy_id", "action", "locator", "scope")
 

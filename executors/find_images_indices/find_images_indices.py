@@ -52,6 +52,9 @@ sys.path.insert(0, str(_RUNTIME))
 from messages import get as _msg  # noqa: E402
 from executor_helpers import run_stdio  # noqa: E402
 from index_schema import INDEX_SCHEMA_VERSION, is_unified_schema
+from image_index_outcomes import (
+    FAILURE_MARKER, DECODE_FAILURE_CODES, failure_description, is_not_indexed,
+)
 
 log = logging.getLogger(__name__)
 
@@ -289,7 +292,7 @@ def _resolve_base_path(base_path_arg) -> tuple[
     return None, None, f"base_path symbolic match not found: {arg}"
 
 
-def _load_unified_index(idx_dir: Path) -> tuple[list[dict], object | None, object | None, dict]:
+def _load_unified_index(idx_dir: Path, *, load_embeddings=True) -> tuple[list[dict], object | None, object | None, dict]:
     meta_p = idx_dir / "meta.json"
     if not meta_p.exists():
         return [], None, None, {}
@@ -315,6 +318,8 @@ def _load_unified_index(idx_dir: Path) -> tuple[list[dict], object | None, objec
     emb_text = None
     emb_face = None
     emb_image = None
+    if not load_embeddings:
+        return entries, emb_text, emb_face, meta
     try:
         import numpy as np
         et_p = idx_dir / "embeddings_text.npy"
@@ -467,6 +472,8 @@ def _corpus_token_embs(idx_dir):
         try:
             e = json.loads(line)
         except Exception:
+            continue
+        if is_not_indexed(e):
             continue
         for tok in (e.get("keywords") or []):
             t = str(tok).strip().lower()
@@ -935,6 +942,72 @@ def _apply_scene_similarity(entries, reference_images, meta, args):
     }
 
 
+def _diagnostic_code(args: dict) -> str | None:
+    """An exact reserved marker selects records, never semantic similarity."""
+    query = args.get("query_text")
+    query = query.strip() if isinstance(query, str) else ""
+    if query == FAILURE_MARKER:
+        return ""
+    for code in DECODE_FAILURE_CODES:
+        if query == f"{FAILURE_MARKER}:{code}":
+            return code
+    return None
+
+
+def _diagnostic_args_invalid(args: dict) -> bool:
+    query = args.get("query_text")
+    if not isinstance(query, str) or not query.strip().startswith(FAILURE_MARKER):
+        return False
+    if _diagnostic_code(args) is None:
+        return True
+    return (
+        any(args.get(key) for key in ("name", "names", "reference_images"))
+        or any(args.get(key) is not None for key in (
+            "near_lat", "near_lon", "min_face_pixels", "min_face_count", "max_face_count",
+            "text_score_min",
+        ))
+        or args.get("time_window", "all") not in (None, "", "all")
+        or args.get("similarity_threshold", 0) not in (None, 0)
+    )
+
+
+def _filter_not_indexed(entries: list[dict], args: dict, code: str) -> dict:
+    """List negative evidence without models, semantic ranking or image previews."""
+    selected = [entry for entry in entries if is_not_indexed(entry)
+                and (not code or entry.get("indexing_error_code") == code)]
+    paths = args.get("paths_filter")
+    if paths:
+        wanted = {_path_identity(path) for path in paths}
+        selected = [entry for entry in selected if _path_identity(entry.get("path", "")) in wanted]
+    selected.sort(key=lambda entry: str(entry.get("path", "")))
+    top_k, _explicit = _resolve_cap(args)
+    projected = []
+    total_size = 0
+    with_size = 0
+    for position, entry in enumerate(selected):
+        size = entry.get("size")
+        has_size = type(size) is int and size >= 0
+        if has_size:
+            total_size += size
+            with_size += 1
+        if position >= top_k:
+            continue
+        projected.append({
+            "path": entry.get("path"), "name": entry.get("name"),
+            "description": failure_description(entry["indexing_error_code"]), "keywords": [],
+            "score": 0.0, "match_type": "indexing_failure",
+            "indexing_status": "not_indexed",
+            "indexing_error_code": entry["indexing_error_code"],
+            **({"size_bytes": size} if has_size else {}),
+        })
+    return {
+        "entries": projected, "n_above_threshold": len(selected),
+        "applied_paths_filter": len(selected) if paths else None,
+        "metadata": {"total_count": len(selected), "total_size_bytes": total_size,
+                     "total_size_gb": round(total_size / (1024 ** 3), 2), "n_with_size": with_size},
+    }
+
+
 def _filter_unified(
     entries: list[dict], emb_text, emb_face, meta: dict, args: dict,
     idx_dir=None,
@@ -945,6 +1018,14 @@ def _filter_unified(
     idx_dir (opzionale): se passato, abilita query expansion BGE-M3 via
     cache `<idx_dir>/corpus_tokens.npz`. Compatibilita' all'indietro
     (default None: query expansion disattivata)."""
+    diagnostic_code = _diagnostic_code(args)
+    if diagnostic_code is not None:
+        return _filter_not_indexed(entries, args, diagnostic_code)
+    entries = [entry for entry in entries if not is_not_indexed(entry)]
+    if not entries:
+        return {"entries": [], "n_above_threshold": 0,
+                "metadata": {"total_count": 0, "total_size_bytes": 0,
+                             "total_size_gb": 0.0, "n_with_size": 0}}
     query_text = (args.get("query_text") or "").strip() or None
     name = (args.get("name") or "").strip() or None
     # §7.3: True dopo un filtro-VOLTO (name/names/reference). In tal caso il
@@ -1472,10 +1553,10 @@ def _check_args(args: dict) -> str | None:
     return None
 
 
-def _index_missing_result(base_path: Path | None) -> dict:
+def _index_missing_result(base_path: Path | None, *, diagnostic=False) -> dict:
     """Return an honest handoff; a read executor never starts a build."""
     target = base_path or (_user_data_root() / "Immagini")
-    return {
+    result = {
         "ok": False,
         "entries": [],
         "error_class": "index_missing",
@@ -1487,6 +1568,12 @@ def _index_missing_result(base_path: Path | None) -> dict:
             "args": {"base_path": str(target)},
         },
     }
+    if diagnostic:
+        # Listing failures is read-only even at the prerequisite boundary.
+        # Do not turn a missing diagnostic archive into a new indexing job.
+        result.update(error_class="not_found", error_code="diagnostic_index_missing")
+        result.pop("recommended_action")
+    return result
 
 
 def invoke(args):
@@ -1498,6 +1585,12 @@ def invoke(args):
             "error_code": "args_not_object",
             "error": _msg("ERR_ARGS_NOT_OBJECT"),
         }
+    if _diagnostic_args_invalid(args):
+        return {"ok": False, "entries": [], "error_class": "invalid_input",
+                "error_code": "diagnostic_query_invalid",
+                "error": _msg("ERR_ARG_INVALID", arg="query_text",
+                              reason="IMAGE_NOT_INDEXED")}
+    diagnostic = _diagnostic_code(args) is not None
     legacy_idx = args.get("idx")
     if legacy_idx is not None and legacy_idx not in ("", "all"):
         log.warning(
@@ -1512,7 +1605,7 @@ def invoke(args):
     # §2.4: un anno/mese-anno in query_text è un filtro temporale, non
     # contenuto. Estrailo in time_window (se non già esplicito) prima dello
     # scoring, così l'embedding semantico non viene inquinato dall'anno.
-    if args.get("query_text") and not args.get("time_window"):
+    if not diagnostic and args.get("query_text") and not args.get("time_window"):
         _residual, _tw = _split_temporal_from_query(str(args["query_text"]))
         if _tw is not None:
             args = dict(args)
@@ -1531,7 +1624,7 @@ def invoke(args):
     # la ricerca INTRECCIA volto∩scena ("ospite al mare" → ospite ∩ mare) invece
     # di cercare "ospite" come testo (bug live 8/6: trovava il mare, non la persona).
     # Dopo lo split temporale → "ospite al mare 2016" = volto∩scena∩tempo.
-    if args.get("query_text") and not args.get("name") and not args.get("names"):
+    if not diagnostic and args.get("query_text") and not args.get("name") and not args.get("names"):
         _lang = str(args.get("_lang") or "").strip() or _current_lang()
         _resid, _persons, _op = _split_persons_from_query(
             str(args["query_text"]), _lang)
@@ -1571,7 +1664,7 @@ def invoke(args):
             return {"ok": False, "entries": [], "error_class": "not_found",
                     "error_code": "ERR_PATH_NOT_FOUND",
                     "error": _msg("ERR_PATH_NOT_FOUND", path=_bad)}
-        return _index_missing_result(None)
+        return _index_missing_result(None, diagnostic=diagnostic)
 
     if multi_dirs is not None:
         return _invoke_multi_dirs(multi_dirs, args, msg)
@@ -1591,7 +1684,7 @@ def invoke(args):
                 "base_path": str(single_dir),
                 "schema_version": INDEX_SCHEMA_VERSION,
             }
-        return _index_missing_result(single_dir)
+        return _index_missing_result(single_dir, diagnostic=diagnostic)
 
     from index_schema import resolve_image_index_dir
     try:
@@ -1600,7 +1693,7 @@ def invoke(args):
         return {"ok": False, "entries": [], "error_class": "invalid_content",
                 "error_code": "index_reference_invalid",
                 "error": _msg("ERR_FILE_READ_FAILED", path=str(idx_dir / "meta.json"))}
-    entries, emb_text, emb_face, meta = _load_unified_index(idx_dir)
+    entries, emb_text, emb_face, meta = _load_unified_index(idx_dir, load_embeddings=not diagnostic)
     if not is_unified_schema(meta):
         return {
             "ok": False, "entries": [], "error_class": "schema_too_old",
@@ -1675,6 +1768,8 @@ def _build_attachments_from_entries(entries: list[dict]) -> list[dict]:
     for e in entries:
         if not isinstance(e, dict):
             continue
+        if is_not_indexed(e):
+            continue
         p = e.get("path")
         if not isinstance(p, str) or not p:
             continue
@@ -1704,6 +1799,7 @@ def _build_attachments_from_entries(entries: list[dict]) -> list[dict]:
 
 def _invoke_multi_dirs(dirs: list[_IndexedCorpus], args: dict,
                        msg: str | None) -> dict:
+    diagnostic = _diagnostic_code(args) is not None
     all_entries: list[dict] = []
     n_above = 0
     total_size_bytes = 0
@@ -1723,7 +1819,7 @@ def _invoke_multi_dirs(dirs: list[_IndexedCorpus], args: dict,
         except (ValueError, OSError):
             error_classes.add("invalid_content")
             continue
-        entries, emb_text, emb_face, meta = _load_unified_index(idx_dir)
+        entries, emb_text, emb_face, meta = _load_unified_index(idx_dir, load_embeddings=not diagnostic)
         if not is_unified_schema(meta):
             error_classes.add("schema_too_old")
             schema_too_old_dirs.append(str(d))
@@ -1787,13 +1883,14 @@ def _invoke_multi_dirs(dirs: list[_IndexedCorpus], args: dict,
                             "(Google Vision API).")
         elif "index_missing" in error_classes:
             missing = _index_missing_result(
-                dirs[0].base_path if dirs else None)
+                dirs[0].base_path if dirs else None, diagnostic=diagnostic)
             out.update({
                 "error_class": missing["error_class"],
                 "error_code": missing["error_code"],
                 "error": missing["error"],
-                "recommended_action": missing["recommended_action"],
             })
+            if "recommended_action" in missing:
+                out["recommended_action"] = missing["recommended_action"]
         elif error_classes:
             out["error_class"] = sorted(error_classes)[0]
     # Truncated check: confronto contro n_above (totale above threshold

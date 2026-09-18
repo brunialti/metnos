@@ -198,6 +198,37 @@ def plan_digest_v1(steps: Sequence[LegacyRetirementStepV1]) -> str:
     return f"sha256:{digest.hexdigest()}"
 
 
+def require_successor_retirement_v1(
+    previous: Sequence[LegacyRetirementStepV1],
+    current: Sequence[LegacyRetirementStepV1],
+) -> None:
+    """Allow only additional repository observations, never weakened retirement.
+
+    This checks the decision, not its completion. Every added entry still needs
+    filesystem evidence bound to the immutable initial predecessor inventory.
+    New unit retirements require a separate supported transition.
+    """
+    for steps in (previous, current):
+        plan_digest_v1(steps)  # Validate nominal step types before field access.
+        if len({step.legacy_id for step in steps}) != len(steps):
+            raise _invalid("legacy_retirement_successor_changed", "duplicate identity")
+    old = {step.legacy_id: step for step in previous}
+    new = {step.legacy_id: step for step in current}
+    if any(new.get(key) != step for key, step in old.items()):
+        raise _invalid("legacy_retirement_successor_changed", "removed or changed")
+    occupied = {(step.scope, step.locator) for step in previous}
+    for step in current:
+        if step.legacy_id in old:
+            continue
+        if (
+            step.scope != "repository" or step.kind not in {"script", "python_module"}
+            or step.action != "revoke_repository_entrypoint"
+            or (step.scope, step.locator) in occupied
+        ):
+            raise _invalid("legacy_retirement_successor_changed", "unsupported addition")
+        occupied.add((step.scope, step.locator))
+
+
 def require_no_legacy_in_flight_v1(
     steps: Sequence[LegacyRetirementStepV1],
     observed_states: Mapping[tuple[str, str], str],

@@ -163,29 +163,10 @@ def apply_feedback(turn_id: str, action: str, by: str = "user") -> dict:
     # controlla se uno dei tool ha superato la soglia ✗ consecutive. Il
     # count comprende il feedback CORRENTE (lookback storia + 1). Demote
     # solo synth non-protetti (ADR 0114 L3, enforcement in apply_feedback_ager).
-    if action == "error" and pipeline:
-        try:
-            from runtime_settings import feedback_error_demote_threshold
-            from executor_aging import apply_feedback_ager
-            threshold = feedback_error_demote_threshold()
-        except Exception as ex:
-            log.warning("turn_feedback: demote setup failed: %r", ex)
-            threshold = 0
-        if threshold > 0:
-            for tool_name in dict.fromkeys(pipeline):  # dedup preservando ordine
-                prior = count_consecutive_errors_for_tool(tool_name)
-                consecutive = prior + 1  # include feedback corrente
-                if consecutive >= threshold:
-                    try:
-                        out = apply_feedback_ager(
-                            tool_name, consecutive_errors=consecutive)
-                    except Exception as ex:
-                        log.warning(
-                            "turn_feedback: apply_feedback_ager(%s) failed: %r",
-                            tool_name, ex)
-                        out = {"action": "noop",
-                               "reason": f"ager_error: {ex}"}
-                    effects.append({"type": "feedback_demote", **out})
+    # RM-0008 F5: la soglia resta una sola, l'effetto segue il proprietario
+    # dello stato di ciclo di vita (nome storico vs generazione esatta).
+    if pipeline and action in ("ok", "error"):
+        effects.extend(_tool_verdict_effects(turn, steps, pipeline, action))
 
     # ── Fastpath L0 valve (12/6/2026, §2.8) ───────────────────────────
     # Un ✗ cancella la riga L0 della query del turno (qualunque layer
@@ -250,6 +231,131 @@ def apply_feedback(turn_id: str, action: str, by: str = "user") -> dict:
 
     _append_feedback(record)
     return record
+
+
+_FAILURE_EVIDENCE_DOMAIN = b"metnos.turn-feedback.failure-evidence/v1\0"
+
+
+def _failure_evidence_hash(turn: dict, receipt_id: str, consecutive: int) -> str:
+    """Bind the quarantine to the exact signal that justified it."""
+    import hashlib
+    payload = json.dumps({
+        "turn_id": turn.get("turn_id") or "",
+        "execution_receipt_id": receipt_id,
+        "consecutive_errors": consecutive,
+        "signal": "user_feedback_error",
+    }, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return "sha256:" + hashlib.sha256(_FAILURE_EVIDENCE_DOMAIN + payload).hexdigest()
+
+
+def _last_execution_receipt(steps: list, tool_name: str):
+    """Return the record of the last invocation of that tool in this turn."""
+    record = None
+    for step in steps:
+        if isinstance(step, dict) and step.get("chosen_tool") == tool_name:
+            record = step.get("execution_receipt") or record
+    return record
+
+
+def _aged_demote(tool_name: str, consecutive: int) -> dict:
+    """Legacy effect: demote by executor name in the aging store."""
+    try:
+        from executor_aging import apply_feedback_ager
+        result = apply_feedback_ager(tool_name, consecutive_errors=consecutive)
+    except Exception as ex:
+        log.warning("turn_feedback: apply_feedback_ager(%s) failed: %r", tool_name, ex)
+        result = {"action": "noop", "reason": f"ager_error: {ex}"}
+    return {"type": "feedback_demote", **result}
+
+
+def _exact_generation_demote(turn: dict, steps: list, tool_name: str,
+                             consecutive: int) -> dict:
+    """Quarantine the generation that actually ran, never the name.
+
+    A step without a retained receipt predates the exact identity; it is
+    reported as such instead of silently demoting a sibling generation.
+    """
+    from executor_birth_feedback import FeedbackError, execution_receipt_from_record
+    from executor_birth_lifecycle import LifecycleError, apply_execution_failure
+
+    record = _last_execution_receipt(steps, tool_name)
+    if record is None:
+        return {"type": "feedback_quarantine", "tool": tool_name,
+                "status": "no_execution_receipt"}
+    try:
+        receipt = execution_receipt_from_record(record)
+        outcome = apply_execution_failure(
+            receipt,
+            failure_evidence_hash=_failure_evidence_hash(
+                turn, receipt.receipt_id, consecutive),
+            error_code="user_feedback_error",
+        )
+    except (FeedbackError, LifecycleError, OSError, RuntimeError) as ex:
+        log.warning("turn_feedback: exact quarantine refused for %s: %r", tool_name, ex)
+        return {"type": "feedback_quarantine", "tool": tool_name, "status": "refused",
+                "reason": getattr(ex, "code", type(ex).__name__)}
+    return {"type": "feedback_quarantine", "tool": tool_name,
+            "status": outcome.status.value, "receipt_id": outcome.receipt_id,
+            "failure_job_id": outcome.failure_job_id,
+            "quarantine_applied": outcome.quarantine_applied}
+
+
+def _tool_verdict_effects(turn: dict, steps: list, pipeline: list,
+                          action: str) -> list[dict]:
+    """Record the verdict per tool and apply the one consecutive-✗ threshold.
+
+    An installation that cannot say which store owns its lifecycle state gets
+    no effect at all: writing the name-based demote there would update exactly
+    the store a completed migration retired.
+    """
+    try:
+        from runtime_settings import feedback_error_demote_threshold
+        threshold = feedback_error_demote_threshold()
+    except Exception as ex:
+        log.warning("turn_feedback: demote setup failed: %r", ex)
+        threshold = 0
+    try:
+        from executor_birth_activation_mode import (
+            BirthStateOwner, read_birth_activation_state,
+        )
+        exact = read_birth_activation_state().owner is BirthStateOwner.EPOCH
+    except Exception as ex:
+        log.warning("turn_feedback: lifecycle state owner unreadable: %r", ex)
+        return [{"type": "feedback_demote", "action": "refused",
+                 "reason": getattr(ex, "code", "birth_activation_unreadable")}]
+    effects: list[dict] = []
+    for tool_name in dict.fromkeys(pipeline):  # dedup preservando ordine
+        counted = (_record_exact_verdict(steps, tool_name, action)
+                   if exact else None)
+        if action != "error" or threshold <= 0:
+            continue
+        # Il conteggio esatto della generazione ha precedenza sullo storico
+        # per nome: e' lo stesso segnale, contato dove l'esecuzione e' avvenuta.
+        consecutive = (counted if counted is not None
+                       else count_consecutive_errors_for_tool(tool_name) + 1)
+        if consecutive < threshold:
+            continue
+        effects.append(
+            _exact_generation_demote(turn, steps, tool_name, consecutive)
+            if exact else _aged_demote(tool_name, consecutive)
+        )
+    return effects
+
+
+def _record_exact_verdict(steps: list, tool_name: str, action: str) -> int | None:
+    """Count the verdict against the generation that actually ran."""
+    from executor_birth_feedback import FeedbackError, execution_receipt_from_record
+    from executor_lifecycle_state import record_verdict
+
+    record = _last_execution_receipt(steps, tool_name)
+    if record is None:
+        return None
+    try:
+        receipt = execution_receipt_from_record(record)
+    except FeedbackError as ex:
+        log.warning("turn_feedback: verdict for %s not counted: %r", tool_name, ex)
+        return None
+    return record_verdict(receipt, positive=action == "ok")
 
 
 def _append_feedback(record: dict) -> None:

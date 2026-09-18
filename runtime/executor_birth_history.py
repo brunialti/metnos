@@ -168,8 +168,14 @@ def reconcile_historical_birth_v1(
                     classification = "reattestation"
                 else:
                     joined = verify_historical_publication_v1(**inputs)
+                    # A quarantine changes one manifest field, so the revision
+                    # class calls it a contract revision. It is the removal of
+                    # execution authority from an admission that already
+                    # happened, never a new one, and counting it would let a
+                    # withdrawal raise the admission threshold.
                     classification = (
-                        "preexercise" if admission.approved_lifecycle is ApprovedLifecycle.PREEXERCISE
+                        "quarantine" if admission.approved_lifecycle is ApprovedLifecycle.QUARANTINED
+                        else "preexercise" if admission.approved_lifecycle is ApprovedLifecycle.PREEXERCISE
                         else "technical_candidate" if admission.revision_class in _TECHNICAL_REVISIONS
                         else "nontechnical_revision"
                     )

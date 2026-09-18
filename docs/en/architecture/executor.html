@@ -414,6 +414,23 @@ whereas a batching backend can admit more requests. Executors do not hide
 independent competing concurrency pools.
 </p>
 
+<p>For LRE workloads, a registered package may supply verified identities for
+every mutable target of an invocation. The scheduler reserves the set
+atomically: disjoint writes may proceed, overlapping writes remain queued.
+For paths, a directory and any descendant also overlap. Without this evidence,
+execution remains serial. This control covers the same executor in the same
+process; it does not replace filesystem protection or coordination across
+processes. Permissions, frozen contracts, and saved results remain unchanged.</p>
+
+<p>Central resource capacities are configurable in the
+<code>[execution_resources]</code> section of the private
+<code>runtime.toml</code>, for example <code>cpu = 4</code> and
+<code>vlm = 4</code>. Corresponding environment variables take precedence;
+defaults remain unchanged. These are logical execution slots, not four
+physical cores or GPU activation. Configuration is read when the scheduler
+is constructed, without resizing reservations already in use. Measure the
+benefit and verify workload resumption before raising these limits.</p>
+
 <p>
 Recursive filesystem searches use one shared visitor: directories form a
 dynamic queue, idle workers take the next branch, and results are reordered

@@ -72,6 +72,26 @@ parole come “lungo”, “in background” o “molti file”.</p>
  </tbody>
 </table>
 
+<h2 id="error-history">Traccia degli errori dopo la conclusione</h2>
+
+<p>Nel dettaglio del lavoro rimangono gli <strong>elementi con errore</strong>:
+il totale (<code>nitems</code>) e il conteggio per codice, anche dopo un riavvio.
+Si contano gli elementi segnalati dai risultati confermati, non i tentativi
+ripetuti. Se le categorie sono molte, la console mostra le venti più frequenti,
+ma il totale le comprende tutte. Gli errori tecnici dei tentativi restano
+separati. Il riepilogo vale per ogni tipo di lavoro che dichiara questi esiti;
+LRE non interpreta i file o i codici dei singoli domini. La traccia resta
+disponibile finché viene conservato lo storico del lavoro.</p>
+
+<h3 id="attempt-error-history">Errori dei tentativi, anche se superati</h3>
+
+<p>La sezione richiudibile <strong>Tentativi con errore (storico)</strong>
+conserva numero e codici degli errori registrati durante i tentativi, anche se
+un tentativo successivo riesce. Conta tentativi, non foto o elementi: non si
+somma a <code>nitems</code> e non indica necessariamente un problema ancora
+presente. Un lavoro completamente riuscito può quindi avere una storia di
+errori recuperati senza essere dichiarato fallito.</p>
+
 <h2 id="photo-indexing">Indicizzazione delle foto: primo utilizzo e ricerche successive</h2>
 
 <p>La ricerca nel <strong>contenuto delle fotografie</strong> usa un indice
@@ -120,16 +140,77 @@ la persona non devono appartenere all'archivio da cercare.</p>
 
 <h3 id="photo-indexing-resume">Piccoli passi riprendibili</h3>
 
-<p>LRE scopre i file in background, prepara il contesto delle cartelle e
-analizza le foto in piccoli gruppi. Le unità indipendenti possono sovrapporsi
-entro i limiti delle risorse configurate; la capacità dei modelli non è
-illimitata. Le unità completate e i loro risultati verificati sopravvivono al
-riavvio del worker: il lavoro può riprendere senza ripetere i passi già
-accettati. Il modello visivo locale si avvia quando serve e può spegnersi
-dopo un periodo di inattività. Il nuovo indice diventa visibile solo alla
-pubblicazione della generazione completa; un indice completo precedente resta
-utilizzabile durante la ricostruzione. Un errore nei modelli o nei file rimane
-visibile come problema del lavoro, non come indicizzazione riuscita.</p>
+<p>LRE scopre i file in background, prepara le cartelle e analizza le foto in
+piccoli gruppi, in parallelo entro le risorse configurate. Solo unità completate e accettate
+e risultati verificati sopravvivono al riavvio senza ripetizioni. La scansione
+iniziale è un batch: definisce il totale dei gruppi e, se interrotta prima
+della conferma, ricomincia; le parti intermedie non sono un cursore di ripresa.
+Effetti o consumi incerti possono richiedere verifica prima di riprovare: il riavvio
+non risolve il problema. Il modello visivo locale parte quando serve e può
+spegnersi per inattività. Il nuovo indice appare solo alla pubblicazione della
+generazione completa; il precedente indice completo resta utilizzabile.
+Un errore di modello o file rimane visibile come problema, non come successo.</p>
+
+<h3 id="photo-indexing-integrity">Integrità e limiti della ripresa</h3>
+
+<p>Una foto non decodificabile non è necessariamente danneggiata: il lettore
+potrebbe non supportarne il formato o la variante. L'indicizzazione registra un
+esito negativo per quella foto e continua sulle altre. La descrizione comincia
+con <code>IMAGE_NOT_INDEXED:image_decode_failed</code>, oppure con
+<code>IMAGE_NOT_INDEXED:image_format_unreadable</code> se il formato non viene
+riconosciuto. Il prefisso è fisso, in inglese e fuori dal sistema di traduzione;
+solo la spiegazione successiva è tradotta. Non vengono inventati contenuti o
+vettori: la foto resta distinta da quelle indicizzate con successo.</p>
+
+<h3 id="photo-indexing-outcomes">Completamento con errori espliciti</h3>
+
+<p>A fine lavoro il totale delle sorgenti deve coincidere con foto indicizzate
+più foto non indicizzate. Se esistono esiti negativi, LRE indica
+<strong>completato con errori</strong>, anche se tutti i batch sono conclusi.
+Gli errori diventano visibili alla conferma di ciascun batch, senza essere
+ricontati nelle fasi di unione e pubblicazione. Errori di modelli, autorità,
+contabilità o integrità delle sorgenti non diventano foto da saltare.</p>
+
+<h3 id="photo-indexing-recovery-evidence">Contabilità e prove di recupero</h3>
+
+<p>Coordinate GPS EXIF non leggibili, comprese frazioni con denominatore zero,
+vengono omesse: una fotografia decodificabile continua a essere analizzata e
+indicizzata. Se un executor gestito termina con un'eccezione applicativa,
+conserva i consumi delle chiamate al modello già registrate e segnala il
+fallimento. Le chiamate iniziate senza un resoconto restano consumi incerti;
+la correzione non ricostruisce automaticamente contatori persi in passato.</p>
+
+<p>Un recupero amministrativo può ammettere una continuazione con riferimenti
+espliciti a risultati già confermati: proprietario, schema e impronta vengono
+verificati prima di leggerne le voci. Il vecchio lavoro e i suoi consumi non
+vengono riscritti. Quando manca un resoconto, la continuazione può riservare
+l'intero massimo del contratto locale a costo zero e sottrarlo, insieme ai
+consumi noti, dal budget precedente. Questa riserva non è un consumo misurato.
+Senza un limite verificabile o budget sufficiente il recupero si ferma.
+Per le foto, classificazioni già confermate e salvataggi intermedi compatibili
+permettono di continuare la stessa generazione senza ripetere le analisi riuscite.
+Non è una riprova automatica della revisione bloccata.</p>
+
+<h3 id="photo-indexing-diagnostics">Identificare e riprovare le foto non indicizzate</h3>
+
+<p>Per identificare le foto interessate usa nella ricerca dell'indice la parola
+esatta <code>IMAGE_NOT_INDEXED</code>, oppure uno dei due prefissi completi.
+Ottieni un elenco diagnostico con percorso e motivo, senza analisi semantica o
+anteprime delle immagini; non viene avviata una nuova indicizzazione. Le ricerche
+ordinarie escludono questi record. Un nuovo aggiornamento incrementale riprova
+le foto non indicizzate e riusa i risultati validi compatibili: non viene creato
+un ciclo automatico di ritentativi. Nella stessa generazione i salvataggi
+intermedi verificati possono essere riutilizzati; un nuovo lavoro non garantisce
+il riuso di checkpoint privati di una generazione fallita. Gli originali e lo
+storico non vengono cancellati.</p>
+
+<h3 id="photo-indexing-publication">Verifica dei file pubblicati</h3>
+
+<p>La pubblicazione verifica dimensioni e impronte dei cinque file dell'indice,
+anche quando riprende dopo un'interruzione: la sola presenza dei file non prova
+che la generazione sia integra. Gli indici precedenti restano leggibili; una
+generazione storica priva di queste prove non può certificare una nuova
+pubblicazione mediante il percorso di ripresa rapida.</p>
 
 <h3 id="photo-indexing-duration">Perché la prima preparazione può durare molto</h3>
 
@@ -232,6 +313,18 @@ tentativi. Un'azione che modifica dati ha un solo tentativo automatico: se il
 servizio si interrompe dopo averla invocata ma prima di registrarne il
 risultato, LRE richiede attenzione invece di rischiare un secondo effetto.</p>
 
+<h3 id="error-recovery">Errori recuperabili e richiesta di attenzione</h3>
+<p>LRE riprova automaticamente soltanto gli errori dichiarati recuperabili, entro
+i tentativi e gli effetti consentiti dal piano. Esaurire quei tentativi non rende
+permanente la causa: il lavoro passa a <strong>Richiede attenzione</strong>, con
+i batch in attesa e i risultati già salvati conservati. Un errore di causa ignota
+richiede subito una verifica, senza tentativi alla cieca. Dopo la verifica,
+<strong>Riprova</strong> autorizza un solo nuovo tentativo; non azzera il limite.
+Consumi sconosciuti, autorizzazioni mancanti o effetti ambigui possono ancora
+impedire la ripresa. Errori esplicitamente permanenti o contratti non validi non
+vengono trasformati in recuperabili. Lo storico distingue il codice generale e,
+quando disponibile, la causa approvata; i conteggi sono tentativi, non elementi.</p>
+
 <div class="callout note"><p><strong>Garanzia corretta.</strong> LRE usa
 tentativi con semantica <em>at least once</em> e ammette un solo commit valido per unità. Può rendere un
 effetto osservabile una sola volta quando l'operazione è pura, idempotente o
@@ -264,7 +357,7 @@ utente e non deve essere azionato prima di ogni richiesta.</p></div>
 <ol>
  <li><strong>Configurazione iniziale dell'amministratore.</strong> In <a href="services.html">Sistema → Servizi</a>, verifica che il worker LRE sia sano e abilita l'accettazione dei lavori. Nelle nuove installazioni è disattivata per impostazione predefinita; l'impostazione rimane valida finché non viene cambiata.</li>
  <li><strong>Uso normale.</strong> Descrivi in chat l'esito desiderato e indica le sorgenti autorizzate, senza impartire comandi a LRE.</li>
- <li><strong>Scelta automatica.</strong> Se il piano definitivo contiene un'azione intrinsecamente lunga e compatibile, Metnos crea il piano LRE e restituisce una ricevuta con il <code>workload_id</code>. Non devi conoscere né scegliere un profilo.</li>
+ <li><strong>Scelta automatica.</strong> Se il piano definitivo contiene un'azione intrinsecamente lunga e compatibile, Metnos crea il piano LRE e restituisce una ricevuta con il <code>workload_id</code>. Nella chat web, <code>/admin/lre</code> è un collegamento cliccabile alla console della stessa installazione, anche nelle ricevute salvate. Non devi conoscere né scegliere un profilo.</li>
  <li><strong>Esito trasparente.</strong> Un'azione breve continua nel turno. Un'azione lunga non ancora rappresentabile viene fermata con una spiegazione e non viene eseguita nel percorso interattivo senza le necessarie garanzie.</li>
  <li><strong>Controllo facoltativo.</strong> Puoi chiudere la pagina e continuare a usare Metnos. Quando vuoi, apri <code>Settings → Sistema → LRE</code> per controllare stato, denominatore, budget, fasi ed eventi.</li>
  <li><strong>Verifica finale.</strong> Al termine, controlla i digest e la convalida degli artefatti prima di scaricarli.</li>
@@ -283,7 +376,7 @@ essere aggiunto senza perdere tracciabilità o sicurezza.</p>
 <table>
  <thead><tr><th>Limite attuale</th><th>Effetto pratico</th><th>Estensione corretta</th></tr></thead>
  <tbody>
-  <tr><td>Piani automatici composti</td><td>L'attuale percorso automatico accoda una sola azione lunga indipendente. Se il piano contiene più passaggi eseguibili o dipendenze ancora da risolvere, il lavoro non parte.</td><td>Compilare l'intero piano definitivo nel grafo tipizzato di LRE, con riferimenti e controlli espliciti; non conservarlo come blocco opaco.</td></tr>
+  <tr><td>Piani automatici composti</td><td>L'attuale percorso automatico accoda una sola azione lunga indipendente. Se il piano contiene più passaggi eseguibili o dipendenze ancora da risolvere, il lavoro non parte.</td><td>Compilare l'intero piano definitivo nel grafo tipizzato di LRE, con riferimenti e controlli espliciti; non conservarlo come batch opaco.</td></tr>
   <tr><td>Executor intelligenti</td><td>Il percorso diretto esclude per ora gli executor che usano modelli linguistici o di visione senza un legame completo e immutabile.</td><td>Congelare prompt, lingua, modello, limiti di chiamata, token e costo nello stesso contratto; poi usare la medesima interfaccia generale.</td></tr>
   <tr><td>Destinazione remota implicita</td><td>Un executor utilizzabile soltanto su un dispositivo non viene accodato finché il dispositivo esatto non è stato risolto.</td><td>Indicare il dispositivo nella richiesta oppure aggiungere una risoluzione deterministica e verificabile prima dell'ammissione.</td></tr>
   <tr><td>Executor monolitico</td><td>LRE vede una sola unità e non può riprendere a metà di un ciclo interno non dichiarato.</td><td>Esporre l'attività come unità generali, identificabili e idempotenti, oppure come riduzione a lotti; non aggiungere casi speciali per dominio.</td></tr>
@@ -307,26 +400,14 @@ essere aggiunto senza perdere tracciabilità o sicurezza.</p>
 
 <p>La console è il registro operativo dei lavori, non il comando che li avvia.
 Si apre nella chat web da <code>Settings → Sistema → LRE</code>. Il riquadro a
-sinistra elenca i lavori visibili al proprietario: premi <strong>Apri</strong>
+sinistra elenca i lavori visibili al proprietario: seleziona un lavoro
 su una riga per caricare nel riquadro destro revisione, avanzamento, limiti,
-fasi, eventi, unità e artefatti. Se l'elenco è vuoto, non esistono lavori LRE
-per quell'identità; se la pagina è indisponibile, controlla il servizio in
+fasi, eventi, unità e artefatti. Solo una lettura riuscita con elenco vuoto indica
+che non esistono lavori LRE per quell'identità. Un errore di lettura indica stato
+non disponibile, non assenza di lavori; gli ultimi dati disponibili restano
+visibili ma sono segnalati come non aggiornati. Se la pagina è indisponibile, controlla il servizio in
 <code>Settings → Sistema → Servizi</code>. Non occorre lasciare aperta la
 console perché il lavoro continui.</p>
-
-<h3 id="activity-state">Motore, attesa e risultati confermati</h3>
-<p><strong>Motore disabilitato</strong>: LRE non prende nuovi lavori né avvia
-nuove unità; lavori e risultati salvati restano consultabili.
-<strong>In coda</strong> indica un lavoro accodato; <strong>In attesa</strong>
-un'unità non ancora eseguita, che può attendere risorse o dipendenze.
-Non significa in attesa di approvazione; <strong>Richiede attenzione</strong>
-è distinto. I <strong>risultati confermati</strong> sono i <strong>Blocchi
-riusciti</strong>: risultati salvati definitivamente, non il completamento
-dell'intero lavoro. Falliti, saltati e da verificare sono separati; il totale
-può crescere durante la scoperta. I blocchi non sono necessariamente singoli
-file. <strong>Ultimo blocco riuscito</strong> indica un risultato confermato;
-<strong>Aggiornato</strong> può cambiare senza nuovi risultati e non dimostra
-avanzamento.</p>
 
 <figure class="ui-guide">
  <div class="ui-shot-frame">
@@ -338,19 +419,39 @@ avanzamento.</p>
   <span class="ui-badge" style="--x:77%;--y:62%" aria-hidden="true">5</span>
   <span class="ui-badge" style="--x:76%;--y:88%" aria-hidden="true">6</span>
  </div>
- <figcaption>Un lavoro pilota completato: la console espone il denominatore reale, i limiti ammessi e la composizione del piano.</figcaption>
+ <figcaption>Schermata storica di un lavoro pilota completato; i nuovi campi temporali descritti sotto non sono presenti nell'immagine.</figcaption>
 </figure>
+<p>La tabella compatta separa <strong>Valore</strong> e <strong>Significato</strong>.
+Per esempio, 10 batch completati nella fase, 967 previsti nella stessa fase e
+1.935 batch noti nell'intero lavoro sono tre misure diverse: 10/967 è circa l'1%
+della fase, non il 50% del tempo. Il totale noto può aumentare quando vengono
+preparate altre fasi. Un dato assente è <strong>n.a.</strong>, non zero.</p>
 <ol class="ui-callout-list">
  <li><strong>Navigazione generale.</strong> Apri <code>Settings → Sistema → LRE</code>; la voce resta visibile nella colonna di navigazione dell'interfaccia web.</li>
- <li><strong>Elenco dei lavori.</strong> Ogni riga mostra stato e avanzamento; il pulsante <strong>Apri</strong> carica il dettaglio senza avviare una nuova esecuzione.</li>
- <li><strong>Quadro del lavoro.</strong> Separa lo stato del motore da quello del lavoro: un motore disponibile non prova che il lavoro avanzi. Mostra i blocchi riusciti separatamente da quelli non conclusi, da verificare, falliti o annullati e saltati. I blocchi non corrispondono necessariamente a singole foto o file; il totale può crescere durante la scoperta.</li>
+ <li><strong>Elenco dei lavori e fase.</strong> Ogni riga mostra attività, cartella disponibile, stato e avanzamento. Selezionarla carica il dettaglio senza avviare una nuova esecuzione. Elenco e dettaglio identificano la fase con <strong>Fase x/y</strong> e, quando disponibile, il suo nome. La numerazione segue il piano ammesso ed esclude l'inventario tecnico interno; non misura l'avanzamento temporale. Se più fasi sono attive insieme, non viene inventata una fase unica.</li>
+ <li><strong>Che cos'è un batch.</strong> È una parte del lavoro che LRE esegue e registra separatamente. Non ha una dimensione o una durata fissa e il concetto è indipendente dal tipo di attività. Alla ripresa della stessa revisione, i batch già completati restano salvati; quello interrotto può essere ritentato. I salvataggi parziali interni a un batch dipendono dalla capacità che lo esegue, non sono garantiti dal solo conteggio LRE.</li>
+ <li><strong>Avvio, avanzamento e fine stimata.</strong> L'avvio è il primo avvio effettivo della revisione corrente, senza includere la coda. La percentuale principale e i batch completati e previsti riguardano solo la fase indicata, con totale definitivo: non sommano preparazione e lavorazioni successive e non misurano il tempo rimanente. Una riga separata mostra il totale noto di tutte le fasi, che può crescere. La stima della fine riguarda la stessa fase e richiede inventario chiuso, una sola fase attiva interamente preparata e almeno tre batch completati in quella fase. Errori o ritentativi ancora irrisolti, consumi incerti, pausa, motore non pronto, dati non aggiornati o progressi non recenti producono <strong>n.a.</strong> (non disponibile), con il motivo visibile anche nell'elenco. Dopo un ritentativo riuscito, il batch torna a contribuire alla stima una sola volta: il tempo perso nel recupero resta compreso nel ritmo osservato e l'errore rimane nello storico. Motivo e stima si aggiornano insieme. La previsione non si sposta semplicemente aggiornando la pagina. L'eventuale stima dell'intero lavoro resta separata nei dettagli tecnici ed è disponibile solo per piani a fase unica. Anche avvio e percentuale mostrano <strong>n.a.</strong> quando mancano i dati necessari.</li>
+ <li><strong>Quadro del lavoro.</strong> Separa lo stato del motore da quello del lavoro: un motore disponibile non prova che il lavoro avanzi. Nei dettagli tecnici i batch completati restano distinti da quelli non conclusi, da verificare, falliti o annullati e saltati. Durante la preparazione il totale può crescere.</li>
+ <li><strong>Rimozione dall'elenco.</strong> Quando un lavoro è terminato, il comando <strong>Rimuovi dalla lista</strong> lo nasconde dalla console del proprietario. Risultati, artefatti, cronologia tecnica e riferimenti necessari al recupero restano conservati secondo le rispettive regole. Un lavoro ancora eseguibile deve prima essere annullato.</li>
+ <li><strong>Richiesta di verifica.</strong> Sospende l'avvio di nuovi batch; quelli già avviati possono ancora terminare e salvare risultati. Leggi la causa registrata prima di riprovare: questo stato non significa necessariamente che i consumi siano sconosciuti. Un riavvio non corregge la causa e può interrompere lavoro ancora utile.</li>
+ <li><strong>Recupero delle foto.</strong> Le analisi complete e gli esiti negativi espliciti sono salvati anche all'interno di un batch non ancora concluso e possono essere riusati in un tentativo autorizzato della stessa generazione. Il riuso verifica sorgente e contesto; non rende ricercabile un indice incompleto. Sono supportate anche le foto HEIC. Le foto non decodificabili sono registrate separatamente: il numero di batch completati non equivale al numero di foto indicizzate con successo.</li>
  <li><strong>Freschezza e problemi.</strong> La pagina ricontrolla periodicamente lo stato e segnala quando i dati non sono aggiornati. Una disconnessione non mantiene una falsa indicazione di avanzamento. Le cause disponibili sono in evidenza; un aggiornamento generico dello stato non è presentato come nuovo risultato. Dopo aver caricato altre pagine dell'elenco, usa <strong>Aggiorna elenco e stato</strong> per tornare alla prima pagina aggiornata.</li>
- <li><strong>Dettagli facoltativi.</strong> Impronte, piano, fasi e limiti restano consultabili in <strong>Dettagli tecnici</strong>. L'identificativo distingue i lavori senza mostrare il testo privato della richiesta.</li>
+ <li><strong>Parallelismo.</strong> I batch in esecuzione sono distinti dal limite di concorrenza ammesso per quel lavoro. Non sono un conteggio di thread o processi; altri lavori e limiti delle risorse possono ridurre il parallelismo effettivo. Il motore può eseguire insieme batch indipendenti di qualunque attività compatibile, rispettando contratti e risorse assegnate. Aumentare il limite non modifica il piano né ripete i batch già salvati. Dopo un aggiornamento, la ripresa dello stesso job richiede ancora contratti compatibili.</li>
+ <li><strong>Scansione e stime mancanti.</strong> Durante la scoperta iniziale delle foto la percentuale è n.a.: il totale definitivo non è ancora noto. La fine prevista mostra un motivo quando manca, dando precedenza a un lavoro che richiede intervento. La stima della fase corrente non è la stima complessiva dei lavori multifase, che rimane non disponibile.</li>
+ <li><strong>Dettagli facoltativi.</strong> Spiegazioni, eventi, impronte, piano, fasi e limiti sono in sezioni richiudibili. L'identificativo distingue i lavori senza mostrare il testo privato della richiesta.</li>
  <li><strong>Digest della revisione.</strong> I digest rendono riconoscibili il piano e l'inventario effettivamente ammessi.</li>
  <li><strong>Budget approvato.</strong> Espone tetti di unità, tentativi, durata, byte, token, artefatti e concorrenza.</li>
  <li><strong>Fasi.</strong> Per ogni fase indica executor, avanzamento, tempo massimo, obbligatorietà e risorse.</li>
 </ol>
 <p class="ui-privacy-note">Il corpus mostrato è sintetico e non sensibile; l'identificativo è operativo e non contiene dati personali.</p>
+
+<p><strong>Coordinamento delle risorse.</strong> La
+prenotazione congiunta delle risorse evita di trattenere CPU mentre si attende
+un modello o un&rsquo;altra risorsa. Nei nuovi processi locali gestiti, i thread
+delle librerie numeriche sono limitati dalla capacit&agrave; CPU effettiva,
+dalle quote assegnate e dal parallelismo interno. Sono limiti di concorrenza,
+non core riservati in esclusiva. Il ciclo di vita dei modelli &egrave; separato
+dalla pianificazione LRE: <a href="../architecture/virtualization.html#resource-lifecycle">confine con Virt</a>.</p>
 
 </body>
 </html>

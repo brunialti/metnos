@@ -12,9 +12,9 @@ WorkingDirectory=@REPO_DIR@
 ExecStart=@VENV@/bin/python -m durable_workloads.service
 Restart=on-failure
 RestartSec=5
-TimeoutStopSec=45
+TimeoutStopSec=10min
 KillSignal=SIGTERM
-KillMode=control-group
+KillMode=mixed
 Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONPATH=@REPO_DIR@/runtime
 Environment=METNOS_INSTALL_ROOT=@REPO_DIR@

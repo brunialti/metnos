@@ -62,6 +62,19 @@
  conservare formato, integrità e proprietà sicuri e corrispondere esattamente
  alla stessa transizione, installazione e catalogo. Non viene riscritto né
  presentato come una nuova verifica dello stato corrente.</p>
+ <h2>Estendere il controllo dei componenti ritirati</h2>
+ <p>Negli aggiornamenti successivi si possono aggiungere controlli su vecchi
+ punti d'ingresso del codice, conservando identiche tutte le voci precedenti.
+ Se il file esisteva nell'inventario storico autenticato, occorre ancora la
+ sua copia ritirata esatta. Se non vi esisteva, l'assenza va provata anche
+ oggi, in cartelle protette e senza seguire collegamenti. Un file mancante,
+ da solo, non dimostra che sia stato ritirato.</p>
+ <p>La verifica non crea né cancella file. Lo strumento di rilascio la esegue
+ prima di fermare i servizi e la transizione la ripete sotto i propri
+ controlli esclusivi. Rimozioni o modifiche delle vecchie voci e nuovi ritiri
+ di servizi restano rifiutati. <strong>Stato:</strong> correzione distribuita
+ il 17 settembre 2026; passaggio dalla release 63 alla 64 verificato con un
+ lavoro LRE conservato. Questo rilascio non attiva né certifica F5.</p>
  <h2>Controllare il presente senza rileggere tutta la storia</h2>
  <p>Una nuova ammissione deve superare i controlli di sicurezza. Non deve
  però ripetere il lavoro già verificato su tutte le versioni precedenti.
@@ -94,6 +107,33 @@
  noto servono la correzione, le verifiche e una revisione indipendente.
  Il registro è implementato nello sviluppo, ma non è un certificato F5
  né un interruttore di attivazione.</p>
+ <p>Le verifiche finali riguardano Birth, generazioni, memorie temporanee,
+ riscontri e ripresa, senza ripetere le prove di posta o calendari non modificati.
+ Prima si prova l'integrazione in un ambiente isolato; la certificazione deve
+ riuscire prima dell'attivazione in produzione.</p>
+ <p>Una verifica dello sviluppo riguarda i lavori in attesa: un executor può
+ diventare indisponibile mentre il lavoro aspetta un modello o un posto per
+ l'esecuzione. Il percorso con controllo delle generazioni rilegge quindi lo
+ stato esatto dopo l'attesa e prima di eseguire. Una generazione in quarantena
+ viene rifiutata senza avviarla. La correzione ha superato le prove isolate;
+ F5 non è ancora attiva in produzione.</p>
+ <p>Il lettore di attivazione in sviluppo accetta soltanto l'attestazione
+ firmata e la chiave pubblica dell'installazione. Controlla che l'attestazione
+ appartenga alla versione selezionata: un elenco di prove riuscite fornito
+ dal chiamante non è un certificato. La lettura di questa prova compatta non
+ ripete tutta l'indagine storica. Restano da completare la sua emissione a
+ partire dalle verifiche concluse e il collegamento delle operazioni sul
+ ciclo di vita.</p>
+ <p>Il percorso di quarantena in sviluppo crea ora una revisione firmata della
+ precisa versione dell'executor che è stata eseguita. Cambia soltanto lo stato
+ di esecuzione, senza rieseguire il codice sospetto né chiedere un'altra
+ conferma all'utente. Un riscontro su una versione precedente non può
+ disabilitare quella nuova o altri executor. Le prove isolate coprono anche
+ le interruzioni: la quarantena già pubblicata viene recuperata e il lavoro
+ di revisione del fallimento viene accodato una sola volta. Restano da
+ completare il collegamento ai riscontri reali, l'integrazione di tutte le
+ memorie temporanee e la certificazione finale F5; queste prove non attivano
+ la produzione.</p>
  <h2>Le prove restano, le vecchie copie del programma no</h2>
  <p>La procedura di rilascio conserva normalmente la versione attiva e una
  precedente, oltre alle copie ancora utilizzate da processi, servizi o

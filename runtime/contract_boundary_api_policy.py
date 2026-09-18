@@ -44,12 +44,14 @@ BOUNDARY_API_OWNERS_V1 = (
         ('submit_installer_birth', ('birth',)),
         ('submit_promote_birth', ('birth',)),
         ('submit_promoter_rollback_birth', ('birth',)),
+        ('submit_promoter_quarantine_birth', ('birth',)),
         ('submit_skills_birth', ('birth',)),
         ('submit_stack_reconcile_birth', ('birth',)),
         ('submit_synth_producer_birth', ('birth',)),
     )),
     BoundaryApiOwnerV1('executor_birth_operational', (
         ('birth_executor', ('birth',)),
+        ('_quarantine_execution_with_runtime', ('birth',)),
     )),
     BoundaryApiOwnerV1('executor_birth_synth', (
         ('submit_synth_multistage', ('birth',)),
@@ -88,6 +90,12 @@ BOUNDARY_API_OWNERS_V1 = (
     BoundaryApiOwnerV1('loader', (
         ('load_catalog', ('live_artifact_read',)),
         ('_load_catalog_for_cutover_audit_v1', ('live_artifact_read',)),
+    )),
+    # The lifecycle-state owner resolves one executor name through the
+    # authenticated catalog so a restriction or a usage credit reaches an
+    # exact generation instead of a sibling. It reads; it publishes nothing.
+    BoundaryApiOwnerV1('executor_lifecycle_state', (
+        ('_catalog_executor', ('live_artifact_read',)),
     )),
     BoundaryApiOwnerV1('invocations', (
         ('load_executor_artifact', ('live_artifact_read',)),
@@ -165,6 +173,28 @@ BOUNDARY_API_OWNERS_V1 = (
     BoundaryApiOwnerV1('birth_certification_authority_provisioner', (
         ('_provision_certification_at_v1', ('store_write',)),
         ('provision_certification_authority_v1', ('store_write',)),
+    )),
+    # The one-time cutover to the epoch lifecycle owner. It writes the
+    # service-owned stores through their existing owners and, last, the
+    # root-owned marker; it issues no certificate and publishes no executor.
+    BoundaryApiOwnerV1('birth_lifecycle_migration', (
+        ('plan_cutover_v1', ('store_write',)),
+        ('apply_cutover_v1', ('store_write',)),
+        ('main', ('store_write',)),
+    )),
+    # The evidence-derived F5 issuer. It signs one derived qualification and
+    # one completed migration; it publishes no executor and grants no capability.
+    # One entry point for the four administrative F5 operations. It adds no
+    # authority: each subcommand calls the owner that already holds it.
+    BoundaryApiOwnerV1('f5_authority', (
+        ('_provision_key', ('store_write',)),
+        ('_evidence', ('store_write',)),
+        ('_migrate', ('store_write',)),
+        ('_certify', ('store_write',)),
+    )),
+    BoundaryApiOwnerV1('birth_certification_issuer', (
+        ('issue_certificate_v1', ('store_write',)),
+        ('main', ('store_write',)),
     )),
     BoundaryApiOwnerV1('birth_certification_evidence', (
         ('_evidence_at_v1', ('store_write',)),

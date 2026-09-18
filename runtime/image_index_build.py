@@ -20,6 +20,7 @@ import tempfile
 import time
 
 from index_schema import INDEX_SCHEMA_VERSION, image_corpus_dir
+from image_index_outcomes import DECODE_FAILURE_CODES, FAILURE_MARKER, is_not_indexed
 
 MAX_PART_BYTES = 8 * 1024 * 1024
 MAX_CHILDREN = 256
@@ -30,7 +31,22 @@ GROUP_SIZE = 32
 MAX_SOURCE_BYTES = 1_099_511_627_776
 MAX_SOURCE_DEPTH = 64
 IMAGE_EXTENSIONS = frozenset({".jpg", ".jpeg", ".png", ".heic", ".webp", ".tiff", ".bmp"})
+# Constrain the model's generation, not just its prompt. The existing token
+# ceiling remains authoritative: incomplete responses still fail explicitly.
+DESCRIPTION_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "description": {"type": "string", "minLength": 1, "maxLength": 400},
+        "keywords": {"type": "array", "items": {"type": "string", "maxLength": 40}, "maxItems": 15},
+        "location_hint": {"type": "string", "maxLength": 100},
+        "activity_hint": {"type": "string", "maxLength": 100},
+    },
+    "required": ["description", "keywords", "location_hint", "activity_hint"],
+    "additionalProperties": False,
+}
 _AXES = ("text", "face", "image")
+_GENERATION_FILES = ("entries.jsonl", "lookup.sqlite", *(
+    f"embeddings_{axis}.npy" for axis in _AXES))
 _HASH = re.compile(r"[0-9a-f]{64}")
 _GENERATION = re.compile(r"[A-Za-z0-9_-]{1,128}")
 
@@ -57,7 +73,7 @@ def _safe_directory(path: Path, *, create=False) -> Path:
 
 def _read_bytes(path: Path, *, limit=MAX_PART_BYTES) -> bytes:
     _safe_directory(path.parent)
-    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     try:
         info = os.fstat(fd)
         if not stat.S_ISREG(info.st_mode) or info.st_size > limit:
@@ -77,6 +93,57 @@ def _sync_directory(path: Path) -> None:
         os.fsync(fd)
     finally:
         os.close(fd)
+
+
+def _generation_file_fact(path: Path) -> dict:
+    """Fingerprint one bounded regular output without trusting its pathname."""
+    _safe_directory(path.parent)
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    try:
+        before = os.fstat(fd)
+        if not stat.S_ISREG(before.st_mode) or not 0 <= before.st_size <= MAX_SOURCE_BYTES:
+            raise ImageIndexBuildError("generation_incomplete")
+        digest = hashlib.sha256()
+        remaining = before.st_size
+        while remaining:
+            chunk = os.read(fd, min(1024 * 1024, remaining))
+            if not chunk:
+                raise ImageIndexBuildError("generation_incomplete")
+            digest.update(chunk)
+            remaining -= len(chunk)
+        if os.read(fd, 1):
+            raise ImageIndexBuildError("generation_incomplete")
+        after, named = os.fstat(fd), path.lstat()
+        identity = lambda info: (
+            info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns,
+        )
+        if (not stat.S_ISREG(named.st_mode) or identity(before) != identity(after)
+                or identity(after) != identity(named)):
+            raise ImageIndexBuildError("generation_incomplete")
+        return {"size_bytes": before.st_size, "sha256": digest.hexdigest()}
+    finally:
+        os.close(fd)
+
+
+def _generation_files(directory: Path, *, expected=None) -> dict:
+    """Seal or verify the exact output-file set, including retry after rename."""
+    if expected is not None:
+        if not isinstance(expected, dict) or set(expected) != set(_GENERATION_FILES):
+            raise ImageIndexBuildError("generation_incomplete")
+        for fact in expected.values():
+            if (not isinstance(fact, dict) or set(fact) != {"size_bytes", "sha256"}
+                    or type(fact["size_bytes"]) is not int
+                    or not 0 <= fact["size_bytes"] <= MAX_SOURCE_BYTES
+                    or not isinstance(fact["sha256"], str)
+                    or _HASH.fullmatch(fact["sha256"]) is None):
+                raise ImageIndexBuildError("generation_incomplete")
+    try:
+        facts = {name: _generation_file_fact(directory / name) for name in _GENERATION_FILES}
+    except OSError as error:
+        raise ImageIndexBuildError("generation_incomplete") from error
+    if expected is not None and facts != expected:
+        raise ImageIndexBuildError("generation_incomplete")
+    return facts
 
 
 def _write_bytes(path: Path, data: bytes, *, immutable: bool) -> None:
@@ -133,15 +200,19 @@ def validate_source(snapshot, original, base_path, source) -> tuple[Path, Path, 
     if not path.is_absolute():
         raise ImageIndexBuildError("snapshot_path_invalid")
     _safe_directory(path.parent)
-    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     try:
         before = os.fstat(fd)
         if not stat.S_ISREG(before.st_mode) or before.st_size != source["size_bytes"]:
             raise ImageIndexBuildError("source_size_mismatch")
         hasher = hashlib.sha256()
+        remaining = source["size_bytes"]
         with os.fdopen(fd, "rb", closefd=False) as stream:
-            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            while chunk := stream.read(min(1024 * 1024, remaining + 1)):
+                if len(chunk) > remaining:
+                    raise ImageIndexBuildError("source_changed")
                 hasher.update(chunk)
+                remaining -= len(chunk)
         after = os.fstat(fd)
         if (before.st_size, before.st_mtime_ns, before.st_ino) != (
                 after.st_size, after.st_mtime_ns, after.st_ino):
@@ -201,7 +272,8 @@ def analysis_identity(lang: str) -> str:
             files.append([str(relative), info.st_size, info.st_mtime_ns])
         local[role] = {"provider": spec["provider"], "files": files}
     facts = {"prompt": prompt_loader.prompt_identity("image_index_describe", lang).digest,
-             "vlm": vlm_client.model_binding_facts(), "local": local}
+             "vlm": vlm_client.model_binding_facts(), "local": local,
+             "description_schema": DESCRIPTION_SCHEMA}
     return hashlib.sha256(_json_bytes(facts)).hexdigest()
 
 
@@ -234,6 +306,19 @@ def _validate_analysis(leaf: dict, base_path: str) -> dict:
             or not isinstance(entry.get("description"), str) or not entry["description"].strip()
             or "_vlm_error" in entry):
         raise ImageIndexBuildError("entry_source_mismatch")
+    if entry.get("indexing_status") == "not_indexed":
+        code = entry.get("indexing_error_code")
+        matrices = _vectors(leaf["vectors"])
+        if (not isinstance(code, str) or code not in DECODE_FAILURE_CODES
+                or not entry["description"].startswith(f"{FAILURE_MARKER}:{code} ")
+                or not entry["description"].split(" ", 1)[1].strip()
+                or models != {} or any(len(matrix) for matrix in matrices.values())
+                or entry["faces"] or entry.get("keywords") != []
+                or any(entry.get(f"embedding_{axis}_idx") is not None for axis in ("text", "image"))):
+            raise ImageIndexBuildError("invalid_indexing_failure")
+        return matrices
+    if entry.get("indexing_status") not in (None, "indexed") or "indexing_error_code" in entry:
+        raise ImageIndexBuildError("invalid_indexing_failure")
     strings = {"model_text", "model_face", "model_image", "model_vlm"}
     if (not isinstance(models, dict) or set(models) != strings | {"dim_text", "dim_image"}
             or any(not isinstance(models[key], str) or not models[key] or len(models[key]) > 1024 for key in strings)):
@@ -252,7 +337,7 @@ def _validate_analysis(leaf: dict, base_path: str) -> dict:
 class ImageIndexBuild:
     """One opaque build generation, bound to the previously active reference."""
 
-    def __init__(self, base_path, generation):
+    def __init__(self, base_path, generation, *, create=True):
         if not isinstance(generation, str) or not _GENERATION.fullmatch(generation):
             raise ImageIndexBuildError("generation_invalid")
         base = Path(base_path)
@@ -261,9 +346,9 @@ class ImageIndexBuild:
         self.base_path, self.generation = str(base), generation
         self.root = image_corpus_dir(base) / "unified"
         self.work = self.root / ".builds" / generation
-        self.parts = _safe_directory(self.work / "parts", create=True)
+        self.parts = _safe_directory(self.work / "parts", create=create)
         context_path = self.work / "context.json"
-        if not context_path.exists():
+        if create and not context_path.exists():
             previous = self._active_bytes()
             context = {"base_path": self.base_path, "generation": generation,
                        "previous_digest": hashlib.sha256(previous).hexdigest(),
@@ -317,11 +402,68 @@ class ImageIndexBuild:
             axis: hashlib.sha256(matrix.tobytes()).hexdigest()
             for axis, matrix in matrices.items()
         }
-        return self._store_part({
+        receipt = self._store_part({
             "kind": "analysis", "count": 1, "entry": entry, "models": models,
             "source": source, "reused": bool(reused),
             "vectors": {axis: matrix.tolist() for axis, matrix in matrices.items()},
         })
+        # Each completed photo survives an interruption of its enclosing group.
+        # This is a private resume hint, never an accepted LRE result or an
+        # active index. The receipt and full source relationship are rechecked.
+        checkpoint = self._analysis_checkpoint_path(
+            entry["path"], source, identity=identity,
+            folder_context=entry.get("path_context", ""),
+        )
+        _write_bytes(checkpoint, _json_bytes(receipt), immutable=False)
+        return receipt
+
+    def _analysis_checkpoint_path(self, original, source, *, identity, folder_context):
+        key = hashlib.sha256(_json_bytes({
+            "path": str(original), "source": source, "identity": identity,
+            "folder_context": folder_context,
+        })).hexdigest()
+        return self.work / "checkpoints" / (key + ".json")
+
+    def analysis_write_targets(self, entries, *, identity):
+        """Read and verify a group's exact mutable checkpoint destinations.
+
+        Immutable parts and source snapshots already use no-replace creation;
+        the optional previous-generation lookup has its own filesystem lock.
+        The per-source checkpoint is the remaining mutable analysis target.
+        A batch ID or receipt alone is not an exclusion proof: groups can
+        overlap, so return every target and let the common scheduler compare
+        their sets. This method neither writes nor opens model/source bytes.
+        """
+        records, contexts = self.discovery_group(entries)
+        targets = []
+        for record in records:
+            original, source = _source_record(
+                record["original_path"], self.base_path, record["source"])
+            target = self._analysis_checkpoint_path(
+                original, source, identity=identity,
+                folder_context=contexts[folder_label(original.parent.name)])
+            targets.append(os.path.abspath(target))
+        if len(set(targets)) != len(targets):
+            raise ImageIndexBuildError("duplicate_source_path")
+        return tuple(sorted(targets))
+
+    def analysis_checkpoint(self, original, source, *, identity, folder_context):
+        """Resume only fully validated leaves from this exact build generation."""
+        path = self._analysis_checkpoint_path(
+            original, source, identity=identity, folder_context=folder_context,
+        )
+        if not path.exists():
+            return None
+        receipt = json.loads(_read_bytes(path, limit=1024))
+        leaf = self._part(receipt)
+        if (leaf.get("kind") != "analysis" or leaf.get("count") != 1
+                or leaf.get("source") != source
+                or leaf.get("entry", {}).get("path") != str(original)
+                or leaf["entry"].get("_analysis_identity") != identity
+                or leaf["entry"].get("path_context", "") != folder_context):
+            raise ImageIndexBuildError("analysis_checkpoint_invalid")
+        _validate_analysis(leaf, self.base_path)
+        return receipt
 
     def merge(self, entries) -> dict:
         if not isinstance(entries, list) or len(entries) > MAX_CHILDREN:
@@ -517,7 +659,8 @@ class ImageIndexBuild:
         if not found:
             return None
         entry = json.loads(found[0])
-        if (entry.get("sha256") != source["content_digest"][7:]
+        if (entry.get("indexing_status") == "not_indexed"
+                or entry.get("sha256") != source["content_digest"][7:]
                 or entry.get("size") != source["size_bytes"]
                 or not entry.get("description") or "_vlm_error" in entry
                 or entry.get("path_context", "") != folder_context):
@@ -574,10 +717,22 @@ class ImageIndexBuild:
                         or stored.get("base_path") != self.base_path
                         or stored.get("n_entries") != self._part(receipt)["count"]):
                     raise ImageIndexBuildError("generation_receipt_conflict")
-                for name in ("entries.jsonl", "lookup.sqlite", *(
-                        f"embeddings_{axis}.npy" for axis in _AXES)):
-                    if not stat.S_ISREG((target / name).lstat().st_mode):
-                        raise ImageIndexBuildError("generation_incomplete")
+                # Existence is not proof of a completed generation: a crash or
+                # later corruption may leave every filename but damaged bytes.
+                # Pre-seal generations remain readable by normal consumers;
+                # they cannot certify a publication retry without this proof.
+                if not isinstance(stored.get("generation_files"), dict):
+                    raise ImageIndexBuildError("generation_incomplete")
+                failures = stored.get("indexing_error_counts")
+                if (not isinstance(failures, dict) or set(failures) - DECODE_FAILURE_CODES
+                        or any(type(count) is not int or count < 1 for count in failures.values())
+                        or type(stored.get("n_indexed")) is not int
+                        or type(stored.get("n_not_indexed")) is not int
+                        or stored["n_indexed"] < 0
+                        or stored["n_not_indexed"] != sum(failures.values())
+                        or stored["n_entries"] != stored["n_indexed"] + stored["n_not_indexed"]):
+                    raise ImageIndexBuildError("generation_incomplete")
+                _generation_files(target, expected=stored["generation_files"])
                 metadata = stored
             active = self._active_bytes()
             current = json.loads(active) if active else {}
@@ -586,6 +741,8 @@ class ImageIndexBuild:
                     raise ImageIndexBuildError("generation_receipt_conflict")
                 if not target.exists():
                     raise ImageIndexBuildError("generation_incomplete")
+                if current != metadata:
+                    raise ImageIndexBuildError("generation_receipt_conflict")
                 return current
             if hashlib.sha256(active).hexdigest() != self.context["previous_digest"]:
                 raise ImageIndexBuildError("active_generation_changed")
@@ -602,8 +759,9 @@ class ImageIndexBuild:
     def _published_result(self, receipt, target, metadata):
         return {"ok": True, "entries": [receipt], "schema_version": INDEX_SCHEMA_VERSION,
                 "base_path": self.base_path, "index_path": str(target),
-                "ok_count": metadata["n_entries"], "fail_count": 0,
-                "n_entries_total": metadata["n_entries"], **metadata}
+                "ok_count": metadata["n_indexed"], "fail_count": metadata["n_not_indexed"],
+                "n_entries_total": metadata["n_entries"],
+                **metadata}
 
     def publish(self, entries, *, expected_count=None) -> dict:
         import numpy as np
@@ -626,6 +784,7 @@ class ImageIndexBuild:
                 database.execute("CREATE TABLE parts(part TEXT PRIMARY KEY)")
                 database.execute("CREATE TABLE entries(path TEXT PRIMARY KEY, data TEXT NOT NULL, part TEXT UNIQUE)")
                 counts, dimensions, models, reused = dict.fromkeys(_AXES, 0), {}, None, 0
+                error_counts = {}
                 for part, leaf in self._leaves(receipt, database):
                     entry = leaf["entry"]
                     original = Path(entry["path"])
@@ -633,9 +792,13 @@ class ImageIndexBuild:
                             or not original.is_relative_to(self.base_path) or str(original) == self.base_path):
                         raise ImageIndexBuildError("entry_path_invalid")
                     vectors = _validate_analysis(leaf, self.base_path)
-                    if models is not None and models != leaf["models"]:
-                        raise ImageIndexBuildError("mixed_model_generations")
-                    models = leaf["models"]
+                    if is_not_indexed(entry):
+                        code = entry["indexing_error_code"]
+                        error_counts[code] = error_counts.get(code, 0) + 1
+                    else:
+                        if models is not None and models != leaf["models"]:
+                            raise ImageIndexBuildError("mixed_model_generations")
+                        models = leaf["models"]
                     for axis, matrix in vectors.items():
                         if len(matrix):
                             if axis in dimensions and dimensions[axis] != matrix.shape[1]:
@@ -672,7 +835,7 @@ class ImageIndexBuild:
                             if axis == "face":
                                 for index, face in enumerate(entry.get("faces", [])):
                                     face["embedding_face_idx"] = start + index
-                            else:
+                            elif len(matrix):
                                 entry[f"embedding_{axis}_idx"] = start
                             offsets[axis] = stop
                         data = _json_bytes(entry)
@@ -688,9 +851,13 @@ class ImageIndexBuild:
                 "schema_version": INDEX_SCHEMA_VERSION, "version": INDEX_SCHEMA_VERSION,
                 "active_generation": self.generation, "root_part": receipt["part"],
                 "base_path": self.base_path, "n_entries": total,
+                "n_indexed": total - sum(error_counts.values()),
+                "n_not_indexed": sum(error_counts.values()),
+                "indexing_error_counts": error_counts,
                 "n_faces": counts["face"], "n_images_with_visual_emb": counts["image"],
-                "last_refresh_at": time.time(), "refreshed_count": total - reused,
+                "last_refresh_at": time.time(), "refreshed_count": total - reused - sum(error_counts.values()),
                 "index_created": not bool(self.context["previous_meta"]),
+                "generation_files": _generation_files(temporary),
                 **(models or {}),
             }
             _write_bytes(temporary / "meta.json", _json_bytes(metadata), immutable=True)
@@ -710,7 +877,7 @@ class ImageIndexBuild:
 
 def _read_entries(path: Path):
     _safe_directory(path.parent)
-    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     try:
         if not stat.S_ISREG(os.fstat(fd).st_mode):
             raise ImageIndexBuildError("entries_type_invalid")

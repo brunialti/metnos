@@ -457,6 +457,24 @@ degrada a classe 0, mentre un backend con batching pu&ograve; ammettere pi&ugrav
 Non esistono pool concorrenti indipendenti nascosti nei singoli executor.
 </p>
 
+<p>Per i lavori LRE, un pacchetto registrato pu&ograve; fornire le identit&agrave;
+verificate di tutti i dati che una singola invocazione modifica. Lo scheduler
+le prenota insieme: scritture disgiunte possono procedere, scritture sovrapposte
+restano in coda. Per i percorsi, anche una cartella e un suo discendente si
+sovrappongono. Senza questa prova l'esecuzione resta seriale. Il controllo vale
+per lo stesso executor nello stesso processo: non sostituisce le protezioni
+del filesystem o il coordinamento fra processi diversi. Non cambia permessi,
+contratti congelati o risultati gi&agrave; salvati.</p>
+
+<p>I tetti centrali delle risorse sono configurabili nella sezione
+<code>[execution_resources]</code> del <code>runtime.toml</code> privato,
+per esempio <code>cpu = 4</code> e <code>vlm = 4</code>. Le variabili
+d'ambiente corrispondenti hanno precedenza; i valori predefiniti non cambiano.
+Sono posti di esecuzione logici, non quattro core fisici e non un'attivazione
+della GPU. La configurazione viene letta alla creazione dello scheduler,
+senza ridimensionare prenotazioni gi&agrave; in uso. Prima di aumentarla occorre
+misurare il beneficio e verificare la ripresa dei lavori.</p>
+
 <p>
 Le ricerche ricorsive sul filesystem usano un visitor comune: le directory
 formano una coda dinamica, i worker liberi prendono il prossimo ramo e i

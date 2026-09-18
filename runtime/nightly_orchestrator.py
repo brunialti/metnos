@@ -41,6 +41,7 @@ NIGHTLY_SEQUENCE: tuple[str, ...] = (
     "nightly_aging",
     "state_reaper",              # dopo aging (reaper unico stato persistente)
     "learning_loop_review",      # W1: pota seed shadow + conteggi (ADR 0185)
+    "birth_failure_reviews",     # RM-0008 F5: classifica le quarantene esatte
     "telos_synth_consume",
     "proposals_eta_aggregate",
     "introvertiva_propose",

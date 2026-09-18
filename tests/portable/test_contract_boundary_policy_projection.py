@@ -26,8 +26,15 @@ from policy_test_support import freeze_policy
 ROOT = Path(__file__).resolve().parents[2]
 PREFLIGHT = ROOT / "runtime" / "executor_birth_admin_preflight.py"
 TOOL = ROOT / "internal" / "tools" / "render_contract_boundary_policy.py"
+# A reviewed pin, like the recipe identity the preflight keeps: it moves only
+# when someone approves the policy change, never by copying what the source
+# emits.  17/9/2026: the four F5 and lifecycle owners declared since `84414376`
+# (`f5_authority`, `birth_lifecycle_migration`, `birth_certification_issuer`,
+# `executor_lifecycle_state`).  Measured against the payload at that commit,
+# the whole delta is additive and confined to those four: no api, module or
+# source owner was removed or altered.
 GOLDEN_DIGEST_V1 = (
-    "sha256:2c905ae900677d15b21e2f2b0db5ad47a55426e69900ffff0a7bf6adf893cb8d"
+    "sha256:af3a2c83b3fcc3c483386f9f3d198774fa55f59d554cf3a759c95c0aa75f5e4a"
 )
 
 POLICY_NAMES = (
@@ -81,6 +88,15 @@ def test_authoring_facts_are_immutable_and_facade_materializes_legacy_types() ->
     assert type(policy.BOUNDARY_APIS) is dict
     assert type(policy.BOUNDARY_MODULES) is dict
     assert type(policy.BOUNDARY_SOURCE_OWNERS) is dict
+
+
+def test_quarantine_facades_request_birth_without_low_level_authority() -> None:
+    for owner, entry in (
+        ("executor_birth_intent", "submit_promoter_quarantine_birth"),
+        ("executor_birth_operational", "_quarantine_execution_with_runtime"),
+    ):
+        assert policy.BOUNDARY_APIS[owner][entry] == ("birth",)
+        assert standalone.BOUNDARY_APIS[owner][entry] == ("birth",)
 
 
 def test_contract_convergence_owner_is_exact_in_all_three_registries() -> None:

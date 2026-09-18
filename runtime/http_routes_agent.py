@@ -25,7 +25,7 @@ import devices
 import config as _C  # §7.11
 import i18n as _i18n
 import detection_lexicon_seed_dialog as _dialog_cancel_lex
-from html_sanitizer import to_safe_html_full
+from html_sanitizer import link_internal_routes, to_safe_html_full
 from http_render import _error, render_template
 from http_app_state import (
     ADMIN_KEY as APP_ADMIN_KEY, CATALOG_PROVIDER, SSE_RESPONSES, STARTED_AT,
@@ -154,7 +154,11 @@ def _safe_final_html(md: str | None) -> str:
     if not md:
         return ""
     try:
-        return to_safe_html_full(md)
+        from ui_surfaces import catalog as ui_catalog
+
+        return link_internal_routes(
+            to_safe_html_full(md), tuple(surface.route for surface in ui_catalog()),
+        )
     except Exception:
         log.warning("to_safe_html_full failed", exc_info=True)
         try:

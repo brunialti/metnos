@@ -125,6 +125,10 @@ explicitly configured watchdog values are still checked against the signature.
 The complete Linux x86_64 CPython 3.12 release uses
 `requirements-linux-x86_64.lock`, including Playwright and its pinned runtime
 dependencies because the signed catalog installs the browser sidecar. The
+image-indexing decoder also includes pinned `pillow-heif`: HEIC sources are
+decoded in process, including digest-named private snapshots. The corresponding
+hash-verified wheel must be present in the offline wheelhouse before building.
+No source photo is converted or overwritten on disk. The
 offline builder verifies wheel hashes and publishes a new content-addressed
 Python environment; it never patches an existing environment. Sealing keeps
 packaged executable files executable, normalizes permissions to 0755/0644,
@@ -156,6 +160,20 @@ On replay, the immutable predecessor census is securely reread and all its
 transition bindings are checked against the current authenticated inputs.
 It is not rebuilt from paths that retirement may already have renamed, and it
 does not replace current quiescence or topology checks.
+
+A successor may add a repository retirement binding without rewriting that
+initial census. Every previous step must remain identical; removals, changed
+identities, duplicate destinations and additional unit retirements are refused.
+An additional repository entry must either have the exact preserved size/hash
+from the authenticated initial census, or be absent from that census within its
+complete source-root coverage and also absent on disk. The latter observation
+uses unchanged owned directory handles without following links and refuses
+stray retirement/preservation artifacts. Entries known to the census still need
+their preserved file. No file is fabricated, deleted or renamed by a successor.
+Both observations are repeated under the transition locks; the release tool
+also checks them before stopping services, binding the census to the attested
+current startup. This early refusal is not authorization to cross. The first
+transition still requires all declared legacy repository files.
 
 The transition is resumable and exact repetition is idempotent. The live
 user-level HTTP unit is stopped inside the coordinated switch and the signed
@@ -219,6 +237,104 @@ twice. Exact retry/review and artifact hashes never confer publication power.
 Only the administrator can open this context; ordinary Birth and startup do
 not read or write it. This persistence component does not yet run the HTTP
 harness, issue an F5 certificate, migrate state or activate lifecycle changes.
+
+New prepared sets also contain the maintenance capability
+`promoter:quarantine`, with its own producer key through the existing catalog.
+An older set without that optional F5 capability can still bootstrap F4.
+Quarantine itself requires the fixed F5 activation and an already migrated
+`birth/executor_epochs.sqlite` in the selected instance state. Its review
+outbox is `birth/failure_reviews.sqlite` in the same private directory.
+These files are neither populated by ordinary F4 startup nor synthesized as
+replacement migration evidence. Live feedback wiring and final qualification
+remain development work; provisioning the optional capability does not enable it.
+
+### Optional one-time lifecycle cutover (development)
+
+`install.birth_lifecycle_migration` moves an installation from its name-based
+executor lifecycle state to the epoch store. It is not part of the six-phase
+installer, ordinary Birth or service startup, and it issues no certificate,
+publishes no executor and retires no file.
+
+It is two commands, because its halves need opposite conditions. `plan` runs
+while the services run: only a live process can say which stores this
+installation selected. A child reads that process's environment — only `HOME`,
+`METNOS_USER_DATA`, `METNOS_USER_STATE`, `METNOS_EXECUTOR_STATS_DB` and
+`METNOS_PROMOTER_DB`, with the main PID rechecked — drops permanently to the
+service account, censuses the stores and decides. The reviewed decision is
+recorded root-owned at `certification-v1/migration-plan.json` (0644). Planning
+changes nothing else. The selected sources are `executor_stats` in the state
+root and `proposal_promote` in the data root.
+
+`apply` holds the existing maintenance barrier for the whole migration and then
+proves separately that the services which write those stores are stopped. The
+barrier's own target list is the legacy bindings the F4 transition retired;
+those units are masked, so asking whether they are stopped always answers yes,
+and after that transition the services that really run carry the same names in
+system scope. The cutover therefore asks the installed catalog which units this
+product runs, and refuses with `cutover_topology_unknown` when it cannot read
+them or with `cutover_writer_running` when one is alive. That is a precondition, not an
+optimisation: one executor call during the copy would write a row nobody
+preserves. It refuses a decision other than the reviewed one, whether the stores
+or the catalog selection moved. After the copy each source is made unwritable
+(0400) and the observed mode is reported; that stops the next ordinary writer
+and cannot close a handle a running process already holds, which is again why
+the barrier comes first.
+
+Inside the privileged child the epoch store must already exist at
+`birth/executor_epochs.sqlite`; it is not created here. Every selectable
+generation is admitted first, so no window exists in which a restricted
+executor becomes visible again. The stores are then read read-only and
+query-only, preserved byte-identically, decided, and finally restricted, with
+the exact source object rechecked before and after. Counters and instants do
+not cross: **the inactivity clock restarts at cutover**, so nothing can be
+archived for `METNOS_EXECUTOR_DEPRECATED_DAYS` afterwards.
+
+The root parent writes `certification-v1/migration.json` (0644, root-owned)
+last, inside the barrier, and only when every decision is settled. An open promotion or a
+restriction with no selectable generation blocks the marker: those cases need a
+disposition, and losing them silently is what retirement must not do. A
+different marker already present is a recovery operation with its own evidence,
+never a retry. Until that marker exists the installation keeps using its
+name-based state and the command can simply be run again.
+
+The marker selects which store owns lifecycle state. It does not activate F5:
+the operations that need a derived qualification still require the separate
+certificate, and without it they refuse individually rather than reselecting the
+retired state.
+
+### Optional evidence-derived F5 certificate (development)
+
+`install.birth_certification_issuer` signs the F5 activation document. It is
+not part of the six-phase installer, ordinary Birth or service startup, and it
+publishes no executor and grants no capability.
+
+`derive` reports exactly what `issue` would sign. Both refuse before the
+migration: a certificate authorising a lifecycle the installation has not moved
+to is the one thing this order exists to prevent. The migration marker is read
+first, the migration it names must verify against the epoch store, and only
+then is the qualification derived.
+
+The issuer composes the historical reconciliation itself, through the owner
+readers, and rereads both raw inventories afterwards. Its only input is the
+bounded public archive candidates, which remain untrusted bytes: the
+declaration owner accepts them where path, role, size and hash match the
+historical signed distribution. No count, receipt list or cycle outcome is
+accepted from a caller, and the signed payload carries none.
+
+The threshold is the approved one — at least five genuine technical
+admissions, at least two authenticated producers, two complete consecutive
+cycles and no open defect in the declared scope. A quarantine is not an
+admission. The declared evidence scope is recomputed from the history observed
+now and must equal the one the census recorded, so a gap that appeared since
+refuses the certificate instead of signing a review of something else. Every
+refusal names itself: `census_absent`, `open_defect`, `cycle_interrupted`,
+`profile_absent`, `consecutive_cycles_insufficient`,
+`technical_admissions_insufficient`, `authenticated_producers_insufficient`,
+`duplicate_admission`.
+
+The dedicated key never leaves the signing function, a revoked authority never
+signs, and the published document is read back through the runtime's own
+`load_f5_activation` before the issuer reports success.
 
 ### Private HTTP runtime settings
 

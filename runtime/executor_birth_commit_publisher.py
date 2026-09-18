@@ -13,6 +13,7 @@ to group 3.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from contextlib import contextmanager
 from types import MappingProxyType
 from typing import Mapping
 
@@ -297,6 +298,113 @@ class _BirthCommitPublisher:
         from contract_store import catalog_admission_lock
 
         return catalog_admission_lock(store_root=self._store_root)
+
+    def authenticate_quarantine_predecessor(self, execution):
+        """Read the exact admission with the same authority used at dispatch."""
+        from contract_store import _authenticate_execution_binding_with_receipt
+        from executor_birth_receipts import ApprovedLifecycle, verify_admission_receipt
+        from executor_birth_feedback import ExecutionReceipt, _validate_execution_receipt
+
+        if type(execution) is not ExecutionReceipt:
+            raise BirthCommitLinkError("birth_quarantine_execution_invalid")
+        _validate_execution_receipt(execution)
+        binding, encoded = _authenticate_execution_binding_with_receipt(
+            execution.contract_id, execution.generation_id,
+            trusted_publics=self._author_ring,
+            admission_verifier_keys=self._admission_verifiers,
+            store_root=self._store_root, context_selection=self._context_selection,
+        )
+        admission = verify_admission_receipt(encoded, verifier_keys=self._admission_verifiers)
+        if (binding.candidate_id != execution.candidate_id
+                or binding.executor_name != execution.executor_name
+                or admission.approved_lifecycle not in {
+                    ApprovedLifecycle.ACTIVE, ApprovedLifecycle.PREEXERCISE,
+                }):
+            raise BirthCommitLinkError("birth_quarantine_execution_invalid")
+        return admission, encoded
+
+    @contextmanager
+    def quarantine_candidate(self, execution):
+        """Stage a lifecycle-only candidate, reconstructing exact retries.
+
+        Only the current execution or its already-published quarantine successor
+        is eligible. Historical manifest bytes restore the original request
+        identity after a crash; current authenticated code must still match.
+        """
+        import tempfile
+        import tomllib
+        from pathlib import Path
+        import tomlkit
+        from contract_store import (
+            _authenticate_execution_binding_with_receipt, _load_generation_for_commit,
+            authenticate_birth_predecessor, acquire_current_reattestation_snapshot,
+        )
+        from executor_birth_feedback import ExecutionReceipt, _validate_execution_receipt
+        from executor_birth_receipts import ApprovedLifecycle, AdmittedCheckStatus, verify_admission_receipt
+        from executor_birth_snapshot import _write_private
+        from manifest_inventory import inventory_authoring_manifests
+
+        if type(execution) is not ExecutionReceipt:
+            raise BirthCommitLinkError("birth_quarantine_execution_invalid")
+        _validate_execution_receipt(execution)
+        inventory = inventory_authoring_manifests()
+        refs = [ref for ref in inventory.manifests if ref.contract_id == execution.contract_id]
+        if inventory.problems or len(refs) != 1:
+            raise BirthCommitLinkError("birth_quarantine_inventory_invalid")
+        ref = refs[0]
+        with self.admission_lock():
+            predecessor, current_payloads = authenticate_birth_predecessor(
+                ref, trusted_publics=self._author_ring, store_root=self._store_root,
+            )
+            if predecessor.revision_kind != "generation":
+                raise BirthCommitLinkError("birth_quarantine_generation_stale")
+            current_id = predecessor.revision_id
+            binding, encoded = _authenticate_execution_binding_with_receipt(
+                execution.contract_id, current_id, trusted_publics=self._author_ring,
+                admission_verifier_keys=self._admission_verifiers,
+                store_root=self._store_root, context_selection=self._context_selection,
+            )
+            admission = verify_admission_receipt(encoded, verifier_keys=self._admission_verifiers)
+            if current_id == execution.generation_id:
+                if (binding.candidate_id != execution.candidate_id
+                        or binding.executor_name != execution.executor_name
+                        or admission.approved_lifecycle not in {
+                            ApprovedLifecycle.ACTIVE, ApprovedLifecycle.PREEXERCISE,
+                        }):
+                    raise BirthCommitLinkError("birth_quarantine_execution_invalid")
+                original = current_payloads
+            else:
+                check = admission.check_results.get("quarantine_execution")
+                if (admission.approved_lifecycle is not ApprovedLifecycle.QUARANTINED
+                        or admission.predecessor_id != execution.generation_id
+                        or check is None or check.rule_version != "1"
+                        or check.status is not AdmittedCheckStatus.PASSED
+                        or check.evidence_hash != execution.receipt_id):
+                    raise BirthCommitLinkError("birth_quarantine_generation_stale")
+                original = _load_generation_for_commit(
+                    ref, execution.generation_id, trusted_publics=self._author_ring,
+                    store_root=self._store_root,
+                )
+            with acquire_current_reattestation_snapshot(
+                ref, current_id, trusted_publics=self._author_ring, store_root=self._store_root,
+            ) as snapshot:
+                old = tomllib.loads(original["manifest.toml"].decode("utf-8"))
+                current = tomllib.loads(snapshot.manifest_bytes.decode("utf-8"))
+                old.pop("lifecycle", None)
+                current.pop("lifecycle", None)
+                if (old != current
+                        or original["manifest.lang_state.json"] != snapshot.language_state_bytes):
+                    raise BirthCommitLinkError("birth_quarantine_source_changed")
+                code_files = dict(snapshot.code_files)
+        document = tomlkit.parse(original["manifest.toml"].decode("utf-8"))
+        document["lifecycle"] = "quarantined"
+        with tempfile.TemporaryDirectory(prefix="metnos-quarantine-") as temporary:
+            stage = Path(temporary)
+            _write_private(stage, "manifest.toml", tomlkit.dumps(document).encode("utf-8"))
+            _write_private(stage, "manifest.lang_state.json", original["manifest.lang_state.json"])
+            for name, payload in code_files.items():
+                _write_private(stage, name, payload)
+            yield ref, stage
 
     def resolve_predecessor(self, request):
         """Authenticate the predecessor with the ring this publisher owns.

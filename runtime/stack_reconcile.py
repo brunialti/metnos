@@ -30,6 +30,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 import config as _C
+from durable_workloads.activity import activity_snapshot as _durable_activity_snapshot
 from executor_birth_maintenance_units import (
     CONTRACT_CUTOVER_UNITS,
     MAINTENANCE_TARGETS_V1,
@@ -1203,6 +1204,7 @@ class StackReconciler:
             })
 
         quiescent = bool(composite.get("quiescent"))
+        durable = composite.get("durable_workloads") or {}
         checks.append({
             "name": "quiescent",
             "ok": quiescent if require_quiescent else True,
@@ -1213,6 +1215,8 @@ class StackReconciler:
             "approval_pending_sessions": int(sidecar.get("approval_pending_sessions") or 0),
             "factor_pending_sessions": int(sidecar.get("factor_pending_sessions") or 0),
             "pending_opens": int(sidecar.get("pending_opens") or 0),
+            "durable_activity_known": durable.get("known") is True,
+            "active_lre_attempts": int(durable.get("active_attempts") or 0),
         })
 
         return self._finish_check(started, checks, write_report)
@@ -1258,7 +1262,7 @@ class StackReconciler:
         )
 
     def require_quiescent(self) -> dict:
-        """Prove that no HTTP turn or browser operation can be interrupted.
+        """Prove that no HTTP, browser or durable operation can be interrupted.
 
         Readiness is deliberately not required here: a stale catalog or
         contract is precisely what a coordinated restart may repair.  When
@@ -1271,17 +1275,25 @@ class StackReconciler:
                 f"{self.endpoints.http}/agent/stack/health",
                 admin_key=_admin_key(self.admin_key_path),
             )
+            durable = composite.get("durable_workloads") or {}
+            if durable.get("known") is not True:
+                raise StackFailure(
+                    "quiescence_unknown",
+                    "durable workload activity is unavailable",
+                )
             if not composite.get("quiescent"):
                 raise StackFailure(
-                    "stack_busy", "active turns or browser operations block restart",
+                    "stack_busy",
+                    "active turns, browser operations or durable executions block restart",
                 )
             return {
                 "ok": True,
                 "source": "composite_health",
                 "active_turns": int((composite.get("http") or {}).get("active_turns") or 0),
+                "active_lre_attempts": int(durable.get("active_attempts") or 0),
             }
         except StackFailure as exc:
-            if exc.code == "stack_busy":
+            if exc.code in {"stack_busy", "quiescence_unknown"}:
                 raise
             http_state = self.systemctl.show("metnos-http.service")
             if http_state.get("ActiveState") in {"active", "activating", "reloading"}:
@@ -1289,6 +1301,21 @@ class StackReconciler:
                     "quiescence_unknown",
                     "HTTP is active but its in-flight turn counter is unavailable",
                 ) from exc
+            durable_state = self.systemctl.show("metnos-durable-worker.service")
+            durable_active = durable_state.get("ActiveState") in {
+                "active", "activating", "reloading",
+            }
+            if durable_active:
+                durable = _durable_activity_snapshot()
+                if durable.get("known") is not True:
+                    raise StackFailure(
+                        "quiescence_unknown",
+                        "durable worker is active but its attempt counter is unavailable",
+                    ) from exc
+                if int(durable.get("active_attempts") or 0) != 0:
+                    raise StackFailure(
+                        "stack_busy", "durable workload activity blocks restart",
+                    ) from exc
             try:
                 sidecar = _json_request(f"{self.endpoints.sidecar}/health")
             except StackFailure as sidecar_exc:

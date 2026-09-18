@@ -15,6 +15,7 @@ import urllib.request
 
 from aiohttp import web
 
+from durable_workloads.activity import activity_snapshot
 from http_app_state import CATALOG_PROVIDER, STARTUP_FAILURE, app_get
 from playwright_sidecar import contract as _contract
 from turn_events import TurnEventLog
@@ -99,6 +100,10 @@ def _probe_sidecar() -> dict:
     }
 
 
+def _probe_durable_activity() -> dict[str, object]:
+    return activity_snapshot()
+
+
 async def stack_health(request: web.Request) -> web.Response:
     """GET /agent/stack/health — readiness evidence, restricted to admin."""
     if request.get("role", "anonymous") != "admin":
@@ -107,6 +112,7 @@ async def stack_health(request: web.Request) -> web.Response:
     startup_failure = app_get(request.app, STARTUP_FAILURE, "")
     local_contract = _contract.source_status()
     sidecar = await asyncio.to_thread(_probe_sidecar)
+    durable = await asyncio.to_thread(_probe_durable_activity)
     turns = TurnEventLog.get().stats()
     catalog_names = _catalog_names(request)
     broker_quiescent = all(
@@ -120,13 +126,21 @@ async def stack_health(request: web.Request) -> web.Response:
         local_contract.get("contract_aligned")
         and sidecar.get("contract_aligned")
     )
+    durable_known = durable.get("known") is True
+    durable_quiescent = bool(
+        durable_known and int(durable.get("active_attempts") or 0) == 0
+    )
     return web.json_response({
         "ok": True,
         "ready": bool(
             not startup_failure and sidecar.get("ok")
             and contract_aligned and catalog_names
         ),
-        "quiescent": bool(turns.get("active", 0) == 0 and broker_quiescent),
+        "quiescent": bool(
+            turns.get("active", 0) == 0
+            and broker_quiescent
+            and durable_quiescent
+        ),
         "http": {
             "ok": True,
             "operational": not bool(startup_failure),
@@ -137,6 +151,7 @@ async def stack_health(request: web.Request) -> web.Response:
             "contract_aligned": bool(local_contract.get("contract_aligned")),
         },
         "sidecar": sidecar,
+        "durable_workloads": durable,
         "catalog": {
             "count": len(catalog_names),
             "names": catalog_names,
