@@ -41,7 +41,10 @@ HEALTH_SCHEMA_VERSION = "metnos.durable-worker-health/1"
 _PUBLISHED_MAX_AGE_S = 90.0
 _HEALTH_PULSE_INTERVAL_S = 30.0
 _HEALTH_PULSE_JOIN_TIMEOUT_S = 1.0
-_PARALLEL_SHUTDOWN_TIMEOUT_S = 30.0
+# Managed restarts are refused while a fence is active.  This bounded margin
+# covers a claim that races with that observation and lets ordinary provider
+# calls return, account usage and commit before systemd's final kill boundary.
+_PARALLEL_SHUTDOWN_TIMEOUT_S = 540.0
 _MAX_PARALLEL_WORKERS = 32
 _MAX_CONTENTION_CYCLES = 8
 _MAX_CONTENTION_DURATION_S = 60.0

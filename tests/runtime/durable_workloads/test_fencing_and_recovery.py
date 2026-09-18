@@ -16,6 +16,7 @@ from time import monotonic
 import pytest
 from jsonschema import Draft202012Validator, FormatChecker
 
+from durable_workloads.activity import activity_snapshot
 from durable_workloads.coordinator import (
     CommitStatus,
     FailureStatus,
@@ -718,6 +719,76 @@ def test_worker_renews_long_running_file_backed_lease_and_joins_heartbeat(db_pat
         outcome = worker.run_once(adapter)
         assert outcome.status is WorkerRunStatus.COMMITTED
         assert worker._heartbeat_monitor is None
+
+
+def test_stop_request_keeps_active_lease_alive_until_safe_commit(db_path):
+    observed_extension = []
+    with DurableWorkloadStore.open(db_path) as store:
+        _prepare_one(
+            store,
+            "drain-heartbeat",
+            queue_at=datetime.now(timezone.utc),
+        )
+        worker = DurableWorker(
+            store,
+            "worker-a",
+            _capabilities(),
+            lease_duration=timedelta(milliseconds=250),
+            heartbeat_interval=timedelta(milliseconds=40),
+        )
+
+        def adapter(lease):
+            worker.request_stop()
+            with store.open_peer() as observer:
+                baseline = parse_instant(str(observer._connection.execute(
+                    "SELECT lease_expires_at FROM units WHERE id=?",
+                    (lease.unit_id,),
+                ).fetchone()["lease_expires_at"]))
+                wait_deadline = monotonic() + 2
+                while monotonic() < wait_deadline:
+                    renewed = parse_instant(str(observer._connection.execute(
+                        "SELECT lease_expires_at FROM units WHERE id=?",
+                        (lease.unit_id,),
+                    ).fetchone()["lease_expires_at"]))
+                    if renewed > baseline:
+                        observed_extension.append(renewed)
+                        break
+                    time.sleep(0.005)
+            assert observed_extension
+            return _result(lease, "drained")
+
+        outcome = worker.run_once(adapter)
+
+        assert outcome.status is WorkerRunStatus.COMMITTED
+        assert worker.stopping is True
+        assert worker._heartbeat_monitor is None
+        assert worker.claim_next() is None
+
+
+def test_activity_snapshot_counts_only_authoritative_active_fences(db_path):
+    with DurableWorkloadStore.open(db_path) as store:
+        _prepare_one(store, "activity-snapshot")
+        assert activity_snapshot(path=db_path) == {
+            "schema_version": "metnos.durable-activity/1",
+            "known": True,
+            "reason_code": "none",
+            "active_attempts": 0,
+            "leased_attempts": 0,
+            "running_attempts": 0,
+        }
+        lease = store.claim_next(
+            "worker-a", BASE_TIME, timedelta(seconds=30), _capabilities(),
+        )
+        assert lease is not None
+        leased = activity_snapshot(path=db_path)
+        assert leased["active_attempts"] == 1
+        assert leased["leased_attempts"] == 1
+        assert leased["running_attempts"] == 0
+        assert store.mark_running(lease, now=BASE_TIME) is LeaseMutationStatus.APPLIED
+        running = activity_snapshot(path=db_path)
+        assert running["active_attempts"] == 1
+        assert running["leased_attempts"] == 0
+        assert running["running_attempts"] == 1
 
 
 def test_worker_discards_result_returned_after_frozen_stage_deadline(db_path):

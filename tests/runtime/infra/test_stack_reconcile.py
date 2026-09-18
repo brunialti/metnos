@@ -26,6 +26,18 @@ def _legacy_readiness_catalog(monkeypatch):
         services_registry, "readiness_catalog", lambda: services_registry.SERVICES,
         raising=False,
     )
+    monkeypatch.setattr(
+        sr,
+        "_durable_activity_snapshot",
+        lambda: {
+            "schema_version": "metnos.durable-activity/1",
+            "known": True,
+            "reason_code": "none",
+            "active_attempts": 0,
+            "leased_attempts": 0,
+            "running_attempts": 0,
+        },
+    )
 
 
 def test_catalog_lifecycle_guard_acquires_catalog_before_reconcile(
@@ -301,6 +313,14 @@ def _composite(*, names=None, quiescent=True, sidecar_ok=True):
             "approval_pending_sessions": 0,
             "factor_pending_sessions": 0,
             "pending_opens": 0,
+        },
+        "durable_workloads": {
+            "schema_version": "metnos.durable-activity/1",
+            "known": True,
+            "reason_code": "none",
+            "active_attempts": 0,
+            "leased_attempts": 0,
+            "running_attempts": 0,
         },
         "catalog": {"names": names or ["delete_files", "read_sites"]},
     }
@@ -996,6 +1016,42 @@ def test_restart_refuses_non_quiescent_stack(monkeypatch, tmp_path):
     assert not any(call[0] == "run" for call in fake.calls)
 
 
+def test_restart_refuses_active_durable_attempts(monkeypatch, tmp_path):
+    composite = _composite()
+    composite["quiescent"] = False
+    composite["durable_workloads"]["active_attempts"] = 1
+    composite["durable_workloads"]["running_attempts"] = 1
+    _wire(monkeypatch, composite)
+    fake = FakeSystemctl()
+    rec = sr.StackReconciler(systemctl=fake, report_path=tmp_path / "report.json")
+    lock_type = sr.ReconcileLock
+    monkeypatch.setattr(sr, "ReconcileLock", lambda: lock_type(tmp_path / "lock"))
+
+    with pytest.raises(sr.StackFailure) as caught:
+        rec.restart()
+
+    assert caught.value.code == "stack_busy"
+    assert not any(call[0] == "run" for call in fake.calls)
+
+
+def test_restart_refuses_unknown_durable_activity(monkeypatch, tmp_path):
+    composite = _composite()
+    composite["quiescent"] = False
+    composite["durable_workloads"]["known"] = False
+    composite["durable_workloads"]["reason_code"] = "database_unavailable"
+    _wire(monkeypatch, composite)
+    fake = FakeSystemctl()
+    rec = sr.StackReconciler(systemctl=fake, report_path=tmp_path / "report.json")
+    lock_type = sr.ReconcileLock
+    monkeypatch.setattr(sr, "ReconcileLock", lambda: lock_type(tmp_path / "lock"))
+
+    with pytest.raises(sr.StackFailure) as caught:
+        rec.restart()
+
+    assert caught.value.code == "quiescence_unknown"
+    assert not any(call[0] == "run" for call in fake.calls)
+
+
 @pytest.mark.parametrize("scope", ["user", "system"])
 def test_restart_uses_only_installed_integrated_target(monkeypatch, tmp_path, scope):
     if scope == "system":
@@ -1313,6 +1369,33 @@ def test_inactive_http_can_recover_only_with_idle_sidecar(monkeypatch, tmp_path)
 
     monkeypatch.setattr(sr, "_json_request", request)
     assert rec.require_quiescent()["source"] == "inactive_http_and_sidecar_broker"
+
+
+def test_inactive_http_still_refuses_active_durable_work(monkeypatch, tmp_path):
+    fake = FakeSystemctl()
+
+    def show(unit, scope="user"):
+        if unit == "metnos-http.service":
+            return {"LoadState": "loaded", "ActiveState": "failed"}
+        return FakeSystemctl.show(fake, unit, scope)
+
+    fake.show = show
+    rec = sr.StackReconciler(systemctl=fake, report_path=tmp_path / "report.json")
+    monkeypatch.setattr(sr, "_admin_key", lambda *_args: "key")
+    monkeypatch.setattr(
+        sr, "_json_request",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            sr.StackFailure("endpoint_unavailable", "down")),
+    )
+    monkeypatch.setattr(
+        sr, "_durable_activity_snapshot",
+        lambda: {"known": True, "active_attempts": 1},
+    )
+
+    with pytest.raises(sr.StackFailure) as caught:
+        rec.require_quiescent()
+
+    assert caught.value.code == "stack_busy"
 
 
 def test_inactive_http_and_sidecar_are_provably_quiescent(monkeypatch, tmp_path):

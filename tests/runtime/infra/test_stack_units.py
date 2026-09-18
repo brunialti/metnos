@@ -95,8 +95,8 @@ def test_durable_worker_is_a_bounded_supervised_target_component():
     assert "Before=metnos-stack-ready.service" in unit
     assert "Restart=on-failure" in unit
     assert "StartLimitBurst=3" in unit
-    assert "TimeoutStopSec=45" in unit
-    assert "KillMode=control-group" in unit
+    assert "TimeoutStopSec=10min" in unit
+    assert "KillMode=mixed" in unit
     assert "EnvironmentFile=" not in unit
     assert "Environment=METNOS_DURABLE_WORKLOADS_ENABLED=" not in unit
     assert "Environment=METNOS_EXECUTOR_PARALLEL=1" in unit

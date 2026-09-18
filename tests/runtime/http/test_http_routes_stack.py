@@ -49,6 +49,22 @@ def _sidecar(**overrides):
     return payload
 
 
+@pytest.fixture(autouse=True)
+def _idle_durable_activity(monkeypatch):
+    monkeypatch.setattr(
+        stack,
+        "_probe_durable_activity",
+        lambda: {
+            "schema_version": "metnos.durable-activity/1",
+            "known": True,
+            "reason_code": "none",
+            "active_attempts": 0,
+            "leased_attempts": 0,
+            "running_attempts": 0,
+        },
+    )
+
+
 def test_stack_health_reports_ready_and_quiescent(monkeypatch):
     monkeypatch.setattr(stack, "_probe_sidecar", lambda: _sidecar())
     monkeypatch.setattr(
@@ -97,6 +113,62 @@ def test_stack_health_detects_turn_and_broker_activity(monkeypatch):
     assert payload["ready"] is True
     assert payload["quiescent"] is False
     assert payload["http"]["active_turns"] == 2
+
+
+def test_stack_health_detects_active_durable_attempt(monkeypatch):
+    monkeypatch.setattr(stack, "_probe_sidecar", lambda: _sidecar())
+    monkeypatch.setattr(
+        stack, "_probe_durable_activity",
+        lambda: {
+            "schema_version": "metnos.durable-activity/1",
+            "known": True,
+            "reason_code": "none",
+            "active_attempts": 2,
+            "leased_attempts": 0,
+            "running_attempts": 2,
+        },
+    )
+    monkeypatch.setattr(
+        stack._contract, "source_status",
+        lambda: {"contract_aligned": True},
+    )
+    monkeypatch.setattr(
+        stack.TurnEventLog, "get",
+        classmethod(lambda _cls: SimpleNamespace(stats=lambda: {"active": 0})),
+    )
+
+    payload = json.loads(asyncio.run(stack.stack_health(_Request())).body)
+
+    assert payload["quiescent"] is False
+    assert payload["durable_workloads"]["active_attempts"] == 2
+
+
+def test_stack_health_fails_closed_when_durable_activity_is_unknown(monkeypatch):
+    monkeypatch.setattr(stack, "_probe_sidecar", lambda: _sidecar())
+    monkeypatch.setattr(
+        stack, "_probe_durable_activity",
+        lambda: {
+            "schema_version": "metnos.durable-activity/1",
+            "known": False,
+            "reason_code": "database_unavailable",
+            "active_attempts": 0,
+            "leased_attempts": 0,
+            "running_attempts": 0,
+        },
+    )
+    monkeypatch.setattr(
+        stack._contract, "source_status",
+        lambda: {"contract_aligned": True},
+    )
+    monkeypatch.setattr(
+        stack.TurnEventLog, "get",
+        classmethod(lambda _cls: SimpleNamespace(stats=lambda: {"active": 0})),
+    )
+
+    payload = json.loads(asyncio.run(stack.stack_health(_Request())).body)
+
+    assert payload["quiescent"] is False
+    assert payload["durable_workloads"]["known"] is False
 
 
 def test_stack_health_fails_readiness_on_contract_drift(monkeypatch):
