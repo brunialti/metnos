@@ -287,14 +287,15 @@
   const jobTitle = (workload) => workload.description?.kind === "image_indexing" ? copy.photoIndexing : copy.genericJob;
   const jobFolder = (workload) => typeof workload.description?.target_path === "string" && workload.description.target_path ? workload.description.target_path : null;
   const countText = (value) => Number.isInteger(value) && value >= 0 ? value.toLocaleString(uiLocale) : copy.notAvailable;
-  const displayedProgress = (workload) => workload.description?.kind === "image_indexing" && workload.description.phase === "discover"
+  const phaseKey = (workload) => workload.progress?.current_phase?.stage_key || workload.description?.phase;
+  const displayedProgress = (workload) => workload.description?.kind === "image_indexing" && phaseKey(workload) === "discover"
     ? {...workload.progress, known_units_percent: null, estimated_end_at: null,
       current_phase: {...workload.progress?.current_phase, known_units_percent: null, total_units: null}} : workload.progress;
   function appendPhase(container, workload) {
     const current = workload.progress?.current_phase;
     const numberKnown = Number.isInteger(current?.number) && current.number > 0
       && Number.isInteger(current?.count) && current.count >= current.number;
-    const phase = workload.description?.kind === "image_indexing" ? current?.stage_key || workload.description.phase : null;
+    const phase = workload.description?.kind === "image_indexing" ? phaseKey(workload) : null;
     const title = phase ? copy.phases[phase] : null;
     if (numberKnown) {
       const ordinal = copy.phaseNumber.replace("{number}", countText(current.number)).replace("{total}", countText(current.count));
@@ -630,7 +631,7 @@
       heading.append(node("h3", jobTitle(selected)), stateBadge(selected.state));
       detail.append(heading);
       appendFolder(detail, selected, true);
-      const phase = selected.description?.kind === "image_indexing" ? selected.description.phase : null;
+      const phase = selected.description?.kind === "image_indexing" ? phaseKey(selected) : null;
       if (!isTerminalState(selected.state)) appendPhase(detail, selected);
       if (selected.state === "needs_attention") detail.append(node("p", copy.blockedHelp, "dw-notice dw-warning"));
       if (["queued", "running", "admitted"].includes(selected.state) && (!engine || engine.enabled !== true || engine.worker_available !== true || engine.state !== "ready")) {
