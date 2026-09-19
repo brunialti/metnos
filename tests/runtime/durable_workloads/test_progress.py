@@ -162,15 +162,70 @@ def test_current_phase_eta_is_distinct_and_persistently_anchored(store):
     assert store.progress_many(OWNER, [wid], now=NOW + timedelta(seconds=54))[wid]["current_phase"] == result["current_phase"]
 
 
-def test_between_claims_retains_whole_job_eta_without_inventing_active_phase(store):
-    wid = measured(store)
+@pytest.mark.parametrize("extra_phase", [False, True])
+def test_between_claims_retains_phase_progress_and_anchored_eta(store, extra_phase):
+    wid = measured(store, extra_phase=extra_phase)
     result = store.progress_many(OWNER, [wid], now=NOW + timedelta(seconds=51))[wid]
-    assert result["estimated_end_at"] is not None
+    assert result["parallelism"]["running_units"] == 0
+    assert result["parallelism"]["leased_units"] == 0
     assert result["current_phase"] == {
-        "stage_key": None, "number": None, "count": 1,
-        "committed_units": None, "total_units": None, "known_units_percent": None,
-        "estimated_end_at": None, "estimated_end_reason": "no_active_phase",
+        "stage_key": "map", "number": 1, "count": 2 if extra_phase else 1,
+        "committed_units": 3, "total_units": 10, "known_units_percent": 30.0,
+        "estimated_end_at": "2026-09-16T12:03:10.000000Z", "estimated_end_reason": None,
     }
+    lease = claim(store, 52)
+    claimed = store.progress_many(OWNER, [wid], now=NOW + timedelta(seconds=53))[wid]
+    store.mark_running(lease, now=NOW + timedelta(seconds=54))
+    running = store.progress_many(OWNER, [wid], now=NOW + timedelta(seconds=55))[wid]
+    assert claimed["current_phase"] == running["current_phase"] == result["current_phase"]
+
+
+def test_idle_phase_keeps_counts_but_expires_estimate(store):
+    wid = measured(store, timeout_s=1200)
+    phase = store.progress_many(OWNER, [wid], now=NOW + timedelta(seconds=180))[wid]["current_phase"]
+    assert phase["stage_key"] == "map"
+    assert (phase["committed_units"], phase["total_units"], phase["known_units_percent"]) == (3, 10, 30.0)
+    assert phase["estimated_end_at"] is None
+    assert phase["estimated_end_reason"] == "stale_progress"
+
+
+@pytest.mark.parametrize("state", ["paused", "needs_attention"])
+def test_stopped_phase_keeps_saved_counts_without_an_estimate(store, state):
+    wid = measured(store)
+    store._connection.execute("UPDATE workloads SET state=? WHERE id=?", (state, wid))
+    phase = store.progress_many(OWNER, [wid], now=NOW + timedelta(seconds=51))[wid]["current_phase"]
+    assert phase["stage_key"] == "map"
+    assert (phase["committed_units"], phase["total_units"]) == (3, 10)
+    assert phase["estimated_end_at"] is None
+    assert phase["estimated_end_reason"] == ("needs_attention" if state == "needs_attention" else "not_running")
+
+
+def test_completed_phase_remains_visible_until_successor_starts(store):
+    wid = measured(store, extra_phase=True)
+    for offset in range(60, 200, 20):
+        lease = claim(store, offset)
+        store.mark_running(lease, now=NOW + timedelta(seconds=offset + 2))
+        store.commit_result(lease, ValidatedResult.from_payload(lease.output_schema_version, {"ok": True}),
+                            now=NOW + timedelta(seconds=offset + 10))
+    phase = store.progress_many(OWNER, [wid], now=NOW + timedelta(seconds=201))[wid]["current_phase"]
+    assert (phase["stage_key"], phase["committed_units"], phase["total_units"]) == ("map", 10, 10)
+    assert phase["known_units_percent"] == 100.0
+    assert phase["estimated_end_at"] is None
+    assert store.materialize_ready_units(OWNER, wid) == 10
+    lease = claim(store, 202)
+    assert lease
+    phase = store.progress_many(OWNER, [wid], now=NOW + timedelta(seconds=203))[wid]["current_phase"]
+    assert (phase["stage_key"], phase["number"], phase["committed_units"]) == ("another_map", 2, 0)
+
+
+def test_two_unfinished_idle_phases_are_not_merged_or_arbitrarily_selected(store):
+    wid = measured(store, extra_phase=True)
+    next_stage = store._connection.execute("SELECT id FROM stages WHERE stage_key='another_map'").fetchone()[0]
+    store._connection.execute("UPDATE units SET stage_id=? WHERE id=(SELECT id FROM units WHERE state='committed' LIMIT 1)", (next_stage,))
+    phase = store.progress_many(OWNER, [wid], now=NOW + timedelta(seconds=51))[wid]["current_phase"]
+    assert phase["stage_key"] is None
+    assert phase["committed_units"] is phase["total_units"] is phase["estimated_end_at"] is None
+    assert phase["estimated_end_reason"] == "multiple_active_phases"
 
 
 @pytest.mark.parametrize("mutation,reason", [

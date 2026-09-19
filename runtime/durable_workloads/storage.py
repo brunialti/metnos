@@ -4087,6 +4087,9 @@ class DurableWorkloadStore:
         Percentages count committed *known* units, not time or source coverage.
         Whole-job ETA is unavailable for heterogeneous/expanding plans. The
         separate current-phase ETA uses only that fully materialized phase.
+        A phase survives gaps between unit leases: prefer executing work, then
+        unfinished work already started, then the most recently finished phase.
+        Equally relevant parallel phases remain explicitly ambiguous.
         A recovered unit contributes its final successful attempt once; elapsed
         completion intervals still include retry time. Unresolved retries and
         unknown model usage remain disqualifying, including historical usage.
@@ -4158,6 +4161,9 @@ class DurableWorkloadStore:
                            THEN 1 ELSE 0 END) AS uncertain_model_usage,
                        MIN(CASE WHEN json_type(a.metrics_json, '$.execution_started_at')='text'
                            THEN json_extract(a.metrics_json, '$.execution_started_at') END) AS started_at,
+                       MAX(COALESCE(a.ended_at,
+                           CASE WHEN json_type(a.metrics_json, '$.execution_started_at')='text'
+                           THEN json_extract(a.metrics_json, '$.execution_started_at') END)) AS last_activity,
                        COUNT(CASE WHEN s.stage_type<>'inventory' AND u.state='committed' AND a.state='succeeded'
                            AND a.number=u.attempt_count AND a.ended_at IS NOT NULL
                            AND json_type(a.metrics_json, '$.execution_started_at')='text'
@@ -4191,7 +4197,8 @@ class DurableWorkloadStore:
                        ROW_NUMBER() OVER (PARTITION BY w.id ORDER BY s.position) AS phase_number,
                        COALESCE(m.completed, 0) AND m.attention_code IS NULL AS materialized,
                        COUNT(u.id) AS total, SUM(u.state='committed') AS committed,
-                       SUM(u.state IN ('running','leased')) AS active
+                       SUM(u.state IN ('running','leased')) AS active,
+                       SUM(u.state NOT IN ('committed','failed_permanent','skipped','cancelled')) AS unfinished
                 FROM progress_selected w JOIN stages s
                   ON s.owner_user_id=w.owner_user_id AND s.revision_id=w.active_revision_id
                  AND s.stage_type<>'inventory'
@@ -4200,9 +4207,24 @@ class DurableWorkloadStore:
                 LEFT JOIN stage_materialization m ON m.owner_user_id=s.owner_user_id
                   AND m.revision_id=s.revision_id AND m.stage_id=s.id
                 GROUP BY w.id, s.id
+            ), phase_relevance AS (
+                SELECT p.id, p.stage_id, a.last_activity,
+                       CASE WHEN p.active>0 THEN 0
+                            WHEN p.unfinished>0 OR NOT p.materialized THEN 1
+                            ELSE 2 END AS relevance
+                FROM phase_unit_facts p LEFT JOIN phase_attempt_facts a
+                  ON a.id=p.id AND a.stage_id=p.stage_id
+                WHERE p.active>0 OR a.started_at IS NOT NULL
+            ), phase_candidates AS (
+                SELECT *, MIN(relevance) OVER (PARTITION BY id) AS preferred_relevance,
+                       MAX(last_activity) OVER (PARTITION BY id, relevance) AS latest_activity
+                FROM phase_relevance
             ), active_phase AS (
                 SELECT id, COUNT(*) AS active_phases, MIN(stage_id) AS stage_id
-                FROM phase_unit_facts WHERE active>0 GROUP BY id
+                FROM phase_candidates
+                WHERE relevance=preferred_relevance
+                  AND (relevance<>2 OR last_activity=latest_activity)
+                GROUP BY id
             )
             SELECT w.id, w.state, w.inventory_sealed, w.usage_complete,
                    w.usage_unknown, a.uncertain_model_usage,

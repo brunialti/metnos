@@ -107,6 +107,17 @@ assert.equal(tableRows(progressTable).length, 6);
 assert.deepEqual(tableRows(progressTable).slice(0, 3).map(row => row.children.map(cell => cell.textContent)),
   [["10", "phaseCompletedMeaning"], ["967", "phaseTotalMeaning"], [(1935).toLocaleString(), "knownTotalMeaning"]]);
 assert.ok(tableRows(progressTable).every(row => row.children[1].tag === "th" && row.children[1].scope === "row"));
+const discoveryGap = new Element("div");
+const discoveryWorkload = {description: {kind: "image_indexing", phase: null}, counters: {total: 1},
+  progress: {...timing, current_phase: {...timing.current_phase, stage_key: "discover", number: 1,
+    committed_units: 1, total_units: 1, known_units_percent: 100}}};
+ui.appendProgressTable(discoveryGap, discoveryWorkload);
+assert.equal(metric(discoveryGap.children[0], "phase-completed").children[0].textContent, "1");
+assert.equal(metric(discoveryGap.children[0], "phase-total").children[0].textContent, "n.a.",
+  "persisted discovery phase stays visible between leases without inventing a final source count");
+const discoveryHeading = new Element("div");
+ui.appendPhase(discoveryHeading, discoveryWorkload);
+assert.ok(discoveryHeading.textContent.includes("Scanning folders"));
 const missingContainer = new Element("div");
 ui.appendProgressTable(missingContainer, {});
 assert.ok(tableRows(missingContainer.children[0]).every(row => row.children[0].textContent === "n.a."),
