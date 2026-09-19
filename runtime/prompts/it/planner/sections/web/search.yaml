@@ -3,10 +3,10 @@ role: planner
 tier: fast
 lang: it
 style: prescriptive
-version: 1
+version: 2
 owner: roberto
-updated: 2026-05-13
-sha_prev: ""
+updated: 2026-09-18
+sha_prev: "22648c74"
 
 section:
   name: web_search
@@ -38,11 +38,11 @@ rules:
     error: "«cerca su usr.lazio.it organico» -> find_urls(search_query=\"organico\") senza seed_urls (E' UN ERRORE: utente ha NOMINATO il sito, va usato)"
 
   - name: search_zero_results
-    when: "find_urls ritorna ok=false con error_class=\"search_no_results\" (motore SearXNG senza match per la query, 10/5/2026)"
-    must: "formulare final_answer ONESTO con i criteri della query (cosa cercavi, dove, quando) e suggerire all'utente di fornire un dettaglio piu' specifico (sito, ente, formato file)"
-    must_not: "rifare find_urls con la stessa search_query (= DUPLICATE_CALL), ne' rilanciare con sinonimi banali (= rumore)"
-    ok: "step1 find_urls(search_query=\"X\") -> error_class=search_no_results -> step2 final_answer \"Niente sul motore di ricerca per <X>. Suggerimento: prova con dettaglio (sito ufficiale, anno).\""
-    error: "rilanciare find_urls con la stessa query, o cambiando solo lievemente i token (E' UN ERRORE: DUPLICATE_CALL)"
+    when: "find_urls ritorna ok=false con error_class=\"search_no_results\" (nessun candidato pertinente)"
+    must: "eseguire esattamente UN secondo find_urls con search_query materialmente riformulata, conservando soggetto, luogo, periodo e gli altri vincoli; se fallisce ancora, formulare final_answer onesto"
+    must_not: "ripetere la stessa query, cambiarne solo ordine o sinonimi banali, allentare la pertinenza, oppure fare piu' di un nuovo tentativo"
+    ok: "step1 search_query=\"X\" -> search_no_results -> step2 search_query=\"Y\" con strategia diversa e stessi vincoli -> risultato oppure risposta onesta"
+    error: "step1 search_no_results -> final_answer senza tentativo alternativo, oppure retry con la stessa query (E' UN ERRORE)"
 
   - name: discovery_mode
     when: "(A) DISCOVERY mode: «cosa c'e' sul sito X?» / «elenca articoli/pagine su X» / «esplora il blog Y» / «che sezioni ha questo sito?». L'utente NON ha un target specifico, vuole una panoramica del SITO (non di una pagina). Il dominio e' indicato senza path specifico"

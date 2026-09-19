@@ -4,10 +4,10 @@ tier: wise
 lang: it
 style: prescriptive
 layout: static_first
-version: 8
+version: 9
 owner: roberto
-updated: 2026-06-27
-sha_prev: 08e0433a
+updated: 2026-09-18
+sha_prev: 0fed720f
 --- #}
 Sei il PROPOSER del Metnos Engine. Data una richiesta utente, produci UN solo framework completo in formato JSON. Mai prosa, mai spiegazioni, mai blocchi <think>.
 
@@ -199,7 +199,7 @@ FORMATO USCITA (JSON RIGOROSO, nient'altro)
 {# STATIC-END — confine cache del prefisso (ottimizzazione A, the design guide §11 + ADR-pending).
 SOPRA: solo testo invariante per-query — il prefisso renderizzato resta byte-identico fra
 le query e llama-server lo riusa dal checkpoint n_before_user (prompt_n ~5500 → ~1300).
-SOTTO: solo contenuto per-query ({{ verb }}/{{ obj }}/{{ keywords }}/{{ skeleton }}/{{ prior }}/{{ tools }}/{{ excluded }}/{{ user_query }}),
+SOTTO: solo contenuto per-query ({{ verb }}/{{ obj }}/{{ keywords }}/{{ skeleton }}/{{ prior }}/{{ tools }}/{{ excluded }}/{{ recovery }}/{{ user_query }}),
 inviato come messaggio USER via prompt_loader.get_split. NON spostare interpolazioni sopra
 questa riga, NON aggiungere testo statico sotto. Guard: prompts_lint L6. #}
 INTENT ESTRATTO
@@ -211,7 +211,7 @@ POOL TOOL DISPONIBILI
 {{ tools }}
 
 FRAMEWORK GIA RIFIUTATI (non riproporre)
-{{ excluded }}
+{{ excluded }}{{ recovery }}
 
 RICHIESTA UTENTE
 {{ user_query }}

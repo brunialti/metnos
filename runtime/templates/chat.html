@@ -1427,8 +1427,9 @@ function renderCompletedTurn(data, options){
     right: closeHms,
     turn_id: turnId,
   };
+  const bubbleClass = data.outcome === 'failed' ? 'err' : 'bot';
   const bubble = renderAtPlaceholder(options.placeholder || null, () => add(
-    'bot', body, meta, options.persist !== false,
+    bubbleClass, body, meta, options.persist !== false,
     data.attachments || null, galleryInfo, bodyAsHtml));
   attachDecisionButtons(bubble, data.pending_decision);
   return bubble;

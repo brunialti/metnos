@@ -19,9 +19,12 @@ import time
 from dataclasses import dataclass
 from typing import Optional, Callable
 
-from .types import Intent, Framework, RunResult, StepSpec
+from .types import (
+    Intent, Framework, RunResult, StepSpec, result_error_classes,
+)
 from .executor import (
-    Executor, compute_framework_hash, resolve_query_canonical_args,
+    Executor, compute_execution_fingerprint, compute_framework_hash,
+    resolve_query_canonical_args,
 )
 from .routing_pool import build_routing_pool
 from . import fastpath as _fp
@@ -7850,13 +7853,14 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                         elapsed_ms=int((time.time() - t_start) * 1000),
                         framework=framework_alt,
                         error_class="capability_missing")
-                if (compute_framework_hash(framework_alt)
-                        == compute_framework_hash(framework)):
+                if (compute_execution_fingerprint(framework_alt)
+                        == compute_execution_fingerprint(framework)):
                     # Re-running the same executable graph cannot recover an
                     # argument/contract failure; it only doubles latency and
                     # may repeat expensive producers. Compare *after* all
-                    # deterministic rewrites, because two raw proposals can
-                    # normalize to the same plan.
+                    # deterministic rewrites and include actual argument
+                    # values: a genuinely reformulated query must be allowed,
+                    # while a prose-only final-message change must not.
                     log.info("[L3 recovery] SKIP: finalized plan unchanged")
                     framework_alt = None
             if framework_alt is not None:
@@ -7889,7 +7893,7 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                         framework_hash=run2.framework_hash,
                         elapsed_ms=int((time.time() - t_start) * 1000),
                         run=run2, framework=framework_alt,
-                        error_class=err_class)
+                        error_class="")
                 # §2.8 (bug live 1ba8e2c4, 6/7): il run di RECOVERY è fallito.
                 # La verità più recente è run2 — che può aver TENTATO una
                 # mutazione (es. delete di massa → timeout con esecuzione
@@ -7942,12 +7946,23 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
         resp = terminator.explain(
             query=query, intent=intent,
             failed_run=run, error_class=err_class)
+        observed_error_class = ""
+        for failed_step in reversed(run.steps or []):
+            failed_result = (
+                failed_step.result
+                if isinstance(failed_step.result, dict) else {}
+            )
+            observed = result_error_classes(failed_result)
+            if observed:
+                observed_error_class = observed[0]
+                break
         return DispatchResult(
             final_text=resp.final_text, final_kind="answer",
             match_source="terminator",
             framework_hash=run.framework_hash,
             elapsed_ms=int((time.time() - t_start) * 1000),
-            run=run, framework=framework, error_class=err_class)
+            run=run, framework=framework,
+            error_class=observed_error_class or err_class)
 
     # Seed-state (ADR 0177 M1): turni con allegati (upload) non cacheati.
     if not seed_state:

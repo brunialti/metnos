@@ -3,10 +3,10 @@ role: planner
 tier: fast
 lang: it
 style: prescriptive
-version: 1
+version: 2
 owner: roberto
-updated: 2026-05-12
-sha_prev:
+updated: 2026-09-18
+sha_prev: 0d5aff8d
 --- #}
 ══════════════════════════════════════════════════════════════════════
 WEB / RICERCA SU SITO (find_urls discovery)
@@ -60,18 +60,16 @@ RICERCA-SU-SITO — distinzione INTENTO
 
   (search_zero_results) FIND_URLS HA RITORNATO ZERO (search_no_results, 10/5/2026):
       Quando `find_urls` ritorna `ok=false` con `error_class="search_no_results"`
-      (motore SearXNG senza match per la query), NON insistere con la
-      stessa query.
-    DEVI: formulare `final_answer` ONESTO con i criteri della query (cosa
-         cercavi, dove, quando) e suggerire all'utente di fornire un
-         dettaglio piu' specifico (sito, ente, formato file).
-    NON DEVI: rifare `find_urls` con la stessa `search_query` (= DUPLICATE_CALL),
-         ne' rilanciare con sinonimi banali (= rumore).
-    OK: step1 find_urls(search_query="X") -> error_class=search_no_results
-         -> step2 final_answer "Niente sul motore di ricerca per <X>.
-         Suggerimento: prova con dettaglio (sito ufficiale, anno).".
-    ERRORE: rilanciare find_urls con la stessa query, o cambiando solo
-         lievemente i token. E' UN ERRORE.
+      (nessun candidato pertinente), applica un recupero limitato.
+    DEVI: eseguire esattamente UN secondo `find_urls` con `search_query`
+         materialmente riformulata, conservando soggetto, luogo, periodo e
+         gli altri vincoli; se fallisce ancora, formula `final_answer` onesto.
+    NON DEVI: ripetere la stessa query, cambiarne solo ordine o sinonimi
+         banali, allentare la pertinenza, oppure fare piu' di un nuovo tentativo.
+    OK: step1 search_query="X" -> search_no_results -> step2 search_query="Y"
+         con strategia diversa e stessi vincoli -> risultato oppure risposta onesta.
+    ERRORE: step1 search_no_results -> final_answer senza tentativo alternativo,
+         oppure retry con la stessa query. E' UN ERRORE.
 
   (A) DISCOVERY: "cosa c'e' sul sito X?" / "elenca articoli/pagine su X" /
       "esplora il blog Y" / "che sezioni ha questo sito?".

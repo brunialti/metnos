@@ -3,10 +3,10 @@ role: planner
 tier: fast
 lang: en
 style: prescriptive
-version: 1
+version: 2
 owner: roberto
-updated: 2026-05-13
-sha_prev: ""
+updated: 2026-09-18
+sha_prev: "459afe5b"
 
 section:
   name: web_search
@@ -38,11 +38,11 @@ rules:
     error: "«search on usr.lazio.it org chart» -> find_urls(search_query=\"org chart\") without seed_urls (THIS IS AN ERROR: user NAMED the site, use it)"
 
   - name: search_zero_results
-    when: "find_urls returns ok=false with error_class=\"search_no_results\" (SearXNG engine without matches for the query, 10/5/2026)"
-    must: "formulate honest final_answer with the query criteria (what you searched, where, when) and suggest the user provide a more specific detail (site, entity, file format)"
-    must_not: "re-do find_urls with the same search_query (= DUPLICATE_CALL), nor relaunch with banal synonyms (= noise)"
-    ok: "step1 find_urls(search_query=\"X\") -> error_class=search_no_results -> step2 final_answer \"Nothing on the search engine for <X>. Tip: try with detail (official site, year).\""
-    error: "re-launch find_urls with the same query, or just slightly changed tokens (THIS IS AN ERROR: DUPLICATE_CALL)"
+    when: "find_urls returns ok=false with error_class=\"search_no_results\" (no relevant candidate)"
+    must: "run exactly ONE second find_urls with a materially reformulated search_query, preserving subject, place, time and every other constraint; if it also fails, produce an honest final_answer"
+    must_not: "repeat the same query, change only word order or trivial synonyms, relax relevance, or make more than one new attempt"
+    ok: "step1 search_query=\"X\" -> search_no_results -> step2 search_query=\"Y\" with a different strategy and the same constraints -> result or honest answer"
+    error: "step1 search_no_results -> final_answer without an alternative attempt, or retry with the same query (THIS IS AN ERROR)"
 
   - name: discovery_mode
     when: "(A) DISCOVERY mode: «what's on site X?» / «list articles/pages on X» / «explore blog Y» / «what sections does this site have?». The user has NO specific target, wants a survey of the SITE (not a page). The domain is given without a specific path"

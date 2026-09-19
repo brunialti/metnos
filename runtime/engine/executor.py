@@ -1433,6 +1433,46 @@ def compute_framework_hash(fw: Framework) -> str:
     return h
 
 
+def compute_execution_fingerprint(fw: Framework) -> str:
+    """Hash the executable plan, including argument values.
+
+    ``compute_framework_hash`` deliberately identifies a reusable *shape* for
+    caches and proposer exclusions.  Recovery needs a different identity: a
+    reformulated search with the same tool and argument names is a new attempt,
+    while changing only the final prose is not.  Keep this digest separate so
+    the established cache contract remains unchanged.
+    """
+    executable = {
+        "steps": [
+            {
+                "tool": step.tool,
+                "args": step.args or {},
+                "if_prev_entries_nonempty": bool(
+                    step.if_prev_entries_nonempty
+                ),
+            }
+            for step in fw.steps
+        ],
+        "fillers": {
+            name: {
+                "prompt": spec.prompt,
+                "default": spec.default,
+                "tier": spec.tier,
+            }
+            for name, spec in sorted((fw.fillers or {}).items())
+        },
+        "runtime_step_cap": int(fw.runtime_step_cap or 0),
+    }
+    blob = json.dumps(
+        executable,
+        sort_keys=True,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        default=str,
+    )
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
+
+
 # ── Query-specificity (condiviso L0 fastpath + L1 autopath) ───────────────
 # Arg che LEGANO il piano alla singola query: se uno di questi ha un valore
 # LITERAL (non un placeholder ${...}), il framework e' legato a QUELLA query

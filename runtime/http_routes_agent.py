@@ -35,6 +35,7 @@ from http_turn_pool import TurnPoolBusy
 from logging_setup import get_logger
 from messages import get as _msg  # §11 i18n
 from credential_intake import scrub_sensitive_text
+from reliability import classify_turn
 from tutor_boundary import (
     answer as _tutor_boundary_answer,
     http_principal as _tutor_http_principal,
@@ -44,6 +45,28 @@ from tutor_boundary import (
 log = get_logger(__name__)
 
 VERSION = "1.1"  # versione dell'HTTP API (ADR 0078), DISTINTA dalla product version
+
+
+def _semantic_turn_outcome(value) -> str:
+    """Return the user-visible outcome, distinct from lifecycle completion."""
+    if isinstance(value, dict):
+        existing = str(value.get("outcome") or "")
+        if existing:
+            return existing
+        record = value
+    else:
+        existing = str(getattr(value, "outcome", "") or "")
+        if existing:
+            return existing
+        try:
+            from dataclasses import asdict as _asdict
+            record = _asdict(value)
+        except Exception:
+            return "failed"
+    try:
+        return str(classify_turn(record)["outcome"])
+    except Exception:
+        return "failed"
 
 
 def _http_source_request_id(
@@ -1315,6 +1338,7 @@ def _build_final_event_payload(log_obj, admin_key: str) -> dict:
         "final_message": final_message,
         "final_message_html": _safe_final_html(final_message),
         "final_kind": log_obj.final_kind,
+        "outcome": _semantic_turn_outcome(log_obj),
         # Destinazione risolta (ADR 0034): None = server, altrimenti nome device.
         "target_device": getattr(log_obj, "target_device", None),
         "total_ms": int((log_obj.ts_end - log_obj.ts_start) * 1000),
@@ -1787,6 +1811,7 @@ async def turn(request: web.Request) -> web.Response:
                 "final_message": immediate_http,
                 "final_message_html": _safe_final_html(immediate_http),
                 "final_kind": "answer",
+                "outcome": "completed",
                 "total_ms": immediate_elapsed_ms,
                 "expandable_caps": [],
                 "attachments": [],
@@ -1804,6 +1829,7 @@ async def turn(request: web.Request) -> web.Response:
             "final_message": immediate_http,
             "final_message_html": _safe_final_html(immediate_http),
             "final_kind": "answer",
+            "outcome": "completed",
             "total_ms": immediate_elapsed_ms,
             "steps_summary": [],
             "conversation_id": conversation_id,
@@ -1862,6 +1888,7 @@ async def _turn_json(request: web.Request, agent_runtime, query: str, actor: str
         "final_message": final_message,
         "final_message_html": _safe_final_html(final_message),
         "final_kind": log_obj.final_kind,
+        "outcome": _semantic_turn_outcome(log_obj),
         # Destinazione risolta (ADR 0034): None = server, altrimenti nome device.
         "target_device": getattr(log_obj, "target_device", None),
         "total_ms": int((log_obj.ts_end - log_obj.ts_start) * 1000),
@@ -3340,6 +3367,7 @@ async def turn_submit(request: web.Request) -> web.Response:
             "final_message": immediate_http,
             "final_message_html": _safe_final_html(immediate_http),
             "final_kind": "answer",
+            "outcome": "completed",
             "total_ms": immediate_elapsed_ms,
             "expandable_caps": [],
             "attachments": [],
@@ -3403,6 +3431,7 @@ async def turn_submit(request: web.Request) -> web.Response:
                         "final_message": immediate_http,
                         "final_message_html": _safe_final_html(immediate_http),
                         "final_kind": "answer",
+                        "outcome": "completed",
                         "total_ms": int(
                             runtime_data.get("immediate_elapsed_ms") or 0),
                         "expandable_caps": [],
@@ -3563,9 +3592,20 @@ async def turn_status(request: web.Request) -> web.Response:
         access_error = await _turn_access_error(request, snapshot)
         if access_error is not None:
             return access_error
+        snapshot_outcome = ""
+        if snapshot["closed"]:
+            for event in reversed(snapshot["events"]):
+                if event.get("event_type") == "final":
+                    payload = event.get("payload") or {}
+                    snapshot_outcome = str(payload.get("outcome") or "")
+                    break
+                if event.get("event_type") == "error":
+                    snapshot_outcome = "failed"
+                    break
         return web.json_response({
             "turn_id": turn_id,
             "state": "complete" if snapshot["closed"] else "running",
+            "outcome": snapshot_outcome,
             "events": snapshot["events"],
         })
     # Fallback: cerca su disco (TurnLog jsonl).
@@ -3602,6 +3642,7 @@ async def turn_status(request: web.Request) -> web.Response:
                             "final_message_html": _safe_final_html(final_msg)
                             if final_msg else "",
                             "final_kind": d.get("final_kind"),
+                            "outcome": _semantic_turn_outcome(d),
                             "ts_end": ts_end if ts_end else None,
                             "total_ms": int((ts_end - ts_start) * 1000)
                             if ts_end else None,
@@ -3718,6 +3759,7 @@ async def turns_recent(request: web.Request) -> web.Response:
                         "final_message": final_msg,
                         "final_message_html": _safe_final_html(final_msg) if final_msg else "",
                         "final_kind": t.get("final_kind", ""),
+                        "outcome": _semantic_turn_outcome(t),
                         "ts_start": ts_start,
                         "ts_end": ts_end if ts_end else None,
                         "total_ms": int((ts_end - ts_start) * 1000) if ts_end else None,
@@ -3753,6 +3795,7 @@ async def turns_recent(request: web.Request) -> web.Response:
                 "final_message": "",
                 "final_message_html": "",
                 "final_kind": "",
+                "outcome": "",
                 "ts_start": ts_start,
                 "ts_end": None,
                 "total_ms": None,

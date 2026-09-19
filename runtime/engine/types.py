@@ -206,6 +206,11 @@ OPERATIONAL_ERROR_CLASSES = frozenset({
     # Un comando eseguito e fallito non e' un errore di argomenti e non va
     # ripianificato automaticamente: conserva il motivo osservato.
     "operation_failed",
+    # Guasti della catena di ricerca: cambiare parole non ripara il motore o il
+    # valutatore di pertinenza. ``search_no_results`` resta fuori: quello ammette
+    # un solo tentativo alternativo governato dal recovery.
+    "search_backend_unavailable", "search_backend_invalid",
+    "search_relevance_unavailable",
 })
 
 
