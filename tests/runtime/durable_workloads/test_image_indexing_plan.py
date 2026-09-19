@@ -145,6 +145,22 @@ def test_logical_corpus_key_survives_a_symlink_mount(tmp_path, monkeypatch):
     assert corpus_digest(request["base_path"]) == expected
 
 
+def test_relative_corpus_name_uses_normal_server_path_resolution(
+        tmp_path, monkeypatch):
+    import path_alias
+    from index_schema import canonical_corpus_path
+
+    workspace = tmp_path / "workspace"
+    photos = workspace / "Immagini"
+    photos.mkdir(parents=True)
+    monkeypatch.setattr(path_alias, "workspace_default", lambda: workspace)
+
+    request = indexing.normalize_request(
+        _executor(), {"base_path": "Immagini"})
+
+    assert request["base_path"] == canonical_corpus_path(photos)
+
+
 def _ready(monkeypatch, tmp_path):
     executor = _executor()
     registry = RuntimeRegistry((_registration(executor),))
@@ -178,6 +194,25 @@ def test_repeated_queries_share_one_active_owner_scoped_job(tmp_path, monkeypatc
             "SELECT redacted_request_json FROM workloads WHERE owner_user_id='owner-a'").fetchone()
         assert str(photos) not in row[0]
         assert json.loads(row[0])["payload"]["submission_scope"].startswith("sha256:")
+
+
+def test_relative_corpus_name_is_admitted_transparently(tmp_path, monkeypatch):
+    import path_alias
+
+    executor, _database = _ready(monkeypatch, tmp_path)
+    workspace = tmp_path / "workspace"
+    (workspace / "Immagini").mkdir(parents=True)
+    monkeypatch.setattr(path_alias, "workspace_default", lambda: workspace)
+
+    result = submission.submit_automatic_lre(
+        Framework(steps=[StepSpec(
+            executor.name, {"base_path": "Immagini"})]),
+        catalog=[executor], owner_user_id="owner-relative",
+        turn_id="turn-relative",
+    )
+
+    assert result["decision"] == "accepted", result
+    assert result["state"] == "queued"
 
 
 def test_dry_run_remains_inline_without_opening_the_worker(tmp_path, monkeypatch):

@@ -69,7 +69,15 @@ def normalize_request(executor: object, args: Mapping[str, Any], target_device=N
         or set(args) - _PUBLIC_ARGS
     ):
         raise DirectInvocationUnsupported("image indexing invocation is not admissible")
-    raw = args.get("base_path")
+    # Use the same signed, capability-driven path resolution as ordinary
+    # server execution before freezing the durable request.  The planner keeps
+    # user-facing paths such as ``Immagini`` relative so cached plans remain
+    # portable; LRE admission must not reject that normal representation merely
+    # because it crosses the execution boundary before ``invoke_executor``.
+    from sandbox import resolve_filesystem_read_args
+
+    resolved_args = resolve_filesystem_read_args(executor, dict(args))
+    raw = resolved_args.get("base_path")
     if not isinstance(raw, str) or not raw.strip() or "\x00" in raw:
         raise DirectInvocationUnsupported("image indexing root is missing")
     root = Path(raw).expanduser()
@@ -83,11 +91,11 @@ def normalize_request(executor: object, args: Mapping[str, Any], target_device=N
     # A symlink mounted there as a directory must retain the same index key.
     request = {"base_path": canonical_corpus_path(root)}
     for key, default in (("recursive", True), ("force", False), ("dry_run", False)):
-        value = args.get(key, default)
+        value = resolved_args.get(key, default)
         if type(value) is not bool:
             raise DirectInvocationUnsupported("image indexing option must be boolean")
         request[key] = value
-    max_files = args.get("max_files", 50_000)
+    max_files = resolved_args.get("max_files", 50_000)
     if type(max_files) is not int or not 1 <= max_files <= 1_000_000:
         raise DirectInvocationUnsupported("image indexing source limit is invalid")
     request["max_files"] = max_files
