@@ -18,7 +18,7 @@ def test_console_async_races_progress_and_disconnection(tmp_path):
     script = source.split("<script>", 1)[1].split("</script>", 1)[0]
     script = script.replace("{{ copy|tojson }}", "globalThis.copy")
     script = script.split('  document.getElementById("dwRefresh").addEventListener', 1)[0]
-    script += "globalThis.ui = {request, observeProgress, errorName, availableDate, percentText, estimateText, estimateReason, appendProgress, appendProgressTable, appendPhase, countersText, breakdown, jobTitle, jobFolder, loadList, loadDetail, refresh, markStale, renderEngine, startPolling, deactivatePage, restorePage, setEngine: value => {engine = value; renderEngine();}, selected: () => selected};})();"
+    script += "globalThis.ui = {request, observeProgress, errorName, availableDate, percentText, estimateText, estimateReason, appendProgress, appendProgressTable, appendCompletionTable, appendPhase, countersText, breakdown, processedCount, durationText, jobStateName, jobTitle, jobFolder, loadList, loadDetail, refresh, markStale, renderEngine, startPolling, deactivatePage, restorePage, setEngine: value => {engine = value; renderEngine();}, selected: () => selected};})();"
     harness = r'''
 const assert = require("node:assert/strict");
 const vm = require("node:vm");
@@ -49,7 +49,7 @@ globalThis.window = {setTimeout(fn, delay) { timers.set(++timerId, {fn, delay});
 globalThis.document = {getElementById: id => nodes.get(id), createElement: tag => new Element(tag)};
 let streamsOpened = 0;
 globalThis.EventSource = class { constructor() {streamsOpened++;} addEventListener() {} close() {} };
-globalThis.copy = new Proxy({notAvailable: "n.a.", phaseCount: "{completed} of {total}", phaseNumber: "Phase {number}/{total}", states: {running: "running", needs_attention: "blocked"}, phases: {discover: "Scanning folders"}, estimateReasons: {insufficient_data: "insufficient", data_stale: "data stale", engine_unavailable: "engine unavailable", estimate_overdue: "overdue"}, priorities: {}, artifactStates: {}, errorLabels: {budget_exhausted: "exhausted", budget_accounting_incomplete: "accounting incomplete"}, warningsByCode: {}}, {get: (obj, key) => obj[key] || key});
+globalThis.copy = new Proxy({notAvailable: "n.a.", durationValue: "{hours} h {minutes} min {seconds} s", finishedState: "finished", phaseCount: "{completed} of {total}", phaseNumber: "Phase {number}/{total}", states: {running: "running", needs_attention: "blocked", failed: "failed"}, phases: {discover: "Scanning folders"}, estimateReasons: {insufficient_data: "insufficient", data_stale: "data stale", engine_unavailable: "engine unavailable", estimate_overdue: "overdue"}, priorities: {}, artifactStates: {}, errorLabels: {budget_exhausted: "exhausted", budget_accounting_incomplete: "accounting incomplete"}, warningsByCode: {}}, {get: (obj, key) => obj[key] || key});
 let fetchCount = 0;
 const response = value => ({ok: true, json: async () => value});
 globalThis.fetch = async () => { fetchCount++; return response({items: []}); };
@@ -69,6 +69,11 @@ assert.equal(ui.errorName("budget_exhausted"), "exhausted");
 assert.equal(ui.errorName("<script>private/path</script>"), "errorUnknown");
 assert.equal(ui.jobTitle({description: {kind: "unknown", operation: "untrusted"}}), "genericJob");
 assert.equal(ui.jobTitle({description: {kind: "image_indexing"}}), "photoIndexing");
+assert.equal(ui.jobStateName("completed"), "finished");
+assert.equal(ui.jobStateName("completed_with_errors"), "finished");
+assert.equal(ui.jobStateName("failed"), "failed");
+assert.equal(ui.processedCount(counters), 6);
+assert.equal(ui.durationText("2026-09-19T01:00:00Z", "2026-09-19T03:02:04Z"), "2 h 2 min 4 s");
 assert.equal(ui.jobFolder({}), null);
 assert.equal(ui.jobFolder({description: {target_path: "/photos/<script>alert(1)</script>"}}), "/photos/<script>alert(1)</script>");
 const timing = ui.observeProgress({started_at: new Date(Date.now() - 10000).toISOString(), known_units_percent: 30, observed_at: new Date().toISOString(), estimated_end_at: new Date(Date.now() + 60000).toISOString()});
@@ -106,6 +111,16 @@ const missingContainer = new Element("div");
 ui.appendProgressTable(missingContainer, {});
 assert.ok(tableRows(missingContainer.children[0]).every(row => row.children[0].textContent === "n.a."),
   "missing counts, dates, percent and estimate are not represented as zero");
+const completionContainer = new Element("div");
+ui.appendCompletionTable(completionContainer, {
+  state: "completed_with_errors", updated_at: "2026-09-19T03:02:04Z",
+  progress: {started_at: "2026-09-19T01:00:00Z"}, counters,
+});
+const completionTable = completionContainer.children[0];
+assert.equal(tableRows(completionTable).length, 5);
+assert.equal(metric(completionTable, "processed").children[0].textContent, "6 / 11");
+assert.equal(metric(completionTable, "successful").children[0].textContent, "3");
+assert.equal(metric(completionTable, "duration").children[0].textContent, "2 h 2 min 4 s");
 const phaseHeading = new Element("div");
 ui.appendPhase(phaseHeading, {progress: timing});
 assert.equal(phaseHeading.textContent, "Phase 3/5", "phase numbering is generic, not photo-specific");
@@ -319,7 +334,8 @@ def test_console_labels_exist_in_both_seed_languages():
                        "MORE_ERROR_CATEGORIES", "ATTEMPT_ERRORS", "ATTEMPT_ERRORS_HELP",
                        "METRIC_VALUE", "METRIC_MEANING", "PHASE_COMPLETED_MEANING", "PHASE_TOTAL_MEANING",
                        "KNOWN_TOTAL_MEANING", "BATCH_DEFINITION", "ERROR_EXECUTOR_UNKNOWN", "ERROR_RUNNER_FAILED",
-                       "DISMISS", "DISMISS_CONFIRM",
+                       "DISMISS", "DISMISS_CONFIRM", "JOB_FINISHED", "FINISHED_SUMMARY",
+                       "FINISHED", "DURATION", "DURATION_VALUE", "PROCESSED_BATCHES",
                        "CAUSE_IMAGE_DESCRIPTION_UNAVAILABLE", "CAUSE_IMAGE_DESCRIPTION_TRUNCATED",
                        "CAUSE_IMAGE_DESCRIPTION_INVALID", "CAUSE_IMAGE_DESCRIPTION_EMPTY", "CAUSE_IMAGE_DESCRIPTION_SCHEMA_INVALID"):
             rows = conn.execute("SELECT lang,text,needs_translation FROM i18n WHERE key=? AND lang IN ('it','en')", ("UI_DURABLE_" + suffix,)).fetchall()
@@ -545,6 +561,12 @@ def test_console_design_browser_isolated(monkeypatch, tmp_path, lang):
             assert page.get_by_text(texts["UI_DURABLE_ETA_MULTI_PHASE"], exact=True).is_visible()
             workload["state"] = "completed_with_errors"
             workload["progress"]["parallelism"]["running_units"] = 0
+            workload["updated_at"] = "2026-09-16T12:03:04Z"
+            workload["counters"].update(committed=1935, failed=0, skipped=0, pending=0, attention=0, total=1935)
+            payload["revision"]["execution"]["stages"] = [
+                {"stage_key": "analyze", "stage_type": "map", "counters": {"committed": 967, "failed": 0, "skipped": 0, "total": 967}},
+                {"stage_key": "publish", "stage_type": "publish", "counters": {"committed": 1, "failed": 0, "skipped": 0, "total": 1}},
+            ]
             payload["revision"]["execution"]["domain_errors"] = {
                 "nitems": 31, "categories": [{"error_code": "document_encrypted", "count": 7}],
                 "truncated": True,
@@ -552,10 +574,27 @@ def test_console_design_browser_isolated(monkeypatch, tmp_path, lang):
             page.locator("#dwRefresh").click()
             error_heading = texts["UI_DURABLE_ITEMS_WITH_ERRORS"] + ": 31"
             page.get_by_role("heading", name=error_heading, exact=True).wait_for()
+            finished_badge = page.locator("#dwDetail > .dw-job-heading .dw-state")
+            assert finished_badge.inner_text() == texts["UI_DURABLE_JOB_FINISHED"]
+            assert finished_badge.get_attribute("data-tone") == "warning"
+            completion = page.locator("#dwDetail > .dw-completion-table")
+            assert completion.locator("tr[data-metric='processed'] td").inner_text() == page.evaluate("(1935).toLocaleString(document.documentElement.lang) + ' / ' + (1935).toLocaleString(document.documentElement.lang)")
+            assert completion.locator("tr[data-metric='started'] td").inner_text() != "n.a."
+            assert completion.locator("tr[data-metric='finished'] td").inner_text() != "n.a."
+            assert completion.locator("tr[data-metric='duration'] td").inner_text() != "n.a."
+            assert page.locator("#dwDetail > .dw-stage-summary tbody tr").count() == 2
+            assert choice.get_by_text(texts["UI_DURABLE_JOB_FINISHED"], exact=True).is_visible()
+            assert choice.get_by_text(texts["UI_DURABLE_PROCESSED_BATCHES"] + ":", exact=True).is_visible()
+            assert page.locator(".dw-job-dismiss").is_visible()
             assert page.get_by_text(texts["UI_DURABLE_ERROR_UNKNOWN"] + " (document_encrypted) · 7", exact=True).is_visible()
             assert page.get_by_text(texts["UI_DURABLE_MORE_ERROR_CATEGORIES"], exact=True).is_visible()
+            page.screenshot(path=str(tmp_path / f"lre-finished-with-errors-{lang}.png"), full_page=True)
             # A completed job remains inspectable after leaving/reloading the console.
             page.reload()
+            page.locator(".dw-job-choice").click()
+            page.get_by_role("heading", name=error_heading, exact=True).wait_for()
+            page.locator(".dw-job-choice").click()
+            page.locator("#dwDetail[hidden]").wait_for(state="attached")
             page.locator(".dw-job-choice").click()
             page.get_by_role("heading", name=error_heading, exact=True).wait_for()
             # A recovered transient error remains history, not an active fault
@@ -580,7 +619,7 @@ def test_console_design_browser_isolated(monkeypatch, tmp_path, lang):
             page.locator(".dw-job-choice").click()
             history.locator("summary").wait_for()
             assert history.locator("summary").inner_text().endswith(": 2")
-            remove = page.get_by_role("button", name=texts["UI_DURABLE_DISMISS"], exact=True)
+            remove = page.locator(".dw-job-dismiss")
             assert remove.is_visible()
             dialogs = []
             def accept_dialog(dialog):

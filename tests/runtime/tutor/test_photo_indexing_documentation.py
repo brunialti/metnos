@@ -80,11 +80,11 @@ def _guide_units(language):
         "not necessarily damaged", "continues with the others",
         "IMAGE_NOT_INDEXED:image_decode_failed", "outside the translation system",
     )),
-    ("it", "Completamento con errori espliciti", (
-        "completato con errori", "ciascun batch", "senza essere ricontati", "non diventano foto da saltare",
+    ("it", "Conclusione con errori espliciti", (
+        "Terminato", "badge è arancione", "ciascun batch", "senza essere ricontati", "non diventano foto da saltare",
     )),
-    ("en", "Completion with explicit errors", (
-        "completed with errors", "each batch", "without being counted again", "do not become skippable photos",
+    ("en", "Finishing with explicit errors", (
+        "Finished", "badge is orange", "each batch", "without being counted again", "do not become skippable photos",
     )),
     ("it", "Identificare e riprovare le foto non indicizzate", (
         "IMAGE_NOT_INDEXED", "non viene avviata", "ciclo automatico", "non garantisce", "non vengono cancellati",
