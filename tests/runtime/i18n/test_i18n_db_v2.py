@@ -8,6 +8,7 @@ Estensione ADR 0092 (6/5/2026):
 from __future__ import annotations
 
 import hashlib
+import os
 from concurrent.futures import ThreadPoolExecutor
 import shutil
 import sqlite3
@@ -430,6 +431,54 @@ class TestI18nSetVersionHash(unittest.TestCase):
         self.assertEqual(report, {"keys": 1, "rows": 2})
         self.assertFalse(self.i18n.key_exists("OLD"))
         self.assertTrue(self.i18n.key_exists("OLD.EXTRA"))
+
+    @unittest.skipIf(os.geteuid() == 0, "root ignora i permessi di directory")
+    def test_a_seed_locked_away_by_permissions_is_treated_as_absent(self):
+        """An unreadable seed must skip the merge, not abort the caller.
+
+        Hardened installations leave `install/data` traversable only by root.
+        The catalog the user already has stays usable; the merge is the part
+        that is skipped.
+        """
+        locked = self.tmp / "locked"
+        locked.mkdir()
+        seed = locked / "seed.sqlite"
+        with sqlite3.connect(str(seed)) as conn:
+            conn.execute(
+                "CREATE TABLE i18n (key TEXT NOT NULL, lang TEXT NOT NULL, "
+                "text TEXT, PRIMARY KEY (key, lang))"
+            )
+            conn.execute(
+                "INSERT INTO i18n(key, lang, text) VALUES (?, ?, ?)",
+                ("MSG_UNREACHABLE", "it", "Non arriva"),
+            )
+        locked.chmod(0o000)
+        self.addCleanup(locked.chmod, 0o700)
+
+        connection = self.i18n._open()
+        self.assertEqual(self.i18n._merge_missing_seed_rows(connection, seed), 0)
+        self.i18n.set_catalog_translations("MSG_AFTER", {"it": "dopo"})
+        self.assertTrue(self.i18n.key_exists("MSG_AFTER"))
+
+    @unittest.skipIf(os.geteuid() == 0, "root ignora i permessi di directory")
+    def test_opening_the_catalog_survives_an_unreadable_release_seed(self):
+        """`_open` must not propagate the permission error of the seed."""
+        locked = self.tmp / "locked-open"
+        locked.mkdir()
+        seed = locked / "seed.sqlite"
+        with sqlite3.connect(str(seed)) as conn:
+            conn.execute(
+                "CREATE TABLE i18n (key TEXT NOT NULL, lang TEXT NOT NULL, "
+                "text TEXT, PRIMARY KEY (key, lang))"
+            )
+        locked.chmod(0o000)
+        self.addCleanup(locked.chmod, 0o700)
+
+        original = self.i18n._SEED_DB_PATH
+        self.i18n._SEED_DB_PATH = seed
+        self.addCleanup(setattr, self.i18n, "_SEED_DB_PATH", original)
+        self.i18n.set_catalog_translations("MSG_STILL_OPEN", {"it": "aperto"})
+        self.assertTrue(self.i18n.key_exists("MSG_STILL_OPEN"))
 
 
 class TestAlignMessagesLayer3(unittest.TestCase):
