@@ -49,16 +49,40 @@ Solo `closed` e `cancelled` sono terminali. Inattività, data del file, assenza
 da un TODO, implementazione parziale o solo completamento tecnico non sono
 stati terminali.
 
-## Metadati minimi
+## Nome del file
 
-Ogni documento deve dichiarare in testa:
+Un solo schema, senza eccezioni:
 
-- identificatore stabile `RM-NNNN`;
-- stato;
-- data di creazione e ultima revisione;
-- decisione di conservazione;
-- stato reale dell'implementazione;
-- documenti di origine e, quando presenti, ADR e prove.
+    RM-NNNN-<titolo-in-italiano-kebab-case>.md
+
+`NNNN` è progressivo e non viene mai riusato. Lo slug deriva dal titolo del
+documento, in italiano, senza anglicismi e senza sigle (§7.8): è il titolo
+accorciato, non una sua traduzione libera. Il titolo dell'intestazione `#` e la
+riga corrispondente nell'indice qui sotto devono coincidere parola per parola.
+
+## Intestazione canonica
+
+Ogni documento apre con il titolo e **questa tabella, sempre con questi sette
+campi, in quest'ordine**. Nessun campo si omette e nessun campo si aggiunge:
+
+```markdown
+# RM-NNNN — <Titolo>
+
+| Campo | Valore |
+|---|---|
+| Identificatore | `RM-NNNN` |
+| Stato | `<uno degli stati ammessi>` |
+| Creazione | `YYYY-MM-DD` |
+| Ultima revisione | `YYYY-MM-DD` |
+| Conservazione | <decisione di conservazione> |
+| Implementazione reale | <che cosa esiste davvero nel codice> |
+| Origine e prove | <documenti di origine, ADR, rapporti di prova> |
+```
+
+Quello che un documento dichiara in più — una decisione di prodotto, un nome
+storico, un aggiornamento operativo, un elenco di fonti — va **sotto** la
+tabella, come nota etichettata `**Etichetta.** testo`, prima della prima
+sezione `##`. La tabella resta identica per tutti; le note sono libere.
 
 Ogni roadmap deve inoltre separare chiaramente:
 
@@ -73,12 +97,14 @@ Ogni roadmap deve inoltre separare chiaramente:
 
 | ID | Titolo | Stato | Implementazione | Ultima revisione |
 |---|---|---|---|---|
-| [RM-0001](RM-0001-conoscenza-utente-locale.md) | Conoscenza utente locale: memoria forte, semplice e automatica | `ready` | design F0-F6 finalizzato; implementazione non iniziata | 2026-07-26 |
-| [RM-0002](RM-0002-linter-manifest-multilingue.md) | Controllo multilingue dei manifest executor | `closed` | L0-L6 certificate, provate live e distribuite | 2026-08-25 |
+| [RM-0001](RM-0001-conoscenza-utente-locale.md) | Conoscenza utente locale: memoria forte, semplice e automatica | `ready` | design F0-F6 finalizzato; implementazione non iniziata | 2026-07-28 |
+| [RM-0002](RM-0002-controllo-multilingue-manifest.md) | Controllo multilingue dei manifest executor | `closed` | L0-L6 certificate, provate live e distribuite | 2026-08-25 |
 | [RM-0003](RM-0003-tutor-integrato.md) | Tutor integrato: guida operativa intelligente | `closed` | F2/F3/F4 implementate, certificate e distribuite | 2026-07-30 |
-| [RM-0004](RM-0004-motore-workload-durevoli.md) | Motore generico per lavori lunghi, persistenti e paralleli | `implemented` | F0-F14 completate; ammissione automatica centralizzata, senza profilo obbligatorio | 2026-08-22 |
-| [RM-0005](RM-0005-multilinguismo-full-auto-localizzante.md) | Multilinguismo full e auto-localizzazione dell’istanza | `closed` | F0-F8 certificate; export GitHub pubblico e documentazione Cloudflare verificati | 2026-08-23 |
-| [RM-0006](RM-0006-certificazione-logica-e2e.md) | Certificazione logica da capo a fondo | `implemented` | C0-C6 completate; cinque sonde reali e certificazione finale 96/96 | 2026-08-23 |
+| [RM-0004](RM-0004-motore-lavori-lunghi-persistenti.md) | Motore generico per lavori lunghi, persistenti e paralleli | `implemented` | F0-F14 completate; ammissione automatica centralizzata, senza profilo obbligatorio | 2026-08-22 |
+| [RM-0005](RM-0005-multilinguismo-e-autolocalizzazione.md) | Multilinguismo completo e auto-localizzazione dell’istanza | `closed` | F0-F8 certificate; export GitHub pubblico e documentazione Cloudflare verificati | 2026-08-23 |
+| [RM-0006](RM-0006-certificazione-logica-da-capo-a-fondo.md) | Certificazione logica da capo a fondo | `implemented` | C0-C6 completate; cinque sonde reali e certificazione finale 96/96 | 2026-08-23 |
 | [RM-0007](RM-0007-pubblicazione-verificata-contratti.md) | Pubblicazione verificata delle varianti linguistiche dei contratti | `closed` | M0-M4, cutover, due cicli operativi e distribuzione certificati | 2026-08-25 |
-| [RM-0008](RM-0008-porta-unica-nascita-executor.md) | Porta unica di nascita e ciclo controllato degli executor sintetizzati | `in_progress` | F4: transizione produttiva e turni reali verificati; requisiti di preesercizio e chiusura F5-F6 ancora distinti | 2026-09-08 |
-| [RM-0009](RM-0009-crescita-allineata-delle-capacita.md) | Crescita allineata delle capacità | `active` | revisione 8 (revisione 7 esterna unita con la proposta precedente), decisioni del 15/9 registrate; F0-F6 non iniziate, sicurezza in tranche separata | 2026-09-15 |
+| [RM-0008](RM-0008-porta-unica-nascita-executor.md) | Porta unica di nascita e ciclo controllato degli executor | `in_progress` | F4: transizione produttiva e turni reali verificati; requisiti di preesercizio e chiusura F5-F6 ancora distinti | 2026-09-08 |
+| [RM-0009](RM-0009-crescita-allineata-delle-capacita.md) | Crescita allineata delle capacità | `active` | revisione 8; base 09a58c7 riallineata al seguito RM-0008 5c1220ac; inventari ricontrollati, F5/F6 non certificabili; ultima disposizione: solo handover F5/F6 per un agente specializzato; ripresa RM-0009 in attesa di via libera; contratti G0 aperti, codice F0-F6 non iniziato | 2026-09-15 |
+| [RM-0010](RM-0010-integrita-del-vocabolario-di-affinita.md) | Integrità del vocabolario di affinità e ammissione degli strumenti montati | `active` | sette difetti misurati nel codice, sei fasi F0-F5 non iniziate; attende approvazione | 2026-09-20 |
+| [RM-0011](RM-0011-un-solo-modo-di-esprimere-un-provider.md) | Un solo modo di esprimere un provider | `active` | discende da RM-0010 §6bis; F0-F3 non iniziate; due decisioni di vocabolario attendono Roberto | 2026-09-20 |

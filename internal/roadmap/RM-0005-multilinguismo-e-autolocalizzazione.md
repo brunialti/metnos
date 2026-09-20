@@ -1,6 +1,14 @@
-# RM-0005 — Multilinguismo full e auto-localizzazione dell’istanza
+# RM-0005 — Multilinguismo completo e auto-localizzazione dell’istanza
 
-> `RM-0005` · status `closed` · defined `2026-08-21` · implemented `2026-08-23` · closed `2026-08-23` · decisione: una sola lingua firmata per istanza · documento interno, escluso da `docs/` e Tutor
+| Campo | Valore |
+|---|---|
+| Identificatore | `RM-0005` |
+| Stato | `closed` il 2026-08-23 |
+| Creazione | `2026-08-21` |
+| Ultima revisione | `2026-08-23` |
+| Conservazione | conservata come traccia verificabile; esclusa da `docs/` e dal Tutor |
+| Implementazione reale | F0-F8 implementate e certificate il 2026-08-23 |
+| Origine e prove | decisione portante: una sola lingua firmata per istanza; ADR 0219 e ADR 0220 |
 
 ## 1. Sintesi
 

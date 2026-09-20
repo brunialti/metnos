@@ -1,36 +1,21 @@
 # RM-0003 — Tutor integrato: guida operativa intelligente
 
-**Stato:** `closed`
+| Campo | Valore |
+|---|---|
+| Identificatore | `RM-0003` |
+| Stato | `closed` il 2026-07-30 |
+| Creazione | `2026-07-23` |
+| Ultima revisione | `2026-07-30` |
+| Conservazione | persistente fino a cancellazione esplicita di Roberto |
+| Implementazione reale | F2, F3 e F4 implementati. F2 dispone del catalogo firmato, del confine semantico e del correttore deterministico; F3 aggiunge quattro osservazioni correnti tipizzate e la consegna monouso di una clausola d'azione letterale; F4 aggiunge ledger delle lacune, associazioni per utente, riscontro positivo e negativo, cancellazione e replay controfattuale |
+| Origine e prove | ADR 0197 (fondazione semantica), 0198 (compilatore F2 e superamento F1), 0202 (osservazioni, consegna e apprendimento privato), 0203 (identità delle fonti pubblicate). Chiusura sostenuta dal catalogo firmato di 3.396 unità, dalle suite Tutor e i18n verdi, dalle certificazioni F3 e F4, dal campione UI finale e dalla verifica del servizio e della pubblicazione in esercizio |
 
-**Creazione:** 2026-07-23
-
-**Chiusura:** 2026-07-30
-
-**Ultima revisione:** 2026-07-30
-
-**Implementazione reale:** F2, F3 e F4 implementati. F2 dispone del catalogo
-firmato, del confine semantico e del correttore deterministico; F3 aggiunge
-quattro osservazioni correnti tipizzate e la consegna monouso di una clausola
-d'azione letterale; F4 aggiunge ledger delle lacune, associazioni per utente,
-riscontro positivo/negativo, cancellazione e replay controfattuale. Le prove
-isolate F3/F4 e il caso di instradamento per identità documentale sono verdi.
-La chiusura del 30 luglio 2026 è sostenuta dal catalogo firmato di 3.396 unità,
-dalle suite Tutor e i18n verdi, dalle certificazioni F3/F4, dal campione UI
-finale e dalla verifica del servizio e della pubblicazione in esercizio.
-
-**Conservazione:** persistente fino a implementazione dimostrata o cancellazione
-esplicita di Roberto.
-
-**Decisione di prodotto:** il Tutor deve rispondere a domande imprevedibili per
-forma e contenuto usando esclusivamente conoscenza locale ammessa, senza
+**Decisione di prodotto.** il Tutor deve rispondere a domande imprevedibili
+per forma e contenuto usando esclusivamente conoscenza locale ammessa, senza
 diventare un secondo planner e senza richiedere schede precompilate per ogni
 executor.
 
-**ADR:** 0197 (fondazione semantica), 0198 (compilatore F2 e superamento F1),
-0202 (osservazioni, consegna e apprendimento privato), 0203 (identità delle
-fonti pubblicate).
-
-**Fonti verificate:** `runtime/tutor/`, `runtime/published_docs.py`, `docs/`,
+**Fonti verificate.** `runtime/tutor/`, `runtime/published_docs.py`, `docs/`,
 manifest ammessi dal loader, `tutor/sources.toml`,
 `runtime/services_registry.py`, `runtime/devices.py`,
 `runtime/recurring_tasks.py`, `runtime/dialog_pending.py`,

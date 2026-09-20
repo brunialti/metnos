@@ -103,7 +103,7 @@ def test_f0_decision_census_and_capacity_defaults_are_closed():
 def test_original_rm0004_mandate_dialogue_is_byte_preserved():
     roadmap = (
         REPOSITORY / "internal" / "roadmap"
-        / "RM-0004-motore-workload-durevoli.md"
+        / "RM-0004-motore-lavori-lunghi-persistenti.md"
     ).read_text()
     mandate = roadmap[roadmap.index("## Mandato"):]
     assert hashlib.sha256(mandate.encode()).hexdigest() == (

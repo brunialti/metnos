@@ -4,7 +4,7 @@
 > **Data:** 2026-08-24  
 > **Perimetro:** linter dei manifest, localizzazione dei contratti, inventario,
 > firma, caricamento e attivazione della lingua  
-> **Specifiche vigenti:** `internal/roadmap/RM-0002-linter-manifest-multilingue.md`
+> **Specifiche vigenti:** `internal/roadmap/RM-0002-controllo-multilingue-manifest.md`
 > e `internal/roadmap/RM-0007-pubblicazione-verificata-contratti.md`  
 > **Fotografie Git:** `702cd9ec`, `c5c7a6b1`, `fbb518fa`
 

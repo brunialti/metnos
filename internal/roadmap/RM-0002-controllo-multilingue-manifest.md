@@ -1,8 +1,14 @@
 # RM-0002 — Controllo multilingue dei manifest executor
 
-> `RM-0002` · stato `closed` · creazione `2026-07-23` · analisi e
-> specifica chiuse `2026-08-24` · L0-L6 implementate, certificate e
-> distribuite `2026-08-25` · documento interno
+| Campo | Valore |
+|---|---|
+| Identificatore | `RM-0002` |
+| Stato | `closed` il 2026-08-25 |
+| Creazione | `2026-07-23` |
+| Ultima revisione | `2026-08-25` |
+| Conservazione | conservata come traccia verificabile; nessuna attività operativa residua |
+| Implementazione reale | L0-L6 implementate, certificate e distribuite il 2026-08-25; analisi e specifica chiuse il 2026-08-24 |
+| Origine e prove | certificazione finale in `internal/reports/rm0002-final-certification-20260825.md`; misure storiche e due revisioni avversariali in `internal/reports/rm0002-linter-manifest-multilingue-audit-20260824.md`; RM-0007 fornisce il confine di pubblicazione richiesto da L5 |
 
 ## 1. Stato e decisione
 

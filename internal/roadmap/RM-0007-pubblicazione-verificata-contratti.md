@@ -1,9 +1,14 @@
 # RM-0007 — Pubblicazione verificata delle varianti linguistiche dei contratti
 
-> `RM-0007` · stato `closed` · definita `2026-08-24` · specifica KISS
-> consolidata `2026-08-25` · M0-M4 implementate, certificate e distribuite
-> `2026-08-25` · controrevisioni risolte dalla matrice §17 · ADR 0223
-> `accepted` · documento interno
+| Campo | Valore |
+|---|---|
+| Identificatore | `RM-0007` |
+| Stato | `closed` il 2026-08-25 |
+| Creazione | `2026-08-24` |
+| Ultima revisione | `2026-08-25` |
+| Conservazione | conservata come traccia verificabile; nessuna attività operativa residua |
+| Implementazione reale | M0-M4 implementate, certificate e distribuite il 2026-08-25; specifica KISS consolidata il 2026-08-25 |
+| Origine e prove | ADR 0223 `accepted`; controrevisioni risolte dalla matrice §17 |
 
 ## 1. Esigenza
 

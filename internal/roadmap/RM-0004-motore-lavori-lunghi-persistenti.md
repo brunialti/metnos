@@ -2,19 +2,24 @@
 
 | Campo | Valore |
 |---|---|
-| Stato | `implemented`; F0-F14 completate il 2026-08-22; l'ammissione automatica elimina il profilo come prerequisito e prende in carico al confine comune le azioni intrinsecamente lunghe compatibili |
-| Creazione | 2026-08-17; mandato ricevuto in data anteriore, non tracciata |
-| Ultima revisione | 2026-08-22 |
-| Implementazione reale | Nucleo disponibile in `runtime/durable_workloads/`: modelli chiusi, schema SQLite v7, repository circoscritto al proprietario, acquisizione atomica, lease, heartbeat, fencing del commit, ritentativo deterministico, riconciliazione, deposito privato degli artefatti, compilatore/ammissione del piano v1, contesto equo nello scheduler centrale e ponte generico di esecuzione locale, remota e LLM con provenienza completa. F8 aggiunge un servizio systemd supervisionato, con lock locale non autorevole, migrazione e ripresa per lotti, stato di salute chiuso e interruttore predefinito disattivato. F9 aggiunge facciata e DTO circoscritti al proprietario, cursori firmati, cronologia e unità redatte, oltre alle sole route di lettura e ai comandi espliciti con versione e idempotenza. F10 aggiunge una console web paginata con modello di lettura privo di dati riservati, SSE persistente, download autenticato tramite autorizzazione temporanea revocabile e outbox Telegram con lease, ritentativi e localizzazione. F11 registra il preset immagini privato fuori dal nucleo. F12 collega l'autorità locale e remota delle sorgenti, introduce punti di arresto nominati, inventario su spool senza copia monolitica e prove con processi reali. F13 distribuisce l'ingresso firmato `start_lre` per piani precompilati. F14 collega ogni percorso di esecuzione del piano finalizzato a un unico controllo, congela argomenti e collocazione e crea durante il turno il piano minimo per ogni invocazione lunga compatibile, senza profili obbligatori né diramazioni di dominio |
-| Progettazione | Gate V1-V5 ratificati da ADR 0213. `LRE` è il nome architetturale invariabile. Un piano registrato è un'ottimizzazione precompilata per un DAG noto, mai un requisito di ammissione né una scelta richiesta all'utente |
-| Conservazione | Roadmap persistente fino a implementazione dimostrata o cancellazione esplicita di Roberto |
-| Decisione di prodotto acquisita | Un carico lungo interrotto deve poter riprendere senza perdere il lavoro già committato e senza ripetere automaticamente un effetto ambiguo; l'utente formula il risultato voluto, non sceglie LRE, un profilo o il flusso. Quando Metnos riconosce nel piano finalizzato un'azione intrinsecamente lunga e il relativo contratto è ammissibile, LRE è obbligatorio e viene predisposto durante il turno |
-| Autorizzazione F0-F4 | Acquisita da Roberto il 2026-08-20; attuazione limitata al nucleo interno inattivo, a callable fittizi e al deposito privato Metnos |
-| Autorizzazione F5-F14 | F5-F13 acquisite progressivamente; F14 autorizzata il 2026-08-22 con la decisione esplicita che il profilo non può limitare LRE e che il piano necessario va creato durante il turno |
-| Origini | Mandato integrale in calce; `internal/design/TODO.md::JOB-001` |
-| Decisioni applicabili | ADR 0183, 0186, 0190, 0193, 0196, 0201, 0204, 0205, 0207, 0213 e 0214 |
-| Prossimo gate | Nessuno per RM-0004. Evidenze in `internal/reports/rm0004-f12-verification-20260822.md`, `internal/reports/rm0004-f13-verification-20260822.md` e `internal/reports/rm0004-f14-verification-20260822.md` |
-| Riservatezza | Documento interno. Non va copiato in `docs/`, incluso nel catalogo Tutor o pubblicato sul sito; le guide pubbliche descrivono separatamente il solo comportamento distribuito |
+| Identificatore | `RM-0004` |
+| Stato | `implemented`; F0-F14 completate il 2026-08-22 |
+| Creazione | `2026-08-17`; mandato ricevuto in data anteriore, non tracciata |
+| Ultima revisione | `2026-08-22` |
+| Conservazione | persistente fino a implementazione dimostrata o cancellazione esplicita di Roberto |
+| Implementazione reale | nucleo disponibile in `runtime/durable_workloads/`: modelli chiusi, schema SQLite v7, repository circoscritto al proprietario, acquisizione atomica, lease, heartbeat, fencing del commit, ritentativo deterministico, riconciliazione, deposito privato degli artefatti, compilatore e ammissione del piano v1, contesto equo nello scheduler centrale e ponte generico di esecuzione locale, remota e LLM con provenienza completa. F8 aggiunge un servizio systemd supervisionato, con lock locale non autorevole, migrazione e ripresa per lotti, stato di salute chiuso e interruttore predefinito disattivato. F9 aggiunge facciata e DTO circoscritti al proprietario, cursori firmati, cronologia e unità redatte, oltre alle sole route di lettura e ai comandi espliciti con versione e idempotenza. F10 aggiunge una console web paginata con modello di lettura privo di dati riservati, SSE persistente, download autenticato tramite autorizzazione temporanea revocabile e outbox Telegram con lease, ritentativi e localizzazione. F11 registra il preset immagini privato fuori dal nucleo. F12 collega l'autorità locale e remota delle sorgenti, introduce punti di arresto nominati, inventario su spool senza copia monolitica e prove con processi reali. F13 distribuisce l'ingresso firmato `start_lre` per piani precompilati. F14 collega ogni percorso di esecuzione del piano finalizzato a un unico controllo, congela argomenti e collocazione e crea durante il turno il piano minimo per ogni invocazione lunga compatibile, senza profili obbligatori né diramazioni di dominio |
+| Origine e prove | gate V1-V5 ratificati da ADR 0213; autorizzazione F0-F4 acquisita da Roberto il 2026-08-20, con attuazione limitata al nucleo interno inattivo, a callable fittizi e al deposito privato Metnos |
+
+**Progettazione.** `LRE` è il nome architetturale invariabile. Un piano
+registrato è un'ottimizzazione precompilata per un DAG noto, mai un requisito
+di ammissione né una scelta richiesta all'utente.
+
+**Decisione di prodotto acquisita.** un carico lungo interrotto deve poter
+riprendere senza perdere il lavoro già committato e senza ripetere
+automaticamente un effetto ambiguo; l'utente formula il risultato voluto, non
+sceglie LRE, un profilo o il flusso. Quando Metnos riconosce nel piano
+finalizzato un'azione intrinsecamente lunga e il relativo contratto è
+ammissibile, LRE è obbligatorio e viene predisposto durante il turno.
 
 ## 0. Esito della verifica
 

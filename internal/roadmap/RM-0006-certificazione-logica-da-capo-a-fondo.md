@@ -2,15 +2,19 @@
 
 | Campo | Valore |
 |---|---|
+| Identificatore | `RM-0006` |
 | Stato | `implemented`; C0-C6 completate e certificate il 2026-08-23 |
-| Creazione | 2026-08-22 |
-| Ultima revisione | 2026-08-23 |
+| Creazione | `2026-08-22` |
+| Ultima revisione | `2026-08-23` |
+| Conservazione | persistente fino a implementazione dimostrata o cancellazione esplicita di Roberto |
 | Implementazione reale | C0-C6 completate: matrice bilingue di 24 flussi, coordinatore riprendibile, HTTP isolato, client Rust reale, LRE e postcondizioni; cinque sonde reali verdi e certificazione finale 96/96 su due cicli consecutivi |
-| Decisione di prodotto | La Fase 8 misura se Metnos raggiunge davvero il risultato richiesto, con autorita', collocazione, effetti e risposta corretti; non usa il numero di executor o di test come sostituto della qualita' |
-| Nome storico | Fase 8 — «stress logico» |
-| Origine | `internal/design/TODO.md::QUA-001` e §12 di `CLAUDE.mutabile.md` |
-| Conservazione | Roadmap persistente fino a implementazione dimostrata o cancellazione esplicita |
-| Riservatezza | Specifica dettagliata interna. Soltanto una sintesi marcata `tutor-exclude` compare nelle roadmap pubbliche IT/EN |
+| Origine e prove | `internal/design/TODO.md::QUA-001` e §12 di `CLAUDE.mutabile.md`; ADR 0215 |
+
+**Decisione di prodotto.** la Fase 8 misura se Metnos raggiunge davvero il
+risultato richiesto, con autorità, collocazione, effetti e risposta corretti;
+non usa il numero di executor o di test come sostituto della qualità.
+
+**Nome storico.** Fase 8, «stress logico».
 
 ## 1. Sintesi
 

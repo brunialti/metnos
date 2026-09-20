@@ -1,28 +1,23 @@
 # RM-0001 — Conoscenza utente locale: memoria forte, semplice e automatica
 
-**Stato:** `progettata — non pianificata` (decisione di Roberto, 28 luglio 2026:
-«per adesso troppo complesso per troppo poco»). Il documento resta la specifica
-di riferimento e non è una previsione di lavoro. Le condizioni per riaprirlo sono
-in §0-bis, e sono misurabili.
-**Creazione:** 2026-07-23
-**Ultima revisione:** 2026-07-28
-**Implementazione reale:** non iniziata. Esistono soltanto le preferenze W2,
-alcuni registri riutilizzabili, il Tutor, le cache di piano e il ciclo W1; non
-esistono ancora il principale canonico per la memoria, lo store, il compilatore,
-la superficie chat o gli applicatori descritti qui
-**Conservazione:** roadmap persistente fino a implementazione dimostrata o
-cancellazione esplicita di Roberto
-**Decisione:** ADR 0200 **ratificata il 28 luglio 2026**; il calendario di F0 è
-deciso separatamente. Questa roadmap è la specifica normativa della direzione
-futura, non prova comportamento corrente
-**Origini:** review del 23 luglio assorbita selettivamente; review multidominio
-del 26 luglio; sette lenti Fable in
-`internal/reports/rm0001-review-fable-20260726/`, verificate contro il codice;
-audit primario Swafra in
-`internal/reports/rm0001-swafra-primary-audit-20260726.md`; review adversariale
-conclusiva del 28 luglio (`REVIEW.md` e `refutazione.md` nella stessa cartella);
-ricognizione del codice, redazione dello strato di attuazione e doppia verifica
-avversariale del 28 luglio in `internal/reports/rm0001-attuazione-20260728/`
+| Campo | Valore |
+|---|---|
+| Identificatore | `RM-0001` |
+| Stato | `ready` |
+| Creazione | `2026-07-23` |
+| Ultima revisione | `2026-07-28` |
+| Conservazione | persistente fino a implementazione dimostrata o cancellazione esplicita di Roberto |
+| Implementazione reale | non iniziata. Esistono soltanto le preferenze W2, alcuni registri riutilizzabili, il Tutor, le cache di piano e il ciclo W1; non esistono ancora il principale canonico per la memoria, lo store, il compilatore, la superficie chat o gli applicatori descritti qui |
+| Origine e prove | ADR 0200 ratificata il 28 luglio 2026; review del 23 luglio assorbita selettivamente; review multidominio del 26 luglio; sette lenti in `internal/reports/rm0001-review-fable-20260726/`, verificate contro il codice; audit primario in `internal/reports/rm0001-swafra-primary-audit-20260726.md`; review avversariale conclusiva del 28 luglio (`REVIEW.md` e `refutazione.md` nella stessa cartella); ricognizione del codice, strato di attuazione e doppia verifica avversariale in `internal/reports/rm0001-attuazione-20260728/` |
+
+**Priorità.** decisione di Roberto del 28 luglio 2026, «per adesso troppo
+complesso per troppo poco». Il documento resta la specifica di riferimento e
+non è una previsione di lavoro; le condizioni per riaprirlo sono in §0-bis e
+sono misurabili.
+
+**Autorità.** questa roadmap è la specifica normativa della direzione
+futura, non una prova del comportamento corrente. Il calendario di F0 è deciso
+separatamente.
 
 Questa revisione sostituisce integralmente le versioni precedenti di RM-0001.
 Elimina dal suo perimetro la memoria dell'esperienza degli executor, Leiden,
