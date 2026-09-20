@@ -1055,6 +1055,28 @@ def test_no_service_forbids_the_namespaces_its_own_sandbox_needs() -> None:
     assert offenders == []
 
 
+@pytest.mark.parametrize("entry_id", [
+    "service-http", "service-telegram-daemon", "service-durable-worker",
+])
+def test_turn_hosts_allow_sandbox_namespace_lockdown(entry_id: str) -> None:
+    """A turn host must let Bubblewrap seal its new user namespace.
+
+    ProtectKernelTunables makes the inherited /proc/sys read-only. Then
+    --disable-userns fails before the executor starts, even when namespace
+    creation itself is allowed. A ReadWritePaths exception for the sysctl
+    file does not fix the inherited proc-directory descriptor either.
+    Check the compiled units so all three entry paths retain this contract.
+    """
+    entry = next(
+        item for item in catalog._compile_service_source_v1(_context())
+        if item.entry_id == entry_id
+    )
+    directives = catalog._directive_index(entry.unit_spec)
+    tunables = directives.get(("Service", "ProtectKernelTunables"))
+    assert tunables is None or tunables.values == ("no",)
+    assert directives[("Service", "NoNewPrivileges")].values == ("yes",)
+
+
 def test_paired_devices_and_the_home_network_can_reach_metnos() -> None:
     """The legacy units served devices and the console on every interface.
 

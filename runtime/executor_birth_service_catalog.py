@@ -650,7 +650,12 @@ SERVICE_SOURCE_V1 = tuple(sorted((
             _source_directive("Service", "PrivateTmp", "yes"),
             _source_directive("Service", "ProtectControlGroups", "yes"),
             _source_directive("Service", "ProtectKernelModules", "yes"),
-            _source_directive("Service", "ProtectKernelTunables", "yes"),
+            # Bubblewrap locks nested user namespaces by writing
+            # max_user_namespaces in its newly created user namespace.
+            # ProtectKernelTunables makes the inherited /proc/sys mount
+            # read-only, preventing that mandatory sandbox setup. As with
+            # HTTP and the durable worker, leave this unit directive absent;
+            # executor confinement and --disable-userns remain mandatory.
             _source_directive("Service", "ProtectSystem", "strict"),
             _source_directive("Service", "Restart", "on-failure"),
             _source_directive("Service", "RestartSec", "10s"),
@@ -1026,6 +1031,8 @@ _CURRENT_UNIT_DIRECTIVE_DISPOSITIONS_V1 = MappingProxyType({
         "move_to_signed_target_or_minimum_environment",
     ("metnos-telegram-daemon.service", "Unit", "Documentation"):
         "drop_nonoperational_legacy_metadata",
+    ("metnos-telegram-daemon.service", "Service", "ProtectKernelTunables"):
+        "drop_incompatible_host_lockdown_preserve_executor_sandbox",
     ("metnos.target", "Unit", "Documentation"):
         "drop_nonoperational_legacy_metadata",
 })

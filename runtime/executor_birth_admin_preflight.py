@@ -232,8 +232,10 @@ _SERVICE_BOUNDING_STATUS_V1 = {
 # resource limits and explicit serial overrides retain their authority.
 # 16/9/2026: the fresh-install operator setup belongs to the existing
 # install-metnos entry. No service command, unit or privilege is added.
+# 20/9/2026: Telegram no longer declares ProtectKernelTunables, which blocks
+# Bubblewrap's mandatory nested-user-namespace lockdown before executor start.
 _EXPECTED_SERVICE_SOURCE_IDENTITY_V1 = (
-    "sha256:3b719b937c9d69dcefcad61809edc2b282ac632377758a879e5b18582ab185c9"
+    "sha256:69ef6ca077abac0eb078491119c9465df5fbc5c3f8a55f7b484e66a7ae35ae15"
 )
 _ISOLATED_G6C_NAMESPACE_RE_V1 = re.compile(r"[0-9a-f]{16}")
 _ISOLATED_G6C_SOURCE_IDENTITY_V1 = (
@@ -857,7 +859,7 @@ _REQUIRED_MANIFEST_PATHS = {
 _BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:6e3ad6f78b32676231657fcd2139a2380836b0e2f17dfe8b88f317b5a3d7801a"
+_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:82cf096714c510ffe86df545089c0069051ecc233837810c87aacbd48d2e6747"
 _SOURCE_REVIEW_PIN_VALUE_V1 = (
     rb'(?:(?:"sha256:" \+ "0" \* 64)|(?:"sha256:[0-9a-f]{64}"))'
 )
