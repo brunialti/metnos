@@ -120,6 +120,12 @@ else
   find "$WC" -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} +
   cp -r "$DEST"/. "$WC"/; rm -rf "$WC/.git/index.lock" 2>/dev/null || true
   write_pub_gitignore "$WC"
+  # Il pubblico puo' essere avanzato da un'altra pubblicazione dopo il clone.
+  # Senza riallineamento il commit nasce su una base vecchia e il push viene
+  # rifiutato. `reset` sposta HEAD e indice sul tip remoto e lascia intatto
+  # l'export nel working tree, che resta la sorgente autorevole del contenuto.
+  git -C "$WC" "${GIT_AUTH[@]}" fetch -q origin
+  git -C "$WC" reset -q origin/main
   git -C "$WC" add -A
   if git -C "$WC" diff --cached --quiet; then
     # Un tentativo precedente può avere creato il commit locale ma fallito il
