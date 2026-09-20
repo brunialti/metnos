@@ -33,6 +33,7 @@ set -euo pipefail
 LAUNCHER_DIR=/usr/local/lib/metnos-admin
 LAUNCHER="$LAUNCHER_DIR/metnos-f5-authority"
 SUDOERS=/etc/sudoers.d/metnos-f5-authority
+ADMIN_WORKSPACE=/var/lib/metnos-admin/f5-workspace-v1
 VERIFIER=/usr/libexec/metnos/executor-birth-v1/preflight.py
 INTERPRETER=/usr/bin/python3.12
 
@@ -57,6 +58,11 @@ for path in "$VERIFIER" "$INTERPRETER"; do
 done
 
 install -d -o root -g root -m 0755 "$LAUNCHER_DIR"
+# A root-only scratch outside every signed tree. Importing the release
+# derives the workspace from the installation root, so without this the
+# first call creates `workspace/.scheduler` and `workspace/.mnestoma`
+# inside the signed release and every later verification refuses it.
+install -d -o root -g root -m 0700 "$ADMIN_WORKSPACE"
 
 # Written from here, not copied, so what runs as root is exactly what this file
 # says and cannot drift with any worktree.
@@ -109,6 +115,11 @@ interpreter = named.pop()
 # Isolation is kept, so PYTHONPATH is ignored on purpose and the paths of the
 # verified release are inserted explicitly instead. Standard input is left
 # alone: the evidence document arrives on it.
+# The release derives its workspace from the installation root, and this
+# process runs with the release as root. Name the scratch explicitly, or the
+# import writes into the signed tree. `-I` implies `-E`, which drops PYTHON*
+# variables only, so a METNOS_* one survives.
+os.environ["METNOS_WORKSPACE"] = "/var/lib/metnos-admin/f5-workspace-v1"
 stage = (
     "import sys; sys.path[:0] = [%r, %r]\n"
     "from install.f5_authority import main\n"
