@@ -31,11 +31,13 @@ DEST="dist/metnos-public"
 MSG="Metnos — public snapshot"
 MODE="snapshot"     # snapshot | incremental
 CHECK_ONLY=0
+ALLOW_DELETIONS=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
     -m|--message) MSG="$2"; shift 2;;
     --incremental) MODE="incremental"; shift;;
+    --allow-deletions) ALLOW_DELETIONS=1; shift;;
     --check) CHECK_ONLY=1; shift;;
     *) echo "arg sconosciuto: $1" >&2; exit 2;;
   esac
@@ -127,6 +129,19 @@ else
   git -C "$WC" "${GIT_AUTH[@]}" fetch -q origin
   git -C "$WC" reset -q origin/main
   git -C "$WC" add -A
+  # Il ramo sorgente puo' non contenere tutto cio' che e' gia' pubblicato:
+  # altri alberi pubblicano lo stesso repo. In quel caso l'export non e' un
+  # incremento, e' una potatura. Si rifiuta e si dice CHE COSA sparirebbe
+  # (§2.8): un incremento che cancella non e' un incremento.
+  REMOVED=$(git -C "$WC" diff --cached --name-only --diff-filter=D | wc -l)
+  if [ "$REMOVED" -gt 0 ] && [ "$ALLOW_DELETIONS" -eq 0 ]; then
+    echo "   ABORT: la pubblicazione cancellerebbe $REMOVED file gia' pubblici." >&2
+    echo "   Il ramo sorgente non contiene tutto il pubblicato. Primi 10:" >&2
+    git -C "$WC" diff --cached --name-only --diff-filter=D | head -10 | sed 's/^/     - /' >&2
+    echo "   Se la rimozione e' voluta: --allow-deletions." >&2
+    git -C "$WC" reset -q
+    exit 3
+  fi
   if git -C "$WC" diff --cached --quiet; then
     # Un tentativo precedente può avere creato il commit locale ma fallito il
     # push (per esempio per un'interruzione di rete). In quel caso l'export è
