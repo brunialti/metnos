@@ -1,10 +1,20 @@
 # RM-0008 — Porta unica di nascita e ciclo controllato degli executor
 
-> RM-0008 · stato `ready` · revisionata il 25 agosto 2026 · conservazione
-> persistente · 33 correzioni adversarial approvate da Roberto · rilievi sul
-> dossier risolti nel §21 · prove in
-> `internal/reports/rm0008-adversarial-evidence-20260825.md` · implementazione
-> autorizzata e iniziata: F0-F1 completate, F2 successiva
+| Campo | Valore |
+|---|---|
+| Identificatore | `RM-0008` |
+| Stato | `in_progress` |
+| Creazione | `2026-08-25` |
+| Ultima revisione | `2026-09-08` |
+| Conservazione | persistente fino a implementazione dimostrata o cancellazione esplicita di Roberto |
+| Implementazione reale | F0-F1 completate; la transizione produttiva F4 r18 (`b715a765`) ha raggiunto `PREFLIGHT_VERIFIED`. F5 e F6 restano aperte: il preesercizio conserva il requisito di cinque ammissioni reali da almeno due produttori (§23.4) |
+| Origine e prove | 33 correzioni avversariali approvate da Roberto, rilievi sul dossier risolti nel §21, prove in `internal/reports/rm0008-adversarial-evidence-20260825.md`; verifica dell'8 settembre in `internal/design/handover_rm0008_verifica_8_9_2026.md` |
+
+**Aggiornamento operativo, 8 settembre 2026.** Catena e sette record durevoli
+riletti, HTTP, browser e LRE attivi; verificati un turno reale dell'ora e un
+turno Tutor fondato. Questo risultato supera le indicazioni storiche di
+transizione da eseguire, ma non attesta i requisiti ulteriori di F5-F6.
+RM-0009 è raccolta nell'indice comune, non è implementata e non apre F5.
 
 ## 1. Obiettivo
 

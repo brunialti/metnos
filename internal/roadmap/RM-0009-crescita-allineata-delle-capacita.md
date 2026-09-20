@@ -1,32 +1,59 @@
 # RM-0009 — Crescita allineata delle capacità
 
-> **RM-0009**
-> - **Stato:** `active`. Revisione 8, risultante dall'unione analizzata fra la
->   revisione 7 e la proposta dell'agente esterno. Non e ancora `ready`: prima
->   servono il dry-run medium e la review indipendente conclusiva di G0.7-G0.8.
-> - **Creazione e revisione:** creata il 2 settembre 2026; ultima revisione il
->   14 settembre 2026 (sera).
-> - **Conservazione:** persistente.
-> - **Implementazione:** nessuna fase F0-F6 iniziata. FS-A e FS-B sono
->   autorizzate da Roberto il 14/9, ma ogni modifica di file parte soltanto
->   dopo il preflight, l'assegnazione esclusiva e le correzioni di progetto
->   applicabili indicate nell'appendice D.
-> - **Fonti:**
->   - revisioni 1-5, con i rilievi della revisione 4, la review indipendente
->     della revisione 5 e la sua verifica (commit `ad37442c`), nella storia Git;
->   - revisione 7 precedente all'unione, conservata nella storia Git (commit `0b28ba07`) in
->     `internal/roadmap/.codex-review/RM-0009-rev7-codex-review.md`, SHA-256
->     `9700e6962691b2743732c7d88519a28e09d6f51152fa6b270a842a17ed1bd360`;
->   - proposta dell'agente esterno precedente all'unione, conservata nella storia Git (commit `0b28ba07`) in
->     `internal/roadmap/.merge-sources/RM-0009-proposta-agente-esterno-pre-merge.md`,
->     SHA-256 `fe7cf3de76559075ca04b6ce2d54fd69f899ce3b542c1a98a8617f604fedaa59`;
->   - verifiche sul codice del 14/9, riportate al §2;
->   - esito storico dei 22 rilievi della revisione 5 nell'appendice B;
->   - nuova review adversarial e multidisciplinare nell'appendice C;
->   - piano esecutivo atomico per lo sviluppo nell'appendice D;
->   - decisioni puntuali dell'unione nell'appendice E.
-> - **Baseline di approvazione:** va registrata fuori da questo file, in
->   `internal/reports/rm0009-baseline/`, dall'unità P0.
+| Campo | Valore |
+|---|---|
+| Identificatore | `RM-0009` |
+| Stato | `active`; revisione 8, non ancora `ready` |
+| Creazione | `2026-09-02` |
+| Ultima revisione | `2026-09-15` |
+| Conservazione | persistente |
+| Implementazione reale | nessuna fase F0-F6 iniziata. FS-A e FS-B sono autorizzate da Roberto il 14 settembre 2026, ma ogni modifica di file parte soltanto dopo il preflight, l'assegnazione esclusiva e le correzioni di progetto applicabili indicate nell'appendice D. Prima di `ready` vanno congelati baseline, inventari e contratti G0.1-G0.6, poi completati dry-run medium, review indipendente e approvazione G0.7-G0.9 |
+| Origine e prove | revisione 8 risultante dall'unione analizzata fra la revisione 7 e la proposta dell'agente esterno; fonti puntuali nella nota qui sotto |
+
+**Preparazione, 15 settembre 2026.** coordinamento e qualità finale affidati a
+Codex. Su disposizione di Roberto, integrazione e sviluppo sul runtime attendono
+che il lavoro RM-0008 sia concluso e committato. Nel frattempo procedono analisi
+e strumenti di test sintetici; rapporti e istruzioni in
+[preparazione RM-0009](../reports/rm0009-baseline/20260915/README.md).
+I rapporti sono provvisori e non costituiscono baseline G0/P0, approvazione o
+certificazione del prodotto. La task RM-0008 osservata risulta poi conclusa sul
+commit `1c308922` (15/9, 15:37 UTC), senza modifiche tracciate pendenti:
+l'attesa di coordinamento è soddisfatta, ma inventari e contratti G0 vanno
+ancora riallineati a quel commit. Il ricontrollo successivo conferma il commit e
+usa il worktree isolato `/opt/metnos/.claude/worktrees/rm0009-development`, senza
+integrare il checkout principale sporco; inventari e prove sono in
+[baseline consolidata](../reports/rm0009-baseline/20260915-consolidated/README.md).
+Il codice RM-0008 è consolidato, ma F5/F6 non risultano certificate; G0.3-G0.10
+non sono dichiarati conclusi e D2 resta bloccata. Alla richiesta «certifica e
+riprendi», il ramo RM-0009 integra anche i commit MIT e di pubblicazione fino a
+`5c1220ac`: baseline di lavoro `09a58c7`. Il ricontrollo indipendente conferma
+che F5/F6 richiedono ancora codice di integrazione e prove reali, non la sola
+emissione di un certificato; esito, prove isolate e inventari ricalcolati sono in
+[verifica di certificabilità](../reports/rm0009-baseline/20260915-certification/README.md).
+Nessun attestato `EXT-RM0008-F5` è emesso e nessun veto è rimosso. Roberto aveva
+poi affidato allo stesso coordinatore il completamento RM-0008/F5-F6, con pausa
+per revisione esterna; l'ultima istruzione sostituisce quell'incarico con il solo
+[handover dettagliato F5/F6](../design/handover_rm0008_f5_f6_15_9_2026.md) per un
+agente specializzato. Nessun codice F5/F6 viene avviato in questa task; decisioni
+aperte e prove richieste sono esplicite nell'handover. L'implementazione RM-0009
+attende il successivo via libera.
+
+**Fonti.** revisioni 1-5, con i rilievi della revisione 4, la review
+indipendente della revisione 5 e la sua verifica (commit `ad37442c`), nella
+storia Git; revisione 7 precedente all'unione, conservata nella storia Git
+(commit `0b28ba07`) in `internal/roadmap/.codex-review/RM-0009-rev7-codex-review.md`,
+SHA-256 `9700e6962691b2743732c7d88519a28e09d6f51152fa6b270a842a17ed1bd360`;
+proposta dell'agente esterno precedente all'unione, conservata nella storia Git
+(commit `0b28ba07`) in
+`internal/roadmap/.merge-sources/RM-0009-proposta-agente-esterno-pre-merge.md`,
+SHA-256 `fe7cf3de76559075ca04b6ce2d54fd69f899ce3b542c1a98a8617f604fedaa59`;
+verifiche sul codice del 14 settembre riportate al §2; esito storico dei 22
+rilievi della revisione 5 nell'appendice B; nuova review avversariale e
+multidisciplinare nell'appendice C; piano esecutivo atomico per lo sviluppo
+nell'appendice D; decisioni puntuali dell'unione nell'appendice E.
+
+**Baseline di approvazione.** va registrata fuori da questo file, in
+`internal/reports/rm0009-baseline/`, dall'unità P0.
 
 ## Decisioni di Roberto (vincolanti)
 
@@ -43,9 +70,13 @@
 | 14/9 | **Non bloccante:** un difetto cosmetico o di preparazione non ferma sviluppo e manutenzione; si ferma solo per rischi veri. |
 | 15/9 | **Revisione 8 principale:** la revisione 7 dell'agente esterno, unita con la proposta precedente, è il documento di riferimento; osservazioni di verifica in C.4. |
 | 15/9 | **Attivazione:** nessuna nuova capacità si attiva prima della certificazione RM-0008/F5, nemmeno con il «sì» dell'host (D2 resta `blocked`). |
-| 15/9 | **Separazione:** RM-0009 si chiude sul ciclo di crescita con F6 in ombra; la sicurezza completa (FS-A, FS-B multipiattaforma, helper amministrativo, protocollo remoto v2, enforcement F6) è un lavoro a parte, già autorizzato (D.1-bis). |
+| 15/9 | **Separazione:** il nucleo di RM-0009 può raggiungere `implemented_pending_rm0008` con F6 in ombra; la sicurezza completa (FS-A, FS-B multipiattaforma, helper amministrativo, protocollo remoto v2, enforcement F6) è un lavoro a parte, già autorizzato (D.1-bis). `complete` resta riservato al ciclo reale previsto dal §11, dopo RM-0008/F5 e le protezioni applicabili. |
 | 15/9 | **Schemi d'uso:** S2 usa anche gli schemi d'uso ripetuti di tutti gli utenti, aggregati e senza testo né valori personali. |
 | 15/9 | **Documento unico:** le due sorgenti dell'unione restano soltanto nella storia Git. |
+| 15/9 | **Incarico di sviluppo:** il coordinatore sviluppa RM-0009, puo assegnare attivita ad agenti di livello adeguato e risponde del coordinamento e della qualita finale. |
+| 15/9 | **Priorita e arresto concordato:** completare anche F5/F6 di RM-0008; alla loro conclusione fermarsi per la revisione esterna richiesta da Roberto, senza riprendere RM-0009 prima del suo via libera. |
+| 15/9 | **Ultima disposizione, sostitutiva dell'incarico F5/F6 precedente:** preparare soltanto un handover dettagliato per far sviluppare F5/F6 a un agente specializzato. Questa task non implementa F5/F6; il successore dovra ricevere l'incarico e fermarsi alla conclusione per la revisione esterna. RM-0009 non riparte automaticamente. |
+| 15/9 | **Coordinamento con RM-0008:** attendere che l'altro agente abbia finito e committato prima di integrare o iniziare il runtime; nell'attesa svolgere analisi profonda, sviluppi preparatori e creazione dell'ambiente di test/verifica. Un commit intermedio non prova la conclusione. |
 
 ## 1. Obiettivo e valore per l'utente
 
@@ -93,7 +124,12 @@ Non dipende dall'etichetta con cui la proposta è nata.
 - nessuna interruzione inutile (`t.discrezione`);
 - nessuna esposizione di dati (`t.protezione`).
 
-## 2. Stato verificato del codice (14 settembre 2026)
+## 2. Stato verificato del codice e ricontrollo del 15 settembre 2026
+
+La fotografia iniziale del 14/9 conserva sotto le proprie date i numeri
+storici. Il ricontrollo sorgente del 15/9 usa `09a58c7`, che incorpora il
+prodotto RM-0008 fino a `5c1220ac`; i risultati correnti sono nel rapporto di
+certificabilita indicato in testa. Non sono misure sugli archivi installati.
 
 Il ciclo esiste già: va ricongiunto, non costruito. Categorie:
 - `connected`: produttore, consumatore ed effetto presenti;
@@ -152,9 +188,17 @@ Il ciclo esiste già: va ricongiunto, non costruito. Categorie:
     (`host`, `guest`).
 
 **Sicurezza, verificata:**
-- `synth_request.py:72` esegue `test_runner.py` sull'host;
-- `sandbox.py:549` monta nell'executor il vault e `admin.key`;
-- i percorsi vietati del Vaglio non coprono la radice di configurazione.
+- Il precedente rilievo su `synth_request.py` e superato: il percorso attuale
+  valida i casi e consegna il candidato a Birth; non esegue il runner legacy
+  sull'host. Restano `runtime/test_runner.py` e l'importazione del solo matcher
+  `check_expect` in `executor_birth_functional.py`. FS-A non e quindi chiusa.
+- `sandbox._build_bwrap_args`, nel ramo della capability
+  `metnos:credentials_metadata_only`, rende ancora disponibili vault e
+  `credentials.ADMIN_KEY_PATH` all'executor; non e un accesso concesso
+  indistintamente a tutti gli executor. La migrazione FS-B resta necessaria.
+- I pattern di `vaglio._FORBIDDEN_PATH_PATTERNS` non costituiscono una
+  protezione completa della radice di configurazione; non sostituiscono il
+  confine FS-B previsto dal piano.
 
 **Numeri storici (3/9)**, da rigenerare in P0:
 - lacune 13/0/4;
@@ -285,16 +329,29 @@ tipizzate:
 - `decide_change(facts, policy)` per i cambiamenti;
 - `decide_invocation(envelope, facts, policy)` per le invocazioni (F6).
 
-I fatti li costruisce **solo** `build_change_facts(intent_id)` nel core.
+I fatti li costruisce **solo** `build_change_facts(intent_id, moment)` nel core.
 - Ogni fatto porta valore, fonte autorevole e versione.
 - I fatti obbligatori dipendono dal `DecisionMoment`:
   - **D1/trial:** corpo canonico costruito dal core, snapshot del catalogo,
-    politica, tassonomia di rischio e regole di rifiuto; ricevuta e manifest
-    Birth valgono `not_required`;
+    politica, tassonomia di rischio, regole di rifiuto e disponibilità verificata
+    dell'ambiente di prova FS-A (§D.1-ter); ricevuta e manifest del candidato
+    Birth valgono `not_required`. La prova dell'ambiente precede il candidato
+    e non dipende dalla sua nascita;
   - **D2/activation:** ricevuta Birth, manifest firmato, preesercizio e
-    attestazioni di sicurezza applicabili sono obbligatori.
+    attestazioni di sicurezza applicabili sono obbligatori. RM-0008/F5 deve
+    essere certificata; l'assenza di FS-B è ammissibile solo quando il core
+    prova che contratto e ambiente effettivo non raggiungono credenziali o
+    piano di controllo. Applicabilità ignota produce `blocked`.
+  - **promotion:** momento unico di `promote_plan`, distinto da D1 e D2.
+    Richiede template canonico shadow, contratto e generazione di ciascun
+    executor referenziato, baseline e osservato attribuiti, politica, costo,
+    reversibilita e regole di rifiuto. Non richiede una nuova receipt Birth
+    per il piano; conserva i veti applicabili agli executor che il piano usa.
+    I valori persistiti dell'enum sono `trial`, `activation`, `promotion`.
 - **Fonti autorevoli:**
   - ricevuta Birth e manifest firmato dallo store dei contratti;
+  - prove FS-A/FS-B del rilascio installato e certificazione `EXT-RM0008-F5`,
+    rilette dal core secondo §D.1-ter;
   - riga autopath;
   - politica e registro budget/costi del core;
   - regole di rifiuto.
@@ -310,21 +367,31 @@ I fatti li costruisce **solo** `build_change_facts(intent_id)` nel core.
 
 | # | Condizione | Esito |
 |---|---|---|
-| 1 | Veto tecnico richiesto dal momento corrente: dipendenza/ciclo di vita non pronto, ricevuta, firma o attestazione obbligatoria mancante o discordante, legacy ignoto, politica non valida | `blocked` (ritentabile; **non** è un rifiuto e non è superabile dall'utente) |
+| 1 | Veto tecnico richiesto dal momento corrente: dipendenza/ciclo di vita non pronto, ricevuta, firma o attestazione obbligatoria mancante o discordante, costo obbligatorio ignoto (`cost_unverified`), legacy ignoto, politica non valida | `blocked` (ritentabile; **non** è un rifiuto e non è superabile dall'utente) |
 | 2 | Regola di rifiuto attiva sulla stessa impronta | `deny` (nessuna nuova domanda) |
-| 3 | Serve una scelta umana su consenso, costo, dati sensibili o nuova autorità; tutti i fatti tecnici obbligatori sono verificati | `ask_user` |
-| 4 | `create`/`extend`, **D1 prova**: allineamento ≥ soglia e nessuna capability critica o di famiglia sensibile richiesta | `auto` (la prova non attiva nulla) |
-| 5 | `create`/`extend`, **D1 prova**, altrimenti | `ask_user` |
-| 6 | `create`/`extend`, **D2 attivazione**, prima della certificazione RM-0008/F5 o delle attestazioni FS applicabili | `blocked` con `ReasonCode.dependency_unready` |
+| 3 | `promote_plan`, momento `promotion`, con campione insufficiente | `blocked` con `ReasonCode.insufficient_evidence`, `resume_state=proposed`; piano in ombra, nessuna domanda, nessuna regola di rifiuto |
+| 4 | Serve una scelta umana su consenso, costo, dati sensibili o nuova autorità; tutti i fatti tecnici obbligatori sono verificati e la riga 3 non si applica | `ask_user` |
+| 5 | `create`/`extend`, **D1 prova**: allineamento ≥ soglia e nessuna capability critica o di famiglia sensibile richiesta | `auto` (la prova non attiva nulla) |
+| 6 | `create`/`extend`, **D1 prova**, altrimenti | `ask_user` |
 | 7 | `create`/`extend`, **D2 attivazione**, dopo RM-0008/F5 e FS applicabili: reversibilità `guaranteed`, nessuna rete in uscita, credenziali o famiglia sensibile, preesercizio superato | `auto` |
 | 8 | `promote_plan`: reversibilità garantita, piano senza valori letterali, campione ≥ minimo, successo non inferiore alla baseline | `auto` |
-| 9 | `promote_plan` con campione insufficiente | resta in ombra, nessuna domanda |
-| 10 | Tutti gli altri casi | `ask_user` |
+| 9 | Tutti gli altri casi | `ask_user` |
+
+Il veto D2 prima di RM-0008/F5 o delle attestazioni FS applicabili e sempre
+la riga 1 (`blocked/dependency_unready`), quindi precede qualunque domanda.
+Quando il campione di promote diventa sufficiente, la ripresa ricostruisce
+tutti i fatti e riapplica la tabella dall'inizio; non riusa un precedente
+consenso, una versione di politica o un verdetto ormai scaduti.
 
 Tutte le modifiche sono globali per decisione (§ Decisioni): non esiste una riga
 «regola globale» separata. Una `rejection_rule` non e un tipo di change intent
 ne un effetto del protocollo `applying`: e un record di governance che nasce
 atomicamente solo da un «no» autorizzato.
+
+L'assenza di una certificazione non impedisce di implementare e collaudare le
+funzioni pure: il lettore restituisce il fatto mancante e il decisore ne prova
+il veto. Le condizioni per chiamare realmente Birth, attivare o invocare una
+capacità restano quelle di §D.1-ter, anche dopo un'approvazione umana.
 
 ### 5.4 Effetto
 
@@ -382,7 +449,7 @@ e gli archi non elencati sono vietati.
 | `proposed` | `trial_applying` | solo create/extend dopo D1 `auto` o «si» valido; non attiva la capacita |
 | `proposed` | `accepted` | solo `promote_plan`, dopo la sua decisione unica `auto` o «si» valido |
 | `proposed` | `rejected` | «no» autorizzato, atomico con token, regola di rifiuto ed epoca |
-| `proposed` | `blocked` | veto tecnico D1 con `ReasonCode` e `resume_state=proposed` |
+| `proposed` | `blocked` | veto tecnico D1 o promotion, incluso campione insufficiente, con `ReasonCode` e `resume_state=proposed`; nessuna domanda o regola di rifiuto per la sola attesa |
 | `trial_applying` | `staged` | la richiesta Birth idempotente e stata accettata dalla porta unica |
 | `trial_applying` | `failed` o `trial_applying` | errore tipizzato oppure recupero della stessa operation |
 | `staged` | `awaiting_activation` | ricevuta Birth/preesercizio verificata e associata alla stessa operation |
@@ -390,7 +457,7 @@ e gli archi non elencati sono vietati.
 | `awaiting_activation` | `accepted` | solo dopo D2 `auto` o «si» valido e con tutti i prerequisiti tecnici |
 | `awaiting_activation` | `rejected` | «no» D2 autorizzato e transazione completa della regola |
 | `awaiting_activation` | `blocked` | veto tecnico D2 con `resume_state=awaiting_activation` |
-| `blocked` | `proposed` o `awaiting_activation` | soltanto verso il `resume_state` registrato, dopo rimozione verificata del veto |
+| `blocked` | `proposed` o `awaiting_activation` | soltanto verso il `resume_state` registrato, dopo risoluzione verificata della causa di blocco, incluso il campione insufficiente; ricostruire tutti i fatti |
 | `accepted` | `applying` | claim dell'effetto con lease e `operation_id` |
 | `accepted` | `rejected` | revoca autorizzata prima che l'operation sia stata reclamata |
 | `applying` | `applied`, `failed` o `applying` | commit dell'autorita di visibilita, errore, oppure recupero della stessa operation |
@@ -406,6 +473,22 @@ e gli archi non elencati sono vietati.
 
 Gli stati storici terminali non compatibili vengono conservati in audit e
 mappati dalla migrazione, mai fatti rientrare con un arco inventato.
+
+**Dipendenza persa durante un'operazione.** Prima di ogni nuova chiamata con
+effetti il core rilegge i prerequisiti di §D.1-ter. Se il veto precede D1/D2 si
+usa `blocked` come in tabella. Se l'intent è già `trial_applying` o `applying`,
+si conserva quello stato e si sospende la stessa operation in fase
+`waiting_dependency`, con motivo tipizzato: nessuna nuova chiamata con effetti,
+nessun nuovo `operation_id` e nessun consumo del numero di tentativi per la
+sola attesa. Le letture di riconciliazione restano consentite. Dopo il ripristino
+verificato si riparte da `observe_effect`; un effetto già presente non viene
+ripetuto. L'assenza autorevole consente di riprendere la fase registrata con lo
+stesso ID soltanto se nessuno start irrevocabile e stato committato oppure il
+contratto attesta l'idempotenza di quel retry. Un esito ignoto mantiene
+l'operazione sospesa, con motivo `effect_unobserved`, e non autorizza un nuovo
+invio. La sola sospensione non consuma tentativi. Questa fase appartiene al
+journal delle operazioni, non aggiunge uno
+stato all'intent né revoca per supposizione un effetto già osservato.
 
 ### 5.5 Consegna e domande
 
@@ -429,6 +512,45 @@ mappati dalla migrazione, mai fatti rientrare con un arco inventato.
 - **Budget:** al massimo il numero settimanale di politica. Le altre domande
   aspettano in coda ordinata (allineamento decrescente, poi data, poi id),
   senza perdersi né duplicarsi.
+- **Identita e transazioni:** una domanda logica ha un `question_id` stabile.
+  Emissione significa creare, nella stessa transazione del DB di governance,
+  domanda, token, prenotazione del budget e voce outbox. Il successivo «si/no»
+  consuma il token in una transazione distinta, atomica con scelta, stato,
+  eventuale regola di rifiuto ed epoca. Due worker non possono prenotare due
+  domande per lo stesso binding intent/momento/generazione/fatti/politica.
+- **Budget e recupero della consegna:** la prenotazione appartiene alla
+  settimana ISO UTC dell'emissione; ogni retry riusa domanda/token e non
+  prenota un altro posto. Si libera una prenotazione soltanto con prova che
+  nessun invio e avvenuto e dopo annullamento atomico dell'outbox. Con invio
+  confermato o esito ignoto rimane consumata, anche se il token scade.
+  Il cambio di settimana non sposta ne duplica le prenotazioni pregresse.
+- **Consegna ignota:** `delivery_unknown` e uno stato dell'outbox, non della
+  decisione. Un canale senza rilettura o idempotenza provata non ritenta alla
+  cieca dopo crash; la stessa domanda resta consultabile tra quelle pendenti.
+  La scadenza revoca il token: una futura domanda richiede nuova valutazione e
+  nuovo budget. L'unicita della domanda logica non viene presentata come
+  garanzia di un solo messaggio fisico sul canale esterno.
+- **Binding al momento della risposta:** `expected_row_version`,
+  `facts_digest`, `effect_digest` e `policy_version` sono campi strutturati,
+  non soltanto parti di un digest opaco. Emissione e risposta rileggono gli
+  input locali nello stesso snapshot transazionale; l'emissione non incrementa
+  da sola la versione dell'intent rendendo subito scaduto il proprio token.
+  La risposta ricostruisce il binding corrente e fa CAS su stato e versione;
+  una evaluation o una policy mutata invalida il token anche se lo stato
+  dell'intent e rimasto uguale. I fatti esterni sono acquisiti prima della
+  transazione e le loro versioni ricontrollate dal core; non si tiene un lock
+  SQL durante chiamate esterne. Ogni effetto conserva inoltre la riverifica
+  immediata dei prerequisiti prescritta in D.1-ter.
+- **Risveglio assegnato a F5.3:** il reconcile unico del core scorre cause di
+  `blocked`, scadenze e coda; parte al bootstrap, su nuova evidenza dopo il
+  relativo commit e tramite scheduler ogni `decision_reconcile_seconds`.
+  Una notifica persa viene recuperata dalla scansione periodica; il riepilogo
+  notturno riusa lo stesso reconcile. Registra `last_checked_at`,
+  `next_eligible_at`, motivo e arretrato osservabile. Al primo giro dopo il
+  rollover ISO UTC prova la coda nell'ordine di §5.5. Con cap zero espone
+  `question_budget_disabled`, non una consegna in corso; alla scadenza revoca
+  il token, rivaluta e riaccoda senza inviare una nuova domanda fuori budget.
+  Il lavoro locale e idempotente e non invoca LLM/Birth o sender sotto lock.
 
 ### 5.6 Registro di politica: valori iniziali
 
@@ -447,7 +569,7 @@ Modulo unico `runtime/growth_policy.py` (unità P1).
 | `sensitive_capability_families` / `SENSITIVE_CAPABILITY_FAMILIES` | CSV di enum chiuso, almeno 1 | `credentials,mail,people,messages,system_admin` | Famiglie che richiedono consenso e attestazioni applicabili. |
 | `benefit_min_samples` / `BENEFIT_MIN_SAMPLES` | int, 1..100000 | 20 | Turni reali causali minimi per decidere. |
 | `benefit_window_days` / `BENEFIT_WINDOW_DAYS` | int, 1..3650 | 30 | Finestra UTC, di uguale durata, usata per congelare baseline e osservato. |
-| `success_drop_pp` / `SUCCESS_DROP_PP` | float, 0..100 | 5 | Punti percentuali: rollback se `baseline_rate - observed_rate >= success_drop_pp/100`. |
+| `success_drop_pp` / `SUCCESS_DROP_PP` | float, 0..100 | 5 | Punti percentuali: rollback se il calo e strettamente positivo e `baseline_rate - observed_rate >= success_drop_pp/100`. |
 | `latency_regression_pct` / `LATENCY_REGRESSION_PCT` | float, 0..1000 | 20 | Peggioramento della mediana di latenza. |
 | `cost_regression_pct` / `COST_REGRESSION_PCT` | float, 0..1000 | 20 | Peggioramento del costo mediano autorevole. |
 | `new_executor_min_success` / `NEW_EXECUTOR_MIN_SUCCESS` | float, 0..1 | 0,80 | Successo assoluto minimo di create/extend senza baseline equivalente. |
@@ -455,6 +577,7 @@ Modulo unico `runtime/growth_policy.py` (unità P1).
 | `grown_executor_idle_days` / `GROWN_EXECUTOR_IDLE_DAYS` | int, 1..3650 | 60 | Poi richiesta di ritiro via RM-0008. |
 | `question_budget_weekly` / `QUESTION_BUDGET_WEEKLY` | int, 0..100 | 3 | Numero massimo di nuove domande in settimana ISO; zero accoda tutto. |
 | `decision_ttl_hours` / `DECISION_TTL_HOURS` | int, 1..720 | 72 | Scadenza server-side della domanda. |
+| `decision_reconcile_seconds` / `DECISION_RECONCILE_SECONDS` | int, 1..86400 | 300 | Recupero periodico di blocked, scadenze e coda; oltre ai wakeup su commit di nuova evidenza e al bootstrap. |
 | `invocation_auth_ttl_seconds` / `INVOCATION_AUTH_TTL_SECONDS` | int, 1..86400 | 900 | TTL del grant remoto/durevole. |
 | `applying_lease_seconds` / `APPLYING_LEASE_SECONDS` | int, 1..86400 | 600 | Lease operation. |
 | `applying_max_attempts` / `APPLYING_MAX_ATTEMPTS` | int, 1..100 | 3 | Tentativi prima di `failed`; `unknown` non viene contato come effetto assente. |
@@ -468,6 +591,11 @@ Modulo unico `runtime/growth_policy.py` (unità P1).
 `new_authority` non e una soglia configurabile: e la differenza tipizzata fra
 capability/ambiti richiesti e quelli gia concessi al sistema. Se non vuota,
 richiede `ask_user` dopo tutti i gate tecnici.
+
+Tutti i numeri devono essere finiti, nel dominio e nel tipo dichiarati;
+booleani non sono interi o float validi. Sono vietati `NaN`, infinita e
+overflow, anche nei risultati derivati. Un dato assente resta sconosciuto,
+mai zero; una politica invalida segue lo stato degradato descritto sopra.
 
 #### 5.6.1 Formule di beneficio e ritorno
 
@@ -491,6 +619,24 @@ richiede `ask_user` dopo tutti i gate tecnici.
     `cost_unverified`, non zero;
   - `need_completion_rate` per create/extend confronta i bisogni canonici
     conclusi dopo l'attivazione con le lacune equivalenti della baseline.
+- **Campioni vuoti:** prima di dividere o calcolare una mediana si valida il
+  campione della singola metrica. Denominatore zero, mediana di insieme vuoto
+  o campione sotto minimo producono `insufficient_evidence` con motivo
+  `no_observations` o `sample_below_minimum`, mai zero o `NaN`.
+  `need_completion_rate` e il rapporto fra turni reali causali conclusi con
+  successo e tutti i turni reali causali terminali con esito success/partial/error
+  per gli stessi bisogni canonici nel periodo; `needs_input` e separato. La
+  baseline equivalente usa lo stesso insieme canonico, finestra e regola di
+  denominatore. In assenza di baseline equivalente vale solo il confronto
+  assoluto previsto per create/extend, senza inventare una baseline zero.
+- **Confini numerici:** per il successo, `delta = baseline_rate - observed_rate`
+  e regressione soltanto se `delta > 0` e raggiunge la soglia. Per latenza e
+  costo con baseline positiva si usa `100 * (osservato - baseline) / baseline`,
+  sempre con aumento strettamente positivo e soglia raggiunta. Baseline zero
+  e osservato zero non sono regressione; baseline zero e osservato positivo
+  producono `increase_from_zero`, regressione tipizzata senza memorizzare
+  `Infinity`. Baseline negativa/non finita o dato mancante non autorizzano un
+  confronto relativo. Restano obbligatori attribuzione e campione minimo.
 - **Per kind:** create/extend richiedono
   `success_rate >= new_executor_min_success` dopo
   `benefit_min_samples`; dove esiste una route precedente applicano anche i
@@ -521,7 +667,7 @@ richiede `ask_user` dopo tutti i gate tecnici.
 |---|---|---|---|---|---|---|---|---|
 | `create_executor` | S1, S2 | `sha256("create_executor:v1:" + intent_hash)` | ricevuta Birth, manifest firmato, politica, regole di rifiuto | D1 prova, poi D2 attivazione (§5.3) | nuova generazione nel catalogo, via RM-0008 | store dei contratti RM-0008; `operation_id` | uso in turni reali, successo | ritiro via RM-0008 |
 | `extend_executor` | S1, S2 | `sha256("extend_executor:v1:" + target + ":" + intent_hash)` | come sopra, più la generazione corrente del target | D1, poi D2 | nuova generazione del target | come sopra | come sopra | ritorno alla generazione precedente via RM-0008 |
-| `promote_plan` | S3 | `sha256("promote_plan:v1:" + plan_hash + ":" + intent_hash)` | `PlanTemplateV1` shadow non servito, evidenza replay/probe senza effetti, politica | decisione unica (§5.3, righe 8-10) | il piano L1 serve tutti gli utenti solo dopo commit | riga prepared in `autopath.sqlite` + operation committed/epoca nello store di governance | latenza, costo e successo dopo promozione, confrontati con baseline | ritorno in ombra |
+| `promote_plan` | S3 | `sha256("promote_plan:v1:" + plan_hash + ":" + intent_hash)` | `PlanTemplateV1` shadow non servito, evidenza replay/probe senza effetti, politica | decisione unica `promotion` (§5.3, intera tabella in ordine) | il piano L1 serve tutti gli utenti solo dopo commit | riga prepared in `autopath.sqlite` + operation committed/epoca nello store di governance | latenza, costo e successo dopo promozione, confrontati con baseline | ritorno in ombra |
 
 `intent_hash` nel nuovo schema e un SHA-256 completo, con separazione di dominio,
 del JSON canonico versionato `IntentKeyV1` (verbo, oggetto, azioni e
@@ -554,6 +700,7 @@ ha handler, `observe_effect` o rollback del change lifecycle.
 ### 5.8 Matrice dei percorsi di invocazione (F6)
 
 L'`InvocationEnvelope` contiene:
+- `invocation_attempt_id` opaco allocato dal core una volta per tentativo;
 - principal autenticato, attore e canale;
 - `operational_owner_user_id`, ricavato dal principal;
 - executor, `ContractId`, generazione e `admission_context_id`;
@@ -570,10 +717,22 @@ consenso e ambiti ordinari: non li sostituisce mai.
 | Percorso | Ingresso | Principal operativo | Hook di ammissione | Ricevuta | Consumo | Prova di zero effetti |
 |---|---|---|---|---|---|---|
 | Locale | `agent_runtime.invoke_executor` → `_invoke_executor_impl` | principal del turno | dopo l'iniezione degli argomenti e la risoluzione dei percorsi, prima di undo e subprocess | — (sincrono) | — | diniego: nessun undo, nessun subprocess |
-| Remoto | stesso punto, ramo remoto → `remote_exec.invoke_remote` → `agent_server` → client device | principal del turno | prima dell'accodamento e di nuovo con `authorize_start` subito prima dell'effetto sul device | autorizzazione strutturata legata a invocazione, device, principal/owner operativo, generazione, digest argomenti, epoca e scadenza | CAS server-side di `authorize_start`; il poll e soltanto un claim ridistribuibile | diniego: nulla in coda; revoca prima del CAS, payload diverso, token scaduto o replay diverso: nessun effetto; redelivery identica resta valida |
-| Builtin e verb-unique | `agent_runtime.invoke_tool_by_name` → `loader.invoke_verb_unique` | principal del turno | prima della chiamata al builtin | — | — | diniego: builtin non chiamato |
-| Durevole con executor | `durable_workloads/execution.py` → `executor_scheduler.invoke_scheduled` | owner del workload | all'inizio di ogni tentativo | token monouso legato a workload e tentativo | inizio del tentativo | revoca fra accodamento e tentativo: nessun effetto |
+| Remoto ordinario | `_invoke_executor_impl` → `remote_exec.invoke_remote` → coda → `agent_server` → client device | principal del turno | nel ramo remoto prima di undo e accodamento; in enforcement anche `authorize_start` prima dell'effetto sul device | autorizzazione strutturata legata a invocazione, device, principal/owner operativo, generazione, digest argomenti, epoca e scadenza | CAS server-side di `authorize_start`; il poll e soltanto un claim ridistribuibile | diniego: nessun undo o enqueue; revoca prima del CAS, payload diverso, token scaduto o replay diverso: nessun effetto; redelivery identica conserva la stessa identita |
+| Builtin ordinario | `agent_runtime.invoke_tool_by_name` → handler builtin; non attraversa il loader | principal del turno | immediatamente prima dell'handler | — (sincrono) | — | diniego: handler non chiamato |
+| Verb-unique e riprese dirette | `loader.invoke_verb_unique`, chiamato anche da HTTP, canali, orchestration e system/admin senza `invoke_tool_by_name` | principal autenticato o contesto di ripresa verificato | immediatamente prima di `fn` nel loader | — (sincrono) | — | diniego: funzione non chiamata; la sola ripresa non crea un secondo tentativo |
+| Coda remota diretta | `undo_last_turn` e test dispositivo amministrativo → `invocations.enqueue_invocation`, senza `remote_exec` | principal della compensazione o amministratore autenticato | punto comune della coda prima della scrittura; contesto antecedente riletto dal core, mai un booleano del chiamante | stesso protocollo remoto, oppure non-applicabilita esplicitamente provata dal registro | stesso CAS remoto in enforcement | un produttore diretto non scavalca il confine; una compensazione e un tentativo distinto dall'azione originale |
+| Durevole con executor | `durable_workloads/execution.py` → executor invoker configurato → `invoke_executor`, con eventuale ponte scheduler | owner del workload | punto comune dell'executor, una sola volta per tentativo | binding tipizzato a workload e tentativo; in enforcement autorizzazione applicabile al percorso | inizio del tentativo | revoca fra accodamento e tentativo: nessun effetto; il ponte scheduler non raddoppia il gate |
 | Durevole interno | worker durevole, passi senza executor | owner del workload | non applicabile | — | — | un test dichiara che il passo non ha autorità di executor |
+
+**Un solo conteggio per tentativo.** Il core propaga la stessa identita lungo
+wrapper, riprese e trasporto; una redelivery non e una nuova invocazione.
+Un nuovo tentativo executor dopo un errore ha invece un nuovo ID, collegato
+al precedente. Builtin ordinario, verb-unique e coda diretta richiedono i
+punti distinti della tabella: non si presume che attraversino il loader o
+`remote_exec`. `agent_runtime.py` e condiviso fra F6.2b/c/d: i lease di
+scrittura sono serializzati, anche se i test dei percorsi sono indipendenti.
+In ombra, i lettori in errore e i dinieghi ipotetici non cambiano l'esito
+ordinario e non emettono grant o `AuthorityViolationV1`.
 
 Il modulo di binding/revoca e condiviso da richieste di decisione e
 autorizzazioni d'invocazione, ma i protocolli sono tipizzati: la decisione e
@@ -596,14 +755,20 @@ receipt solo mediante receipt/observe autorevoli, mai per supposizione.
 ## 6. Fasi
 
 Ordine: `P0 → P1 → P2 → F0 → F1 → F2 → F3 → F4 → F5 → F6`.
+L'ordine eseguibile è il grafo dell'appendice D. I criteri «completata quando»
+sotto descrivono il comportamento finale: per il traguardo preliminare I1.1
+valgono le prove isolate e i veti di §D.1-ter, mentre le prove Birth reali e
+l'attivazione appartengono alla tranche I0.
 - **FS-A e FS-B** partono subito, fuori sequenza, secondo la matrice dei file
   (appendice A.5).
   - FS-A precede qualunque esecuzione di codice candidato.
   - FS-B precede la dichiarazione di sicurezza di F6.
 - **Enforcement di F6** solo dopo la certificazione di RM-0008/F5.
-- **Ogni fase** produce un commit per unità, test mirati e almeno un turno reale
-  su `/agent/turn` nel dominio toccato (CLAUDE.md §8.5). Il turno lo esegue il
-  coordinatore dopo il rilascio (appendice A.3).
+- **Ogni unità di codice** produce un commit e test mirati su archivi isolati.
+  Ogni modifica di prodotto richiede anche un turno reale sul dominio toccato
+  (CLAUDE.md §8.5), eseguito dal coordinatore dopo il rilascio (appendice A.3).
+  In I1.1 le prove Birth/attivazione sono registrate come pendenti: i test
+  simulati non le sostituiscono; I0 le esegue dopo le dipendenze di esercizio.
 
 **P0 — Baseline riproducibile.**
 - *Cambiamento:*
@@ -724,6 +889,11 @@ Ordine: `P0 → P1 → P2 → F0 → F1 → F2 → F3 → F4 → F5 → F6`.
   - un veto tecnico riparato rende di nuovo valutabile il bisogno;
   - un rifiuto dell'host impedisce la rigenerazione fino a scadenza o revoca.
 
+La consegna di codice F5 per I1.1 usa un adattatore di prova inerte e il
+verificatore reale su ricevute con chiavi esclusivamente di test. La verifica
+positiva in esercizio resta obbligatoria in I0; senza FS-A il percorso reale
+non invia richieste Birth, senza RM-0008/F5 D2 non attiva.
+
 **F6 — Libertà modulata.**
 - *Cambiamento:*
   - `InvocationEnvelope`;
@@ -736,6 +906,11 @@ Ordine: `P0 → P1 → P2 → F0 → F1 → F2 → F3 → F4 → F5 → F6`.
   - replay concorrente, riavvio, scadenza e revoca falliscono senza effetti;
   - due utenti vedono la stessa capacità ma non possono riusare argomenti,
     ricevute, cache, riprese o task dell'altro.
+
+Questi sono criteri dell'enforcement, nella tranche di sicurezza. La sola
+consegna F6 in ombra termina a `D-F6.2.barrier`: registra il verdetto ipotetico,
+compresi fatti mancanti, senza cambiare l'esecuzione esistente, concedere
+autorità, emettere grant o aprire rollback da un diniego ipotetico.
 
 **FS-A — Un solo runner di nascita (subito).**
 - *Cambiamento:*
@@ -750,7 +925,9 @@ Ordine: `P0 → P1 → P2 → F0 → F1 → F2 → F3 → F4 → F5 → F6`.
   - infine `test_runner.py` viene ritirato.
 - *Completata quando* nessun riferimento resta e le prove di isolamento passano:
   rete, processi, utente e IPC, ambiente ammesso, cwd effimera, limiti di
-  CPU/RAM/output, morte dell'intero albero.
+  CPU/RAM/output, morte dell'intero albero. Il coordinatore registra la prova
+  FS-A nel manifest firmato del rilascio installato; §D.1-ter ne definisce il
+  controllo prima di una richiesta reale di crescita.
 
 **FS-B — Radici protette e broker (subito).**
 - *Cambiamento:*
@@ -769,6 +946,9 @@ Ordine: `P0 → P1 → P2 → F0 → F1 → F2 → F3 → F4 → F5 → F6`.
 ## 7. Indicatori permanenti
 
 Li produce il riepilogo notturno. Finestra mobile UTC; `unknown` sempre a parte.
+Le misure F6 distinguono `shadow` da `enforced`. Un diniego ipotetico non conta
+come restrizione applicata e non prova l'assenza di effetti; finché F6 resta in
+ombra, l'indicatore 10 dichiara `enforcement_not_enabled` per quella parte.
 
 | # | Indicatore | Fonte | Finestra | Denominatore | Fase |
 |---|---|---|---|---|---|
@@ -780,7 +960,7 @@ Li produce il riepilogo notturno. Finestra mobile UTC; `unknown` sempre a parte.
 | 6 | Proposte anticipate accettate e usate | intent S2, decisione, uso | 30 g | intent S2 | F4-F5 |
 | 7 | Prestazioni del turno reale | latenza e costo mediani, quota `success` | 30 g | turni `origin=user` | F0, S3 |
 | 8 | Valore per fine TELOS | intent ed effetti per `t.*` | 30 g | — | F4-F5 |
-| 9 | Domande all'utente | domande emesse, coda in attesa, tempo mediano di risposta | 7 g | budget | F5 |
+| 9 | Domande all'utente | emissioni logiche committate, coda in attesa e tempo mediano di risposta; delivered, delivery_unknown e mai inviata separati | settimana ISO UTC | budget | F5 |
 | 10 | Autorità ristretta | decisioni F6 aggregate | corrente | executor attivi | F6 |
 
 **Regola di tensione.** Finché gli indicatori 1, 3 e 6 restano a zero, il tema è
@@ -796,7 +976,8 @@ nell'appendice B. Minimo trasversale:
 - tabella esaustiva delle precedenze della decisione;
 - richieste di decisione con ospite, inoltro, replay, doppio clic, scadenza e
   rivalutazione;
-- zero effetti al diniego in ogni percorso del §5.8;
+- in ombra, stesso esito e stesso effetto del percorso ordinario; zero effetti
+  al diniego in ogni percorso del §5.8 quando ne viene attivato l'enforcement;
 - convergenza di due owner senza fuga di valori privati;
 - cache invalidata dopo rifiuto, revoca, rollback e cambio di politica;
 - job registrato → adapter → intent → sorgente → valutazione, senza interventi
@@ -836,13 +1017,16 @@ RM-0009 è completata quando:
 1. per ciascuna sorgente un caso reale compie il giro evento → intent →
    valutazione → decisione → effetto → misura, con identificativi causali e fine
    TELOS;
-2. esistono un rifiuto efficace, una restrizione applicata, un retry
-   idempotente, un recupero dopo crash e un caso legacy che fallisce in modo
+2. esistono un rifiuto efficace, un'attivazione realmente impedita dal veto D2,
+   un retry idempotente, un recupero dopo crash e un caso legacy che fallisce in modo
    sicuro;
 3. gli indicatori 1-10 sono prodotti oppure marcati `not_applicable` con
    motivo tipizzato; 1, 3 e 6 sono non nulli, 7 non mostra regressioni oltre le
-   soglie, 8 collega ogni effetto a un fine TELOS, 9 resta nel budget e 10 non
-   mostra bypass di autorita;
+   soglie, 8 collega ogni effetto a un fine TELOS e 9 resta nel budget. Il 10
+   distingue osservazione in ombra da restrizioni applicate; un percorso F6
+   non attivato è `enforcement_not_enabled`, senza dichiarare provata una
+   protezione assente. Le autorizzazioni ordinarie e i veti D1/D2 restano
+   verificati sui percorsi reali del ciclo;
 4. tutti gli artefatti attivati sono visibili nello stesso catalogo/routing a
    tutti gli utenti, mentre dati, argomenti, credenziali, invocazioni e task
    restano owner-scoped;
@@ -853,6 +1037,22 @@ La nascita automatica e l'enforcement di F6 dipendono da RM-0008/F5, FS-A e
 dalle attestazioni FS-B applicabili. Fino ad allora RM-0009 puo arrivare al
 milestone `implemented_pending_rm0008` per F0-F5 infrastrutturali e F6 in
 ombra, con D2 sempre `blocked`/`dependency_unready`.
+
+`implemented_pending_rm0008` **non equivale** a `complete`: chiude soltanto la
+tranche pre-certificazione. Il traguardo `complete` richiede il ciclo reale dei
+punti 1-5, quindi `EXT-RM0008-F5`, isolamento FS-A prima di eseguire codice
+candidato e, per ogni capacità che raggiunge credenziali o piano di controllo,
+l'attestazione FS-B. L'enforcement F6 e il protocollo remoto v2 possono restare
+nella tranche di sicurezza separata se non sono necessari al ciclo reale usato
+per la chiusura; non possono essere dichiarati implementati o sicuri da
+RM-0009 finché quella tranche non li prova.
+
+**Stato della roadmap.** `implemented_pending_rm0008` e `complete` sono nomi
+dei traguardi di questo piano. Lo stato in intestazione segue il README della
+raccolta: a I1.1 resta `in_progress`; dopo le prove tecniche reali diventa
+`implemented`, poi `closed` quando anche consegna e documentazione sono
+verificate. Oggi resta `active`: questo riallineamento non esegue G0.5-G0.8
+e non attesta alcuna implementazione.
 
 **Arresto.** F0 può correggere denominatori e gravità, ma non dichiarare
 artefatti i difetti statici provati.
@@ -886,25 +1086,51 @@ coordinatore prima di chiedere l'approvazione.
 ### A.1 Ruoli
 
 - **Coordinatore** (l'agente scelto da Roberto):
-  - assegna le unità secondo l'A.5;
+  - assegna le unità secondo le dipendenze dell'appendice D e il relativo
+    incarico verificato; A.5 riassume i conflitti fra file;
   - rivede ogni consegna in un solo giro;
   - raccoglie le unità in un ciclo di rilascio;
   - esegue i turni reali e gli script sui dati del servizio;
   - aggiorna lo stato in testa alla roadmap.
-- **Esecutore** (agente di medio livello): una sola unità alla volta.
+- **Esecutore**: una sola unità alla volta, del livello assegnato sotto.
+
+#### A.1.1 Livello necessario per l'agente
+
+Le fasce seguenti sono una valutazione della difficoltà, da confermare con una
+consegna rappresentativa. Non sono risultati di una prova già eseguita su un
+modello. G0.5 registra livello richiesto e revisore nella scheda di ogni ID;
+G0.6 fissa le interfacce prima dell'assegnazione.
+
+| Attività | Livello adatto | Condizione di assegnazione |
+|---|---|---|
+| Politica tipizzata, proiezioni e metriche con formule già fissate, adapter su API definite; per esempio P1.1-P1.3, F0.3, F2.2-F2.3, F4.1/F4.2b/F4.2c | medio solido | Sa leggere più moduli Python, seguire uno schema e diagnosticare test falliti; riceve file, interfacce, casi limite e risultato atteso esatti. |
+| Identità, migrazioni, atomicità, ripresa dopo crash, privacy, decisioni D1/D2 e collegamenti di invocazione; P2, F2.1/F2.4, F4.3, F5, F6.1-F6.2 | alto | Sa ragionare su concorrenza, autorità e ordine degli effetti; revisione indipendente del confine interessato prima dell'integrazione. Un medium può svolgere solo una sottoattività con tutte le scelte già risolte nella scheda. |
+| Runner, radici protette, broker, autenticazione locale, protocollo remoto e sandbox Python/Rust/Linux/Windows; S0.1, FS-A, FS-B, F6.3-F6.6 | alto con competenza specifica di sistemi e sicurezza | Dimostra la proprietà negativa richiesta, per esempio impossibilità di leggere una chiave o ripetere un effetto; revisore diverso dall'autore. |
+| Specifica trasversale, risoluzione dei conflitti, rilascio e certificazione; G0 e I0/I1 | coordinatore di livello alto | Tiene insieme grafo, contratto, codice e prove; Roberto conserva le sole decisioni di prodotto e l'approvazione già previste. |
+
+Per un unico agente incaricato di tutta l'implementazione il livello richiesto
+è alto, con competenza Python, SQLite e Rust/sistemi. Nell'organizzazione mista
+gli agenti medium realizzano le unità circoscritte; il coordinatore prepara gli
+incarichi e un agente alto realizza o rivede i confini critici. Un'ambiguità su
+schema, transizione o autorità torna al coordinatore, senza essere risolta
+implicitamente dall'esecutore. G0.7 prova la comprensibilità delle istruzioni;
+la capacità di codifica si conferma dopo l'autorizzazione con la prima unità
+reale del livello assegnato.
 
 ### A.2 Regole comuni
 
 **Prima di iniziare**
-1. Leggi `CLAUDE.md`, `CLAUDE.mutabile.md` e i §§1-6 di questa roadmap.
+1. Leggi `CLAUDE.md`, `CLAUDE.mutabile.md`, i §§1-6 e D.1/D.1-bis/D.1-ter
+   di questa roadmap, poi la riga D assegnata e il relativo work manifest.
 2. Registra `git rev-parse HEAD` e `git status --short`. Se un file dell'unità
    ha modifiche non tue, fermati con `BLOCKED_BASELINE`.
 3. Ritrova ogni simbolo con `rg -n "<simbolo>" runtime tests`. Se non esiste più
    o fa altro, fermati con `BLOCKED_BASELINE` e descrivi la differenza.
 
 **Durante il lavoro**
-4. Prima il test che fallisce, poi il cambiamento minimo, poi la migrazione
-   idempotente, versionata con `PRAGMA user_version`.
+4. Per codice e migrazioni: prima il test che fallisce, poi il cambiamento
+   minimo e la migrazione idempotente versionata con `PRAGMA user_version`.
+   Le consegne documentali e d'inventario seguono i criteri distinti di D.1.
 5. Crea soltanto i file nuovi elencati; riusa ciò che la scheda indica.
 6. Nessun letterale di soglia: leggi da `runtime/growth_policy.py`.
 7. Le enumerazioni sono `class X(str, Enum)`, definite una volta, e si
@@ -951,11 +1177,14 @@ printf '%s' '{"query":"<richiesta di collaudo priva di segreti>"}' | \
   GET '/admin/turns?limit=5'
 ```
 
-L'helper, specificato da D-G0.4 e consegnato da D-S0.1, non legge ne trasmette la
-chiave amministrativa master. Ottiene un token breve e limitato a
-metodo+path tramite socket Unix protetto e peer verificato. Non inserisce token
-in argv, log o ambiente. Prima che l'helper esista questi comandi non si
-eseguono.
+L'helper, specificato da D-G0.4 e consegnato da D-S0.1, non espone la chiave
+amministrativa master in argv, ambiente, output o log e non la invia a un
+servizio locale non autenticato. G0.4 sceglie il profilo minimo sufficiente:
+client locale ristretto se l'installazione prova un solo principal locale
+fidato; socket Unix con credenziali del peer negli altri casi. Un token breve e
+limitato a metodo+path è ammesso soltanto se G0.4 dimostra che la richiesta
+diretta sul socket non può riusare in sicurezza le route esistenti. Prima che
+l'helper esista questi comandi non si eseguono.
 
 - Gli script sui dati del servizio (account `metnos`) si eseguono con
   `sudo -n /usr/local/sbin/metnos-agent-admin <script> <sha256> <modo>`, dopo la
@@ -963,6 +1192,10 @@ eseguono.
 - Per i turni di collaudo si usa il token del principal `test` (F0.2).
 
 ### A.4 Schede delle unità
+
+> **Precedenza operativa:** l'appendice D e il work manifest prodotto da G0.5
+> sono autorevoli. Le schede A.4 sono solo contesto fino al riallineamento G0.6
+> e non possono essere usate da sole per assegnare o implementare un'unità.
 
 #### P0 — Baseline riproducibile
 - **Leggi prima:**
@@ -1355,42 +1588,59 @@ eseguono.
   1. `Fact(value, source, version)`.
   2. `build_change_facts(intent_id, moment) -> ChangeFactsV1`, che rilegge:
      - a D1: richiesta canonica core-owned, catalogo, policy, tassonomia di
-       rischio e rifiuti; ricevuta/manifest sono `not_required`;
+       rischio, rifiuti e disponibilità verificata dell'ambiente FS-A;
+       ricevuta/manifest del candidato sono `not_required`;
      - a D2: store dei contratti, ricevuta Birth (capability, ambiti,
        `critical`, reversibilità con `undo.round_trip`, generazione), manifest,
-       preesercizio e attestazioni FS applicabili;
+       preesercizio, certificazione `EXT-RM0008-F5` e attestazioni FS
+       applicabili, con applicabilità ignota trattata come veto;
      - la riga autopath per `promote_plan`;
      - la politica e le regole di rifiuto.
   3. La reversibilità vale `guaranteed`, `conditional` o `none`, come al §5.3.
   4. Un campo del corpo dell'intent non è mai fonte di un fatto.
 - **Test:** anti-auto-attestazione per ogni fatto; ricevuta assente non blocca
-  D1 ma produce `unverified` e blocco tecnico a D2.
+  D1 se l'ambiente FS-A è pronto, ma produce `unverified` e blocco tecnico a
+  D2. Lettori e verificatori si collaudano in isolamento senza attendere prove
+  reali FS-A/FS-B/F5; nessun adattatore di test è caricabile in esercizio.
 
 #### F5.2 — `decide_change`
 - **Crea:** `runtime/growth_decision.py` e `tests/runtime/learning/test_growth_decision.py`.
 - **Passi:**
   1. `ChangeDecision`: `auto`, `ask_user`, `deny`, `blocked`.
   2. `ReasonCode` chiuso.
-  3. `DecisionMoment`: `trial` o `activation`.
+  3. `DecisionMoment`: `trial`, `activation`, `promotion`; il piano non richiede
+     una nuova receipt Birth propria.
   4. Implementa la tabella del §5.3 riga per riga, nell'ordine.
-- **Test:** tabella esaustiva delle precedenze; fatti mancanti → mai `auto`.
+- **Test:** tabella esaustiva delle precedenze e matrice D.1-ter; fatti
+  obbligatori mancanti → mai `auto`; certificazione F5 assente blocca D2,
+  mentre D1 resta possibile solo con ambiente FS-A già verificato.
+  Promotion: campione 0/minimo-1/minimo, rifiuto attivo, costo ignoto e
+  consenso richiesto; campione insufficiente non genera domande. Il costo
+  obbligatorio ignoto produce `blocked/cost_unverified`, mai consenso sostitutivo.
 
 #### F5.3 — Richieste di decisione e riepilogo
 - **Leggi prima:** `jobs/promoter_digest.py`, `jobs/promoter_state.py`
   (`pending_notification`, `mark_notified`), `http_routes_admin.py`
   (`admin_change_action`).
 - **Passi:**
-  1. Per ogni `ask_user`, `one_shot_tokens.issue(purpose=change_decision,
-     binding_digest=sha256(intent_id, row_version, impronta, digest dei fatti,
-     digest dell'effetto, versione della politica, canale, destinatario))`.
-  2. Il riepilogo mostra le domande entro il budget, in coda ordinata, e il
-     resoconto `auto`.
+  1. Un `ask_user` aggiorna la sola entry di coda canonica. L'emissione usa un
+     unico primitivo transazionale: seleziona una entry ancora eleggibile,
+     ricostruisce il binding, prenota il bucket settimanale e crea insieme
+     domanda, token e outbox. Nessun token viene emesso oltre il cap per poi
+     nasconderlo nella vista.
+  2. Il sender lavora solo dopo quel commit, riusa l'identita della domanda e
+     aggiorna soltanto la consegna secondo §5.5, incluso `delivery_unknown`.
+     Il riepilogo mostra domande emesse, coda distinta e resoconto `auto`.
   3. La risposta (callback del riepilogo o `/admin/changes`):
      - principal con ruolo logico `host` o chiave amministrativa;
      - `consume`;
      - `transition` con compare-and-swap.
 
      Un «no» crea `rejection_rule` nella stessa transazione (F5.6).
+  4. Implementa `runtime/jobs/growth_decision_reconcile.py` e registra il
+     callback in `runtime/scheduler_v2/builtin_callbacks.py`: bootstrap,
+     evidenza committata, timer da policy e riepilogo notturno riusano la
+     stessa funzione. Gestisce blocked, expiry, rollover e requeue (§5.5).
 - **Test:**
   - ospite;
   - inoltro (destinatario diverso);
@@ -1399,6 +1649,10 @@ eseguono.
   - scadenza;
   - intent rivalutato;
   - risposta valida → una sola transizione.
+  - due worker sull'ultimo slot, cap abbassato sotto il gia consumato e cap zero;
+  - crash prima/dopo emissione, invio e receipt; errore certo e consegna ignota;
+  - evaluation o policy mutate senza transizione dello stato;
+  - clock finto: nuovo campione, expiry, restart e rollover risvegliano la coda.
 
 #### F5.4 — Protocollo di applicazione ed epoca
 - **Leggi prima:** `change_applier.py` (`_HANDLERS`), `change_intents.py`
@@ -1406,17 +1660,26 @@ eseguono.
   RM-0008 (`BirthIntent`).
 - **Passi:**
   1. Per `create_executor` ed `extend_executor`: D1 `auto` o approvata porta a
-     `proposed → trial_applying`; la richiesta Birth e idempotente per
-     `operation_id`. L'accettazione della richiesta porta a `staged`; la
+     `proposed → trial_applying`; rileggi prova FS-A e disponibilità del runner
+     immediatamente prima dell'invio. La richiesta Birth è idempotente per
+     `operation_id`; una dipendenza persa sospende la stessa operation in
+     `waiting_dependency`. L'accettazione della richiesta porta a `staged`; la
      ricevuta verificata porta ad `awaiting_activation`, poi D2.
   2. `accepted → applying`, con lease e `operation_id`; handler idempotente;
-     `observe_effect`; `applied` + `bump_epoch`, nella stessa transazione.
+     `observe_effect` e controllo dei prerequisiti D2 prima di ogni nuovo
+     effetto. Per autopath, commit governance+epoca nello stesso DB; per gli
+     executor, puntatore firmato RM-0008 e riconciliazione secondo §5.4,
+     senza transazione atomica fra DB distinti.
   3. Un recupero, all'avvio e ogni notte, gestisce le lease scadute come al §5.4.
 - **Test:**
   - iniezione di crash prima dell'effetto, dopo l'effetto e prima della
     ricevuta, dopo la ricevuta;
   - due worker sullo stesso intent;
-  - senza ricevuta Birth l'attivazione è impossibile.
+  - senza ricevuta Birth l'attivazione è impossibile;
+  - senza FS-A nessun invio reale; la sola implementazione F5.4 si verifica
+    con adattatore inerte, mentre la prova Birth reale è in I0;
+  - perdita di un prerequisito tra consenso e invio: attesa con lo stesso ID,
+    riconciliazione prima della ripresa e nessun effetto ripetuto.
 
 #### F5.6 — `rejection_rule` di governance append-only
 - **Passi:**
@@ -1436,7 +1699,7 @@ eseguono.
 - **Leggi prima:** `change_rollback.py` (ritorni con `error` ~58-122).
 - **Passi:**
   1. `benefit` con metrica, unità, finestra, campione, baseline e osservato,
-     secondo la formula del §5.7.
+     secondo le formule del §5.6.
   2. `RollbackResult(ok, verified, error_code)`: un avvolgitore tipizzato sulle
      funzioni esistenti.
   3. Stato `rolled_back` solo con `verified`; altrimenti `rollback_failed` e
@@ -1456,6 +1719,9 @@ eseguono.
   2. `decide_invocation(envelope, facts, policy)`: intersezione aggiuntiva, con
      veto fail-closed.
   3. Riusa `Fact` e le enumerazioni di `growth_facts.py`.
+  4. Una prova FS-B assente è un dato per il decisore, non un prerequisito di
+     sviluppo. In ombra resta un diniego ipotetico; l'enforcement richiede le
+     dipendenze reali della propria riga D.
 - **Test:**
   - ogni veto;
   - due politiche materialmente diverse;
@@ -1469,7 +1735,9 @@ eseguono.
      in `invocation_authority_stats`, con watermark
      `(avvio del processo, sequenza)`; nessuna scrittura per invocazione.
   3. In ombra una decisione forzata a negare viene registrata ma non cambia
-     esito o effetti. La prova di zero effetti appartiene all'enforcement.
+     esito o effetti, non concede grant e non emette `AuthorityViolationV1`.
+     Un errore del lettore è registrato senza modificare le autorizzazioni
+     ordinarie. La prova di zero effetti appartiene all'enforcement.
 - **Test:**
   - locale;
   - remoto;
@@ -1514,6 +1782,9 @@ eseguono.
      campi, dal ciclo normale.
   6. Rimuovi `test_runner.py` e i campi dalla grammatica soltanto quando
      inventario e ricerca dei riferimenti sono vuoti.
+  7. Registra nel manifest firmato del rilascio la prova FS-A definita da
+     D.1-ter, legata a runner/configurazione correnti e suite. Il lettore F5
+     è un consumatore successivo, non un prerequisito per produrre la prova.
 - **Test:** isolamento di rete, processi, utente e IPC, ambiente ammesso, cwd
   effimera, limiti di CPU, RAM e output, morte dell'intero albero; ogni campo
   legacy rifiutato.
@@ -1548,11 +1819,12 @@ eseguono.
 
 ### A.5 Ordine e matrice dei file
 
-1. **Sequenza:**
-   `P0 → P1 → P2 → F0.1 → F0.2 → F0.3 → F1.1 → F1.2 → F1.3 → F2.1 → F2.2 →
-   F2.3 → F2.4 → F3.1 → F3.2 → F3.3 → F4.1 → F4.2 → F4.3 → F4.4 → F5.1 → F5.2
-   → F5.3 → F5.4 → F5.5 → F5.6 → F6.1 → F6.2`. F6.3 e F6.4 vengono dopo
-   RM-0008/F5.
+1. **Sequenza:** deriva esclusivamente dagli archi `Dip.` dell'appendice D e
+   dall'espansione degli incarichi G0.5; non esiste un secondo ordine manuale.
+   I1.1 integra il codice preliminare senza dipendere da FS-A/FS-B/F5 reali.
+   I0 e l'enforcement F6 rispettano i prerequisiti di D.1-ter. Un file condiviso
+   impone l'assegnazione esclusiva, non trasforma la certificazione di esercizio
+   in un prerequisito per scrivere ogni modulo che la leggerà.
 2. **Parallelismo consentito** solo fra unità senza file in comune:
 
 | Unità | File principali | Conflitto con |
@@ -1748,22 +2020,61 @@ la revisione 7 grezza, perché si perderebbero le decisioni dell'unione.
   candidato E.2 possono contraddire l'appendice D. D.1 dichiara la precedenza di
   D; conviene ripeterlo in testa ad A.4 e a E.2.
 
+### C.5 Consolidamento delle osservazioni esterne (15/9)
+
+Le osservazioni C.4 non sono accolte in blocco. Questa tabella registra la
+decisione caso per caso e il suo effetto normativo; prevalgono comunque il testo
+principale e l'appendice D.
+
+| Nota | Decisione consolidata | Effetto nel documento |
+|---|---|---|
+| O-01 | accolta in parte | La tranche di sicurezza è separata per programmazione, ma soltanto `implemented_pending_rm0008` può prescinderne. `complete` richiede il ciclo reale e le protezioni applicabili del §11. |
+| O-02 | accolta | Vale la scelta già vincolante: D2 resta `blocked/dependency_unready` fino a `EXT-RM0008-F5`, senza eccezione per capacità in sola lettura. |
+| O-03 | accolta in parte | `curl -H @file` risolve solo l'esposizione in argv e richiede un file con l'intera intestazione, non la `admin.key` grezza. G0.4 sceglie fra helper locale ristretto e socket autenticato secondo il modello di minaccia; niente socket o token non motivati. |
+| O-04 | respinta | ID casuale e mancato riuso non fermano richieste ritardate o replay con l'ID cancellato. La revoca HMAC resta per negare l'identità senza conservarla in chiaro; non entra mai in ranking, decisione o distribuzione globale. |
+| O-05 | accolta | Roberto decide soltanto valori di prodotto non già fissati, in pratica il budget di costo. Il coordinatore congela fatti D1/D2, stati, deduplica e protocolli con valori prudenti e prove. |
+| O-06 | accolta ed eseguita | Le due sorgenti sono conservate nel commit `0b28ba07` e rimosse dall'albero vivo nel commit `037840f4`. |
+| O-07 | accolta | La precedenza di D e del work manifest è ripetuta in A.4 ed E.2; G0.6 elimina le prescrizioni duplicate o divergenti. |
+
+### C.6 Riallineamento sviluppo/esercizio e livello degli agenti (15/9)
+
+La rilettura ha trovato tre dipendenze che contraddicevano D.1-bis: FS-B.4c
+prima di F5.1/F6.1 e FS-A.4 prima di F5.4. Sono rimosse dal grafo di sviluppo;
+D.1-ter, i verificatori e le relative prove conservano i veti in esercizio.
+I0.1 richiede esplicitamente FS-A.4, X0.1 e S0.1, con FS-B/F6 aggiunte quando
+richieste dai contratti e dai percorsi di integrazione. Sono riallineati i
+criteri di fase, A.4/A.5, gli indicatori shadow/enforced e gli stati del README.
+A.1.1 distingue incarichi per agenti medi, incarichi di livello alto e quelli
+che richiedono competenza di sistemi e sicurezza.
+
+Verifica documentale: 101 voci univoche, comprese due voci `.N` da espandere;
+nessuna dipendenza mancante o ciclo; controlli delle dipendenze richieste e
+proibite di D.1-ter superati. Sei alterazioni deliberate del grafo sono state
+rifiutate: ripristino delle tre dipendenze errate, rimozione di FS-A o X0.1
+prima dell'integrazione reale e rimozione di FS-B prima dell'enforcement locale.
+Il controllo formale del diff è pulito. Queste prove riguardano il piano:
+gli inventari e gli incarichi G0.5, il loro congelamento G0.6 e le verifiche
+indipendenti G0.7-G0.8 restano da eseguire sulla baseline di sviluppo.
+
 ## Appendice D — Piano esecutivo dettagliato dello sviluppo
 
 ### D.1 Regola di esecuzione
 
 Questo e l'elenco master delle attivita. Ogni ID e una consegna separata e un
 solo commit. L'appendice D e autorevole e, in caso di differenza, sostituisce
-le schede A.4 e l'ordine A.5; queste restano materiale di contesto finche
-D-G0.6 non le riallinea. Nessuna unita di codice **non-FS** parte prima di
-D-G0.10. Per la decisione gia vincolante del 14/9, FS-A/FS-B possono partire
+le schede A.4, l'ordine A.5 e l'elenco candidato E.2; questi restano materiale
+di contesto finche D-G0.6 non li riallinea. Nessuna unita di codice **non-FS**
+parte prima di D-G0.10. Per la decisione gia vincolante del 14/9, FS-A/FS-B possono partire
 dopo G0.6, lease e prerequisiti espliciti delle rispettive righe. Un agente
-medium riceve una sola riga per volta. `Dip.` elenca singoli
-prerequisiti obbligatori, non intervalli o suggerimenti.
+medium riceve una sola riga per volta. `Dip.` elenca i prerequisiti obbligatori
+per realizzare e collaudare quella consegna. I prerequisiti di esercizio sono
+in §D.1-ter: un verificatore si può implementare prima che esista una prova
+valida; la sua consegna deve già dimostrare il rifiuto della prova assente.
 
 D-G0.5 produce per ogni ID un work manifest versionato con tipo di unita,
-owner, percorsi esatti (compresi test, fixture e documenti), simboli, DB e
-numero di migrazione, comandi di prova e rollback. Il coordinatore non assegna
+owner, livello dell'agente e revisore (A.1.1), percorsi esatti (compresi test,
+fixture e documenti), simboli, DB e numero di migrazione, dipendenze di sviluppo,
+condizioni di esercizio, comandi di prova e rollback. Il coordinatore non assegna
 una riga se il relativo manifest manca o non coincide con la baseline.
 Se un prerequisito non e chiuso, l'agente restituisce `BLOCKED_DEPENDENCY`.
 
@@ -1775,10 +2086,21 @@ unita `decision/document/review/approval` richiedono rispettivamente verbale,
 diff documentale, rapporto indipendente o registrazione dell'approvazione, non
 un test rosso artificiale. Il coordinatore assegna un lease esclusivo sui file.
 
+**Collaudo preliminare F5/F6.** Prima delle certificazioni si usano archivi
+temporanei e adattatori inerti iniettati dal solo test. Le firme vengono
+verificate con chiavi di test attraverso il verificatore reale. La configurazione
+di esercizio non ammette adattatori fittizi, ricevute di test, opzioni per saltare
+controlli o scritture negli store produttivi. Le prove positive simulate sono
+etichettate `simulated`; quelle reali rimangono pendenti fino a I0. Il controllo
+di un prerequisito assente viene invece esercitato anche sul normale percorso
+di ingresso, contando zero chiamate all'adattatore con effetti.
+
 ### D.1-bis Separazione della sicurezza (decisione di Roberto, 15/9)
 
 Le unità seguenti formano la **tranche di sicurezza**. È un lavoro a parte, già
-autorizzato, che non condiziona la chiusura di RM-0009:
+autorizzato, che non condiziona il milestone pre-certificazione
+`implemented_pending_rm0008`:
+
 - `D-S0.1`;
 - tutte le `D-FS-A.*` e le `D-FS-B.*`;
 - `D-F6.3`, `D-F6.4a`-`D-F6.4e`, `D-F6.5`, `D-F6.6`.
@@ -1786,35 +2108,89 @@ autorizzato, che non condiziona la chiusura di RM-0009:
 RM-0009 conserva F6 **in ombra**: `D-F6.1`, `D-F6.2a`-`D-F6.2e` e
 `D-F6.2.barrier`.
 
-Restano due vincoli di dipendenza, non di chiusura:
+Restano vincoli di attivazione e di chiusura reale:
+
 - l'attestazione FS-B (`D-FS-B.4c`) è un veto di D2 per ogni capacità che
   raggiunge credenziali o piano di controllo (R6-14);
 - l'esecuzione di codice candidato richiede `D-FS-A.4`.
 
 Poiché D2 resta comunque `blocked` fino a RM-0008/F5 (decisione del 15/9),
-nessuno dei due vincoli ritarda i milestone di RM-0009.
+I1.1 può chiudere le prove preliminari anche con FS-A/FS-B assenti: in quel
+caso nessuna prova positiva usa Birth reale, D1 segnala l'ambiente mancante e
+D2 la certificazione mancante. L'assenza di queste dipendenze riguarda solo il
+grafo di sviluppo; non equivale a un'autorizzazione di esercizio. Dopo le
+certificazioni, il ciclo reale di §11 e I0 rispetta i vincoli seguenti.
+
+### D.1-ter Prerequisiti di esercizio e prove di separazione
+
+| Percorso | Condizioni richieste | Esito se manca una condizione |
+|---|---|---|
+| Implementazione e prove isolate F5.1/F5.2/F5.4/F6.1-F6.2 | Dipendenze `Dip.` completate; adattatori e chiavi di test confinati al test | Si collauda il veto tecnico; nessun requisito di FS-A/FS-B reali per consegnare il codice. |
+| D1 e invio reale di una richiesta di crescita a Birth | D1 autorizzata; prova FS-A di D-FS-A.4 valida per il rilascio e runner effettivamente disponibile | `blocked/dependency_unready` prima di D1; durante un'operation già aperta, `waiting_dependency` (§5.4.1); nessun invio o esecuzione di codice candidato. |
+| D2 e attivazione reale create/extend | `EXT-RM0008-F5`, FS-A, ricevuta Birth, manifest e preesercizio verificati; FS-B.4c se credenziali o piano di controllo sono raggiungibili | `blocked`; il consenso non lo supera. Applicabilità FS-B ignota o fonte indisponibile blocca. |
+| F6 in ombra su percorsi ordinari | Funzione pura e contatori installati; autorizzazioni correnti ancora applicate | Il fatto mancante genera un verdetto ipotetico; nessun grant, cambiamento di esito o segnale di violazione attiva. |
+| F6 con enforcement locale, remoto o durevole | X0.1, FS-A.4, FS-B.4c e dipendenze della relativa riga F6; remoto anche client/protocollo v2 verificati | Nessun nuovo effetto governato dal percorso; nessun ripiego al protocollo precedente per aggirare il veto. |
+| Prove reali di integrazione I0 | I1.1, X0.1, FS-A.4 e helper S0.1; inoltre FS-B.4c e le unità F6 richieste dai percorsi realmente usati | La sola integrazione reale resta pendente; I1.1 conserva il suo esito preliminare. |
+
+**Origine delle prove.** F5.1 legge prove del rilascio installato dal normale
+verificatore di fiducia, non dal corpo dell'intent, da un booleano configurabile
+o dalla presenza di un file. La prova FS-A, prodotta da FS-A.4, lega revisione
+del contratto del runner, digest del codice e della configurazione effettivi,
+inventario convertito e risultati della suite di isolamento. Si riusano
+manifest e autorità di rilascio: nessuna nuova chiave o servizio di firma.
+La firma da sola non basta se i digest correnti divergono. G0.3/G0.6 fissano
+l'interfaccia comune con RM-0008; costruire e collaudare quel lettore non
+richiede una certificazione valida in esercizio. Le prove con codice candidato
+necessarie a certificare FS-A restano nella sua tranche e passano già dal
+runner isolato; non si autocertificano attraverso D1.
+
+**Applicabilità e aggiornamenti.** FS-B è richiesta in base al contratto
+firmato e all'accesso effettivamente concesso, anche per capacità in sola
+lettura; argomenti innocui non eliminano la dipendenza. Prima di una nuova
+chiamata con effetti si riverificano prove e disponibilità; ritiro, modifica o
+riavvio con configurazione diversa non conservano un precedente esito verde.
+Il manifest dell'incarico I0 elenca le ulteriori unità FS-B/F6 effettivamente
+necessarie e i relativi ID come dipendenze prima dell'assegnazione. Finché non
+sono concluse, il percorso interessato rimane bloccato.
+
+**Controlli obbligatori sul grafo e sul comportamento:**
+
+1. gli antenati di I1.1 non contengono X0.1, S0.1, alcuna unità FS-A/FS-B o
+   l'enforcement F6.3-F6.6; contengono invece F5.9, P2.9 e F6.2.barrier;
+2. gli antenati di I0.1 e I0.7 contengono I1.1, X0.1, FS-A.4 e S0.1; FS-B
+   e ogni percorso F6 scelto sono aggiunti dal manifest di integrazione;
+3. ogni unità che abilita enforcement F6 conserva X0.1, FS-A.4 e FS-B.4c tra
+   gli antenati, oltre alle implementazioni server/client pertinenti;
+4. test con FS-A assente: zero invii Birth; FS-A valida e RM-0008/F5 assente:
+   D1 può autorizzare solo la prova, D2 resta bloccata; certificazione F5 valida
+   e FS-B assente: caso sensibile bloccato, caso provatamente non sensibile
+   valutato con le altre regole D2;
+5. firma/digest/prova obsoleti, revoca tra decisione e invio e riavvio non
+   attivano capacità; un test non può far risultare verificata una prova reale;
+6. F6 in ombra con un diniego o un errore del lettore conserva il comportamento
+   ordinario e non emette grant o `AuthorityViolationV1` da quella sola ipotesi.
 
 ### D.2 Tranche G — Correzione del progetto e baseline
 
 | ID | Dip. | File di proprieta | Attivita atomica | Prova e criterio di uscita |
 |---|---|---|---|---|
 | D-G0.1 | — | report in `internal/reports/rm0009-baseline/` | Registrare commit, worktree, file gia modificati, versioni DB e servizi, senza ancora copiare gli store; assegnare l'owner di ogni modifica presente. | Manifest di preflight digestato; ogni file sporco ha un owner oppure blocca l'unita. Lo snapshot coerente appartiene solo a D-P0.1. |
-| D-G0.2 | G0.1 | Roberto per le decisioni di prodotto; coordinatore per la specifica | Fissare le decisioni normative: fatti D1/D2, `blocked` tecnico, semantica shadow, deduplica, protocollo remoto, costo/autorita e pattern d'uso S2. Nessuna scelta di prodotto viene delegata a un agente medium. | Tabella decisionale esaustiva senza `TBD`; simulazione su create, extend, promote e reject; decisioni materiali registrate tra quelle vincolanti. |
+| D-G0.2 | G0.1 | Roberto solo per valori di prodotto ancora aperti; coordinatore per la specifica tecnica | Registrare come chiuse le decisioni su D2 pre-RM-0008/F5, S2 aggregata e assenza di cancelli per owner; chiedere a Roberto soltanto il budget di costo se il default prudente zero non è accettabile. Il coordinatore congela fatti D1/D2, `blocked`, shadow, deduplica, autorità e protocollo remoto senza trasferire scelte tecniche a Roberto o agli agenti medium. | Tabella decisionale esaustiva senza `TBD`; nessuna domanda tecnica a Roberto; simulazione su create, extend, promote e reject; ogni scelta materiale di prodotto registrata tra quelle vincolanti. |
 | D-G0.3 | G0.2 | `internal/roadmap/RM-0008-porta-unica-nascita-executor.md`, questo file | Emettere l'emendamento che assegna una sola porta Birth, risolve il destino di `test_runner.py` e rende RM-0008/F5 un prerequisito non aggirabile di D2. | Ricerca repository: nessuna istruzione attiva contraddittoria; approvazione dei maintainer dei due piani. |
-| D-G0.4 | G0.1 | specifica helper, socket locale e test | Definire senza implementare: socket Unix con owner/mode/inode e peer credential verificati; token breve legato a metodo+path, mai chiave master; HTTP solo loopback/path relativo; proxy/redirect/URL assoluti vietati; payload stdin e redazione. | Modello di minaccia e prove argv/env/log, processo impostore loopback/socket, redirect/proxy e replay; implementazione D-S0.1. |
-| D-G0.5 | G0.1 | report baseline, A.5, work manifest, elenco candidato E.2 | Generare inventari di manifest legacy, consumer di chiavi/vault, writer `TurnLog`, call graph F6, registrazioni per kind, produttori che scrivono marker di crescita o chiamano direttamente Birth/sintesi, file condivisi e **tutti** gli store owner-bearing esistenti (DB, JSONL, cache, auth, invocation, durable); verificare i candidati E.2 e generare il work manifest per ogni ID. | Inventari riproducibili; conteggi derivati dai file; nessun ingresso di crescita diretto, path generico o store owner-bearing senza lifecycle owner. |
-| D-G0.6 | G0.2, G0.3, G0.4, G0.5 | questa roadmap, §§5.4.1 e D.8, A.4, A.5, work manifest | Integrare gli inventari; allineare §§5-6 e A.4-A.5 a D; congelare nomi moduli, DAG, schemi, file e numeri migrazione; generare test di aciclicita, macchina a stati e dominanza dei milestone. | Nessuna prescrizione concorrente; ogni unita obbligatoria e antenata del milestone pertinente; work manifest completo. |
+| D-G0.4 | G0.1 | specifica helper amministrativo e test | Modellare utenti locali, account del servizio, arresto/riavvio e possibile processo impostore. Se il preflight prova un solo principal locale fidato e impedisce l'intercettazione, scegliere un helper che legge internamente la chiave 0600 e usa un client in-process vincolato a loopback, path relativo, niente proxy o redirect. Altrimenti scegliere richiesta diretta su socket Unix protetto con owner/mode/inode e credenziali peer; ammettere un token breve metodo+path solo con motivazione che escluda il riuso diretto sicuro delle route. | Decisione riproducibile sul profilo minimo; prove argv/env/output/log, listener o socket impostore, redirect/proxy, URL assoluto e replay se esiste un token; implementazione esatta congelata per D-S0.1. |
+| D-G0.5 | G0.1 | report baseline, A.5, work manifest, elenco candidato E.2 | Generare inventari di manifest legacy, consumer di chiavi/vault, writer `TurnLog`, call graph F6, registrazioni per kind, produttori che scrivono marker di crescita o chiamano direttamente Birth/sintesi, file condivisi e **tutti** gli store owner-bearing esistenti (DB, JSONL, cache, auth, invocation, durable); verificare E.2 e generare il work manifest per ogni ID con dipendenze di sviluppo, condizioni di esercizio, livello agente e revisore. | Inventari riproducibili; conteggi derivati dai file; nessun ingresso di crescita diretto, path generico o store owner-bearing senza lifecycle owner; modelli `.N` espansi in ID e file concreti. |
+| D-G0.6 | G0.2, G0.3, G0.4, G0.5 | questa roadmap, §§5.4.1, D.1-ter e D.8, A.4, A.5, E.2, work manifest | Integrare gli inventari; allineare §§5-6, A.4-A.5 ed E.2 a D; congelare nomi moduli, DAG, schemi, file e numeri migrazione. Generare controlli di aciclicita, transizioni e dipendenze richieste/proibite di D.1-ter, anche dopo l'espansione `.N`. | Nessuna prescrizione concorrente; ogni unità obbligatoria è antenata del traguardo pertinente; I1.1 indipendente dalle certificazioni, I0 ed enforcement protetti; work manifest completo. |
 | D-G0.7 | G0.6 | due agenti medium indipendenti | Eseguire il dry-run documentale senza contesto orale. | Stesso ordine, file, transizioni, commit point e test; ogni divergenza riapre G0.6. |
 | D-G0.8 | G0.7 | reviewer architettura e sicurezza indipendenti | Ripetere la review del progetto e verificare tutti i gate C.3. | Nessun rilievo bloccante o alto irrisolto. |
 | D-G0.9 | G0.8 | Roberto, poi coordinatore | Generare in anteprima il contenuto normalizzato senza storia; ottenere l'approvazione su quel payload e impostare lo stato `ready`. | Digest registrato; nessun codice non-FS iniziato. Eventuali commit FS gia autorizzati sono elencati con stato e prove. |
-| D-G0.10 | G0.9 | questa roadmap | Nel commit documentale immediatamente successivo sostituire il file con l'esatto payload approvato, eliminando cronaca e appendici B/C. | Digest del file uguale a quello approvato; baseline esterna conservata; nessuna riscrittura della storia Git. |
+| D-G0.10 | G0.9 | questa roadmap | Nel commit documentale immediatamente successivo sostituire il file con l'esatto payload approvato, eliminando cronaca e appendici B/C/E. | Digest del file uguale a quello approvato; baseline esterna conservata; nessuna riscrittura della storia Git. |
 | D-X0.1 | G0.3 | RM-0008/F5, responsabile RM-0008 | Produrre il gate esterno machine-readable `EXT-RM0008-F5` con commit, receipt di certificazione e suite richiesta. | Il verifier RM-0009 valida firma/digest, stato F5 e compatibilita del contratto; fino ad allora D2 resta bloccata. |
 
 ### D.3 Tranche P — Primitive condivise
 
 | ID | Dip. | File di proprieta | Attivita atomica | Prova e criterio di uscita |
 |---|---|---|---|---|
-| D-S0.1 | G0.10 | nuovo `runtime/admin_local_auth.py`, startup service, `internal/tools/metnos_admin_request.py` e test manifest | Implementare socket peer-verified e token one-shot/TTL legato a metodo+path; l'helper lo usa su loopback senza mai leggere la chiave master. | Processo impostore su porta/socket, replay, URL/redirect/proxy e peer/mode errati negati; token assente da argv/env/output/log. |
+| D-S0.1 | G0.10 | `internal/tools/metnos_admin_request.py`; solo per il profilo socket nuovo `runtime/admin_local_auth.py` e startup service; test dal work manifest | Implementare esattamente il profilo minimo congelato da G0.4/G0.6. Profilo locale: leggere internamente la chiave 0600 e chiamare solo il loopback fissato, senza proxy, redirect o URL assoluti. Profilo multiutente: richiesta diretta su socket peer-verified; token one-shot/TTL metodo+path solo se motivato in G0.4. | Segreto assente da argv/env/output/log; listener o socket impostore, URL/redirect/proxy e peer/mode errati negati; se esiste un token, replay e scadenza negati. |
 | D-P0.1 | G0.10 | tool/report P0 dal work manifest | Implementare cutoff globale e snapshot coerente di SQLite/JSONL con watermark e digest. | Due snapshot dello stesso cutoff sono identici; un writer concorrente non attraversa il confine senza retry. |
 | D-P1.1 | P0.1 | nuovo `runtime/growth_policy.py`; test policy | Definire un campo per parametro con nome Python/env, tipo, unita, default, min/max e tassonomia sensibile. | Test default, override, alias legacy, limiti e valore invalido; solo la crescita entra in stato degradato. |
 | D-P1.2 | P1.1 | `growth_policy.py`, firma cache | Calcolare `GrowthPolicy.version` da JSON canonico e inserirla direttamente nelle firme di decisione e `tools_sig`. | Cambio env + restart invalida la cache; ordine delle chiavi non cambia la versione. |
@@ -1824,11 +2200,11 @@ nessuno dei due vincoli ritarda i milestone di RM-0009.
 | D-P2.2 | P2.1, P2.4 | `change_intents.py`; test concorrenza | Migrare duplicati trasferendo fonti e sole tabelle figlie legacy gia esistenti al canonico e archiviando alias; creare unicita sul canonico. Le nuove valutazioni F2 risolvono sempre l'alias canonico alla scrittura. | Due connessioni convergono a un intent; indice creato con duplicati reali; il ripristino consolida senza collisione. |
 | D-P2.3 | P2.2 | `change_intents.py`; test state machine | Implementare enum e tabella esaustiva D1/D2: incluso `trial_applying`, `blocked` con reason tipizzato, recovery e terminali legacy. | Test parametrico di ogni arco ammesso e di ogni salto negato; nessun `UPDATE` stato fuori dal CAS. |
 | D-P2.8 | P1.2, P2.3 | `change_intents.py`; test epoch | Creare l'unica API epoch e il ledger idempotente dopo schema, deduplica e stati; ogni consumer successivo deve usarla per policy, apply, rifiuto, revoca e rollback. | Stesso event/operation ID incrementa una volta; policy version diversa dopo restart invalida la firma. |
-| D-P2.5 | P2.3, P2.8 | nuovo `runtime/change_operations.py`; test recovery | Implementare journal/outbox con `operation_id`, phase, lease owner/expiry, attempt, before/after, receipt e CAS. | Due worker, lease scaduta e crash in ogni confine convergono a un solo effetto osservato. |
+| D-P2.5 | P2.3, P2.8 | nuovo `runtime/change_operations.py`; test recovery | Implementare journal/outbox con `operation_id`, phase, lease owner/expiry, attempt, before/after, receipt e CAS. Includere `waiting_dependency` e ripresa con lo stesso ID dopo rilettura dei prerequisiti e osservazione dell'effetto (§5.4.1). | Due worker, lease scaduta e crash convergono a un solo effetto osservato; dipendenza persa non produce una nuova chiamata, un falso fallimento o il consumo dei tentativi per la sola attesa. |
 | D-P2.10 | P2.3, P2.8 | nuovo `runtime/rejection_rules.py`; test dedicato | Creare schema/API di lettura e scrittura per regole/revoche di governance, con binding esatto alla fingerprint e controllo comune prima dell'upsert. Non registrare alcun effect handler. | Regola attiva blocca ogni producer senza owner; expiry/revoca la rende valutabile; unknown schema fallisce chiuso. |
 | D-P2.6 | P2.3, P2.8, P2.10 | nuovo `runtime/one_shot_tokens.py`; DB change intent | Implementare token di decisione co-locato: binding strutturato, destinatario/canale, TTL, revoca e consumo atomico con scelta, stato rejected, eventuale `rejection_rule` ed epoca. | Replay, doppio clic, inoltro, scadenza e crash non perdono ne duplicano la decisione/regola. |
 | D-P2.7 | P2.5, P2.8 | `change_operations.py`, `change_intents.py` | Definire il protocollo degli effetti: claim; target `prepared` invisibile; observe; commit governance+epoch; visibilita autorizzata solo dall'operation committed; reconcile a ogni crash. Per gli executor resta autorevole il puntatore firmato RM-0008, per autopath il commit governance. Le regole di rifiuto restano fuori da operation/apply. | Fault test di ogni confine; mai due autorita concorrenti o una generazione globale intermedia. |
-| D-P2.9 | P2.6, P2.7, F0.2 | nuovo `runtime/user_data_lifecycle.py`, `runtime/users.py`; test cancellazione | Creare registry obbligatorio di purge dall'inventario completo G0.5, inclusi turni JSONL, auth, invocation e durable. Alla cancellazione: revocation tag `HMAC(delete-pepper, owner_id)` per negare richieste future, tombstone casuale distinto per scollegare la provenienza. Ogni store futuro deve registrarsi. | Test esaustivita su ogni store esistente; ID non recuperabile dalle viste, stessa identita cancellata negata fail-closed tramite HMAC protetto. |
+| D-P2.9 | P2.6, P2.7, F0.2 | nuovo `runtime/user_data_lifecycle.py`, `runtime/users.py`; test cancellazione | Creare registry obbligatorio di purge dall'inventario completo G0.5, inclusi turni JSONL, auth, invocation e durable. Alla cancellazione: revocation tag `HMAC(delete-pepper, owner_id)` per negare anche richieste ritardate/replay senza conservare l'ID in chiaro, più tombstone casuale distinto per scollegare la provenienza. Il tag non entra in deduplica, ranking o decisioni di crescita, né nell'autorità o distribuzione dell'artefatto globale; serve esclusivamente a revocare l'identità operativa cancellata. Ogni store futuro deve registrarsi. | Test esaustivita su ogni store esistente; ID non recuperabile dalle viste; richiesta ritardata e replay della stessa identità cancellata negati fail-closed tramite HMAC protetto; nessun effetto sulla disponibilità globale dell'artefatto. |
 
 ### D.4 Tranche F0-F3 — Osservazione, valutazione ed evidenza
 
@@ -1862,18 +2238,18 @@ nessuno dei due vincoli ritarda i milestone di RM-0009.
 | D-F4.3c | F4.3b, F0.3, P1.3 | autopath e modulo metriche dal work manifest | Creare solo replay su trace sanificate e simulazione read-only: non invocare executor, undo o API esterne; per piani mutanti validare struttura e binding, non eseguire l'effetto. | Probe non cambia output, store o mondo esterno e produce campione causale deduplicato. |
 | D-F4.3d | F4.3b, F4.3c, P2.7 | nuovo `runtime/change_intent_adapters/optimization.py`; funzioni autopath | Produrre intent S3 e funzioni idempotenti apply/observe/rollback, non ancora registrate nel registry degli effetti. | Apply committed abilita globalmente; observe distingue operation; rollback verificato rimette in shadow. |
 | D-F4.4 | F4.1, F4.2c, F4.3d, F2.1 | file job e registry dal work manifest | Per ogni adapter, committare upsert intent+source nella sola transazione locale; dopo il commit invocare il giudizio esterno idempotente, che persiste la valutazione in una seconda transazione. | Test end-to-end per S1/S2/S3; timeout del judge, crash e rerun non tengono lock e non duplicano. |
-| D-F5.1 | F4.4, P1.3, FS-B.4c | nuovo `runtime/growth_facts.py` | Implementare `ChangeFactsV1` core-owned con tabella delle fonti: D1 non usa receipt; D2 richiede receipt/manifest/preexercise/attestazione FS-B quando applicabile e verifica autorita/sensibilita. | Anti-auto-attestazione campo per campo; receipt assente blocca D2 ma non D1; attestazione FS-B assente non e superabile. |
-| D-F5.2 | F5.1 | nuovo `runtime/growth_decision.py` | Implementare funzione pura e tabella di precedenza: veto tecnico prima, rifiuto, D1, D2 e consenso/costo. | Test parametrico di ogni riga e combinazioni; pre-RM8/F5 sempre `blocked`/`dependency_unready`. |
-| D-F5.3 | F5.2, P2.6, P2.9, F0.3 | file promoter digest/state e i18n dal work manifest | Implementare coda persistente, ranking, budget, scadenza, callback namespaced e purger; D1 yes va a trial, D2 yes ad accepted. | Host/admin soli; guest/forward/replay/double click/rivalutazione/delete-user falliscono sicuri; nessun salto D1→accepted. |
-| D-F5.4 | F5.2, P2.5, G0.3, FS-A.4 | `runtime/synth_request.py`, adapter RM-0008 | Applicare D1 come operation idempotente `trial_applying`; inviare BirthIntent con dati candidati definiti e riconciliare receipt. | Crash prima/dopo invio e due worker producono una richiesta e una receipt associata. |
-| D-F5.5a | F5.3, F5.4, P2.7 | registry effetti e file RM-0008 dal work manifest | Registrare/applicare/observare/ritirare `create_executor` esclusivamente via RM-0008. | Crash a ogni confine, operation idempotente e receipt firmata; nessuna modifica diretta a manifest/lifecycle. |
+| D-F5.1 | F4.4, P1.3 | nuovo `runtime/growth_facts.py` | Implementare `ChangeFactsV1` e lettori core: D1 richiede ambiente FS-A verificato, non la ricevuta del candidato; D2 richiede certificazione F5, receipt/manifest/preexercise e FS-B se applicabile. L'assenza delle prove è un fatto rappresentabile, non una dipendenza per scrivere il lettore. | Verificatore reale con chiavi di test: assenza, firma/digest errati, applicabilità ignota e auto-attestazione negati; matrice D.1-ter verde senza certificazioni reali. |
+| D-F5.2 | F5.1 | nuovo `runtime/growth_decision.py` | Implementare funzione pura, tre DecisionMoment e intera tabella §5.3: veto tecnico/costo ignoto, rifiuto, campione promotion, consenso, D1/D2/promotion. | Test parametrico: senza FS-A D1 bloccata; FS-A pronta e RM-0008/F5 assente permette solo D1; D2 pre-F5 sempre blocked; costo ignoto o campione insufficiente non generano domande. |
+| D-F5.3 | F5.2, P2.6, P2.9, F0.3 | `runtime/jobs/promoter_digest.py`, `runtime/jobs/promoter_state.py`, nuovo `runtime/jobs/growth_decision_reconcile.py`, `runtime/scheduler_v2/builtin_callbacks.py`; callback, writer di fatti e i18n esatti dal work manifest | Implementare coda, emissione atomica domanda/token/budget/outbox, sender separato, binding corrente alla risposta e reconcile di §5.5; D1 yes va a trial, D2/promotion yes ad accepted. | Host/admin soli; replay/forward/double click/stale facts/delete negati; due worker rispettano ultimo slot; crash e clock finto provano delivery_unknown, expiry, bootstrap, rollover e risveglio su evidenza; nessun salto D1→accepted. |
+| D-F5.4 | F5.2, P2.5, G0.3 | `runtime/synth_request.py`, adapter RM-0008 | Implementare il collegamento D1 come operation `trial_applying`: prima dell'invio reale rileggere la prova FS-A e la disponibilità del runner; se mancanti sospendere secondo §5.4.1. Collaudare invio e receipt con adattatore inerte iniettato dal test. | FS-A assente/revocata/alterata: zero invii reali. Nell'adattatore di test, crash e due worker producono una sola richiesta e receipt; nessun certificato di test è accettabile in esercizio. Prova Birth reale in I0. |
+| D-F5.5a | F5.3, F5.4, P2.7 | registry effetti e file RM-0008 dal work manifest | Implementare registrazione/applicazione/osservazione/ritiro di `create_executor` via RM-0008, con rilettura dei prerequisiti D2 prima di un nuovo effetto. Per I1.1 usare soltanto l'adattatore inerte di D.1; l'attivazione reale appartiene a I0. | Crash a ogni confine e idempotenza provati in isolamento; certificazione assente o persa dopo il consenso impedisce la chiamata reale; nessuna modifica diretta a manifest/lifecycle. |
 | D-F5.5b | F5.5a | registry effetti e `change_applier_extend.py` | Registrare/applicare/observare/ritornare `extend_executor` alla generazione precedente via RM-0008. | Stesse prove di create, incluse target/generazione concorrenti. |
 | D-F5.5c | F5.5a, F4.3d | registry effetti, `change_applier.py`, autopath | Registrare le funzioni `promote_plan` prodotte da F4.3d. | Apply/observe/rollback operation-specific; visibilita globale solo dopo commit. |
 | D-F5.5e | F5.5b, F5.5c | registry e test parametrico | Rendere esaustivo kind→schema→handler→observe→rollback per i tre change kind e rifiutare unknown kind prima della decisione. `rejection_rule` e esplicitamente assente. | Test di copertura registry e crash matrix per create/extend/promote; tentare di registrare rejection come effect fallisce. |
 | D-F5.6 | F5.3, P2.6, P2.8, P2.10 | `runtime/rejection_rules.py`, `growth_decision.py` | Verificare la transazione atomica del «no» gia introdotta da P2.6; implementare scadenza/revoca append-only ed epoch. I producer usano l'API P2.10. | Nessuna rigenerazione fino a expiry/revoca; crash sul «no» non separa token, stato, regola o epoca. |
 | D-F5.7 | F5.5e, F5.6, F0.3, F2.2, P1.3 | valutazioni benefit e rollback dal work manifest | Calcolare vettore success/latency/cost per kind, baseline causale e sample deduplicato; rollback solo dopo `observe_effect` inverso. | No traffic = insufficient; peggioramento attribuito provoca un solo rollback; failure non attribuita non lo provoca. |
-| D-F5.8 | F5.5e, P2.5, P2.8 | nuovo `runtime/growth_safety.py`, adapter RM-0008/F6 e test | Implementare `AuthorityViolationV1` autenticata: quarantine immediata; create/extend richiedono ritiro RM-0008, promote torna shadow; stato finale solo dopo observe/receipt. | Evento falsificato ignorato; evento valido blocca uso globale senza attendere campione; crash/retry convergono a una quarantine. |
-| D-F5.9 | F5.2, F5.4, F4.2c, G0.5 | `runtime/proposal_actions.py`, `runtime/telos_synth_consumer.py`, `runtime/engine/fastpath_promote.py` e ogni altro ingresso trovato dal work manifest | Chiudere i percorsi che scrivono `synt_pending` o chiamano direttamente `handle_synth_request`: ogni proposta di crescita diventa prima intent canonico con fonte registrata e attraversa D1; restano fuori soltanto gli ingressi espliciti non classificati come crescita dal registro chiuso. | Per ciascun produttore censito: nessuna chiamata Birth prima di D1, retry idempotente, rifiuto efficace e «si» che arriva a `trial_applying`, mai direttamente ad `accepted` o attivo. |
+| D-F5.8 | F5.5e, P2.5, P2.8 | nuovo `runtime/growth_safety.py`, adapter RM-0008/F6 e test | Implementare `AuthorityViolationV1` autenticata: quarantine immediata; create/extend richiedono ritiro RM-0008, promote torna shadow; stato finale solo dopo observe/receipt. Le valutazioni F6 in ombra non sono violazioni osservate. Per I1.1 collaudare su store e adattatori isolati. | Evento falsificato o solo ipotetico non ritira nulla; evento valido produce una quarantine idempotente; effetti reali verificati in I0 e nella tranche di enforcement. |
+| D-F5.9 | F5.2, F5.4, F4.2c, G0.5 | `runtime/proposal_actions.py`, `runtime/telos_synth_consumer.py`, `runtime/engine/fastpath_promote.py` e ogni altro ingresso trovato dal work manifest | Chiudere i percorsi che scrivono `synt_pending` o chiamano direttamente `handle_synth_request`: ogni proposta di crescita diventa intent canonico con fonte registrata e attraversa D1 più il controllo FS-A all'invio; restano fuori soltanto gli ingressi espliciti non classificati come crescita dal registro chiuso. | Per ciascun produttore: prima di D1 o senza FS-A nessun invio Birth; retry e rifiuto efficaci; «si» valido con prerequisiti pronti arriva a `trial_applying`, mai ad attivo. Prove positive preliminari con adattatore inerte. |
 
 ### D.6 Tranche FS e F6 — Confini di sicurezza e invocazione
 
@@ -1883,7 +2259,7 @@ nessuno dei due vincoli ritarda i milestone di RM-0009.
 | D-FS-A.2 | FS-A.1, G0.3, G0.6 | `runtime/executor_birth_runner.py`, `runtime/synth_request.py` e test dal work manifest | Introdurre nel runner Birth una compatibilita chiusa per le sole semantiche legacy censite e instradare li ogni prova, senza ancora rifiutare i campi. | Tutte le prove avvengono nel sandbox Birth con limiti rete/processi/utente/IPC/env/cwd/CPU/RAM/output; nessuna chiamata a `test_runner.py`. |
 | D-FS-A.3.N | FS-A.2 | template sostituito da G0.5 con ID e file esatti, uno per manifest/fixture o gruppo disgiunto | Convertire ciascun `setup/teardown/env` in fixture ermetica o operazione chiusa; un commit per gruppo di file disgiunto. | La stessa asserzione sostanziale passa nel runner Birth prima e dopo la conversione; nessuna esecuzione sull'host. |
 | D-FS-A.3.barrier | FS-A.2 | coordinatore, manifest di chiusura | Leggere l'elenco concreto generato da G0.5 e bloccare finche ogni D-FS-A.3.N espansa non e integrata; verificare che nessun file sia rimasto senza conversione. | Barrier firmata con tutti gli ID/commit/test concreti; nessun glob o `N` resta nel release manifest. |
-| D-FS-A.4 | FS-A.3.barrier | manifest censiti, `runtime/test_runner.py`, grammatica | Ripubblicare i manifest convertiti; rifiutare i campi con errore tipizzato; rimuovere riferimenti, grammatica e infine runner legacy. | Inventario legacy/riferimenti vuoto; equivalenza e isolamento verdi sull'intero censimento. |
+| D-FS-A.4 | FS-A.3.barrier | manifest censiti, `runtime/test_runner.py`, grammatica, manifest di rilascio | Ripubblicare i manifest convertiti; rifiutare i campi con errore tipizzato; rimuovere riferimenti, grammatica e runner legacy. Registrare nel manifest firmato del rilascio installato la prova FS-A di D.1-ter, riusando l'autorità di rilascio; nessuna dipendenza dal codice F5 per produrla. | Inventario legacy/riferimenti vuoto; equivalenza e isolamento verdi; la prova lega codice/configurazione correnti e diventa invalida in caso di divergenza. |
 | D-FS-B.1a | G0.5, G0.6 | nuovo `runtime/protected_roots.py`, fixture multipiattaforma | Definire enum delle radici e matrice read/write/execute, denyset hardlink `(device,inode)`, regole mount e vettori golden condivisi. | Contratto chiuso e test golden; nessuna integrazione runtime in questa unita. |
 | D-FS-B.1b | FS-B.1a | `runtime/sandbox.py` e test server | Applicare il contratto al confine finale Python con no-follow/openat2 e denyset. | Assoluti/env/symlink/hardlink/magiclink/mount/race negati nel sandbox server. |
 | D-FS-B.1p | FS-B.1a | `client-rs/src/config.rs`, `client-rs/src/runner.rs` e test Rust | Derivare da `Paths` e passare alle sandbox le radici effettive anche in installazioni non standard. | Nessun default implicito; Linux/Windows ricevono lo stesso contratto serializzato. |
@@ -1896,13 +2272,13 @@ nessuno dei due vincoli ritarda i milestone di RM-0009.
 | D-FS-B.4a | FS-B.3.barrier, FS-B.1b | `runtime/sandbox.py`, config e test | Rimuovere mount vault/admin key dal server. | Nessuna chiave raggiungibile in argv/env/mount/processo locale. |
 | D-FS-B.4b | FS-B.3.barrier, FS-B.1e | sandbox client Rust e test remote | Rimuovere accessi/mount equivalenti dai device e negare bind automatici di radici protette. | Nessuna chiave/config/identita device raggiungibile da executor remoto. |
 | D-FS-B.4c | FS-B.4a, FS-B.4b | autorita di release separata dall'implementatore; attestazione FS-B | Firmare receipt legata a commit server, digest binari client per piattaforma, policy protected-roots, configurazione effettiva, censimento consumer e suite. Ogni drift la invalida. | Auto-attestazione respinta; receipt assente, firma/digest/config/policy divergenti bloccano D2. |
-| D-F6.1 | F5.2, FS-B.4c | nuovo `runtime/invocation_authority.py` e test dal work manifest | Implementare `build_invocation_envelope()` core-owned e `decide_invocation()` come intersezione aggiuntiva di auth/ACL/consenso/scope. | Ogni campo auto-dichiarato dal caller viene ignorato; due utenti non riusano autorita o argomenti. |
+| D-F6.1 | F5.2 | nuovo `runtime/invocation_authority.py` e test dal work manifest | Implementare costruttore core e decisore puro come intersezione aggiuntiva di auth/ACL/consenso/scope; rappresentare le attestazioni mancanti. La consegna serve F6 in ombra; l'enforcement conserva FS-B.4c tra i suoi prerequisiti. | Campi auto-dichiarati ignorati; attestazione assente produce un verdetto restrittivo ipotetico; nessun grant o effetto dal solo calcolo; test con due utenti e fonti simulate isolate. |
 | D-F6.2a | F6.1 | `runtime/invocation_authority.py`, nuovo modulo stats e test | Implementare receipt shadow e contatori/flush con watermark, senza hook. | Multiprocesso/restart e nessuna scrittura per invocation nel percorso caldo. |
-| D-F6.2b | F6.2a | `runtime/agent_runtime.py` e test locali | Installare un solo hook shadow locale prima di undo/subprocess. | Esito invariato; una decisione per invocazione; nessun bypass locale. |
-| D-F6.2c | F6.2a | `runtime/loader.py` e test builtin/verb-unique | Installare un solo hook shadow prima del builtin. | Esito invariato; builtin e verb-unique contati una volta. |
-| D-F6.2d | F6.2a | `runtime/remote_exec.py`, `runtime/invocations.py`, `runtime/agent_server.py` e test | Installare shadow all'accodamento remoto senza cambiare wire/esecuzione. | Esito invariato; enqueue e redelivery non duplicano il conteggio. |
-| D-F6.2e | F6.2a | `runtime/durable_workloads/execution.py`, `runtime/executor_scheduler.py` e test | Installare shadow una volta per tentativo executor; marcare i passi interni non applicabili. | Retry conta tentativi distinti; nessun doppio gate nel ponte scheduler. |
-| D-F6.2.barrier | F6.2b, F6.2c, F6.2d, F6.2e | test call graph generato da G0.5 | Provare globalmente esattamente un hook autorevole per percorso. | Nessun bypass/doppio gate; shadow non cambia alcun esito o effetto. |
+| D-F6.2b | F6.2a | `runtime/agent_runtime.py` e test locali/remoti | Installare il punto shadow comune prima di undo e subprocess/invio remoto, con identita core del tentativo; nessun enforcement. | Esito invariato; una decisione per tentativo; nessun bypass del punto comune. |
+| D-F6.2c | F6.2a | `runtime/agent_runtime.py`, `runtime/loader.py` e test builtin/verb-unique/riprese | Osservare il builtin ordinario prima dell'handler e il verb-unique prima di fn nel loader; coprire anche i chiamanti diretti censiti in §5.8. Lease seriale rispetto a F6.2b/d. | Esito invariato; builtin e verb-unique contati una volta anche da HTTP, canali, orchestration e system/admin. |
+| D-F6.2d | F6.2a | `runtime/agent_runtime.py`, `runtime/remote_exec.py`, `runtime/invocations.py`, `runtime/agent_server.py`; test anche dei producer diretti `executors/undo_last_turn/undo_last_turn.py` e `runtime/http_routes_admin.py` | Propagare l'identita core nel trasporto e coprire la coda diretta; riusare l'osservazione precedente, non un flag auto-dichiarato. Non cambiare wire/esecuzione. Lease seriale sui file condivisi. | Esito invariato; undo remoto gia osservato, enqueue e redelivery non duplicano il conteggio; ogni producer diretto ha prova di copertura o non-applicabilita. |
+| D-F6.2e | F6.2a | `runtime/durable_workloads/execution.py`, `runtime/executor_scheduler.py` e test | Collegare il tentativo durevole all'identita del punto executor comune, senza installare un secondo hook; marcare i passi interni non applicabili dal registro chiuso. | Retry conta tentativi distinti; riprese dello stesso tentativo e ponte scheduler non duplicano il conteggio. |
+| D-F6.2.barrier | F6.2b, F6.2c, F6.2d, F6.2e | test call graph generato da G0.5 | Provare un solo punto di osservazione per percorso, anche senza FS-B e con lettore in errore. | Nessuna omissione o doppio conteggio; shadow conserva esiti/effetti ordinari e non produce grant o `AuthorityViolationV1`; nessuna pretesa di enforcement già attivo. |
 | D-F6.3 | F6.2.barrier, X0.1, FS-A.4, FS-B.4c, F5.8 | `runtime/agent_runtime.py`, `runtime/loader.py` e test manifest | Attivare enforcement locale e builtin immediatamente prima dell'effetto; quando rileva una regressione di autorita emettere verso F5.8 un `AuthorityViolationV1` autenticato e idempotente. | Diniego: nessun undo/subprocess/builtin; cache invalida a policy/epoch nuova; segnale valido apre una sola quarantine operation. |
 | D-F6.4a | F6.2.barrier, X0.1, FS-A.4, FS-B.4c | `client-rs/src/wire.rs`, fixture/protocollo e test compatibilita | Specificare `remote_auth_v2`, feature poll, grant, completion e stati `claimed/start_authorized/completed/execution_unknown`; nessun secondo grant dopo CAS, retry solo con idempotenza attestata. | Golden wire, state table e matrice old/new/downgrade; nessun enforcement in questa unita. |
 | D-F6.4b | F6.4a, F5.8 | `runtime/remote_exec.py`, `runtime/invocations.py`, `runtime/agent_server.py` e test | Implementare server compatibile con v1 gia iniziato ma fail-closed per nuovo→client senza v2; endpoint/CAS start, completion firmata, lease e reconcile `execution_unknown`. Violazioni attestate dal confine remoto emettono verso F5.8 un solo `AuthorityViolationV1` autenticato. | Old in-flight converge; nuovo→old negato; revoca pre-CAS negata; post-CAS senza completion non riceve secondo grant; replay del segnale non duplica la quarantine. |
@@ -1916,14 +2292,14 @@ nessuno dei due vincoli ritarda i milestone di RM-0009.
 
 | ID | Dip. | Responsabile | Attivita atomica | Prova e criterio di uscita |
 |---|---|---|---|---|
-| D-I1.1 | F1.1, F1.2, F1.3, F5.6, F5.7, F5.8, F5.9, F6.2.barrier, P2.9 | coordinatore | Integrare il milestone pre-certificazione: registro/ritiri/migrazioni legacy, F0-F5 infrastrutturali, chiusura di ogni ingresso diretto alla sintesi, F6 shadow e D2 `blocked`/`dependency_unready`. La tranche di sicurezza (D.1-bis) procede a parte. | Test di dominanza verde; stato `implemented_pending_rm0008`; prova che nessuna approvazione o marker attiva D2 o Birth fuori dal ciclo. |
-| D-I0.1 | I1.1, X0.1 | coordinatore | Integrare in ordine topologico i commit elencati nel release manifest, risolvere conflitti dai rispettivi owner e rieseguire suite dei moduli toccati. | Worktree pulito, `git diff --check`, nessun test indebolito, release manifest con conteggi completi. |
-| D-I0.2 | I0.1 | coordinatore sicurezza | Eseguire fault injection su transazioni, lease, token, Birth, apply, rollback, redelivery e restart. | Ogni crash converge; nessun effetto senza receipt/commit; nessun replay produce un secondo effetto. |
+| D-I1.1 | F1.1, F1.2, F1.3, F5.6, F5.7, F5.8, F5.9, F6.2.barrier, P2.9 | coordinatore | Integrare la consegna preliminare F0-F5 e F6 in ombra con prove isolate. Eseguire i controlli D.1-ter: ambiente di collaudo senza prove FS-A/FS-B/F5, zero invii Birth reali e D2 bloccata. Registrare le prove positive simulate e quelle reali pendenti. | Traguardo `implemented_pending_rm0008`, intestazione `in_progress`; nessuna unità FS/S0/X0/enforcement tra gli antenati; nessuna approvazione o marker scavalca il controllo reale. |
+| D-I0.1 | I1.1, X0.1, FS-A.4, S0.1 | coordinatore | Preparare l'integrazione reale: fissare nel manifest i contratti e percorsi del ciclo, aggiungendo FS-B.4c e le unità F6 se richieste da D.1-ter; verificarle prima dell'assegnazione. Integrare in ordine topologico, risolvere i conflitti con i rispettivi responsabili e rieseguire le suite. | Manifest con dipendenze risolte e prove correnti: runner isolato, F5 certificata, helper disponibile; nessun file estraneo nell'integrazione, nessun test indebolito, diff valido. Se manca una dipendenza resta raggiunto soltanto I1.1. |
+| D-I0.2 | I0.1 | coordinatore sicurezza | Eseguire fault injection sul perimetro implementato: transazioni, lease, token di decisione, Birth, apply, rollback e restart. Redelivery e autorizzazione remota v2 restano `not_implemented_security_tranche` finché D-F6.4a-e non sono consegnate e non possono risultare verdi per supposizione. | Ogni crash del perimetro implementato converge; nessun effetto senza receipt/commit; nessun replay produce un secondo effetto; funzioni della tranche separata marcate esplicitamente non implementate, non superate. |
 | D-I0.3 | I0.1 | coordinatore privacy | Eseguire matrice con almeno due utenti: stesso catalogo/routing globale; dati, argomenti, credenziali, task, ricevute d'invocazione e riprese isolati. Le ricevute del cambiamento globale restano canoniche e prive di dati owner. | Tutti vedono la modifica attiva; nessun artefatto owner-scoped attraversa il confine. |
-| D-I0.4 | I0.2, I0.3 | coordinatore | Eseguire un ciclo reale S1, S2-TELOS, S2-pattern e S3 con ID causali; includere rifiuto, revoca, retry e rollback. | Evento→intent→valutazione→decisione→effetto→misura completo per ogni sorgente. |
-| D-I0.5 | I0.4 | coordinatore | Produrre tutti gli indicatori 1-10 e verificare successo, latenza, costo, valore TELOS, domande e autorita; nessuna attivazione per-owner. | Soglie di §5.6 rispettate e indicatori non vuoti dove il ciclo reale li rende applicabili. |
+| D-I0.4 | I0.2, I0.3, FS-A.4 | coordinatore | Eseguire i cicli reali S1, S2-TELOS, S2-pattern e S3 sui contratti/percorsi fissati in I0.1, con ID causali, rifiuto, revoca, retry e rollback. Riverificare le dipendenze al momento dell'effetto; nessuna modifica dei dati di prova elimina un requisito del contratto. | Evento→intent→valutazione→decisione→effetto→misura completo per ogni sorgente; codice candidato isolato; FS-B presente quando richiesta; in questa unità nessun risultato simulato vale come prova del ciclo reale. |
+| D-I0.5 | I0.4 | coordinatore | Produrre gli indicatori 1-10 e verificare successo, latenza, costo, valore TELOS, domande e autorità. Nel 10 separare shadow/enforced: `enforcement_not_enabled` non conta come restrizione applicata; verificare i veti D1/D2 e le autorizzazioni ordinarie del ciclo reale. | Soglie di §5.6 rispettate e indicatori non vuoti dove applicabili; nessuna attivazione per-owner o protezione F6 dichiarata sulla sola telemetria. |
 | D-I0.6 | I0.5 | due reviewer indipendenti | Ripetere review architettura/sicurezza e dry-run medium del codice e del release manifest approvato. | Nessun rilievo bloccante/alto; file, transizioni, test e risultati concordano con il digest approvato a G0.9. |
-| D-I0.7 | I0.6 | coordinatore | Impostare lo stato `implemented`, poi `complete` solo quando le condizioni del §11 sono tutte provate. | Report finale persistente; baseline e digest di approvazione conservati; nessuna riscrittura della storia Git. |
+| D-I0.7 | I0.6 | coordinatore | Registrare il traguardo `complete` solo con tutte le prove del §11; impostare `implemented` e poi `closed` nell'intestazione secondo il README, dopo la consegna dichiarata. Elencare separatamente gli esiti ancora pendenti della tranche di sicurezza. | Report finale persistente, stati conformi alla raccolta; baseline e digest di approvazione conservati; nessuna prova reale sostituita da simulazione o riscrittura della storia Git. |
 
 ### D.8 Schemi minimi da congelare in G0.6
 
@@ -1938,9 +2314,11 @@ possono essere ridotti da un agente esecutore.
 | P2.2 | alias/archivio legacy | ID e fingerprint legacy, ID canonico, motivo, digest pre/post e timestamp; unicita sul canonico attivo; ripristino soltanto come consolidamento transazionale. |
 | F4.0 | `change_intent_sources` | FK intent, `source_event_id`, kind/fine TELOS, component ID/version/digest iniettati dal registro, `origin_owner_id` opaco e timestamp; tutte le fonti append-only, nessuna primaria. |
 | F2.1 | `change_intent_evaluations` | ID totale, FK intent, `evaluation_key`, dimensione, stato, valore, metrica, unita, finestra, campione, baseline/osservato, evaluator/versione, source event, revisione/supersedes e timestamp; `UNIQUE(intent_id,evaluation_key,revision)`. |
-| P2.5 | `change_operations` e outbox | `operation_id`, intent/kind, fase, lease owner/scadenza, tentativo, autorita target/versione, digest before/after/receipt, errore tipizzato e timestamp; claim e commit con CAS. |
+| P2.5 | `change_operations` e outbox | `operation_id`, intent/kind, fase inclusa `waiting_dependency`, fase da riprendere, lease owner/scadenza, tentativo, autorita target/versione, digest before/after/receipt, errore tipizzato e timestamp; claim e commit con CAS. |
+| F5.1/FS-A.4/FS-B.4c/X0.1 | fatti sulle dipendenze di esercizio | tipo/fonte della prova, stato verificato o mancante, applicabilità, revisione del contratto, digest del rilascio/configurazione/suite e riferimento alla firma verificata dal core; nessun booleano proveniente dal candidato o dal richiedente. Usa `Fact` e il manifest di rilascio esistenti, senza nuova autorità. |
 | P2.10/F5.6 | `rejection_rules` e revoche | rule ID, fingerprint canonica, token/decisione, principal autenticato o tombstone, creazione/scadenza; revoche append-only. Non e un change kind e non possiede handler. |
-| P2.6 | token di decisione | nello stesso DB dell'intent: token casuale, purpose, binding kind/ID/generazione/digest, destinatario/canale, scadenza, consumo/principal e revoca/motivo; «no», stato, regola ed epoca nella stessa transazione. |
+| P2.6/F5.3 | domanda e token | stesso DB dell'intent: `question_id` PK, token casuale, purpose, intent/kind/momento/generazione, `expected_row_version`, `facts_digest`, `effect_digest`, `policy_version`, destinatario/canale, stato, scadenza, consumo/principal e revoca/motivo. Unica domanda aperta per intent/momento tramite indice parziale; storico preservato dopo expiry/revoca. Binding corrente ricostruito e CAS nella transazione della risposta, anche senza cambio dello stato (§5.5). |
+| F5.3 | coda, budget e delivery | coda unica `(intent_id,decision_moment)`, `last_checked_at/next_eligible_at/reason`; bucket `iso_week_utc`, reservation ID, question ID UNIQUE, stato `reserved/released/consumed`, motivo e timestamp. Emissione sotto `BEGIN IMMEDIATE`: crea domanda/token/reservation/outbox solo se reserved+consumed e minore del cap corrente. Cap ridotto sotto il gia consumato blocca nuove emissioni, non riscrive lo storico. Delivery separata e recupero secondo §5.5; nessun reset del budget con restart o retry. |
 | P2.8 | epoca globale | riga epoch e ledger degli event/operation ID gia applicati; stesso evento incrementa una volta. `GrowthPolicy.version` entra direttamente nelle firme anche senza incremento. |
 | F3.1 | `lacuna_events` | event ID immutabile da turno+ordinale azione, contratto canonico, classificazione revisionabile, generazione catalogo, classificatore e provenienza owner soggetta a cancellazione. |
 | F4.3a | `PlanTemplateV1` | scheletro e placeholder allowlist senza valori, fingerprint, operation autorevole, stato shadow/legacy committed e versione; argomenti concreti rilegati solo dal principal corrente. |
@@ -1973,7 +2351,7 @@ non normative.
 | M-12 | Numero fisso di manifest FS-A e rimozione immediata dei campi | escluso | Il conteggio e gia variabile e le prove legacy vanno convertite con equivalenza prima del rifiuto. |
 | M-13 | FS-B limitata al server e al CRUD credenziali | escluso | Il confine comprende server, device, hardlink, mail e provider censiti, con attestazione di release. |
 | M-14 | Completamento con soli quattro indicatori | escluso | Restano indicatori 1-10, visibilita globale e isolamento dei dati per owner. |
-| M-15 | Comandi amministrativi con chiave in argv | esclusi | Resta l'helper con socket protetto e token breve, implementato da D-S0.1. |
+| M-15 | Comandi amministrativi con chiave in argv | esclusi | Resta un helper senza segreti in argv; G0.4 sceglie il profilo minimo fra client locale ristretto e socket autenticato, e ammette un token breve solo se motivato. |
 | M-16 | Catalogo esterno di file, simboli e prove | accolto come elenco candidato E.2 | E utile per gli agenti medi, ma G0.5 deve riconfermarlo sul commit di partenza. |
 | M-17 | Percorso `proposal_actions → synt_pending → telos_synth_consumer → handle_synth_request` | accolto e generalizzato in D-F5.9 | E un vero ingresso che puo aggirare D1; il censimento include anche `fastpath_promote` e ogni altro chiamante. |
 | M-18 | Schema dati consolidato della proposta esterna | accolto con correzioni in D.8 | Conservati i dettagli utili; rimossi provenienza top-level, token in DB separato e rejection come kind. |
@@ -1981,6 +2359,10 @@ non normative.
 | M-20 | Cronaca da cancellare dopo approvazione | mantenuta ed estesa a questa appendice | Dopo l'approvazione restano soltanto specifica e piano approvati, senza riscrivere Git. |
 
 ### E.2 Elenco candidato di file e simboli
+
+> **Precedenza operativa:** questo è un inventario candidato, non una specifica.
+> L'appendice D e il work manifest G0.5 prevalgono; nessun agente implementa
+> direttamente da E.2.
 
 I percorsi esistenti sotto sono stati ricontrollati il 14/9; quelli indicati
 come «nuovo» non esistono ancora. D-G0.5 deve risolvere nuovamente ogni simbolo,
