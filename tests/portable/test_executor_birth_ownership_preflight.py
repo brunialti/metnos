@@ -10,6 +10,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 import executor_birth_ownership_preflight as preflight
 from executor_birth_cutover import CurrentReceiptProof
+from executor_birth_maintenance_units import MAINTENANCE_TARGETS_V1
 from executor_birth_ownership_cutover import (
     PURPOSE,
     OwnershipCutoverKey,
@@ -40,15 +41,40 @@ def _proof() -> CurrentReceiptProof:
     return CurrentReceiptProof(identities, {identities[0]: D("2")})
 
 
-def _maintenance(*, active_state: str = "inactive", pid: int = 0) -> bytes:
+def _maintenance(
+    *, active_state: str = "inactive", pid: int = 0,
+    load_state: str = "loaded",
+) -> bytes:
+    units = tuple({
+        "scope": scope, "unit": unit,
+        "load_state": load_state if index == 0 else "loaded",
+        "active_state": active_state if index == 0 else "inactive",
+        "main_pid": pid if index == 0 else 0,
+    } for index, (scope, unit) in enumerate(MAINTENANCE_TARGETS_V1))
     return preflight.canonical_maintenance_proof(
         source="inactive_http_and_inactive_sidecar",
-        units=({
-            "scope": "system", "unit": "metnos-http.service",
-            "load_state": "loaded", "active_state": active_state,
-            "main_pid": pid,
-        },),
+        units=units,
     )
+
+
+def test_maintenance_proof_rejects_a_well_formed_subset():
+    value = json.loads(_maintenance())
+    with pytest.raises(preflight.OwnershipPreflightError, match="maintenance_invalid"):
+        preflight.canonical_maintenance_proof(
+            source=value["source"], units=value["units"][:-1],
+        )
+
+
+@pytest.mark.parametrize("load_state", ["loaded", "masked", "not-found"])
+def test_maintenance_proof_accepts_named_quiescent_load_states(load_state):
+    assert json.loads(_maintenance(load_state=load_state))["units"][0][
+        "load_state"
+    ] == load_state
+
+
+def test_maintenance_proof_rejects_an_unknown_load_state():
+    with pytest.raises(preflight.OwnershipPreflightError, match="not_quiescent"):
+        _maintenance(load_state="bad")
 
 
 def _installed(tmp_path: Path):
@@ -60,10 +86,13 @@ def _installed(tmp_path: Path):
         signing_key_id=key_id,
         maintenance_evidence_hash=preflight.maintenance_evidence_hash(maintenance),
         boundary_inventory_hash=D("4"), boundary_guard_version="closed-v1",
-        closed_build_id=D("5"), private_key=private,
+        closed_build_id=D("5"), context_transition_id=D("6"),
+        dominant_startup_receipt=D("7"), private_key=private,
     )
     install_ownership_cutover_certificate(
         tmp_path, encoded, signature, registry=registry, expected_proof=proof,
+        expected_context_transition_id=D("6"),
+        expected_dominant_startup_receipt=D("7"),
     )
     build = preflight._sealed_build_identity_for_test(D("5"), D("4"), "closed-v1")
     return registry, proof, maintenance, build

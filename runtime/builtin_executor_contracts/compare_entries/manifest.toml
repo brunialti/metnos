@@ -14,7 +14,7 @@ it = "SCOPO: Confronta entries in memoria con una metrica semantica bounded. PAT
 en = "SCOPO: Compares in-memory entries with a bounded semantic metric. PATTERN: natural request typed by the planner. NON: enlarge authority or invent inputs. OUT: declared JSON result."
 
 [code]
-files = ["../../compare_entries.py"]
+files = ["implementation.py.src"]
 digest = "sha256:bf1fef5f6f10881e3bb01c0514eac484a46c072ab21e31dcbf2d934846d316b1"
 
 [args]

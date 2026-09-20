@@ -38,68 +38,39 @@ from __future__ import annotations
 import re
 from typing import Optional
 
-# ── 1. Detection deterministica (regex chiuse IT+EN) ─────────────────────
+import detection_lexicon_seed_parsers as _parser_lex
 
-_KEY_TOKEN = r"[a-zA-Zà-ùÀ-Ù0-9_]+"
+# ── 1. Detection deterministica (grammatica + lessico registrato) ──────
+
+_KEY_TOKEN = r"\w+"
 _KEY_CAPTURE = rf"(?P<key>{_KEY_TOKEN}(?:\s+{_KEY_TOKEN}){{0,2}})"
 
 # Gap lessicale ammesso fra verbo e preposizione: «ordina I FILE per
 # dimensione» (max 4 token, non-greedy: l'adiacenza vince).
 _GAP = rf"(?:\s+{_KEY_TOKEN}){{0,4}}?"
 
-# Trigger chiusi. NB: participi/imperativi coperti per suffisso
-# (ordinat[aeio], raggruppat[aeio]); «divis[ei]» solo plurale (il singolare
-# «diviso per» è aritmetica). Estendere SOLO con forme della stessa classe.
-_PATTERNS: tuple[tuple[str, re.Pattern], ...] = (
-    ("group", re.compile(
-        rf"\b(?:raggruppat[aeio]|raggruppa(?:re|ndo|le|li)?"
-        rf"|suddivis[aeio]|suddividi(?:le|li)?|divis[ei])"
-        rf"{_GAP}\s+per\s+{_KEY_CAPTURE}", re.IGNORECASE)),
-    ("group", re.compile(
-        rf"\bgroup(?:ed)?{_GAP}\s+by\s+{_KEY_CAPTURE}", re.IGNORECASE)),
-    ("sort", re.compile(
-        rf"\b(?:(?:ri)?ordinat[aeio]|(?:ri)?ordina(?:re|ndo|le|li)?)"
-        rf"{_GAP}\s+per\s+{_KEY_CAPTURE}", re.IGNORECASE)),
-    ("sort", re.compile(
-        rf"\bin\s+ordine\s+di\s+{_KEY_CAPTURE}", re.IGNORECASE)),
-    ("sort", re.compile(
-        rf"\b(?:sort(?:ed)?|order(?:ed)?|arranged?){_GAP}\s+by\s+"
-        rf"{_KEY_CAPTURE}", re.IGNORECASE)),
-)
-
-# Articoli/possessivi da scartare in testa alla chiave catturata.
-_ARTICLES = frozenset({
-    "il", "lo", "la", "i", "gli", "le", "l", "un", "uno", "una",
-    "mio", "mia", "miei", "mie", "loro", "the", "a", "an", "my", "their",
-})
-
-# Stop-token: la chiave si interrompe qui (preposizioni, congiunzioni,
-# cortesia). «ordina per favore» → chiave vuota → nessuna clausola.
-_KEY_STOP = frozenset({
-    "di", "del", "della", "dei", "delle", "da", "in", "con", "su", "per",
-    "tra", "fra", "e", "ed", "o", "od", "and", "or", "poi", "che", "quindi",
-    "favore", "cortesia", "piacere", "me", "esempio", "first", "prima",
-    "crescente", "decrescente", "ascendente", "discendente",
-    "ascending", "descending", "asc", "desc",
-})
-
-_DESC_RE = re.compile(
-    r"\b(?:decrescent\w*|discendent\w*|descending|desc|invers[aoie]"
-    r"|dal\s+pi[uù]\s+(?:recente|grande|nuovo)"
-    r"|pi[uù]\s+(?:recenti|grandi|nuovi|nuove)\s+prima"
-    r"|newest\s+first|largest\s+first|biggest\s+first|reverse[d]?)\b",
-    re.IGNORECASE)
+def _phrase_alt(forms) -> str:
+    """Escaped longest-first alternation for registered literal forms."""
+    return "|".join(
+        re.escape(str(form)).replace(r"\ ", r"\s+")
+        for form in sorted(set(forms or ()), key=lambda item: (-len(item), item))
+        if str(form).strip()
+    )
 
 
-def _clean_key(raw: str) -> str:
+def _clean_key(raw: str, lexicon: dict[str, object]) -> str:
     """Pulisce la chiave catturata: scarta articoli in testa, taglia al
     primo stop-token, max 2 token."""
-    tokens = (raw or "").lower().split()
-    while tokens and tokens[0] in _ARTICLES:
+    articles = {str(item).casefold() for item in
+                lexicon["parser.ordering.article"]}
+    stops = {str(item).casefold() for item in
+             lexicon["parser.ordering.key_stop"]}
+    tokens = (raw or "").casefold().split()
+    while tokens and tokens[0] in articles:
         tokens = tokens[1:]
     out: list[str] = []
     for t in tokens:
-        if t in _KEY_STOP:
+        if t in stops:
             break
         out.append(t)
         if len(out) >= 2:
@@ -116,62 +87,67 @@ def detect(query: str) -> Optional[dict]:
     """
     if not query:
         return None
+    lexicon = _parser_lex.load_family("ordering")
+    if lexicon is None:
+        return None
     best = None  # (pos, mode, key)
-    for mode, rx in _PATTERNS:
-        m = rx.search(query)
-        if not m:
+    modes = lexicon["parser.ordering.mode_verb"]
+    for mode, verbs in modes.items():
+        verb_alt = _phrase_alt(verbs)
+        connector_alt = _phrase_alt(
+            lexicon.get(f"parser.ordering.{mode}_connector", ()))
+        if not verb_alt or not connector_alt:
             continue
-        key = _clean_key(m.group("key"))
-        if not key:
-            continue
-        if best is None or m.start() < best[0]:
-            best = (m.start(), mode, key)
+        rx = re.compile(
+            rf"(?<!\w)(?:{verb_alt})(?!\w){_GAP}\s+"
+            rf"(?:{connector_alt})\s+{_KEY_CAPTURE}",
+            re.IGNORECASE | re.UNICODE,
+        )
+        for match in rx.finditer(query):
+            key = _clean_key(match.group("key"), lexicon)
+            if key and (best is None or match.start() < best[0]):
+                best = (match.start(), mode, key)
+    prefix_alt = _phrase_alt(lexicon["parser.ordering.sort_prefix"])
+    if prefix_alt:
+        prefix_rx = re.compile(
+            rf"(?<!\w)(?:{prefix_alt})(?!\w)\s+{_KEY_CAPTURE}",
+            re.IGNORECASE | re.UNICODE,
+        )
+        for match in prefix_rx.finditer(query):
+            key = _clean_key(match.group("key"), lexicon)
+            if key and (best is None or match.start() < best[0]):
+                best = (match.start(), "sort", key)
     if best is None:
         return None
-    return {"mode": best[1], "key_text": best[2],
-            "desc": bool(_DESC_RE.search(query))}
+    desc_alt = _phrase_alt(lexicon["parser.ordering.descending"])
+    descending = bool(desc_alt and re.search(
+        rf"(?<!\w)(?:{desc_alt})(?!\w)", query,
+        re.IGNORECASE | re.UNICODE,
+    ))
+    return {"mode": best[1], "key_text": best[2], "desc": descending}
 
 
 # ── 2. Risoluzione chiave-utente → campo reale delle entries ─────────────
 
-# Famiglie chiuse §7.3: termine-utente (IT+EN) → candidati campo in ordine
-# di preferenza. Estendere SOLO con campi documentati da executor reali.
-_FIELD_FAMILIES: tuple[tuple[frozenset, tuple[str, ...]], ...] = (
-    (frozenset({"dominio", "domini", "domain", "domains", "host",
-                "hostname"}),
-     ("domain", "dominio", "hostname", "host")),
-    (frozenset({"mailbox", "mailboxes", "casella", "caselle", "account",
-                "accounts", "cassetta", "mail"}),
-     ("account", "mailbox", "folder", "account_email")),
-    (frozenset({"mittente", "mittenti", "sender", "senders", "from", "da"}),
-     ("from", "sender", "from_email", "author")),
-    (frozenset({"destinatario", "destinatari", "recipient", "recipients",
-                "to"}),
-     ("to", "recipient")),
-    (frozenset({"data", "date", "giorno", "day", "ora", "orario", "time",
-                "quando"}),
-     ("date", "mtime", "modified_at", "created_at", "timestamp", "start",
-      "ts", "time")),
-    (frozenset({"dimensione", "dimensioni", "size", "grandezza", "peso"}),
-     ("size", "bytes", "size_bytes", "total_bytes", "file_size")),
-    (frozenset({"oggetto", "subject", "titolo", "title"}),
-     ("subject", "title", "name")),
-    (frozenset({"nome", "name", "filename"}),
-     ("name", "title", "basename", "filename", "path")),
-    (frozenset({"tipo", "type", "formato", "format", "estensione",
-                "extension"}),
-     ("kind", "type", "content_type", "format", "ext", "extension",
-      "mimetype")),
-    (frozenset({"cartella", "cartelle", "folder", "directory"}),
-     ("folder", "dir", "parent", "directory")),
-    (frozenset({"stato", "state", "status"}),
-     ("status", "state")),
-    (frozenset({"autore", "autori", "author", "authors"}),
-     ("author", "from", "sender", "user")),
-    (frozenset({"categoria", "categorie", "category", "classe", "class",
-                "label", "etichetta", "importanza", "importance"}),
-     ("category", "class", "label", "importance")),
-)
+# I nomi reali dei campi sono invarianti tecniche; solo le alias utente sono
+# risorse linguistiche in ``parser.ordering.field_alias``.
+_FIELD_CANDIDATES: dict[str, tuple[str, ...]] = {
+    "domain": ("domain", "dominio", "hostname", "host"),
+    "account": ("account", "mailbox", "folder", "account_email"),
+    "sender": ("from", "sender", "from_email", "author"),
+    "recipient": ("to", "recipient"),
+    "date": ("date", "mtime", "modified_at", "created_at", "timestamp",
+             "start", "ts", "time"),
+    "size": ("size", "bytes", "size_bytes", "total_bytes", "file_size"),
+    "subject": ("subject", "title", "name"),
+    "name": ("name", "title", "basename", "filename", "path"),
+    "type": ("kind", "type", "content_type", "format", "ext",
+             "extension", "mimetype"),
+    "folder": ("folder", "dir", "parent", "directory"),
+    "status": ("status", "state"),
+    "author": ("author", "from", "sender", "user"),
+    "category": ("category", "class", "label", "importance"),
+}
 
 
 def _entry_keys(entries: list) -> dict[str, str]:
@@ -183,7 +159,7 @@ def _entry_keys(entries: list) -> dict[str, str]:
             continue
         for k in e.keys():
             if isinstance(k, str) and not k.startswith("_"):
-                keys.setdefault(k.lower(), k)
+                keys.setdefault(k.casefold(), k)
     return keys
 
 
@@ -192,7 +168,7 @@ def resolve_field(key_text: str, entries: list) -> Optional[str]:
     campo REALE presente nelle entries. Catena deterministica:
     match esatto > famiglia di sinonimi > substring (len>=3). None se
     nessun campo plausibile (es. «tema»: concetto, non campo)."""
-    kt = (key_text or "").strip().lower()
+    kt = (key_text or "").strip().casefold()
     if not kt:
         return None
     keys = _entry_keys(entries)
@@ -204,7 +180,11 @@ def resolve_field(key_text: str, entries: list) -> Optional[str]:
             return keys[cand]
     # 2. famiglie di sinonimi (qualunque token della chiave)
     tokens = set(kt.split()) | {kt}
-    for synonyms, candidates in _FIELD_FAMILIES:
+    lexicon = _parser_lex.load_family("ordering")
+    aliases = (lexicon or {}).get("parser.ordering.field_alias", {})
+    for family, candidates in _FIELD_CANDIDATES.items():
+        synonyms = {str(item).casefold()
+                    for item in aliases.get(family, ())}
         if tokens & synonyms:
             for cand in candidates:
                 if cand in keys:

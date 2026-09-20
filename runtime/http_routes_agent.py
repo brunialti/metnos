@@ -24,7 +24,8 @@ from aiohttp import web
 import devices
 import config as _C  # §7.11
 import i18n as _i18n
-from html_sanitizer import to_safe_html_full
+import detection_lexicon_seed_dialog as _dialog_cancel_lex
+from html_sanitizer import link_internal_routes, to_safe_html_full
 from http_render import _error, render_template
 from http_app_state import (
     ADMIN_KEY as APP_ADMIN_KEY, CATALOG_PROVIDER, SSE_RESPONSES, STARTED_AT,
@@ -34,6 +35,7 @@ from http_turn_pool import TurnPoolBusy
 from logging_setup import get_logger
 from messages import get as _msg  # §11 i18n
 from credential_intake import scrub_sensitive_text
+from reliability import classify_turn
 from tutor_boundary import (
     answer as _tutor_boundary_answer,
     http_principal as _tutor_http_principal,
@@ -43,6 +45,28 @@ from tutor_boundary import (
 log = get_logger(__name__)
 
 VERSION = "1.1"  # versione dell'HTTP API (ADR 0078), DISTINTA dalla product version
+
+
+def _semantic_turn_outcome(value) -> str:
+    """Return the user-visible outcome, distinct from lifecycle completion."""
+    if isinstance(value, dict):
+        existing = str(value.get("outcome") or "")
+        if existing:
+            return existing
+        record = value
+    else:
+        existing = str(getattr(value, "outcome", "") or "")
+        if existing:
+            return existing
+        try:
+            from dataclasses import asdict as _asdict
+            record = _asdict(value)
+        except Exception:
+            return "failed"
+    try:
+        return str(classify_turn(record)["outcome"])
+    except Exception:
+        return "failed"
 
 
 def _http_source_request_id(
@@ -153,7 +177,11 @@ def _safe_final_html(md: str | None) -> str:
     if not md:
         return ""
     try:
-        return to_safe_html_full(md)
+        from ui_surfaces import catalog as ui_catalog
+
+        return link_internal_routes(
+            to_safe_html_full(md), tuple(surface.route for surface in ui_catalog()),
+        )
     except Exception:
         log.warning("to_safe_html_full failed", exc_info=True)
         try:
@@ -262,6 +290,9 @@ async def chat_root(request: web.Request) -> web.Response:
 
 async def health(request: web.Request) -> web.Response:
     """GET /agent/health"""
+    from http_app_state import STARTUP_FAILURE
+
+    startup_failure = app_get(request.app, STARTUP_FAILURE, "")
     started = app_get(request.app, STARTED_AT, time.time())
     try:
         from durable_workloads.service import health_snapshot as _durable_health
@@ -278,6 +309,8 @@ async def health(request: web.Request) -> web.Response:
         }
     return web.json_response(
         {"ok": True, "version": VERSION, "uptime_s": round(time.time() - started, 1),
+         "operational": not bool(startup_failure),
+         "maintenance_only": bool(startup_failure),
          "durable_workloads": durable_health, **_metnos_version_info()}
     )
 
@@ -417,14 +450,37 @@ def _http_sender_id(principal_id: str, conv_id: str) -> str:
     return f"http:{principal_id}:{conv_id or '_'}"
 
 
-def _http_has_pending(sender_id: str, actor: str,
-                      owner_user_id: str) -> bool:
+def _dialog_conversation(dialog: dict) -> str:
+    """Conversation recorded by a pending dialog, or "" when it has none."""
+    recorded = dialog.get("conversation_id")
+    on_complete = dialog.get("on_complete")
+    if not recorded and isinstance(on_complete, dict):
+        recorded = on_complete.get("conversation_id")
+    return str(recorded or "")
+
+
+def _same_conversation(pending: list[dict],
+                       conversation_id: str) -> list[dict]:
+    """Keep the legacy ``channel:actor`` dialogs of this conversation only.
+
+    That coordinate is shared by every chat of the actor, so a dialog opened
+    in one chat must not answer, cancel or flag a request from another.  A
+    dialog without a recorded conversation matches only a request without
+    one; nothing is inferred.
+    """
+    current = str(conversation_id or "")
+    return [dlg for dlg in pending if _dialog_conversation(dlg) == current]
+
+
+def _http_has_pending(sender_id: str, actor: str, owner_user_id: str,
+                      conversation_id: str) -> bool:
     """Read-only pending probe used only to annotate a tutor answer."""
     try:
         from dialog_pending import list_pending
         if (list_pending(sender_id, owner_user_id=owner_user_id)
-                or list_pending(
-                    f"http:{actor}", owner_user_id=owner_user_id)):
+                or _same_conversation(list_pending(
+                    f"http:{actor}", owner_user_id=owner_user_id),
+                    conversation_id)):
             return True
     except Exception:
         pass
@@ -440,7 +496,8 @@ async def _apply_tutor_http(request: web.Request, *, query: str, actor: str,
                             user_id: str, conversation_id: str,
                             sender_id: str, turn_id_hint: str = ""):
     """Pure-help escape before pending consumers; never consumes state."""
-    has_pending = _http_has_pending(sender_id, actor, user_id)
+    has_pending = _http_has_pending(
+        sender_id, actor, user_id, conversation_id)
     app = getattr(request, "app", None)
     gate = (
         app_setdefault(app, TUTOR_GATE,
@@ -583,20 +640,14 @@ def _apply_dialog_cancel(sender_id: str, query: str, *,
     e tenta `undo_last_turn` — che non trova nulla di mutante da
     revertire e risponde "Nessuna operazione recente da annullare".
 
-    Soluzione §7.3: PRIMA del pipeline, se la query e' un undo pattern E
-    ci sono dialog pending per il sender, cancella TUTTI i dialog pending
-    e ritorna il messaggio di conferma. L'utente vede coerenza fra
-    l'istruzione data (annulla abortisce il dialogo) e l'effetto osservato.
+    Soluzione §7.3: PRIMA del pipeline, se la query e' una forma esatta del
+    concetto manual/native-ready ``dialog.cancel`` E ci sono dialog pending
+    per il sender, cancella TUTTI i dialog pending e ritorna il messaggio di
+    conferma. L'utente vede coerenza fra l'istruzione data e l'effetto
+    osservato, senza confondere una richiesta più lunga con un valore.
 
     Ritorna None se non c'e' nulla da fare (caller prosegue normale).
     """
-    from fast_path import _normalize, _undo_prefix_match  # type: ignore
-    from fast_path import _UNDO_PATTERNS  # type: ignore
-    norm = _normalize(query)
-    if not norm:
-        return None
-    if norm not in _UNDO_PATTERNS and not _undo_prefix_match(norm):
-        return None
     try:
         from dialog_pending import cancel_pending, list_pending
     except Exception:
@@ -607,6 +658,9 @@ def _apply_dialog_cancel(sender_id: str, query: str, *,
     ]
     if not pending:
         return None
+    cancel_decision = _dialog_cancel_lex.exact_match(query)
+    if cancel_decision is False:
+        return None
     cancelled = 0
     for d in pending:
         dlg_id = d.get("dialog_id", "")
@@ -614,8 +668,11 @@ def _apply_dialog_cancel(sender_id: str, query: str, *,
                 and cancel_pending(
                     sender_id, dlg_id, owner_user_id=owner_user_id)):
             cancelled += 1
-    if cancelled == 0:
-        return None
+    if cancel_decision is None or cancelled == 0:
+        # A missing/pending/invalid control grammar cannot turn the text into a
+        # dialog value and resume its callback.  Retire what can be retired and
+        # report the unavailable control boundary instead.
+        return _msg("ERR_EXT_SVC_UNAVAILABLE")
     if cancelled == 1:
         return _msg("MSG_DIALOG_CANCELLED")
     return _msg("MSG_DIALOG_CANCELLED_N", n=cancelled)
@@ -684,8 +741,8 @@ def _apply_dialog_pending(sender_id: str, query: str,
     if not pending:
         alt_sender = f"{channel}:{actor}" if channel else actor
         if alt_sender != sender_id:
-            pending = list_pending(
-                alt_sender, owner_user_id=owner_user_id)
+            pending = _same_conversation(list_pending(
+                alt_sender, owner_user_id=owner_user_id), conversation_id)
             if pending:
                 sender_id_used = alt_sender
     if not pending:
@@ -693,6 +750,14 @@ def _apply_dialog_pending(sender_id: str, query: str,
     # Prendi il dialog piu' recente (last started)
     dlg = pending[-1]
     dialog_id = dlg.get("dialog_id", "")
+    cancel_decision = _dialog_cancel_lex.exact_match(query)
+    if cancel_decision is not False:
+        cancelled = cancel_pending(
+            sender_id_used, dialog_id, owner_user_id=owner_user_id,
+        )
+        if cancel_decision is None or not cancelled:
+            return _msg("ERR_EXT_SVC_UNAVAILABLE")
+        return _msg("MSG_DIALOG_CANCELLED")
     steps = dlg.get("dialog", []) or []
     # `step_index` è il nome canonical (dialog_pending.py consume usa questo)
     step_index = int(dlg.get("step_index") or 0)
@@ -745,7 +810,7 @@ def _apply_dialog_pending(sender_id: str, query: str,
     # Avanza dialog con valore raccolto
     consume_res = consume_pending_step(
         sender_id_used, dialog_id, current_var, parsed_value,
-        owner_user_id=owner_user_id)
+        owner_user_id=owner_user_id, source="http_chat")
     if not consume_res.get("ok"):
         # A value that does not satisfy a declared dialog schema is not a new
         # operational query.  Keep the pending interaction and reprompt just
@@ -973,14 +1038,19 @@ def _consume_http_get_inputs_response(
 
     dialog_id = proposal.get("dialog_id") or ""
     sender_for_state = proposal.get("sender_for_state") or sender_id
-    text_norm = (query or "").strip().lower()
-
-    if text_norm in ("annulla", "cancel", "abort", "stop"):
+    cancel_decision = _dialog_cancel_lex.exact_match(query)
+    if cancel_decision is not False:
         _dp.cancel_pending(
             sender_for_state, dialog_id,
             owner_user_id=owner_user_id)
         _cap_pending_clear(sender_id)
-        return query, proposal, _msg("MSG_DIALOG_CANCELLED")
+        return (
+            query,
+            proposal,
+            _msg("MSG_DIALOG_CANCELLED")
+            if cancel_decision is True
+            else _msg("ERR_EXT_SVC_UNAVAILABLE"),
+        )
 
     state = _dp.load_pending(
         sender_for_state, dialog_id, owner_user_id=owner_user_id)
@@ -1036,7 +1106,7 @@ def _consume_http_get_inputs_response(
 
     cres = _dp.consume_pending_step(
         sender_for_state, dialog_id, var, value,
-        owner_user_id=owner_user_id)
+        owner_user_id=owner_user_id, source="http_chat")
     if not cres.get("ok"):
         _cap_pending_clear(sender_id)
         return (query, proposal, _msg(
@@ -1268,6 +1338,7 @@ def _build_final_event_payload(log_obj, admin_key: str) -> dict:
         "final_message": final_message,
         "final_message_html": _safe_final_html(final_message),
         "final_kind": log_obj.final_kind,
+        "outcome": _semantic_turn_outcome(log_obj),
         # Destinazione risolta (ADR 0034): None = server, altrimenti nome device.
         "target_device": getattr(log_obj, "target_device", None),
         "total_ms": int((log_obj.ts_end - log_obj.ts_start) * 1000),
@@ -1625,8 +1696,8 @@ async def _preprocess_turn(request: web.Request):
             redacted_fields=prepared_fields,
         )
 
-    # Dialog cancel intercept: se c'e' un dialog pending e l'utente scrive
-    # "annulla"/"undo", cancella il dialog invece di routare a undo.
+    # Dialog cancel intercept: la forma esatta manual/native-ready cancella il
+    # dialog invece di essere routata a undo o accettata come valore testuale.
     _dialog_cancel_msg = _apply_dialog_cancel(
         sender_id, query, owner_user_id=user_id)
     if _dialog_cancel_msg is not None:
@@ -1740,6 +1811,7 @@ async def turn(request: web.Request) -> web.Response:
                 "final_message": immediate_http,
                 "final_message_html": _safe_final_html(immediate_http),
                 "final_kind": "answer",
+                "outcome": "completed",
                 "total_ms": immediate_elapsed_ms,
                 "expandable_caps": [],
                 "attachments": [],
@@ -1757,6 +1829,7 @@ async def turn(request: web.Request) -> web.Response:
             "final_message": immediate_http,
             "final_message_html": _safe_final_html(immediate_http),
             "final_kind": "answer",
+            "outcome": "completed",
             "total_ms": immediate_elapsed_ms,
             "steps_summary": [],
             "conversation_id": conversation_id,
@@ -1815,6 +1888,7 @@ async def _turn_json(request: web.Request, agent_runtime, query: str, actor: str
         "final_message": final_message,
         "final_message_html": _safe_final_html(final_message),
         "final_kind": log_obj.final_kind,
+        "outcome": _semantic_turn_outcome(log_obj),
         # Destinazione risolta (ADR 0034): None = server, altrimenti nome device.
         "target_device": getattr(log_obj, "target_device", None),
         "total_ms": int((log_obj.ts_end - log_obj.ts_start) * 1000),
@@ -2169,18 +2243,23 @@ async def dialog_submit(request: web.Request) -> web.Response:
     # incrementali, niente bypass).
     import dialog_pending
     sender_id = state.get("__sender_id") or "host"
+    submission_source = (
+        "http_form_owner" if str(request.get("authenticated_user_id") or "")
+        == str(state.get("owner_user_id") or "") else "http_form_capability")
     for step in dialog:
         var = step.get("var")
         if var in values and values[var] is not None:
             consumed = dialog_pending.consume_pending_step(
                 sender_id, dialog_id, var, values[var],
                 owner_user_id=str(state.get("owner_user_id") or ""),
+                source=submission_source,
             )
         else:
             # Optional skipped: avanza con None per coerenza idx.
             consumed = dialog_pending.consume_pending_step(
                 sender_id, dialog_id, var, None,
                 owner_user_id=str(state.get("owner_user_id") or ""),
+                source=submission_source,
             )
         if not consumed.get("ok"):
             return web.json_response(
@@ -3288,6 +3367,7 @@ async def turn_submit(request: web.Request) -> web.Response:
             "final_message": immediate_http,
             "final_message_html": _safe_final_html(immediate_http),
             "final_kind": "answer",
+            "outcome": "completed",
             "total_ms": immediate_elapsed_ms,
             "expandable_caps": [],
             "attachments": [],
@@ -3351,6 +3431,7 @@ async def turn_submit(request: web.Request) -> web.Response:
                         "final_message": immediate_http,
                         "final_message_html": _safe_final_html(immediate_http),
                         "final_kind": "answer",
+                        "outcome": "completed",
                         "total_ms": int(
                             runtime_data.get("immediate_elapsed_ms") or 0),
                         "expandable_caps": [],
@@ -3511,9 +3592,20 @@ async def turn_status(request: web.Request) -> web.Response:
         access_error = await _turn_access_error(request, snapshot)
         if access_error is not None:
             return access_error
+        snapshot_outcome = ""
+        if snapshot["closed"]:
+            for event in reversed(snapshot["events"]):
+                if event.get("event_type") == "final":
+                    payload = event.get("payload") or {}
+                    snapshot_outcome = str(payload.get("outcome") or "")
+                    break
+                if event.get("event_type") == "error":
+                    snapshot_outcome = "failed"
+                    break
         return web.json_response({
             "turn_id": turn_id,
             "state": "complete" if snapshot["closed"] else "running",
+            "outcome": snapshot_outcome,
             "events": snapshot["events"],
         })
     # Fallback: cerca su disco (TurnLog jsonl).
@@ -3550,6 +3642,7 @@ async def turn_status(request: web.Request) -> web.Response:
                             "final_message_html": _safe_final_html(final_msg)
                             if final_msg else "",
                             "final_kind": d.get("final_kind"),
+                            "outcome": _semantic_turn_outcome(d),
                             "ts_end": ts_end if ts_end else None,
                             "total_ms": int((ts_end - ts_start) * 1000)
                             if ts_end else None,
@@ -3666,6 +3759,7 @@ async def turns_recent(request: web.Request) -> web.Response:
                         "final_message": final_msg,
                         "final_message_html": _safe_final_html(final_msg) if final_msg else "",
                         "final_kind": t.get("final_kind", ""),
+                        "outcome": _semantic_turn_outcome(t),
                         "ts_start": ts_start,
                         "ts_end": ts_end if ts_end else None,
                         "total_ms": int((ts_end - ts_start) * 1000) if ts_end else None,
@@ -3701,6 +3795,7 @@ async def turns_recent(request: web.Request) -> web.Response:
                 "final_message": "",
                 "final_message_html": "",
                 "final_kind": "",
+                "outcome": "",
                 "ts_start": ts_start,
                 "ts_end": None,
                 "total_ms": None,

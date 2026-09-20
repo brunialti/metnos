@@ -26,6 +26,20 @@ def _canonical(value: object) -> bytes:
                       separators=(",", ":"), allow_nan=False).encode()
 
 
+def _own_permissions(path: Path) -> None:
+    """Give one directory its own permission list, as a real root has.
+
+    A historical read refuses a root whose permissions arrive from an ancestor,
+    so the fixture must provision what the contract admits: the inherited
+    entries are copied in place and inheritance is switched off.
+    """
+    subprocess.run(
+        ["icacls", str(path), "/inheritance:d", "/t", "/c", "/q"],
+        check=True,
+        capture_output=True,
+    )
+
+
 def _provision(root: Path) -> tuple[dict[str, object], Ed25519PrivateKey]:
     private = Ed25519PrivateKey.generate()
     (root / "evidence").mkdir()
@@ -41,6 +55,9 @@ def _provision(root: Path) -> tuple[dict[str, object], Ed25519PrivateKey]:
             private.sign(EVIDENCE_DOMAIN + _canonical(evidence))).decode(),
     }
     (root / "evidence" / "proof.json").write_bytes(_canonical(record))
+    # Every object the historical read touches must carry its own list, so
+    # the whole provisioned tree is detached from its ancestor at the end.
+    _own_permissions(root)
     spec: dict[str, object] = {
         "evidence_dir": "evidence",
         "verifiers": {"oracle-key": {"path": "semantic.pub", "status": "active"}},

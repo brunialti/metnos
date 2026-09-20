@@ -66,31 +66,34 @@ en = "If true, return only unread emails (UNSEEN). Default false: all."
 
 [args.properties.time_window]
 type        = "string"
+format      = "time-window"
 
 [args.properties.time_window.description]
-it = "Finestra temporale semantica. Valori: 'today', 'yesterday', 'last-Nd' (es. 'last-7d'), 'last-Nh' (es. 'last-24h'). Quando settato senza altri filtri testuali, l'executor ignora max_results e ritorna TUTTE le mail nella finestra (cap max_total). Per finestre custom passa since/before espliciti. Il calcolo di 'oggi' avviene server-side: NON serve chiamare get_now prima."
-en = "Semantic time window. Values: 'today', 'yesterday', 'last-Nd' (e.g., 'last-7d'), 'last-Nh' (e.g., 'last-24h'). When set without other text filters, the executor ignores max_results and returns ALL emails within the window (max cap total). For custom windows, pass explicit since/before. The calculation of 'today' occurs server-side: there is NO need to call get_now beforehand."
+it = "Periodo di ricezione delle mail, calcolato dal runtime nel fuso configurato. Esempi: 'today', 'yesterday', 'today-2d', 'last-48h', 'last-1h30min', 'last-month', 'yesterday@10:00/today@11:00', date o intervalli ISO. Mantieni le espressioni relative: non chiamare get_now e non calcolare date nel modello. Le espressioni ambigue richiedono un chiarimento. Si leggono i messaggi nel periodo entro max_total; eventuali limiti sono segnalati."
+en = "Mail receipt period, calculated by the runtime in the configured timezone. Examples: 'today', 'yesterday', 'today-2d', 'last-48h', 'last-1h30min', 'last-month', 'yesterday@10:00/today@11:00', ISO dates or intervals. Preserve relative expressions: do not call get_now or calculate dates in the model. Ambiguous expressions require clarification. Messages in the period are read up to max_total; any limits are reported."
 
 [args.properties.since]
 type        = "string"
+format      = "time-window"
 
 [args.properties.since.description]
-it = "Data minima IMAP (formato 'DD-Mon-YYYY', es. '22-Apr-2026'). Le mail piu' vecchie di questa data sono escluse. Vince su time_window se entrambi presenti. Per 'ultimi N giorni' chiama get_now e calcola N giorni indietro."
-en = "Minimum IMAP date (format 'DD-Mon-YYYY', e.g., '22-Apr-2026'). Emails older than this date are excluded. This takes precedence over time_window if both are present. For 'last N days', call get_now and calculate N days backward."
+it = "Inizio incluso del periodo di ricezione. Accetta date ISO, istanti con offset, date IMAP o espressioni relative come 'yesterday' e 'now-2h'. Di un giorno si usa la mezzanotte nel fuso configurato; di un intervallo il suo inizio. Sostituisce il solo limite iniziale di time_window. Il runtime calcola le date: non chiamare get_now."
+en = "Inclusive start of the receipt period. Accepts ISO dates, offset timestamps, IMAP dates or relative expressions such as 'yesterday' and 'now-2h'. A day uses midnight in the configured timezone; an interval uses its start. Overrides only the lower bound of time_window. The runtime calculates dates: do not call get_now."
 
 [args.properties.before]
 type        = "string"
+format      = "time-window"
 
 [args.properties.before.description]
-it = "Data massima IMAP (formato 'DD-Mon-YYYY', es. '29-Apr-2026'). Le mail piu' recenti sono escluse. Combinabile con since per range chiusi."
-en = "Maximum IMAP date (format 'DD-Mon-YYYY', e.g., '29-Apr-2026'). The most recent emails are excluded. Can be combined with since for closed ranges."
+it = "Fine esclusa del periodo di ricezione. Accetta gli stessi formati di since. Una data senza ora esclude quel giorno e i successivi; un istante esclude le mail ricevute da quell'istante in poi. Sostituisce il solo limite finale di time_window. Con since definisce un intervallo con inizio incluso e fine esclusa."
+en = "Exclusive end of the receipt period. Accepts the same formats as since. A date without a clock time excludes that day and later days; a timestamp excludes messages received at or after that instant. Overrides only the upper bound of time_window. Together with since, defines a start-inclusive, end-exclusive interval."
 
 [args.properties.from_contains]
 type        = "string"
 
 [args.properties.from_contains.description]
-it = "Substring nel mittente (campo From), case-insensitive lato IMAP server. Es. from_contains='amazon' trova mail da 'noreply@amazon.com', 'orders@amazon.it', ecc. NIENTE wildcard, e' substring puro. Combinabile con altri criteri (AND)."
-en = "Substring in the sender (From field), case-insensitive on the IMAP server side. E.g. from_contains='amazon' finds mail from 'noreply@amazon.com', 'orders@amazon.it', etc. NO wildcards, it is a pure substring. Combinable with other criteria (AND)."
+it = "Substring nel mittente (campo From), case-insensitive lato IMAP server. Es. from_contains='shop' trova mail da 'orders@shop.example.com', 'help@shop.example.org', ecc. NIENTE wildcard, e' substring puro. Combinabile con altri criteri (AND)."
+en = "Substring in the sender (From field), case-insensitive on the IMAP server side. E.g. from_contains='shop' finds mail from 'orders@shop.example.com', 'help@shop.example.org', etc. NO wildcards, it is a pure substring. Combinable with other criteria (AND)."
 
 [args.properties.subject_contains]
 type        = "string"

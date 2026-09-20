@@ -2,27 +2,60 @@ from __future__ import annotations
 
 import json
 import hashlib
+import inspect
+import multiprocessing
+import os
+import shutil
+import stat
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import replace
+from dataclasses import dataclass, replace
+from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from executor_birth_cutover import CurrentReceiptProof
+from executor_birth_context_transition import (
+    context_transition_basename_v1,
+    issue_context_transition_v1,
+)
 import executor_birth_ownership_chain as chain_module
+import executor_birth_distribution_manifest as distribution_module
+import executor_birth_ownership_authorities as authority_module
 from executor_birth_ownership_chain import (
-    HEAD_PURPOSE, OwnershipChainError, OwnershipChainStore,
-    _OwnershipChainCrashForTest,
+    HEAD_PURPOSE, REQUIRED_HEAD_BASENAME, REQUIRED_HEAD_LOCK_BASENAME,
+    OwnershipChainError,
+    OwnershipChainStore,
+    _OwnershipChainCrashForTest, _OwnershipChainStoreForTest,
+    _InitialOwnershipChainStateForTestV1,
+    _inspect_ownership_chain_state_for_test_v1,
     decode_required_head, encode_required_head, issue_ownership_head,
-    verify_contiguous_chain, verify_ownership_head,
+    inspect_ownership_chain_state_v1, verify_contiguous_chain,
+    verify_ownership_head,
 )
 from executor_birth_ownership_cutover import (
+    PAYLOAD_BASENAME, SIGNATURE_BASENAME,
     OwnershipCutoverKey, OwnershipCutoverRegistry,
-    issue_ownership_cutover_certificate, verify_ownership_cutover_certificate,
+    issue_ownership_cutover_certificate,
+    ownership_key_id, verify_ownership_cutover_certificate,
+)
+from executor_birth_ownership_authorities import (
+    OwnershipPublicRegistriesV1, _ownership_public_registries_for_test,
+    decode_ownership_registry_v1, encode_ownership_registry_v1,
 )
 from executor_birth_ownership_preflight import _sealed_build_identity_for_test
 from executor_birth_distribution_manifest import (
-    DistributionManifestError, _verified_distribution_for_test,
+    DistributionKey, DistributionManifestError, DistributionRegistry,
+    _verified_distribution_for_test, distribution_key_id,
+    _verify_distribution_manifest_for_test,
+)
+from contract_boundary_guard import (
+    BIRTH_CLOSED_COORDINATOR_STORE_OWNERS, BIRTH_CLOSED_EXCEPTION_SCOPES,
+    BIRTH_CLOSED_GUARD_VERSION, BIRTH_CLOSED_OWNER, BIRTH_CLOSED_SCHEMA,
+    BIRTH_CLOSED_SEALED_MODULES, SCAN_ROOTS,
+    BIRTH_CLOSED_SOURCE_REVIEW_SHA256,
+    SCHEMA as BOUNDARY_INVENTORY_SCHEMA,
 )
 
 
@@ -30,30 +63,144 @@ def D(char: str) -> str:
     return "sha256:" + char * 64
 
 
+@dataclass(frozen=True)
+class Authorities:
+    distribution_private: Ed25519PrivateKey
+    distribution_key_id: str
+    distribution_registry: DistributionRegistry
+    cutover_private: Ed25519PrivateKey
+    cutover_key_id: str
+    cutover_registry: OwnershipCutoverRegistry
+    head_private: Ed25519PrivateKey
+    head_key_id: str
+    head_registry: OwnershipCutoverRegistry
+    public: OwnershipPublicRegistriesV1
+
+    def __iter__(self):
+        # Most tests below exercise heads, so preserve their compact unpacking.
+        return iter((self.head_private, self.head_key_id, self.head_registry))
+
+
 @pytest.fixture
 def authority():
-    private = Ed25519PrivateKey.generate()
-    key_id = "birth-ed25519-v1-sha256-" + "a" * 64
-    registry = OwnershipCutoverRegistry({
-        key_id: OwnershipCutoverKey(
-            key_id, private.public_key(),
-            frozenset({"ownership_cutover_v1", HEAD_PURPOSE}),
+    distribution_private = Ed25519PrivateKey.generate()
+    cutover_private = Ed25519PrivateKey.generate()
+    head_private = Ed25519PrivateKey.generate()
+    distribution_key = DistributionKey(
+        distribution_key_id(distribution_private.public_key()),
+        distribution_private.public_key(), frozenset({"closed_distribution_v1"}),
+        1, None,
+    )
+    cutover_key_id = ownership_key_id(cutover_private.public_key())
+    head_key_id = ownership_key_id(head_private.public_key())
+    cutover_registry = OwnershipCutoverRegistry({
+        cutover_key_id: OwnershipCutoverKey(
+            cutover_key_id, cutover_private.public_key(),
+            frozenset({"ownership_cutover_v1"}),
         ),
     })
-    return private, key_id, registry
+    head_registry = OwnershipCutoverRegistry({
+        head_key_id: OwnershipCutoverKey(
+            head_key_id, head_private.public_key(), frozenset({HEAD_PURPOSE}),
+        ),
+    })
+    public = _ownership_public_registries_for_test(
+        DistributionRegistry({distribution_key.key_id: distribution_key}),
+        cutover_registry, head_registry,
+    )
+    return Authorities(
+        distribution_private, distribution_key.key_id,
+        public.distribution, cutover_private, cutover_key_id, cutover_registry,
+        head_private, head_key_id, head_registry, public,
+    )
 
 
-def cutover(authority, *, previous, build, request):
-    private, key_id, registry = authority
+def initialize_test_store(root, authority):
+    """Private portable seam; it is not evidence of root-owned cold loading."""
+    return _OwnershipChainStoreForTest._initialize_with_authorities(
+        root, authority.public,
+    )
+
+
+def open_test_store(root, authority):
+    """Open an existing portable store through the same private test seam."""
+    return _OwnershipChainStoreForTest(root, authority.public)
+
+
+def cutover(
+    authority, *, previous, build, request,
+    previous_transition=None,
+):
+    proof = CurrentReceiptProof((), {})
+    encoded_transition, transition = issue_context_transition_v1(
+        request_id=request,
+        closed_build_id=build,
+        previous_cutover_id=previous,
+        previous_set_id=(
+            previous_transition.set_id
+            if previous_transition is not None else "7" * 64
+        ),
+        previous_admission_context_id=(
+            previous_transition.prepared_admission_context_id
+            if previous_transition is not None else D("8")
+        ),
+        previous_context_epoch=(
+            previous_transition.prepared_context_epoch
+            if previous_transition is not None else D("9")
+        ),
+        set_id=hashlib.sha256(b"set\0" + request.encode("ascii")).hexdigest(),
+        prepared_admission_context_id=(
+            "sha256:" + hashlib.sha256(
+                b"context\0" + request.encode("ascii"),
+            ).hexdigest()
+        ),
+        prepared_context_epoch=(
+            "sha256:" + hashlib.sha256(
+                b"epoch\0" + request.encode("ascii"),
+            ).hexdigest()
+        ),
+        context_material_sha256=hashlib.sha256(
+            b"material\0" + request.encode("ascii"),
+        ).hexdigest(),
+        set_json_sha256=hashlib.sha256(
+            b"set-json\0" + request.encode("ascii"),
+        ).hexdigest(),
+        current_inventory=proof.inventory,
+    )
+    assert encoded_transition == transition.encoded
     encoded, signature = issue_ownership_cutover_certificate(
-        proof=CurrentReceiptProof((), {}), previous_cutover_id=previous,
-        request_id=request, signing_key_id=key_id,
+        proof=proof, previous_cutover_id=previous,
+        request_id=request, signing_key_id=authority.cutover_key_id,
         maintenance_evidence_hash=D("1"), boundary_inventory_hash=D("2"),
         boundary_guard_version="closed-v1", closed_build_id=build,
-        private_key=private,
+        context_transition_id=transition.transition_id,
+        dominant_startup_receipt=D("9"),
+        private_key=authority.cutover_private,
     )
-    return encoded, signature, verify_ownership_cutover_certificate(
-        encoded, signature, registry=registry,
+    return (
+        encoded,
+        signature,
+        verify_ownership_cutover_certificate(
+            encoded, signature, registry=authority.cutover_registry,
+        ),
+        transition,
+    )
+
+
+def context_transition(*, proof=None, request="5"):
+    return issue_context_transition_v1(
+        request_id=D(request),
+        closed_build_id=D("6"),
+        previous_cutover_id=None,
+        previous_set_id="7" * 64,
+        previous_admission_context_id=D("8"),
+        previous_context_epoch=D("9"),
+        set_id="a" * 64,
+        prepared_admission_context_id=D("b"),
+        prepared_context_epoch=D("c"),
+        context_material_sha256="d" * 64,
+        set_json_sha256="e" * 64,
+        current_inventory=(proof or CurrentReceiptProof((), {})).inventory,
     )
 
 
@@ -80,6 +227,324 @@ def build_material(*, sequence=1, previous=None):
         signature=bytes([sequence]) * 64,
     )
     return distribution
+
+
+def _cold_canonical(value):
+    return json.dumps(
+        value, ensure_ascii=True, sort_keys=True, separators=(",", ":"),
+        allow_nan=False,
+    ).encode("ascii")
+
+
+def _cold_inventory_bytes():
+    return _cold_canonical({
+        "schema": BOUNDARY_INVENTORY_SCHEMA,
+        "source_census": BIRTH_CLOSED_SOURCE_REVIEW_SHA256,
+        "scan_roots": list(SCAN_ROOTS),
+        "entries": [],
+        "birth_closed": {
+            "schema": BIRTH_CLOSED_SCHEMA,
+            "guard_version": BIRTH_CLOSED_GUARD_VERSION,
+            "owner": BIRTH_CLOSED_OWNER,
+            "coordinator_store_owners": sorted(
+                BIRTH_CLOSED_COORDINATOR_STORE_OWNERS
+            ),
+            "sealed_modules": list(BIRTH_CLOSED_SEALED_MODULES),
+            "exceptions": [
+                {"scope": scope, "exception": exception}
+                for scope, exception in sorted(
+                    BIRTH_CLOSED_EXCEPTION_SCOPES.items()
+                )
+            ],
+        },
+    })
+
+
+def _cold_distribution(
+    root: Path, authority: Authorities, *, sequence: int,
+    previous_closed_build_id: str | None,
+):
+    inventory = _cold_inventory_bytes()
+    content_by_path = {
+        "deployment/admin/preflight.py": (
+            "preflight", b"#!/usr/bin/python3\n",
+        ),
+        "deployment/executor-birth-deployment-v1.json": (
+            "deployment_descriptor", b'{"schema_version":1}\n',
+        ),
+        "deployment/executor-birth-service-catalog-v1.json": (
+            "service_catalog", b'{"schema_version":1}\n',
+        ),
+        "requirements.lock": ("dependency_lock", b"cryptography==47.0.0\n"),
+        "runtime/__version__.py": ("product_version", b'__version__ = "1.2.3"\n'),
+        "runtime/contract_boundary_analyzer_ast.py": ("runtime_code", b"ANALYZER = 1\n"),
+        "runtime/contract_boundary_analyzer_projection.py": ("runtime_code", b"ANALYZER = 1\n"),
+        "runtime/contract_boundary_analyzer_types.py": ("runtime_code", b"ANALYZER = 1\n"),
+        "runtime/contract_boundary_api_policy.py": ("runtime_code", b"POLICY = 1\n"),
+        "runtime/contract_boundary_birth_authority_policy.py": ("runtime_code", b"POLICY = 1\n"),
+        "runtime/contract_boundary_birth_exception_policy.py": ("runtime_code", b"POLICY = 1\n"),
+        "runtime/contract_boundary_birth_policy.py": ("runtime_code", b"POLICY = 1\n"),
+        "runtime/contract_boundary_guard.py": ("boundary_guard", b"GUARD = 1\n"),
+        "runtime/contract_boundary_policy.py": ("runtime_code", b"POLICY = 1\n"),
+        "runtime/contract_boundary_policy_types.py": ("runtime_code", b"POLICY = 1\n"),
+        "runtime/contract_boundary_role_policy.py": ("runtime_code", b"POLICY = 1\n"),
+        "runtime/contract_boundary_syntax_policy.py": ("runtime_code", b"POLICY = 1\n"),
+        "runtime/contract_store.py": ("runtime_code", b"STORE = 1\n"),
+        "install/executor_birth_host_capability.py": ("runtime_code", b"VALUE = 1\n"),
+        "install/executor_birth_host_journal_posix.py": ("runtime_code", b"VALUE = 1\n"),
+        "install/executor_birth_host_posix.py": ("runtime_code", b"VALUE = 1\n"),
+        "install/executor_birth_host_provisioning.py": ("runtime_code", b"VALUE = 1\n"),
+        "install/executor_birth_transition.py": ("runtime_code", b"VALUE = 1\n"),
+        "runtime/executor_birth.py": ("runtime_code", b"BIRTH = 1\n"),
+        "runtime/executor_birth_account_identity.py": ("runtime_code", b"VALUE = 1\n"),
+        "runtime/executor_birth_canonical.py": ("runtime_code", b"VALUE = 1\n"),
+        "runtime/executor_birth_crypto_framing.py": ("runtime_code", b"VALUE = 1\n"),
+        "runtime/executor_birth_distribution_manifest.py": ("preflight", b"VERIFY = 1\n"),
+        "runtime/executor_birth_host_layout.py": ("runtime_code", b"VALUE = 1\n"),
+        "runtime/executor_birth_host_path_policy.py": ("runtime_code", b"VALUE = 1\n"),
+        "runtime/executor_birth_host_provisioning_evidence.py": ("runtime_code", b"VALUE = 1\n"),
+        "runtime/executor_birth_host_provisioning_journal.py": ("runtime_code", b"VALUE = 1\n"),
+        "runtime/executor_birth_posix_metadata.py": ("runtime_code", b"VALUE = 1\n"),
+        "runtime/executor_birth_preflight_attestation_store.py": ("runtime_code", b"VALUE = 1\n"),
+        "runtime/executor_birth_preflight_store_authority.py": ("runtime_code", b"VALUE = 1\n"),
+        "runtime/executor_birth_ownership_preflight.py": ("preflight", b"PREFLIGHT = 1\n"),
+        "runtime/sign.py": ("runtime_code", b"SIGN = 1\n"),
+        "share/metnos/executor-birth/birth-closed-boundary-inventory-v1.json": (
+            "boundary_inventory", inventory,
+        ),
+        "systemd/metnos-http-birth-closed.conf": ("service_unit", b"[Service]\n"),
+    }
+    for path, role in distribution_module._REQUIRED_PATH_ROLES.items():
+        content_by_path.setdefault(path, (role, b"VALUE = 1\n"))
+    files = []
+    for path, (role, content) in content_by_path.items():
+        target = root.joinpath(*path.split("/"))
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(content)
+        files.append({
+            "path": path, "size": len(content), "role": role,
+            "content_hash": distribution_module.file_content_hash(path, content),
+        })
+    files.sort(key=lambda item: item["path"].encode("utf-8"))
+    value = {
+        "schema_version": 1,
+        "closed_build_id": None,
+        "previous_closed_build_id": previous_closed_build_id,
+        "release_sequence": sequence,
+        "product_version": "1.2.3",
+        "platform": "linux",
+        "architecture": "x86_64",
+        "signing_key_id": authority.distribution_key_id,
+        "installation_root": root.as_posix(),
+        "certificate_directory": "/var/lib/metnos/executor-birth",
+        "boundary_inventory_path": (
+            "share/metnos/executor-birth/birth-closed-boundary-inventory-v1.json"
+        ),
+        "boundary_inventory_hash": "sha256:" + hashlib.sha256(
+            distribution_module.BOUNDARY_INVENTORY_DOMAIN + inventory
+        ).hexdigest(),
+        "boundary_guard_version": BIRTH_CLOSED_GUARD_VERSION,
+        "preflight_entrypoint": "deployment/admin/preflight.py",
+        "files": files,
+    }
+    value["closed_build_id"] = "sha256:" + hashlib.sha256(
+        distribution_module.BUILD_ID_DOMAIN + _cold_canonical({
+            key: item for key, item in value.items()
+            if key != "closed_build_id"
+        })
+    ).hexdigest()
+    encoded = _cold_canonical(value)
+    signature = authority.distribution_private.sign(
+        distribution_module.SIGNATURE_DOMAIN + encoded
+    )
+    verified = _verify_distribution_manifest_for_test(
+        encoded, signature, registry=authority.distribution_registry,
+        _environment=distribution_module._environment_for_test(
+            "linux", "x86_64", root,
+        ),
+    )
+    return verified
+
+
+def _cold_chain_worker(
+    chain_root: str, result_queue,
+):
+    try:
+        authority_root = Path(chain_root).parent / "authorities-v1"
+        public = _ownership_public_registries_for_test(
+            decode_ownership_registry_v1(
+                (authority_root / "distribution-registry-v1.json").read_bytes(),
+                expected_kind="distribution",
+            ),
+            decode_ownership_registry_v1(
+                (authority_root / "cutover-registry-v1.json").read_bytes(),
+                expected_kind="cutover",
+            ),
+            decode_ownership_registry_v1(
+                (authority_root / "head-registry-v1.json").read_bytes(),
+                expected_kind="head",
+            ),
+        )
+        store = _OwnershipChainStoreForTest(Path(chain_root), public)
+        verified = store._read_required_chain_cold_for_test()
+        result_queue.put((
+            "ok",
+            tuple(record.release_sequence for record in verified.authenticated_records),
+            verified.required_distribution.release_sequence,
+        ))
+    except Exception as exc:
+        result_queue.put((
+            "error", type(exc).__name__, str(exc), repr(exc.__cause__),
+        ))
+
+
+def _window_history(tmp_path, authority, count):
+    ownership = tmp_path / "ownership"
+    ownership.mkdir(mode=0o755)
+    store = initialize_test_store(ownership / "chain-v1", authority)
+    previous_head = previous_cutover = previous_transition = previous_build = None
+    builds = []
+    for sequence in range(1, count + 1):
+        build = _cold_distribution(
+            ownership / "releases-v1" / f"{sequence:020d}", authority,
+            sequence=sequence, previous_closed_build_id=previous_build,
+        )
+        store.append_authenticated_build(build)
+        encoded, signature, certificate, transition = cutover(
+            authority, previous=previous_cutover,
+            build=build.identity.closed_build_id,
+            request="sha256:" + hashlib.sha256(str(sequence).encode()).hexdigest(),
+            previous_transition=previous_transition,
+        )
+        store.append_cutover(encoded, signature)
+        store.append_context_transition(transition.encoded, expected_proof=certificate.as_proof())
+        if sequence == 1:
+            (ownership / PAYLOAD_BASENAME).write_bytes(encoded)
+            (ownership / SIGNATURE_BASENAME).write_bytes(signature)
+        encoded, signature = issue_ownership_head(
+            release_sequence=sequence, cutover_id=certificate.cutover_id,
+            closed_build_id=build.identity.closed_build_id,
+            previous_head_id=previous_head, signing_key_id=authority.head_key_id,
+            private_key=authority.head_private,
+        )
+        head = store.append_head(encoded, signature)
+        store.update_required_head(encoded, signature, expected_head_id=previous_head)
+        previous_head, previous_cutover, previous_transition, previous_build = (
+            head.head_id, certificate.cutover_id, transition, build.identity.closed_build_id,
+        )
+        builds.append(build)
+    return store, builds
+
+
+def _read_window(store, *, observed=None, after_live=None):
+    def authenticate(encoded, signature):
+        record = distribution_module._authenticate_distribution_record_for_test(
+            encoded, signature, registry=store.distribution_registry,
+        )
+        if observed is not None:
+            observed.append(record.release_sequence)
+        return record
+
+    def verify_live(record):
+        verified = distribution_module._verify_authenticated_distribution_record_for_test(
+            record, environment=distribution_module._environment_for_test(
+                "linux", "x86_64",
+                store.root.parent / "releases-v1" / f"{record.release_sequence:020d}",
+            ),
+        )
+        if after_live is not None:
+            after_live()
+        return verified
+
+    return store._read_required_window_core_v1(
+        authenticate_record=authenticate, verify_live_record=verify_live, for_test=True,
+    )
+
+
+@pytest.mark.skipif(os.name == "nt", reason="cold ownership store is Linux-only")
+@pytest.mark.parametrize("count", (1, 3, 12))
+def test_required_window_has_bounded_work_without_old_release_trees(
+    authority, tmp_path, monkeypatch, count,
+):
+    store, builds = _window_history(tmp_path, authority, count)
+    for build in builds[:-1]:
+        shutil.rmtree(build.installation_root)
+    # An ordinary read must not even enumerate historical object names.
+    original_iterdir = Path.iterdir
+
+    def no_history_enumeration(path):
+        if path == store.root or store.root in path.parents:
+            pytest.fail("ordinary selection enumerated historical objects")
+        return original_iterdir(path)
+
+    monkeypatch.setattr(Path, "iterdir", no_history_enumeration)
+    observed = []
+    result = _read_window(store, observed=observed)
+    expected = tuple(range(max(1, count - 1), count + 1))
+    assert tuple(head.release_sequence for head in result.heads) == expected
+    assert sorted(observed) == list(expected)
+    assert result.required_distribution == builds[-1]
+    assert isinstance(result, chain_module.VerifiedOwnershipWindowV1)
+    assert not isinstance(result, chain_module.VerifiedOwnershipChain)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="cold ownership store is Linux-only")
+def test_required_window_does_not_hide_historical_damage_from_explicit_audit(
+    authority, tmp_path,
+):
+    store, builds = _window_history(tmp_path, authority, 3)
+    old_signature = store.root / "builds-v1" / (
+        builds[0].identity.closed_build_id.removeprefix("sha256:") + ".sig"
+    )
+    old_signature.write_bytes(b"x" * 64)
+    assert _read_window(store).required_distribution == builds[-1]
+    with pytest.raises(OwnershipChainError, match="build object"):
+        store._read_required_chain_cold_for_test()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="cold ownership store is Linux-only")
+@pytest.mark.parametrize("mutation", (
+    "required_signature", "build_signature", "cutover_signature", "transition",
+    "predecessor_signature", "live_code", "selector_changes", "selected_missing",
+))
+def test_required_window_rejects_damage_to_its_actual_dependencies(
+    authority, tmp_path, mutation,
+):
+    store, builds = _window_history(tmp_path, authority, 3)
+    required = store.read_required_head()
+    callback = None
+    if mutation == "required_signature":
+        target = store.root / REQUIRED_HEAD_BASENAME
+        target.write_bytes(target.read_bytes()[:-1] + bytes([target.read_bytes()[-1] ^ 1]))
+    elif mutation in {"build_signature", "predecessor_signature", "selected_missing"}:
+        build = builds[-2] if mutation == "predecessor_signature" else builds[-1]
+        target = store.root / "builds-v1" / (
+            build.identity.closed_build_id.removeprefix("sha256:") + ".sig"
+        )
+        if mutation == "selected_missing":
+            target.unlink()
+        else:
+            target.write_bytes(b"x" * 64)
+    elif mutation == "cutover_signature":
+        target = store.root / "cutovers-v1" / (
+            required.cutover_id.removeprefix("sha256:") + ".sig"
+        )
+        target.write_bytes(b"x" * 64)
+    elif mutation == "transition":
+        transition = _read_window(store).context_transitions[-1]
+        target = store.root / chain_module.CONTEXT_TRANSITIONS_DIRECTORY_V1 / context_transition_basename_v1(
+            transition.transition_id,
+        )
+        target.write_bytes(b"{}")
+    elif mutation == "live_code":
+        (Path(builds[-1].installation_root) / "runtime/__version__.py").write_bytes(b"tampered")
+    else:
+        previous = _read_window(store).heads[0]
+        callback = lambda: (store.root / REQUIRED_HEAD_BASENAME).write_bytes(
+            encode_required_head(previous),
+        )
+    with pytest.raises(OwnershipChainError):
+        _read_window(store, after_live=callback)
 
 
 def test_head_codec_is_canonical_signed_and_purpose_separated(authority):
@@ -127,13 +592,14 @@ def test_chain_requires_unique_contiguous_required_head(authority):
     build2 = build_material(
         sequence=2, previous=build1.identity.closed_build_id,
     )
-    c1b, c1s, c1 = cutover(
+    c1b, c1s, c1, t1 = cutover(
         authority, previous=None, build=build1.identity.closed_build_id,
         request=D("5"),
     )
-    c2b, c2s, c2 = cutover(
+    c2b, c2s, c2, t2 = cutover(
         authority, previous=c1.cutover_id,
         build=build2.identity.closed_build_id, request=D("7"),
+        previous_transition=t1,
     )
     h1b, h1s = issue_ownership_head(
         release_sequence=1, cutover_id=c1.cutover_id,
@@ -154,22 +620,36 @@ def test_chain_requires_unique_contiguous_required_head(authority):
     verified = verify_contiguous_chain(
         anchor=c1, heads=(h1, h2), required_head=h2,
         cutovers={c1.cutover_id: c1, c2.cutover_id: c2}, builds=builds,
+        transitions={t1.transition_id: t1, t2.transition_id: t2},
     )
     assert verified.required_head == h2
+    assert verified.context_transitions == (t1, t2)
+    with pytest.raises(OwnershipChainError, match="missing object"):
+        verify_contiguous_chain(
+            anchor=c1,
+            heads=(h1, h2),
+            required_head=h2,
+            cutovers={c1.cutover_id: c1, c2.cutover_id: c2},
+            builds=builds,
+            transitions={t1.transition_id: t1},
+        )
     with pytest.raises(OwnershipChainError, match="downgrade"):
         verify_contiguous_chain(
             anchor=c1, heads=(h1, h2), required_head=h1,
             cutovers={c1.cutover_id: c1, c2.cutover_id: c2}, builds=builds,
+            transitions={t1.transition_id: t1, t2.transition_id: t2},
         )
     with pytest.raises(OwnershipChainError, match="recovery_required"):
         verify_contiguous_chain(
             anchor=c1, heads=(h2,), required_head=h2,
             cutovers={c1.cutover_id: c1, c2.cutover_id: c2}, builds=builds,
+            transitions={t1.transition_id: t1, t2.transition_id: t2},
         )
     wrong_build2 = build_material(sequence=2, previous=None)
-    wrong_cutover_bytes, wrong_cutover_sig, wrong_cutover = cutover(
+    wrong_cutover_bytes, wrong_cutover_sig, wrong_cutover, wrong_transition = cutover(
         authority, previous=c1.cutover_id,
         build=wrong_build2.identity.closed_build_id, request=D("8"),
+        previous_transition=t1,
     )
     wrong_head_bytes, wrong_head_sig = issue_ownership_head(
         release_sequence=2, cutover_id=wrong_cutover.cutover_id,
@@ -187,20 +667,64 @@ def test_chain_requires_unique_contiguous_required_head(authority):
                 build1.identity.closed_build_id: build1,
                 wrong_build2.identity.closed_build_id: wrong_build2,
             },
+            transitions={
+                t1.transition_id: t1,
+                wrong_transition.transition_id: wrong_transition,
+            },
+        )
+
+    unlinked_bytes, unlinked_signature, unlinked, unlinked_transition = cutover(
+        authority,
+        previous=c1.cutover_id,
+        build=build2.identity.closed_build_id,
+        request=D("a"),
+    )
+    unlinked_head_bytes, unlinked_head_signature = issue_ownership_head(
+        release_sequence=2,
+        cutover_id=unlinked.cutover_id,
+        closed_build_id=build2.identity.closed_build_id,
+        previous_head_id=h1.head_id,
+        signing_key_id=key_id,
+        private_key=private,
+    )
+    unlinked_head = verify_ownership_head(
+        unlinked_head_bytes,
+        unlinked_head_signature,
+        registry=registry,
+    )
+    assert unlinked_bytes and unlinked_signature
+    with pytest.raises(OwnershipChainError, match="context transition binding"):
+        verify_contiguous_chain(
+            anchor=c1,
+            heads=(h1, unlinked_head),
+            required_head=unlinked_head,
+            cutovers={
+                c1.cutover_id: c1,
+                unlinked.cutover_id: unlinked,
+            },
+            builds=builds,
+            transitions={
+                t1.transition_id: t1,
+                unlinked_transition.transition_id: unlinked_transition,
+            },
         )
 
 
 def test_portable_store_is_no_replace_and_exact_retry(authority, tmp_path):
     private, key_id, registry = authority
     tmp_path.chmod(0o755)
-    store = OwnershipChainStore.initialize(tmp_path, registry=registry)
+    store = initialize_test_store(tmp_path, authority)
     distribution = build_material()
     store.append_authenticated_build(distribution)
     store.append_authenticated_build(distribution)
-    cbytes, csig, certificate = cutover(
+    cbytes, csig, certificate, transition = cutover(
         authority, previous=None, build=D("4"), request=D("5"),
     )
     store.append_cutover(cbytes, csig)
+    store.append_context_transition(
+        transition.encoded,
+        expected_proof=certificate.as_proof(),
+    )
     hbytes, hsig = issue_ownership_head(
         release_sequence=1, cutover_id=certificate.cutover_id,
         closed_build_id=D("4"), previous_head_id=None,
@@ -223,14 +747,18 @@ def test_verified_distribution_binds_exact_authenticated_signature():
 def test_store_reads_only_required_contiguous_prefix(authority, tmp_path):
     private, key_id, registry = authority
     tmp_path.chmod(0o755)
-    store = OwnershipChainStore.initialize(tmp_path, registry=registry)
+    store = initialize_test_store(tmp_path, authority)
     distribution = build_material()
     identity = distribution.identity
     store.append_authenticated_build(distribution)
-    cutover_bytes, cutover_signature, certificate = cutover(
+    cutover_bytes, cutover_signature, certificate, transition = cutover(
         authority, previous=None, build=identity.closed_build_id, request=D("5"),
     )
     store.append_cutover(cutover_bytes, cutover_signature)
+    store.append_context_transition(
+        transition.encoded,
+        expected_proof=certificate.as_proof(),
+    )
     head_bytes, head_signature = issue_ownership_head(
         release_sequence=1, cutover_id=certificate.cutover_id,
         closed_build_id=identity.closed_build_id, previous_head_id=None,
@@ -249,7 +777,7 @@ def test_store_reads_only_required_contiguous_prefix(authority, tmp_path):
 def test_required_head_missing_never_falls_back_to_highest(authority, tmp_path):
     _private, _key_id, registry = authority
     tmp_path.chmod(0o755)
-    store = OwnershipChainStore.initialize(tmp_path, registry=registry)
+    store = initialize_test_store(tmp_path, authority)
     with pytest.raises(OwnershipChainError, match="downgrade"):
         store.read_required_chain(anchor=object(), builds={})
 
@@ -257,18 +785,20 @@ def test_required_head_missing_never_falls_back_to_highest(authority, tmp_path):
 def test_store_rejects_fork_at_same_sequence(authority, tmp_path):
     private, key_id, registry = authority
     tmp_path.chmod(0o755)
-    store = OwnershipChainStore.initialize(tmp_path, registry=registry)
+    store = initialize_test_store(tmp_path, authority)
     distribution = build_material()
     identity = distribution.identity
     store.append_authenticated_build(distribution)
-    c1b, c1s, c1 = cutover(
+    c1b, c1s, c1, t1 = cutover(
         authority, previous=None, build=identity.closed_build_id, request=D("5"),
     )
-    c2b, c2s, c2 = cutover(
+    c2b, c2s, c2, t2 = cutover(
         authority, previous=None, build=identity.closed_build_id, request=D("6"),
     )
     store.append_cutover(c1b, c1s)
     store.append_cutover(c2b, c2s)
+    store.append_context_transition(t1.encoded, expected_proof=c1.as_proof())
+    store.append_context_transition(t2.encoded, expected_proof=c2.as_proof())
     first_bytes, first_signature = issue_ownership_head(
         release_sequence=1, cutover_id=c1.cutover_id,
         closed_build_id=identity.closed_build_id, previous_head_id=None,
@@ -293,7 +823,7 @@ def test_store_rejects_fork_at_same_sequence(authority, tmp_path):
 def test_incomplete_append_pair_requires_recovery(authority, tmp_path):
     private, key_id, registry = authority
     tmp_path.chmod(0o755)
-    store = OwnershipChainStore.initialize(tmp_path, registry=registry)
+    store = initialize_test_store(tmp_path, authority)
     encoded, signature = issue_ownership_head(
         release_sequence=1, cutover_id=D("3"), closed_build_id=D("4"),
         previous_head_id=None, signing_key_id=key_id, private_key=private,
@@ -323,7 +853,7 @@ def test_required_head_upgrade_recovers_exactly_across_atomic_point(
 ):
     private, key_id, registry = authority
     tmp_path.chmod(0o755)
-    store = OwnershipChainStore.initialize(tmp_path, registry=registry)
+    store = initialize_test_store(tmp_path, authority)
     first_bytes, first_signature = issue_ownership_head(
         release_sequence=1, cutover_id=D("3"), closed_build_id=D("4"),
         previous_head_id=None, signing_key_id=key_id, private_key=private,
@@ -359,7 +889,7 @@ def test_required_head_upgrade_recovers_exactly_across_atomic_point(
 def test_required_head_upgrade_rejects_stale_cas(authority, tmp_path):
     private, key_id, registry = authority
     tmp_path.chmod(0o755)
-    store = OwnershipChainStore.initialize(tmp_path, registry=registry)
+    store = initialize_test_store(tmp_path, authority)
     encoded, signature = issue_ownership_head(
         release_sequence=1, cutover_id=D("3"), closed_build_id=D("4"),
         previous_head_id=None, signing_key_id=key_id, private_key=private,
@@ -381,7 +911,7 @@ def test_required_head_upgrade_rejects_stale_cas(authority, tmp_path):
 def test_required_head_cas_allows_only_one_competing_successor(authority, tmp_path):
     private, key_id, registry = authority
     tmp_path.chmod(0o755)
-    store = OwnershipChainStore.initialize(tmp_path, registry=registry)
+    store = initialize_test_store(tmp_path, authority)
     first_bytes, first_signature = issue_ownership_head(
         release_sequence=1, cutover_id=D("3"), closed_build_id=D("4"),
         previous_head_id=None, signing_key_id=key_id, private_key=private,
@@ -416,14 +946,555 @@ def test_read_only_open_never_creates_missing_store(authority, tmp_path):
     _private, _key_id, registry = authority
     tmp_path.chmod(0o755)
     with pytest.raises(OwnershipChainError, match="recovery_required"):
-        OwnershipChainStore(tmp_path, registry=registry)
-    assert tuple(tmp_path.iterdir()) == ()
+        open_test_store(tmp_path / "absent-store", authority)
+    assert not (tmp_path / "absent-store").exists()
+
+
+def test_context_transition_store_is_initialized_and_exact_retries_converge(
+    authority, tmp_path,
+):
+    store = initialize_test_store(tmp_path / "chain-v1", authority)
+    directory = store.root / chain_module.CONTEXT_TRANSITIONS_DIRECTORY_V1
+    assert directory.is_dir()
+    if os.name != "nt":
+        assert directory.stat().st_mode & 0o777 == 0o755
+
+    proof = CurrentReceiptProof((), {})
+    encoded, expected = context_transition(proof=proof)
+    first = store.append_context_transition(encoded, expected_proof=proof)
+    second = store.append_context_transition(encoded, expected_proof=proof)
+
+    assert first == second == expected
+    assert tuple(item.name for item in directory.iterdir()) == (
+        context_transition_basename_v1(expected.transition_id),
+    )
+    initial = _inspect_ownership_chain_state_for_test_v1(store)
+    assert isinstance(initial, _InitialOwnershipChainStateForTestV1)
+
+
+def test_context_transition_append_recovers_an_exact_temporary_prefix(
+    authority, tmp_path,
+):
+    store = initialize_test_store(tmp_path / "chain-v1", authority)
+    proof = CurrentReceiptProof((), {})
+    encoded, expected = context_transition(proof=proof)
+    directory = store.root / chain_module.CONTEXT_TRANSITIONS_DIRECTORY_V1
+    basename = context_transition_basename_v1(expected.transition_id)
+    temporary = directory / f".{basename}.tmp"
+    temporary.write_bytes(encoded[:17])
+    temporary.chmod(0o644)
+
+    observed = store.append_context_transition(encoded, expected_proof=proof)
+
+    assert observed == expected
+    assert not temporary.exists()
+
+
+def test_context_transition_collision_inventory_and_proof_mismatch_stop(
+    authority, tmp_path,
+):
+    store = initialize_test_store(tmp_path / "chain-v1", authority)
+    proof = CurrentReceiptProof((), {})
+    encoded, expected = context_transition(proof=proof)
+    directory = store.root / chain_module.CONTEXT_TRANSITIONS_DIRECTORY_V1
+    destination = directory / context_transition_basename_v1(
+        expected.transition_id,
+    )
+    destination.write_bytes(b"{}")
+    destination.chmod(0o644)
+
+    with pytest.raises(OwnershipChainError, match="context_transition"):
+        store.append_context_transition(encoded, expected_proof=proof)
+
+    destination.write_bytes(encoded)
+    destination.chmod(0o644)
+    identity = (("explicit:alpha/manifest.toml", D("f")),)
+    other = CurrentReceiptProof(identity, {identity[0]: D("0")})
+    with pytest.raises(OwnershipChainError, match="context_transition"):
+        store.read_context_transition(
+            expected.transition_id,
+            expected_proof=other,
+        )
+
+    (directory / "unexpected").write_bytes(b"")
+    with pytest.raises(OwnershipChainError, match="context_transition"):
+        store.read_context_transition(expected.transition_id)
+
+
+def test_context_transition_post_publication_retry_is_idempotent(
+    authority, tmp_path,
+):
+    store = initialize_test_store(tmp_path / "chain-v1", authority)
+    proof = CurrentReceiptProof((), {})
+    encoded, expected = context_transition(proof=proof)
+
+    def interrupt(boundary):
+        if boundary == "after_context_transition_record":
+            raise _OwnershipChainCrashForTest(boundary)
+
+    with pytest.raises(_OwnershipChainCrashForTest):
+        store.append_context_transition(
+            encoded,
+            expected_proof=proof,
+            _crash_seam=interrupt,
+        )
+
+    assert store.append_context_transition(
+        encoded,
+        expected_proof=proof,
+    ) == expected
+
+
+def test_context_transition_prepublication_retry_keeps_exact_temporary(
+    authority, tmp_path,
+):
+    store = initialize_test_store(tmp_path / "chain-v1", authority)
+    proof = CurrentReceiptProof((), {})
+    encoded, expected = context_transition(proof=proof)
+    directory = store.root / chain_module.CONTEXT_TRANSITIONS_DIRECTORY_V1
+    basename = context_transition_basename_v1(expected.transition_id)
+    temporary = directory / f".{basename}.tmp"
+
+    def interrupt(boundary):
+        if boundary == "after_context_transition_temporary":
+            raise _OwnershipChainCrashForTest(boundary)
+
+    with pytest.raises(_OwnershipChainCrashForTest):
+        store.append_context_transition(
+            encoded,
+            expected_proof=proof,
+            _crash_seam=interrupt,
+        )
+
+    assert temporary.read_bytes() == encoded
+    assert store.append_context_transition(
+        encoded,
+        expected_proof=proof,
+    ) == expected
+    assert not temporary.exists()
+
+
+def test_context_transition_reader_rejects_a_second_file_name(
+    authority, tmp_path,
+):
+    store = initialize_test_store(tmp_path / "chain-v1", authority)
+    proof = CurrentReceiptProof((), {})
+    encoded, expected = context_transition(proof=proof)
+    store.append_context_transition(encoded, expected_proof=proof)
+    path = (
+        store.root
+        / chain_module.CONTEXT_TRANSITIONS_DIRECTORY_V1
+        / context_transition_basename_v1(expected.transition_id)
+    )
+    try:
+        os.link(path, tmp_path / "second-name")
+    except OSError:
+        pytest.skip("hard links unavailable")
+
+    with pytest.raises(OwnershipChainError, match="context_transition"):
+        store.read_context_transition(expected.transition_id)
+
+
+def test_product_store_constructors_do_not_accept_authority_injection():
+    assert tuple(inspect.signature(OwnershipChainStore).parameters) == ()
+    assert tuple(inspect.signature(OwnershipChainStore.initialize).parameters) == ()
+    assert tuple(
+        inspect.signature(OwnershipChainStore.read_required_chain_cold_v1).parameters
+    ) == ("self",)
+    assert not hasattr(OwnershipChainStore, "_initialize_with_authorities")
+    assert not hasattr(OwnershipChainStore, "_open_with_authorities")
+
+
+def test_product_store_fails_closed_off_linux_before_authority_or_filesystem(
+    monkeypatch,
+):
+    import executor_birth_ownership_authorities as authority_module
+
+    def unexpected(*_args, **_kwargs):
+        raise AssertionError("productive gate performed I/O")
+
+    monkeypatch.setattr(chain_module.sys, "platform", "win32")
+    monkeypatch.setattr(
+        authority_module, "_load_fixed_ownership_public_snapshot_v1", unexpected,
+    )
+    monkeypatch.setattr(chain_module.Path, "mkdir", unexpected)
+    for operation in (
+        OwnershipChainStore,
+        OwnershipChainStore.initialize,
+        OwnershipChainStore.__new__(OwnershipChainStore).read_required_chain_cold_v1,
+    ):
+        with pytest.raises(OwnershipChainError) as failure:
+            operation()
+        assert failure.value.code == "birth_ownership_platform_unsupported"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX directory modes")
+def test_exact_directory_creation_and_retry_ignore_restrictive_umask(tmp_path):
+    target = tmp_path / "chain-v1"
+    previous_umask = os.umask(0o077)
+    try:
+        target.mkdir(mode=0o755)
+    finally:
+        os.umask(previous_umask)
+    assert target.stat().st_mode & 0o777 == 0o700
+    first = chain_module._ensure_exact_directory_v1(target)
+    second = chain_module._ensure_exact_directory_v1(target)
+    assert first.st_ino == second.st_ino
+    assert target.stat().st_mode & 0o777 == 0o755
+
+    unsafe = tmp_path / "unsafe-chain-v1"
+    unsafe.mkdir(mode=0o777)
+    unsafe.chmod(0o777)
+    with pytest.raises(OwnershipChainError, match="directory metadata"):
+        chain_module._ensure_exact_directory_v1(unsafe)
+    assert unsafe.stat().st_mode & 0o777 == 0o777
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX directory durability")
+def test_exact_directory_retries_parent_sync_after_failure(tmp_path, monkeypatch):
+    target = tmp_path / "chain-v1"
+    calls = []
+    real_sync = chain_module._sync_directory
+
+    def fail_once(path):
+        calls.append(Path(path))
+        if len(calls) == 1:
+            raise OSError("injected parent fsync failure")
+        real_sync(path)
+
+    monkeypatch.setattr(chain_module, "_sync_directory", fail_once)
+    with pytest.raises(OwnershipChainError) as failure:
+        chain_module._ensure_exact_directory_v1(target)
+    assert failure.value.detail == "directory sync"
+    chain_module._ensure_exact_directory_v1(target)
+    assert calls == [tmp_path, tmp_path]
+    assert target.stat().st_mode & 0o777 == 0o755
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX directory durability")
+def test_exact_directory_retries_target_sync_after_failure(tmp_path, monkeypatch):
+    target = tmp_path / "chain-v1"
+    calls = []
+    real_fsync = os.fsync
+
+    def fail_target_once(fd):
+        target_inode = target.stat().st_ino if target.exists() else None
+        observed = "target" if os.fstat(fd).st_ino == target_inode else "parent"
+        calls.append(observed)
+        if calls == ["target"]:
+            raise OSError("injected target fsync failure")
+        real_fsync(fd)
+
+    monkeypatch.setattr(chain_module.os, "fsync", fail_target_once)
+    with pytest.raises(OwnershipChainError) as failure:
+        chain_module._ensure_exact_directory_v1(target)
+    assert failure.value.detail == "directory metadata"
+    chain_module._ensure_exact_directory_v1(target)
+    assert calls == ["target", "target", "parent"]
+    assert target.stat().st_mode & 0o777 == 0o755
+
+
+@pytest.mark.skipif(os.name == "nt", reason="cold ownership store is Linux-only")
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        "ok", "historical_signature", "predecessor", "sequence", "gap",
+        "duplicate", "fork", "required_head",
+    ),
+)
+def test_cold_two_release_chain_reopens_from_disk(
+    authority, tmp_path, mutation, monkeypatch,
+):
+    ownership_root = tmp_path / "ownership"
+    ownership_root.mkdir(mode=0o755)
+    chain_root = ownership_root / "chain-v1"
+    releases = ownership_root / "releases-v1"
+    releases.mkdir(mode=0o755)
+    first_root = releases / "00000000000000000001"
+    second_root = releases / "00000000000000000002"
+    first = _cold_distribution(
+        first_root, authority, sequence=1, previous_closed_build_id=None,
+    )
+    second = _cold_distribution(
+        second_root, authority,
+        sequence=3 if mutation == "sequence" else 2,
+        previous_closed_build_id=(
+            D("f") if mutation == "predecessor"
+            else first.identity.closed_build_id
+        ),
+    )
+    store = _OwnershipChainStoreForTest._initialize_with_authorities(
+        chain_root, authority.public,
+    )
+    store.append_authenticated_build(first)
+    store.append_authenticated_build(second)
+
+    first_cutover_bytes, first_cutover_signature, first_cutover, first_transition = cutover(
+        authority, previous=None, build=first.identity.closed_build_id,
+        request=D("5"),
+    )
+    second_cutover_bytes, second_cutover_signature, second_cutover, second_transition = cutover(
+        authority, previous=first_cutover.cutover_id,
+        build=second.identity.closed_build_id, request=D("7"),
+        previous_transition=first_transition,
+    )
+    store.append_cutover(first_cutover_bytes, first_cutover_signature)
+    store.append_cutover(second_cutover_bytes, second_cutover_signature)
+    store.append_context_transition(
+        first_transition.encoded,
+        expected_proof=first_cutover.as_proof(),
+    )
+    store.append_context_transition(
+        second_transition.encoded,
+        expected_proof=second_cutover.as_proof(),
+    )
+    (ownership_root / "ownership-cutover-v1.json").write_bytes(
+        first_cutover_bytes
+    )
+    (ownership_root / "ownership-cutover-v1.sig").write_bytes(
+        first_cutover_signature
+    )
+    (ownership_root / "ownership-cutover-v1.json").chmod(0o644)
+    (ownership_root / "ownership-cutover-v1.sig").chmod(0o644)
+
+    first_head_bytes, first_head_signature = issue_ownership_head(
+        release_sequence=1, cutover_id=first_cutover.cutover_id,
+        closed_build_id=first.identity.closed_build_id,
+        previous_head_id=None, signing_key_id=authority.head_key_id,
+        private_key=authority.head_private,
+    )
+    first_head = store.append_head(first_head_bytes, first_head_signature)
+    second_head_bytes, second_head_signature = issue_ownership_head(
+        release_sequence=2, cutover_id=second_cutover.cutover_id,
+        closed_build_id=second.identity.closed_build_id,
+        previous_head_id=first_head.head_id,
+        signing_key_id=authority.head_key_id,
+        private_key=authority.head_private,
+    )
+    store.append_head(second_head_bytes, second_head_signature)
+    store.update_required_head(
+        first_head_bytes, first_head_signature, expected_head_id=None,
+    )
+    store.update_required_head(
+        second_head_bytes, second_head_signature,
+        expected_head_id=first_head.head_id,
+    )
+
+    if mutation == "historical_signature":
+        (chain_root / "builds-v1" / (
+            first.identity.closed_build_id.removeprefix("sha256:") + ".sig"
+        )).write_bytes(b"x" * 64)
+    elif mutation == "gap":
+        first_stem = (
+            f"{1:020d}-{first_cutover.cutover_id.removeprefix('sha256:')}"
+        )
+        (chain_root / "heads-v1" / f"{first_stem}.json").unlink()
+        (chain_root / "heads-v1" / f"{first_stem}.sig").unlink()
+    elif mutation == "duplicate":
+        duplicate_root = releases / "duplicate-sequence-one"
+        duplicate = _cold_distribution(
+            duplicate_root, authority, sequence=1,
+            previous_closed_build_id=None,
+        )
+        store.append_authenticated_build(duplicate)
+        shutil.rmtree(duplicate_root)
+    elif mutation == "fork":
+        fork_cutover_bytes, fork_cutover_signature, fork_cutover, fork_transition = cutover(
+            authority, previous=first_cutover.cutover_id,
+            build=second.identity.closed_build_id, request=D("8"),
+            previous_transition=first_transition,
+        )
+        store.append_cutover(fork_cutover_bytes, fork_cutover_signature)
+        store.append_context_transition(
+            fork_transition.encoded,
+            expected_proof=fork_cutover.as_proof(),
+        )
+        fork_head_bytes, fork_head_signature = issue_ownership_head(
+            release_sequence=2, cutover_id=fork_cutover.cutover_id,
+            closed_build_id=second.identity.closed_build_id,
+            previous_head_id=first_head.head_id,
+            signing_key_id=authority.head_key_id,
+            private_key=authority.head_private,
+        )
+        store.append_head(fork_head_bytes, fork_head_signature)
+    elif mutation == "required_head":
+        required = chain_root / chain_module.REQUIRED_HEAD_BASENAME
+        required.write_bytes(required.read_bytes() + b"x")
+
+    shutil.rmtree(first_root)
+    assert not first_root.exists()
+    authority_root = ownership_root / "authorities-v1"
+    authority_root.mkdir(mode=0o755)
+    registry_bytes = {
+        "distribution-registry-v1.json": encode_ownership_registry_v1(
+            "distribution", authority.distribution_private.public_key(),
+        ),
+        "cutover-registry-v1.json": encode_ownership_registry_v1(
+            "cutover", authority.cutover_private.public_key(),
+        ),
+        "head-registry-v1.json": encode_ownership_registry_v1(
+            "head", authority.head_private.public_key(),
+        ),
+    }
+    for basename, payload in registry_bytes.items():
+        path = authority_root / basename
+        path.write_bytes(payload)
+        path.chmod(0o644)
+    context = multiprocessing.get_context("spawn")
+    result_queue = context.Queue()
+    process = context.Process(
+        target=_cold_chain_worker,
+        args=(str(chain_root), result_queue),
+    )
+    process.start()
+    process.join(15)
+    if process.is_alive():
+        process.terminate()
+        process.join(5)
+        pytest.fail("cold reader child did not terminate")
+    assert process.exitcode == 0
+    observed = result_queue.get(timeout=2)
+    if mutation == "ok":
+        assert observed == ("ok", (1, 2), 2)
+        authority_loads = []
+
+        def load_fixed_public():
+            authority_loads.append("load")
+            return authority.public
+
+        monkeypatch.setattr(
+            authority_module, "load_ownership_public_registries_v1",
+            load_fixed_public,
+        )
+        monkeypatch.setattr(
+            chain_module, "DEFAULT_OWNERSHIP_CHAIN_ROOT_V1", chain_root,
+        )
+        monkeypatch.setattr(
+            distribution_module, "DEFAULT_RELEASE_DIRECTORY_V1", releases,
+        )
+        monkeypatch.setattr(
+            distribution_module, "_require_product_release_metadata_v1",
+            lambda _root: None,
+        )
+        real_lstat = Path.lstat
+        metadata_mutation = [None]
+        required_pointer = chain_root / chain_module.REQUIRED_HEAD_BASENAME
+        anchor_files = {
+            ownership_root / "ownership-cutover-v1.json",
+            ownership_root / "ownership-cutover-v1.sig",
+        }
+
+        def productive_metadata_lstat(path):
+            candidate = Path(path)
+            info = real_lstat(candidate)
+            relevant = (
+                candidate == chain_root
+                or candidate in chain_root.parents
+                or chain_root in candidate.parents
+                or candidate in anchor_files
+            )
+            if not relevant:
+                return info
+            mode = info.st_mode
+            uid = gid = 0
+            links = info.st_nlink
+            mutation_name = metadata_mutation[0]
+            target = (
+                None if mutation_name is None else
+                ownership_root if mutation_name.startswith("chain_")
+                else required_pointer
+            )
+            if candidate == target:
+                if mutation_name.endswith("link"):
+                    mode = stat.S_IFLNK | 0o777
+                elif mutation_name.endswith("mode"):
+                    mode = (
+                        stat.S_IFDIR | 0o775
+                        if mutation_name.startswith("chain_")
+                        else stat.S_IFREG | 0o664
+                    )
+                elif mutation_name.endswith("owner"):
+                    uid = 1000
+                elif mutation_name.endswith("hardlink"):
+                    links = 2
+            if candidate in chain_root.parents and candidate != ownership_root:
+                mode = stat.S_IFDIR | 0o755
+            return SimpleNamespace(
+                st_mode=mode, st_uid=uid, st_gid=gid, st_nlink=links,
+                st_dev=info.st_dev, st_ino=info.st_ino,
+                st_file_attributes=0,
+            )
+
+        monkeypatch.setattr(Path, "lstat", productive_metadata_lstat)
+        original_full_verify = (
+            distribution_module._verify_authenticated_distribution_record
+        )
+        product_routes = []
+
+        def verify_product_record(record, environment, *, for_test):
+            product_routes.append((type(record), for_test))
+            relaxed = distribution_module._environment_for_test(
+                environment.platform, environment.architecture,
+                environment.installation_root,
+                claimed_installation_root=environment.claimed_installation_root,
+                verify_static_boundary=False,
+            )
+            return original_full_verify(record, relaxed, for_test=for_test)
+
+        monkeypatch.setattr(
+            distribution_module, "_verify_authenticated_distribution_record",
+            verify_product_record,
+        )
+        productive = OwnershipChainStore()
+        product_result = productive.read_required_chain_cold_v1()
+        assert authority_loads == ["load"]
+        assert product_routes == [
+            (distribution_module.AuthenticatedDistributionRecordV1, False),
+        ]
+        assert tuple(
+            type(record) for record in product_result.authenticated_records
+        ) == (
+            distribution_module.AuthenticatedDistributionRecordV1,
+            distribution_module.AuthenticatedDistributionRecordV1,
+        )
+        completed_routes = len(product_routes)
+        for mutation_name in (
+            "chain_link", "chain_mode", "chain_owner",
+            "object_link", "object_mode", "object_owner", "object_hardlink",
+        ):
+            metadata_mutation[0] = mutation_name
+            with pytest.raises(
+                OwnershipChainError, match="(?:chain|object) metadata",
+            ):
+                productive.read_required_chain_cold_v1()
+            assert len(product_routes) == completed_routes
+        metadata_mutation[0] = None
+        productive.distribution_registry = decode_ownership_registry_v1(
+            encode_ownership_registry_v1(
+                "distribution", authority.distribution_private.public_key(),
+            ),
+            expected_kind="distribution",
+        )
+        with pytest.raises(OwnershipChainError, match="authority snapshot"):
+            productive.read_required_chain_cold_v1()
+    else:
+        expected = {
+            "historical_signature": "build object",
+            "predecessor": "predecessor",
+            "sequence": "object binding",
+            "gap": "head gap",
+            "duplicate": "build fork",
+            "fork": "head fork",
+            "required_head": "required",
+        }[mutation]
+        assert observed[0] == "error"
+        assert expected in " ".join(str(item) for item in observed)
 
 
 def test_exact_retry_completes_matching_orphan_signature(authority, tmp_path):
     private, key_id, registry = authority
     tmp_path.chmod(0o755)
-    store = OwnershipChainStore.initialize(tmp_path, registry=registry)
+    store = initialize_test_store(tmp_path, authority)
     encoded, signature = issue_ownership_head(
         release_sequence=1, cutover_id=D("3"), closed_build_id=D("4"),
         previous_head_id=None, signing_key_id=key_id, private_key=private,
@@ -445,7 +1516,7 @@ def test_windows_required_replace_retries_only_transient_conflict(
 ):
     private, key_id, registry = authority
     tmp_path.chmod(0o755)
-    store = OwnershipChainStore.initialize(tmp_path, registry=registry)
+    store = initialize_test_store(tmp_path, authority)
     first_bytes, first_signature = issue_ownership_head(
         release_sequence=1, cutover_id=D("3"), closed_build_id=D("4"),
         previous_head_id=None, signing_key_id=key_id, private_key=private,
@@ -483,7 +1554,7 @@ def test_windows_persistent_replace_denial_is_bounded_failure(
 ):
     private, key_id, registry = authority
     tmp_path.chmod(0o755)
-    store = OwnershipChainStore.initialize(tmp_path, registry=registry)
+    store = initialize_test_store(tmp_path, authority)
     first_bytes, first_signature = issue_ownership_head(
         release_sequence=1, cutover_id=D("3"), closed_build_id=D("4"),
         previous_head_id=None, signing_key_id=key_id, private_key=private,
@@ -509,3 +1580,463 @@ def test_windows_persistent_replace_denial_is_bounded_failure(
             replace_timeout=0,
         )
     assert store.read_required_head().head_id == first.head_id
+
+
+def test_chain_initial_inspection_is_empty_stable_and_nonmutating(
+    authority, tmp_path,
+):
+    root = tmp_path / "chain-v1"
+    store = initialize_test_store(root, authority)
+    before = tuple(sorted(
+        path.relative_to(tmp_path).as_posix()
+        for path in tmp_path.rglob("*")
+    ))
+
+    state = _inspect_ownership_chain_state_for_test_v1(store)
+
+    assert type(state) is _InitialOwnershipChainStateForTestV1
+    assert state.root == root
+    assert tuple(sorted(
+        path.relative_to(tmp_path).as_posix()
+        for path in tmp_path.rglob("*")
+    )) == before
+
+
+def test_chain_initial_inspection_rejects_inventory_change_before_mint(
+    authority, tmp_path, monkeypatch,
+):
+    root = tmp_path / "chain-v1"
+    store = initialize_test_store(root, authority)
+    real_snapshot = chain_module._chain_inventory_snapshot_v1
+    calls = []
+
+    def changing_snapshot(observed_root):
+        calls.append("snapshot")
+        if len(calls) == 2:
+            (root / REQUIRED_HEAD_BASENAME).write_bytes(b"appeared")
+        return real_snapshot(observed_root)
+
+    monkeypatch.setattr(
+        chain_module, "_chain_inventory_snapshot_v1", changing_snapshot,
+    )
+    with pytest.raises(OwnershipChainError) as failure:
+        _inspect_ownership_chain_state_for_test_v1(store)
+
+    assert calls == ["snapshot", "snapshot"]
+    assert failure.value.code == "birth_ownership_recovery_required"
+
+
+@pytest.mark.parametrize(
+    "partial",
+    (
+        "anchor-payload", "anchor-signature", "anchor-payload-temp",
+        "anchor-signature-temp", "anchor-malformed-temp", "required",
+        "required-lock", "head", "temporary",
+    ),
+)
+def test_chain_initial_inspection_rejects_every_partial_prefix(
+    authority, tmp_path, partial,
+):
+    root = tmp_path / "chain-v1"
+    store = initialize_test_store(root, authority)
+    target = {
+        "anchor-payload": tmp_path / PAYLOAD_BASENAME,
+        "anchor-signature": tmp_path / SIGNATURE_BASENAME,
+        "anchor-payload-temp": (
+            tmp_path / f".{PAYLOAD_BASENAME}.{'a' * 64}.tmp"
+        ),
+        "anchor-signature-temp": (
+            tmp_path / f".{SIGNATURE_BASENAME}.{'b' * 64}.tmp"
+        ),
+        "anchor-malformed-temp": (
+            tmp_path / f".{PAYLOAD_BASENAME}.bad.tmp"
+        ),
+        "required": root / REQUIRED_HEAD_BASENAME,
+        "required-lock": root / REQUIRED_HEAD_LOCK_BASENAME,
+        "head": root / "heads-v1" / ("0" * 64 + ".json"),
+        "temporary": root / ".partial.tmp",
+    }[partial]
+    target.write_bytes(b"partial")
+
+    with pytest.raises(OwnershipChainError) as failure:
+        _inspect_ownership_chain_state_for_test_v1(store)
+
+    assert failure.value.code == "birth_ownership_recovery_required"
+
+
+@pytest.mark.parametrize(
+    "mutation", ("mode", "owner", "hardlink", "marker", "size"),
+)
+def test_chain_inspection_rejects_unsafe_persistent_required_lock(
+    authority, tmp_path, mutation, monkeypatch,
+):
+    root = tmp_path / "chain-v1"
+    store = initialize_test_store(root, authority)
+    (tmp_path / PAYLOAD_BASENAME).write_bytes(b"payload")
+    (tmp_path / SIGNATURE_BASENAME).write_bytes(b"signature")
+    (root / REQUIRED_HEAD_BASENAME).write_bytes(b"required")
+    lock = root / REQUIRED_HEAD_LOCK_BASENAME
+    lock.write_bytes(b"\0")
+    if os.name != "nt":
+        lock.chmod(0o600)
+    if mutation == "mode":
+        if os.name == "nt":
+            pytest.skip("Windows has no exact POSIX lock mode")
+        lock.chmod(0o644)
+    elif mutation == "owner":
+        if os.name == "nt":
+            pytest.skip("Windows has no POSIX lock ownership")
+        real_lstat = Path.lstat
+
+        def wrong_lock_owner(path):
+            info = real_lstat(path)
+            if Path(path) != lock:
+                return info
+            return SimpleNamespace(
+                st_mode=info.st_mode, st_nlink=info.st_nlink,
+                st_size=info.st_size, st_uid=info.st_uid + 1,
+                st_gid=info.st_gid + 1, st_file_attributes=0,
+            )
+
+        monkeypatch.setattr(Path, "lstat", wrong_lock_owner)
+    elif mutation == "hardlink":
+        try:
+            os.link(lock, tmp_path / "required-lock-copy")
+        except OSError:
+            pytest.skip("hard links unavailable")
+    elif mutation == "marker":
+        lock.write_bytes(b"x")
+    else:
+        lock.write_bytes(b"\0x")
+
+    def unexpected_cold_read(_self):
+        raise AssertionError("unsafe lock reached the cold reader")
+
+    monkeypatch.setattr(
+        _OwnershipChainStoreForTest,
+        "_read_required_chain_cold_for_test",
+        unexpected_cold_read,
+    )
+
+    with pytest.raises(OwnershipChainError) as failure:
+        _inspect_ownership_chain_state_for_test_v1(store)
+
+    assert failure.value.code == "birth_ownership_recovery_required"
+    assert failure.value.detail == "required lock metadata"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX private writer lock")
+@pytest.mark.parametrize("mutation", [None, "mode", "owner", "hardlink", "size", "symlink"])
+def test_product_chain_reader_never_opens_private_writer_lock(tmp_path, monkeypatch, mutation):
+    info = SimpleNamespace(st_mode=stat.S_IFREG | 0o600, st_nlink=1,
+                           st_size=1, st_uid=0, st_gid=0, st_file_attributes=0)
+    if mutation == "mode":
+        info.st_mode = stat.S_IFREG | 0o644
+    elif mutation == "owner":
+        info.st_uid = 1234
+    elif mutation == "hardlink":
+        info.st_nlink = 2
+    elif mutation == "size":
+        info.st_size = 0
+    elif mutation == "symlink":
+        info.st_mode = stat.S_IFLNK | 0o600
+    monkeypatch.setattr(Path, "lstat", lambda _path: info)
+    monkeypatch.setattr(os, "geteuid", lambda: 1234)
+    opens = []
+
+    def forbidden_open(*args):
+        opens.append(args)
+        raise PermissionError("writer lock is intentionally root-only")
+
+    monkeypatch.setattr(chain_module, "_safe_read", forbidden_open)
+    if mutation is None:
+        chain_module._require_required_head_lock_metadata_v1(tmp_path, root_owned=True)
+    else:
+        with pytest.raises(OwnershipChainError, match="required lock metadata"):
+            chain_module._require_required_head_lock_metadata_v1(tmp_path, root_owned=True)
+    assert opens == []
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX administrative writer lock")
+@pytest.mark.parametrize("root_owned,euid", [(True, 0), (False, 1234)])
+def test_chain_writer_lock_owner_still_checks_marker(tmp_path, monkeypatch, root_owned, euid):
+    info = SimpleNamespace(st_mode=stat.S_IFREG | 0o600, st_nlink=1,
+                           st_size=1, st_uid=euid, st_gid=euid, st_file_attributes=0)
+    monkeypatch.setattr(Path, "lstat", lambda _path: info)
+    monkeypatch.setattr(os, "geteuid", lambda: euid)
+    monkeypatch.setattr(os, "getegid", lambda: euid)
+    monkeypatch.setattr(chain_module, "_safe_read", lambda *_args: b"x")
+    with pytest.raises(OwnershipChainError, match="required lock metadata"):
+        chain_module._require_required_head_lock_metadata_v1(tmp_path, root_owned=root_owned)
+
+
+def test_chain_inspection_delegates_complete_prefix_with_known_lock(
+    authority, tmp_path, monkeypatch,
+):
+    root = tmp_path / "chain-v1"
+    store = initialize_test_store(root, authority)
+    (tmp_path / PAYLOAD_BASENAME).write_bytes(b"payload")
+    (tmp_path / SIGNATURE_BASENAME).write_bytes(b"signature")
+    (root / REQUIRED_HEAD_BASENAME).write_bytes(b"required")
+    (root / REQUIRED_HEAD_LOCK_BASENAME).write_bytes(b"\0")
+    if os.name != "nt":
+        (root / REQUIRED_HEAD_LOCK_BASENAME).chmod(0o600)
+    sentinel = object()
+    calls = []
+
+    def cold_success(_self):
+        calls.append("cold")
+        return sentinel
+
+    monkeypatch.setattr(
+        _OwnershipChainStoreForTest,
+        "_read_required_chain_cold_for_test",
+        cold_success,
+    )
+
+    assert _inspect_ownership_chain_state_for_test_v1(store) is sentinel
+    assert calls == ["cold"]
+
+
+def test_chain_inspection_never_falls_back_to_initial_after_cold_failure(
+    authority, tmp_path, monkeypatch,
+):
+    root = tmp_path / "chain-v1"
+    store = initialize_test_store(root, authority)
+    (tmp_path / PAYLOAD_BASENAME).write_bytes(b"payload")
+    (tmp_path / SIGNATURE_BASENAME).write_bytes(b"signature")
+    (root / REQUIRED_HEAD_BASENAME).write_bytes(b"required")
+    calls = []
+
+    def cold_failure(_self):
+        calls.append("cold")
+        raise OwnershipChainError("birth_ownership_distribution_chain_invalid")
+
+    monkeypatch.setattr(
+        _OwnershipChainStoreForTest,
+        "_read_required_chain_cold_for_test",
+        cold_failure,
+    )
+    with pytest.raises(OwnershipChainError) as failure:
+        _inspect_ownership_chain_state_for_test_v1(store)
+
+    assert calls == ["cold"]
+    assert failure.value.code == "birth_ownership_recovery_required"
+
+
+def test_product_initial_state_cannot_be_constructed_with_a_public_seal():
+    assert not hasattr(chain_module, "_INITIAL_CHAIN_STATE_SEAL_V1")
+    with pytest.raises(OwnershipChainError) as failure:
+        chain_module._InitialOwnershipChainStateV1(
+            chain_module.DEFAULT_OWNERSHIP_CHAIN_ROOT_V1, object(),
+        )
+
+    assert failure.value.code == "birth_ownership_recovery_required"
+
+
+def test_initial_state_core_rejects_a_forged_product_store():
+    forged = object.__new__(OwnershipChainStore)
+    forged.root = chain_module.DEFAULT_OWNERSHIP_CHAIN_ROOT_V1
+    fake_public = SimpleNamespace(
+        distribution=object(), cutover=object(), head=object(),
+    )
+    forged._fixed_authority_snapshot = SimpleNamespace(public=fake_public)
+    forged._authorities = fake_public
+    forged.distribution_registry = fake_public.distribution
+    forged.cutover_registry = fake_public.cutover
+    forged.head_registry = fake_public.head
+
+    with pytest.raises(OwnershipChainError) as failure:
+        chain_module._inspect_ownership_chain_state_core_v1(
+            forged, for_test=False,
+        )
+
+    assert failure.value.code == "birth_ownership_recovery_required"
+    assert failure.value.detail == "productive store"
+
+
+def test_initial_state_core_rejects_hostile_store_before_getters():
+    class HostileStore:
+        @property
+        def _fixed_authority_snapshot(self):
+            raise RuntimeError("hostile getter escaped")
+
+    with pytest.raises(OwnershipChainError) as failure:
+        chain_module._inspect_ownership_chain_state_core_v1(
+            HostileStore(), for_test=False,
+        )
+
+    assert failure.value.code == "birth_ownership_recovery_required"
+    assert failure.value.detail == "productive store"
+
+
+def test_product_chain_inspection_fails_off_linux_before_io(monkeypatch):
+    def unexpected(*_args, **_kwargs):
+        raise AssertionError("chain inspection performed I/O")
+
+    monkeypatch.setattr(chain_module.sys, "platform", "win32")
+    monkeypatch.setattr(chain_module, "OwnershipChainStore", unexpected)
+    monkeypatch.setattr(chain_module.Path, "lstat", unexpected)
+
+    with pytest.raises(OwnershipChainError) as failure:
+        inspect_ownership_chain_state_v1()
+
+    assert failure.value.code == "birth_ownership_platform_unsupported"
+
+
+def _successor_cold_fixture(tmp_path, authority, *, advanced):
+    root = tmp_path / "ownership"
+    root.mkdir(mode=0o755)
+    releases = root / "releases-v1"
+    releases.mkdir(mode=0o755)
+    store = _OwnershipChainStoreForTest._initialize_with_authorities(
+        root / "chain-v1", authority.public,
+    )
+    distributions, heads = [], []
+    previous_cutover = previous_transition = previous_build = None
+    for sequence in (1, 2):
+        distribution = _cold_distribution(
+            releases / f"{sequence:020d}", authority,
+            sequence=sequence, previous_closed_build_id=previous_build,
+        )
+        distributions.append(distribution)
+        store.append_authenticated_build(distribution)
+        encoded, signature, certificate, transition = cutover(
+            authority, previous=previous_cutover,
+            build=distribution.identity.closed_build_id,
+            request=D(str(sequence)), previous_transition=previous_transition,
+        )
+        store.append_cutover(encoded, signature)
+        store.append_context_transition(
+            transition.encoded, expected_proof=certificate.as_proof(),
+        )
+        if sequence == 1:
+            for name, payload in (
+                (PAYLOAD_BASENAME, encoded), (SIGNATURE_BASENAME, signature),
+            ):
+                path = root / name
+                path.write_bytes(payload)
+                path.chmod(0o644)
+        head_bytes, head_signature = issue_ownership_head(
+            release_sequence=sequence, cutover_id=certificate.cutover_id,
+            closed_build_id=distribution.identity.closed_build_id,
+            previous_head_id=None if not heads else heads[-1].head_id,
+            signing_key_id=authority.head_key_id, private_key=authority.head_private,
+        )
+        head = store.append_head(head_bytes, head_signature)
+        if sequence == 1 or advanced:
+            store.update_required_head(
+                head_bytes, head_signature,
+                expected_head_id=None if not heads else heads[-1].head_id,
+            )
+        heads.append(head)
+        previous_cutover, previous_transition = certificate.cutover_id, transition
+        previous_build = distribution.identity.closed_build_id
+    return store, distributions, heads
+
+
+@pytest.mark.skipif(os.name == "nt", reason="cold ownership store is Linux-only")
+@pytest.mark.parametrize("advanced", (False, True))
+def test_transition_cold_reader_uses_only_the_actual_selected_verifier(
+    authority, tmp_path, advanced,
+):
+    store, distributions, heads = _successor_cold_fixture(
+        tmp_path, authority, advanced=advanced,
+    )
+    calls = []
+
+    def authenticate(encoded, signature):
+        return distribution_module._authenticate_distribution_record_for_test(
+            encoded, signature, registry=authority.distribution_registry,
+        )
+
+    current = authenticate(distributions[1].encoded, distributions[1].signature)
+
+    def verify(record):
+        return distribution_module._verify_authenticated_distribution_record_for_test(
+            record, environment=distribution_module._environment_for_test(
+                "linux", "x86_64", Path(record.installation_root),
+            ),
+        )
+
+    def previous(candidate, record):
+        assert candidate == current
+        assert candidate.previous_closed_build_id == record.closed_build_id
+        assert candidate.release_sequence == record.release_sequence + 1
+        calls.append("previous")
+        return verify(record)
+
+    def current_only(record):
+        assert record == current
+        calls.append("current")
+        return verify(record)
+
+    pointer = store.root / REQUIRED_HEAD_BASENAME
+    before = pointer.read_bytes()
+    result = store._read_transition_chain_cold_core_v1(
+        current, authenticate_record=authenticate, verify_current_record=current_only,
+        verify_previous_record=previous, for_test=True,
+    )
+    assert result.required_head == heads[int(advanced)]
+    assert calls == ["current" if advanced else "previous"]
+    assert pointer.read_bytes() == before
+
+    def strict_current(record):
+        if record != current:
+            raise DistributionManifestError("birth_ownership_distribution_invalid", "current pins")
+        return verify(record)
+
+    if advanced:
+        assert store._read_required_chain_cold_core_v1(
+            authenticate_record=authenticate, verify_live_record=strict_current,
+            for_test=True,
+        ) == result
+    else:
+        with pytest.raises(OwnershipChainError):
+            store._read_required_chain_cold_core_v1(
+                authenticate_record=authenticate, verify_live_record=strict_current,
+                for_test=True,
+            )
+
+
+@pytest.mark.skipif(os.name == "nt", reason="cold ownership store is Linux-only")
+@pytest.mark.parametrize("mutation", ("candidate_signature", "head_signature", "anchor", "previous_bytes"))
+def test_transition_cold_reader_preserves_signature_chain_and_byte_checks(
+    authority, tmp_path, mutation,
+):
+    store, distributions, heads = _successor_cold_fixture(
+        tmp_path, authority, advanced=False,
+    )
+
+    def authenticate(encoded, signature):
+        return distribution_module._authenticate_distribution_record_for_test(
+            encoded, signature, registry=authority.distribution_registry,
+        )
+
+    current = authenticate(distributions[1].encoded, distributions[1].signature)
+    if mutation == "candidate_signature":
+        object.__setattr__(current, "signature", b"x" * 64)
+    elif mutation == "head_signature":
+        stem = f"{1:020d}-{heads[0].cutover_id.removeprefix('sha256:')}"
+        (store.root / "heads-v1" / f"{stem}.sig").write_bytes(b"x" * 64)
+    elif mutation == "anchor":
+        (store.root.parent / PAYLOAD_BASENAME).write_bytes(b"changed")
+    else:
+        distribution = distributions[0]
+        path = Path(distribution.installation_root) / distribution.files[0].path
+        path.write_bytes(path.read_bytes() + b"changed")
+
+    def previous(candidate, record):
+        assert candidate == current
+        return distribution_module._verify_authenticated_distribution_record_for_test(
+            record, environment=distribution_module._environment_for_test(
+                "linux", "x86_64", Path(record.installation_root),
+            ),
+        )
+
+    with pytest.raises((OwnershipChainError, DistributionManifestError)):
+        store._read_transition_chain_cold_core_v1(
+            current, authenticate_record=authenticate,
+            verify_current_record=lambda _: pytest.fail("wrong selected head"),
+            verify_previous_record=previous, for_test=True,
+        )

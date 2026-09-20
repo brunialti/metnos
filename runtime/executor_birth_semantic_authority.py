@@ -2,19 +2,18 @@
 
 Only public verification material is loaded here.  Producers and candidates
 cannot mint evidence through this interface; an operator provisions signed
-evidence records out of band and the authority authenticates them at use time.
+evidence records out of band and the authority authenticates them before a
+detached authority leaves its Birth session, or at use time for legacy paths.
 """
 from __future__ import annotations
 
 import base64
-import hashlib
 import json
 import os
 import re
 import stat
-import ctypes
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from types import MappingProxyType
 from typing import Mapping, Protocol
 
@@ -24,6 +23,11 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from executor_birth_semantic_review import (
     EvidenceStatus, IndependentEvidence, IndependentEvidenceKind, ReviewPolicyV1,
     ReviewRiskFacts, SemanticReviewError, SemanticReviewRequest,
+)
+from executor_birth_secure_file import (
+    SecureFileReadError, _same_file, _win_close, _win_file_shape,
+    _win_expected_path, _win_final_path, _win_info, _win_open, _win_read,
+    read_immutable_regular_file,
 )
 
 
@@ -39,135 +43,6 @@ _MAX_EVIDENCE_BYTES = 64 * 1024
 _MAX_KEY_BYTES = 32
 
 
-if os.name == "nt":
-    from ctypes import wintypes
-
-    class _WinFileInfo(ctypes.Structure):
-        _fields_ = [
-            ("attributes", wintypes.DWORD), ("creation_low", wintypes.DWORD),
-            ("creation_high", wintypes.DWORD), ("access_low", wintypes.DWORD),
-            ("access_high", wintypes.DWORD), ("write_low", wintypes.DWORD),
-            ("write_high", wintypes.DWORD), ("volume", wintypes.DWORD),
-            ("size_high", wintypes.DWORD), ("size_low", wintypes.DWORD),
-            ("links", wintypes.DWORD), ("file_index_high", wintypes.DWORD),
-            ("file_index_low", wintypes.DWORD),
-        ]
-
-    class _WinFileStandardInfo(ctypes.Structure):
-        _fields_ = [
-            ("allocation_size", ctypes.c_longlong),
-            ("end_of_file", ctypes.c_longlong),
-            ("links", wintypes.DWORD),
-            ("delete_pending", ctypes.c_ubyte),
-            ("directory", ctypes.c_ubyte),
-        ]
-
-    class _WinFileAttributeTagInfo(ctypes.Structure):
-        _fields_ = [
-            ("attributes", wintypes.DWORD),
-            ("reparse_tag", wintypes.DWORD),
-        ]
-
-    _KERNEL32 = ctypes.WinDLL("kernel32", use_last_error=True)
-    _KERNEL32.CreateFileW.argtypes = (wintypes.LPCWSTR, wintypes.DWORD,
-        wintypes.DWORD, ctypes.c_void_p, wintypes.DWORD, wintypes.DWORD,
-        wintypes.HANDLE)
-    _KERNEL32.CreateFileW.restype = wintypes.HANDLE
-    _KERNEL32.GetFileInformationByHandle.argtypes = (wintypes.HANDLE,
-                                                      ctypes.POINTER(_WinFileInfo))
-    _KERNEL32.GetFileInformationByHandle.restype = wintypes.BOOL
-    _KERNEL32.GetFileInformationByHandleEx.argtypes = (
-        wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD,
-    )
-    _KERNEL32.GetFileInformationByHandleEx.restype = wintypes.BOOL
-    _KERNEL32.GetFinalPathNameByHandleW.argtypes = (wintypes.HANDLE,
-        wintypes.LPWSTR, wintypes.DWORD, wintypes.DWORD)
-    _KERNEL32.GetFinalPathNameByHandleW.restype = wintypes.DWORD
-    _KERNEL32.ReadFile.argtypes = (wintypes.HANDLE, ctypes.c_void_p,
-        wintypes.DWORD, ctypes.POINTER(wintypes.DWORD), ctypes.c_void_p)
-    _KERNEL32.ReadFile.restype = wintypes.BOOL
-    _KERNEL32.CloseHandle.argtypes = (wintypes.HANDLE,)
-    _KERNEL32.CloseHandle.restype = wintypes.BOOL
-
-
-def _win_error(operation: str) -> OSError:
-    return ctypes.WinError(ctypes.get_last_error(), operation)
-
-
-def _win_open(path: Path, *, directory: bool) -> int:
-    # No write/delete sharing: the object and its directory entry remain fixed
-    # for the lifetime of the verification handle.
-    flags = 0x00200000  # FILE_FLAG_OPEN_REPARSE_POINT
-    access = 0x00000001 if directory else 0x80000000  # LIST_DIRECTORY / GENERIC_READ
-    if directory:
-        flags |= 0x02000000  # FILE_FLAG_BACKUP_SEMANTICS
-    handle = _KERNEL32.CreateFileW(str(path), access, 0x00000001, None, 3, flags, None)
-    if handle in {None, ctypes.c_void_p(-1).value}:
-        raise _win_error("CreateFileW")
-    return handle
-
-
-def _win_info(handle: int) -> tuple[int, ...]:
-    info = _WinFileInfo()
-    if not _KERNEL32.GetFileInformationByHandle(handle, ctypes.byref(info)):
-        raise _win_error("GetFileInformationByHandle")
-    return (info.attributes, info.write_high, info.write_low, info.volume,
-            info.size_high, info.size_low, info.links, info.file_index_high,
-            info.file_index_low)
-
-
-def _win_file_shape(handle: int) -> tuple[int, int, int, bool, bool]:
-    """Return type/size/link state using the non-legacy Win32 layouts."""
-    standard = _WinFileStandardInfo()
-    if not _KERNEL32.GetFileInformationByHandleEx(
-        handle, 1, ctypes.byref(standard), ctypes.sizeof(standard),
-    ):
-        raise _win_error("GetFileInformationByHandleEx(FileStandardInfo)")
-    tagged = _WinFileAttributeTagInfo()
-    if not _KERNEL32.GetFileInformationByHandleEx(
-        handle, 9, ctypes.byref(tagged), ctypes.sizeof(tagged),
-    ):
-        raise _win_error("GetFileInformationByHandleEx(FileAttributeTagInfo)")
-    return (
-        int(tagged.attributes), int(standard.end_of_file), int(standard.links),
-        bool(standard.delete_pending), bool(standard.directory),
-    )
-
-
-def _win_final_path(handle: int) -> str:
-    needed = _KERNEL32.GetFinalPathNameByHandleW(handle, None, 0, 0)
-    if not needed:
-        raise _win_error("GetFinalPathNameByHandleW")
-    buffer = ctypes.create_unicode_buffer(needed + 1)
-    written = _KERNEL32.GetFinalPathNameByHandleW(handle, buffer, len(buffer), 0)
-    if not written or written >= len(buffer):
-        raise _win_error("GetFinalPathNameByHandleW")
-    value = buffer.value
-    if value.startswith("\\\\?\\UNC\\"):
-        value = "\\\\" + value[8:]
-    elif value.startswith("\\\\?\\"):
-        value = value[4:]
-    return os.path.normcase(os.path.abspath(value))
-
-
-def _win_read(handle: int, maximum: int) -> bytes:
-    result = bytearray()
-    while len(result) <= maximum:
-        capacity = min(8192, maximum + 1 - len(result))
-        buffer = ctypes.create_string_buffer(capacity)
-        count = wintypes.DWORD()
-        if not _KERNEL32.ReadFile(handle, buffer, capacity, ctypes.byref(count), None):
-            raise _win_error("ReadFile")
-        if not count.value:
-            break
-        result.extend(buffer.raw[:count.value])
-    return bytes(result)
-
-
-def _win_close(handle: int) -> None:
-    _KERNEL32.CloseHandle(handle)
-
-
 def _pairs(items: list[tuple[str, object]]) -> dict[str, object]:
     value: dict[str, object] = {}
     for key, item in items:
@@ -177,64 +52,11 @@ def _pairs(items: list[tuple[str, object]]) -> dict[str, object]:
     return value
 
 
-def _same_file(before: os.stat_result, after: os.stat_result) -> bool:
-    return (before.st_dev, before.st_ino, before.st_mode, before.st_nlink,
-            before.st_size, before.st_mtime_ns, before.st_ctime_ns) == (
-        after.st_dev, after.st_ino, after.st_mode, after.st_nlink,
-        after.st_size, after.st_mtime_ns, after.st_ctime_ns)
-
-
 def _secure_file_bytes(path: Path, *, maximum: int, error: str) -> bytes:
     """Read one immutable regular file through its descriptor, without links."""
-    if os.name == "nt":
-        handle = None
-        try:
-            handle = _win_open(path, directory=False)
-            before = _win_info(handle)
-            shape_before = _win_file_shape(handle)
-            attributes, size, links, delete_pending, directory = shape_before
-            if (
-                attributes & 0x00000400 or directory or delete_pending
-                or links != 1 or size < 0 or size > maximum
-            ):
-                raise ValueError("unsafe file")
-            if _win_final_path(handle) != os.path.normcase(os.path.abspath(path)):
-                raise ValueError("unexpected final path")
-            raw = _win_read(handle, maximum)
-            if (
-                len(raw) > maximum or len(raw) != size
-                or _win_info(handle) != before
-                or _win_file_shape(handle) != shape_before
-            ):
-                raise ValueError("file changed")
-            return raw
-        except (OSError, ValueError) as exc:
-            raise SemanticReviewError(error, path.name) from exc
-        finally:
-            if handle is not None:
-                _win_close(handle)
-    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
     try:
-        fd = os.open(path, flags)
-        try:
-            before = os.fstat(fd)
-            if (not stat.S_ISREG(before.st_mode) or before.st_nlink != 1
-                    or before.st_size > maximum
-                    or (os.name != "nt" and before.st_mode & 0o022)):
-                raise ValueError("unsafe file")
-            raw = bytearray()
-            while len(raw) <= maximum:
-                block = os.read(fd, min(8192, maximum + 1 - len(raw)))
-                if not block:
-                    break
-                raw.extend(block)
-            after = os.fstat(fd)
-            if len(raw) > maximum or not _same_file(before, after):
-                raise ValueError("file changed")
-            return bytes(raw)
-        finally:
-            os.close(fd)
-    except (OSError, ValueError) as exc:
+        return read_immutable_regular_file(path, maximum=maximum)
+    except SecureFileReadError as exc:
         raise SemanticReviewError(error, path.name) from exc
 
 
@@ -272,6 +94,56 @@ def derive_review_risk_facts(request: SemanticReviewRequest) -> ReviewRiskFacts:
     return ReviewRiskFacts(risk, complexity, uncertainty)
 
 
+def _evidence_for_request(
+    request: SemanticReviewRequest,
+    records: tuple[IndependentEvidence, ...],
+) -> tuple[IndependentEvidence, ...]:
+    result: list[IndependentEvidence] = []
+    seen: set[str] = set()
+    for item in records:
+        if item.candidate_id != request.candidate_id:
+            continue
+        if item.admission_context_id != request.admission_context_id:
+            raise SemanticReviewError("evidence_obsolete", item.evidence_id)
+        if item.owner_id == request.generator_owner_id:
+            raise SemanticReviewError(
+                "evidence_forged", "candidate self-attestation"
+            )
+        if item.evidence_id in seen:
+            raise SemanticReviewError("evidence_forged", "duplicate evidence_id")
+        seen.add(item.evidence_id)
+        result.append(item)
+    return tuple(result)
+
+
+@dataclass(frozen=True, slots=True)
+class SealedSemanticAuthorityV1:
+    """Authenticated semantic values detached from the Birth session."""
+
+    policy: ReviewPolicyV1
+    evidence_records: tuple[IndependentEvidence, ...]
+
+    def __post_init__(self) -> None:
+        if (
+            not isinstance(self.policy, ReviewPolicyV1)
+            or type(self.evidence_records) is not tuple
+            or any(
+                not isinstance(item, IndependentEvidence)
+                for item in self.evidence_records
+            )
+        ):
+            raise SemanticReviewError(
+                "semantic_review_unavailable", "authority config"
+            )
+
+    def inputs_for(self, request: SemanticReviewRequest):
+        return (
+            self.policy,
+            derive_review_risk_facts(request),
+            _evidence_for_request(request, self.evidence_records),
+        )
+
+
 @dataclass(frozen=True, slots=True)
 class PreprovisionedSemanticAuthority:
     policy: ReviewPolicyV1
@@ -279,6 +151,8 @@ class PreprovisionedSemanticAuthority:
     verifier_keys: Mapping[str, Ed25519PublicKey]
 
     def __post_init__(self) -> None:
+        # ``evidence_dir`` is a historical Path or a directory capability bound
+        # to a Birth session; the second form cannot be reopened by name.
         if not isinstance(self.policy, ReviewPolicyV1) or not self.verifier_keys:
             raise SemanticReviewError("semantic_review_unavailable", "authority config")
         keys = dict(self.verifier_keys)
@@ -290,7 +164,23 @@ class PreprovisionedSemanticAuthority:
     def inputs_for(self, request: SemanticReviewRequest):
         return self.policy, derive_review_risk_facts(request), self._evidence_for(request)
 
+    def _seal_for_detached_use_v1(self) -> SealedSemanticAuthorityV1:
+        """Authenticate evidence while the bound Birth session is alive."""
+        from executor_birth_secure_fs import _SecureDirectoryHandle
+
+        if not isinstance(self.evidence_dir, _SecureDirectoryHandle):
+            raise SemanticReviewError(
+                "semantic_review_unavailable", "evidence store"
+            )
+        return SealedSemanticAuthorityV1(
+            self.policy, self._records_from_capability()
+        )
+
     def _evidence_for(self, request: SemanticReviewRequest) -> tuple[IndependentEvidence, ...]:
+        from executor_birth_secure_fs import _SecureDirectoryHandle
+
+        if isinstance(self.evidence_dir, _SecureDirectoryHandle):
+            return self._evidence_for_capability(request)
         if os.name == "nt":
             return self._evidence_for_windows(request)
         flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
@@ -307,25 +197,62 @@ class PreprovisionedSemanticAuthority:
             names = sorted((name for name in os.listdir(directory_fd) if name.endswith(".json")), key=lambda name: name.encode())
             if len(names) > _MAX_EVIDENCE_FILES or any(name in {".", ".."} or "/" in name or "\\" in name for name in names):
                 raise SemanticReviewError("semantic_review_unavailable", "evidence store bounds")
-            result: list[IndependentEvidence] = []
-            seen: set[str] = set()
-            for name in names:
-                item = self._read_record_at(directory_fd, name)
-                if item.candidate_id != request.candidate_id:
-                    continue
-                if item.admission_context_id != request.admission_context_id:
-                    raise SemanticReviewError("evidence_obsolete", item.evidence_id)
-                if item.owner_id == request.generator_owner_id:
-                    raise SemanticReviewError("evidence_forged", "candidate self-attestation")
-                if item.evidence_id in seen:
-                    raise SemanticReviewError("evidence_forged", "duplicate evidence_id")
-                seen.add(item.evidence_id)
-                result.append(item)
+            records = tuple(
+                self._read_record_at(directory_fd, name) for name in names
+            )
             if not _same_file(before, os.fstat(directory_fd)):
                 raise SemanticReviewError("semantic_review_unavailable", "evidence store changed")
-            return tuple(result)
+            return _evidence_for_request(request, records)
         finally:
             os.close(directory_fd)
+
+    def _evidence_for_capability(
+        self, request: SemanticReviewRequest
+    ) -> tuple[IndependentEvidence, ...]:
+        """Read the evidence store through the capability bound at load time.
+
+        The location is a directory this authority already holds, not a name to
+        resolve again: a store moved aside and replaced by another one at the
+        same name is therefore not consulted.  Once the session that produced
+        the capability is closed the store is simply unavailable, and the
+        refusal carries no location.
+        """
+        return _evidence_for_request(request, self._records_from_capability())
+
+    def _records_from_capability(self) -> tuple[IndependentEvidence, ...]:
+        from executor_birth_secure_fs import BirthSecureFSError, _BirthObjectRole
+
+        try:
+            names = sorted(
+                (
+                    name
+                    for name in self.evidence_dir.inventory()
+                    if name.endswith(".json")
+                ),
+                key=lambda name: name.encode(),
+            )
+        except BirthSecureFSError as exc:
+            raise SemanticReviewError(
+                "semantic_review_unavailable", "evidence store"
+            ) from exc
+        if len(names) > _MAX_EVIDENCE_FILES:
+            raise SemanticReviewError(
+                "semantic_review_unavailable", "evidence store bounds"
+            )
+        result: list[IndependentEvidence] = []
+        for name in names:
+            try:
+                raw = self.evidence_dir.read_file(
+                    name,
+                    maximum=_MAX_EVIDENCE_BYTES,
+                    role=_BirthObjectRole.birth_integrity_only,
+                )
+            except BirthSecureFSError as exc:
+                raise SemanticReviewError(
+                    "semantic_review_unavailable", "evidence store"
+                ) from exc
+            result.append(self._decode_record(raw, name))
+        return tuple(result)
 
     def _evidence_for_windows(self, request: SemanticReviewRequest) -> tuple[IndependentEvidence, ...]:
         handle = None
@@ -336,30 +263,20 @@ class PreprovisionedSemanticAuthority:
             if not attributes & 0x00000010 or attributes & 0x00000400:
                 raise SemanticReviewError("semantic_review_unavailable", "evidence store type")
             final_directory = _win_final_path(handle)
-            if final_directory != os.path.normcase(os.path.abspath(self.evidence_dir)):
+            if final_directory != _win_expected_path(self.evidence_dir):
                 raise SemanticReviewError("semantic_review_unavailable", "evidence store path")
             names = sorted((name for name in os.listdir(self.evidence_dir)
                             if name.endswith(".json")), key=lambda name: name.encode())
             if len(names) > _MAX_EVIDENCE_FILES or any(
                     name in {".", ".."} or "/" in name or "\\" in name for name in names):
                 raise SemanticReviewError("semantic_review_unavailable", "evidence store bounds")
-            result: list[IndependentEvidence] = []
-            seen: set[str] = set()
-            for name in names:
-                item = self._read_record_windows(final_directory, name)
-                if item.candidate_id != request.candidate_id:
-                    continue
-                if item.admission_context_id != request.admission_context_id:
-                    raise SemanticReviewError("evidence_obsolete", item.evidence_id)
-                if item.owner_id == request.generator_owner_id:
-                    raise SemanticReviewError("evidence_forged", "candidate self-attestation")
-                if item.evidence_id in seen:
-                    raise SemanticReviewError("evidence_forged", "duplicate evidence_id")
-                seen.add(item.evidence_id)
-                result.append(item)
+            records = tuple(
+                self._read_record_windows(final_directory, name)
+                for name in names
+            )
             if _win_info(handle) != before:
                 raise SemanticReviewError("semantic_review_unavailable", "evidence store changed")
-            return tuple(result)
+            return _evidence_for_request(request, records)
         except SemanticReviewError:
             raise
         except (OSError, ValueError) as exc:
@@ -457,6 +374,147 @@ class PreprovisionedSemanticAuthority:
             raise SemanticReviewError("evidence_forged", name) from exc
 
 
+MAXIMUM_SEMANTIC_AUTHORITY_BYTES = 64 * 1024
+
+
+def _load_semantic_authority_in_session(
+    authority_file: tuple[str, ...],
+    public_directory: tuple[str, ...],
+    evidence_directory: tuple[str, ...],
+    session,
+) -> PreprovisionedSemanticAuthority:
+    """Load the authority through a session that already holds the global lock.
+
+    The three relative names come from the closed catalogue and never from a
+    value declared inside the document.  The returned authority retains a
+    directory capability bound to this session rather than a path to reopen.
+    A caller that needs detached use must seal it before the session closes;
+    otherwise later use fails with the stable code and without a path in the
+    message (section 16.13.3).
+    """
+    import json
+
+    from executor_birth_secure_fs import BirthSecureFSError, _BirthObjectRole
+
+    if not session._holds_global_lock():
+        raise BirthSecureFSError("birth_provisioning_lock_unsafe")
+    # One load is one operation, so the two subtrees it admits share a single
+    # budget: the ceiling counts the material of the whole authority and not
+    # of each container separately.
+    from executor_birth_secure_fs import _InventoryBudgetV1
+
+    budget = _InventoryBudgetV1()
+    session._inventory_state(tuple(public_directory), budget)
+    session._inventory_state(tuple(evidence_directory), budget)
+    public = _BirthObjectRole.birth_integrity_only
+    raw = session.read_file(
+        tuple(authority_file),
+        maximum=MAXIMUM_SEMANTIC_AUTHORITY_BYTES,
+        role=public,
+    )
+    try:
+        document = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise SemanticReviewError(
+            "semantic_review_unavailable", "authority config"
+        ) from exc
+    if not isinstance(document, dict) or set(document) != {
+        "evidence_dir", "verifiers", "versions", "owners"
+    }:
+        raise SemanticReviewError("semantic_review_unavailable", "authority config")
+    try:
+        expected_kinds = {kind.value for kind in IndependentEvidenceKind}
+        if (set(document["versions"]) != expected_kinds
+                or set(document["owners"]) != expected_kinds):
+            raise ValueError("policy kinds")
+        versions = {
+            IndependentEvidenceKind(kind): frozenset(items)
+            for kind, items in document["versions"].items()
+        }
+        owners = {
+            IndependentEvidenceKind(kind): frozenset(items)
+            for kind, items in document["owners"].items()
+        }
+        verifiers = {}
+        for key_id, spec in document["verifiers"].items():
+            if (not isinstance(spec, dict) or set(spec) != {"status", "path"}
+                    or not isinstance(spec["path"], str)):
+                raise ValueError("verifier schema")
+            if spec["status"] == "revoked":
+                continue
+            name = PurePosixPath(spec["path"]).name
+            verifiers[key_id] = Ed25519PublicKey.from_public_bytes(
+                session.read_file(
+                    tuple(public_directory) + (name,),
+                    maximum=_MAX_KEY_BYTES,
+                    role=public,
+                )
+            )
+    except SemanticReviewError:
+        raise
+    except (AttributeError, KeyError, TypeError, ValueError) as exc:
+        raise SemanticReviewError(
+            "semantic_review_unavailable", "authority config"
+        ) from exc
+    evidence = session.open_directory(tuple(evidence_directory), role=public)
+    return PreprovisionedSemanticAuthority(
+        ReviewPolicyV1(versions, owners), evidence, verifiers,
+    )
+
+
+def _read_verifier_below(config_dir: Path, declared: PurePosixPath) -> bytes:
+    """Read one declared verifier key without ever resolving it as a path.
+
+    The configuration directory is the only absolute name resolved; each
+    declared component below it is then opened relative to the descriptor
+    obtained for the previous one, so the key that is read is the key that
+    hangs from the anchor and not one a substituted component points at.
+    """
+    import executor_birth_secure_fs as secure
+
+    components = declared.parts
+    if not components or any(part in {"", ".", ".."} for part in components):
+        raise SemanticReviewError("semantic_review_unavailable", "authority config")
+    windows = os.name == "nt"
+    open_root = (
+        secure._open_win_directory_root
+        if windows
+        else secure._open_posix_directory_root
+    )
+    close = secure._win_close if windows else os.close
+    handles = [open_root(os.fspath(config_dir))]
+    try:
+        for part in components[:-1]:
+            handles.append(
+                secure._win_open_relative_v1(
+                    handles[-1],
+                    part,
+                    purpose=secure._NtOpenPurposeV1.read_required,
+                    directory=True,
+                )
+                if windows
+                else secure._open_posix_child_directory(handles[-1], part)
+            )
+        if windows:
+            return secure._read_win_relative_v1(
+                handles[-1], components[-1], maximum=_MAX_KEY_BYTES,
+            )
+        return secure._read_posix_relative(
+            handles[-1],
+            components[-1],
+            maximum=_MAX_KEY_BYTES,
+            role=secure._BirthObjectRole.historical_public,
+            expected_uid=None,
+        )
+    except (secure.BirthSecureFSError, OSError) as exc:
+        raise SemanticReviewError(
+            "semantic_review_unavailable", "authority config"
+        ) from exc
+    finally:
+        for handle in reversed(handles):
+            close(handle)
+
+
 def load_semantic_authority(value: object, config_dir: Path) -> PreprovisionedSemanticAuthority:
     """Load an exact, explicitly provisioned productive authority configuration."""
     if not isinstance(value, dict) or set(value) != {"evidence_dir", "verifiers", "versions", "owners"}:
@@ -487,10 +545,16 @@ def load_semantic_authority(value: object, config_dir: Path) -> PreprovisionedSe
                 raise ValueError("verifier schema")
             if spec["status"] == "revoked":
                 continue
-            path = Path(spec["path"])
-            path = path if path.is_absolute() else config_dir / path
+            declared = PurePosixPath(spec["path"])
             verifiers[key_id] = Ed25519PublicKey.from_public_bytes(
-                _secure_file_bytes(path, maximum=_MAX_KEY_BYTES, error="semantic_review_unavailable"))
+                _secure_file_bytes(
+                    Path(spec["path"]),
+                    maximum=_MAX_KEY_BYTES,
+                    error="semantic_review_unavailable",
+                )
+                if declared.is_absolute()
+                else _read_verifier_below(config_dir, declared)
+            )
         evidence_dir = Path(value["evidence_dir"])
         evidence_dir = evidence_dir if evidence_dir.is_absolute() else config_dir / evidence_dir
         return PreprovisionedSemanticAuthority(ReviewPolicyV1(versions, owners), evidence_dir, verifiers)

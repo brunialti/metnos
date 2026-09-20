@@ -52,6 +52,9 @@ sys.path.insert(0, str(_RUNTIME))
 from messages import get as _msg  # noqa: E402
 from executor_helpers import run_stdio  # noqa: E402
 from index_schema import INDEX_SCHEMA_VERSION, is_unified_schema
+from image_index_outcomes import (
+    FAILURE_MARKER, DECODE_FAILURE_CODES, failure_description, is_not_indexed,
+)
 
 log = logging.getLogger(__name__)
 
@@ -266,13 +269,7 @@ def _resolve_base_path(base_path_arg) -> tuple[
             idx_dir = _index_dir(logical)
             if (idx_dir / "meta.json").exists():
                 return _IndexedCorpus(logical, idx_dir), None, None
-            # Path esiste ma senza indice → discovery prima di proporre build.
-            discovered = _discover_indexed_dirs()
-            if discovered:
-                return None, discovered, (
-                    f"base_path '{arg}' non indicizzato → fallback discovery "
-                    f"({len(discovered)} indici trovati)"
-                )
+            # An explicit collection never falls back to another archive.
             return _IndexedCorpus(logical, idx_dir), None, None
         # Path-like (ben formato) ma INESISTENTE → ERRORE (decisione 2/6, opz 3):
         # un path esplicito che non esiste e' un errore, NON un fallback
@@ -295,7 +292,7 @@ def _resolve_base_path(base_path_arg) -> tuple[
     return None, None, f"base_path symbolic match not found: {arg}"
 
 
-def _load_unified_index(idx_dir: Path) -> tuple[list[dict], object | None, object | None, dict]:
+def _load_unified_index(idx_dir: Path, *, load_embeddings=True) -> tuple[list[dict], object | None, object | None, dict]:
     meta_p = idx_dir / "meta.json"
     if not meta_p.exists():
         return [], None, None, {}
@@ -321,6 +318,8 @@ def _load_unified_index(idx_dir: Path) -> tuple[list[dict], object | None, objec
     emb_text = None
     emb_face = None
     emb_image = None
+    if not load_embeddings:
+        return entries, emb_text, emb_face, meta
     try:
         import numpy as np
         et_p = idx_dir / "embeddings_text.npy"
@@ -378,6 +377,32 @@ def _bm25_score(query_terms: list[str], doc_terms: list[str]) -> float:
             continue
         score += (tf * (k1 + 1)) / (tf + k1)
     return float(score)
+
+
+def _descriptive_terms(entry: dict) -> list[str]:
+    """Keep observed image content separate from inherited folder context."""
+    return _normalize_text_for_bm25(
+        entry.get("description", "") + " "
+        + " ".join(entry.get("keywords", []))
+    )
+
+
+def _folder_terms(entry: dict) -> list[str]:
+    return _normalize_text_for_bm25(
+        " ".join(entry.get("path_tokens", [])) + " "
+        + entry.get("path_context", "")
+    )
+
+
+def _common_path_terms(entries: list[dict]) -> set[str]:
+    """Find shared folder vocabulary without knowing any directory names."""
+    shared = None
+    for entry in entries:
+        terms = set(_folder_terms(entry))
+        shared = terms if shared is None else shared & terms
+        if not shared:
+            break
+    return shared or set()
 
 
 def _cosine(a, b) -> float:
@@ -447,6 +472,8 @@ def _corpus_token_embs(idx_dir):
         try:
             e = json.loads(line)
         except Exception:
+            continue
+        if is_not_indexed(e):
             continue
         for tok in (e.get("keywords") or []):
             t = str(tok).strip().lower()
@@ -816,18 +843,51 @@ def _extract_face_embeddings_from_reference(ref_paths: list[str]):
     return embs
 
 
-def _apply_relevance_gate(entries, text_components, text_scores, rel_thr):
-    """Filtra le entries tenendo solo coseno >= rel_thr e ri-mappa text_scores
-    sui nuovi indici. Identita' = INDICE originale (univoco per costruzione):
-    il path NON e' affidabile come chiave (duplicati symlink/copie, oppure
-    None) -> con un set di path i dupe sotto-soglia passerebbero il gate e i
-    punteggi collasserebbero (last-wins). Ritorna (entries, text_scores)."""
+def _apply_relevance_gate(entries, text_components, text_scores, rel_thr, *, require_lexical=False):
+    """Filter by content evidence, preserving the original row identity.
+
+    Paths may be repeated or absent, so scores are remapped by row index.
+    A lexical gate uses the existing semantically expanded query vocabulary;
+    it does not impose an exact-word-only or top-one result policy.
+    """
     kept = [(i, e) for i, e in enumerate(entries)
-            if text_components.get(i, (0.0, 0.0))[0] >= rel_thr]
+            if text_components.get(i, (0.0, 0.0))[0] >= rel_thr
+            and (not require_lexical or text_components.get(i, (0.0, 0.0))[1] > 0)]
     entries_out = [e for _, e in kept]
     scores_out = {new_i: text_scores.get(old_i, 0.0)
                   for new_i, (old_i, _) in enumerate(kept)}
     return entries_out, scores_out
+
+
+def _content_relevance_policy(text_components, *, identity_filtered, floor, explicit_cap):
+    """Calibrate dense relevance from background, or use lexical evidence.
+
+    Foreground matches must not raise their own statistical cutoff. Sparse
+    scores identify possible background, not an unconditional admission path:
+    semantic query expansion can itself contain noisy neighbouring words.
+    """
+    from relevance_cut import adaptive_relevance_threshold, RELEVANCE_SIGMA_DEFAULT
+
+    if explicit_cap:
+        return floor, False
+    cosines = [cosine for cosine, _bm25 in text_components.values()]
+    sigma = _IDENTITY_SCENE_SIGMA if identity_filtered else RELEVANCE_SIGMA_DEFAULT
+    threshold = adaptive_relevance_threshold(cosines, sigma=sigma, floor=floor)
+    background = [cosine for cosine, bm25 in text_components.values() if bm25 <= 0]
+    has_lexical_evidence = len(background) < len(cosines)
+    if background and has_lexical_evidence:
+        background_threshold = adaptive_relevance_threshold(background, sigma=sigma, floor=floor)
+        if background_threshold > floor:
+            # A constant background must not pass by equality with its own
+            # mean. nextafter supplies a strict boundary without a new margin.
+            threshold = math.nextafter(background_threshold, math.inf)
+    no_separation = threshold <= floor or threshold > max(cosines, default=0.0)
+    if no_separation and has_lexical_evidence:
+        # Tiny samples cannot estimate a background, and a mostly relevant
+        # set may put the sigma threshold above its maximum. Use the existing
+        # expanded-word evidence, never a new cosine constant or forced top-K.
+        return floor, True
+    return threshold, False
 
 
 _SCENE_MATCH_FLOOR = 0.35  # cosine SigLIP: sotto = scena non correlata
@@ -882,6 +942,72 @@ def _apply_scene_similarity(entries, reference_images, meta, args):
     }
 
 
+def _diagnostic_code(args: dict) -> str | None:
+    """An exact reserved marker selects records, never semantic similarity."""
+    query = args.get("query_text")
+    query = query.strip() if isinstance(query, str) else ""
+    if query == FAILURE_MARKER:
+        return ""
+    for code in DECODE_FAILURE_CODES:
+        if query == f"{FAILURE_MARKER}:{code}":
+            return code
+    return None
+
+
+def _diagnostic_args_invalid(args: dict) -> bool:
+    query = args.get("query_text")
+    if not isinstance(query, str) or not query.strip().startswith(FAILURE_MARKER):
+        return False
+    if _diagnostic_code(args) is None:
+        return True
+    return (
+        any(args.get(key) for key in ("name", "names", "reference_images"))
+        or any(args.get(key) is not None for key in (
+            "near_lat", "near_lon", "min_face_pixels", "min_face_count", "max_face_count",
+            "text_score_min",
+        ))
+        or args.get("time_window", "all") not in (None, "", "all")
+        or args.get("similarity_threshold", 0) not in (None, 0)
+    )
+
+
+def _filter_not_indexed(entries: list[dict], args: dict, code: str) -> dict:
+    """List negative evidence without models, semantic ranking or image previews."""
+    selected = [entry for entry in entries if is_not_indexed(entry)
+                and (not code or entry.get("indexing_error_code") == code)]
+    paths = args.get("paths_filter")
+    if paths:
+        wanted = {_path_identity(path) for path in paths}
+        selected = [entry for entry in selected if _path_identity(entry.get("path", "")) in wanted]
+    selected.sort(key=lambda entry: str(entry.get("path", "")))
+    top_k, _explicit = _resolve_cap(args)
+    projected = []
+    total_size = 0
+    with_size = 0
+    for position, entry in enumerate(selected):
+        size = entry.get("size")
+        has_size = type(size) is int and size >= 0
+        if has_size:
+            total_size += size
+            with_size += 1
+        if position >= top_k:
+            continue
+        projected.append({
+            "path": entry.get("path"), "name": entry.get("name"),
+            "description": failure_description(entry["indexing_error_code"]), "keywords": [],
+            "score": 0.0, "match_type": "indexing_failure",
+            "indexing_status": "not_indexed",
+            "indexing_error_code": entry["indexing_error_code"],
+            **({"size_bytes": size} if has_size else {}),
+        })
+    return {
+        "entries": projected, "n_above_threshold": len(selected),
+        "applied_paths_filter": len(selected) if paths else None,
+        "metadata": {"total_count": len(selected), "total_size_bytes": total_size,
+                     "total_size_gb": round(total_size / (1024 ** 3), 2), "n_with_size": with_size},
+    }
+
+
 def _filter_unified(
     entries: list[dict], emb_text, emb_face, meta: dict, args: dict,
     idx_dir=None,
@@ -892,6 +1018,14 @@ def _filter_unified(
     idx_dir (opzionale): se passato, abilita query expansion BGE-M3 via
     cache `<idx_dir>/corpus_tokens.npz`. Compatibilita' all'indietro
     (default None: query expansion disattivata)."""
+    diagnostic_code = _diagnostic_code(args)
+    if diagnostic_code is not None:
+        return _filter_not_indexed(entries, args, diagnostic_code)
+    entries = [entry for entry in entries if not is_not_indexed(entry)]
+    if not entries:
+        return {"entries": [], "n_above_threshold": 0,
+                "metadata": {"total_count": 0, "total_size_bytes": 0,
+                             "total_size_gb": 0.0, "n_with_size": 0}}
     query_text = (args.get("query_text") or "").strip() or None
     name = (args.get("name") or "").strip() or None
     # §7.3: True dopo un filtro-VOLTO (name/names/reference). In tal caso il
@@ -1207,6 +1341,11 @@ def _filter_unified(
     text_scores: dict[int, float] = {}
     q_expanded: list[str] = []  # cache for output meta
     if query_text:
+        literal_terms = set(_normalize_text_for_bm25(query_text))
+        shared_path_terms = _common_path_terms(entries) - literal_terms
+        unsupported_expansions = shared_path_terms.copy()
+        for entry in entries:
+            unsupported_expansions.difference_update(_descriptive_terms(entry))
         # Deterministic, local-only expansion from the indexed corpus.  Short
         # mono-token queries intentionally skip expansion because the local
         # embedding neighbourhood is too broad; BM25 + cosine remain active.
@@ -1217,6 +1356,12 @@ def _filter_unified(
             try:
                 tokens, embs = _corpus_token_embs(idx_dir)
                 if tokens and embs is not None:
+                    # Storage ancestors must not consume expansion slots.
+                    # A shared term remains eligible when a caption or other
+                    # descriptive metadata actually supports that concept.
+                    eligible = [i for i, token in enumerate(tokens)
+                                if token not in unsupported_expansions]
+                    tokens, embs = [tokens[i] for i in eligible], embs[eligible]
                     q_expanded = _expand_query_via_corpus(query_text, tokens, embs)
             except Exception as ex:
                 log.debug("corpus expansion fallita: %r", ex)
@@ -1250,64 +1395,31 @@ def _filter_unified(
                         t_idx_int = -1
                     if 0 <= t_idx_int < len(emb_text):
                         cos_score = _cosine(q_vec, _l2_normalize(emb_text[t_idx_int]))
-            doc_terms = _normalize_text_for_bm25(
-                e.get("description", "") + " "
-                + e.get("path_context", "") + " "  # ADR 0166: contesto cartella
-                + " ".join(e.get("keywords", [])) + " "
-                + " ".join(e.get("path_tokens", []))
-            )
+            # Expanded words need evidence beyond a common storage ancestor.
+            # Literal path searches and genuine descriptive matches still count.
+            path_terms = _folder_terms(e)
+            doc_terms = _descriptive_terms(e) + [
+                term for term in path_terms if term not in shared_path_terms
+            ]
             bm25 = _bm25_score(q_terms, doc_terms)
             score = cos_score + 0.2 * min(bm25, 5.0)
             text_scores[i] = score
             text_components[i] = (cos_score, bm25)
 
-    # Text filter (15/5/2026 §7.3).
-    # §7.3 UNIVERSALE: l'identita' (volto risolto) e' un FILTRO DURO di
-    # appartenenza. La scena (query_text residuo dopo lo split persona) RESTRINGE
-    # DENTRO le foto della persona SOLO se e' una scena reale; se e' rumore
-    # ("cerca foto") il gate svuoterebbe → fallback al set-identita' intero
-    # (scena = solo ranking). Cosi': "ospite montagna" = volto∩montagna
-    # (ristretto); "cerca foto ospite" = tutte le sue foto. Bug live 9/6: 2860
-    # foto dell'ospite NON ristrette da "in montagna" perche' il gate era saltato
-    # del tutto sotto identita'.
+    # Identity remains a hard membership filter. Content evidence narrows
+    # that set without treating a generic, unrecognized residual as a scene.
     if query_text and text_score_min > 0.0:
-        # Taglio di rilevanza ADATTIVO (core: runtime/relevance_cut.py, §7.3).
-        # Gli embedding densi collassano le similarita' coseno in una banda
-        # stretta ad alta media (μ~0.6 misurato su questo corpus): una soglia
-        # ASSOLUTA e' priva di senso (99% del corpus supera 0.40; 91% supera
-        # 0.55) — per questo il vecchio filtro a soglia fissa lasciava passare
-        # l'intero corpus ("persone in montagna" → 31062/31062). La rilevanza
-        # e' RELATIVA: solo gli outlier nella coda superiore della distribuzione
-        # PER-QUERY. Regola 3-sigma: tieni cos >= μ+3σ (soglia statistica, non
-        # un valore di dominio), con `text_score_min` come pavimento assoluto
-        # anti-rumore per query senza match reali. Il segnale di gating e' il
-        # coseno (semantica pura); il bm25 resta nel composito SOLO per il
-        # ranking (sotto): "persone" matcha quasi tutte le foto → come gate
-        # inquina, come tie-break ordina.
-        from relevance_cut import adaptive_relevance_threshold
-        cos_all = [text_components.get(i, (0.0, 0.0))[0]
-                   for i in range(len(entries))]
-        # Sotto identità il candidato è il sotto-corpus di UNA persona: la scena è
-        # un cluster, non un outlier → soglia più inclusiva (2σ) per non scartare
-        # le foto-scena genuine. Senza identità resta il 3σ globale (default).
-        if explicit_cap:
-            # Conteggio esplicito utente (Roberto 13/6): il NUMERO prevale sul
-            # ranking → niente taglio sigma, solo il pavimento anti-rumore
-            # (text_score_min). I top-N per punteggio vengono presi più sotto.
-            rel_thr = text_score_min
-        elif identity_filtered:
-            rel_thr = adaptive_relevance_threshold(
-                cos_all, sigma=_IDENTITY_SCENE_SIGMA, floor=text_score_min)
-        else:
-            rel_thr = adaptive_relevance_threshold(cos_all, floor=text_score_min)
+        rel_thr, require_lexical = _content_relevance_policy(
+            text_components, identity_filtered=identity_filtered,
+            floor=text_score_min, explicit_cap=explicit_cap,
+        )
         _g_entries, _g_scores = _apply_relevance_gate(
-            entries, text_components, text_scores, rel_thr)
+            entries, text_components, text_scores, rel_thr, require_lexical=require_lexical)
         if not identity_filtered:
             entries, text_scores = _g_entries, _g_scores
         elif _g_entries:
-            # Identita' presente + scena reale (il gate tiene >=1): restringi a
-            # volto∩scena. Se _g_entries fosse vuoto (residuo = rumore), tieni il
-            # set-identita' intero (sotto, nessuna riassegnazione).
+            # Preserve the existing generic-residual fallback only when no
+            # candidate supplies usable content evidence.
             entries, text_scores = _g_entries, _g_scores
 
     # Composito
@@ -1441,10 +1553,10 @@ def _check_args(args: dict) -> str | None:
     return None
 
 
-def _index_missing_result(base_path: Path | None) -> dict:
+def _index_missing_result(base_path: Path | None, *, diagnostic=False) -> dict:
     """Return an honest handoff; a read executor never starts a build."""
     target = base_path or (_user_data_root() / "Immagini")
-    return {
+    result = {
         "ok": False,
         "entries": [],
         "error_class": "index_missing",
@@ -1456,6 +1568,12 @@ def _index_missing_result(base_path: Path | None) -> dict:
             "args": {"base_path": str(target)},
         },
     }
+    if diagnostic:
+        # Listing failures is read-only even at the prerequisite boundary.
+        # Do not turn a missing diagnostic archive into a new indexing job.
+        result.update(error_class="not_found", error_code="diagnostic_index_missing")
+        result.pop("recommended_action")
+    return result
 
 
 def invoke(args):
@@ -1467,6 +1585,12 @@ def invoke(args):
             "error_code": "args_not_object",
             "error": _msg("ERR_ARGS_NOT_OBJECT"),
         }
+    if _diagnostic_args_invalid(args):
+        return {"ok": False, "entries": [], "error_class": "invalid_input",
+                "error_code": "diagnostic_query_invalid",
+                "error": _msg("ERR_ARG_INVALID", arg="query_text",
+                              reason="IMAGE_NOT_INDEXED")}
+    diagnostic = _diagnostic_code(args) is not None
     legacy_idx = args.get("idx")
     if legacy_idx is not None and legacy_idx not in ("", "all"):
         log.warning(
@@ -1481,7 +1605,7 @@ def invoke(args):
     # §2.4: un anno/mese-anno in query_text è un filtro temporale, non
     # contenuto. Estrailo in time_window (se non già esplicito) prima dello
     # scoring, così l'embedding semantico non viene inquinato dall'anno.
-    if args.get("query_text") and not args.get("time_window"):
+    if not diagnostic and args.get("query_text") and not args.get("time_window"):
         _residual, _tw = _split_temporal_from_query(str(args["query_text"]))
         if _tw is not None:
             args = dict(args)
@@ -1500,7 +1624,7 @@ def invoke(args):
     # la ricerca INTRECCIA volto∩scena ("ospite al mare" → ospite ∩ mare) invece
     # di cercare "ospite" come testo (bug live 8/6: trovava il mare, non la persona).
     # Dopo lo split temporale → "ospite al mare 2016" = volto∩scena∩tempo.
-    if args.get("query_text") and not args.get("name") and not args.get("names"):
+    if not diagnostic and args.get("query_text") and not args.get("name") and not args.get("names"):
         _lang = str(args.get("_lang") or "").strip() or _current_lang()
         _resid, _persons, _op = _split_persons_from_query(
             str(args["query_text"]), _lang)
@@ -1540,7 +1664,7 @@ def invoke(args):
             return {"ok": False, "entries": [], "error_class": "not_found",
                     "error_code": "ERR_PATH_NOT_FOUND",
                     "error": _msg("ERR_PATH_NOT_FOUND", path=_bad)}
-        return _index_missing_result(None)
+        return _index_missing_result(None, diagnostic=diagnostic)
 
     if multi_dirs is not None:
         return _invoke_multi_dirs(multi_dirs, args, msg)
@@ -1560,9 +1684,16 @@ def invoke(args):
                 "base_path": str(single_dir),
                 "schema_version": INDEX_SCHEMA_VERSION,
             }
-        return _index_missing_result(single_dir)
+        return _index_missing_result(single_dir, diagnostic=diagnostic)
 
-    entries, emb_text, emb_face, meta = _load_unified_index(idx_dir)
+    from index_schema import resolve_image_index_dir
+    try:
+        idx_dir = resolve_image_index_dir(idx_dir)
+    except (ValueError, OSError):
+        return {"ok": False, "entries": [], "error_class": "invalid_content",
+                "error_code": "index_reference_invalid",
+                "error": _msg("ERR_FILE_READ_FAILED", path=str(idx_dir / "meta.json"))}
+    entries, emb_text, emb_face, meta = _load_unified_index(idx_dir, load_embeddings=not diagnostic)
     if not is_unified_schema(meta):
         return {
             "ok": False, "entries": [], "error_class": "schema_too_old",
@@ -1637,6 +1768,8 @@ def _build_attachments_from_entries(entries: list[dict]) -> list[dict]:
     for e in entries:
         if not isinstance(e, dict):
             continue
+        if is_not_indexed(e):
+            continue
         p = e.get("path")
         if not isinstance(p, str) or not p:
             continue
@@ -1666,6 +1799,7 @@ def _build_attachments_from_entries(entries: list[dict]) -> list[dict]:
 
 def _invoke_multi_dirs(dirs: list[_IndexedCorpus], args: dict,
                        msg: str | None) -> dict:
+    diagnostic = _diagnostic_code(args) is not None
     all_entries: list[dict] = []
     n_above = 0
     total_size_bytes = 0
@@ -1679,7 +1813,13 @@ def _invoke_multi_dirs(dirs: list[_IndexedCorpus], args: dict,
         if not (idx_dir / "meta.json").exists():
             error_classes.add("index_missing")
             continue
-        entries, emb_text, emb_face, meta = _load_unified_index(idx_dir)
+        from index_schema import resolve_image_index_dir
+        try:
+            idx_dir = resolve_image_index_dir(idx_dir)
+        except (ValueError, OSError):
+            error_classes.add("invalid_content")
+            continue
+        entries, emb_text, emb_face, meta = _load_unified_index(idx_dir, load_embeddings=not diagnostic)
         if not is_unified_schema(meta):
             error_classes.add("schema_too_old")
             schema_too_old_dirs.append(str(d))
@@ -1743,13 +1883,14 @@ def _invoke_multi_dirs(dirs: list[_IndexedCorpus], args: dict,
                             "(Google Vision API).")
         elif "index_missing" in error_classes:
             missing = _index_missing_result(
-                dirs[0].base_path if dirs else None)
+                dirs[0].base_path if dirs else None, diagnostic=diagnostic)
             out.update({
                 "error_class": missing["error_class"],
                 "error_code": missing["error_code"],
                 "error": missing["error"],
-                "recommended_action": missing["recommended_action"],
             })
+            if "recommended_action" in missing:
+                out["recommended_action"] = missing["recommended_action"]
         elif error_classes:
             out["error_class"] = sorted(error_classes)[0]
     # Truncated check: confronto contro n_above (totale above threshold

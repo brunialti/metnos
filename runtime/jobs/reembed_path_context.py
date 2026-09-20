@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """Re-embed retroattivo del testo con path_context (ADR 0166 — intelligent
 indexing). Applica all'indice ESISTENTE l'arricchimento di cartella senza
 re-eseguire il VLM: riusa le `description`, calcola `folder_path_context` (una
@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -28,6 +29,7 @@ sys.path.insert(0, str(_ROOT / "executors" / "create_images_indices"))
 import create_images_indices as C  # noqa: E402
 import config as MC  # noqa: E402
 from virt import get_embedder  # noqa: E402
+from image_index_maintenance import legacy_image_paths  # noqa: E402
 
 _BATCH = 256
 
@@ -62,6 +64,7 @@ def _save_cache(idx_dir: Path) -> None:
 
 
 def reembed(idx_dir: Path, lang: str, dry: bool) -> None:
+    legacy_image_paths(idx_dir)
     ents_path = idx_dir / "entries.jsonl"
     emb_path = idx_dir / "embeddings_text.npy"
     entries = [json.loads(ln) for ln in ents_path.read_text("utf-8").splitlines()
@@ -99,7 +102,7 @@ def reembed(idx_dir: Path, lang: str, dry: bool) -> None:
     if dry:
         from collections import Counter
         cats = Counter(C._FOLDER_CTX_CACHE.get(
-            __import__("re").sub(r"\b(19|20)\d\d\b", "",
+            re.sub(r"\b(19|20)\d\d\b", "",
                                  Path(e["path"]).parent.name).replace("-", " ").strip(),
             ("?", ""))[0] for e in entries)
         print(f"[dry] categorie entries: {dict(cats)}")

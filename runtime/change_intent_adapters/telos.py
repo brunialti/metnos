@@ -69,10 +69,20 @@ def iter_telos() -> Iterable[ChangeIntent]:
         summary = action.split("\n")[0][:200]
 
         if status == "existing_parametric":
+            # `parametric_arg` is structured producer data.  Inferring an
+            # argument name from localized proposal prose can redirect a later
+            # manifest mutation, so an absent or malformed field is not
+            # actionable.
+            arg_name = head.get("parametric_arg")
+            if (not isinstance(arg_name, str)
+                    or not arg_name
+                    or not arg_name.isascii()
+                    or not arg_name.replace("_", "a").isalnum()
+                    or not (arg_name[0].isalpha() or arg_name[0] == "_")):
+                continue
             kind = KIND_EXTEND_EXECUTOR
             body = {
-                "arg_name": (head.get("parametric_arg")
-                             or _infer_arg_from_action(action)),
+                "arg_name": arg_name,
                 "arg_value_example": head.get("parametric_value"),
                 "lenses": lenses,
                 "telos_id": head.get("telos_id"),
@@ -111,17 +121,3 @@ def iter_telos() -> Iterable[ChangeIntent]:
             confidence=0.8,
             discovered_at=_iso_from_ts(ts) if ts else None,
         )
-
-
-def _infer_arg_from_action(action: str) -> str | None:
-    """Estrae nome arg da frasi tipo 'aggiungi arg X', 'parametro Y='.
-    Best-effort, fallback None."""
-    import re
-    m = re.search(r"(?:arg|parametro|argomento)\s+([a-z_][a-z0-9_]*)",
-                  action.lower())
-    if m:
-        return m.group(1)
-    m = re.search(r"([a-z_][a-z0-9_]*)\s*=", action.lower())
-    if m:
-        return m.group(1)
-    return None

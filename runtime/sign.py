@@ -18,7 +18,6 @@ CLI:
 """
 import hashlib
 import os
-import re
 import stat
 import sys
 import tempfile
@@ -34,6 +33,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 from cryptography.hazmat.primitives import serialization
 
 from logging_setup import get_logger
+from manifest_code_digest import compute_code_digest, update_digest_in_text
 import config as _C  # §7.11
 log = get_logger(__name__)
 
@@ -181,7 +181,34 @@ def restore_public_key(name):
 
 
 def list_trusted_publics():
-    """Tutte le *_pub.bin nella keys dir sono trusted in v1.1 POC."""
+    """Return the active author verifier ring for the current store layout.
+
+    Authoring mode reads the legacy public-key files.  Productive STORE_ONLY
+    mode accepts only the sealed Birth runtime or its required chain context;
+    it never falls back to the retired ambient key directory.
+    """
+    from manifest_inventory import ManifestLayout, resolve_manifest_layout
+
+    if resolve_manifest_layout() is ManifestLayout.STORE_ONLY:
+        from executor_birth_operational import (
+            _runtime_author_trusted_publics_v1,
+        )
+
+        # STORE_ONLY never falls back to the retired ambient key directory.
+        # Productive workers use their already installed immutable bundle;
+        # separate administrative/readiness processes authenticate the same
+        # required context directly from the ownership chain.
+        trusted = _runtime_author_trusted_publics_v1()
+        if trusted is None:
+            from executor_birth_prepared_root import (
+                load_required_context_runtime_v1,
+            )
+
+            required = load_required_context_runtime_v1()
+            trusted = tuple(sorted(
+                required.authorities.author.verifier_keys.items()
+            ))
+        return list(trusted)
     if not KEYS_DIR.exists():
         return []
     out = []
@@ -201,27 +228,6 @@ def installation_manifest_paths():
     """
     roots = (_C.PATH_EXECUTORS, BUILTIN_CONTRACTS_DIR)
     return sorted({path for root in roots for path in root.glob("**/manifest.toml")})
-
-
-def compute_code_digest(manifest_dir, code_files):
-    """SHA-256 della concatenazione dei file di codice in ordine dichiarato."""
-    h = hashlib.sha256()
-    for fname in code_files:
-        path = manifest_dir / fname
-        with open(path, "rb") as f:
-            for chunk in iter(lambda: f.read(8192), b""):
-                h.update(chunk)
-    return f"sha256:{h.hexdigest()}"
-
-
-_DIGEST_RE = re.compile(r'(digest\s*=\s*")sha256:[^"]*(")')
-
-
-def update_digest_in_text(manifest_text, new_digest):
-    """Sostituisce la riga digest = '...' con il nuovo valore."""
-    if not _DIGEST_RE.search(manifest_text):
-        raise ValueError("manifest non contiene una riga 'digest = \"sha256:...\"'")
-    return _DIGEST_RE.sub(rf'\g<1>{new_digest}\g<2>', manifest_text)
 
 
 def _validate_capabilities_schema(manifest: dict, manifest_path: Path) -> None:
@@ -369,7 +375,7 @@ def _sign_executor_under_catalog_lock(manifest_dir, key_name=DEFAULT_AUTHOR_KEY)
     al lifecycle prima che venga emessa una firma. In questo modo generatori e
     importatori non possono usare la firma come scorciatoia di attivazione.
     """
-    from executor_birth_legacy_gate import deny_legacy_signing_api
+    from executor_birth_authority_gate import deny_legacy_signing_api
     deny_legacy_signing_api("sign_executor")
     manifest_dir = Path(manifest_dir)
     manifest_path = manifest_dir / "manifest.toml"
@@ -427,7 +433,7 @@ def sign_executor(manifest_dir, key_name=DEFAULT_AUTHOR_KEY):
     La firma non pubblica una revisione. Il lock impedisce però che un cutover
     costruisca la propria fotografia mentre questi file sono a metà modifica.
     """
-    from executor_birth_legacy_gate import deny_legacy_signing_api
+    from executor_birth_authority_gate import deny_legacy_signing_api
     deny_legacy_signing_api("sign_executor")
     from contract_store import catalog_admission_lock
 
@@ -523,7 +529,7 @@ def publish_executor(manifest_dir, key_name=DEFAULT_AUTHOR_KEY):
     one conditional operation.
     """
 
-    from executor_birth_legacy_gate import deny_legacy_signing_api
+    from executor_birth_authority_gate import deny_legacy_signing_api
     deny_legacy_signing_api("publish_executor")
     _refuse_store_only_bypass("publish")
     from contract_store import (
@@ -579,7 +585,7 @@ def publish_authoring_update(
     never implements a sign-then-publish sequence.
     """
 
-    from executor_birth_legacy_gate import deny_legacy_signing_api
+    from executor_birth_authority_gate import deny_legacy_signing_api
     deny_legacy_signing_api("publish_authoring_update")
     from manifest_inventory import ManifestLayout, resolve_manifest_layout
 
@@ -669,7 +675,7 @@ def reactivate_executor_contract(
     the wrapper authenticates the current tombstone again under the store's
     CAS protocol and records the authorization durably before committing.
     """
-    from executor_birth_legacy_gate import deny_legacy_signing_api
+    from executor_birth_authority_gate import deny_legacy_signing_api
     deny_legacy_signing_api("reactivate_executor_contract")
     _refuse_store_only_bypass("reactivate")
     from audit_jsonl import append_unique_jsonl
@@ -723,7 +729,7 @@ def rollback_executor_contract(
     reason: str,
 ):
     """Move one live binding back to an authenticated immutable generation."""
-    from executor_birth_legacy_gate import deny_legacy_signing_api
+    from executor_birth_authority_gate import deny_legacy_signing_api
     deny_legacy_signing_api("rollback_executor_contract")
     _refuse_store_only_bypass("rollback")
     from audit_jsonl import append_unique_jsonl

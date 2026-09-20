@@ -7,12 +7,14 @@ could act on.
 """
 from __future__ import annotations
 
+import ast
 import hashlib
 import re
 import tomllib
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
+from pathlib import PurePosixPath
 from types import MappingProxyType
 from typing import Callable, Iterable, Mapping, TYPE_CHECKING
 
@@ -25,7 +27,7 @@ from executor_birth_property_runner import (
     ObservedPropertyRunner, PropertyCandidateProfile, PropertyRunner,
     run_applicable_properties,
 )
-from executor_birth_runner import WindowsSandboxRegistry
+from executor_birth_runner import LinuxSandboxRegistry, WindowsSandboxRegistry
 from executor_birth_semantic_review import (
     IndependentEvidence, ReviewPolicyV1, ReviewRiskFacts, SemanticReviewRequest,
     SemanticVerdict, review_candidate_semantics,
@@ -197,12 +199,54 @@ Observer = Callable[..., ObservedCandidate]
 _DEPENDENCY_SEAL = object()
 
 
+_CONTINUITY_SEAL_V1 = object()
+
+
+@dataclass(frozen=True, slots=True)
+class _UnchangedCurrentContinuityV1:
+    """Receipt-backed evidence for one observed, unchanged successor current."""
+
+    contract_id: str
+    candidate_id: str
+    admission_context_id: str
+    previous_receipt_hash: str
+    previous_head_id: str
+    approved_lifecycle: object
+    _seal: object
+
+    def __post_init__(self) -> None:
+        if self._seal is not _CONTINUITY_SEAL_V1 or any(
+            _DIGEST_RE.fullmatch(value or "") is None for value in (
+                self.candidate_id, self.admission_context_id,
+                self.previous_receipt_hash, self.previous_head_id,
+            )
+        ):
+            raise ValueError("birth_current_continuity_untrusted")
+
+    def check(self, observed, decision, check_id):
+        if (
+            decision.revision_class is not RevisionClass.REATTESTATION
+            or self.contract_id != observed.contract_id.value
+            or self.candidate_id != observed.identities.candidate_id
+            or self.admission_context_id != observed.identities.admission_context_id
+        ):
+            raise ValueError("birth_current_continuity_binding_invalid")
+        return CheckResult(
+            check_id, "v1", CheckStatus.NOT_APPLICABLE, None,
+            _shadow_evidence(check_id, "unchanged-current-continuity-v1",
+                             self.previous_head_id, self.previous_receipt_hash,
+                             self.candidate_id, self.admission_context_id),
+            "unchanged_current_continuity_v1:" + self.previous_receipt_hash,
+        )
+
+
 @dataclass(frozen=True, slots=True)
 class _BirthDependencies:
     """Trusted runtime services. Construction is guarded by the module seal."""
     observer: Observer
     property_runner: PropertyRunner | None
     windows_sandbox_registry: WindowsSandboxRegistry | None
+    linux_sandbox_registry: LinuxSandboxRegistry | None
     semantic_policy: ReviewPolicyV1 | None
     semantic_risk: ReviewRiskFacts | None
     independent_evidence: tuple[IndependentEvidence, ...]
@@ -210,10 +254,22 @@ class _BirthDependencies:
     approval_subject: ApprovalSubject | None
     approval_evidence: ApprovalEvidence | None
     now: datetime | None
+    initial_current_adoption_transition_id: str | None
     _seal: object
+    current_continuity: _UnchangedCurrentContinuityV1 | None = None
 
     def __post_init__(self) -> None:
-        if self._seal is not _DEPENDENCY_SEAL:
+        if (
+            self._seal is not _DEPENDENCY_SEAL
+            or (self.current_continuity is not None
+                and type(self.current_continuity) is not _UnchangedCurrentContinuityV1)
+            or (
+                self.initial_current_adoption_transition_id is not None
+                and _DIGEST_RE.fullmatch(
+                    self.initial_current_adoption_transition_id
+                ) is None
+            )
+        ):
             raise ValueError("birth_dependencies_untrusted")
 
 
@@ -222,9 +278,12 @@ def _sealed_dependencies_for_test(**overrides: object) -> _BirthDependencies:
     values: dict[str, object] = {
         "observer": observe_candidate, "property_runner": None,
         "windows_sandbox_registry": None,
+        "linux_sandbox_registry": None,
         "semantic_policy": None, "semantic_risk": None,
         "independent_evidence": (), "semantic_authority": None, "approval_subject": None,
         "approval_evidence": None, "now": None, "_seal": _DEPENDENCY_SEAL,
+        "initial_current_adoption_transition_id": None,
+        "current_continuity": None,
     }
     if set(overrides) - set(values):
         raise ValueError("birth_dependencies_invalid")
@@ -232,8 +291,11 @@ def _sealed_dependencies_for_test(**overrides: object) -> _BirthDependencies:
     return _BirthDependencies(**values)  # type: ignore[arg-type]
 
 
-def _assemble_production_dependencies(*, semantic_authority=None,
-                                      windows_sandbox_registry=None) -> _BirthDependencies:
+def _assemble_production_dependencies(
+    *, semantic_authority=None, windows_sandbox_registry=None,
+    linux_sandbox_registry=None,
+    initial_current_adoption_transition_id: str | None = None,
+) -> _BirthDependencies:
     """Single core-owned assembler; it cannot alter the fixed check catalog."""
     # The runner is constructed only after Birth owns the observation.  Keeping
     # it out of this process-global dependency object prevents an unbound or
@@ -241,6 +303,10 @@ def _assemble_production_dependencies(*, semantic_authority=None,
     return _sealed_dependencies_for_test(
         property_runner=None, semantic_authority=semantic_authority,
         windows_sandbox_registry=windows_sandbox_registry,
+        linux_sandbox_registry=linux_sandbox_registry,
+        initial_current_adoption_transition_id=(
+            initial_current_adoption_transition_id
+        ),
     )
 
 
@@ -255,6 +321,9 @@ def _manifest(observed: ObservedCandidate) -> dict[str, object]:
 
 
 def _profile(manifest: Mapping[str, object]) -> PropertyCandidateProfile:
+    from executor_birth_property_runner import _uses_managed_helper, _domain_contract
+    from naming_grammar import parse_name
+
     output = manifest.get("output")
     output_map = output if isinstance(output, Mapping) else {}
     properties = output_map.get("properties")
@@ -267,15 +336,28 @@ def _profile(manifest: Mapping[str, object]) -> PropertyCandidateProfile:
     args_map = args if isinstance(args, Mapping) else {}
     arg_properties = args_map.get("properties")
     arg_properties = arg_properties if isinstance(arg_properties, Mapping) else {}
-    execution = manifest.get("execution")
-    execution = execution if isinstance(execution, Mapping) else {}
+    components = parse_name(manifest.get("name"))
+    capabilities = manifest.get("capabilities")
+    capabilities = capabilities if isinstance(capabilities, (list, tuple)) else ()
+    filesystem_write = any(isinstance(cap, Mapping) and cap.get("name") == "fs:write"
+                           for cap in capabilities)
+    tests = manifest.get("tests")
+    tests = tests if isinstance(tests, list) else ()
+    positive_inputs = tuple(dict(case["input"]) for case in tests
+                            if isinstance(case, Mapping)
+                            and isinstance(case.get("input"), Mapping)
+                            and isinstance(case.get("expect"), Mapping)
+                            and case["expect"].get("ok") is True)
     names = {name for name, _ in schema}
     return PropertyCandidateProfile(
         output_schema=tuple(schema), collection_output=bool(names & {"entries", "results"}),
         limit_input="limit" in arg_properties, truncation_declared="truncated" in names,
         revertible=manifest.get("revertible") is True or manifest.get("reversible") is True,
-        destructive_with_undo=(manifest.get("revertible") is True and execution.get("effect") == "mutating"),
+        destructive_with_undo=(manifest.get("revertible") is True and filesystem_write
+                               and components is not None and components.verb == "delete"),
         entries_and_results={"entries", "results"}.issubset(names),
+        positive_inputs=positive_inputs, helper_contract=_uses_managed_helper(manifest),
+        domain_contract=_domain_contract(manifest),
     )
 
 
@@ -289,20 +371,173 @@ def _standard_check(observed: ObservedCandidate, _decision: RevisionDecision, _d
     return CheckResult("manifest_standard", "v1", CheckStatus.PASSED, None, evidence, "valid")
 
 
+def _declared_languages_v1(manifest: Mapping[str, object]) -> tuple[str, ...]:
+    """Every language the candidate itself declares, in canonical order.
+
+    The set comes from the manifest, never from the machine: a check whose
+    result depended on the language of the installation would give one verdict
+    here and another one there.
+    """
+    from i18n_materializer import manifest_language_selectors
+
+    selectors = manifest_language_selectors(manifest)
+    languages: set[str] = set()
+    for table in selectors.values():
+        languages.update(table)
+    return tuple(sorted(languages))
+
+
+def _lint_check(observed: ObservedCandidate, _decision: RevisionDecision,
+                _deps: _BirthDependencies) -> CheckResult:
+    """Really run the manifest linter on the frozen manifest.
+
+    Its two files were already pinned in the admission context, so the identity
+    of the rules was fixed while nothing ever applied them.  This check applies
+    them, in every language the candidate declares, and an ``error`` finding
+    refuses the birth.
+    """
+    from manifest_lint import lint_manifest
+
+    manifest = _manifest(observed)
+    reported: list[str] = []
+    blocking: str | None = None
+    for language in _declared_languages_v1(manifest):
+        for finding in lint_manifest(manifest, language=language):
+            reported.append(
+                f"{finding.severity}:{finding.check}:{finding.resource}:{language}"
+            )
+            if finding.severity == "error" and blocking is None:
+                blocking = f"{finding.check}:{finding.resource}"
+    evidence = _shadow_evidence(
+        "manifest-lint", observed.identities.candidate_id, *reported,
+    )
+    if blocking is not None:
+        return CheckResult("manifest_lint", "v1", CheckStatus.FAILED,
+                           "manifest_lint_rejected", evidence, blocking)
+    return CheckResult("manifest_lint", "v1", CheckStatus.PASSED, None,
+                       evidence, "valid")
+
+
+# Running code assembled at run time defeats every static reading of a
+# candidate: whatever the analysis concluded, the program that actually runs is
+# built after the analysis.  Measured over the 93 files of the real executors:
+# not one of them uses any of these, so the rule refuses nothing legitimate.
+_ASSEMBLED_CODE_BUILTINS_V1 = frozenset({"exec", "eval", "compile"})
+
+# Loading a module from a path is not forbidden and not granted by trust: it is
+# granted by authentication.  A candidate may not open a path and run what it
+# finds, but it may ask ``admitted_module_v1`` for the code of a
+# published executor, which compares the bytes with the signature that admitted
+# them before running them.  That door is stricter than what these names do on
+# their own, so naming them directly is what the check refuses.
+_PATH_CODE_LOADERS_V1 = frozenset({
+    "exec_module",
+    "run_module",
+    "run_path",
+    "SourceFileLoader",
+    "SourcelessFileLoader",
+    "spec_from_file_location",
+})
+
+
+def _closure_findings_v1(code_files: Mapping[str, bytes]) -> list[str]:
+    """Read every file of the candidate and report what breaks the closure.
+
+    Three things are decided here, and nothing else: the file parses, a
+    relative import stays inside the candidate, and no code is assembled at run
+    time.  Import of an installed module is not judged here: the distribution
+    is already pinned by digest in the admission context.
+    """
+    owned = {
+        PurePosixPath(name).with_suffix("").as_posix().replace("/", ".")
+        for name in code_files
+    }
+    findings: list[str] = []
+    for name in sorted(code_files):
+        try:
+            tree = ast.parse(code_files[name], filename=name)
+        except (SyntaxError, ValueError):
+            findings.append(f"unparsable:{name}")
+            continue
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.level:
+                target = (node.module or "").split(".")[0]
+                if node.level > 1 or not target or target not in owned:
+                    findings.append(f"relative_import_outside:{name}:{node.lineno}")
+            elif isinstance(node, ast.Call):
+                func = node.func
+                called = (
+                    func.id if isinstance(func, ast.Name)
+                    else func.attr if isinstance(func, ast.Attribute) else None
+                )
+                if isinstance(func, ast.Name) and called in _ASSEMBLED_CODE_BUILTINS_V1:
+                    findings.append(
+                        f"assembled_code:{name}:{node.lineno}:{called}"
+                    )
+                elif called in _PATH_CODE_LOADERS_V1:
+                    findings.append(
+                        f"unauthenticated_code_load:{name}:{node.lineno}:{called}"
+                    )
+    return findings
+
+
+def _closure_check(observed: ObservedCandidate, _decision: RevisionDecision,
+                   _deps: _BirthDependencies) -> CheckResult:
+    """Refuse a candidate whose own files do not hold together."""
+    findings = _closure_findings_v1(observed.snapshot.code_files)
+    evidence = _shadow_evidence(
+        "dependency-closure", observed.identities.candidate_id, *findings,
+    )
+    if findings:
+        return CheckResult("dependency_closure", "v1", CheckStatus.FAILED,
+                           "dependency_closure_broken", evidence, findings[0])
+    return CheckResult("dependency_closure", "v1", CheckStatus.PASSED, None,
+                       evidence, "closed")
+
+
 def _property_check(observed: ObservedCandidate, _decision: RevisionDecision, deps: _BirthDependencies) -> CheckResult:
+    if deps.current_continuity is not None:
+        return deps.current_continuity.check(observed, _decision, "properties")
+    transition_id = deps.initial_current_adoption_transition_id
+    if transition_id is not None:
+        evidence = _shadow_evidence(
+            "properties", "initial-f4-current-adoption", transition_id,
+            observed.identities.candidate_id,
+            observed.identities.admission_context_id,
+        )
+        return CheckResult(
+            "properties", "v1", CheckStatus.NOT_APPLICABLE, None,
+            evidence, "initial_f4_current_adoption",
+        )
     runner = deps.property_runner or ObservedPropertyRunner(
         observed, windows_registry=deps.windows_sandbox_registry,
+        linux_registry=deps.linux_sandbox_registry,
     )
-    evidence = run_applicable_properties(_profile(_manifest(observed)), _runner=runner)
+    profile = _profile(_manifest(observed))
+    evidence = run_applicable_properties(profile, _runner=runner)
     digest = _shadow_evidence("properties", observed.identities.candidate_id,
                               *(f"{item.property_id}:{item.case_id}:{item.status.value}:{item.output_hash}" for item in evidence))
     failed = next((item for item in evidence if item.status in {PropertyStatus.FAILED, PropertyStatus.UNAVAILABLE}), None)
     if failed:
         return CheckResult("properties", "v1", CheckStatus.FAILED, failed.error_code, digest, failed.property_id)
-    return CheckResult("properties", "v1", CheckStatus.PASSED, None, digest, f"{len(evidence)} cases")
+    kind = "helper_contract_fixture: " if profile.helper_contract and profile.revertible else ""
+    return CheckResult("properties", "v1", CheckStatus.PASSED, None, digest, f"{kind}{len(evidence)} cases")
 
 
 def _semantic_check(observed: ObservedCandidate, _decision: RevisionDecision, deps: _BirthDependencies) -> CheckResult:
+    if deps.current_continuity is not None:
+        return deps.current_continuity.check(observed, _decision, "semantic_review")
+    transition_id = deps.initial_current_adoption_transition_id
+    if transition_id is not None:
+        evidence = _shadow_evidence(
+            "semantic-review", "initial-f4-current-adoption", transition_id,
+            observed.identities.candidate_id,
+            observed.identities.admission_context_id,
+        )
+        return CheckResult(
+            "semantic_review", "v1", CheckStatus.NOT_APPLICABLE, None,
+            evidence, "initial_f4_current_adoption",
+        )
     request = SemanticReviewRequest(
         observed.identities.candidate_id, observed.identities.admission_context_id,
         f"{observed.executor_origin.value}.{observed.revision_authorship.value}",
@@ -358,6 +593,8 @@ def _approval_applies(decision: RevisionDecision, _observed: ObservedCandidate) 
 
 _CHECK_CATALOG_V1 = (
     ("manifest_standard", "v1", True, _always, _standard_check),
+    ("manifest_lint", "v1", True, _always, _lint_check),
+    ("dependency_closure", "v1", True, _always, _closure_check),
     ("properties", "v1", True, _always, _property_check),
     ("semantic_review", "v1", True, _semantic_applies, _semantic_check),
     ("approval", "v1", True, _approval_applies, _approval_check),

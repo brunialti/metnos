@@ -12,6 +12,7 @@ Consumer: agent_runtime.TurnLog.write() (choke-point di ogni turno).
 from __future__ import annotations
 
 import fcntl
+import hashlib
 import json
 import os
 import re
@@ -28,7 +29,7 @@ def _key(channel: str, owner_user_id: str) -> str:
     owner = str(owner_user_id or "").strip()
     if not owner:
         raise ValueError("notice owner_user_id is required")
-    digest = __import__("hashlib").sha256(
+    digest = hashlib.sha256(
         ("metnos-notice-owner-v1\0" + owner).encode("utf-8")
     ).hexdigest()[:20]
     raw = f"{channel or 'any'}_{digest}"

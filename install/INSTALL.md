@@ -17,7 +17,9 @@ Servono:
 
 Alcune capacità richiedono programmi di sistema aggiuntivi. Per esempio,
 Tesseract e Poppler servono per l’OCR; Xvfb serve per il browser grafico Side.
-Il manifest d’installazione contiene l’inventario completo per Debian e Ubuntu.
+Il manifest d’installazione contiene l’inventario di base per Debian/Ubuntu e
+quello completo Ubuntu 24.04 per tutti i componenti locali selezionabili,
+compresi Java e zstd per Photon, Vulkan e le librerie native di Chromium.
 
 Una GPU non è obbligatoria. I livelli LLM possono usare un motore locale su CPU,
 un endpoint compatibile su un’altra macchina oppure un servizio frontier. La
@@ -30,6 +32,10 @@ Il solo punto d’ingresso supportato è `install/bootstrap.sh`:
 ```bash
 git clone https://github.com/brunialti/metnos.git
 cd metnos
+sudo apt-get update
+sudo apt-get install -y $(python3 -c 'import tomllib; p=tomllib.load(open("install/manifest.toml","rb"))["system_packages"]; print(" ".join(p["debian"]+p["debian_optional"]+p["ubuntu_24_04_all_local"]))')
+bash install/bootstrap.sh --check
+sudo "$PWD/.venv/bin/python" -m install.operator_authority --user "$USER"
 bash install/bootstrap.sh
 ```
 
@@ -37,6 +43,13 @@ Lo script individua Python, crea l’ambiente virtuale nella directory
 `<installazione>/.venv`, installa le dipendenze e avvia l’installatore in sei
 fasi. L’ambiente virtuale appartiene all’installazione: non viene creato nella
 directory dati di un utente e non dipende dal suo nome.
+
+Il comando amministrativo per le autorità genera identità nuove per questa
+installazione. Conserva le chiavi private dell’operatore e del revisore in
+`/var/lib/metnos-operator-authority/<uid>/`, directory accessibile soltanto a
+root, e mette nel profilo Metnos esclusivamente i registri e la chiave pubblica.
+Non importa autorità da installazioni esistenti; una seconda esecuzione verifica
+byte, proprietari e permessi senza sostituirli.
 
 Per controllare prima i requisiti:
 
@@ -46,7 +59,7 @@ bash install/bootstrap.sh --check
 
 Con questa forma il bootstrap può creare o aggiornare `.venv` prima del
 controllo; non avvia però le fasi applicative e non crea configurazioni,
-credenziali o dati di Metnos. Se `.venv` esiste già, il controllo diretto è:
+credenziali, stato o dati di Metnos. Se `.venv` esiste già, il controllo diretto è:
 
 ```bash
 ./.venv/bin/python -m install --check

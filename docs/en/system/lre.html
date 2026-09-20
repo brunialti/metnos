@@ -61,12 +61,189 @@ least ten minutes. This decision uses structured metadata, not words such as
  <tbody>
   <tr><td>The plan contains no action above the threshold.</td><td>Metnos uses the ordinary interactive path. LRE is not involved.</td></tr>
   <tr><td>The plan contains one independent long action; its executor is active, signed, and deterministic; its arguments, effect, and destination can be frozen.</td><td>Metnos creates the LRE plan during the turn, queues the workload, and returns a receipt. No profile is required.</td></tr>
+  <tr><td>The workload has an integrated LRE plan, such as photo indexing.</td><td>Metnos uses that resumable plan, with its steps and model bindings defined before startup. Access checks and resource limits still apply.</td></tr>
   <tr><td>The long action first requires approval.</td><td>Metnos suspends execution and requests approval. After approval, it checks the resumed plan again and, when eligible, hands it to LRE exactly once.</td></tr>
   <tr><td>The instance switch is disabled.</td><td>No new workload enters LRE. Ordinary chat and access to existing workload history continue to work.</td></tr>
-  <tr><td>The plan contains a long action, but also dependent actions, unresolved references, a model binding that is not fully frozen, or an ambiguous remote destination.</td><td>Metnos states that the workload was not started. It neither executes the long part through the interactive path nor promises recovery it cannot guarantee.</td></tr>
+  <tr><td>The workload has no integrated LRE plan and contains dependent actions, unresolved references, a model binding that is not fully frozen, or an ambiguous remote destination.</td><td>Metnos states that the long workload was not started. It neither executes the long part through the interactive path nor promises recovery it cannot guarantee.</td></tr>
   <tr><td>Configuration is invalid or the execution service is unavailable.</td><td>Admission fails with a precise explanation. No unit bypasses the check.</td></tr>
  </tbody>
 </table>
+
+<h2 id="error-history">Error history after completion</h2>
+
+<p>The job detail retains <strong>items with errors</strong>: the total
+(<code>nitems</code>) and the count per code, including after a restart. These
+are items reported by committed results, not repeated attempts. When there are
+many categories, the console shows the twenty most frequent ones, but the total
+includes them all. Technical attempt errors remain separate. This summary works
+for any workload declaring these outcomes; LRE does not interpret domain files
+or codes. The trace remains available while the job history is retained.</p>
+
+<h3 id="attempt-error-history">Attempt errors, including recovered errors</h3>
+
+<p>The collapsible <strong>Attempts with errors (history)</strong> section
+retains counts and codes of errors recorded during attempts, even when a later
+attempt succeeds. It counts attempts, not photos or items: it is not added to
+<code>nitems</code> and does not necessarily indicate an ongoing problem. A fully
+successful job may therefore have a history of recovered errors without being
+declared failed.</p>
+
+<h2 id="photo-indexing">Photo indexing: first use and subsequent searches</h2>
+
+<p>Searching the <strong>content of photographs</strong> uses a persistent
+index: image descriptions, visual features and, when available, faces and
+location. Searching a filename or listing a directory does not require this
+preparation. The mere presence of photos in a directory does not mean their
+content has already been indexed.</p>
+
+<p>To search, name the archive and describe the content you want. For example:
+“In the holiday archive, find photos of mountains.” This is a search request:
+you do not need to issue an index-creation command first.</p>
+
+<h3 id="photo-first-search">First search and automatic indexing</h3>
+
+<p>Yes: at the first content search, Metnos automatically requests indexing
+if the local archive has no index. No manual start is needed: LRE, the
+long-running engine, handles preparation. LRE must be enabled, the archive
+accessible and the models configured. A receipt arrives only after admission;
+if a check fails, preparation has not started. A repeat request reuses the
+active workload; an empty result alone does not cause rebuilding. Work runs
+in the background and large archives may take hours. The outcome stays in the
+LRE console and is notified through available associated channels. A receipt
+does not mean the index is ready: wait for completion, then repeat the search.
+Subsequent searches reuse the index and are generally faster.</p>
+
+<h3 id="photo-person-enrollment">Person enrollment and photo indexing</h3>
+
+<p>These are separate operations. <strong>Enrollment</strong> registers a
+person by associating a name with one or more examples of their face in the
+person registry. Indexing instead analyzes the archive's photos and stores
+features of the detected faces, without requiring people to be registered
+first. When you search for a person by name, Metnos compares the current
+registry with the faces already stored in the index.</p>
+
+<p>You can therefore enroll a person <strong>before or after</strong>
+indexing: adding or improving their enrollment does not require rebuilding
+the photo index. For example, after enrolling Anna you can ask “Find photos
+of Anna in the holiday archive” even if the archive was indexed earlier.
+This applies to a valid index that contains face features: enrollment does
+not analyze new photos or recover faces that were not detected. New or
+modified photos require an index update, managed by LRE. Images used to
+enroll a person do not have to belong to the archive being searched.</p>
+
+<h3 id="photo-indexing-resume">Small, resumable steps</h3>
+
+<p>LRE discovers files in the background, prepares folder context and analyses
+photos in small groups, in parallel within configured resource limits. Only
+completed, accepted units and verified outputs survive a worker restart without repetition.
+Initial discovery is one unit: it establishes the group count and starts over
+if interrupted before commit; intermediate parts are not a resumable cursor.
+Uncertain effects or usage may require review before retrying: a restart does not
+resolve the problem. The local vision model starts when needed and may stop
+when idle. The new index appears only when its complete generation is published;
+the previous complete index remains usable. A model or file error remains visible
+as a problem, not a successful index.</p>
+
+<h3 id="photo-indexing-integrity">Integrity and recovery limits</h3>
+
+<p>An image that cannot be decoded is not necessarily damaged: the reader may
+not support its format or variant. Indexing records a negative outcome for that
+photo and continues with the others. Its description starts with
+<code>IMAGE_NOT_INDEXED:image_decode_failed</code>, or
+<code>IMAGE_NOT_INDEXED:image_format_unreadable</code> when the format is not
+recognized. The prefix is fixed, English and outside the translation system;
+only the following explanation is translated. No content or vectors are
+invented: the photo remains distinct from successfully indexed images.</p>
+
+<h3 id="photo-indexing-outcomes">Finishing with explicit errors</h3>
+
+<p>At completion, the source total must equal indexed photos plus photos not
+indexed. When all expected batches are complete, history shows the primary
+state <strong>Finished</strong>. The badge is orange when negative outcomes
+exist, while their count and causes remain in the detail. Errors become visible when each batch is
+committed, without being counted again during merging and publication. Model,
+authority, accounting and source-integrity errors do not become skippable photos.</p>
+
+<h3 id="photo-indexing-recovery-evidence">Accounting and recovery evidence</h3>
+
+<p>Unreadable EXIF GPS coordinates, including fractions with a zero denominator,
+are omitted: a decodable photograph is still analyzed and indexed. If a managed
+executor ends with an application exception, it preserves already recorded model
+call usage and reports the failure. Calls started without a usage report remain
+uncertain; the correction does not automatically reconstruct counters lost in
+earlier attempts.</p>
+
+<p>Administrative recovery can admit a continuation with explicit references to
+committed results: ownership, schema and digest are checked before reading their
+entries. The original workload and its usage are not rewritten. For a missing
+report, the continuation can reserve the entire frozen zero-cost local contract
+allowance and subtract it, together with known consumption, from the original
+budget. This reservation is not measured usage. Recovery stops without a
+verifiable bound or enough remaining budget. For photos, committed folder
+classifications and compatible intermediate checkpoints allow the same generation
+to continue without repeating successful analyses. This does not automatically
+retry the blocked revision.</p>
+
+<h3 id="photo-indexing-diagnostics">Identifying and retrying photos not indexed</h3>
+
+<p>To identify affected photos, search the index using the exact keyword
+<code>IMAGE_NOT_INDEXED</code> or either complete prefix. This returns a diagnostic
+list of paths and reasons, without semantic analysis or image previews; it does
+not start indexing. Ordinary searches exclude these records. A new incremental
+refresh retries photos not indexed and reuses compatible valid results; it does
+not create an automatic retry loop. Verified intermediate checkpoints can be
+reused within the same generation; a new workload does not guarantee reuse of
+private checkpoints from a failed generation. Originals and history are not
+deleted.</p>
+
+<h3 id="photo-indexing-publication">Verifying published files</h3>
+
+<p>Publication verifies the sizes and fingerprints of all five index files,
+including recovery after interruption: filenames alone do not prove generation
+integrity. Previous indexes remain readable; a historical generation without
+these proofs cannot certify a new publication through the fast recovery path.</p>
+
+<h3 id="photo-indexing-duration">Why initial preparation can take a long time</h3>
+
+<p>Building the index requires reading and analysing the photographs. Duration
+depends on file count and size, the requested analyses, disk speed, models and
+available resources. Large archives can take a long time, including hours. Any
+estimate is indicative, not a guaranteed deadline; waiting must not be
+presented as an absence of matching results.</p>
+
+<h3 id="photo-indexing-progress">Asynchronous work, progress and completion notification</h3>
+
+<p>When processing is actually accepted by LRE, chat returns a receipt and the
+asynchronous engine continues the work separately: you can use Metnos for
+other requests or close the page. Status and outcome remain available in the
+LRE console; completion, completion-with-errors and failure notifications are
+delivered through Telegram when the owner has a valid association. A workload
+that was not admitted has not started and will not produce an indexing
+completion notification. The initial receipt does not mean the index is ready.</p>
+
+<h3 id="photo-index-reuse">Why subsequent searches are normally faster</h3>
+
+<p><strong>After indexing has completed</strong>, subsequent searches of the
+same archive reuse the work already done: they are normally much faster
+because they do not have to analyse every photo again. Merely issuing a second
+request is not enough if preparation is still running or has failed. New or
+modified photos require an index update; an incremental update reuses
+unchanged photos, while a full rebuild repeats the analysis. None of these
+operations makes every search instantaneous.</p>
+
+<h3 id="photo-index-update">Incremental updates and full rebuilds</h3>
+
+<p>Searching an existing index does not itself start an update on every
+request. You can ask Metnos to update the archive's index; the scheduled
+nightly maintenance also submits incremental indexing to LRE. Both an
+incremental update and a full rebuild can be substantial background jobs,
+so they use the same resumable processing and resource limits.</p>
+
+<p>An ordinary update does not request a full rebuild or a simulation.
+For example, “Update the photo index in this folder” keeps the incremental
+behaviour. Ask explicitly if you want all photos analysed again. The first
+chat response acknowledges the background job; it does not claim that the
+index has already been updated.</p>
 
 <h2 id="flow">What happens after a request</h2>
 
@@ -125,6 +302,17 @@ up to three attempts. An action that changes data has one automatic attempt:
 if the service stops after invoking it but before recording the result, LRE
 requests attention instead of risking a second effect.</p>
 
+<h3 id="error-recovery">Recoverable errors and attention requests</h3>
+<p>LRE automatically retries only declared recoverable errors, within the plan's
+attempt and effect limits. Exhausting those attempts does not make the cause
+permanent: the job becomes <strong>Needs attention</strong>, preserving pending
+batches and saved results. An unknown cause requires review immediately, without
+blind retries. After review, <strong>Retry</strong> grants one new attempt; it
+does not reset the limit. Unknown usage, missing authority or ambiguous effects
+can still prevent recovery. Explicit permanent errors and invalid contracts do
+not become recoverable. History distinguishes the general code and, when
+available, its approved cause; these counts are attempts, not items.</p>
+
 <div class="callout note"><p><strong>The precise guarantee.</strong> LRE uses
 attempts with <em>at least once</em> semantics and admits one valid commit per unit. It can make an
 observable effect effectively once when the operation is pure, idempotent, or
@@ -155,7 +343,7 @@ setting and should not be changed before each request.</p></div>
 <ol>
  <li><strong>Initial administrator configuration.</strong> Under <a href="services.html">System → Services</a>, check that the LRE worker is healthy and enable workload admission. It is disabled by default on new installations; the setting remains in force until changed.</li>
  <li><strong>Normal use.</strong> Describe the desired outcome and authorised sources in chat, without issuing commands to LRE.</li>
- <li><strong>Automatic selection.</strong> If the final plan contains an intrinsically long, compatible action, Metnos creates its LRE plan and returns a receipt containing the <code>workload_id</code>. You do not need to know or select a profile.</li>
+ <li><strong>Automatic selection.</strong> If the final plan contains an intrinsically long, compatible action, Metnos creates its LRE plan and returns a receipt containing the <code>workload_id</code>. In web chat, <code>/admin/lre</code> is a clickable link to the same installation's console, including saved receipts. You do not need to know or select a profile.</li>
  <li><strong>Transparent outcome.</strong> A short action remains in the turn. A long action that cannot yet be represented is stopped with an explanation and is not executed through the interactive path without the required guarantees.</li>
  <li><strong>Optional monitoring.</strong> You may close the page and keep using Metnos. Open <code>Settings → System → LRE</code> whenever you want to inspect state, denominator, budget, stages, and events.</li>
  <li><strong>Final verification.</strong> On completion, check artifact digests and validation before downloading them.</li>
@@ -173,7 +361,7 @@ can be added without losing traceability or safety.</p>
 <table>
  <thead><tr><th>Current limitation</th><th>Practical effect</th><th>Correct extension path</th></tr></thead>
  <tbody>
-  <tr><td>Automatic compound plans</td><td>The current automatic path queues one independent long action. A plan with several executable steps or unresolved dependencies is not started.</td><td>Compile the whole final plan into LRE's typed graph, with explicit references and checks; do not preserve it as an opaque block.</td></tr>
+  <tr><td>Automatic compound plans</td><td>The current automatic path queues one independent long action. A plan with several executable steps or unresolved dependencies is not started.</td><td>Compile the whole final plan into LRE's typed graph, with explicit references and checks; do not preserve it as an opaque batch.</td></tr>
   <tr><td>Intelligent executors</td><td>The direct path currently excludes language- and vision-model executors without a complete immutable binding.</td><td>Freeze prompt, language, model, call limits, tokens, and cost in the same contract, then use the same general interface.</td></tr>
   <tr><td>Implicit remote destination</td><td>An executor that can run only on a device is not queued until the exact device has been resolved.</td><td>Name the device in the request or add deterministic, verifiable resolution before admission.</td></tr>
   <tr><td>Monolithic executor</td><td>LRE sees one unit and cannot resume halfway through an undeclared internal loop.</td><td>Expose the work as general, identifiable, idempotent units or as a batched reduction; do not add domain-specific cases.</td></tr>
@@ -197,10 +385,12 @@ can be added without losing traceability or safety.</p>
 
 <p>The console is the operational record of workloads, not the command that
 starts them. Open it in web chat under <code>Settings → System → LRE</code>. The
-left panel lists workloads visible to the owner: press <strong>Open</strong> on
+left panel lists workloads visible to the owner: select
 a row to load its revision, progress, limits, stages, events, units, and
-artifacts in the right panel. An empty list means that the current identity has
-no LRE workloads; if the page is unavailable, inspect the service under
+artifacts in the right panel. Only a successful read returning an empty list
+means that the current identity has no LRE workloads. A read error means status
+is unavailable, not that jobs are absent; previously loaded data remains visible
+but is marked as stale. If the page is unavailable, inspect the service under
 <code>Settings → System → Services</code>. The console does not need to remain
 open for execution to continue.</p>
 
@@ -214,17 +404,39 @@ open for execution to continue.</p>
   <span class="ui-badge" style="--x:77%;--y:62%" aria-hidden="true">5</span>
   <span class="ui-badge" style="--x:76%;--y:88%" aria-hidden="true">6</span>
  </div>
- <figcaption>A completed pilot workload: the console exposes the real denominator, admitted limits, and plan composition.</figcaption>
+ <figcaption>Historical screenshot of a completed pilot workload; the new timing fields described below are not present in this image.</figcaption>
 </figure>
+<p>The compact table separates <strong>Value</strong> and <strong>Meaning</strong>.
+For example, 10 completed batches in the phase, 967 expected in that phase and
+1,935 known batches across the job are different measures: 10/967 is about 1%
+of the phase, not 50% of time. The known total may grow as other phases are
+prepared. Missing data is <strong>n.a.</strong>, not zero.</p>
 <ol class="ui-callout-list">
  <li><strong>General navigation.</strong> Open <code>Settings → System → LRE</code>; the entry remains visible in the web interface's navigation column.</li>
- <li><strong>Workload list.</strong> Each row shows state and progress; <strong>Open</strong> loads its detail without starting another execution.</li>
- <li><strong>Workload facts.</strong> Priority, state, accounted units, and creation time.</li>
+ <li><strong>Workload list and phase.</strong> Each row shows activity, available folder, state and progress. Selecting it loads details without starting another execution. List and detail identify the phase with <strong>Phase x/y</strong> and its name when available. Numbering follows the admitted plan and excludes internal inventory bookkeeping; it does not measure elapsed-time progress. If several phases are active together, no single phase is invented.</li>
+ <li><strong>What is a batch?</strong> It is a part of the job that LRE executes and records separately. It has no fixed size or duration, and the concept is independent of the activity type. When the same revision resumes, completed batches remain saved; an interrupted batch may be retried. Partial checkpoints inside a batch depend on the capability executing it and are not guaranteed by the LRE count alone.</li>
+ <li><strong>Start, progress and estimated finish.</strong> Start means the first actual execution of the current revision, excluding queue time. The main percentage and completed and expected batches cover only the indicated phase, once its total is final: they do not mix preparation with later processing and do not measure time remaining. A separate row shows the known total across all phases, which may grow. The finish estimate covers the same phase and requires a sealed inventory, one fully prepared active phase and at least three completed batches in that phase. Unresolved errors or retries, uncertain usage, pauses, an unavailable engine, outdated data or stale progress produce <strong>n.a.</strong> (not available), with the reason visible in the list too. After a successful retry, the batch contributes to the estimate once: time spent recovering remains part of the observed cadence and the error stays in history. Estimate and reason refresh together. Refreshing the page alone does not push the estimate forward. The separate whole-job estimate remains in technical details and is available only for single-phase plans. Start and percentage also show <strong>n.a.</strong> when the necessary data is missing.</li>
+ <li><strong>Workload facts.</strong> Engine state is separate from job state: an available engine does not prove a job is progressing. In technical details, completed batches remain distinct from unfinished batches, those needing attention, failed or cancelled batches, and skipped batches. The total may grow during preparation.</li>
+ <li><strong>Completion summary.</strong> A finished workload keeps its start, finish, duration, processed batches, and per-stage counts in the detail. Partial errors do not replace the <strong>Finished</strong> state: an orange badge highlights them and the detail lists them. A true failure keeps the <strong>Failed</strong> state.</li>
+ <li><strong>Removal from the list.</strong> The chevron opens or closes a row's detail; the ×, available for a finished workload, removes only that workload from the list after confirmation. Results, artifacts, technical history, and references needed for recovery remain subject to their retention rules. A workload that can still execute must be cancelled first.</li>
+ <li><strong>Attention required.</strong> New batches stop starting; batches already running may still finish and save results. Read the recorded cause before retrying: this state does not necessarily mean usage is unknown. Restarting does not correct the cause and may interrupt useful work.</li>
+ <li><strong>Photo recovery.</strong> Complete analyses and explicit negative outcomes are saved even inside an unfinished batch and can be reused by an authorized retry within the same generation. Reuse checks the source and context; it does not make an incomplete index searchable. HEIC photos are supported too. Undecodable photos are recorded separately: completed batches do not equal successfully indexed photos.</li>
+ <li><strong>Freshness and problems.</strong> The page periodically checks state and warns when data is not refreshed. A disconnection does not preserve a false progress indication. Available causes are prominent; a generic state update is not presented as a new result. After loading further list pages, use <strong>Refresh list and status</strong> to return to the refreshed first page.</li>
+ <li><strong>Parallelism.</strong> Running units are distinct from the workload's admitted concurrency limit. They do not count threads or processes; other jobs and resource limits may reduce actual parallelism. The engine can execute independent batches from any compatible activity together, within their contracts and assigned resources. Raising the limit neither changes the plan nor repeats saved batches. Resuming the same job after an update still requires compatible contracts.</li>
+ <li><strong>Discovery and missing estimates.</strong> During initial photo discovery, percentage is n.a.: the final total is not known yet. A missing finish estimate displays a reason, giving priority to a job requiring intervention. The current-phase estimate is not an overall estimate for multi-phase jobs, which remains unavailable.</li>
+ <li><strong>Optional details.</strong> Explanations, events, digests, plan, stages and limits are in collapsible sections. The identifier distinguishes jobs without exposing the private request text.</li>
  <li><strong>Revision digests.</strong> Identify the plan and inventory that were actually admitted.</li>
  <li><strong>Admitted budget.</strong> Ceilings for units, attempts, duration, bytes, tokens, artifacts, and concurrency.</li>
  <li><strong>Stages.</strong> Each stage reports executor, progress, timeout, requirement status, and resources.</li>
 </ol>
 <p class="ui-privacy-note">The displayed corpus is synthetic and non-sensitive; its operational identifier contains no personal data.</p>
+
+<p><strong>Resource coordination.</strong> Joint resource
+reservation avoids holding CPU capacity while waiting for a model or another
+resource. New managed local processes bound numerical-library threads using
+effective CPU capacity, assigned shares and internal concurrency. These are
+concurrency ceilings, not exclusive core reservations. Model lifecycle is
+separate from LRE scheduling: <a href="../architecture/virtualization.html#resource-lifecycle">Virt boundary</a>.</p>
 
 </body>
 </html>

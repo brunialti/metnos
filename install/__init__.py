@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 # Metnos installer — Python package.
 #
 # Entry point: `python -m install` (invoked by install/bootstrap.sh after

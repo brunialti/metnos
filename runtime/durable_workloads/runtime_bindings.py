@@ -42,6 +42,7 @@ from .worker import DurableWorker
 
 _CORE_RUNNER_BINDINGS = (
     (RunnerKind.INTERNAL, "artifact_store_publish"),
+    (RunnerKind.INTERNAL, "committed_entries"),
     (RunnerKind.INTERNAL, "schema_and_coverage_validator"),
     (RunnerKind.INTERNAL, "sealed_inventory"),
 )
@@ -68,6 +69,9 @@ class RuntimeRegistration:
     output_schema_names: tuple[str, ...]
     workload_invoker: Callable[[str, Mapping[str, Any], object], object] | None = None
     candidate_plan_factory: Callable[[], Mapping[str, Any]] | None = None
+    concurrency_targets_resolver: Callable[
+        [FrozenRunnerContract, Mapping[str, Any], object, str | None], tuple[str, ...]
+    ] | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.name, str) or not _REGISTRATION_RE.fullmatch(self.name):
@@ -99,11 +103,15 @@ class RuntimeRegistration:
             and not callable(self.candidate_plan_factory)
         ):
             raise TypeError("runtime candidate plan factory must be callable")
+        if (self.concurrency_targets_resolver is not None
+                and not callable(self.concurrency_targets_resolver)):
+            raise TypeError("runtime concurrency target resolver must be callable")
 
 
 class _RunnerRouter:
     def __init__(self, registrations: Sequence[RuntimeRegistration]) -> None:
         self._by_binding: dict[tuple[RunnerKind, str], RunnerContractResolver] = {}
+        self._target_resolvers = {}
         for registration in registrations:
             for raw_kind, name in registration.runner_bindings:
                 binding = (RunnerKind(raw_kind), name)
@@ -111,6 +119,21 @@ class _RunnerRouter:
                     raise ValueError("duplicate runtime runner authority")
                 self._resolve_checked(registration.runners, *binding)
                 self._by_binding[binding] = registration.runners
+                if registration.concurrency_targets_resolver is not None:
+                    self._target_resolvers[binding] = registration.concurrency_targets_resolver
+
+    def concurrency_targets_for(self, contract, args, context, device_id):
+        """Resolve only through the package owning this verified runner binding.
+
+        This is local scheduling evidence, not a new runner contract or a grant
+        of write authority. The bridge invokes it after exact attestation;
+        the central scheduler still enforces the signed execution policy.
+        """
+        from execution_isolation import validate_targets
+
+        resolver = self._target_resolvers.get((RunnerKind(contract.kind), contract.name))
+        return () if resolver is None else validate_targets(
+            resolver(contract, args, context, device_id))
 
     @staticmethod
     def _resolve_checked(
@@ -308,7 +331,8 @@ class BoundExecutionBridge:
         self._next_maintenance = 0.0
         self._closed = False
 
-    def run_once(self, worker: DurableWorker):
+    def maintain(self) -> None:
+        """Run bounded retention/revocation even when no unit can execute."""
         if self._closed:
             raise RuntimeError("execution bridge is closed")
         now = time.monotonic()
@@ -316,6 +340,9 @@ class BoundExecutionBridge:
             for callback in self._maintenance:
                 callback()
             self._next_maintenance = now + self._maintenance_interval_s
+
+    def run_once(self, worker: DurableWorker):
+        self.maintain()
         return self._bridge.run_once(worker)
 
     def close(self) -> None:
@@ -370,6 +397,8 @@ class RuntimeFactory:
         self._lease_duration = lease_duration
         self._registry: RuntimeRegistry | None = None
         self._guard = threading.Lock()
+        self._maintenance_guard = threading.Lock()
+        self._next_source_maintenance = 0.0
 
     def registry(self) -> RuntimeRegistry:
         with self._guard:
@@ -391,7 +420,7 @@ class RuntimeFactory:
             raise StoreNotReadyError("runtime bindings require a file-backed store")
         from config import PATH_DURABLE_ARTIFACTS
 
-        repository = ArtifactRepository.open(database_path)
+        repository = ArtifactRepository.open_for_store(store)
         artifacts: ArtifactStore | None = None
         authority: SourceAuthority | None = None
         try:
@@ -404,21 +433,39 @@ class RuntimeFactory:
                 remote_attestor=self._remote_attestor,
             )
             registry = self.registry()
+            from .resource_readiness import ensure_model_resource
+            from executor_birth_durable_guard import productive_birth_attempt_guard
+
+            # An installation that still owns its lifecycle state in the
+            # legacy stores composes exactly as before: the guard is absent
+            # and no durable attempt gains or loses authority.
+            birth_guard = productive_birth_attempt_guard()
+
             bridge = DurableExecutionBridge(
                 store,
                 runners=registry.runners,
                 output_schemas=registry.output_schemas,
                 source_resolver=authority.resolve,
                 workload_invoker=registry.invoke_workload,
-                internal_runners=approved_internal_runners(artifacts),
+                internal_runners=approved_internal_runners(artifacts, store),
+                resource_readiness=ensure_model_resource,
+                executor_generation_attestor=birth_guard,
+                require_generation_attestation=birth_guard is not None,
             )
 
             def maintain_source_authority() -> None:
-                authority.reconcile_workloads(
-                    store.source_authority_active,
-                    limit=100,
-                )
-                authority.prune(limit=1000)
+                # Bindings are short-lived per lane; retention cadence belongs
+                # to the shared factory, not to each newly opened connection.
+                with self._maintenance_guard:
+                    now = time.monotonic()
+                    if now < self._next_source_maintenance:
+                        return
+                    authority.reconcile_workloads(
+                        store.source_authority_active,
+                        limit=100,
+                    )
+                    authority.prune(limit=1000)
+                    self._next_source_maintenance = now + 60.0
 
             return BoundExecutionBridge(
                 bridge,

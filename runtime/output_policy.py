@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """output_policy.py — modalità di presentazione DETERMINISTICA.
 
 La modalità di output NON è scelta dall'LLM-proposer: è una funzione pura di
@@ -330,6 +330,21 @@ def normalize_terminal(framework, intent, query: str = "", catalog=None):
                 declared_presentation = value
             break
     r = resolve(verb, producer, query, declared_presentation)
+    # A web reader has already crossed the content boundary: its result is
+    # the page text, not the discovery list.  A default metadata table must
+    # not erase that content merely because the primary verb was ``find``.
+    # Keep explicit enumeration, counts, mutations and tabular transforms
+    # authoritative.  This depends on the typed plan, never topic keywords.
+    web_content = (
+        producer in _WEB_CONTENT_READERS
+        and r["intent_class"] in {READ, ENUMERATE}
+        and verb != "list"
+        and _terminal_entries_pos(steps, ppos) == ppos
+        and not (producer == "get_urls"
+                 and (steps[ppos - 1].args or {}).get("method") == "HEAD")
+    )
+    if web_content:
+        r.update(mode=T, manifest_declared=False)
     info.update(r)
 
     from engine.types import StepSpec, Framework  # lazy: evita import circolari
@@ -489,20 +504,31 @@ def normalize_terminal(framework, intent, query: str = "", catalog=None):
                 getattr(framework, "runtime_step_cap", 0) or 0),
         ), info)
 
-    if mode == T and producer == "read_sites":
+    if mode == T and (producer == "read_sites" or web_content):
         describe_pos = next((i + 1 for i, step in enumerate(steps)
                              if i + 1 > ppos
                              and step.tool == "describe_entries"), 0)
         if describe_pos:
+            # Reuse the existing synthesis and its bindings.  The content
+            # mode owns the relevance preset; the request, not an incidental
+            # planner default, determines what the summary must answer.
+            describe_args = dict(steps[describe_pos - 1].args or {})
+            if web_content:
+                describe_args["style"] = "by_relevance"
+                describe_args["context"] = query or describe_args.get("context", "")
+                describe_args["data_kind"] = r["data_kind"]
             final = f"${{step{describe_pos}.summary}}"
-            if framework.final_message == final:
+            if (framework.final_message == final
+                    and describe_args == steps[describe_pos - 1].args):
                 return framework, info
             info["action"] = "final_only"
             return (Framework(steps=[
-                        StepSpec(tool=step.tool, args=dict(step.args or {}),
+                        StepSpec(tool=step.tool,
+                                 args=(describe_args if pos == describe_pos
+                                       else dict(step.args or {})),
                                  if_prev_entries_nonempty=
                                  step.if_prev_entries_nonempty)
-                        for step in steps],
+                        for pos, step in enumerate(steps, start=1)],
                     fillers=framework.fillers, final_message=final,
                     runtime_step_cap=int(
                         getattr(framework, "runtime_step_cap", 0) or 0)), info)
@@ -518,7 +544,7 @@ def normalize_terminal(framework, intent, query: str = "", catalog=None):
         describe_pos = ppos + 1
         new_steps.insert(ppos, StepSpec(tool="describe_entries", args={
             "from_step": ppos, "style": "by_relevance",
-            "context": query, "data_kind": "sites",
+            "context": query, "data_kind": r["data_kind"],
         }))
         info["action"] = "insert_describe_entries"
         return (Framework(

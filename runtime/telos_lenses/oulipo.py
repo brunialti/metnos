@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """oulipo.py — vincolo deliberato.
 
 Ref: OuLiPo (Ouvroir de Litterature Potentielle), Queneau & Le Lionnais,

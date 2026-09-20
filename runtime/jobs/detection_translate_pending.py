@@ -207,21 +207,34 @@ def task_detection_translate_pending(payload: dict | None = None) -> dict:
             source_payload = None
         if not source_payload:
             err += 1
+            _dl.record_translation_failure(
+                concept, tgt, "source_payload_invalid",
+            )
             continue
         try:
             localized, meta = _llm_localize(concept, kind, source_payload,
                                             tgt, src_lang, tier)
         except Exception as ex:
             err += 1
+            _dl.record_translation_failure(concept, tgt, "llm_error")
             events.append({"ts": _now_iso(), "concept": concept, "lang": tgt,
                            "result": "llm_error", "detail": str(ex)[:120]})
             continue
         if localized is None:
             err += 1
+            _dl.record_translation_failure(concept, tgt, "no_translation")
             events.append({"ts": _now_iso(), "concept": concept, "lang": tgt,
                            "result": "no_translation"})
             continue
-        _dl.set_translated(concept, tgt, localized)
+        try:
+            _dl.set_translated(concept, tgt, localized)
+        except Exception as ex:
+            err += 1
+            _dl.record_translation_failure(concept, tgt, "candidate_rejected")
+            events.append({"ts": _now_iso(), "concept": concept, "lang": tgt,
+                           "result": "candidate_rejected",
+                           "detail": str(ex)[:120]})
+            continue
         ok += 1
         events.append({"ts": _now_iso(), "concept": concept, "lang": tgt,
                        "kind": kind, "result": "ok", "model": meta.get("model"),

@@ -20,7 +20,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from types import MappingProxyType
-from typing import Iterator, Mapping, Protocol
+from typing import Callable, Iterator, Mapping, Protocol
 
 
 TREE_DOMAIN = b"metnos.executor-birth.authoring-tree/v1\0"
@@ -634,6 +634,24 @@ def rollback_prepared(paths: AuthoringPaths, journal: AuthoringInstallJournalV1)
     _sync_directory(paths.control)
 
 
+def _read_authoring_versioned(
+    paths: AuthoringPaths,
+    contract_id: str,
+    reader: Callable[[], Mapping[str, bytes]],
+    *,
+    timeout: float,
+) -> Mapping[str, bytes]:
+    with authoring_token(paths.lock, exclusive=False, timeout=timeout):
+        before = read_version(paths, contract_id)
+        if before is None:
+            raise AuthoringInstallError("authoring_version_invalid", "missing")
+        payloads = reader()
+        after = read_version(paths, contract_id)
+        if before != after or authoring_tree_id(payloads) != before.tree_id:
+            raise AuthoringInstallError("authoring_version_changed")
+        return payloads
+
+
 def read_authoring_versioned(
     paths: AuthoringPaths,
     contract_id: str,
@@ -642,15 +660,11 @@ def read_authoring_versioned(
     timeout: float,
 ) -> Mapping[str, bytes]:
     """Read one all-or-nothing authoring view under the shared F4 token."""
-    with authoring_token(paths.lock, exclusive=False, timeout=timeout):
-        before = read_version(paths, contract_id)
-        if before is None:
-            raise AuthoringInstallError("authoring_version_invalid", "missing")
-        payloads = read_tree(paths.canonical, relative_paths)
-        after = read_version(paths, contract_id)
-        if before != after or authoring_tree_id(payloads) != before.tree_id:
-            raise AuthoringInstallError("authoring_version_changed")
-        return payloads
+    return _read_authoring_versioned(
+        paths, contract_id,
+        lambda: read_tree(paths.canonical, relative_paths),
+        timeout=timeout,
+    )
 
 
 def read_manifest_ref_versioned(
@@ -672,4 +686,20 @@ def read_manifest_ref_versioned(
     paths = authoring_paths(ref.manifest_dir, contract_id)
     return read_authoring_versioned(
         paths, contract_id, relative_paths, timeout=timeout,
+    )
+
+
+def read_manifest_ref_tree_versioned(
+    ref: AuthoringManifestRef,
+    *,
+    timeout: float,
+) -> Mapping[str, bytes]:
+    """Read the exact closed authoring tree behind an opaque manifest ref."""
+    contract_id = getattr(ref.contract_id, "value", ref.contract_id)
+    if not isinstance(contract_id, str):
+        raise AuthoringInstallError("authoring_tree_invalid", "contract_id")
+    paths = authoring_paths(ref.manifest_dir, contract_id)
+    return _read_authoring_versioned(
+        paths, contract_id, lambda: observe_tree(paths.canonical),
+        timeout=timeout,
     )

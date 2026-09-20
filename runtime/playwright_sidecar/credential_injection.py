@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """credential_injection — iniezione credenziali RIPROGETTATA (spec sites §3.2).
 
 Questo modulo gira DENTRO il broker (processo sidecar). È l'UNICO punto in cui
@@ -42,6 +42,7 @@ import credentials  # runtime/credentials.py — vault cifrato (dentro il broker
 import sites_audit
 import sites_origin  # ADR 0191 P2 — origine credenziale (scheme,host,port)
 from playwright_sidecar import factor_resolvers
+from playwright_sidecar.cookie_privacy import CookieOutcome
 from sites_url_scrub import scrub_url
 
 try:
@@ -506,6 +507,28 @@ async def _wait_for_login_surface(page, op_timeout_s: float) -> str:
     return ""
 
 
+async def _login_progress_signature(page) -> str:
+    """What the pilot can observe from here: the place and the text on it.
+
+    Used to tell a login entry step that MOVED something from one that did
+    nothing at all. The place alone would not do - a login modal opens without
+    changing the address - and the text alone would not do either, since two
+    pages can read the same. Deliberately blunt: any change at all counts as
+    progress, so the rule only fires when literally nothing happened.
+    """
+    try:
+        from playwright_sidecar import action_resolver
+        posto = action_resolver.url_place_key(getattr(page, "url", "") or "")
+    except Exception:  # noqa: BLE001 -- senza resolver resta l'indirizzo grezzo
+        posto = str(getattr(page, "url", "") or "")
+    try:
+        body = await page.locator("body").inner_text(timeout=1500)
+    except Exception:
+        body = ""
+    return hashlib.sha256(
+        "\0".join([posto, str(body or "")[:50000]]).encode("utf-8")).hexdigest()
+
+
 async def _page_matches_concept(page, concept: str) -> bool:
     if _detlex is None:
         return False
@@ -675,6 +698,68 @@ def _is_auth_entry_route(url: str) -> bool:
         return True
     compact = {segment.replace("-", "") for segment in segments}
     return bool(compact & {"login", "signin", "signon", "signup"})
+
+
+_CROSS_INTERSTITIAL_JS = r"""
+(forms) => {
+  document.querySelectorAll('[data-metnos-continue]').forEach(
+    el => el.removeAttribute('data-metnos-continue'));
+  const normalize = value => (value || '').normalize('NFKD')
+    .replace(/[̀-ͯ]/g, '').toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ').trim().replace(/\s+/g, ' ');
+  const ammessi = (forms || []).map(normalize).filter(Boolean);
+  if (!ammessi.length) return false;
+  const visibile = el => {
+    const r = el.getBoundingClientRect();
+    const s = getComputedStyle(el);
+    return r.width >= 2 && r.height >= 2 && s.display !== 'none' &&
+      s.visibility !== 'hidden' && Number(s.opacity || '1') >= .05;
+  };
+  // Una pagina che porta ancora un campo password non e' un intermezzo: e' il
+  // modulo, e proseguire da li' sarebbe un secondo invio, non un passaggio.
+  for (const campo of document.querySelectorAll('input[type=password]'))
+    if (visibile(campo)) return false;
+  for (const el of document.querySelectorAll('a,button,[role=button]')) {
+    if (!visibile(el)) continue;
+    const nome = normalize(el.getAttribute('aria-label') || el.innerText || '');
+    if (!nome) continue;
+    // Il nome DEVE cominciare con la forma di continuazione: «continua qui»
+    // prosegue, «continua senza accettare» risponde a un consenso.
+    if (!ammessi.some(forma => nome === forma || nome.startsWith(forma + ' ')))
+      continue;
+    el.setAttribute('data-metnos-continue', '1');
+    return true;
+  }
+  return false;
+}"""
+
+
+async def _cross_interstitial(page, *, op_timeout_s: float) -> bool:
+    """Attraversa una pagina-intermezzo: non si chiude, si prosegue.
+
+    Un sito puo' accettare le credenziali e interporre una promozione fra
+    l'accesso e la destinazione. Non ha un'uscita da chiudere - chiuderla
+    sarebbe sbagliato - ha una **continuazione**, e chi non la prende legge la
+    pagina come un accesso fallito. Osservato dal vivo il 10/9/2026.
+
+    Il riconoscimento e' quello del lessico (`sites.login_continue_target`),
+    quindi vale in ogni lingua che il lessico copre; nessun testo di un sito
+    entra qui. Un solo attraversamento, e mai su una pagina che porti ancora
+    un campo password: quello sarebbe un secondo invio.
+    """
+    from playwright_sidecar import action_resolver
+
+    forme = list(action_resolver.login_continue_forms())
+    try:
+        if not await page.evaluate(_CROSS_INTERSTITIAL_JS, forme):
+            return False
+        prima = page.url
+        await page.locator('[data-metnos-continue="1"]').first.click(
+            timeout=min(4000, max(1000, int(op_timeout_s * 1000))))
+        await page.wait_for_timeout(600)
+        return page.url != prima
+    except Exception:
+        return False
 
 
 async def _observe_post_submit(*, page, context, cookies_before: dict,
@@ -1287,7 +1372,8 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
                         reach_login=None, authorize_origin=None,
                         approved_origin: str | None = None,
                         max_entry_steps: int = 3,
-                        page_provider=None, factor_state: dict | None = None,
+                        page_provider=None, prepare_page=None,
+                        factor_state: dict | None = None,
                         checkpoint=None,
                         total_timeout_s: float | None = None,
                         stealth_techniques=()) -> dict:
@@ -1371,7 +1457,32 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
             return previous
         return candidate if candidate is not None else previous
 
-    page = current_page(page)
+    async def prepared_page(previous):
+        # A rendered form may still be covered by an asynchronously loaded
+        # cookie banner. Keep that browser precondition before discovery/fill,
+        # including direct login URLs and forms split across several pages.
+        def redact(text):
+            for secret in (username, password, totp_secret, one_time_code):
+                if secret:
+                    text = text.replace(str(secret), "[redacted]")
+            return text
+
+        if prepare_page is not None:
+            outcome = await prepare_page(redact=redact)
+            if not isinstance(outcome, CookieOutcome):
+                outcome = CookieOutcome("blocked", reason="invalid_precondition_outcome")
+            if outcome.status == "blocked":
+                return current_page(previous), {
+                    "ok": True, "logged_in": False,
+                    "reason_code": "selector_missing",
+                    "error_class": "cookie_precondition_unresolved",
+                    "obstruction_kind": outcome.kind,
+                    "obstruction_reason": outcome.reason}
+        return current_page(previous), None
+
+    page, obstruction = await prepared_page(page)
+    if obstruction:
+        return obstruction
     # Fix adversarial #5: cattura lo status HTTP del documento top-level (submit
     # e goto NON restituivano la Response). Listener bounded: aggiorna un attributo
     # sulla pagina, riletto da `_observe_post_submit` → alimenta `rate_limited`.
@@ -1458,7 +1569,9 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
             return {"ok": True, "logged_in": False,
                     "reason_code": "login_timeout",
                     "error_class": "timeout"}
-        page = current_page(page)
+        page, obstruction = await prepared_page(page)
+        if obstruction:
+            return obstruction
         if password_visible:
             break
         if login_url and not login_url_attempted:
@@ -1471,6 +1584,9 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
                     timeout=goto_timeout)
             except Exception:
                 pass
+            page, obstruction = await prepared_page(page)
+            if obstruction:
+                return obstruction
             password_visible = await _has_toplevel_password(page)
             if password_visible:
                 break
@@ -1608,6 +1724,7 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
                 page = current_page(page)
                 password_visible = await _has_toplevel_password(page)
                 continue
+        prima_del_clic = await _login_progress_signature(page)
         reached = await reach_login("login")
         entry_steps += 1
         if reached.get("approval_required"):
@@ -1623,9 +1740,20 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
                         else "selector_missing"),
                     "error_class": error_class}
         page = current_page(page)
-        await _wait_for_login_surface(
+        superficie = await _wait_for_login_surface(
             page, budget.remaining(_LOGIN_SURFACE_SETTLE_S))
         password_visible = await _has_toplevel_password(page)
+        # The budget is spent on progress here too. A click that reveals no
+        # login stage AND leaves the page exactly as it was did not happen:
+        # repeating it cannot end differently. Turn `ab0ebb39` (10/9/2026),
+        # portal under maintenance: the entry was clicked four times, each
+        # time from the maintenance page onto the maintenance page, and the
+        # turn then told the user to take physical action.
+        if not superficie and await _login_progress_signature(
+                page) == prima_del_clic:
+            return {"ok": True, "logged_in": False,
+                    "reason_code": "login_entry_stalled",
+                    "error_class": "login_entry_stalled"}
 
     if not password_visible:
         return {"ok": True, "logged_in": False,
@@ -1641,6 +1769,9 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
 
     # 3. CRITICO-1 — verifica ORIGINE prima di digitare. Il JS tagga anche i
     #    campi (CRITICO-2: risoluzione autonoma del broker, mai selettori LLM).
+    page, obstruction = await prepared_page(page)
+    if obstruction:
+        return obstruction
     info = await page.evaluate(_LOCATE_LOGIN_FORM_JS)
     if not info or not info.get("found"):
         return {"ok": True, "logged_in": False, "reason_code": "selector_missing",
@@ -1809,6 +1940,22 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
     # l'autenticazione: il segnale deve essere nuovo o ruotato dal submit.
     outcome = post_submit_outcome(observed, session_cookie_names)
     logged_in = (outcome == "login_verified")
+
+    # Un intermezzo NON e' un rifiuto. Il sito puo' accettare le credenziali e
+    # interporre una pagina promozionale: non ha niente da chiudere, ha solo
+    # una via in avanti, e chi si aspetta la destinazione la legge come un
+    # accesso fallito. Misurato sulla replica: strati tutti sgombrati, modulo
+    # inviato, pagina `/intermezzo`, verdetto `login_failed`.
+    if (not logged_in and not (captcha or otp or push or forced_reason)
+            and not observed["password_rejected"]):
+        if await _cross_interstitial(page, op_timeout_s=budget.remaining(
+                _LOGIN_SURFACE_SETTLE_S)):
+            observed = await _observe_post_submit(
+                page=page, context=context, cookies_before=cookies_before,
+                url_before=url_before,
+                op_timeout_s=budget.remaining(_LOGIN_SURFACE_SETTLE_S))
+            outcome = post_submit_outcome(observed, session_cookie_names)
+            logged_in = (outcome == "login_verified")
 
     reason = None
     if not logged_in:

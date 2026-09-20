@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Metnos — historical verification and executor transition</title>
+ <link rel="canonical" href="https://metnos.com/en/architecture/executor_birth">
+ <meta name="description" content="How the first executor transition separates historical signature verification from authority to execute and publish.">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/executor_birth">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/executor_birth">
+ <link rel="stylesheet" href="/assets/metnos.css?v=20260822-2">
+ <script defer src="/assets/wiki-shell.js?v=20260822-2"></script>
+</head>
+<body>
+<nav aria-label="Language"><a href="/en/index.html">Documentation</a> · <a href="/it/architecture/executor_birth.html" lang="it">IT</a> · EN</nav>
+<main>
+ <h1>Verifying history does not mean executing it</h1>
+ <p>When Metnos code changes, signatures on existing contracts must remain
+ verifiable. This does not authorize new code to execute or publish using
+ a previous authority context.</p>
+ <h2>One candidate, one admission procedure</h2>
+ <p>A capability proposed by Synt follows the common Birth procedure. Its
+ candidate is kept separate from the installed version until the required
+ checks succeed. Generating an executor is not a release of the whole
+ Metnos system and does not require replaying every past certification.</p>
+ <p>Property and semantic checks run outside the catalog publication lock.
+ The short publication step checks the candidate and reserves its name
+ against the signed identities already installed. It does not recheck the
+ executable code of unrelated components just to read their names. If an
+ unrelated component has damaged code, that component remains unusable;
+ its signed name is still reserved, but another component can be repaired.</p>
+ <p><strong>Verification status:</strong> the simplified name check is tested
+ in development, not yet deployed. An isolated test follows the real Birth,
+ signed-store and execution paths: the installed version remains callable
+ while a new candidate's check is deliberately paused, and after that check
+ fails. This is not a live chat or model-latency benchmark. Shared authority
+ integrity, candidate safety and name uniqueness remain mandatory.</p>
+ <h2>The first coordinated transition</h2>
+ <p>The initial path authenticates the historical set and its key bindings
+ under one barrier. Readers receive only the set identity and public
+ verification keys, not an executable runtime.</p>
+ <p>For an unchanged contract, convergence verifies its signature and
+ contents without publishing it again. If a change requires publication,
+ it constructs the full runtime and checks that its context matches the
+ source code: a different context is rejected.</p>
+ <h2>The new context is still required</h2>
+ <p>Historical reading does not replace transition reattestation, which
+ remains bound to the new authenticated distribution. Changes to the
+ historical set, key inventory, or contract-to-generation binding are
+ rejected; a historical signature is not a general permission to execute
+ new code.</p>
+ <h2>The census distinguishes the old and new installations</h2>
+ <p>Retirement entries describe only components of the old installation.
+ A module introduced by the new distribution must not be required in its
+ predecessor: it remains covered by the new distribution's signed
+ inventory and verification. A missing required historical component
+ still blocks the transition.</p>
+ <p>Resuming reuses the recorded historical census, because retirement may
+ already have renamed some files. The document must retain its valid format,
+ integrity and safe ownership and match the same transition, installation
+ and catalog exactly. It is neither rewritten nor treated as a fresh
+ verification of current state.</p>
+ <h2>Extending checks on retired components</h2>
+ <p>Successor releases may add checks on legacy code entry points while
+ keeping every previous entry unchanged. A file present in the authenticated
+ historical inventory still requires its exact retired copy. If it was absent
+ from that inventory, its absence must also be proved now beneath protected
+ directories, without following links. A missing file alone is not proof of
+ retirement.</p>
+ <p>Verification neither creates nor deletes files. The release tool runs it
+ before stopping services, and the transition repeats it under its exclusive
+ controls. Removal or modification of previous entries and additional service
+ retirements remain refused. <strong>Status:</strong> fix deployed on
+ 17 September 2026; the release 63-to-64 transition was verified while
+ preserving an LRE job. This release neither activates nor certifies F5.</p>
+ <h2>Check the present without replaying the entire history</h2>
+ <p>A new admission must pass its safety checks. It should not repeat work
+ already verified for every earlier release. The optimized reader uses the
+ signed current-release reference, checks its link to the predecessor and
+ verifies the actual installed files. Altered signatures or a release
+ change during the read still cause refusal.</p>
+ <p><strong>Work status:</strong> this path is implemented and tested in
+ development, but not yet deployed. The administrative startup verifier has
+ also passed a read-only check on the real installation: it checks the
+ current release, its predecessor and any successor being prepared.
+ The release coordinator's journal inventory remains to be optimized.
+ Initial certification and an explicit historical investigation remain
+ separate activities.</p>
+ <h2>A certification key does not grant operating permissions</h2>
+ <p>The initial F5 proof uses a dedicated administrative identity, separate
+ from the keys that admit executors. Its private part stays with the
+ administrator; a runtime verifier needs only the public part. A missing or
+ revoked certification key must not stop components already operating under
+ F4, and preparing the key does not activate F5.</p>
+ <p><strong>Development status:</strong> isolated Linux tests cover key
+ preparation, recovery after a process stops, and public-only reading by an
+ unprivileged account. The proof derived from real admissions, migration and
+ lifecycle integration are still unfinished. F5 and F6 are not complete;
+ native Windows custody is not implemented.</p>
+ <p>The administrative evidence record also keeps failed and interrupted
+ test cycles. Two selected successes do not erase an intervening failure;
+ a repeated turn cannot count twice. Closing a known defect requires its
+ repair, verification and independent review. This record is implemented
+ in development, but is not an F5 certificate or an activation switch.</p>
+ <p>The final checks focus on Birth, generations, caches, feedback and recovery,
+ rather than repeating unchanged mail or calendar tests. Integration is tested
+ in isolation first; certification must succeed before production activation.</p>
+ <p>One development check concerns waiting jobs: an executor can become
+ unavailable while a job waits for a model or an execution slot. The strict
+ attempt path therefore rereads its exact generation after waiting and before
+ execution. A quarantined generation is refused without running it. This
+ correction has passed isolated tests; F5 is not yet active in production.</p>
+ <p>The development activation reader accepts only the installation's own
+ signed attestation and public verification key. It checks that the attestation
+ belongs to the selected release; a list of successful tests supplied by a
+ caller is not a certificate. Reading this compact proof does not repeat the
+ entire historical investigation. Issuing the proof from the completed checks
+ and connecting all lifecycle operations are still unfinished.</p>
+ <p>The development quarantine path now creates a signed revision of the exact
+ executor version that was run. It changes only its execution status, without
+ running the suspect code again or asking for another user confirmation.
+ Feedback about an older version cannot disable its replacement or other
+ executors. Isolated tests also cover interruptions: an already published
+ quarantine is recovered, and its failure-review job is queued only once.
+ The live feedback connection, complete cache integration and final F5
+ certification are still pending; these tests do not activate production.</p>
+ <h2>Keep the evidence, not every old program copy</h2>
+ <p>The release procedure normally retains the active release and one
+ predecessor, plus copies still referenced by processes, services or
+ operations being prepared. It may remove other copies only after a
+ successful release. The predecessor is recovery material, not permission
+ to downgrade the selected release automatically.</p>
+ <p>This cleanup removes distribution code only. It does not remove signed
+ receipts, personal data, models or information still needed for migration.
+ Fewer program copies do not mean fewer safety checks.</p>
+</main>
+</body>
+</html>

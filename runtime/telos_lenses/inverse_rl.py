@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """inverse_rl.py — discover unstated telos.
 
 Concept-only lens: propone TELOS non dichiarati osservando cluster di

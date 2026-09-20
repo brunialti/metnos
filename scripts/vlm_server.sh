@@ -28,7 +28,9 @@ LLAMA_BIN="${METNOS_VLM_LLAMA_BIN:-$HOME/llama.cpp/build/bin/llama-server}"
 # ricca). A 1024 bastava 8192/4=2048; il bump risolve il troncamento JSON.
 CTX="${METNOS_VLM_CTX:-16384}"
 NPAR="${METNOS_VLM_SLOTS:-4}"
-LOG_DIR="$HOME/.local/share/metnos/logs"
+# The owning runtime supplies its data/state roots (including isolated tests).
+# Keep the historical home layout only when those roots are not configured.
+LOG_DIR="${METNOS_USER_DATA:-$HOME/.local/share/metnos}/logs"
 LOG_FILE="$LOG_DIR/vlm_server.log"
 LOG_ARCHIVE_DIR="$LOG_DIR/archive/vlm"
 LOG_MAX_MB="${METNOS_VLM_LOG_MAX_MB:-32}"
@@ -38,8 +40,8 @@ WD_LOG_FILE="$LOG_DIR/vlm_watchdog.log"
 WD_LOG_ARCHIVE_DIR="$LOG_DIR/archive/vlm-watchdog"
 WD_LOG_MAX_MB="${METNOS_VLM_WATCHDOG_LOG_MAX_MB:-4}"
 WD_LOG_ARCHIVES="${METNOS_VLM_WATCHDOG_LOG_ARCHIVES:-4}"
-PID_FILE="$HOME/.local/state/metnos/vlm_server.pid"
-WD_PID_FILE="$HOME/.local/state/metnos/vlm_watchdog.pid"
+PID_FILE="${METNOS_USER_STATE:-$HOME/.local/state/metnos}/vlm_server.pid"
+WD_PID_FILE="${METNOS_USER_STATE:-$HOME/.local/state/metnos}/vlm_watchdog.pid"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 RUNTIME_DIR="${METNOS_RUNTIME_DIR:-$(dirname "$SCRIPT_DIR")/runtime}"
 
@@ -131,8 +133,14 @@ cmd_start() {
   # indisponibile il VLM e resta visibile su stderr.
   _rotate_inactive_log "$LOG_FILE" "$LOG_ARCHIVE_DIR" \
     "$LOG_MAX_MB" "$LOG_ARCHIVES"
+  # Relocated managed builds may retain their build-time RUNPATH. Resolve the
+  # selected binary and expose only its sibling libraries to this child; never
+  # rewrite the installed artifact or discard administrator library settings.
+  local resolved_bin library_dir
+  resolved_bin="$(readlink -f -- "$LLAMA_BIN")"
+  library_dir="$(dirname -- "$resolved_bin")"
   echo "avvio llama-server VLM su :$PORT ..."
-  nohup "$LLAMA_BIN" \
+  nohup env LD_LIBRARY_PATH="$library_dir${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" "$resolved_bin" \
     -m "$MODEL" \
     --mmproj "$MMPROJ" \
     -ngl 999 \

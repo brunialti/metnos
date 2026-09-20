@@ -16,6 +16,10 @@ from pathlib import Path, PurePosixPath, PureWindowsPath
 from types import MappingProxyType
 from typing import Mapping
 
+from executor_birth_secure_file import (
+    SecureFileReadError, read_immutable_regular_file,
+)
+
 
 MANIFEST_FILE = "manifest.toml"
 LANGUAGE_STATE_FILE = "manifest.lang_state.json"
@@ -191,23 +195,24 @@ def _read_regular(root: Path, relative: str) -> bytes:
             before = path.lstat()
             if _link_like(path, before) or not stat.S_ISREG(before.st_mode) or before.st_nlink != 1:
                 raise CandidateSnapshotError("candidate_link_forbidden", relative)
-            with path.open("rb") as handle:
-                payload = handle.read()
-                after_handle = os.fstat(handle.fileno())
+            # Path-based stat fields and CRT fstat fields are not a portable
+            # cross-API identity on Windows.  The shared Win32 oracle pins the
+            # entry against write/rename/delete, verifies its final path and
+            # checks identity and shape twice on the same native handle.
+            payload = read_immutable_regular_file(path, maximum=before.st_size)
             after = path.lstat()
             after_components = tuple(
                 _identity(component.lstat()) for component in components
             )
             if (
-                _identity(before) != _identity(after_handle)
-                or _identity(before) != _identity(after)
+                _identity(before) != _identity(after)
                 or before_components != after_components
             ):
                 raise CandidateSnapshotError("candidate_changed", relative)
             return payload
         except CandidateSnapshotError:
             raise
-        except OSError as exc:
+        except (OSError, SecureFileReadError) as exc:
             raise CandidateSnapshotError("candidate_changed", relative) from exc
     descriptors: list[int] = []
     try:
@@ -281,12 +286,12 @@ def _remove_private(root: Path) -> None:
     shutil.rmtree(root, ignore_errors=True)
 
 
-def acquire_candidate_snapshot(
+def _acquire_snapshot(
     source_root: Path | str,
-    *,
-    private_parent: Path | str | None = None,
-) -> CandidateSnapshot:
-    """Copy and return the exact closed candidate, or fail without a snapshot."""
+    *, private_parent: Path | str | None,
+    fixed_auxiliary_files: tuple[str, ...],
+) -> tuple[CandidateSnapshot, Mapping[str, bytes]]:
+    """Copy one fixed envelope; auxiliary bytes never enter the candidate."""
     source = Path(source_root)
     private = Path(tempfile.mkdtemp(prefix="metnos-birth-", dir=private_parent))
     try:
@@ -297,32 +302,154 @@ def acquire_candidate_snapshot(
         manifest_bytes = _read_regular(source, MANIFEST_FILE)
         code_paths = _declared_code_files(manifest_bytes)
         expected = _expected_entries(code_paths)
-        _check_closed_tree(initial, expected)
+        source_expected = dict(expected)
+        source_expected.update({name: "file" for name in fixed_auxiliary_files})
+        _check_closed_tree(initial, source_expected)
 
         payloads: dict[str, bytes] = {MANIFEST_FILE: manifest_bytes}
-        for relative in (LANGUAGE_STATE_FILE, *code_paths):
+        for relative in (LANGUAGE_STATE_FILE, *code_paths, *fixed_auxiliary_files):
             payloads[relative] = _read_regular(source, relative)
         final = _tree_state(source)
         if initial != final:
             raise CandidateSnapshotError("candidate_changed", str(source))
 
         for relative, payload in payloads.items():
+            if relative in fixed_auxiliary_files:
+                continue
             _write_private(private, relative, payload)
         copied = _tree_state(private)
         _check_closed_tree(copied, expected)
         for relative, payload in payloads.items():
+            if relative in fixed_auxiliary_files:
+                continue
             if _read_regular(private, relative) != payload:
                 raise CandidateSnapshotError("candidate_changed", relative)
 
         for entry in sorted(private.rglob("*"), reverse=True):
             entry.chmod(0o500 if entry.is_dir() else 0o400)
         private.chmod(0o500)
-        return CandidateSnapshot(
+        snapshot = CandidateSnapshot(
             private_root=private,
             manifest_bytes=manifest_bytes,
             language_state_bytes=payloads[LANGUAGE_STATE_FILE],
             code_files=MappingProxyType({path: payloads[path] for path in code_paths}),
         )
+        auxiliary = MappingProxyType({
+            name: payloads[name] for name in fixed_auxiliary_files
+        })
+        return snapshot, auxiliary
     except Exception:
         _remove_private(private)
         raise
+
+
+def acquire_candidate_snapshot(
+    source_root: Path | str,
+    *,
+    private_parent: Path | str | None = None,
+) -> CandidateSnapshot:
+    """Copy and return the exact closed candidate, or fail without a snapshot."""
+    snapshot, _auxiliary = _acquire_snapshot(
+        source_root, private_parent=private_parent, fixed_auxiliary_files=(),
+    )
+    return snapshot
+
+
+def materialize_birth_candidate_from_authoring(
+    source_root: Path | str,
+    destination: Path | str,
+) -> Path:
+    """Create an exact, untrusted Birth candidate from an authoring tree.
+
+    The current signature is evidence for the installed source, not an input
+    to a new admission. New sources have no previous signature. This function
+    captures the closed envelope, removes any previous signature, and derives the code
+    digest from the same immutable bytes that it writes to staging.
+    """
+    from manifest_code_digest import prepare_manifest_digest_v1
+
+    target = Path(destination)
+    if os.path.lexists(target):
+        raise CandidateSnapshotError("candidate_destination_invalid", str(target))
+    auxiliary = ("manifest.toml.sig",) if os.path.lexists(
+        Path(source_root) / "manifest.toml.sig",
+    ) else ()
+    snapshot, _previous = _acquire_snapshot(
+        source_root, private_parent=None, fixed_auxiliary_files=auxiliary,
+    )
+    try:
+        manifest = prepare_manifest_digest_v1(
+            snapshot.manifest_bytes, snapshot.code_files,
+        )
+        target.mkdir(mode=0o700)
+        _write_private(target, MANIFEST_FILE, manifest)
+        _write_private(
+            target, LANGUAGE_STATE_FILE, snapshot.language_state_bytes,
+        )
+        for relative, payload in snapshot.code_files.items():
+            _write_private(target, relative, payload)
+        expected = _expected_entries(tuple(snapshot.code_files))
+        _check_closed_tree(_tree_state(target), expected)
+        return target
+    except Exception:
+        _remove_private(target)
+        raise
+    finally:
+        snapshot.close()
+
+
+def materialize_birth_candidate_from_manifest_ref(
+    ref: object,
+    destination: Path | str,
+    *,
+    timeout: float = 30.0,
+) -> Path:
+    """Create a Birth candidate from one versioned opaque authoring ref."""
+    from executor_birth_authoring import (
+        AuthoringInstallError, read_manifest_ref_tree_versioned,
+    )
+    from manifest_code_digest import prepare_manifest_digest_v1
+
+    target = Path(destination)
+    if os.path.lexists(target):
+        raise CandidateSnapshotError("candidate_destination_invalid", str(target))
+    try:
+        payloads = read_manifest_ref_tree_versioned(ref, timeout=timeout)
+    except AuthoringInstallError as exc:
+        raise CandidateSnapshotError(exc.code, exc.detail) from exc
+    manifest_bytes = payloads.get(MANIFEST_FILE)
+    language_state_bytes = payloads.get(LANGUAGE_STATE_FILE)
+    signature_bytes = payloads.get("manifest.toml.sig")
+    if not all(isinstance(item, bytes) for item in (
+        manifest_bytes, language_state_bytes, signature_bytes,
+    )):
+        raise CandidateSnapshotError("candidate_file_missing", str(target))
+    code_paths = _declared_code_files(manifest_bytes)
+    expected = {MANIFEST_FILE, LANGUAGE_STATE_FILE, "manifest.toml.sig", *code_paths}
+    if set(payloads) != expected:
+        raise CandidateSnapshotError("candidate_entry_unexpected", str(target))
+    code_files = {name: payloads[name] for name in code_paths}
+    try:
+        manifest = prepare_manifest_digest_v1(manifest_bytes, code_files)
+        target.mkdir(mode=0o700)
+        _write_private(target, MANIFEST_FILE, manifest)
+        _write_private(target, LANGUAGE_STATE_FILE, language_state_bytes)
+        for relative, payload in code_files.items():
+            _write_private(target, relative, payload)
+        _check_closed_tree(_tree_state(target), _expected_entries(code_paths))
+        return target
+    except Exception:
+        _remove_private(target)
+        raise
+
+
+def _acquire_authenticated_current_snapshot(
+    source_root: Path | str,
+    *, private_parent: Path | str | None = None,
+) -> tuple[CandidateSnapshot, bytes]:
+    """Copy the fixed signed-source envelope used by a current generation."""
+    snapshot, auxiliary = _acquire_snapshot(
+        source_root, private_parent=private_parent,
+        fixed_auxiliary_files=("manifest.toml.sig",),
+    )
+    return snapshot, auxiliary["manifest.toml.sig"]

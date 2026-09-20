@@ -1,16 +1,16 @@
-"""Inactive RM-0008 F5 guard for exact durable executor attempts.
+"""RM-0008 F5 guard for exact durable executor attempts.
 
-Construction is explicit and is intentionally absent from the runtime bootstrap
-until the F4 admission threshold has been certified.  Once supplied to the
-durable bridge, every executor attempt authenticates its current RM-0007
-generation, Birth receipt, and exact lifecycle epoch before invocation.
+The guard holds no trust of its own: it authenticates through the sealed
+Birth publisher that the runtime bootstrap owns, then binds the served
+identity to its exact lifecycle epoch.  Composition is refused while the
+installation still owns its lifecycle state in the legacy name-based
+stores, so an uncertified installation keeps working unchanged.
 """
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
 from pathlib import Path
+from typing import Callable
 
-from contract_store import authenticate_execution_binding
 from executor_birth_epoch_store import (
     ExecutionEpochAttestation,
     attest_execution_epoch,
@@ -43,18 +43,18 @@ def _contract_id(value: object) -> ContractId:
 class DurableBirthAttemptGuard:
     """Authenticate one exact loaded executor object for each attempt."""
 
+    __slots__ = ("_authenticate", "_epoch_db_path")
+
     def __init__(
         self,
         *,
+        authenticate: Callable[[ContractId, str], object],
         epoch_db_path: Path,
-        trusted_publics: Iterable[object],
-        admission_verifier_keys: Mapping[str, object],
-        store_root: Path | str | None = None,
     ) -> None:
+        if not callable(authenticate):
+            raise DurableBirthGuardError("execution.runner_absent", "authority")
+        self._authenticate = authenticate
         self._epoch_db_path = Path(epoch_db_path)
-        self._trusted_publics = tuple(trusted_publics)
-        self._admission_verifier_keys = dict(admission_verifier_keys)
-        self._store_root = store_root
 
     def __call__(self, executor: object) -> ExecutionEpochAttestation:
         name = getattr(executor, "name", None)
@@ -65,16 +65,10 @@ class DurableBirthAttemptGuard:
         if not isinstance(generation_id, str):
             raise DurableBirthGuardError("execution.runner_absent", "generation_id")
         try:
-            binding = authenticate_execution_binding(
-                contract_id,
-                generation_id,
-                trusted_publics=self._trusted_publics,
-                admission_verifier_keys=self._admission_verifier_keys,
-                store_root=self._store_root,
-            )
+            binding = self._authenticate(contract_id, generation_id)
         except Exception as exc:
             raise DurableBirthGuardError("execution.runner_absent", "generation") from exc
-        if binding.executor_name != name:
+        if getattr(binding, "executor_name", None) != name:
             raise DurableBirthGuardError("execution.runner_absent", "name_mismatch")
         try:
             return attest_execution_epoch(
@@ -92,3 +86,28 @@ class DurableBirthAttemptGuard:
                 code = "execution.runner_absent"
             raise DurableBirthGuardError(code) from exc
 
+
+def productive_birth_attempt_guard() -> DurableBirthAttemptGuard | None:
+    """Compose the guard from installed state, or report the legacy owner.
+
+    ``None`` means this installation has not migrated: the existing
+    name-based lifecycle readers remain authoritative and the durable
+    service composes exactly as it did before F5.  Once the migration
+    marker exists the epoch store is the only lifecycle source, so a
+    missing epoch database is a fault and not a reason to run unguarded.
+    """
+    import config
+    from executor_birth_activation_mode import BirthStateOwner, read_birth_activation_state
+    from executor_birth_bootstrap import bootstrap_birth_runtime, _secure_state_dir
+
+    if read_birth_activation_state().owner is BirthStateOwner.LEGACY:
+        return None
+    state = _secure_state_dir(Path(config.PATH_USER_STATE) / "birth")
+    epochs = state / "executor_epochs.sqlite"
+    if not epochs.is_file():
+        raise DurableBirthGuardError("execution.runner_absent", "f5_epoch_migration_required")
+    publisher = bootstrap_birth_runtime().core.commit_publisher
+    return DurableBirthAttemptGuard(
+        authenticate=publisher.authenticate_execution_binding,
+        epoch_db_path=epochs,
+    )

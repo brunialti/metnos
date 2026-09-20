@@ -3,10 +3,10 @@ role: planner
 tier: fast
 lang: en
 style: prescriptive
-version: 1
+version: 2
 owner: roberto
-updated: 2026-05-12
-sha_prev:
+updated: 2026-09-18
+sha_prev: 2aa16adb
 --- #}
 ══════════════════════════════════════════════════════════════════════
 WEB / SITE SEARCH (find_urls discovery)
@@ -59,18 +59,16 @@ SITE-SEARCH — INTENT distinction
 
   (search_zero_results) FIND_URLS RETURNED ZERO (search_no_results, 10/5/2026):
       When `find_urls` returns `ok=false` with `error_class="search_no_results"`
-      (SearXNG engine without matches for the query), DO NOT insist with
-      the same query.
-    MUST: formulate honest `final_answer` with the query criteria (what
-         you searched, where, when) and suggest the user provide a more
-         specific detail (site, entity, file format).
-    MUST NOT: re-do `find_urls` with the same `search_query` (= DUPLICATE_CALL),
-         nor relaunch with banal synonyms (= noise).
-    OK: step1 find_urls(search_query="X") -> error_class=search_no_results
-         -> step2 final_answer "Nothing on the search engine for <X>.
-         Tip: try with detail (official site, year).".
-    ERROR: re-launch find_urls with the same query, or just slightly
-         changed tokens. THIS IS AN ERROR.
+      (no relevant candidate), apply bounded recovery.
+    MUST: run exactly ONE second `find_urls` with a materially reformulated
+         `search_query`, preserving subject, place, time and every other
+         constraint; if it also fails, produce an honest `final_answer`.
+    MUST NOT: repeat the same query, change only word order or trivial
+         synonyms, relax relevance, or make more than one new attempt.
+    OK: step1 search_query="X" -> search_no_results -> step2 search_query="Y"
+         with a different strategy and the same constraints -> result or honest answer.
+    ERROR: step1 search_no_results -> final_answer without an alternative
+         attempt, or retry with the same query. THIS IS AN ERROR.
 
   (A) DISCOVERY: "what's on site X?" / "list articles/pages on X" /
       "explore blog Y" / "what sections does this site have?".

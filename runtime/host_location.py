@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """Sorgenti di posizione dell'HOST, dalla piu' precisa alla piu' grossolana.
 
 `location_store` conserva la posizione che l'utente CONDIVIDE da un canale

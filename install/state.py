@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """Sentinel-based install state.
 
 Each phase writes a JSON sentinel in ``$METNOS_STATE/install/`` when it

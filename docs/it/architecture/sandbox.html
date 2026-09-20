@@ -96,7 +96,7 @@ non concede, da solo, l'autorizzazione a compiere un'azione.</p>
  <li><a href="#cap1">Ambito</a></li>
  <li><a href="#cap2">Interfacce del modulo</a></li>
  <li><a href="#cap3">Risorse rese visibili sul server</a></li>
- <li><a href="#cap4">Esecuzione senza bubblewrap</a></li>
+ <li><a href="#cap4">Bubblewrap non disponibile</a></li>
  <li><a href="#cap5">Integrazione nel runtime</a></li>
  <li><a href="#cap6">Autonomia e policy</a></li>
  <li><a href="#cap7">Verifiche</a></li>
@@ -109,7 +109,7 @@ non concede, da solo, l'autorizzazione a compiere un'azione.</p>
 <h1 id="cap1">1. Ambito</h1>
 
 <p>Quando un executor gira sul server Linux, <code>runtime/sandbox.py</code>
-pu&ograve; anteporre <code>bwrap</code> al comando Python. Bubblewrap costruisce una
+deve anteporre <code>bwrap</code> al comando Python. Bubblewrap costruisce una
 vista separata del file system, rende privato <code>/tmp</code>, separa alcuni
 spazi dei nomi e, se l'executor non richiede la rete, aggiunge
 <code>--unshare-net</code>. Non esiste un demone separato: il profilo viene
@@ -125,7 +125,7 @@ il comando e restituisce anche il livello di contenimento realmente usato.</p>
 <table>
 <tr><th>Funzione</th><th>Responsabilit&agrave;</th></tr>
 <tr><td><code>bwrap_available</code>, <code>sandbox_disabled</code></td><td>Rilevano la presenza di <code>bwrap</code> e l'eventuale disattivazione mediante <code>METNOS_SANDBOX</code>.</td></tr>
-<tr><td><code>wrap_command</code></td><td>Restituisce il comando avvolto da <code>bwrap</code>, oppure il comando originario quando l'involucro non &egrave; attivo.</td></tr>
+<tr><td><code>wrap_command</code></td><td>Restituisce il comando avvolto da <code>bwrap</code>, oppure fallisce chiuso prima del sottoprocesso. Soltanto il broker undo vincolato ai byte esatti usa il percorso diretto.</td></tr>
 <tr><td><code>filesystem_extras</code></td><td>Risolve soltanto gli argomenti indicati da una capacit&agrave; firmata <code>fs:read</code> con forma <code>arg:&lt;nome&gt;</code>; l'argomento pu&ograve; restringere l'ambito, non ampliarlo.</td></tr>
 <tr><td><code>undo_history_extras</code></td><td>Rende scrivibile la sola cartella dei contenuti di ripristino appartenente al turno corrente, quando il manifest dichiara il modello inverso previsto.</td></tr>
 <tr><td><code>invocation_skills</code>, <code>skill_extras</code></td><td>Individuano i fornitori necessari all'invocazione, rendono visibile la sola cartella della relativa integrazione e abilitano la rete. Per gli executor conformi l'origine &egrave; <code>provider:access</code>; i manifest precedenti conservano un percorso di compatibilit&agrave;.</td></tr>
@@ -141,7 +141,7 @@ il comando e restituisce anche il livello di contenimento realmente usato.</p>
 
 <p>Il profilo monta in sola lettura i percorsi di sistema esistenti fra
 <code>/usr</code>, <code>/bin</code>, <code>/sbin</code>, le directory delle
-librerie, <code>/etc</code>, <code>/opt</code>, <code>/var/lib/python3</code> e
+librerie, <code>/etc</code>, <code>/var/lib/python3</code> e
 <code>/sys</code>. Aggiunge inoltre:</p>
 
 <ul>
@@ -174,21 +174,20 @@ esterne e alcuni casi di lettura del sistema impediscono l'aggiunta di
 dell'host: la limitazione a un dominio o a un fornitore resta compito dei
 controlli applicativi e delle credenziali circoscritte.</p>
 
-<h1 id="cap4">4. Esecuzione senza bubblewrap</h1>
+<h1 id="cap4">4. Bubblewrap non disponibile</h1>
 
 <p>Se <code>bwrap</code> non &egrave; nel <code>PATH</code>, oppure se
 <code>METNOS_SANDBOX</code> vale <code>0</code>, <code>off</code>,
-<code>no</code> o <code>false</code>, <code>wrap_command</code> restituisce il
-comando invariato. Non c'&egrave; un terzo percorso che trasformi automaticamente
-un'eccezione di rilevamento in un esito negativo.</p>
+<code>no</code> o <code>false</code>, <code>wrap_command</code> rifiuta ogni
+executor ordinario prima del registro di annullamento e prima di avviare il
+sottoprocesso. L'esito stabile &egrave;
+<code>executor_os_sandbox_unavailable</code>.</p>
 
-<p>Il controllo preventivo dell'ambito dell'invocazione continua a essere
-eseguito prima del sottoprocesso, cos&igrave; come restano operativi il Vaglio e i
-controlli propri degli executor. Ci&ograve; non equivale per&ograve; al contenimento del
-sistema operativo. Sul server locale il risultato dell'executor non porta
-automaticamente un campo che dichiari l'assenza di <code>bwrap</code>; questa
-condizione va osservata mediante <code>status()</code> o la diagnostica del
-servizio.</p>
+<p>La sola eccezione diretta &egrave; <code>undo_last_turn</code>, riconosciuto
+mediante nome, origine, appartenenza, capacit&agrave;, lista dei file e digest
+firmato esatti. Una revisione Birth successiva non eredita l'eccezione. Lo
+stato e il rifiuto stabile sono osservabili mediante <code>status()</code> e la
+diagnostica del servizio.</p>
 
 <h1 id="cap5">5. Integrazione nel runtime</h1>
 
@@ -199,7 +198,7 @@ essenziale &egrave; il seguente:</p>
 <li>ricava attore, canale e turno dal contesto autenticato;</li>
 <li>valuta l'eventuale collocazione remota, mostrando soltanto i dispositivi appartenenti allo stesso utente;</li>
 <li>mantiene sul server le invocazioni che dipendono da un'integrazione esterna installata sul server;</li>
-<li>verifica l'ambito firmato dei percorsi anche quando <code>bwrap</code> non &egrave; disponibile;</li>
+<li>verifica l'ambito firmato dei percorsi e poi fallisce chiuso se <code>bwrap</code> non &egrave; disponibile;</li>
 <li>prepara il registro di annullamento e le sole risorse aggiuntive necessarie all'invocazione;</li>
 <li>avvia <code>sys.executable</code>, cio&egrave; l'interprete dell'ambiente Metnos corrente, attraverso <code>wrap_command</code>.</li>
 </ol>
@@ -260,11 +259,11 @@ quello della sessione amministrativa.</p>
 
 <ul>
 <li><strong>Visibile non significa autorizzato.</strong> Un montaggio permette al processo di raggiungere una risorsa; l'identit&agrave;, il consenso e la finalit&agrave; dell'azione devono essere verificati prima.</li>
-<li><strong>Alcuni montaggi di base sono ampi.</strong> Sul server <code>/etc</code>, <code>/opt</code> e <code>/sys</code> sono visibili in sola lettura quando esistono. La sola lettura impedisce modifiche, ma non garantisce la riservatezza di ogni file presente in quelle radici.</li>
+<li><strong>Alcuni montaggi di base sono ampi.</strong> Sul server <code>/etc</code> e <code>/sys</code> sono visibili in sola lettura quando esistono. Il montaggio condiviso di <code>/opt</code> &egrave; stato rimosso, per impedire il riuso di una dipendenza sorella firmata ma non dichiarata.</li>
 <li><strong>La rete &egrave; binaria.</strong> Quando serve, viene ereditata la rete dell'host; bubblewrap non applica una lista di host ammessi.</li>
 <li><strong>Il profilo non usa Landlock o seccomp personalizzati</strong> e, sul server, non separa lo spazio dei nomi PID.</li>
-<li><strong><code>system:undo</code> &egrave; un'eccezione esplicita.</strong> L'annullamento deve ricostruire dal registro risorse note soltanto al momento dell'esecuzione; per questo <code>wrap_command</code> lascia passare direttamente il broker firmato. Il Vaglio e il vincolo di esecuzione sul server restano necessari, ma non costituiscono una sandbox del sistema operativo.</li>
-<li><strong>L'assenza di bubblewrap &egrave; un declassamento reale.</strong> I controlli applicativi che restano attivi non devono essere descritti come isolamento a livello di kernel.</li>
+<li><strong><code>system:undo</code> &egrave; un'eccezione vincolata ai byte.</strong> L'annullamento deve ricostruire dal registro risorse note soltanto al momento dell'esecuzione. Il percorso diretto richiede digest e lista dei file revisionati; ogni revisione successiva fallisce chiusa.</li>
+<li><strong>L'assenza di bubblewrap produce un rifiuto sul server.</strong> I controlli applicativi non sono trattati come sostituti dell'isolamento del kernel.</li>
 </ul>
 
 <h1 id="cap10">10. Sandbox sui dispositivi associati</h1>
@@ -277,7 +276,7 @@ forte.</p>
 
 <table>
 <tr><th>Piattaforma</th><th>Implementazione corrente</th><th>Comportamento in caso di declassamento</th></tr>
-<tr><td><strong>Linux</strong></td><td>Bubblewrap con spazio dei nomi dei montaggi e PID, rete separata quando non richiesta, cartella temporanea privata e gruppo di processi dedicato. Landlock e seccomp personalizzati non sono implementati.</td><td>Se <code>bwrap</code> manca o &egrave; disattivato, esecuzione diretta con avviso; il risultato dichiara <code>sandbox:"none"</code>. Il gruppo di processi continua a consentire la terminazione dell'albero alla scadenza.</td></tr>
+<tr><td><strong>Linux</strong></td><td>Bubblewrap con spazio dei nomi dei montaggi e PID, rete separata quando non richiesta, cartella temporanea privata e gruppo di processi dedicato. Landlock e seccomp personalizzati non sono implementati.</td><td>Il server rifiuta l'esecuzione ordinaria se <code>bwrap</code> manca o &egrave; disattivato. Un client associato deve dichiarare esplicitamente ogni declassamento specifico della piattaforma.</td></tr>
 <tr><td><strong>Windows</strong></td><td>AppContainer con concessioni derivate dalle capacit&agrave;, posto a sua volta in un Job Object. AppContainer &egrave; tentato per impostazione predefinita quando supportato.</td><td>Per sottoprocessi di sistema, percorsi non ancorabili, ambiti troppo ampi o indisponibilit&agrave; del contenitore, il client usa il Job Object e comunica il motivo. Se il manifest richiede AppContainer come livello minimo, l'invocazione non deve essere declassata silenziosamente.</td></tr>
 <tr><td><strong>macOS</strong></td><td>Non esiste oggi un modulo nativo <code>sandbox_macos.rs</code>. Il percorso Unix comune non offre un equivalente operativo di bubblewrap su macOS.</td><td>L'esecuzione non va presentata come isolata: il livello effettivo &egrave; <code>none</code>, pur restando il controllo della scadenza sul gruppo di processi.</td></tr>
 </table>

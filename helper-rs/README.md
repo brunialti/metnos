@@ -183,7 +183,7 @@ Cosi' l'executor:
 (`helper_unreachable` e' una capacita' assente; un rifiuto porta il codice che
 l'aiutante ha usato).
 
-The chain is installed on PC-ROBERTO. Every new change still requires a live
+The chain is installed on pc-example. Every new change still requires a live
 test after its local tests, build, signature, and publication are complete.
 
 ## Come si prova

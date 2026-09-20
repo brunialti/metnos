@@ -144,10 +144,16 @@ def _auto_register() -> None:
         pass
     # Pensiero laterale (17/5/2026 sera): RRF, length-adaptive, cache, cascade
     for mod_name in ("rrf_ensemble", "length_adaptive",
-                      "cached_token_flat", "hybrid_cascade"):
+                     "cached_token_flat", "hybrid_cascade"):
         try:
-            mod = __import__(f"prefilter_strategies.{mod_name}",
-                              fromlist=["make"])
+            if mod_name == "rrf_ensemble":
+                from . import rrf_ensemble as mod
+            elif mod_name == "length_adaptive":
+                from . import length_adaptive as mod
+            elif mod_name == "cached_token_flat":
+                from . import cached_token_flat as mod
+            else:
+                from . import hybrid_cascade as mod
             register(mod_name, mod.make)
         except ImportError:
             pass

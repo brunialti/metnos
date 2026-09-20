@@ -203,6 +203,14 @@ OPERATIONAL_ERROR_CLASSES = frozenset({
     # sessione occupata era di un TEST, e l'utente ha letto «aggiungi dettagli
     # concreti (percorso, nome, periodo)».
     "quota_exceeded", "capacity",
+    # Un comando eseguito e fallito non e' un errore di argomenti e non va
+    # ripianificato automaticamente: conserva il motivo osservato.
+    "operation_failed",
+    # Guasti della catena di ricerca: cambiare parole non ripara il motore o il
+    # valutatore di pertinenza. ``search_no_results`` resta fuori: quello ammette
+    # un solo tentativo alternativo governato dal recovery.
+    "search_backend_unavailable", "search_backend_invalid",
+    "search_relevance_unavailable",
 })
 
 
@@ -226,7 +234,7 @@ def result_error_classes(result: dict | None) -> tuple[str, ...]:
 
 
 def result_error_detail(result: dict | None, *, max_items: int = 3) -> str:
-    """Primo dettaglio top-level o errori per-item deduplicati e limitati."""
+    """Dettagli espliciti, errori per-item, poi summary fallito e oscurato."""
     if not isinstance(result, dict):
         return ""
     direct = (result.get("final_message_hint") or result.get("error")
@@ -235,7 +243,7 @@ def result_error_detail(result: dict | None, *, max_items: int = 3) -> str:
         return direct.strip()
     failed = result.get("failed")
     if not isinstance(failed, list):
-        return ""
+        failed = []
     parts = []
     for item in failed:
         if not isinstance(item, dict):
@@ -247,4 +255,23 @@ def result_error_detail(result: dict | None, *, max_items: int = 3) -> str:
                 parts.append(clean)
         if len(parts) >= max(1, max_items):
             break
-    return "; ".join(parts)
+    if parts:
+        return "; ".join(parts)
+    summary = result.get("summary")
+    if (result.get("ok") is not False or not isinstance(summary, str)
+            or not summary.strip()):
+        return ""
+    # Stesse protezioni del fallback TurnLog, solo per questo ultimo ramo:
+    # importare i tipi non deve caricare lessico, sqlite e i18n.
+    try:
+        from credential_intake import scrub_sensitive_text
+        import detection_lexicon_seed_runtime_safety as safety
+
+        clean, _ = scrub_sensitive_text(summary.strip())
+        if safety.matches(safety.RUNTIME_INTERNAL_LEAK, clean, fail_closed=True):
+            return ""
+        clean = clean.strip()
+    except Exception:
+        return ""  # mai ripiegare sul testo grezzo se il controllo fallisce
+    # Tagliare prima dell'oscuramento potrebbe lasciare un frammento segreto.
+    return clean[:1200].rstrip() + "…" if len(clean) > 1200 else clean

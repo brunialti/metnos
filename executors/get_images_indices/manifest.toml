@@ -17,12 +17,12 @@ scope = "server"
 device_ok = false
 
 [description]
-it = "SCOPO: ottiene lo stato dell'indice immagini unificato per un corpus o per tutti. PATTERN: get_images_indices(); oppure base_path=\"/img\". NON: costruire indici (-> create_images_indices); cercare foto (-> find_images_indices). OUT: entries=[{idx='unified',base_path,exists,n_entries,last_refresh_at,size_mb,model,dim}]."
-en = "SCOPO: gets unified image-index status for one corpus or all corpora. PATTERN: get_images_indices(); or base_path=\"/img\". NON: build indexes (-> create_images_indices); search photos (-> find_images_indices). OUT: entries=[{idx='unified',base_path,exists,n_entries,last_refresh_at,size_mb,model,dim}]."
+it = "SCOPO: ottiene lo stato dell'indice immagini unificato per un corpus o per tutti. PATTERN: get_images_indices(); oppure base_path=\"/img\". NON: costruire indici (-> create_images_indices); cercare foto (-> find_images_indices). OUT: entries con n_entries (tutti i record), n_indexed (foto indicizzate), n_not_indexed (foto non decodificabili). Totali: total_records, indexed_entries_total, not_indexed_entries_total. Un indice esistente può contenere solo record negativi: non significa che le foto siano state indicizzate."
+en = "SCOPO: get unified image-index status for one corpus or all corpora. PATTERN: get_images_indices(); or base_path=\"/img\". NON: build indexes (-> create_images_indices); search photos (-> find_images_indices). OUT: entries with n_entries (all records), n_indexed (indexed photos), n_not_indexed (undecodable photos). Totals: total_records, indexed_entries_total, not_indexed_entries_total. An existing index can contain only negative records: this does not mean the photos were indexed."
 
 [code]
 files  = ["get_images_indices.py"]
-digest = "sha256:63840b1f6e913a1ce69397d5834d44a2b904cfbf0bb4bed9af49f1134a06ce62"
+digest = "sha256:b560a7f62a249f727e8ff7f9f4e7cd4500b723c32d64edf9f222d1782daeeb38"
 
 [args]
 type     = "object"
@@ -50,9 +50,11 @@ schema_inline = """
   ok: bool,
   base_path?: str,
   index_root?: str,
-  entries?: [{idx: str, exists: bool, base_path?: str, index_path?: str, size_bytes?: int, size_mb?: number, n_entries?: int, n_faces?: int, last_refresh_at?: str | number | null, model?: str, model_face?: str, model_image?: str, dim?: int, version?: int}],
+  entries?: [{idx: str, exists: bool, base_path?: str, index_path?: str, size_bytes?: int, size_mb?: number, n_entries?: int, n_indexed?: int, n_not_indexed?: int, n_faces?: int, last_refresh_at?: str | number | null, model?: str | null, model_face?: str | null, model_image?: str | null, dim?: int | null, version?: int}],
   n_entries?: int,
   indexed_entries_total?: int,
+  total_records?: int,
+  not_indexed_entries_total?: int,
   ok_count?: int,
   fail_count?: int,
   partial?: bool,

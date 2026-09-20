@@ -14,7 +14,7 @@ it = "SCOPO: Elenca le preferenze personali impostate dall'utente. PATTERN: get_
 en = "SCOPO: Lists the personal preferences the user has set. PATTERN: get_preferences(). NON: it does not list scheduled tasks (list_tasks), installed skills (list_skills) or the person profile (read_persons). OUT: entries=[{key, value, origin, applied}] plus `available` with everything that can be set."
 
 [code]
-files = ["../../user_preferences.py"]
+files = ["implementation.py.src"]
 digest = "sha256:d5413ddb48d76b97f06130d3bf85ba03430b7c55b94589ad6b0f949698117c37"
 
 [args]

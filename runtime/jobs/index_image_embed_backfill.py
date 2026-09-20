@@ -26,6 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import config as _C  # noqa: E402
 from virt import get_embedder  # noqa: E402
+from image_index_maintenance import legacy_image_paths as _legacy_paths  # noqa: E402
 
 CHECKPOINT_EVERY = 200
 BATCH = 8
@@ -44,6 +45,11 @@ def _list_target_indices() -> list[Path]:
         ent = unified / "entries.jsonl"
         if not ent.is_file():
             continue
+        try:
+            _legacy_paths(unified)
+        except (OSError, ValueError) as error:
+            print(f"REFUSE {unified}: {error}")
+            continue
         emb = unified / "embeddings_image.npy"
         if emb.is_file():
             # Skip if shape matches entries count (idempotent)
@@ -60,21 +66,8 @@ def _list_target_indices() -> list[Path]:
 
 
 def _process_index(unified_dir: Path) -> None:
+    paths = _legacy_paths(unified_dir)
     print(f"\n[{time.strftime('%H:%M:%S')}] Processing {unified_dir.parent.name}")
-    entries_file = unified_dir / "entries.jsonl"
-    paths: list[str] = []
-    with entries_file.open("r", encoding="utf-8") as f:
-        for ln in f:
-            ln = ln.strip()
-            if not ln:
-                continue
-            try:
-                e = json.loads(ln)
-            except json.JSONDecodeError:
-                continue
-            p = e.get("path", "")
-            if isinstance(p, str) and p:
-                paths.append(p)
     n_total = len(paths)
     print(f"  entries: {n_total}")
     if n_total == 0:

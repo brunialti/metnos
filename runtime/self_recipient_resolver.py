@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """self_recipient_resolver.py — risoluzione DETERMINISTICA del destinatario "self".
 
 Problema generale: "inviami / alla mia email / mandami / a me" non è un INTENTO

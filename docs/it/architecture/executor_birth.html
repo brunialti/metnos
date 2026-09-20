@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Metnos — verifica storica e transizione degli executor</title>
+ <link rel="canonical" href="https://metnos.com/it/architecture/executor_birth">
+ <meta name="description" content="Come la prima transizione degli executor distingue la verifica delle firme storiche dall'autorità di eseguire e pubblicare.">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/executor_birth">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/executor_birth">
+ <link rel="stylesheet" href="/assets/metnos.css?v=20260822-2">
+ <script defer src="/assets/wiki-shell.js?v=20260822-2"></script>
+</head>
+<body>
+<nav aria-label="Lingua"><a href="/it/index.html">Documentazione</a> · IT · <a href="/en/architecture/executor_birth.html" lang="en">EN</a></nav>
+<main>
+ <h1>Verificare la storia non significa eseguirla</h1>
+ <p>Quando cambia il codice di Metnos, le firme dei contratti già presenti
+ devono restare verificabili. Questo non autorizza però il nuovo codice a
+ eseguire o pubblicare usando un contesto di autorità precedente.</p>
+ <h2>Un candidato, una procedura di ammissione</h2>
+ <p>Una capacità proposta da Synt segue la procedura Birth comune. Il
+ candidato resta separato dalla versione installata finché non supera i
+ controlli richiesti. Generare un executor non equivale a rilasciare tutto
+ Metnos e non richiede di ripetere ogni certificazione del passato.</p>
+ <p>I controlli sul comportamento e sul significato del candidato avvengono
+ senza occupare il blocco di pubblicazione del catalogo. Il breve passaggio
+ finale controlla il candidato e confronta il suo nome con le identità
+ firmate già installate. Non ricontrolla il codice eseguibile dei componenti
+ estranei soltanto per leggerne i nomi. Se un altro componente ha codice
+ danneggiato, resta inutilizzabile; il suo nome firmato rimane riservato,
+ ma questo non impedisce di riparare un componente diverso.</p>
+ <p><strong>Stato delle prove:</strong> il controllo semplificato del nome
+ è verificato nello sviluppo, non ancora distribuito. Una prova isolata
+ attraversa Birth, l'archivio firmato e l'esecuzione reali: la versione
+ installata resta utilizzabile mentre un controllo del nuovo candidato
+ viene tenuto in attesa, e anche dopo il suo fallimento. Non è una prova
+ della chat dal vivo né dei tempi del modello. Integrità delle autorità
+ condivise, sicurezza del candidato e unicità del nome restano obbligatorie.</p>
+ <h2>Prima transizione coordinata</h2>
+ <p>Il percorso iniziale autentica l'insieme storico e i legami delle sue
+ chiavi sotto un'unica barriera. Ai lettori consegna soltanto l'identità
+ dell'insieme e le chiavi pubbliche di verifica, non un runtime eseguibile.</p>
+ <p>Se un contratto è invariato, la convergenza ne verifica firma e contenuto
+ senza ripubblicarlo. Se occorre pubblicare una modifica, costruisce invece
+ il runtime completo e verifica che il suo contesto corrisponda ai sorgenti:
+ un contesto diverso viene rifiutato.</p>
+ <h2>Il nuovo contesto resta obbligatorio</h2>
+ <p>La lettura storica non sostituisce la riattestazione della transizione.
+ Quest'ultima resta legata alla nuova distribuzione autenticata. Modificare
+ l'insieme storico, l'inventario delle chiavi o il legame fra contratto e
+ generazione causa un rifiuto; una firma storica non è un permesso generale
+ per eseguire codice nuovo.</p>
+ <h2>Il censimento distingue vecchia e nuova installazione</h2>
+ <p>Le voci da ritirare descrivono soltanto componenti della vecchia
+ installazione. Un modulo introdotto dalla nuova distribuzione non deve
+ essere richiesto nel predecessore: resta invece coperto dall'inventario
+ firmato e dalle verifiche della nuova distribuzione. L'assenza di un vero
+ componente storico richiesto continua a bloccare la transizione.</p>
+ <p>Alla ripresa viene riutilizzato il censimento storico già registrato,
+ perché il ritiro può avere rinominato alcuni file. Il documento deve
+ conservare formato, integrità e proprietà sicuri e corrispondere esattamente
+ alla stessa transizione, installazione e catalogo. Non viene riscritto né
+ presentato come una nuova verifica dello stato corrente.</p>
+ <h2>Estendere il controllo dei componenti ritirati</h2>
+ <p>Negli aggiornamenti successivi si possono aggiungere controlli su vecchi
+ punti d'ingresso del codice, conservando identiche tutte le voci precedenti.
+ Se il file esisteva nell'inventario storico autenticato, occorre ancora la
+ sua copia ritirata esatta. Se non vi esisteva, l'assenza va provata anche
+ oggi, in cartelle protette e senza seguire collegamenti. Un file mancante,
+ da solo, non dimostra che sia stato ritirato.</p>
+ <p>La verifica non crea né cancella file. Lo strumento di rilascio la esegue
+ prima di fermare i servizi e la transizione la ripete sotto i propri
+ controlli esclusivi. Rimozioni o modifiche delle vecchie voci e nuovi ritiri
+ di servizi restano rifiutati. <strong>Stato:</strong> correzione distribuita
+ il 17 settembre 2026; passaggio dalla release 63 alla 64 verificato con un
+ lavoro LRE conservato. Questo rilascio non attiva né certifica F5.</p>
+ <h2>Controllare il presente senza rileggere tutta la storia</h2>
+ <p>Una nuova ammissione deve superare i controlli di sicurezza. Non deve
+ però ripetere il lavoro già verificato su tutte le versioni precedenti.
+ Il lettore ottimizzato usa il riferimento firmato alla versione corrente,
+ controlla il collegamento alla precedente e verifica i file effettivamente
+ installati. Firme alterate o un cambio di versione durante la lettura
+ continuano a causare un rifiuto.</p>
+ <p><strong>Stato del lavoro:</strong> questo percorso è implementato e
+ provato nello sviluppo, ma non ancora distribuito. Anche il verificatore
+ amministrativo di avvio ha superato una prova in sola lettura sull'impianto
+ reale: controlla la versione corrente, la precedente e l'eventuale successiva
+ in preparazione. Resta da ottimizzare l'inventario dei registri del
+ coordinatore di rilascio. La certificazione iniziale e un'indagine storica
+ esplicita restano attività separate.</p>
+ <h2>La chiave di certificazione non concede permessi operativi</h2>
+ <p>La prova iniziale F5 usa un'identità amministrativa dedicata, separata
+ dalle chiavi che ammettono gli executor. La parte privata resta
+ all'amministratore; al verificatore basta la parte pubblica. Una chiave di
+ certificazione assente o revocata non deve fermare i componenti già
+ operativi con F4. Preparare la chiave non attiva F5.</p>
+ <p><strong>Stato dello sviluppo:</strong> le prove isolate su Linux coprono
+ la preparazione della chiave, la ripresa dopo l'arresto del processo e la
+ lettura della sola parte pubblica da un account senza privilegi. Restano da
+ completare la prova basata sulle ammissioni reali, la migrazione e
+ l'integrazione del ciclo di vita. F5 e F6 non sono concluse; la custodia
+ nativa su Windows non è implementata.</p>
+ <p>Il registro amministrativo conserva anche i cicli di prova falliti o
+ interrotti. Due successi scelti non cancellano un fallimento intermedio;
+ lo stesso turno non può essere contato due volte. Per chiudere un difetto
+ noto servono la correzione, le verifiche e una revisione indipendente.
+ Il registro è implementato nello sviluppo, ma non è un certificato F5
+ né un interruttore di attivazione.</p>
+ <p>Le verifiche finali riguardano Birth, generazioni, memorie temporanee,
+ riscontri e ripresa, senza ripetere le prove di posta o calendari non modificati.
+ Prima si prova l'integrazione in un ambiente isolato; la certificazione deve
+ riuscire prima dell'attivazione in produzione.</p>
+ <p>Una verifica dello sviluppo riguarda i lavori in attesa: un executor può
+ diventare indisponibile mentre il lavoro aspetta un modello o un posto per
+ l'esecuzione. Il percorso con controllo delle generazioni rilegge quindi lo
+ stato esatto dopo l'attesa e prima di eseguire. Una generazione in quarantena
+ viene rifiutata senza avviarla. La correzione ha superato le prove isolate;
+ F5 non è ancora attiva in produzione.</p>
+ <p>Il lettore di attivazione in sviluppo accetta soltanto l'attestazione
+ firmata e la chiave pubblica dell'installazione. Controlla che l'attestazione
+ appartenga alla versione selezionata: un elenco di prove riuscite fornito
+ dal chiamante non è un certificato. La lettura di questa prova compatta non
+ ripete tutta l'indagine storica. Restano da completare la sua emissione a
+ partire dalle verifiche concluse e il collegamento delle operazioni sul
+ ciclo di vita.</p>
+ <p>Il percorso di quarantena in sviluppo crea ora una revisione firmata della
+ precisa versione dell'executor che è stata eseguita. Cambia soltanto lo stato
+ di esecuzione, senza rieseguire il codice sospetto né chiedere un'altra
+ conferma all'utente. Un riscontro su una versione precedente non può
+ disabilitare quella nuova o altri executor. Le prove isolate coprono anche
+ le interruzioni: la quarantena già pubblicata viene recuperata e il lavoro
+ di revisione del fallimento viene accodato una sola volta. Restano da
+ completare il collegamento ai riscontri reali, l'integrazione di tutte le
+ memorie temporanee e la certificazione finale F5; queste prove non attivano
+ la produzione.</p>
+ <h2>Le prove restano, le vecchie copie del programma no</h2>
+ <p>La procedura di rilascio conserva normalmente la versione attiva e una
+ precedente, oltre alle copie ancora utilizzate da processi, servizi o
+ operazioni in preparazione. Solo dopo un rilascio riuscito può eliminare
+ le altre copie. La copia precedente serve al recupero: non autorizza a
+ tornare automaticamente a una versione meno recente.</p>
+ <p>Questa pulizia riguarda soltanto il codice delle distribuzioni. Non
+ elimina ricevute firmate, dati personali, modelli o informazioni ancora
+ necessarie alla migrazione. Ridurre le copie non significa ridurre i
+ controlli di sicurezza.</p>
+</main>
+</body>
+</html>

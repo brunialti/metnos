@@ -134,6 +134,21 @@ def _server_aliases(values=None) -> tuple[str, ...]:
     return tuple(aliases)
 
 
+def is_server_reference(value: object) -> bool:
+    """An exact server identity, not a place merely containing its name.
+
+    Reuse the reviewed language resource and configured instance identities.
+    This does not change placement: a geographic centre is request data.
+    """
+    if not isinstance(value, str):
+        return False
+    name = _norm(value)
+    if name == SERVER or name in _server_aliases():
+        return True
+    lexicon = _target_lexicon() or {}
+    return any(name == _norm(form) for form in lexicon.get("server_nominal", ()))
+
+
 def _has_machine_focus(query: str) -> bool:
     """Whether the request asks about machine state or hardware.
 
@@ -144,6 +159,8 @@ def _has_machine_focus(query: str) -> bool:
 
     try:
         import detection_lexicon as _detlex
+        from tool_grammar import _strip_fs_paths
+        query = _strip_fs_paths(query)
         if _detlex.match("system.status_query", query):
             return True
         focus = _detlex.mapping("health.section_focus") or {}
@@ -202,7 +219,7 @@ def _find_named_device(qn: str, devices):
         if m:
             matches.append((d, m.group(0), name, False))
             continue
-        # Ancora NOMINALE («il pc-roberto», «di pc-roberto»): routing sì,
+        # Ancora NOMINALE («il pc-example», «di pc-example»): routing sì,
         # strip NO (il caller preserva la query). SOLO per nomi TECNICI
         # (composti: trattino/underscore/cifra) — un device chiamato con una
         # parola comune («casa») matcherebbe le locuzioni («le foto di casa»)
@@ -215,7 +232,7 @@ def _find_named_device(qn: str, devices):
         if m:
             matches.append((d, m.group(0), name, True))
             continue
-        # Nome tecnico nudo («temperatura pc-roberto»): i nomi con struttura
+        # Nome tecnico nudo («temperatura pc-example»): i nomi con struttura
         # distintiva (trattino, underscore o cifra) sono sufficientemente
         # specifici da costituire da soli un riferimento esplicito.
         # Le locuzioni comuni restano escluse per evitare falsi positivi.
@@ -308,7 +325,11 @@ def _named_device_mentions(qn: str, devices,
                 if not any(
                         begin <= match.start() and match.end() <= stop
                         for begin, stop in ranges):
-                    candidates.append((match, True))
+                    # A bare identity may be an operand, not an execution
+                    # adjunct. Keep it in the planner's request, just as a
+                    # nominal mention is kept. Only a locative span can be
+                    # removed without dropping the object of the operation.
+                    candidates.append((match, False))
         for match, strip in candidates:
             out.append(_TargetMention(
                 identity=str(getattr(device, "id", "")),

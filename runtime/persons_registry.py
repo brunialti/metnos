@@ -593,7 +593,7 @@ class PersonsRegistry:
             (slug,),
         ).fetchall()
         # Fallback (15/5/2026): se slug exact non matcha (es. name="alice"
-        # vs slug="alice_brunialti"), usa `resolve_name` per token-anywhere.
+        # vs slug="guest_user"), usa `resolve_name` per token-anywhere.
         # Se multipli match, unisce embeddings di TUTTI (acceptable: face
         # recognition con stesso first-name dovrebbe essere disambiguato
         # con altri campi). Bug live (turn alice_mare): name=alice →

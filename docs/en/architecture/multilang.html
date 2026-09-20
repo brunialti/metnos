@@ -281,6 +281,11 @@ phrases and mappings can be translated with assistance; regular expressions
 must still be authored and checked manually. When native forms are absent,
 Metnos continues to recognize Italian and English forms, while explicitly
 reporting that the target language is not fully covered.
+This fallback does not apply to syntax that decides privileged commands or
+execution targets: negation, inhibition, contrast, coordination, sequence,
+and invocation forms must be native, complete, and reviewed. If any such
+resource is missing, the operation is denied instead of being interpreted
+approximately.
 </p>
 
 <p>

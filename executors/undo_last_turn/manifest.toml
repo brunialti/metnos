@@ -18,7 +18,7 @@ en = "SCOPO: cancel all reversible operations of the last user turn. PATTERN: un
 
 [code]
 files  = ["undo_last_turn.py"]
-digest = "sha256:cbb559081873b4e960baaa9d56940a10f5f82aaf348450a6bba542c5ed765d6c"
+digest = "sha256:8f819a52ce9f242ace86de74822058baf609c863557f7cdc4482439983f4f895"
 
 [args]
 type     = "object"

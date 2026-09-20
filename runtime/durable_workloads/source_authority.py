@@ -523,6 +523,8 @@ class SourceAuthority:
         limits: InventoryLimits,
         valid_until: datetime,
         chunk_bytes: int = 1_048_576,
+        accept: Callable[[Path], bool] | None = None,
+        recursive: bool = True,
     ) -> Mapping[str, Any]:
         """Atomically register concrete locators while sealing the inventory."""
 
@@ -594,11 +596,13 @@ class SourceAuthority:
                 inventory = seal_local_inventory(
                     roots,
                     device_id=device,
-                limits=limits,
-                chunk_bytes=chunk_bytes,
-                on_source=register,
-                checkpoint=self._checkpoint,
-            )
+                    limits=limits,
+                    chunk_bytes=chunk_bytes,
+                    on_source=register,
+                    checkpoint=self._checkpoint,
+                    accept=accept,
+                    recursive=recursive,
+                )
             return inventory
         except BaseException:
             if inventory is not None:
@@ -619,28 +623,38 @@ class SourceAuthority:
             context.workload_id,
         )
         source_id, device_id, digest, size_bytes, mtime_ns = _source_facts(source)
-        row = self._connection.execute(
-            """
-            SELECT device_id, locator_bytes, content_digest, size_bytes,
-                   mtime_ns, expires_at, revoked_at
-            FROM source_grants
-            WHERE owner_user_id=? AND workload_id=? AND source_id=?
-            """,
-            (owner, workload, source_id),
-        ).fetchone()
-        if row is None or row["revoked_at"] is not None:
-            raise SourceAuthorityError("source authority is unavailable")
-        if parse_instant(str(row["expires_at"]), name="expires_at") <= self._now():
-            raise SourceAuthorityError("source authority has expired")
-        registered = (
-            str(row["device_id"]),
-            str(row["content_digest"]),
-            int(row["size_bytes"]),
-            int(row["mtime_ns"]),
-        )
-        if registered != (device_id, digest, size_bytes, mtime_ns):
-            raise SourceAuthorityError("source authority does not match the inventory")
-        locator = os.fsdecode(bytes(row["locator_bytes"]))
+
+        def current_locator() -> str:
+            row = self._connection.execute(
+                """
+                SELECT device_id, locator_bytes, content_digest, size_bytes,
+                       mtime_ns, expires_at, revoked_at
+                FROM source_grants
+                WHERE owner_user_id=? AND workload_id=? AND source_id=?
+                """,
+                (owner, workload, source_id),
+            ).fetchone()
+            if row is None or row["revoked_at"] is not None:
+                raise SourceAuthorityError("source authority is unavailable")
+            if parse_instant(str(row["expires_at"]), name="expires_at") <= self._now():
+                raise SourceAuthorityError("source authority has expired")
+            registered = (
+                str(row["device_id"]), str(row["content_digest"]),
+                int(row["size_bytes"]), int(row["mtime_ns"]),
+            )
+            if registered != (device_id, digest, size_bytes, mtime_ns):
+                raise SourceAuthorityError("source authority does not match the inventory")
+            return os.fsdecode(bytes(row["locator_bytes"]))
+
+        locator = current_locator()
+
+        def recheck_authority() -> None:
+            # Hashing/copying and a remote attestation may outlive the grant,
+            # or overlap revocation. Do not release a newly materialized path
+            # on the strength of the authority observed before that I/O.
+            if current_locator() != locator:
+                raise SourceAuthorityError("source authority locator changed")
+
         if device_id != self.local_device_id:
             if self._remote_attestor is None:
                 raise SourceAuthorityError("remote source attestation is unavailable")
@@ -667,6 +681,7 @@ class SourceAuthority:
                 raise SourceAuthorityError(
                     "remote source attestation does not match the inventory"
                 )
+            recheck_authority()
             return resolution
 
         try:
@@ -681,6 +696,11 @@ class SourceAuthority:
             raise SourceAuthorityError(
                 "local source cannot be re-attested"
             ) from exc
+        try:
+            recheck_authority()
+        except BaseException:
+            self._clear_snapshots()
+            raise
         return SourceResolution(
             value=str(snapshot),
             source_id=source_id,

@@ -3,9 +3,9 @@ role: web_rerank
 tier: fast
 lang: it
 style: definitional
-version: 1
+version: 2
 owner: roberto
-updated: 2026-05-11
+updated: 2026-09-15
 sha_prev: fe14b5d3
 --- #}
 DEVI: ordinare la lista `candidates` per rilevanza alla `user_query`.
@@ -29,6 +29,6 @@ Considera implicitamente:
 - Per query con anno o data esplicita, boost candidati che la nominano nel titolo/snippet.
 - Per query news, boost domini di stampa rispetto a wiki/forum.
 
-Numero massimo elementi in `top`: {{ top_k }}. Includi SOLO candidati con score >= 0.3. Se nessun candidato e' sopra 0.3, ritorna `{"top": []}`.
+Numero massimo elementi in `top`: {{ top_k }}. Includi SOLO candidati con score >= {{ min_score }}. Se nessun candidato raggiunge {{ min_score }}, ritorna `{"top": []}`.
 
 NON includere il campo `why`/spiegazioni: solo url e score.

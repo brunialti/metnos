@@ -14,388 +14,152 @@ from __future__ import annotations
 
 import argparse
 import ast
-from dataclasses import dataclass
+import hashlib
 import json
+from functools import lru_cache
 from pathlib import Path
 import re
 from typing import Iterable, Mapping, Sequence
 
+from contract_boundary_analyzer_ast import (
+    leaf_name_v1,
+    dotted_name_v1,
+    module_leaf_v1,
+    target_names_v1,
+    string_values_v1,
+    static_string_v1,
+    static_strings_v1,
+    resolved_alias_name_v1,
+    has_bound_root_v1,
+)
+from contract_boundary_analyzer_types import ScopeFacts, Finding
+import contract_boundary_policy as _boundary_policy
 
-SCHEMA = "metnos.contract-boundary-inventory/2"
-BIRTH_CLOSED_SCHEMA = "metnos.contract-boundary-birth-closed/1"
-BIRTH_CLOSED_GUARD_VERSION = f"{SCHEMA}+birth-closed/1"
+
+_leaf_name = leaf_name_v1
+_dotted_name = dotted_name_v1
+_module_leaf = module_leaf_v1
+_target_names = target_names_v1
+_string_values = string_values_v1
+_static_string = static_string_v1
+_static_strings = static_strings_v1
+_resolved_alias_name = resolved_alias_name_v1
+_has_bound_root = has_bound_root_v1
+
+SCHEMA = _boundary_policy.SCHEMA
+BIRTH_CLOSED_SCHEMA = _boundary_policy.BIRTH_CLOSED_SCHEMA
+BIRTH_CLOSED_GUARD_VERSION = _boundary_policy.BIRTH_CLOSED_GUARD_VERSION
+BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
+    b"metnos.executor-birth.closed-python-source-review/v1\0"
+)
+BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:82cf096714c510ffe86df545089c0069051ecc233837810c87aacbd48d2e6747"
+RM0008_ACCEPTANCE_EVOLUTION_SHA256 = "sha256:1babce04a78b8345cbacb9bf5677bebade3958e655f0dc45884ad70636322167"
 DEFAULT_INVENTORY = Path("internal/reports/rm0007-m4-boundary-inventory.json")
-SCAN_ROOTS = ("runtime", "install", "scripts", "executors")
-AUTHORING_FILES = frozenset({
-    "manifest.toml",
-    "manifest.toml.sig",
-    "manifest.lang_state.json",
-})
-# Public boundary APIs are classified by their owning module, never by a
-# language, executor name or caller-chosen helper name.  Local wrappers inherit
-# these capabilities through the per-file call graph below.
-BOUNDARY_APIS: Mapping[str, Mapping[str, tuple[str, ...]]] = {
-    "executor_birth": {
-        "birth_executor": ("birth",),
-    },
-    "executor_birth_intent": {
-        "submit_builtin_generation_birth": ("birth",),
-        "submit_change_extend_birth": ("birth",),
-        "submit_change_rollback_birth": ("birth",),
-        "submit_installer_birth": ("birth",),
-        "submit_promote_birth": ("birth",),
-        "submit_promoter_rollback_birth": ("birth",),
-        "submit_skills_birth": ("birth",),
-        "submit_stack_reconcile_birth": ("birth",),
-        "submit_synth_producer_birth": ("birth",),
-    },
-    "executor_birth_operational": {
-        "_BirthCommitPublisher": ("birth_commit_factory",),
-        "_assemble_birth_core": ("birth_core_assembly",),
-        "_assemble_birth_runtime_bundle": ("birth_runtime_assembly",),
-        "_installed_runtime_state": ("birth_runtime_private_state",),
-        "birth_executor": ("birth",),
-    },
-    "executor_birth_synth": {
-        "submit_synth_multistage": ("birth",),
-        "submit_synth_specialize": ("birth",),
-        "submit_synth_approve": ("birth",),
-    },
-    "contract_store": {
-        "verify_manifest_source": ("authoring_read", "authoring_verify"),
-        "prepare_technical_draft": ("authoring_read", "authoring_verify"),
-        "read_binding": ("verified_store_read",),
-        "current_revision_id": ("verified_store_read",),
-        "current_contract": ("verified_store_read",),
-        "current_manifest": ("verified_store_read",),
-        "diagnose_store": ("verified_store_read",),
-        "inspect_birth_authoring_recovery": ("verified_store_read",),
-        "publish_localization": ("publish_localization",),
-        "publish_technical_update": ("publish_technical",),
-        "publish_signed_source": ("publish_bootstrap",),
-        "retire": ("retire",),
-        "reactivate_technical_update": ("reactivate",),
-        "rollback": ("rollback",),
-        "activate_store": ("legacy_bootstrap",),
-    },
-    "sign": {
-        "sign_executor": ("sign",),
-        "verify_executor": ("authoring_read", "authoring_verify"),
-        "publish_executor": ("publish_technical",),
-        "publish_authoring_update": ("publish_technical",),
-        "retire_executor_contract": ("retire",),
-        "reactivate_executor_contract": ("reactivate",),
-        "rollback_executor_contract": ("rollback",),
-    },
-    "loader": {
-        "load_catalog": ("live_artifact_read",),
-    },
-    "invocations": {
-        "load_executor_artifact": ("live_artifact_read",),
-    },
-    "i18n_migrate_manifests": {
-        "prepare_contract_store_shadow": ("legacy_bootstrap",),
-        "activate_prepared_contract_store": ("legacy_bootstrap",),
-    },
-    "contract_cutover_guard": {
-        "contract_cutover_guard": ("cutover_guard",),
-        "verify_store_only_catalog": (
-            "live_artifact_read",
-            "verified_store_read",
-        ),
-    },
-    "manifest_inventory": {
-        "inventory_authoring_manifests": ("authoring_read",),
-        "inventory_manifests": ("authoring_read", "verified_store_read"),
-        "inventory_store_manifests": ("verified_store_read",),
-    },
-    "executor_birth_authoring": {
-        "read_manifest_ref_versioned": ("authoring_versioned_read",),
-    },
-    "executor_birth_ownership_chain": {
-        "_append_pair": ("store_write",),
-        "_replace_required_pointer": ("store_write",),
-        "_required_head_lock": ("store_write",),
-        "_update_required_head_locked": ("store_write",),
-        "append_authenticated_build": ("store_write",),
-        "append_cutover": ("store_write",),
-        "append_head": ("store_write",),
-        "initialize": ("store_write",),
-        "update_required_head": ("store_write",),
-    },
+SCAN_ROOTS = _boundary_policy.SCAN_ROOTS
+MAX_BOUNDARY_SOURCE_FILES = _boundary_policy.MAX_BOUNDARY_SOURCE_FILES
+MAX_BOUNDARY_SOURCE_BYTES = _boundary_policy.MAX_BOUNDARY_SOURCE_BYTES
+MAX_BOUNDARY_TOTAL_SOURCE_BYTES = _boundary_policy.MAX_BOUNDARY_TOTAL_SOURCE_BYTES
+MAX_BOUNDARY_AST_NODES = _boundary_policy.MAX_BOUNDARY_AST_NODES
+MAX_BOUNDARY_TOTAL_AST_NODES = _boundary_policy.MAX_BOUNDARY_TOTAL_AST_NODES
+MAX_BOUNDARY_AST_DEPTH = _boundary_policy.MAX_BOUNDARY_AST_DEPTH
+MAX_BOUNDARY_SCOPES = _boundary_policy.MAX_BOUNDARY_SCOPES
+MAX_BOUNDARY_CALLS = _boundary_policy.MAX_BOUNDARY_CALLS
+_SOURCE_REVIEW_PIN_VALUE_V1 = (
+    rb'(?:(?:"sha256:" \+ "0" \* 64)|(?:"sha256:[0-9a-f]{64}"))'
+)
+_SOURCE_REVIEW_PIN_ASSIGNMENT_V1 = re.compile(
+    rb'(?m)^_?BIRTH_CLOSED_SOURCE_REVIEW_SHA256[ \t]*=[ \t]*'
+    + _SOURCE_REVIEW_PIN_VALUE_V1 + rb'$'
+)
+_SOURCE_REVIEW_PIN_BINDINGS_V1 = {
+    "runtime/contract_boundary_guard.py": re.compile(
+        rb'(?m)^BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = '
+        + _SOURCE_REVIEW_PIN_VALUE_V1 + rb'$'
+    ),
+    "runtime/executor_birth_admin_preflight.py": re.compile(
+        rb'(?m)^_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = '
+        + _SOURCE_REVIEW_PIN_VALUE_V1 + rb'$'
+    ),
 }
-BOUNDARY_MODULES: Mapping[str, frozenset[str]] = {
-    "executor_birth": frozenset({"executor_birth", "runtime.executor_birth"}),
-    "executor_birth_intent": frozenset({
-        "executor_birth_intent", "runtime.executor_birth_intent",
-    }),
-    "executor_birth_operational": frozenset({
-        "executor_birth_operational", "runtime.executor_birth_operational",
-    }),
-    "executor_birth_synth": frozenset({
-        "executor_birth_synth", "runtime.executor_birth_synth",
-    }),
-    "contract_store": frozenset({"contract_store", "runtime.contract_store"}),
-    "sign": frozenset({"sign", "runtime.sign"}),
-    "loader": frozenset({"loader", "runtime.loader"}),
-    "invocations": frozenset({"invocations", "runtime.invocations"}),
-    "i18n_migrate_manifests": frozenset({
-        "admin.i18n_migrate_manifests",
-        "runtime.admin.i18n_migrate_manifests",
-    }),
-    "contract_cutover_guard": frozenset({
-        "contract_cutover_guard",
-        "runtime.contract_cutover_guard",
-    }),
-    "manifest_inventory": frozenset({
-        "manifest_inventory",
-        "runtime.manifest_inventory",
-    }),
-    "executor_birth_authoring": frozenset({
-        "executor_birth_authoring", "runtime.executor_birth_authoring",
-    }),
-    "executor_birth_ownership_chain": frozenset({
-        "executor_birth_ownership_chain", "runtime.executor_birth_ownership_chain",
-    }),
-}
-BOUNDARY_SOURCE_OWNERS: Mapping[str, str] = {
-    "runtime/executor_birth.py": "executor_birth",
-    "runtime/executor_birth_intent.py": "executor_birth_intent",
-    "runtime/executor_birth_operational.py": "executor_birth_operational",
-    "runtime/contract_store.py": "contract_store",
-    "runtime/sign.py": "sign",
-    "runtime/loader.py": "loader",
-    "runtime/invocations.py": "invocations",
-    "runtime/admin/i18n_migrate_manifests.py": "i18n_migrate_manifests",
-    "runtime/contract_cutover_guard.py": "contract_cutover_guard",
-    "runtime/manifest_inventory.py": "manifest_inventory",
-    "runtime/executor_birth_authoring.py": "executor_birth_authoring",
-    "runtime/executor_birth_ownership_chain.py": "executor_birth_ownership_chain",
-}
-READ_OPERATIONS = frozenset({
-    "exists",
-    "glob",
-    "is_dir",
-    "is_file",
-    "iterdir",
-    "load",
-    "loads",
-    "open",
-    "parse",
-    "read",
-    "read_bytes",
-    "read_text",
-    "resolve",
-    "rglob",
-    "stat",
-})
-WRITE_OPERATIONS = frozenset({
-    "NamedTemporaryFile",
-    "chmod",
-    "chown",
-    "copy",
-    "copy2",
-    "copyfile",
-    "extract",
-    "extractall",
-    "fchmod",
-    "fchown",
-    "ftruncate",
-    "fsync",
-    "mkdir",
-    "mkdtemp",
-    "mkstemp",
-    "open",
-    "remove",
-    "rename",
-    "replace",
-    "rmdir",
-    "rmtree",
-    "hardlink_to",
-    "link",
-    "symlink_to",
-    "touch",
-    "truncate",
-    "unlink",
-    "write",
-    "write_bytes",
-    "write_text",
-})
-PROCESS_CALLS = frozenset({"Popen", "call", "check_call", "check_output", "run", "system"})
-LIVE_READER_FORBIDDEN = frozenset({
-    "ambiguous_local_authority",
-    "authoring_read",
-    "authoring_write",
-    "authoring_verify",
-    "birth",
-    "birth_commit",
-    "birth_commit_factory",
-    "birth_core_assembly",
-    "birth_runtime_assembly",
-    "birth_runtime_private_state",
-    "legacy_bootstrap",
-    "publish_bootstrap",
-    "publish_localization",
-    "publish_technical",
-    "reactivate",
-    "retire",
-    "rollback",
-    "sign",
-    "store_write",
-    "dynamic_boundary_access",
-})
-PUBLISH_CAPABILITIES = frozenset({
-    "birth",
-    "publish_bootstrap",
-    "publish_localization",
-    "publish_technical",
-    "reactivate",
-    "retire",
-    "rollback",
-})
-FLOW_CAPABILITIES = PUBLISH_CAPABILITIES | frozenset({
-    "ambiguous_local_authority",
-    "birth_commit",
-    "birth_runtime_private_state",
-    "authoring_write",
-    "cutover_guard",
-    "legacy_bootstrap",
-    "sign",
-    "store_write",
-    "dynamic_boundary_access",
-})
-PRIVATE_BIRTH_AUTHORITY_CAPABILITIES = frozenset({
-    "birth_commit_factory",
-    "birth_core_assembly",
-    "birth_runtime_assembly",
-    "birth_runtime_private_state",
-})
-
-# These are implementation boundaries, not a caller-extensible allow-list.
-BIRTH_CLOSED_SEALED_MODULES = (
-    "runtime/contract_store.py",
-    "runtime/executor_birth.py",
-    "runtime/executor_birth_operational.py",
-    "runtime/sign.py",
+_SOURCE_REVIEW_PIN_PLACEHOLDER = (
+    b'BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:' + b"0" * 64 + b'"'
 )
-BIRTH_CLOSED_OWNER = "runtime/executor_birth_operational.py:birth_executor"
-BIRTH_COMMIT_OWNER = (
-    "runtime/executor_birth_operational.py:_BirthCommitPublisher.__call__"
+AUTHORING_FILES = _boundary_policy.AUTHORING_FILES
+# Public policy names retain their historical concrete runtime types.
+BOUNDARY_APIS: Mapping[str, Mapping[str, tuple[str, ...]]] = (
+    _boundary_policy.BOUNDARY_APIS
 )
-BIRTH_COMMIT_FACTORY_SCOPES = frozenset({
-    "runtime/executor_birth_operational.py:_assemble_birth_core",
-})
-BIRTH_CORE_ASSEMBLY_SCOPES = frozenset({
-    "runtime/executor_birth_operational.py:_assemble_birth_core",
-    "runtime/executor_birth_bootstrap.py:_build",
-})
-BIRTH_RUNTIME_ASSEMBLY_SCOPES = frozenset({
-    "runtime/executor_birth_operational.py:_assemble_birth_runtime_bundle",
-    "runtime/executor_birth_bootstrap.py:_build",
-})
-BIRTH_RUNTIME_PRIVATE_STATE_SCOPES = frozenset({
-    "runtime/executor_birth_operational.py:_installed_runtime_state",
-    "runtime/executor_birth_operational.py:_execute_intent_with_capability",
-    "runtime/executor_birth_operational.py:birth_executor",
-    "runtime/executor_birth_operational.py:_execute_installed_reattestation",
-})
-BIRTH_CLOSED_COORDINATOR_STORE_OWNERS = frozenset({
-    "runtime/executor_birth_ownership_chain.py:OwnershipChainStore._append_pair",
-    "runtime/executor_birth_ownership_chain.py:OwnershipChainStore._update_required_head_locked",
-    "runtime/executor_birth_ownership_chain.py:OwnershipChainStore.append_authenticated_build",
-    "runtime/executor_birth_ownership_chain.py:OwnershipChainStore.append_cutover",
-    "runtime/executor_birth_ownership_chain.py:OwnershipChainStore.append_head",
-    "runtime/executor_birth_ownership_chain.py:OwnershipChainStore.initialize",
-    "runtime/executor_birth_ownership_chain.py:OwnershipChainStore.update_required_head",
-    "runtime/executor_birth_ownership_chain.py:_replace_required_pointer",
-    "runtime/executor_birth_ownership_chain.py:_required_head_lock",
-})
-BIRTH_CLOSED_LEGACY_CAPABILITIES = frozenset({
-    "publish_technical", "reactivate", "rollback", "sign",
-})
-BIRTH_CLOSED_EXCEPTIONS = frozenset({
-    "localization_only", "retirement_only", "offline_nonproductive_authoring",
-})
-BIRTH_CLOSED_EXCEPTION_SCOPES: Mapping[str, str] = {
-    "runtime/admin/manifest_refactor.py:<module>": "offline_nonproductive_authoring",
-    "runtime/admin/manifest_refactor.py:main": "offline_nonproductive_authoring",
-    "runtime/admin/manifest_refactor.py:refactor_manifest": "offline_nonproductive_authoring",
-    "runtime/i18n_pipeline.py:live_contract_context": "localization_only",
-    "runtime/i18n_translator.py:<module>": "offline_nonproductive_authoring",
-    "runtime/i18n_translator.py:_align_one_manifest": "offline_nonproductive_authoring",
-    "runtime/i18n_translator.py:align_manifest_descriptions": "offline_nonproductive_authoring",
-    "runtime/manifest_normalize.py:<module>": "offline_nonproductive_authoring",
-    "runtime/manifest_normalize.py:apply_one": "offline_nonproductive_authoring",
-    "runtime/manifest_normalize.py:main": "offline_nonproductive_authoring",
-    "runtime/migrate_manifest_descriptions.py:<module>": "offline_nonproductive_authoring",
-    "runtime/migrate_manifest_descriptions.py:main": "offline_nonproductive_authoring",
-    "runtime/migrate_manifest_descriptions.py:migrate_dirs": "offline_nonproductive_authoring",
-    "runtime/migrate_manifest_descriptions.py:migrate_one": "offline_nonproductive_authoring",
-    "runtime/change_rollback.py:_rollback_create_executor": "retirement_only",
-    "runtime/cli/skills_cli.py:_cmd_uninstall": "retirement_only",
-}
-VALID_ROLES = frozenset({
-    "administrative_tool",
-    "birth_owner",
-    "documentation",
-    "live_reader",
-    "migration_boundary",
-    "offline_authoring",
-    "operational_producer",
-    "store_owner",
-})
-LIVE_MUTATIONS = frozenset({
-    "birth",
-    "birth_commit",
-    "publish_localization",
-    "publish_technical",
-    "reactivate",
-    "retire",
-    "rollback",
-})
-
-_AUTHORING_NAME_RE = re.compile(
-    r"(?:^|_)(?:(?:authoring_manifest|manifest_source|source_manifest)_"
-    r"(?:path|dir|root)|executor_(?:path|dir|root))(?:_|$)",
+BOUNDARY_MODULES: Mapping[str, frozenset[str]] = _boundary_policy.BOUNDARY_MODULES
+BOUNDARY_SOURCE_OWNERS: Mapping[str, str] = (
+    _boundary_policy.BOUNDARY_SOURCE_OWNERS
 )
-_AMBIGUOUS_AUTHORING_ARGUMENT_RE = re.compile(
-    r"(?:^|_)manifest_(?:path|dir|root)(?:_|$)",
+READ_OPERATIONS = _boundary_policy.READ_OPERATIONS
+WRITE_OPERATIONS = _boundary_policy.WRITE_OPERATIONS
+PROCESS_CALLS = _boundary_policy.PROCESS_CALLS
+DYNAMIC_CODE_LOADER_APIS = _boundary_policy.DYNAMIC_CODE_LOADER_APIS
+DYNAMIC_CODE_LOADER_CANONICALS = _boundary_policy.DYNAMIC_CODE_LOADER_CANONICALS
+SENSITIVE_FIRST_CLASS_REFERENCES = (
+    _boundary_policy.SENSITIVE_FIRST_CLASS_REFERENCES
 )
-_STORE_NAME_RE = re.compile(
-    r"(?:^|_)(?:(?:contract_publication|contract_store|publication_store)_"
-    r"(?:path|dir|root)|store_root|shadow_root|active_marker|store_relative|"
-    r"shadow_relative|active_relative)(?:_|$)",
+SENSITIVE_IMPORT_NAMESPACES = _boundary_policy.SENSITIVE_IMPORT_NAMESPACES
+SYS_MODULES_EXPOSING_METHODS = _boundary_policy.SYS_MODULES_EXPOSING_METHODS
+SYS_MODULES_MUTATING_METHODS = _boundary_policy.SYS_MODULES_MUTATING_METHODS
+AUTHENTICATED_EXECUTION_SCOPE = _boundary_policy.AUTHENTICATED_EXECUTION_SCOPE
+AUTHENTICATED_PREFLIGHT_EXECUTION_SCOPE = (
+    _boundary_policy.AUTHENTICATED_PREFLIGHT_EXECUTION_SCOPE
 )
-_CONTRACT_SCOPE_RE = re.compile(r"(?:^|_)(?:contract|manifest)(?:_|$)")
-_GENERIC_PATH_NAME_RE = re.compile(
-    r"(?:^|_)(?:path|dir|root|file)(?:_|$)",
+LIVE_READER_FORBIDDEN = _boundary_policy.LIVE_READER_FORBIDDEN
+PUBLISH_CAPABILITIES = _boundary_policy.PUBLISH_CAPABILITIES
+FLOW_CAPABILITIES = _boundary_policy.FLOW_CAPABILITIES
+# Public Birth-closed policy names retain historical concrete runtime types.
+BIRTH_CLOSED_SEALED_MODULES = _boundary_policy.BIRTH_CLOSED_SEALED_MODULES
+BIRTH_CLOSED_OWNER = _boundary_policy.BIRTH_CLOSED_OWNER
+BIRTH_CLOSED_COORDINATOR_STORE_OWNERS = (
+    _boundary_policy.BIRTH_CLOSED_COORDINATOR_STORE_OWNERS
 )
+BIRTH_CLOSED_LEGACY_CAPABILITIES = (
+    _boundary_policy.BIRTH_CLOSED_LEGACY_CAPABILITIES
+)
+BIRTH_CLOSED_EXCEPTIONS = _boundary_policy.BIRTH_CLOSED_EXCEPTIONS
+BIRTH_CLOSED_EXCEPTION_SCOPES: Mapping[str, str] = (
+    _boundary_policy.BIRTH_CLOSED_EXCEPTION_SCOPES
+)
+BIRTH_CLOSED_EXCEPTION_CAPABILITIES: Mapping[str, frozenset[str]] = (
+    _boundary_policy.BIRTH_CLOSED_EXCEPTION_CAPABILITIES
+)
+VALID_ROLES = _boundary_policy.VALID_ROLES
+LIVE_MUTATIONS = _boundary_policy.LIVE_MUTATIONS
+DIRECT_MANIFEST_ALLOWED_ROLES = _boundary_policy.DIRECT_MANIFEST_ALLOWED_ROLES
+DIRECT_MANIFEST_ALLOWED_PATHS = _boundary_policy.DIRECT_MANIFEST_ALLOWED_PATHS
+BIRTH_OWNER_ALLOWED_PATHS = _boundary_policy.BIRTH_OWNER_ALLOWED_PATHS
+BIRTH_OWNER_FORBIDDEN_CAPABILITIES = (
+    _boundary_policy.BIRTH_OWNER_FORBIDDEN_CAPABILITIES
+)
+OPERATIONAL_BIRTH_FORBIDDEN_CAPABILITIES = (
+    _boundary_policy.OPERATIONAL_BIRTH_FORBIDDEN_CAPABILITIES
+)
+BOOTSTRAP_CAPABILITIES = _boundary_policy.BOOTSTRAP_CAPABILITIES
+BOOTSTRAP_ALLOWED_ROLES = _boundary_policy.BOOTSTRAP_ALLOWED_ROLES
+LIVE_MUTATION_ALLOWED_ROLES = _boundary_policy.LIVE_MUTATION_ALLOWED_ROLES
+DOCUMENTATION_CAPABILITY_EXEMPTIONS = (
+    _boundary_policy.DOCUMENTATION_CAPABILITY_EXEMPTIONS
+)
+BIRTH_CLOSED_EXCEPTION_JUSTIFICATIONS = (
+    _boundary_policy.BIRTH_CLOSED_EXCEPTION_JUSTIFICATIONS
+)
+BIRTH_CLOSED_COORDINATOR_REQUIRED_CAPABILITIES = (
+    _boundary_policy.BIRTH_CLOSED_COORDINATOR_REQUIRED_CAPABILITIES
+)
+BOUNDARY_ENTRY_KEYS = _boundary_policy.BOUNDARY_ENTRY_KEYS
+birth_closed_inventory_value_v1 = _boundary_policy.birth_closed_inventory_value_v1
 
-
-@dataclass(frozen=True)
-class ScopeFacts:
-    path: str
-    scope: str
-    line: int
-    capabilities: tuple[str, ...]
-    calls: tuple[str, ...]
-    direct_manifest_dir_access: bool = False
-    closed_dynamic_boundary: bool = False
-
-    @property
-    def key(self) -> str:
-        return f"{self.path}:{self.scope}"
-
-
-@dataclass(frozen=True)
-class Finding:
-    code: str
-    scope: str
-    message: str
-
-    def __str__(self) -> str:
-        return f"{self.code}: {self.scope}: {self.message}"
-
+_AUTHORING_NAME_RE = _boundary_policy._AUTHORING_NAME_RE
+_AMBIGUOUS_AUTHORING_ARGUMENT_RE = (
+    _boundary_policy._AMBIGUOUS_AUTHORING_ARGUMENT_RE
+)
+_STORE_NAME_RE = _boundary_policy._STORE_NAME_RE
+_CONTRACT_SCOPE_RE = _boundary_policy._CONTRACT_SCOPE_RE
+_GENERIC_PATH_NAME_RE = _boundary_policy._GENERIC_PATH_NAME_RE
 
 def birth_migration_findings(
     facts: Sequence[ScopeFacts],
@@ -439,27 +203,6 @@ def birth_migration_findings(
     return sorted(findings, key=lambda finding: finding.scope)
 
 
-def _leaf_name(node: ast.AST) -> str | None:
-    if isinstance(node, ast.Name):
-        return node.id
-    if isinstance(node, ast.Attribute):
-        return node.attr
-    return None
-
-
-def _dotted_name(node: ast.AST) -> str | None:
-    if isinstance(node, ast.Name):
-        return node.id
-    if isinstance(node, ast.Attribute):
-        parent = _dotted_name(node.value)
-        return f"{parent}.{node.attr}" if parent else node.attr
-    return None
-
-
-def _module_leaf(module: str) -> str:
-    return module.rsplit(".", 1)[-1]
-
-
 def _boundary_owner(module: str) -> str | None:
     for owner, accepted in BOUNDARY_MODULES.items():
         if module in accepted:
@@ -467,13 +210,28 @@ def _boundary_owner(module: str) -> str | None:
     return None
 
 
+def _boundary_owner_or_descendant(module: str) -> str | None:
+    for owner, accepted in BOUNDARY_MODULES.items():
+        if any(module == value or module.startswith(value + ".") for value in accepted):
+            return owner
+    return None
+
+
 def _relative_boundary_import(node: ast.ImportFrom) -> bool:
     if node.level <= 0:
         return False
-    if node.module and _boundary_owner(node.module) is not None:
-        return True
-    return node.module is None and any(
-        alias.name in BOUNDARY_APIS for alias in node.names
+    candidates = [node.module] if node.module else []
+    candidates.extend(
+        ".".join(filter(None, (node.module or "", alias.name)))
+        for alias in node.names
+    )
+    return any(
+        candidate is not None
+        and (
+            _boundary_owner_or_descendant(candidate) is not None
+            or candidate in BOUNDARY_APIS
+        )
+        for candidate in candidates
     )
 
 
@@ -493,11 +251,90 @@ def _boundary_api_capabilities(canonical: str) -> tuple[str, ...]:
     # No module may import a private store implementation detail.  Treat every
     # such call as private store authority, rather than maintaining a brittle
     # nominal list of mutator names that a new helper could bypass.
-    if owner == "contract_store" and api == "_commit_birth_snapshot":
-        return ("birth_commit",)
     if owner == "contract_store" and api.startswith("_"):
         return ("store_write",)
     return tuple(BOUNDARY_APIS.get(owner, {}).get(api, ()))
+
+
+def _normalized_source_review_bytes(relative: str, content: bytes) -> bytes:
+    """Normalize exactly one pin in each of the two compiled bindings."""
+    pattern = _SOURCE_REVIEW_PIN_BINDINGS_V1.get(relative)
+    if pattern is None:
+        return content
+    expected = tuple(pattern.finditer(content))
+    assignments = tuple(_SOURCE_REVIEW_PIN_ASSIGNMENT_V1.finditer(content))
+    if (
+        len(expected) != 1
+        or len(assignments) != 1
+        or expected[0].span() != assignments[0].span()
+    ):
+        raise ValueError(f"invalid source-review pin binding: {relative}")
+    start, end = expected[0].span()
+    return content[:start] + _SOURCE_REVIEW_PIN_PLACEHOLDER + content[end:]
+
+
+def closed_python_source_review_sha256(
+    sources: Mapping[str, bytes],
+) -> str:
+    """Bind the exact Python source set approved for one closed build."""
+    digest = hashlib.sha256(BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN)
+    selected = []
+    pin_targets = set()
+    for relative, content in sources.items():
+        components = relative.split("/")
+        if (
+            not relative.endswith(".py")
+            or not components
+            or components[0] not in SCAN_ROOTS
+            or "__pycache__" in components
+            or type(content) is not bytes
+        ):
+            continue
+        normalized = _normalized_source_review_bytes(relative, content)
+        selected.append((relative, normalized))
+        if relative in _SOURCE_REVIEW_PIN_BINDINGS_V1:
+            pin_targets.add(relative)
+    if pin_targets != set(_SOURCE_REVIEW_PIN_BINDINGS_V1):
+        raise ValueError("source-review pin binding missing")
+    for relative, content in sorted(
+        selected, key=lambda item: item[0].encode("utf-8"),
+    ):
+        encoded_path = relative.encode("utf-8")
+        digest.update(len(encoded_path).to_bytes(8, "big"))
+        digest.update(encoded_path)
+        digest.update(len(content).to_bytes(8, "big"))
+        digest.update(hashlib.sha256(content).digest())
+    return f"sha256:{digest.hexdigest()}"
+
+
+def closed_python_sources_from_root(root: Path) -> dict[str, bytes]:
+    sources: dict[str, bytes] = {}
+    for base in SCAN_ROOTS:
+        directory = root / base
+        if not directory.exists():
+            continue
+        for path in directory.rglob("*.py"):
+            if path.is_file() and "__pycache__" not in path.parts:
+                sources[path.relative_to(root).as_posix()] = path.read_bytes()
+    return sources
+
+
+def closed_python_source_review_finding(root: Path) -> Finding | None:
+    try:
+        observed = closed_python_source_review_sha256(
+            closed_python_sources_from_root(root),
+        )
+    except (OSError, MemoryError, ValueError) as exc:
+        return Finding(
+            "birth_closed_source_review_invalid", "<source-review>",
+            f"cannot read reviewed Python sources: {type(exc).__name__}",
+        )
+    if observed != BIRTH_CLOSED_SOURCE_REVIEW_SHA256:
+        return Finding(
+            "birth_closed_source_review_mismatch", "<source-review>",
+            "Python source root is not the compiled reviewed root",
+        )
+    return None
 
 
 def _defined_boundary_capabilities(path: str, scope: str) -> tuple[str, ...]:
@@ -509,63 +346,351 @@ def _defined_boundary_capabilities(path: str, scope: str) -> tuple[str, ...]:
     if module is None:
         return ()
     api = scope.rsplit(".", 1)[-1]
-    if module == "executor_birth_operational" and api == "_BirthCommitPublisher":
-        # Defining the adapter type is inert. Construction, import, reference
-        # and subclassing are the authority-bearing operations.
-        return ()
     capabilities = set(BOUNDARY_APIS.get(module, {}).get(api, ()))
     return tuple(sorted(capabilities))
 
 
-def _local_private_boundary_capabilities(
-    path: str, api: str,
-) -> tuple[str, ...]:
-    """Classify sensitive private symbols referenced inside their module."""
+def _is_dynamic_code_loader_call(func: ast.AST, canonical: str) -> bool:
+    """Recognize actual stdlib code-loader doors, not same-named local APIs."""
 
-    owner = BOUNDARY_SOURCE_OWNERS.get(path)
-    if owner != "executor_birth_operational" or not api.startswith("_"):
-        return ()
-    return tuple(BOUNDARY_APIS[owner].get(api, ()))
-
-
-def _target_names(node: ast.AST) -> set[str]:
-    if isinstance(node, ast.Name):
-        return {node.id}
-    if isinstance(node, (ast.Tuple, ast.List)):
-        result: set[str] = set()
-        for item in node.elts:
-            result.update(_target_names(item))
-        return result
-    return set()
-
-
-def _string_values(node: ast.AST) -> Iterable[str]:
-    for item in ast.walk(node):
-        if isinstance(item, ast.Constant) and isinstance(item.value, str):
-            yield item.value
+    if canonical in DYNAMIC_CODE_LOADER_CANONICALS:
+        return True
+    if canonical.startswith("importlib.") and canonical.rsplit(".", 1)[-1] in (
+        DYNAMIC_CODE_LOADER_APIS - {"run_module", "run_path"}
+    ):
+        return True
+    # ``spec`` is a runtime value, so it has no import alias to canonicalize.
+    # The loader protocol spelling is nevertheless structural and specific.
+    dotted = _dotted_name(func) or ""
+    return (
+        isinstance(func, ast.Attribute)
+        and func.attr in {"exec_module", "load_module"}
+        and (
+            f".loader.{func.attr}" in dotted
+            or dotted.startswith("__loader__.")
+            or canonical.startswith("importlib.")
+        )
+    )
 
 
-def _static_string(node: ast.AST) -> str | None:
-    """Evaluate only syntax that is unambiguously a constant string."""
+def _is_authenticated_preflight_runpy_v1(
+    call: ast.Call, path: str, scope: str,
+    aliases: Mapping[str, str], nodes: Sequence[ast.AST],
+) -> bool:
+    """Recognize the sole exact runpy door bound by the signed launch plan."""
+    if (
+        (path, scope) != AUTHENTICATED_PREFLIGHT_EXECUTION_SCOPE
+        or not isinstance(call.func, ast.Attribute)
+        or not isinstance(call.func.value, ast.Name)
+        or call.func.value.id != "runpy" or call.func.attr != "run_module"
+        or aliases.get("runpy") != "runpy"
+        or len(call.args) != 1
+        or not isinstance(call.args[0], ast.Attribute)
+        or not isinstance(call.args[0].value, ast.Name)
+        or call.args[0].value.id != "plan"
+        or call.args[0].attr != "python_module"
+        or len(call.keywords) != 2
+        or any(item.arg is None for item in call.keywords)
+    ):
+        return False
+    keywords = {item.arg: item.value for item in call.keywords}
+    if set(keywords) != {"run_name", "alter_sys"}:
+        return False
+    run_name = keywords["run_name"]
+    alter_sys = keywords["alter_sys"]
+    if (
+        not isinstance(run_name, ast.Constant) or run_name.value != "__main__"
+        or not isinstance(alter_sys, ast.Constant) or alter_sys.value is not False
+    ):
+        return False
+    for node in nodes:
+        targets: set[str] = set()
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                targets.update(_target_names(target))
+        elif isinstance(node, (ast.AnnAssign, ast.AugAssign, ast.NamedExpr)):
+            targets.update(_target_names(node.target))
+        if targets & {"runpy", "plan"}:
+            return False
+    return True
 
-    if isinstance(node, ast.Constant) and isinstance(node.value, str):
-        return node.value
-    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
-        left = _static_string(node.left)
-        right = _static_string(node.right)
-        return left + right if left is not None and right is not None else None
-    if isinstance(node, ast.JoinedStr):
-        parts = [_static_string(value) for value in node.values]
-        return "".join(parts) if all(part is not None for part in parts) else None
-    return None
+
+def _is_sys_modules_registry(
+    node: ast.AST, aliases: Mapping[str, str],
+) -> bool:
+    """Track the module registry through direct and reflective derivations."""
+
+    resolved = _resolved_alias_name(node, aliases)
+    if resolved == "sys.modules" and _has_bound_root(node, aliases):
+        return True
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
+        return (
+            _is_sys_modules_registry(node.left, aliases)
+            or _is_sys_modules_registry(node.right, aliases)
+        )
+    if isinstance(node, ast.Subscript):
+        key = _static_string(node.slice)
+        if key != "modules":
+            return False
+        owner = _resolved_alias_name(node.value, aliases)
+        if owner == "sys.__dict__" and _has_bound_root(node.value, aliases):
+            return True
+        if isinstance(node.value, ast.Call):
+            called = _resolved_alias_name(node.value.func, aliases)
+            return bool(
+                called in {"vars", "builtins.vars"}
+                and node.value.args
+                and _resolved_alias_name(node.value.args[0], aliases) == "sys"
+                and _has_bound_root(node.value.args[0], aliases)
+            )
+        return False
+    if isinstance(node, ast.Call):
+        called = _resolved_alias_name(node.func, aliases)
+        if called in {"dict", "builtins.dict"} and node.args:
+            return _is_sys_modules_registry(node.args[0], aliases)
+        if (
+            called in {"getattr", "builtins.getattr"}
+            and len(node.args) >= 2
+            and _resolved_alias_name(node.args[0], aliases) == "sys"
+            and _has_bound_root(node.args[0], aliases)
+            and _static_string(node.args[1]) == "modules"
+        ):
+            return True
+        if isinstance(node.func, ast.Attribute):
+            if (
+                node.func.attr in {"copy", "__or__", "__ior__"}
+                and _is_sys_modules_registry(node.func.value, aliases)
+            ):
+                return True
+            if (
+                called == "object.__getattribute__"
+                and len(node.args) >= 2
+                and _resolved_alias_name(node.args[0], aliases) == "sys"
+                and _has_bound_root(node.args[0], aliases)
+                and _static_string(node.args[1]) == "modules"
+            ):
+                return True
+            if (
+                node.func.attr == "__getattribute__"
+                and _resolved_alias_name(node.func.value, aliases) == "sys"
+                and _has_bound_root(node.func.value, aliases)
+                and node.args
+                and _static_string(node.args[0]) == "modules"
+            ):
+                return True
+    return False
 
 
-def _static_strings(node: ast.AST) -> set[str]:
-    return {
-        value
+def _propagate_sys_modules_registry_aliases(
+    aliases: dict[str, str], nodes: Sequence[ast.AST],
+) -> None:
+    pairs = _assignment_pairs(nodes)
+    changed = True
+    while changed:
+        changed = False
+        for targets, value in pairs:
+            if not _is_sys_modules_registry(value, aliases):
+                continue
+            for target in targets:
+                if aliases.get(target) != "sys.modules":
+                    aliases[target] = "sys.modules"
+                    changed = True
+
+
+def _is_bounded_boundary_getattr(
+    node: ast.AST,
+    parent: ast.AST | None,
+    aliases: Mapping[str, str],
+) -> bool:
+    """Allow only literal lookup of an already reviewed boundary API."""
+
+    if (
+        not isinstance(parent, ast.Call)
+        or len(parent.args) < 2
+        or parent.args[0] is not node
+        or _resolved_alias_name(parent.func, aliases)
+        not in {"getattr", "builtins.getattr"}
+    ):
+        return False
+    module = _resolved_alias_name(node, aliases)
+    reflected = _static_string(parent.args[1])
+    return bool(
+        module is not None
+        and reflected is not None
+        and _boundary_api_capabilities(f"{module}.{reflected}")
+    )
+
+
+def _contains_builtin_namespace_source(node: ast.AST) -> bool:
+    return any(
+        isinstance(item, ast.Name) and item.id == "__builtins__"
+        or isinstance(item, ast.Call)
+        and _leaf_name(item.func) in {"globals", "locals", "vars"}
         for item in ast.walk(node)
-        if (value := _static_string(item)) is not None
-    }
+    )
+
+
+def _static_module_reference_may_reach_boundary(
+    node: ast.AST, path: str,
+) -> bool:
+    value = _static_string(node)
+    if value is None and isinstance(node, ast.Name) and node.id == "__name__":
+        components = path.removesuffix(".py").split("/")
+        if components[-1:] == ["__init__"]:
+            components.pop()
+        candidates = {".".join(components)}
+        if components:
+            candidates.add(components[-1])
+        return any(
+            candidate.startswith(".")
+            or _boundary_owner_or_descendant(candidate) is not None
+            for candidate in candidates
+        )
+    return (
+        value is None
+        or value.startswith(".")
+        or _boundary_owner_or_descendant(value) is not None
+    )
+
+
+def _static_reflection_key_may_import(node: ast.AST) -> bool:
+    value = _static_string(node)
+    return value is None or value in {"__import__", "import_module", "importlib"}
+
+
+def _static_reflection_key_may_execute(node: ast.AST) -> bool:
+    value = _static_string(node)
+    return value is None or value in {"compile", "eval", "exec"}
+
+
+def _may_be_import_namespace(
+    node: ast.AST, aliases: Mapping[str, str],
+) -> bool:
+    resolved = _resolved_alias_name(node, aliases)
+    if resolved in {
+        "__builtins__", "__loader__", "__spec__", "builtins",
+        "builtins.__dict__", "importlib",
+        "importlib.__dict__", "importlib.machinery", "importlib.util", "runpy",
+        "sys.modules", "types",
+    } and (
+        resolved in {"__builtins__", "__loader__", "__spec__"}
+        or _has_bound_root(node, aliases)
+    ):
+        return True
+    if isinstance(node, ast.Call):
+        called = _resolved_alias_name(node.func, aliases)
+        if called in {"globals", "locals", "vars"}:
+            return True
+        if isinstance(node.func, ast.Attribute) and node.func.attr == "copy":
+            return _may_be_import_namespace(node.func.value, aliases)
+        if (
+            isinstance(node.func, ast.Attribute)
+            and node.func.attr in {"get", "__getitem__"}
+        ):
+            owner = _resolved_alias_name(node.func.value, aliases)
+            key = _static_string(node.args[0]) if node.args else None
+            if owner == "sys.modules":
+                return key is None or key in {
+                    "builtins", "importlib", "importlib.machinery",
+                    "importlib.util", "runpy", "types",
+                }
+            if _may_be_import_namespace(node.func.value, aliases):
+                return key is None or key in {
+                    "__builtins__", "__loader__", "__spec__", "builtins", "importlib",
+                    "importlib.machinery", "importlib.util", "runpy", "types",
+                }
+    if isinstance(node, ast.Attribute) and node.attr == "__dict__":
+        return _may_be_import_namespace(node.value, aliases)
+    if isinstance(node, ast.Subscript):
+        key = _static_string(node.slice)
+        return _may_be_import_namespace(node.value, aliases) and (
+            key is None or key in {
+                "__builtins__", "__loader__", "__spec__", "builtins", "importlib",
+                "importlib.machinery", "importlib.util", "runpy", "types",
+            }
+        )
+    return False
+
+
+def _may_resolve_import_callable(
+    node: ast.AST, aliases: Mapping[str, str],
+) -> bool:
+    resolved = _resolved_alias_name(node, aliases)
+    if resolved in {
+        "__import__", "builtins.__import__", "importlib.import_module",
+    }:
+        return True
+    if isinstance(node, ast.Subscript):
+        if not isinstance(node.ctx, ast.Load):
+            return False
+        if isinstance(node.slice, ast.Name) and node.slice.id == "__name__":
+            return False
+        return (
+            _may_be_import_namespace(node.value, aliases)
+            and _static_reflection_key_may_import(node.slice)
+        )
+    if isinstance(node, ast.Call):
+        called = _resolved_alias_name(node.func, aliases)
+        if called in {"getattr", "builtins.getattr"} and len(node.args) >= 2:
+            return (
+                _may_be_import_namespace(node.args[0], aliases)
+                and _static_reflection_key_may_import(node.args[1])
+            )
+        if (
+            isinstance(node.func, ast.Attribute)
+            and node.func.attr in {"get", "__getitem__"}
+        ):
+            return (
+                _may_be_import_namespace(node.func.value, aliases)
+                and (not node.args or _static_reflection_key_may_import(node.args[0]))
+            )
+    return False
+
+
+def _may_resolve_dynamic_loader_callable(
+    node: ast.AST, aliases: Mapping[str, str],
+) -> bool:
+    canonical = _resolved_alias_name(node, aliases) or ""
+    if _is_dynamic_code_loader_call(node, canonical):
+        return True
+    return (
+        isinstance(node, ast.Attribute)
+        and node.attr in DYNAMIC_CODE_LOADER_APIS
+        and _may_be_import_namespace(node.value, aliases)
+    )
+
+
+def _may_resolve_dynamic_eval_callable(
+    node: ast.AST, aliases: Mapping[str, str],
+) -> bool:
+    """Recognize reflected access to eval/exec/compile in builtins."""
+
+    if isinstance(node, ast.Subscript):
+        return (
+            isinstance(node.ctx, ast.Load)
+            and _may_be_import_namespace(node.value, aliases)
+            and _static_reflection_key_may_execute(node.slice)
+        )
+    if isinstance(node, ast.Call):
+        called = _resolved_alias_name(node.func, aliases)
+        if called in {"getattr", "builtins.getattr"} and len(node.args) >= 2:
+            return (
+                _may_be_import_namespace(node.args[0], aliases)
+                and _static_reflection_key_may_execute(node.args[1])
+            )
+        if (
+            isinstance(node.func, ast.Attribute)
+            and node.func.attr in {"get", "__getitem__"}
+        ):
+            return (
+                _may_be_import_namespace(node.func.value, aliases)
+                and (
+                    not node.args
+                    or _static_reflection_key_may_execute(node.args[0])
+                )
+            )
+    return False
+
 
 
 def _is_authoring_filename(value: object) -> bool:
@@ -763,7 +888,7 @@ class _LocalVisitor(ast.NodeVisitor):
 
     def generic_visit(self, node: ast.AST) -> None:
         if node is not self.root and isinstance(
-            node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef),
+            node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef),
         ):
             return
         self.nodes.append(node)
@@ -916,7 +1041,6 @@ def _analyse_scope(
     nodes = _scope_nodes(node)
     aliases = dict(imported_aliases)
     dynamic_boundary_access = False
-    sensitive_private_imports: set[str] = set()
     closed_dynamic_boundary = False
     boundary_text = re.compile(
         r"(?:contract_store|runtime\.sign|(?:^|[/\\])sign\.py|"
@@ -930,27 +1054,117 @@ def _analyse_scope(
         if isinstance(item, ast.ImportFrom) and item.module:
             if _relative_boundary_import(item):
                 dynamic_boundary_access = True
+                closed_dynamic_boundary = True
                 continue
+            if (
+                _boundary_owner(item.module) is None
+                and _boundary_owner_or_descendant(item.module) is not None
+            ):
+                dynamic_boundary_access = True
+                closed_dynamic_boundary = True
             if _boundary_owner(item.module) and any(
                 alias.name == "*" for alias in item.names
             ):
                 dynamic_boundary_access = True
             for alias in item.names:
-                aliases[alias.asname or alias.name] = f"{item.module}.{alias.name}"
-                private_caps = _boundary_api_capabilities(
-                    f"{item.module}.{alias.name}",
+                canonical_import = f"{item.module}.{alias.name}"
+                _remember_alias(
+                    aliases, alias.asname or alias.name, canonical_import,
+                    local_callables,
                 )
-                if alias.name.startswith("_"):
-                    sensitive_private_imports.update(
-                        set(private_caps) & PRIVATE_BIRTH_AUTHORITY_CAPABILITIES,
-                    )
         elif isinstance(item, ast.ImportFrom) and item.module is None:
             if _relative_boundary_import(item):
                 dynamic_boundary_access = True
+                closed_dynamic_boundary = True
         elif isinstance(item, ast.Import):
             for alias in item.names:
-                aliases[alias.asname or alias.name.split(".")[0]] = alias.name
-    _apply_callable_aliases(aliases, nodes, local_callables)
+                if (
+                    _boundary_owner(alias.name) is None
+                    and _boundary_owner_or_descendant(alias.name) is not None
+                ):
+                    dynamic_boundary_access = True
+                    closed_dynamic_boundary = True
+                bound = alias.asname or alias.name.split(".", 1)[0]
+                _remember_alias(
+                    aliases, bound, alias.name if alias.asname else bound,
+                    local_callables,
+                )
+    ambiguous_callable_authority = _apply_callable_aliases(
+        aliases, nodes, local_callables,
+    )
+    _propagate_sys_modules_registry_aliases(aliases, nodes)
+    parents = {
+        id(child): parent
+        for parent in nodes
+        for child in ast.iter_child_nodes(parent)
+    }
+    direct_call_targets = {id(item.func) for item in nodes if isinstance(item, ast.Call)}
+    for item in nodes:
+        if (
+            isinstance(item, (ast.Call, ast.BinOp, ast.Subscript))
+            and _is_sys_modules_registry(item, aliases)
+        ):
+            dynamic_boundary_access = True
+            closed_dynamic_boundary = True
+        if isinstance(item, ast.Subscript):
+            resolved = (
+                "sys.modules"
+                if _is_sys_modules_registry(item.value, aliases)
+                else _resolved_alias_name(item.value, aliases)
+            )
+            parent = parents.get(id(item))
+            authenticated_registration = (
+                (path, scope) == AUTHENTICATED_EXECUTION_SCOPE
+                and isinstance(item.ctx, ast.Store)
+                and isinstance(item.slice, ast.Name)
+                and item.slice.id == "module_name"
+                and isinstance(parent, ast.Assign)
+                and isinstance(parent.value, ast.Name)
+                and parent.value.id == "module"
+            )
+            if resolved == "sys.modules" and (
+                not isinstance(item.ctx, ast.Load)
+                and not authenticated_registration
+                or _static_module_reference_may_reach_boundary(item.slice, path)
+                and isinstance(item.ctx, ast.Load)
+            ):
+                dynamic_boundary_access = True
+                closed_dynamic_boundary = True
+            if (
+                resolved in {
+                    "__builtins__", "builtins.__dict__", "importlib.__dict__",
+                }
+                or _contains_builtin_namespace_source(item.value)
+            ) and _static_reflection_key_may_import(item.slice):
+                dynamic_boundary_access = True
+                closed_dynamic_boundary = True
+            continue
+        if (
+            isinstance(item, ast.Attribute)
+            and isinstance(item.ctx, (ast.Store, ast.Del))
+            and _resolved_alias_name(item, aliases) == "sys.modules"
+        ):
+            dynamic_boundary_access = True
+            closed_dynamic_boundary = True
+            continue
+        if (
+            not isinstance(item, (ast.Name, ast.Attribute))
+            or not isinstance(getattr(item, "ctx", None), ast.Load)
+            or id(item) in direct_call_targets
+        ):
+            continue
+        dotted = _dotted_name(item)
+        if dotted is None:
+            continue
+        first, separator, remainder = dotted.partition(".")
+        canonical = aliases.get(first, first) + (
+            separator + remainder if separator else ""
+        )
+        if canonical in {
+            "__import__", "builtins.__import__", "importlib.import_module",
+        }:
+            dynamic_boundary_access = True
+            closed_dynamic_boundary = True
     authoring_names, store_names = _tainted_names(
         node,
         nodes,
@@ -959,7 +1173,11 @@ def _analyse_scope(
     capabilities: set[str] = set(
         _defined_boundary_capabilities(path, scope)
     )
-    capabilities.update(sensitive_private_imports)
+    if ambiguous_callable_authority:
+        capabilities.add("ambiguous_local_authority")
+    if any(_may_resolve_import_callable(item, aliases) for item in nodes):
+        capabilities.add("dynamic_boundary_access")
+        closed_dynamic_boundary = True
     manifest_dir_locator_used = any(
         isinstance(item, ast.Attribute)
         and item.attr == "manifest_dir"
@@ -979,17 +1197,38 @@ def _analyse_scope(
             continue
         if not isinstance(getattr(item, "ctx", None), ast.Load):
             continue
-        dotted = _dotted_name(item)
-        if dotted is None:
+        parent = parents.get(id(item))
+        if isinstance(parent, ast.Attribute) and parent.value is item:
             continue
-        first, separator, remainder = dotted.partition(".")
-        canonical = aliases.get(first, first) + (
-            separator + remainder if separator else ""
-        )
-        capabilities.update(_boundary_api_capabilities(canonical))
-        capabilities.update(_local_private_boundary_capabilities(
-            path, canonical.rsplit(".", 1)[-1],
-        ))
+        canonical = _resolved_alias_name(item, aliases)
+        if canonical is None:
+            continue
+        known_capabilities = _boundary_api_capabilities(canonical)
+        capabilities.update(known_capabilities)
+        direct_call = isinstance(parent, ast.Call) and parent.func is item
+        direct_subscript = isinstance(parent, ast.Subscript) and parent.value is item
+        if (
+            not known_capabilities
+            and _boundary_owner(canonical) is not None
+            and canonical not in local_callables
+            and _has_bound_root(item, aliases)
+            and not _is_bounded_boundary_getattr(item, parent, aliases)
+        ):
+            capabilities.add("dynamic_boundary_access")
+            closed_dynamic_boundary = True
+        if (
+            canonical in SENSITIVE_IMPORT_NAMESPACES
+            and not direct_subscript
+            and (
+                canonical == "__builtins__"
+                or _has_bound_root(item, aliases)
+            )
+        ):
+            capabilities.add("dynamic_boundary_access")
+            closed_dynamic_boundary = True
+        if canonical in SENSITIVE_FIRST_CLASS_REFERENCES and not direct_call:
+            capabilities.add("dynamic_boundary_access")
+            closed_dynamic_boundary = True
 
     for item in nodes:
         if (
@@ -1003,9 +1242,18 @@ def _analyse_scope(
             )
             if _boundary_owner(resolved_module) is not None:
                 closed_dynamic_boundary = True
+            if resolved_module in {"builtins", "importlib"}:
+                dynamic_boundary_access = True
+                closed_dynamic_boundary = True
     for item in nodes:
         if not isinstance(item, ast.Call):
             continue
+        reflected_dynamic_eval = _may_resolve_dynamic_eval_callable(
+            item.func, aliases,
+        )
+        if reflected_dynamic_eval:
+            capabilities.add("dynamic_boundary_access")
+            closed_dynamic_boundary = True
         leaf = _leaf_name(item.func)
         if leaf is None:
             continue
@@ -1017,7 +1265,11 @@ def _analyse_scope(
         if not separator:
             canonical = aliases.get(leaf, leaf)
         api = canonical.rsplit(".", 1)[-1]
-        if canonical in local_callables:
+        if canonical in local_callables and (
+            isinstance(item.func, ast.Name)
+            or isinstance(item.func, ast.Attribute)
+            and isinstance(item.func.value, ast.Name)
+        ):
             calls.add(canonical.rsplit(".", 1)[-1])
         elif (
             isinstance(item.func, ast.Name)
@@ -1030,7 +1282,55 @@ def _analyse_scope(
             calls.add(api)
 
         capabilities.update(_boundary_api_capabilities(canonical))
-        capabilities.update(_local_private_boundary_capabilities(path, api))
+        if (
+            isinstance(item.func, ast.Attribute)
+            and _is_sys_modules_registry(item.func.value, aliases)
+            and api in (
+                SYS_MODULES_EXPOSING_METHODS | SYS_MODULES_MUTATING_METHODS
+            )
+        ):
+            capabilities.add("dynamic_boundary_access")
+            closed_dynamic_boundary = True
+        if (
+            (
+                _is_dynamic_code_loader_call(item.func, canonical)
+                or _may_resolve_dynamic_loader_callable(item.func, aliases)
+            )
+            and not _is_authenticated_preflight_runpy_v1(
+                item, path, scope, aliases, nodes,
+            )
+        ):
+            capabilities.add("dynamic_boundary_access")
+            closed_dynamic_boundary = True
+        if (
+            isinstance(item.func, ast.Attribute)
+            and _resolved_alias_name(item.func.value, aliases) == "sys.modules"
+            and api == "get"
+            and (
+                not item.args
+                or _static_module_reference_may_reach_boundary(item.args[0], path)
+            )
+        ):
+            capabilities.add("dynamic_boundary_access")
+            closed_dynamic_boundary = True
+        if api in {"getattr", "vars", "setattr", "delattr"} and item.args:
+            reflected_namespace = _resolved_alias_name(item.args[0], aliases)
+            if (
+                reflected_namespace in {"builtins", "importlib", "__builtins__"}
+                or reflected_namespace is not None
+                and reflected_namespace.startswith("importlib.")
+            ):
+                capabilities.add("dynamic_boundary_access")
+                closed_dynamic_boundary = True
+        if (
+            canonical in {
+                "builtins.__getattribute__", "importlib.__getattribute__",
+            }
+            and item.args
+            and _static_reflection_key_may_import(item.args[0])
+        ):
+            capabilities.add("dynamic_boundary_access")
+            closed_dynamic_boundary = True
         if api == "getattr" and item.args:
             module_name = _dotted_name(item.args[0])
             if module_name is not None:
@@ -1041,16 +1341,16 @@ def _analyse_scope(
                     separator_module + remainder_module
                     if separator_module else ""
                 )
+                reflected = (
+                    item.args[1].value
+                    if len(item.args) > 1
+                    and isinstance(item.args[1], ast.Constant)
+                    and isinstance(item.args[1].value, str)
+                    else None
+                )
                 owner = _boundary_owner(resolved_module)
                 if owner is not None:
                     closed_dynamic_boundary = True
-                    reflected = (
-                        item.args[1].value
-                        if len(item.args) > 1
-                        and isinstance(item.args[1], ast.Constant)
-                        and isinstance(item.args[1].value, str)
-                        else None
-                    )
                     reflected_caps = (
                         _boundary_api_capabilities(
                             f"{resolved_module}.{reflected}",
@@ -1061,6 +1361,15 @@ def _analyse_scope(
                         capabilities.update(reflected_caps)
                     else:
                         capabilities.add("dynamic_boundary_access")
+                if (
+                    resolved_module in {"builtins", "importlib"}
+                    and (
+                        reflected is None
+                        or reflected in {"__import__", "import_module"}
+                    )
+                ):
+                    capabilities.add("dynamic_boundary_access")
+                    closed_dynamic_boundary = True
         if api == "vars" and item.args:
             module_name = _dotted_name(item.args[0])
             if module_name is not None:
@@ -1070,17 +1379,28 @@ def _analyse_scope(
                 )
                 if _boundary_owner(resolved_module) is not None:
                     closed_dynamic_boundary = True
-        if api in {"eval", "exec"} and scope_boundary_strings:
-            closed_dynamic_boundary = True
-        dynamic_import = api in {"__import__", "import_module"}
-        if dynamic_import:
-            imported = tuple(set(_string_values(item)) | _static_strings(item))
-            if any(
-                _boundary_owner(value) is not None for value in imported
-            ):
+                if resolved_module in {"builtins", "importlib"}:
+                    capabilities.add("dynamic_boundary_access")
+                    closed_dynamic_boundary = True
+        builtin_dynamic_eval = canonical in {
+            "builtins.compile", "builtins.eval", "builtins.exec",
+        } or (
+            isinstance(item.func, ast.Name)
+            and item.func.id in {"compile", "eval", "exec"}
+            and item.func.id not in aliases
+            and item.func.id not in local_callables
+        )
+        if builtin_dynamic_eval:
+            if (path, scope) != AUTHENTICATED_EXECUTION_SCOPE:
                 capabilities.add("dynamic_boundary_access")
                 closed_dynamic_boundary = True
-        command_parts = set(_string_values(item)) | _static_strings(item)
+            elif scope_boundary_strings:
+                closed_dynamic_boundary = True
+        dynamic_import = api in {"__import__", "import_module"}
+        if dynamic_import:
+            capabilities.add("dynamic_boundary_access")
+            closed_dynamic_boundary = True
+        command_parts = _static_strings(item) if api in PROCESS_CALLS else set()
         sign_entrypoint = any(
             part.endswith("sign.py") or part == "runtime.sign"
             for part in command_parts
@@ -1104,8 +1424,10 @@ def _analyse_scope(
         ):
             closed_dynamic_boundary = True
 
+        reads = api in READ_OPERATIONS
+        persistent_write = _writes_path(api, item)
         target = _call_target(item)
-        authoring_touch = _touches(
+        authoring_touch = (reads or persistent_write) and (_touches(
             target,
             tainted=authoring_names,
             pattern=_AUTHORING_NAME_RE,
@@ -1126,8 +1448,8 @@ def _analyse_scope(
                 literal_test=_has_authoring_literal,
             )
             for keyword in item.keywords
-        )
-        store_touch = _touches(
+        ))
+        store_touch = (reads or persistent_write) and (_touches(
             target,
             tainted=store_names,
             pattern=_STORE_NAME_RE,
@@ -1148,10 +1470,8 @@ def _analyse_scope(
                 literal_test=_has_store_literal,
             )
             for keyword in item.keywords
-        )
-
-        reads = api in READ_OPERATIONS
-        writes = _writes_path(api, item)
+        ))
+        writes = persistent_write
         if api in {
             "copy", "copy2", "copyfile", "hardlink_to", "link", "remove",
             "rename", "replace", "rmdir", "rmtree", "symlink_to",
@@ -1170,11 +1490,15 @@ def _analyse_scope(
         if store_touch and writes:
             capabilities.add("store_write")
 
-        # Every filesystem mutation implemented by the single store-owner
-        # module is publication-store authority.  File-handle writes and
-        # ``os.open`` flags do not retain their originating Path expression,
-        # so requiring path-name taint here would create an easy bypass.
-        if path == "runtime/contract_store.py" and writes:
+        # Every filesystem mutation implemented by a declared store-writing
+        # source owner is store authority. Descriptor and dir-fd operations
+        # deliberately lose Path taint, so the reviewed owner is the semantic
+        # boundary instead of a hard-coded filename or variable spelling.
+        source_owner = BOUNDARY_SOURCE_OWNERS.get(path)
+        descriptor_store_owners = {
+            "contract_store", "executor_birth_preflight_attestation_store",
+        }
+        if persistent_write and source_owner in descriptor_store_owners:
             capabilities.add("store_write")
 
         # Importing any private store implementation detail is itself an
@@ -1183,7 +1507,6 @@ def _analyse_scope(
         if (
             api.startswith("_")
             and _boundary_owner(canonical.rpartition(".")[0]) == "contract_store"
-            and api != "_commit_birth_snapshot"
         ):
             capabilities.add("store_write")
 
@@ -1233,45 +1556,85 @@ def _apply_callable_aliases(
     aliases: dict[str, str],
     nodes: Sequence[ast.AST],
     local_callables: frozenset[str],
-) -> None:
-    """Resolve trusted aliases and invalidate every later untrusted rebind."""
+) -> bool:
+    """Resolve aliases and report any rebinding of existing authority."""
 
+    def trusted(value: str) -> bool:
+        return bool(
+            _boundary_owner(value) is not None
+            or _boundary_api_capabilities(value)
+            or value in local_callables
+            or value in SENSITIVE_FIRST_CLASS_REFERENCES
+            or value in SENSITIVE_IMPORT_NAMESPACES
+            or value in DYNAMIC_CODE_LOADER_CANONICALS
+            or value.rsplit(".", 1)[-1] in WRITE_OPERATIONS
+            or value.startswith("importlib.")
+            and value.rsplit(".", 1)[-1] in DYNAMIC_CODE_LOADER_APIS
+        )
+
+    def boundary_authoritative(value: str) -> bool:
+        return bool(
+            _boundary_owner(value) is not None
+            or _boundary_api_capabilities(value)
+        )
+
+    ambiguous = False
     assignments = [
         item for item in nodes if isinstance(item, (ast.Assign, ast.AnnAssign))
     ]
-    for _iteration in range(len(assignments) + 1):
-        before = dict(aliases)
-        for item in assignments:
-            value = item.value
-            if value is None:
-                continue
-            dotted = _dotted_name(value)
-            canonical = ""
-            if dotted is not None:
-                first, separator, remainder = dotted.partition(".")
-                canonical = aliases.get(first, first) + (
-                    separator + remainder if separator else ""
-                )
-            trusted = bool(
-                canonical
-                and (
-                    _boundary_owner(canonical) is not None
-                    or _boundary_api_capabilities(canonical)
-                    or canonical in local_callables
-                )
+    for item in assignments:
+        value = item.value
+        if value is None:
+            continue
+        dotted = _dotted_name(value)
+        canonical = ""
+        if dotted is not None:
+            first, separator, remainder = dotted.partition(".")
+            canonical = aliases.get(first, first) + (
+                separator + remainder if separator else ""
             )
-            targets = (
-                set().union(*(_target_names(target) for target in item.targets))
-                if isinstance(item, ast.Assign)
-                else _target_names(item.target)
-            )
-            for target in targets:
-                if trusted:
-                    aliases[target] = canonical
-                else:
-                    aliases.pop(target, None)
-        if aliases == before:
-            break
+        targets = (
+            set().union(*(_target_names(target) for target in item.targets))
+            if isinstance(item, ast.Assign)
+            else _target_names(item.target)
+        )
+        trusted_alias = bool(canonical and trusted(canonical))
+        if not trusted_alias and _may_resolve_dynamic_loader_callable(
+            value, aliases,
+        ):
+            canonical = "importlib." + (_leaf_name(value) or "dynamic_loader")
+            trusted_alias = True
+        for target in targets:
+            previous = aliases.get(target)
+            if (
+                previous
+                and boundary_authoritative(previous)
+                and canonical != previous
+            ):
+                ambiguous = True
+            if trusted_alias:
+                _remember_alias(aliases, target, canonical, local_callables)
+    return ambiguous
+
+
+def _remember_alias(
+    aliases: dict[str, str], bound: str, canonical: str,
+    local_callables: frozenset[str],
+) -> None:
+    """Retain an earlier authority, or prefer a later authority over safety."""
+
+    def authoritative(value: str) -> bool:
+        return bool(
+            _boundary_owner(value) is not None
+            or _boundary_api_capabilities(value)
+            or value in local_callables
+            or value in SENSITIVE_FIRST_CLASS_REFERENCES
+            or value in SENSITIVE_IMPORT_NAMESPACES
+        )
+
+    previous = aliases.get(bound)
+    if previous is None or (authoritative(canonical) and not authoritative(previous)):
+        aliases[bound] = canonical
 
 
 def _import_aliases(
@@ -1287,10 +1650,17 @@ def _import_aliases(
             if _relative_boundary_import(node):
                 continue
             for alias in node.names:
-                aliases[alias.asname or alias.name] = f"{node.module}.{alias.name}"
+                _remember_alias(
+                    aliases, alias.asname or alias.name,
+                    f"{node.module}.{alias.name}", local_callables,
+                )
         elif isinstance(node, ast.Import):
             for alias in node.names:
-                aliases[alias.asname or alias.name.split(".")[0]] = alias.name
+                bound = alias.asname or alias.name.split(".", 1)[0]
+                _remember_alias(
+                    aliases, bound, alias.name if alias.asname else bound,
+                    local_callables,
+                )
     _apply_callable_aliases(aliases, _scope_nodes(tree), local_callables)
     return aliases
 
@@ -1315,24 +1685,78 @@ def _aliases_in_lexical_scope(
                 if _relative_boundary_import(item):
                     continue
                 for alias in item.names:
-                    aliases[alias.asname or alias.name] = (
-                        f"{item.module}.{alias.name}"
+                    _remember_alias(
+                        aliases, alias.asname or alias.name,
+                        f"{item.module}.{alias.name}", local_callables,
                     )
             elif isinstance(item, ast.Import):
                 for alias in item.names:
-                    aliases[alias.asname or alias.name.split(".")[0]] = alias.name
+                    bound = alias.asname or alias.name.split(".", 1)[0]
+                    _remember_alias(
+                        aliases, bound, alias.name if alias.asname else bound,
+                        local_callables,
+                    )
         _apply_callable_aliases(aliases, _scope_nodes(parent), local_callables)
     return aliases
 
 
-def scan_file(path: Path, *, repository_root: Path) -> list[ScopeFacts]:
+def _bounded_ast_metrics(tree: ast.AST) -> int:
+    nodes = 0
+    scopes = 1
+    calls = 0
+    stack = [(tree, 1)]
+    while stack:
+        node, depth = stack.pop()
+        nodes += 1
+        if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+            scopes += 1
+        if isinstance(node, ast.Call):
+            calls += 1
+        if (
+            nodes > MAX_BOUNDARY_AST_NODES
+            or depth > MAX_BOUNDARY_AST_DEPTH
+            or scopes > MAX_BOUNDARY_SCOPES
+            or calls > MAX_BOUNDARY_CALLS
+        ):
+            raise ValueError("boundary AST budget exceeded")
+        stack.extend((child, depth + 1) for child in ast.iter_child_nodes(node))
+    return nodes
+
+
+def _scan_file_with_metrics_unchecked(
+    path: Path, *, repository_root: Path,
+) -> tuple[list[ScopeFacts], int, int]:
     relative = path.relative_to(repository_root).as_posix()
+    return _scan_source_with_metrics(relative, _read_boundary_source(path))
+
+
+def _read_boundary_source(path: Path) -> bytes:
     try:
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=relative)
-    except (OSError, SyntaxError, UnicodeError) as exc:
+        with path.open("rb") as source:
+            content = source.read(MAX_BOUNDARY_SOURCE_BYTES + 1)
+        if len(content) > MAX_BOUNDARY_SOURCE_BYTES:
+            raise ValueError("boundary source byte budget exceeded")
+        return content
+    except (OSError, MemoryError) as exc:
+        raise ValueError(f"cannot read boundary source: {path}") from exc
+
+
+def _scan_source_with_metrics(
+    relative: str, content: bytes,
+) -> tuple[list[ScopeFacts], int, int]:
+    try:
+        tree = ast.parse(content.decode("utf-8"), filename=relative)
+        node_count = _bounded_ast_metrics(tree)
+    except (
+        OSError, SyntaxError, UnicodeError, RecursionError, ValueError,
+        OverflowError,
+    ) as exc:
         raise ValueError(f"cannot scan {relative}: {exc}") from exc
     collector = _ScopeCollector()
-    collector.visit(tree)
+    try:
+        collector.visit(tree)
+    except (RecursionError, ValueError, OverflowError) as exc:
+        raise ValueError(f"cannot scan {relative}: {exc}") from exc
     scopes: list[tuple[str, ast.AST]] = [("<module>", tree), *collector.scopes]
     local_callables = frozenset(
         name.rsplit(".", 1)[-1] for name, _node in collector.scopes
@@ -1375,7 +1799,7 @@ def scan_file(path: Path, *, repository_root: Path) -> list[ScopeFacts]:
                 before = len(effective[index])
                 effective[index].update(effective[matches[0]] & FLOW_CAPABILITIES)
                 changed |= len(effective[index]) != before
-    return [
+    result = [
         ScopeFacts(
             path=fact.path,
             scope=fact.scope,
@@ -1387,11 +1811,27 @@ def scan_file(path: Path, *, repository_root: Path) -> list[ScopeFacts]:
         )
         for index, fact in enumerate(direct)
     ]
+    return result, len(content), node_count
+
+
+def _scan_file_with_metrics(
+    path: Path, *, repository_root: Path,
+) -> tuple[list[ScopeFacts], int, int]:
+    try:
+        return _scan_file_with_metrics_unchecked(
+            path, repository_root=repository_root,
+        )
+    except MemoryError as exc:
+        raise ValueError("cannot scan boundary source: memory exhausted") from exc
+
+
+def scan_file(path: Path, *, repository_root: Path) -> list[ScopeFacts]:
+    return _scan_file_with_metrics(path, repository_root=repository_root)[0]
 
 
 def discover(repository_root: Path) -> list[ScopeFacts]:
     repository_root = repository_root.resolve()
-    facts: list[ScopeFacts] = []
+    paths: list[Path] = []
     for root_name in SCAN_ROOTS:
         scan_root = repository_root / root_name
         if not scan_root.exists():
@@ -1399,8 +1839,52 @@ def discover(repository_root: Path) -> list[ScopeFacts]:
         for path in sorted(scan_root.rglob("*.py")):
             if "__pycache__" in path.parts:
                 continue
-            facts.extend(scan_file(path, repository_root=repository_root))
-    return sorted(
+            paths.append(path)
+    if len(paths) > MAX_BOUNDARY_SOURCE_FILES:
+        raise ValueError("boundary source file budget exceeded")
+    try:
+        declared_source_bytes = [path.stat().st_size for path in paths]
+    except OSError as exc:
+        raise ValueError(f"cannot stat boundary source: {exc}") from exc
+    if (
+        any(size > MAX_BOUNDARY_SOURCE_BYTES for size in declared_source_bytes)
+        or sum(declared_source_bytes) > MAX_BOUNDARY_TOTAL_SOURCE_BYTES
+    ):
+        raise ValueError("boundary source byte budget exceeded")
+    total_source_bytes = 0
+    sources = []
+    for path in paths:
+        content = _read_boundary_source(path)
+        total_source_bytes += len(content)
+        if total_source_bytes > MAX_BOUNDARY_TOTAL_SOURCE_BYTES:
+            raise ValueError("boundary total source byte budget exceeded")
+        sources.append((path.relative_to(repository_root).as_posix(), content))
+    return list(_discover_source_facts(tuple(sources), _boundary_ast_limits()))
+
+
+def _boundary_ast_limits() -> tuple[int, ...]:
+    return (MAX_BOUNDARY_AST_NODES, MAX_BOUNDARY_AST_DEPTH,
+            MAX_BOUNDARY_SCOPES, MAX_BOUNDARY_CALLS, MAX_BOUNDARY_TOTAL_AST_NODES)
+
+
+@lru_cache(maxsize=1)
+def _discover_source_facts(
+    sources: tuple[tuple[str, bytes], ...], limits: tuple[int, ...],
+) -> tuple[ScopeFacts, ...]:
+    # One bounded syntax snapshot, keyed by exact paths, bytes and budgets.
+    # Enumeration, reads and byte/file budgets remain live on every call.
+    facts: list[ScopeFacts] = []
+    total_ast_nodes = 0
+    for relative, content in sources:
+        try:
+            discovered, _, ast_nodes = _scan_source_with_metrics(relative, content)
+        except MemoryError as exc:
+            raise ValueError("cannot scan boundary source: memory exhausted") from exc
+        total_ast_nodes += ast_nodes
+        if total_ast_nodes > MAX_BOUNDARY_TOTAL_AST_NODES:
+            raise ValueError("boundary total AST node budget exceeded")
+        facts.extend(discovered)
+    return tuple(sorted(
         (
             fact for fact in facts
             if (
@@ -1410,7 +1894,7 @@ def discover(repository_root: Path) -> list[ScopeFacts]:
             )
         ),
         key=lambda fact: (fact.path, fact.scope),
-    )
+    ))
 
 
 def load_inventory(path: Path) -> dict:
@@ -1465,44 +1949,6 @@ def check(
         for fact in facts
         if fact.capabilities or fact.direct_manifest_dir_access
     }
-    commit_scopes = sorted(
-        fact.key for fact in facts if "birth_commit" in fact.capabilities
-    )
-    if commit_scopes and commit_scopes != [BIRTH_COMMIT_OWNER]:
-        findings.append(Finding(
-            "birth_commit_owner_invalid",
-            "<repository>",
-            f"expected exactly {[BIRTH_COMMIT_OWNER]!r}, found {commit_scopes!r}",
-        ))
-    exact_authorities = (
-        (
-            "birth_commit_factory", BIRTH_COMMIT_FACTORY_SCOPES,
-            "birth_commit_factory_owner_invalid",
-        ),
-        (
-            "birth_core_assembly", BIRTH_CORE_ASSEMBLY_SCOPES,
-            "birth_core_assembly_owner_invalid",
-        ),
-        (
-            "birth_runtime_assembly", BIRTH_RUNTIME_ASSEMBLY_SCOPES,
-            "birth_runtime_assembly_owner_invalid",
-        ),
-        (
-            "birth_runtime_private_state", BIRTH_RUNTIME_PRIVATE_STATE_SCOPES,
-            "birth_runtime_private_state_owner_invalid",
-        ),
-    )
-    for capability, expected_scopes, code in exact_authorities:
-        actual_scopes = frozenset(
-            fact.key for fact in facts if capability in fact.capabilities
-        )
-        if actual_scopes and actual_scopes != expected_scopes:
-            findings.append(Finding(
-                code,
-                "<repository>",
-                f"expected exactly {sorted(expected_scopes)!r}, "
-                f"found {sorted(actual_scopes)!r}",
-            ))
     for key, fact in discovered.items():
         entry = entries.get(key)
         if entry is None:
@@ -1556,8 +2002,8 @@ def check(
 
         capabilities = set(fact.capabilities)
         if fact.direct_manifest_dir_access and not (
-            role in {"offline_authoring", "migration_boundary", "store_owner"}
-            or fact.path == "runtime/executor_birth_authoring.py"
+            role in DIRECT_MANIFEST_ALLOWED_ROLES
+            or fact.path in DIRECT_MANIFEST_ALLOWED_PATHS
         ):
             findings.append(Finding(
                 "direct_manifest_dir_read_without_token",
@@ -1566,15 +2012,8 @@ def check(
                 "use read_manifest_ref_versioned()",
             ))
         if role == "birth_owner" and (
-            fact.path not in {
-                "runtime/executor_birth.py",
-                "runtime/executor_birth_intent.py",
-                "runtime/executor_birth_operational.py",
-            }
-            or bool(capabilities & {
-                "legacy_bootstrap", "publish_bootstrap", "publish_localization",
-                "retire", "rollback", "sign",
-            })
+            fact.path not in BIRTH_OWNER_ALLOWED_PATHS
+            or bool(capabilities & BIRTH_OWNER_FORBIDDEN_CAPABILITIES)
         ):
             findings.append(Finding(
                 "birth_owner_invalid",
@@ -1583,7 +2022,7 @@ def check(
                 "cannot absorb dedicated or migration boundaries",
             ))
         if role == "operational_producer" and "birth" in capabilities and (
-            capabilities & {"publish_technical", "reactivate", "sign"}
+            capabilities & OPERATIONAL_BIRTH_FORBIDDEN_CAPABILITIES
         ):
             findings.append(Finding(
                 "operational_birth_mixed_authority",
@@ -1608,15 +2047,9 @@ def check(
                 key,
                 "only a reviewed store_owner scope may mutate the publication store",
             ))
-        if "birth_commit" in capabilities and role != "store_owner":
-            findings.append(Finding(
-                "birth_commit_outside_boundary",
-                key,
-                "only the compiled Birth commit adapter may call the private writer",
-            ))
         if (
-            capabilities & {"legacy_bootstrap", "publish_bootstrap"}
-            and role not in {"migration_boundary", "store_owner"}
+            capabilities & BOOTSTRAP_CAPABILITIES
+            and role not in BOOTSTRAP_ALLOWED_ROLES
         ):
             findings.append(Finding(
                 "legacy_bootstrap_outside_boundary",
@@ -1629,13 +2062,10 @@ def check(
                 key,
                 "migration boundary has no discovered legacy-bootstrap operation",
             ))
-        if capabilities & LIVE_MUTATIONS and role not in {
-            "administrative_tool",
-            "birth_owner",
-            "migration_boundary",
-            "operational_producer",
-            "store_owner",
-        }:
+        if (
+            capabilities & LIVE_MUTATIONS
+            and role not in LIVE_MUTATION_ALLOWED_ROLES
+        ):
             findings.append(Finding(
                 "live_mutation_role_invalid",
                 key,
@@ -1665,7 +2095,7 @@ def check(
                     "authoring mutation has no publication boundary in the same scope",
                 ))
         if role == "documentation" and capabilities & (
-            LIVE_READER_FORBIDDEN - {"authoring_read", "authoring_verify"}
+            LIVE_READER_FORBIDDEN - DOCUMENTATION_CAPABILITY_EXEMPTIONS
         ):
             findings.append(Finding(
                 "documentation_mutates_boundary",
@@ -1689,19 +2119,13 @@ def birth_closed_findings(
     """Enforce the irreversible RM-0008 F4 closed-build boundary."""
 
     findings = list(check(facts, inventory))
+    if inventory.get("source_census") != BIRTH_CLOSED_SOURCE_REVIEW_SHA256:
+        findings.append(Finding(
+            "birth_closed_source_review_invalid", "<inventory>",
+            "source_census must equal the compiled Python source-review root",
+        ))
     policy = inventory.get("birth_closed")
-    expected_policy = {
-        "schema": BIRTH_CLOSED_SCHEMA,
-        "guard_version": BIRTH_CLOSED_GUARD_VERSION,
-        "owner": BIRTH_CLOSED_OWNER,
-        "commit_owner": BIRTH_COMMIT_OWNER,
-        "coordinator_store_owners": sorted(BIRTH_CLOSED_COORDINATOR_STORE_OWNERS),
-        "sealed_modules": list(BIRTH_CLOSED_SEALED_MODULES),
-        "exceptions": [
-            {"scope": scope, "exception": exception}
-            for scope, exception in sorted(BIRTH_CLOSED_EXCEPTION_SCOPES.items())
-        ],
-    }
+    expected_policy = birth_closed_inventory_value_v1()
     if policy != expected_policy:
         findings.append(Finding(
             "birth_closed_inventory_invalid", "<inventory>",
@@ -1723,15 +2147,6 @@ def birth_closed_findings(
             f"expected exactly {[BIRTH_CLOSED_OWNER]!r}, found {owners!r}",
         ))
 
-    commit_scopes = sorted(
-        fact.key for fact in facts if "birth_commit" in fact.capabilities
-    )
-    if commit_scopes != [BIRTH_COMMIT_OWNER]:
-        findings.append(Finding(
-            "birth_closed_commit_owner_invalid", "<repository>",
-            f"expected exactly {[BIRTH_COMMIT_OWNER]!r}, found {commit_scopes!r}",
-        ))
-
     fact_keys = {fact.key for fact in facts}
     for scope in sorted(BIRTH_CLOSED_COORDINATOR_STORE_OWNERS - fact_keys):
         findings.append(Finding(
@@ -1750,7 +2165,10 @@ def birth_closed_findings(
         exception = entry.get("closed_exception")
         expected_exception = BIRTH_CLOSED_EXCEPTION_SCOPES.get(fact.key)
         if fact.key in BIRTH_CLOSED_COORDINATOR_STORE_OWNERS:
-            if entry.get("role") != "store_owner" or capabilities != {"store_write"}:
+            if (
+                entry.get("role") != "store_owner"
+                or capabilities != BIRTH_CLOSED_COORDINATOR_REQUIRED_CAPABILITIES
+            ):
                 findings.append(Finding(
                     "birth_closed_coordinator_invalid", fact.key,
                     "ownership coordinator must be an exact store_write owner",
@@ -1761,17 +2179,22 @@ def birth_closed_findings(
                 f"expected compiled exception {expected_exception!r}, found {exception!r}",
             ))
             continue
+        expected_capabilities = BIRTH_CLOSED_EXCEPTION_CAPABILITIES.get(fact.key)
+        if expected_capabilities is not None and capabilities != expected_capabilities:
+            findings.append(Finding(
+                "birth_closed_exception_invalid", fact.key,
+                "compiled exception must have exact capabilities "
+                f"{sorted(expected_capabilities)!r}, found {sorted(capabilities)!r}",
+            ))
         if "dynamic_boundary_access" in capabilities or fact.closed_dynamic_boundary:
             findings.append(Finding(
                 "birth_closed_dynamic_boundary", fact.key,
                 "closed builds permit no reflective, dynamic-import, or subprocess boundary",
             ))
 
-        relevant_exception_capabilities = {
-            "localization_only": {"publish_localization"},
-            "retirement_only": {"retire"},
-            "offline_nonproductive_authoring": {"sign"},
-        }.get(exception, set())
+        relevant_exception_capabilities = (
+            BIRTH_CLOSED_EXCEPTION_JUSTIFICATIONS.get(exception, frozenset())
+        )
         forbidden = capabilities & BIRTH_CLOSED_LEGACY_CAPABILITIES
         if not forbidden:
             if exception is not None and not (
@@ -1824,7 +2247,7 @@ def render_inventory(
         })
     payload = {
         "schema": SCHEMA,
-        "source_census": "internal/reports/rm0007-m0-census-20260825.md",
+        "source_census": BIRTH_CLOSED_SOURCE_REVIEW_SHA256,
         "scan_roots": list(SCAN_ROOTS),
         "entries": rendered,
     }
@@ -1838,18 +2261,7 @@ def render_birth_closed_inventory(
     """Render a candidate without inventing closed exceptions or ownership."""
 
     payload = json.loads(render_inventory(facts, existing))
-    payload["birth_closed"] = {
-        "schema": BIRTH_CLOSED_SCHEMA,
-        "guard_version": BIRTH_CLOSED_GUARD_VERSION,
-        "owner": BIRTH_CLOSED_OWNER,
-        "commit_owner": BIRTH_COMMIT_OWNER,
-        "coordinator_store_owners": sorted(BIRTH_CLOSED_COORDINATOR_STORE_OWNERS),
-        "sealed_modules": list(BIRTH_CLOSED_SEALED_MODULES),
-        "exceptions": [
-            {"scope": scope, "exception": exception}
-            for scope, exception in sorted(BIRTH_CLOSED_EXCEPTION_SCOPES.items())
-        ],
-    }
+    payload["birth_closed"] = birth_closed_inventory_value_v1()
     previous = {
         _entry_key(entry): entry
         for entry in (existing or {}).get("entries", [])
@@ -1857,7 +2269,7 @@ def render_birth_closed_inventory(
     }
     for entry in payload["entries"]:
         key = _entry_key(entry)
-        if key in BIRTH_CLOSED_COORDINATOR_STORE_OWNERS or key == BIRTH_COMMIT_OWNER:
+        if key in BIRTH_CLOSED_COORDINATOR_STORE_OWNERS:
             entry["role"] = "store_owner"
         old = previous.get(_entry_key(entry), {})
         if "closed_exception" in old:
@@ -1898,6 +2310,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         birth_closed_findings(facts, inventory)
         if args.birth_closed else check(facts, inventory)
     )
+    if args.birth_closed:
+        source_finding = closed_python_source_review_finding(root)
+        if source_finding is not None:
+            findings.append(source_finding)
     for finding in findings:
         print(finding)
     return 1 if findings else 0

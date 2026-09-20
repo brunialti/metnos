@@ -64,10 +64,11 @@ class ActivationReport:
     restarted: bool
 
 
-def _manual_exception(record: ResourceRecord) -> bool:
-    return record.layer == "input" and (
-        record.metadata.get("kind") == "regex"
-        or record.metadata.get("review_policy") == "manual"
+def _manual_exception(item: InventoryItem) -> bool:
+    """Whether the fresh source inventory explicitly requires human review."""
+    return item.layer == "input" and (
+        item.metadata.get("kind") == "regex"
+        or item.metadata.get("review_policy") == "manual"
     )
 
 
@@ -82,6 +83,14 @@ def _new_sensitive_tokens(source: str, candidate: str) -> set[str]:
         if urlsplit(value.rstrip(".,;)")).hostname not in source_hosts:
             added.add(value)
     return {value for value in added if value}
+
+
+def _translation_hash(value: Any) -> str:
+    """Registry hash of a v1 candidate translation (canonical JSON)."""
+    encoded = json.dumps(
+        value, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+    )
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
 def _validate_live_resource(
@@ -134,26 +143,83 @@ def _validate_live_resource(
         elif record.layer == "message":
             rows = _query_exact(
                 paths.messages_db,
-                "SELECT text,needs_translation FROM i18n WHERE key=? AND lang=?",
+                "SELECT text,needs_translation,version_hash,source_text_hash,"
+                "source_lang FROM i18n WHERE key=? AND lang=?",
                 (str(record.metadata["key"]), target),
             )
             if not rows or not str(rows[0][0] or "").strip() or int(rows[0][1] or 0):
                 return "message is missing or pending"
+            text, _pending, version_hash, source_text_hash, source_lang = rows[0]
+            if _translation_hash(str(text)) != record.translation_hash:
+                return "live message differs from admitted candidate"
+            if version_hash != "sha256:" + hashlib.sha256(
+                    str(text).encode("utf-8")).hexdigest():
+                return "live message version hash differs from admitted candidate"
+            if source_text_hash != "sha256:" + record.source_hash:
+                return "live message source hash differs from admitted source"
+            if source_lang != record.source_lang:
+                return "live message source language differs from admitted source"
         elif record.layer == "input":
             rows = _query_exact(
                 paths.detection_db,
-                "SELECT payload,needs_translation FROM detection_lexicon "
+                "SELECT payload,needs_translation,kind,match_mode,"
+                "version_hash,source_text_hash,review_policy,source_lang "
+                "FROM detection_lexicon "
                 "WHERE concept=? AND lang=?",
                 (str(record.metadata["concept"]), target),
             )
             if not rows or not str(rows[0][0] or "").strip() or int(rows[0][1] or 0):
                 return "input lexicon is missing or pending"
-            json.loads(str(rows[0][0]))
+            (raw_payload, _pending, kind, match_mode, version_hash,
+             source_text_hash, review_policy, live_source_lang) = rows[0]
+            if (
+                kind != record.metadata.get("kind")
+                or match_mode != record.metadata.get("match_mode")
+                or review_policy != record.metadata.get("review_policy", "automatic")
+                or live_source_lang != record.source_lang
+            ):
+                return "input lexicon metadata differs from admitted source"
+            payload = json.loads(str(raw_payload))
+            source_payload = json.loads(item.source_text)
+            from detection_lexicon import validate_payload_shape
+            validation = validate_payload_shape(kind, source_payload, payload)
+            if not validation["ok"]:
+                return "input lexicon shape is invalid: " + "; ".join(
+                    validation["errors"]
+                )
+            encoded = json.dumps(
+                payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+            )
+            if hashlib.sha256(encoded.encode("utf-8")).hexdigest() != record.translation_hash:
+                return "input lexicon payload differs from admitted candidate"
+            live_version = hashlib.sha256(
+                str(raw_payload).encode("utf-8")
+            ).hexdigest()
+            if version_hash != "sha256:" + live_version:
+                return "input lexicon version hash differs from admitted candidate"
+            if source_text_hash != "sha256:" + record.source_hash:
+                return "input lexicon source hash differs from admitted source"
         elif record.layer == "knowledge":
             live = paths.docs / target / str(record.metadata["relative_path"])
             text = live.read_text(encoding="utf-8")
             if not text.strip() or "__METNOS_" in text:
                 return "public knowledge is empty or contains a sentinel"
+            if _translation_hash(text) != record.translation_hash:
+                return "live public knowledge differs from admitted candidate"
+        elif record.layer == "device":
+            catalog = json.loads(paths.device_catalog.read_text(encoding="utf-8"))
+            translated = catalog.get(target) if isinstance(catalog, Mapping) else None
+            if not isinstance(translated, Mapping) or not translated:
+                return "device target catalog is missing"
+            if _translation_hash(dict(translated)) != record.translation_hash:
+                return "live device catalog differs from admitted candidate"
+            expected_keys = record.metadata.get("keys")
+            if isinstance(expected_keys, list) and set(translated) != set(expected_keys):
+                return "live device catalog keys differ from source inventory"
+        elif record.layer == "tutor":
+            # Tutor is a compiled store rather than a canonical live file.
+            # Its compiler evidence is tied to this record below in ``gate``.
+            pass
     except Exception as exc:
         return f"live resource invalid: {type(exc).__name__}: {exc}"
     return None
@@ -205,10 +271,19 @@ def gate(
         item = source_items.get(record.resource_id)
         if item is None:
             continue
+        if (
+            record.layer != item.layer
+            or record.source_lang != item.source_lang
+            or record.target_lang != target
+            or record.basis_id != item.basis_id
+            or dict(record.metadata) != dict(item.metadata)
+        ):
+            errors.append(f"inventory identity drift: {record.resource_id}")
+            continue
         if record.source_hash != item.source_hash:
             errors.append(f"source drift: {record.resource_id}")
             continue
-        if record.status == "manual_review" and _manual_exception(record):
+        if record.status == "manual_review" and _manual_exception(item):
             exceptions.append(record.resource_id)
             continue
         if record.status == "manual_review":
@@ -228,11 +303,23 @@ def gate(
                 )
                 if live_error:
                     errors.append(f"{record.resource_id}: {live_error}")
-        if record.layer in _REVIEWED_LAYERS and record.quality != "reviewed":
+        published_contract = (
+            record.layer == "contract"
+            and record.basis_id is not None
+            and record.status == "admitted"
+            and record.quality == "published"
+        )
+        if (
+            record.layer in _REVIEWED_LAYERS
+            and record.quality != "reviewed"
+            and not published_contract
+        ):
             errors.append(f"{record.resource_id}: quality={record.quality or 'missing'}")
         if record.layer not in _DERIVED_LAYERS:
             try:
-                candidate = _read_artifact(record)
+                candidate = _read_artifact(
+                    record, authoritative_item=item,
+                )
                 candidate_text = (
                     candidate if isinstance(candidate, str)
                     else json.dumps(candidate, ensure_ascii=False, sort_keys=True)
@@ -254,6 +341,28 @@ def gate(
         for required in ("device_public_catalog", "tutor_catalog_compile", "manifest_admission"):
             if checks.get(required) != "passed":
                 errors.append(f"required check not passed: {required}")
+        derived_checks = {
+            "device": "device_public_catalog",
+            "tutor": "tutor_catalog_compile",
+        }
+        for record in records:
+            check_id = derived_checks.get(record.layer)
+            if check_id is None or record.status != "admitted":
+                continue
+            check = check_rows.get(check_id) or {}
+            if (
+                not record.translation_hash
+                or check.get("evidence_hash") != record.translation_hash
+            ):
+                errors.append(
+                    f"{record.resource_id}: {check_id} evidence differs from "
+                    "the admitted resource"
+                )
+            if record.layer == "tutor" and target not in set(
+                    (check.get("details") or {}).get("languages") or ()):
+                errors.append(
+                    f"{record.resource_id}: tutor check omits target language"
+                )
     return GateReport(
         target_lang=target, ok=not errors, total=len(records), admitted=admitted,
         exceptions=tuple(sorted(exceptions)), errors=tuple(errors),

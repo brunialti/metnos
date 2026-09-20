@@ -118,9 +118,9 @@ def _provider_recruit_and_gate(names: list[str], query: str, intent,
             intent_obj = getattr(intent, "object", None) or ""
             intent_verb = getattr(intent, "verb", None) or ""
             if hidden and intent_obj:
+                from detection_lexicon import mapping
                 provider_suffixes = tuple(
-                    __import__("detection_lexicon").mapping(
-                        "provider.markers").keys())
+                    mapping("provider.markers").keys())
                 producer_verbs = set(_PROD)
                 candidates = []
                 for e in catalog:

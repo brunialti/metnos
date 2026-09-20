@@ -26,39 +26,27 @@ import re
 from typing import Optional
 
 
-# ─── Classi semantiche di field/key (KEY_CLASSES da simulator) ─────────────
-# Membri della stessa classe sono bidirezionali equivalenti (universal §7.3).
-# Usate per: schema-field match (query token mention "data" hits schema "mtime"),
-# e per detection di semantic-type signal nella query.
-_KEY_CLASSES = (
-    {"sha256", "md5", "hash", "digest", "fingerprint", "checksum", "signature"},
-    {"date", "datetime", "time", "when", "today", "tomorrow", "yesterday",
-     "data", "ora", "mtime", "ctime", "modified", "modified_at",
-     "iso_timestamp"},
-    {"size", "size_bytes", "bytes", "filesize", "len", "length", "dimensione"},
-    {"name", "title", "label", "subject", "filename", "stem", "nome",
-     "titolo", "soggetto", "oggetto"},
-    {"pattern", "glob_pattern", "glob", "ext", "extension", "suffix",
-     "estensione"},
-    {"channel", "platform", "service", "canale", "piattaforma", "servizio"},
-    {"limit", "top", "max", "count", "n", "numero", "quanti", "quante"},
-    {"author", "creator", "owner", "by", "autore", "proprietario"},
+# Closed schema-class identities; translations can add surface forms but cannot
+# invent a new equivalence class or change lookup priority.
+_KEY_CLASS_ORDER = (
+    "hash", "date", "size", "name", "pattern", "channel", "limit",
+    "author",
 )
-_KEY_CLASS_LOOKUP: dict[str, frozenset] = {}
-for _cls in _KEY_CLASSES:
-    _fcls = frozenset(_cls)
-    for _m in _cls:
-        _KEY_CLASS_LOOKUP[_m] = _fcls
 
 
 def _same_class(a: str, b: str) -> bool:
-    """True se a, b appartengono alla stessa _KEY_CLASSES bucket."""
+    """True when two localized field names share one canonical class."""
     a, b = (a or "").lower(), (b or "").lower()
     if a == b:
         return True
-    ca = _KEY_CLASS_LOOKUP.get(a)
-    cb = _KEY_CLASS_LOOKUP.get(b)
-    return ca is not None and ca is cb
+    from detection_lexicon_seed_routing import mapping
+
+    classes = mapping("routing.rule.key_class")
+    ca = next((name for name in _KEY_CLASS_ORDER
+               if a in classes.get(name, ())), None)
+    cb = next((name for name in _KEY_CLASS_ORDER
+               if b in classes.get(name, ())), None)
+    return ca is not None and ca == cb
 
 
 # ─── Detection semantic-type signals nella query ───────────────────────────
@@ -83,19 +71,13 @@ _SEMANTIC_TYPE_DETECTORS = [
     (re.compile(r"\bhttps?://\S+", re.I), "url"),
     # People / identity
     (re.compile(r"\b[\w.\-]+@[\w.\-]+\.\w+\b"), "email_address"),
-    # Time (parole-keyword chiave temporali esplicite)
-    (re.compile(r"\b(?:oggi|ieri|domani|today|yesterday|tomorrow|ora|now|"
-                r"ultim[ae]|ultimi|ultime|last|prossim[ae]|prossimi|next|"
-                r"settimana|week|mese|month|anno|year)\b", re.I), "time_window"),
     # ISO timestamps
     (re.compile(r"\b\d{4}-\d{2}-\d{2}(?:[T\s]\d{2}:\d{2})?\b"), "iso_timestamp"),
     # Person name: SOLO due parole capitalizzate consecutive (Nome Cognome)
-    # OR pattern esplicito "di X" / "of X" con maiuscola. Conservativo: la
+    # OR a localized explicit preposition plus a capitalized word. Conservativo: la
     # detection di singola capitalized word causa troppi falsi positivi
     # ("Downloads", "Roma", "Junk" matchavano).
     (re.compile(r"\b[A-ZÀ-ÖØ-Þ][a-zà-öø-þ]+\s+[A-ZÀ-ÖØ-Þ][a-zà-öø-þ]+\b"),
-     "person_name"),
-    (re.compile(r"\b(?:di|of|da|by)\s+[A-ZÀ-ÖØ-Þ][a-zà-öø-þ]{2,}\b"),
      "person_name"),
 ]
 
@@ -113,6 +95,14 @@ def _detect_semantic_types(query_raw: str) -> set[str]:
     for rx, stype in _SEMANTIC_TYPE_DETECTORS:
         if rx.search(query_raw):
             found.add(stype)
+    from detection_lexicon_seed_routing import forms, matches
+    if matches("routing.rule.time_window", query_raw):
+        found.add("time_window")
+    person_prefixes = forms("routing.rule.person_prefix")
+    if person_prefixes and re.search(
+            r"\b(?:" + "|".join(re.escape(form) for form in person_prefixes)
+            + r")\s+[A-ZÀ-ÖØ-Þ][a-zà-öø-þ]{2,}\b", query_raw):
+        found.add("person_name")
     return found
 
 
@@ -161,8 +151,6 @@ def _type_compatible(provided: str, required: str) -> bool:
 
 _PATH_PATTERNS = [
     # (regex query, target_tool_substring, boost_score, description)
-    (re.compile(r"/Immagini/|/Photos/|/photos/|/Immagini\b", re.I),
-     "find_images_indices", 5, "path Immagini → image index"),
     (re.compile(r"\.csv\b", re.I),
      "read_files_csv", 4, ".csv ext → csv reader"),
     (re.compile(r"\.pdf\b", re.I),
@@ -199,67 +187,29 @@ _PATH_DEMOTE_PATTERNS = [
 # ─── Rule 2: QUERY pattern boosts ───────────────────────────────────────────
 # Pattern lessicali → tool family preference.
 
+# Concept identifiers and target tool substrings are closed routing protocol,
+# not user-language data.  Order and weights preserve the historical scorer.
 _QUERY_PATTERN_BOOSTS = [
-    # (regex query, tool_name_or_substring, boost)
-    # Recency queries → get_* (metadata)
-    (re.compile(r"\b(ultim[io]|recenti|primi)\s+\d+", re.I),
-     "get_files", 4),
-    (re.compile(r"\b(ultim[io]|recenti)\s+\d+\s+(mail|messag)", re.I),
-     "list_messages", 6),
-    # "leggi mail" / "ultime mail" → read_messages
-    (re.compile(r"\b(leggi|read).*(mail|email|messag)", re.I),
-     "read_messages", 6),
-    # Send mail
-    (re.compile(r"\b(invia|manda|send).*(mail|email|messag)", re.I),
-     "send_messages", 8),
-    # Spam handling — both word orders ("spam → sposta" and "sposta in spam")
-    (re.compile(r"(?=.*\b(?:spam|posta indesiderata|junk)\b)"
-                r"(?=.*\b(?:sposta|move|filtra)\b)", re.I),
-     "move_messages", 8),
-    # Trova / cerca file
-    (re.compile(r"\b(trova|find|cerca).*(file|cartella|directory)", re.I),
-     "find_files", 4),
-    # Delete file/messaggio
-    (re.compile(r"\b(elimin|cancell|delete|rimuov).*(file|messag|mail|email)", re.I),
-     "delete_files", 4),
-    # Create / write
-    (re.compile(r"\b(crea|create|scriv|write).*(file|nota|note)", re.I),
-     "write_files", 5),
-    # Tasks/timer
-    (re.compile(r"\b(timer|task|promemoria|ricordami|schedule|scaden)", re.I),
-     "list_tasks", 4),
-    # Count queries (\b anchor — robusta a leading whitespace dal tokenizer)
-    (re.compile(r"\b(quant[io]|conta|numero di|how many|count)\b", re.I),
-     "compute_entries", 3),
-    # Topographic / place queries
-    (re.compile(r"\b(bar|ristorante|pizzeria|hotel|farmacia|stazione|caff[èe])\b", re.I),
-     "find_places", 8),
-    # GitHub stars/issues/contributors
-    (re.compile(r"\b(stars|issues|contributors|forks|releases|builds?|status)\b.*(repo|github)", re.I),
-     "read_urls_html", 8),
-    # Where am I / location
-    (re.compile(r"\b(dove sono|where am i|posizione|location|gps)\b", re.I),
-     "get_location", 15),
-    # Time queries
-    (re.compile(r"\b(che ora|what time|che giorno|orario)\b", re.I),
-     "get_now", 15),
-    # Process / system
-    (re.compile(r"\b(processi|process|memoria|memory|cpu|stato del sistema)\b", re.I),
-     "get_processes", 8),
-    # Calendar / appointments
-    (re.compile(r"\b(appuntamenti|appuntamento|meeting|incontri|riunion)\b", re.I),
-     "read_events", 6),
-    (re.compile(r"\b(eventi.*\b(domani|oggi|settimana|mese)|calendar|agenda)\b", re.I),
-     "read_events", 6),
-    # "paired" → read_persons(role="guest") per the design guide §5 (lista guest)
-    (re.compile(r"\b(paired)\b", re.I),
-     "read_persons", 5),
-    # "enrolled" / "registrate" → get_persons (scheda registro biometrico)
-    (re.compile(r"\b(enroll|enrolled|registrat[ie])\b", re.I),
-     "get_persons", 5),
-    # Sort by date/size
-    (re.compile(r"\b(ordina|sort).*\b(data|date|dimens|size)", re.I),
-     "sort_entries", 3),
+    ("routing.rule.boost.recent_count", "get_files", 4),
+    ("routing.rule.boost.recent_messages", "list_messages", 6),
+    ("routing.rule.boost.read_messages", "read_messages", 6),
+    ("routing.rule.boost.send_messages", "send_messages", 8),
+    ("routing.rule.boost.move_spam", "move_messages", 8),
+    ("routing.rule.boost.find_files", "find_files", 4),
+    ("routing.rule.boost.delete_files", "delete_files", 4),
+    ("routing.rule.boost.write_files", "write_files", 5),
+    ("routing.rule.boost.tasks", "list_tasks", 4),
+    ("routing.rule.boost.count", "compute_entries", 3),
+    ("routing.rule.boost.places", "find_places", 8),
+    ("routing.rule.boost.github_metrics", "read_urls_html", 8),
+    ("routing.rule.boost.location", "get_location", 15),
+    ("routing.rule.boost.now", "get_now", 15),
+    ("routing.rule.boost.processes", "get_processes", 8),
+    ("routing.rule.boost.appointments", "read_events", 6),
+    ("routing.rule.boost.events", "read_events", 6),
+    ("routing.rule.boost.paired", "read_persons", 5),
+    ("routing.rule.boost.enrolled", "get_persons", 5),
+    ("routing.rule.boost.sort", "sort_entries", 3),
 ]
 
 
@@ -296,7 +246,8 @@ _RARE_TOKENS_CATALOG_ID: Optional[str] = None
 def _build_rare_tokens(catalog) -> set[str]:
     """Token che appaiono in ≤3 executor (rare = indicativi quando matchano)."""
     from collections import Counter
-    from prefilter import tokenize, _STOPWORDS
+    from prefilter import tokenize, stopwords
+    ignored = stopwords()
     cnt = Counter()
     for e in catalog:
         toks = set()
@@ -305,7 +256,7 @@ def _build_rare_tokens(catalog) -> set[str]:
         for tag in (e.affinity or []):
             toks.update(tokenize(tag))
         for tk in toks:
-            if tk in _STOPWORDS or len(tk) <= 2:
+            if tk in ignored or len(tk) <= 2:
                 continue
             cnt[tk] += 1
     return {tk for tk, c in cnt.items() if c <= 3}
@@ -443,6 +394,10 @@ def compute_rule_boost(query: str, query_tokens: set,
     score = 0
 
     # Rule 1: PATH/EXT (boost positivi e demote negativi)
+    from detection_lexicon_seed_routing import matches
+    if (matches("routing.rule.image_folder", query)
+            and "find_images_indices" in name):
+        score += 5
     for rx, target_sub, boost, _desc in _PATH_PATTERNS:
         if rx.search(query) and target_sub in name:
             score += boost
@@ -451,8 +406,8 @@ def compute_rule_boost(query: str, query_tokens: set,
             score += penalty  # penalty già negativo
 
     # Rule 2: QUERY PATTERN
-    for rx, target_sub, boost in _QUERY_PATTERN_BOOSTS:
-        if rx.search(query) and target_sub in name:
+    for concept, target_sub, boost in _QUERY_PATTERN_BOOSTS:
+        if matches(concept, query) and target_sub in name:
             score += boost
 
     # Rule 3: PRODUCER compat
@@ -484,12 +439,12 @@ def compute_rare_penalty(query_tokens: set, executor) -> int:
     """
     if _RARE_TOKENS_CACHE is None:
         return 0
-    from prefilter import tokenize, _STOPWORDS
+    from prefilter import tokenize, stopwords
     exec_tokens = set()
     exec_tokens.update(tokenize(executor.name))
     exec_tokens.update(tokenize(executor.description))
     for tag in (executor.affinity or []):
         exec_tokens.update(tokenize(tag))
-    rare_in_query = (query_tokens & _RARE_TOKENS_CACHE) - _STOPWORDS
+    rare_in_query = (query_tokens & _RARE_TOKENS_CACHE) - stopwords()
     unmatched = rare_in_query - exec_tokens
     return -min(len(unmatched), 3)

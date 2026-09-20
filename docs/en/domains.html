@@ -17,8 +17,8 @@
 </style></head><body>
 <div class="shell">
 <nav><a href="index.html">← Metnos</a><a href="interface.html">The interface</a><a href="architecture/index.html">Architecture guide</a><a href="architecture/executor_catalog.html">Technical catalog</a><a href="architecture/tutor.html">How the Tutor works</a><a href="/it/domains.html" hreflang="it">IT</a></nav>
-<header class="hero"><div><div class="eyebrow">Operational reference · generated from the canonical catalog</div><h1>What you can ask Metnos, domain by domain</h1><p class="lead">This page describes every canonical domain in the Metnos vocabulary. Each example is a sentence you can use directly in chat: no executor names, arguments, or technical syntax are required.</p></div><div class="hero-note"><strong>27</strong><span>canonical domains</span><strong>105</strong><span>documented operations</span></div></header>
-<p class="contract">The reference structure comes from the runtime's 27 canonical objects; names and counts of distributed operations come from signed manifests and builtin contracts. Installed skills may add providers and operations. Ask the Tutor to learn what is currently available on your instance.</p>
+<header class="hero"><div><div class="eyebrow">Operational reference · generated from the canonical catalog</div><h1>What you can ask Metnos, domain by domain</h1><p class="lead">This page describes every canonical domain in the Metnos vocabulary. Each example is a sentence you can use directly in chat: no executor names, arguments, or technical syntax are required.</p></div><div class="hero-note"><strong>27</strong><span>canonical domains</span><strong>106</strong><span>documented operations</span></div></header>
+<p class="contract">The reference structure comes from the runtime's 27 canonical objects; names and counts of distributed operations come from source manifests and builtin contracts. Actual availability requires Executor Birth admission. Installed skills may add providers and operations. Ask the Tutor to learn what is currently available on your instance.</p>
 <div class="jump"><a href="#group-content">Content and computation</a><a href="#group-composition">Result composition</a><a href="#group-communication">Communication and time</a><a href="#group-world">Web, places, and media</a><a href="#group-collaboration">Collaboration and providers</a><a href="#group-governance">Control and administration</a><a href="#group-system">Cross-domain utilities</a></div>
 
 <section class="domain-group" id="group-content">
@@ -185,11 +185,11 @@
   <div class="section-title"><span>07</span><div><h2>Control and administration</h2><p>Observability, consent, security, and configuration.</p></div></div>
   <div class="domain-grid">
 <article class="domain-card" id="domain-processes">
-  <div class="domain-head"><div><span class="domain-key">processes</span><h3>Processes and system health</h3></div><span class="count">2 documented operations</span></div>
+  <div class="domain-head"><div><span class="domain-key">processes</span><h3>Processes and system health</h3></div><span class="count">3 documented operations</span></div>
   <p>Obtains a snapshot of processes and system-health signals on the local system or an eligible device.</p>
   <p class="boundary"><strong>Boundary.</strong> This is observation, not arbitrary shell administration: available actions remain those of admitted executors.</p>
   <div class="examples"><p class="example"><span>Ask Metnos with a request like this example:</span>“Which processes are using the most memory on this server?”</p><p class="example"><span>Ask Metnos with a request like this example:</span>“Check the office PC&#x27;s health and show any anomalous processes.”</p></div>
-  <details><summary>Distributed operations (2)</summary><div class="operations"><code>get_processes</code><code>run_processes</code></div></details>
+  <details><summary>Distributed operations (3)</summary><div class="operations"><code>get_processes</code><code>run_processes</code><code>set_processes</code></div></details>
 </article>
 <article class="domain-card" id="domain-signatures">
   <div class="domain-head"><div><span class="domain-key">signatures</span><h3>Security signatures</h3></div><span class="count">3 documented operations</span></div>
@@ -246,5 +246,5 @@
 </article></div>
 </section>
 <section class="provider"><h2>Providers and actual availability</h2><p>Domains are stable; providers are a separate axis. An instance may use local filesystems and devices, IMAP/SMTP mailboxes, the public web, GitHub, Google Workspace, or Google Photos according to admitted credentials, skills, and policy. The Tutor reads the instance's live catalog and answers about current availability.</p></section>
-<footer>Technical sources: canonical vocabulary, signed first-party manifests, and builtin contracts. This document is regenerated before every publication.</footer>
+<footer>Technical sources: canonical vocabulary, first-party source manifests, and builtin contracts. This document is regenerated before every publication.</footer>
 </div></body></html>

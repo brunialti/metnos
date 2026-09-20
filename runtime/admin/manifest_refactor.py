@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """manifest_refactor.py — refactor idempotente dei manifest.toml.
 
 Applica le 4 regole di stile (the design guide §6 + §7.12):
@@ -27,9 +27,7 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import re
-import subprocess
 import sys
 import time
 from pathlib import Path
@@ -45,20 +43,14 @@ except ImportError:
 import sys as _sys
 _sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import config as _C  # §7.11
+import detection_lexicon_seed_residual_am as _residual_lexicon
+from sign import sign_executor
 EXECUTORS_DIR = _C.PATH_EXECUTORS
 REFERENCE = EXECUTORS_DIR / "get_processes" / "manifest.toml"
 
 # Soglie di verbosita' (idempotenza): se manifest sotto soglia → SKIP.
 _DESC_LEN_THRESHOLD = 600        # description.it >600 chars = candidato
 _LINES_THRESHOLD = 180           # manifest >180 righe = candidato
-_VERBOSITY_MARKERS = (
-    "USO CORRETTO",
-    "USAGE: query",
-    "ARG NAMES (nomi esatti",
-    "ARG NAMES (exact names",
-)
-
-
 def _read_reference() -> dict:
     """Carica i description.it/en di get_processes come few-shot."""
     with open(REFERENCE, "rb") as f:
@@ -82,20 +74,37 @@ def _is_verbose(manifest: dict) -> tuple[bool, list[str]]:
     desc = manifest.get("description", {})
     it = desc.get("it", "") if isinstance(desc, dict) else ""
     en = desc.get("en", "") if isinstance(desc, dict) else ""
+    descriptions = (
+        {str(lang): text for lang, text in desc.items()
+         if isinstance(lang, str) and isinstance(text, str)}
+        if isinstance(desc, dict) else {"it": it, "en": en}
+    )
+    verbosity = _residual_lexicon.ready_mapping(
+        _residual_lexicon.MANIFEST_VERBOSITY,
+    )
     has_marker = False
-    for marker in _VERBOSITY_MARKERS:
-        if marker in it:
-            reasons.append(f"verbose marker IT: '{marker}'")
+    has_repeated_example = False
+    for marker in verbosity.get("marker", ()):
+        matching_language = next(
+            (lang for lang, text in descriptions.items() if marker in text),
+            None,
+        )
+        if matching_language is not None:
+            reasons.append(
+                f"verbose marker {matching_language.upper()}: '{marker}'"
+            )
             has_marker = True
             break
-        if marker in en:
-            reasons.append(f"verbose marker EN: '{marker}'")
-            has_marker = True
-            break
-    if it.count("Esempio:") > 3:
-        reasons.append(f"'Esempio:' ripetuto {it.count('Esempio:')}x in IT")
-    if en.count("Example:") > 3:
-        reasons.append(f"'Example:' ripetuto {en.count('Example:')}x in EN")
+    for language, text in descriptions.items():
+        for example_marker in verbosity.get("example", ()):
+            count = text.count(example_marker)
+            if count > 3:
+                reasons.append(
+                    f"'{example_marker}' ripetuto {count}x in "
+                    f"{language.upper()}"
+                )
+                has_repeated_example = True
+                break
     # Long + no PATTERN section = verbose without structure.
     long_no_pattern = (
         len(it) > _DESC_LEN_THRESHOLD
@@ -104,8 +113,7 @@ def _is_verbose(manifest: dict) -> tuple[bool, list[str]]:
     )
     if long_no_pattern:
         reasons.append(f"long IT ({len(it)}c) without PATTERN section")
-    return (has_marker or it.count("Esempio:") > 3
-            or en.count("Example:") > 3 or long_no_pattern, reasons)
+    return (has_marker or has_repeated_example or long_no_pattern, reasons)
 
 
 def _build_refactor_prompt(name: str, current: dict, reference: dict) -> str:
@@ -247,13 +255,13 @@ def refactor_manifest(path: Path, reference: dict, *,
     new_lines = len(path.read_text().splitlines())
 
     # Re-sign §7.10
-    proc = subprocess.run(
-        ["python3", "-m", "runtime.sign", "sign", str(path.parent)],
-        cwd="/opt/metnos",
-        env={**os.environ, "PYTHONPATH": "/opt/metnos/runtime"},
-        capture_output=True, text=True,
-    )
-    sign_ok = proc.returncode == 0
+    sign_error = ""
+    try:
+        sign_executor(path.parent)
+        sign_ok = True
+    except Exception as exc:
+        sign_ok = False
+        sign_error = str(exc)[:200]
 
     return {
         "name": name, "applied": True,
@@ -261,7 +269,7 @@ def refactor_manifest(path: Path, reference: dict, *,
         "lines_saved": old_lines - new_lines,
         "delta_it_chars": delta_it, "delta_en_chars": delta_en,
         "signed": sign_ok,
-        "sign_stderr": proc.stderr.strip()[:200] if not sign_ok else "",
+        "sign_stderr": sign_error,
     }
 
 

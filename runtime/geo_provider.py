@@ -7,19 +7,20 @@ Niente import diretti a Google/Photon/altro nei consumer.
 Chain via env METNOS_GEO_PROVIDERS (CSV ordine = priorita').
 Default: "google,photon". Cambio provider = cambio env, no codice.
 
-Per aggiungere provider: implementa modulo `runtime/<nome>_client.py` con
-`forward_search(query, **kw) -> (list, str)` (e opz `reverse_geocode`),
-e registralo qui in PROVIDERS.
+Per aggiungere un provider occorre implementare il modulo
+`runtime/<nome>_client.py`, aggiungere la voce immutabile in `PROVIDERS` e il
+corrispondente ramo di import letterale in `_load`. Il doppio aggiornamento e'
+intenzionale: la build chiusa non ammette nomi di modulo scelti a runtime.
 """
 from __future__ import annotations
 
-import importlib
 import os
+from types import MappingProxyType
 
-PROVIDERS = {
+PROVIDERS = MappingProxyType({
     "google":  "google_places_client",
     "photon":  "photon_client",
-}
+})
 DEFAULT_CHAIN = "google,photon"
 
 
@@ -39,11 +40,15 @@ def _chain():
 
 
 def _load(name):
-    mod = PROVIDERS.get(name)
-    if not mod:
-        return None
+    module_name = PROVIDERS.get(name)
     try:
-        return importlib.import_module(mod)
+        if module_name == "google_places_client":
+            import google_places_client
+            return google_places_client
+        if module_name == "photon_client":
+            import photon_client
+            return photon_client
+        return None
     except ImportError:
         return None
 
@@ -64,7 +69,7 @@ def forward_search(query, max_results=5, near=None, radius_km=None,
                 query, max_results=max_results, near=near,
                 radius_km=radius_km, bounded=bounded, lang=lang)
         except Exception:
-            failure = failure or f"{name}_provider_error"
+            failure = failure or "error"
             continue
         if matches:
             return matches, name

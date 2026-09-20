@@ -38,7 +38,9 @@ _MAX_COMMAND_BODY_BYTES = 4096
 _SSE_MAX_PER_OWNER = 4
 _SSE_MAX_TOTAL = 128
 _DURABLE_ERROR_MESSAGE_KEYS = {
-    "budget_exhausted": "UI_DURABLE_ERROR_BUDGET_EXHAUSTED",
+    "budget_accounting_incomplete": "UI_DURABLE_ERROR_ACCOUNTING_INCOMPLETE",
+    "usage_accounting_incomplete": "UI_DURABLE_ERROR_ACCOUNTING_INCOMPLETE",
+    "budget_exhausted": "UI_DURABLE_ERROR_BUDGET_GUARD",
     "cancelled": "UI_DURABLE_ERROR_CANCELLED",
     "capability_unavailable": "UI_DURABLE_ERROR_CAPABILITY_UNAVAILABLE",
     "contract_violation": "UI_DURABLE_ERROR_CONTRACT_VIOLATION",
@@ -51,6 +53,14 @@ _DURABLE_ERROR_MESSAGE_KEYS = {
     "entry_identity_invalid": "UI_DURABLE_ERROR_ENTRY_IDENTITY",
     "executor_permanent": "UI_DURABLE_ERROR_EXECUTOR_PERMANENT",
     "executor_transient": "UI_DURABLE_ERROR_EXECUTOR_TRANSIENT",
+    "executor_unknown": "UI_DURABLE_ERROR_EXECUTOR_UNKNOWN",
+    "execution.unhandled_exception": "UI_DURABLE_ERROR_EXECUTOR_UNKNOWN",
+    "execution.runner_failed": "UI_DURABLE_ERROR_RUNNER_FAILED",
+    "image_description_unavailable": "UI_DURABLE_CAUSE_IMAGE_DESCRIPTION_UNAVAILABLE",
+    "image_description_truncated": "UI_DURABLE_CAUSE_IMAGE_DESCRIPTION_TRUNCATED",
+    "image_description_invalid": "UI_DURABLE_CAUSE_IMAGE_DESCRIPTION_INVALID",
+    "image_description_empty": "UI_DURABLE_CAUSE_IMAGE_DESCRIPTION_EMPTY",
+    "image_description_schema_invalid": "UI_DURABLE_CAUSE_IMAGE_DESCRIPTION_SCHEMA_INVALID",
     "invalid_plan": "UI_DURABLE_ERROR_INVALID_PLAN",
     "inventory_unstable": "UI_DURABLE_ERROR_INVENTORY_UNSTABLE",
     "lease_lost": "UI_DURABLE_ERROR_LEASE_LOST",
@@ -99,7 +109,8 @@ async def _invoke(request: web.Request, operation: Callable[[DurableWorkloadCont
         if not isinstance(store, DurableWorkloadStore):
             raise DurableControlError("durable_workload.unavailable", 503)
         try:
-            return operation(DurableWorkloadControl(store, cursor_secret=secret))
+            from durable_runtime_registry import describe_plan
+            return operation(DurableWorkloadControl(store, cursor_secret=secret, describe_plan=describe_plan))
         finally:
             store.close()
 
@@ -290,6 +301,7 @@ async def workload_console(request: web.Request) -> web.Response:
         "draft", "admitted", "queued", "running", "pause_requested",
         "paused", "cancel_requested", "cancelled", "needs_attention",
         "failed", "completed_with_errors", "completed",
+        "pending", "leased", "retry_wait", "committed", "failed_permanent", "skipped",
     )
     priority_keys = ("low", "normal", "high")
     stage_type_keys = ("inventory", "map", "reduce", "validate", "publish")
@@ -299,6 +311,51 @@ async def workload_console(request: web.Request) -> web.Response:
     )
     resource_keys = ("cpu", "device", "llm", "local_io", "network_io", "vlm")
     copy = {
+        **{
+            key: message("UI_DURABLE_" + code)
+            for key, code in {
+                "engine": "ENGINE", "engineReady": "ENGINE_READY",
+                "engineDisabled": "ENGINE_DISABLED", "engineUnavailable": "ENGINE_UNAVAILABLE",
+                "fresh": "FRESH", "stale": "STALE", "refresh": "REFRESH",
+                "activity": "ACTIVITY", "technical": "TECHNICAL", "saved": "COMPLETED_WORK_UNITS",
+                "pending": "PENDING", "failedCount": "FAILED_COUNT", "skipped": "SKIPPED",
+                "attention": "ATTENTION", "blockedHelp": "ATTENTION_HELP",
+                "waitingHelp": "WAITING_HELP", "progressHelp": "WORK_UNITS_HELP",
+                "lastResult": "LAST_RESULT", "noResult": "NO_RESULT",
+                "attempts": "ATTEMPTS",
+                "started": "STARTED", "percent": "ALL_PHASES_PROGRESS",
+                "phaseEstimatedEnd": "PHASE_FINISH_ESTIMATE", "wholeEstimatedEnd": "WHOLE_ESTIMATED_FINISH",
+                "phaseProgress": "PHASE_PROGRESS", "phaseCount": "PHASE_COMPLETED_UNITS",
+                "phaseScopeHelp": "PHASE_SCOPE_HELP",
+                "phaseNumber": "PHASE_NUMBER",
+                "metricValue": "METRIC_VALUE", "metricMeaning": "METRIC_MEANING",
+                "phaseCompletedMeaning": "PHASE_COMPLETED_MEANING", "phaseTotalMeaning": "PHASE_TOTAL_MEANING",
+                "knownTotalMeaning": "KNOWN_TOTAL_MEANING", "batchDefinition": "BATCH_DEFINITION",
+                "notAvailable": "NOT_AVAILABLE", "timingHelp": "PHASE_TIMING_HELP",
+                "photoIndexing": "PHOTO_INDEXING", "genericJob": "GENERIC_JOB",
+                "folder": "FOLDER", "readProgress": "READ_PROGRESS",
+                "jobId": "JOB_ID", "operation": "OPERATION", "loading": "LOADING",
+                "selectJob": "SELECT_JOB", "readFailed": "READ_FAILED",
+                "finishedState": "JOB_FINISHED", "finishedSummary": "FINISHED_SUMMARY",
+                "finished": "FINISHED", "duration": "DURATION",
+                "durationValue": "DURATION_VALUE", "processedBatches": "PROCESSED_BATCHES",
+                "discoveryHelp": "DISCOVERY_HELP",
+                "recoveryHelp": "RECOVERY_HELP", "phase": "CURRENT_PHASE",
+                "runningBlocks": "RUNNING_BLOCKS", "jobLimit": "JOB_LIMIT",
+                "reservedBlocks": "RESERVED_BLOCKS", "parallelismHelp": "PARALLELISM_HELP",
+            }.items()
+        },
+        "phases": {
+            key: message("UI_DURABLE_PHASE_" + key.upper())
+            for key in ("discover", "folders", "analyze", "merge", "publish")
+        },
+        "estimateReasons": {
+            key: message("UI_DURABLE_ETA_" + key.upper())
+            for key in ("multi_phase", "not_running", "insufficient_data", "needs_attention",
+                        "no_active_phase", "multiple_active_phases", "inventory_open", "phase_expanding",
+                        "uncertain_progress", "stale_progress", "estimate_overdue",
+                        "data_stale", "engine_unavailable")
+        },
         "empty": message("UI_DURABLE_EMPTY"),
         "state": message("UI_DURABLE_STATE"),
         "priority": message("UI_DURABLE_PRIORITY"),
@@ -313,6 +370,10 @@ async def workload_console(request: web.Request) -> web.Response:
         "budget": message("UI_DURABLE_BUDGET"),
         "stages": message("UI_DURABLE_STAGES"),
         "errors": message("UI_DURABLE_ERROR_CATEGORIES"),
+        "itemsWithErrors": message("UI_DURABLE_ITEMS_WITH_ERRORS"),
+        "attemptErrors": message("UI_DURABLE_ATTEMPT_ERRORS"),
+        "attemptErrorsHelp": message("UI_DURABLE_ATTEMPT_ERRORS_HELP"),
+        "moreErrorCategories": message("UI_DURABLE_MORE_ERROR_CATEGORIES"),
         "errorUnknown": message("UI_DURABLE_ERROR_UNKNOWN"),
         "unknown": message("UI_DURABLE_VALUE_UNKNOWN"),
         "errorLabels": {
@@ -337,10 +398,12 @@ async def workload_console(request: web.Request) -> web.Response:
         "pause": message("UI_DURABLE_PAUSE"),
         "resume": message("UI_DURABLE_RESUME"),
         "cancel": message("UI_DURABLE_CANCEL"),
+        "dismiss": message("UI_DURABLE_DISMISS"),
         "retry": message("UI_DURABLE_RETRY"),
         "download": message("UI_DURABLE_DOWNLOAD"),
         "unavailable": message("UI_DURABLE_UNAVAILABLE"),
         "cancelConfirm": message("UI_DURABLE_CANCEL_CONFIRM"),
+        "dismissConfirm": message("UI_DURABLE_DISMISS_CONFIRM"),
         "actionFailed": message("UI_DURABLE_ACTION_FAILED"),
         "live": message("UI_DURABLE_LIVE"),
         "reconnecting": message("UI_DURABLE_RECONNECTING"),
@@ -706,6 +769,12 @@ async def workload_cancel(request: web.Request) -> web.Response:
     return await _command(request, "cancel", DurableWorkloadControl.cancel)
 
 
+async def workload_dismiss(request: web.Request) -> web.Response:
+    """POST /agent/workloads/{workload_id}/dismiss — hide terminal history."""
+
+    return await _command(request, "dismiss", DurableWorkloadControl.dismiss)
+
+
 async def workload_attention_retry(request: web.Request) -> web.Response:
     """POST /agent/workloads/{workload_id}/attention/retry — closed decision."""
 
@@ -774,6 +843,7 @@ ROUTES = (
     ("POST", "/agent/workloads/{workload_id}/pause", workload_pause),
     ("POST", "/agent/workloads/{workload_id}/resume", workload_resume),
     ("POST", "/agent/workloads/{workload_id}/cancel", workload_cancel),
+    ("POST", "/agent/workloads/{workload_id}/dismiss", workload_dismiss),
     ("POST", "/agent/workloads/{workload_id}/attention/retry", workload_attention_retry),
     ("POST", "/agent/workloads/{workload_id}/attention/cancel", workload_attention_cancel),
 )

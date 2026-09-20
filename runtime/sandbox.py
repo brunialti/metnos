@@ -1,9 +1,9 @@
 """sandbox.py — sandbox bubblewrap per gli executor (Metnos v1.1).
 
 Sostituisce la pseudo-sandbox del POC (filtro path/host nel runtime) con un
-wrapping reale via bubblewrap quando disponibile. Fallback graceful: se
-`bwrap` non e' installato, il comando viene eseguito senza wrapping (la
-pseudo-sandbox di `agent_runtime` resta attiva come prima).
+isolamento reale tramite Bubblewrap. Se la sandbox OS e' disabilitata o non
+disponibile, ogni executor ordinario fallisce chiuso; la sola eccezione e' il
+broker undo vincolato a identita', metadati e digest esatti.
 
 Filosofia (cap. 6 Architettura, strato 3):
 - Niente <code>subprocess.run</code> diretto al codice dell'executor: si
@@ -21,11 +21,35 @@ Limiti v1.1:
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 import shutil
+import stat
 import sys
+import sysconfig
 from pathlib import Path
+
+
+class SandboxUnavailableError(RuntimeError):
+    """Executor code cannot run without the required OS sandbox."""
+
+
+_TRUSTED_UNDO_BROKER_DIGEST_V1 = (
+    "sha256:8f819a52ce9f242ace86de74822058baf609c863557f7cdc4482439983f4f895"
+)
+_PROJECTED_TRUST_ROOT_V1 = Path("/.metnos-admission-v1")
+
+
+def requires_os_sandbox(executor) -> bool:
+    """Every ordinary executor subprocess has no naked fallback.
+
+    ``wrap_command`` handles the one exact undo-broker exception before this
+    predicate. Provenance is not a confinement boundary: a later Birth
+    revision of a builtin must not become naked merely because its historical
+    membership remains ``builtin``.
+    """
+    return True
 
 # --- detection -------------------------------------------------------------
 
@@ -37,7 +61,8 @@ def bwrap_available() -> bool:
 def sandbox_disabled() -> bool:
     """True se l'utente ha disabilitato esplicitamente la sandbox via env.
 
-    Utile per debug locale senza bwrap, o per CI.
+    E' un interruttore diagnostico fail-closed: non abilita l'esecuzione
+    diretta degli executor ordinari.
     """
     return os.environ.get("METNOS_SANDBOX", "").lower() in ("0", "off", "no", "false")
 
@@ -126,6 +151,15 @@ def _managed_local_resource_paths(hints: list[str], *, writable: bool) -> list[P
             "file_hash_cache": ((
                 Path(_C.PATH_USER_CACHE) / "file_hashes",
             ), True),
+            # Rebuildable derivatives only; source photos and the persons
+            # registry remain outside this grant. Honour the configured
+            # actor/test index root, never a second service-home fallback.
+            "image_index": ((Path(_C.PATH_INDEX_IMAGE),), True),
+            # Exact provider configuration, read-only. Never expose the
+            # credential vault, its master key, or the parent config tree.
+            "geo_provider_config": ((
+                Path(_C.PATH_USER_CONFIG) / "google_maps.env",
+            ), False),
         }
     except Exception:
         return []
@@ -270,6 +304,10 @@ def resolve_filesystem_read_args(executor, args) -> dict:
         getattr(executor, "args_schema", None) or {},
         out,
     )
+    image_index_consumer = any(
+        capability.get("name") == "index:read" and "image" in capability.get("hint", [])
+        for capability in effective
+    )
     for capability in effective:
         if capability.get("name") != "fs:read":
             continue
@@ -304,6 +342,13 @@ def resolve_filesystem_read_args(executor, args) -> dict:
                     else:
                         resolved, _note = resolve_path_with_alias(value)
                     if resolved.exists():
+                        if image_index_consumer:
+                            # Freeze the same logical corpus key used by the
+                            # index before a physical alias crosses the mount
+                            # boundary. Bind that exact directory, not the
+                            # workspace or its symlink metadata/configuration.
+                            from index_schema import canonical_corpus_path
+                            resolved = Path(canonical_corpus_path(resolved))
                         concrete = str(resolved)
                         resolved_values.append(concrete)
                         changed = changed or concrete != value
@@ -413,12 +458,131 @@ def _exec_tool_resources(hints: list[str]) -> list[Path]:
 # Bwrap fallisce se uno di questi manca; aggiungiamo solo quelli che esistono.
 _SYSTEM_RO_PATHS = (
     "/usr", "/bin", "/sbin", "/lib", "/lib64", "/lib32",
-    "/etc", "/opt", "/var/lib/python3",
+    "/etc", "/var/lib/python3",
     # /sys READ-ONLY (9/7): info descrittive hardware (GPU /sys/class/drm,
     # USB /sys/bus/usb, block /sys/block) per get_processes health. Info-only:
     # in RO non si scrive nulla; standard nelle sandbox info-gathering.
     "/sys",
 )
+
+# A Python installation rooted directly in one of these generic directories
+# is too broad to expose to an executor.  A narrow installation below one of
+# them (for example GitHub's /opt/hostedtoolcache/.../x64) remains admissible.
+_UNSAFE_INTERPRETER_PREFIXES = frozenset({
+    Path("/"), Path("/home"), Path("/opt"), Path("/srv"), Path("/tmp"),
+    Path("/var"),
+})
+
+
+def _is_within(path: Path, root: Path) -> bool:
+    return path == root or path.is_relative_to(root)
+
+
+def python_runtime_bindings(
+    code_dir: Path, runtime_dir: Path,
+) -> tuple[tuple[Path, Path], ...]:
+    """Return exact source/destination binds for the active interpreter.
+
+    A non-venv Python may live outside the normal system mounts (notably
+    ``actions/setup-python`` below ``/opt/hostedtoolcache``).  Mounting only
+    ``site-packages`` does not expose its executable, standard library or
+    ``libpython``.  Conversely, mounting their common parent such as ``/opt``
+    would expose unrelated executors.  The interpreter's own prefixes are the
+    narrowest portable unit that contains all of those runtime files.
+    """
+    system_roots = tuple(
+        Path(raw).resolve()
+        for raw in _SYSTEM_RO_PATHS
+        if Path(raw).exists()
+    )
+    protected = tuple({
+        Path(os.path.abspath(path))
+        for path in (code_dir, runtime_dir)
+    } | {
+        path.resolve() for path in (code_dir, runtime_dir)
+    })
+    bindings: list[tuple[Path, Path]] = []
+    seen_destinations: set[Path] = set()
+    for attribute in (
+        "prefix", "exec_prefix", "base_prefix", "base_exec_prefix",
+    ):
+        raw = getattr(sys, attribute, None)
+        candidate = Path(raw) if isinstance(raw, str) and raw else None
+        if candidate is None or not candidate.is_absolute():
+            raise SandboxUnavailableError(
+                f"active Python {attribute} is not an absolute path",
+            )
+        lexical = Path(os.path.abspath(candidate))
+        try:
+            resolved = candidate.resolve(strict=True)
+        except (OSError, RuntimeError) as exc:
+            raise SandboxUnavailableError(
+                f"active Python {attribute} cannot be resolved",
+            ) from exc
+        if not resolved.is_dir():
+            raise SandboxUnavailableError(
+                f"active Python {attribute} is not a directory",
+            )
+        if (
+            lexical in _UNSAFE_INTERPRETER_PREFIXES
+            or resolved in _UNSAFE_INTERPRETER_PREFIXES
+        ):
+            raise SandboxUnavailableError(
+                f"active Python {attribute} is too broad to sandbox",
+            )
+        if any(
+            _is_within(path, prefix)
+            for path in protected
+            for prefix in (lexical, resolved)
+        ):
+            raise SandboxUnavailableError(
+                f"active Python {attribute} contains executor product code",
+            )
+        destinations = (lexical, resolved)
+        for destination in destinations:
+            if any(_is_within(destination, root) for root in system_roots):
+                continue
+            if destination not in seen_destinations:
+                bindings.append((resolved, destination))
+                seen_destinations.add(destination)
+
+    visible_roots = (*system_roots, *seen_destinations)
+    required: list[tuple[str, Path]] = []
+    executable = Path(sys.executable)
+    if not executable.is_absolute():
+        raise SandboxUnavailableError(
+            "active Python executable is not an absolute path",
+        )
+    try:
+        required.extend((
+            ("executable", Path(os.path.abspath(executable))),
+            ("resolved executable", executable.resolve(strict=True)),
+        ))
+        for name in ("stdlib", "platstdlib"):
+            raw = sysconfig.get_path(name)
+            if not isinstance(raw, str) or not raw:
+                raise SandboxUnavailableError(
+                    f"active Python {name} path is unavailable",
+                )
+            path = Path(raw)
+            if not path.is_absolute():
+                raise SandboxUnavailableError(
+                    f"active Python {name} path is not absolute",
+                )
+            required.extend((
+                (name, Path(os.path.abspath(path))),
+                (f"resolved {name}", path.resolve(strict=True)),
+            ))
+    except (OSError, RuntimeError) as exc:
+        raise SandboxUnavailableError(
+            "active Python runtime layout cannot be resolved",
+        ) from exc
+    for name, path in required:
+        if not any(_is_within(path, root) for root in visible_roots):
+            raise SandboxUnavailableError(
+                f"active Python {name} is outside the sandbox prefixes",
+            )
+    return tuple(bindings)
 
 
 def python_package_roots() -> tuple[Path, ...]:
@@ -446,6 +610,44 @@ def python_package_roots() -> tuple[Path, ...]:
     return tuple(roots)
 
 
+def _local_model_projection_args(capabilities: list) -> list[str]:
+    """Project only declared local model artifacts, with no host configuration."""
+    from virt.local_models import (
+        PROJECTION_ENV, PROJECTION_ROOT, RESOURCE_ROLES, model_artifacts, model_spec,
+    )
+
+    roles = {
+        RESOURCE_ROLES[hint]
+        for capability in capabilities or []
+        if (_capability_kind(capability) == "metnos"
+            and _capability_mode(capability) == "read"
+            and isinstance(capability, dict))
+        for hint in capability.get("hint", []) or []
+        if isinstance(hint, str) and hint in RESOURCE_ROLES
+    }
+    args = ["--tmpfs", str(PROJECTION_ROOT)]
+    projection = {}
+    for role in sorted(roles):
+        destination = PROJECTION_ROOT / role
+        try:
+            spec = model_spec(role)
+            artifacts = model_artifacts(spec)
+        except (OSError, RuntimeError, ValueError, KeyError, TypeError) as exc:
+            raise SandboxUnavailableError("local model projection is unavailable") from exc
+        args += ["--dir", str(destination)]
+        for source, relative in artifacts:
+            args += ["--ro-bind", str(source), str(destination / relative)]
+        if role != "face":
+            projection[role] = {**spec, "model_dir": str(destination)}
+    args += ["--remount-ro", str(PROJECTION_ROOT)]
+    # Always replace inherited projections. A parent environment is not an
+    # authority grant, and constructors must not follow host model overrides.
+    args += ["--setenv", PROJECTION_ENV, json.dumps(projection, sort_keys=True)]
+    args += ["--setenv", "METNOS_CLIP_MODEL_DIR", str(PROJECTION_ROOT / "image")]
+    args += ["--setenv", "METNOS_FACE_MODEL_DIR", str(PROJECTION_ROOT / "face")]
+    return args
+
+
 def _build_bwrap_args(
     code_path: Path,
     capabilities: list,
@@ -453,6 +655,7 @@ def _build_bwrap_args(
     autonomy: str = "supervised",
     extra_ro: list[Path] | None = None,
     extra_rw: list[Path] | None = None,
+    sealed_ro_files: list[Path] | None = None,
     force_net: bool = False,
 ) -> list[str]:
     """Costruisce gli argomenti di bwrap a partire da un manifest.
@@ -478,21 +681,25 @@ def _build_bwrap_args(
 
     # Gli executor importano gli helper condivisi (`messages`,
     # `executor_helpers`, client di dominio) dalla runtime canonica del daemon.
-    # `/opt` e' gia' visibile tra i path di sistema, ma una installazione
-    # relocabile puo' vivere in qualunque directory (per esempio sotto HOME):
-    # il bind esplicito mantiene identico il confine della sandbox senza
-    # esporre l'intera radice dell'installazione.
+    # Montare una radice di installazione comune (per esempio ``/opt``)
+    # renderebbe visibili anche executor fratelli non dichiarati come
+    # dipendenze. Il bind resta quindi limitato alla runtime esatta.
     runtime_dir = Path(__file__).resolve().parent
     if runtime_dir.exists():
         args += ["--ro-bind", str(runtime_dir), str(runtime_dir)]
 
-    # Gli executor devono vedere lo stesso ambiente Python del core. In una
-    # installazione standard ``sys.executable`` vive nella .venv Metnos e i
-    # pacchetti non sono presenti nel Python di sistema.
-    runtime_prefix = Path(sys.prefix)
-    if sys.prefix != sys.base_prefix and runtime_prefix.exists():
-        args += ["--ro-bind", str(runtime_prefix), str(runtime_prefix)]
-    else:
+    # Gli executor devono vedere l'installazione esatta dell'interprete del
+    # core.  Questo include Python non-venv collocati fuori da /usr, senza mai
+    # allargare il bind al loro genitore generico (per esempio /opt).
+    for interpreter_source, interpreter_destination in (
+        python_runtime_bindings(code_dir, runtime_dir)
+    ):
+        args += [
+            "--ro-bind", str(interpreter_source),
+            str(interpreter_destination),
+        ]
+
+    if sys.prefix == sys.base_prefix:
         # Developer/system-Python runs may resolve required wheels from the
         # standard per-user site directory (for example numpy). Bind that
         # package root read-only, never the surrounding HOME tree.
@@ -631,12 +838,60 @@ def _build_bwrap_args(
         if Path(p).exists():
             args += ["--bind", str(p), str(p)]
 
+    args += _local_model_projection_args(capabilities)
+
+    # Signer keys authenticate projected executor code.  Never reproduce their
+    # configurable host path: an executor could replace one of its writable
+    # ancestors and insert a sibling key.  A top-level private mount has no
+    # replaceable ancestor, contains only parent-selected keys, and is sealed
+    # before the child starts.
+    sealed_by_name: dict[str, Path] = {}
+    for value in sealed_ro_files or []:
+        path = Path(value)
+        parent = path.parent
+        try:
+            info = path.lstat()
+            parent_info = parent.lstat()
+        except OSError as exc:
+            raise SandboxUnavailableError(
+                "sealed read-only file is unavailable",
+            ) from exc
+        if (
+            not path.is_absolute()
+            or not stat.S_ISREG(info.st_mode)
+            or stat.S_ISLNK(info.st_mode)
+            or info.st_nlink != 1
+            or info.st_size != 32
+            or not stat.S_ISDIR(parent_info.st_mode)
+            or stat.S_ISLNK(parent_info.st_mode)
+            or not re.fullmatch(
+                r"[A-Za-z0-9_.-]+(?:\.pub|_pub\.bin)", path.name,
+            )
+        ):
+            raise SandboxUnavailableError(
+                "sealed read-only file is unsafe",
+            )
+        existing = sealed_by_name.setdefault(path.name, path)
+        if existing != path:
+            raise SandboxUnavailableError(
+                "sealed read-only file names collide",
+            )
+    root = _PROJECTED_TRUST_ROOT_V1
+    args += ["--tmpfs", str(root)]
+    for name, path in sorted(sealed_by_name.items()):
+        args += ["--ro-bind", str(path), str(root / name)]
+    args += ["--remount-ro", str(root)]
+
     # Network: se nessuna capability (o extra del chiamante) lo richiede, isola
     if not has_network:
         args += ["--unshare-net"]
 
     # Isolamento utente/IPC/uts: sempre on
-    args += ["--unshare-user", "--unshare-ipc", "--unshare-uts"]
+    args += ["--unshare-user"]
+    # A second user+mount namespace could overmount the sealed ring, including
+    # its deliberately empty form for executors without code dependencies.
+    args += ["--disable-userns", "--assert-userns-disabled"]
+    args += ["--unshare-ipc", "--unshare-uts"]
 
     # Niente nuovi privilegi
     args += ["--die-with-parent"]
@@ -651,17 +906,18 @@ def wrap_command(
     autonomy: str = "supervised",
     extra_ro: list | None = None,
     extra_rw: list | None = None,
+    sealed_ro_files: list | None = None,
     force_net: bool = False,
 ) -> list[str]:
-    """Wrappa un comando in bubblewrap se disponibile e non disabilitato.
+    """Costruisce il comando isolato o fallisce chiuso.
 
     `executor` deve avere `code_path` (Path) e `capabilities` (lista
     di dict o str, formato manifest). `force_net=True` NON isola la rete
     anche senza capability network (usato con `skill_extras`).
 
-    Ritorna la lista comando wrappata (es. ['bwrap', '--ro-bind', ..., '--',
-    'python3', 'read_files.py']) oppure il comando invariato se bwrap manca o
-    `METNOS_SANDBOX=0` e' settato.
+    Ritorna la lista Bubblewrap (per esempio ``['bwrap', '--ro-bind', ...]``).
+    Se Bubblewrap manca o e' disabilitato, ogni executor ordinario viene
+    rifiutato; soltanto il broker undo byte-esatto conserva il comando diretto.
     """
     # ``system:undo`` e' una capability di broker, non una normale authority
     # su un path statico. L'executor firmato deve leggere il journal runtime e
@@ -676,10 +932,24 @@ def wrap_command(
         cap.get("name") if isinstance(cap, dict) else str(cap or "")
         for cap in (getattr(executor, "capabilities", None) or [])
     }
-    if "system:undo" in capability_names:
+    trusted_undo_broker = (
+        "system:undo" in capability_names
+        and getattr(executor, "name", "") == "undo_last_turn"
+        and getattr(executor, "source", "") == "handcrafted"
+        and getattr(executor, "membership", "") == "builtin"
+        and getattr(executor, "digest", "") == _TRUSTED_UNDO_BROKER_DIGEST_V1
+        and tuple(getattr(executor, "code_files", ()) or ())
+        == ("undo_last_turn.py",)
+        and not tuple(getattr(executor, "code_dependencies", ()) or ())
+    )
+    if trusted_undo_broker:
         return list(command)
 
     if sandbox_disabled() or not bwrap_available():
+        if requires_os_sandbox(executor):
+            raise SandboxUnavailableError(
+                "executor OS sandbox is required but unavailable",
+            )
         return list(command)
 
     code_path = Path(getattr(executor, "code_path", "."))
@@ -690,6 +960,7 @@ def wrap_command(
         autonomy=autonomy,
         extra_ro=[Path(p) for p in (extra_ro or [])],
         extra_rw=[Path(p) for p in (extra_rw or [])],
+        sealed_ro_files=[Path(p) for p in (sealed_ro_files or [])],
         force_net=force_net,
     )
     return ["bwrap", *bwrap_args, "--", *command]
@@ -832,11 +1103,11 @@ def _safe_mail_accounts(raw) -> tuple[list[str], bool]:
     return out, False
 
 
-def mail_extras(executor, args) -> tuple[list[Path], bool]:
-    """Read-only credential binds and network authority for local IMAP.
+def mail_extras(executor, args) -> tuple[list[Path], bool, dict[str, str]]:
+    """Read-only credential binds and network authority for local mail.
 
     The grant exists only when the signed manifest declares an effective
-    ``mail:read`` or ``mail:write`` capability. Invocation arguments can then
+    ``mail:read``, ``mail:write`` or ``mail:send`` capability. Arguments can then
     *narrow* it to the selected channel/backend/account; they can never create
     it. Google mail is governed by ``provider:access`` and Telegram inquiry has
     no synchronous mailbox, so neither receives the local IMAP vault surface.
@@ -845,6 +1116,10 @@ def mail_extras(executor, args) -> tuple[list[Path], bool]:
     this resolver binds individual ``smtp_<account>.json.age`` files, never
     the whole vault. ``account='all'`` expands only the ``smtp_*`` subset and
     configured mail env files.
+
+    A local sender's default is read once per invocation. The returned child
+    environment carries that same selection, without exporting private config
+    or changing the server's environment across concurrent invocations.
     """
     from capabilities import effective_capabilities
 
@@ -853,24 +1128,38 @@ def mail_extras(executor, args) -> tuple[list[Path], bool]:
         getattr(executor, "args_schema", None) or {},
         args,
     )
-    if not any(cap.get("name") in {"mail:read", "mail:write"}
-               for cap in effective):
-        return [], False
+    mail_modes = {cap.get("name") for cap in effective}
+    if not mail_modes.intersection({"mail:read", "mail:write", "mail:send"}):
+        return [], False, {}
 
     invocation = args if isinstance(args, dict) else {}
     channel = str(invocation.get("via_channel") or "email").casefold()
     client = str(invocation.get("client") or "metnos").casefold()
-    if channel not in {"email", "mail"} or client != "metnos":
-        return [], False
+    sending = "mail:send" in mail_modes
+    channels = {"email", "mail", "auto"} if sending else {"email", "mail"}
+    if channel not in channels or client != "metnos":
+        return [], False, {}
 
-    accounts, all_accounts = _safe_mail_accounts(invocation.get("account"))
+    account = invocation.get("account")
+    environment: dict[str, str] = {}
+    if sending and account is None:
+        from runtime_settings import mail_default_account
+
+        account = mail_default_account()
+        environment["METNOS_DEFAULT_MAIL_ACCOUNT"] = account
+    accounts, all_accounts = _safe_mail_accounts(account)
+    if sending and not mail_modes.intersection({"mail:read", "mail:write"}):
+        # SMTP sending selects one account; the reader's 'all' expansion
+        # must not expose other credentials before an invalid send fails.
+        if all_accounts or isinstance(account, list):
+            return [], True, environment
     try:
         import config as _config
         import credentials as _credentials
     except ImportError:
         # Keep the network decision capability-derived. The executor will
         # report missing credentials honestly if canonical paths cannot resolve.
-        return [], True
+        return [], True, environment
 
     config_root = Path(_config.PATH_USER_CONFIG)
     vault_root = Path(_credentials.CRED_DIR)
@@ -910,7 +1199,7 @@ def mail_extras(executor, args) -> tuple[list[Path], bool]:
             continue
         seen.add(key)
         paths.append(path)
-    return paths, True
+    return paths, True, environment
 
 
 def dialog_extras(executor, *, actor: str | None,

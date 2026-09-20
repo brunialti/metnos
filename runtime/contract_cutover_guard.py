@@ -8,7 +8,12 @@ verified store-only catalog load.
 from __future__ import annotations
 
 from contextlib import contextmanager
+import os
 import sys
+import threading
+
+from executor_birth_maintenance_units import QUIESCENT_LOAD_STATES_V1
+from executor_lifecycle_state import RESTRICTED_REJECT_PREFIX
 
 
 class ContractCutoverGuardError(RuntimeError):
@@ -19,17 +24,17 @@ class ContractCutoverGuardError(RuntimeError):
 
 
 _QUIESCENT_STATES = frozenset({"inactive", "failed"})
+_MAINTENANCE_SESSION_SEAL_V1 = object()
+_MAINTENANCE_SESSION_GUARD_V1 = threading.Lock()
+_ACTIVE_MAINTENANCE_SESSIONS_V1: dict[object, object] = {}
 
 
-def prove_stack_stopped(reconciler) -> dict:
-    """Prove that every catalog consumer/writer and browser ingress is idle."""
-    from stack_reconcile import CONTRACT_CUTOVER_UNITS
+def _prove_stack_stopped_v1(reconciler, *, load_states: frozenset[str]) -> dict:
+    """Prove every catalog consumer and browser ingress remains idle."""
+    from executor_birth_maintenance_units import MAINTENANCE_TARGETS_V1
 
-    observations: dict[str, str] = {}
-    targets = tuple(("user", unit) for unit in CONTRACT_CUTOVER_UNITS) + (
-        ("system", "metnos-http.service"),
-    )
-    for scope, unit in targets:
+    observations: list[dict[str, object]] = []
+    for scope, unit in MAINTENANCE_TARGETS_V1:
         state = reconciler.systemctl.show(unit, scope)
         load_state = str(state.get("LoadState") or "")
         active_state = str(state.get("ActiveState") or "")
@@ -37,8 +42,7 @@ def prove_stack_stopped(reconciler) -> dict:
             main_pid = int(state.get("MainPID") or 0)
         except (TypeError, ValueError):
             main_pid = -1
-        observations[f"{scope}:{unit}"] = active_state or load_state
-        if load_state in {"", "error"} or state.get("ManagerError"):
+        if load_state not in load_states or state.get("ManagerError"):
             raise ContractCutoverGuardError(
                 "quiescence_unknown", f"cannot inspect {scope} unit {unit}",
             )
@@ -47,6 +51,13 @@ def prove_stack_stopped(reconciler) -> dict:
                 "cutover_blocked",
                 f"{scope} unit {unit} is {active_state or load_state}",
             )
+        observations.append({
+            "scope": scope,
+            "unit": unit,
+            "load_state": load_state,
+            "active_state": active_state,
+            "main_pid": main_pid,
+        })
     try:
         browser = reconciler.require_quiescent()
     except Exception as exc:
@@ -63,55 +74,379 @@ def prove_stack_stopped(reconciler) -> dict:
     return {"source": browser["source"], "units": observations}
 
 
+def prove_stack_stopped(reconciler) -> dict:
+    """Prove every unit is loaded, absent or retired, and remains idle."""
+    return _prove_stack_stopped_v1(
+        reconciler, load_states=QUIESCENT_LOAD_STATES_V1,
+    )
+
+
+def _prove_transition_stack_stopped_v1(reconciler) -> dict:
+    """Accept only named quiescent load states while topology is replaced."""
+    return _prove_stack_stopped_v1(
+        reconciler, load_states=QUIESCENT_LOAD_STATES_V1,
+    )
+
+
+def _installed_service_units_v1() -> tuple[tuple[str, str], ...] | None:
+    """The units this installation runs, or None when none is installed yet.
+
+    A genuinely initial installation reaches the barrier before any chain
+    exists, and the reader cannot tell absent state from damaged state when
+    even its own root is missing.  Asking the filesystem first keeps that one
+    case distinct without softening anything else: a chain that is there and
+    unreadable still refuses, and removing the root to get past here destroys
+    the authority every other guard depends on.
+    """
+    from executor_birth_ownership_chain import (
+        DEFAULT_OWNERSHIP_CHAIN_ROOT_V1, VerifiedOwnershipChain,
+        inspect_ownership_chain_state_v1,
+    )
+    from services_registry import owned_service_units_v1
+
+    try:
+        installed = DEFAULT_OWNERSHIP_CHAIN_ROOT_V1.exists()
+    except OSError as exc:
+        raise ContractCutoverGuardError(
+            "quiescence_unknown", "installed ownership chain is unreadable",
+        ) from exc
+    if not installed:
+        return None
+    try:
+        chain = inspect_ownership_chain_state_v1()
+    except Exception as exc:
+        raise ContractCutoverGuardError(
+            "quiescence_unknown", "installed ownership chain is unreadable",
+        ) from exc
+    # The reader returns either a verified chain or the initial state. Testing
+    # for the verified one keeps this a reader: naming the initial type would
+    # exercise a `store_write` API and carry that capability up through every
+    # caller of the barrier.
+    if type(chain) is not VerifiedOwnershipChain:
+        return None
+    try:
+        units = owned_service_units_v1()
+    except Exception as exc:
+        raise ContractCutoverGuardError(
+            "quiescence_unknown", "installed service catalog is unreadable",
+        ) from exc
+    if not units:
+        raise ContractCutoverGuardError(
+            "quiescence_unknown", "installed service catalog declares no unit",
+        )
+    return units
+
+
+def _prove_installed_topology_stopped_v1(reconciler) -> None:
+    """Prove the units this installation actually runs are idle.
+
+    `MAINTENANCE_TARGETS_V1` is the legacy bindings list: the entry points the
+    F4 transition retired.  They are masked, so asking whether they are stopped
+    always answers yes, while the services that really run now carry the same
+    names in system scope.  Observing the retired counterparts proves nothing
+    about the worker and the daemon that write this installation's stores.
+
+    Observations stay outside the historical proof schema, like the release
+    ones, so the evidence a topology transition compares byte for byte is
+    unchanged.  The caller that already passes a release catalog is served by
+    `_prove_release_stopped_v1`: its successor process legitimately holds a
+    different catalog from the one still selected here.
+    """
+    from executor_birth_maintenance_units import QUIESCENT_LOAD_STATES_V1
+
+    units = _installed_service_units_v1()
+    if units is None:
+        return
+    for scope, unit in units:
+        state = reconciler.systemctl.show(unit, scope)
+        load_state = str(state.get("LoadState") or "")
+        try:
+            main_pid = int(state.get("MainPID") or 0)
+        except (TypeError, ValueError):
+            main_pid = -1
+        if load_state not in QUIESCENT_LOAD_STATES_V1 or state.get("ManagerError"):
+            raise ContractCutoverGuardError(
+                "quiescence_unknown", f"cannot inspect {scope} unit {unit}",
+            )
+        active_state = str(state.get("ActiveState") or "")
+        if active_state not in _QUIESCENT_STATES or main_pid != 0:
+            raise ContractCutoverGuardError(
+                "cutover_blocked",
+                f"{scope} unit {unit} is {active_state or load_state}",
+            )
+
+
+def _prove_release_stopped_v1(reconciler, catalog) -> None:
+    """Keep successor-only observations outside the historical proof schema."""
+    from install.executor_birth_systemd_quiescence import (
+        _plan_release_systemd_quiescence_v1,
+    )
+
+    plan = _plan_release_systemd_quiescence_v1(catalog)
+    for unit in plan.batches[0].units:
+        state = reconciler.systemctl.show(unit, "system")
+        try:
+            pid = int(state.get("MainPID") or 0)
+        except (TypeError, ValueError):
+            pid = -1
+        if (
+            state.get("LoadState") != "loaded" or state.get("ManagerError")
+            or state.get("ActiveState") not in _QUIESCENT_STATES or pid != 0
+        ):
+            raise ContractCutoverGuardError("cutover_blocked", unit)
+
+
+class _MaintenanceProofV1:
+    """Preserve the legacy boolean guard and expose fresh canonical evidence."""
+
+    __slots__ = (
+        "_reconciler", "_token", "_owner_process", "_active", "_seal",
+        "_transition_evidence", "_release_catalog",
+    )
+
+    def __init__(self, reconciler, token: object, seal: object, release_catalog=None) -> None:
+        if seal is not _MAINTENANCE_SESSION_SEAL_V1:
+            raise ContractCutoverGuardError("cutover_session_invalid")
+        self._reconciler = reconciler
+        self._token = token
+        self._owner_process = os.getpid()
+        self._active = True
+        self._seal = seal
+        self._transition_evidence = None
+        self._release_catalog = release_catalog
+
+    def __copy__(self):
+        raise TypeError("maintenance sessions cannot be copied")
+
+    def __deepcopy__(self, _memo):
+        raise TypeError("maintenance sessions cannot be copied")
+
+    def __reduce__(self):
+        raise TypeError("maintenance sessions cannot be serialized")
+
+    def __reduce_ex__(self, _protocol):
+        raise TypeError("maintenance sessions cannot be serialized")
+
+    def observe(self) -> dict:
+        if self._release_catalog is not None:
+            _prove_release_stopped_v1(self._reconciler, self._release_catalog)
+        else:
+            _prove_installed_topology_stopped_v1(self._reconciler)
+        if self._transition_evidence is not None:
+            return _prove_transition_stack_stopped_v1(self._reconciler)
+        return prove_stack_stopped(self._reconciler)
+
+    def __call__(self) -> bool:
+        self.observe()
+        return True
+
+
+def _require_maintenance_session_v1(session: object) -> None:
+    """Require the exact live proof yielded while lifecycle exclusion is held."""
+    if type(session) is not _MaintenanceProofV1:
+        raise ContractCutoverGuardError("cutover_session_invalid")
+    with _MAINTENANCE_SESSION_GUARD_V1:
+        registered = _ACTIVE_MAINTENANCE_SESSIONS_V1.get(session._token)
+    if (
+        session._seal is not _MAINTENANCE_SESSION_SEAL_V1
+        or registered is not session
+        or not session._active
+        or session._owner_process != os.getpid()
+    ):
+        raise ContractCutoverGuardError("cutover_session_invalid")
+    session.observe()
+
+
+def _begin_topology_transition_v1(
+    session: object, expected_evidence: bytes,
+) -> None:
+    """Keep the same live lock while admitted unit load states change."""
+    from executor_birth_ownership_preflight import canonical_maintenance_proof
+
+    if (
+        type(session) is not _MaintenanceProofV1
+        or type(expected_evidence) is not bytes
+    ):
+        raise ContractCutoverGuardError("cutover_session_invalid")
+    _require_maintenance_session_v1(session)
+    observed = session.observe()
+    current = canonical_maintenance_proof(
+        source=observed["source"], units=observed["units"],
+    )
+    if current != expected_evidence:
+        raise ContractCutoverGuardError("cutover_session_invalid")
+    session._transition_evidence = expected_evidence
+    _require_maintenance_session_v1(session)
+
+
+def _maintenance_evidence_under_transition_v1(session: object) -> bytes:
+    """Return the initial proof only after fresh transition quiescence."""
+    from executor_birth_ownership_preflight import canonical_maintenance_proof
+
+    _require_maintenance_session_v1(session)
+    if type(session) is not _MaintenanceProofV1:
+        raise ContractCutoverGuardError("cutover_session_invalid")
+    if session._transition_evidence is not None:
+        return session._transition_evidence
+    observed = session.observe()
+    return canonical_maintenance_proof(
+        source=observed["source"], units=observed["units"],
+    )
+
+
 @contextmanager
-def contract_cutover_guard():
-    """Hold lifecycle exclusion while a stopped-stack proof remains valid."""
+def _contract_cutover_guard_core_v1(
+    reconciler, *, catalog_trusted_owner: tuple[int, int] | None = None,
+    release_catalog=None,
+):
+    """Hold lifecycle exclusion for one already bound service observer."""
     if sys.platform != "linux":
         raise ContractCutoverGuardError(
             "cutover_platform_unsupported",
             "the managed Metnos server and its cutover require Linux/systemd",
         )
-    from stack_reconcile import StackReconciler, catalog_reconcile_lock
+    from stack_reconcile import catalog_reconcile_lock
 
     # Fixed order shared with publishers: global catalog admission first,
     # lifecycle/service exclusion second. This waits for an in-flight commit
     # to finish before services are stopped and prevents every later authoring
     # or publication write until the first store-only load has succeeded.
-    guard = catalog_reconcile_lock(wait_s=2)
+    guard_options = {"wait_s": 2}
+    if catalog_trusted_owner is not None:
+        guard_options["catalog_trusted_owner"] = catalog_trusted_owner
     try:
+        if release_catalog is not None:
+            from pathlib import Path
+            import pwd
+
+            from config import PATH_USER_STATE
+            from executor_birth_account_identity import (
+                metnos_xdg_layout_v1, resolve_posix_account_v1,
+            )
+            from install.executor_birth_systemd_quiescence import (
+                _plan_release_systemd_quiescence_v1,
+            )
+
+            # The successor runs before its head is selected. Its ordinary
+            # readiness reader must reject that root mismatch; use the already
+            # bound previous system catalog instead, without weakening it.
+            _plan_release_systemd_quiescence_v1(release_catalog)
+            owner = catalog_trusted_owner
+            if (type(owner) is not tuple or len(owner) != 2
+                    or any(type(value) is not int for value in owner)
+                    or owner[0] <= 0 or owner[1] < 0):
+                raise ValueError("release lifecycle owner is unavailable")
+            account = resolve_posix_account_v1(pwd.getpwuid(owner[0]).pw_name)
+            state = metnos_xdg_layout_v1(account).state
+            if ((account.uid, account.gid) != owner
+                    or not state.is_absolute() or state != Path(PATH_USER_STATE)):
+                raise ValueError("release lifecycle identity or state changed")
+            guard_options.update(
+                path=state / "metnos-stack-reconcile.lock", owner_uid=owner[0],
+            )
+        guard = catalog_reconcile_lock(**guard_options)
         guard.__enter__()
     except Exception as exc:
         raise ContractCutoverGuardError(
             "cutover_lock_unavailable", str(exc),
         ) from exc
     try:
-        reconciler = StackReconciler(default_write_report=False)
-        evidence = prove_stack_stopped(reconciler)
+        if release_catalog is not None:
+            from install.executor_birth_systemd_quiescence import (
+                _quiesce_release_systemd_core_v1, _SubprocessSystemdEffectsV1,
+            )
 
-        def proof() -> bool:
-            prove_stack_stopped(reconciler)
-            return True
-
-        yield proof, evidence
+            _quiesce_release_systemd_core_v1(
+                release_catalog, _SubprocessSystemdEffectsV1(),
+                lambda: reconciler.require_quiescent().get("ok") is True,
+            )
+        token = object()
+        proof = _MaintenanceProofV1(
+            reconciler, token, _MAINTENANCE_SESSION_SEAL_V1, release_catalog,
+        )
+        with _MAINTENANCE_SESSION_GUARD_V1:
+            _ACTIVE_MAINTENANCE_SESSIONS_V1[token] = proof
+        try:
+            evidence = proof.observe()
+            yield proof, evidence
+        finally:
+            with _MAINTENANCE_SESSION_GUARD_V1:
+                proof._active = False
+                _ACTIVE_MAINTENANCE_SESSIONS_V1.pop(token, None)
     finally:
         guard.__exit__(None, None, None)
 
 
-def _verify_store_only_catalog_locked() -> dict[str, int]:
+@contextmanager
+def contract_cutover_guard():
+    """Hold lifecycle exclusion using the process's ordinary service identity."""
+    from stack_reconcile import StackReconciler
+
+    with _contract_cutover_guard_core_v1(
+        StackReconciler(default_write_report=False),
+    ) as boundary:
+        yield boundary
+
+
+@contextmanager
+def _contract_cutover_guard_for_service_user_v1(
+    service_user: str,
+    *, catalog_trusted_owner: tuple[int, int] | None = None,
+    release_catalog=None,
+):
+    """Bind user-scope observations to the verified deployment account."""
+    if (
+        type(service_user) is not str or not service_user
+        or service_user != service_user.strip()
+        or any(character in service_user for character in "\x00\r\n")
+    ):
+        raise ContractCutoverGuardError("service_user_invalid")
+    from stack_reconcile import StackReconciler, Systemctl
+
+    systemctl = Systemctl(service_user=service_user)
+    try:
+        systemctl._service_uid()
+    except Exception as exc:
+        raise ContractCutoverGuardError("service_user_invalid") from exc
+    reconciler = StackReconciler(
+        systemctl=systemctl, default_write_report=False,
+    )
+    with _contract_cutover_guard_core_v1(
+        reconciler, catalog_trusted_owner=catalog_trusted_owner,
+        release_catalog=release_catalog,
+    ) as boundary:
+        yield boundary
+
+
+def _verify_store_only_catalog_locked(
+    *, catalog_trusted_owner: tuple[int, int] | None = None,
+    trusted_publics: tuple | None = None,
+) -> dict[str, int]:
     """Authenticate all bindings and perform the first cold loader pass."""
     from contract_store import ContractRetirement, current_contract
-    from loader import invalidate_catalog_cache, load_catalog
+    from loader import _load_catalog_for_cutover_audit_v1
     from manifest_inventory import ManifestStatus, inventory_manifests
-    from sign import list_trusted_publics
 
-    structural = inventory_manifests()
+    skill_enabled = None
+    if catalog_trusted_owner is not None:
+        from skill_registry import _skill_enabled_snapshot_for_owner_v1
+
+        skill_enabled = _skill_enabled_snapshot_for_owner_v1(
+            catalog_trusted_owner,
+        )
+    structural = inventory_manifests(skill_enabled=skill_enabled)
     if structural.problems:
         detail = "; ".join(
             f"{problem.code}:{problem.path}"
             for problem in structural.problems[:12]
         )
         raise ContractCutoverGuardError("store_inventory_invalid", detail)
-    trusted = tuple(list_trusted_publics())
+    if trusted_publics is None:
+        from sign import list_trusted_publics
+
+        trusted = tuple(list_trusted_publics())
+    else:
+        trusted = trusted_publics
     if not trusted:
         raise ContractCutoverGuardError("trusted_keys_missing")
     expected: dict[str, tuple[str, str]] = {}
@@ -132,12 +467,14 @@ def _verify_store_only_catalog_locked() -> dict[str, int]:
             ref.contract_id.storage_key,
             str(revision.generation_id),
         )
-    invalidate_catalog_cache()
-    catalog = load_catalog(verify=True)
+    catalog = _load_catalog_for_cutover_audit_v1(
+        catalog_trusted_owner=catalog_trusted_owner,
+        trusted_publics=trusted,
+    )
     fatal = [
         (path, reason)
         for path, reason in catalog.rejected
-        if not reason.startswith("archived by executor_aging")
+        if not reason.startswith(RESTRICTED_REJECT_PREFIX)
         and not reason.startswith("contract_retired:")
     ]
     if fatal:
@@ -151,7 +488,7 @@ def _verify_store_only_catalog_locked() -> dict[str, int]:
         if executor is not None and executor.generation_id == generation:
             continue
         intentionally_archived = any(
-            reason.startswith("archived by executor_aging")
+            reason.startswith(RESTRICTED_REJECT_PREFIX)
             and storage_key in path and generation in path
             for path, reason in catalog.rejected
         )

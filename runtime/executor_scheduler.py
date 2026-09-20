@@ -24,8 +24,9 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Callable, TypeVar
 
-from executor_aging import record_invocation
+from executor_lifecycle_state import record_invocation
 from executor_metadata import DEFAULT_EXECUTION_POLICY
+from execution_isolation import InvocationIsolation, validate_targets
 from logging_setup import get_logger
 
 
@@ -60,6 +61,7 @@ class _ContextFacts:
     priority: str
     resources: tuple[tuple[str, int], ...]
     deadline: float | None
+    concurrency_targets: tuple[str, ...]
 
 
 def _execution_context_facts(context: object) -> _ContextFacts:
@@ -107,11 +109,16 @@ def _execution_context_facts(context: object) -> _ContextFacts:
             raise SchedulerContextError("execution context deadline needs a timezone")
         remaining = instant.astimezone(timezone.utc).timestamp() - time.time()
         deadline = time.monotonic() + max(0.0, remaining)
+    try:
+        targets = validate_targets(getattr(context, "concurrency_targets", ()))
+    except ValueError as exc:
+        raise SchedulerContextError(str(exc)) from exc
     return _ContextFacts(
         owner=values["owner_user_id"],
         priority=str(priority),
         resources=tuple(normalized),
         deadline=deadline,
+        concurrency_targets=targets,
     )
 
 
@@ -221,10 +228,10 @@ class _FairGate:
 class _CapacitySlot:
     """One atomic weighted resource counter shared by all scheduler paths."""
 
-    def __init__(self, capacity: int) -> None:
+    def __init__(self, capacity: int, *, condition: threading.Condition | None = None) -> None:
         self.capacity = max(1, int(capacity))
         self._available = self.capacity
-        self._condition = threading.Condition()
+        self._condition = condition if condition is not None else threading.Condition()
 
     def acquire(self, timeout: float | None = None) -> bool:
         deadline = None if timeout is None else time.monotonic() + max(0.0, timeout)
@@ -348,14 +355,6 @@ class SchedulerMetrics:
             }
 
 
-@dataclass
-class _IdentityGuard:
-    """One keyed serialization lock with bounded registry lifetime."""
-
-    lock: threading.Lock = field(default_factory=threading.Lock)
-    users: int = 0
-
-
 class ExecutorScheduler:
     """Central scheduler with serial-first policy and bounded resources."""
 
@@ -399,28 +398,17 @@ class ExecutorScheduler:
         self.class_overrides = configured_overrides
         self.metrics = SchedulerMetrics()
         self._global_slots = threading.BoundedSemaphore(self.max_in_flight)
+        from runtime_settings import execution_resource_limits
+
         limits = resource_limits or {
-            "default": self.max_in_flight,
-            "local_io": _bounded_env_int(
-                "METNOS_EXECUTOR_LOCAL_IO_LIMIT", 16, 1, 256),
-            "network_io": _bounded_env_int(
-                "METNOS_EXECUTOR_NETWORK_IO_LIMIT", 16, 1, 256),
-            "cpu": _bounded_env_int(
-                "METNOS_EXECUTOR_CPU_LIMIT", 2, 1, 64),
-            "llm": _bounded_env_int(
-                "METNOS_LLM_MAX_IN_FLIGHT", 1, 1, 32),
-            "vlm": _bounded_env_int(
-                "METNOS_VLM_MAX_IN_FLIGHT", 1, 1, 32),
-            "browser": _bounded_env_int(
-                "METNOS_EXECUTOR_BROWSER_LIMIT", 4, 1, 64),
-            "device": _bounded_env_int(
-                "METNOS_EXECUTOR_DEVICE_LIMIT", 8, 1, 128),
+            "default": self.max_in_flight, **execution_resource_limits(),
         }
         self._resource_limits = {
             str(name): max(1, int(limit)) for name, limit in limits.items()
         }
+        self._resource_condition = threading.Condition()
         self._resource_slots = {
-            name: _CapacitySlot(limit)
+            name: _CapacitySlot(limit, condition=self._resource_condition)
             for name, limit in self._resource_limits.items()
         }
         self._fair_gate = _FairGate(max(1, self.max_in_flight - 1))
@@ -432,9 +420,7 @@ class ExecutorScheduler:
         )
         self._policy_slots: dict[tuple[str, int], threading.BoundedSemaphore] = {}
         self._policy_slots_lock = threading.Lock()
-        self._identity_slots: dict[
-            tuple[str, str, str], _IdentityGuard] = {}
-        self._identity_slots_lock = threading.Lock()
+        self._isolation = InvocationIsolation()
 
     @staticmethod
     def policy_for(executor: object) -> dict:
@@ -537,36 +523,25 @@ class ExecutorScheduler:
             return self._policy_slots.setdefault(
                 key, threading.BoundedSemaphore(1))
 
-    def _identity_slot(
-            self, executor: object,
-            *, concurrency_identity: str | None = None,
-    ) -> tuple[tuple[str, str, str], _IdentityGuard] | None:
+    def _isolation_targets(
+            self, executor: object, *, concurrency_identity: str | None,
+            targets: tuple[str, ...] = (),
+    ) -> tuple[str, tuple[str, ...] | None, str | None]:
+        """Clamp verified target facts with the unchanged signed policy."""
         policy = self.policy_for(executor)
         key_kind = str(policy.get("concurrency_key") or "none")
-        if (key_kind == "none" or not concurrency_identity
-                or not self.can_parallelize(
-                    executor, concurrency_identity=concurrency_identity)):
-            return None
-        name = str(getattr(executor, "name", "unknown") or "unknown")
-        key = (name, key_kind, str(concurrency_identity))
-        with self._identity_slots_lock:
-            guard = self._identity_slots.setdefault(key, _IdentityGuard())
-            # Count both holders and waiters before acquiring the lock.  This
-            # prevents a just-released key from being removed while another
-            # caller is already waiting on the same guard.
-            guard.users += 1
-            return key, guard
-
-    def _release_identity_slot(
-            self, token: tuple[tuple[str, str, str], _IdentityGuard],
-            *, acquired: bool = True) -> None:
-        key, guard = token
-        if acquired:
-            guard.lock.release()
-        with self._identity_slots_lock:
-            guard.users = max(0, guard.users - 1)
-            if guard.users == 0 and self._identity_slots.get(key) is guard:
-                self._identity_slots.pop(key, None)
+        if targets:
+            if key_kind == "none" or (
+                concurrency_identity is not None and concurrency_identity not in targets
+            ):
+                raise SchedulerContextError("execution targets conflict with the declared identity")
+            identity = targets[0]
+        else:
+            identity = concurrency_identity
+            targets = (str(identity),) if identity else ()
+        if not self.can_parallelize(executor, concurrency_identity=identity):
+            return key_kind, None, identity
+        return key_kind, targets, identity
 
     @staticmethod
     def _acquire(slot, deadline: float | None) -> bool:
@@ -577,15 +552,6 @@ class ExecutorScheduler:
             return True
         remaining = deadline - time.monotonic()
         return remaining > 0 and bool(slot.acquire(timeout=remaining))
-
-    @staticmethod
-    def _acquire_amount(slot, amount: int, deadline: float | None) -> bool:
-        acquire_many = getattr(slot, "acquire_many", None)
-        if callable(acquire_many):
-            return bool(acquire_many(amount, deadline))
-        if amount != 1:
-            raise SchedulerContextError("resource slot does not support atomic claims")
-        return ExecutorScheduler._acquire(slot, deadline)
 
     @staticmethod
     def _release_amount(slot, amount: int) -> None:
@@ -618,13 +584,14 @@ class ExecutorScheduler:
         resource_slot = self._resource_slots.get(
             resource_class, self._resource_slots.get("default"))
         queued_at = time.perf_counter()
-        executor_slot = self._executor_slot(
+        key_kind, targets, identity = self._isolation_targets(
             executor, concurrency_identity=concurrency_identity)
+        executor_slot = self._executor_slot(
+            executor, concurrency_identity=identity)
         identity_token = None
         global_acquired = False
         resource_acquired = False
         executor_acquired = False
-        identity_acquired = False
         deadline = (
             None if admission_timeout_s is None
             else time.monotonic() + max(0.0, float(admission_timeout_s))
@@ -634,28 +601,23 @@ class ExecutorScheduler:
             if not global_acquired:
                 raise SchedulerAdmissionTimeout(
                     f"scheduler admission timed out for {name}")
-            if resource_slot is not None:
-                resource_acquired = self._acquire(resource_slot, deadline)
-                if not resource_acquired:
-                    raise SchedulerAdmissionTimeout(
-                        f"resource admission timed out for {name}")
             if executor_slot is not None:
                 executor_acquired = self._acquire(executor_slot, deadline)
                 if not executor_acquired:
                     raise SchedulerAdmissionTimeout(
                         f"executor admission timed out for {name}")
-            identity_token = self._identity_slot(
-                executor, concurrency_identity=concurrency_identity)
-            if identity_token is not None:
-                identity_acquired = self._acquire(
-                    identity_token[1].lock, deadline)
-                if not identity_acquired:
+            identity_token = self._isolation.acquire(name, key_kind, targets, deadline)
+            if identity_token is None:
+                raise SchedulerAdmissionTimeout(
+                    f"identity admission timed out for {name}")
+            if resource_slot is not None:
+                resource_acquired = self._acquire(resource_slot, deadline)
+                if not resource_acquired:
                     raise SchedulerAdmissionTimeout(
-                        f"identity admission timed out for {name}")
+                        f"resource admission timed out for {name}")
         except BaseException:
             if identity_token is not None:
-                self._release_identity_slot(
-                    identity_token, acquired=identity_acquired)
+                self._isolation.release(identity_token)
             if executor_slot is not None and executor_acquired:
                 executor_slot.release()
             if resource_slot is not None and resource_acquired:
@@ -666,7 +628,7 @@ class ExecutorScheduler:
 
         def release_slots() -> None:
             if identity_token is not None:
-                self._release_identity_slot(identity_token)
+                self._isolation.release(identity_token)
             if executor_slot is not None:
                 executor_slot.release()
             if resource_slot is not None:
@@ -705,8 +667,7 @@ class ExecutorScheduler:
             # This common point covers local, remote, builtin and parallel calls.
             # Internal slots have no code_path and therefore no executor lifecycle.
             if getattr(executor, "code_path", None) is not None:
-                record_invocation(
-                    str(getattr(executor, "name", "") or ""), ok=not failed)
+                record_invocation(executor, ok=not failed)
 
     def _invoke_with_context(
             self, executor: object, call: Callable[[], T],
@@ -716,6 +677,9 @@ class ExecutorScheduler:
         """Admit one durable call with fair ownership and multiple resources."""
 
         facts = _execution_context_facts(execution_context)
+        key_kind, targets, identity = self._isolation_targets(
+            executor, concurrency_identity=concurrency_identity,
+            targets=facts.concurrency_targets)
         explicit_deadline = (
             None if admission_timeout_s is None
             else time.monotonic() + max(0.0, float(admission_timeout_s))
@@ -723,7 +687,7 @@ class ExecutorScheduler:
         deadlines = [item for item in (facts.deadline, explicit_deadline) if item is not None]
         deadline = min(deadlines) if deadlines else None
         name = str(getattr(executor, "name", "unknown") or "unknown")
-        claims: list[tuple[str, object, int]] = []
+        claims: list[tuple[str, _CapacitySlot, int]] = []
         for resource_name, amount in facts.resources:
             if amount == 0:
                 continue
@@ -740,10 +704,9 @@ class ExecutorScheduler:
         global_acquired = False
         acquired_resources: list[tuple[object, int]] = []
         executor_slot = self._context_executor_slot(
-            executor, concurrency_identity=concurrency_identity)
+            executor, concurrency_identity=identity)
         executor_acquired = False
         identity_token = None
-        identity_acquired = False
         try:
             fair_acquired = self._fair_gate.acquire(
                 facts.owner, facts.priority, deadline)
@@ -754,28 +717,26 @@ class ExecutorScheduler:
                 raise SchedulerAdmissionTimeout(
                     f"scheduler admission timed out for {name}"
                 )
-            for resource_name, resource_slot, amount in claims:
-                if not self._acquire_amount(resource_slot, amount, deadline):
-                    raise SchedulerAdmissionTimeout(
-                        f"resource admission timed out for {name}:{resource_name}"
-                    )
-                acquired_resources.append((resource_slot, amount))
             executor_acquired = self._acquire(executor_slot, deadline)
             if not executor_acquired:
                 raise SchedulerAdmissionTimeout(
                     f"executor admission timed out for {name}"
                 )
-            identity_token = self._identity_slot(
-                executor, concurrency_identity=concurrency_identity)
-            if identity_token is not None:
-                identity_acquired = self._acquire(identity_token[1].lock, deadline)
-                if not identity_acquired:
-                    raise SchedulerAdmissionTimeout(
-                        f"identity admission timed out for {name}"
-                    )
+            identity_token = self._isolation.acquire(name, key_kind, targets, deadline)
+            if identity_token is None:
+                raise SchedulerAdmissionTimeout(
+                    f"identity admission timed out for {name}"
+                )
+            # Reserve the complete vector only after execution exclusion is
+            # available. Waiting for a model, device or conflicting writer
+            # must not hold CPU/IO capacity needed by an unrelated job.
+            if not self._acquire_resource_claims(claims, deadline):
+                raise SchedulerAdmissionTimeout(
+                    f"resource admission timed out for {name}")
+            acquired_resources = [(slot, amount) for _, slot, amount in claims]
         except BaseException:
             if identity_token is not None:
-                self._release_identity_slot(identity_token, acquired=identity_acquired)
+                self._isolation.release(identity_token)
             if executor_acquired:
                 executor_slot.release()
             for resource_slot, amount in reversed(acquired_resources):
@@ -788,7 +749,7 @@ class ExecutorScheduler:
 
         def release_slots() -> None:
             if identity_token is not None:
-                self._release_identity_slot(identity_token)
+                self._isolation.release(identity_token)
             executor_slot.release()
             for resource_slot, amount in reversed(acquired_resources):
                 self._release_amount(resource_slot, amount)
@@ -799,6 +760,29 @@ class ExecutorScheduler:
             executor, call, name=name, queued_at=queued_at,
             release_slots=release_slots,
         )
+
+    def _acquire_resource_claims(
+            self, claims: list[tuple[str, _CapacitySlot, int]],
+            deadline: float | None) -> bool:
+        """Reserve all resources together, without polling or holding a subset.
+
+        The condition also protects ordinary single-resource calls. Claims
+        and host limits retain their existing logical (not physical) units.
+        """
+        with self._resource_condition:
+            while any(slot._available < amount for _, slot, amount in claims):
+                if deadline is None:
+                    self._resource_condition.wait()
+                else:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        return False
+                    self._resource_condition.wait(remaining)
+            if deadline is not None and time.monotonic() >= deadline:
+                return False
+            for _, slot, amount in claims:
+                slot._available -= amount
+            return True
 
     def _thread_pool(self) -> ThreadPoolExecutor:
         with self._pool_lock:
@@ -972,6 +956,11 @@ def orchestration_capacity() -> int:
     """Return the deployment-clamped number of background controller lanes."""
 
     return _DEFAULT_SCHEDULER.orchestration_capacity
+
+
+def orchestration_resource_limits() -> dict[str, int]:
+    """Snapshot host ceilings for sizing controllers, never for admission."""
+    return dict(_DEFAULT_SCHEDULER._resource_limits)
 
 
 def submit_orchestration(call: Callable[[], T]) -> Future[T]:

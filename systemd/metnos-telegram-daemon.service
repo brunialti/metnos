@@ -20,7 +20,10 @@ PrivateTmp=true
 ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true
-RestrictNamespaces=true
+# No RestrictNamespaces: this daemon runs the turn pipeline, which confines
+# every executor in its own sandbox — a set of new namespaces. Forbidding
+# them here removes the only confinement there is, and the turn dies before
+# the executor starts.
 RestrictRealtime=true
 LockPersonality=true
 MemoryDenyWriteExecute=false

@@ -281,6 +281,50 @@ def make_execution_receipt(
                             dispatched_at, completed_at)
 
 
+_RECEIPT_RECORD_FIELDS = frozenset({
+    "schema_version", "receipt_id", "request_id", "turn_id", "reduced_query_ref",
+    "arguments_hash", "arguments", "output_hash", "reduced_output", "contract_id",
+    "executor_name", "candidate_id", "generation_id", "dispatched_at", "completed_at",
+})
+
+
+def execution_receipt_from_record(value: object) -> ExecutionReceipt:
+    """Rebuild the exact receipt the runtime retained in one persisted step.
+
+    Feedback arrives long after the turn, from another process, so the typed
+    value cannot survive in memory.  The record is the runtime's own
+    serialization and not a caller's claim: the field set is closed, nothing
+    is coerced, and the self-verifying identity is recomputed by the
+    constructor before the receipt can reach any mutating owner.
+    """
+    if not isinstance(value, Mapping) or set(value) != _RECEIPT_RECORD_FIELDS:
+        raise FeedbackError("feedback_binding_invalid", "execution_receipt record")
+    contract = value["contract_id"]
+    if (not isinstance(contract, Mapping)
+            or set(contract) != {"origin", "relative_manifest"}):
+        raise FeedbackError("feedback_binding_invalid", "contract_id")
+    arguments, output = value["arguments"], value["reduced_output"]
+    if not isinstance(arguments, Mapping) or not isinstance(output, Mapping):
+        raise FeedbackError("feedback_binding_invalid", "retained payload")
+    try:
+        from manifest_inventory import ManifestOrigin
+
+        contract_id = ContractId(
+            ManifestOrigin(contract["origin"]), contract["relative_manifest"])
+    except (TypeError, ValueError) as exc:
+        raise FeedbackError("feedback_binding_invalid", "contract_id") from exc
+    try:
+        return ExecutionReceipt(
+            value["schema_version"], value["receipt_id"], value["request_id"],
+            value["turn_id"], value["reduced_query_ref"], value["arguments_hash"],
+            dict(arguments), value["output_hash"], dict(output), contract_id,
+            value["executor_name"], value["candidate_id"], value["generation_id"],
+            value["dispatched_at"], value["completed_at"],
+        )
+    except TypeError as exc:
+        raise FeedbackError("feedback_binding_invalid", "execution_receipt record") from exc
+
+
 class QuarantineCAS(str, Enum):
     APPLIED = "applied"
     ALREADY_QUARANTINED = "already_quarantined"
@@ -355,6 +399,82 @@ def enqueue_failure_review_inactive(
         return True
     except sqlite3.IntegrityError as exc:
         raise FeedbackError("failure_review_enqueue_conflict") from exc
+    finally:
+        if connection.in_transaction:
+            connection.rollback()
+        connection.close()
+
+
+_REVIEW_REQUEST_FIELDS = frozenset({
+    "execution_receipt_id", "execution_receipt_hash", "candidate_id",
+    "generation_id", "failure_evidence_hash", "error_code",
+    "reduced_arguments", "reduced_output",
+})
+
+
+def _decode_failure_review_request(payload: bytes) -> FailureReviewRequest:
+    """Rebuild the exact enqueued request; reject anything else in that row."""
+    try:
+        value = json.loads(payload.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise FeedbackError("failure_review_queue_corrupt", "json") from exc
+    if not isinstance(value, dict) or set(value) != _REVIEW_REQUEST_FIELDS:
+        raise FeedbackError("failure_review_queue_corrupt", "fields")
+    if (not isinstance(value["reduced_arguments"], dict)
+            or not isinstance(value["reduced_output"], dict)):
+        raise FeedbackError("failure_review_queue_corrupt", "retained payload")
+    request = FailureReviewRequest(**value)
+    if _canonical({
+        "execution_receipt_id": request.execution_receipt_id,
+        "execution_receipt_hash": request.execution_receipt_hash,
+        "candidate_id": request.candidate_id,
+        "generation_id": request.generation_id,
+        "failure_evidence_hash": request.failure_evidence_hash,
+        "error_code": request.error_code,
+        "reduced_arguments": dict(request.reduced_arguments),
+        "reduced_output": dict(request.reduced_output),
+    }) != payload:
+        raise FeedbackError("failure_review_queue_corrupt", "noncanonical row")
+    return request
+
+
+def pending_failure_reviews(
+    *, db_path: Path, limit: int,
+) -> tuple[tuple[str, FailureReviewRequest], ...]:
+    """Read the oldest outstanding jobs without claiming or changing them."""
+    if not isinstance(limit, int) or isinstance(limit, bool) or limit <= 0:
+        raise FeedbackError("feedback_binding_invalid", "limit")
+    if not Path(db_path).is_file():
+        return ()
+    connection = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=5)
+    try:
+        rows = connection.execute(
+            "SELECT job_id,request_json FROM executor_failure_review_queue "
+            "ORDER BY created_at,job_id LIMIT ?", (limit,),
+        ).fetchall()
+    except sqlite3.OperationalError:
+        # The outbox table appears with the first enqueue; an installation
+        # that never quarantined anything simply has no work.
+        return ()
+    finally:
+        connection.close()
+    return tuple(
+        (job_id, _decode_failure_review_request(bytes(payload)))
+        for job_id, payload in rows
+    )
+
+
+def resolve_failure_review_job(job_id: str, *, db_path: Path) -> bool:
+    """Retire one finished job; repeating it is a no-op, never an error."""
+    _digest(job_id, "failure_job_id")
+    connection = sqlite3.connect(str(db_path), isolation_level=None, timeout=5)
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        removed = connection.execute(
+            "DELETE FROM executor_failure_review_queue WHERE job_id=?", (job_id,),
+        ).rowcount
+        connection.commit()
+        return bool(removed)
     finally:
         if connection.in_transaction:
             connection.rollback()

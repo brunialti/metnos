@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """coerce_args.py — FASE 3.1 provenienza args (spec
 `internal/design/spec_args_provenance_architecture.md`, 6-7/7/2026).
 

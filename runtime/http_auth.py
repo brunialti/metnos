@@ -124,7 +124,7 @@ LAN_NETS = _parse_lan_nets()
 #
 # Default = loopback: un reverse proxy locale consegna a 127.0.0.1. Override
 # (es. reverse-proxy su altro host LAN) via env `METNOS_TRUSTED_PROXIES`
-# come lista CIDR separata da virgole (es. "127.0.0.0/8,10.0.0.5/32").
+# come lista CIDR separata da virgole (es. "127.0.0.0/8,192.0.2.5/32").
 def _parse_trusted_proxies() -> tuple:
     raw = _os.environ.get("METNOS_TRUSTED_PROXIES", "").strip()
     if not raw:

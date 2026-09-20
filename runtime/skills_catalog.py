@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """runtime/skills_catalog — tassonomia delle SKILL first-party (asse 2 rilascio pubblico).
 
 NUOVA visione skill (vedi [[project-public-release-initiative]]): una **skill** è un

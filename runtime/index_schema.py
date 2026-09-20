@@ -97,6 +97,57 @@ def image_corpus_dir(base_path, *, explicit_root=None,
             corpus_digest(base_path, user_data_root=user_data_root))
 
 
+def resolve_image_index_dir(index_dir) -> Path:
+    """Pin one complete generation, while preserving the legacy in-place layout.
+
+    Readers call this once before opening metadata, entries or vectors. The
+    small root metadata document is the sole atomic publication reference;
+    generation directories never change after publication.
+    """
+    import json
+    import os
+    import re
+    import stat
+
+    root = Path(index_dir)
+    metadata = root / "meta.json"
+    if any(path.is_symlink() for path in (root, *root.parents, metadata)):
+        raise ValueError("unsafe image index reference")
+    if not metadata.exists():
+        return root
+    fd = os.open(metadata, os.O_RDONLY | os.O_NOFOLLOW)
+    try:
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode) or info.st_size > 262_144:
+            raise ValueError("invalid image index reference")
+        with os.fdopen(fd, "rb", closefd=False) as stream:
+            meta = json.loads(stream.read(262_145))
+    finally:
+        os.close(fd)
+    if not isinstance(meta, dict):
+        raise ValueError("invalid image index reference")
+    generation = meta.get("active_generation")
+    if generation is None:
+        return root
+    if (not isinstance(generation, str)
+            or not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", generation)):
+        raise ValueError("invalid image index generation")
+    # A caller may already hold a pinned generation. Resolving it again must
+    # not follow the active pointer or invent a nested generation directory.
+    directory = (root if root.parent.name == ".generations" and root.name == generation
+                 else root / ".generations" / generation)
+    if any(path.is_symlink() for path in (directory.parent, directory)):
+        raise ValueError("unsafe image index generation")
+    if not directory.is_dir():
+        raise ValueError("image index generation is missing")
+    for name in ("meta.json", "entries.jsonl", "embeddings_text.npy",
+                 "embeddings_face.npy", "embeddings_image.npy"):
+        artifact = directory / name
+        if artifact.is_symlink() or not artifact.is_file():
+            raise ValueError("image index generation is incomplete")
+    return directory
+
+
 def directory_size(path) -> int:
     """Dimensione best-effort di un albero; file illeggibili sono ignorati."""
     total = 0

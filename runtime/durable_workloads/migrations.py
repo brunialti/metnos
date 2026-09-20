@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Final
 
 
-CURRENT_SCHEMA_VERSION: Final[int] = 7
+CURRENT_SCHEMA_VERSION: Final[int] = 8
 BUSY_TIMEOUT_MS: Final[int] = 5_000
 
 
@@ -1390,6 +1390,35 @@ _V7_STATEMENTS: tuple[str, ...] = (
 )
 
 
+# Removing a terminal workload from the owner's console is a presentation
+# lifecycle action.  Keep the durable execution, request idempotency, results,
+# artifacts and recovery references intact instead of deleting their rows.
+_V8_STATEMENTS: tuple[str, ...] = (
+    """
+    CREATE TABLE workload_dismissals (
+        owner_user_id TEXT NOT NULL,
+        workload_id TEXT NOT NULL,
+        expected_version INTEGER NOT NULL CHECK (expected_version >= 1),
+        idempotency_key TEXT NOT NULL CHECK (
+            length(idempotency_key) BETWEEN 1 AND 256
+            AND idempotency_key = trim(idempotency_key)
+        ),
+        dismissed_at TEXT NOT NULL CHECK (
+            dismissed_at LIKE '____-__-__T__:__:__%Z'
+        ),
+        PRIMARY KEY (owner_user_id, workload_id),
+        FOREIGN KEY (owner_user_id, workload_id)
+            REFERENCES workloads(owner_user_id, id) ON DELETE CASCADE
+    ) WITHOUT ROWID
+    """,
+)
+
+
+_MIGRATIONS = (
+    _V1_STATEMENTS, _V2_STATEMENTS, _V3_STATEMENTS, _V4_STATEMENTS,
+    _V5_STATEMENTS, _V6_STATEMENTS, _V7_STATEMENTS, _V8_STATEMENTS,
+)
+
 _REQUIRED_V1_TABLES = frozenset({
     "durable_schema",
     "workloads",
@@ -1414,6 +1443,19 @@ _REQUIRED_V1_TABLES = frozenset({
 def _validate_schema_shape(connection: sqlite3.Connection, version: int) -> None:
     if version < 1:
         return
+    # The protections themselves are part of the schema, not just table names.
+    # Reuse the migration source rather than maintaining a second trigger list.
+    triggers = dict(connection.execute(
+        "SELECT name, sql FROM sqlite_master WHERE type='trigger'"
+    ).fetchall())
+    for statements in _MIGRATIONS[:version]:
+        for statement in statements:
+            expected = statement.strip().rstrip(";").strip()
+            if expected.startswith("CREATE TRIGGER "):
+                name = expected.split(None, 3)[2]
+                actual = triggers.get(name)
+                if actual is None or actual.strip().rstrip(";").strip() != expected:
+                    raise MigrationError(f"schema integrity trigger is missing or changed: {name}")
     present = frozenset(
         str(row[0]) for row in connection.execute(
             "SELECT name FROM sqlite_master WHERE type='table'"
@@ -1584,6 +1626,30 @@ def _validate_schema_shape(connection: sqlite3.Connection, version: int) -> None
             ("stages", "revision_id", "revision_id", "CASCADE"),
         }:
             raise MigrationError("schema v7 has incompatible placement ownership")
+    if version >= 8:
+        if "workload_dismissals" not in present:
+            raise MigrationError("schema v8 is missing workload dismissals")
+        dismissal_columns = {
+            str(row[1])
+            for row in connection.execute("PRAGMA table_info(workload_dismissals)")
+        }
+        if dismissal_columns != {
+            "owner_user_id", "workload_id", "expected_version",
+            "idempotency_key", "dismissed_at",
+        }:
+            raise MigrationError("schema v8 has incompatible dismissal columns")
+        dismissal_foreign_keys = connection.execute(
+            "PRAGMA foreign_key_list(workload_dismissals)"
+        ).fetchall()
+        dismissal_ownership = {
+            (str(row[2]), str(row[3]), str(row[4]), str(row[6]).upper())
+            for row in dismissal_foreign_keys
+        }
+        if dismissal_ownership != {
+            ("workloads", "owner_user_id", "owner_user_id", "CASCADE"),
+            ("workloads", "workload_id", "id", "CASCADE"),
+        }:
+            raise MigrationError("schema v8 has incompatible dismissal ownership")
 
 
 def migrate(
@@ -1597,8 +1663,15 @@ def migrate(
     the version and partial tables roll back together.
     """
     try:
-        connection.execute("BEGIN IMMEDIATE")
+        # Opening an already-current store only authenticates its schema.
+        # Parallel readers must not compete for the writer's reservation.
+        connection.execute("BEGIN")
         current = schema_version(connection)
+        if current < CURRENT_SCHEMA_VERSION:
+            connection.execute("ROLLBACK")
+            connection.execute("BEGIN IMMEDIATE")
+            # Another opener may have migrated while this one waited.
+            current = schema_version(connection)
         if current > CURRENT_SCHEMA_VERSION:
             raise SchemaTooNewError(
                 f"database schema {current} is newer than supported "
@@ -1612,66 +1685,16 @@ def migrate(
                     _before_statement(index, statement)
                 connection.execute(statement)
             current = 1
-        if current == 1:
-            for index, statement in enumerate(_V2_STATEMENTS, start=1):
+        for target in range(current + 1, CURRENT_SCHEMA_VERSION + 1):
+            for index, statement in enumerate(_MIGRATIONS[target - 1], start=1):
                 if _before_statement is not None:
                     _before_statement(index, statement)
                 connection.execute(statement)
             connection.execute(
                 "UPDATE durable_schema SET version=?, applied_at=? WHERE singleton=1",
-                (2, utc_now()),
+                (target, utc_now()),
             )
-            current = 2
-        if current == 2:
-            for index, statement in enumerate(_V3_STATEMENTS, start=1):
-                if _before_statement is not None:
-                    _before_statement(index, statement)
-                connection.execute(statement)
-            connection.execute(
-                "UPDATE durable_schema SET version=?, applied_at=? WHERE singleton=1",
-                (3, utc_now()),
-            )
-            current = 3
-        if current == 3:
-            for index, statement in enumerate(_V4_STATEMENTS, start=1):
-                if _before_statement is not None:
-                    _before_statement(index, statement)
-                connection.execute(statement)
-            connection.execute(
-                "UPDATE durable_schema SET version=?, applied_at=? WHERE singleton=1",
-                (4, utc_now()),
-            )
-            current = 4
-        if current == 4:
-            for index, statement in enumerate(_V5_STATEMENTS, start=1):
-                if _before_statement is not None:
-                    _before_statement(index, statement)
-                connection.execute(statement)
-            connection.execute(
-                "UPDATE durable_schema SET version=?, applied_at=? WHERE singleton=1",
-                (5, utc_now()),
-            )
-            current = 5
-        if current == 5:
-            for index, statement in enumerate(_V6_STATEMENTS, start=1):
-                if _before_statement is not None:
-                    _before_statement(index, statement)
-                connection.execute(statement)
-            connection.execute(
-                "UPDATE durable_schema SET version=?, applied_at=? WHERE singleton=1",
-                (6, utc_now()),
-            )
-            current = 6
-        if current == 6:
-            for index, statement in enumerate(_V7_STATEMENTS, start=1):
-                if _before_statement is not None:
-                    _before_statement(index, statement)
-                connection.execute(statement)
-            connection.execute(
-                "UPDATE durable_schema SET version=?, applied_at=? WHERE singleton=1",
-                (7, utc_now()),
-            )
-            current = 7
+            current = target
         _validate_schema_shape(connection, current)
         # A corrupted database may contain an arbitrary number of violations;
         # startup needs only bounded evidence to fail closed.

@@ -16,9 +16,10 @@ import stat
 import sys
 import unicodedata
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from types import MappingProxyType
-from typing import Mapping
+from typing import Mapping, NamedTuple
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import serialization
@@ -28,21 +29,33 @@ from executor_birth_ownership_preflight import (
     ClosedBuildIdentity, _BUILD_AUTHORITY_SEAL,
 )
 from contract_boundary_guard import (
-    BIRTH_CLOSED_COORDINATOR_STORE_OWNERS, BIRTH_CLOSED_EXCEPTION_SCOPES,
     BIRTH_CLOSED_GUARD_VERSION,
-    BIRTH_CLOSED_OWNER, BIRTH_CLOSED_SCHEMA, BIRTH_CLOSED_SEALED_MODULES,
+    BIRTH_CLOSED_SOURCE_REVIEW_SHA256,
     SCAN_ROOTS, SCHEMA as BOUNDARY_INVENTORY_SCHEMA,
-    birth_closed_findings, discover,
+    _bounded_ast_metrics, _boundary_ast_limits, birth_closed_findings,
+    birth_closed_inventory_value_v1,
+    closed_python_source_review_sha256, discover,
 )
 
 
 SIGNATURE_DOMAIN = b"metnos.executor-birth.closed-build/v1\0"
 BUILD_ID_DOMAIN = b"metnos.executor-birth.closed-build-id/v1\0"
 FILE_HASH_DOMAIN = b"metnos.executor-birth.closed-build-file/v1\0"
+INSTALLED_TREE_DOMAIN = b"metnos.executor-birth.installed-tree/v1\0"
 BOUNDARY_INVENTORY_DOMAIN = b"metnos.executor-birth.boundary-inventory/v1\0"
 PURPOSE = "closed_distribution_v1"
 MAX_PAYLOAD_BYTES = 16 * 1024 * 1024
 MAX_FILE_BYTES = 512 * 1024 * 1024
+MAX_MANIFEST_FILES_V1 = 20_000
+MAX_MANIFEST_TOTAL_BYTES_V1 = 2 * 1024 * 1024 * 1024
+MAX_RELATIVE_PATH_COMPONENTS_V1 = 32
+MAX_BOUNDARY_SOURCE_FILES_V1 = 2_048
+MAX_BOUNDARY_SOURCE_BYTES_V1 = 1 * 1024 * 1024
+MAX_BOUNDARY_TOTAL_SOURCE_BYTES_V1 = 32 * 1024 * 1024
+MAX_BOUNDARY_TOTAL_AST_NODES_V1 = 4_000_000
+DEFAULT_RELEASE_DIRECTORY_V1 = Path(
+    "/var/lib/metnos/executor-birth/releases-v1"
+)
 
 _DIGEST_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
 _KEY_ID_RE = re.compile(r"distribution-ed25519-v1-sha256-[0-9a-f]{64}\Z")
@@ -60,19 +73,66 @@ _PAYLOAD_KEYS = frozenset({
 _FILE_KEYS = frozenset({"path", "size", "content_hash", "role"})
 _ROLES = frozenset({
     "runtime_code", "preflight", "boundary_guard", "boundary_inventory",
-    "service_unit", "product_version", "dependency_lock",
+    "service_unit", "service_catalog", "deployment_descriptor",
+    "product_version", "dependency_lock", "public_document", "tutor_material",
 })
 _PLATFORMS = frozenset({"linux", "windows"})
 _ARCHITECTURES = frozenset({"x86_64", "aarch64"})
 _REQUIRED_PATH_ROLES = MappingProxyType({
+    "deployment/admin/preflight.py": "preflight",
+    "deployment/executor-birth-deployment-v1.json": "deployment_descriptor",
+    "deployment/executor-birth-service-catalog-v1.json": "service_catalog",
+    "install/executor_birth_host_capability.py": "runtime_code",
+    "install/executor_birth_append_journal_posix.py": "runtime_code",
+    "install/executor_birth_contract_convergence.py": "runtime_code",
+    "install/executor_birth_host_journal_posix.py": "runtime_code",
+    "install/executor_birth_host_posix.py": "runtime_code",
+    "install/executor_birth_host_provisioning.py": "runtime_code",
+    "install/executor_birth_legacy_state_adoption.py": "runtime_code",
+    "install/executor_birth_legacy_state_effect_posix.py": "runtime_code",
+    "install/executor_birth_legacy_state_inspection.py": "runtime_code",
+    "install/executor_birth_legacy_state_journal_posix.py": "runtime_code",
+    "install/executor_birth_legacy_state_posix.py": "runtime_code",
+    "install/executor_birth_posix_directory.py": "runtime_code",
+    "install/executor_birth_transition.py": "runtime_code",
     "runtime/contract_store.py": "runtime_code",
     "runtime/sign.py": "runtime_code",
+    "runtime/contract_boundary_analyzer_ast.py": "runtime_code",
+    "runtime/contract_boundary_analyzer_projection.py": "runtime_code",
+    "runtime/contract_boundary_analyzer_types.py": "runtime_code",
+    "runtime/contract_boundary_api_policy.py": "runtime_code",
+    "runtime/contract_boundary_birth_authority_policy.py": "runtime_code",
+    "runtime/contract_boundary_birth_exception_policy.py": "runtime_code",
+    "runtime/contract_boundary_birth_policy.py": "runtime_code",
     "runtime/contract_boundary_guard.py": "boundary_guard",
+    "runtime/contract_boundary_policy.py": "runtime_code",
+    "runtime/contract_boundary_policy_types.py": "runtime_code",
+    "runtime/contract_boundary_role_policy.py": "runtime_code",
+    "runtime/contract_boundary_syntax_policy.py": "runtime_code",
     "runtime/executor_birth.py": "runtime_code",
+    "runtime/executor_birth_account_identity.py": "runtime_code",
+    "runtime/executor_birth_authority_gate.py": "runtime_code",
+    "runtime/executor_birth_canonical.py": "runtime_code",
+    "runtime/executor_birth_crypto_framing.py": "runtime_code",
+    "runtime/executor_birth_host_layout.py": "runtime_code",
+    "runtime/executor_birth_host_chain_policy.py": "runtime_code",
+    "runtime/executor_birth_host_path_policy.py": "runtime_code",
+    "runtime/executor_birth_host_provisioning_evidence.py": "runtime_code",
+    "runtime/executor_birth_host_provisioning_journal.py": "runtime_code",
+    "runtime/executor_birth_legacy_state.py": "runtime_code",
+    "runtime/executor_birth_legacy_state_journal.py": "runtime_code",
+    "runtime/executor_birth_legacy_state_policy.py": "runtime_code",
+    "runtime/executor_birth_legacy_state_preflight_projection.py": "runtime_code",
+    "runtime/executor_birth_legacy_state_request.py": "runtime_code",
+    "runtime/executor_birth_legacy_state_wire.py": "runtime_code",
+    "runtime/executor_birth_posix_metadata.py": "runtime_code",
+    "runtime/executor_birth_preflight_attestation_store.py": "runtime_code",
+    "runtime/executor_birth_preflight_store_authority.py": "runtime_code",
     "runtime/executor_birth_ownership_preflight.py": "preflight",
     "runtime/executor_birth_distribution_manifest.py": "preflight",
     "runtime/__version__.py": "product_version",
 })
+_BOUNDARY_PREFLIGHT_ENTRYPOINT_V1 = "deployment/admin/preflight.py"
 
 
 class DistributionManifestError(RuntimeError):
@@ -80,6 +140,27 @@ class DistributionManifestError(RuntimeError):
         self.code = code
         self.detail = detail
         super().__init__(f"{code}: {detail}" if detail else code)
+
+
+def _is_guarded_python_source_path_v1(path: str) -> bool:
+    """Validate the closed source grammar and identify guard-census files."""
+
+    parts = path.split("/")
+    if any(part.casefold().endswith(".py") for part in parts[:-1]):
+        raise DistributionManifestError(
+            "birth_ownership_distribution_invalid", "python source path",
+        )
+    python_like = parts[-1].casefold().endswith(".py")
+    if not python_like:
+        return False
+    if not parts[-1].endswith(".py") or (
+        path != _BOUNDARY_PREFLIGHT_ENTRYPOINT_V1
+        and parts[0] not in SCAN_ROOTS
+    ):
+        raise DistributionManifestError(
+            "birth_ownership_distribution_invalid", "python source path",
+        )
+    return True
 
 
 @dataclass(frozen=True, slots=True)
@@ -143,6 +224,186 @@ class DistributionFile:
     role: str
 
 
+def installed_tree_hash_v1(files: tuple[DistributionFile, ...]) -> str:
+    """Bind the exact ordered manifest tree after live verification."""
+    if (
+        type(files) is not tuple or not files
+        or any(type(item) is not DistributionFile for item in files)
+    ):
+        raise DistributionManifestError(
+            "birth_ownership_distribution_invalid", "installed tree files",
+        )
+    paths = tuple(item.path for item in files)
+    if (
+        paths != tuple(sorted(paths, key=lambda item: item.encode("utf-8")))
+        or len(paths) != len(set(paths))
+    ):
+        raise DistributionManifestError(
+            "birth_ownership_distribution_invalid", "installed tree order",
+        )
+    material = bytearray(len(files).to_bytes(8, "big"))
+    try:
+        for item in files:
+            if (
+                type(item.path) is not str or not item.path
+                or type(item.size) is not int or item.size < 0
+                or type(item.content_hash) is not str
+                or _DIGEST_RE.fullmatch(item.content_hash) is None
+            ):
+                raise ValueError("invalid installed tree item")
+            encoded_path = item.path.encode("utf-8")
+            material.extend(len(encoded_path).to_bytes(8, "big"))
+            material.extend(encoded_path)
+            material.extend(item.size.to_bytes(8, "big"))
+            material.extend(bytes.fromhex(
+                item.content_hash.removeprefix("sha256:"),
+            ))
+    except (AttributeError, OverflowError, UnicodeEncodeError, ValueError) as exc:
+        raise DistributionManifestError(
+            "birth_ownership_distribution_invalid", "installed tree material",
+        ) from exc
+    return "sha256:" + hashlib.sha256(
+        INSTALLED_TREE_DOMAIN + bytes(material),
+    ).hexdigest()
+
+
+@dataclass(frozen=True, slots=True)
+class _ClosedDistributionTreeV1:
+    children: Mapping[tuple[str, ...], tuple[tuple[str, str], ...]]
+    files: Mapping[tuple[str, ...], DistributionFile]
+    entry_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class _DistributionTreeAnchorV1:
+    root: Path
+    handle: int
+    native_platform: str
+    administrative: bool
+    storage_domain: int | str
+
+
+class _UnexpectedDistributionEntryV1(Exception):
+    def __init__(self, path: str) -> None:
+        self.path = path
+
+
+class _DistributionInventoryBudgetV1:
+    """Exact-tree budget adapter for the certified inventory primitives."""
+
+    __slots__ = ("_limit", "_seen")
+
+    def __init__(self, limit: int) -> None:
+        self._limit = limit
+        self._seen: set[tuple[tuple[str, ...], object]] = set()
+
+    def include(self, path: tuple[str, ...], identity: object) -> None:
+        key = (path, identity)
+        if key in self._seen:
+            return
+        if len(self._seen) >= self._limit:
+            raise DistributionManifestError(
+                "birth_ownership_distribution_file_mismatch", "distribution tree",
+            )
+        self._seen.add(key)
+
+
+@dataclass(frozen=True, slots=True)
+class AuthenticatedDistributionRecordV1:
+    """Signed historical manifest; it makes no claim about live files."""
+
+    closed_build_id: str
+    previous_closed_build_id: str | None
+    release_sequence: int
+    product_version: str
+    platform: str
+    architecture: str
+    signing_key_id: str
+    installation_root: str
+    certificate_directory: str
+    boundary_inventory_path: str
+    boundary_inventory_hash: str
+    boundary_guard_version: str
+    preflight_entrypoint: str
+    files: tuple[DistributionFile, ...]
+    encoded: bytes
+    signature: bytes
+    _artifact_binding: bytes
+    _seal: object
+
+    def __post_init__(self) -> None:
+        if (
+            self._seal is not _AUTHENTICATED_DISTRIBUTION_SEAL
+            or not isinstance(self.encoded, bytes)
+            or not isinstance(self.signature, bytes)
+            or len(self.signature) != 64
+            or self._artifact_binding != _authenticated_artifact_binding(
+                self.encoded, self.signature,
+            )
+        ):
+            raise DistributionManifestError(
+                "birth_ownership_distribution_invalid", "authenticated artifact",
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class _AuthenticatedDistributionRecordForTestV1:
+    """Nominally separate test result; productive verification rejects it."""
+
+    closed_build_id: str
+    previous_closed_build_id: str | None
+    release_sequence: int
+    product_version: str
+    platform: str
+    architecture: str
+    signing_key_id: str
+    installation_root: str
+    certificate_directory: str
+    boundary_inventory_path: str
+    boundary_inventory_hash: str
+    boundary_guard_version: str
+    preflight_entrypoint: str
+    files: tuple[DistributionFile, ...]
+    encoded: bytes
+    signature: bytes
+    _artifact_binding: bytes
+    _seal: object
+
+    def __post_init__(self) -> None:
+        if (
+            self._seal is not _TEST_AUTHENTICATED_DISTRIBUTION_SEAL
+            or not isinstance(self.encoded, bytes)
+            or not isinstance(self.signature, bytes)
+            or len(self.signature) != 64
+            or self._artifact_binding != _authenticated_artifact_binding(
+                self.encoded, self.signature,
+            )
+        ):
+            raise DistributionManifestError(
+                "birth_ownership_distribution_invalid", "test authenticated artifact",
+            )
+
+
+class _AuthenticatedDistributionMaterialV1(NamedTuple):
+    closed_build_id: str
+    previous_closed_build_id: str | None
+    release_sequence: int
+    product_version: str
+    platform: str
+    architecture: str
+    signing_key_id: str
+    installation_root: str
+    certificate_directory: str
+    boundary_inventory_path: str
+    boundary_inventory_hash: str
+    boundary_guard_version: str
+    preflight_entrypoint: str
+    files: tuple[DistributionFile, ...]
+    encoded: bytes
+    signature: bytes
+    artifact_binding: bytes
+
+
 @dataclass(frozen=True, slots=True)
 class VerifiedDistribution:
     """Authenticated result; its sealed identity cannot be caller-populated."""
@@ -177,7 +438,16 @@ class VerifiedDistribution:
             )
 
 
+_AUTHENTICATED_DISTRIBUTION_SEAL = object()
+_TEST_AUTHENTICATED_DISTRIBUTION_SEAL = object()
 _VERIFIED_DISTRIBUTION_SEAL = object()
+
+
+def _authenticated_artifact_binding(encoded: bytes, signature: bytes) -> bytes:
+    return hashlib.sha256(
+        b"metnos.executor-birth.authenticated-distribution-record/v1\0"
+        + len(encoded).to_bytes(8, "big") + encoded + signature
+    ).digest()
 
 
 def _distribution_artifact_binding(encoded: bytes, signature: bytes) -> bytes:
@@ -262,7 +532,10 @@ def _relative_path(value: object, field: str = "path") -> str:
     if "\\" in value or "\x00" in value or value.startswith("/"):
         raise DistributionManifestError("birth_ownership_distribution_invalid", field)
     parts = value.split("/")
-    if any(part in {"", ".", ".."} for part in parts):
+    if (
+        any(part in {"", ".", ".."} for part in parts)
+        or len(parts) > MAX_RELATIVE_PATH_COMPONENTS_V1
+    ):
         raise DistributionManifestError("birth_ownership_distribution_invalid", field)
     if PurePosixPath(value).as_posix() != value:
         raise DistributionManifestError("birth_ownership_distribution_invalid", field)
@@ -312,6 +585,69 @@ def _build_id(value: Mapping[str, object]) -> str:
     return "sha256:" + hashlib.sha256(BUILD_ID_DOMAIN + _canonical(unsigned)).hexdigest()
 
 
+def build_distribution_manifest_v1(
+    *, previous_closed_build_id: str | None, release_sequence: int,
+    product_version: str, platform: str, architecture: str,
+    signing_key_id: str, installation_root: str,
+    boundary_inventory_path: str, boundary_inventory_hash: str,
+    boundary_guard_version: str, files: tuple[DistributionFile, ...],
+) -> bytes:
+    """Build one canonical manifest without acquiring signing authority.
+
+    The builder owns the fixed certificate and preflight locations and runs
+    the same strict parser used by verification before returning bytes.  It
+    deliberately does not sign: the installer-side release transaction is
+    the only component allowed to acquire the distribution signing authority.
+    """
+    if type(files) is not tuple or any(
+        type(item) is not DistributionFile for item in files
+    ):
+        raise DistributionManifestError(
+            "birth_ownership_distribution_invalid", "files",
+        )
+    ordered = tuple(sorted(files, key=lambda item: item.path.encode("utf-8")))
+    certificate_directory = {
+        "linux": "/var/lib/metnos/executor-birth",
+        "windows": r"C:\ProgramData\Metnos\ExecutorBirth",
+    }.get(platform)
+    if certificate_directory is None:
+        raise DistributionManifestError(
+            "birth_ownership_distribution_invalid", "platform",
+        )
+    document: dict[str, object] = {
+        "schema_version": 1,
+        "closed_build_id": None,
+        "previous_closed_build_id": previous_closed_build_id,
+        "release_sequence": release_sequence,
+        "product_version": product_version,
+        "platform": platform,
+        "architecture": architecture,
+        "signing_key_id": signing_key_id,
+        "installation_root": installation_root,
+        "certificate_directory": certificate_directory,
+        "boundary_inventory_path": boundary_inventory_path,
+        "boundary_inventory_hash": boundary_inventory_hash,
+        "boundary_guard_version": boundary_guard_version,
+        "preflight_entrypoint": _BOUNDARY_PREFLIGHT_ENTRYPOINT_V1,
+        "files": [{
+            "path": item.path,
+            "size": item.size,
+            "content_hash": item.content_hash,
+            "role": item.role,
+        } for item in ordered],
+    }
+    document["closed_build_id"] = _build_id(document)
+    encoded = _canonical(document)
+    parsed, parsed_files = _parse(encoded)
+    if parsed["closed_build_id"] != document["closed_build_id"] or (
+        parsed_files != ordered
+    ):
+        raise DistributionManifestError(
+            "birth_ownership_distribution_invalid", "builder binding",
+        )
+    return encoded
+
+
 def _runtime_environment() -> _VerificationEnvironment:
     if sys.platform.startswith("linux"):
         target = "linux"
@@ -340,6 +676,65 @@ def _runtime_environment() -> _VerificationEnvironment:
     )
 
 
+def _require_product_release_metadata_v1(root: Path) -> None:
+    absolute = Path(os.path.abspath(root))
+    for component in reversed((absolute, *absolute.parents)):
+        try:
+            info = component.lstat()
+        except OSError as exc:
+            raise DistributionManifestError(
+                "birth_ownership_distribution_file_mismatch", "release metadata",
+            ) from exc
+        if (
+            not stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode)
+            or bool(getattr(info, "st_file_attributes", 0) & 0x400)
+            or info.st_uid != 0 or info.st_gid != 0
+            or info.st_mode & 0o022
+        ):
+            raise DistributionManifestError(
+                "birth_ownership_distribution_file_mismatch", "release metadata",
+            )
+
+
+def _closed_distribution_tree_v1(
+    files: tuple[DistributionFile, ...],
+) -> _ClosedDistributionTreeV1:
+    children: dict[tuple[str, ...], dict[str, str]] = {(): {}}
+    leaves: dict[tuple[str, ...], DistributionFile] = {}
+    for item in files:
+        components = tuple(item.path.split("/"))
+        for offset, name in enumerate(components):
+            parent = components[:offset]
+            child = components[:offset + 1]
+            kind = "file" if offset == len(components) - 1 else "directory"
+            existing = children.setdefault(parent, {}).get(name)
+            if existing is not None and existing != kind:
+                raise DistributionManifestError(
+                    "birth_ownership_distribution_invalid", "file tree",
+                )
+            children[parent][name] = kind
+            if kind == "directory":
+                if child in leaves:
+                    raise DistributionManifestError(
+                        "birth_ownership_distribution_invalid", "file tree",
+                    )
+                children.setdefault(child, {})
+            else:
+                if children.get(child):
+                    raise DistributionManifestError(
+                        "birth_ownership_distribution_invalid", "file tree",
+                    )
+                leaves[child] = item
+    closed_children = {
+        path: tuple(sorted(entries.items(), key=lambda entry: entry[0].encode("utf-8")))
+        for path, entries in children.items()
+    }
+    return _ClosedDistributionTreeV1(
+        MappingProxyType(closed_children), MappingProxyType(leaves),
+        sum(len(entries) for entries in closed_children.values()),
+    )
+
+
 def _parse(encoded: bytes) -> tuple[dict[str, object], tuple[DistributionFile, ...]]:
     if not isinstance(encoded, bytes) or not encoded or len(encoded) > MAX_PAYLOAD_BYTES:
         raise DistributionManifestError("birth_ownership_distribution_invalid", "payload size")
@@ -355,7 +750,8 @@ def _parse(encoded: bytes) -> tuple[dict[str, object], tuple[DistributionFile, .
         raise DistributionManifestError("birth_ownership_distribution_invalid", "schema")
     sequence = value.get("release_sequence")
     if (
-        value.get("schema_version") != 1 or isinstance(sequence, bool)
+        type(value.get("schema_version")) is not int
+        or value.get("schema_version") != 1 or isinstance(sequence, bool)
         or not isinstance(sequence, int) or sequence < 1
         or not isinstance(value.get("product_version"), str)
         or _SEMVER_RE.fullmatch(str(value.get("product_version"))) is None
@@ -386,13 +782,28 @@ def _parse(encoded: bytes) -> tuple[dict[str, object], tuple[DistributionFile, .
     if not isinstance(key_id, str) or _KEY_ID_RE.fullmatch(key_id) is None:
         raise DistributionManifestError("birth_ownership_distribution_invalid", "signing_key_id")
     raw_files = value.get("files")
-    if not isinstance(raw_files, list) or not raw_files:
+    if (
+        not isinstance(raw_files, list) or not raw_files
+        or len(raw_files) > MAX_MANIFEST_FILES_V1
+    ):
         raise DistributionManifestError("birth_ownership_distribution_invalid", "files")
     files: list[DistributionFile] = []
+    total_size = 0
+    boundary_source_files = 0
+    boundary_source_bytes = 0
     for raw in raw_files:
         if not isinstance(raw, dict) or set(raw) != _FILE_KEYS:
             raise DistributionManifestError("birth_ownership_distribution_invalid", "file schema")
         path = _relative_path(raw.get("path"))
+        guarded_python_source = _is_guarded_python_source_path_v1(path)
+        folded_path = path.casefold()
+        if (
+            any(part.casefold() == "__pycache__" for part in path.split("/"))
+            or folded_path.endswith((".pyc", ".pyo"))
+        ):
+            raise DistributionManifestError(
+                "birth_ownership_distribution_invalid", "bytecode",
+            )
         size = raw.get("size")
         role = raw.get("role")
         content_hash = _digest(raw.get("content_hash"), "content_hash")
@@ -401,20 +812,47 @@ def _parse(encoded: bytes) -> tuple[dict[str, object], tuple[DistributionFile, .
             or size < 0 or size > MAX_FILE_BYTES or role not in _ROLES
         ):
             raise DistributionManifestError("birth_ownership_distribution_invalid", "file")
+        if guarded_python_source:
+            boundary_source_files += 1
+            boundary_source_bytes += size
+            if (
+                boundary_source_files > MAX_BOUNDARY_SOURCE_FILES_V1
+                or size > MAX_BOUNDARY_SOURCE_BYTES_V1
+                or boundary_source_bytes > MAX_BOUNDARY_TOTAL_SOURCE_BYTES_V1
+            ):
+                raise DistributionManifestError(
+                    "birth_ownership_distribution_invalid", "python source budget",
+                )
+        total_size += size
+        if total_size > MAX_MANIFEST_TOTAL_BYTES_V1:
+            raise DistributionManifestError(
+                "birth_ownership_distribution_invalid", "file total size",
+            )
         files.append(DistributionFile(path, size, str(content_hash), str(role)))
     paths = [item.path for item in files]
     if paths != sorted(paths, key=lambda item: item.encode("utf-8")) or len(paths) != len(set(paths)):
         raise DistributionManifestError("birth_ownership_distribution_invalid", "file order")
+    _closed_distribution_tree_v1(tuple(files))
     by_path = {item.path: item for item in files}
     if any(by_path.get(path) is None or by_path[path].role != role
            for path, role in _REQUIRED_PATH_ROLES.items()):
         raise DistributionManifestError("birth_ownership_distribution_invalid", "required files")
-    for role in ("boundary_inventory", "service_unit", "dependency_lock"):
+    for role in (
+        "boundary_inventory", "dependency_lock", "service_catalog",
+        "deployment_descriptor",
+    ):
         if sum(item.role == role for item in files) != 1:
             raise DistributionManifestError("birth_ownership_distribution_invalid", role)
+    if not any(item.role == "service_unit" for item in files):
+        raise DistributionManifestError(
+            "birth_ownership_distribution_invalid", "service_unit",
+        )
     if inventory_path not in by_path or by_path[inventory_path].role != "boundary_inventory":
         raise DistributionManifestError("birth_ownership_distribution_invalid", "inventory binding")
-    if entrypoint not in by_path or by_path[entrypoint].role != "preflight":
+    if (
+        entrypoint != "deployment/admin/preflight.py"
+        or entrypoint not in by_path or by_path[entrypoint].role != "preflight"
+    ):
         raise DistributionManifestError("birth_ownership_distribution_invalid", "entrypoint binding")
     return value, tuple(files)
 
@@ -497,43 +935,493 @@ def _secure_read(root: Path, item: DistributionFile, *, administrative: bool) ->
     return content
 
 
-def _secure_read_windows(root: Path, item: DistributionFile) -> bytes:
-    """Use the already-certified Win32 handle reader after parent validation."""
-    from executor_birth_semantic_authority import _secure_file_bytes
+def _distribution_path_v1(components: tuple[str, ...]) -> str:
+    return "/".join(components) if components else "installation root"
 
-    path = root.joinpath(*item.path.split("/"))
-    current = root
+
+def _posix_distribution_facts_v1(
+    handle: int, kind: str, *, administrative: bool, path: str,
+) -> tuple[object, ...]:
+    value = os.fstat(handle)
+    expected_type = stat.S_ISDIR if kind == "directory" else stat.S_ISREG
+    if (
+        not expected_type(value.st_mode)
+        or (kind == "file" and value.st_nlink != 1)
+        or (administrative and (
+            value.st_uid != 0 or value.st_gid != 0 or value.st_mode & 0o022
+        ))
+    ):
+        raise DistributionManifestError(
+            "birth_ownership_distribution_file_mismatch", path,
+        )
+    return (
+        kind, value.st_dev, value.st_ino, value.st_mode, value.st_uid,
+        value.st_gid, value.st_nlink, value.st_size, value.st_mtime_ns,
+        value.st_ctime_ns,
+    )
+
+
+def _windows_distribution_facts_v1(
+    handle: int, kind: str, *, path: str,
+) -> tuple[object, ...]:
+    import executor_birth_secure_file as secure_file
+    import executor_birth_secure_fs as secure_fs
+
+    observed = secure_fs._win_info(handle)
+    legacy = secure_file._win_info(handle)
+    shape = secure_file._win_file_shape(handle)
+    expected_directory = kind == "directory"
+    if (
+        observed[1] & secure_fs._FILE_ATTRIBUTE_REPARSE_POINT
+        or observed[3] or observed[4] != expected_directory
+        or (not expected_directory and observed[2] != 1)
+        or shape[2] != observed[2] or shape[3] != observed[3]
+        or shape[4] != observed[4] or shape[1] != observed[5]
+    ):
+        raise DistributionManifestError(
+            "birth_ownership_distribution_file_mismatch", path,
+        )
+    return (kind, observed, legacy, shape)
+
+
+def _distribution_facts_storage_domain_v1(
+    native_platform: str, facts: tuple[object, ...], *, path: str,
+) -> int | str:
     try:
-        root_final = os.path.normcase(os.path.abspath(root))
-        for segment in item.path.split("/")[:-1]:
-            current /= segment
-            info = current.lstat()
-            if (
-                not stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode)
-                or bool(getattr(info, "st_file_attributes", 0) & 0x400)
-                or os.path.commonpath((root_final, os.path.normcase(os.path.abspath(current))))
-                != root_final
-            ):
-                raise ValueError("unsafe parent")
-        return _secure_file_bytes(path, maximum=item.size, error="unsafe distribution file")
+        if native_platform == "windows":
+            value = facts[1][0].volume  # type: ignore[index,union-attr]
+            if not isinstance(value, str) or not value:
+                raise TypeError("invalid Windows volume")
+            return value
+        if native_platform == "linux":
+            value = facts[1]
+            if type(value) is not int or value < 0:
+                raise TypeError("invalid POSIX device")
+            return value
+    except (AttributeError, IndexError, TypeError) as exc:
+        raise DistributionManifestError(
+            "birth_ownership_distribution_file_mismatch", path,
+        ) from exc
+    raise DistributionManifestError(
+        "birth_ownership_distribution_file_mismatch", path,
+    )
+
+
+def _require_same_distribution_storage_domain_v1(
+    anchor: _DistributionTreeAnchorV1, facts: tuple[object, ...], *, path: str,
+) -> None:
+    observed = _distribution_facts_storage_domain_v1(
+        anchor.native_platform, facts, path=path,
+    )
+    if type(observed) is not type(anchor.storage_domain) or observed != anchor.storage_domain:
+        raise DistributionManifestError(
+            "birth_ownership_distribution_file_mismatch", path,
+        )
+
+
+def _anchored_distribution_facts_v1(
+    anchor: _DistributionTreeAnchorV1, handle: int, kind: str, *, path: str,
+) -> tuple[object, ...]:
+    facts = (
+        _windows_distribution_facts_v1(handle, kind, path=path)
+        if anchor.native_platform == "windows" else
+        _posix_distribution_facts_v1(
+            handle, kind, administrative=anchor.administrative, path=path,
+        )
+    )
+    _require_same_distribution_storage_domain_v1(anchor, facts, path=path)
+    return facts
+
+
+def _open_distribution_tree_anchor_v1(
+    root: Path, *, administrative: bool,
+) -> _DistributionTreeAnchorV1:
+    import executor_birth_secure_fs as secure_fs
+
+    native = "windows" if os.name == "nt" else "linux"
+    try:
+        handle = (
+            secure_fs._win_open_path(str(root), directory=True)
+            if native == "windows"
+            else secure_fs._open_posix_directory_root(str(root))
+        )
+        if native == "windows":
+            root_facts = _windows_distribution_facts_v1(
+                handle, "directory", path="installation root",
+            )
+        else:
+            root_facts = _posix_distribution_facts_v1(
+                handle, "directory", administrative=administrative,
+                path="installation root",
+            )
+        anchor = _DistributionTreeAnchorV1(
+            root, handle, native, administrative,
+            _distribution_facts_storage_domain_v1(
+                native, root_facts, path="installation root",
+            ),
+        )
+        return anchor
+    except DistributionManifestError:
+        if "handle" in locals():
+            (secure_fs._win_close(handle) if native == "windows" else os.close(handle))
+        raise
+    except Exception as exc:
+        if "handle" in locals():
+            (secure_fs._win_close(handle) if native == "windows" else os.close(handle))
+        raise DistributionManifestError(
+            "birth_ownership_distribution_file_mismatch", "installation root",
+        ) from exc
+
+
+def _close_distribution_tree_anchor_v1(anchor: _DistributionTreeAnchorV1) -> None:
+    if anchor.native_platform == "windows":
+        import executor_birth_secure_fs as secure_fs
+
+        secure_fs._win_close(anchor.handle)
+    else:
+        os.close(anchor.handle)
+
+
+def _require_distribution_root_binding_v1(
+    anchor: _DistributionTreeAnchorV1, expected: tuple[object, ...],
+) -> None:
+    try:
+        if anchor.native_platform == "windows":
+            import executor_birth_secure_fs as secure_fs
+
+            handle = secure_fs._win_open_path(str(anchor.root), directory=True)
+            try:
+                observed = _anchored_distribution_facts_v1(
+                    anchor, handle, "directory", path="installation root",
+                )
+            finally:
+                secure_fs._win_close(handle)
+        else:
+            value = os.stat(anchor.root, follow_symlinks=False)
+            observed = (
+                "directory", value.st_dev, value.st_ino, value.st_mode,
+                value.st_uid, value.st_gid, value.st_nlink, value.st_size,
+                value.st_mtime_ns, value.st_ctime_ns,
+            )
+            if not stat.S_ISDIR(value.st_mode) or stat.S_ISLNK(value.st_mode):
+                raise OSError("root is not a directory")
+        if observed != expected:
+            raise OSError("root identity changed")
+    except DistributionManifestError:
+        raise
+    except Exception as exc:
+        raise DistributionManifestError(
+            "birth_ownership_distribution_file_mismatch", "installation root",
+        ) from exc
+
+
+def _snapshot_exact_distribution_tree_v1(
+    anchor: _DistributionTreeAnchorV1,
+    tree: _ClosedDistributionTreeV1,
+) -> dict[str, tuple[object, ...]]:
+    import executor_birth_secure_fs as secure_fs
+
+    result: dict[str, tuple[object, ...]] = {}
+    budget = _DistributionInventoryBudgetV1(tree.entry_count)
+
+    def fail_extra(components: tuple[str, ...]) -> None:
+        raise _UnexpectedDistributionEntryV1(_distribution_path_v1(components))
+
+    def walk_posix(directory: int, scope: tuple[str, ...]) -> None:
+        expected = dict(tree.children[scope])
+        try:
+            with os.scandir(directory) as entries:
+                names = tuple(entry.name for entry in entries)
+        except Exception as exc:
+            raise DistributionManifestError(
+                "birth_ownership_distribution_file_mismatch",
+                _distribution_path_v1(scope),
+            ) from exc
+        extras = sorted(set(names) - set(expected), key=os.fsencode)
+        if extras:
+            fail_extra(scope + (extras[0],))
+        if len(names) != len(set(names)) or set(names) != set(expected):
+            raise DistributionManifestError(
+                "birth_ownership_distribution_file_mismatch",
+                _distribution_path_v1(scope),
+            )
+
+        def resolve(parts: tuple[str, ...]):
+            if len(parts) != 1 or parts[0] not in expected:
+                fail_extra(scope + parts)
+            return None
+
+        entries = secure_fs._posix_inventory(
+            directory, resolve=resolve, budget=budget, scope=scope,
+        )
+        if tuple(entry.name for entry in entries) != tuple(sorted(
+            expected, key=lambda name: name.encode("utf-8")
+        )):
+            raise DistributionManifestError(
+                "birth_ownership_distribution_file_mismatch",
+                _distribution_path_v1(scope),
+            )
+        for entry in entries:
+            components = scope + (entry.name,)
+            path = _distribution_path_v1(components)
+            kind = expected[entry.name]
+            if entry.identity.volume != f"{anchor.storage_domain:x}":
+                raise DistributionManifestError(
+                    "birth_ownership_distribution_file_mismatch", path,
+                )
+            if entry.kind.value != ("directory" if kind == "directory" else "regular_file"):
+                raise DistributionManifestError(
+                    "birth_ownership_distribution_file_mismatch", path,
+                )
+            if kind == "directory":
+                child = secure_fs._open_posix_child_directory(directory, entry.name)
+                try:
+                    facts = _anchored_distribution_facts_v1(
+                        anchor, child, kind, path=path,
+                    )
+                    if (
+                        entry.identity.volume != f"{facts[1]:x}"
+                        or entry.identity.object_id != f"{facts[2]:x}"
+                    ):
+                        raise DistributionManifestError(
+                            "birth_ownership_distribution_file_mismatch", path,
+                        )
+                    result[path] = facts
+                    walk_posix(child, components)
+                finally:
+                    os.close(child)
+            else:
+                flags = (
+                    os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+                    | getattr(os, "O_NOFOLLOW", 0)
+                    | getattr(os, "O_NONBLOCK", 0)
+                )
+                child = os.open(entry.name, flags, dir_fd=directory)
+                try:
+                    facts = _anchored_distribution_facts_v1(
+                        anchor, child, kind, path=path,
+                    )
+                finally:
+                    os.close(child)
+                if (
+                    entry.identity.volume != f"{facts[1]:x}"
+                    or entry.identity.object_id != f"{facts[2]:x}"
+                    or entry.size != facts[7]
+                ):
+                    raise DistributionManifestError(
+                        "birth_ownership_distribution_file_mismatch", path,
+                    )
+                result[path] = facts
+
+    def walk_windows(directory: int, scope: tuple[str, ...]) -> None:
+        expected = dict(tree.children[scope])
+
+        def resolve(parts: tuple[str, ...]):
+            if len(parts) != 1 or parts[0] not in expected:
+                fail_extra(scope + parts)
+            return None
+
+        entries = secure_fs._win_inventory(
+            directory, resolve=resolve, budget=budget, scope=scope,
+        )
+        names = tuple(entry.name for entry in entries)
+        expected_names = tuple(sorted(expected, key=lambda name: name.encode("utf-8")))
+        if names != expected_names:
+            raise DistributionManifestError(
+                "birth_ownership_distribution_file_mismatch",
+                _distribution_path_v1(scope),
+            )
+        for entry in entries:
+            components = scope + (entry.name,)
+            path = _distribution_path_v1(components)
+            kind = expected[entry.name]
+            if entry.identity.volume != anchor.storage_domain:
+                raise DistributionManifestError(
+                    "birth_ownership_distribution_file_mismatch", path,
+                )
+            expected_kind = "directory" if kind == "directory" else "regular_file"
+            if entry.kind.value != expected_kind:
+                raise DistributionManifestError(
+                    "birth_ownership_distribution_file_mismatch", path,
+                )
+            child = secure_fs._win_open_relative_v1(
+                directory, entry.name,
+                purpose=secure_fs._NtOpenPurposeV1.read_required,
+                directory=kind == "directory",
+            )
+            try:
+                facts = _anchored_distribution_facts_v1(
+                    anchor, child, kind, path=path,
+                )
+                if entry.identity != facts[1][0] or (
+                    kind == "file" and entry.size != facts[1][5]
+                ):
+                    raise DistributionManifestError(
+                        "birth_ownership_distribution_file_mismatch", path,
+                    )
+                result[path] = facts
+                if kind == "directory":
+                    walk_windows(child, components)
+            finally:
+                secure_fs._win_close(child)
+
+    try:
+        if anchor.native_platform == "windows":
+            root_facts = _anchored_distribution_facts_v1(
+                anchor, anchor.handle, "directory", path="installation root",
+            )
+            result[""] = root_facts
+            walk_windows(anchor.handle, ())
+        else:
+            root_facts = _anchored_distribution_facts_v1(
+                anchor, anchor.handle, "directory", path="installation root",
+            )
+            result[""] = root_facts
+            walk_posix(anchor.handle, ())
+        _require_distribution_root_binding_v1(anchor, root_facts)
+        return result
+    except _UnexpectedDistributionEntryV1 as exc:
+        raise DistributionManifestError(
+            "birth_ownership_distribution_extra_file", exc.path,
+        ) from None
+    except DistributionManifestError:
+        raise
+    except Exception as exc:
+        raise DistributionManifestError(
+            "birth_ownership_distribution_file_mismatch", "distribution tree",
+        ) from exc
+
+
+def _read_anchored_distribution_file_v1(
+    anchor: _DistributionTreeAnchorV1, item: DistributionFile,
+    snapshot: Mapping[str, tuple[object, ...]],
+) -> bytes:
+    import executor_birth_secure_fs as secure_fs
+
+    components = tuple(item.path.split("/"))
+    opened: list[int] = []
+    parent = anchor.handle
+    try:
+        if snapshot.get("") != _anchored_distribution_facts_v1(
+            anchor, parent, "directory", path="installation root",
+        ):
+            raise DistributionManifestError(
+                "birth_ownership_distribution_file_mismatch", "installation root",
+            )
+        for offset, name in enumerate(components[:-1]):
+            path = _distribution_path_v1(components[:offset + 1])
+            child = (
+                secure_fs._win_open_relative_v1(
+                    parent, name,
+                    purpose=secure_fs._NtOpenPurposeV1.read_required,
+                    directory=True,
+                ) if anchor.native_platform == "windows" else
+                secure_fs._open_posix_child_directory(parent, name)
+            )
+            opened.append(child)
+            parent = child
+            facts = _anchored_distribution_facts_v1(
+                anchor, child, "directory", path=path,
+            )
+            if snapshot.get(path) != facts:
+                raise DistributionManifestError(
+                    "birth_ownership_distribution_file_mismatch", item.path,
+                )
+
+        name = components[-1]
+        if anchor.native_platform == "windows":
+            import executor_birth_secure_file as secure_file
+
+            file_handle = secure_fs._win_open_relative_v1(
+                parent, name,
+                purpose=secure_fs._NtOpenPurposeV1.read_required,
+                directory=False,
+            )
+            try:
+                before = _anchored_distribution_facts_v1(
+                    anchor, file_handle, "file", path=item.path,
+                )
+                if snapshot.get(item.path) != before:
+                    raise DistributionManifestError(
+                        "birth_ownership_distribution_file_mismatch", item.path,
+                    )
+                content = secure_file._win_read(file_handle, item.size)
+                after = _anchored_distribution_facts_v1(
+                    anchor, file_handle, "file", path=item.path,
+                )
+            finally:
+                secure_fs._win_close(file_handle)
+        else:
+            flags = (
+                os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+                | getattr(os, "O_NOFOLLOW", 0)
+                | getattr(os, "O_NONBLOCK", 0)
+            )
+            file_handle = os.open(name, flags, dir_fd=parent)
+            try:
+                before = _anchored_distribution_facts_v1(
+                    anchor, file_handle, "file", path=item.path,
+                )
+                if snapshot.get(item.path) != before:
+                    raise DistributionManifestError(
+                        "birth_ownership_distribution_file_mismatch", item.path,
+                    )
+                chunks: list[bytes] = []
+                total = 0
+                while total <= item.size:
+                    block = os.read(
+                        file_handle, min(1024 * 1024, item.size + 1 - total),
+                    )
+                    if not block:
+                        break
+                    chunks.append(block)
+                    total += len(block)
+                content = b"".join(chunks)
+                after = _anchored_distribution_facts_v1(
+                    anchor, file_handle, "file", path=item.path,
+                )
+            finally:
+                os.close(file_handle)
+        if before != after or len(content) != item.size:
+            raise DistributionManifestError(
+                "birth_ownership_distribution_file_mismatch", item.path,
+            )
+        return content
+    except DistributionManifestError:
+        raise
     except Exception as exc:
         raise DistributionManifestError(
             "birth_ownership_distribution_file_mismatch", item.path,
         ) from exc
+    finally:
+        for handle in reversed(opened):
+            if anchor.native_platform == "windows":
+                secure_fs._win_close(handle)
+            else:
+                os.close(handle)
 
 
 def _product_version_from_source(content: bytes) -> str:
     try:
         tree = ast.parse(content.decode("utf-8"), filename="runtime/__version__.py")
-    except (UnicodeDecodeError, SyntaxError) as exc:
+        _bounded_ast_metrics(tree)
+    except (
+        UnicodeDecodeError, SyntaxError, RecursionError, ValueError,
+        OverflowError, MemoryError,
+    ) as exc:
         raise DistributionManifestError(
             "birth_ownership_distribution_file_mismatch", "product version",
         ) from exc
-    stores = [
-        node for node in ast.walk(tree)
-        if isinstance(node, ast.Name) and node.id == "__version__"
-        and isinstance(node.ctx, (ast.Store, ast.Del))
-    ]
+    try:
+        stores = [
+            node for node in ast.walk(tree)
+            if isinstance(node, ast.Name) and node.id == "__version__"
+            and isinstance(node.ctx, (ast.Store, ast.Del))
+        ]
+    except MemoryError as exc:
+        raise DistributionManifestError(
+            "birth_ownership_distribution_file_mismatch", "product version",
+        ) from exc
     values: list[str] = []
     for statement in tree.body:
         if not isinstance(statement, ast.Assign):
@@ -566,17 +1454,7 @@ def _canonical_inventory(content: bytes) -> dict[str, object]:
         raise DistributionManifestError(
             "birth_ownership_distribution_file_mismatch", "boundary inventory",
         ) from exc
-    expected_policy = {
-        "schema": BIRTH_CLOSED_SCHEMA,
-        "guard_version": BIRTH_CLOSED_GUARD_VERSION,
-        "owner": BIRTH_CLOSED_OWNER,
-        "coordinator_store_owners": sorted(BIRTH_CLOSED_COORDINATOR_STORE_OWNERS),
-        "sealed_modules": list(BIRTH_CLOSED_SEALED_MODULES),
-        "exceptions": [
-            {"scope": scope, "exception": exception}
-            for scope, exception in sorted(BIRTH_CLOSED_EXCEPTION_SCOPES.items())
-        ],
-    }
+    expected_policy = birth_closed_inventory_value_v1()
     if (
         not isinstance(value, dict) or _canonical(value) != content
         or value.get("schema") != BOUNDARY_INVENTORY_SCHEMA
@@ -588,6 +1466,199 @@ def _canonical_inventory(content: bytes) -> dict[str, object]:
             "birth_ownership_distribution_file_mismatch", "boundary inventory",
         )
     return value
+
+
+@lru_cache(maxsize=1)
+def _analyze_local_imports_v1(
+    sources: tuple[tuple[str, bytes], ...], limits: tuple[object, ...],
+) -> tuple[tuple[str, tuple[tuple[str, int], ...]], ...]:
+    """Cache syntax only; every import path is resolved afresh by the caller."""
+    result = []
+    total_ast_nodes = 0
+    for source_path, source_bytes in sources:
+        try:
+            tree = ast.parse(source_bytes.decode("utf-8"), filename=source_path)
+            total_ast_nodes += _bounded_ast_metrics(tree)
+            if total_ast_nodes > MAX_BOUNDARY_TOTAL_AST_NODES_V1:
+                raise ValueError("boundary total AST node budget exceeded")
+        except (
+            UnicodeDecodeError, SyntaxError, RecursionError, ValueError,
+            OverflowError, MemoryError,
+        ) as exc:
+            raise DistributionManifestError(
+                "birth_ownership_distribution_file_mismatch", "python source",
+            ) from exc
+        modules: list[tuple[str, int]] = []
+        try:
+            parents = {
+                id(child): parent
+                for parent in ast.walk(tree)
+                for child in ast.iter_child_nodes(parent)
+            }
+
+            def authenticated_door_eval(call: ast.Call) -> bool:
+                if (
+                    source_path != "runtime/admitted_module_v1.py"
+                    or not isinstance(call.func, ast.Name)
+                    or call.func.id not in {"compile", "exec"}
+                ):
+                    return False
+                current: ast.AST = call
+                while (parent := parents.get(id(current))) is not None:
+                    if isinstance(parent, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                        return parent.name == "load_admitted_module_v1"
+                    current = parent
+                return False
+
+            aliases: dict[str, str] = {}
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import):
+                    for alias in node.names:
+                        bound = alias.asname or alias.name.split(".", 1)[0]
+                        aliases[bound] = alias.name if alias.asname else bound
+                elif isinstance(node, ast.ImportFrom) and node.module:
+                    for alias in node.names:
+                        if alias.name != "*":
+                            aliases[alias.asname or alias.name] = (
+                                f"{node.module}.{alias.name}"
+                            )
+
+            def resolved_callable(func: ast.AST) -> str | None:
+                parts: list[str] = []
+                current = func
+                while isinstance(current, ast.Attribute):
+                    parts.append(current.attr)
+                    current = current.value
+                if not isinstance(current, ast.Name):
+                    return None
+                root_name = aliases.get(current.id, current.id)
+                return ".".join((root_name, *reversed(parts)))
+
+            def authenticated_preflight_runpy(call: ast.Call) -> bool:
+                if (
+                    source_path not in {
+                        "runtime/executor_birth_admin_preflight.py",
+                        _BOUNDARY_PREFLIGHT_ENTRYPOINT_V1,
+                    }
+                    or not isinstance(call.func, ast.Attribute)
+                    or not isinstance(call.func.value, ast.Name)
+                    or call.func.value.id != "runpy"
+                    or call.func.attr != "run_module"
+                    or aliases.get("runpy") != "runpy"
+                    or len(call.args) != 1
+                    or not isinstance(call.args[0], ast.Attribute)
+                    or not isinstance(call.args[0].value, ast.Name)
+                    or call.args[0].value.id != "plan"
+                    or call.args[0].attr != "python_module"
+                    or len(call.keywords) != 2
+                    or any(keyword.arg is None for keyword in call.keywords)
+                ):
+                    return False
+                keywords = {keyword.arg: keyword.value for keyword in call.keywords}
+                if set(keywords) != {"run_name", "alter_sys"}:
+                    return False
+                if (
+                    not isinstance(keywords["run_name"], ast.Constant)
+                    or keywords["run_name"].value != "__main__"
+                    or not isinstance(keywords["alter_sys"], ast.Constant)
+                    or keywords["alter_sys"].value is not False
+                ):
+                    return False
+                current: ast.AST = call
+                function: ast.FunctionDef | ast.AsyncFunctionDef | None = None
+                while (parent := parents.get(id(current))) is not None:
+                    if isinstance(parent, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                        function = parent
+                        break
+                    current = parent
+                if function is None or function.name != "_launch_python_target_v1":
+                    return False
+                for inner in ast.walk(function):
+                    targets: list[ast.AST] = []
+                    if isinstance(inner, ast.Assign):
+                        targets.extend(inner.targets)
+                    elif isinstance(
+                        inner, (ast.AnnAssign, ast.AugAssign, ast.NamedExpr),
+                    ):
+                        targets.append(inner.target)
+                    if any(
+                        isinstance(target, ast.Name)
+                        and target.id in {"runpy", "plan"}
+                        for target in targets
+                    ):
+                        return False
+                return True
+
+            def dynamic_loader_call(call: ast.Call) -> bool:
+                canonical = resolved_callable(call.func)
+                if canonical is None:
+                    return False
+                leaf = canonical.rsplit(".", 1)[-1]
+                return bool(
+                    canonical in {
+                        "importlib.machinery.SourceFileLoader",
+                        "importlib.machinery.SourcelessFileLoader",
+                        "importlib.util.module_from_spec",
+                        "importlib.util.spec_from_file_location",
+                        "runpy.run_module", "runpy.run_path",
+                        "types.FunctionType",
+                    }
+                    or canonical.startswith("importlib.")
+                    and leaf in {
+                        "FunctionType", "SourceFileLoader",
+                        "SourcelessFileLoader", "exec_module", "load_module",
+                        "module_from_spec", "spec_from_file_location",
+                    }
+                    or leaf in {"exec_module", "load_module"}
+                    and f".loader.{leaf}" in canonical
+                )
+
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import):
+                    modules.extend((alias.name, 0) for alias in node.names)
+                elif isinstance(node, ast.ImportFrom):
+                    modules.append((node.module or "", node.level))
+                    modules.extend(
+                        (".".join(filter(None, (node.module or "", alias.name))), node.level)
+                        for alias in node.names if alias.name != "*"
+                    )
+                elif isinstance(node, ast.Call) and resolved_callable(node.func) in {
+                    "__import__", "builtins.__import__", "importlib.import_module",
+                }:
+                    raise DistributionManifestError(
+                        "birth_ownership_distribution_extra_file", "dynamic import",
+                    )
+                elif isinstance(node, ast.Call) and (
+                    isinstance(node.func, ast.Name)
+                    and node.func.id in {"compile", "eval", "exec", "FunctionType"}
+                    and not authenticated_door_eval(node)
+                    or dynamic_loader_call(node)
+                    and not authenticated_preflight_runpy(node)
+                ):
+                    raise DistributionManifestError(
+                        "birth_ownership_distribution_extra_file", "dynamic code loader",
+                    )
+                elif (
+                    isinstance(node, ast.Subscript)
+                    and isinstance(node.slice, ast.Constant)
+                    and node.slice.value == "__import__"
+                    and any(
+                        isinstance(part, ast.Name) and part.id == "__builtins__"
+                        or isinstance(part, ast.Call)
+                        and isinstance(part.func, ast.Name)
+                        and part.func.id in {"globals", "locals", "vars"}
+                        for part in ast.walk(node.value)
+                    )
+                ):
+                    raise DistributionManifestError(
+                        "birth_ownership_distribution_extra_file", "dynamic import",
+                    )
+        except MemoryError as exc:
+            raise DistributionManifestError(
+                "birth_ownership_distribution_file_mismatch", "python source",
+            ) from exc
+        result.append((source_path, tuple(modules)))
+    return tuple(result)
 
 
 def _verify_local_import_closure(
@@ -610,34 +1681,12 @@ def _verify_local_import_closure(
                 alternatives.extend((path + ".py", path + "/__init__.py"))
         return tuple(dict.fromkeys(alternatives))
 
-    for item in files:
-        if not item.path.endswith(".py"):
-            continue
-        try:
-            tree = ast.parse(content[item.path].decode("utf-8"), filename=item.path)
-        except (UnicodeDecodeError, SyntaxError) as exc:
-            raise DistributionManifestError(
-                "birth_ownership_distribution_file_mismatch", "python source",
-            ) from exc
-        modules: list[tuple[str, int]] = []
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Import):
-                modules.extend((alias.name, 0) for alias in node.names)
-            elif isinstance(node, ast.ImportFrom):
-                modules.append((node.module or "", node.level))
-                modules.extend(
-                    (".".join(filter(None, (node.module or "", alias.name))), node.level)
-                    for alias in node.names if alias.name != "*"
-                )
-            elif isinstance(node, ast.Call) and (
-                isinstance(node.func, ast.Name) and node.func.id == "__import__"
-                or isinstance(node.func, ast.Attribute) and node.func.attr == "import_module"
-            ):
-                raise DistributionManifestError(
-                    "birth_ownership_distribution_extra_file", "dynamic import",
-                )
+    sources = tuple((item.path, content[item.path]) for item in files
+                    if item.path.endswith(".py"))
+    limits = (_boundary_ast_limits(), MAX_BOUNDARY_TOTAL_AST_NODES_V1)
+    for source_path, modules in _analyze_local_imports_v1(sources, limits):
         for module, level in modules:
-            candidates = local_candidates(module, item.path, level)
+            candidates = local_candidates(module, source_path, level)
             existing = [candidate for candidate in candidates
                         if root.joinpath(*candidate.split("/")).exists()]
             if existing and (len(existing) != 1 or existing[0] not in declared):
@@ -646,11 +1695,10 @@ def _verify_local_import_closure(
                 )
 
 
-def verify_distribution_manifest(
+def _authenticated_distribution_material_with_registry(
     encoded: bytes, signature: bytes, *, registry: DistributionRegistry,
-    _environment: _VerificationEnvironment | None = None,
-) -> VerifiedDistribution:
-    """Authenticate schema, authority, target and every declared build file."""
+) -> _AuthenticatedDistributionMaterialV1:
+    """Authenticate immutable manifest facts without looking at live files."""
     value, files = _parse(encoded)
     if not isinstance(signature, bytes) or len(signature) != 64:
         raise DistributionManifestError("birth_ownership_distribution_invalid", "signature")
@@ -669,31 +1717,115 @@ def verify_distribution_manifest(
         key.public_key.verify(signature, SIGNATURE_DOMAIN + encoded)
     except InvalidSignature as exc:
         raise DistributionManifestError("birth_ownership_distribution_invalid", "signature") from exc
-    environment = _environment or _runtime_environment()
-    if not isinstance(environment, _VerificationEnvironment) or environment._seal is not _ENVIRONMENT_SEAL:
-        raise DistributionManifestError("birth_ownership_distribution_platform_mismatch")
-    if (value["platform"], value["architecture"]) != (
-        environment.platform, environment.architecture,
+
+    return _AuthenticatedDistributionMaterialV1(
+        str(value["closed_build_id"]), value["previous_closed_build_id"],
+        sequence, str(value["product_version"]), str(value["platform"]),
+        str(value["architecture"]), key_id, str(value["installation_root"]),
+        str(value["certificate_directory"]),
+        str(value["boundary_inventory_path"]),
+        str(value["boundary_inventory_hash"]),
+        str(value["boundary_guard_version"]),
+        str(value["preflight_entrypoint"]), files, bytes(encoded),
+        bytes(signature), _authenticated_artifact_binding(encoded, signature),
+    )
+
+
+def authenticate_distribution_record_v1(
+    encoded: bytes, signature: bytes,
+) -> AuthenticatedDistributionRecordV1:
+    """Cold-authenticate one record using only the fixed public trust store."""
+    from executor_birth_ownership_authorities import (
+        _load_fixed_ownership_public_snapshot_v1,
+    )
+
+    return _authenticate_distribution_record_from_fixed_snapshot_v1(
+        encoded, signature, _load_fixed_ownership_public_snapshot_v1(),
+    )
+
+
+def _authenticate_distribution_record_from_fixed_snapshot_v1(
+    encoded: bytes, signature: bytes, snapshot,
+) -> AuthenticatedDistributionRecordV1:
+    from executor_birth_ownership_authorities import (
+        _FIXED_PUBLIC_SNAPSHOT_SEAL, _FixedOwnershipPublicSnapshotV1,
+    )
+
+    if (
+        type(snapshot) is not _FixedOwnershipPublicSnapshotV1
+        or snapshot._seal is not _FIXED_PUBLIC_SNAPSHOT_SEAL
     ):
-        raise DistributionManifestError("birth_ownership_distribution_platform_mismatch")
-    if str(value["installation_root"]) != environment.claimed_installation_root:
-        raise DistributionManifestError("birth_ownership_distribution_platform_mismatch", "root")
-    by_path = {item.path: item for item in files}
-    verified_content: dict[str, bytes] = {}
-    for item in files:
-        content = (
-            _secure_read_windows(environment.installation_root, item)
-            if environment.platform == "windows"
-            else _secure_read(
-                environment.installation_root, item,
-                administrative=environment.require_administrative_metadata,
-            )
+        raise DistributionManifestError(
+            "birth_ownership_distribution_invalid", "authority snapshot",
         )
-        if file_content_hash(item.path, content) != item.content_hash:
-            raise DistributionManifestError(
-                "birth_ownership_distribution_file_mismatch", item.path,
-            )
-        verified_content[item.path] = content
+    material = _authenticated_distribution_material_with_registry(
+        encoded, signature,
+        registry=snapshot.public.distribution,
+    )
+    return AuthenticatedDistributionRecordV1(
+        *material, _AUTHENTICATED_DISTRIBUTION_SEAL,
+    )
+
+
+def _authenticate_distribution_record_for_test(
+    encoded: bytes, signature: bytes, *, registry: DistributionRegistry,
+) -> _AuthenticatedDistributionRecordForTestV1:
+    """Portable seam with a nominal result rejected by production APIs."""
+    material = _authenticated_distribution_material_with_registry(
+        encoded, signature, registry=registry,
+    )
+    return _AuthenticatedDistributionRecordForTestV1(
+        *material, _TEST_AUTHENTICATED_DISTRIBUTION_SEAL,
+    )
+
+
+def _is_authenticated_distribution_record_v1(
+    value: object, *, for_test: bool = False,
+) -> bool:
+    expected_type = (
+        _AuthenticatedDistributionRecordForTestV1
+        if for_test else AuthenticatedDistributionRecordV1
+    )
+    expected_seal = (
+        _TEST_AUTHENTICATED_DISTRIBUTION_SEAL
+        if for_test else _AUTHENTICATED_DISTRIBUTION_SEAL
+    )
+    return (
+        type(value) is expected_type
+        and value._seal is expected_seal
+        and value._artifact_binding == _authenticated_artifact_binding(
+            value.encoded, value.signature,
+        )
+    )
+
+
+def _record_matches_parsed_value(
+    record: AuthenticatedDistributionRecordV1 | _AuthenticatedDistributionRecordForTestV1,
+    value: Mapping[str, object], files: tuple[DistributionFile, ...],
+) -> bool:
+    return (
+        record.closed_build_id == value["closed_build_id"]
+        and record.previous_closed_build_id == value["previous_closed_build_id"]
+        and record.release_sequence == value["release_sequence"]
+        and record.product_version == value["product_version"]
+        and record.platform == value["platform"]
+        and record.architecture == value["architecture"]
+        and record.signing_key_id == value["signing_key_id"]
+        and record.installation_root == value["installation_root"]
+        and record.certificate_directory == value["certificate_directory"]
+        and record.boundary_inventory_path == value["boundary_inventory_path"]
+        and record.boundary_inventory_hash == value["boundary_inventory_hash"]
+        and record.boundary_guard_version == value["boundary_guard_version"]
+        and record.preflight_entrypoint == value["preflight_entrypoint"]
+        and record.files == files
+    )
+
+
+def _verify_distribution_content_semantics_v1(
+    value: Mapping[str, object], files: tuple[DistributionFile, ...],
+    environment: _VerificationEnvironment, verified_content: Mapping[str, bytes],
+    *, historical_review: bool = False,
+) -> None:
     inventory_path = str(value["boundary_inventory_path"])
     inventory_hash = "sha256:" + hashlib.sha256(
         BOUNDARY_INVENTORY_DOMAIN + verified_content[inventory_path]
@@ -702,12 +1834,19 @@ def verify_distribution_manifest(
         raise DistributionManifestError(
             "birth_ownership_distribution_file_mismatch", "boundary inventory",
         )
-    inventory = _canonical_inventory(verified_content[inventory_path])
-    if value["boundary_guard_version"] != BIRTH_CLOSED_GUARD_VERSION:
+    if historical_review:
+        _require_historical_source_review_v1(value, verified_content)
+    else:
+        inventory = _canonical_inventory(verified_content[inventory_path])
+    if not historical_review and value["boundary_guard_version"] != BIRTH_CLOSED_GUARD_VERSION:
         raise DistributionManifestError(
             "birth_ownership_distribution_file_mismatch", "boundary guard version",
         )
-    if environment.verify_static_boundary:
+    if not historical_review and environment.verify_static_boundary:
+        if not _source_review_is_exact_v1(verified_content):
+            raise DistributionManifestError(
+                "birth_ownership_distribution_file_mismatch", "source review",
+            )
         try:
             findings = birth_closed_findings(
                 discover(environment.installation_root), inventory,
@@ -726,33 +1865,554 @@ def verify_distribution_manifest(
         raise DistributionManifestError(
             "birth_ownership_distribution_file_mismatch", "product version",
         )
-    _verify_local_import_closure(
-        environment.installation_root, files, verified_content,
+    if not historical_review:
+        _verify_local_import_closure(
+            environment.installation_root, files, verified_content,
+        )
+
+
+def _require_historical_source_review_v1(
+    value: Mapping[str, object], contents: Mapping[str, bytes],
+) -> None:
+    """Recheck N's signed review commitment without executing N's policy.
+
+    This is NOT candidate certification: only the immediate-predecessor API
+    reaches it. The V1 framing and source roots remain the supported format.
+    """
+    try:
+        reviewed = closed_python_source_review_sha256(contents)
+        encoded = contents[str(value["boundary_inventory_path"])]
+        inventory = json.loads(encoded.decode("ascii"), object_pairs_hook=_pairs)
+        pins = [re.findall(
+            rb'(?m)^' + name + rb' = "(sha256:[0-9a-f]{64})"$', contents[path],
+        ) for path, name in (
+            ("runtime/contract_boundary_guard.py", b"BIRTH_CLOSED_SOURCE_REVIEW_SHA256"),
+            ("runtime/executor_birth_admin_preflight.py", b"_BIRTH_CLOSED_SOURCE_REVIEW_SHA256"),
+        )]
+        valid = (
+            type(inventory) is dict and _canonical(inventory) == encoded
+            and inventory.get("schema") == BOUNDARY_INVENTORY_SCHEMA
+            and inventory.get("scan_roots") == list(SCAN_ROOTS)
+            and type(inventory.get("entries")) is list
+            and type(inventory.get("birth_closed")) is dict
+            and inventory["birth_closed"].get("guard_version") == value["boundary_guard_version"]
+            and inventory.get("source_census") == reviewed
+            and all(pin == [reviewed.encode("ascii")] for pin in pins)
+            and contents[_BOUNDARY_PREFLIGHT_ENTRYPOINT_V1]
+            == contents["runtime/executor_birth_admin_preflight.py"]
+        )
+    except (KeyError, ValueError, UnicodeError, TypeError) as exc:
+        raise DistributionManifestError(
+            "birth_ownership_distribution_file_mismatch", "historical source review",
+        ) from exc
+    if not valid:
+        raise DistributionManifestError(
+            "birth_ownership_distribution_file_mismatch", "historical source review",
+        )
+
+
+def _source_review_is_exact_v1(verified_content: Mapping[str, bytes]) -> bool:
+    try:
+        reviewed = closed_python_source_review_sha256(verified_content)
+    except ValueError:
+        return False
+    return (
+        reviewed == BIRTH_CLOSED_SOURCE_REVIEW_SHA256
+        and verified_content.get(_BOUNDARY_PREFLIGHT_ENTRYPOINT_V1)
+        == verified_content.get("runtime/executor_birth_admin_preflight.py")
     )
-    runtime_dir = environment.installation_root / "runtime"
-    if runtime_dir.is_dir():
-        declared = set(by_path)
-        for path in runtime_dir.glob("executor_birth*.py"):
-            relative = path.relative_to(environment.installation_root).as_posix()
-            if relative not in declared:
-                raise DistributionManifestError(
-                    "birth_ownership_distribution_extra_file", relative,
-                )
-        if any(runtime_dir.rglob("__pycache__")) or any(runtime_dir.rglob("*.pyc")):
-            raise DistributionManifestError("birth_ownership_distribution_extra_file", "bytecode")
+
+
+def _verified_distribution_result_v1(
+    record: AuthenticatedDistributionRecordV1 | _AuthenticatedDistributionRecordForTestV1,
+    value: Mapping[str, object], files: tuple[DistributionFile, ...],
+) -> VerifiedDistribution:
     identity = ClosedBuildIdentity(
         str(value["closed_build_id"]), str(value["boundary_inventory_hash"]),
         str(value["boundary_guard_version"]), _BUILD_AUTHORITY_SEAL,
     )
     return VerifiedDistribution(
-        identity, value["previous_closed_build_id"], sequence,
+        identity, value["previous_closed_build_id"], int(value["release_sequence"]),
         str(value["product_version"]), str(value["platform"]),
         str(value["architecture"]), str(value["installation_root"]),
         str(value["certificate_directory"]), str(value["preflight_entrypoint"]),
-        files, bytes(encoded), bytes(signature),
-        _distribution_artifact_binding(encoded, signature),
+        files, bytes(record.encoded), bytes(record.signature),
+        _distribution_artifact_binding(record.encoded, record.signature),
         _VERIFIED_DISTRIBUTION_SEAL,
     )
+
+
+def _verify_authenticated_distribution_record(
+    record: AuthenticatedDistributionRecordV1 | _AuthenticatedDistributionRecordForTestV1,
+    environment: _VerificationEnvironment, *, for_test: bool,
+    _historical_review: bool = False,
+) -> VerifiedDistribution:
+    expected_type = (
+        _AuthenticatedDistributionRecordForTestV1
+        if for_test else AuthenticatedDistributionRecordV1
+    )
+    expected_seal = (
+        _TEST_AUTHENTICATED_DISTRIBUTION_SEAL
+        if for_test else _AUTHENTICATED_DISTRIBUTION_SEAL
+    )
+    if (
+        type(record) is not expected_type
+        or record._seal is not expected_seal
+        or record._artifact_binding != _authenticated_artifact_binding(
+            record.encoded, record.signature,
+        )
+    ):
+        raise DistributionManifestError(
+            "birth_ownership_distribution_invalid", "authenticated artifact",
+        )
+    value, files = _parse(record.encoded)
+    if not _record_matches_parsed_value(record, value, files):
+        raise DistributionManifestError(
+            "birth_ownership_distribution_invalid", "record binding",
+        )
+    if not isinstance(environment, _VerificationEnvironment) or environment._seal is not _ENVIRONMENT_SEAL:
+        raise DistributionManifestError("birth_ownership_distribution_platform_mismatch")
+    if (value["platform"], value["architecture"]) != (
+        environment.platform, environment.architecture,
+    ):
+        raise DistributionManifestError("birth_ownership_distribution_platform_mismatch")
+    if str(value["installation_root"]) != environment.claimed_installation_root:
+        raise DistributionManifestError("birth_ownership_distribution_platform_mismatch", "root")
+    try:
+        root_info = environment.installation_root.lstat()
+    except OSError as exc:
+        raise DistributionManifestError(
+            "birth_ownership_distribution_file_mismatch", "installation root",
+        ) from exc
+    if (
+        not stat.S_ISDIR(root_info.st_mode) or stat.S_ISLNK(root_info.st_mode)
+        or bool(getattr(root_info, "st_file_attributes", 0) & 0x400)
+        or (environment.require_administrative_metadata and os.name != "nt" and (
+            root_info.st_uid != 0 or root_info.st_gid != 0
+            or root_info.st_mode & 0o022
+        ))
+    ):
+        raise DistributionManifestError(
+            "birth_ownership_distribution_file_mismatch", "installation root",
+        )
+    tree = _closed_distribution_tree_v1(files)
+    anchor = _open_distribution_tree_anchor_v1(
+        environment.installation_root,
+        administrative=environment.require_administrative_metadata,
+    )
+    try:
+        before = _snapshot_exact_distribution_tree_v1(anchor, tree)
+        verified_content: dict[str, bytes] = {}
+        for item in files:
+            content = _read_anchored_distribution_file_v1(anchor, item, before)
+            if file_content_hash(item.path, content) != item.content_hash:
+                raise DistributionManifestError(
+                    "birth_ownership_distribution_file_mismatch", item.path,
+                )
+            verified_content[item.path] = content
+        _verify_distribution_content_semantics_v1(
+            value, files, environment, verified_content,
+            historical_review=_historical_review,
+        )
+        after = _snapshot_exact_distribution_tree_v1(anchor, tree)
+        if before != after:
+            raise DistributionManifestError(
+                "birth_ownership_distribution_file_mismatch", "distribution tree",
+            )
+        _require_distribution_root_binding_v1(anchor, before[""])
+        return _verified_distribution_result_v1(record, value, files)
+    finally:
+        _close_distribution_tree_anchor_v1(anchor)
+
+
+def verify_installed_distribution_record_v1(
+    record: AuthenticatedDistributionRecordV1,
+) -> VerifiedDistribution:
+    """Verify the one live release selected solely by its signed sequence."""
+    if not sys.platform.startswith("linux"):
+        raise DistributionManifestError("birth_ownership_platform_unsupported")
+    if (
+        type(record) is not AuthenticatedDistributionRecordV1
+        or record._seal is not _AUTHENTICATED_DISTRIBUTION_SEAL
+    ):
+        raise DistributionManifestError(
+            "birth_ownership_distribution_invalid", "authenticated artifact",
+        )
+    expected_root = (
+        DEFAULT_RELEASE_DIRECTORY_V1 / f"{record.release_sequence:020d}"
+    )
+    if record.installation_root != expected_root.as_posix():
+        raise DistributionManifestError(
+            "birth_ownership_distribution_platform_mismatch", "root",
+        )
+    _require_product_release_metadata_v1(expected_root)
+    observed = _runtime_environment()
+    environment = _VerificationEnvironment(
+        observed.platform, observed.architecture, expected_root,
+        expected_root.as_posix(), True, True, _ENVIRONMENT_SEAL,
+    )
+    return _verify_authenticated_distribution_record(
+        record, environment, for_test=False,
+    )
+
+
+def verify_current_installation_distribution_v1(
+    encoded: bytes, signature: bytes,
+) -> VerifiedDistribution:
+    """Reverify the G5 installation using fixed trust and the runtime root."""
+    record = authenticate_distribution_record_v1(encoded, signature)
+    environment = _runtime_environment()
+    _require_product_release_metadata_v1(environment.installation_root)
+    return _verify_authenticated_distribution_record(
+        record, environment, for_test=False,
+    )
+
+
+def _require_previous_distribution_edge_v1(
+    current: object, previous: object, *, for_test: bool,
+) -> None:
+    for record in (current, previous):
+        if not _is_authenticated_distribution_record_v1(record, for_test=for_test):
+            raise DistributionManifestError("birth_ownership_distribution_invalid", "previous record")
+        value, files = _parse(record.encoded)
+        if not _record_matches_parsed_value(record, value, files) or record.installation_root != (
+            DEFAULT_RELEASE_DIRECTORY_V1 / f"{record.release_sequence:020d}"
+        ).as_posix():
+            raise DistributionManifestError("birth_ownership_distribution_invalid", "previous root binding")
+    if (
+        current.previous_closed_build_id != previous.closed_build_id
+        or current.release_sequence != previous.release_sequence + 1
+        or (current.platform, current.architecture) != (previous.platform, previous.architecture)
+    ):
+        raise DistributionManifestError("birth_ownership_distribution_chain_invalid", "previous edge")
+
+
+def verify_previous_distribution_record_v1(
+    current: AuthenticatedDistributionRecordV1,
+    previous: AuthenticatedDistributionRecordV1,
+) -> VerifiedDistribution:
+    """Verify only N immediately preceding signed N+1, under N's signed review.
+
+    Chain/head/completed-preflight selection remains the coordinator's duty.
+    This does not certify N+1; current verifiers retain their compiled policy.
+    """
+    if not sys.platform.startswith("linux"):
+        raise DistributionManifestError("birth_ownership_platform_unsupported")
+    _require_previous_distribution_edge_v1(current, previous, for_test=False)
+    if any(authenticate_distribution_record_v1(item.encoded, item.signature) != item
+           for item in (current, previous)):
+        raise DistributionManifestError("birth_ownership_distribution_invalid", "previous authentication")
+    root = DEFAULT_RELEASE_DIRECTORY_V1 / f"{previous.release_sequence:020d}"
+    _require_product_release_metadata_v1(root)
+    observed = _runtime_environment()
+    environment = _VerificationEnvironment(
+        observed.platform, observed.architecture, root, root.as_posix(),
+        True, True, _ENVIRONMENT_SEAL,
+    )
+    return _verify_authenticated_distribution_record(
+        previous, environment, for_test=False, _historical_review=True,
+    )
+
+
+def _verify_previous_distribution_record_for_test_v1(
+    current: _AuthenticatedDistributionRecordForTestV1,
+    previous: _AuthenticatedDistributionRecordForTestV1, *,
+    registry: DistributionRegistry, environment: _VerificationEnvironment,
+) -> VerifiedDistribution:
+    _require_previous_distribution_edge_v1(current, previous, for_test=True)
+    if any(_authenticate_distribution_record_for_test(
+        item.encoded, item.signature, registry=registry,
+    ) != item for item in (current, previous)):
+        raise DistributionManifestError("birth_ownership_distribution_invalid", "previous authentication")
+    return _verify_authenticated_distribution_record(
+        previous, environment, for_test=True, _historical_review=True,
+    )
+
+
+_HISTORICAL_ARTIFACTS_SEAL_V1 = object()
+
+
+@dataclass(frozen=True, slots=True)
+class HistoricalReleaseArtifactsV1:
+    """Read-only predecessor bytes, never a current deployment capability."""
+
+    record: AuthenticatedDistributionRecordV1
+    descriptor: object
+    contents: Mapping[str, bytes]
+    _seal: object
+
+    def __post_init__(self) -> None:
+        if self._seal is not _HISTORICAL_ARTIFACTS_SEAL_V1:
+            raise DistributionManifestError("birth_ownership_distribution_invalid", "historical artifacts")
+
+
+def _capture_previous_release_artifacts_core_v1(
+    previous: object, verified: VerifiedDistribution, root: Path, *, administrative: bool,
+) -> HistoricalReleaseArtifactsV1:
+    from executor_birth_distribution_assembler import DEPLOYMENT_DESCRIPTOR_PATH_V1
+
+    selected = {item.path: item for item in verified.files if item.role in {
+        "service_catalog", "deployment_descriptor", "service_unit",
+    } or item.path == verified.preflight_entrypoint}
+    anchor = _open_distribution_tree_anchor_v1(root, administrative=administrative)
+    try:
+        tree = _closed_distribution_tree_v1(verified.files)
+        before = _snapshot_exact_distribution_tree_v1(anchor, tree)
+        contents = {}
+        for path, item in selected.items():
+            content = _read_anchored_distribution_file_v1(anchor, item, before)
+            if file_content_hash(path, content) != item.content_hash:
+                raise DistributionManifestError("birth_ownership_distribution_file_mismatch", path)
+            contents[path] = content
+        descriptor = _decode_bound_deployment_descriptor_v1(
+            verified, contents[DEPLOYMENT_DESCRIPTOR_PATH_V1],
+        )
+        if {item.source_path for item in descriptor.artifacts} != {
+            path for path, item in selected.items()
+            if item.role == "service_unit" or path == verified.preflight_entrypoint
+        } or any(
+            item.size != selected[item.source_path].size
+            or item.content_hash != selected[item.source_path].content_hash
+            for item in descriptor.artifacts
+        ):
+            raise DistributionManifestError("birth_ownership_distribution_file_mismatch", "historical artifacts")
+        after = _snapshot_exact_distribution_tree_v1(anchor, tree)
+        if before != after:
+            raise DistributionManifestError("birth_ownership_distribution_file_mismatch", "historical tree")
+        _require_distribution_root_binding_v1(anchor, after[""])
+        return HistoricalReleaseArtifactsV1(
+            previous, descriptor, MappingProxyType(contents), _HISTORICAL_ARTIFACTS_SEAL_V1,
+        )
+    finally:
+        _close_distribution_tree_anchor_v1(anchor)
+
+
+def capture_previous_release_artifacts_v1(
+    current: AuthenticatedDistributionRecordV1, previous: AuthenticatedDistributionRecordV1,
+) -> HistoricalReleaseArtifactsV1:
+    verified = verify_previous_distribution_record_v1(current, previous)
+    captured = _capture_previous_release_artifacts_core_v1(
+        previous, verified, Path(verified.installation_root), administrative=True,
+    )
+    if verify_previous_distribution_record_v1(current, previous) != verified:
+        raise DistributionManifestError("birth_ownership_distribution_file_mismatch", "previous distribution")
+    return captured
+
+
+def _capture_previous_release_artifacts_for_test_v1(
+    current: _AuthenticatedDistributionRecordForTestV1,
+    previous: _AuthenticatedDistributionRecordForTestV1, *,
+    registry: DistributionRegistry, environment: _VerificationEnvironment,
+) -> HistoricalReleaseArtifactsV1:
+    verified = _verify_previous_distribution_record_for_test_v1(
+        current, previous, registry=registry, environment=environment,
+    )
+    captured = _capture_previous_release_artifacts_core_v1(
+        previous, verified, environment.installation_root,
+        administrative=environment.require_administrative_metadata,
+    )
+    if _verify_previous_distribution_record_for_test_v1(
+        current, previous, registry=registry, environment=environment,
+    ) != verified:
+        raise DistributionManifestError("birth_ownership_distribution_file_mismatch", "previous distribution")
+    return captured
+
+
+def _verify_authenticated_distribution_record_for_test(
+    record: _AuthenticatedDistributionRecordForTestV1,
+    *, environment: _VerificationEnvironment,
+) -> VerifiedDistribution:
+    return _verify_authenticated_distribution_record(
+        record, environment, for_test=True,
+    )
+
+
+def _verify_distribution_manifest_for_test(
+    encoded: bytes, signature: bytes, *, registry: DistributionRegistry,
+    _environment: _VerificationEnvironment | None = None,
+) -> VerifiedDistribution:
+    """Compatibility verifier; productive cold paths use the fixed trust store."""
+    record = _authenticate_distribution_record_for_test(
+        encoded, signature, registry=registry,
+    )
+    return _verify_authenticated_distribution_record_for_test(
+        record, environment=_environment or _runtime_environment(),
+    )
+
+
+def _verified_distribution_matches_payload_v1(value: object) -> bool:
+    if (
+        type(value) is not VerifiedDistribution
+        or value._seal is not _VERIFIED_DISTRIBUTION_SEAL
+        or value._artifact_binding != _distribution_artifact_binding(
+            value.encoded, value.signature,
+        )
+    ):
+        return False
+    try:
+        document, files = _parse(value.encoded)
+    except DistributionManifestError:
+        return False
+    return (
+        value.identity.closed_build_id == document["closed_build_id"]
+        and value.identity.boundary_inventory_hash
+        == document["boundary_inventory_hash"]
+        and value.identity.boundary_guard_version
+        == document["boundary_guard_version"]
+        and value.previous_closed_build_id
+        == document["previous_closed_build_id"]
+        and value.release_sequence == document["release_sequence"]
+        and value.product_version == document["product_version"]
+        and value.platform == document["platform"]
+        and value.architecture == document["architecture"]
+        and value.installation_root == document["installation_root"]
+        and value.certificate_directory == document["certificate_directory"]
+        and value.preflight_entrypoint == document["preflight_entrypoint"]
+        and value.files == files
+    )
+
+
+def _capture_distribution_file_at_v1(
+    verified: object, root: Path, *, expected_path: str, expected_role: str,
+    administrative: bool,
+) -> bytes:
+    """Read one signed file through an exact-tree anchored observation."""
+    if (
+        not _verified_distribution_matches_payload_v1(verified)
+        or not isinstance(root, Path)
+        or type(expected_path) is not str
+        or type(expected_role) is not str
+        or type(administrative) is not bool
+    ):
+        raise DistributionManifestError(
+            "birth_ownership_distribution_invalid", "verified artifact",
+        )
+    matching = tuple(
+        item for item in verified.files
+        if item.path == expected_path and item.role == expected_role
+    )
+    if len(matching) != 1:
+        raise DistributionManifestError(
+            "birth_ownership_distribution_invalid", expected_role,
+        )
+    item = matching[0]
+    tree = _closed_distribution_tree_v1(verified.files)
+    anchor = _open_distribution_tree_anchor_v1(
+        root, administrative=administrative,
+    )
+    try:
+        before = _snapshot_exact_distribution_tree_v1(anchor, tree)
+        content = _read_anchored_distribution_file_v1(
+            anchor, item, before,
+        )
+        after = _snapshot_exact_distribution_tree_v1(anchor, tree)
+        if (
+            before != after
+            or file_content_hash(item.path, content) != item.content_hash
+        ):
+            raise DistributionManifestError(
+                "birth_ownership_distribution_file_mismatch", item.path,
+            )
+        _require_distribution_root_binding_v1(anchor, after[""])
+        return content
+    finally:
+        _close_distribution_tree_anchor_v1(anchor)
+
+
+def _decode_bound_deployment_descriptor_v1(
+    verified: VerifiedDistribution, encoded: bytes,
+):
+    from executor_birth_distribution_assembler import (
+        DEPLOYMENT_DESCRIPTOR_PATH_V1, DistributionAssemblerError,
+        decode_deployment_descriptor_v1,
+    )
+
+    try:
+        descriptor = decode_deployment_descriptor_v1(encoded)
+    except DistributionAssemblerError as exc:
+        raise DistributionManifestError(
+            "birth_ownership_distribution_file_mismatch",
+            DEPLOYMENT_DESCRIPTOR_PATH_V1,
+        ) from exc
+    if (
+        descriptor.release_sequence != verified.release_sequence
+        or descriptor.installation_root != verified.installation_root
+    ):
+        raise DistributionManifestError(
+            "birth_ownership_distribution_file_mismatch",
+            DEPLOYMENT_DESCRIPTOR_PATH_V1,
+        )
+    return descriptor
+
+
+def read_verified_distribution_file_v1(
+    distribution: object, *, expected_path: str, expected_role: str,
+) -> bytes:
+    """Capture exact public bytes, without selecting a current release.
+
+    The calling owner must establish which verified distribution it needs.
+    Its authenticated root is the only root this interface can read.
+    """
+    if not _verified_distribution_matches_payload_v1(distribution):
+        raise DistributionManifestError(
+            "birth_ownership_distribution_invalid", "verified artifact",
+        )
+    return _capture_distribution_file_at_v1(
+        distribution, Path(distribution.installation_root),
+        expected_path=expected_path, expected_role=expected_role,
+        administrative=True,
+    )
+
+
+def capture_current_deployment_descriptor_v1(
+    distribution: object,
+) -> tuple[VerifiedDistribution, object]:
+    """Reverify the fixed release around one exact descriptor capture."""
+    if not _verified_distribution_matches_payload_v1(distribution):
+        raise DistributionManifestError(
+            "birth_ownership_distribution_invalid", "verified artifact",
+        )
+    verified = verify_current_installation_distribution_v1(
+        distribution.encoded, distribution.signature,
+    )
+    if verified != distribution:
+        raise DistributionManifestError(
+            "birth_ownership_distribution_file_mismatch", "distribution",
+        )
+    from executor_birth_distribution_assembler import (
+        DEPLOYMENT_DESCRIPTOR_PATH_V1,
+    )
+
+    encoded = read_verified_distribution_file_v1(
+        verified,
+        expected_path=DEPLOYMENT_DESCRIPTOR_PATH_V1,
+        expected_role="deployment_descriptor",
+    )
+    descriptor = _decode_bound_deployment_descriptor_v1(verified, encoded)
+    reread = verify_current_installation_distribution_v1(
+        verified.encoded, verified.signature,
+    )
+    if reread != verified:
+        raise DistributionManifestError(
+            "birth_ownership_distribution_file_mismatch", "distribution",
+        )
+    return reread, descriptor
+
+
+def _capture_deployment_descriptor_for_test_v1(
+    distribution: object, actual_root: Path,
+):
+    """Portable seam; productive capture always derives the fixed root."""
+    from executor_birth_distribution_assembler import (
+        DEPLOYMENT_DESCRIPTOR_PATH_V1,
+    )
+
+    encoded = _capture_distribution_file_at_v1(
+        distribution, actual_root,
+        expected_path=DEPLOYMENT_DESCRIPTOR_PATH_V1,
+        expected_role="deployment_descriptor", administrative=False,
+    )
+    return _decode_bound_deployment_descriptor_v1(distribution, encoded)
 
 
 def is_verified_distribution(value: object) -> bool:
@@ -780,9 +2440,17 @@ def _verified_distribution_for_test(
 
 __all__ = [
     "BOUNDARY_INVENTORY_DOMAIN", "BUILD_ID_DOMAIN", "FILE_HASH_DOMAIN",
-    "MAX_PAYLOAD_BYTES", "PURPOSE",
-    "SIGNATURE_DOMAIN", "DistributionFile", "DistributionKey",
+    "INSTALLED_TREE_DOMAIN",
+    "DEFAULT_RELEASE_DIRECTORY_V1", "MAX_PAYLOAD_BYTES", "PURPOSE",
+    "SIGNATURE_DOMAIN", "AuthenticatedDistributionRecordV1",
+    "DistributionFile", "DistributionKey",
     "DistributionManifestError", "DistributionRegistry", "VerifiedDistribution",
-    "distribution_key_id", "file_content_hash", "is_verified_distribution",
-    "verify_distribution_manifest",
+    "authenticate_distribution_record_v1", "build_distribution_manifest_v1",
+    "capture_current_deployment_descriptor_v1", "distribution_key_id",
+    "read_verified_distribution_file_v1",
+    "file_content_hash", "installed_tree_hash_v1", "is_verified_distribution",
+    "verify_current_installation_distribution_v1",
+    "verify_installed_distribution_record_v1",
+    "verify_previous_distribution_record_v1", "HistoricalReleaseArtifactsV1",
+    "capture_previous_release_artifacts_v1",
 ]

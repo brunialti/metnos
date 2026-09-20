@@ -30,6 +30,7 @@ from backends._google_auth_common import (  # noqa: E402
     auth_needs_inputs as _common_auth_needs_inputs,
 )
 from backends._google_api_runner import run_with_retry  # noqa: E402
+import detection_lexicon_seed_residual_am as _residual_lexicon  # noqa: E402
 from messages import get as _msg  # noqa: E402
 from state_receipts import (  # noqa: E402
     inverse_membership_delta, membership_delta,
@@ -478,22 +479,22 @@ def labels(args: dict) -> dict:
 # MODIFY  (move-to-folder via system labels; Gmail folders = labels)
 # --------------------------------------------------------------------------
 
-# Mapping IT/EN folder-name → Gmail system label id.
-# Gmail non ha "folder" tradizionali: una mail e' in INBOX|SENT|DRAFT|TRASH|SPAM
-# in funzione delle system labels. Le user labels sono cartelle simulate.
-_FOLDER_TO_LABEL_ID = {
+# Canonical folder identities -> Gmail protocol labels.  Natural-language
+# aliases live in the manually reviewed detection lexicon.
+_GMAIL_LABEL_BY_CANONICAL = {
     "inbox": "INBOX",
-    "posta-in-arrivo": "INBOX", "posta in arrivo": "INBOX",
-    "trash": "TRASH", "cestino": "TRASH", "trashed": "TRASH",
-    "spam": "SPAM", "junk": "SPAM",
-    "posta indesiderata": "SPAM", "posta-indesiderata": "SPAM",
-    "sent": "SENT", "inviati": "SENT", "inviata": "SENT",
-    "drafts": "DRAFT", "bozze": "DRAFT", "draft": "DRAFT",
-    "important": "IMPORTANT", "importante": "IMPORTANT",
-    "starred": "STARRED", "speciali": "STARRED",
-    "archive": None, "archivio": None,  # archive = remove INBOX only
-    "all": None, "tutti": None,
+    "trash": "TRASH",
+    "spam": "SPAM",
+    "sent": "SENT",
+    "drafts": "DRAFT",
+    "important": "IMPORTANT",
+    "starred": "STARRED",
+    "archive": None,
 }
+
+
+class _GmailFolderLexiconUnavailable(RuntimeError):
+    """No complete reviewed folder grammar is available for this locale."""
 
 
 def _resolve_dst_folder(dst: str) -> tuple[list[str], list[str], str]:
@@ -503,11 +504,30 @@ def _resolve_dst_folder(dst: str) -> tuple[list[str], list[str], str]:
     Convenzione: ogni move rimuove INBOX se va in TRASH/SPAM/archive
     (coerente con UI Gmail). Sposta a INBOX rimuove TRASH/SPAM.
     """
-    key = (dst or "").strip().lower()
+    key = (dst or "").strip().casefold()
     if not key:
         return [], [], dst or ""
-    if key in _FOLDER_TO_LABEL_ID:
-        sys_id = _FOLDER_TO_LABEL_ID[key]
+    aliases = _residual_lexicon.ready_complete_mapping(
+        _residual_lexicon.GMAIL_FOLDER_ALIAS,
+    )
+    if not aliases:
+        raise _GmailFolderLexiconUnavailable(
+            "Gmail folder lexicon is unavailable",
+        )
+    owners = [
+        canonical
+        for canonical, forms in aliases.items()
+        if key in {
+            str(form).strip().casefold()
+            for form in forms if isinstance(form, str)
+        }
+    ]
+    if len(owners) > 1:
+        raise _GmailFolderLexiconUnavailable(
+            "Gmail folder lexicon is ambiguous",
+        )
+    if owners:
+        sys_id = _GMAIL_LABEL_BY_CANONICAL[owners[0]]
         if sys_id is None:
             # Archive = remove INBOX (no add)
             return [], ["INBOX"], dst
@@ -562,7 +582,20 @@ def modify(args: dict) -> dict:
                 "error_class": "invalid_args",
                 "results": [], "used": 0}
 
-    add, remove, new_folder = _resolve_dst_folder(dst)
+    try:
+        add, remove, new_folder = _resolve_dst_folder(dst)
+    except _GmailFolderLexiconUnavailable as ex:
+        return {
+            "ok": False,
+            "error_code": "ERR_EXT_SVC_UNAVAILABLE",
+            "error": _msg("ERR_EXT_SVC_UNAVAILABLE"),
+            "error_class": "dependency_unavailable",
+            "detail": str(ex),
+            "results": [],
+            "used": 0,
+            "ok_count": 0,
+            "fail_count": 0,
+        }
     if not add and not remove:
         return {"ok": False, "error_code": "ERR_ARG_INVALID",
                 "error": _msg("ERR_ARG_INVALID", arg="dst_folder",

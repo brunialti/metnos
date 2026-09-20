@@ -39,6 +39,7 @@ deploy.sh               export-ignore
 *.html      text eol=lf
 *.sh        text eol=lf
 *.json      text eol=lf
+*.ini       text eol=lf
 
 # Firme Ed25519 raw: byte arbitrari, mai testo/normalizzazione EOL.
 *.sig       binary

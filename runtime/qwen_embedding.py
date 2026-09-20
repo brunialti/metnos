@@ -64,20 +64,26 @@ class QwenEmbeddingService:
         return self.embed_texts([self._instruction + str(text)])[0]
 
 
-def resolved_model_files(model_dir: str | None = None) -> tuple[Path, ...]:
-    """File che identificano il modello per il fingerprint del catalogo.
+def resolved_model_dir(model_dir: str | None = None) -> Path | None:
+    """Resolve an installed checkout using metadata only; never access the network."""
+    if model_dir:
+        return Path(model_dir)
+    from huggingface_hub import try_to_load_from_cache
 
-    Deve restare leggera (niente torch): il fingerprint gira a ogni accesso
-    al catalogo. Con un `model_dir` locale usa quello; altrimenti risolve il
-    checkout già in cache HF senza rete (`local_files_only`).
+    cached = try_to_load_from_cache(_MODEL_ID, "config.json")
+    return Path(cached).parent if isinstance(cached, str) else None
+
+
+def resolved_model_files(model_dir: str | None = None) -> tuple[Path, ...]:
+    """Identify the installed model for the catalog fingerprint, without torch.
+
+    An explicit checkout takes precedence over the existing Hugging Face cache.
+    Missing cache metadata never triggers a download or a snapshot preparation.
     """
 
-    if model_dir:
-        root = Path(model_dir)
-    else:
-        from huggingface_hub import snapshot_download
-
-        root = Path(snapshot_download(_MODEL_ID, local_files_only=True))
+    root = resolved_model_dir(model_dir)
+    if root is None:
+        raise FileNotFoundError("local Qwen embedding model is not installed")
     return (
         root / "config.json",
         root / "model.safetensors",

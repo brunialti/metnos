@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """Schema-driven projection of a producer's entries into consumer arguments.
 
 ``from_step`` carries two kinds of data across a pipeline:
@@ -379,6 +379,40 @@ def _matches_declared_type(value: Any, spec: dict) -> bool:
     return any(kind in checks and checks[kind](value) for kind in kinds)
 
 
+def _identity_slots(entries: list, source_key: str, candidates_key: Any):
+    """Per entry: its identity, or the distinct identities it may denote.
+
+    Only when the consumer declares where a producer lists candidates and
+    every unresolved entry offers at least two distinct valid identities.
+    Otherwise None: the projection stays a plain failure and nothing is
+    chosen on the user's behalf.
+    """
+    if not isinstance(candidates_key, str) or not candidates_key:
+        return None
+    slots: list = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            return None
+        if entry.get(source_key) is not None:
+            slots.append(entry[source_key])
+            continue
+        options: dict[str, dict] = {}
+        raw = entry.get(candidates_key)
+        for item in raw if isinstance(raw, list) else ():
+            identity = item.get(source_key) if isinstance(item, dict) else None
+            if not isinstance(identity, str) or not identity.strip():
+                continue
+            options.setdefault(identity.casefold(), {
+                "value": identity,
+                "name": str(item.get("name") or ""),
+                "version": str(item.get("version") or ""),
+            })
+        if len(options) < 2:
+            return None
+        slots.append(list(options.values()))
+    return slots
+
+
 def project_from_entries(args: dict, entries: list,
                          consumer_schema: dict | None,
                          source_result: dict | None = None
@@ -429,11 +463,16 @@ def project_from_entries(args: dict, entries: list,
             # projection. This is schema-driven: the runtime knows neither
             # producer nor consumer names and never starts a partial subset
             # after an ambiguous/missing resolution.
-            context_errors.append({
+            error = {
                 "arg": vector_arg,
                 "source_key": source_key,
                 "reason": "incomplete_vector_projection",
-            })
+            }
+            slots = _identity_slots(
+                entries, source_key, spec.get("from_entries_candidates_key"))
+            if slots is not None:
+                error["slots"] = slots
+            context_errors.append(error)
         else:
             out[vector_arg] = projected_values
         used_vector_arg = vector_arg

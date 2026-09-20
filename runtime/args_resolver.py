@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """args_resolver — risoluzione deterministica degli arg di SCOPE mancanti o a
 PLACEHOLDER, prima di validate_args. Riusabile per QUALSIASI executor: opera su
 schema (args.required) + il vocab SCOPE_ARGS, non su nomi specifici.
@@ -90,6 +90,11 @@ def resolve_scope_args(executor_name: str, args: dict, schema: dict | None,
     risolti per precedenza. Idempotente; non solleva. Non chiede (form a valle)."""
     if not isinstance(args, dict):
         return args
+    # Temporal values are schema-driven across all domains. This execution
+    # boundary runs after query-only transforms, never while recording a
+    # reusable plan. Only unresolved language may use the bounded fallback.
+    from temporal_resolution import resolve_temporal_args
+    args = resolve_temporal_args(executor_name, args, query, args_schema=schema)
     domain = domain_for(executor_name)
     if not domain:
         return args
@@ -158,6 +163,10 @@ def scope_form_request(executor_name: str, args: dict, schema: dict | None,
     esistenti. Determinismo §7.9."""
     if not isinstance(args, dict):
         return None
+    from temporal_resolution import temporal_form_request
+    temporal = temporal_form_request(executor_name, args, schema)
+    if temporal is not None:
+        return temporal
     if not domain_for(executor_name):
         return None
     try:

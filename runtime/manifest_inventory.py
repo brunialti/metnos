@@ -7,11 +7,12 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import stat
 import tomllib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Callable, Iterable, Mapping
 
 import config as _C
@@ -47,12 +48,72 @@ class ManifestLayout(str, Enum):
     STORE_ONLY = "store_only"
 
 
+_REPOSITORY_AUTHORING_ORIGINS = frozenset({
+    ManifestOrigin.CORE,
+    ManifestOrigin.BUILTIN,
+    ManifestOrigin.BUILTIN_SKILL,
+    ManifestOrigin.RETIRED,
+})
+_STORE_AUTHORING_RELATIVE = Path("contract-authoring") / "v1"
+_STORAGE_KEY_RE = re.compile(r"[0-9a-f]{64}\Z")
+_INVENTORY_DIAGNOSTIC_CODES = frozenset({
+    "origin_map_duplicate", "binding_invalid", "duplicate_contract_id",
+    "origin_unknown", "skill_status_error",
+})
+_INVENTORY_CAUSE_CODES = frozenset({
+    "binding_invalid", "contract_directory_invalid", "skill_state_invalid",
+    "skill_state_parent_invalid", "skill_definition_conflict",
+})
+
+
+def closed_inventory_diagnostics(
+    value: object,
+) -> tuple[tuple[str, str | None, int | None], ...]:
+    """Bounded diagnostic facts, never exception text or filesystem names."""
+    if not isinstance(value, tuple):
+        return ()
+    result = []
+    for item in value[:12]:
+        if not isinstance(item, tuple) or len(item) != 3:
+            continue
+        code, cause, number = item
+        if type(code) is not str or code not in _INVENTORY_DIAGNOSTIC_CODES:
+            continue
+        cause = cause if type(cause) is str and cause in _INVENTORY_CAUSE_CODES else None
+        number = number if type(number) is int and 0 < number <= 4095 else None
+        result.append((code, cause, number))
+    return tuple(result)
+
+
+def _exception_facts(exc: BaseException) -> dict[str, object]:
+    cause_code = None
+    os_errno = None
+    seen: set[int] = set()
+    for _ in range(8):
+        if id(exc) in seen:
+            break
+        seen.add(id(exc))
+        code = getattr(exc, "code", None)
+        if cause_code is None and type(code) is str and code in _INVENTORY_CAUSE_CODES:
+            cause_code = code
+        number = exc.errno if isinstance(exc, OSError) else None
+        if os_errno is None and type(number) is int and 0 < number <= 4095:
+            os_errno = number
+        if exc.__cause__ is None:
+            break
+        exc = exc.__cause__
+    return {"cause_code": cause_code, "os_errno": os_errno}
+
+
 class ManifestBootstrapError(RuntimeError):
     """Fail-closed error at the irreversible publication boundary."""
 
-    def __init__(self, code: str, detail: str = "") -> None:
+    def __init__(
+        self, code: str, detail: str = "", *, inventory_diagnostics: tuple = (),
+    ) -> None:
         self.code = code
         self.detail = detail
+        self.inventory_diagnostics = closed_inventory_diagnostics(inventory_diagnostics)
         super().__init__(f"{code}: {detail}" if detail else code)
 
 
@@ -62,10 +123,11 @@ class ContractId:
     relative_manifest: str
 
     def __post_init__(self) -> None:
-        relative = Path(self.relative_manifest)
+        relative = PurePosixPath(self.relative_manifest)
         if (
             relative.is_absolute()
             or ".." in relative.parts
+            or "\\" in self.relative_manifest
             or relative.as_posix() != self.relative_manifest
             or relative.name != "manifest.toml"
         ):
@@ -135,6 +197,8 @@ class InventoryProblem:
     detail: str
     origin: ManifestOrigin | None = None
     contracts: tuple[str, ...] = ()
+    cause_code: str | None = field(default=None, kw_only=True)
+    os_errno: int | None = field(default=None, kw_only=True)
 
 
 @dataclass(frozen=True, slots=True)
@@ -224,6 +288,38 @@ def default_manifest_sources() -> tuple[ManifestSource, ...]:
             allowed_code_roots=(_C.PATH_EXECUTORS / "_retired",),
         ),
     )
+
+
+def _store_authoring_sources(
+    sources: Iterable[ManifestSource],
+) -> tuple[ManifestSource, ...]:
+    """Rebase repository-owned authoring outside the immutable release.
+
+    Store-only readers authenticate code through the current generation, but
+    technical updates still need a recoverable canonical authoring tree.  A
+    closed release cannot be that tree: changing it would invalidate the
+    distribution at the next preflight.  User-owned origins are already
+    outside the release and retain their existing roots.
+    """
+    result: list[ManifestSource] = []
+    for source in sources:
+        if source.origin not in _REPOSITORY_AUTHORING_ORIGINS:
+            result.append(source)
+            continue
+        root = (
+            _C.PATH_USER_STATE / _STORE_AUTHORING_RELATIVE
+            / source.origin.value
+        )
+        result.append(ManifestSource(
+            source.origin,
+            root,
+            min_depth=source.min_depth,
+            max_depth=source.max_depth,
+            default_status=source.default_status,
+            skill_scoped=source.skill_scoped,
+            allowed_code_roots=(root,),
+        ))
+    return tuple(result)
 
 
 def _publication_paths(
@@ -501,6 +597,142 @@ def _structural_location(
     return root, manifest_path, skill_name, allowed_code_roots
 
 
+def prospective_manifest_ref(contract_id: ContractId) -> ManifestRef:
+    """A first Birth destination from the origin map, never a live inventory row.
+
+    Candidate staging cannot choose its installation path. Use exactly the
+    topology and repository-authoring rebase used by the store inventory;
+    publication and its authenticated binding remain Birth's responsibility.
+    """
+    sources = [source for source in _store_authoring_sources(default_manifest_sources())
+               if source.origin is contract_id.origin]
+    if len(sources) != 1 or sources[0].default_status is ManifestStatus.RETIRED:
+        raise ValueError("contract origin has no new authoring destination")
+    source = sources[0]
+    root, path, skill, code_roots = _structural_location(source, contract_id)
+    status = source.default_status
+    if skill is not None and not _default_skill_enabled(skill):
+        status = ManifestStatus.DISABLED
+    return ManifestRef(
+        contract_id=contract_id, origin=contract_id.origin, status=status,
+        source_root=root, manifest_path=path,
+        manifest_relative=contract_id.relative_manifest,
+        allowed_code_roots=code_roots, skill_name=skill,
+    )
+
+
+def _is_empty_unbound_publication_residue_v1(
+    contract_dir: Path | str,
+) -> bool:
+    """Recognize only the exact crash residue preceding binding creation.
+
+    The contract writer creates this directory, its empty generations
+    directory and the one-byte lock before it makes ``binding.json`` visible.
+    A process death in that narrow interval leaves no contract identity or
+    business payload to inventory.  Ignore that exact fail-safe scaffold, but
+    keep every deviation visible as ``binding_invalid``.
+
+    The check is POSIX-only because its safety argument depends on exact Unix
+    ownership, modes, link count and a shared advisory lock. Readers may
+    coexist; the publisher's exclusive writer lock remains excluded. It never repairs or
+    removes the residue; a later publication of the same contract can resume
+    through the existing writer lock.
+    """
+    if os.name != "posix":
+        return False
+    directory = Path(contract_dir)
+    if _STORAGE_KEY_RE.fullmatch(directory.name) is None:
+        return False
+
+    def plain_directory(status: os.stat_result, mode: int) -> bool:
+        return stat.S_ISDIR(status.st_mode) and stat.S_IMODE(status.st_mode) == mode
+
+    def same_object(before: os.stat_result, after: os.stat_result) -> bool:
+        return (
+            os.path.samestat(before, after)
+            and before.st_mode == after.st_mode
+            and before.st_nlink == after.st_nlink
+            and before.st_uid == after.st_uid
+            and before.st_gid == after.st_gid
+            and before.st_size == after.st_size
+            and before.st_mtime_ns == after.st_mtime_ns
+            and before.st_ctime_ns == after.st_ctime_ns
+        )
+
+    try:
+        version_before = directory.parent.lstat()
+        directory_before = directory.lstat()
+        if (
+            not plain_directory(version_before, 0o700)
+            or not plain_directory(directory_before, 0o700)
+            or (directory_before.st_uid, directory_before.st_gid)
+            != (version_before.st_uid, version_before.st_gid)
+        ):
+            return False
+        trusted_owner = (directory_before.st_uid, directory_before.st_gid)
+        lock_path = directory / "writer.lock"
+        lock_before = lock_path.lstat()
+        flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+        flags |= getattr(os, "O_NOFOLLOW", 0)
+        descriptor = os.open(lock_path, flags)
+        locked = False
+        try:
+            opened = os.fstat(descriptor)
+            if not same_object(lock_before, opened):
+                return False
+            import fcntl
+            try:
+                fcntl.flock(descriptor, fcntl.LOCK_SH | fcntl.LOCK_NB)
+            except BlockingIOError:
+                return False
+            locked = True
+            if set(os.listdir(directory)) != {"generations", "writer.lock"}:
+                return False
+
+            generations = directory / "generations"
+            generations_before = generations.lstat()
+            if (
+                not plain_directory(generations_before, 0o700)
+                or (generations_before.st_uid, generations_before.st_gid)
+                != trusted_owner
+                or not stat.S_ISREG(lock_before.st_mode)
+                or stat.S_IMODE(lock_before.st_mode) != 0o600
+                or (lock_before.st_uid, lock_before.st_gid) != trusted_owner
+                or lock_before.st_nlink != 1
+                or lock_before.st_size != 1
+                or tuple(generations.iterdir())
+            ):
+                return False
+
+            os.lseek(descriptor, 0, os.SEEK_SET)
+            if os.read(descriptor, 2) != b"\0":
+                return False
+            lock_after = os.fstat(descriptor)
+            if not same_object(opened, lock_after):
+                return False
+
+            version_after = directory.parent.lstat()
+            directory_after = directory.lstat()
+            generations_after = generations.lstat()
+            lock_path_after = lock_path.lstat()
+            return (
+                same_object(version_before, version_after)
+                and same_object(directory_before, directory_after)
+                and same_object(generations_before, generations_after)
+                and same_object(lock_before, lock_path_after)
+                and set(os.listdir(directory)) == {"generations", "writer.lock"}
+                and not tuple(generations.iterdir())
+            )
+        finally:
+            try:
+                if locked:
+                    fcntl.flock(descriptor, fcntl.LOCK_UN)
+            finally:
+                os.close(descriptor)
+    except OSError:
+        return False
+
+
 def inventory_store_manifests(
     sources: Iterable[ManifestSource] | None = None,
     *,
@@ -516,13 +748,12 @@ def inventory_store_manifests(
     manifest content after cutover.
     """
     selected_sources = (
-        default_manifest_sources() if sources is None else tuple(sources)
+        _store_authoring_sources(default_manifest_sources())
+        if sources is None else tuple(sources)
     )
-    if binding_reader is None:
+    default_binding_reader = binding_reader is None
+    if default_binding_reader:
         from contract_store import read_binding as binding_reader
-    from contract_store import (
-        publication_is_uninitialized as _publication_is_uninitialized,
-    )
 
     version_root, _marker = _publication_paths(
         store_root=store_root,
@@ -562,15 +793,16 @@ def inventory_store_manifests(
             if not isinstance(contract_id, ContractId):
                 raise TypeError("binding returned no ContractId")
         except Exception as exc:
-            if _publication_is_uninitialized(contract_dir):
-                # A reserved-but-never-written slot claims nothing. Refusing
-                # the store for it would let one aborted publication stop
-                # every contract from loading.
+            if (
+                default_binding_reader
+                and _is_empty_unbound_publication_residue_v1(contract_dir)
+            ):
                 continue
             problems.append(InventoryProblem(
                 "binding_invalid",
                 str(contract_dir),
                 str(exc),
+                **_exception_facts(exc),
             ))
             continue
         if contract_id in seen_contracts:
@@ -620,6 +852,7 @@ def inventory_store_manifests(
                     str(exc),
                     contract_id.origin,
                     (str(contract_id),),
+                    **_exception_facts(exc),
                 ))
         manifests.append(ManifestRef(
             contract_id=contract_id,
@@ -686,8 +919,10 @@ __all__ = [
     "ManifestRef",
     "ManifestSource",
     "ManifestStatus",
+    "closed_inventory_diagnostics",
     "default_manifest_sources",
     "inventory_authoring_manifests",
+    "prospective_manifest_ref",
     "inventory_manifests",
     "inventory_store_manifests",
     "manifest_name_collisions",

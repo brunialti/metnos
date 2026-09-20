@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """args_defaults — memoria deterministica dell'ULTIMO valore inserito per gli
 arg di SCOPE (l'«oggetto» di una CRUD: repo, path, calendar, account…).
 

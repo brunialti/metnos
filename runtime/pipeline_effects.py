@@ -59,8 +59,14 @@ def _step_result(s) -> dict | None:
 
 
 def _mutation_count(res: dict) -> int | None:
-    """Effetto contabile di uno step mutante: primo counter MUTATE_COUNT_KEYS
-    presente, fallback len(results). None = output non contabile."""
+    """Explicit no-effect receipt, then counters, then len(results).
+
+    A successful desired-state check is not itself a mutation. None means
+    the output cannot be counted, preserving conservative retry protection.
+    """
+    metadata = res.get("_undo")
+    if isinstance(metadata, dict) and metadata.get("outcome") == "no_effect":
+        return 0
     for k in MUTATE_COUNT_KEYS:
         if isinstance(res.get(k), int):
             return res[k]
@@ -78,6 +84,41 @@ def _step_args(s) -> dict:
         if isinstance(s, dict) and isinstance(s.get(attr), dict):
             return s[attr]
     return {}
+
+
+def terminal_collection_output(steps) -> tuple[str, dict, int] | None:
+    """Return the terminal collection, not the sum of intermediate work.
+
+    Re-reading or transforming a collection does not create more distinct
+    results. Scalars, failed steps and side effects are terminal boundaries,
+    not permission to resurrect an earlier collection. Explicit count-only
+    results remain countable even when no rows were materialized.
+    """
+    for step in reversed(steps or []):
+        tool = _step_tool(step)
+        if not tool or tool == "final_answer" or tool.startswith("@"):
+            continue
+        result = _step_result(step)
+        if result is None or result.get("_duplicate") is True:
+            continue
+        if (result.get("ok") is False
+                or tool.startswith(MUTATING_TOOL_PREFIXES)):
+            return None
+        # Materialized rows describe the actual terminal output. Availability
+        # counters may refer to a larger collection before a display cap.
+        for key in ("entries", "results", "lines", "matches"):
+            value = result.get(key)
+            if isinstance(value, list) and value:
+                return tool, result, len(value)
+        for key in ("item_count", "available_total", "count", "ok_count"):
+            value = result.get(key)
+            if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+                return tool, result, value
+        for key in ("entries", "results", "lines", "matches"):
+            if isinstance(result.get(key), list):
+                return tool, result, 0
+        return None
+    return None
 
 
 def pipeline_effect_counts(steps) -> dict | None:
