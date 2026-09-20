@@ -12,12 +12,17 @@ runtime code must not create new test, benchmark or simulator trees elsewhere.
 | `simulator/` | planner research and opt-in domain simulators, including real-browser sites and web-UI lifecycle probes | `METNOS_SITES_SIM=1 ./.venv/bin/python -m pytest -q tests/simulator/sites` |
 | `benchmarks/` | reproducible performance and routing benches, frozen corpora and benchmark tools | see `benchmarks/README.md` |
 | `stress/` | frozen stress corpora and historical evidence | run through the owning harness |
-| `internal/` | release/conformance gate tests | `./.venv/bin/python -m pytest -q tests/internal` |
+| `internal/` | release/conformance gates and private administrative tooling | `./.venv/bin/python -m pytest -q tests/internal` |
 | `tools/` | gate and manifest-suite entry points | `./.venv/bin/python tests/tools/run_executor_manifests.py` |
 
 `tests/runtime/conftest.py` redirects mutable HOME/XDG/Metnos roots before
 collection and seeds only non-secret test material. A full suite must never
 read or write the live user state.
+
+The F5 administrative launcher is tested in
+`internal/test_f5_authority_launcher.py`, together with its private installer.
+Its real-import and negative-control checks stay in the development tree;
+`portable/test_f5_authority_entry.py` continues to verify the exported F5 entry.
 
 Two runtime paths intentionally remain outside this tree:
 

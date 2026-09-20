@@ -4,6 +4,11 @@ Use the Python interpreter from a dedicated test environment with
 `tests/portable/requirements.txt` installed. Run commands from the repository
 root. The portable suite does not require the full application environment.
 
+Every test here must have its required source files in the public export.
+Checks for private administrative tooling belong in the development-only
+`tests/internal/` suite. In particular, the local F5 launcher is checked there;
+`test_f5_authority_entry.py` verifies the F5 entry shipped in the public source.
+
 ## During development
 
 Select the changed boundary's test files and its directly affected integration

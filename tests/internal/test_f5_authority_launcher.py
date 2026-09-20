@@ -2,12 +2,16 @@
 
 The text under test is extracted from the installer itself, so what is asserted
 is what will actually be installed rather than a copy that can drift.
+The installer is private administrative tooling: these tests belong in the
+internal suite and must not be exported without their subject.
 """
 from __future__ import annotations
 
+import ast
 import json
 import os
 import shlex
+import shutil
 import stat
 import subprocess
 import sys
@@ -137,18 +141,13 @@ def installation(tmp_path):
     (release / "install").mkdir(parents=True)
     (release / "runtime").mkdir(parents=True)
     (release / "install/__init__.py").write_text("")
+    # Exercise the actual import-time filesystem initialization, including
+    # permission repairs, instead of maintaining an imitation of config.
+    shutil.copyfile(INSTALLER.parents[2] / "runtime/config.py",
+                    release / "runtime/config.py")
     (release / "install/f5_authority.py").write_text(
         "import sys\n"
-        # The real release derives its workspace from the installation root and
-        # creates it on import, which is how the launcher once wrote into a
-        # signed tree. Reproduce that one line, or the census test is vacuous.
-        "import os\n"
-        "from pathlib import Path\n"
-        "workspace = Path(os.environ.get('METNOS_WORKSPACE')\n"
-        "     or Path(__file__).resolve().parents[1] / 'workspace'\n"
-        "     )\n"
-        "for name in ('.scheduler', '.mnestoma'):\n"
-        "    (workspace / name).mkdir(parents=True, exist_ok=True)\n"
+        "import config\n"
         "def main(argv=None):\n"
         "    import runtime_marker\n"
         "    payload = sys.stdin.read()\n"
@@ -249,7 +248,7 @@ def test_the_launcher_leaves_both_trees_untouched(installation, tmp_path):
 @native
 @pytest.mark.parametrize("remedy", ["verifier_bytecode", "release_bytecode", "workspace"])
 def test_each_missing_remedy_is_detected(installation, tmp_path, remedy):
-    """Negative controls: each mutation runs successfully, then changes a tree."""
+    """Missing flags change a tree; a missing workspace now refuses safely."""
     release, _interpreter, verifier = installation
     replacements = {
         "verifier_bytecode": (
@@ -273,6 +272,14 @@ def test_each_missing_remedy_is_detected(installation, tmp_path, remedy):
     before_release = tree_snapshot(release)
     before_verifier = tree_snapshot(verifier.parent)
     result = run_launcher(launcher, ["provision-key"])
+    if remedy == "workspace":
+        # The new path guard independently prevents this old corruption.
+        # The successful-launch assertion still detects the missing override.
+        assert result.returncode == 1, result.stderr
+        assert "refused: unsafe F5 path METNOS_WORKSPACE" in result.stderr
+        assert tree_snapshot(release) == before_release
+        assert tree_snapshot(verifier.parent) == before_verifier
+        return
     assert result.returncode == 0, result.stderr
     if remedy == "verifier_bytecode":
         assert list(verifier.parent.rglob("*.pyc"))
@@ -281,11 +288,207 @@ def test_each_missing_remedy_is_detected(installation, tmp_path, remedy):
     else:
         assert tree_snapshot(release) != before_release
         assert tree_snapshot(verifier.parent) == before_verifier
-        if remedy == "release_bytecode":
-            assert list(release.rglob("*.pyc"))
-        else:
-            assert (release / "workspace/.scheduler").is_dir()
-            assert (release / "workspace/.mnestoma").is_dir()
+        assert list(release.rglob("*.pyc"))
+
+
+def profile_environment(tmp_path):
+    """Isolate user data without supplying workspace or bytecode remedies."""
+    env = launcher_environment()
+    for suffix in ("DATA", "STATE", "CONFIG", "CACHE"):
+        env["METNOS_USER_" + suffix] = str(tmp_path / "profile" / suffix.lower())
+    return env
+
+
+def assert_path_refused(installation, tmp_path, env, name):
+    release, _interpreter, verifier = installation
+    launcher, _scratch = materialize_launcher(verifier, tmp_path)
+    before_release = tree_snapshot(release)
+    before_verifier = tree_snapshot(verifier.parent)
+    result = run_launcher(launcher, ["provision-key"], env=env)
+    assert result.returncode == 1, result.stderr
+    assert result.stderr.strip() == "refused: unsafe F5 path " + name
+    assert "ARGV" not in result.stdout
+    assert tree_snapshot(release) == before_release
+    assert tree_snapshot(verifier.parent) == before_verifier
+
+
+@native
+@pytest.mark.parametrize("suffix", ["DATA", "STATE", "CONFIG", "CACHE"])
+@pytest.mark.parametrize("target_tree", ["release", "verifier"])
+def test_inherited_mutable_roots_cannot_touch_either_tree(
+    installation, tmp_path, suffix, target_tree,
+):
+    release, _interpreter, verifier = installation
+    target = release / "runtime" if target_tree == "release" else verifier.parent
+    marker = target / "already-signed.sig"
+    marker.write_bytes(b"existing signed-file witness\n")
+    marker.chmod(0o444)
+    name = "METNOS_USER_" + suffix
+    env = profile_environment(tmp_path)
+    env[name] = str(target)
+    assert_path_refused(installation, tmp_path, env, name)
+
+
+@native
+@pytest.mark.parametrize("relative", [".", "runtime", "../outside"])
+def test_relative_roots_are_refused_before_changing_directory(
+    installation, tmp_path, relative,
+):
+    env = profile_environment(tmp_path)
+    env["METNOS_USER_CONFIG"] = relative
+    assert_path_refused(installation, tmp_path, env, "METNOS_USER_CONFIG")
+
+
+@native
+def test_dotdot_cannot_create_a_protected_directory_on_the_way_out(
+    installation, tmp_path,
+):
+    release, _interpreter, _verifier = installation
+    env = profile_environment(tmp_path)
+    env["METNOS_USER_CONFIG"] = str(release / "new/../../outside")
+    assert_path_refused(installation, tmp_path, env, "METNOS_USER_CONFIG")
+
+
+@native
+@pytest.mark.parametrize("target_tree", ["release", "verifier"])
+def test_a_linked_parent_cannot_hide_a_destination_in_a_protected_tree(
+    installation, tmp_path, target_tree,
+):
+    release, _interpreter, verifier = installation
+    target = release if target_tree == "release" else verifier.parent
+    alias = tmp_path / "outside-link"
+    alias.symlink_to(target, target_is_directory=True)
+    env = profile_environment(tmp_path)
+    env["METNOS_USER_CONFIG"] = str(alias / "new-config")
+    assert_path_refused(installation, tmp_path, env, "METNOS_USER_CONFIG")
+
+
+@native
+def test_a_mutable_ancestor_of_a_protected_tree_is_refused(installation, tmp_path):
+    env = profile_environment(tmp_path)
+    env["METNOS_USER_CONFIG"] = str(tmp_path)
+    assert_path_refused(installation, tmp_path, env, "METNOS_USER_CONFIG")
+
+
+@native
+def test_home_defaults_cannot_bypass_the_check_through_a_link(installation, tmp_path):
+    release, _interpreter, _verifier = installation
+    profile_home = tmp_path / "profile-home"
+    profile_home.mkdir()
+    (profile_home / ".config").symlink_to(release / "runtime", target_is_directory=True)
+    env = profile_environment(tmp_path)
+    env["HOME"] = str(profile_home)
+    del env["METNOS_USER_CONFIG"]
+    assert_path_refused(installation, tmp_path, env, "METNOS_USER_CONFIG")
+
+
+@native
+def test_valid_external_paths_are_preserved_and_still_initialized(installation, tmp_path):
+    release, _interpreter, verifier = installation
+    env = profile_environment(tmp_path)
+    # A shared textual prefix is not containment in the release tree.
+    external = tmp_path / "release-sibling"
+    external.mkdir()
+    record = external / "account.sig"
+    record.write_bytes(b"existing administrator data\n")
+    record.chmod(0o644)
+    env["METNOS_USER_CONFIG"] = str(external)
+    launcher, scratch = materialize_launcher(verifier, tmp_path)
+    before_release = tree_snapshot(release)
+    before_verifier = tree_snapshot(verifier.parent)
+    for _ in range(2):
+        result = run_launcher(launcher, ["certify", "derive"], env=env)
+        assert result.returncode == 0, result.stderr
+        assert tree_snapshot(release) == before_release
+        assert tree_snapshot(verifier.parent) == before_verifier
+    assert record.read_bytes() == b"existing administrator data\n"
+    assert stat.S_IMODE(record.stat().st_mode) == 0o600
+    for suffix in ("DATA", "STATE", "CONFIG"):
+        assert Path(env["METNOS_USER_" + suffix]).is_dir()
+    assert (scratch / ".scheduler").is_dir()
+    assert (scratch / ".mnestoma").is_dir()
+
+
+@native
+def test_removing_the_path_check_reproduces_the_real_permission_damage(
+    installation, tmp_path,
+):
+    release, _interpreter, verifier = installation
+    marker = release / "runtime/already-signed.sig"
+    marker.write_bytes(b"signed-file witness\n")
+    marker.chmod(0o444)
+    check = "    require_external_path(name, Path(os.environ.get(name) or default))"
+    original = launcher_text()
+    assert original.count(check) == 1
+    launcher, _scratch = materialize_launcher(
+        verifier, tmp_path, text=original.replace(check, "    pass", 1))
+    env = profile_environment(tmp_path)
+    env["METNOS_USER_CONFIG"] = str(release / "runtime")
+    before = tree_snapshot(release)
+    result = run_launcher(launcher, ["provision-key"], env=env)
+    assert result.returncode == 0, result.stderr
+    after = tree_snapshot(release)
+    assert set(before) == set(after)
+    assert after != before
+    assert stat.S_IMODE(marker.stat().st_mode) == 0o600
+
+
+@pytest.fixture(scope="module")
+def real_f5_sources():
+    """Copy source dependencies, without importing application code in pytest."""
+    repo = INSTALLER.parents[2]
+    pending = ["install.f5_authority"]
+    seen, files = set(), set()
+    while pending:
+        name = pending.pop()
+        if name in seen:
+            continue
+        seen.add(name)
+        relative = Path(*name.split("."))
+        candidates = [path for base in (repo, repo / "runtime")
+                      for path in (base / relative.with_suffix(".py"),
+                                   base / relative / "__init__.py")]
+        source = next((path for path in candidates if path.is_file()), None)
+        if source is None:
+            continue
+        files.add(source)
+        for node in ast.walk(ast.parse(source.read_text())):
+            if isinstance(node, ast.Import):
+                pending.extend(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+                pending.append(node.module)
+    return [(source, source.relative_to(repo)) for source in sorted(files)]
+
+
+@native
+@pytest.mark.skipif(getattr(os, "geteuid", lambda: 0)() == 0,
+                    reason="the real administrative command must refuse before provisioning")
+@pytest.mark.parametrize("tainted", [False, True])
+def test_real_f5_imports_preserve_the_trees(
+    installation, tmp_path, real_f5_sources, tainted,
+):
+    release, _interpreter, verifier = installation
+    for source, relative in real_f5_sources:
+        target = release / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, target)
+    marker = release / "runtime/already-signed.sig"
+    marker.write_bytes(b"signed-file witness\n")
+    marker.chmod(0o444)
+    env = profile_environment(tmp_path)
+    if tainted:
+        env["METNOS_USER_CONFIG"] = str(release / "runtime")
+    launcher, _scratch = materialize_launcher(verifier, tmp_path)
+    before_release = tree_snapshot(release)
+    before_verifier = tree_snapshot(verifier.parent)
+    result = run_launcher(launcher, ["provision-key"], env=env)
+    assert result.returncode == 1, result.stderr
+    if tainted:
+        assert result.stderr.strip() == "refused: unsafe F5 path METNOS_USER_CONFIG"
+    else:
+        assert json.loads(result.stderr)["error"] == "birth_certification_authority_root_required"
+    assert tree_snapshot(release) == before_release
+    assert tree_snapshot(verifier.parent) == before_verifier
 
 
 @native

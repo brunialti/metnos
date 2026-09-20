@@ -6,6 +6,7 @@
 > Aggiornare QUI (non in CLAUDE.md) quando si aggiunge/rimuove un meccanismo.
 
 **Naming / vocab / grammatica**
+- **Lanciatore F5: alberi del codice intatti**: `internal/tools/install_f5_authority.sh::require_external_path`, `-B` su entrambi gli interpreti e workspace esterno; prove reali e controlli negativi in `tests/internal/test_f5_authority_launcher.py`.
 - **Avvio e manutenzione separati dalla certificazione** (ADR 0225):
   `executor_birth_admin_preflight._attest_service_startup_v1`,
   `metnos_http_server.maintenance_middleware`, `sandbox.mail_extras`;

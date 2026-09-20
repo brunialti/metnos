@@ -120,6 +120,41 @@ interpreter = named.pop()
 # import writes into the signed tree. `-I` implies `-E`, which drops PYTHON*
 # variables only, so a METNOS_* one survives.
 os.environ["METNOS_WORKSPACE"] = "/var/lib/metnos-admin/f5-workspace-v1"
+
+# config.ensure_dirs runs during F5 imports, before the command privilege
+# checks. Preserve legitimate administrative paths, but reject any mutable
+# root that could create entries or repair permissions in either code tree.
+# Resolve links before checking containment; relative paths would otherwise
+# be interpreted after the chdir to the verified release below.
+protected_roots = (release.resolve(), Path(VERIFIER).parent.resolve())
+
+def require_external_path(name, path):
+    if not path.is_absolute() or ".." in path.parts:
+        raise SystemExit("refused: unsafe F5 path " + name)
+    try:
+        resolved = path.resolve()
+    except (OSError, RuntimeError):
+        raise SystemExit("refused: unsafe F5 path " + name) from None
+    if any(resolved.is_relative_to(root) or root.is_relative_to(resolved)
+           for root in protected_roots):
+        raise SystemExit("refused: unsafe F5 path " + name)
+
+try:
+    user_home = Path.home()
+except (RuntimeError, KeyError):
+    raise SystemExit("refused: unsafe F5 path HOME") from None
+require_external_path("HOME", user_home)
+mutable_roots = {
+    "METNOS_USER_DATA": user_home / ".local/share/metnos",
+    "METNOS_USER_STATE": user_home / ".local/state/metnos",
+    "METNOS_USER_CONFIG": user_home / ".config/metnos",
+    "METNOS_USER_CACHE": Path(os.environ.get("XDG_CACHE_HOME")
+                              or user_home / ".cache") / "metnos",
+    "METNOS_WORKSPACE": release / "workspace",
+}
+for name, default in mutable_roots.items():
+    require_external_path(name, Path(os.environ.get(name) or default))
+
 stage = (
     "import sys; sys.path[:0] = [%r, %r]\n"
     "from install.f5_authority import main\n"

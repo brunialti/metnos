@@ -3,6 +3,33 @@
 This directory is excluded from the public Metnos export. The verifier checks
 the release lifecycle without modifying or restarting the running instance.
 
+## F5 administrative launcher
+
+`install_f5_authority.sh` generates the separately installed administrative
+launcher. Both Python interpreters use `-B`; the launcher sets its workspace
+outside the signed release and validates mutable paths before importing F5.
+`HOME`, user data/state/config/cache roots and the workspace must be absolute,
+contain no `..` components, and remain disjoint from the selected release and
+verifier trees after resolving symbolic links. Ancestors of either tree are
+also refused. Valid external paths retain their configured values.
+
+`refused: unsafe F5 path NAME` identifies the environment setting to correct.
+No application module has been imported at that point, and the launcher does
+not relocate existing administrator data. Import-time initialization in
+`runtime/config.py` remains active for valid configurations.
+
+Run the development checks from the repository root:
+
+```sh
+python -m pytest -q tests/internal/test_f5_authority_launcher.py tests/portable/test_f5_authority_entry.py
+```
+
+These launcher tests execute the generated shell and real Python imports in
+temporary writable trees, compare contents and metadata, and remove individual
+protections as negative controls. They do not install the launcher, restart
+services or certify the privileged F5 operations. The launcher checks remain
+private because their installer is excluded from the public export.
+
 ## What is duplicated
 
 - two public code trees, normally about a few tens of MB;
