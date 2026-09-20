@@ -75,7 +75,12 @@ case "${1:-}${2:+ $2}" in
   "provision-key"|"evidence"|"migrate plan"|"migrate apply"|"certify derive"|"certify issue") ;;
   *) echo "refused: provision-key | evidence | migrate plan|apply | certify derive|issue" >&2; exit 2 ;;
 esac
-exec /usr/bin/python3.12 -I -c '
+# -B on both interpreters, and it is not a detail. Loading the verifier
+# writes bytecode next to it, and importing the release writes it inside
+# the signed tree; both then fail the exact-tree check with `extra
+# distribution entry`, so the first call would break every later one.
+# `-I` implies `-E`, so PYTHONDONTWRITEBYTECODE cannot do this job.
+exec /usr/bin/python3.12 -I -B -c '
 import importlib.util, json, os, sys
 from pathlib import Path
 
@@ -110,7 +115,7 @@ stage = (
     "raise SystemExit(main())\n"
 ) % (str(release), str(release / "runtime"))
 os.chdir(release)
-os.execv(interpreter, [interpreter, "-I", "-c", stage, *sys.argv[1:]])
+os.execv(interpreter, [interpreter, "-I", "-B", "-c", stage, *sys.argv[1:]])
 ' "$@"
 LAUNCHER_EOF
 chown root:root "$LAUNCHER.incoming"

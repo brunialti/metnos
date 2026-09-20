@@ -30,7 +30,7 @@ def launcher_text() -> str:
 
 
 def bootstrap_text() -> str:
-    return _between(launcher_text(), "exec /usr/bin/python3.12 -I -c '", "\n' \"$@\"")
+    return _between(launcher_text(), "exec /usr/bin/python3.12 -I -B -c '", "\n' \"$@\"")
 
 
 # --- the closed argument set -------------------------------------------------
@@ -165,13 +165,41 @@ def test_the_evidence_document_survives_the_whole_launcher(installation, tmp_pat
 
 
 @native
+def test_the_launcher_writes_no_bytecode_anywhere(installation, tmp_path):
+    """A first call must not make every later call fail.
+
+    Loading the verifier writes bytecode beside it, and importing the release
+    writes it inside the signed tree. Both are extra entries that the exact
+    tree check refuses, so without -B the launcher works once and then breaks
+    itself. `-I` implies `-E`, so PYTHONDONTWRITEBYTECODE cannot prevent it.
+    Measured against the real thing: this happened on release 72 on 20/9/2026.
+    """
+    release, _interpreter, verifier = installation
+    launcher = tmp_path / "metnos-f5-authority"
+    # Only the interpreter path is substituted. The flags must come from the
+    # installer, otherwise this measures the harness instead of the launcher.
+    launcher.write_text(launcher_text().replace(
+        "/usr/libexec/metnos/executor-birth-v1/preflight.py", str(verifier),
+    ).replace("/usr/bin/python3.12", sys.executable))
+    launcher.chmod(0o755)
+    result = run_launcher(launcher, verifier, ["provision-key"])
+    assert result.returncode == 0, result.stderr
+    written = sorted(
+        str(path) for root in (release, verifier.parent)
+        for path in Path(root).rglob("*")
+        if path.name == "__pycache__" or path.suffix == ".pyc"
+    )
+    assert written == [], written
+
+
+@native
 def test_the_document_survives_the_shell_guard_as_well(installation, tmp_path):
     """End to end: through the argument guard and into the tool."""
     _release, _interpreter, verifier = installation
     launcher = tmp_path / "metnos-f5-authority"
     launcher.write_text(launcher_text().replace(
         "/usr/libexec/metnos/executor-birth-v1/preflight.py", str(verifier)
-    ).replace("exec /usr/bin/python3.12 -I -c", f"exec {sys.executable} -I -c"))
+    ).replace("/usr/bin/python3.12", sys.executable))
     launcher.chmod(0o755)
     document = json.dumps({"kind": "start_cycle"})
     result = run_launcher(launcher, verifier, ["evidence"], stdin=document)
