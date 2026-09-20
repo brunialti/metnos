@@ -98,18 +98,6 @@ def validate_generated_manifest_text(
             f"generated lifecycle must be {expected_lifecycle!r}, "
             f"got {actual_lifecycle!r}")
 
-    # This common gate also covers generated manifests that bypass stage 3.
-    # An empty shell/env/reference field is still unsupported, not permission
-    # for another runner to execute it later. Other declarative test formats
-    # keep their existing cardinality and matcher contracts.
-    tests = manifest.get("tests", [])
-    if not isinstance(tests, list) or any(
-        not isinstance(case, dict)
-        or not {"setup", "teardown", "env", "reference"}.isdisjoint(case)
-        for case in tests
-    ):
-        raise GeneratedContractError("generated_tests_must_be_declarative")
-
     raw_policy = manifest.get("execution")
     if raw_policy != DEFAULT_EXECUTION_POLICY:
         raise GeneratedContractError(

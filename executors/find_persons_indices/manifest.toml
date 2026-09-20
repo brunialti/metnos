@@ -14,21 +14,6 @@ affinity    = ["cerca persona", "trova", "foto di", "find person",
                 "primi piani", "persona registrata", "enrolled person"]
 revertible  = false
 platforms   = ["linux"]
-timeout_s   = 300
-
-[[prerequisites]]
-on_error = "index_missing"
-executor = "create_images_indices"
-[prerequisites.arguments.base_path]
-source = "result"
-field = "base_path"
-
-[execution]
-effect = "read_only"
-parallelism_class = 0
-resource_class = "cpu"
-concurrency_key = "none"
-equivalence_gate = "unverified"
 
 [placement]
 scope = "server"
@@ -40,8 +25,7 @@ en = "SCOPO: search photos of a registered person. PATTERN: find_persons_indices
 
 [code]
 files  = ["find_persons_indices.py"]
-dependencies = ["find_images_indices"]
-digest = "sha256:26813d5331f36aacff40d3d6afad66cddf79b6096030092f8729f70ca5562f8e"
+digest = "sha256:c1f191f78ef476ff6355440cac96f2628595e4570aa748a54485949df1887e35"
 
 [args]
 type     = "object"
@@ -105,7 +89,6 @@ en = "Maximum faces per photo."
 
 [args.properties.time_window]
 type        = "string"
-format      = "time-window"
 default     = "all"
 
 [args.properties.time_window.description]
@@ -148,11 +131,11 @@ max_chars = 16000
 overflow = "notice"
 [[capabilities]]
 name = "fs:read"
-hint = ["arg:reference_images", "arg:base_path"]
+hint = ["arg:reference_images"]
 
 [[capabilities]]
 name = "metnos:read"
-hint = ["persons_registry:local", "embedding_text:local", "embedding_image:local", "embedding_face:local"]
+hint = ["persons_registry:local"]
 
 [[capabilities]]
 name = "index:read"

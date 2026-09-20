@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """runtime/__version__.py — sorgente UNICA della versione-prodotto Metnos.
 
 SemVer (https://semver.org). Pre-1.0 (`0.x`): API/firme possono rompersi fra

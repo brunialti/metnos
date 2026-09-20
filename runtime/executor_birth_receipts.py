@@ -204,33 +204,6 @@ def _timestamp(value: object, *, field: str) -> datetime:
     return parsed
 
 
-def producer_objective_hash_v1(reason: str, approval_refs: tuple[str, ...] = ()) -> str:
-    """Bind the producer's intent using the original length-framed encoding."""
-    framed = bytearray(b"metnos.executor-birth.objective/v1\0")
-    for part in (reason, *approval_refs):
-        encoded = part.encode("utf-8")
-        framed.extend(len(encoded).to_bytes(8, "big"))
-        framed.extend(encoded)
-    return "sha256:" + hashlib.sha256(framed).hexdigest()
-
-
-def producer_request_id_v1(
-    *, issuer_id: str, operation: str, contract_id: str,
-    objective_hash: str, candidate_source_id: str,
-) -> str:
-    """Encode the existing ordinary request identity, not a V2 reattestation.
-
-    Field lengths count UTF-8 bytes. This is deliberately not the typed
-    identity framing used by candidates and Producer directory names.
-    """
-    framed = bytearray(b"metnos.executor-birth.request/v1\0")
-    for part in (issuer_id, operation, contract_id, objective_hash, candidate_source_id):
-        encoded = part.encode("utf-8")
-        framed.extend(len(encoded).to_bytes(8, "big"))
-        framed.extend(encoded)
-    return "sha256:" + hashlib.sha256(framed).hexdigest()
-
-
 def _digest(value: object, *, field: str, nullable: bool = False) -> None:
     if nullable and value is None:
         return

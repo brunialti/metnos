@@ -236,12 +236,28 @@ def _open_rw() -> sqlite3.Connection:
         # il proprio i18n.sqlite fra un rilascio e il successivo.
         try:
             _merge_missing_seed_rows(c)
-        except sqlite3.Error as exc:
+        except (sqlite3.Error, OSError) as exc:
             # Un catalogo utente già valido deve restare usabile anche se il
             # seed del checkout è temporaneamente assente o illeggibile.
+            # OSError copre il seed reso irraggiungibile dai permessi della
+            # sua directory, che su un'installazione irrigidita è di root.
             _log.warning("i18n seed merge skipped: %s", exc)
         c.commit()
     return c
+
+
+def _seed_is_reachable(path: Path) -> bool:
+    """Report whether ``path`` is a regular file this process can reach.
+
+    ``Path.is_file`` reports a missing path as ``False`` but re-raises
+    ``PermissionError``, so a seed locked away by the permissions of its
+    directory would abort a caller that only guards against an absent one.
+    Both shapes mean the same thing here: no usable seed.
+    """
+    try:
+        return path.is_file()
+    except OSError:
+        return False
 
 
 def _merge_missing_seed_rows(
@@ -262,7 +278,7 @@ def _merge_missing_seed_rows(
     catalog entries.
     """
     seed = Path(seed_path) if seed_path is not None else _SEED_DB_PATH
-    if not seed.is_file():
+    if not _seed_is_reachable(seed):
         return 0
     try:
         if seed.resolve() == Path(DB_PATH).resolve():
@@ -270,11 +286,7 @@ def _merge_missing_seed_rows(
     except OSError:
         pass
 
-    # The released seed is a checkpointed snapshot, never a live writer DB.
-    # Immutable mode also reads WAL-format snapshots in read-only installs
-    # without trying to create -wal/-shm files beside the signed artifact.
-    source = sqlite3.connect(
-        seed.resolve().as_uri() + "?mode=ro&immutable=1", uri=True)
+    source = sqlite3.connect(f"file:{seed}?mode=ro", uri=True)
     try:
         source_columns = {
             row[1] for row in source.execute("PRAGMA table_info(i18n)")

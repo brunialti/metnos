@@ -66,11 +66,8 @@ from .models import (
     control_transition,
 )
 from .schema import (
-    ERROR_SCHEMA_VERSION,
-    MAX_ERROR_JSON_BYTES,
     MAX_EVENT_JSON_BYTES,
     MAX_PLAN_JSON_BYTES,
-    MAX_RESULT_JSON_BYTES,
     MAX_SNAPSHOT_JSON_BYTES,
     SchemaValidationError,
     canonical_json,
@@ -81,7 +78,6 @@ from .schema import (
     validate_plan,
 )
 from .transactions import checked_checkpoint, immediate_transaction
-from .domain_outcome import domain_terminal_detail
 
 
 _ID_RE = re.compile(r"^[A-Za-z0-9_-]{8,128}$")
@@ -122,87 +118,6 @@ _TERMINAL_WORKLOAD_STATES = frozenset({
     WorkloadState.COMPLETED_WITH_ERRORS,
     WorkloadState.COMPLETED,
 })
-
-# ``reservation_revisions`` is supplied by each owner-scoped caller. The
-# admitted catalog plus the active fenced lease is the durable reservation;
-# no live model binding or process-local counter participates in admission.
-_MODEL_RESERVATIONS_CTES = """
-    model_catalog_entries AS (
-        SELECT revision.owner_user_id, revision.id AS revision_id,
-               CASE WHEN entry.type='object' THEN entry.value ELSE '{}' END AS contract
-        FROM reservation_revisions revision,
-             json_each(revision.catalog_snapshot_json, '$.entries') entry
-    ),
-    model_limits AS (
-        SELECT stage.owner_user_id, stage.revision_id, stage.id AS stage_id,
-               CAST(json_extract(revision.plan_json, '$.budgets.max_tokens') AS INTEGER)
-                   AS token_limit,
-               CAST(json_extract(revision.plan_json, '$.budgets.max_tokens') AS INTEGER)
-                   - usage.input_tokens - usage.output_tokens AS remaining_tokens,
-               CASE WHEN COUNT(entry.contract)=1
-                 AND json_extract(entry.contract, '$.model_cost_policy')='zero'
-                 AND json_type(entry.contract, '$.model_binding_digest')='text'
-                 AND length(json_extract(entry.contract, '$.model_binding_digest'))=71
-                 AND substr(json_extract(entry.contract, '$.model_binding_digest'), 1, 7)='sha256:'
-                 AND substr(json_extract(entry.contract, '$.model_binding_digest'), 8)
-                     NOT GLOB '*[^0-9a-f]*'
-                 AND json_extract(entry.contract, '$.kind')=stage.runner_kind
-                 AND json_extract(entry.contract, '$.name')=stage.runner_name
-                 AND json_type(entry.contract, '$.model_max_calls')='integer'
-                 AND json_extract(entry.contract, '$.model_max_calls') BETWEEN 1 AND 64
-                 AND json_type(entry.contract, '$.model_max_input_tokens')='integer'
-                 AND json_extract(entry.contract, '$.model_max_input_tokens')
-                     BETWEEN 1 AND 16777216
-                 AND json_type(entry.contract, '$.model_max_output_tokens')='integer'
-                 AND json_extract(entry.contract, '$.model_max_output_tokens')
-                     BETWEEN 1 AND 1000000
-               THEN json_extract(entry.contract, '$.model_max_calls') * (
-                    json_extract(entry.contract, '$.model_max_input_tokens')
-                    + json_extract(entry.contract, '$.model_max_output_tokens')
-               ) ELSE NULL END AS max_tokens
-        FROM stages stage
-        JOIN reservation_revisions revision
-          ON revision.owner_user_id=stage.owner_user_id AND revision.id=stage.revision_id
-        JOIN revision_usage usage
-          ON usage.owner_user_id=stage.owner_user_id AND usage.revision_id=stage.revision_id
-        LEFT JOIN model_catalog_entries entry
-          ON entry.owner_user_id=stage.owner_user_id
-         AND entry.revision_id=stage.revision_id
-         AND json_extract(entry.contract, '$.stage_key')=stage.stage_key
-        WHERE CAST(json_extract(stage.resources_json, '$.llm') AS INTEGER)>0
-           OR CAST(json_extract(stage.resources_json, '$.vlm') AS INTEGER)>0
-        GROUP BY stage.owner_user_id, stage.revision_id, stage.id
-    ),
-    model_reservations AS (
-        SELECT unit.owner_user_id, unit.revision_id, unit.id AS unit_id,
-               unit.active_attempt_id AS attempt_id,
-               CASE WHEN limits.max_tokens IS NULL OR attempt.id IS NULL
-                    THEN 1 ELSE 0 END AS unbounded,
-               CASE WHEN attempt.id IS NOT NULL
-                      AND json_extract(attempt.model_snapshot_json, '$.mode')='llm'
-                      AND json_extract(attempt.metrics_json, '$.llm_usage.schema_version')
-                          ='metnos.durable-model-usage/2'
-                      AND json_type(attempt.metrics_json, '$.llm_usage.usage_missing')='false'
-                      AND json_type(attempt.metrics_json, '$.llm_usage.cost_unknown')='false'
-                    THEN 0 ELSE COALESCE(limits.max_tokens, 0) END AS reserved_tokens
-        FROM units unit
-        JOIN model_limits limits
-          ON limits.owner_user_id=unit.owner_user_id
-         AND limits.revision_id=unit.revision_id AND limits.stage_id=unit.stage_id
-        LEFT JOIN attempts attempt
-          ON attempt.owner_user_id=unit.owner_user_id AND attempt.unit_id=unit.id
-         AND attempt.id=unit.active_attempt_id AND attempt.fence=unit.fence
-         AND attempt.worker_id=unit.lease_worker_id
-         AND attempt.state IN ('leased', 'running') AND attempt.ended_at IS NULL
-        WHERE unit.state IN ('leased', 'running')
-    ),
-    model_reservation_totals AS (
-        SELECT owner_user_id, revision_id, COUNT(*) AS active_models,
-               SUM(unbounded) AS unbounded_models,
-               SUM(reserved_tokens) AS reserved_tokens
-        FROM model_reservations GROUP BY owner_user_id, revision_id
-    )
-"""
 
 
 class DurableStoreError(RuntimeError):
@@ -753,7 +668,6 @@ class DurableWorkloadStore:
             else None
         )
         self._checkpoint = checked_checkpoint(checkpoint)
-        self._idle_database_version: tuple[int, int] | None = None
 
     @classmethod
     def open(
@@ -772,151 +686,6 @@ class DurableWorkloadStore:
 
     def close(self) -> None:
         self._connection.close()
-
-    @contextmanager
-    def read_snapshot(self) -> Iterator[None]:
-        """Keep a compound read coherent without reserving the SQLite writer."""
-        if self._connection.in_transaction:
-            raise DurableStoreError("nested durable-workload transactions are forbidden")
-        self._connection.execute("BEGIN")
-        try:
-            yield
-        finally:
-            # This boundary is read-only; never commit an accidental write.
-            if self._connection.in_transaction:
-                self._connection.execute("ROLLBACK")
-
-    def service_lane_demand(
-        self, *, limit: int, resource_limits: Mapping[str, int] | None = None,
-    ) -> int:
-        """Read-only scheduling hint, never an admission or resource decision.
-
-        Only a fully quiescent database is cached. Active parents and orphaned
-        leases retain a maintenance lane even when no unit is runnable yet, so
-        retry deadlines, lease recovery and control transitions keep advancing.
-        External commits invalidate via data_version; local writes invalidate
-        via total_changes. The version is read BEFORE querying to avoid caching
-        a negative result across a concurrent admission.
-        """
-
-        _require_limit(limit, maximum=32)
-        connection = self._connection
-        version = (
-            int(connection.execute("PRAGMA data_version").fetchone()[0]),
-            connection.total_changes,
-        )
-        if self._idle_database_version == version:
-            return 0
-        _current, current_text = self._operation_now(None)
-        candidates = connection.execute(
-            """
-            SELECT w.owner_user_id, w.id AS workload_id, s.resources_json,
-                   json_extract(r.plan_json, '$.budgets.max_concurrency') AS concurrency_limit,
-                   COUNT(*) AS candidate_count
-            FROM workloads w
-            JOIN revisions r
-              ON r.owner_user_id=w.owner_user_id AND r.id=w.active_revision_id
-            JOIN units u
-              ON u.owner_user_id=w.owner_user_id AND u.revision_id=r.id
-            JOIN stages s
-              ON s.owner_user_id=u.owner_user_id AND s.revision_id=u.revision_id
-             AND s.id=u.stage_id
-            WHERE w.state IN ('queued', 'running') AND (
-                u.state IN ('leased', 'running')
-                OR (u.state IN ('pending', 'retry_wait') AND (
-                    u.next_attempt_at IS NULL OR u.next_attempt_at<=?
-                ))
-                OR (u.state='needs_attention'
-                    AND u.manual_retry_generation<r.manual_retry_generation)
-            )
-            GROUP BY w.owner_user_id, w.id, s.id
-            LIMIT ?
-            """, (current_text, limit + 1),
-        ).fetchall()
-        if candidates:
-            self._idle_database_version = None
-            if len(candidates) > limit:
-                # A truncated stage set must not starve an unobserved resource
-                # class behind a long-running saturated one. Fall back to the
-                # existing bounded pool, never treat the sample as complete.
-                return limit
-            limits = dict(resource_limits or {})
-            resources: set[str] = set()
-            unconstrained = False
-            per_workload: dict[tuple[str, str], int] = {}
-            workload_limits: dict[tuple[str, str], int] = {}
-            profiles: list[tuple[dict, int]] = []
-            demand = 0
-            for candidate in candidates:
-                workload_key = (str(candidate["owner_user_id"]), str(candidate["workload_id"]))
-                claims = json.loads(str(candidate["resources_json"]))
-                claimed = {key for key, amount in claims.items() if int(amount) > 0}
-                resources.update(claimed)
-                unconstrained |= not claimed or not claimed.issubset(limits)
-                slots = min(
-                    int(candidate["candidate_count"]), limit,
-                    int(candidate["concurrency_limit"]),
-                )
-                # Every unit needs ALL its resources together. Summing cpu,
-                # I/O and VLM capacities leases many units that can only wait
-                # behind one VLM, burning their execution deadlines. Bound
-                # each stage by its bottleneck, then sum independent stages;
-                # this is still an upper bound, never a resource reservation.
-                if claimed and claimed.issubset(limits):
-                    slots = min(slots, min(
-                        limits[key] // int(claims[key]) for key in claimed
-                    ))
-                demand += slots
-                profiles.append((claims, slots))
-                per_workload[workload_key] = per_workload.get(workload_key, 0) + slots
-                workload_limits[workload_key] = int(candidate["concurrency_limit"])
-            # Do not consume the lane/workload allowance while enumerating:
-            # later profiles may use an independent resource. Bound totals only
-            # after every observed profile has contributed its alternatives.
-            demand = min(limit, sum(min(count, workload_limits[key])
-                                    for key, count in per_workload.items()))
-            # Shared bottlenecks also span different workloads/stages. Bound
-            # resource users together, while retaining every non-user's lane
-            # allowance so unrelated work cannot be hidden by saturation.
-            for key, capacity in limits.items():
-                amounts = [int(claims.get(key, 0)) for claims, slots in profiles
-                           if slots and int(claims.get(key, 0)) > 0]
-                if amounts:
-                    non_users = sum(slots for claims, slots in profiles
-                                    if not int(claims.get(key, 0)))
-                    demand = min(demand, non_users + capacity // min(amounts))
-            # Use an upper bound, not greedy packing: choosing one pending
-            # stage's resource profile here could hide an independent stage
-            # while a different resource is already occupied. Real packing
-            # and admission belong exclusively to the central scheduler.
-            if limits and not unconstrained:
-                demand = min(demand, sum(limits[key] for key in resources))
-            return max(1, demand)
-        maintenance = connection.execute(
-            """
-            SELECT 1 FROM workloads w WHERE w.active_revision_id IS NOT NULL AND (
-                w.state IN (
-                    'admitted', 'queued', 'running', 'paused',
-                    'pause_requested', 'cancel_requested'
-                )
-                OR (w.state IN ('failed', 'cancelled') AND EXISTS (
-                    SELECT 1 FROM units u
-                    WHERE u.owner_user_id=w.owner_user_id
-                      AND u.revision_id=w.active_revision_id
-                      AND u.state IN ('pending', 'retry_wait', 'needs_attention')
-                      AND u.active_attempt_id IS NULL
-                ))
-            )
-            UNION ALL
-            SELECT 1 FROM units WHERE state IN ('leased', 'running')
-            LIMIT 1
-            """,
-        ).fetchone()
-        if maintenance is not None:
-            self._idle_database_version = None
-            return 1
-        self._idle_database_version = version
-        return 0
 
     @property
     def database_path(self) -> Path | None:
@@ -1075,82 +844,6 @@ class DurableWorkloadStore:
             self._select_workload(self._connection, owner, workload_id)
         )
 
-    def get_visible_workload(
-        self, owner_user_id: str, workload_id: str,
-    ) -> WorkloadRecord:
-        """Return an owner-visible workload or the same opaque absence error."""
-
-        owner = _require_owner(owner_user_id)
-        row = self._select_workload(self._connection, owner, workload_id)
-        dismissed = self._connection.execute(
-            """
-            SELECT 1 FROM workload_dismissals
-            WHERE owner_user_id=? AND workload_id=?
-            """,
-            (owner, workload_id),
-        ).fetchone()
-        if dismissed is not None:
-            raise WorkloadNotFoundError("workload not found")
-        return _row_to_workload(row)
-
-    def find_active_submission(
-        self, owner_user_id: str, scope_digest: str,
-    ) -> WorkloadRecord | None:
-        """Find one owner's existing nonterminal submission by its exact scope."""
-
-        owner = _require_owner(owner_user_id)
-        if not isinstance(scope_digest, str) or not _SHA256_RE.fullmatch(scope_digest):
-            raise ValueError("submission scope must be a canonical SHA-256 digest")
-        terminal = tuple(sorted(state.value for state in _TERMINAL_WORKLOAD_STATES))
-        placeholders = ",".join("?" for _state in terminal)
-        row = self._connection.execute(
-            f"""
-            SELECT owner_user_id, id, request_key, state, priority,
-                   active_revision_id, version, created_at, updated_at,
-                   terminal_reason_json
-            FROM workloads
-            WHERE owner_user_id=? AND state NOT IN ({placeholders})
-              AND json_extract(redacted_request_json, '$.payload.submission_scope')=?
-            ORDER BY created_at, id
-            LIMIT 1
-            """,
-            (owner, *terminal, scope_digest),
-        ).fetchone()
-        return None if row is None else _row_to_workload(row)
-
-    def find_submission_by_request_key(
-        self, owner_user_id: str, request_key: str, *,
-        redacted_request: Mapping[str, Any], priority: str = "normal",
-        budget: Mapping[str, Any] | None = None,
-    ) -> WorkloadRecord | None:
-        """Validate an existing delivery identity without creating a draft.
-
-        Scope-level coalescing must not hide a delivery key already bound to
-        different arguments, or redirect a completed delivery to a newer job.
-        """
-        owner = _require_owner(owner_user_id)
-        key = _require_key(request_key, name="request_key")
-        if priority not in {"low", "normal", "high"}:
-            raise ValueError("priority must be low, normal or high")
-        if not isinstance(redacted_request, Mapping):
-            raise SchemaValidationError("redacted_request must be an object")
-        budget_value = {} if budget is None else budget
-        if not isinstance(budget_value, Mapping):
-            raise SchemaValidationError("budget must be an object")
-        expected = digest_json("durable-submit", {
-            "redacted_request": redacted_request, "priority": priority, "budget": budget_value,
-        }, max_bytes=MAX_PLAN_JSON_BYTES)
-        row = self._connection.execute(
-            "SELECT owner_user_id, id, request_key, state, priority, active_revision_id, "
-            "version, created_at, updated_at, terminal_reason_json, request_digest "
-            "FROM workloads WHERE owner_user_id=? AND request_key=?", (owner, key),
-        ).fetchone()
-        if row is None:
-            return None
-        if row["request_digest"] != expected:
-            raise IdempotencyConflictError("request_key was already used with a different payload")
-        return _row_to_workload(row)
-
     def source_authority_active(
         self,
         owner_user_id: str,
@@ -1182,12 +875,7 @@ class DurableWorkloadStore:
         owner = _require_owner(owner_user_id)
         _require_limit(limit, maximum=200)
         parameters: list[Any] = [owner]
-        where = (
-            "owner_user_id=? AND NOT EXISTS ("
-            "SELECT 1 FROM workload_dismissals dismissal "
-            "WHERE dismissal.owner_user_id=workloads.owner_user_id "
-            "AND dismissal.workload_id=workloads.id)"
-        )
+        where = "owner_user_id=?"
         if state is not None:
             normalized = WorkloadState(state)
             where += " AND state=?"
@@ -1221,12 +909,7 @@ class DurableWorkloadStore:
         _require_limit(limit, maximum=200)
         normalized_state = WorkloadState(state) if state is not None else None
         parameters: list[Any] = [owner]
-        clauses = [
-            "owner_user_id=?",
-            "NOT EXISTS (SELECT 1 FROM workload_dismissals dismissal "
-            "WHERE dismissal.owner_user_id=workloads.owner_user_id "
-            "AND dismissal.workload_id=workloads.id)",
-        ]
+        clauses = ["owner_user_id=?"]
         if normalized_state is not None:
             clauses.append("state=?")
             parameters.append(normalized_state.value)
@@ -2892,31 +2575,17 @@ class DurableWorkloadStore:
                 now=current,
             )
 
-    def remaining_model_budget(
-        self, lease: Lease, *, now: datetime | None = None,
-    ) -> dict[str, int]:
-        """Return the remainder after other attempts' durable reservations."""
+    def remaining_model_budget(self, lease: Lease) -> dict[str, int]:
+        """Return the transactionally observed token and cost remainder."""
 
         if not isinstance(lease, Lease):
             raise TypeError("lease must be Lease")
-        current, _current_text = self._operation_now(now)
         with self._transaction() as connection:
             row = self._select_lease_row(connection, lease)
             if not self._lease_matches(row, lease):
                 raise DurableStoreError(
                     "model budget requires the active attempt fence"
                 )
-            assert row is not None
-            if (
-                row["unit_state"] not in {"leased", "running"}
-                or row["attempt_state"] not in {"leased", "running"}
-                or self._clock_regressed(row["revision_clock_high_water_at"], current)
-                or parse_instant(str(row["lease_expires_at"])) <= current
-            ):
-                raise BudgetExceededError({
-                    "reason_code": "budget_accounting_incomplete",
-                    "budget": "accounting",
-                })
             budget = connection.execute(
                 """
                 SELECT revision.plan_json, usage.input_tokens,
@@ -2944,28 +2613,8 @@ class DurableWorkloadStore:
             used_tokens = int(budget["input_tokens"]) + int(
                 budget["output_tokens"]
             )
-            reserved = connection.execute(
-                f"""
-                WITH reservation_revisions AS (
-                    SELECT owner_user_id, id, catalog_snapshot_json, plan_json FROM revisions
-                    WHERE owner_user_id=? AND id=?
-                ), {_MODEL_RESERVATIONS_CTES}
-                SELECT COALESCE(SUM(reserved_tokens), 0) AS tokens,
-                       COALESCE(SUM(unbounded), 0) AS unbounded
-                FROM model_reservations
-                WHERE unit_id<>? OR attempt_id<>?
-                """,
-                (lease.owner_user_id, lease.revision_id, lease.unit_id, lease.attempt_id),
-            ).fetchone()
-            if reserved is None or int(reserved["unbounded"]):
-                raise BudgetExceededError({
-                    "reason_code": "budget_accounting_incomplete",
-                    "budget": "accounting",
-                })
             return {
-                "max_tokens": max(
-                    0, int(limits["max_tokens"]) - used_tokens - int(reserved["tokens"]),
-                ),
+                "max_tokens": max(0, int(limits["max_tokens"]) - used_tokens),
                 "max_cost_micros": max(
                     0,
                     int(limits["max_cost_micros"])
@@ -3330,9 +2979,6 @@ class DurableWorkloadStore:
             """
             SELECT workload.owner_user_id, workload.id
             FROM workloads workload
-            JOIN revisions active_revision
-              ON active_revision.owner_user_id=workload.owner_user_id
-             AND active_revision.id=workload.active_revision_id
             WHERE workload.active_revision_id IS NOT NULL AND (
                 (
                   workload.state IN ('cancelled', 'failed')
@@ -3352,26 +2998,8 @@ class DurableWorkloadStore:
                     'completed_with_errors', 'needs_attention'
                   )
                   AND (
-                    (
-                      workload.state IN ('pause_requested', 'cancel_requested')
-                      AND (
-                        NOT EXISTS (
-                          SELECT 1 FROM units active_unit
-                          WHERE active_unit.owner_user_id=workload.owner_user_id
-                            AND active_unit.revision_id=workload.active_revision_id
-                            AND active_unit.state IN ('leased','running')
-                        )
-                        OR (workload.state='cancel_requested' AND EXISTS (
-                          SELECT 1 FROM units waiting_unit
-                          WHERE waiting_unit.owner_user_id=workload.owner_user_id
-                            AND waiting_unit.revision_id=workload.active_revision_id
-                            AND waiting_unit.state IN ('pending','retry_wait','needs_attention')
-                            AND waiting_unit.active_attempt_id IS NULL
-                        ))
-                      )
-                    )
-                OR (workload.state<>'cancel_requested' AND (
-                EXISTS (
+                    workload.state IN ('pause_requested', 'cancel_requested')
+                OR EXISTS (
                     SELECT 1
                     FROM revisions budget_revision
                     JOIN revision_usage usage
@@ -3428,29 +3056,7 @@ class DurableWorkloadStore:
                     WHERE unit.owner_user_id=workload.owner_user_id
                       AND unit.revision_id=workload.active_revision_id
                       AND (
-                        (unit.state='failed_permanent'
-                         AND (
-                           active_revision.failure_policy<>'declared'
-                           OR unit.error_class IS NULL
-                           OR unit.error_class NOT IN (
-                             SELECT value FROM json_each(active_revision.tolerated_error_classes_json)
-                           )
-                         )
-                         AND (
-                           NOT EXISTS (
-                             SELECT 1 FROM units active_unit
-                             WHERE active_unit.owner_user_id=workload.owner_user_id
-                               AND active_unit.revision_id=workload.active_revision_id
-                               AND active_unit.state IN ('leased','running')
-                           )
-                           OR EXISTS (
-                             SELECT 1 FROM units waiting_unit
-                             WHERE waiting_unit.owner_user_id=workload.owner_user_id
-                               AND waiting_unit.revision_id=workload.active_revision_id
-                               AND waiting_unit.state IN ('pending','retry_wait','needs_attention')
-                               AND waiting_unit.active_attempt_id IS NULL
-                           )
-                         ))
+                        unit.state='failed_permanent'
                         OR (
                           unit.state='needs_attention'
                           AND unit.manual_retry_generation >= COALESCE((
@@ -3490,7 +3096,6 @@ class DurableWorkloadStore:
                         json_extract(stage.retry_json, '$.max_attempts') AS INTEGER
                       )
                 )
-                ))
                   )
                 )
               )
@@ -3732,67 +3337,6 @@ class DurableWorkloadStore:
             idempotency_key=idempotency_key, expected_version=expected_version,
             now=now,
         )
-
-    def dismiss_terminal_workload(
-        self,
-        owner_user_id: str,
-        workload_id: str,
-        *,
-        expected_version: int,
-        idempotency_key: str,
-        now: datetime | None = None,
-    ) -> WorkloadRecord:
-        """Hide terminal history while retaining every durable execution row.
-
-        A queued, paused or attention state must first use the ordinary cancel
-        lifecycle.  This keeps an executable job from disappearing from its
-        owner's control surface and preserves request/recovery idempotency.
-        """
-
-        owner = _require_owner(owner_user_id)
-        expected = _require_version(expected_version)
-        key = _require_key(idempotency_key, name="idempotency_key")
-        _current, current_text = self._operation_now(now)
-        with self._transaction() as connection:
-            row = self._select_workload(connection, owner, workload_id)
-            if int(row["version"]) != expected:
-                raise VersionConflictError("workload version precondition failed")
-            state = WorkloadState(str(row["state"]))
-            if state not in _TERMINAL_WORKLOAD_STATES:
-                raise InvalidTransitionError(
-                    "only a terminal workload can be dismissed"
-                )
-            active_attempts = int(connection.execute(
-                """
-                SELECT COUNT(*)
-                FROM attempts attempt
-                JOIN units unit
-                  ON unit.owner_user_id=attempt.owner_user_id
-                 AND unit.id=attempt.unit_id
-                JOIN revisions revision
-                  ON revision.owner_user_id=unit.owner_user_id
-                 AND revision.id=unit.revision_id
-                WHERE revision.owner_user_id=?
-                  AND revision.workload_id=?
-                  AND attempt.state IN ('leased', 'running')
-                """,
-                (owner, workload_id),
-            ).fetchone()[0])
-            if active_attempts:
-                raise InvalidTransitionError(
-                    "a workload with active attempts cannot be dismissed"
-                )
-            connection.execute(
-                """
-                INSERT INTO workload_dismissals(
-                    owner_user_id, workload_id, expected_version,
-                    idempotency_key, dismissed_at
-                ) VALUES (?, ?, ?, ?, ?)
-                ON CONFLICT(owner_user_id, workload_id) DO NOTHING
-                """,
-                (owner, workload_id, expected, key, current_text),
-            )
-            return _row_to_workload(row)
 
     def record_attention_resolution(
         self,
@@ -4078,459 +3622,6 @@ class DurableWorkloadStore:
     ) -> UnitCounters:
         return self.unit_counters_many(owner_user_id, (workload_id,))[workload_id]
 
-    def progress_many(
-        self, owner_user_id: str, workload_ids: Sequence[str],
-        *, now: datetime | None = None,
-    ) -> dict[str, dict[str, Any]]:
-        """Read bounded page telemetry; never use admission/lease time as start.
-
-        Percentages count committed *known* units, not time or source coverage.
-        Whole-job ETA is unavailable for heterogeneous/expanding plans. The
-        separate current-phase ETA uses only that fully materialized phase.
-        A phase survives gaps between unit leases: prefer executing work, then
-        unfinished work already started, then the most recently finished phase.
-        Equally relevant parallel phases remain explicitly ambiguous.
-        A recovered unit contributes its final successful attempt once; elapsed
-        completion intervals still include retry time. Unresolved retries and
-        unknown model usage remain disqualifying, including historical usage.
-        One aggregate statement covers the page, including attempt history.
-        Aggregate attempts once per phase, then reuse those small facts for
-        whole-job timing. Keep attempts before their unit lookup: SQLite can
-        otherwise rescan an owner's entire attempt history for every unit
-        when statistics are absent, making console reads quadratic.
-        """
-        owner = _require_owner(owner_user_id)
-        if isinstance(workload_ids, (str, bytes)) or not isinstance(workload_ids, Sequence):
-            raise TypeError("workload_ids must be a sequence")
-        identifiers = tuple(workload_ids)
-        if len(identifiers) > 200 or len(identifiers) != len(set(identifiers)) or any(
-            not isinstance(value, str) or not _ID_RE.fullmatch(value)
-            for value in identifiers
-        ):
-            raise ValueError("workload_ids contains invalid or duplicate identifiers")
-        if not identifiers:
-            return {}
-        current, observed_at = self._operation_now(now)
-        placeholders = ",".join("?" for _ in identifiers)
-        rows = self._connection.execute(
-            f"""
-            WITH progress_selected AS MATERIALIZED (
-                SELECT w.owner_user_id, w.id, w.state, w.active_revision_id,
-                       r.inventory_sealed, r.usage_complete,
-                       COALESCE(ru.usage_unknown, 1) AS usage_unknown,
-                       CASE WHEN json_valid(r.plan_json) THEN r.plan_json END AS plan_json
-                FROM workloads w LEFT JOIN revisions r
-                  ON r.owner_user_id=w.owner_user_id AND r.id=w.active_revision_id
-                LEFT JOIN revision_usage ru
-                  ON ru.owner_user_id=w.owner_user_id AND ru.revision_id=w.active_revision_id
-                WHERE w.owner_user_id=? AND w.id IN ({placeholders})
-            ), phase_facts AS (
-                SELECT w.id, SUM(s.stage_type<>'inventory') AS phases,
-                       MIN(COALESCE(m.completed, 0) AND m.attention_code IS NULL) AS materialized,
-                       MAX(s.timeout_s) AS timeout_s
-                FROM progress_selected w LEFT JOIN stages s
-                  ON s.owner_user_id=w.owner_user_id AND s.revision_id=w.active_revision_id
-                LEFT JOIN stage_materialization m
-                  ON m.owner_user_id=s.owner_user_id AND m.stage_id=s.id
-                 AND m.revision_id=s.revision_id
-                GROUP BY w.id
-            ), unit_facts AS (
-                SELECT w.id, COUNT(u.id) AS total,
-                       SUM(u.state='running') AS running_units,
-                       SUM(u.state='leased') AS leased_units,
-                       SUM(u.state='committed') AS committed,
-                       SUM(s.stage_type<>'inventory') AS estimate_total,
-                       SUM(s.stage_type<>'inventory' AND u.state='committed') AS estimate_committed,
-                       SUM(u.state NOT IN ('pending','leased','running','committed')
-                           OR (u.attempt_count>1 AND u.state<>'committed')) AS uncertain
-                FROM progress_selected w LEFT JOIN units u
-                  ON u.owner_user_id=w.owner_user_id AND u.revision_id=w.active_revision_id
-                LEFT JOIN stages s ON s.owner_user_id=u.owner_user_id AND s.id=u.stage_id
-                GROUP BY w.id
-            ), phase_attempt_facts AS MATERIALIZED (
-                SELECT w.id, u.stage_id,
-                       SUM(CASE WHEN json_extract(a.model_snapshot_json, '$.mode')='llm'
-                           AND (json_extract(a.metrics_json, '$.usage_missing')=1
-                             OR json_extract(a.metrics_json, '$.llm_usage.cost_unknown')=1
-                             OR ((a.state NOT IN ('leased','running') OR a.ended_at IS NOT NULL)
-                               AND (json_extract(a.metrics_json, '$.usage_missing') IS NOT 0
-                                 OR json_type(a.metrics_json, '$.llm_usage') IS NOT 'object'
-                                 OR json_extract(a.metrics_json, '$.llm_usage.schema_version') IS NOT 'metnos.durable-model-usage/2'
-                                 OR json_extract(a.metrics_json, '$.llm_usage.usage_missing') IS NOT 0
-                                 OR json_extract(a.metrics_json, '$.llm_usage.cost_unknown') IS NOT 0)))
-                           THEN 1 ELSE 0 END) AS uncertain_model_usage,
-                       MIN(CASE WHEN json_type(a.metrics_json, '$.execution_started_at')='text'
-                           THEN json_extract(a.metrics_json, '$.execution_started_at') END) AS started_at,
-                       MAX(COALESCE(a.ended_at,
-                           CASE WHEN json_type(a.metrics_json, '$.execution_started_at')='text'
-                           THEN json_extract(a.metrics_json, '$.execution_started_at') END)) AS last_activity,
-                       COUNT(CASE WHEN s.stage_type<>'inventory' AND u.state='committed' AND a.state='succeeded'
-                           AND a.number=u.attempt_count AND a.ended_at IS NOT NULL
-                           AND json_type(a.metrics_json, '$.execution_started_at')='text'
-                           THEN 1 END) AS samples,
-                       MIN(CASE WHEN s.stage_type<>'inventory' AND u.state='committed' AND a.state='succeeded'
-                           AND a.number=u.attempt_count
-                           THEN a.ended_at END) AS first_completion,
-                       MAX(CASE WHEN s.stage_type<>'inventory' AND u.state='committed' AND a.state='succeeded'
-                           AND a.number=u.attempt_count
-                           THEN a.ended_at END) AS last_completion
-                FROM attempts a CROSS JOIN units u
-                  ON u.owner_user_id=a.owner_user_id AND u.id=a.unit_id
-                JOIN progress_selected w
-                  ON w.owner_user_id=u.owner_user_id AND w.active_revision_id=u.revision_id
-                LEFT JOIN stages s ON s.owner_user_id=u.owner_user_id AND s.id=u.stage_id
-                WHERE a.owner_user_id=? AND a.unit_id IN (
-                    SELECT selected_unit.id FROM progress_selected selected_job
-                    CROSS JOIN units selected_unit
-                      ON selected_unit.owner_user_id=selected_job.owner_user_id
-                     AND selected_unit.revision_id=selected_job.active_revision_id
-                )
-                GROUP BY w.id, u.stage_id
-            ), attempt_facts AS (
-                SELECT id, SUM(uncertain_model_usage) AS uncertain_model_usage,
-                       MIN(started_at) AS started_at, SUM(samples) AS samples,
-                       MIN(first_completion) AS first_completion,
-                       MAX(last_completion) AS last_completion
-                FROM phase_attempt_facts GROUP BY id
-            ), phase_unit_facts AS (
-                SELECT w.id, s.id AS stage_id, s.stage_key, s.timeout_s,
-                       ROW_NUMBER() OVER (PARTITION BY w.id ORDER BY s.position) AS phase_number,
-                       COALESCE(m.completed, 0) AND m.attention_code IS NULL AS materialized,
-                       COUNT(u.id) AS total, SUM(u.state='committed') AS committed,
-                       SUM(u.state IN ('running','leased')) AS active,
-                       SUM(u.state NOT IN ('committed','failed_permanent','skipped','cancelled')) AS unfinished
-                FROM progress_selected w JOIN stages s
-                  ON s.owner_user_id=w.owner_user_id AND s.revision_id=w.active_revision_id
-                 AND s.stage_type<>'inventory'
-                LEFT JOIN units u ON u.owner_user_id=s.owner_user_id
-                  AND u.revision_id=s.revision_id AND u.stage_id=s.id
-                LEFT JOIN stage_materialization m ON m.owner_user_id=s.owner_user_id
-                  AND m.revision_id=s.revision_id AND m.stage_id=s.id
-                GROUP BY w.id, s.id
-            ), phase_relevance AS (
-                SELECT p.id, p.stage_id, a.last_activity,
-                       CASE WHEN p.active>0 THEN 0
-                            WHEN p.unfinished>0 OR NOT p.materialized THEN 1
-                            ELSE 2 END AS relevance
-                FROM phase_unit_facts p LEFT JOIN phase_attempt_facts a
-                  ON a.id=p.id AND a.stage_id=p.stage_id
-                WHERE p.active>0 OR a.started_at IS NOT NULL
-            ), phase_candidates AS (
-                SELECT *, MIN(relevance) OVER (PARTITION BY id) AS preferred_relevance,
-                       MAX(last_activity) OVER (PARTITION BY id, relevance) AS latest_activity
-                FROM phase_relevance
-            ), active_phase AS (
-                SELECT id, COUNT(*) AS active_phases, MIN(stage_id) AS stage_id
-                FROM phase_candidates
-                WHERE relevance=preferred_relevance
-                  AND (relevance<>2 OR last_activity=latest_activity)
-                GROUP BY id
-            )
-            SELECT w.id, w.state, w.inventory_sealed, w.usage_complete,
-                   w.usage_unknown, a.uncertain_model_usage,
-                   json_array_length(w.plan_json, '$.required_artifacts') AS artifacts,
-                   CASE WHEN json_type(w.plan_json, '$.budgets.max_concurrency')='integer'
-                       THEN json_extract(w.plan_json, '$.budgets.max_concurrency') END AS max_concurrency,
-                   p.phases, p.materialized, p.timeout_s,
-                   u.running_units, u.leased_units,
-                   u.total, u.committed, u.uncertain, u.estimate_total, u.estimate_committed,
-                   a.started_at, a.samples, a.first_completion, a.last_completion,
-                   ap.active_phases, pu.stage_key AS current_stage_key, pu.phase_number,
-                   pu.timeout_s AS phase_timeout_s, pu.materialized AS phase_materialized,
-                   pu.total AS phase_total, pu.committed AS phase_committed,
-                   pa.started_at AS phase_started_at, pa.samples AS phase_samples,
-                   pa.first_completion AS phase_first_completion,
-                   pa.last_completion AS phase_last_completion
-            FROM progress_selected w JOIN phase_facts p USING(id)
-            JOIN unit_facts u USING(id) LEFT JOIN attempt_facts a USING(id)
-            LEFT JOIN active_phase ap USING(id)
-            LEFT JOIN phase_unit_facts pu ON pu.id=w.id AND pu.stage_id=ap.stage_id
-            LEFT JOIN phase_attempt_facts pa ON pa.id=w.id AND pa.stage_id=pu.stage_id
-            """,
-            (owner, *identifiers, owner),
-        ).fetchall()
-        if len(rows) != len(identifiers):
-            raise WorkloadNotFoundError("workload not found")
-        result: dict[str, dict[str, Any]] = {}
-        for row in rows:
-            total, committed = int(row["total"] or 0), int(row["committed"] or 0)
-            estimate_total = int(row["estimate_total"] or 0)
-            estimate_committed = int(row["estimate_committed"] or 0)
-            started_at, estimated_end_at = None, None
-            try:
-                start = parse_instant(row["started_at"])
-                if start <= current:
-                    started_at = instant_text(start, name="execution start")
-            except (TypeError, ValueError):
-                pass
-            percentage = None
-            if total:
-                # Floor, never round a not-yet-complete workload up to 100%.
-                percentage = min(100.0 if row["state"] == "completed" else 99.9,
-                                 (committed * 1000 // total) / 10)
-            if (
-                started_at and row["state"] == "running"
-                and row["inventory_sealed"] and row["usage_complete"]
-                and row["phases"] == 1 and row["materialized"] == 1
-                and row["artifacts"] == 0 and not row["uncertain"]
-                and row["samples"] == estimate_committed and estimate_committed >= 3
-                and estimate_total > estimate_committed
-            ):
-                try:
-                    first = parse_instant(row["first_completion"])
-                    last = parse_instant(row["last_completion"])
-                    span = (last - first).total_seconds()
-                    # Fixed persisted anchor: polling never pushes an overdue ETA forward.
-                    estimate = last + timedelta(seconds=span * (estimate_total - estimate_committed) / (estimate_committed - 1))
-                    if (start <= first < last <= current and span >= 10
-                            and (current - last).total_seconds() <= min(120, row["timeout_s"])
-                            and current < estimate <= current + timedelta(days=7)):
-                        estimated_end_at = instant_text(estimate, name="estimated end")
-                except (TypeError, ValueError, OverflowError):
-                    pass
-            phase_end_at = None
-            phase_key = row["current_stage_key"] if row["active_phases"] == 1 else None
-            phase_committed = int(row["phase_committed"] or 0)
-            # Never mix cheap preparatory stages with expensive later work in
-            # the primary progress indicator. A denominator is final only for
-            # a single, fully materialized phase of a sealed inventory.
-            phase_total = (
-                int(row["phase_total"] or 0)
-                if phase_key and row["inventory_sealed"] and row["phase_materialized"]
-                else None
-            )
-            phase_percentage = (
-                (phase_committed * 1000 // phase_total) / 10 if phase_total else None
-            )
-            if row["state"] == "needs_attention":
-                phase_reason = "needs_attention"
-            elif row["state"] != "running":
-                phase_reason = "not_running"
-            elif not row["active_phases"]:
-                phase_reason = "no_active_phase"
-            elif row["active_phases"] != 1:
-                phase_reason = "multiple_active_phases"
-            elif not row["inventory_sealed"]:
-                phase_reason = "inventory_open"
-            elif not row["phase_materialized"]:
-                phase_reason = "phase_expanding"
-            # usage_complete also includes in-flight model calls whose final
-            # usage cannot exist yet. Forecasts depend on completed samples;
-            # block genuinely unknown/terminal missing usage, not live calls.
-            # Keep the stricter completion/accounting gate unchanged elsewhere.
-            elif row["usage_unknown"] or row["uncertain_model_usage"] or row["uncertain"]:
-                phase_reason = "uncertain_progress"
-            else:
-                phase_reason = "insufficient_data"
-                if (row["phase_samples"] == phase_committed and phase_committed >= 3
-                        and row["phase_total"] > phase_committed):
-                    try:
-                        phase_start = parse_instant(row["phase_started_at"])
-                        first = parse_instant(row["phase_first_completion"])
-                        last = parse_instant(row["phase_last_completion"])
-                        span = (last - first).total_seconds()
-                        if phase_start <= first < last <= current and span >= 10:
-                            cadence = span / (phase_committed - 1)
-                            # Recent means at most two measured completion
-                            # intervals, at least 120s, bounded by the frozen
-                            # unit timeout and an absolute 30-minute ceiling.
-                            freshness_s = min(1800, row["phase_timeout_s"], max(120, 2 * cadence))
-                            estimate = last + timedelta(seconds=cadence * (row["phase_total"] - phase_committed))
-                            if (current - last).total_seconds() > freshness_s:
-                                phase_reason = "stale_progress"
-                            elif estimate <= current:
-                                phase_reason = "estimate_overdue"
-                            elif estimate <= current + timedelta(days=7):
-                                phase_end_at = instant_text(estimate, name="estimated phase end")
-                                phase_reason = None
-                    except (TypeError, ValueError, OverflowError):
-                        pass
-            result[str(row["id"])] = {
-                "started_at": started_at,
-                "known_units_percent": percentage,
-                "estimated_end_at": estimated_end_at,
-                "estimated_end_reason": (
-                    None if estimated_end_at else
-                    "needs_attention" if row["state"] == "needs_attention" else
-                    "not_running" if row["state"] != "running" else
-                    "multi_phase" if (row["phases"] or 0) > 1 else "insufficient_data"
-                ),
-                "current_phase": {
-                    "stage_key": phase_key,
-                    "number": int(row["phase_number"]) if phase_key else None,
-                    "count": int(row["phases"] or 0),
-                    "committed_units": phase_committed if phase_key else None,
-                    "total_units": phase_total,
-                    "known_units_percent": phase_percentage,
-                    "estimated_end_at": phase_end_at,
-                    "estimated_end_reason": phase_reason,
-                },
-                "parallelism": {
-                    "running_units": int(row["running_units"] or 0),
-                    "leased_units": int(row["leased_units"] or 0),
-                    "max_concurrency": row["max_concurrency"] if (row["max_concurrency"] or 0) > 0 else None,
-                },
-                "observed_at": observed_at,
-            }
-        return result
-
-    def descriptions_many(
-        self, owner_user_id: str, workload_ids: Sequence[str],
-        *, projector: Callable[[dict[str, Any] | None, str | None], dict[str, Any]],
-    ) -> dict[str, dict[str, Any]]:
-        """Project only the current admitted plan, in one owner-scoped page read.
-
-        The injected, pure composition callback owns domain-specific display
-        facts. Raw plans never leave this method. A mixed active stage has no
-        single phase; a lease is only a fallback when no unit is running.
-        """
-        owner = _require_owner(owner_user_id)
-        if isinstance(workload_ids, (str, bytes)) or not isinstance(workload_ids, Sequence):
-            raise TypeError("workload_ids must be a sequence")
-        identifiers = tuple(workload_ids)
-        if len(identifiers) > 200 or len(identifiers) != len(set(identifiers)) or any(
-            not isinstance(value, str) or not _ID_RE.fullmatch(value) for value in identifiers
-        ):
-            raise ValueError("workload_ids contains invalid or duplicate identifiers")
-        if not identifiers:
-            return {}
-        placeholders = ",".join("?" for _ in identifiers)
-        rows = self._connection.execute(f"""
-            WITH description_selected AS (
-                SELECT w.owner_user_id, w.id, r.id AS revision_id, r.plan_json
-                FROM workloads w LEFT JOIN revisions r
-                  ON r.owner_user_id=w.owner_user_id AND r.id=w.active_revision_id
-                 AND r.admitted_at IS NOT NULL
-                WHERE w.owner_user_id=? AND w.id IN ({placeholders})
-            )
-            SELECT w.id, w.plan_json,
-                   COUNT(DISTINCT CASE WHEN u.state='running' THEN s.stage_key END) AS running_phases,
-                   MIN(CASE WHEN u.state='running' THEN s.stage_key END) AS running_phase,
-                   COUNT(DISTINCT CASE WHEN u.state='leased' THEN s.stage_key END) AS leased_phases,
-                   MIN(CASE WHEN u.state='leased' THEN s.stage_key END) AS leased_phase
-            FROM description_selected w LEFT JOIN units u
-              ON u.owner_user_id=w.owner_user_id AND u.revision_id=w.revision_id
-             AND u.state IN ('running','leased')
-            LEFT JOIN stages s ON s.owner_user_id=u.owner_user_id
-              AND s.revision_id=u.revision_id AND s.id=u.stage_id
-            GROUP BY w.id
-        """, (owner, *identifiers)).fetchall()
-        if len(rows) != len(identifiers):
-            raise WorkloadNotFoundError("workload not found")
-        result = {}
-        for row in rows:
-            plan = None
-            try:
-                candidate = json.loads(row["plan_json"])
-                validate_plan(candidate)
-                plan = candidate
-            except (TypeError, ValueError):
-                pass
-            phase = (row["running_phase"] if row["running_phases"] == 1 else
-                     row["leased_phase"] if row["running_phases"] == 0 and row["leased_phases"] == 1 else None)
-            result[str(row["id"])] = projector(plan, phase if plan is not None else None)
-        return result
-
-    def _domain_errors(
-        self, owner: str, revision_id: str,
-    ) -> dict[str, Any]:
-        """Aggregate committed domain receipts, never attempt failures or history.
-
-        Commit/reuse write only the validated bounded projection. SQL aggregates
-        it without loading result payloads or an unbounded unit list into Python.
-        Window totals include ALL categories before the display limit. Each
-        original item has one primary domain code, so nitems counts items,
-        never attempts or propagated summaries from later processing phases.
-        """
-        rows = self._connection.execute(
-            """
-            WITH categories AS (
-                SELECT error.key AS code, SUM(error.value) AS count
-                FROM units unit,
-                     json_each(unit.terminal_detail_json,
-                               '$.domain_outcome.error_counts') error
-                WHERE unit.owner_user_id=? AND unit.revision_id=?
-                  AND unit.state='committed'
-                GROUP BY error.key
-            )
-            SELECT code, count, SUM(count) OVER () AS nitems,
-                   COUNT(*) OVER () AS category_count
-            FROM categories
-            ORDER BY count DESC, code ASC
-            LIMIT 20
-            """, (owner, revision_id),
-        ).fetchall()
-        return {
-            "nitems": int(rows[0]["nitems"]) if rows else 0,
-            "categories": [
-                {"error_code": str(row["code"]), "count": int(row["count"])}
-                for row in rows
-            ],
-            "truncated": bool(rows and int(rows[0]["category_count"]) > len(rows)),
-        }
-
-    def _attempt_errors(self, owner: str, revision_id: str) -> dict[str, Any]:
-        """Historical technical errors, independent of final domain item outcomes.
-
-        Writer paths persist canonical StructuredAttemptError values. Read only
-        their versioned, bounded machine codes and approved runner cause, never
-        messages or arbitrary details. The
-        revision's units lead the indexed attempt lookup even without planner
-        statistics; no scan of an owner's unrelated attempt history is needed.
-        """
-        rows = self._connection.execute(
-            """
-            WITH error_facts AS MATERIALIZED (
-                SELECT json_extract(attempt.structured_error_json, '$.code') AS code,
-                       CASE WHEN json_extract(attempt.structured_error_json, '$.code')='execution.runner_failed'
-                         AND json_type(attempt.structured_error_json, '$.details_redacted.reported_error_code')='text'
-                       THEN json_extract(attempt.structured_error_json, '$.details_redacted.reported_error_code')
-                       END AS reported_cause
-                FROM units unit CROSS JOIN attempts attempt
-                WHERE unit.owner_user_id=? AND unit.revision_id=?
-                  AND attempt.owner_user_id=unit.owner_user_id
-                  AND attempt.unit_id=unit.id
-                  -- The always-true range also selects the existing
-                  -- (owner, unit, number) index when statistics are absent.
-                  AND attempt.number>=1
-                  AND attempt.ended_at IS NOT NULL
-                  AND attempt.structured_error_json IS NOT NULL
-                  AND json_extract(attempt.structured_error_json, '$.schema_version')=?
-                  AND json_extract(attempt.structured_error_json, '$.scope')='attempt'
-                  AND json_type(attempt.structured_error_json, '$.code')='text'
-            ), bounded_facts AS (
-                SELECT code, CASE WHEN reported_cause<>'unknown'
-                    AND length(reported_cause) BETWEEN 3 AND 96
-                    AND length(CAST(reported_cause AS BLOB))=length(reported_cause)
-                    AND reported_cause GLOB '[a-z]*'
-                    AND reported_cause NOT GLOB '*[^a-z0-9_.-]*'
-                    THEN reported_cause END AS cause
-                FROM error_facts
-                WHERE length(code) BETWEEN 3 AND 96
-                  AND length(CAST(code AS BLOB))=length(code)
-                  AND code GLOB '[a-z]*'
-                  AND code NOT GLOB '*[^a-z0-9_.-]*'
-            ), categories AS (
-                SELECT code, cause, COUNT(*) AS count FROM bounded_facts
-                GROUP BY code, cause
-            )
-            SELECT code, cause, count, SUM(count) OVER () AS nattempts,
-                   COUNT(*) OVER () AS category_count
-            FROM categories
-            ORDER BY count DESC, code ASC, cause ASC
-            LIMIT 20
-            """, (owner, revision_id, ERROR_SCHEMA_VERSION),
-        ).fetchall()
-        return {
-            "nattempts": int(rows[0]["nattempts"]) if rows else 0,
-            "categories": [
-                {"error_code": str(row["code"]), "count": int(row["count"]),
-                 **({"cause_code": str(row["cause"])} if row["cause"] is not None else {})}
-                for row in rows
-            ],
-            "truncated": bool(rows and int(rows[0]["category_count"]) > len(rows)),
-        }
-
     def execution_summary(
         self, owner_user_id: str, workload_id: str,
     ) -> dict[str, Any]:
@@ -4551,11 +3642,7 @@ class DurableWorkloadStore:
                 "budget": {},
                 "stages": [],
                 "error_categories": [],
-                "domain_errors": {"nitems": 0, "categories": [], "truncated": False},
-                "attempt_errors": {"nattempts": 0, "categories": [], "truncated": False},
                 "warnings": [],
-                "blocking_reason": None,
-                "last_committed_at": None,
             }
         revision = self._connection.execute(
             """
@@ -4680,25 +3767,6 @@ class DurableWorkloadStore:
         ).fetchone()[0]
         if int(unavailable):
             warnings.append("source_coverage_incomplete")
-        last_commit = self._connection.execute(
-            """
-            SELECT MAX(r.committed_at)
-            FROM units u JOIN results r
-              ON r.owner_user_id=u.owner_user_id AND r.unit_id=u.id
-             AND r.revision_id=u.revision_id
-            WHERE u.owner_user_id=? AND u.revision_id=?
-              AND u.state='committed'
-            """, (owner, revision_id),
-        ).fetchone()[0]
-        blocking_reason = None
-        if workload["state"] == "needs_attention":
-            current, _current_text = self._operation_now(None)
-            violation = self._budget_violation_in_transaction(
-                self._connection, owner=owner, workload_id=workload_id,
-                revision_id=str(revision_id), now=current,
-            )
-            if violation is not None:
-                blocking_reason = str(violation["reason_code"])
         return {
             "budget": budget,
             "stages": stages,
@@ -4706,11 +3774,7 @@ class DurableWorkloadStore:
                 {"error_code": str(row["error_code"]), "count": int(row["count"])}
                 for row in errors
             ],
-            "domain_errors": self._domain_errors(owner, str(revision_id)),
-            "attempt_errors": self._attempt_errors(owner, str(revision_id)),
             "warnings": warnings,
-            "blocking_reason": blocking_reason,
-            "last_committed_at": last_commit,
         }
 
     def evaluate_completion(
@@ -5058,7 +4122,6 @@ class DurableWorkloadStore:
                 or accepted_partial
                 or accepted_source_skip
                 or counters.skipped
-                or self._domain_errors(owner, revision_id)["nitems"]
             )
             target = (
                 WorkloadState.COMPLETED_WITH_ERRORS
@@ -5470,59 +4533,6 @@ class DurableWorkloadStore:
             and manual_retry is lease.manual_retry
         )
 
-    def read_committed_entries(self, owner_user_id: str, references: object) -> list[dict]:
-        """Read explicitly selected, digest-bound historical data, never replay effects.
-
-        A newly admitted plan freezes these references as ordinary input. This
-        is not a claim that an old attempt ran under a new executor contract,
-        and it does not alter historical results, usage or completion status.
-        """
-        owner = _require_owner(owner_user_id)
-        if not isinstance(references, list) or not 1 <= len(references) <= 1024:
-            raise DurableStoreError("committed result references must be bounded")
-        seen = set()
-        entries = []
-        size = 0
-        for reference in references:
-            if (not isinstance(reference, dict)
-                    or set(reference) != {"result_id", "digest", "schema_version"}
-                    or not all(isinstance(value, str) for value in reference.values())
-                    or not _ID_RE.fullmatch(reference["result_id"])
-                    or not _SHA256_RE.fullmatch(reference["digest"])
-                    or len(reference["schema_version"]) > 128
-                    or reference["result_id"] in seen):
-                raise DurableStoreError("committed result reference is invalid")
-            seen.add(reference["result_id"])
-            row = self._connection.execute(
-                """
-                SELECT result.schema_version, result.digest, result.payload_json
-                FROM results result
-                JOIN units unit ON unit.owner_user_id=result.owner_user_id
-                  AND unit.revision_id=result.revision_id
-                  AND unit.committed_result_id=result.id AND unit.state='committed'
-                JOIN revisions revision ON revision.owner_user_id=result.owner_user_id
-                  AND revision.id=result.revision_id AND revision.admitted_at IS NOT NULL
-                WHERE result.owner_user_id=? AND result.id=?
-                """, (owner, reference["result_id"]),
-            ).fetchone()
-            if (row is None or row["schema_version"] != reference["schema_version"]
-                    or row["digest"] != reference["digest"]
-                    or not isinstance(row["payload_json"], str)):
-                raise DurableStoreError("committed result reference is unavailable")
-            size += len(row["payload_json"].encode("utf-8"))
-            if size > MAX_RESULT_JSON_BYTES:
-                raise DurableStoreError("committed result input exceeds the byte limit")
-            validated = ValidatedResult(row["schema_version"], row["payload_json"], row["digest"])
-            payload = json.loads(validated.payload_json)
-            selected = payload.get("entries")
-            if (payload.get("ok") is False or not isinstance(selected, list)
-                    or any(not isinstance(item, dict) for item in selected)
-                    or len(entries) + len(selected) > 1_000_000):
-                raise DurableStoreError("committed result has no valid entries")
-            entries.extend(selected)
-        canonical_json({"entries": entries}, max_bytes=MAX_RESULT_JSON_BYTES)
-        return entries
-
     def adopt_reusable_results(self, *, limit: int = 200) -> int:
         """Commit prior results for unchanged pure units without re-execution.
 
@@ -5534,32 +4544,6 @@ class DurableWorkloadStore:
         _require_limit(limit, maximum=1000)
         progressed = 0
         for _index in range(limit):
-            # This conservative read grants no reuse authority. In particular,
-            # a first revision has no historical result to adopt and must not
-            # repeatedly take the single SQLite writer away from live leases.
-            # Everything is reselected and verified under BEGIN below; a
-            # candidate committed after this snapshot is seen next cycle.
-            possible = self._connection.execute(
-                """
-                SELECT 1
-                FROM units current_unit
-                JOIN workloads workload
-                  ON workload.owner_user_id=current_unit.owner_user_id
-                 AND workload.active_revision_id=current_unit.revision_id
-                JOIN units prior_unit
-                  ON prior_unit.owner_user_id=current_unit.owner_user_id
-                 AND prior_unit.unit_key=current_unit.unit_key
-                 AND prior_unit.revision_id<>current_unit.revision_id
-                 AND prior_unit.state='committed'
-                WHERE workload.state IN ('queued', 'running')
-                  AND current_unit.state='pending'
-                  AND current_unit.attempt_count=0
-                  AND current_unit.active_attempt_id IS NULL
-                LIMIT 1
-                """,
-            ).fetchone()
-            if possible is None:
-                break
             now_text = utc_now()
             with self._transaction() as connection:
                 candidate = connection.execute(
@@ -5926,14 +4910,13 @@ class DurableWorkloadStore:
                     SET state='committed', attempt_count=?, fence=?,
                         committed_result_id=?, next_attempt_at=NULL,
                         error_class=NULL, partial_output=0,
-                        terminal_detail_json=?, updated_at=?
+                        terminal_detail_json=NULL, updated_at=?
                     WHERE owner_user_id=? AND id=? AND revision_id=?
                       AND state='pending' AND attempt_count=? AND fence=?
                       AND active_attempt_id IS NULL
                     """,
                     (
-                        attempt_number, fence, result_id,
-                        domain_terminal_detail(json.loads(validated.payload_json)), now_text,
+                        attempt_number, fence, result_id, now_text,
                         owner, unit_id, revision_id,
                         candidate["attempt_count"], candidate["fence"],
                     ),
@@ -6027,12 +5010,7 @@ class DurableWorkloadStore:
             )
             candidate = connection.execute(
                 f"""
-                WITH reservation_revisions AS (
-                    SELECT r.owner_user_id, r.id, r.catalog_snapshot_json, r.plan_json
-                    FROM workloads w JOIN revisions r
-                      ON r.owner_user_id=w.owner_user_id AND r.id=w.active_revision_id
-                    WHERE w.state IN ('queued', 'running')
-                ), {_MODEL_RESERVATIONS_CTES}, candidate AS (
+                WITH candidate AS (
                     SELECT
                         w.owner_user_id, w.id AS workload_id,
                         w.state AS workload_state, w.version AS workload_version,
@@ -6048,10 +5026,6 @@ class DurableWorkloadStore:
                         (
                             SELECT s.id
                             FROM stages s
-                            LEFT JOIN model_limits model_limit
-                              ON model_limit.owner_user_id=s.owner_user_id
-                             AND model_limit.revision_id=s.revision_id
-                             AND model_limit.stage_id=s.id
                             WHERE s.owner_user_id=w.owner_user_id
                               AND s.revision_id=r.id
                               AND EXISTS (
@@ -6122,17 +5096,11 @@ class DurableWorkloadStore:
                                   ) AS INTEGER)=0
                                 )
                                 OR (
-                                  (
-                                    revision_usage.input_tokens
-                                      + revision_usage.output_tokens
-                                      < CAST(json_extract(
-                                        r.plan_json, '$.budgets.max_tokens'
-                                      ) AS INTEGER)
-                                    OR (
-                                      model_limit.max_tokens IS NOT NULL
-                                      AND COALESCE(reservations.active_models, 0)=0
-                                    )
-                                  )
+                                  revision_usage.input_tokens
+                                    + revision_usage.output_tokens
+                                    < CAST(json_extract(
+                                      r.plan_json, '$.budgets.max_tokens'
+                                    ) AS INTEGER)
                                   AND (
                                     CAST(json_extract(
                                       r.plan_json,
@@ -6144,26 +5112,36 @@ class DurableWorkloadStore:
                                         '$.budgets.max_cost_micros'
                                       ) AS INTEGER)
                                   )
-                                  AND (
-                                    (
-                                      model_limit.max_tokens IS NULL
-                                      AND COALESCE(reservations.active_models, 0)=0
-                                    ) OR (
-                                      model_limit.max_tokens IS NOT NULL
-                                      AND COALESCE(reservations.unbounded_models, 0)=0
-                                      AND (
-                                        model_limit.max_tokens
-                                          + COALESCE(reservations.reserved_tokens, 0)
-                                          <= model_limit.remaining_tokens
-                                        OR COALESCE(reservations.active_models, 0)=0
+                                  AND NOT EXISTS (
+                                    SELECT 1
+                                    FROM units active_model_unit
+                                    JOIN stages active_model_stage
+                                      ON active_model_stage.owner_user_id=
+                                           active_model_unit.owner_user_id
+                                     AND active_model_stage.revision_id=
+                                           active_model_unit.revision_id
+                                     AND active_model_stage.id=
+                                           active_model_unit.stage_id
+                                    WHERE active_model_unit.owner_user_id=
+                                            r.owner_user_id
+                                      AND active_model_unit.revision_id=r.id
+                                      AND active_model_unit.state IN (
+                                        'leased', 'running'
                                       )
-                                    )
+                                      AND (
+                                        CAST(json_extract(
+                                          active_model_stage.resources_json,
+                                          '$.llm'
+                                        ) AS INTEGER)>0
+                                        OR CAST(json_extract(
+                                          active_model_stage.resources_json,
+                                          '$.vlm'
+                                        ) AS INTEGER)>0
+                                      )
                                   )
                                 )
                               )
-                            ORDER BY CASE WHEN model_limit.max_tokens
-                                                 > model_limit.remaining_tokens
-                                          THEN 1 ELSE 0 END, s.position, s.id
+                            ORDER BY s.position, s.id
                             LIMIT 1
                         ) AS stage_id
                     FROM workloads w
@@ -6173,9 +5151,6 @@ class DurableWorkloadStore:
                     JOIN revision_usage revision_usage
                       ON revision_usage.owner_user_id=r.owner_user_id
                      AND revision_usage.revision_id=r.id
-                    LEFT JOIN model_reservation_totals reservations
-                      ON reservations.owner_user_id=r.owner_user_id
-                     AND reservations.revision_id=r.id
                     LEFT JOIN scheduler_credits sc
                       ON sc.owner_user_id=w.owner_user_id
                      AND sc.workload_id=w.id
@@ -6234,18 +5209,11 @@ class DurableWorkloadStore:
                         AS INTEGER
                       )
                 )
-                SELECT candidate.*, model_limit.max_tokens AS required_model_tokens,
-                       model_limit.remaining_tokens, model_limit.token_limit
-                FROM candidate LEFT JOIN model_limits model_limit
-                  ON model_limit.owner_user_id=candidate.owner_user_id
-                 AND model_limit.revision_id=candidate.revision_id
-                 AND model_limit.stage_id=candidate.stage_id
-                WHERE candidate.stage_id IS NOT NULL
-                ORDER BY CASE WHEN model_limit.max_tokens > model_limit.remaining_tokens
-                              THEN 1 ELSE 0 END,
-                         candidate.owner_selected_seq, candidate.selected_seq,
-                         CASE candidate.priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END,
-                         candidate.workload_created_at, candidate.owner_user_id, candidate.workload_id
+                SELECT * FROM candidate
+                WHERE stage_id IS NOT NULL
+                ORDER BY owner_selected_seq, selected_seq,
+                         CASE priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END,
+                         workload_created_at, owner_user_id, workload_id
                 LIMIT 1
                 """,
                 (
@@ -6261,31 +5229,6 @@ class DurableWorkloadStore:
                 ),
             ).fetchone()
             if candidate is None:
-                return None
-            required_tokens = candidate["required_model_tokens"]
-            if required_tokens is not None and int(required_tokens) > int(candidate["remaining_tokens"]):
-                # A missing reservation is transient only while another model
-                # attempt can release it. With no active model reservation and
-                # no runnable candidate ahead of this one, fail explicitly;
-                # never lease an attempt that cannot pass its preflight.
-                self._automatic_workload_transition_in_transaction(
-                    connection,
-                    self._select_workload(
-                        connection, str(candidate["owner_user_id"]),
-                        str(candidate["workload_id"]),
-                    ),
-                    WorkloadState.NEEDS_ATTENTION,
-                    reason_code="budget_limit_exceeded",
-                    details={
-                        "budget": "max_tokens",
-                        "limit": int(candidate["token_limit"]),
-                        "observed": int(candidate["token_limit"])
-                            - int(candidate["remaining_tokens"]),
-                        "required_token_reservation": int(required_tokens),
-                        "remaining": int(candidate["remaining_tokens"]),
-                    },
-                    now_text=current_text,
-                )
                 return None
 
             row = connection.execute(
@@ -7182,8 +6125,9 @@ class DurableWorkloadStore:
                     AND reduction_unit.revision_id=progress.revision_id
                     AND reduction_unit.stage_id=progress.stage_id
                     AND reduction_unit.reduction_level=progress.reduction_level
-                    AND reduction_unit.state IN (
-                      'pending', 'leased', 'running', 'retry_wait'
+                    AND reduction_unit.state NOT IN (
+                      'committed', 'failed_permanent', 'needs_attention',
+                      'cancelled', 'skipped'
                     )
                 )
               )
@@ -7209,9 +6153,8 @@ class DurableWorkloadStore:
                       WHERE parent_unit.owner_user_id=parent.owner_user_id
                         AND parent_unit.revision_id=parent.revision_id
                         AND parent_unit.stage_id=parent.id
-                        AND parent_unit.state IN (
-                          'pending', 'leased', 'running', 'retry_wait',
-                          'needs_attention'
+                        AND parent_unit.state NOT IN (
+                          'committed', 'failed_permanent', 'cancelled', 'skipped'
                         )
                     )
                   )
@@ -8437,8 +7380,9 @@ class DurableWorkloadStore:
                     AND reduction_unit.revision_id=progress.revision_id
                     AND reduction_unit.stage_id=progress.stage_id
                     AND reduction_unit.reduction_level=progress.reduction_level
-                    AND reduction_unit.state IN (
-                      'pending', 'leased', 'running', 'retry_wait'
+                    AND reduction_unit.state NOT IN (
+                      'committed', 'failed_permanent', 'needs_attention',
+                      'cancelled', 'skipped'
                     )
                 )
               )
@@ -8464,9 +7408,8 @@ class DurableWorkloadStore:
                       WHERE parent_unit.owner_user_id=parent.owner_user_id
                         AND parent_unit.revision_id=parent.revision_id
                         AND parent_unit.stage_id=parent.id
-                        AND parent_unit.state IN (
-                          'pending', 'leased', 'running', 'retry_wait',
-                          'needs_attention'
+                        AND parent_unit.state NOT IN (
+                          'committed', 'failed_permanent', 'cancelled', 'skipped'
                         )
                     )
                   )
@@ -8540,7 +7483,6 @@ class DurableWorkloadStore:
         *,
         dependency_result_ids: Sequence[str] = (),
         now: datetime | None = None,
-        clock: Callable[[], datetime] | None = None,
     ) -> CommitOutcome:
         if not isinstance(lease, Lease):
             raise TypeError("lease must be Lease")
@@ -8556,12 +7498,8 @@ class DurableWorkloadStore:
             for value in dependency_ids
         ) or len(dependency_ids) != len(set(dependency_ids)):
             raise ResultContractError("result dependency identifiers are invalid")
-        if clock is not None and (not callable(clock) or now is not None):
-            raise TypeError("clock must be callable and cannot be combined with now")
+        current, current_text = self._operation_now(now)
         with self._transaction() as connection:
-            # Waiting for the writer must not extend the attempt's deadline.
-            # Workers pass their clock, not an instant captured before BEGIN.
-            current, current_text = self._operation_now(clock() if clock else now)
             row = self._select_lease_row(connection, lease)
             existing = connection.execute(
                 """
@@ -8760,14 +7698,12 @@ class DurableWorkloadStore:
                     lease_worker_id=NULL, active_attempt_id=NULL,
                     lease_expires_at=NULL, next_attempt_at=NULL,
                     error_class=NULL, partial_output=0,
-                    terminal_detail_json=?, updated_at=?
+                    terminal_detail_json=NULL, updated_at=?
                 WHERE owner_user_id=? AND id=? AND state='running'
                   AND active_attempt_id=? AND fence=? AND lease_worker_id=?
                 """,
                 (
-                    result_id,
-                    domain_terminal_detail(json.loads(validated_result.payload_json)),
-                    current_text, lease.owner_user_id,
+                    result_id, current_text, lease.owner_user_id,
                     lease.unit_id, lease.attempt_id, lease.fence,
                     lease.worker_id,
                 ),
@@ -8894,15 +7830,6 @@ class DurableWorkloadStore:
                 # Policy-derived retries are valid only while resource
                 # accounting and time are authoritative.
                 derived = RetryDecision.NEEDS_ATTENTION
-
-            if derived is RetryDecision.NEEDS_ATTENTION:
-                payload = json.loads(structured_error.payload_json)
-                if payload["retry"] in {"automatic", "never"}:
-                    payload["retry"] = "manual"
-                    structured_error = StructuredAttemptError(
-                        structured_error.error_class,
-                        canonical_json(payload, max_bytes=MAX_ERROR_JSON_BYTES),
-                    )
 
             next_attempt_at: str | None = None
             if derived is RetryDecision.RETRY:
@@ -9133,38 +8060,7 @@ class DurableWorkloadStore:
             or not 1 <= batch_size <= 1000
         ):
             raise ValueError("batch_size must be an integer in 1..1000")
-        # Read-only negative probe: include every revision and owner, both
-        # clock-regression signals, and due retries even without an active
-        # workload. LEFT JOIN deliberately permits harmless false positives
-        # for damaged/missing usage rows. The authoritative fenced selection
-        # remains unchanged inside the writer transaction below.
-        possible = self._connection.execute(
-            """
-            SELECT 1 FROM units u
-            LEFT JOIN revision_usage usage
-              ON usage.owner_user_id=u.owner_user_id
-             AND usage.revision_id=u.revision_id
-            WHERE u.state IN ('leased', 'running') AND (
-                u.lease_expires_at<=?
-                OR julianday(usage.clock_high_water_at)
-                    > julianday(?) + (? / 86400.0)
-                OR julianday(u.updated_at)
-                    > julianday(?) + (? / 86400.0)
-            )
-            UNION ALL
-            SELECT 1 FROM units WHERE state='retry_wait' AND next_attempt_at<=?
-            LIMIT 1
-            """,
-            (
-                current_text, current_text,
-                _CLOCK_REGRESSION_TOLERANCE.total_seconds(),
-                current_text, _CLOCK_REGRESSION_TOLERANCE.total_seconds(),
-                current_text,
-            ),
-        ).fetchone()
-        if possible is None:
-            return ReconcileOutcome()
-        expired = returned = retrying = attention = 0
+        expired = returned = retrying = permanent = attention = 0
         with self._transaction() as connection:
             rows = connection.execute(
                 """
@@ -9260,7 +8156,7 @@ class DurableWorkloadStore:
                 elif manual_retry:
                     retry_mode = "manual"
                 elif attempt_number >= policy.max_attempts:
-                    retry_mode = "manual"
+                    retry_mode = "manual" if before_execution else "never"
                 error = StructuredAttemptError.create(
                     "lease_lost",
                     code=error_code,
@@ -9333,9 +8229,9 @@ class DurableWorkloadStore:
                         target = "retry_wait"
                         retrying += 1
                     else:
-                        target = "needs_attention"
+                        target = "failed_permanent"
                         next_attempt_at = None
-                        attention += 1
+                        permanent += 1
                 changed_unit = connection.execute(
                     """
                     UPDATE units
@@ -9384,7 +8280,7 @@ class DurableWorkloadStore:
             expired=expired,
             returned_pending=returned,
             retry_scheduled=retrying,
-            failed_permanent=0,
+            failed_permanent=permanent,
             needs_attention=attention,
             retry_promoted=promoted,
         )
@@ -9408,7 +8304,6 @@ class DurableWorkloadStore:
                 "results", "unit_dependencies", "dependencies",
                 "artifacts", "publications", "events", "outbox",
                 "scheduler_credits", "commands", "attention_resolutions",
-                "workload_dismissals",
             ):
                 residue = int(connection.execute(
                     f"SELECT COUNT(*) FROM {table} WHERE owner_user_id=?",

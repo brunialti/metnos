@@ -6,7 +6,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "get_location"
-version     = "0.2.1"
+version     = "0.2.0"
 platforms   = ["linux"]
 author      = "Roberto Brunialti"
 affinity    = ["location", "posizione", "dove", "where", "GPS", "qui", "now", "current"]
@@ -14,8 +14,8 @@ revertible  = false
 lifecycle   = "active"
 
 [description]
-it = "SCOPO: legge la posizione geografica dell'utente o del server. PATTERN: get_location(subject='server'). NON: geocodifica nomi -> find_places; luoghi vicini -> get_places. OUT: location con lat,lon,source,accuracy_m."
-en = "SCOPO: reads the geographical location of the user or server. PATTERN: get_location(subject='server'). NON: place names -> find_places; nearby places -> get_places. OUT: location with lat,lon,source,accuracy_m."
+it = "SCOPO: dice dove si trova l'attore corrente. PATTERN: get_location(). NON: geocodificare un nome di luogo -> find_places; cercare luoghi vicini -> get_places; leggere la cronologia. OUT: {location:{lat,lon,source,accuracy_m},age_seconds?,actor}. Prova in ordine posizione condivisa, configurata, WiFi e IP; `source` dice quale ha risposto e `ip` vale una citta', non una posizione."
+en = "SCOPO: tells where the current actor is. PATTERN: get_location(). NON: geocode a place name -> find_places; look for nearby places -> get_places; read the history. OUT: {location:{lat,lon,source,accuracy_m},age_seconds?,actor}. Tries in order shared, configured, WiFi and IP; `source` states which one answered, and `ip` is worth a city, not a position."
 
 [code]
 files  = ["get_location.py"]
@@ -23,15 +23,6 @@ digest = "sha256:e7fb10707911ec04a5d62fced0b93ea232160be3b897f35ec7bf59d09c61410
 
 [args]
 type     = "object"
-
-[args.properties.subject]
-type = "string"
-enum = ["actor", "server"]
-default = "actor"
-
-[args.properties.subject.description]
-it = "Di chi leggere la posizione: 'server' per la macchina Metnos, 'actor' per l'utente. La posizione condivisa dall'utente non e' la posizione del server."
-en = "Whose location to read: 'server' for the Metnos machine, 'actor' for the user. The user's shared location is not the server's location."
 
 [args.properties.actor]
 type        = "string"

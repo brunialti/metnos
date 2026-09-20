@@ -2,7 +2,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name         = "run_processes"
-version      = "0.6.0"
+version      = "0.5.1"
 intelligence = "deterministic"
 timeout_s    = 30
 platforms    = ["windows"]
@@ -24,12 +24,12 @@ concurrency_key   = "device"
 equivalence_gate  = "unverified"
 
 [description]
-it = "SCOPO: avvia software installato con ricevuta esatta della coorte di processi creata. PATTERN: find_packages(...) -> run_processes(from_step=1). NON: sessioni web (-> open_sites), path, comandi, script o id non registrati. OUT: autorizzazione per una volta, fino al riavvio del PC o sempre; results e failed."
-en = "SCOPO: runs installed software with an exact receipt for the created process cohort. PATTERN: find_packages(...) -> run_processes(from_step=1). NON: web sessions (-> open_sites), paths, commands, scripts, or unregistered ids. OUT: authorization once, until PC restart, or always; results and failed."
+it = "SCOPO: avvia software installato con ricevuta esatta della coorte di processi creata. PATTERN: find_packages(...) -> run_processes(from_step=1). NON: sessioni web (-> open_sites), path, comandi, script o id non registrati. OUT: chiede sessione o persistenza, poi restituisce results e failed."
+en = "SCOPO: runs installed software with an exact receipt for the created process cohort. PATTERN: find_packages(...) -> run_processes(from_step=1). NON: web sessions (-> open_sites), paths, commands, scripts, or unregistered ids. OUT: asks for session or persistence, then returns results and failed."
 
 [code]
 files  = ["run_processes.py"]
-digest = "sha256:9a8c6b54e6d2ee3abbb4dd8236593f9be3901a772f57b8d42e52f498c88c7f81"
+digest = "sha256:47eef328046d85d0e241af373e16bbff7064b9dbc2884ad3f24b975dabaa76b9"
 
 [args]
 type     = "object"
@@ -51,7 +51,6 @@ minItems    = 1
 maxItems    = 10
 from_entries_key = "resolved_id"
 from_entries_complete = true
-from_entries_candidates_key = "candidates"
 items       = { type = "string", maxLength = 132 }
 
 [args.properties.programs.description]
@@ -64,26 +63,8 @@ enum             = ["session", "persistent"]
 runtime_resolved = true
 
 [args.properties.lifetime.description]
-it = "Modalità tecnica dell'avvio, distinta dal permesso. Il dialogo usa 'session': non registra avvio automatico. 'persistent' è riservato alla registrazione esplicitamente approvata."
-en = "Technical launch mode, separate from permission. The dialog uses 'session': no automatic startup registration. 'persistent' is reserved for explicitly approved startup registration."
-
-[args.properties.authorization_scope]
-type = "string"
-enum = ["once", "until_restart", "always"]
-runtime_resolved = true
-
-[args.properties.authorization_scope.description]
-it = "Durata del permesso scelta dall'utente: una volta, fino al riavvio del PC, oppure sempre fino a revoca. Inserita dal runtime."
-en = "User-selected permission duration: once, until PC restart, or always until revoked. Supplied by the runtime."
-
-[args.properties.authorization_boot_id]
-type = "string"
-maxLength = 20
-runtime_resolved = true
-
-[args.properties.authorization_boot_id.description]
-it = "Identità dell'avvio di Windows osservata sul PC per un permesso fino al riavvio; vuota per le altre durate. Non proviene dal planner."
-en = "Windows boot identity observed on the PC for an until-restart permission; empty for other durations. Never supplied by the planner."
+it = "Scelta inserita dal runtime dopo il consenso: 'session' fino al riavvio, 'persistent' anche alle accensioni successive."
+en = "Choice inserted by the runtime after consent: 'session' until restart, 'persistent' also at subsequent startups."
 
 [args.properties.actor_consent_token]
 type             = "string"
@@ -151,10 +132,3 @@ expect = { ok = false, field_eq = { error_code = "invalid_package_id" } }
 name   = "duplicate_package_is_rejected"
 input  = { programs = ["Vendor.App", "Vendor.App"] }
 expect = { ok = false, field_eq = { error_code = "duplicate_package" } }
-
-# Private helper-contract fixture only; this is not an installed user package
-# and the consent is the normal deterministic hash of these exact test inputs.
-[[tests]]
-name   = "session_helper_contract_round_trip"
-input  = { programs = ["Metnos.BirthFixture"], lifetime = "session", authorization_scope = "once", authorization_boot_id = "", actor_consent_token = "1aa81c1f99c1e796a58e17e36ad9a6833c978d5b0db44992951bcba11a28b297" }
-expect = { ok = true }

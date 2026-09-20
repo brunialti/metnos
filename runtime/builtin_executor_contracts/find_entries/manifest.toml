@@ -14,8 +14,8 @@ it = "SCOPO: Interroga record in uno store dichiarato. PATTERN: richiesta natura
 en = "SCOPO: Queries records in a declared store. PATTERN: natural request typed by the planner. NON: enlarge authority or invent inputs. OUT: declared JSON result."
 
 [code]
-files = ["implementation.py.src"]
-digest = "sha256:b70aa056c7673e1abd5faa3305eb8e1056080b53cc2130ded20259e538637eb1"
+files = ["../../store_entries.py"]
+digest = "sha256:0502ad6dc5a70da4ac3c60f62571e4e81c02cf32711227981b8ced9123679fbf"
 
 [args]
 type = "object"

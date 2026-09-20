@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """Helper comuni per executor — robustness al confine NL→determinismo (§2.4).
 
 Pattern §2.4 the design guide: gli executor accettano args dal PLANNER LLM che a
@@ -34,19 +34,6 @@ from worker_policy import bounded_worker_count
 # underneath. Without this, a filter on a period silently dropped exactly the
 # rows the mark existed to save (sites omit the year on recent rows).
 ASSUMED_YEAR_MARK = "*"
-
-
-def approval_digest(arguments: dict) -> str:
-    """Bind a reviewed choice to exact arguments; not proof of user consent.
-
-    Only the authenticated runtime may supply the resulting runtime-owned
-    argument. A digest alone never authorizes creating a reusable permission.
-    """
-    import hashlib
-    import json
-    payload = json.dumps(arguments, ensure_ascii=True, sort_keys=True,
-                         separators=(",", ":"))
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def date_text(value):
@@ -226,9 +213,7 @@ def run_stdio(invoke, *, default=None, error_extra=None,
 
     `invoke` e' chiamato SOLO dopo un parse riuscito (fuori dal try sul
     JSONDecodeError): un eventuale errore interno di `invoke` propaga come
-    prima, salvo nel trasporto gestito dei consumi: qui un errore interno
-    restituisce un fallimento strutturato con i consumi raccolti fino ad allora.
-    Non viene mai classificato come «JSON non valido».
+    prima (niente mascheramento «JSON non valido» di bug applicativi).
 
     Sul device il client puo' impostare `METNOS_EXECUTOR_OPERATION=reverse`
     esclusivamente da un campo wire firmato. In quel caso questa stessa
@@ -277,14 +262,7 @@ def run_stdio(invoke, *, default=None, error_extra=None,
         )
         sink = BoundedTransportUsageSink()
         with transport_usage_context(sink):
-            try:
-                result = invoke(args)
-            except Exception:
-                # Preserve completed calls even when application code fails
-                # afterwards. Started but unreported calls stay unknown in the
-                # sink; never include exception text or private input here.
-                result = {"ok": False, "error_class": "executor_unknown",
-                          "error": _msg("MSG_ERR_UNKNOWN")}
+            result = invoke(args)
         if isinstance(result, dict):
             result = dict(result)
             result[TRANSPORT_USAGE_KEY] = sink.export()
@@ -411,31 +389,6 @@ def normalize_vector_result(result: dict, *,
             out.pop("partial", None)
     else:
         out.pop("partial", None)
-    return out
-
-
-def normalize_array_args(args: dict, schema) -> dict:
-    """Preserve a scalar string as one item when the contract requires an array.
-
-    Step references and resumed inputs can resolve to a single value after
-    planner validation.  Normalize their container at the invocation boundary,
-    without splitting strings, interpreting their contents, or changing item
-    validation.  Union types, nulls, existing lists and undeclared arguments
-    stay untouched.  The input is never mutated; repeated calls are no-ops.
-    """
-    if not isinstance(args, dict) or not isinstance(schema, dict):
-        return args
-    properties = schema.get("properties")
-    if not isinstance(properties, dict):
-        return args
-    out = args
-    for name, declaration in properties.items():
-        if (isinstance(declaration, dict)
-                and declaration.get("type") == "array"
-                and isinstance(args.get(name), str)):
-            if out is args:
-                out = dict(args)
-            out[name] = [args[name]]
     return out
 
 

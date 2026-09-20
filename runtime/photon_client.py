@@ -1,43 +1,80 @@
 #!/usr/bin/env python3
 """photon_client — adapter REST per il geocoder Photon (suprastructure/geo).
 
-Endpoint dal registro servizi, con override METNOS_PHOTON_URL.
+Photon e' self-hosted su .33:2322. Vantaggio rispetto a Nominatim:
+distance_sort=true nativo + niente rate limit.
 
 API simmetrica a `nominatim_client` per swap drop-in:
 - forward_search(query, max_results, near?, radius_km?, bounded?)
 - reverse_geocode(lat, lon)
 
-La selezione dei provider appartiene a geo_provider.
+Backend selection (1/5/2026): env METNOS_GEO_BACKEND=photon|nominatim
+(default photon se Photon raggiungibile, altrimenti fallback nominatim).
 """
 from __future__ import annotations
 
 import json
 import math
+import os
 import urllib.error
 import urllib.parse
 import urllib.request
 
-from services_registry import endpoint
-
-PHOTON_BASE = endpoint("photon")
+PHOTON_BASE = os.environ.get("METNOS_PHOTON_URL", "http://192.0.2.10:2322")
 PHOTON_TIMEOUT = 7.0
 
-def _osm_surface_tags() -> dict[str, str]:
-    """Ready localized surface -> canonical OSM tag, without tie-by-order."""
-    import detection_lexicon as _detlex
-
-    owners: dict[str, set[str]] = {}
-    for tag, forms in _detlex.mapping("geo.osm_tag").items():
-        if not isinstance(forms, list):
-            continue
-        for form in forms:
-            normalized = str(form).strip().casefold()
-            if normalized:
-                owners.setdefault(normalized, set()).add(str(tag))
-    return {
-        surface: next(iter(tags))
-        for surface, tags in owners.items() if len(tags) == 1
-    }
+# Auto-mapping query token → osm_tag per categorie standard.
+# Photon `osm_tag=amenity:pharmacy` filtra esattamente; combinato col bias
+# geografico + post-sort haversine = vera kNN per categoria.
+# IT+EN. Long-tail (es. "negozio musica vintage") resta senza filtro =
+# fallback ranking importance.
+_AUTO_OSM_TAG = {
+    # IT
+    "farmacia": "amenity:pharmacy", "farmacie": "amenity:pharmacy",
+    "ristorante": "amenity:restaurant", "ristoranti": "amenity:restaurant",
+    "bar": "amenity:bar", "pub": "amenity:pub",
+    "pizzeria": "amenity:fast_food", "pizzerie": "amenity:fast_food",
+    "gelateria": "amenity:ice_cream", "gelaterie": "amenity:ice_cream",
+    "banca": "amenity:bank", "banche": "amenity:bank",
+    "atm": "amenity:atm", "bancomat": "amenity:atm",
+    "ospedale": "amenity:hospital", "ospedali": "amenity:hospital",
+    "distributore": "amenity:fuel", "benzinaio": "amenity:fuel",
+    "parcheggio": "amenity:parking", "parcheggi": "amenity:parking",
+    "supermercato": "shop:supermarket", "supermercati": "shop:supermarket",
+    "panetteria": "shop:bakery", "panetterie": "shop:bakery",
+    "posta": "amenity:post_office", "poste": "amenity:post_office",
+    "fermata": "highway:bus_stop",
+    "stazione": "railway:station",
+    "hotel": "tourism:hotel", "albergo": "tourism:hotel", "alberghi": "tourism:hotel",
+    "museo": "tourism:museum", "musei": "tourism:museum",
+    "cinema": "amenity:cinema",
+    "teatro": "amenity:theatre", "teatri": "amenity:theatre",
+    "palestra": "leisure:fitness_centre", "palestre": "leisure:fitness_centre",
+    "parrucchiere": "shop:hairdresser",
+    "ottico": "shop:optician",
+    "libreria": "shop:books", "librerie": "shop:books",
+    "scuola": "amenity:school", "scuole": "amenity:school",
+    "biblioteca": "amenity:library", "biblioteche": "amenity:library",
+    "parco": "leisure:park", "parchi": "leisure:park",
+    "chiesa": "amenity:place_of_worship", "chiese": "amenity:place_of_worship",
+    "comune": "amenity:townhall", "municipio": "amenity:townhall",
+    # EN
+    "pharmacy": "amenity:pharmacy", "pharmacies": "amenity:pharmacy", "drugstore": "amenity:pharmacy",
+    "restaurant": "amenity:restaurant", "restaurants": "amenity:restaurant",
+    "bank": "amenity:bank", "banks": "amenity:bank",
+    "hospital": "amenity:hospital", "hospitals": "amenity:hospital",
+    "gas": "amenity:fuel", "fuel": "amenity:fuel", "petrol": "amenity:fuel",
+    "parking": "amenity:parking",
+    "supermarket": "shop:supermarket", "supermarkets": "shop:supermarket",
+    "bakery": "shop:bakery",
+    "post": "amenity:post_office",
+    "museum": "tourism:museum", "museums": "tourism:museum",
+    "library": "amenity:library",
+    "school": "amenity:school",
+    "park": "leisure:park", "parks": "leisure:park",
+    "church": "amenity:place_of_worship",
+    "town": "amenity:townhall",
+}
 
 
 def _autotag_for_query(query: str) -> str | None:
@@ -46,9 +83,8 @@ def _autotag_for_query(query: str) -> str | None:
     if not query:
         return None
     tokens = query.lower().replace(",", " ").replace(".", " ").split()
-    tags = _osm_surface_tags()
     for t in tokens:
-        tag = tags.get(t)
+        tag = _AUTO_OSM_TAG.get(t)
         if tag:
             return tag
     return None
@@ -191,10 +227,6 @@ def forward_search(query: str, max_results: int = 5, near: dict | None = None,
                                      radius_km=r, lang=lang, osm_tag=auto_tag, with_bbox=True)
             matches, src = _photon_call(params, center_lat, center_lon)
             last_source = src
-            if src != "photon":
-                # Enlarging a search area cannot repair transport/quota
-                # failures. Stop before repeated timeouts exhaust the turn.
-                return [], src
             if matches:
                 # accumula (potrebbe duplicare: dedup per osm_id+coords)
                 seen = {(m.get("osm_type"), m.get("osm_id"), m.get("lat"), m.get("lon")) for m in best_matches}

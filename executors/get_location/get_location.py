@@ -25,7 +25,7 @@ Singolare per design: l'utente ha UNA posizione corrente per actor; la storia
 (lista posizioni nel tempo) sara' un futuro `list_locations` se servira'.
 
 Contratto:
-    stdin: JSON {actor?: str = "host", subject?: "actor" | "server"}
+    stdin: JSON {actor?: str = "host"}
     stdout: JSON {ok, location: {lat, lon, source, accuracy_m, ...},
                   age_seconds?, actor}
             oppure {ok: false, error: "..."} se NESSUNA sorgente sa rispondere.
@@ -167,12 +167,6 @@ def invoke(args):
                 "error_class": "invalid_args",
                 "error": _msg("ERR_ARG_NOT_STRING", arg="actor")}
 
-    subject = args.get("subject", "actor")
-    if subject not in ("actor", "server"):
-        return {"ok": False, "error_code": "ERR_ARG_ENUM",
-                "error_class": "invalid_args",
-                "error": _msg("ERR_ARG_ENUM", arg="subject", allowed="actor, server")}
-
     if args.get("verify"):
         return _verify(actor)
 
@@ -181,7 +175,7 @@ def invoke(args):
     # dove si trova.
     shared = None
     owner_user_id = str(os.environ.get("METNOS_OWNER_USER_ID") or "").strip()
-    if owner_user_id and subject == "actor":
+    if owner_user_id:
         shared = get_last_location(owner_user_id=owner_user_id)
     if shared and (time.time() - shared["ts"]) <= _FRESH_S:
         return _from_shared(shared, actor)

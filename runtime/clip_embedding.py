@@ -153,8 +153,6 @@ class ClipEngine:
             opts = ort.SessionOptions()
             opts.inter_op_num_threads = 2
             opts.intra_op_num_threads = 2
-            from native_threads import configure_onnx_threads
-            configure_onnx_threads(opts)
 
             text_path = self._resolve_text_path()
             vis_path = self._resolve_vision_path()

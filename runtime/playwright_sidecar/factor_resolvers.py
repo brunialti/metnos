@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """Bounded second-factor resolvers used inside the sites broker.
 
 The planner never sees a factor value.  A resolver receives a narrow request,
@@ -25,31 +25,39 @@ _MAX_FACTOR_FOLDERS = 3
 _MAX_NEW_MESSAGES = 8
 _MAX_MESSAGE_BYTES = 65_536
 
-def _manual_forms(concept: str) -> tuple[str, ...]:
-    import detection_lexicon as _detlex
-
-    return tuple(_detlex.native_ready_forms(
-        concept, require_manual=True, include_reviewed_baselines=True,
-    ))
-
-
-def _manual_phrase_search(concept: str, text: str) -> bool:
-    forms = sorted(_manual_forms(concept), key=len, reverse=True)
-    if not forms:
-        return False
-    return bool(re.search(
-        r"(?<!\w)(?:" + "|".join(map(re.escape, forms)) + r")(?!\w)",
-        str(text or ""), flags=re.IGNORECASE | re.UNICODE,
-    ))
-
-
-def _code_patterns() -> tuple[re.Pattern, ...]:
-    import detection_lexicon as _detlex
-
-    return tuple(_detlex.native_ready_patterns(
-        "sites.factor.code_pattern", require_manual=True,
-        include_reviewed_baselines=True,
-    ))
+_EMAIL_PAGE_RE = re.compile(
+    r"\b(?:e[- ]?mail|email address|sent to|posta elettronica|posta)\b",
+    re.IGNORECASE,
+)
+_FACTOR_WORD_RE = re.compile(
+    r"\b(?:verification|verify|security|one[- ]?time|otp|passcode|"
+    r"sign[- ]?in|login|access|codice|verifica|sicurezza|accesso|"
+    r"conferma)\b",
+    re.IGNORECASE,
+)
+_CODE_PATTERNS = (
+    re.compile(
+        r"\b(?:verification|security|one[- ]?time|access|login)?\s*"
+        r"(?:code|codice|passcode|otp)\s*(?:is|e|\u00e8|:|-)\s*"
+        r"([A-Za-z0-9]{4,12})\b", re.IGNORECASE),
+    re.compile(
+        r"\b([A-Za-z0-9]{4,12})\b\s+(?:is|e|\u00e8)\s+"
+        r"(?:your|il tuo)\s+(?:verification\s+)?"
+        r"(?:code|codice|passcode|otp)\b", re.IGNORECASE),
+    re.compile(
+        r"\b([A-Za-z0-9]{4,12})\b\s*[-:]\s*"
+        r"(?:verification|security|one[- ]?time|access)\s+"
+        r"(?:code|codice)\b", re.IGNORECASE),
+    re.compile(
+        r"\b(?:verification|security|one[- ]?time|access|login)?\s*"
+        r"(?:code|codice|passcode|otp)\s+"
+        r"([A-Za-z0-9]{4,12})\b", re.IGNORECASE),
+)
+_NON_CODES = frozenset({
+    "access", "accesso", "codice", "code", "confirm", "conferma",
+    "email", "login", "passcode", "security", "sicurezza", "verify",
+    "verifica", "verification",
+})
 
 
 @dataclass(frozen=True)
@@ -67,7 +75,7 @@ class _CodeCandidate:
 
 
 def is_email_factor_page(text: str) -> bool:
-    return _manual_phrase_search("sites.factor.email_page", text)
+    return bool(_EMAIL_PAGE_RE.search(str(text or "")))
 
 
 def _exact_mailbox(address: str) -> str | None:
@@ -241,17 +249,11 @@ def _extract_code_candidates(text: str, *, source: str) -> list[_CodeCandidate]:
     """
     source_rank = 2 if source == "subject" else 1
     best: dict[str, _CodeCandidate] = {}
-    non_codes = {
-        form.casefold() for form in _manual_forms("sites.factor.non_code")
-    }
-    patterns = _code_patterns()
-    if not non_codes or not patterns:
-        return []
-    for pattern_index, pattern in enumerate(patterns):
+    for pattern_index, pattern in enumerate(_CODE_PATTERNS):
         confidence = 4 if pattern_index in {0, 1, 2} else 2
         for match in pattern.finditer(text):
             code = str(match.group(1) or "").strip()
-            if (not code or code.casefold() in non_codes
+            if (not code or code.casefold() in _NON_CODES
                     or (confidence < 4 and code.isalpha())):
                 continue
             candidate = _CodeCandidate(code, confidence, source_rank)
@@ -333,7 +335,7 @@ def _poll_email_factor_sync(address: str, issuer_domain: str,
                 body = str(envelope.get("body_preview") or "")
                 sender = str(envelope.get("from") or "")
                 text = f"{subject} {body} {sender}"
-                if not _manual_phrase_search("sites.factor.marker", text):
+                if not _FACTOR_WORD_RE.search(text):
                     continue
                 issuer_score = _issuer_relevance(
                     issuer_domain, sender, subject, body)

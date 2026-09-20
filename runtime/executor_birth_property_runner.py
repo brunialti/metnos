@@ -1,7 +1,6 @@
 """Core-owned orchestration of the seven RM-0008 property groups."""
 from __future__ import annotations
 
-import tomllib
 import hashlib
 import json
 import math
@@ -19,12 +18,8 @@ from executor_birth_properties import (
     PropertySpec,
     PropertyStatus,
 )
-from executor_birth_primitive_table_v1 import (
-    PrimitiveTableError, check_primitive_v1, check_registry_v1,
-)
 from executor_birth_runner import (
-    FixtureOp, FixtureOpKind, LinuxSandboxRegistry, RunnerStatus,
-    WindowsSandboxRegistry,
+    FixtureOp, FixtureOpKind, RunnerStatus, WindowsSandboxRegistry,
     run_birth_phase,
 )
 
@@ -69,230 +64,13 @@ def _attestation_hash(result: object, *, candidate_id: str, case_id: str,
 
 
 _HARNESS_PATH = "_metnos_birth_property_harness_v1.py"
-_STDIO_PATH = "_metnos_birth_property_stdio_v1.py"
-_HELPER_MODEL_PATH = "_metnos_birth_helper_model_v1.py"
-_REVERSE_PATH = "_metnos_birth_reverse_v1.py"
-_REVERSE_SOURCE = b'''import json, os, pathlib, sys
-os.environ['METNOS_WORKSPACE'] = str(pathlib.Path.cwd() / 'workspace')
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent / 'runtime'))
-from reverse_patterns import apply_patterns
-value = json.load(sys.stdin)
-print(json.dumps(apply_patterns(sys.argv[1], value['plan'], value['results'])))
-'''
-_SESSION_CLIENT_SOURCE = b'''import json, pathlib, socket
-def _request(operation, arguments):
-    address = pathlib.Path(__file__).resolve().parents[3] / 'helper.sock'
-    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
-        connection.settimeout(1.0)
-        connection.connect(str(address))
-        connection.sendall(json.dumps({'operation': operation, 'arguments': arguments}).encode() + b'\\n')
-        with connection.makefile('rb') as stream:
-            reply = stream.readline(65537)
-        if not reply or len(reply) > 65536: raise ValueError('fixture_frame_invalid')
-        return json.loads(reply)
-def session_open(**kwargs): return _request('open', kwargs)
-def session_close(**kwargs): return _request('close', kwargs)
-'''
-# The registered interpreter runs these read-only CLI entrypoints. No new
-# executable, executable permission, service or production helper is installed.
-_HELPER_CLIENT_SOURCE = r'''
-import json, pathlib, socket, sys
-address = pathlib.Path(__file__).resolve().parent.parent / 'helper.sock'
-try:
-    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
-        connection.settimeout(1.0)
-        connection.connect(str(address))
-        request = [pathlib.Path(sys.argv[0]).name, *sys.argv[1:]]
-        connection.sendall(json.dumps(request).encode() + b'\n')
-        with connection.makefile('rb') as stream:
-            reply = stream.readline(65537)
-        if not reply or len(reply) > 65536: raise ValueError('helper_frame_invalid')
-        result = json.loads(reply)
-except (OSError, ValueError):
-    result = {'ok': False, 'error_code': 'property_helper_unavailable'}
-print(json.dumps(result))
-'''.encode("utf-8")
-_HELPER_MODEL_SOURCE = r'''
-"""Private CLI contract model. Its process state exists only in the observer."""
-import hashlib, json, socketserver, threading
-
-class ManagedHelperFixture:
-    def __init__(self, directory, packages):
-        if (not isinstance(packages, list) or not 1 <= len(packages) <= 10
-                or any(not isinstance(item, str) or not item for item in packages)):
-            raise ValueError('property_helper_input_invalid')
-        self.packages = frozenset(packages)
-        self.processes = {1: {'package_id': 'metnos.fixture.preexisting',
-                             'pid': 1, 'creation_time': 1}}
-        self.serial = 1
-        self.lock = threading.Lock()
-        self.address = directory / 'helper.sock'
-        for package in sorted(self.packages):
-            if package.startswith('appx:'):
-                self.serial += 1
-                self.processes[self.serial] = {
-                    'package_id': package, 'pid': self.serial, 'creation_time': self.serial}
-
-    def digest(self):
-        with self.lock:
-            data = json.dumps(list(self.processes.values()), sort_keys=True,
-                              separators=(',', ':')).encode()
-        return 'sha256:' + hashlib.sha256(data).hexdigest()
-
-    def command(self, argv):
-        fail = {'ok': False, 'error_code': 'package_process_identity_mismatch'}
-        if (not isinstance(argv, list) or len(argv) < 4 or len(argv) > 150
-                or any(not isinstance(item, str) for item in argv)
-                or argv[0] not in ('helper', 'package-app')):
-            return fail
-        transport, operation, *arguments = argv
-        options = {}; preexisting = []
-        if len(arguments) % 2: return fail
-        for key, value in zip(arguments[::2], arguments[1::2]):
-            if key == '--preexisting-process': preexisting.append(value)
-            elif key in options: return fail
-            else: options[key] = value
-        package = options.get('--package-id')
-        if package not in self.packages: return {'ok': False, 'error_code': 'package_not_registered'}
-        appx = package.startswith('appx:')
-        if appx != (transport == 'package-app'): return fail
-        expected = {
-            'query': {'--package-id'},
-            'start': {'--package-id', '--lifetime'},
-            'stop': {'--package-id', '--pid', '--creation-time'} |
-                    ({'--activation-boundary'} if appx else set()),
-        }.get(operation)
-        if set(options) != expected or (preexisting and (not appx or operation != 'stop')):
-            return fail
-        with self.lock:
-            if operation == 'query':
-                return {'ok': True, 'aligned': True, 'lifetimes': ['session']}
-            previous = [dict(item) for item in self.processes.values()
-                        if item['package_id'] == package]
-            if operation == 'start':
-                if options['--lifetime'] != 'session':
-                    return {'ok': False, 'error_code': 'package_persistence_unsupported'}
-                if previous and not appx:
-                    return {'ok': True, 'aligned': True, 'payload': {'created_process': False}}
-                self.serial += 1
-                process = {'package_id': package, 'pid': self.serial, 'creation_time': self.serial}
-                self.processes[self.serial] = process
-                payload = {'created_process': True, 'process': dict(process),
-                           'persistent_registration_changed': False}
-                if appx:
-                    payload.update(activation_boundary=self.serial,
-                                   preexisting_processes=[{'pid': p['pid'], 'creation_time': p['creation_time']}
-                                                         for p in previous])
-                return {'ok': True, 'aligned': True, 'payload': payload}
-            try:
-                pid, created = int(options['--pid']), int(options['--creation-time'])
-                process = self.processes.get(pid)
-                if (not process or process['package_id'] != package
-                        or process['creation_time'] != created): return fail
-                if appx:
-                    others = {f"{p['pid']}:{p['creation_time']}" for p in previous if p['pid'] != pid}
-                    if (int(options['--activation-boundary']) != created
-                            or set(preexisting) != others or len(preexisting) != len(others)):
-                        return fail
-            except ValueError:
-                return fail
-            del self.processes[pid]
-            return {'ok': True, 'aligned': True, 'payload': {'restored': True, 'stopped': True}}
-
-    def __enter__(self):
-        owner = self
-        class Handler(socketserver.StreamRequestHandler):
-            def handle(self):
-                self.connection.settimeout(1.0)
-                try:
-                    raw = self.rfile.readline(65537)
-                    if not raw or len(raw) > 65536: return
-                    reply = owner.command(json.loads(raw))
-                    self.wfile.write(json.dumps(reply).encode() + b'\n')
-                except (OSError, ValueError):
-                    return
-        self.server = socketserver.UnixStreamServer(str(self.address), Handler)
-        self.thread = threading.Thread(target=self.server.serve_forever,
-                                       kwargs={'poll_interval': .05}, daemon=True)
-        self.thread.start()
-        return self
-
-    def __exit__(self, *exc):
-        self.server.shutdown()
-        self.server.server_close()
-        self.thread.join(timeout=2)
-        self.address.unlink(missing_ok=True)
-
-class SessionBrokerFixture(ManagedHelperFixture):
-    """Private session protocol model, never a connection to the live browser."""
-    def __init__(self, directory):
-        super().__init__(directory, ['fixture'])
-        self.sessions = {
-            'existing': {'owner': 'host', 'url': 'https://fixture.invalid/existing'},
-            'other-owner': {'owner': 'other', 'url': 'https://fixture.invalid/other'}}
-        self.allowed = frozenset(('https://fixture.invalid/existing',
-                                  'https://fixture.invalid/new',
-                                  'https://fixture.invalid/second'))
-
-    def digest(self):
-        with self.lock:
-            data = json.dumps(self.sessions, sort_keys=True, separators=(',', ':')).encode()
-        return 'sha256:' + hashlib.sha256(data).hexdigest()
-
-    def command(self, request):
-        fail = {'ok': False, 'error_class': 'fixture_request_invalid'}
-        if not isinstance(request, dict) or set(request) != {'operation', 'arguments'}:
-            return fail
-        args = request['arguments']
-        if not isinstance(args, dict) or args.get('owner') != 'host': return fail
-        with self.lock:
-            if request['operation'] == 'open':
-                url = args.get('url')
-                if url not in self.allowed or args.get('allowlist'): return fail
-                for key, session in self.sessions.items():
-                    if session == {'owner': 'host', 'url': url}:
-                        return {'ok': True, 'session_id': key, 'url': url, 'reused': True}
-                self.serial += 1
-                key = 'created-' + str(self.serial)
-                self.sessions[key] = {'owner': 'host', 'url': url}
-                return {'ok': True, 'session_id': key, 'url': url, 'reused': False}
-            if request['operation'] == 'close':
-                if args.get('all'):
-                    keys = [key for key, session in self.sessions.items()
-                            if session['owner'] == args['owner']]
-                    for key in keys: del self.sessions[key]
-                    return {'ok': True, 'count': len(keys)}
-                key = args.get('session_id')
-                if not isinstance(key, str): return fail
-                session = self.sessions.get(key)
-                if session is not None and session['owner'] != args['owner']: return fail
-                if session is not None: del self.sessions[key]
-                return {'ok': True, 'count': int(session is not None)}
-        return fail
-'''.encode("utf-8")
-_STDIO_SOURCE = r'''
-import os, pathlib, runpy, sys
-root = pathlib.Path(__file__).resolve().parent
-entrypoint = sys.argv[1]
-# Only the child imports candidate code and its private, fixed support files.
-work = pathlib.Path(sys.argv[2]) if len(sys.argv) > 2 else pathlib.Path.cwd()
-os.environ['METNOS_WORKSPACE'] = str(work / 'workspace')
-os.environ['METNOS_SHIM_DIR'] = str(root / 'runtime')
-sys.path.insert(0, str(root / 'runtime'))
-sys.path.insert(1, str(root))
-sys.argv = [entrypoint]
-runpy.run_path(entrypoint, run_name='__main__')
-'''.encode("utf-8")
 _HARNESS_SOURCE = r'''
-import contextlib, hashlib, json, os, pathlib, socketserver, subprocess, sys, threading
+import hashlib, json, pathlib, subprocess, sys
 harness_dir = pathlib.Path(__file__).resolve().parent
 entrypoint = str(harness_dir.joinpath(*pathlib.PurePosixPath(sys.argv[1]).parts))
-work = pathlib.Path.cwd()
 request = json.loads(pathlib.Path('request.json').read_text())
 fixture = pathlib.Path('fixture')
-model = None
 def tree_hash():
-    if model is not None: return model.digest()
     digest = hashlib.sha256(b'metnos.birth.fixture-tree/v1\0')
     for path in sorted(fixture.rglob('*')):
         relative = path.relative_to(fixture).as_posix().encode()
@@ -305,138 +83,36 @@ def tree_hash():
     return 'sha256:' + digest.hexdigest()
 def file_hash(path):
     return 'sha256:' + hashlib.sha256(path.read_bytes()).hexdigest()
-def invoke(value, operation='invoke'):
-    environment = dict(os.environ, METNOS_EXECUTOR_OPERATION=operation)
-    if model is not None:
-        environment.update(METNOS_CLIENT_EXE=sys.executable, PYTHONSAFEPATH='1')
-    command = [sys.executable, '-I', str(harness_dir / '@@STDIO_PATH@@'), entrypoint, str(work)]
-    if operation == 'reverse' and request.get('reverse_pattern'):
-        command = [sys.executable, '-I', str(harness_dir / '@@REVERSE_PATH@@'), request['reverse_pattern']]
-    result = subprocess.run(command,
-                            input=json.dumps(value).encode(),
-                            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                            env=environment, cwd=harness_dir if model is not None else work)
+def invoke(action):
+    value = dict(request); value['birth_property_action'] = action
+    result = subprocess.run([sys.executable, entrypoint], input=json.dumps(value).encode(),
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if result.returncode:
         sys.stderr.buffer.write(result.stderr); raise SystemExit(result.returncode)
     parsed = json.loads(result.stdout)
     if not isinstance(parsed, dict): raise RuntimeError('candidate_output_invalid')
-    if parsed.get('error_code') == 'property_helper_unavailable':
-        raise RuntimeError('property_helper_unavailable')
     return parsed
-scope = contextlib.nullcontext()
-if request.get('session_contract'):
-    sys.path.insert(0, str(harness_dir))
-    from _metnos_birth_helper_model_v1 import SessionBrokerFixture
-    model = SessionBrokerFixture(work)
-    scope = model
-elif request.get('helper_contract'):
-    # Only this fixed core support module is imported by the observer. The
-    # candidate remains exclusively in its separate stdio child.
-    sys.path.insert(0, str(harness_dir))
-    from _metnos_birth_helper_model_v1 import ManagedHelperFixture
-    model = ManagedHelperFixture(work, request['input'].get('programs'))
-    scope = model
-with scope:
-    before = tree_hash(); observations = {}; args = request['input']
-    if request['fixture_id'] == 'private_deletion_tree':
-        source = fixture / 'source.bin'; recovery = fixture / 'recovery.bin'
-        source_hash = file_hash(source)
-        output = invoke(args)
-        if source.is_file() and recovery.is_file() and file_hash(recovery) == source_hash:
-            output = invoke(args)
-            if not source.exists() and recovery.is_file() and file_hash(recovery) == source_hash:
-                observations.update(filesystem_events=['copy', 'delete'],
-                                    source_before_hash=source_hash,
-                                    recovery_copy_hash=file_hash(recovery))
-        after = tree_hash()
-    else:
-        output = invoke(args); after = tree_hash()
-    if request['fixture_id'] == 'private_mutable_state':
-        restored = None
-        if output.get('ok') is True and output.get('_undo', {}).get('outcome') != 'no_effect':
-            reverse = invoke({'plan': {'args': args}, 'results': output}, 'reverse')
-            if reverse.get('ok') is True: restored = tree_hash()
-        observations.update(state_before_hash=before, state_after_forward_hash=after,
-                            state_after_undo_hash=restored)
-        if model is not None:
-            observations['fixture_contract'] = ('session_broker/v1' if request.get('session_contract')
-                                                 else 'managed_helper/v1')
+before = tree_hash(); observations = {}
+if request['fixture_id'] == 'private_deletion_tree':
+    source = fixture / 'source.bin'; recovery = fixture / 'recovery.bin'
+    source_hash = file_hash(source)
+    output = invoke('prepare_delete')
+    if source.is_file() and recovery.is_file() and file_hash(recovery) == source_hash:
+        output = invoke('commit_delete')
+        if not source.exists() and recovery.is_file() and file_hash(recovery) == source_hash:
+            observations.update(filesystem_events=['copy', 'delete'],
+                                source_before_hash=source_hash,
+                                recovery_copy_hash=file_hash(recovery))
+    after = tree_hash()
+else:
+    output = invoke('forward'); after = tree_hash()
+if request['fixture_id'] == 'private_mutable_state':
+    invoke('undo'); restored = tree_hash()
+    observations.update(state_before_hash=before, state_after_forward_hash=after,
+                        state_after_undo_hash=restored)
 print(json.dumps({'output': output, 'observations': observations},
                  sort_keys=True, separators=(',', ':')))
-'''.replace('@@STDIO_PATH@@', _STDIO_PATH).replace('@@REVERSE_PATH@@', _REVERSE_PATH).encode("utf-8")
-
-
-def _candidate_files_with_support(code_files: Mapping[str, bytes]) -> dict[str, bytes]:
-    from executor_birth_functional import _support_files
-    from executor_birth_snapshot import CandidateSnapshotError, _portable_relative
-
-    try:
-        owned = _support_files()
-    except (OSError, ValueError) as exc:
-        raise RuntimeError("property_support_unavailable") from exc
-    from pathlib import Path
-    runtime = Path(__file__).resolve().parent
-    owned.update({_HARNESS_PATH: _HARNESS_SOURCE, _STDIO_PATH: _STDIO_SOURCE,
-                  _REVERSE_PATH: _REVERSE_SOURCE,
-                  "runtime/reverse_patterns.py": (runtime / "reverse_patterns.py").read_bytes(),
-                  "runtime/reverse_patterns_patch.py": (runtime / "reverse_patterns_patch.py").read_bytes(),
-                  "runtime/playwright_sidecar/__init__.py": b"",
-                  "runtime/playwright_sidecar/session_client.py": _SESSION_CLIENT_SOURCE,
-                  "runtime/playwright_sidecar/stealth.py": (runtime / "playwright_sidecar/stealth.py").read_bytes(),
-                  _HELPER_MODEL_PATH: _HELPER_MODEL_SOURCE,
-                  "helper": _HELPER_CLIENT_SOURCE, "package-app": _HELPER_CLIENT_SOURCE})
-    reserved = tuple(PurePosixPath(name.casefold()) for name in owned)
-    for name in code_files:
-        try:
-            path = PurePosixPath(_portable_relative(name).casefold())
-        except CandidateSnapshotError as exc:
-            raise PropertyContractError("property_candidate_invalid", "support_path") from exc
-        if any(path == item or path in item.parents or item in path.parents
-               for item in reserved):
-            raise PropertyContractError("property_candidate_invalid", "reserved_support_path")
-    return {**code_files, **owned}
-
-
-_PUBLIC_UNAVAILABLE_REASONS = frozenset({
-    "linux_sandbox_registry_unavailable", "linux_sandbox_program_unavailable",
-    "linux_sandbox_program_mismatch", "platform_backend_unavailable",
-    "property_support_unavailable",
-    "property_case_unavailable",
-    "sandbox_setup_unattested", "candidate_process_failed",
-    "cgroup_delegate_subgroup_missing", "cgroup_delegate_not_writable",
-    "cgroup_scope_unavailable", "phase_timeout", "total_timeout",
-})
-
-
-def _uses_managed_helper(manifest: Mapping[str, object]) -> bool:
-    capabilities = manifest.get("capabilities")
-    if not isinstance(capabilities, (list, tuple)):
-        return False
-    return any(isinstance(cap, Mapping) and cap.get("name") == "system:admin"
-               and isinstance(cap.get("hint"), list) and "managed-package-start" in cap["hint"]
-               for cap in capabilities)
-
-
-def _domain_contract(manifest: Mapping[str, object]) -> str:
-    """Select fixed fixture semantics from declared contracts, never a tool name."""
-    args = manifest.get('args')
-    properties = args.get('properties', {}) if isinstance(args, Mapping) else {}
-    if not isinstance(properties, Mapping):
-        return ''
-    caps = manifest.get('capabilities')
-    caps = {cap['name'] for cap in caps if isinstance(cap, Mapping)
-            and isinstance(cap.get('name'), str)} if isinstance(caps, list) else set()
-    def typed(key, kind):
-        item = properties.get(key)
-        return isinstance(item, Mapping) and item.get('type') == kind
-    if (manifest.get('reverse_pattern') == 'module.reverse'
-            and 'network:sites' in caps and typed('urls', 'array')):
-        return 'session_broker'
-    if (manifest.get('reverse_pattern') == 'delete_created_paths'
-            and {'fs:read', 'fs:write'} <= caps
-            and typed('paths', 'array') and typed('dest', 'string')):
-        return 'created_paths'
-    return ''
+'''.encode("utf-8")
 
 
 class ObservedPropertyRunner:
@@ -448,20 +124,16 @@ class ObservedPropertyRunner:
     """
 
     def __init__(self, observed: object, *,
-                 windows_registry: WindowsSandboxRegistry | None = None,
-                 linux_registry: LinuxSandboxRegistry | None = None) -> None:
+                 windows_registry: WindowsSandboxRegistry | None = None) -> None:
         from executor_birth import ObservedCandidate
         if not isinstance(observed, ObservedCandidate):
             raise PropertyContractError("property_candidate_invalid", "observation")
         self._observed = observed
         self._windows_registry = windows_registry
-        self._linux_registry = linux_registry
 
     def _entrypoint(self) -> str:
         try:
-            manifest = tomllib.loads(
-                self._observed.snapshot.manifest_bytes.decode("utf-8")
-            )
+            manifest = __import__("tomllib").loads(self._observed.snapshot.manifest_bytes.decode("utf-8"))
             files = manifest["code"]["files"]
             entrypoint = files[0]
         except (KeyError, IndexError, TypeError, UnicodeDecodeError, ValueError) as exc:
@@ -470,21 +142,14 @@ class ObservedPropertyRunner:
             raise PropertyContractError("property_candidate_invalid", "entrypoint")
         return entrypoint
 
-    def _fixture(self, case: PropertyCase, fixture_id: str) -> tuple[FixtureOp, ...]:
+    @staticmethod
+    def _fixture(case: PropertyCase, fixture_id: str) -> tuple[FixtureOp, ...]:
         count = case.input_value.get("fixture_count", case.expectation.get("fixture_total", 0))
         count = count if type(count) is int and 0 <= count <= 16 else 0
         request = {"case_id": case.case_id, "fixture_id": fixture_id,
                    "input": dict(case.input_value), "fixture_root": "fixture"}
         if fixture_id == "private_mutable_state":
-            if case.expectation.get("declared_input") is not True:
-                raise RuntimeError("property_case_unavailable")
             request["state_path"] = "fixture/state.json"
-            manifest = tomllib.loads(self._observed.snapshot.manifest_bytes.decode("utf-8"))
-            request["helper_contract"] = _uses_managed_helper(manifest)
-            domain = _domain_contract(manifest)
-            request['session_contract'] = domain == 'session_broker'
-            if domain == 'created_paths':
-                request['reverse_pattern'] = manifest['reverse_pattern']
         if fixture_id == "private_deletion_tree":
             request.update(source_path="fixture/source.bin",
                            recovery_path="fixture/recovery.bin")
@@ -499,10 +164,6 @@ class ObservedPropertyRunner:
                                      f"fixture/entries/{index}.json", {"index": index}))
         if fixture_id == "private_mutable_state":
             ops.append(FixtureOp(FixtureOpKind.SEED_JSON, "fixture/state.json", {"value": "before"}))
-            if _domain_contract(manifest) == 'created_paths':
-                for index in range(3):
-                    ops.append(FixtureOp(FixtureOpKind.WRITE_BYTES,
-                                         f"fixture/source-{index}.bin", b"birth-fixture-v1"))
         if fixture_id == "private_deletion_tree":
             ops.append(FixtureOp(FixtureOpKind.WRITE_BYTES, "fixture/source.bin", b"birth-fixture-v1"))
         return tuple(ops)
@@ -511,25 +172,22 @@ class ObservedPropertyRunner:
         # A fixed core harness supplies stdin from the immutable request file;
         # neither command nor candidate bytes come from the Birth caller.
         entrypoint = self._entrypoint()
-        if sys.platform == "win32":
-            command = (_HARNESS_PATH, entrypoint)
-        elif sys.platform.startswith("linux"):
-            if not isinstance(self._linux_registry, LinuxSandboxRegistry):
-                raise RuntimeError("linux_sandbox_registry_unavailable")
-            # The caller's venv is not part of the sandbox. Use the registered
-            # interpreter; run_birth_phase still verifies its exact digest.
-            command = (str(self._linux_registry.interpreter_path), "-I",
-                       "candidate/" + _HARNESS_PATH, entrypoint)
-        else:
-            raise RuntimeError("platform_backend_unavailable")
-        candidate_files = _candidate_files_with_support(self._observed.snapshot.code_files)
+        candidate_files = dict(self._observed.snapshot.code_files)
+        if _HARNESS_PATH in candidate_files:
+            raise PropertyContractError("property_candidate_invalid", "reserved_harness_path")
+        candidate_files[_HARNESS_PATH] = _HARNESS_SOURCE
+        command = (
+            (_HARNESS_PATH, entrypoint)
+            if sys.platform == "win32"
+            else (sys.executable, "-I", "candidate/" + _HARNESS_PATH,
+                  entrypoint)
+        )
         result = run_birth_phase(
             command,
             fixture_ops=self._fixture(case, fixture_id),
             candidate_id=self._observed.identities.candidate_id,
             candidate_files=candidate_files,
             windows_registry=self._windows_registry,
-            linux_registry=self._linux_registry,
         )
         attestation_hash = _attestation_hash(
             result, candidate_id=self._observed.identities.candidate_id,
@@ -563,13 +221,8 @@ class PropertyCandidateProfile:
     revertible: bool = False
     destructive_with_undo: bool = False
     entries_and_results: bool = False
-    positive_inputs: tuple[Mapping[str, object], ...] = ()
-    helper_contract: bool = False
-    domain_contract: str = ""
 
     def __post_init__(self) -> None:
-        if self.domain_contract not in ('', 'created_paths', 'session_broker'):
-            raise PropertyContractError('property_candidate_invalid', 'domain_contract')
         allowed_types = {"array", "boolean", "integer", "null", "number", "object", "string"}
         keys: set[str] = set()
         for item in self.output_schema:
@@ -583,13 +236,10 @@ class PropertyCandidateProfile:
             keys.add(item[0])
         for name in (
             "collection_output", "limit_input", "truncation_declared", "revertible",
-            "destructive_with_undo", "entries_and_results", "helper_contract",
+            "destructive_with_undo", "entries_and_results",
         ):
             if type(getattr(self, name)) is not bool:
                 raise PropertyContractError("property_candidate_invalid", name)
-        if (not isinstance(self.positive_inputs, tuple)
-                or any(not isinstance(item, Mapping) for item in self.positive_inputs)):
-            raise PropertyContractError("property_candidate_invalid", "positive_inputs")
 
 
 def _hash(value: object) -> str:
@@ -616,46 +266,12 @@ def _truncation_cases(_candidate: PropertyCandidateProfile) -> tuple[PropertyCas
     return (PropertyCase("truncation.boundary", expectation, expectation),)
 
 
-def _undo_cases(candidate: PropertyCandidateProfile) -> tuple[PropertyCase, ...]:
-    if candidate.domain_contract == 'session_broker':
-        return tuple(PropertyCase(f'undo.session_contract.{index}', {'urls': urls}, {'declared_input': True})
-                     for index, urls in enumerate((
-                         ['https://fixture.invalid/new'],
-                         ['https://fixture.invalid/existing', 'https://fixture.invalid/new',
-                          'https://fixture.invalid/second'])))
-    if candidate.domain_contract == 'created_paths':
-        # Existing successful cases supply formats, not host fixtures or shell commands.
-        formats = []
-        for value in candidate.positive_inputs:
-            paths, dest = value.get('paths'), value.get('dest')
-            if not isinstance(paths, list) or not paths or not isinstance(dest, str):
-                continue
-            suffix = ''.join(PurePosixPath(dest).suffixes)
-            fmt = value.get('format')
-            if fmt is not None and not isinstance(fmt, str): continue
-            item = (suffix, fmt)
-            if item not in formats: formats.append(item)
-        if not formats:
-            return _single('undo.round_trip')(candidate)
-        return tuple(PropertyCase(f'undo.created_paths.{index}',
-                         {'paths': ['fixture/source-0.bin'],
-                          'dest': f'fixture/new/nested/output{suffix}',
-                          **({'format': fmt} if fmt is not None else {})},
-                         {'declared_input': True})
-                     for index, (suffix, fmt) in enumerate(formats))
-    if not candidate.positive_inputs:
-        return _single("undo.round_trip")(candidate)
-    prefix = "undo.helper_contract" if candidate.helper_contract else "undo.round_trip"
-    return tuple(PropertyCase(f"{prefix}.{index}", dict(value), {"declared_input": True})
-                 for index, value in enumerate(candidate.positive_inputs))
-
-
 _GENERATORS = {
     "declared_output_cases": _single("output.actual"),
     "cardinality_cases": _collection_cases,
     "limit_boundary_cases": _limit_cases,
     "truncation_cases": _truncation_cases,
-    "undo_round_trip_cases": _undo_cases,
+    "undo_round_trip_cases": _single("undo.round_trip"),
     "delete_copy_cases": _single("delete.copy_before"),
     "entries_results_cases": _single("entries.results"),
 }
@@ -749,10 +365,7 @@ _FIXTURES = frozenset({
 _APPLICABILITY = {
     "output_schema_declared": lambda c: bool(c.output_schema),
     "collection_output": lambda c: c.collection_output,
-    # A field named ``limit`` does not by itself establish collection
-    # semantics.  The oracle can prove a bound only when the same
-    # machine-readable profile also declares an entries/results collection.
-    "bounded_collection_input": lambda c: c.limit_input and c.collection_output,
+    "bounded_collection_input": lambda c: c.limit_input,
     "truncation_declared": lambda c: c.truncation_declared,
     "revertible_executor": lambda c: c.revertible,
     "destructive_with_undo": lambda c: c.destructive_with_undo,
@@ -761,29 +374,11 @@ _APPLICABILITY = {
 
 _DIGEST_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
 
-# The four registries above are the implementation; the table is the closed set
-# the admission context speaks about.  Comparing them here, at import, is what
-# stops the identity and the reachable set from drifting apart in silence.
-for _kind, _names in (
-    ("applicability", _APPLICABILITY),
-    ("fixture", _FIXTURES),
-    ("generator", _GENERATORS),
-    ("oracle", _ORACLES),
-):
-    check_registry_v1(_kind, _names)
-del _kind, _names
-
 
 def _resolve(spec: PropertySpec):
-    """Resolve one property against the closed table, then the registries."""
     try:
-        check_primitive_v1("applicability", spec.applicability_id)
-        check_primitive_v1("generator", spec.generator_id)
-        check_primitive_v1("oracle", spec.oracle_id)
         return (_APPLICABILITY[spec.applicability_id], _GENERATORS[spec.generator_id],
                 _ORACLES[spec.oracle_id])
-    except PrimitiveTableError as exc:
-        raise PropertyContractError("property_registry_invalid", exc.detail) from exc
     except KeyError as exc:  # closed core configuration failure
         raise PropertyContractError("property_registry_invalid", str(exc)) from exc
 
@@ -802,10 +397,8 @@ def run_property(
     except KeyError as exc:
         raise PropertyContractError("property_unknown", property_id) from exc
     applicable, generate, oracle = _resolve(spec)
-    try:
-        check_primitive_v1("fixture", spec.fixture_id)
-    except PrimitiveTableError as exc:
-        raise PropertyContractError("property_registry_invalid", exc.detail) from exc
+    if spec.fixture_id not in _FIXTURES:
+        raise PropertyContractError("property_registry_invalid", spec.fixture_id)
     if not applicable(candidate):
         return ()
     cases = generate(candidate)
@@ -819,9 +412,7 @@ def run_property(
             raise
         except Exception as exc:  # runner unavailability is fail-closed evidence
             status = PropertyStatus.UNAVAILABLE
-            reason = exc.args[0] if len(exc.args) == 1 else None
-            error = (reason if isinstance(reason, str) and reason in _PUBLIC_UNAVAILABLE_REASONS
-                     else "property_runner_unavailable")
+            error = "property_runner_unavailable"
             output_hash = _hash({"unavailable": type(exc).__name__})
             attestation_hash = _hash({"attestation": "unavailable"})
         else:

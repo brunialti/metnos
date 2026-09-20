@@ -309,11 +309,12 @@ schema.</figcaption>
 </figure>
 
 <div class="callout note"><p><strong>About <code>affinity</code>.</strong> It is
-an intentionally language-independent list of canonical routing hints, not
-user-facing prose. The multilingual validator checks its structure and overlap;
-natural-language recognition instead belongs to the versioned detection
-lexicon, where coverage and review policy are explicit. See
-<a href="multilang.html">Language and internationalisation</a>.</p></div>
+currently one flat list of manually curated Italian and English routing terms.
+It is not selected through the instance language like <code>description</code>
+and argument descriptions. This is compatible with the older manifest rule,
+but it does not yet meet Metnos's newer, full i18n objective for versioned and
+coverage-checked semantic resources. See <a href="multilang.html">Language and
+internationalisation</a>.</p></div>
 
 <h2>What deserves a second look</h2>
 
@@ -414,23 +415,6 @@ whereas a batching backend can admit more requests. Executors do not hide
 independent competing concurrency pools.
 </p>
 
-<p>For LRE workloads, a registered package may supply verified identities for
-every mutable target of an invocation. The scheduler reserves the set
-atomically: disjoint writes may proceed, overlapping writes remain queued.
-For paths, a directory and any descendant also overlap. Without this evidence,
-execution remains serial. This control covers the same executor in the same
-process; it does not replace filesystem protection or coordination across
-processes. Permissions, frozen contracts, and saved results remain unchanged.</p>
-
-<p>Central resource capacities are configurable in the
-<code>[execution_resources]</code> section of the private
-<code>runtime.toml</code>, for example <code>cpu = 4</code> and
-<code>vlm = 4</code>. Corresponding environment variables take precedence;
-defaults remain unchanged. These are logical execution slots, not four
-physical cores or GPU activation. Configuration is read when the scheduler
-is constructed, without resizing reservations already in use. Measure the
-benefit and verify workload resumption before raising these limits.</p>
-
 <p>
 Recursive filesystem searches use one shared visitor: directories form a
 dynamic queue, idle workers take the next branch, and results are reordered
@@ -460,7 +444,7 @@ not replace those controls.
 <tr><td>Contract</td><td><code>capabilities</code>, placement, platforms, and execution policy come from the signed manifest.</td></tr>
 <tr><td>Application controls</td><td>Arguments may narrow a signed scope but never widen it; identity, consent, and destination are checked before the subprocess starts.</td></tr>
 <tr><td>Bubblewrap active</td><td>Code and runtime are read-only, <code>/tmp</code> is private, data resources are mounted with the required access, and the network is separated when no capability needs it.</td></tr>
-<tr><td>Bubblewrap absent or disabled</td><td>The server fails closed before journaling and before the subprocess. Only the exact byte-pinned undo broker has a direct path.</td></tr>
+<tr><td>Bubblewrap absent or disabled</td><td>Application checks remain, but the command runs directly and must not be described as operating-system isolation.</td></tr>
 </table>
 
 <p>Network access is currently binary: when required, the process inherits
@@ -474,10 +458,9 @@ Windows, and macOS.</p>
 
 <p>
 The <code>lifecycle</code> field separates candidates from executors available
-to the planner. A distributed release may load an exact generation that was
-already admitted, but no new or revised generation becomes <code>active</code>
-merely because its source is reviewed. Every origin crosses the same Executor
-Birth boundary before activation.
+to the planner. It is not a mandatory sequence for every origin: reviewed,
+distributed executors may begin as <code>active</code>, while Synt candidates
+pass through preparation and admission states.
 </p>
 
 <table>
@@ -494,146 +477,6 @@ Birth boundary before activation.
 in that state they become <code>archived</code>. Handcrafted executors,
 skill imports, and protected names are not retired merely because they are
 rarely used. The thresholds are configurable and restoration is explicit.</p>
-
-<h2>The single birth boundary</h2>
-
-<p>The undo property uses private resources and compares state before the
-operation, after it and after its inverse. Created-path contracts execute the
-declared central-catalog inverse on temporary files; web-session contracts use
-a private protocol model, without the production browser or external network.
-Pre-existing sessions and sessions belonging to other owners must be preserved.
-This model does not certify the real browser: unavailable evidence, unchanged
-forward state or incomplete restoration remain blocking failures.</p>
-
-<p>Executor Birth takes a private snapshot of the complete candidate, assigns
-stable identities to its exact bytes and admission context, and applies every
-mandatory structural, policy, localisation, routing, and test check. A
-model-authored or imported revision also receives independent semantic review;
-an exact human approval is required where policy says so. A failed or
-unavailable mandatory check stops the transition.</p>
-
-<p>Only the Birth commit boundary can send an admitted candidate to the
-immutable contract store. It then rereads the published manifest and code
-before exposing the generation as active, pre-exercise, or quarantined. A
-signature by itself, a copied directory, or a service restart cannot make
-changed bytes operational. Maintainer updates use
-<code>runtime/stack_reconcile.py deploy --executor &lt;name&gt; --sign</code>;
-the compatibility flag submits the candidate to Executor Birth and does not
-select the former direct publisher.</p>
-
-<p>During transition, the inventory and first cold catalog load use the same
-author public-key set already authenticated by Birth. In exercise, readers use
-the authorities of the installed Birth context; separate administrative
-processes authenticate them through the current ownership chain. In the closed
-store, missing keys or an invalid context stop the read: the legacy key
-directory is never consulted as a fallback.</p>
-
-<p>Before requiring the new distribution, the transition binds the candidate's
-authenticated bytes to its durable receipts. It does not prematurely require
-the build archive published only after the certificate, but rejects an already
-present conflicting archive. The contract-receipt catalog and the service
-catalog have distinct identities: both are checked, without using either as
-proof of the other or advancing publication.</p>
-
-<p>The service-recipe check also binds writable paths to the account's signed
-home directory. Relocating that directory does not change the allowed recipe:
-the relative data and state paths remain exact. Additional or different paths
-are rejected even when their hashes have been recomputed.</p>
-
-<p>For code dependencies between executors, the parent process selects only
-the public keys that authenticated the requested contracts. The Linux sandbox
-exposes these keys in a private read-only mount, separate from configuration
-paths; the mount stays empty when there are no dependencies. The child cannot
-add keys or replace the mount by creating a nested isolation environment.
-Explicitly permitted writes and the temporary directory remain available.</p>
-
-<p>The Linux distribution includes the Playwright driver in its managed Python
-environment and preserves executable permissions for programs supplied by its
-packages; browsers remain separately installed resources. After the transition,
-readiness checks observe the units and scope bound by the current signed catalog,
-without changing services or broadening control commands. An invalid catalog
-stops the check: it is not silently replaced with the previous configuration.</p>
-
-<p>The signed catalog starts HTTP with <code>METNOS_ENGINE=v3</code>, without
-inheriting arbitrary unit drop-ins (<code>.service.d</code>) or launch-environment
-additions. Private settings remain in the existing
-<code>$METNOS_USER_CONFIG/runtime.toml</code>: <code>default_account</code> in
-<code>[mail]</code> is a nonempty string, defaulting to
-<code>metnos_system</code>; <code>nightly_enabled</code> in <code>[telos]</code>
-is a boolean, defaulting to <code>false</code>.
-<code>METNOS_DEFAULT_MAIL_ACCOUNT</code> and <code>METNOS_TELOS_NIGHTLY</code>
-override their respective file settings; only the exact environment value
-<code>1</code> enables nightly Telos activity.</p>
-
-<p>The SMTP account is resolved when a request needs to send mail, not when HTTP
-starts. An explicit account still takes precedence; the selected name and the
-credentials exposed to the sandbox belong to the same account. An invalid
-default blocks that send without preventing access to configuration. Selection
-does not mutate the global environment of concurrent turns or authorize changes
-to signed service units.</p>
-
-<h2 id="startup-maintenance">Startup and maintenance are not a new birth</h2>
-
-<p>Starting an installed service does not recertify the entire machine. The
-check authenticates signed history and immutable files, then verifies that
-service's executable, identity and protections. A compatible update of the
-administrative system Python or verifier must not invalidate a historical
-receipt. Altered code and unauthorized changes to service protections remain
-rejected. Full administrative certification stays separate: successful startup
-does not issue a new attestation or admit new executors.</p>
-
-<p>Python services actually run the managed interpreter selected by the catalog,
-after dropping administrative privileges. If Birth or prompt prerequisites fail
-to initialize, the updated HTTP server can remain in maintenance-only mode:
-authentication, status and allowed configuration remain available, while
-execution, publication and background producers stay suspended. Health explicitly
-reports this condition; it is not equivalent to a fully operational system.</p>
-
-<p>Model settings remain editable from administration even in maintenance mode.
-Invalid values or stale revisions do not overwrite the file; reset keeps a
-backup of the previous settings. A damaged file does not silently select a
-factory-default model. After repair, the next resolution uses the new settings,
-even when a replacement file preserves its modification time. This needs no
-new certification and does not authorize execution before the missing startup
-prerequisites have been repaired.</p>
-
-<p>In the updated service catalog, a failed overall readiness check reports
-the problem without shutting down the other services. Automatic monitoring
-does not restart an HTTP server that explicitly reports maintenance mode,
-or act through an unverified service catalog. After repair, an authorized
-restart retries initialization. Service-local startup checks remain required;
-an old installed catalog changes only through a verified update.</p>
-
-<p>The service configuration is signed before its timers start. The automatic
-activation and ordering links of an exact signed timer may appear when it is
-loaded or started without requiring another signature. Equivalent disabled
-values of an unconfigured watchdog also have one canonical representation.
-For a configured watchdog, systemd's initial runtime sentinel is accepted only
-when the same observation proves the service inactive, dead, without main or
-control processes and never started. The exact signed setting remains the
-canonical value; a disabled or different watchdog after start is rejected.
-Unexpected triggers, new dependencies and changes to explicitly configured
-values remain subject to strict verification.</p>
-
-<p>The service reads the signed ownership chain without opening the private
-root-owned writer lock; it still verifies the lock's exact metadata.
-Administrative checks also inspect its marker. Startup checks may reuse the
-pure source analysis for one identical set of paths and bytes in the same
-process, but never reuse live file checks, signatures or service observations.
-Declared imports may also reuse syntax analysis, but their filesystem
-resolution is always repeated. The service reader uses the same bounded
-reuse: its before/after observations remain independent and live without
-repeating syntax analysis of identical bytes. Reuse also binds the exact
-analysis limits. File-operation and external-command analysis
-applies only to relevant calls, without changing authority classification.
-Signal-termination reports are parsed in systemd's native form without changing
-the signed command or interpreting termination as success.</p>
-
-<p>Every Python service module is resolved from the working directory declared
-in the signed catalog. The long-running workload service uses the
-<code>runtime</code> subdirectory and does not depend on paths inherited from
-a development session. A regression checks this constraint for every declared
-Python entry point.</p>
 
 <!-- ============================================================== -->
 <h1 id="cap6">6. Four origins: handwritten, generated, imported, builtin</h1>

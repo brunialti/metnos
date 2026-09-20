@@ -5,7 +5,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "find_places"
-version     = "0.7.1"
+version     = "0.7.0"
 platforms   = ["linux"]
 author      = "Roberto Brunialti"
 # Affinity: verbi + preposizioni di luogo (IT+EN), nessun POI hardcoded.
@@ -50,11 +50,11 @@ it = "Numero massimo di match per query. Default 5, range 1..50."
 en = "Maximum number of matches per query. Default 5, range 1..50."
 
 [args.properties.near]
-type        = ["object", "string", "array"]
+type        = "object"
 
 [args.properties.near.description]
-it = "Centro della ricerca: {lat, lon}, [lat, lon], nome di zona o output di get_location. Per «vicino a me» o «vicino al server» ometti coordinate sconosciute: il runtime usa get_location con subject actor o server. Non inventare coordinate. Zeri = nessun centro. Con coordinate reali i risultati portano distance_km e sono ordinati per distanza."
-en = "Search centre: {lat, lon}, [lat, lon], area name or get_location output. For 'near me' or 'near the server', omit unknown coordinates: the runtime uses get_location with subject actor or server. Do not invent coordinates. Zeros mean no centre. With real coordinates results carry distance_km and are ordered by distance."
+it = "Centro della ricerca. Omettilo se non hai coordinate VERE: per «vicino a me» il runtime aggiunge il centro da solo. Forma: {lat: number, lon: number}, oppure il nome di una zona (\"Padova\"), oppure DIRETTAMENTE l'output di get_location. Zeri = nessun centro. Con il centro i risultati portano distance_km e sono ordinati per distanza."
+en = "Centre of the search. Omit it when you have no REAL coordinates: for \"near me\" the runtime adds the centre by itself. Format: {lat: number, lon: number}, or the name of an area (\"Padova\"), or DIRECTLY the output of get_location. Zeros mean no centre. With a centre the results carry distance_km and are ordered by distance."
 
 [args.properties.radius_km]
 type        = "number"
@@ -116,11 +116,7 @@ max_chars = 16000
 overflow = "notice"
 [[capabilities]]
 name = "network:http"
-hint = ["places.googleapis.com", "localhost"]
-
-[[capabilities]]
-name = "metnos:read"
-hint = ["geo_provider_config:local"]
+hint = ["nominatim.openstreetmap.org", "localhost"]
 
 [placement]
 scope = "server"

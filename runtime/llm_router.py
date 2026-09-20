@@ -423,25 +423,23 @@ def complete_tier_spec(
 
 
 def _tiers_from_config() -> dict:
-    """Cache parsing by exact file content; invalid is not unconfigured."""
+    """tiers da llm_tiers.toml, con cache invalidata su (path, mtime): il file
+    viene RI-LETTO solo se cambia (prima si ri-parsava il TOML a OGNI call_llm,
+    hot path). Mantiene la semantica «config reload prende effetto» §2.8."""
+    import os
     path = _default_config_path()
     try:
-        content = path.read_bytes()
-    except FileNotFoundError as exc:
-        if path.is_symlink():
-            raise TierConfigError("llm_configuration_invalid") from exc
-        content = b""
-    except OSError as exc:
-        raise TierConfigError("llm_configuration_invalid") from exc
-    key = (str(path), content)
+        mtime = os.path.getmtime(path)
+    except OSError:
+        mtime = None
+    key = (str(path), mtime)
     if _TIERS_FILE_CACHE["key"] != key:
         try:
-            if tomllib is None:
-                raise RuntimeError("tomllib unavailable")
-            tiers = _normalize_tiers_dict(tomllib.loads(content.decode("utf-8")))
-        except (OSError, ValueError, RuntimeError) as exc:
-            raise TierConfigError("llm_configuration_invalid") from exc
-        _TIERS_FILE_CACHE.update(key=key, tiers=tiers)
+            tiers = _normalize_tiers_dict(_load_config_file(path))
+        except Exception:
+            tiers = {}
+        _TIERS_FILE_CACHE["key"] = key
+        _TIERS_FILE_CACHE["tiers"] = tiers
     return _TIERS_FILE_CACHE["tiers"] or {}
 
 
@@ -536,7 +534,7 @@ def tier_endpoint(tier: str = "fast", *, level: str | None = None) -> str:
     dal router (llm_helpers.call_llm, path deterministico /props +
     /apply-template). Risoluzione: llm_tiers.toml (env
     METNOS_LLM_TIERS_CONFIG > ~/.config/metnos > legacy workspace,
-    cache di parsing sul contenuto) -> DEFAULT_TIERS; `LOCAL_DEFAULT_ENDPOINT`
+    cache invalidata su mtime) -> DEFAULT_TIERS; `LOCAL_DEFAULT_ENDPOINT`
     solo come ultimo default se nulla e' configurato (tier pure-abstract,
     §7.11). `endpoint`/`base_url` sono alias come nel router."""
     tier, level = _tier_and_level(tier, level)
@@ -569,8 +567,17 @@ PROMPTS_BUNDLED_PATH = Path(__file__).parent / "prompts.toml"
 PROMPTS_USER_PATH = _C.PATH_USER_CONFIG / "prompts.toml"
 
 
+# Fallback in-code se entrambi i file mancano (test, container minimali).
+_PROMPTS_FALLBACK = [
+    {"provider": "anthropic", "model_pattern": "claude-*", "use_case": "code_gen",
+     "text": "\n\nVincoli: codice fedele alla spec. Regex semplice. Niente lookbehind/lookahead."},
+    {"provider": "ollama",    "model_pattern": "qwen*",    "use_case": "code_gen",
+     "text": "\n\nVincoli: compila python_code per intero (def invoke + def main). Mai vuoto."},
+]
+
+
 def _load_prompts_repertoire() -> list[dict]:
-    """Load provider hints from governed files; absence means no addendum."""
+    """Carica gli hint da file. Se nessun file esiste, ritorna fallback."""
     out: list[dict] = []
     for p in (PROMPTS_BUNDLED_PATH, PROMPTS_USER_PATH):
         if not p.exists() or tomllib is None:
@@ -582,6 +589,8 @@ def _load_prompts_repertoire() -> list[dict]:
         for entry in data.get("hint") or []:
             if all(k in entry for k in ("provider", "model_pattern", "use_case", "text")):
                 out.append(dict(entry))
+    if not out:
+        out = list(_PROMPTS_FALLBACK)
     return out
 
 

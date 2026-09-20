@@ -53,14 +53,6 @@ configured explicitly.</p>
 
 <h2 id="editing">What can be changed</h2>
 
-<p>Local image and face models must remain available when Metnos changes
-release. Their shared directories can be set with <code>model_dir</code> in
-the <code>[image]</code> and <code>[face]</code> sections of
-<code>embedding_tiers.toml</code>; the face provider is <code>face</code>.
-These settings select model data, not executable programs. An executor can
-read only the model files allowed by its contract. A missing model is not
-downloaded silently and prevents the affected analysis from completing.</p>
-
 <p>The page can edit LLM and VLM configuration and restore the previous
 version. Before saving, Metnos validates the structure and values and retains a
 recovery copy. Passwords, tokens, credentials, and sensitive URL components

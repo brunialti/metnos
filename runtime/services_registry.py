@@ -20,7 +20,7 @@ import time
 import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, wait
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 import config as _C
@@ -191,87 +191,8 @@ _LRE_HEALTH_MESSAGE_KEYS = {
 
 
 def catalog() -> tuple[ServiceSpec, ...]:
-    """Use the same installed targets for observation and lifecycle control."""
-    return readiness_catalog()
-
-
-def owned_service_units_v1() -> tuple[tuple[str, str], ...]:
-    """The units this product runs itself, with the scope the catalog signs.
-
-    External dependencies are deliberately absent: they are declared through
-    `external_unit_name`, they write none of this installation's state, and a
-    maintenance window has no business requiring them to stop. Unlike the
-    readiness projection this refuses instead of falling back, because a
-    caller that must prove something about the running topology cannot be
-    handed a guess about it.
-    """
-    from executor_birth_ownership_chain import (
-        OwnershipChainStore, VerifiedOwnershipWindowV1,
-    )
-    from executor_birth_service_catalog import capture_current_service_catalog_v1
-
-    chain = OwnershipChainStore().read_required_window_v1()
-    if not isinstance(chain, VerifiedOwnershipWindowV1):
-        raise ValueError("installed ownership window is not verified")
-    distribution = chain.required_distribution
-    if Path(distribution.installation_root) != Path(_C.PATH_ROOT):
-        raise ValueError("installed distribution root mismatch")
-    loaded = capture_current_service_catalog_v1(distribution)
-    return tuple(sorted({
-        (entry.scope, entry.unit_name)
-        for entry in loaded.catalog.entries if entry.unit_name is not None
-    }))
-
-
-def readiness_catalog() -> tuple[ServiceSpec, ...]:
-    """Project installed targets from the required signed deployment.
-
-    The initial installer keeps its user profile. An existing invalid chain
-    cannot fall back to it. Consumers share this selection; observing system
-    services while controlling their retired user counterparts is invalid.
-    """
-    from executor_birth_ownership_chain import (
-        DEFAULT_OWNERSHIP_CHAIN_ROOT_V1, REQUIRED_HEAD_BASENAME,
-        OwnershipChainStore, VerifiedOwnershipWindowV1,
-        inspect_ownership_chain_state_v1,
-    )
-    from executor_birth_service_catalog import capture_current_service_catalog_v1
-
-    try:
-        DEFAULT_OWNERSHIP_CHAIN_ROOT_V1.lstat()
-    except FileNotFoundError:
-        return SERVICES
-    try:
-        (DEFAULT_OWNERSHIP_CHAIN_ROOT_V1 / REQUIRED_HEAD_BASENAME).lstat()
-    except FileNotFoundError:
-        chain = inspect_ownership_chain_state_v1()
-    else:
-        # The signed current selection and one edge suffice; old releases
-        # are audit evidence, not a prerequisite for observing live services.
-        chain = OwnershipChainStore().read_required_window_v1()
-    if not isinstance(chain, VerifiedOwnershipWindowV1):
-        return SERVICES
-    distribution = chain.required_distribution
-    if Path(distribution.installation_root) != Path(_C.PATH_ROOT):
-        raise ValueError("readiness distribution root mismatch")
-    loaded = capture_current_service_catalog_v1(distribution)
-    targets = {
-        entry.unit_name: ServiceTarget(entry.unit_name, entry.scope)
-        for entry in loaded.catalog.entries if entry.unit_name is not None
-    }
-    targets.update({
-        entry.external_unit_name: ServiceTarget(entry.external_unit_name, "system")
-        for entry in loaded.catalog.entries if entry.external_unit_name is not None
-    })
-    result = []
-    for spec in SERVICES:
-        selected = tuple(dict.fromkeys(
-            targets[target.unit] for target in spec.targets if target.unit in targets
-        ))
-        if len(selected) != 1:
-            raise ValueError("readiness service target is not uniquely signed")
-        result.append(replace(spec, targets=selected))
-    return tuple(result)
+    """Ritorna il catalogo immutabile dei servizi logici."""
+    return SERVICES
 
 
 def _catalog_key(service_key: str, field: str) -> str:
@@ -303,7 +224,7 @@ def system_units() -> tuple[str, ...]:
     """Unita' system-level controllabili, derivate dal catalogo chiuso."""
     return tuple(sorted({
         target.unit
-        for service in catalog()
+        for service in SERVICES
         for target in service.targets
         if target.scope == "system"
     }))
@@ -323,14 +244,12 @@ def render_polkit_rule(user: str | None = None) -> str:
     """Genera la policy minima per target system-level.
 
     Concede al solo utente Metnos i tre verbi esposti dal core e soltanto
-    sulle unita' del catalogo installato. Il target system puo' soltanto essere
-    riavviato. Non concede enable, modifica degli unit file, daemon-reload o
-    comandi systemd generici.
+    sulle unita' ricavate da ``SERVICES``. Non concede enable, modifica degli
+    unit file, daemon-reload o comandi systemd generici.
     """
     subject_user = user or service_user()
     units_js = json.dumps(system_units(), ensure_ascii=True)
     user_js = json.dumps(subject_user, ensure_ascii=True)
-    target_restart = "true" if stack_scope() == "system" else "false"
     return f"""// Generated by Metnos. Do not add wildcard units here.
 polkit.addRule(function(action, subject) {{
     if (action.id !== "org.freedesktop.systemd1.manage-units" ||
@@ -341,9 +260,6 @@ polkit.addRule(function(action, subject) {{
     var verbs = ["start", "stop", "restart"];
     var unit = action.lookup("unit");
     var verb = action.lookup("verb");
-    if ({target_restart} && unit === "metnos.target" && verb === "restart") {{
-        return polkit.Result.YES;
-    }}
     if (units.indexOf(unit) >= 0 && verbs.indexOf(verb) >= 0) {{
         return polkit.Result.YES;
     }}
@@ -353,17 +269,7 @@ polkit.addRule(function(action, subject) {{
 
 
 def get(key: str) -> ServiceSpec | None:
-    if key not in _BY_KEY:
-        return None
-    return next((service for service in catalog() if service.key == key), None)
-
-
-def stack_scope() -> str:
-    """The integrated target belongs to the selected primary HTTP profile."""
-    http = get("http")
-    if http is None or not http.targets:
-        raise ValueError("installed HTTP service target is unavailable")
-    return http.targets[0].scope
+    return _BY_KEY.get(key)
 
 
 def key_for_unit(unit: str, scope: str | None = None) -> str:
@@ -824,11 +730,10 @@ def snapshots(*, probe_endpoints: bool = True,
     # endpoint lento non serializza l'intera pagina amministrativa. Il pool è
     # riusato: una pagina admin non deve creare/distruggere otto thread ogni
     # volta. Il processo lo chiude con atexit.
-    services = catalog()
     pool = _snapshot_pool()
     if timeout_s is None:
         rows = list(pool.map(
-            lambda service: _safe_snapshot(service, probe_endpoints), services,
+            lambda service: _safe_snapshot(service, probe_endpoints), SERVICES,
         ))
     else:
         budget = max(0.001, float(timeout_s))
@@ -836,7 +741,7 @@ def snapshots(*, probe_endpoints: bool = True,
         futures = {
             pool.submit(
                 _safe_snapshot, service, probe_endpoints, deadline_at): index
-            for index, service in enumerate(services)
+            for index, service in enumerate(SERVICES)
         }
         done, pending = wait(tuple(futures), timeout=budget)
         by_index = {futures[future]: future.result() for future in done}
@@ -844,8 +749,8 @@ def snapshots(*, probe_endpoints: bool = True,
             future.cancel()
             index = futures[future]
             by_index[index] = _failed_snapshot(
-                services[index], "deadline_exhausted")
-        rows = [by_index[index] for index in range(len(services))]
+                SERVICES[index], "deadline_exhausted")
+        rows = [by_index[index] for index in range(len(SERVICES))]
     if not include_missing:
         rows = [row for row in rows if row["installed"]]
     return rows
@@ -878,11 +783,9 @@ def control(key: str, action: str) -> tuple[bool, str]:
     prima che systemd abbia accettato l'operazione. Lo stato successivo viene
     sempre osservato tramite ``snapshots`` e non dedotto dal return code.
     """
-    if key not in _BY_KEY or action not in _ACTIONS:
+    spec = _BY_KEY.get(key)
+    if spec is None or action not in _ACTIONS:
         return False, "invalid service action"
-    spec = get(key)
-    if spec is None:
-        return False, "service unit is not installed"
     state = resolve_target(spec)
     if state.get("load_state") in {"not-found", "error"}:
         return False, "service unit is not installed"
@@ -907,7 +810,7 @@ def control(key: str, action: str) -> tuple[bool, str]:
 
 
 def configure_lre_feature(enabled: bool) -> tuple[bool, str]:
-    """Persist and converge the closed LRE gate on its installed unit.
+    """Persist and converge the closed LRE gate on its exact user unit.
 
     Enabling rolls the file back to its previous safe value if systemd rejects
     the restart.  Disabling keeps the file off even when restart fails and
@@ -916,9 +819,7 @@ def configure_lre_feature(enabled: bool) -> tuple[bool, str]:
 
     if not isinstance(enabled, bool):
         return False, "invalid LRE feature state"
-    spec = get("durable_workloads")
-    if spec is None:
-        return False, "LRE service unit is not installed"
+    spec = _BY_KEY["durable_workloads"]
     state = resolve_target(spec)
     target_identity = (state.get("scope"), state.get("unit"))
     allowed_targets = {(target.scope, target.unit) for target in spec.targets}

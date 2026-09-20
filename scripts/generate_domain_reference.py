@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass
 import html
+import importlib.util
 import sys
 import tomllib
 from pathlib import Path
@@ -13,8 +14,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNTIME = ROOT / "runtime"
-SCRIPTS = ROOT / "scripts"
 BUILTIN_CONTRACTS = RUNTIME / "builtin_executor_contracts"
+CATALOG_GENERATOR = ROOT / "scripts" / "generate_executor_catalog.py"
 OUTPUTS = {
     "it": ROOT / "docs" / "it" / "domains.html",
     "en": ROOT / "docs" / "en" / "domains.html",
@@ -22,10 +23,7 @@ OUTPUTS = {
 
 if str(RUNTIME) not in sys.path:
     sys.path.insert(0, str(RUNTIME))
-if str(SCRIPTS) not in sys.path:
-    sys.path.insert(0, str(SCRIPTS))
 
-import generate_executor_catalog  # noqa: E402
 from naming_grammar import parse_name  # noqa: E402
 from vocab import OBJECTS  # noqa: E402
 
@@ -56,7 +54,7 @@ def _copy(group: str, labels: tuple[str, str], summaries: tuple[str, str],
 
 
 # Human explanations are deliberately curated; membership and executor names
-# below are generated from canonical runtime objects and authoring manifests.
+# below are generated from canonical runtime objects and signed manifests.
 DOMAIN_COPY = {
     "files": _copy("content", ("File", "Files"),
         ("Trova, legge, crea, converte, sposta, condivide e analizza file locali o forniti da un servizio collegato. Comprende documenti, fogli, PDF, OCR, archivi, hash e linee di codice.",
@@ -287,7 +285,7 @@ TEXT = {
         "eyebrow": "Riferimento operativo · generato dal catalogo canonico",
         "lead": "Che cosa puoi chiedere a Metnos, dominio per dominio",
         "intro": "Questa pagina descrive tutti i domini canonici del vocabolario Metnos. Ogni esempio è una frase che puoi usare direttamente in chat: non occorre conoscere executor, argomenti o sintassi tecniche.",
-        "contract": "La struttura del riferimento deriva dai {domain_total} oggetti canonici del runtime; nomi e conteggi delle operazioni distribuite derivano dai manifest sorgente e dai contratti integrati. La disponibilità effettiva richiede l'ammissione di Executor Birth. Le skill installate possono aggiungere fornitori e operazioni. Per sapere che cosa è disponibile adesso sulla tua istanza, chiedi al Tutor.",
+        "contract": "La struttura del riferimento deriva dai {domain_total} oggetti canonici del runtime; nomi e conteggi delle operazioni distribuite derivano dai manifest firmati e dai contratti integrati. Le skill installate possono aggiungere fornitori e operazioni. Per sapere che cosa è disponibile adesso sulla tua istanza, chiedi al Tutor.",
         "ask": "Chiedi a Metnos con una richiesta come quella di questo esempio:",
         "boundary": "Confine",
         "operations": "Operazioni distribuite",
@@ -301,7 +299,7 @@ TEXT = {
         "nav_tutor": "Come funziona il Tutor",
         "provider_title": "Fornitori e disponibilità effettiva",
         "provider_text": "I domini sono stabili; i fornitori costituiscono un asse separato. Una singola istanza può usare file e dispositivi locali, caselle IMAP/SMTP, web pubblico, GitHub, Google Workspace o Google Photos in base alle credenziali, alle skill e alle regole ammesse. Il Tutor legge il catalogo corrente dell'istanza e risponde sulla disponibilità effettiva.",
-        "footer": "Fonti tecniche: vocabolario canonico, manifest sorgente distribuiti con Metnos e contratti integrati. Il documento viene rigenerato prima di ogni pubblicazione.",
+        "footer": "Fonti tecniche: vocabolario canonico, manifest firmati distribuiti con Metnos e contratti integrati. Il documento viene rigenerato prima di ogni pubblicazione.",
     },
     "en": {
         "title": "Domain reference",
@@ -310,7 +308,7 @@ TEXT = {
         "eyebrow": "Operational reference · generated from the canonical catalog",
         "lead": "What you can ask Metnos, domain by domain",
         "intro": "This page describes every canonical domain in the Metnos vocabulary. Each example is a sentence you can use directly in chat: no executor names, arguments, or technical syntax are required.",
-        "contract": "The reference structure comes from the runtime's {domain_total} canonical objects; names and counts of distributed operations come from source manifests and builtin contracts. Actual availability requires Executor Birth admission. Installed skills may add providers and operations. Ask the Tutor to learn what is currently available on your instance.",
+        "contract": "The reference structure comes from the runtime's {domain_total} canonical objects; names and counts of distributed operations come from signed manifests and builtin contracts. Installed skills may add providers and operations. Ask the Tutor to learn what is currently available on your instance.",
         "ask": "Ask Metnos with a request like this example:",
         "boundary": "Boundary",
         "operations": "Distributed operations",
@@ -324,13 +322,20 @@ TEXT = {
         "nav_tutor": "How the Tutor works",
         "provider_title": "Providers and actual availability",
         "provider_text": "Domains are stable; providers are a separate axis. An instance may use local filesystems and devices, IMAP/SMTP mailboxes, the public web, GitHub, Google Workspace, or Google Photos according to admitted credentials, skills, and policy. The Tutor reads the instance's live catalog and answers about current availability.",
-        "footer": "Technical sources: canonical vocabulary, first-party source manifests, and builtin contracts. This document is regenerated before every publication.",
+        "footer": "Technical sources: canonical vocabulary, signed first-party manifests, and builtin contracts. This document is regenerated before every publication.",
     },
 }
 
 
 def _catalog_module():
-    return generate_executor_catalog
+    spec = importlib.util.spec_from_file_location(
+        "domain_reference_executor_catalog", CATALOG_GENERATOR)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("cannot load executor catalog generator")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
 def load_operations() -> dict[str, tuple[str, ...]]:

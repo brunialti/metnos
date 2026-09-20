@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """skill_admin — builtin in-process per AMMINISTRARE le skill da CHAT (asse 2).
 
 Espone due tool builtin al PLANNER (gemello CLI `metnos-skills`):
@@ -70,8 +70,12 @@ SET_SKILLS_TOOL = {
 }
 
 BUILTIN_INPROC_SPECS = [
-    {"name": "list_skills", "tool_spec": LIST_SKILLS_TOOL},
-    {"name": "set_skills", "tool_spec": SET_SKILLS_TOOL},
+    {"name": "list_skills", "tool_spec": LIST_SKILLS_TOOL,
+     "affinity": ["skill", "skills", "capacità", "capability", "capabilities",
+                  "moduli", "modules", "elenco", "lista", "list"]},
+    {"name": "set_skills", "tool_spec": SET_SKILLS_TOOL,
+     "affinity": ["skill", "skills", "abilita", "disabilita", "attiva",
+                  "disattiva", "enable", "disable", "spegni", "accendi"]},
 ]
 
 
@@ -162,9 +166,14 @@ def handle_set_skills(args: dict, *, actor: str | None = None, **_) -> dict:
     if not name:
         return {"ok": False, "error": "missing required: name"}
     if not isinstance(enabled, bool):
-        # Confine tool tipizzato: soltanto un booleano JSON puo' cambiare la
-        # policy persistente. Nessuna parola naturale viene interpretata qui.
-        return {"ok": False, "error": "param 'enabled' must be a JSON boolean"}
+        # Tolleranza NL→determinismo (§2.4): stringhe true/false/on/off.
+        s = str(enabled).strip().lower()
+        if s in ("true", "1", "on", "yes", "si", "sì", "attiva", "abilita"):
+            enabled = True
+        elif s in ("false", "0", "off", "no", "disattiva", "disabilita"):
+            enabled = False
+        else:
+            return {"ok": False, "error": "param 'enabled' deve essere booleano"}
     try:
         import skill_registry as _sr
         _sr.set_skill_enabled_checked(name, enabled)

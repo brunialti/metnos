@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """proposal_actions.py — Effetto operativo dell'accept su proposte (C.8).
 
 Quando l'utente accetta una proposta nella dashboard `/admin/proposals*`,

@@ -25,7 +25,6 @@ from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PrivateKey, Ed25519PublicKey,
 )
-from cryptography.hazmat.primitives import serialization
 
 from executor_birth_cutover import CurrentReceiptProof
 
@@ -43,11 +42,9 @@ _PAYLOAD_KEYS = frozenset({
     "schema_version", "cutover_id", "previous_cutover_id", "request_id",
     "signing_key_id", "catalog_id", "current_count", "current_receipts",
     "maintenance_evidence_hash", "boundary_inventory_hash",
-    "boundary_guard_version", "closed_build_id", "context_transition_id",
-    "dominant_startup_receipt",
+    "boundary_guard_version", "closed_build_id",
 })
 _RECEIPT_KEYS = frozenset({"contract_id", "generation_id", "receipt_hash"})
-_OWNERSHIP_PURPOSES = frozenset({PURPOSE, "ownership_head_v1"})
 
 
 class OwnershipCutoverError(RuntimeError):
@@ -55,16 +52,6 @@ class OwnershipCutoverError(RuntimeError):
         self.code = code
         self.detail = detail
         super().__init__(f"{code}: {detail}" if detail else code)
-
-
-def ownership_key_id(public_key: Ed25519PublicKey) -> str:
-    """Derive the only admitted ownership key identifier from raw Ed25519."""
-    if not isinstance(public_key, Ed25519PublicKey):
-        raise OwnershipCutoverError("birth_ownership_proof_invalid", "key registry")
-    raw = public_key.public_bytes(
-        serialization.Encoding.Raw, serialization.PublicFormat.Raw,
-    )
-    return "birth-ed25519-v1-sha256-" + hashlib.sha256(raw).hexdigest()
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,10 +64,8 @@ class OwnershipCutoverKey:
         if (
             not isinstance(self.key_id, str) or _KEY_ID_RE.fullmatch(self.key_id) is None
             or not isinstance(self.public_key, Ed25519PublicKey)
-            or self.key_id != ownership_key_id(self.public_key)
             or not isinstance(self.purposes, frozenset)
-            or len(self.purposes) != 1
-            or not self.purposes.issubset(_OWNERSHIP_PURPOSES)
+            or any(not isinstance(item, str) or not item for item in self.purposes)
         ):
             raise OwnershipCutoverError("birth_ownership_proof_invalid", "key registry")
 
@@ -118,8 +103,6 @@ class OwnershipCutoverCertificate:
     boundary_inventory_hash: str
     boundary_guard_version: str
     closed_build_id: str
-    context_transition_id: str
-    dominant_startup_receipt: str
 
     @property
     def current_count(self) -> int:
@@ -191,11 +174,6 @@ def _catalog_id(values: list[dict[str, object]]) -> str:
     return "sha256:" + hashlib.sha256(framed).hexdigest()
 
 
-def current_receipt_catalog_id_v1(proof: CurrentReceiptProof) -> str:
-    """Identify current contract receipts, not the separate service catalog."""
-    return _catalog_id(_binding_values(_bindings_from_proof(proof)))
-
-
 def _cutover_id(unsigned: Mapping[str, object]) -> str:
     material = {key: value for key, value in unsigned.items() if key != "cutover_id"}
     return "sha256:" + hashlib.sha256(CUTOVER_ID_DOMAIN + _canonical(material)).hexdigest()
@@ -206,7 +184,6 @@ def issue_ownership_cutover_certificate(
     request_id: str, signing_key_id: str,
     maintenance_evidence_hash: str, boundary_inventory_hash: str,
     boundary_guard_version: str, closed_build_id: str,
-    context_transition_id: str, dominant_startup_receipt: str,
     private_key: Ed25519PrivateKey,
 ) -> tuple[bytes, bytes]:
     """Create the exact certificate bytes; persistence remains a separate step."""
@@ -217,8 +194,6 @@ def issue_ownership_cutover_certificate(
         "maintenance_evidence_hash": maintenance_evidence_hash,
         "boundary_inventory_hash": boundary_inventory_hash,
         "closed_build_id": closed_build_id,
-        "context_transition_id": context_transition_id,
-        "dominant_startup_receipt": dominant_startup_receipt,
     }.items():
         _require_digest(value, field)
     _require_digest(previous_cutover_id, "previous_cutover_id", nullable=True)
@@ -239,8 +214,6 @@ def issue_ownership_cutover_certificate(
         "boundary_inventory_hash": boundary_inventory_hash,
         "boundary_guard_version": boundary_guard_version,
         "closed_build_id": closed_build_id,
-        "context_transition_id": context_transition_id,
-        "dominant_startup_receipt": dominant_startup_receipt,
     }
     value["cutover_id"] = _cutover_id(value)
     encoded = _canonical(value)
@@ -251,8 +224,6 @@ def verify_ownership_cutover_certificate(
     encoded: bytes, signature: bytes, *, registry: OwnershipCutoverRegistry,
     expected_proof: CurrentReceiptProof | None = None,
     expected_previous_cutover_id: str | None | object = ...,
-    expected_context_transition_id: str | None = None,
-    expected_dominant_startup_receipt: str | None = None,
 ) -> OwnershipCutoverCertificate:
     """Authenticate canonical bytes, key purpose, chain and current proof."""
     if not isinstance(encoded, bytes) or len(encoded) > MAX_PAYLOAD_BYTES:
@@ -305,8 +276,7 @@ def verify_ownership_cutover_certificate(
         raise OwnershipCutoverError("birth_ownership_binding_invalid", "cutover_id")
     for field in (
         "cutover_id", "request_id", "catalog_id", "maintenance_evidence_hash",
-        "boundary_inventory_hash", "closed_build_id", "context_transition_id",
-        "dominant_startup_receipt",
+        "boundary_inventory_hash", "closed_build_id",
     ):
         _require_digest(value.get(field), field)
     previous = _require_digest(value.get("previous_cutover_id"), "previous_cutover_id", nullable=True)
@@ -315,36 +285,13 @@ def verify_ownership_cutover_certificate(
             or len(guard_version.encode("utf-8")) > 128):
         raise OwnershipCutoverError("birth_ownership_proof_invalid", "boundary_guard_version")
     certificate = OwnershipCutoverCertificate(
-        cutover_id=str(value["cutover_id"]),
-        previous_cutover_id=previous,
-        request_id=str(value["request_id"]),
-        signing_key_id=key_id,
-        catalog_id=str(value["catalog_id"]),
-        current_receipts=tuple(bindings),
-        maintenance_evidence_hash=str(value["maintenance_evidence_hash"]),
-        boundary_inventory_hash=str(value["boundary_inventory_hash"]),
-        boundary_guard_version=guard_version,
-        closed_build_id=str(value["closed_build_id"]),
-        context_transition_id=str(value["context_transition_id"]),
-        dominant_startup_receipt=str(value["dominant_startup_receipt"]),
+        str(value["cutover_id"]), previous, str(value["request_id"]), key_id,
+        str(value["catalog_id"]), tuple(bindings),
+        str(value["maintenance_evidence_hash"]), str(value["boundary_inventory_hash"]),
+        guard_version, str(value["closed_build_id"]),
     )
     if expected_previous_cutover_id is not ... and previous != expected_previous_cutover_id:
         raise OwnershipCutoverError("birth_ownership_binding_invalid", "previous_cutover_id")
-    if (
-        expected_context_transition_id is not None
-        and certificate.context_transition_id != expected_context_transition_id
-    ):
-        raise OwnershipCutoverError(
-            "birth_ownership_binding_invalid", "context_transition_id",
-        )
-    if (
-        expected_dominant_startup_receipt is not None
-        and certificate.dominant_startup_receipt
-        != expected_dominant_startup_receipt
-    ):
-        raise OwnershipCutoverError(
-            "birth_ownership_binding_invalid", "dominant_startup_receipt",
-        )
     if expected_proof is not None:
         expected = _bindings_from_proof(expected_proof)
         if certificate.current_receipts != expected:
@@ -432,40 +379,6 @@ def _write_temporary(path: Path, payload: bytes) -> None:
         os.close(fd)
 
 
-def _prepare_recoverable_temporary(
-    temporary: Path, destination: Path, expected: bytes,
-) -> bool:
-    """Prepare a pre-publication file; discard only an exact write prefix."""
-    if destination.exists():
-        if _safe_read(destination, len(expected)) != expected:
-            raise OwnershipCutoverError(
-                "birth_ownership_cutover_conflict", destination.name,
-            )
-        if temporary.exists():
-            observed = _safe_read(temporary, len(expected))
-            if observed != expected and not (
-                len(observed) < len(expected) and expected.startswith(observed)
-            ):
-                raise OwnershipCutoverError(
-                    "birth_ownership_cutover_conflict", temporary.name,
-                )
-            temporary.unlink()
-            _sync_directory(temporary.parent)
-        return False
-    if temporary.exists():
-        observed = _safe_read(temporary, len(expected))
-        if observed == expected:
-            return True
-        if len(observed) >= len(expected) or not expected.startswith(observed):
-            raise OwnershipCutoverError(
-                "birth_ownership_cutover_conflict", temporary.name,
-            )
-        temporary.unlink()
-        _sync_directory(temporary.parent)
-    _write_temporary(temporary, expected)
-    return True
-
-
 def _publish_no_replace(temporary: Path, destination: Path, expected: bytes) -> None:
     try:
         if os.name == "nt":
@@ -503,17 +416,12 @@ def _publish_no_replace(temporary: Path, destination: Path, expected: bytes) -> 
 def install_ownership_cutover_certificate(
     directory: Path, encoded: bytes, signature: bytes, *,
     registry: OwnershipCutoverRegistry, expected_proof: CurrentReceiptProof,
-    expected_context_transition_id: str,
-    expected_dominant_startup_receipt: str,
-    _crash_seam=None,
 ) -> OwnershipCutoverCertificate:
     """Install signature then payload without replacement; exact retries succeed."""
     directory = Path(directory)
     _safe_directory(directory)
     certificate = verify_ownership_cutover_certificate(
         encoded, signature, registry=registry, expected_proof=expected_proof,
-        expected_context_transition_id=expected_context_transition_id,
-        expected_dominant_startup_receipt=expected_dominant_startup_receipt,
     )
     payload_path = directory / PAYLOAD_BASENAME
     signature_path = directory / SIGNATURE_BASENAME
@@ -523,22 +431,18 @@ def install_ownership_cutover_certificate(
     signature_tmp = directory / f".{SIGNATURE_BASENAME}.{suffix}.tmp"
     payload_tmp = directory / f".{PAYLOAD_BASENAME}.{suffix}.tmp"
     try:
-        if _prepare_recoverable_temporary(
-            signature_tmp, signature_path, signature,
-        ):
-            _publish_no_replace(signature_tmp, signature_path, signature)
-        if _crash_seam:
-            _crash_seam("certificate_signature")
-        if _prepare_recoverable_temporary(
-            payload_tmp, payload_path, encoded,
-        ):
-            _publish_no_replace(payload_tmp, payload_path, encoded)
-        if _crash_seam:
-            _crash_seam("certificate_payload")
+        if not signature_tmp.exists():
+            _write_temporary(signature_tmp, signature)
+        elif _safe_read(signature_tmp, 64) != signature:
+            raise OwnershipCutoverError("birth_ownership_cutover_conflict", signature_tmp.name)
+        _publish_no_replace(signature_tmp, signature_path, signature)
+        if not payload_tmp.exists():
+            _write_temporary(payload_tmp, encoded)
+        elif _safe_read(payload_tmp, len(encoded)) != encoded:
+            raise OwnershipCutoverError("birth_ownership_cutover_conflict", payload_tmp.name)
+        _publish_no_replace(payload_tmp, payload_path, encoded)
         return read_ownership_cutover_certificate(
             directory, registry=registry, expected_proof=expected_proof,
-            expected_context_transition_id=expected_context_transition_id,
-            expected_dominant_startup_receipt=expected_dominant_startup_receipt,
         )
     finally:
         for temporary in (signature_tmp, payload_tmp):
@@ -551,8 +455,6 @@ def install_ownership_cutover_certificate(
 def read_ownership_cutover_certificate(
     directory: Path, *, registry: OwnershipCutoverRegistry,
     expected_proof: CurrentReceiptProof | None = None,
-    expected_context_transition_id: str | None = None,
-    expected_dominant_startup_receipt: str | None = None,
 ) -> OwnershipCutoverCertificate:
     directory = Path(directory)
     _safe_directory(directory)
@@ -566,8 +468,6 @@ def read_ownership_cutover_certificate(
     signature = _safe_read(signature_path, 64)
     return verify_ownership_cutover_certificate(
         encoded, signature, registry=registry, expected_proof=expected_proof,
-        expected_context_transition_id=expected_context_transition_id,
-        expected_dominant_startup_receipt=expected_dominant_startup_receipt,
     )
 
 
@@ -575,6 +475,5 @@ __all__ = [
     "OwnershipCutoverCertificate", "OwnershipCutoverError", "OwnershipCutoverKey",
     "OwnershipCutoverRegistry", "OwnershipReceiptBinding", "PURPOSE",
     "install_ownership_cutover_certificate", "issue_ownership_cutover_certificate",
-    "ownership_key_id",
     "read_ownership_cutover_certificate", "verify_ownership_cutover_certificate",
 ]

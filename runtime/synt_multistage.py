@@ -156,11 +156,17 @@ def validate_stage2(out: dict, stage1: dict) -> Optional[str]:
 
 def validate_stage3(out: dict) -> Optional[str]:
     """Stage 3 = TESTS. Si aspetta {tests: list[...]} con >= 3 entries."""
-    from executor_birth_functional import validate_functional_cases
-    try:
-        validate_functional_cases(out.get("tests"))
-    except ValueError as exc:
-        return str(exc)
+    if not isinstance(out.get("tests"), list) or len(out["tests"]) < 3:
+        return "tests deve essere lista di almeno 3 birth test"
+    for i, t in enumerate(out["tests"]):
+        if not isinstance(t, dict):
+            return f"test[{i}] non e' un dict"
+        if not t.get("name") or not isinstance(t["name"], str):
+            return f"test[{i}] manca 'name' string"
+        if not isinstance(t.get("input"), dict):
+            return f"test[{i}].input deve essere dict"
+        if not isinstance(t.get("expect"), dict):
+            return f"test[{i}].expect deve essere dict"
     return None
 
 

@@ -3,18 +3,18 @@ role: tutor_mode
 tier: fast
 lang: it
 style: prescriptive
-version: 14
+version: 13
 owner: roberto
-updated: 2026-09-14
-sha_prev: d36f948e
+updated: 2026-07-30
+sha_prev: f8d8f91c
 --- #}
 Classifica che cosa chiede il messaggio `user_query` ricevuto nel JSON.
 
 DEVI: restituire ESATTAMENTE una sola parola fra `EXPLAIN`, `OBSERVE`, `ACT`, `MIXED`, `UNKNOWN`.
 NON DEVI: rispondere alla richiesta, aggiungere punteggiatura o spiegazioni.
 
-- `EXPLAIN`: chiede conoscenza generale o procedure: che cosa è possibile fare, come funziona qualcosa, perché avviene, come si configura, dove si trova una pagina o come si segue una procedura. Non richiede il valore di un dato dell'istanza concreta.
-- `OBSERVE`: chiede di acquisire o leggere fatti reali senza modificarli: stato corrente, contenuti dell'utente, risultati operativi, elenchi, conteggi, ricerche o misure provenienti da runtime, dispositivo, file, account, sito o altra sorgente. Include proprietà durevoli dell'istanza concreta, come identità, indirizzo, ubicazione e configurazione effettiva: non soltanto stati transitori.
+- `EXPLAIN`: chiede conoscenza stabile: che cosa è possibile fare, come funziona qualcosa, perché avviene, come si configura, dove si trova una pagina o come si segue una procedura. Non occorre acquisire dati reali per rispondere.
+- `OBSERVE`: chiede di acquisire o leggere fatti reali senza modificarli: stato corrente, contenuti dell'utente, risultati operativi, elenchi, conteggi, ricerche o misure provenienti da runtime, dispositivo, file, account, sito o altra sorgente.
 - `ACT`: chiede un effetto nel mondo o sui dati: creare, modificare, eliminare, spostare, inviare, avviare, arrestare o eseguire un'operazione che cambia stato.
 - `MIXED`: contiene clausole indipendenti con intenzioni diverse che non possono essere soddisfatte dalla stessa spiegazione od osservazione; in particolare combina un effetto `ACT` con `EXPLAIN` o `OBSERVE`.
 - `UNKNOWN`: l'intenzione non è distinguibile con sufficiente sicurezza.
@@ -33,11 +33,6 @@ reali correnti visualizzati in quella pagina.
 I segnaposto fra `<>` indicano categorie semantiche, non parole da cercare.
 
 Regola dell'osservazione:
-DEVI: classificare come `OBSERVE` la richiesta del valore di una proprietà di una macchina, persona o risorsa concreta, anche espressa senza verbo né «adesso».
-NON DEVI: confondere un dato dell'istanza con la definizione generale di quella proprietà o con la posizione di una pagina dell'interfaccia.
-OK: «ubicazione di <NOME_MACCHINA>» o «indirizzo di <NOME_SERVIZIO>» → OBSERVE; «come si determina <PROPRIETÀ>?» → EXPLAIN.
-ERRORE: spieghi l'architettura invece di acquisire il dato richiesto.
-
 DEVI: classificare `<OTTIENI_O_MOSTRA> <FATTO_REALE>` come `OBSERVE`, anche se l'operazione è di sola lettura.
 DEVI: classificare una domanda su COME ottenere quel fatto, sulla capacità disponibile o sul motivo di un'assenza come `EXPLAIN`.
 OK: «mostrami <PAGINA_DELLA_UI>» → EXPLAIN.

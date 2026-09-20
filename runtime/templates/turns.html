@@ -19,11 +19,9 @@ eseguiti dal planner, esito finale e tempo totale.</p>
       <td>{{ r.actor or "-" }}</td>
       <td>{{ r.n_steps }}</td>
       <td>
-        {% if r.outcome == "completed" %}<span class="chip ok">completato</span>
-        {% elif r.outcome == "failed" %}<span class="chip bad">fallito</span>
-        {% elif r.outcome == "partial" %}<span class="chip warn">parziale</span>
-        {% elif r.outcome == "awaiting_input" %}<span class="chip warn">in attesa</span>
-        {% else %}<span class="chip warn">{{ r.outcome or r.final_kind }}</span>{% endif %}
+        {% if r.final_kind == "answer" %}<span class="chip ok">{{ r.final_kind }}</span>
+        {% elif r.final_kind == "error" %}<span class="chip bad">{{ r.final_kind }}</span>
+        {% else %}<span class="chip warn">{{ r.final_kind }}</span>{% endif %}
       </td>
       <td>{{ r.elapsed_s }}s</td>
       <td>{{ r.user_query[:80] }}</td>

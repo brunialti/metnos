@@ -2,15 +2,19 @@ role: synt_tests
 tier: middle
 lang: it
 style: definitional
-version: 2
+version: 1
 owner: roberto
-updated: 2026-09-12
-sha_prev: "fc0423f1c4a5c40f"
+updated: 2026-05-13
+sha_prev: ""
 
 section:
   name: synt_tests
   header: "Stage 3 TESTS di synt-multistage"
-  preamble: "Un solo oggetto JSON, senza prosa, markdown o commenti."
+  preamble: |
+    OUTPUT OBBLIGATORIO: un solo oggetto JSON. NIENTE prosa, NIENTE markdown
+    fences, NIENTE commenti. La risposta DEVE iniziare con `{` e finire con
+    `}`. Niente nulla prima del primo `{`, niente nulla dopo l'ultimo `}`.
+
 context:
   decisions_locked:
     name: "{{ name }}"
@@ -20,19 +24,26 @@ context:
     revertible: "{{ revertible }}"
     reverse_pattern: "{{ reverse_pattern }}"
   user_request: "{{ user_request }}"
+
 rules:
   - name: test_count
-    body: "Produci 4-6 test, con nomi unici."
-  - name: declarative_only
+    body: "produci 4-6 birth test."
+  - name: test_fields
     body: |
-      DEVI: usare solo name, input ed expect, con almeno un controllo in expect.
-      NON DEVI: produrre setup, teardown, env, reference, comandi shell o dipendenze da rete, chiavi e dati dell'host.
-      OK: {"name":"lista_vuota","input":{"entries":[]},"expect":{"ok":true,"ok_count_eq":0}}.
-      ERRORE: un test che prepara o pulisce file mediante shell, anche con stringa vuota. E' UN ERRORE.
-  - name: private_fixture
-    body: "Ogni prova ha un ambiente privato nuovo, senza rete: fixture/input.txt contiene \"birth fixture\\\\n\", fixture/empty.txt è vuoto e fixture/output è una cartella vuota. Usa percorsi relativi a questo ambiente quando servono file; gli altri input sono dati concreti. Nessun file dell'host è disponibile."
+      Ogni test:
+        - "name": stringa snake_case unica.
+        - "input": dict con args concreti (valori reali, no placeholder).
+        - "expect": dict con keys da {ok, ok_count_eq, fail_count_eq, error_contains}.
+        - "setup": stringa shell (vuota se non serve).
+        - "teardown": stringa shell (vuota se non serve).
   - name: mandatory_cases
-    body: "Un elemento, lista vuota se pertinente, argomenti invalidi e un caso limite del dominio."
+    body: |
+      CASI OBBLIGATORI (almeno questi 4):
+        1. caso felice base (1 elemento, ok=true).
+        2. lista vuota se l'arg principale e' lista (ok=true, ok_count_eq=0).
+        3. args invalidi (ok=false, error_contains="...").
+        4. edge dominio-specifico (path/url inesistente, scope violation, ecc.).
+
 output_schema:
   type: object
   required: [tests]
@@ -43,28 +54,44 @@ output_schema:
       maxItems: 6
       items:
         type: object
-        additionalProperties: false
         required: [name, input, expect]
         properties:
           name: {type: string}
+          setup: {type: string}
           input: {type: object}
           expect:
             type: object
-            minProperties: 1
-            additionalProperties: false
             properties:
               ok: {type: boolean}
               ok_count_eq: {type: integer}
               fail_count_eq: {type: integer}
               error_contains: {type: string}
+          teardown: {type: string}
+
 examples:
-  - name_for: change_texts
-    note: "Esempio di sola forma: non copiare letteralmente nomi, input o aspettative."
+  - name_for: delete_files
     output:
       tests:
-        - {"name":"un_elemento","input":{"entries":["Ab"]},"expect":{"ok":true,"ok_count_eq":1}}
-        - {"name":"lista_vuota","input":{"entries":[]},"expect":{"ok":true,"ok_count_eq":0}}
-        - {"name":"tipo_invalido","input":{"entries":42},"expect":{"ok":false,"error_contains":"list"}}
-        - {"name":"testo_vuoto","input":{"entries":[""]},"expect":{"ok":true,"ok_count_eq":1}}
+        - name: cancella_file_singolo
+          setup: "mkdir -p /tmp/t && echo x > /tmp/t/a.txt"
+          input: {paths: ["/tmp/t/a.txt"]}
+          expect: {ok: true, ok_count_eq: 1}
+          teardown: "rm -rf /tmp/t"
+        - name: lista_vuota_ok
+          setup: ""
+          input: {paths: []}
+          expect: {ok: true, ok_count_eq: 0}
+          teardown: ""
+        - name: path_non_lista_fallisce
+          setup: ""
+          input: {paths: "/tmp/x"}
+          expect: {ok: false, error_contains: "must be a list"}
+          teardown: ""
+        - name: path_inesistente_fallisce_solo_quello
+          setup: ""
+          input: {paths: ["/tmp/non_existent_xyz"]}
+          expect: {ok: false, fail_count_eq: 1, error_contains: "does not exist"}
+          teardown: ""
+
 footer:
-  instruction: "ORA produci il JSON per {{ name }}. SOLO JSON."
+  instruction: "ORA produci il JSON per `{{ name }}`. SOLO JSON, niente altro."

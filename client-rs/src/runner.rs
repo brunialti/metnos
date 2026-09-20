@@ -795,19 +795,7 @@ async fn send_heartbeat(
     device_id: &str,
     id: &Identity,
 ) -> Result<()> {
-    let mut profile = collect_profile();
-    // The address is observed by the authenticated device, not guessed from
-    // the HTTP peer (which might be a proxy/NAT). Sign its observation time
-    // as well, so replaying an old heartbeat cannot refresh an old address.
-    if let Ok(Ok(address)) = tokio::time::timeout(
-        Duration::from_secs(2), address_towards_server(server),
-    ).await {
-        let observed_at = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)?.as_secs();
-        profile["network_observation"] = json!({
-            "address": address.to_string(), "observed_at": observed_at,
-        });
-    }
+    let profile = collect_profile();
     let body = HeartbeatRequest { device_id, profile };
     let bytes = serde_json::to_vec(&body)?;
     let sig = id.sign_b64(&bytes);
@@ -823,24 +811,6 @@ async fn send_heartbeat(
         bail!("heartbeat HTTP {}", resp.status());
     }
     Ok(())
-}
-
-async fn address_towards_server(server: &str) -> Result<std::net::IpAddr> {
-    let url = reqwest::Url::parse(server)?;
-    let host = url.host_str().ok_or_else(|| anyhow::anyhow!("server host missing"))?;
-    let port = url.port_or_known_default().ok_or_else(|| anyhow::anyhow!("server port missing"))?;
-    // UDP connect only selects a route/local interface: no packet is sent.
-    for peer in tokio::net::lookup_host((host.trim_matches(['[', ']']), port)).await? {
-        let bind = if peer.is_ipv4() { "0.0.0.0:0" } else { "[::]:0" };
-        let socket = tokio::net::UdpSocket::bind(bind).await?;
-        if socket.connect(peer).await.is_ok() {
-            let ip = socket.local_addr()?.ip();
-            if !ip.is_loopback() && !ip.is_unspecified() && !ip.is_multicast() {
-                return Ok(ip);
-            }
-        }
-    }
-    bail!("no usable local address towards server")
 }
 
 /// Traduce l'output dell'executor (shape §2.6: entries | results) nel result
@@ -1277,12 +1247,6 @@ fn write_pending_result(paths: &Paths, invocation_id: &str, body: &[u8]) -> Resu
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[tokio::test]
-    async fn network_observation_does_not_publish_loopback() {
-        assert!(address_towards_server("http://127.0.0.1:8080").await.is_err());
-        assert!(address_towards_server("not a URL").await.is_err());
-    }
 
     #[test]
     fn bounded_set_evicts_oldest_fifo() {

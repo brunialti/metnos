@@ -153,29 +153,6 @@ def _validate_args(findings: list[StandardFinding], manifest: dict,
         if spec.get("runtime_resolved"):
             if name in required:
                 _add(findings, "runtime_arg_required", f"runtime arg {name!r} cannot be required")
-        paired_identity = spec.get("paired_device_identity")
-        paired_mode = spec.get("paired_device_identity_mode")
-        if paired_identity is not None:
-            if paired_identity not in {"id", "name"}:
-                _add(
-                    findings, "paired_device_identity",
-                    f"args.properties.{name}.paired_device_identity must be "
-                    "'id' or 'name'",
-                )
-            if (not isinstance(declared_type, str)
-                    or declared_type not in {"string", "array"}):
-                _add(
-                    findings, "paired_device_identity_type",
-                    f"args.properties.{name} with paired_device_identity "
-                    "must have type 'string' or 'array'",
-                )
-        if paired_mode is not None:
-            if paired_identity is None or paired_mode not in {"exact", "token"}:
-                _add(
-                    findings, "paired_device_identity_mode",
-                    f"args.properties.{name}.paired_device_identity_mode "
-                    "requires paired_device_identity and must be 'exact' or 'token'",
-                )
         descriptions = _language_map(spec.get("description"))
         if active:
             for lang in ("it", "en"):
@@ -587,29 +564,6 @@ def _validate_code_files(findings: list[StandardFinding], manifest: dict) -> Non
         )
 
 
-def _validate_code_dependencies(
-    findings: list[StandardFinding], manifest: dict,
-) -> None:
-    """Validate the signed code-import namespace independently of routing."""
-    code = manifest.get("code")
-    raw = code.get("dependencies") if isinstance(code, dict) else None
-    if raw is None:
-        return
-    if not isinstance(raw, list) or any(not isinstance(value, str) for value in raw):
-        _add(findings, "code_dependencies_invalid", "[code].dependencies must be a list of names")
-        return
-    if len(raw) != len(set(raw)):
-        _add(findings, "code_dependencies_duplicate", "[code].dependencies contains duplicates")
-    owner = manifest.get("name")
-    if owner in raw:
-        _add(findings, "code_dependency_self_reference", "an executor cannot import itself")
-    from naming_grammar import validate_name
-    for value in raw:
-        result = validate_name(value)
-        if not result.ok:
-            _add(findings, "code_dependency_name_invalid", result.reason or value)
-
-
 def validate_manifest(manifest: dict, *, require_declaration: bool = True,
                       active: bool = True) -> list[StandardFinding]:
     """Return deterministic conformance findings for one parsed manifest.
@@ -657,7 +611,6 @@ def validate_manifest(manifest: dict, *, require_declaration: bool = True,
     if not isinstance(code, dict) or not code.get("files"):
         _add(findings, "code_files", "[code].files must contain at least one file")
     _validate_code_files(findings, manifest)
-    _validate_code_dependencies(findings, manifest)
     if active:
         digest = code.get("digest") if isinstance(code, dict) else None
         if not isinstance(digest, str) or not _DIGEST_RE.fullmatch(digest):

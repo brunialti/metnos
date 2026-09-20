@@ -614,17 +614,20 @@ def _inherit_uses(executor_name: str, n_uses: int) -> int:
     da zero e rischierebbe il demote immotivato proprio mentre serve la
     domanda che il fastpath ha dimostrato.
 
-    Il deposito che riceve il credito e' quello che possiede lo stato di
-    ciclo di vita dell'installazione: lo risolve `executor_lifecycle_state`,
-    non questo modulo.
+    FLAG implementativo: executor_aging espone solo touch() (incremento
+    singolo, nessuna bulk-API) e questo mandato non può modificarlo →
+    loop di touch (n piccolo, job notturno). Se diventa caldo: aggiungere
+    una bulk-API a executor_aging.
 
     Ritorna gli usi trasferiti (0 su input vuoto o errore, best-effort).
     """
     if not executor_name or n_uses <= 0:
         return 0
     try:
-        from executor_lifecycle_state import credit_uses
-        return credit_uses(executor_name, int(n_uses))
+        import executor_aging as _ea
+        for _ in range(int(n_uses)):
+            _ea.touch(executor_name)
+        return int(n_uses)
     except Exception as ex:
         log.warning("fastpath: eredità usi → %s fallita: %r",
                     executor_name, ex)

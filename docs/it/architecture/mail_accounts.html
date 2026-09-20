@@ -68,27 +68,6 @@ anche account e cartella di origine. Quando deriva da una lettura precedente,
 Metnos conserva automaticamente questo contesto e non prova mai a indovinare
 una casella predefinita.</p>
 
-<h2 id="dates">Date e periodi nelle richieste</h2>
-<p>Metnos risolve gli argomenti temporali con un sistema comune, non con
-regole separate per ogni casella. Puoi usare espressioni come “oggi”, “ieri”,
-“dopodomani”, “due giorni fa”, “nelle ultime due ore” o “da ieri alle 10:00 a
-oggi alle 11:00”. I giorni seguono il fuso orario configurato; una durata
-mobile si misura a ritroso dalla richiesta. Se un'espressione ha più
-significati, come “giovedì” senza altre indicazioni, Metnos chiede di scegliere
-o chiarire tramite un form. Serve a precisare la data, non è un permesso
-aggiuntivo. La data scelta nel form resta fissa anche se rispondi più tardi.
-Un'interpretazione breve con un modello può aiutare con le frasi complesse,
-ma è il runtime a calcolare e convalidare le date.</p>
-
-<h3>Quale data viene usata per le mail?</h3>
-<p>I periodi delle mail usano normalmente l'istante di ricezione registrato
-dal server della casella, non la data scritta dal mittente. Se l'istante di
-ricezione non è disponibile, Metnos ripiega sulla data del messaggio. La
-richiesta di un giorno include l'intera giornata; un limite esplicito “prima
-di” esclude quell'istante e le mail successive. La lettura non cambia lo stato
-di messaggio non letto. Le selezioni grandi restano soggette a limiti visibili:
-un risultato parziale non significa che sia stata esaminata tutta la casella.</p>
-
 <h2>Il caso Gmail</h2>
 <p class="ok">Google Workspace è un'integrazione separata, autorizzata tramite
 OAuth e basata sulle API di Gmail. Serve per operazioni proprie di Gmail, come

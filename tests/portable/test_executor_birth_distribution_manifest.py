@@ -4,8 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import stat
-from dataclasses import FrozenInstanceError, replace
+from dataclasses import FrozenInstanceError
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -19,7 +18,6 @@ from contract_boundary_guard import (
     BIRTH_CLOSED_COORDINATOR_STORE_OWNERS, BIRTH_CLOSED_EXCEPTION_SCOPES,
     BIRTH_CLOSED_GUARD_VERSION,
     BIRTH_CLOSED_OWNER, BIRTH_CLOSED_SCHEMA, BIRTH_CLOSED_SEALED_MODULES,
-    BIRTH_CLOSED_SOURCE_REVIEW_SHA256,
     SCAN_ROOTS, SCHEMA as BOUNDARY_INVENTORY_SCHEMA,
 )
 
@@ -42,15 +40,6 @@ def _authority(*purposes: str, first: int = 1, last: int | None = None):
     return private, key_id, registry
 
 
-def _fixed_public_bundle(distribution_private):
-    import executor_birth_ownership_authorities as authority_module
-
-    return authority_module._root_ownership_authorities_for_test(
-        distribution_private, Ed25519PrivateKey.generate(),
-        Ed25519PrivateKey.generate(),
-    ).public
-
-
 def _test_environment(root: Path):
     return distribution._environment_for_test(
         "windows" if os.name == "nt" else "linux", "x86_64", root,
@@ -60,7 +49,7 @@ def _test_environment(root: Path):
 def _inventory_bytes():
     return _canonical({
         "schema": BOUNDARY_INVENTORY_SCHEMA,
-        "source_census": BIRTH_CLOSED_SOURCE_REVIEW_SHA256,
+        "source_census": "signed-release",
         "scan_roots": list(SCAN_ROOTS),
         "entries": [],
         "birth_closed": {
@@ -80,125 +69,12 @@ def _inventory_bytes():
 def _files(root: Path):
     inventory = _inventory_bytes()
     values = {
-        "deployment/admin/preflight.py": (
-            "preflight", b"#!/usr/bin/python3\n",
-        ),
-        "deployment/executor-birth-deployment-v1.json": (
-            "deployment_descriptor", b'{"schema_version":1}\n',
-        ),
-        "deployment/executor-birth-service-catalog-v1.json": (
-            "service_catalog", b'{"schema_version":1}\n',
-        ),
-        "install/executor_birth_host_capability.py": (
-            "runtime_code", b"CAPABILITY = 1\n",
-        ),
-        "install/executor_birth_append_journal_posix.py": (
-            "runtime_code", b"APPEND_JOURNAL = 1\n",
-        ),
-        "install/executor_birth_contract_convergence.py": (
-            "runtime_code", b"CONVERGENCE = 1\n",
-        ),
-        "install/executor_birth_host_journal_posix.py": (
-            "runtime_code", b"JOURNAL_POSIX = 1\n",
-        ),
-        "install/executor_birth_host_posix.py": (
-            "runtime_code", b"HOST_POSIX = 1\n",
-        ),
-        "install/executor_birth_host_provisioning.py": (
-            "runtime_code", b"PROVISION = 1\n",
-        ),
-        "install/executor_birth_legacy_state_adoption.py": (
-            "runtime_code", b"LEGACY_ADOPTION = 1\n",
-        ),
-        "install/executor_birth_legacy_state_effect_posix.py": (
-            "runtime_code", b"LEGACY_EFFECT = 1\n",
-        ),
-        "install/executor_birth_legacy_state_inspection.py": (
-            "runtime_code", b"LEGACY_INSPECTION = 1\n",
-        ),
-        "install/executor_birth_legacy_state_journal_posix.py": (
-            "runtime_code", b"LEGACY_JOURNAL = 1\n",
-        ),
-        "install/executor_birth_legacy_state_posix.py": (
-            "runtime_code", b"LEGACY_OBSERVER = 1\n",
-        ),
-        "install/executor_birth_posix_directory.py": (
-            "runtime_code", b"POSIX_DIRECTORY = 1\n",
-        ),
-        "install/executor_birth_transition.py": (
-            "runtime_code", b"TRANSITION = 1\n",
-        ),
         "requirements.lock": ("dependency_lock", b"cryptography==47.0.0\n"),
         "runtime/__version__.py": ("product_version", b'__version__ = "1.2.3"\n'),
-        "runtime/contract_boundary_analyzer_ast.py": ("runtime_code", b"ANALYZER = 1\n"),
-        "runtime/contract_boundary_analyzer_projection.py": ("runtime_code", b"ANALYZER = 1\n"),
-        "runtime/contract_boundary_analyzer_types.py": ("runtime_code", b"ANALYZER = 1\n"),
-        "runtime/contract_boundary_api_policy.py": ("runtime_code", b"POLICY = 1\n"),
-        "runtime/contract_boundary_birth_authority_policy.py": ("runtime_code", b"POLICY = 1\n"),
-        "runtime/contract_boundary_birth_exception_policy.py": ("runtime_code", b"POLICY = 1\n"),
-        "runtime/contract_boundary_birth_policy.py": ("runtime_code", b"POLICY = 1\n"),
         "runtime/contract_boundary_guard.py": ("boundary_guard", b"GUARD = 1\n"),
-        "runtime/contract_boundary_policy.py": ("runtime_code", b"POLICY = 1\n"),
-        "runtime/contract_boundary_policy_types.py": ("runtime_code", b"POLICY = 1\n"),
-        "runtime/contract_boundary_role_policy.py": ("runtime_code", b"POLICY = 1\n"),
-        "runtime/contract_boundary_syntax_policy.py": ("runtime_code", b"POLICY = 1\n"),
         "runtime/contract_store.py": ("runtime_code", b"STORE = 1\n"),
         "runtime/executor_birth.py": ("runtime_code", b"BIRTH = 1\n"),
-        "runtime/executor_birth_account_identity.py": (
-            "runtime_code", b"ACCOUNT = 1\n",
-        ),
-        "runtime/executor_birth_authority_gate.py": (
-            "runtime_code", b"AUTHORITY_GATE = 1\n",
-        ),
-        "runtime/executor_birth_canonical.py": (
-            "runtime_code", b"CANONICAL = 1\n",
-        ),
-        "runtime/executor_birth_crypto_framing.py": (
-            "runtime_code", b"FRAMING = 1\n",
-        ),
         "runtime/executor_birth_distribution_manifest.py": ("preflight", b"VERIFY = 1\n"),
-        "runtime/executor_birth_host_layout.py": (
-            "runtime_code", b"LAYOUT = 1\n",
-        ),
-        "runtime/executor_birth_host_chain_policy.py": (
-            "runtime_code", b"CHAIN_POLICY = 1\n",
-        ),
-        "runtime/executor_birth_host_path_policy.py": (
-            "runtime_code", b"PATH_POLICY = 1\n",
-        ),
-        "runtime/executor_birth_host_provisioning_evidence.py": (
-            "runtime_code", b"EVIDENCE = 1\n",
-        ),
-        "runtime/executor_birth_host_provisioning_journal.py": (
-            "runtime_code", b"JOURNAL = 1\n",
-        ),
-        "runtime/executor_birth_legacy_state.py": (
-            "runtime_code", b"LEGACY = 1\n",
-        ),
-        "runtime/executor_birth_legacy_state_journal.py": (
-            "runtime_code", b"LEGACY_FSM = 1\n",
-        ),
-        "runtime/executor_birth_legacy_state_policy.py": (
-            "runtime_code", b"LEGACY_POLICY = 1\n",
-        ),
-        "runtime/executor_birth_legacy_state_preflight_projection.py": (
-            "runtime_code", b"LEGACY_PROJECTION = 1\n",
-        ),
-        "runtime/executor_birth_legacy_state_request.py": (
-            "runtime_code", b"LEGACY_REQUEST = 1\n",
-        ),
-        "runtime/executor_birth_legacy_state_wire.py": (
-            "runtime_code", b"LEGACY_WIRE = 1\n",
-        ),
-        "runtime/executor_birth_posix_metadata.py": (
-            "runtime_code", b"METADATA = 1\n",
-        ),
-        "runtime/executor_birth_preflight_attestation_store.py": (
-            "runtime_code", b"ATTESTATION_STORE = 1\n",
-        ),
-        "runtime/executor_birth_preflight_store_authority.py": (
-            "runtime_code", b"ATTESTATION_AUTHORITY = 1\n",
-        ),
         "runtime/executor_birth_ownership_preflight.py": ("preflight", b"PREFLIGHT = 1\n"),
         "runtime/sign.py": ("runtime_code", b"SIGN = 1\n"),
         "share/metnos/executor-birth/birth-closed-boundary-inventory-v1.json": (
@@ -220,33 +96,11 @@ def _files(root: Path):
     return sorted(result, key=lambda item: item["path"].encode("utf-8"))
 
 
-def _add_declared_file(files, root: Path, path: str, role: str, content: bytes):
-    destination = root.joinpath(*path.split("/"))
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    destination.write_bytes(content)
-    if os.name != "nt":
-        destination.chmod(0o644)
-    files.append({
-        "path": path,
-        "size": len(content),
-        "role": role,
-        "content_hash": distribution.file_content_hash(path, content),
-    })
-    files.sort(key=lambda item: item["path"].encode("utf-8"))
-
-
 def _replace_declared_file(files, root: Path, path: str, content: bytes):
     root.joinpath(*path.split("/")).write_bytes(content)
     item = next(value for value in files if value["path"] == path)
     item["size"] = len(content)
     item["content_hash"] = distribution.file_content_hash(path, content)
-
-
-def _relocate_declared_file(files, root: Path, source: str, destination: str):
-    item = next(value for value in files if value["path"] == source)
-    content = root.joinpath(*source.split("/")).read_bytes()
-    files.remove(item)
-    _add_declared_file(files, root, destination, item["role"], content)
 
 
 def _manifest(root: Path, private, key_id, *, target=None, architecture="x86_64",
@@ -275,8 +129,8 @@ def _manifest(root: Path, private, key_id, *, target=None, architecture="x86_64"
         "boundary_inventory_hash": "sha256:" + hashlib.sha256(
             distribution.BOUNDARY_INVENTORY_DOMAIN + _inventory_bytes()
         ).hexdigest(),
-        "boundary_guard_version": "metnos.contract-boundary-inventory/2+birth-closed/2",
-        "preflight_entrypoint": "deployment/admin/preflight.py",
+        "boundary_guard_version": "metnos.contract-boundary-inventory/2+birth-closed/1",
+        "preflight_entrypoint": "runtime/executor_birth_distribution_manifest.py",
         "files": files,
     }
     if mutate:
@@ -297,7 +151,7 @@ def _verify(tmp_path, *, purposes=(distribution.PURPOSE,), mutate=None,
     environment = environment or distribution._environment_for_test(
         "windows" if os.name == "nt" else "linux", "x86_64", tmp_path,
     )
-    result = distribution._verify_distribution_manifest_for_test(
+    result = distribution.verify_distribution_manifest(
         encoded, signature, registry=registry, _environment=environment,
     )
     return value, encoded, signature, registry, result
@@ -315,604 +169,6 @@ def test_signed_manifest_produces_only_sealed_preflight_identity(tmp_path):
         result.encoded = b"replacement"
 
 
-def test_manifest_builder_reconstructs_the_verified_canonical_payload(
-    tmp_path,
-):
-    private, key_id, _registry = _authority(distribution.PURPOSE)
-    value, expected, _signature = _manifest(tmp_path, private, key_id)
-    files = tuple(distribution.DistributionFile(
-        item["path"], item["size"], item["content_hash"], item["role"],
-    ) for item in value["files"])
-
-    observed = distribution.build_distribution_manifest_v1(
-        previous_closed_build_id=value["previous_closed_build_id"],
-        release_sequence=value["release_sequence"],
-        product_version=value["product_version"],
-        platform=value["platform"], architecture=value["architecture"],
-        signing_key_id=value["signing_key_id"],
-        installation_root=value["installation_root"],
-        boundary_inventory_path=value["boundary_inventory_path"],
-        boundary_inventory_hash=value["boundary_inventory_hash"],
-        boundary_guard_version=value["boundary_guard_version"],
-        files=tuple(reversed(files)),
-    )
-
-    assert observed == expected
-
-
-def test_manifest_builder_rejects_duplicate_release_paths(tmp_path):
-    private, key_id, _registry = _authority(distribution.PURPOSE)
-    value, _encoded, _signature = _manifest(tmp_path, private, key_id)
-    files = tuple(distribution.DistributionFile(
-        item["path"], item["size"], item["content_hash"], item["role"],
-    ) for item in value["files"])
-
-    with pytest.raises(
-        distribution.DistributionManifestError,
-        match="birth_ownership_distribution_invalid",
-    ):
-        distribution.build_distribution_manifest_v1(
-            previous_closed_build_id=None, release_sequence=1,
-            product_version=value["product_version"],
-            platform=value["platform"], architecture=value["architecture"],
-            signing_key_id=key_id,
-            installation_root=value["installation_root"],
-            boundary_inventory_path=value["boundary_inventory_path"],
-            boundary_inventory_hash=value["boundary_inventory_hash"],
-            boundary_guard_version=value["boundary_guard_version"],
-            files=files + (files[0],),
-        )
-
-
-def test_descriptor_capture_is_anchored_and_bound_to_the_verified_payload(
-    tmp_path,
-):
-    import executor_birth_distribution_assembler as assembler
-
-    descriptor = assembler.build_deployment_descriptor_v1(
-        release_sequence=1, service_user="metnos", service_uid=991,
-        service_gid=991, service_supplementary_gids=(44, 991),
-        service_home="/var/lib/metnos", service_shell="/usr/sbin/nologin",
-        artifacts=(
-            assembler.DeploymentArtifactV1(
-                "deployment/admin/preflight.py",
-                "/usr/libexec/metnos/executor-birth-v1/preflight.py",
-                "administrative_program", "group6_admin", 3,
-                "sha256:" + "a" * 64, 0o755, 0, 0,
-            ),
-            assembler.DeploymentArtifactV1(
-                "deployment/systemd/metnos.target",
-                "/etc/systemd/system/metnos.target",
-                "target_unit", "group7_cutover", 4,
-                "sha256:" + "b" * 64, 0o644, 0, 0,
-            ),
-        ),
-        service_catalog_id="sha256:" + "c" * 64,
-        service_coverage_hash="sha256:" + "d" * 64,
-        python_executable="/usr/bin/python3.12",
-        openssl_executable="/usr/bin/openssl",
-        systemctl_executable="/usr/bin/systemctl",
-        systemd_analyze_executable="/usr/bin/systemd-analyze",
-    )
-    encoded_descriptor = assembler.encode_deployment_descriptor_v1(descriptor)
-    private, key_id, registry = _authority(distribution.PURPOSE)
-
-    def replace_descriptor(files, root):
-        _replace_declared_file(
-            files, root,
-            "deployment/executor-birth-deployment-v1.json",
-            encoded_descriptor,
-        )
-
-    _value, encoded, signature = _manifest(
-        tmp_path, private, key_id,
-        target="linux",
-        mutate=lambda value: value.update(
-            installation_root=descriptor.installation_root,
-        ),
-        files_mutate=replace_descriptor,
-    )
-    verified = distribution._verify_distribution_manifest_for_test(
-        encoded, signature, registry=registry,
-        _environment=distribution._environment_for_test(
-            "linux", "x86_64", tmp_path,
-            claimed_installation_root=descriptor.installation_root,
-        ),
-    )
-
-    assert distribution._capture_deployment_descriptor_for_test_v1(
-        verified, tmp_path,
-    ) == descriptor
-    with pytest.raises(distribution.DistributionManifestError):
-        distribution._capture_deployment_descriptor_for_test_v1(
-            replace(verified, installation_root="/opt/other"), tmp_path,
-        )
-    descriptor_path = (
-        tmp_path / "deployment/executor-birth-deployment-v1.json"
-    )
-    descriptor_path.write_bytes(b"x" * len(encoded_descriptor))
-    with pytest.raises(distribution.DistributionManifestError):
-        distribution._capture_deployment_descriptor_for_test_v1(
-            verified, tmp_path,
-        )
-
-
-@pytest.mark.parametrize("case", ("valid", "wrong-role", "unlisted-path", "forged-payload", "changed-file"))
-def test_public_file_reader_reuses_the_verified_tree_without_a_caller_root(
-    tmp_path, monkeypatch, case,
-):
-    _value, _encoded, _signature, _registry, verified = _verify(tmp_path)
-    open_anchor = distribution._open_distribution_tree_anchor_v1
-    # Test ownership only: all handle-bound tree and content checks are real.
-    monkeypatch.setattr(
-        distribution, "_open_distribution_tree_anchor_v1",
-        lambda root, *, administrative: open_anchor(root, administrative=False),
-    )
-    path, role = "runtime/contract_store.py", "runtime_code"
-    if case == "wrong-role":
-        role = "public_document"
-    elif case == "unlisted-path":
-        path = "../private.key"
-    elif case == "forged-payload":
-        verified = replace(verified, installation_root=str(tmp_path / "other"))
-    elif case == "changed-file":
-        (tmp_path / path).write_bytes(b"STORE = 2\n")
-    if case != "valid":
-        with pytest.raises(distribution.DistributionManifestError):
-            distribution.read_verified_distribution_file_v1(
-                verified, expected_path=path, expected_role=role,
-            )
-    else:
-        assert distribution.read_verified_distribution_file_v1(
-            verified, expected_path=path, expected_role=role,
-        ) == b"STORE = 1\n"
-
-
-@pytest.mark.parametrize("case", ("valid", "changed-before", "changed-after"))
-def test_current_descriptor_keeps_both_current_release_checks(tmp_path, monkeypatch, case):
-    _value, _encoded, _signature, _registry, verified = _verify(tmp_path)
-    observations = iter((
-        replace(verified, product_version="changed") if case == "changed-before" else verified,
-        replace(verified, product_version="changed") if case == "changed-after" else verified,
-    ))
-    calls = []
-
-    def verify(encoded, signature):
-        assert (encoded, signature) == (verified.encoded, verified.signature)
-        calls.append("verify-current")
-        return next(observations)
-
-    def read(value, *, expected_path, expected_role):
-        assert value == verified
-        assert expected_path == "deployment/executor-birth-deployment-v1.json"
-        assert expected_role == "deployment_descriptor"
-        calls.append("capture-file")
-        return b"descriptor-boundary-fixture"
-
-    descriptor = object()
-    monkeypatch.setattr(distribution, "verify_current_installation_distribution_v1", verify)
-    monkeypatch.setattr(distribution, "read_verified_distribution_file_v1", read)
-    monkeypatch.setattr(
-        distribution, "_decode_bound_deployment_descriptor_v1",
-        lambda value, encoded: descriptor,
-    )
-    if case != "valid":
-        with pytest.raises(distribution.DistributionManifestError):
-            distribution.capture_current_deployment_descriptor_v1(verified)
-    else:
-        assert distribution.capture_current_deployment_descriptor_v1(verified) == (verified, descriptor)
-    assert calls == (["verify-current"] if case == "changed-before" else [
-        "verify-current", "capture-file", "verify-current",
-    ])
-
-
-def test_relative_path_depth_is_normative_and_existing_manifest_is_compatible(
-    tmp_path: Path,
-) -> None:
-    import executor_birth_distribution_assembler as received
-    import executor_birth_service_catalog as service_catalog
-
-    assert distribution.MAX_RELATIVE_PATH_COMPONENTS_V1 == 32
-    assert received.MAX_RECEIVED_SOURCE_PATH_DEPTH_V1 == 32
-    assert service_catalog.MAX_RELATIVE_PATH_COMPONENTS_V1 == 32
-    maximum = "/".join(["d"] * 31 + ["f"])
-    assert distribution._relative_path(maximum) == maximum
-    for field in ("path", "inventory path", "preflight entrypoint"):
-        assert distribution._relative_path(maximum, field) == maximum
-        with pytest.raises(distribution.DistributionManifestError):
-            distribution._relative_path("d/" + maximum, field)
-
-    value, encoded, signature, registry, result = _verify(tmp_path)
-    current_paths = [
-        value["boundary_inventory_path"], value["preflight_entrypoint"],
-        *(item["path"] for item in value["files"]),
-    ]
-    assert max(len(path.split("/")) for path in current_paths) <= 32
-    assert result.encoded == encoded
-    assert distribution._verify_distribution_manifest_for_test(
-        encoded, signature, registry=registry,
-        _environment=_test_environment(tmp_path),
-    ).identity == result.identity
-
-
-def test_manifest_python_source_grammar_and_budgets_are_closed(
-    tmp_path: Path, monkeypatch,
-) -> None:
-    private, key_id, _registry = _authority(distribution.PURPOSE)
-
-    def encoded_with(path: str, *, declared_size: int | None = None) -> bytes:
-        def add(files, _root):
-            files.append({
-                "path": path,
-                "size": 1 if declared_size is None else declared_size,
-                "role": "runtime_code",
-                "content_hash": distribution.file_content_hash(path, b"x"),
-            })
-            files.sort(key=lambda item: item["path"].encode("utf-8"))
-
-        _value, encoded, _signature = _manifest(
-            tmp_path / path.replace("/", "_"), private, key_id,
-            files_mutate=add,
-        )
-        return encoded
-
-    for path in (
-        "runtime/evil.PY",
-        "Runtime/evil.py",
-        "other/evil.py",
-        "runtime/package.py/payload.dat",
-        "runtime/package.PY/evil.py",
-    ):
-        with pytest.raises(distribution.DistributionManifestError):
-            distribution._parse(encoded_with(path))
-
-    assert any(
-        item.path == "runtime/package/evil.py"
-        for item in distribution._parse(encoded_with("runtime/package/evil.py"))[1]
-    )
-
-    with pytest.raises(distribution.DistributionManifestError):
-        distribution._parse(encoded_with(
-            "runtime/oversize.py",
-            declared_size=distribution.MAX_BOUNDARY_SOURCE_BYTES_V1 + 1,
-        ))
-
-    def oversize_preflight(files, _root):
-        item = next(
-            value for value in files
-            if value["path"] == "deployment/admin/preflight.py"
-        )
-        item["size"] = distribution.MAX_BOUNDARY_SOURCE_BYTES_V1 + 1
-
-    _value, oversized_entrypoint, _signature = _manifest(
-        tmp_path / "oversized_entrypoint", private, key_id,
-        files_mutate=oversize_preflight,
-    )
-    with pytest.raises(distribution.DistributionManifestError):
-        distribution._parse(oversized_entrypoint)
-
-    base = distribution._parse(encoded_with("runtime/within.py"))[1]
-    guarded = sum(
-        item.path.split("/")[0] in distribution.SCAN_ROOTS
-        and item.path.endswith(".py")
-        for item in base
-    )
-    guarded_bytes = sum(
-        item.size for item in base
-        if item.path.split("/")[0] in distribution.SCAN_ROOTS
-        and item.path.endswith(".py")
-    )
-    with monkeypatch.context() as patcher:
-        patcher.setattr(distribution, "MAX_BOUNDARY_SOURCE_FILES_V1", guarded - 1)
-        with pytest.raises(distribution.DistributionManifestError):
-            distribution._parse(encoded_with("runtime/count.py"))
-    with monkeypatch.context() as patcher:
-        patcher.setattr(
-            distribution, "MAX_BOUNDARY_TOTAL_SOURCE_BYTES_V1", guarded_bytes - 1,
-        )
-        with pytest.raises(distribution.DistributionManifestError):
-            distribution._parse(encoded_with("runtime/total.py"))
-
-
-def test_manifest_accepts_multiple_units_and_requires_single_new_materials(tmp_path):
-    private, key_id, registry = _authority(distribution.PURPOSE)
-
-    def add_second_unit(files, root):
-        _add_declared_file(
-            files, root, "systemd/metnos-worker-birth-closed.service",
-            "service_unit", b"[Unit]\nDescription=worker\n",
-        )
-
-    _value, encoded, signature = _manifest(
-        tmp_path, private, key_id, files_mutate=add_second_unit,
-    )
-    verified = distribution._verify_distribution_manifest_for_test(
-        encoded, signature, registry=registry,
-        _environment=_test_environment(tmp_path),
-    )
-    assert sum(item.role == "service_unit" for item in verified.files) == 2
-
-    mutations = (
-        lambda files, _root: files.__setitem__(
-            slice(None), [item for item in files if item["role"] != "service_unit"],
-        ),
-        lambda files, _root: files.__setitem__(
-            slice(None), [item for item in files if item["role"] != "service_catalog"],
-        ),
-        lambda files, root: _add_declared_file(
-            files, root, "deployment/duplicate-catalog.json",
-            "service_catalog", b"{}\n",
-        ),
-        lambda files, _root: files.__setitem__(
-            slice(None), [
-                item for item in files if item["role"] != "deployment_descriptor"
-            ],
-        ),
-        lambda files, root: _add_declared_file(
-            files, root, "deployment/duplicate-deployment.json",
-            "deployment_descriptor", b"{}\n",
-        ),
-    )
-    for mutate_files in mutations:
-        _value, malformed, proof = _manifest(
-            tmp_path, private, key_id, files_mutate=mutate_files,
-        )
-        with pytest.raises(distribution.DistributionManifestError):
-            distribution._verify_distribution_manifest_for_test(
-                malformed, proof, registry=registry,
-                _environment=_test_environment(tmp_path),
-            )
-
-
-def test_manifest_final_bounds_and_fixed_admin_preflight(tmp_path, monkeypatch):
-    assert distribution.MAX_MANIFEST_FILES_V1 == 20_000
-    assert distribution.MAX_MANIFEST_TOTAL_BYTES_V1 == 2 * 1024 * 1024 * 1024
-    private, key_id, _registry = _authority(distribution.PURPOSE)
-    _value, encoded, _signature = _manifest(tmp_path, private, key_id)
-    parsed = json.loads(encoded)
-    with monkeypatch.context() as patcher:
-        patcher.setattr(
-            distribution, "MAX_MANIFEST_FILES_V1", len(parsed["files"]) - 1,
-        )
-        with pytest.raises(distribution.DistributionManifestError, match="files"):
-            distribution._parse(encoded)
-    with monkeypatch.context() as patcher:
-        patcher.setattr(
-            distribution, "MAX_MANIFEST_TOTAL_BYTES_V1",
-            sum(item["size"] for item in parsed["files"]) - 1,
-        )
-        with pytest.raises(
-            distribution.DistributionManifestError, match="file total size",
-        ):
-            distribution._parse(encoded)
-
-    _value, wrong, _signature = _manifest(
-        tmp_path, private, key_id,
-        mutate=lambda value: value.update(
-            preflight_entrypoint="runtime/executor_birth_distribution_manifest.py",
-        ),
-    )
-    with pytest.raises(
-        distribution.DistributionManifestError, match="entrypoint binding",
-    ):
-        distribution._parse(wrong)
-
-
-@pytest.mark.parametrize(("source", "destination"), (
-    (
-        "deployment/executor-birth-service-catalog-v1.json",
-        "deployment/relocated-service-catalog.json",
-    ),
-    (
-        "deployment/executor-birth-deployment-v1.json",
-        "deployment/relocated-deployment.json",
-    ),
-))
-def test_new_material_roles_are_bound_to_their_fixed_paths(
-    tmp_path, source, destination,
-):
-    private, key_id, registry = _authority(distribution.PURPOSE)
-    _value, encoded, signature = _manifest(
-        tmp_path, private, key_id,
-        files_mutate=lambda files, root: _relocate_declared_file(
-            files, root, source, destination,
-        ),
-    )
-    with pytest.raises(
-        distribution.DistributionManifestError, match="required files",
-    ):
-        distribution._verify_distribution_manifest_for_test(
-            encoded, signature, registry=registry,
-            _environment=_test_environment(tmp_path),
-        )
-
-
-@pytest.mark.skipif(os.name == "nt", reason="productive release root is Linux-only")
-def test_historical_record_is_nominally_separate_and_live_root_is_derived(
-    tmp_path, monkeypatch,
-):
-    private, key_id, registry = _authority(distribution.PURPOSE)
-    releases = tmp_path / "releases-v1"
-    exact_root = releases / "00000000000000000001"
-    _value, encoded, signature = _manifest(
-        exact_root, private, key_id,
-    )
-    test_record = distribution._authenticate_distribution_record_for_test(
-        encoded, signature, registry=registry,
-    )
-    with pytest.raises(distribution.DistributionManifestError):
-        distribution.verify_installed_distribution_record_v1(test_record)
-
-    import executor_birth_ownership_authorities as authority_module
-
-    authority_bundle = _fixed_public_bundle(private)
-    monkeypatch.setattr(
-        authority_module, "load_ownership_public_registries_v1",
-        lambda: authority_bundle,
-    )
-    productive_record = distribution.authenticate_distribution_record_v1(
-        encoded, signature,
-    )
-    observed = []
-    sentinel = object()
-
-    def capture(record, environment, *, for_test):
-        observed.append((record, environment.installation_root, for_test))
-        return sentinel
-
-    monkeypatch.setattr(distribution, "DEFAULT_RELEASE_DIRECTORY_V1", releases)
-    monkeypatch.setattr(
-        distribution, "_require_product_release_metadata_v1", lambda _root: None,
-    )
-    monkeypatch.setattr(
-        distribution, "_verify_authenticated_distribution_record", capture,
-    )
-    assert distribution.verify_installed_distribution_record_v1(
-        productive_record
-    ) is sentinel
-    assert observed == [(productive_record, exact_root, False)]
-
-    wrong_root = releases / "00000000000000000001-extra"
-    _value, wrong_encoded, wrong_signature = _manifest(
-        wrong_root, private, key_id,
-    )
-    wrong_record = distribution.authenticate_distribution_record_v1(
-        wrong_encoded, wrong_signature,
-    )
-    with pytest.raises(distribution.DistributionManifestError, match="root"):
-        distribution.verify_installed_distribution_record_v1(wrong_record)
-
-
-def test_current_installation_product_verifier_uses_fixed_trust_and_rereads_files(
-    tmp_path, monkeypatch,
-):
-    private, key_id, _registry = _authority(distribution.PURPOSE)
-    _value, encoded, signature = _manifest(tmp_path, private, key_id)
-    import executor_birth_ownership_authorities as authority_module
-
-    monkeypatch.setattr(
-        authority_module, "load_ownership_public_registries_v1",
-        lambda: _fixed_public_bundle(private),
-    )
-    monkeypatch.setattr(
-        distribution, "_runtime_environment",
-        lambda: _test_environment(tmp_path),
-    )
-    original_lstat = Path.lstat
-    trusted_directories = {tmp_path, *tmp_path.parents}
-
-    def root_owned_ancestor_lstat(path):
-        if Path(path) in trusted_directories:
-            return SimpleNamespace(
-                st_mode=stat.S_IFDIR | 0o755, st_uid=0, st_gid=0,
-                st_file_attributes=0,
-            )
-        return original_lstat(path)
-
-    monkeypatch.setattr(Path, "lstat", root_owned_ancestor_lstat)
-    verified = distribution.verify_current_installation_distribution_v1(
-        encoded, signature,
-    )
-    assert verified.encoded == encoded
-    (tmp_path / "runtime" / "sign.py").write_bytes(b"tampered")
-    with pytest.raises(distribution.DistributionManifestError, match="file_mismatch"):
-        distribution.verify_current_installation_distribution_v1(
-            encoded, signature,
-        )
-
-
-@pytest.mark.skipif(os.name == "nt", reason="productive ancestor metadata is POSIX")
-def test_current_installation_rejects_writable_parent_before_file_verification(
-    tmp_path, monkeypatch,
-):
-    private, key_id, _registry = _authority(distribution.PURPOSE)
-    installation_root = tmp_path / "relocated" / "metnos"
-    _value, encoded, signature = _manifest(
-        installation_root, private, key_id,
-    )
-    import executor_birth_ownership_authorities as authority_module
-
-    monkeypatch.setattr(
-        authority_module, "load_ownership_public_registries_v1",
-        lambda: _fixed_public_bundle(private),
-    )
-    monkeypatch.setattr(
-        distribution, "_runtime_environment",
-        lambda: distribution._environment_for_test(
-            "linux", "x86_64", installation_root,
-        ),
-    )
-    unsafe_parent = installation_root.parent
-
-    def synthetic_lstat(path):
-        return SimpleNamespace(
-            st_mode=stat.S_IFDIR | (
-                0o775 if Path(path) == unsafe_parent else 0o755
-            ),
-            st_uid=0, st_gid=0, st_file_attributes=0,
-        )
-
-    monkeypatch.setattr(Path, "lstat", synthetic_lstat)
-    monkeypatch.setattr(
-        distribution, "_verify_authenticated_distribution_record",
-        lambda *_args, **_kwargs: pytest.fail(
-            "file verification reached after unsafe current-install parent"
-        ),
-    )
-    with pytest.raises(
-        distribution.DistributionManifestError, match="release metadata",
-    ):
-        distribution.verify_current_installation_distribution_v1(
-            encoded, signature,
-        )
-
-
-@pytest.mark.skipif(os.name == "nt", reason="productive release metadata is POSIX")
-@pytest.mark.parametrize("mutation", ("ancestor_link", "ancestor_owner", "ancestor_mode"))
-def test_product_release_rejects_unsafe_ancestor_before_file_verification(
-    tmp_path, monkeypatch, mutation,
-):
-    private, key_id, _registry = _authority(distribution.PURPOSE)
-    releases = tmp_path / "releases-v1"
-    exact_root = releases / "00000000000000000001"
-    _value, encoded, signature = _manifest(exact_root, private, key_id)
-    import executor_birth_ownership_authorities as authority_module
-
-    monkeypatch.setattr(
-        authority_module, "load_ownership_public_registries_v1",
-        lambda: _fixed_public_bundle(private),
-    )
-    record = distribution.authenticate_distribution_record_v1(encoded, signature)
-    monkeypatch.setattr(distribution, "DEFAULT_RELEASE_DIRECTORY_V1", releases)
-    unsafe_ancestor = releases
-
-    def synthetic_lstat(path):
-        mode = stat.S_IFDIR | 0o755
-        uid = gid = 0
-        if Path(path) == unsafe_ancestor:
-            if mutation == "ancestor_link":
-                mode = stat.S_IFLNK | 0o777
-            elif mutation == "ancestor_owner":
-                uid = 1000
-            else:
-                mode = stat.S_IFDIR | 0o775
-        return SimpleNamespace(
-            st_mode=mode, st_uid=uid, st_gid=gid, st_file_attributes=0,
-        )
-
-    monkeypatch.setattr(Path, "lstat", synthetic_lstat)
-    monkeypatch.setattr(
-        distribution, "_verify_authenticated_distribution_record",
-        lambda *_args, **_kwargs: pytest.fail(
-            "file verification reached after unsafe release metadata"
-        ),
-    )
-    with pytest.raises(
-        distribution.DistributionManifestError, match="release metadata",
-    ):
-        distribution.verify_installed_distribution_record_v1(record)
-
-
 @pytest.mark.parametrize("source", [
     b'__version__ = "9.9.9"\n',
     b'def version(): return "1.2.3"\n__version__ = version()\n',
@@ -927,7 +183,7 @@ def test_product_version_must_equal_single_literal_in_signed_source(tmp_path, so
         ),
     )
     with pytest.raises(distribution.DistributionManifestError, match="file_mismatch"):
-        distribution._verify_distribution_manifest_for_test(
+        distribution.verify_distribution_manifest(
             encoded, signature, registry=registry, _environment=_test_environment(tmp_path),
         )
 
@@ -939,7 +195,7 @@ def test_guard_version_inventory_policy_and_full_static_gate_are_fail_closed(tmp
         mutate=lambda value: value.update(boundary_guard_version="caller-guard/1"),
     )
     with pytest.raises(distribution.DistributionManifestError, match="file_mismatch"):
-        distribution._verify_distribution_manifest_for_test(
+        distribution.verify_distribution_manifest(
             encoded, signature, registry=registry, _environment=_test_environment(tmp_path),
         )
 
@@ -957,30 +213,20 @@ def test_guard_version_inventory_policy_and_full_static_gate_are_fail_closed(tmp
             ).hexdigest()),
     )
     with pytest.raises(distribution.DistributionManifestError, match="file_mismatch"):
-        distribution._verify_distribution_manifest_for_test(
+        distribution.verify_distribution_manifest(
             encoded, signature, registry=registry, _environment=_test_environment(tmp_path),
         )
 
     # Structural fixture is valid, but cannot counterfeit the compiled census.
     _value, encoded, signature = _manifest(tmp_path, private, key_id)
     with pytest.raises(distribution.DistributionManifestError, match="file_mismatch"):
-        distribution._verify_distribution_manifest_for_test(
+        distribution.verify_distribution_manifest(
             encoded, signature, registry=registry,
             _environment=distribution._environment_for_test(
                 "windows" if os.name == "nt" else "linux", "x86_64", tmp_path,
                 verify_static_boundary=True,
             ),
         )
-
-
-def test_source_review_binding_error_is_fail_closed(monkeypatch):
-    def invalid_binding(_content):
-        raise ValueError("invalid source-review pin binding")
-
-    monkeypatch.setattr(
-        distribution, "closed_python_source_review_sha256", invalid_binding,
-    )
-    assert not distribution._source_review_is_exact_v1({})
 
 
 def test_uncovered_local_and_dynamic_imports_fail_closed(tmp_path):
@@ -995,7 +241,7 @@ def test_uncovered_local_and_dynamic_imports_fail_closed(tmp_path):
             tmp_path, private, key_id, files_mutate=mutate_files,
         )
         with pytest.raises(distribution.DistributionManifestError, match="extra_file"):
-            distribution._verify_distribution_manifest_for_test(
+            distribution.verify_distribution_manifest(
                 encoded, signature, registry=registry,
                 _environment=_test_environment(tmp_path),
             )
@@ -1028,7 +274,6 @@ def test_verified_identity_is_consumed_by_existing_startup_preflight(tmp_path, m
 
 @pytest.mark.parametrize("mutation", [
     lambda value: value.update(extra=True),
-    lambda value: value.update(schema_version=True),
     lambda value: value.update(release_sequence=True),
     lambda value: value.update(product_version="01.2.3"),
     lambda value: value["files"][0].update(extra=True),
@@ -1042,7 +287,7 @@ def test_closed_schema_numbers_order_duplicates_and_paths_fail(tmp_path, mutatio
     private, key_id, registry = _authority(distribution.PURPOSE)
     _value, encoded, signature = _manifest(tmp_path, private, key_id, mutate=mutation)
     with pytest.raises(distribution.DistributionManifestError):
-        distribution._verify_distribution_manifest_for_test(
+        distribution.verify_distribution_manifest(
             encoded, signature, registry=registry,
             _environment=_test_environment(tmp_path),
         )
@@ -1054,7 +299,7 @@ def test_duplicate_json_noncanonical_and_signature_tamper_fail(tmp_path):
     for payload, proof in ((encoded + b"\n", signature), (duplicate, signature),
                            (encoded, b"x" * 64)):
         with pytest.raises(distribution.DistributionManifestError):
-            distribution._verify_distribution_manifest_for_test(
+            distribution.verify_distribution_manifest(
                 payload, proof, registry=registry,
                 _environment=_test_environment(tmp_path),
             )
@@ -1072,25 +317,25 @@ def test_wrong_purpose_and_key_epoch_are_unauthorized(tmp_path):
         private, key_id, registry = _authority(*purposes, first=first, last=last)
         _value, encoded, signature = _manifest(tmp_path, private, key_id)
         with pytest.raises(distribution.DistributionManifestError, match="key_unauthorized"):
-            distribution._verify_distribution_manifest_for_test(
+            distribution.verify_distribution_manifest(
                 encoded, signature, registry=registry,
                 _environment=_test_environment(tmp_path),
             )
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX link adversarial case")
-def test_file_tamper_missing_symlink_and_hardlink_fail(tmp_path):
+def test_file_tamper_missing_symlink_hardlink_and_extra_birth_module_fail(tmp_path):
     value, encoded, signature, registry, _result = _verify(tmp_path)
     environment = _test_environment(tmp_path)
     target = tmp_path / "runtime" / "sign.py"
     target.write_bytes(b"changed")
     with pytest.raises(distribution.DistributionManifestError, match="file_mismatch"):
-        distribution._verify_distribution_manifest_for_test(
+        distribution.verify_distribution_manifest(
             encoded, signature, registry=registry, _environment=environment,
         )
     target.unlink()
     with pytest.raises(distribution.DistributionManifestError, match="file_mismatch"):
-        distribution._verify_distribution_manifest_for_test(
+        distribution.verify_distribution_manifest(
             encoded, signature, registry=registry, _environment=environment,
         )
 
@@ -1099,235 +344,27 @@ def test_file_tamper_missing_symlink_and_hardlink_fail(tmp_path):
                                            value["signing_key_id"])
     # The preceding private key is deterministic, so it matches the registry.
     target = tmp_path / "runtime" / "sign.py"
-    backup = tmp_path.parent / f"{tmp_path.name}-sign-copy.py"
+    backup = tmp_path / "sign-copy.py"
     backup.write_bytes(target.read_bytes())
     target.unlink()
     target.symlink_to(backup)
     with pytest.raises(distribution.DistributionManifestError, match="file_mismatch"):
-        distribution._verify_distribution_manifest_for_test(
+        distribution.verify_distribution_manifest(
             encoded, signature, registry=registry, _environment=environment,
         )
     target.unlink()
     target.write_bytes(backup.read_bytes())
-    hardlink = tmp_path.parent / f"{tmp_path.name}-sign-hardlink.py"
-    os.link(target, hardlink)
+    os.link(target, tmp_path / "sign-hardlink.py")
     with pytest.raises(distribution.DistributionManifestError, match="file_mismatch"):
-        distribution._verify_distribution_manifest_for_test(
+        distribution.verify_distribution_manifest(
             encoded, signature, registry=registry, _environment=environment,
         )
-    hardlink.unlink()
-
-
-def test_exact_tree_rejects_arbitrary_hidden_file(tmp_path):
-    _value, encoded, signature, registry, _result = _verify(tmp_path)
-    (tmp_path / "runtime" / "hidden.py").write_bytes(b"x")
+    (tmp_path / "sign-hardlink.py").unlink()
+    (tmp_path / "runtime" / "executor_birth_shadow_authority.py").write_bytes(b"x")
     with pytest.raises(distribution.DistributionManifestError, match="extra_file"):
-        distribution._verify_distribution_manifest_for_test(
-            encoded, signature, registry=registry,
-            _environment=_test_environment(tmp_path),
+        distribution.verify_distribution_manifest(
+            encoded, signature, registry=registry, _environment=environment,
         )
-
-
-@pytest.mark.skipif(os.name == "nt", reason="POSIX special-file adversarial case")
-def test_exact_tree_rejects_expected_special_file(tmp_path):
-    value, encoded, signature, registry, _result = _verify(tmp_path)
-    target = tmp_path / "runtime" / "sign.py"
-    target.unlink()
-    os.mkfifo(target)
-    with pytest.raises(distribution.DistributionManifestError, match="file_mismatch"):
-        distribution._verify_distribution_manifest_for_test(
-            encoded, signature, registry=registry,
-            _environment=_test_environment(tmp_path),
-        )
-
-
-def test_exact_tree_rejects_empty_extra_directory_without_descending(
-    tmp_path, monkeypatch,
-):
-    _value, encoded, signature, registry, _result = _verify(tmp_path)
-    unexpected = tmp_path / "runtime" / "unexpected"
-    unexpected.mkdir()
-
-    import executor_birth_secure_fs as secure_fs
-
-    if os.name == "nt":
-        original = secure_fs._win_open_relative_v1
-
-        def refuse_unexpected_descent(parent_handle, name, **kwargs):
-            if name == "unexpected":
-                raise AssertionError("the verifier descended into an extra directory")
-            return original(parent_handle, name, **kwargs)
-
-        monkeypatch.setattr(
-            secure_fs, "_win_open_relative_v1", refuse_unexpected_descent,
-        )
-    else:
-        original = secure_fs._open_posix_child_directory
-
-        def refuse_unexpected_descent(directory, name):
-            if name == "unexpected":
-                raise AssertionError("the verifier descended into an extra directory")
-            return original(directory, name)
-
-        monkeypatch.setattr(
-            secure_fs, "_open_posix_child_directory", refuse_unexpected_descent,
-        )
-    with pytest.raises(distribution.DistributionManifestError, match="extra_file"):
-        distribution._verify_distribution_manifest_for_test(
-            encoded, signature, registry=registry,
-            _environment=_test_environment(tmp_path),
-        )
-
-
-def test_declared_bytecode_and_file_prefix_collision_are_invalid(tmp_path):
-    private, key_id, registry = _authority(distribution.PURPOSE)
-
-    def add_bytecode(files, root):
-        _add_declared_file(
-            files, root, "runtime/__pycache__/declared.pyc", "runtime_code", b"x",
-        )
-
-    def add_prefix_file(files, _root):
-        content = b"x"
-        files.append({
-            "path": "runtime", "size": len(content), "role": "runtime_code",
-            "content_hash": distribution.file_content_hash("runtime", content),
-        })
-        files.sort(key=lambda item: item["path"].encode("utf-8"))
-
-    for mutation in (add_bytecode, add_prefix_file):
-        _value, encoded, signature = _manifest(
-            tmp_path, private, key_id, files_mutate=mutation,
-        )
-        with pytest.raises(
-            distribution.DistributionManifestError, match="distribution_invalid",
-        ):
-            distribution._verify_distribution_manifest_for_test(
-                encoded, signature, registry=registry,
-                _environment=_test_environment(tmp_path),
-            )
-
-
-def test_snapshot_b_rejects_declared_file_mutation_after_verified_bytes(
-    tmp_path, monkeypatch,
-):
-    _value, encoded, signature, registry, _result = _verify(tmp_path)
-    original = distribution._verify_distribution_content_semantics_v1
-    original_result = distribution._verified_distribution_result_v1
-    produced = []
-
-    def mutate_after_verified_bytes(*args, **kwargs):
-        original(*args, **kwargs)
-        (tmp_path / "runtime" / "sign.py").write_bytes(b"SIGN = 22\n")
-
-    monkeypatch.setattr(
-        distribution, "_verify_distribution_content_semantics_v1",
-        mutate_after_verified_bytes,
-    )
-
-    def record_result(*args, **kwargs):
-        produced.append(True)
-        return original_result(*args, **kwargs)
-
-    monkeypatch.setattr(
-        distribution, "_verified_distribution_result_v1", record_result,
-    )
-    with pytest.raises(distribution.DistributionManifestError, match="file_mismatch"):
-        distribution._verify_distribution_manifest_for_test(
-            encoded, signature, registry=registry,
-            _environment=_test_environment(tmp_path),
-        )
-    assert produced == []
-
-
-@pytest.mark.parametrize(("native", "root_domain", "same", "different"), (
-    ("linux", 7, ("file", 7), ("file", 8)),
-    (
-        "windows", "volume-a",
-        ("file", (SimpleNamespace(volume="volume-a"),)),
-        ("file", (SimpleNamespace(volume="volume-b"),)),
-    ),
-))
-def test_storage_domain_helper_rejects_cross_device_or_volume(
-    tmp_path, native, root_domain, same, different,
-):
-    anchor = distribution._DistributionTreeAnchorV1(
-        tmp_path, -1, native, False, root_domain,
-    )
-    distribution._require_same_distribution_storage_domain_v1(
-        anchor, same, path="runtime/sign.py",
-    )
-    with pytest.raises(distribution.DistributionManifestError, match="file_mismatch"):
-        distribution._require_same_distribution_storage_domain_v1(
-            anchor, different, path="runtime/sign.py",
-        )
-
-
-@pytest.mark.skipif(os.name == "nt", reason="POSIX storage-domain injection")
-def test_exact_tree_binds_every_entry_to_root_device(tmp_path, monkeypatch):
-    _value, encoded, signature, registry, _result = _verify(tmp_path)
-    import executor_birth_secure_fs as secure_fs
-
-    foreign_device = tmp_path.stat().st_dev + 1
-    original_inventory = secure_fs._posix_inventory
-    original_facts = distribution._posix_distribution_facts_v1
-
-    def foreign_inventory(directory, resolve=None, budget=None, scope=()):
-        entries = original_inventory(
-            directory, resolve=resolve, budget=budget, scope=scope,
-        )
-        if scope:
-            return entries
-        return tuple(
-            replace(
-                entry,
-                identity=secure_fs._ObjectIdentity(
-                    f"{foreign_device:x}", entry.identity.object_id,
-                ),
-            ) if entry.name == "requirements.lock" else entry
-            for entry in entries
-        )
-
-    def foreign_facts(handle, kind, *, administrative, path):
-        facts = original_facts(
-            handle, kind, administrative=administrative, path=path,
-        )
-        if path == "requirements.lock":
-            facts = (facts[0], foreign_device, *facts[2:])
-        return facts
-
-    monkeypatch.setattr(secure_fs, "_posix_inventory", foreign_inventory)
-    monkeypatch.setattr(
-        distribution, "_posix_distribution_facts_v1", foreign_facts,
-    )
-    with pytest.raises(distribution.DistributionManifestError, match="file_mismatch"):
-        distribution._verify_distribution_manifest_for_test(
-            encoded, signature, registry=registry,
-            _environment=_test_environment(tmp_path),
-        )
-
-
-@pytest.mark.skipif(os.name == "nt", reason="POSIX nonblocking open contract")
-def test_expected_files_are_reopened_nonblocking(tmp_path, monkeypatch):
-    _value, encoded, signature, registry, _result = _verify(tmp_path)
-    original_open = distribution.os.open
-    observed = []
-
-    def record_open(path, flags, *args, **kwargs):
-        if (
-            path == "sign.py"
-            and not flags & getattr(os, "O_PATH", 0)
-        ):
-            observed.append(flags)
-        return original_open(path, flags, *args, **kwargs)
-
-    monkeypatch.setattr(distribution.os, "open", record_open)
-    distribution._verify_distribution_manifest_for_test(
-        encoded, signature, registry=registry,
-        _environment=_test_environment(tmp_path),
-    )
-    assert observed
-    assert all(flags & os.O_NONBLOCK for flags in observed)
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX parent-link adversarial case")
@@ -1337,18 +374,18 @@ def test_inventory_domain_binding_and_parent_symlink_fail(tmp_path):
     inventory = tmp_path.joinpath(*value["boundary_inventory_path"].split("/"))
     inventory.write_bytes(b'{"changed":true}')
     with pytest.raises(distribution.DistributionManifestError, match="file_mismatch"):
-        distribution._verify_distribution_manifest_for_test(
+        distribution.verify_distribution_manifest(
             encoded, signature, registry=registry, _environment=environment,
         )
 
     # A symlink in an ancestor is rejected even when the leaf itself is regular.
     _value, encoded, signature = _manifest(tmp_path, _authority(distribution.PURPOSE)[0],
                                            value["signing_key_id"])
-    real_share = tmp_path.parent / f"{tmp_path.name}-real-share"
+    real_share = tmp_path / "real-share"
     (tmp_path / "share").rename(real_share)
     (tmp_path / "share").symlink_to(real_share, target_is_directory=True)
     with pytest.raises(distribution.DistributionManifestError, match="file_mismatch"):
-        distribution._verify_distribution_manifest_for_test(
+        distribution.verify_distribution_manifest(
             encoded, signature, registry=registry, _environment=environment,
         )
 
@@ -1363,7 +400,7 @@ def test_platform_and_architecture_mismatch_fail_before_authority_is_returned(
     platform = ("linux" if native == "windows" else "windows") if axis == "platform" else native
     architecture = "aarch64" if axis == "architecture" else "x86_64"
     with pytest.raises(distribution.DistributionManifestError, match="platform_mismatch"):
-        distribution._verify_distribution_manifest_for_test(
+        distribution.verify_distribution_manifest(
             encoded, signature, registry=registry,
             _environment=distribution._environment_for_test(
                 platform, architecture, tmp_path,
@@ -1400,7 +437,7 @@ def test_windows_parser_accepts_normal_drive_absolute_paths(tmp_path):
     assert files
 
 
-def test_verification_dispatches_to_certified_handle_bound_reader(tmp_path, monkeypatch):
+def test_windows_verification_dispatches_to_certified_handle_reader(tmp_path, monkeypatch):
     private, key_id, registry = _authority(distribution.PURPOSE)
     claimed = r"C:\Metnos"
     _value, encoded, signature = _manifest(
@@ -1409,15 +446,12 @@ def test_verification_dispatches_to_certified_handle_bound_reader(tmp_path, monk
     )
     observed = []
 
-    def certified_read(anchor, item, snapshot):
+    def certified_read(root, item):
         observed.append(item.path)
-        assert snapshot[item.path]
-        return anchor.root.joinpath(*item.path.split("/")).read_bytes()
+        return root.joinpath(*item.path.split("/")).read_bytes()
 
-    monkeypatch.setattr(
-        distribution, "_read_anchored_distribution_file_v1", certified_read,
-    )
-    result = distribution._verify_distribution_manifest_for_test(
+    monkeypatch.setattr(distribution, "_secure_read_windows", certified_read)
+    result = distribution.verify_distribution_manifest(
         encoded, signature, registry=registry,
         _environment=distribution._environment_for_test(
             "windows", "x86_64", tmp_path,
@@ -1431,9 +465,9 @@ def test_verification_dispatches_to_certified_handle_bound_reader(tmp_path, monk
 def test_windows_real_handle_reader_rejects_hardlinked_release_file(tmp_path):
     value, encoded, signature, registry, _result = _verify(tmp_path)
     target = tmp_path / "runtime" / "sign.py"
-    os.link(target, tmp_path.parent / f"{tmp_path.name}-sign-second-name.py")
+    os.link(target, tmp_path / "sign-second-name.py")
     with pytest.raises(distribution.DistributionManifestError, match="file_mismatch"):
-        distribution._verify_distribution_manifest_for_test(
+        distribution.verify_distribution_manifest(
             encoded, signature, registry=registry, _environment=_test_environment(tmp_path),
         )
 
@@ -1446,146 +480,7 @@ def test_previous_build_is_null_only_for_first_sequence(tmp_path):
     ):
         _value, encoded, signature = _manifest(tmp_path, private, key_id, mutate=mutation)
         with pytest.raises(distribution.DistributionManifestError, match="chain_invalid"):
-            distribution._verify_distribution_manifest_for_test(
+            distribution.verify_distribution_manifest(
                 encoded, signature, registry=registry,
                 _environment=_test_environment(tmp_path),
             )
-
-
-def test_late_product_version_ast_memory_error_is_stable(monkeypatch):
-    original = distribution.ast
-
-    class ExhaustedAst:
-        def __getattr__(self, name):
-            return getattr(original, name)
-
-        @staticmethod
-        def walk(_node):
-            raise MemoryError("bounded test")
-
-    monkeypatch.setattr(distribution, "ast", ExhaustedAst())
-    with pytest.raises(
-        distribution.DistributionManifestError, match="product version",
-    ):
-        distribution._product_version_from_source(b'__version__ = "1.2.3"\n')
-
-
-def test_late_local_import_ast_memory_error_is_stable(tmp_path, monkeypatch):
-    source = b"import json\n"
-    path = tmp_path / "runtime" / "sample.py"
-    path.parent.mkdir()
-    path.write_bytes(source)
-    item = distribution.DistributionFile(
-        path="runtime/sample.py", size=len(source),
-        content_hash="sha256:" + "0" * 64, role="runtime_code",
-    )
-    original = distribution.ast
-
-    class ExhaustedAst:
-        def __getattr__(self, name):
-            return getattr(original, name)
-
-        @staticmethod
-        def walk(_node):
-            raise MemoryError("bounded test")
-
-    monkeypatch.setattr(distribution, "ast", ExhaustedAst())
-    with pytest.raises(
-        distribution.DistributionManifestError, match="python source",
-    ):
-        distribution._verify_local_import_closure(
-            tmp_path, (item,), {item.path: source},
-        )
-
-
-@pytest.mark.parametrize("source, rejected", [
-    (b"class Runner:\n def run_module(self, name): return name\n"
-     b"VALUE = Runner().run_module('safe')\n", False),
-    (b"import runpy\nVALUE = runpy.run_module('unsafe')\n", True),
-])
-def test_local_import_closure_distinguishes_local_methods_from_stdlib_loaders(
-        tmp_path, source, rejected):
-    path = "runtime/sample.py"
-    item = distribution.DistributionFile(
-        path=path, size=len(source), content_hash="sha256:" + "0" * 64,
-        role="runtime_code",
-    )
-    if rejected:
-        with pytest.raises(
-            distribution.DistributionManifestError,
-            match="dynamic code loader",
-        ):
-            distribution._verify_local_import_closure(
-                tmp_path, (item,), {path: source},
-            )
-    else:
-        distribution._verify_local_import_closure(
-            tmp_path, (item,), {path: source},
-        )
-
-
-@pytest.mark.parametrize("mutation", (
-    None, "scope", "module", "keyword", "alias", "rebind",
-))
-def test_local_import_closure_allows_only_exact_signed_preflight_runpy_door(
-    tmp_path, mutation,
-):
-    path = "runtime/executor_birth_admin_preflight.py"
-    import_line = b"import runpy\n"
-    scope = b"_launch_python_target_v1"
-    argument = b"plan.python_module"
-    keywords = b'run_name="__main__", alter_sys=False'
-    prefix = b""
-    if mutation == "scope":
-        scope = b"rogue"
-    elif mutation == "module":
-        argument = b"'rogue'"
-    elif mutation == "keyword":
-        keywords += b", init_globals={}"
-    elif mutation == "alias":
-        import_line = b"import runpy as runner\n"
-    elif mutation == "rebind":
-        prefix = b" plan = object()\n"
-    owner = b"runpy" if mutation != "alias" else b"runner"
-    source = (
-        import_line + b"def " + scope + b"(plan):\n" + prefix
-        + b" " + owner + b".run_module(" + argument + b", "
-        + keywords + b")\n"
-    )
-    item = distribution.DistributionFile(
-        path=path, size=len(source), content_hash="sha256:" + "0" * 64,
-        role="runtime_code",
-    )
-    if mutation is None:
-        distribution._verify_local_import_closure(
-            tmp_path, (item,), {path: source},
-        )
-    else:
-        with pytest.raises(
-            distribution.DistributionManifestError,
-            match="dynamic code loader",
-        ):
-            distribution._verify_local_import_closure(
-                tmp_path, (item,), {path: source},
-            )
-
-
-def test_local_import_closure_limits_the_door_exception_to_its_exact_scope(
-        tmp_path):
-    path = "runtime/admitted_module_v1.py"
-    source = (
-        b"def load_admitted_module_v1(payload):\n"
-        b" compiled = compile(payload, '<signed>', 'exec')\n"
-        b" exec(compiled, {})\n"
-        b"def rogue(payload):\n return eval(payload)\n"
-    )
-    item = distribution.DistributionFile(
-        path=path, size=len(source), content_hash="sha256:" + "0" * 64,
-        role="runtime_code",
-    )
-    with pytest.raises(
-        distribution.DistributionManifestError, match="dynamic code loader",
-    ):
-        distribution._verify_local_import_closure(
-            tmp_path, (item,), {path: source},
-        )

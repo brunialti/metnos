@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """runtime/ai_backend — alias di compatibilità per l'embedding TESTO.
 
 Superato dalla virtualizzazione segregata `virt/` (25/6): `embedding_service()`

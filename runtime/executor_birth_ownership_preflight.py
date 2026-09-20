@@ -18,10 +18,6 @@ from pathlib import Path
 from typing import Iterable, Mapping
 
 from executor_birth_cutover import CurrentReceiptProof
-from executor_birth_maintenance_units import (
-    MAINTENANCE_TARGETS_V1,
-    QUIESCENT_LOAD_STATES_V1,
-)
 from executor_birth_ownership_cutover import (
     MAX_PAYLOAD_BYTES,
     PAYLOAD_BASENAME,
@@ -160,7 +156,7 @@ def canonical_maintenance_proof(
         if (
             scope not in {"system", "user"}
             or not _safe_text(unit, maximum=256)
-            or load_state not in QUIESCENT_LOAD_STATES_V1
+            or not _safe_text(load_state, maximum=64)
             or active_state not in _QUIESCENT_STATES
             or isinstance(main_pid, bool)
             or not isinstance(main_pid, int)
@@ -176,7 +172,7 @@ def canonical_maintenance_proof(
             "active_state": active_state,
             "main_pid": main_pid,
         })
-    if tuple(identities) != MAINTENANCE_TARGETS_V1:
+    if identities != sorted(identities) or len(identities) != len(set(identities)):
         raise OwnershipPreflightError("birth_ownership_maintenance_invalid", "unit order")
     return _canonical({"schema_version": 1, "source": source, "units": normalized})
 

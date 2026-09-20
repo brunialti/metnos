@@ -1,7 +1,7 @@
 """Sealed RM-0008 F5 lifecycle integration.
 
 The module stays unreachable from productive routing until an operator-issued,
-authenticated F5 certification record is loaded. Lifecycle publications are
+authenticated F4 certification record is loaded.  Lifecycle publications are
 accepted only after the caller's independent RM-0007 reread returns the exact
 AdmissionReceipt and predecessor relation expected by this coordinator.
 """
@@ -9,23 +9,14 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable
-
-if TYPE_CHECKING:
-    from executor_birth_feedback import ExecutionReceipt, FeedbackResult
-    from executor_birth_operational import BirthRuntimeBundle
+from typing import Callable, Mapping
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
-
-from executor_birth_canonical import decode_canonical_ascii_v1, encode_canonical_ascii_v1
-from executor_birth_authority_files import (
-    DEFAULT_OWNERSHIP_ROOT_V1, _directory_metadata, _read_regular, _root_owned_chain,
-)
-from executor_birth_certification_authority import CertificationPublicKeyV1
 
 from executor_birth_epoch_store import (
     BirthLifecycle, EpochCacheKey, EpochReplacement, replace_current_epoch,
@@ -34,12 +25,9 @@ from executor_birth_receipts import AdmissionReceipt, ApprovedLifecycle
 from manifest_inventory import ContractId
 
 
-CERTIFICATION_DOMAIN = b"metnos.executor-birth.f5-activation/v1\0"
-INSTALLATION_DOMAIN = b"metnos.executor-birth.f5-installation/v1\0"
-ACTIVATION_DIRECTORY = DEFAULT_OWNERSHIP_ROOT_V1 / "certification-v1"
-ACTIVATION_MAX_BYTES = 8192
-ACTIVATION_POLICY = "rm0008-f5/1"
+CERTIFICATION_DOMAIN = b"metnos.executor-birth.f4-certification/v1\0"
 _DIGEST = re.compile(r"sha256:[0-9a-f]{64}\Z")
+_UTC = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\Z")
 _ACTIVATION_SEAL = object()
 
 
@@ -52,7 +40,8 @@ class LifecycleError(RuntimeError):
 
 
 def _canonical(value: object) -> bytes:
-    return encode_canonical_ascii_v1(value)
+    return json.dumps(value, sort_keys=True, separators=(",", ":"),
+                      ensure_ascii=False, allow_nan=False).encode("utf-8")
 
 
 def _digest(value: object, field: str) -> str:
@@ -61,126 +50,108 @@ def _digest(value: object, field: str) -> str:
     return value
 
 
+def _text(value: object, field: str, maximum: int = 256) -> str:
+    if (not isinstance(value, str) or not value or value != value.strip()
+            or "\0" in value or len(value.encode()) > maximum):
+        raise LifecycleError("lifecycle_binding_invalid", field)
+    return value
+
+
 @dataclass(frozen=True, slots=True)
-class F5Certification:
+class F4Certification:
     certificate_id: str
-    installation_id: str
-    qualification_id: str
-    head_id: str
-    closed_build_id: str
-    migration_id: str
-    policy_id: str
+    environment_id: str
+    admission_receipt_ids: tuple[str, ...]
+    producer_ids: tuple[str, ...]
+    routing_cycles: int
+    unresolved_defects: int
+    certified_at: str
     key_id: str
     signature: str
 
 
 class F5Activation:
-    """Internal result of authenticating a durable certificate.
-
-    The private codec is a fixture seam, not an authority boundary against
-    arbitrary Python code. Productive consumers use the fixed-root reader.
-    """
+    """Unforgeable-in-process result of authenticating a durable certificate."""
     __slots__ = ("certificate",)
 
-    def __init__(self, certificate: F5Certification, *, _seal: object) -> None:
+    def __init__(self, certificate: F4Certification, *, _seal: object) -> None:
         if _seal is not _ACTIVATION_SEAL:
             raise LifecycleError("f5_activation_forbidden")
         self.certificate = certificate
 
 
-def _decode_f5_activation_v1(
-    encoded: bytes, *, authority: CertificationPublicKeyV1,
-    installation_id: str, head_id: str, closed_build_id: str,
-) -> F5Activation:
-    """Decode an administrator's attestation, never derive qualification here.
+def _certificate_payload(cert: F4Certification) -> dict[str, object]:
+    return {
+        "schema_version": 1,
+        "certificate_id": cert.certificate_id,
+        "environment_id": cert.environment_id,
+        "admission_receipt_ids": list(cert.admission_receipt_ids),
+        "producer_ids": list(cert.producer_ids),
+        "routing_cycles": cert.routing_cycles,
+        "unresolved_defects": cert.unresolved_defects,
+        "certified_at": cert.certified_at,
+        "key_id": cert.key_id,
+    }
 
-    This parameterized codec is private. Only the fixed-root entry supplies
-    productive trust and installation facts; fixtures do not qualify Births.
-    """
+
+def load_f5_activation(encoded: bytes, *, authorities: Mapping[str, Ed25519PublicKey]) -> F5Activation:
+    """Authenticate an operator-provisioned F4 certificate and enforce its gate."""
     try:
-        value = decode_canonical_ascii_v1(encoded, maximum=ACTIVATION_MAX_BYTES)
-        expected = {"schema_version", "purpose", "installation_id", "qualification_id",
-                    "head_id", "closed_build_id", "migration_id", "policy_id", "key_id", "signature"}
-        if (type(value) is not dict or set(value) != expected
-                or type(value["schema_version"]) is not int or value["schema_version"] != 1
-                or value["purpose"] != "f5_activation_v1"
-                or value["policy_id"] != ACTIVATION_POLICY):
-            raise ValueError("schema or policy")
-        for field in ("installation_id", "qualification_id", "head_id", "closed_build_id", "migration_id"):
-            _digest(value[field], field)
-        if (value["installation_id"] != _digest(installation_id, "installation_id")
-                or value["head_id"] != _digest(head_id, "head_id")
-                or value["closed_build_id"] != _digest(closed_build_id, "closed_build_id")):
-            raise ValueError("installation or required release")
-        if (type(authority) is not CertificationPublicKeyV1 or authority.status != "active"
-                or not isinstance(authority.public_key, Ed25519PublicKey)
-                or value["key_id"] != authority.key_id):
-            raise ValueError("authority")
-        signature = value["signature"]
-        if type(signature) is not str:
-            raise ValueError("signature")
+        value = json.loads(encoded.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise LifecycleError("f4_certification_invalid", "json") from exc
+    expected = {"schema_version", "certificate_id", "environment_id",
+                "admission_receipt_ids", "producer_ids", "routing_cycles",
+                "unresolved_defects", "certified_at", "key_id", "signature"}
+    if not isinstance(value, dict) or set(value) != expected or _canonical(value) != encoded:
+        raise LifecycleError("f4_certification_invalid", "schema or canonical encoding")
+    if value["schema_version"] != 1:
+        raise LifecycleError("f4_certification_invalid", "schema_version")
+    receipts, producers = value["admission_receipt_ids"], value["producer_ids"]
+    if (not isinstance(receipts, list) or not isinstance(producers, list)
+            or len(receipts) != len(set(receipts))
+            or len(producers) != len(set(producers))):
+        raise LifecycleError("f4_certification_invalid", "evidence sets")
+    receipt_ids = tuple(_digest(item, "admission_receipt_id") for item in receipts)
+    producer_ids = tuple(_text(item, "producer_id") for item in producers)
+    if (receipt_ids != tuple(sorted(receipt_ids, key=str.encode))
+            or producer_ids != tuple(sorted(producer_ids, key=str.encode))):
+        raise LifecycleError("f4_certification_invalid", "evidence order")
+    cycles, defects = value["routing_cycles"], value["unresolved_defects"]
+    if type(cycles) is not int or type(defects) is not int or cycles < 0 or defects < 0:
+        raise LifecycleError("f4_certification_invalid", "counts")
+    certified_at = value["certified_at"]
+    if not isinstance(certified_at, str) or _UTC.fullmatch(certified_at) is None:
+        raise LifecycleError("f4_certification_invalid", "certified_at")
+    key_id = _text(value["key_id"], "key_id")
+    key = authorities.get(key_id)
+    if not isinstance(key, Ed25519PublicKey):
+        raise LifecycleError("f4_certification_invalid", "unknown authority")
+    signature = value["signature"]
+    try:
         raw_signature = base64.b64decode(signature, validate=True)
-        if (len(raw_signature) != 64
+        if (not isinstance(signature, str) or len(raw_signature) != 64
                 or base64.b64encode(raw_signature).decode("ascii") != signature):
             raise ValueError("noncanonical signature")
-        payload = CERTIFICATION_DOMAIN + _canonical({
-            key: item for key, item in value.items() if key != "signature"
-        })
-        authority.public_key.verify(raw_signature, payload)
-    except (TypeError, ValueError, InvalidSignature, LifecycleError, RecursionError) as exc:
-        raise LifecycleError("f5_activation_invalid", "document, authority or binding") from exc
-    cert = F5Certification(
-        "sha256:" + hashlib.sha256(payload).hexdigest(),
-        value["installation_id"], value["qualification_id"], value["head_id"],
-        value["closed_build_id"], value["migration_id"], value["policy_id"],
-        value["key_id"], value["signature"],
+        key.verify(raw_signature, CERTIFICATION_DOMAIN + _canonical(
+            {key: item for key, item in value.items() if key != "signature"}))
+    except (TypeError, ValueError, InvalidSignature) as exc:
+        raise LifecycleError("f4_certification_invalid", "signature") from exc
+    cert = F4Certification(
+        _digest(value["certificate_id"], "certificate_id"),
+        _text(value["environment_id"], "environment_id"), receipt_ids,
+        producer_ids, cycles, defects, certified_at, key_id, signature,
     )
+    expected_id = "sha256:" + hashlib.sha256(
+        CERTIFICATION_DOMAIN + _canonical({
+            key: item for key, item in _certificate_payload(cert).items()
+            if key != "certificate_id"
+        })).hexdigest()
+    if cert.certificate_id != expected_id:
+        raise LifecycleError("f4_certification_invalid", "certificate_id")
+    if len(receipt_ids) < 5 or len(producer_ids) < 2 or cycles < 2 or defects != 0:
+        raise LifecycleError("f4_certification_threshold_not_met")
     return F5Activation(cert, _seal=_ACTIVATION_SEAL)
-
-
-def _installation_id_v1(registries) -> str:
-    identities = {}
-    for purpose in ("distribution", "cutover", "head"):
-        entries = tuple(getattr(registries, purpose).keys.values())
-        if len(entries) != 1:
-            raise LifecycleError("f5_activation_invalid", "ownership registry")
-        identities[purpose] = entries[0].key_id
-    return "sha256:" + hashlib.sha256(INSTALLATION_DOMAIN + _canonical(identities)).hexdigest()
-
-
-def load_f5_activation() -> F5Activation:
-    """Authenticate only the fixed installation's current F5 attestation.
-
-    Missing or revoked material refuses this entry, without provisioning,
-    opening private keys or falling back to a caller's certificate. Ordinary
-    F4 startup does not call this optional reader.
-    """
-    from executor_birth_certification_authority import load_certification_public_key_v1
-    from executor_birth_ownership_authorities import load_ownership_public_registries_v1
-    from executor_birth_ownership_chain import (
-        inspect_required_ownership_v1, VerifiedOwnershipWindowV1, OwnershipChainStore,
-    )
-
-    public = load_certification_public_key_v1()
-    registries = load_ownership_public_registries_v1()
-    _root_owned_chain(ACTIVATION_DIRECTORY)
-    _directory_metadata(ACTIVATION_DIRECTORY, root_owned=True)
-    path = ACTIVATION_DIRECTORY / "active.json"
-    encoded = _read_regular(path, maximum=ACTIVATION_MAX_BYTES, mode=0o644, root_owned=True)
-    window = inspect_required_ownership_v1()
-    if type(window) is not VerifiedOwnershipWindowV1:
-        raise LifecycleError("f5_activation_invalid", "required ownership window")
-    activation = _decode_f5_activation_v1(
-        encoded, authority=public, installation_id=_installation_id_v1(registries),
-        head_id=window.required_head.head_id,
-        closed_build_id=window.required_distribution.identity.closed_build_id,
-    )
-    if (_read_regular(path, maximum=ACTIVATION_MAX_BYTES, mode=0o644, root_owned=True) != encoded
-            or load_certification_public_key_v1().key_id != public.key_id
-            or _installation_id_v1(load_ownership_public_registries_v1()) != activation.certificate.installation_id
-            or OwnershipChainStore().read_required_head().head_id != activation.certificate.head_id):
-        raise LifecycleError("f5_activation_invalid", "changed activation frontier")
-    return activation
 
 
 @dataclass(frozen=True, slots=True)
@@ -199,84 +170,12 @@ class LifecycleResult:
     epochs: EpochReplacement
 
 
-def _apply_execution_failure_with_bundle(
-    execution: ExecutionReceipt, *, bundle: BirthRuntimeBundle, epoch_db: Path, queue_db: Path,
-    occurred_at: str, failure_evidence_hash: str, error_code: str,
-) -> FeedbackResult:
-    """Use the real publication/epoch/outbox owners with isolated fixture seams."""
-    from executor_birth_commit_publisher import BirthCommitLinkError
-    from executor_birth_epoch_store import read_epoch, EpochState, EpochStoreError
-    from executor_birth_feedback import (
-        QuarantineCAS, apply_negative_feedback, enqueue_failure_review_inactive,
-    )
-    from executor_birth_operational import _quarantine_execution_with_bundle
-
-    def quarantine_exact(contract_id, generation_id):
-        with bundle.core.commit_publisher.admission_lock():
-            prior = read_epoch(contract_id=contract_id, generation_id=generation_id, db_path=epoch_db)
-            if prior is None or prior.state is EpochState.ARCHIVED:
-                return QuarantineCAS.STALE
-            if prior.name != execution.executor_name:
-                raise LifecycleError("birth_quarantine_execution_invalid")
-            expected_version = prior.state_version - (prior.state is EpochState.DEPRECATED)
-            try:
-                publication = _quarantine_execution_with_bundle(execution, bundle)
-            except BirthCommitLinkError as exc:
-                if exc.code == "birth_quarantine_generation_stale":
-                    return QuarantineCAS.STALE
-                raise
-            try:
-                replacement = replace_current_epoch(
-                    contract_id=contract_id, expected_generation_id=generation_id,
-                    expected_state_version=expected_version,
-                    generation_id=publication.reread_generation_id,
-                    name=prior.name, source=prior.source, lifecycle=BirthLifecycle.QUARANTINED,
-                    observed_at=occurred_at, db_path=epoch_db, event_kind="lifecycle_quarantined",
-                )
-            except EpochStoreError as exc:
-                # A published quarantine cannot be undone because local
-                # selection disagrees. Leave it visible and require recovery.
-                raise LifecycleError("birth_quarantine_epoch_recovery_required", exc.code) from exc
-            return QuarantineCAS.ALREADY_QUARANTINED if replacement.repeated else QuarantineCAS.APPLIED
-
-    return apply_negative_feedback(
-        execution, failure_evidence_hash=failure_evidence_hash, error_code=error_code,
-        quarantine_exact=quarantine_exact,
-        enqueue_idempotent=lambda job, request: enqueue_failure_review_inactive(
-            job, request, created_at=occurred_at, db_path=queue_db,
-        ),
-    )
-
-
-def apply_execution_failure(
-    execution: ExecutionReceipt, *, failure_evidence_hash: str, error_code: str,
-) -> FeedbackResult:
-    """Certified exact-feedback entry; no caller-selected store or publisher."""
-    import config
-    from executor_birth_activation_mode import require_f5_certificate
-    from executor_birth_bootstrap import bootstrap_birth_runtime, _secure_state_dir, _secure_state_db
-    from executor_birth_feedback import utc_now_seconds
-
-    require_f5_certificate()
-    bundle = bootstrap_birth_runtime()
-    state = _secure_state_dir(Path(config.PATH_USER_STATE) / "birth")
-    epochs = state / "executor_epochs.sqlite"
-    if not epochs.is_file():
-        raise LifecycleError("f5_epoch_migration_required")
-    return _apply_execution_failure_with_bundle(
-        execution, bundle=bundle, epoch_db=_secure_state_db(state, epochs.name),
-        queue_db=_secure_state_db(state, "failure_reviews.sqlite"),
-        occurred_at=utc_now_seconds(),
-        failure_evidence_hash=failure_evidence_hash, error_code=error_code,
-    )
-
-
 PublishRevision = Callable[[ContractId, str, BirthLifecycle, str | None], LifecyclePublication]
 VerifyAdmission = Callable[[bytes], AdmissionReceipt]
 
 
 class LifecycleCoordinator:
-    """Lifecycle ordering primitive; productive owner composition is required."""
+    """Productive F5 boundary; construction requires authenticated F4 proof."""
     __slots__ = ("_db_path", "_publish", "_verify_admission")
 
     def __init__(self, activation: F5Activation, *, db_path: Path,

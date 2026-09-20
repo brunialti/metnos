@@ -41,6 +41,14 @@ from __future__ import annotations
 import os
 import re
 
+# Marker boundary §2.5 / §6 — semantica critica, preservata.
+_BOUNDARY_MARKERS = (
+    "USO CORRETTO", "NON CONFONDERE",
+    "DEVI:", "NON DEVI:",
+    "USE CORRECT", "DO NOT CONFUSE",
+    "MUST:", "MUST NOT:",
+)
+
 _SENT_TERM_RE = re.compile(r"(?<=[\.\!\?])\s+|\n")
 
 _DESC_HARD_CAP = 220
@@ -68,20 +76,10 @@ def _split_sentences(text: str) -> list[str]:
 
 def _extract_boundary_clauses(text: str) -> list[str]:
     """Restituisce le frasi che contengono un marker boundary §2.5."""
-    try:
-        from detection_lexicon_seed_residual_nz import (
-            TOOL_SCHEMA_BOUNDARIES,
-            forms as _lexicon_forms,
-        )
-        boundary_markers = tuple(
-            marker.upper() for marker in _lexicon_forms(TOOL_SCHEMA_BOUNDARIES)
-        )
-    except Exception:  # noqa: BLE001 - helper P2, prima frase resta disponibile
-        boundary_markers = ()
     out = []
     for sent in _split_sentences(text):
         upper = sent.upper()
-        for marker in boundary_markers:
+        for marker in _BOUNDARY_MARKERS:
             if marker in upper:
                 out.append(sent)
                 break

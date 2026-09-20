@@ -30,7 +30,6 @@ def shim_sources() -> dict[str, Path]:
         "executor_helpers.py": r / "executor_helpers.py",
         "executor_workers.py": r / "executor_workers.py",
         "worker_policy.py": r / "worker_policy.py",
-        "windows_desktop_apps.py": r / "windows_desktop_apps.py",
         "messages.py": r / "device_shim" / "messages.py",
         # Repertorio i18n (en+it) bundleato: il device rende i messaggi
         # user-facing (§7.13) invece del codice grezzo. Generato dal DB

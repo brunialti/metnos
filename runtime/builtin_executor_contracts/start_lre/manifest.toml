@@ -14,8 +14,8 @@ it = "SCOPO: avvia un piano LRE registrato per integrazioni che ne conoscono il 
 en = "SCOPO: starts a registered LRE plan for integrations that know its profile. PATTERN: start_lre(profile=\"images.questions.v1\", paths=[\"/path\"]). NON: choosing whether to use LRE; the runtime submits eligible long work itself. OUT: id, state, sources, URL."
 
 [code]
-files = ["implementation.py.src"]
-digest = "sha256:9fb6f6be61969c51aee2e300cffed906e6e9c8415e261f8537d221dd27d6c990"
+files = ["../../lre_submission.py"]
+digest = "sha256:e2819eed3a4c73f25bec4465e8573a7e90adab7d6324ef46dffd1f909fd7634d"
 
 [args]
 type = "object"

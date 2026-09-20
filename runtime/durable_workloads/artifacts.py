@@ -23,10 +23,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from pathlib import Path
-from typing import BinaryIO, TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from .storage import DurableWorkloadStore
+from typing import BinaryIO
 
 from .migrations import (
     CURRENT_SCHEMA_VERSION,
@@ -480,24 +477,6 @@ class ArtifactRepository:
         if self._owns_connection:
             self._connection.close()
             self._owns_connection = False
-
-    @classmethod
-    def open_for_store(cls, store: DurableWorkloadStore) -> ArtifactRepository:
-        """Open an independent connection to an already initialized store.
-
-        Service startup performs migration/integrity checks. This connection
-        still enforces foreign keys and the current schema, like open_peer;
-        it cannot initialize or upgrade an arbitrary database.
-        """
-        path = store.database_path
-        if path is None:
-            raise ArtifactError("artifact_repository_requires_file_store")
-        connection = open_db(path)
-        try:
-            return cls(connection, owns_connection=True)
-        except BaseException:
-            connection.close()
-            raise
 
     @contextmanager
     def _transaction(self) -> Iterator[sqlite3.Connection]:
@@ -1244,9 +1223,7 @@ class ArtifactStore:
 
     @staticmethod
     def _open_regular(directory_fd: int, name: str) -> int:
-        # Refuse special files after opening without ever waiting for a FIFO
-        # writer. Checking the path first would leave a replacement race.
-        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
         try:
             descriptor = os.open(name, flags, dir_fd=directory_fd)
         except FileNotFoundError:

@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """timefmt.py — helper timestamp UTC condivisi (§7.2: una sola definizione).
 
 Consolidamento di ~23 copie locali (`_now_iso`/`_utc_now_iso`/`_utc_iso`/

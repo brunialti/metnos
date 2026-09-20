@@ -1,9 +1,7 @@
 """Owner-scoped, transport-neutral control façade for durable workloads.
 
 The façade is the only F9 read/control surface.  It returns closed DTOs rather
-than store rows, plans, result payloads or execution snapshots. A pure injected
-projector may expose an explicitly approved target path, never arbitrary args
-or per-source locators.
+than store rows, plans, source locators, result payloads or execution snapshots.
 HTTP, chat and any future approved executor are therefore thin adapters over
 the same owner-scoped operations.
 """
@@ -201,8 +199,7 @@ def _unit_dto(record: UnitReadRecord) -> UnitDTO:
 class DurableWorkloadControl:
     """Closed control/read model backed by one explicitly-owned store."""
 
-    def __init__(self, store: DurableWorkloadStore, *, cursor_secret: str | bytes,
-                 describe_plan: Callable[[dict[str, Any] | None, str | None], dict[str, Any]] | None = None) -> None:
+    def __init__(self, store: DurableWorkloadStore, *, cursor_secret: str | bytes) -> None:
         if not isinstance(store, DurableWorkloadStore):
             raise TypeError("store must be DurableWorkloadStore")
         secret = cursor_secret.encode("utf-8") if isinstance(cursor_secret, str) else cursor_secret
@@ -210,9 +207,6 @@ class DurableWorkloadControl:
             raise ValueError("cursor_secret must be non-empty bytes or text")
         self._store = store
         self._cursor_secret = secret
-        self._describe_plan = describe_plan or (lambda _plan, _phase: {
-            "kind": "generic", "operation": None, "target_path": None, "phase": None,
-        })
 
     @staticmethod
     def _page_size(value: int | None) -> int:
@@ -277,11 +271,8 @@ class DurableWorkloadControl:
             return DurableControlError("durable_workload.invalid_request", 400)
         return DurableControlError("durable_workload.unavailable", 503)
 
-    def _read(self, operation: Callable[[], Any], *, snapshot: bool = False) -> Any:
+    def _read(self, operation: Callable[[], Any]) -> Any:
         try:
-            if snapshot:
-                with self._store.read_snapshot():
-                    return operation()
             return operation()
         except DurableControlError:
             raise
@@ -321,13 +312,6 @@ class DurableWorkloadControl:
                 owner_user_id,
                 tuple(record.workload_id for record in visible),
             )
-            progress = self._store.progress_many(
-                owner_user_id, tuple(record.workload_id for record in visible),
-            )
-            descriptions = self._store.descriptions_many(
-                owner_user_id, tuple(record.workload_id for record in visible),
-                projector=self._describe_plan,
-            )
             next_cursor = None
             if len(records) > page_size and visible:
                 last = visible[-1]
@@ -339,20 +323,19 @@ class DurableWorkloadControl:
             return {
                 "schema_version": DTO_SCHEMA_VERSION,
                 "items": [
-                    {**_workload_dto(
+                    _workload_dto(
                         record,
                         counters[record.workload_id],
-                    ).to_dict(), "progress": progress[record.workload_id],
-                     "description": descriptions[record.workload_id]}
+                    ).to_dict()
                     for record in visible
                 ],
                 "next_cursor": next_cursor,
             }
-        return self._read(operation, snapshot=True)
+        return self._read(operation)
 
     def detail(self, owner_user_id: str, workload_id: str) -> dict[str, Any]:
         def operation() -> dict[str, Any]:
-            record = self._store.get_visible_workload(owner_user_id, workload_id)
+            record = self._store.get_workload(owner_user_id, workload_id)
             revision = None
             if record.active_revision_id is not None:
                 revision = _revision_dto(
@@ -365,16 +348,12 @@ class DurableWorkloadControl:
                 )
             return {
                 "schema_version": DTO_SCHEMA_VERSION,
-                "workload": {**_workload_dto(
+                "workload": _workload_dto(
                     record, self._store.unit_counters(owner_user_id, workload_id),
-                ).to_dict(), "progress": self._store.progress_many(
-                    owner_user_id, (workload_id,),
-                )[workload_id], "description": self._store.descriptions_many(
-                    owner_user_id, (workload_id,), projector=self._describe_plan,
-                )[workload_id]},
+                ).to_dict(),
                 "revision": revision,
             }
-        return self._read(operation, snapshot=True)
+        return self._read(operation)
 
     def list_events(
         self,
@@ -391,12 +370,9 @@ class DurableWorkloadControl:
         if recent:
             if cursor is not None:
                 raise DurableControlError("durable_workload.invalid_cursor", 400)
-            def recent_operation():
-                self._store.get_visible_workload(owner_user_id, workload_id)
-                return self._store.list_recent_events(
-                    owner_user_id, workload_id, limit=page_size,
-                )
-            records = self._read(recent_operation)
+            records = self._read(lambda: self._store.list_recent_events(
+                owner_user_id, workload_id, limit=page_size,
+            ))
             return {
                 "schema_version": DTO_SCHEMA_VERSION,
                 "items": [_event_dto(record).to_dict() for record in records],
@@ -413,13 +389,9 @@ class DurableWorkloadControl:
             ):
                 raise DurableControlError("durable_workload.invalid_cursor", 400)
             after_event_id = position["event_id"]
-        def operation():
-            self._store.get_visible_workload(owner_user_id, workload_id)
-            return self._store.list_events(
-                owner_user_id, workload_id,
-                after_event_id=after_event_id, limit=page_size + 1,
-            )
-        records = self._read(operation)
+        records = self._read(lambda: self._store.list_events(
+            owner_user_id, workload_id, after_event_id=after_event_id, limit=page_size + 1,
+        ))
         visible = records[:page_size]
         next_cursor = None
         if len(records) > page_size and visible:
@@ -453,15 +425,12 @@ class DurableWorkloadControl:
             or after_event_id < 0
         ):
             raise DurableControlError("durable_workload.invalid_last_event_id", 400)
-        def operation():
-            self._store.get_visible_workload(owner_user_id, workload_id)
-            return self._store.list_events(
-                owner_user_id,
-                workload_id,
-                after_event_id=after_event_id,
-                limit=MAX_STREAM_EVENTS,
-            )
-        records = self._read(operation)
+        records = self._read(lambda: self._store.list_events(
+            owner_user_id,
+            workload_id,
+            after_event_id=after_event_id,
+            limit=MAX_STREAM_EVENTS,
+        ))
         return tuple(_event_dto(record) for record in records)
 
     def list_units(
@@ -490,13 +459,9 @@ class DurableWorkloadControl:
             ):
                 raise DurableControlError("durable_workload.invalid_cursor", 400)
             before = (position["updated_at"], position["unit_id"])
-        def operation():
-            self._store.get_visible_workload(owner_user_id, workload_id)
-            return self._store.list_units(
-                owner_user_id, workload_id, state=normalized_state,
-                before=before, limit=page_size + 1,
-            )
-        records = self._read(operation)
+        records = self._read(lambda: self._store.list_units(
+            owner_user_id, workload_id, state=normalized_state, before=before, limit=page_size + 1,
+        ))
         visible = records[:page_size]
         next_cursor = None
         if len(records) > page_size and visible:
@@ -566,31 +531,6 @@ class DurableWorkloadControl:
             owner_user_id, workload_id, command="cancel",
             expected_version=expected_version, idempotency_key=idempotency_key,
         )
-
-    def dismiss(self, owner_user_id: str, workload_id: str, *, expected_version: int, idempotency_key: str) -> dict[str, Any]:
-        """Remove terminal history from the owner UI without erasing it."""
-
-        def operation() -> dict[str, Any]:
-            record = self._store.dismiss_terminal_workload(
-                owner_user_id,
-                workload_id,
-                expected_version=expected_version,
-                idempotency_key=idempotency_key,
-            )
-            log.info(
-                "durable_workload_control command=dismiss state=%s version=%d",
-                record.state.value,
-                record.version,
-            )
-            return {
-                "schema_version": DTO_SCHEMA_VERSION,
-                "command": "dismiss",
-                "workload_id": record.workload_id,
-                "state": record.state.value,
-                "version": record.version,
-                "dismissed": True,
-            }
-        return self._read(operation)
 
     def resolve_attention(
         self,

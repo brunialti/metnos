@@ -117,26 +117,11 @@ def artifact_store_publish(
     return publish
 
 
-def committed_entries(store):
-    """Bind an owner-scoped reader; a plan supplies exact historical references."""
-    from .storage import DurableStoreError
-    from .schema import SchemaValidationError
-
-    def read(args: Mapping[str, Any], context: ExecutionContext) -> dict[str, object]:
-        try:
-            return {"entries": store.read_committed_entries(context.owner_user_id, args.get("references"))}
-        except (DurableStoreError, SchemaValidationError):
-            return _invalid_output()
-
-    return read
-
-
-def approved_internal_runners(artifacts: ArtifactStore, store) -> dict[str, object]:
+def approved_internal_runners(artifacts: ArtifactStore) -> dict[str, object]:
     """Return exactly the core internal runners bound to one artifact store."""
     if not isinstance(artifacts, ArtifactStore):
         raise TypeError("artifacts must be an ArtifactStore")
     return {
-        "committed_entries": committed_entries(store),
         "sealed_inventory": sealed_inventory,
         "schema_and_coverage_validator": schema_and_coverage_validator,
         "artifact_store_publish": artifact_store_publish(artifacts),

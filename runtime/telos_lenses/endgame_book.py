@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """endgame_book.py — precompute pattern di scadenze.
 
 Per t.puntualita: cataloga pattern noti (input → cascata reminder)

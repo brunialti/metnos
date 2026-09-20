@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """Persistent, task-scoped authority envelopes for unattended execution.
 
 The scheduler stores natural-language queries.  A mandate is the deterministic
@@ -95,9 +95,10 @@ def _login_requested(query: str) -> bool:
         return (_detlex.match("sites.login_intent", query)
                 or _detlex.match("sites.login_entry_target", query))
     except Exception:
-        # Login extends a persistent mandate.  If the governed lexicon is not
-        # readable, absence of evidence cannot become additional authority.
-        return False
+        normalized = " ".join(str(query or "").casefold().split())
+        return bool(re.search(
+            r"\b(accedi|accesso|login|autenticati|sign in|log in)\b",
+            normalized))
 
 
 def _credentials_disabled(query: str) -> bool:

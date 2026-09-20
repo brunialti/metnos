@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """session_client — client sincrono per il session-broker (spec sites §3.1).
 
 Usato dagli executor `open/login/read/close_sites` (subprocess in sandbox) per

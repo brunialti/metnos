@@ -1,10 +1,9 @@
 """canonicalize.py — argv → signature, deterministic and pure Python.
 
-The command-canonicalisation lists (privilege wrapper names, benign flags,
-subcommand-style binaries, target-kind hints) live in the JSON companion
-file `canonicalize_rules.json`.  The much smaller privilege-wrapper option
-grammar is intentionally closed in this module: changing which wrapper modes
-may cross the execution boundary requires code review, not a data-only edit.
+The lists used here (privilege wrappers, benign flags, subcommand-style
+binaries, target-kind hints) are NOT hardcoded: they live in the JSON
+companion file `canonicalize_rules.json` and are loaded at import time.
+Adding a new binary or flag rule requires editing only that file.
 The actual safety policy (whitelist/blacklist/...) lives in the SQLite
 DB, populated from `safety_seeds/v*.toml` — never in this module.
 
@@ -32,11 +31,8 @@ relies on the same conventions.
 from __future__ import annotations
 
 import json
-import hashlib
 import os
-import posixpath
 import re
-import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -81,6 +77,8 @@ _NFS_SOURCE_RE = re.compile(r"^[^/:][^:]*:/.+$") # host:/exported/path
 
 _BENIGN_FLAGS: frozenset[str] = frozenset(_RULES["benign_flags"])
 _SUDO_WRAPPERS: frozenset[str] = frozenset(_RULES["sudo_wrappers"])
+_SUDO_OWN_FLAGS_VALUE: frozenset[str] = frozenset(_RULES["sudo_own_flags_value"])
+_SUDO_OWN_FLAGS_BOOLEAN: frozenset[str] = frozenset(_RULES["sudo_own_flags_boolean"])
 _SUBCMD_BINS: frozenset[str] = frozenset(_RULES["subcommand_style_binaries"])
 _NO_SUBCOMMAND_BINS: frozenset[str] = frozenset(_RULES["no_subcommand_binaries"])
 _FLAG_AGG_BINS: frozenset[str] = frozenset(_RULES["flag_aggregating_binaries"])
@@ -88,94 +86,6 @@ _BINARY_TARGET_HINTS: dict[tuple[str, str], str] = {
     (h["binary"], h["subcommand"]): h["target_kind"]
     for h in _RULES["binary_target_hints"]
 }
-_OPTION_NUMERIC_VALUES: dict[str, dict[str, float | None]] = {
-    binary: {option: (None if default is None else float(default))
-             for option, default in options.items()}
-    for binary, options in _RULES.get("option_numeric_values", {}).items()
-}
-_NUMERIC_VALUE_RE = re.compile(r"\d+(?:\.\d+)?")
-
-
-def apply_declared_option_defaults(
-    binary: str, command_argv: tuple[str, ...] | list[str],
-) -> tuple[str, ...]:
-    """Return ``command_argv`` with each declared default added when absent.
-
-    Derived from the argv alone, so the same proposal always yields the same
-    command.  An option already present, separated or attached (``-c 3`` or
-    ``-c3``), is never overridden.  Missing defaults follow the binary.
-    """
-    argv = tuple(command_argv)
-    added: list[str] = []
-    for option, default in _OPTION_NUMERIC_VALUES.get(binary, {}).items():
-        if default is None:
-            continue
-        present = any(
-            token == option
-            or (len(option) == 2 and token.startswith(option) and len(token) > 2)
-            for token in argv[1:]
-        )
-        if not present:
-            added += [option, str(int(default)) if default.is_integer() else str(default)]
-    return argv[:1] + tuple(added) + argv[1:] if added else argv
-
-
-def declared_numeric_option_values(
-    binary: str, command_argv: tuple[str, ...] | list[str],
-) -> dict[int, float | None]:
-    """Map the index of each declared numeric option value to its default.
-
-    Only the separated form (``-c 4``) of an option listed for ``binary`` in
-    ``option_numeric_values`` qualifies, and only for a plain decimal number.
-    The mapped default is the approved value when the request states none,
-    or None.  Every other token, attached forms like ``-c4`` included, stays
-    an operand.
-    """
-    declared = _OPTION_NUMERIC_VALUES.get(binary, {})
-    argv = tuple(command_argv)
-    return {
-        index + 1: declared[argv[index]]
-        for index in range(1, len(argv) - 1)
-        if argv[index] in declared and _NUMERIC_VALUE_RE.fullmatch(argv[index + 1])
-    }
-
-
-
-def command_grammar_numeric_binaries() -> frozenset[str]:
-    """Commands with declared numeric arguments; syntax, never permission."""
-    return frozenset(binary for binary, options in _OPTION_NUMERIC_VALUES.items()
-                     if options)
-
-
-def declared_network_target_index(binary: str, command_argv) -> int | None:
-    """Locate one declared network operand without mistaking an option value."""
-    spec = _RULES.get("network_target_commands", {}).get(binary)
-    if not isinstance(spec, dict):
-        return None
-    value_options = set(spec["value_options"])
-    boolean_options = set(spec["boolean_options"])
-    positional = []
-    index = 1
-    options = True
-    while index < len(command_argv):
-        token = command_argv[index]
-        if options and token == "--":
-            options = False
-        elif options and token.startswith("-"):
-            if token in value_options:
-                index += 1
-                if index == len(command_argv):
-                    return None
-            elif token in boolean_options:
-                pass
-            elif len(token) > 2 and token[:2] in value_options:
-                pass
-            else:
-                return None
-        else:
-            positional.append(index)
-        index += 1
-    return positional[0] if len(positional) == 1 else None
 
 
 def command_grammar_binaries() -> frozenset[str]:
@@ -204,14 +114,7 @@ _FLAG_RE = re.compile(r"^-[A-Za-z][A-Za-z0-9-]*$")
 _LONG_FLAG_RE = re.compile(r"^--[a-z][a-z0-9-]*(=.*)?$")
 
 # Block device patterns.
-_BLOCK_RE = re.compile(
-    r"^/dev/(?:"
-    r"sd[a-z]\d*|vd[a-z]\d*|xvd[a-z]\d*|"
-    r"nvme\d+n\d+(?:p\d+)?|mmcblk\d+(?:p\d+)?|"
-    r"md\d+(?:p\d+)?|dm-\d+|disk\d+|loop\d+|"
-    r"mapper/[^/]+|disk/by-(?:id|path|uuid|label|partuuid|partlabel)/[^/]+"
-    r")$"
-)
+_BLOCK_RE = re.compile(r"^/dev/(sd[a-z]\d*|nvme\d+n\d+(p\d+)?|disk\d+|loop\d+)$")
 # Numeric pid (also tolerates leading minus for kill).
 _PID_RE = re.compile(r"^-?\d+$")
 # URL.
@@ -247,85 +150,6 @@ class Signature:
         subcmd = parts[1]
         target = ":".join(parts[2:])
         return cls(binary=binary, subcommand_or_flag=subcmd, target_kind=target)
-
-
-class ArgvValidationError(ValueError):
-    """The privilege boundary cannot determine one exact command argv."""
-
-    def __init__(self, code: str, detail: str):
-        super().__init__(detail)
-        self.code = code
-        self.detail = detail
-
-
-@dataclass(frozen=True, slots=True)
-class ValidatedArgv:
-    """Immutable result of the argv safety boundary.
-
-    ``argv`` is the normalized tuple that may be executed, ``command_argv``
-    is the same tuple with the (optional) privilege wrapper removed, and
-    ``argv_json`` is the exact framing used by approval capabilities.  Keeping
-    these values in one object prevents signature/card/fire parser drift.
-    """
-
-    argv: tuple[str, ...]
-    command_argv: tuple[str, ...]
-    signature: Signature
-    wrapper: str | None
-    argv_json: str
-
-    @property
-    def requires_privilege(self) -> bool:
-        return self.wrapper is not None
-
-    @property
-    def binary(self) -> str:
-        return self.signature.binary
-
-
-_ARGV_MAX_TOKENS = 256
-_ARGV_MAX_TOKEN_CHARS = 8192
-_ARGV_MAX_JSON_CHARS = 65536
-_ARGV_DISPLAY_MAX_CHARS = 4096
-
-
-def _has_forbidden_control(value: str) -> bool:
-    """Return whether *value* contains an argv-ambiguous Unicode control."""
-
-    return any(unicodedata.category(character) in {"Cc", "Cf"}
-               for character in value)
-
-
-def render_argv_for_display(
-    argv: ValidatedArgv | list[str] | tuple[str, ...],
-) -> str:
-    """Render argv as bounded, inert JSON for user-facing surfaces.
-
-    This representation is deliberately separate from ``ValidatedArgv.argv``:
-    it is NFKC-normalized and markup-sensitive ASCII characters are escaped,
-    but it is never parsed back or passed to a subprocess.
-    """
-
-    values = argv.argv if isinstance(argv, ValidatedArgv) else tuple(argv)
-    display_values = [
-        unicodedata.normalize("NFKC", value)
-        if isinstance(value, str) else "<invalid-token>"
-        for value in values
-    ]
-    rendered = json.dumps(
-        display_values, ensure_ascii=True, separators=(",", ":"),
-    )
-    rendered = (rendered.replace("`", r"\u0060")
-                .replace("<", r"\u003c")
-                .replace(">", r"\u003e")
-                .replace("&", r"\u0026"))
-    if len(rendered) <= _ARGV_DISPLAY_MAX_CHARS:
-        return rendered
-    digest = hashlib.sha256(rendered.encode("ascii")).hexdigest()
-    return json.dumps(
-        [f"<argv omitted: {len(values)} tokens; sha256:{digest}>"],
-        ensure_ascii=True, separators=(",", ":"),
-    ).replace("<", r"\u003c").replace(">", r"\u003e")
 
 
 def classify_target(token: str, *, home: str | None = None) -> str:
@@ -557,193 +381,41 @@ def _pick_target_kind(
     return "*"
 
 
-_ENV_ASSIGNMENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
-_TRUSTED_EXECUTABLE_DIRS = frozenset({
-    "/bin", "/sbin", "/usr/bin", "/usr/sbin",
-    "/usr/local/bin", "/usr/local/sbin",
-})
-
-# Closed grammars: options not listed here are denied instead of being
-# mistaken for the wrapped program.  Shell/login/environment-preservation
-# modes are deliberately absent because they destroy the one-argv invariant.
-_WRAPPER_VALUE_FLAGS: dict[str, frozenset[str]] = {
-    "sudo": frozenset({
-        "-u", "--user", "-g", "--group", "-h", "--host",
-        "-p", "--prompt", "-C", "--close-from",
-    }),
-    "doas": frozenset({"-u"}),
-    "pkexec": frozenset({"-u", "--user"}),
-}
-_WRAPPER_BOOLEAN_FLAGS: dict[str, frozenset[str]] = {
-    "sudo": frozenset({
-        "-H", "--set-home", "-n", "--non-interactive", "-S", "--stdin",
-    }),
-    "doas": frozenset({"-n"}),
-    "pkexec": frozenset({"--disable-internal-agent"}),
-}
-
-
-def _parse_privilege_wrapper(argv: list[str]) -> tuple[list[str], str | None]:
-    if not argv:
-        raise ArgvValidationError("ERR_ARGV_EMPTY", "argv must not be empty")
-    wrapper = os.path.basename(argv[0])
-    if wrapper not in _SUDO_WRAPPERS:
-        return list(argv), None
-
-    value_flags = _WRAPPER_VALUE_FLAGS[wrapper]
-    boolean_flags = _WRAPPER_BOOLEAN_FLAGS[wrapper]
-    i = 1
-    options_ended = False
-    while i < len(argv):
-        token = argv[i]
-        if not options_ended and token == "--":
-            options_ended = True
-            i += 1
-            break
-        if not options_ended and token.startswith("-"):
-            if token in boolean_flags:
-                i += 1
-                continue
-            if token in value_flags:
-                if i + 1 >= len(argv) or not argv[i + 1]:
-                    raise ArgvValidationError(
-                        "ERR_ARGV_WRAPPER_VALUE", f"{wrapper} option {token} needs a value",
-                    )
-                i += 2
-                continue
-            matched = False
-            for flag in value_flags:
-                if flag.startswith("--") and token.startswith(flag + "="):
-                    if token == flag + "=":
-                        raise ArgvValidationError(
-                            "ERR_ARGV_WRAPPER_VALUE", f"{wrapper} option {flag} needs a value",
-                        )
-                    matched = True
-                    break
-                if (len(flag) == 2 and flag.startswith("-")
-                        and not token.startswith("--") and token.startswith(flag)
-                        and len(token) > 2):
-                    matched = True
-                    break
-            if matched:
-                i += 1
-                continue
-            raise ArgvValidationError(
-                "ERR_ARGV_WRAPPER_OPTION",
-                f"unsupported {wrapper} option {token}",
-            )
-        break
-
-    command = list(argv[i:])
-    if not command:
-        raise ArgvValidationError(
-            "ERR_ARGV_WRAPPER_COMMAND", f"{wrapper} has no command",
-        )
-    target = os.path.basename(command[0])
-    if command[0].startswith("-"):
-        raise ArgvValidationError(
-            "ERR_ARGV_WRAPPER_COMMAND", "wrapped command cannot be an option",
-        )
-    if target in _SUDO_WRAPPERS:
-        raise ArgvValidationError(
-            "ERR_ARGV_NESTED_WRAPPER", "nested privilege wrappers are forbidden",
-        )
-    if target == "env" or _ENV_ASSIGNMENT_RE.match(command[0]):
-        raise ArgvValidationError(
-            "ERR_ARGV_WRAPPER_ENV", "environment indirection after wrapper is forbidden",
-        )
-    return command, wrapper
-
-
-def _normalize_absolute_token(token: str, *, binary: str) -> str:
-    """Lexically normalize absolute path values without dereferencing them."""
-    if _URL_RE.match(token):
-        return token
-    # CIFS sources use a normative leading double slash, unlike filesystem
-    # aliases such as //dev/sda or //tmp/../ which must collapse to one root.
-    if binary == "mount" and _CIFS_SOURCE_RE.match(token):
-        return token
-
-    prefix = ""
-    value = token
-    if "=" in token:
-        head, sep, tail = token.partition("=")
-        if tail.startswith("/"):
-            prefix, value = head + sep, tail
-    if value.startswith("/"):
-        normalized = posixpath.normpath("/" + value.lstrip("/"))
-        return prefix + normalized
-    return token
-
-
-def _signature_for_command(command: list[str], *, home: str | None = None) -> Signature:
-    binary = os.path.basename(command[0])
-    rest_clean = _strip_benign_flags(list(command[1:]))
-    subcmd = _extract_subcommand_or_flag(binary, rest_clean)
-    target = _pick_target_kind(binary, subcmd, rest_clean, home=home)
-    return Signature(binary=binary, subcommand_or_flag=subcmd, target_kind=target)
-
-
-def _require_trusted_executable_token(token: str, *, role: str) -> None:
-    if "/" not in token:
-        return
-    path = Path(token)
-    if not path.is_absolute() or str(path.parent) not in _TRUSTED_EXECUTABLE_DIRS:
-        raise ArgvValidationError(
-            "ERR_ARGV_EXECUTABLE_PATH",
-            f"{role} executable path is outside trusted binary directories",
-        )
-
-
-def validate_argv(argv: list[str] | tuple[str, ...], *, home: str | None = None) -> ValidatedArgv:
-    """Return the single immutable argv snapshot used by every safety stage."""
-    if (not isinstance(argv, (list, tuple)) or not argv
-            or not all(isinstance(token, str) and token and "\x00" not in token
-                       for token in argv)):
-        raise ArgvValidationError("ERR_ARGV_STRUCTURE", "argv must contain non-empty strings")
-    if (len(argv) > _ARGV_MAX_TOKENS
-            or any(len(token) > _ARGV_MAX_TOKEN_CHARS for token in argv)):
-        raise ArgvValidationError(
-            "ERR_ARGV_BOUNDS", "argv exceeds the administrative boundary",
-        )
-    if any(_has_forbidden_control(token) for token in argv):
-        raise ArgvValidationError(
-            "ERR_ARGV_CONTROL", "argv contains control or format characters",
-        )
-    raw = list(argv)
-    command, wrapper = _parse_privilege_wrapper(raw)
-    binary = os.path.basename(command[0])
-    normalized = [_normalize_absolute_token(token, binary=binary) for token in raw]
-    normalized_command, normalized_wrapper = _parse_privilege_wrapper(normalized)
-    if normalized_wrapper is not None:
-        _require_trusted_executable_token(normalized[0], role="wrapper")
-    _require_trusted_executable_token(normalized_command[0], role="command")
-    if os.path.basename(normalized_command[0]) == "env":
-        raise ArgvValidationError(
-            "ERR_ARGV_WRAPPER_ENV", "environment command indirection is forbidden",
-        )
-    signature = _signature_for_command(normalized_command, home=home)
-    frozen = tuple(normalized)
-    canonical_json = json.dumps(
-        list(frozen), ensure_ascii=False, separators=(",", ":"),
-    )
-    if len(canonical_json.encode("utf-8")) > _ARGV_MAX_JSON_CHARS:
-        raise ArgvValidationError(
-            "ERR_ARGV_BOUNDS", "argv exceeds the administrative boundary",
-        )
-    return ValidatedArgv(
-        argv=frozen,
-        command_argv=tuple(normalized_command),
-        signature=signature,
-        wrapper=normalized_wrapper,
-        argv_json=canonical_json,
-    )
-
-
 def _strip_sudo_wrapper(argv: list[str]) -> tuple[list[str], bool]:
-    """Compatibility helper backed by the closed privilege grammar."""
-    command, wrapper = _parse_privilege_wrapper(argv)
-    return command, wrapper is not None
+    """If `argv[0]` is a privilege wrapper, strip it and its own flags.
+
+    Returns `(stripped_argv, was_wrapped)`. `was_wrapped=True` means the
+    caller originally invoked the command via sudo/doas/pkexec.
+    """
+    if not argv or os.path.basename(argv[0]) not in _SUDO_WRAPPERS:
+        return argv, False
+    out: list[str] = []
+    rest = argv[1:]
+    i = 0
+    while i < len(rest):
+        tok = rest[i]
+        # value-bearing sudo flag (-u alice, --user alice)
+        if tok in _SUDO_OWN_FLAGS_VALUE:
+            i += 2
+            continue
+        # value-bearing sudo flag in --opt=value form
+        if any(tok.startswith(f + "=") for f in _SUDO_OWN_FLAGS_VALUE):
+            i += 1
+            continue
+        # boolean sudo flag
+        if tok in _SUDO_OWN_FLAGS_BOOLEAN:
+            i += 1
+            continue
+        # short form combined flags starting with `-`: stop only if not a
+        # known sudo flag (the wrapper's flags must come before the wrapped
+        # binary, so any unknown flag means we've reached the binary).
+        # We've already checked the known sudo flags above; if we get here
+        # the first non-sudo-flag token is the wrapped binary.
+        out = list(rest[i:])
+        break
+    else:
+        out = []  # argv was just `sudo` with no following command
+    return out, True
 
 
 def compute_signature(argv: list[str], *, home: str | None = None) -> Signature:
@@ -758,7 +430,25 @@ def compute_signature(argv: list[str], *, home: str | None = None) -> Signature:
     of the signature: `sudo systemctl restart nginx` and
     `systemctl restart nginx` reduce to the same signature.
     """
-    return validate_argv(argv, home=home).signature
+    if not argv:
+        raise ValueError("argv must not be empty")
+    stripped, _was_sudo = _strip_sudo_wrapper(argv)
+    if not stripped:
+        # Either argv was empty after stripping (sudo with no command) or
+        # the original argv is a single token: fall back to argv as-is for
+        # robustness.
+        stripped = argv
+    binary = os.path.basename(stripped[0])
+    rest = list(stripped[1:])
+
+    # Strip benign flags before extracting subcommand: avoids classifying
+    # `systemctl --no-pager status nginx` as having subcommand `--no-pager`.
+    rest_clean = _strip_benign_flags(rest)
+
+    subcmd = _extract_subcommand_or_flag(binary, rest_clean)
+    target = _pick_target_kind(binary, subcmd, rest_clean, home=home)
+
+    return Signature(binary=binary, subcommand_or_flag=subcmd, target_kind=target)
 
 
 def has_sudo_wrapper(argv: list[str]) -> bool:

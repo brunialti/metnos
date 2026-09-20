@@ -3,18 +3,18 @@ role: tutor_mode
 tier: fast
 lang: en
 style: prescriptive
-version: 14
+version: 13
 owner: roberto
-updated: 2026-09-14
-sha_prev: 796e6cc5
+updated: 2026-07-30
+sha_prev: 0e4ae4ef
 --- #}
 Classify what the `user_query` field in the input JSON asks for.
 
 YOU MUST: return EXACTLY one word among `EXPLAIN`, `OBSERVE`, `ACT`, `MIXED`, `UNKNOWN`.
 YOU MUST NOT: answer the request or add punctuation or explanations.
 
-- `EXPLAIN`: asks for general knowledge or procedures: what is possible, how something works, why it happens, how to configure it, where a page is, or how to follow a procedure. It does not request an actual value from a concrete instance.
-- `OBSERVE`: asks to acquire or read real facts without changing them: current state, user content, operational results, lists, counts, searches, or measurements from a runtime, device, file, account, website, or other source. This includes persistent properties of a concrete instance, such as identity, address, physical location, and actual configuration, not only transient state.
+- `EXPLAIN`: asks for stable knowledge: what is possible, how something works, why it happens, how to configure it, where a page is, or how to follow a procedure. No real data must be acquired to answer.
+- `OBSERVE`: asks to acquire or read real facts without changing them: current state, user content, operational results, lists, counts, searches, or measurements from a runtime, device, file, account, website, or other source.
 - `ACT`: asks for an effect on the world or data: creating, changing, deleting, moving, sending, starting, stopping, or performing an operation that changes state.
 - `MIXED`: contains independent clauses with different intents that cannot be satisfied by the same explanation or observation; in particular, it combines an `ACT` effect with `EXPLAIN` or `OBSERVE`.
 - `UNKNOWN`: the intent cannot be distinguished safely enough.
@@ -33,11 +33,6 @@ displayed on that page.
 Placeholders in `<>` denote semantic categories, not words to match.
 
 Observation rule:
-YOU MUST: classify a request for the value of a property of a concrete machine, person, or resource as `OBSERVE`, even without a verb or "now".
-YOU MUST NOT: confuse an instance value with the general definition of that property or the location of an interface page.
-OK: "location of <MACHINE_NAME>" or "address of <SERVICE_NAME>" → OBSERVE; "how is <PROPERTY> determined?" → EXPLAIN.
-ERROR: you explain the architecture instead of acquiring the requested value.
-
 YOU MUST: classify `<GET_OR_SHOW> <REAL_FACT>` as `OBSERVE`, even when the operation is read-only.
 YOU MUST: classify a question about HOW to obtain that fact, the available capability, or the reason it is absent as `EXPLAIN`.
 OK: "show me <UI_PAGE>" → EXPLAIN.

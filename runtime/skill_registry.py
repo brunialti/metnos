@@ -236,15 +236,8 @@ def _require_plain_owned_file(
     *,
     code: str,
     allow_missing: bool = False,
-    trusted_owner: tuple[int, int] | None = None,
 ) -> os.stat_result | None:
     """Fail closed on redirected, non-regular, or foreign policy files."""
-    if trusted_owner is not None and (
-        type(trusted_owner) is not tuple
-        or len(trusted_owner) != 2
-        or any(type(value) is not int or value < 0 for value in trusted_owner)
-    ):
-        raise SkillEnablementError(code, "invalid trusted owner")
     try:
         status = path.lstat()
     except FileNotFoundError:
@@ -255,13 +248,7 @@ def _require_plain_owned_file(
         raise SkillEnablementError(code, f"{path}: {exc}") from exc
     if _is_link_like(path, status) or not stat.S_ISREG(status.st_mode):
         raise SkillEnablementError(code, str(path))
-    if trusted_owner is not None and hasattr(status, "st_uid"):
-        caller_uid = os.geteuid() if hasattr(os, "geteuid") else None
-        if caller_uid not in {0, trusted_owner[0]}:
-            raise SkillEnablementError(code, "trusted owner requires root")
-        if (status.st_uid, status.st_gid) != trusted_owner:
-            raise SkillEnablementError(code, f"foreign owner: {path}")
-    elif (
+    if (
         hasattr(os, "geteuid")
         and hasattr(status, "st_uid")
         and status.st_uid != os.geteuid()
@@ -275,18 +262,13 @@ def _require_same_open_file(
     opened: os.stat_result,
     *,
     code: str,
-    trusted_owner: tuple[int, int] | None = None,
 ) -> None:
-    current = _require_plain_owned_file(
-        path, code=code, trusted_owner=trusted_owner,
-    )
+    current = _require_plain_owned_file(path, code=code)
     if current is None or not os.path.samestat(current, opened):
         raise SkillEnablementError(code, f"changed while opening: {path}")
 
 
-def _read_state_payload(
-    *, trusted_owner: tuple[int, int] | None = None,
-) -> bytes | None:
+def _read_state_payload() -> bytes | None:
     """Read one stable policy file without following a redirected entry.
 
     ``None`` has exactly one meaning: the directory entry was absent at the
@@ -302,7 +284,6 @@ def _read_state_payload(
             return None
         before = _require_plain_owned_file(
             f, code="skill_state_invalid", allow_missing=True,
-            trusted_owner=trusted_owner,
         )
         if before is None:
             return None
@@ -315,17 +296,11 @@ def _read_state_payload(
             raise SkillEnablementError(
                 "skill_state_invalid", f"changed while opening: {f}",
             )
-        _require_same_open_file(
-            f, opened, code="skill_state_invalid",
-            trusted_owner=trusted_owner,
-        )
+        _require_same_open_file(f, opened, code="skill_state_invalid")
         with os.fdopen(descriptor, "rb") as handle:
             descriptor = -1
             payload = handle.read()
-        _require_same_open_file(
-            f, opened, code="skill_state_invalid",
-            trusted_owner=trusted_owner,
-        )
+        _require_same_open_file(f, opened, code="skill_state_invalid")
         _require_same_state_parent(parent[0], parent[1])
         return payload
     except SkillEnablementError:
@@ -345,10 +320,7 @@ def _decode_state_payload(payload: bytes) -> dict[str, bool]:
         raise SkillEnablementError("skill_state_invalid", str(exc)) from exc
 
 
-def _load_state(
-    *, strict: bool = True,
-    trusted_owner: tuple[int, int] | None = None,
-) -> dict[str, bool]:
+def _load_state(*, strict: bool = True) -> dict[str, bool]:
     """Load the policy; only a genuinely absent file selects defaults.
 
     ``strict`` is retained for source compatibility with older callers.  It no
@@ -357,31 +329,29 @@ def _load_state(
     Read-only callers receive the same stable diagnostic and can render it.
     """
     del strict
-    return _load_state_snapshot_v1(trusted_owner=trusted_owner)[0]
-
-
-def _load_state_snapshot_v1(
-    *, trusted_owner: tuple[int, int] | None = None,
-) -> tuple[dict[str, bool], tuple[str, str, int, str]]:
-    """Decode policy and derive its cache identity from the same bytes."""
-    payload = _read_state_payload(trusted_owner=trusted_owner)
+    payload = _read_state_payload()
     if payload is None:
-        return {}, ("skill_state", "absent", 0, "")
-    return _decode_state_payload(payload), (
-        "skill_state", "present", len(payload), hashlib.sha256(payload).hexdigest(),
-    )
+        return {}
+    return _decode_state_payload(payload)
 
 
-def skill_state_cache_signature(
-    *, trusted_owner: tuple[int, int] | None = None,
-) -> tuple[str, str, int, str]:
+def skill_state_cache_signature() -> tuple[str, str, int, str]:
     """Return a validated cache token or raise ``skill_state_invalid``.
 
     The loader must validate the policy *before* consulting its catalog cache;
     otherwise an unreadable or redirected file is indistinguishable from an
     absent one and an older catalog can remain live.
     """
-    return _load_state_snapshot_v1(trusted_owner=trusted_owner)[1]
+    payload = _read_state_payload()
+    if payload is None:
+        return ("skill_state", "absent", 0, "")
+    _decode_state_payload(payload)
+    return (
+        "skill_state",
+        "present",
+        len(payload),
+        hashlib.sha256(payload).hexdigest(),
+    )
 
 
 def _fsync_directory(path: Path) -> None:
@@ -567,25 +537,14 @@ def _state_writer_lock(*, timeout: float = _STATE_LOCK_TIMEOUT) -> Iterator[None
 # --- Public API ------------------------------------------------------------
 
 
-def list_skills(
-    lang: str | None = None,
-    *,
-    _trusted_owner: tuple[int, int] | None = None,
-) -> list[SkillInfo]:
+def list_skills(lang: str | None = None) -> list[SkillInfo]:
     """Ritorna l'inventario delle skill (skills/ + legacy _imports/).
 
     Args:
         lang: se valorizzato, filtra le skill con `lang in {"any", lang}`.
               `None` (default) = nessun filtro.
     """
-    state = _load_state(trusted_owner=_trusted_owner)
-    return _list_skills_from_state_v1(state, lang=lang)
-
-
-def _list_skills_from_state_v1(
-    state: Mapping[str, bool], *, lang: str | None = None,
-) -> list[SkillInfo]:
-    """Build definitions from one already authenticated policy snapshot."""
+    state = _load_state()
     out: list[SkillInfo] = []
     for skill_dir in _isd():
         skill_md = skill_dir / "SKILL.md"
@@ -659,18 +618,16 @@ def _list_skills_from_state_v1(
     return out
 
 
-def get_skill_info(
-    name: str, *, _trusted_owner: tuple[int, int] | None = None,
-) -> SkillInfo | None:
-    for s in list_skills(_trusted_owner=_trusted_owner):
+def get_skill_info(name: str) -> SkillInfo | None:
+    for s in list_skills():
         if s.name == name:
             return s
     return None
 
 
-def _skill_definitions_from_v1(infos: list[SkillInfo]) -> dict[str, SkillInfo]:
+def _skill_definitions() -> dict[str, SkillInfo]:
     definitions: dict[str, SkillInfo] = {}
-    for info in infos:
+    for info in list_skills():
         previous = definitions.get(info.name)
         if previous is not None and (
             previous.lang != info.lang
@@ -681,10 +638,6 @@ def _skill_definitions_from_v1(infos: list[SkillInfo]) -> dict[str, SkillInfo]:
             )
         definitions.setdefault(info.name, info)
     return definitions
-
-
-def _skill_definitions() -> dict[str, SkillInfo]:
-    return _skill_definitions_from_v1(list_skills())
 
 
 def _candidate_policy(
@@ -699,9 +652,8 @@ def _candidate_policy(
         if info is None:
             # Preserve the historical treatment of structurally installed
             # bundles whose optional SKILL.md metadata is unavailable.  Their
-            # manifests still cross the authenticated admission boundary,
-            # but an explicit operator disable remains authoritative.
-            return bool(state.get(skill_name, True))
+            # manifests still cross the authenticated admission boundary.
+            return True
         configured = state.get(skill_name, bool(info.auto_enable))
         locale_matches = info.lang in {"any", runtime_lang}
         return bool(configured) and locale_matches
@@ -974,35 +926,6 @@ def is_skill_enabled(name: str) -> bool:
     if info.lang != "any" and info.lang != _C.DEFAULT_LANG.lower():
         return False
     return info.enabled
-
-
-def _is_skill_enabled_for_owner_v1(
-    name: str, trusted_owner: tuple[int, int],
-) -> bool:
-    """Read service-owned policy during the root-only ownership transition."""
-    return _skill_enabled_snapshot_for_owner_v1(trusted_owner)(name)
-
-
-def _skill_enabled_snapshot_for_owner_v1(
-    trusted_owner: tuple[int, int],
-) -> Callable[[str], bool]:
-    """Capture one owner-authenticated visibility policy for a stable scan."""
-    return _skill_policy_snapshot_for_owner_v1(trusted_owner)[0]
-
-
-def _skill_policy_snapshot_for_owner_v1(
-    trusted_owner: tuple[int, int],
-) -> tuple[Callable[[str], bool], tuple[str, str, int, str]]:
-    """Bind effective visibility and cache identity to one policy read."""
-    if not hasattr(os, "geteuid") or os.geteuid() != 0:
-        raise SkillEnablementError(
-            "skill_state_invalid", "administrative reader required",
-        )
-    state, signature = _load_state_snapshot_v1(trusted_owner=trusted_owner)
-    definitions = _skill_definitions_from_v1(
-        _list_skills_from_state_v1(state),
-    )
-    return _candidate_policy(state, definitions), signature
 
 
 def matches_locale(lang_field: str, runtime_lang: str | None = None) -> bool:

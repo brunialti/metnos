@@ -23,11 +23,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from logging_setup import get_logger
 from safety.canonicalize import (
-    ArgvValidationError,
-    ValidatedArgv,
-    render_argv_for_display,
+    Signature,
+    compute_signature,
+    has_sudo_wrapper,
     signature_matches,
-    validate_argv,
 )
 from safety.sanity_check import compute_sanity_check, should_invoke
 from safety.secret_slot import SecretSlot
@@ -62,11 +61,11 @@ class ExecResult:
     notify_user: Optional[str] = None  # message to forward to the user
 
 
-def _re_validate(validated: ValidatedArgv) -> Optional[str]:
+def _re_validate(argv: list[str], signature: Signature) -> Optional[str]:
     """Re-run forbidden + blacklist checks. Return reason if blocked, else None."""
     # forbidden raw
     from system.admin import _check_forbidden_argv  # reuse, no duplication
-    forbidden, forbidden_reason = _check_forbidden_argv(validated)
+    forbidden, forbidden_reason = _check_forbidden_argv(argv)
     if forbidden:
         return f"forbidden at fire: {forbidden_reason}"
 
@@ -74,7 +73,7 @@ def _re_validate(validated: ValidatedArgv) -> Optional[str]:
     try:
         for kind_tag in ("blacklist", "forbidden"):
             for row in store.find_by_kind(kind_tag):
-                if signature_matches(validated.signature, row.signature):
+                if signature_matches(signature, row.signature):
                     return (
                         f"blacklist at fire: {row.reason or row.signature}"
                     )
@@ -85,8 +84,7 @@ def _re_validate(validated: ValidatedArgv) -> Optional[str]:
 
 def execute(
     *,
-    argv: Optional[list[str]] = None,
-    validated_argv: Optional[ValidatedArgv] = None,
+    argv: list[str],
     intent_text: str = "",
     scheduler_delay_minutes: int = 0,
     reversibility: str = "unknown",
@@ -113,31 +111,15 @@ def execute(
 
     Returns: ExecResult.
     """
-    try:
-        if validated_argv is None:
-            validated = validate_argv(argv or [])
-        else:
-            if argv is not None and tuple(argv) != validated_argv.argv:
-                raise ArgvValidationError(
-                    "ERR_ARGV_SNAPSHOT_MISMATCH",
-                    "argv differs from validated snapshot",
-                )
-            recomputed = validate_argv(validated_argv.argv)
-            if recomputed != validated_argv:
-                raise ArgvValidationError(
-                    "ERR_ARGV_SNAPSHOT_MISMATCH",
-                    "validated argv product differs from recomputed product",
-                )
-            validated = recomputed
-    except ArgvValidationError as exc:
+    if not argv:
         return ExecResult(
             ok=False, status="error",
-            argv=list(argv or []), signature="", requires_sudo=False,
-            stderr=exc.detail, audit={"error_code": exc.code},
+            argv=[], signature="", requires_sudo=False,
+            stderr="empty argv",
         )
-    argv = list(validated.argv)
-    sig = validated.signature
-    requires_sudo = validated.requires_privilege
+
+    sig = compute_signature(argv)
+    requires_sudo = has_sudo_wrapper(argv)
     audit: dict = {
         "intent_text": intent_text,
         "argv": argv,
@@ -148,11 +130,10 @@ def execute(
     }
 
     # ── Re-validation at fire time ────────────────────────────────────
-    block_reason = _re_validate(validated)
+    block_reason = _re_validate(argv, sig)
     if block_reason:
         notify = (
-            f"Avevi pianificato `{render_argv_for_display(validated)}`, "
-            "ma ho trovato una "
+            f"Avevi pianificato `{' '.join(argv)}`, ma ho trovato una "
             f"regola che lo blocca al momento dell'esecuzione: "
             f"{block_reason}. Non eseguito."
         )
@@ -182,8 +163,7 @@ def execute(
             audit["sanity_smell"] = res.smell
             if res.smell == "urgent_review":
                 notify = (
-                    f"Stavo per eseguire `{render_argv_for_display(validated)}` "
-                    "ma vedo un "
+                    f"Stavo per eseguire `{' '.join(argv)}` ma vedo un "
                     f"problema contestuale: {res.reason or '(motivo non specificato)'}. "
                     "Non eseguito."
                 )
@@ -209,7 +189,7 @@ def execute(
     # dal context manager `cifs_helper.temp_credentials_file`.
     if _argv_has_cifs_placeholder(argv):
         return _spawn_with_cifs_credentials(
-            validated=validated,
+            argv=argv,
             secret=secret,
             timeout_s=timeout_s,
             signature=str(sig),
@@ -219,7 +199,7 @@ def execute(
 
     # ── Execute ───────────────────────────────────────────────────────
     return _spawn(
-        validated=validated,
+        argv=argv,
         secret=secret,
         timeout_s=timeout_s,
         signature=str(sig),
@@ -254,7 +234,7 @@ def _derive_cifs_domain_from_argv(argv: list[str]) -> Optional[str]:
 
 def _spawn_with_cifs_credentials(
     *,
-    validated: ValidatedArgv,
+    argv: list[str],
     secret: Optional[SecretSlot],
     timeout_s: int,
     signature: str,
@@ -265,7 +245,6 @@ def _spawn_with_cifs_credentials(
     temp credentials file derived from the share host, then delegate to
     `_spawn`. The temp file is destroyed on context exit, even on error.
     """
-    argv = list(validated.argv)
     domain = _derive_cifs_domain_from_argv(argv)
     if domain is None:
         audit["cifs_error"] = "no_share_source"
@@ -301,8 +280,7 @@ def _spawn_with_cifs_credentials(
         audit["cifs_domain"] = domain
         audit["cifs_creds_path"] = cred_path
         return _spawn(
-            validated=validated,
-            execution_argv=substituted,
+            argv=substituted,
             secret=secret,
             timeout_s=timeout_s,
             signature=signature,
@@ -313,8 +291,7 @@ def _spawn_with_cifs_credentials(
 
 def _spawn(
     *,
-    validated: ValidatedArgv,
-    execution_argv: Optional[list[str]] = None,
+    argv: list[str],
     secret: Optional[SecretSlot],
     timeout_s: int,
     signature: str,
@@ -326,30 +303,12 @@ def _spawn(
     """
     import time
 
-    argv = list(execution_argv or validated.argv)
-
-    # Last possible policy snapshot before subprocess.  This repeats the
-    # earlier check intentionally: a target may have become a symlink or block
-    # device while sanity/credential handling was running.
-    block_reason = _re_validate(validated)
-    if block_reason:
-        audit["block_reason"] = block_reason
-        return ExecResult(
-            ok=True, status="blocked_at_fire", argv=list(validated.argv),
-            signature=signature, requires_sudo=requires_sudo, audit=audit,
-            notify_user=f"Command blocked at fire: {block_reason}",
-        )
-
-    # Never mutate the authorized argv by injecting wrapper options.  A caller
-    # that supplies a sudo password must have included sudo's closed ``-S``
-    # option before validation.
-    if secret is not None and validated.wrapper == "sudo" and "-S" not in argv:
-        return ExecResult(
-            ok=False, status="error", argv=argv, signature=signature,
-            requires_sudo=requires_sudo,
-            stderr="sudo secret requires pre-validated -S",
-            audit={**audit, "error_code": "ERR_ARGV_SUDO_STDIN_NOT_AUTHORIZED"},
-        )
+    # If sudo is required, ensure the argv has the `-S` (read pwd from stdin)
+    # flag so we can pipe the secret. Inject it after the sudo binary if
+    # missing.
+    if requires_sudo and argv[0] in ("sudo", "doas", "pkexec"):
+        if "-S" not in argv:
+            argv = [argv[0], "-S"] + argv[1:]
 
     # Prepare stdin payload
     stdin_data: Optional[bytes] = None

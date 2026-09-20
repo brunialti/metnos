@@ -36,7 +36,7 @@ en = "SCOPO: find and discover URLs and documents on the web. PATTERN: find_urls
 
 [code]
 files  = ["find_urls.py"]
-digest = "sha256:b5996827564cf1b3aff92c227d9990864296eda70331ba2849593c8d2dbb45d3"
+digest = "sha256:38650cc8f5405cd434dc6302a9cbe4a4b051b71892f40475577511cc58b4a410"
 
 [args]
 type     = "object"
@@ -50,8 +50,8 @@ required = []
 type        = "string"
 
 [args.properties.search_query.description]
-it = "Query in linguaggio naturale: restituisce URL, titoli e anteprime verificati per pertinenza. Usa quando l'utente non indica un sito. Default: nessuna lettura o esplorazione delle pagine trovate; per leggerle usa read_urls_html/read_urls_pdf. Esplorazione solo con max_depth esplicito o mode dedicato. seed_urls viene scartato se presente."
-en = "Natural language query: returns URLs, titles and snippets checked for relevance. Use when the user does not specify a site. Default: no page downloads or link traversal; use read_urls_html/read_urls_pdf to read pages. Crawling requires explicit max_depth or a dedicated mode. Discards seed_urls when present."
+it = "MODO SEARCH: query in linguaggio naturale per SearXNG meta-search + LLM rerank. Usa questa quando l'utente NON nomina un dominio specifico ('cerca su web X', 'trova X', 'informazioni su Y'). Mutuamente esclusivo con `seed_urls`: se passi entrambi, `seed_urls` viene SCARTATO (SearXNG e' la fonte autoritativa). Default max_depth=1 (SearXNG roots + 1 hop documenti). Esempio: 'organico scuola primaria Roma {{ current_year }}'."
+en = "SEARCH MODE: natural language query for SearXNG meta-search + LLM rerank. Use when user does NOT name a specific domain ('search the web for X', 'find X', 'info on Y'). Mutually exclusive with `seed_urls`: passing both DROPS `seed_urls` (SearXNG is authoritative). Default max_depth=1 (SearXNG roots + 1 hop documents). Example: 'school primary organic Rome {{ current_year }}'."
 
 [args.properties.seed_urls]
 type        = "array"
@@ -105,10 +105,11 @@ en = "Resolution tier: 'auto' (consult owned_domains.json + trusted_origins.json
 type        = "integer"
 minimum     = 0
 maximum     = 10
+default     = 2
 
 [args.properties.max_depth.description]
-it = "Profondità massima dai siti iniziali, limite 10. Default: 0 con search_query, 2 con seed_urls. Ometti per una ricerca web normale. Imposta un valore maggiore di zero solo per esplorare i collegamenti delle pagine. max_pages limita anche il numero di URL."
-en = "Maximum link depth from starting pages, capped at 10. Default: 0 with search_query, 2 with seed_urls. Omit for an ordinary web search. Set above zero only to explore links from the pages. max_pages also limits the URL count."
+it = "Profondita' massima della BFS in numero di hop dal seed. Default 2, cap 10. Per ricerche documento (PDF nidificati in 'trasparenza/personale/...') alza a 4-6; per crawl esaustivo 8-10. Combinato con max_pages: la BFS si ferma al primo dei due limiti."
+en = "Maximum BFS depth in number of hops from the seed. Default 2, cap 10. For document searches (PDFs nested in 'trasparenza/personale/...') increase to 4-6; for exhaustive crawl 8-10. Combined with max_pages: the BFS stops at the first of the two limits."
 
 [args.properties.max_pages]
 type        = "integer"

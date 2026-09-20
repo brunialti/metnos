@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """pattern_language.py — grammatica componibile (Christopher Alexander).
 
 Concept-only lens: identifica MICRO-PATTERN astratti ricorrenti nelle

@@ -178,8 +178,9 @@ class DurableWorker:
         return self.stopping and self._active_lease is None and heartbeat_done
 
     def request_stop(self, *, now: datetime | None = None) -> None:
-        """Stop admitting work while allowing an executing fence to drain."""
-
+        monitor = self._heartbeat_monitor
+        if monitor is not None:
+            monitor.stop.set()
         requested = normalize_instant(now or self._clock(), name="now")
         if self._stop_requested_at is None:
             self._stop_requested_at = requested
@@ -329,6 +330,7 @@ class DurableWorker:
                         )
                         if (
                             monitor.stop.is_set()
+                            or self.stopping
                             or current >= deadline
                             or self._monotonic_clock() >= monotonic_deadline
                         ):
@@ -453,10 +455,10 @@ class DurableWorker:
             adapter_attempt_state = AttemptState.TIMED_OUT
         except Exception:
             adapter_error = StructuredAttemptError.create(
-                "executor_unknown",
+                "executor_permanent",
                 code="execution.unhandled_exception",
                 message_key="ERR_DURABLE_EXECUTION_FAILED",
-                retry="manual",
+                retry="never",
                 occurred_at=self._clock(),
                 details_redacted={"exception_redacted": True},
             )
@@ -519,7 +521,7 @@ class DurableWorker:
                 lease,
                 result,
                 dependency_result_ids=dependency_result_ids,
-                clock=self._clock,
+                now=self._clock(),
             )
         except BudgetExceededError as exc:
             error = StructuredAttemptError.create(

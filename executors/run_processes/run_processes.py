@@ -3,29 +3,26 @@
 
 The canonical `run` verb is distinct from opening a web session. This
 implementation handles it without accepting an executable path, command,
-arguments, task name, or shell fragment. An exact registered identity selects
-the provider: portable packages use the helper; AppX and desktop shortcuts
-activate in the interactive user's session.
+arguments, task name, or shell fragment. The elevated helper resolves an exact
+package identifier from machine-owned installation metadata (ADR 0211).
 
 The executor is intentionally two-phase. Phase one verifies that every package
-is installed and asks how long the launch permission should remain valid.
+is installed and asks whether it should run until restart or at every startup.
 Phase two receives the runtime-owned consent token and starts the packages.
-Reusable permission is recorded by the authenticated server, never here.
 """
 from __future__ import annotations
 
-import base64
+import hashlib
 import json
 import os
 import re
 import socket
 import subprocess
 import sys
-from pathlib import Path
 
 sys.path.insert(0, os.environ.get("METNOS_SHIM_DIR", ""))
 
-from executor_helpers import approval_digest, run_stdio  # noqa: E402
+from executor_helpers import run_stdio  # noqa: E402
 from messages import get as _msg  # noqa: E402
 
 
@@ -34,7 +31,6 @@ _APPX_PACKAGE_ID = re.compile(r"^appx:[A-Za-z0-9][A-Za-z0-9._-]{0,126}$")
 _MAX_PACKAGES = 10
 _HELPER_TIMEOUT_S = 15
 _LIFETIMES = frozenset({"session", "persistent"})
-_AUTHORIZATION_SCOPES = frozenset({"once", "until_restart", "always"})
 
 
 def _failure(message_key: str, code: str, *, error_class: str = "invalid_input",
@@ -67,7 +63,7 @@ def _helper_call(*arguments: str) -> dict | None:
     create a second security implementation that could drift.
     """
     executable = os.environ.get("METNOS_CLIENT_EXE") or ""
-    if not executable:
+    if not executable or not sys.platform.startswith("win"):
         return None
     try:
         process = subprocess.run(
@@ -100,7 +96,7 @@ def _appx_call(*arguments: str) -> dict | None:
     owner's visible desktop.
     """
     executable = os.environ.get("METNOS_CLIENT_EXE") or ""
-    if not executable:
+    if not executable or not sys.platform.startswith("win"):
         return None
     try:
         process = subprocess.run(
@@ -126,9 +122,6 @@ def _appx_call(*arguments: str) -> dict | None:
 
 
 def _identity_family(package_id: str) -> str | None:
-    if package_id.startswith("desktop:"):
-        from windows_desktop_apps import IDENTITY_RE
-        return "desktop" if IDENTITY_RE.fullmatch(package_id) else None
     if _APPX_PACKAGE_ID.fullmatch(package_id):
         return "appx"
     if _PORTABLE_PACKAGE_ID.fullmatch(package_id):
@@ -138,9 +131,6 @@ def _identity_family(package_id: str) -> str | None:
 
 def _launch_call(package_id: str, operation: str, *arguments: str) -> dict | None:
     family = _identity_family(package_id)
-    if family == "desktop":
-        from windows_desktop_apps import call
-        return call(package_id, operation, *arguments)
     if family == "appx":
         return _appx_call(operation, "--package-id", package_id, *arguments)
     if family == "portable":
@@ -153,7 +143,7 @@ def _supported_lifetimes(package_ids: list[str]) -> tuple[str, ...]:
     supported = set(_LIFETIMES)
     for package_id in package_ids:
         family = _identity_family(package_id)
-        if family in {"appx", "desktop"}:
+        if family == "appx":
             supported.intersection_update({"session"})
         elif family != "portable":
             supported.clear()
@@ -167,75 +157,61 @@ def _machine_name() -> str:
         return ""
 
 
-def _boot_id() -> str:
-    """Read the OS boot identity, not the lifetime of the Metnos process.
-
-    Fixed local CIM query: no machine name, path or command from the caller.
-    LastBootUpTime is a read-only OS property; UTC file time avoids locale
-    formatting and changes when Windows is restarted.
-    """
-    root = os.environ.get("SystemRoot") or ""
-    if not root or not Path(root).is_absolute():
-        return ""
-    executable = Path(root) / "System32/WindowsPowerShell/v1.0/powershell.exe"
-    source = ("$ErrorActionPreference='Stop'; "
-              "[Console]::Write((Get-CimInstance -ClassName Win32_OperatingSystem "
-              "-Property LastBootUpTime).LastBootUpTime.ToUniversalTime().ToFileTimeUtc())")
-    try:
-        out = subprocess.run(
-            [str(executable), "-NoLogo", "-NoProfile", "-NonInteractive",
-             "-EncodedCommand", base64.b64encode(source.encode("utf-16le")).decode("ascii")],
-            stdin=subprocess.DEVNULL, capture_output=True, text=True,
-            timeout=10, shell=False)
-    except (OSError, subprocess.SubprocessError):
-        return ""
-    value = (out.stdout or "").strip()
-    return value if (out.returncode == 0 and re.fullmatch(r"[0-9]{1,20}", value)
-                     and 0 < int(value) < 2**64) else ""
-
-
-def _consent_token(package_ids: list[str], lifetime: str,
-                   authorization_scope: str, authorization_boot_id: str) -> str:
-    return approval_digest({"programs": package_ids, "lifetime": lifetime,
-                            "authorization_scope": authorization_scope,
-                            "authorization_boot_id": authorization_boot_id})
+def _consent_token(package_ids: list[str], lifetime: str) -> str:
+    payload = json.dumps(
+        {"packages": package_ids, "lifetime": lifetime},
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def _approval_dialog(
         package_ids: list[str],
-        boot_id: str,
-        package_names: list[str] | None = None) -> dict:
+        lifetimes: tuple[str, ...] | None = None) -> dict:
+    lifetimes = lifetimes or _supported_lifetimes(package_ids)
     machine = _machine_name() or _msg("MSG_CREATE_PROCESSES_MACHINE_UNKNOWN")
 
-    def branch(scope: str) -> dict:
-        boot = boot_id if scope == "until_restart" else ""
+    def branch(lifetime: str) -> dict:
         return {
             "tool": "run_processes",
             "args": {
                 "programs": package_ids,
-                "lifetime": "session",
-                "authorization_scope": scope,
-                "authorization_boot_id": boot,
-                "actor_consent_token": _consent_token(package_ids, "session", scope, boot),
+                "lifetime": lifetime,
+                "actor_consent_token": _consent_token(package_ids, lifetime),
             },
         }
 
-    scopes = ("once", "until_restart", "always")
-    choices = [{"label": _msg(key), "value": scope} for scope, key in (
-        ("once", "MSG_RUN_PROGRAMS_ALLOW_ONCE"),
-        ("until_restart", "MSG_RUN_PROGRAMS_ALLOW_UNTIL_RESTART"),
-        ("always", "MSG_RUN_PROGRAMS_ALLOW_ALWAYS"))]
+    choices = []
+    if "session" in lifetimes:
+        choices.append({
+            "label": _msg("MSG_CREATE_PROCESSES_BTN_SESSION"),
+            "value": "session",
+        })
+    if "persistent" in lifetimes:
+        choices.append({
+            "label": _msg("MSG_CREATE_PROCESSES_BTN_PERSISTENT"),
+            "value": "persistent",
+        })
     choices.append({"label": _msg("MSG_BTN_REJECT"), "value": "reject"})
 
-    description = _msg("MSG_RUN_PROGRAMS_AUTHORIZATION_DESCRIPTION",
-                       packages=", ".join(package_names or package_ids), machine=machine)
+    description = (
+        _msg(
+            "MSG_CREATE_PROCESSES_APPROVAL_DESCRIPTION",
+            packages=", ".join(package_ids),
+            machine=machine,
+        )
+        if "persistent" in lifetimes
+        else _msg("MSG_CREATE_PROCESSES_BTN_SESSION")
+    )
 
     return {
         "title": _msg("MSG_CREATE_PROCESSES_APPROVAL_TITLE"),
         "description": description,
         "dialog": [{
             "var": "decision",
-            "prompt": _msg("MSG_RUN_PROGRAMS_AUTHORIZATION_PROMPT"),
+            "prompt": _msg("MSG_CREATE_PROCESSES_APPROVAL_PROMPT"),
             "schema": {
                 "kind": "choice",
                 "choices": choices,
@@ -244,7 +220,8 @@ def _approval_dialog(
         "fmt": "auto",
         "on_complete": {
             "type": "gate_dispatch",
-            "branches": {scope: branch(scope) for scope in scopes},
+            "branches": {lifetime: branch(lifetime)
+                         for lifetime in lifetimes},
         },
     }
 
@@ -257,13 +234,6 @@ def _launch_error(package_id: str, answer: dict | None, *, stopping: bool = Fals
             "error": _msg("ERR_CREATE_PROCESSES_HELPER_UNAVAILABLE"),
             "error_code": "helper_unavailable",
             "error_class": "capability_missing",
-        }
-    if (not sys.platform.startswith("win")
-            and answer.get("error_code") in {"helper_not_available", "platform_unsupported"}):
-        return {
-            "package_id": package_id, "ok": False,
-            "error": _msg("ERR_CREATE_PROCESSES_WINDOWS_ONLY"),
-            "error_code": "platform_unsupported", "error_class": "capability_missing",
         }
     if answer.get("aligned") is False:
         update_pending = answer.get("error_code") == "helper_update_pending"
@@ -288,10 +258,8 @@ def _launch_error(package_id: str, answer: dict | None, *, stopping: bool = Fals
         "package_stop_unverified": "ERR_CREATE_PROCESSES_STOP_UNVERIFIED",
         "package_process_probe_failed": "ERR_CREATE_PROCESSES_STOP_FAILED",
     } if stopping else {
-        # Launcher registration is not the installed-package inventory.
-        # Its absence or a failed query cannot prove the app is uninstalled.
-        "package_not_registered": "ERR_CREATE_PROCESSES_TARGET_MISSING",
-        "package_operation_failed": "ERR_CREATE_PROCESSES_START_FAILED",
+        "package_not_registered": "ERR_CREATE_PROCESSES_NOT_INSTALLED",
+        "package_operation_failed": "ERR_CREATE_PROCESSES_NOT_INSTALLED",
         "package_start_unsupported": "ERR_CREATE_PROCESSES_UNSUPPORTED",
         "package_persistence_unsupported": "ERR_CREATE_PROCESSES_UNSUPPORTED",
         "package_target_missing": "ERR_CREATE_PROCESSES_TARGET_MISSING",
@@ -361,7 +329,7 @@ def invoke(args: dict) -> dict:
             "invalid_package_id",
             package=invalid[:80],
         )
-    if not sys.platform.startswith("win") and not os.environ.get("METNOS_CLIENT_EXE"):
+    if not sys.platform.startswith("win"):
         return _failure(
             "ERR_CREATE_PROCESSES_WINDOWS_ONLY",
             "platform_unsupported",
@@ -370,30 +338,9 @@ def invoke(args: dict) -> dict:
 
     lifetime = str(args.get("lifetime") or "").strip().lower()
     consent = str(args.get("actor_consent_token") or "").strip()
-    scope = args.get("authorization_scope")
-    approved_boot = args.get("authorization_boot_id")
     supported_lifetimes = _supported_lifetimes(package_ids)
 
-    boot_id = ""
-    if consent:
-        if (lifetime not in supported_lifetimes
-                or not isinstance(scope, str) or scope not in _AUTHORIZATION_SCOPES
-                or not isinstance(approved_boot, str)
-                or (scope == "until_restart" and not re.fullmatch(r"[0-9]{1,20}", approved_boot))
-                or (scope != "until_restart" and approved_boot != "")
-                or consent != _consent_token(package_ids, lifetime, scope, approved_boot)):
-            return _failure("ERR_CREATE_PROCESSES_CONSENT_INVALID", "consent_invalid",
-                            error_class="policy_denied")
-        if scope == "until_restart":
-            boot_id = _boot_id()
-            if not boot_id:
-                return _failure("ERR_RUN_PROGRAMS_BOOT_UNVERIFIED", "boot_unverified",
-                                error_class="resource_unavailable")
-            if boot_id != approved_boot:
-                consent = ""  # Windows restarted: ask again, before any launch.
-
     if not consent:
-        package_names = []
         for package_id in package_ids:
             answer = _launch_call(package_id, "query")
             if not answer or not answer.get("ok") or answer.get("aligned") is False:
@@ -407,14 +354,7 @@ def invoke(args: dict) -> dict:
                     "error": failed["error"],
                     "error_code": failed["error_code"],
                     "error_class": failed["error_class"],
-                    "_undo": {"outcome": "no_effect"},
                 }
-            name = answer.get("name")
-            package_names.append(name if isinstance(name, str) and name else package_id)
-        boot_id = boot_id or _boot_id()
-        if not boot_id:
-            return _failure("ERR_RUN_PROGRAMS_BOOT_UNVERIFIED", "boot_unverified",
-                            error_class="resource_unavailable")
         return {
             "ok": True,
             "decision": "needs_inputs",
@@ -424,8 +364,16 @@ def invoke(args: dict) -> dict:
             "ok_count": 0,
             "fail_count": 0,
             "_undo": {"outcome": "no_effect"},
-            "needs_inputs": _approval_dialog(package_ids, boot_id, package_names),
+            "needs_inputs": _approval_dialog(package_ids, supported_lifetimes),
         }
+
+    if (lifetime not in supported_lifetimes
+            or consent != _consent_token(package_ids, lifetime)):
+        return _failure(
+            "ERR_CREATE_PROCESSES_CONSENT_INVALID",
+            "consent_invalid",
+            error_class="policy_denied",
+        )
 
     results, failed, process_receipts = [], [], []
     untracked_mutation = False
@@ -439,12 +387,6 @@ def invoke(args: dict) -> dict:
         if answer and answer.get("ok") and answer.get("aligned") is not False:
             payload = answer.get("payload")
             payload = payload if isinstance(payload, dict) else {}
-            if (_identity_family(package_id) == "desktop"
-                    and payload.get("visible_window") is not True):
-                untracked_mutation = True
-                failed.append(_launch_error(package_id, {
-                    "error_code": "package_start_unverified"}))
-                continue
             created_process = payload.get("created_process") is True
             if lifetime == "session" and created_process:
                 process = payload.get("process")
@@ -464,7 +406,7 @@ def invoke(args: dict) -> dict:
                     "pid": pid,
                     "creation_time": creation_time,
                 }
-                if _identity_family(package_id) in {"appx", "desktop"}:
+                if _identity_family(package_id) == "appx":
                     activation_boundary = payload.get("activation_boundary")
                     preexisting_processes = payload.get("preexisting_processes")
                     if (not isinstance(activation_boundary, int)
@@ -500,8 +442,6 @@ def invoke(args: dict) -> dict:
                 "already_running": not created_process,
             })
         else:
-            if answer and answer.get("effects_attempted") is True:
-                untracked_mutation = True
             failed.append(_launch_error(package_id, answer))
 
     outcome = (
@@ -566,7 +506,7 @@ def reverse(_plan: dict, results: dict) -> dict:
         arguments = [
             "--pid", str(pid), "--creation-time", str(creation_time),
         ]
-        if _identity_family(package_id) in {"appx", "desktop"}:
+        if _identity_family(package_id) == "appx":
             if (not isinstance(activation_boundary, int)
                     or isinstance(activation_boundary, bool)
                     or activation_boundary <= 0

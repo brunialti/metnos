@@ -384,21 +384,6 @@ administrator. Changing it changes subsequent calls in every row that uses it;
 the person configuring tiers must therefore assess capability, cost, privacy, and
 availability.</p>
 
-<h2 id="resource-lifecycle">LRE and model lifecycles</h2>
-<p>LRE uses explicit contract requirements. Provider selection and service
-lifecycle belong to model virtualization. Jobs do not choose programs to launch,
-ports or weight files. The admitted model and policy remain verifiable after
-service startup.</p>
-<p>The LRE/Virt boundary
-exposes resource claims, model identity and readiness. The local vision adapter
-reuses the existing shared startup path; other providers retain their existing
-lifecycles. Automatic replica scaling has not been implemented yet.</p>
-<p>Multiple replicas require a stable logical endpoint, request routing and
-resource reservations shared across jobs. Replicating a model on the same CPU
-is useful only when measured capacity improves; RAM, shared GPU memory and
-other processes must inform that decision. Service readiness alone cannot
-guarantee protection from memory exhaustion.</p>
-
 <h1 id="cap9">9. Technical references</h1>
 
 <ul>

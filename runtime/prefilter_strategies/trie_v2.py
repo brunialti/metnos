@@ -13,7 +13,7 @@ Migliorie rispetto a `trie` v1:
    anche un solo livello e' matchato.
 4. **Stem expansion comune**: "appuntamenti"/"eventi"→events,
    "foto"/"immagini"→images, "mail"/"email"→messages (gia' coperto da
-   object_hint_mapping, riusato).
+   _OBJECT_HINTS, riusato).
 5. **Score weighted dal rank legacy**: il legacy sui survivors riceve
    score boost per i tool del trie depth maggiore.
 
@@ -36,12 +36,19 @@ class TrieNode:
 
 _TRIE_CACHE: dict[str, tuple[str, TrieNode]] = {}
 
-# Closed executor-name qualifiers.  Their order affects trie candidate order
-# and is therefore protocol; translations may add forms, never identities.
-_QUALIFIER_ORDER = (
-    "google_workspace", "xlsx", "csv", "text", "html", "ocr", "pdf",
-    "zip", "image",
-)
+
+_QUALIFIER_MARKERS = {
+    "google_workspace": ("google", "gmail", "drive", "gdrive",
+                         "workspace", "gcal"),
+    "xlsx": ("xlsx", "spreadsheet", "foglio", "sheet"),
+    "csv": ("csv", "comma"),
+    "text": ("text", "testo", "txt", "md", "markdown"),
+    "html": ("html", "htm", "pagina"),
+    "ocr": ("ocr", "scan", "scansione"),
+    "pdf": ("pdf",),
+    "zip": ("zip", "archive", "archivio"),
+    "image": ("foto", "immagine", "immagini", "photo", "image"),
+}
 
 
 def _build_trie(catalog_list) -> TrieNode:
@@ -68,26 +75,19 @@ def _build_trie(catalog_list) -> TrieNode:
 
 def _detect_qualifiers(query: str) -> list[str]:
     """Ritorna qualifier rilevati nella query, in ordine di apparizione."""
-    import detection_lexicon as _dl
-    import detection_lexicon_seed_routing as _routing_lexicon
-
     qlow = (query or "").lower()
     detected = []
-    # Qualifier names are closed executor-name components; only their user
-    # surface forms are localized in the routing lexicon.
-    localized = _routing_lexicon.mapping("routing.trie.qualifier")
-    for qual in _QUALIFIER_ORDER:
-        markers = localized.get(qual, ())
-        if _dl.match_any(markers, qlow, mode="word"):
+    for qual, markers in _QUALIFIER_MARKERS.items():
+        if any(re.search(r"\b" + re.escape(m) + r"\b", qlow) for m in markers):
             detected.append(qual)
     return detected
 
 
 def _detect_objects_all(qtokens, query: str | None = None) -> list[str]:
     """Ritorna TUTTI gli oggetti canonici matchati, ordinati per hit count."""
-    from prefilter import object_hint_mapping
+    from prefilter import _OBJECT_HINTS
     scores = {}
-    for obj, hints in object_hint_mapping().items():
+    for obj, hints in _OBJECT_HINTS.items():
         hit = sum(1 for h in hints if h in qtokens)
         if hit:
             scores[obj] = hit

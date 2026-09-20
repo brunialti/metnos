@@ -111,7 +111,7 @@ def test_real_appcontainer_runs_property_harness_schema_and_cardinality(tmp_path
     source = r'''
 import json,sys
 request=json.load(sys.stdin)
-count=request.get("fixture_count",0)
+count=request.get("input",{}).get("fixture_count",0)
 print(json.dumps({"entries":[{} for _ in range(count)]}))
 '''
     snapshot = CandidateSnapshot(

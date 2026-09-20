@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """compress_files — comprime una lista di file in UN archivio (zip/tar/gz).
 
 Vettoriale §2.1: input lista di path (anche 1, anche 0 → no-op onesto), output

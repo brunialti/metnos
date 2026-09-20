@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """analogy_transfer.py — trasferimento strutturale di strategie.
 
 Identifica strategia di successo in un dominio A (uses elevato

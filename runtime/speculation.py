@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """speculation.py — preemption euristica per warming del cache HTTP.
 
 L'idea (cluster C, 20/5/2026): mentre il PLANNER LLM ragiona (3-8s), il

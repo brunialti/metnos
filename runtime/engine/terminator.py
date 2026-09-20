@@ -133,12 +133,6 @@ _ERROR_ACTION_KEYS = {
     "ERR_PATH_NOT_FOUND": "MSG_TERM_PATH_NOT_FOUND_ACTION",
 }
 
-# Alcune classi executor non sono error_code ma descrivono comunque l'azione
-# utile. La decisione resta strutturata e indipendente dal testo localizzato.
-_ERROR_CLASS_ACTION_KEYS = {
-    "search_no_results": "MSG_LOOP_BREAK_HINT_URLS",
-}
-
 
 def _first_step_failure(failed_run: Optional[RunResult]) -> tuple[str, str]:
     """Errore CONCRETO del primo step fallito (§2.8). Il template generico
@@ -213,19 +207,10 @@ class SimpleTerminator:
         action_key = _ERROR_ACTION_KEYS.get(step_error_code)
         if action_key:
             action = _msg(action_key)
-        elif step_error_class in _ERROR_CLASS_ACTION_KEYS:
-            action = _msg(_ERROR_CLASS_ACTION_KEYS[step_error_class])
         elif step_error_class in OPERATIONAL_ERROR_CLASSES:
             action = _msg("MSG_CHAT_FB_RETRY")
         cause = step_err if step_err else _msg(ck)
-        # I frammenti i18n possono essere gia' frasi concluse mentre il wrapper
-        # aggiunge il punto. Togli soltanto il punto duplicabile; conserva
-        # domanda/esclamazione e i valori originali nei campi diagnostici.
-        text = _msg(
-            "MSG_TERM_WRAPPER",
-            cause=cause.rstrip().rstrip("."),
-            action=action.rstrip().rstrip("."),
-        )
+        text = _msg("MSG_TERM_WRAPPER", cause=cause, action=action)
         # Registra la classe executor reale: ``network`` non deve diventare una
         # falsa lacuna ``out_of_scope`` candidata alla sintesi di un tool.
         recorded_class = step_error_class or error_class

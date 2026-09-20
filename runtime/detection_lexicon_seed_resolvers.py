@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """Seed RM-0005 dei lessici posseduti dai resolver deterministici.
 
 Le chiavi dei mapping sono identita' tecniche stabili.  Soltanto i valori
@@ -14,12 +14,11 @@ import detection_lexicon as _dl
 
 
 _registered = False
-_outputs_registered = False
 log = logging.getLogger("metnos.detection_lexicon.seed_resolvers")
 
 
-def register_detection() -> None:
-    """Registra soltanto i lessici di input nel detection store."""
+def register_all() -> None:
+    """Registra, in modo idempotente, lessici input e output dei resolver."""
     R = _dl.register
 
     R("fast_path.intent_exact", "mapping", match_mode="substring", it={
@@ -81,13 +80,12 @@ def register_detection() -> None:
             "are you metnos", "introduce yourself",
             "tell me who you are",
         ],
-    }, review_policy="manual")
+    })
     R("fast_path.undo_prefix", "phrases", match_mode="word",
       it=["annulla", "annullare", "annullo", "ripristina"],
       en=["undo", "rollback", "revert"], review_policy="manual")
     R("fast_path.identity_suffix", "phrases", match_mode="substring",
-      it=["chi sei", "tu chi sei"], en=["who are you"],
-      review_policy="manual")
+      it=["chi sei", "tu chi sei"], en=["who are you"])
 
     R("resolver.backend_provider", "mapping", match_mode="substring", it={
         "events.local": [
@@ -240,21 +238,16 @@ def register_detection() -> None:
         "server_nominal": ["of the server", "this server", "the server"],
     }, review_policy="manual")
 
-
-
-def register_all() -> None:
-    """Registra, in modo idempotente, lessici input e output dei resolver."""
-    register_detection()
     _register_output_messages()
 
 
 def ensure_registered() -> None:
-    """Registra soltanto input detection; gli output hanno lifecycle proprio."""
+    """Fast path process-local; ``register_all`` resta richiamabile nei test."""
     global _registered
     if _registered:
         return
     try:
-        register_detection()
+        register_all()
     except Exception:  # read-only sandbox / store temporaneamente occupato
         log.warning("resolver lexicon seed non disponibile", exc_info=True)
         return
@@ -266,19 +259,6 @@ def ensure_registered() -> None:
         _dl.enqueue_language(_dl.current_lang())
     except Exception:
         log.warning("resolver lexicon translation enqueue fallito", exc_info=True)
-
-
-def ensure_output_registered() -> None:
-    """Provisiona separatamente gli output; non e' un prerequisito detection."""
-    global _outputs_registered
-    if _outputs_registered:
-        return
-    try:
-        _register_output_messages()
-    except Exception:
-        log.warning("resolver output seed non disponibile", exc_info=True)
-        return
-    _outputs_registered = True
 
 
 def _register_output_messages() -> None:

@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """alignment_engine.py — Giudice teleologico (telos engine fase 2).
 
 Implementa la funzione di allineamento dichiarata in

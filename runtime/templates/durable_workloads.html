@@ -3,26 +3,21 @@
 {% block body %}
 <h1>{{ msg("UI_DURABLE_TITLE") }}</h1>
 <p class="page-sub">{{ msg("UI_DURABLE_SUBTITLE") }}</p>
-<div class="dw-status-bar" role="status" aria-live="polite">
-  <span id="dwEngine">{{ msg("UI_DURABLE_LOADING") }}</span>
-  <span id="dwFreshness">{{ msg("UI_DURABLE_LOADING") }}</span>
-  <button type="button" class="btn" id="dwRefresh">{{ msg("UI_DURABLE_REFRESH") }}</button>
-</div>
 
 <div class="dw-layout" id="durableWorkloads" data-api="/agent/workloads">
   <section class="dw-panel" aria-labelledby="dw-list-title">
-    <div class="dw-panel-head"><h2 id="dw-list-title">{{ msg("UI_DURABLE_JOB_LIST") }}</h2></div>
+    <div class="dw-panel-head"><h2 id="dw-list-title">{{ msg("UI_DURABLE_TITLE") }}</h2></div>
     <div id="dwList" class="empty">{{ msg("UI_DURABLE_LOADING") }}</div>
     <div class="dw-pager" id="dwListPager"></div>
   </section>
 
   <section class="dw-panel" aria-labelledby="dw-detail-title">
     <div class="dw-panel-head">
-      <h2 id="dw-detail-title">{{ msg("UI_DURABLE_JOB_DETAIL") }}</h2>
+      <h2 id="dw-detail-title">{{ msg("UI_DURABLE_TITLE") }}</h2>
       <span class="dw-live" id="dwLive" aria-live="polite"></span>
     </div>
     <div class="dw-detail" id="dwDetail" hidden></div>
-    <div class="empty" id="dwPlaceholder">{{ msg("UI_DURABLE_LOADING") }}</div>
+    <div class="empty" id="dwPlaceholder">{{ msg("UI_DURABLE_EMPTY") }}</div>
   </section>
 </div>
 
@@ -44,64 +39,14 @@
   let unitsState = null;
   let lastEventId = 0;
   let refreshTimer = null;
-  let selectedId = null;
-  let detailGeneration = 0;
-  let detailRenderGeneration = 0;
-  let unitsGeneration = 0;
-  let listLoading = false;
-  let detailLoading = false;
-  let polling = false;
-  let lastRefreshAt = 0;
-  let lastRefreshTick = null;
-  let engine = null;
-  let listPages = 1;
-  let detailSignature = null;
-  let pageActive = true;
-  let pollTimer = null;
-  let staleTimer = null;
-  let actionSequence = 0;
-  const engineStatus = document.getElementById("dwEngine");
-  const freshness = document.getElementById("dwFreshness");
-  const observationTick = Symbol("observationTick");
-  function idempotencyKey() {
-    if (globalThis.crypto && typeof globalThis.crypto.randomUUID === "function") {
-      return globalThis.crypto.randomUUID();
-    }
-    actionSequence += 1;
-    const entropy = new Uint32Array(4);
-    if (globalThis.crypto && typeof globalThis.crypto.getRandomValues === "function") {
-      globalThis.crypto.getRandomValues(entropy);
-    }
-    return `ui-${Date.now().toString(36)}-${actionSequence.toString(36)}-${[...entropy].map(value => value.toString(36)).join("-")}`;
-  }
-  function observeProgress(progress, startedAt = performance.now()) {
-    // Client-only metadata survives the discovery projection's object spread,
-    // but is excluded from JSON signatures and never sent back to the server.
-    if (progress && typeof progress === "object") progress[observationTick] = startedAt;
-    return progress;
-  }
 
   const request = async (url, options = {}) => {
     const headers = new Headers(options.headers || {});
     headers.set("Accept", "application/json");
     if (options.body) headers.set("Content-Type", "application/json");
-    const controller = new AbortController();
-    const timeout = window.setTimeout(() => controller.abort(), 10000);
-    const startedAt = performance.now();
-    try {
-      const response = await fetch(url, {...options, headers, credentials: "same-origin", cache: "no-store", signal: controller.signal});
-      if (!response.ok) {
-        const error = new Error("request_failed");
-        error.status = response.status;
-        throw error;
-      }
-      const payload = await response.json();
-      observeProgress(payload?.workload?.progress, startedAt);
-      if (Array.isArray(payload?.items)) {
-        for (const workload of payload.items) observeProgress(workload?.progress, startedAt);
-      }
-      return payload;
-    } finally { window.clearTimeout(timeout); }
+    const response = await fetch(url, {...options, headers, credentials: "same-origin"});
+    if (!response.ok) throw new Error("request_failed");
+    return response.json();
   };
   const node = (name, text = "", className = "") => {
     const value = document.createElement(name);
@@ -111,171 +56,9 @@
   };
   const translated = (values, key) => values[key] || copy.unknown;
   const stateName = (state) => translated(copy.states, state);
-  const terminalStates = new Set(["cancelled", "completed", "completed_with_errors", "failed"]);
-  const isTerminalState = (state) => terminalStates.has(state);
-  const jobStateName = (state) => ["completed", "completed_with_errors"].includes(state)
-    ? copy.finishedState : stateName(state);
-  const uiLocale = document.documentElement?.lang || undefined;
-  // Domain codes are identifiers, not translation keys. Keep unknown approved
-  // codes distinguishable without teaching the general console each domain.
-  const errorName = (code) => copy.errorLabels[code] || (
-    typeof code === "string" && /^[a-z][a-z0-9_.-]{2,95}$/.test(code)
-      ? `${copy.errorUnknown} (${code})` : copy.errorUnknown);
-  const dateText = (value) => value ? new Date(value).toLocaleString(uiLocale) : "—";
-  const availableDate = (value) => typeof value === "string" && Number.isFinite(Date.parse(value)) ? dateText(value) : copy.notAvailable;
-  const percentText = (value) => typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 100 ? `${value.toLocaleString(uiLocale)}%` : copy.notAvailable;
-  const processedCount = (counters) => {
-    const values = [counters?.committed, counters?.failed, counters?.skipped];
-    return values.every(value => Number.isInteger(value) && value >= 0)
-      ? values.reduce((total, value) => total + value, 0) : null;
-  };
-  const durationText = (startedAt, finishedAt) => {
-    const elapsedSeconds = Math.floor((Date.parse(finishedAt) - Date.parse(startedAt)) / 1000);
-    if (!Number.isFinite(elapsedSeconds) || elapsedSeconds < 0) return copy.notAvailable;
-    const hours = Math.floor(elapsedSeconds / 3600);
-    const minutes = Math.floor((elapsedSeconds % 3600) / 60);
-    const seconds = elapsedSeconds % 60;
-    return copy.durationValue.replace("{hours}", countText(hours))
-      .replace("{minutes}", countText(minutes)).replace("{seconds}", countText(seconds));
-  };
-  const estimateReason = (progress, scope = "whole", stale = false) => {
-    if (stale) return "data_stale";
-    const estimate = scope === "phase" ? progress?.current_phase?.estimated_end_at : progress?.estimated_end_at;
-    if (!Number.isFinite(Date.parse(estimate))) {
-      return (scope === "phase" ? progress?.current_phase?.estimated_end_reason : progress?.estimated_end_reason) || "insufficient_data";
-    }
-    if (!engine || engine.enabled !== true || engine.worker_available !== true || engine.state !== "ready") return "engine_unavailable";
-    // Browser/server wall clocks need not agree. Age the no-store response
-    // monotonically, including transport time, and compare server instants
-    // only with the server's own observation plus that conservative age.
-    const age = performance.now() - progress?.[observationTick];
-    const observedAt = Date.parse(progress?.observed_at);
-    if (!Number.isFinite(age) || age < 0 || age > 30000 || !Number.isFinite(observedAt)) return "data_stale";
-    if (Date.parse(estimate) <= observedAt + age) return "estimate_overdue";
-    return null;
-  };
-  const estimateText = (progress, scope = "whole") => {
-    if (estimateReason(progress, scope)) return copy.notAvailable;
-    return new Date(scope === "phase" ? progress.current_phase.estimated_end_at : progress.estimated_end_at)
-      .toLocaleString(uiLocale, {dateStyle: "short", timeStyle: "short"});
-  };
-  function refreshEstimates(stale = false) {
-    for (const element of root.querySelectorAll(".dw-estimate")) {
-      updateEstimate(element, stale);
-    }
-  }
-  function updateEstimate(element, stale = false) {
-    const reason = estimateReason(element.progress, element.estimateScope, stale);
-    element.textContent = reason ? copy.notAvailable : estimateText(element.progress, element.estimateScope);
-    element.reasonNode.textContent = reason ? (copy.estimateReasons[reason] || copy.estimateReasons.insufficient_data) : "";
-    element.reasonNode.hidden = !reason;
-  }
-  function appendProgress(container, progress) {
-    appendFact(container, copy.started, availableDate(progress?.started_at));
-    const phase = progress?.current_phase;
-    const fact = appendFact(container, copy.phaseProgress, percentText(phase?.known_units_percent));
-    if (Number.isInteger(phase?.committed_units) && phase.committed_units >= 0
-        && Number.isInteger(phase?.total_units) && phase.total_units > 0 && phase.committed_units <= phase.total_units) {
-      fact.append(node("small", copy.phaseCount.replace("{completed}", countText(phase.committed_units))
-        .replace("{total}", countText(phase.total_units)), "dw-phase-count"));
-    }
-    appendEstimate(container, progress, "phase");
-  }
-  function appendFinishedListSummary(container, workload) {
-    const processed = processedCount(workload.counters);
-    appendFact(container, copy.finished, availableDate(workload.updated_at));
-    appendFact(container, copy.processedBatches, processed === null
-      ? copy.notAvailable : `${countText(processed)} / ${countText(workload.counters?.total)}`);
-  }
-  function appendEstimate(container, progress, scope) {
-    const fact = node("span", "", "dw-fact");
-    const value = estimateValue(progress, scope);
-    fact.append(node("span", `${scope === "phase" ? copy.phaseEstimatedEnd : copy.wholeEstimatedEnd}: `, "dw-fact-label"), value, value.reasonNode);
-    container.append(fact);
-  }
-  function estimateValue(progress, scope) {
-    const value = node("span", "", "dw-fact-value dw-estimate");
-    value.progress = progress;
-    value.estimateScope = scope;
-    value.reasonNode = node("small", "", "dw-estimate-reason");
-    updateEstimate(value);
-    return value;
-  }
-  function appendProgressTable(container, workload) {
-    const progress = displayedProgress(workload);
-    const phase = progress?.current_phase;
-    const table = node("table", "", "dw-progress-table");
-    table.setAttribute("aria-label", copy.progress);
-    const head = node("thead"), headings = node("tr"), body = node("tbody");
-    for (const label of [copy.metricValue, copy.metricMeaning]) {
-      const cell = node("th", label); cell.setAttribute("scope", "col"); headings.append(cell);
-    }
-    head.append(headings);
-    const row = (key, value, meaning) => {
-      const line = node("tr"), cell = node("td"), label = node("th");
-      line.dataset.metric = key;
-      label.setAttribute("scope", "row");
-      label.append(node("span", meaning));
-      cell.append(typeof value === "string" ? node("span", value) : value);
-      line.append(cell, label); body.append(line);
-      return label;
-    };
-    row("phase-completed", countText(phase?.committed_units), copy.phaseCompletedMeaning);
-    row("phase-total", countText(phase?.total_units), copy.phaseTotalMeaning);
-    row("known-total", countText(workload.counters?.total), copy.knownTotalMeaning);
-    row("phase-percent", percentText(phase?.known_units_percent), copy.phaseProgress);
-    row("started", availableDate(progress?.started_at), copy.started);
-    const estimate = estimateValue(progress, "phase");
-    row("phase-end", estimate, copy.phaseEstimatedEnd).append(estimate.reasonNode);
-    table.append(head, body); container.append(table);
-  }
-  function appendCompletionTable(container, workload) {
-    const progress = workload.progress;
-    const counters = workload.counters || {};
-    const processed = processedCount(counters);
-    const table = node("table", "", "dw-progress-table dw-completion-table");
-    table.setAttribute("aria-label", copy.finishedSummary);
-    const head = node("thead"), headings = node("tr"), body = node("tbody");
-    for (const label of [copy.metricValue, copy.metricMeaning]) {
-      const cell = node("th", label); cell.setAttribute("scope", "col"); headings.append(cell);
-    }
-    head.append(headings);
-    const row = (key, value, meaning) => {
-      const line = node("tr"), cell = node("td"), label = node("th");
-      line.dataset.metric = key;
-      label.setAttribute("scope", "row"); label.append(node("span", meaning));
-      cell.append(node("span", value)); line.append(cell, label); body.append(line);
-    };
-    row("processed", processed === null ? copy.notAvailable : `${countText(processed)} / ${countText(counters.total)}`, copy.processedBatches);
-    row("successful", countText(counters.committed), copy.saved);
-    row("started", availableDate(progress?.started_at), copy.started);
-    row("finished", availableDate(workload.updated_at), copy.finished);
-    row("duration", durationText(progress?.started_at, workload.updated_at), copy.duration);
-    table.append(head, body); container.append(table);
-  }
-  function appendCompletedStages(container, summary) {
-    const stages = (summary?.stages || []).filter(stage => stage?.counters?.total > 0);
-    if (!stages.length) return;
-    const section = node("section", "", "dw-stage-summary");
-    section.append(node("h3", copy.stages));
-    const table = node("table", "", "dw-progress-table");
-    const head = node("thead"), headings = node("tr"), body = node("tbody");
-    for (const label of [copy.stages, copy.processedBatches]) {
-      const cell = node("th", label); cell.setAttribute("scope", "col"); headings.append(cell);
-    }
-    head.append(headings);
-    for (const stage of stages) {
-      const line = node("tr"), label = node("th"), value = node("td");
-      label.setAttribute("scope", "row");
-      label.textContent = copy.phases[stage.stage_key] || translated(copy.stageTypes, stage.stage_type);
-      const processed = processedCount(stage.counters);
-      value.textContent = processed === null ? copy.notAvailable : `${countText(processed)} / ${countText(stage.counters.total)}`;
-      line.append(label, value); body.append(line);
-    }
-    table.append(head, body); section.append(table); container.append(section);
-  }
-  const countersText = (counters) => `${copy.saved}: ${counters.committed} / ${counters.total}`;
-  const breakdown = (counters) => `${copy.pending}: ${counters.pending} · ${copy.attention}: ${counters.attention} · ${copy.failedCount}: ${counters.failed} · ${copy.skipped}: ${counters.skipped}`;
+  const errorName = (code) => copy.errorLabels[code] || copy.errorUnknown;
+  const dateText = (value) => value ? new Date(value).toLocaleString() : "—";
+  const countersText = (counters) => `${counters.committed + counters.failed + counters.skipped} / ${counters.total}`;
   const button = (text, handler, {disabled = false, danger = false} = {}) => {
     const value = node("button", text, `btn${danger ? " bad" : ""}`);
     value.type = "button";
@@ -284,173 +67,40 @@
     return value;
   };
   const clear = (element) => element.replaceChildren();
-  const jobTitle = (workload) => workload.description?.kind === "image_indexing" ? copy.photoIndexing : copy.genericJob;
-  const jobFolder = (workload) => typeof workload.description?.target_path === "string" && workload.description.target_path ? workload.description.target_path : null;
-  const countText = (value) => Number.isInteger(value) && value >= 0 ? value.toLocaleString(uiLocale) : copy.notAvailable;
-  const phaseKey = (workload) => workload.progress?.current_phase?.stage_key || workload.description?.phase;
-  const displayedProgress = (workload) => workload.description?.kind === "image_indexing" && phaseKey(workload) === "discover"
-    ? {...workload.progress, known_units_percent: null, estimated_end_at: null,
-      current_phase: {...workload.progress?.current_phase, known_units_percent: null, total_units: null}} : workload.progress;
-  function appendPhase(container, workload) {
-    const current = workload.progress?.current_phase;
-    const numberKnown = Number.isInteger(current?.number) && current.number > 0
-      && Number.isInteger(current?.count) && current.count >= current.number;
-    const phase = workload.description?.kind === "image_indexing" ? phaseKey(workload) : null;
-    const title = phase ? copy.phases[phase] : null;
-    if (numberKnown) {
-      const ordinal = copy.phaseNumber.replace("{number}", countText(current.number)).replace("{total}", countText(current.count));
-      container.append(node("span", `${ordinal}${title ? ` — ${title}` : ""}`, "dw-progress-summary dw-phase"));
-    } else if (title) {
-      container.append(node("span", `${copy.phase}: ${title}`, "dw-progress-summary dw-phase"));
-    }
-  }
-  function appendFolder(container, workload, required = false) {
-    const path = jobFolder(workload);
-    if (!path && !required) return;
-    const folder = node("span", "", "dw-folder");
-    folder.append(node("span", copy.folder, "dw-folder-label"), node("span", path || copy.notAvailable));
-    container.append(folder);
-  }
-  function stateBadge(state) {
-    const badge = node("span", jobStateName(state), "dw-state");
-    badge.dataset.tone = ["running", "completed"].includes(state) ? "active"
-      : state === "completed_with_errors" ? "warning"
-      : ["needs_attention", "failed"].includes(state) ? "error"
-      : ["paused", "pause_requested", "cancel_requested"].includes(state) ? "warning" : "neutral";
-    return badge;
-  }
-  function highlightSelection() {
-    for (const row of list.querySelectorAll(".dw-job-choice")) {
-      const selectedNow = row.dataset.workloadId === selectedId;
-      row.setAttribute("aria-current", String(selectedNow));
-      row.setAttribute("aria-expanded", String(selectedNow));
-    }
-  }
-  function clearRemovedSelection() {
-    if (stream) stream.close();
-    stream = null;
-    window.clearTimeout(refreshTimer);
-    refreshTimer = null;
-    selectedId = null; selected = null; detailSignature = null;
-    lastEventId = 0; unitsCursor = null; unitsState = null;
-    detailGeneration += 1; detailRenderGeneration += 1; unitsGeneration += 1;
-    detailLoading = false;
-    clear(detail); detail.hidden = true;
-    live.textContent = ""; placeholder.hidden = false;
-    placeholder.textContent = list.querySelectorAll(".dw-job-choice").length ? copy.selectJob : copy.empty;
-    highlightSelection();
-  }
-  function toggleDetail(workloadId) {
-    if (selectedId === workloadId && !detail.hidden) {
-      clearRemovedSelection();
-      return;
-    }
-    loadDetail(workloadId);
-  }
-  function disclosure(key, label, openSections) {
-    const section = node("details", "", "dw-disclosure");
-    section.dataset.section = key;
-    section.open = openSections.has(key);
-    section.append(node("summary", label));
-    return section;
-  }
 
   async function loadList(reset = false) {
-    if (listLoading) return false;
-    listLoading = true;
     if (reset) listCursor = null;
     try {
       const query = listCursor ? `?cursor=${encodeURIComponent(listCursor)}` : "";
       const payload = await request(`${api}${query}`);
-      if (reset) { clear(list); listPages = 1; } else { listPages += 1; }
+      if (reset) clear(list);
       const items = payload.items || [];
       if (!items.length && !list.childElementCount) list.textContent = copy.empty;
       for (const workload of items) {
         if (list.classList.contains("empty")) { list.classList.remove("empty"); clear(list); }
-        const row = node("div", "", "dw-job-row");
-        row.dataset.workloadId = workload.workload_id;
-        const choice = button("", () => toggleDetail(workload.workload_id));
-        choice.className = "dw-job-choice";
-        choice.dataset.workloadId = workload.workload_id;
-        choice.setAttribute("aria-controls", "dwDetail");
-        const heading = node("span", "", "dw-job-heading");
-        const trailing = node("span", "", "dw-job-heading-actions");
-        const toggle = node("span", "⌄", "dw-job-toggle"); toggle.setAttribute("aria-hidden", "true");
-        trailing.append(stateBadge(workload.state), toggle);
-        heading.append(node("strong", jobTitle(workload)), trailing);
-        choice.append(heading);
-        appendFolder(choice, workload);
-        if (!isTerminalState(workload.state)) appendPhase(choice, workload);
-        const meta = node("span", "", "dw-timing");
-        if (isTerminalState(workload.state)) appendFinishedListSummary(meta, workload);
-        else appendProgress(meta, displayedProgress(workload));
-        choice.append(meta); row.append(choice);
-        if (isTerminalState(workload.state)) {
-          const remove = button("×", () => dismissListedWorkload(workload, remove), {danger: true});
-          remove.className = "dw-job-dismiss";
-          remove.setAttribute("aria-label", copy.dismiss);
-          remove.setAttribute("title", copy.dismiss);
-          row.append(remove);
-        }
+        const row = node("div", "", "dw-list-item");
+        const body = node("div");
+        body.append(node("div", workload.workload_id, "dw-work-id"));
+        const meta = node("div", "", "dw-meta");
+        meta.append(node("span", `${copy.state}: ${stateName(workload.state)}`));
+        meta.append(node("span", `${copy.progress}: ${countersText(workload.counters)}`));
+        meta.append(node("span", `${copy.updated}: ${dateText(workload.updated_at)}`));
+        body.append(meta);
+        row.append(body, button(copy.open, () => loadDetail(workload.workload_id)));
         list.append(row);
       }
-      highlightSelection();
       listCursor = payload.next_cursor || null;
       clear(listPager);
       if (listCursor) listPager.append(button(copy.loadMore, () => loadList(false)));
-      if (!selectedId) placeholder.textContent = list.querySelectorAll(".dw-job-choice").length ? copy.selectJob : copy.empty;
-      return true;
     } catch (_) {
-      // No response is not an empty history. Keep any last-known jobs visible.
-      if (!list.querySelectorAll(".dw-job-choice").length) list.textContent = copy.readFailed;
-      if (!selectedId) placeholder.textContent = copy.readFailed;
-      markStale();
-      return false;
-    } finally { listLoading = false; }
-  }
-
-  function markStale() {
-    refreshEstimates(true);
-    freshness.textContent = `${copy.stale}${lastRefreshAt ? ` · ${dateText(lastRefreshAt)}` : ""}`;
-    freshness.classList.add("dw-warning");
-  }
-
-  function renderEngine() {
-    const label = engine && engine.enabled === false && (engine.state === "disabled" || engine.reason_code === "feature_disabled")
-      ? copy.engineDisabled
-      : engine && engine.enabled === true && engine.worker_available === true && engine.state === "ready"
-        ? copy.engineReady : copy.engineUnavailable;
-    engineStatus.textContent = `${copy.engine}: ${label}`;
-    refreshEstimates();
-  }
-
-  async function refresh() {
-    if (polling || !pageActive) return;
-    polling = true;
-    try {
-      // Engine health is not a prerequisite for reading the owner's jobs.
-      const healthRefresh = request("/agent/health").then(health => {
-        engine = health.durable_workloads || null;
-      }).catch(() => { engine = null; }).finally(renderEngine);
-      // Automatic refresh never drops a page the user explicitly loaded.
-      const listOk = listPages > 1 ? true : await loadList(true);
-      await healthRefresh;
-      const detailOk = selectedId ? await loadDetail(selectedId, false) : true;
-      if (listOk && detailOk && listPages === 1) {
-        lastRefreshAt = Date.now();
-        lastRefreshTick = performance.now();
-        freshness.textContent = `${copy.fresh}: ${dateText(lastRefreshAt)}`;
-        freshness.classList.remove("dw-warning");
-      } else { markStale(); }
-    } catch (_) { engine = null; renderEngine(); markStale(); }
-    finally { polling = false; }
+      list.textContent = copy.unavailable;
+    }
   }
 
   function appendFact(container, label, value) {
-    const fact = node("span", "", "dw-fact");
-    fact.append(node("span", `${label}: `, "dw-fact-label"), node("span", value, "dw-fact-value"));
+    const fact = node("div", "", "dw-fact");
+    fact.append(node("span", label, "dw-fact-label"), node("span", value, "dw-fact-value"));
     container.append(fact);
-    return fact;
   }
 
   function eventName(type) {
@@ -461,7 +111,7 @@
       attention_resolved: "queued", failed: "failed", completed_with_errors: "completed_with_errors",
       completed: "completed"
     };
-    return jobStateName(map[type] || type);
+    return stateName(map[type] || type);
   }
 
   function addEvent(event) {
@@ -474,84 +124,58 @@
     while (timeline.children.length > 200) timeline.lastElementChild.remove();
   }
 
-  async function loadEvents(workloadId, generation) {
+  async function loadEvents(workloadId) {
     const timeline = document.getElementById("dwEvents");
     if (!timeline) return;
     try {
       const payload = await request(`${api}/${encodeURIComponent(workloadId)}/events?limit=100&recent=1`);
-      if (generation !== detailGeneration || workloadId !== selectedId) return;
       for (const event of payload.items) addEvent(event);
-    } catch (_) { if (generation === detailGeneration) timeline.textContent = copy.unavailable; }
+    } catch (_) { timeline.textContent = copy.unavailable; }
   }
 
   function scheduleModelRefresh(workloadId) {
     window.clearTimeout(refreshTimer);
-    refreshTimer = window.setTimeout(() => { if (selectedId === workloadId) loadDetail(workloadId, false); }, 250);
+    refreshTimer = window.setTimeout(() => loadDetail(workloadId, false), 250);
   }
 
   function connectStream(workloadId) {
-    if (!pageActive) return;
     if (stream) stream.close();
     const suffix = lastEventId ? `?after_event_id=${encodeURIComponent(lastEventId)}` : "";
     stream = new EventSource(`${api}/${encodeURIComponent(workloadId)}/stream${suffix}`);
     stream.addEventListener("workload", (message) => {
-      if (selectedId !== workloadId) return;
       try { addEvent(JSON.parse(message.data).event); scheduleModelRefresh(workloadId); } catch (_) {}
     });
-    stream.onopen = () => { if (selectedId === workloadId) { live.textContent = copy.live; scheduleModelRefresh(workloadId); } };
-    stream.onerror = () => { if (selectedId === workloadId) { live.textContent = copy.reconnecting; markStale(); } };
+    stream.onopen = () => { live.textContent = copy.live; };
+    stream.onerror = () => { live.textContent = copy.reconnecting; };
   }
 
-  async function runAction(command, confirmation = null) {
-    if (!selected || selected.workload_id !== selectedId || (confirmation && !window.confirm(confirmation))) return;
-    const workloadId = selected.workload_id;
+  async function runAction(command, destructive = false) {
+    if (!selected || (destructive && !window.confirm(copy.cancelConfirm))) return;
     const url = command === "retry"
       ? `${api}/${encodeURIComponent(selected.workload_id)}/attention/retry`
       : `${api}/${encodeURIComponent(selected.workload_id)}/${command}`;
     try {
       await request(url, {
         method: "POST",
-        body: JSON.stringify({expected_version: selected.version, idempotency_key: idempotencyKey()})
+        body: JSON.stringify({expected_version: selected.version, idempotency_key: crypto.randomUUID()})
       });
-      if (command === "dismiss") {
-        if (selectedId === workloadId) clearRemovedSelection();
-        await loadList(true);
-        return;
-      }
-      if (selectedId === workloadId) await loadDetail(workloadId, true);
+      await loadDetail(selected.workload_id, true);
       await loadList(true);
     } catch (_) { live.textContent = copy.actionFailed; }
   }
 
-  async function dismissListedWorkload(workload, control) {
-    if (!isTerminalState(workload?.state) || !window.confirm(copy.dismissConfirm)) return;
-    control.disabled = true;
-    try {
-      await request(`${api}/${encodeURIComponent(workload.workload_id)}/dismiss`, {
-        method: "POST",
-        body: JSON.stringify({expected_version: workload.version, idempotency_key: idempotencyKey()})
-      });
-      if (selectedId === workload.workload_id) clearRemovedSelection();
-      await loadList(true);
-    } catch (_) {
-      control.disabled = false;
-      live.textContent = copy.actionFailed;
-    }
-  }
-
-  async function loadArtifacts(workloadId, target, generation) {
+  async function loadArtifacts(workloadId, target) {
     const section = node("section", "", "dw-subpanel");
+    section.append(node("h3", copy.artifacts));
     const entries = node("ul", "", "dw-artifacts");
     section.append(entries);
     target.append(section);
     try {
       const payload = await request(`${api}/${encodeURIComponent(workloadId)}/artifacts`);
-      if (generation !== detailGeneration || workloadId !== selectedId) return;
       if (!payload.items.length) entries.append(node("li", copy.empty, "muted"));
       for (const artifact of payload.items) {
         const row = node("li", "", "dw-artifact-row");
-        row.append(node("span", `${artifact.logical_name} · ${artifact.size_bytes} B · ${translated(copy.artifactStates, artifact.state)}`));
-        const technical = node("details"); technical.append(node("summary", copy.technical), node("span", artifact.digest)); row.append(technical);
+        row.append(node("span", `${artifact.logical_name} · ${artifact.size_bytes} B · ${artifact.digest.slice(0, 15)} · ${translated(copy.artifactStates, artifact.state)}`));
         row.append(button(copy.download, async () => {
           try {
             const capability = await request(`${api}/${encodeURIComponent(workloadId)}/artifacts/${encodeURIComponent(artifact.artifact_id)}/download`, {method: "POST"});
@@ -564,8 +188,6 @@
   }
 
   async function loadUnits(workloadId, state = null, append = false) {
-    const generation = ++unitsGeneration;
-    const detailVersion = detailRenderGeneration;
     const entries = document.getElementById("dwUnits");
     if (!entries) return;
     try {
@@ -576,128 +198,54 @@
       const queryText = params.toString();
       const query = queryText ? `?${queryText}` : "";
       const payload = await request(`${api}/${encodeURIComponent(workloadId)}/units${query}`);
-      if (generation !== unitsGeneration || detailVersion !== detailRenderGeneration || workloadId !== selectedId) return;
       if (!append) clear(entries);
       for (const unit of payload.items) {
-        const row = node("li", `${unit.stage_key} · ${stateName(unit.state)} · ${copy.attempts}: ${unit.attempt_count}`);
-        if (unit.error_code) row.append(node("p", errorName(unit.error_code)));
-        entries.append(row);
+        entries.append(node("li", `${unit.stage_key} · ${stateName(unit.state)} · ${unit.attempt_count}`));
       }
       unitsCursor = payload.next_cursor || null;
       const pager = document.getElementById("dwUnitsPager");
       clear(pager);
       if (unitsCursor) pager.append(button(copy.loadMore, () => loadUnits(workloadId, unitsState, true)));
-    } catch (_) { if (generation === unitsGeneration && detailVersion === detailRenderGeneration) entries.textContent = copy.unavailable; }
+    } catch (_) { entries.textContent = copy.unavailable; }
   }
 
   async function loadDetail(workloadId, restartStream = true) {
-    const changed = selectedId !== workloadId;
-    if (detailLoading && !changed) return false;
-    if (changed) {
+    if (!selected || selected.workload_id !== workloadId) {
       if (stream) stream.close();
       stream = null;
       lastEventId = 0;
-      selectedId = workloadId;
-      detailRenderGeneration += 1;
-      selected = null;
-      detailSignature = null;
-      detail.hidden = true;
-      placeholder.hidden = false;
-      placeholder.textContent = copy.loading;
-      highlightSelection();
     }
-    const generation = ++detailGeneration;
-    detailLoading = true;
     try {
       const payload = await request(`${api}/${encodeURIComponent(workloadId)}`);
-      if (generation !== detailGeneration || selectedId !== workloadId) return false;
-      const signature = JSON.stringify([payload, engine], (key, value) => key === "observed_at" ? undefined : value);
-      if (!restartStream && detailSignature === signature) {
-        for (const element of detail.querySelectorAll(".dw-estimate")) element.progress = displayedProgress(payload.workload);
-        refreshEstimates();
-        return true;
-      }
-      const openSections = new Set([...detail.querySelectorAll("details[data-section]")].filter(section => section.open).map(section => section.dataset.section));
-      const refreshUnits = Boolean(document.getElementById("dwUnits")?.childElementCount);
-      const previousUnitsState = unitsState;
-      detailSignature = signature;
-      detailRenderGeneration += 1;
       selected = payload.workload;
       unitsCursor = null;
       clear(detail);
       placeholder.hidden = true;
       detail.hidden = false;
-      const heading = node("div", "", "dw-job-heading");
-      heading.append(node("h3", jobTitle(selected)), stateBadge(selected.state));
-      detail.append(heading);
-      appendFolder(detail, selected, true);
-      const phase = selected.description?.kind === "image_indexing" ? phaseKey(selected) : null;
-      if (!isTerminalState(selected.state)) appendPhase(detail, selected);
-      if (selected.state === "needs_attention") detail.append(node("p", copy.blockedHelp, "dw-notice dw-warning"));
-      if (["queued", "running", "admitted"].includes(selected.state) && (!engine || engine.enabled !== true || engine.worker_available !== true || engine.state !== "ready")) {
-        detail.append(node("p", copy.waitingHelp, "dw-notice dw-warning"));
-      }
-      const terminal = isTerminalState(selected.state);
-      if (terminal) {
-        appendCompletionTable(detail, selected);
-        appendCompletedStages(detail, payload.revision?.execution);
-      } else {
-        appendProgressTable(detail, selected);
-        const progressSummary = node("div", "", "dw-progress-summary");
-        const phasePercent = displayedProgress(selected)?.current_phase?.known_units_percent;
-        if (percentText(phasePercent) !== copy.notAvailable) {
-          const bar = node("progress");
-          bar.max = 100; bar.value = phasePercent;
-          bar.setAttribute("aria-label", copy.phaseProgress);
-          progressSummary.append(bar);
-        }
-        if (phase === "discover") progressSummary.append(node("span", copy.discoveryHelp));
-        else progressSummary.append(node("span", copy.batchDefinition));
-        detail.append(progressSummary);
-      }
-      const parallelism = selected.progress?.parallelism;
-      if (!terminal && parallelism) detail.append(node("p", `${copy.runningBlocks}: ${countText(parallelism.running_units)} · ${copy.jobLimit}: ${countText(parallelism.max_concurrency)}`, "dw-progress-summary"));
+      detail.append(node("div", selected.workload_id, "dw-work-id"));
+      const facts = node("div", "", "dw-facts");
+      appendFact(facts, copy.state, stateName(selected.state));
+      appendFact(facts, copy.priority, translated(copy.priorities, selected.priority));
+      appendFact(facts, copy.progress, countersText(selected.counters));
+      appendFact(facts, copy.created, dateText(selected.created_at));
+      detail.append(facts);
       if (payload.revision) {
-        const summary = payload.revision.execution;
-        renderProblems(summary, detail, openSections);
+        const revision = node("section", "", "dw-subpanel");
+        revision.append(node("h3", copy.revision));
+        const revisionFacts = node("div", "", "dw-facts");
+        appendFact(revisionFacts, copy.planDigest, payload.revision.plan_digest);
+        appendFact(revisionFacts, copy.inventoryDigest, payload.revision.inventory_digest || "—");
+        revision.append(revisionFacts); detail.append(revision);
+        renderExecutionSummary(payload.revision.execution, detail);
       }
       const actions = node("div", "", "dw-actions");
-      if (["queued", "running"].includes(selected.state)) actions.append(button(copy.pause, () => runAction("pause")));
-      if (selected.state === "paused") actions.append(button(copy.resume, () => runAction("resume")));
-      if (selected.state === "needs_attention") actions.append(button(copy.retry, () => runAction("retry")));
-      if (!terminal) actions.append(button(copy.cancel, () => runAction("cancel", copy.cancelConfirm), {danger: true}));
-      if (terminal) actions.append(button(copy.dismiss, () => runAction("dismiss", copy.dismissConfirm), {danger: true}));
-      if (actions.childElementCount) detail.append(actions);
-      const help = disclosure("help", copy.readProgress, openSections);
-      help.append(node("p", copy.progressHelp), node("p", copy.phaseScopeHelp), node("p", copy.timingHelp));
-      help.append(node("p", copy.parallelismHelp));
-      if (selected.description?.kind === "image_indexing") help.append(node("p", copy.recoveryHelp));
-      detail.append(help);
-      const events = disclosure("events", copy.events, openSections);
+      actions.append(button(copy.pause, () => runAction("pause"), {disabled: !["queued", "running"].includes(selected.state)}));
+      actions.append(button(copy.resume, () => runAction("resume"), {disabled: selected.state !== "paused"}));
+      actions.append(button(copy.retry, () => runAction("retry"), {disabled: selected.state !== "needs_attention"}));
+      actions.append(button(copy.cancel, () => runAction("cancel", true), {disabled: ["cancelled", "completed", "completed_with_errors", "failed"].includes(selected.state), danger: true}));
+      detail.append(actions);
+      const events = node("section", "", "dw-subpanel"); events.append(node("h3", copy.events));
       events.append(node("ul", "", "dw-events")); events.lastChild.id = "dwEvents"; detail.append(events);
-      const technical = disclosure("technical", copy.technical, openSections);
-      const technicalFacts = node("div", "", "dw-facts dw-job-code");
-      appendFact(technicalFacts, copy.jobId, selected.workload_id);
-      appendFact(technicalFacts, copy.operation, selected.description?.operation || copy.notAvailable);
-      appendFact(technicalFacts, copy.priority, translated(copy.priorities, selected.priority));
-      appendFact(technicalFacts, copy.progress, countersText(selected.counters));
-      const processed = processedCount(selected.counters);
-      const terminalPercent = terminal && processed !== null && selected.counters?.total > 0
-        ? Math.round(processed * 1000 / selected.counters.total) / 10 : null;
-      appendFact(technicalFacts, copy.percent, percentText(terminalPercent ?? displayedProgress(selected)?.known_units_percent));
-      if (parallelism) appendFact(technicalFacts, copy.reservedBlocks, countText(parallelism.leased_units));
-      appendFact(technicalFacts, copy.units, breakdown(selected.counters));
-      appendFact(technicalFacts, copy.created, availableDate(selected.created_at));
-      appendFact(technicalFacts, copy.updated, availableDate(selected.updated_at));
-      appendEstimate(technicalFacts, displayedProgress(selected), "whole");
-      if (payload.revision) {
-        const summary = payload.revision.execution;
-        appendFact(technicalFacts, copy.lastResult, summary?.last_committed_at ? dateText(summary.last_committed_at) : copy.noResult);
-        appendFact(technicalFacts, copy.planDigest, payload.revision.plan_digest);
-        appendFact(technicalFacts, copy.inventoryDigest, payload.revision.inventory_digest || copy.notAvailable);
-      }
-      technical.append(technicalFacts);
-      if (payload.revision) renderExecutionSummary(payload.revision.execution, technical);
       const units = node("section", "", "dw-subpanel"); units.append(node("h3", copy.units));
       const unitControls = node("div", "", "dw-actions");
       unitControls.append(button(copy.loadAttention, () => loadUnits(workloadId, "needs_attention")));
@@ -705,63 +253,11 @@
       unitControls.append(button(copy.loadUnits, () => loadUnits(workloadId)));
       units.append(unitControls);
       const unitList = node("ul", "", "dw-units"); unitList.id = "dwUnits"; units.append(unitList);
-      const unitPager = node("div", "", "dw-pager"); unitPager.id = "dwUnitsPager"; units.append(unitPager); technical.append(units);
-      detail.append(technical);
-      const results = disclosure("results", copy.artifacts, openSections);
-      detail.append(results);
-      await Promise.all([loadEvents(workloadId, generation), loadArtifacts(workloadId, results, generation)]);
-      if (generation !== detailGeneration) return false;
-      if (!changed && refreshUnits) await loadUnits(workloadId, previousUnitsState);
-      if (restartStream || !stream) connectStream(workloadId);
-      return true;
-    } catch (error) {
-      if (generation !== detailGeneration || selectedId !== workloadId) return false;
-      if (error.status === 404) {
-        // Confirmed absence is not a temporary read failure. Drop the stale
-        // open detail and its controls after an authorized history deletion.
-        clearRemovedSelection();
-        await loadList(true);
-        return true;
-      }
-      live.textContent = copy.unavailable; markStale();
-      return false;
-    }
-    finally { if (generation === detailGeneration) detailLoading = false; }
-  }
-
-  function appendErrorCategories(target, errors) {
-    for (const category of errors.categories || []) {
-      const cause = category.cause_code ? ` — ${errorName(category.cause_code)}` : "";
-      target.append(node("p", `${errorName(category.error_code)}${cause} · ${category.count}`));
-    }
-    if (errors.truncated) target.append(node("p", copy.moreErrorCategories));
-  }
-
-  function renderProblems(summary, target, openSections) {
-    if (!summary) return;
-    const domain = summary.domain_errors;
-    if (domain && domain.nitems > 0) {
-      const items = node("section", "", "dw-notice dw-warning");
-      items.append(node("h3", `${copy.itemsWithErrors}: ${domain.nitems}`));
-      appendErrorCategories(items, domain);
-      target.append(items);
-    }
-    const history = summary.attempt_errors;
-    if (history && history.nattempts > 0) {
-      const attempts = disclosure("attempt-errors", `${copy.attemptErrors}: ${history.nattempts}`, openSections);
-      attempts.append(node("p", copy.attemptErrorsHelp));
-      appendErrorCategories(attempts, history);
-      target.append(attempts);
-    }
-    const errors = node("section", "", "dw-notice dw-warning");
-    if (summary.blocking_reason) errors.append(node("p", errorName(summary.blocking_reason)));
-    for (const error of summary.error_categories || []) {
-      const code = error.error_code === "budget_exhausted" && summary.blocking_reason === "budget_accounting_incomplete"
-        ? summary.blocking_reason : error.error_code;
-      errors.append(node("p", `${errorName(code)} · ${error.count}`));
-    }
-    if (errors.childElementCount) { errors.prepend(node("h3", copy.errors)); target.append(errors); }
-    for (const warning of summary.warnings || []) target.append(node("p", copy.warningsByCode[warning] || copy.unknown, "dw-notice"));
+      const unitPager = node("div", "", "dw-pager"); unitPager.id = "dwUnitsPager"; units.append(unitPager); detail.append(units);
+      await loadEvents(workloadId);
+      await loadArtifacts(workloadId, detail);
+      if (restartStream) connectStream(workloadId);
+    } catch (_) { live.textContent = copy.unavailable; }
   }
 
   function renderExecutionSummary(summary, target) {
@@ -789,39 +285,21 @@
     if (stages.childElementCount) { plan.append(node("h4", copy.stages), stages); }
     target.append(plan);
 
+    if ((summary.error_categories || []).length) {
+      const errors = node("section", "", "dw-subpanel"); errors.append(node("h3", copy.errors));
+      const entries = node("ul", "", "dw-events");
+      for (const error of summary.error_categories) entries.append(node("li", `${errorName(error.error_code)} · ${error.count}`));
+      errors.append(entries); target.append(errors);
+    }
+    if ((summary.warnings || []).length) {
+      const warnings = node("section", "", "dw-subpanel"); warnings.append(node("h3", copy.warnings));
+      const entries = node("ul", "", "dw-events");
+      for (const warning of summary.warnings) entries.append(node("li", copy.warningsByCode[warning] || copy.unknown));
+      warnings.append(entries); target.append(warnings);
+    }
   }
 
-  function startPolling() {
-    window.clearInterval(pollTimer);
-    window.clearInterval(staleTimer);
-    pollTimer = window.setInterval(() => { if (!document.hidden) refresh(); }, 15000);
-    staleTimer = window.setInterval(() => { if (lastRefreshTick !== null && performance.now() - lastRefreshTick > 30000) markStale(); }, 5000);
-  }
-
-  function deactivatePage() {
-    pageActive = false;
-    if (stream) stream.close();
-    stream = null;
-    window.clearTimeout(refreshTimer);
-    window.clearInterval(pollTimer);
-    window.clearInterval(staleTimer);
-  }
-
-  function restorePage(event) {
-    pageActive = true;
-    if (!event.persisted) return;
-    markStale();
-    startPolling();
-    refresh();
-    if (selectedId) connectStream(selectedId);
-  }
-
-  document.getElementById("dwRefresh").addEventListener("click", () => { listPages = 1; refresh(); });
-  refresh();
-  startPolling();
-  document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });
-  window.addEventListener("pagehide", deactivatePage);
-  window.addEventListener("pageshow", restorePage);
+  loadList(true);
 })();
 </script>
 {% endblock %}

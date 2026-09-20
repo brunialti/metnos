@@ -326,7 +326,7 @@ def find_by_dialog_id(dialog_id: str, *,
 
     Il `dialog_id` (uuid) e' globalmente unico → la chiave-sender NON serve per
     identificarlo. Fallback robusto quando il sender al tap differisce da quello
-    di salvataggio (query SCHEDULATE: pending sotto «telegram:example», il tap
+    di salvataggio (query SCHEDULATE: pending sotto «telegram:roberto», il tap
     risolve il chat_id a «host») e i bridge a TTL (cap_pending 10 min) sono
     scaduti mentre il dialogo (timeout_s) e' ancora valido. Salta i
     completati/cancellati/scaduti. §7.9 deterministico."""
@@ -401,21 +401,16 @@ def _resolve_choice_reply(value, step):
 
 
 def consume_pending_step(sender_id: str, dialog_id: str, var: str,
-                         value, *, owner_user_id: str,
-                         source: str = "internal") -> dict:
+                         value, *, owner_user_id: str) -> dict:
     """Avanza atomicamente un dialogo; un solo consumer può vincere."""
-    if source not in {"internal", "http_chat", "http_form_owner",
-                      "http_form_capability", "telegram_chat", "telegram_button"}:
-        return {"ok": False, "error": "invalid_submission_source"}
     with _dialog_lock(sender_id, dialog_id):
         return _consume_pending_step_unlocked(
             sender_id, dialog_id, var, value,
-            owner_user_id=owner_user_id, source=source)
+            owner_user_id=owner_user_id)
 
 
 def _consume_pending_step_unlocked(sender_id: str, dialog_id: str, var: str,
-                                   value, *, owner_user_id: str,
-                                   source: str = "internal") -> dict:
+                                   value, *, owner_user_id: str) -> dict:
     """Avanza il dialogo registrando il valore raccolto per la variabile `var`.
 
     Comportamento:
@@ -470,13 +465,6 @@ def _consume_pending_step_unlocked(sender_id: str, dialog_id: str, var: str,
     values = dict(state.get("values_collected") or {})
     values[var] = _resolved
     state["values_collected"] = values
-    # Record the accepting boundary, not a claim that a human clicked. No
-    # capability, raw message, credential, or duplicate field value belongs
-    # here. The record is committed under the same lock as the chosen value.
-    submitted_at = _utc_now_iso()
-    submissions = dict(state.get("submissions") or {})
-    submissions[var] = {"source": source, "at": submitted_at}
-    state["submissions"] = submissions
     state["step_index"] = idx + 1
     # Persisti il sender_id NELLO stato (20/6): il callback on_complete
     # (resume_engine_gate / save_credentials_and_resume) legge
@@ -486,7 +474,7 @@ def _consume_pending_step_unlocked(sender_id: str, dialog_id: str, var: str,
     state.setdefault("sender_id", sender_id)
     if state["step_index"] >= len(dialog):
         state["completed"] = True
-        state["completed_at"] = submitted_at
+        state["completed_at"] = _utc_now_iso()
     save_pending(sender_id, dialog_id, state)
     return {"ok": True,
             "completed": bool(state.get("completed")),
@@ -536,9 +524,7 @@ def begin_callback_once(sender_id: str, dialog_id: str, nonce: str, *,
                 or state.get("cancelled") or is_expired(state)):
             return {"status": "invalid"}
         on_complete = state.get("on_complete") or {}
-        # Ordinary gates already have a unique, owner-bound dialog identity.
-        # Tutor handoffs can additionally bind their own explicit nonce.
-        stored = str(on_complete.get("nonce") or dialog_id)
+        stored = str(on_complete.get("nonce") or "")
         if not stored or not hmac.compare_digest(stored, str(nonce)):
             return {"status": "invalid"}
         receipt = state.get("callback_receipt")
@@ -569,7 +555,7 @@ def complete_callback_once(sender_id: str, dialog_id: str, nonce: str,
         if state is None or not state.get("callback_claimed_at"):
             return False
         on_complete = state.get("on_complete") or {}
-        stored = str(on_complete.get("nonce") or dialog_id)
+        stored = str(on_complete.get("nonce") or "")
         if not stored or not hmac.compare_digest(stored, str(nonce)):
             return False
         existing = state.get("callback_receipt")

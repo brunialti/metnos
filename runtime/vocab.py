@@ -522,7 +522,7 @@ PRODUCER_VERBS = frozenset({"read", "find", "list", "get"})
 # final_answer o sono trasformatori, non azioni dovute. Multilingue: i verbi
 # sono CANONICI (detect_canonical_verbs_all normalizza già IT+EN).
 COVERAGE_REQUIRED_VERBS = PRODUCER_VERBS | frozenset({
-    "send", "create", "write", "move", "delete", "share", "set",
+    "send", "create", "write", "move", "delete", "share",
     # `install` modifica una macchina: se la query lo chiede e il piano
     # non lo porta, la decomposizione e' monca — non un dettaglio.
     "install", "run",
@@ -669,14 +669,12 @@ ACTION_MAPPING = {
     },
     "create": {
         "it": ["crea-cartella", "crea-dir", "nuova-directory", "mkdir",
-                "costruisci-indice", "crea-indice", "indicizza", "reindicizza",
-                "rebuilda-indice", "ricostruisci-indice", "prepara-ricerca", "aggiorna-indice"],
+                "costruisci-indice", "crea-indice", "indicizza"],
         "en": ["create-folder", "create-directory", "mkdir", "make-dir",
-                "build-index", "create-index", "index", "reindex", "rebuild-index",
-                "prepare-search", "refresh-index", "update-index"],
+                "build-index", "create-index", "index"],
         "boundary": {
-            "it": "Crea contenitori o derivati persistenti del dominio. COSTRUIRE, AGGIORNARE e RICOSTRUIRE un INDICE sono sempre create: `create_<dom>_indices` costruisce o aggiorna l'indice; l'oggetto resta il dominio indicizzato (foto=images, documenti=files, messaggi=messages), non dirs solo perché è nominata la cartella sorgente. NON order (ordine degli elementi), NON change (modifica del contenuto sorgente), NON write (contenuto di un file).",
-            "en": "Creates containers or persistent domain derivatives. BUILDING, UPDATING and REBUILDING an INDEX are always create: `create_<dom>_indices` builds or updates the index; the object remains the indexed domain (photos=images, documents=files, messages=messages), not dirs merely because the source folder is named. NOT order (element ordering), NOT change (editing source content), NOT write (file content).",
+            "it": "Creazione di contenitori (dir) o di derivati persistenti del dominio (indici). I file con contenuto vanno a write. Per gli indici: `create_<dom>_indices` (es. create_images_indices) costruisce o aggiorna l'indice del dominio target; il qualifier `_indices` (modalita') segnala che il mezzo di ricerca e' un derivato persistente del dominio.",
+            "en": "Creates containers (directories) or persistent domain derivatives (indices). Files with content belong to write. For indices, `create_<dom>_indices` (for example create_images_indices) builds or updates the target domain index; the `_indices` mode qualifier states that the search medium is a persistent domain derivative.",
         },
     },
     "move": {
@@ -847,11 +845,13 @@ ACTION_MAPPING = {
         },
     },
     "order": {
-        "it": ["materializza-ordinamento"],
-        "en": ["order", "materialize-order"],
+        "it": ["indicizza", "costruisci-indice", "rebuilda-indice", "materializza-ordinamento",
+                "prepara-ricerca", "aggiorna-indice"],
+        "en": ["order", "index", "build-index", "materialize-order", "prepare-search",
+                "refresh-index"],
         "boundary": {
-            "it": "Materializza un ORDINE PERSISTENTE degli elementi di un corpus. Distinto da sort, che ordina una lista in memoria nel turno corrente. NON costruzione, aggiornamento o ricostruzione di un indice di ricerca: quelle operazioni sono create, con l'oggetto del dominio indicizzato.",
-            "en": "Materializes a PERSISTENT ORDER of the elements in a corpus. Unlike sort, which orders an in-memory list in the current turn. NOT building, updating or rebuilding a search index: those operations are create, with the object of the indexed domain.",
+            "it": "Materializza un ordinamento PERSISTENTE del corpus (indice CLIP, perceptual hash, threading messages, ...) per rendere veloci query future. Distinto da sort: sort ordina una lista IN MEMORIA del turno corrente; order produce un derivato durevole su disco. Composizione naturale: order_X_y costruisce/refresha l'indice, find_X_y lo interroga. Refresh tipicamente lazy (al primo find_X_y che lo richiede) o esplicito (utente: 'ricostruisci indice').",
+            "en": "Materializes a PERSISTENT ordering of a corpus (CLIP index, perceptual hash, message threading, and similar derivatives) to accelerate future queries. Unlike sort, which orders an IN-MEMORY list for the current turn, order produces a durable derivative on disk. Natural composition: order_X_y builds or refreshes the index and find_X_y queries it. Refresh is typically lazy on the first requiring find_X_y, or explicit when the user asks to rebuild the index.",
         },
     },
     "share": {
@@ -1198,6 +1198,85 @@ def imported_bindings_index() -> dict[tuple[str, str], list[str]]:
     return index
 
 
+# Sinonimi cross-language verb -> object atomico, deterministico (no LLM).
+# Espanso solo quando un termine nel synth `expected_name` o `intent` deve
+# essere ricondotto a un OBJECT canonico ufficiale per il match con
+# imported_bindings_index. Lista CHIUSA, esoticismi escalation a Roberto.
+_OBJECT_SYNONYMS_IT: dict[str, str] = {
+    # IT singolare/plurale → OBJECT canonico
+    "appuntamento": "events", "appuntamenti": "events",
+    "agenda": "events", "calendario": "events",
+    "evento": "events", "eventi": "events",
+    "riunione": "events", "riunioni": "events",
+    "incontro": "events", "incontri": "events",
+    "scadenza": "events", "scadenze": "events",
+    "messaggio": "messages", "messaggi": "messages",
+    "mail": "messages", "email": "messages", "posta": "messages",
+    "contatto": "contacts", "contatti": "contacts",
+    "rubrica": "contacts",
+    "file": "files", "documento": "files", "documenti": "files",
+    "cartella": "dirs", "cartelle": "dirs", "directory": "dirs",
+    "pacchetto": "packages", "pacchetti": "packages",
+    "processo": "processes", "processi": "processes",
+    "luogo": "places", "luoghi": "places", "posto": "places",
+    "task": "tasks", "promemoria": "tasks", "timer": "tasks",
+    "ricorrente": "tasks", "ricorrenti": "tasks",
+    "schedulato": "tasks", "schedulati": "tasks",
+    "persona": "persons", "persone": "persons",
+    "enrollato": "persons", "enrollati": "persons",
+    "enrollata": "persons", "enrollate": "persons",
+    "enrolled": "persons", "registrata": "persons", "registrate": "persons",
+    "registrato": "persons", "registrati": "persons",
+    "volto": "persons", "volti": "persons",
+    "viso": "persons", "visi": "persons",
+    # GitHub (ADR 0141). NB: "issue"/"pr" sono anche nei marker provider
+    # `_github` di tool_grammar; qui mappano l'OBJECT canonico.
+    "issue": "issues", "issues": "issues",
+    "segnalazione": "issues", "segnalazioni": "issues", "ticket": "issues",
+    "pr": "pulls", "pull request": "pulls", "pull": "pulls",
+    "merge request": "pulls",
+    # approval (gate consenso): solo termini DISTINTIVI; "conferma" resta fuori
+    # (troppo generico) — l'intent LLM lo gestisce dal few-shot.
+    "approvazione": "approval", "approva": "approval", "approvare": "approval",
+    "consenso": "approval", "autorizzazione": "approval", "autorizza": "approval",
+    # preferences: il sostantivo con cui l'utente nomina le proprie preferenze.
+    "preferenza": "preferences", "preferenze": "preferences",
+    "impostazione": "preferences", "impostazioni": "preferences",
+}
+_OBJECT_SYNONYMS_EN: dict[str, str] = {
+    "appointment": "events", "appointments": "events",
+    "calendar": "events", "schedule": "events",
+    "event": "events", "events": "events",
+    "meeting": "events", "meetings": "events",
+    "deadline": "events", "deadlines": "events",
+    "message": "messages", "messages": "messages",
+    "mail": "messages", "email": "messages",
+    "contact": "contacts", "contacts": "contacts",
+    "file": "files", "document": "files", "documents": "files",
+    "folder": "dirs", "directory": "dirs",
+    "package": "packages", "packages": "packages",
+    "process": "processes", "processes": "processes",
+    "place": "places", "places": "places",
+    "task": "tasks", "tasks": "tasks", "reminder": "tasks", "timer": "tasks",
+    "scheduled": "tasks", "recurring": "tasks",
+    "person": "persons", "persons": "persons", "people": "persons",
+    "enrolled": "persons", "registered": "persons",
+    "face": "persons", "faces": "persons",
+    # GitHub (ADR 0141)
+    "issue": "issues", "issues": "issues", "ticket": "issues",
+    "pull": "pulls", "pulls": "pulls", "pull request": "pulls",
+    "pr": "pulls", "merge request": "pulls",
+    # approval (consent gate): distinctive terms only; "confirm" stays out
+    # (too generic) — the intent LLM handles it from the few-shot.
+    "approval": "approval", "approve": "approval", "consent": "approval",
+    "authorization": "approval", "authorize": "approval",
+    # preferences: gemello EN dei termini con cui l'utente nomina le proprie
+    # preferenze.
+    "preference": "preferences", "preferences": "preferences",
+    "setting": "preferences", "settings": "preferences",
+}
+
+
 def canonical_object(token: str | None) -> str | None:
     """Risolve un token (singolare/plurale IT/EN o OBJECT diretto) all'OBJECT
     canonico §2.2. Ritorna None se non riconosciuto.
@@ -1218,20 +1297,10 @@ def canonical_object(token: str | None) -> str | None:
     t = str(token).lower().strip()
     if t in OBJECTS:
         return t
-    try:
-        from detection_lexicon_seed_routing import native_manual_mapping
-        aliases = native_manual_mapping("routing.object_synonym")
-    except Exception:
-        return None
-    owners = {
-        str(form).casefold(): canonical
-        for canonical, forms in aliases.items()
-        for form in forms
-    }
-    if len(owners) != sum(len(forms) for forms in aliases.values()):
-        return None
-    if t in owners:
-        return owners[t]
+    if t in _OBJECT_SYNONYMS_IT:
+        return _OBJECT_SYNONYMS_IT[t]
+    if t in _OBJECT_SYNONYMS_EN:
+        return _OBJECT_SYNONYMS_EN[t]
     return None
 
 
@@ -1297,12 +1366,21 @@ def detect_implicit_actions(query: str,
     # piu' spesso come nomi. Qui rilevamo i bigrammi tipici dove la
     # parola SI riferisce a un'azione (verbo + pronome 1a persona o
     # complemento esplicito). §7.3 generale: lookup tabellare bilingue.
-    try:
-        from detection_lexicon_seed_residual_nz import implicit_send_request
-        if implicit_send_request(query):
-            detected_verbs_set.add("send")
-    except Exception:  # noqa: BLE001 - il segnale mutante resta fail-closed
-        pass
+    _BIGRAM_VERB_HINTS = {
+        "send": (
+            # EN: verbo+pronome 1a pers
+            "email me", "mail me", "message me", "text me", "tell me",
+            "let me know", "ping me", "shoot me",
+            # IT: forme idiomatiche di notifica
+            "mandami una email", "mandami una mail", "mandami un messaggio",
+            "mandami un'email", "mandami un'e-mail",
+            "fammi sapere", "tienimi al corrente", "tienimi informato",
+        ),
+    }
+    q_low = query.lower()
+    for verb_canon, patterns in _BIGRAM_VERB_HINTS.items():
+        if any(p in q_low for p in patterns):
+            detected_verbs_set.add(verb_canon)
 
     # Mappa OBJECT → verbi mutating canonici gia' presenti nella query
     # (per fare il check "covered" per ogni object trovato).

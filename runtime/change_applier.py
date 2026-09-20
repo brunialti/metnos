@@ -146,11 +146,17 @@ def apply_dedupe_executors(ci: ChangeIntent) -> dict:
         raise PermissionError(f"cannot deprecate protected executor: {b}")
     if (C.PATH_EXECUTORS / b).is_dir():
         raise PermissionError(f"cannot deprecate handcrafted executor: {b}")
-    # Provenienza e demote passano dal deposito che possiede la decisione:
-    # le due istruzioni dirette qui sotto scrivevano un file esatto qualunque
-    # cosa l'installazione avesse migrato, e saltavano la storia del deposito.
-    from executor_lifecycle_state import recorded_source
-    source = recorded_source(b)
+    source = None
+    stats_db = C.PATH_USER_STATE / "executor_stats.db"
+    if stats_db.exists():
+        try:
+            with sqlite3.connect(str(stats_db), timeout=10.0) as stats_conn:
+                row = stats_conn.execute(
+                    "SELECT source FROM executor_stats WHERE name=?", (b,),
+                ).fetchone()
+                source = row[0] if row else None
+        except sqlite3.Error:
+            source = None
     if not isinstance(source, str) or not source.startswith("synth"):
         raise PermissionError(
             f"cannot auto-deprecate executor without synth provenance: {b}")
@@ -167,11 +173,21 @@ def apply_dedupe_executors(ci: ChangeIntent) -> dict:
     aliases_path.write_text(json.dumps(existing, indent=2))
 
     # Deprecate B
-    from executor_lifecycle_state import Restriction, restrict_executor
-    demoted = restrict_executor(b, restriction=Restriction.DEMOTED,
-                                reason=f"duplicate of {a}")
+    db = C.PATH_USER_STATE / "executor_stats.db"
+    if db.exists():
+        try:
+            cn = sqlite3.connect(str(db), timeout=10.0)
+            cn.execute(
+                """UPDATE executor_stats SET deprecated_at=?
+                    WHERE name=? AND deprecated_at IS NULL""",
+                (time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), b),
+            )
+            cn.commit()
+            cn.close()
+        except sqlite3.Error:
+            pass
 
-    return {"alias_from": b, "alias_to": a, "deprecated": b, "demoted": demoted}
+    return {"alias_from": b, "alias_to": a, "deprecated": b}
 
 
 # --- Handler: materialize_pipeline ---------------------------------------

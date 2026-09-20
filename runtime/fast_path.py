@@ -98,39 +98,19 @@ class FastPattern:
 # get_now ritorna {ok, content (iso str), metadata: {timezone, iso8601, epoch}}.
 # Template renderizza via `_render_get_now_message()` sotto.
 
-def _is_ready_language(concept: str, lang: str | None) -> bool:
-    requested = _i18n.normalize_language(lang or _detlex.current_lang())
-    active = _i18n.normalize_language(_detlex.current_lang())
-    if not requested or not active:
-        return False
-    # IT/EN sono baseline editoriali native e restano selezionabili per la
-    # compat API ``lang=``. Una lingua terza e' valida solo quando coincide
-    # con quella attiva, che le API native-ready sottopongono al gate.
-    return requested == active or requested in set(
-        _detlex.baseline_languages(concept)
-    )
-
-
-def _intent_mapping(lang: str | None = None) -> dict[str, list[str]]:
+def _intent_mapping(lang: str | None = None) -> dict:
     _resolver_seed.ensure_registered()
-    if not _is_ready_language("fast_path.intent_exact", lang):
-        return {}
-    return _detlex.native_ready_mapping(
-        "fast_path.intent_exact",
-        require_manual=True,
-        include_reviewed_baselines=True,
-    )
-
-
-def _native_forms(concept: str, lang: str | None = None) -> tuple[str, ...]:
-    _resolver_seed.ensure_registered()
-    if not _is_ready_language(concept, lang):
-        return ()
-    return tuple(_detlex.native_ready_forms(
-        concept,
-        require_manual=True,
-        include_reviewed_baselines=True,
-    ))
+    merged = _detlex.mapping("fast_path.intent_exact")
+    if lang:
+        native = _detlex.mapping_for_language(
+            "fast_path.intent_exact", lang, fallback=False, ready_only=True,
+        )
+        for key, forms in native.items():
+            bucket = merged.setdefault(key, [])
+            for form in forms if isinstance(forms, list) else ():
+                if form not in bucket:
+                    bucket.append(form)
+    return merged
 
 
 _BOOTSTRAP_INTENTS = _intent_mapping()
@@ -222,7 +202,7 @@ def _pattern_index(lang: str) -> dict[str, FastPattern]:
 # [delete_events, read_events, set_events, undo_last_turn, admin] -> per
 # fortuna PLANNER scelse undo_last_turn, ma in turn precedenti aveva
 # scelto delete_events su evento legittimo dell'utente. §7.9 deterministico.
-_UNDO_PREFIX_TOKENS = _native_forms("fast_path.undo_prefix")
+_UNDO_PREFIX_TOKENS = tuple(_detlex.forms("fast_path.undo_prefix"))
 
 
 def _undo_prefix_match(norm: str, lang: str | None = None) -> bool:
@@ -232,7 +212,14 @@ def _undo_prefix_match(norm: str, lang: str | None = None) -> bool:
     """
     if not norm:
         return False
-    for tok in _native_forms("fast_path.undo_prefix", lang):
+    tokens = list(_detlex.forms("fast_path.undo_prefix"))
+    if lang:
+        resource = _detlex.resource_for_language(
+            "fast_path.undo_prefix", lang, fallback=False, ready_only=True,
+        )
+        if resource and isinstance(resource.get("payload"), list):
+            tokens.extend(resource["payload"])
+    for tok in tokens:
         tok = _normalize(tok)
         if norm == tok or norm.startswith(tok + " "):
             return True
@@ -349,10 +336,17 @@ def _identity_match(norm: str, lang: str | None = None) -> bool:
     if norm in identities:
         return True
     # Suffisso: «…tu chi sei», «no roberto sono io tu chi sei» → identità.
+    suffixes = list(_detlex.forms("fast_path.identity_suffix"))
+    if lang:
+        resource = _detlex.resource_for_language(
+            "fast_path.identity_suffix", lang,
+            fallback=False, ready_only=True,
+        )
+        if resource and isinstance(resource.get("payload"), list):
+            suffixes.extend(resource["payload"])
     return any(
         norm.endswith(" " + _normalize(suffix))
-        for suffix in _native_forms("fast_path.identity_suffix", lang)
-        if _normalize(suffix)
+        for suffix in suffixes if _normalize(suffix)
     )
 
 
@@ -379,7 +373,6 @@ def try_fast_path(query: str, lang: str = "it",
         return None
     # Identità assistente: risposta diretta, nessun executor (no read_persons).
     if _identity_match(norm, lang):
-        _resolver_seed.ensure_output_registered()
         return {
             "direct_answer": _i18n.get_for_language("MSG_FAST_IDENTITY", lang),
             "pattern": "identity:" + norm,
@@ -395,10 +388,6 @@ def try_fast_path(query: str, lang: str = "it",
             fp = _UNDO_FALLBACK_FP
         else:
             return None
-
-    # Il provisioning degli output e' deliberatamente successivo al match:
-    # un catalogo output indisponibile non autorizza mai un route fast-path.
-    _resolver_seed.ensure_output_registered()
 
     args = dict(fp.args)
     # get_now accetta `timezone` con default UTC. Iniettiamo il default

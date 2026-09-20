@@ -13,8 +13,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 from contract_store import (
     ContractRetirement, PublicationResult, TrustedPublic, VerifiedManifest,
-    _birth_receipt_path_for_context, _existing_contract_directory,
-    _read_regular_file, current_contract,
+    _birth_receipt_path, _existing_contract_directory, current_contract,
 )
 from executor_birth_authoring import authoring_paths, load_prepared_journal
 from executor_birth_receipts import (
@@ -42,7 +41,6 @@ def verify_birth_postcondition(
     trusted_publics: Iterable[TrustedPublic],
     admission_verifier_keys: Mapping[str, Ed25519PublicKey],
     store_root: Path | str | None = None,
-    context_selection: object | None = None,
 ) -> tuple[PublicationResult, bytes]:
     """Authenticate one already-published Birth result without mutation.
 
@@ -78,10 +76,8 @@ def verify_birth_postcondition(
         contract_dir = _existing_contract_directory(
             request.manifest_ref.contract_id, store_root=store_root,
         )
-        receipt_path = _birth_receipt_path_for_context(
-            contract_dir, generation, context_selection,
-        )
-        stored = _read_regular_file(receipt_path, code="birth_receipt_invalid")
+        receipt_path = _birth_receipt_path(contract_dir, generation)
+        stored = receipt_path.read_bytes()
     except Exception as exc:
         raise BirthPostconditionError("birth_postcondition_receipt_missing", str(exc)) from exc
     if admission_receipt is not None and stored != admission_receipt:
@@ -97,9 +93,6 @@ def verify_birth_postcondition(
         raise BirthPostconditionError("birth_postcondition_binding_invalid", "contract_id")
     if receipt.generation_id != generation:
         raise BirthPostconditionError("birth_postcondition_binding_invalid", "generation_id")
-    if (context_selection is not None and receipt.admission_context_id
-            != context_selection.admission_context_id):
-        raise BirthPostconditionError("birth_postcondition_binding_invalid", "admission_context_id")
     if receipt.birth_request_id != request.request_id:
         raise BirthPostconditionError("birth_postcondition_binding_invalid", "request_id")
     journal_check = receipt.check_results.get("authoring_install_journal_v1")

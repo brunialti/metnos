@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """constitutional.py — anti-fragility lens.
 
 Ref: Bai et al., "Constitutional AI: Harmlessness from AI Feedback"

@@ -240,46 +240,7 @@ form.tp-filters label{display:inline-flex;gap:.35rem;align-items:center;
   border:1px solid var(--border);border-radius:var(--r-1);background:var(--surface-2);font-size:var(--fs-1)}
 .dw-summary-row strong{width:100%;font-family:var(--font-mono);overflow-wrap:anywhere}
 .dw-live{color:var(--muted);font-size:var(--fs-0)}
-.dw-status-bar{display:flex;align-items:center;flex-wrap:wrap;gap:var(--sp-3);padding:var(--sp-3);margin-bottom:var(--sp-4);border:1px solid var(--border);border-radius:var(--r-1);background:var(--surface)}
-.dw-status-bar button{margin-left:auto}.dw-secondary{color:var(--muted);font-weight:400;margin-top:var(--sp-1)}
-.dw-notice{padding:var(--sp-3);border:1px solid var(--border);border-left:4px solid currentColor;border-radius:var(--r-1)}
-.dw-warning{color:var(--warn, #a86513)}
-.dw-subpanel summary{cursor:pointer;font-weight:600}.dw-subpanel[open]>summary{margin-bottom:var(--sp-3)}
 @media (max-width:860px){.dw-layout{grid-template-columns:1fr}.dw-panel{min-width:0}}
-.dw-layout{grid-template-columns:minmax(270px,340px) minmax(0,1fr);align-items:start}
-.dw-panel{min-width:0}.dw-panel-head h2{font-size:1rem}.dw-detail{padding:24px}
-.dw-status-bar{font-size:.875rem}.dw-status-bar #dwFreshness{color:var(--muted);font-size:.8rem}
-.dw-job-row{display:grid;grid-template-columns:minmax(0,1fr) auto;border-bottom:1px solid var(--border)}
-.dw-job-choice{display:block;width:100%;text-align:left;background:transparent;color:inherit;border:0;padding:14px;cursor:pointer;font:inherit;min-width:0}
-.dw-job-choice:hover{background:var(--surface-2,var(--surface))}.dw-job-choice[aria-current="true"]{background:var(--accent-soft,#e1efec);box-shadow:inset 3px 0 var(--accent,#127665)}
-.dw-job-choice:focus-visible{outline:2px solid var(--accent,#127665);outline-offset:-3px}
-.dw-job-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}.dw-job-heading h3{font-size:1.2rem;margin:0}
-.dw-job-heading-actions{display:flex;align-items:center;gap:8px}.dw-job-toggle{font-size:1.15rem;line-height:1;transition:transform .15s ease}.dw-job-choice[aria-expanded="true"] .dw-job-toggle{transform:rotate(180deg)}
-.dw-job-dismiss{align-self:start;width:40px;height:40px;margin:8px 8px 0 0;border:0;border-radius:var(--r-1);background:transparent;color:var(--muted);font-size:1.45rem;line-height:1;cursor:pointer}.dw-job-dismiss:hover{color:var(--bad,#ad2929);background:var(--bad-soft,#fff0f0)}.dw-job-dismiss:focus-visible{outline:2px solid var(--bad,#ad2929);outline-offset:2px}
-.dw-state{display:inline-block;font-size:.8rem;font-weight:600;border:1px solid var(--border);border-radius:999px;padding:3px 9px;white-space:nowrap}
-.dw-state[data-tone="active"]{color:var(--accent,#127665);background:var(--accent-soft,#e1efec)}
-.dw-state[data-tone="warning"]{color:var(--warn,#865000);background:var(--warn-soft,#fff5dc)}
-.dw-state[data-tone="error"]{color:var(--bad,#ad2929);background:var(--bad-soft,#fff0f0)}
-.dw-folder{display:block;margin:10px 0 18px;overflow-wrap:anywhere;line-height:1.5;font-size:.9rem}.dw-folder-label{color:var(--muted);display:block;font-size:.75rem}
-.dw-job-choice .dw-folder{font-size:.8rem;margin:8px 0 12px}.dw-job-choice .dw-job-heading{gap:8px}
-.dw-timing{display:grid;grid-template-columns:1fr;gap:8px;padding:8px 0 0;margin:0;border-top:1px solid var(--border)}
-.dw-timing .dw-fact{background:none;border:0;padding:0;min-width:0}.dw-timing .dw-fact-label{font-size:.75rem;letter-spacing:0;text-transform:none}.dw-timing .dw-fact-value{font-size:1rem;font-weight:600;overflow-wrap:anywhere}
-.dw-estimate-reason,.dw-phase-count{display:block;font-size:.75rem;color:var(--muted);font-weight:400;line-height:1.4;margin-top:5px}
-.dw-estimate-reason[hidden]{display:none}
-.dw-job-choice .dw-fact-value{font-size:.85rem;font-weight:600}.dw-job-choice .dw-fact-label{font-size:.75rem}
-.dw-progress-table{width:100%;table-layout:fixed;border-collapse:collapse;font-size:.85rem;margin:8px 0;line-height:1.35}
-.dw-progress-table th,.dw-progress-table td{padding:6px 8px;border-bottom:1px solid var(--border);text-align:left;vertical-align:top;overflow-wrap:anywhere}
-.dw-progress-table thead th{font-size:.75rem;color:var(--muted);font-weight:600;background:none}
-.dw-progress-table thead th:first-child{width:32%}.dw-progress-table tbody th{font-weight:400;font-size:inherit;letter-spacing:normal;text-transform:none}.dw-progress-table td{font-weight:600;font-variant-numeric:tabular-nums}
-.dw-progress-table .dw-estimate-reason{margin-top:3px}.dw-progress-table .dw-estimate{font-size:inherit}
-.dw-stage-summary{margin:16px 0}.dw-stage-summary h3{font-size:.95rem;margin:0 0 6px}
-.dw-progress-summary{color:var(--muted);font-size:.85rem;margin:12px 0}.dw-progress-summary progress{display:block;width:100%;height:7px;accent-color:var(--accent,#127665);margin:0 0 8px}
-.dw-phase{display:block}
-.dw-detail>.dw-actions{padding:8px 0 16px;border-bottom:1px solid var(--border);gap:8px}.dw-detail>.dw-actions .bad{margin-left:auto}
-.dw-disclosure{border-top:1px solid var(--border);padding:14px 0}.dw-disclosure summary{cursor:pointer;font-weight:600}.dw-disclosure p{font-size:.85rem;line-height:1.6;color:var(--muted)}
-.dw-disclosure .dw-facts{margin-top:12px}.dw-detail .dw-subpanel{padding:14px 0}.dw-job-code{overflow-wrap:anywhere}
-@media(max-width:1000px){.dw-layout{grid-template-columns:1fr}.dw-job-choice .dw-timing{max-width:540px}}
-@media(max-width:520px){.dw-detail{padding:16px}.dw-timing .dw-fact-value{font-size:.85rem}.dw-status-bar button{margin-left:0;width:100%}.dw-progress-table th,.dw-progress-table td{padding:5px 4px}.dw-progress-table thead th:first-child{width:35%}}
 
 /* ---------- MOVIMENTO RIDOTTO -------------------------------------------- */
 @media (prefers-reduced-motion:reduce){

@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """Installer i18n — IT/EN catalog. The installer adheres to the Metnos i18n
 standard: every user-facing string resolves here in the chosen locale
 (METNOS_LOCALE, set at the disclaimer gate; default 'en')."""
@@ -18,8 +18,8 @@ _CATALOG: dict[str, dict[str, str]] = {
         "it": "Installer Metnos",
     },
     "main_welcome_subtitle": {
-        "en": "Self-hosted AI agent · MIT · metnos.com",
-        "it": "Agente IA self-hosted · MIT · metnos.com",
+        "en": "Self-hosted AI agent · AGPL-3.0 · metnos.com",
+        "it": "Agente IA self-hosted · AGPL-3.0 · metnos.com",
     },
     "main_welcome_intro": {
         "en": "  [dim]This installer will set up Metnos in [bold]six phases[/bold]. "

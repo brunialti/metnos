@@ -196,83 +196,7 @@ messages, or ordinary records.</p>
 <p>A resumption does not continue blindly. The runtime checks the owner, expiry,
 dialogue state, catalog, and operating conditions again before proceeding.</p>
 
-<p>LRE distinguishes service presence from work progress. A disabled service
-continues reporting its presence without executing activities; when no units
-can run, it avoids opening concurrent workers. Periodic authorization
-maintenance remains active. Worker count follows demand and central limits,
-without replacing atomic admission checks. The console separates committed
-results, errors and skipped items and indicates stale data. Unverifiable usage
-stops work for safety; it does not necessarily mean the spending limit was reached.</p>
-<p>The surface registry and Tutor guide distinguish the engine, queued jobs,
-pending units and confirmed results: waiting does not imply approval, and a
-saved result does not imply whole-job completion. Reading states and counters
-is an informational question, not a request to start operations.</p>
-
-<p>On the Services page, the primary LRE indicator describes the feature,
-not just its process: gray for confirmed disabled state, green only when
-enabled and ready, amber while transitioning or unverified, and red for
-service failure or invalid configuration. Technical details retain process
-state. This visual distinction changes neither health checks, supervisor
-decisions nor the persistent feature setting.</p>
 <h2 id="outcomes">Outcomes, errors, and records</h2>
-
-<p>The LRE console derives start time from actual attempts in the current revision,
-not workload creation. A compact table separates completed and total batches in
-the current phase from the known total across phases, which may grow. The main
-percentage covers the phase identified as x/y, not time; aggregate percentage
-remains in technical details. One owner-scoped aggregate read per page
-derives an indicative finish estimate for the current fully materialized phase,
-using at least three sufficiently recent results from that same phase. It never
-adds unlike phases: the whole-job estimate remains separate and available only
-for single-phase plans. Errors, pauses, an unavailable engine or stale observations
-produce n.a. with a reason; a job requiring attention takes precedence.</p>
-
-<p>Photo analysis requests schema-constrained model output and validates it again
-before saving. A truncated response is not a successful result; actual usage
-remains recorded, without automatically increasing the limit. The domain
-distinguishes unavailable, truncated, invalid and empty descriptions as
-recoverable causes; an invalid request schema requires review instead. It does
-not retry internally: LRE applies the already admitted attempt and effect limits.
-LRE diagnostics retain only codes declared by the approved output schema
-and enumerated loader causes, never arbitrary exception text.</p>
-
-<p>In the general engine, exhausting attempts for a recoverable error leads to
-<strong>Needs attention</strong>, preserving pending batches and committed
-results. An unknown cause requires review without automatic retries; explicit
-permanent errors and contract violations remain non-recoverable. A retry
-decision grants one attempt, not an unlimited loop. Accounting, authority and
-effect safety remain mandatory. History may show the approved attempt cause
-without confusing it with items that produced a negative domain outcome.</p>
-
-<p>Checking empty directories left by interrupted publication uses a shared
-read lock: concurrent readers do not invalidate the catalog, while writers
-remain excluded during inspection. Format, ownership, permissions and absence
-of payload remain mandatory; inspection neither repairs nor removes directories.
-An LRE attention state stops new blocks from starting but permits already
-running blocks to save their results.</p>
-
-<p>Parallel execution demand respects each block's tightest required resource
-and bottlenecks shared across workloads: CPU, disk and VLM capacities are not
-added when they are needed together. Actual admission remains with the central
-scheduler. Photo analysis also decodes HEIC without changing originals; an
-unreadable format remains an explicit error, never an indexed photo. Each
-complete analysis saves a verifiable private receipt: another attempt within
-the same generation reuses only results matching the source, models, prompt
-and folder context. These receipts do not publish a partial index or bypass
-usage accounting checks.</p>
-
-<p>The list identifies activity and folder when available in the owner's admitted
-plan; details distinguish the observed phase, running units and workload concurrency
-limit. These counts are not threads or processes. During initial photo discovery,
-one unit represents discovery, not the whole archive; totals for later phases
-are not yet known. Percentage and finish estimate show n.a. with an explicit
-reason. Job errors remain prominent even when the service is ready.</p>
-
-<p>Temporary SQLite writer contention pauses new admissions with increasing,
-bounded waits without immediately stopping other lanes. Simultaneous errors
-count as one failed cycle. Corruption and unrelated failures are not classified
-as contention. The capability loader distinguishes usage statistics updates
-from actual availability changes, which still invalidate the verified catalog.</p>
 
 <p>An executor may succeed, return no entries, produce a partial result, or fail.
 These states are not equivalent. The runtime preserves the distinction and uses
@@ -292,13 +216,6 @@ only information compatible with their role and identity.</p>
 not decide what Metnos can do; admitted executors do. The runtime ensures that
 those capabilities are selected, controlled, executed, and reported in the
 same way, no matter which path produced the plan.</p></div>
-
-<p>A prerequisite preserves the placement defined by verified contracts:
-when both the search and its preparation are server-only, LRE preparation also
-runs on the server, independently of a device remembered in the conversation.
-If either component supports device execution, the requested destination is
-preserved and remains subject to normal checks. Executor output cannot choose
-the destination.</p>
 
 </body>
 </html>

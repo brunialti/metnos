@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """telos_introspect.py — orchestrator del telos engine.
 
 Loop introvertivo che, per ogni telos dichiarato, applica le lenti

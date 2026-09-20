@@ -150,116 +150,11 @@ except Exception:
                                "render_")
 
 
-def _path_hint_arguments(hints, properties: dict) -> set[str] | None:
-    """Accept only exact, typed argument bindings, never path globs or templates."""
-    if not isinstance(hints, (list, tuple)) or not hints:
-        return None
-    names = set()
-    for hint in hints:
-        if not isinstance(hint, str) or not hint.startswith("arg:"):
-            return None
-        name = hint[4:]
-        schema = properties.get(name)
-        if ":" in name or not isinstance(schema, dict):
-            return None
-        if schema.get("type") != "string" and not (
-            schema.get("type") == "array"
-            and isinstance(schema.get("items"), dict)
-            and schema["items"].get("type") == "string"
-        ):
-            return None
-        names.add(name)
-    return names
-
-
-def _filesystem_guard_scope(executor_name: str, args: dict, executor):
-    """Derive read-only argument identities from a verified catalog entry.
-
-    The caller supplies the catalog entry separately from invocation data.
-    Signer/lifecycle checks reject unverified catalog modes; signature checking
-    itself remains the loader's responsibility. Ambiguous write authority can
-    only restrict this guard, never grant a read-only exemption.
-    """
-    capabilities = getattr(executor, "capabilities", None)
-    if not isinstance(capabilities, (list, tuple)):
-        return set(), {}, False
-    may_write = any(
-        isinstance(cap, dict) and cap.get("name") in ("fs:write", "code:exec")
-        for cap in capabilities
-    )
-    signer = getattr(executor, "signed_by", "")
-    schema = getattr(executor, "args_schema", None)
-    properties = schema.get("properties") if isinstance(schema, dict) else None
-    if (getattr(executor, "name", None) != executor_name
-            or not isinstance(signer, str) or not signer.strip()
-            or signer.startswith(("(", "?"))
-            or getattr(executor, "lifecycle", None) != "active"
-            or bool(getattr(executor, "dormant", False))
-            or not isinstance(properties, dict)):
-        return set(), {}, may_write
-
-    from capabilities import effective_capabilities, parse_condition
-    try:
-        # A malformed write condition must not disappear and thereby widen reads.
-        for cap in capabilities:
-            if not isinstance(cap, dict):
-                return set(), {}, may_write
-            parse_condition(cap, schema)
-        effective = effective_capabilities(capabilities, schema, args)
-    except (ValueError, TypeError):
-        return set(), {}, may_write
-
-    read_args, write_args, path_values = set(), set(), {}
-    writes, unbounded_write = False, False
-    for cap in effective:
-        name = cap.get("name")
-        if name == "code:exec":
-            writes = unbounded_write = True
-        elif isinstance(name, str) and name.startswith(("fs:", "fs.")):
-            bound = _path_hint_arguments(cap.get("hint"), properties)
-            if name != "fs:read":
-                writes = True
-                if name != "fs:write" or bound is None:
-                    unbounded_write = True
-            for arg in bound or ():
-                value = args.get(arg, properties[arg].get("default"))
-                declared_type = properties[arg].get("type")
-                if not ((declared_type == "string" and isinstance(value, str))
-                        or (declared_type == "array" and isinstance(value, list)
-                            and all(isinstance(item, str) for item in value))):
-                    if name != "fs:read":
-                        unbounded_write = True
-                    continue
-                path_values[arg] = value
-                (read_args if name == "fs:read" else write_args).add(arg)
-    return (set() if unbounded_write else read_args - write_args), path_values, writes
-
-
-def check_executor_guard(guard, executor_name: str, args: dict, *, executor=None):
-    """Bind catalog authority only to the standard guard; keep legacy callbacks.
-
-    Custom two-argument guards retain their explicit dependency-injection
-    contract. Never retry a failed guard without authority or swallow its error.
-    """
-    if guard is guard_check:
-        return guard(executor_name, args, executor=executor)
-    return guard(executor_name, args)
-
-
-def guard_check(executor_name: str, args: dict, context: dict | None = None,
-                *, executor=None) -> tuple[bool, str | None]:
-    """Check access safety; ``executor`` must come from the verified catalog."""
+def guard_check(executor_name: str, args: dict, context: dict | None = None) -> tuple[bool, str | None]:
+    """Ritorna (ok, reason_se_blocca). True = passa; False = bloccata."""
     args = args or {}
-    readonly_args, path_values, writes = _filesystem_guard_scope(
-        executor_name, args, executor)
     strs = _flatten_path_candidate_values(args)
     expanded = [_expand_user(s) for s in strs]
-    # Explicit filesystem bindings are access even if their field is named
-    # "content". Resolve symlinks/traversal before any read-only exemption.
-    for value in path_values.values():
-        for path in _flatten_str_values(value):
-            expanded.append(_expand_user(path))
-            expanded.append(os.path.realpath(_expand_user(path)))
 
     # Forbidden paths
     for s in expanded:
@@ -267,25 +162,21 @@ def guard_check(executor_name: str, args: dict, context: dict | None = None,
             if pat.search(s):
                 return False, f"forbidden path violato: pattern {pat.pattern!r} in args"
 
-    # Keep the conservative name-based fallback. Signed read-only bindings may
-    # exclude only their own argument, never another destination with the same
-    # value. Declared filesystem writes apply regardless of the executor name.
-    if writes or executor_name.startswith(_MUTATING_TOOL_PREFIXES):
+    # Alberi di sistema protetti (platform_policy, wired 2/7/2026 — Roberto):
+    # SOLO executor MUTANTI: mai scrivere/spostare/cancellare dentro /etc,
+    # /usr, /var, … (host-aware). Le LETTURE restano libere («leggi
+    # /etc/hosts» è legittimo); admin/sudoer (builtin verb-unique) non hanno
+    # prefisso mutante → non toccati. I valori sotto chiavi di contenuto
+    # sono già esclusi a monte (_flatten_path_candidate_values).
+    if executor_name.startswith(_MUTATING_TOOL_PREFIXES):
         try:
             from platform_policy import is_protected_path
-            candidates = _flatten_path_candidate_values({
-                key: value for key, value in args.items() if key not in readonly_args
-            })
-            for key, value in path_values.items():
-                if key not in readonly_args:
-                    candidates.extend(_flatten_str_values(value))
-            for candidate in candidates:
-                s = _expand_user(candidate)
+            for s in expanded:
                 if is_protected_path(s):
                     return False, (f"path protetto di sistema: {s!r} "
                                    f"(albero riservato al SO host)")
         except ImportError:
-            return False, "protected_path_policy_unavailable"
+            pass  # fail-open come il resto della guardia best-effort
 
     # Comandi shell pericolosi (Legge 1)
     if executor_name in ("shell_exec",) or (context or {}).get("capability") == "code:exec":

@@ -9,8 +9,6 @@ import pytest
 
 PORTABLE_ROOT = Path(__file__).resolve().parent
 RUNTIME_ROOT = PORTABLE_ROOT.parents[1] / "runtime"
-# Shared portable fixtures must also resolve under pytest's importlib mode.
-sys.path.insert(0, str(PORTABLE_ROOT))
 sys.path.insert(0, str(RUNTIME_ROOT))
 
 

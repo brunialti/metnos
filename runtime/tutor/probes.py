@@ -11,7 +11,6 @@ from __future__ import annotations
 from collections import Counter, OrderedDict
 from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timezone
-import hashlib
 import json
 import os
 from pathlib import Path
@@ -32,7 +31,7 @@ _STATUSES = frozenset({"ok", "partial", "unavailable", "stale"})
 _MAX_CACHE_ROWS = 128
 _COMPOSITION_LIVE_MAX_CHARS = 10_000
 try:
-    _LOADED_IMPLEMENTATION_DIGEST = hashlib.sha256(
+    _LOADED_IMPLEMENTATION_DIGEST = __import__("hashlib").sha256(
         Path(__file__).read_bytes()).hexdigest()[:16]
 except OSError:
     _LOADED_IMPLEMENTATION_DIGEST = "unreadable"

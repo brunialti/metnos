@@ -10,12 +10,12 @@ revertible = false
 lifecycle = "active"
 
 [description]
-it = "SCOPO: Esegue un comando shell anche senza privilegi, se manca uno strumento dedicato. Il vaglio decide se eseguire o chiedere consenso. PATTERN: richiesta naturale tipizzata dal planner. NON: ampliare autorita o inventare input. OUT: risultato JSON dichiarato."
-en = "SCOPO: Runs one shell command, including unprivileged commands, when no dedicated tool exists. The safety gate controls execution. PATTERN: natural request typed by the planner. NON: enlarge authority or invent inputs. OUT: declared JSON result."
+it = "SCOPO: Esegue un comando shell di sistema privilegiato solo attraverso il vaglio. PATTERN: richiesta naturale tipizzata dal planner. NON: ampliare autorita o inventare input. OUT: risultato JSON dichiarato."
+en = "SCOPO: Runs one privileged system shell command only through the approval gate. PATTERN: natural request typed by the planner. NON: enlarge authority or invent inputs. OUT: declared JSON result."
 
 [code]
-files = ["implementation.py.src"]
-digest = "sha256:da5ec81198e92a1f72283dd147224e084e39f09cecb31a912f6edc9d3f748e16"
+files = ["../../system/admin.py"]
+digest = "sha256:b0aa6db701df3c492021be9708c329437e16d51fd4b9a1447691bbd18676d3ba"
 
 [args]
 type = "object"

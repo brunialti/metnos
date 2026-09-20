@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Mapping, Protocol
 
+import yaml
 import config as _C
 
 from i18n_materializer import (
@@ -581,38 +582,6 @@ def _read_artifact(
     *,
     authoritative_item: InventoryItem | None = None,
 ) -> Any:
-    if (
-        record.layer == "contract"
-        and record.basis_id is not None
-        and record.status == "admitted"
-        and record.quality == "published"
-        and authoritative_item is not None
-        and authoritative_item.contract_snapshot is not None
-    ):
-        _require_versioned_contract_item(record, authoritative_item)
-        node: Any = authoritative_item.contract_snapshot.parsed
-        for part in str(authoritative_item.metadata.get("selector") or "").split("."):
-            if not part or not isinstance(node, Mapping) or part not in node:
-                raise CandidateValidationError(
-                    "published contract selector is unavailable"
-                )
-            node = node[part]
-        if not isinstance(node, Mapping):
-            raise CandidateValidationError(
-                "published contract language table is invalid"
-            )
-        translation = node.get(record.target_lang)
-        if not isinstance(translation, str) or not translation.strip():
-            raise CandidateValidationError(
-                "published contract translation is unavailable"
-            )
-        # Published registry evidence hashes the signed manifest text itself;
-        # transient candidate rows hash the JSON artifact envelope instead.
-        if sha256_text(translation) != record.translation_hash:
-            raise CandidateValidationError(
-                "published contract hash does not match the registry"
-            )
-        return translation
     if not record.artifact_path:
         raise RegistryError(f"candidate artifact unavailable: {record.resource_id}")
     path = Path(record.artifact_path)
@@ -773,8 +742,6 @@ def _yaml_shape(node: Any, *, field_name: str = "") -> Any:
 
 
 def _translate_yaml(item: InventoryItem, target: str, translator: Translator) -> str:
-    import yaml
-
     source_obj = yaml.safe_load(item.source_text)
     translated_obj = _translate_yaml_node(
         source_obj, source_lang=item.source_lang, target_lang=target,
@@ -1441,13 +1408,6 @@ def publish_versioned_contract_candidates(
             for _record, payload in prepared
         )
         try:
-            # M3 remains dormant, but the ownership preflight is read-only and
-            # prevents a stable localization identity from being acquired by
-            # a different ContractId before the irreversible publication.
-            before_snapshot = contract_snapshot_provider(ref)
-            preflight_published_contract_registry(
-                (before_snapshot,), registry=registry,
-            )
             result = publisher(
                 ref,
                 expected_generation_id=next(iter(bases)),
@@ -1464,14 +1424,6 @@ def publish_versioned_contract_candidates(
                 raise CandidateValidationError(
                     "publisher returned an invalid publication result"
                 )
-            published_snapshot = contract_snapshot_provider(ref)
-            if published_snapshot.generation_id != result.current_generation_id:
-                raise CandidateValidationError(
-                    "published contract re-read does not match publisher result"
-                )
-            # Registry reconciliation is intentionally absent here: M3 is
-            # dormant.  The productive M4 publisher owns that callback and
-            # reconciles from its own fresh verified post-publication read.
             published_contracts += 1
             published_resources += len(prepared)
         except Exception as exc:
@@ -1511,13 +1463,12 @@ def _promote_input(db: Path, record: ResourceRecord, target: str, translation: A
     try:
         conn.execute(
             """UPDATE detection_lexicon SET payload=?,needs_translation=0,
-               version_hash=?,source_text_hash=?,source_lang=?,
+               version_hash=?,source_text_hash=?,
                updated_at=strftime('%Y-%m-%dT%H:%M:%SZ','now')
                WHERE concept=? AND lang=?""",
             (
                 encoded, "sha256:" + sha256_text(encoded),
-                "sha256:" + record.source_hash, record.source_lang,
-                record.metadata["concept"], target,
+                "sha256:" + record.source_hash, record.metadata["concept"], target,
             ),
         )
         conn.commit()

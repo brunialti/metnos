@@ -39,17 +39,11 @@ def _step_results(record: dict) -> list[tuple[str, dict]]:
 def _positive_effect(record: dict, results: list[tuple[str, dict]]) -> bool:
     counts = record.get("effect_counts")
     if isinstance(counts, dict):
-        # Presence of the canonical counter is authoritative, including the
-        # all-zero case. Falling through to ``ok=True`` turned a protocol-only
-        # final_answer into fake productive work after an executor failure.
-        return any(
-            isinstance(counts.get(key), (int, float)) and counts[key] > 0
-            for key in ("items", "mutations", "produced", "processed")
-        )
-    return any(
-        tool != "final_answer" and result.get("ok") is True
-        for tool, result in results
-    )
+        for key in ("items", "mutations", "produced", "processed"):
+            value = counts.get(key)
+            if isinstance(value, (int, float)) and value > 0:
+                return True
+    return any(result.get("ok") is True for _, result in results)
 
 
 def _is_timeout(record: dict, results: list[tuple[str, dict]]) -> bool:

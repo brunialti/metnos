@@ -66,27 +66,6 @@ produced it. An identifier supplied directly must therefore include its account
 and source folder. When it comes from a preceding read, Metnos preserves this
 context automatically and never guesses a default mailbox.</p>
 
-<h2 id="dates">Dates and periods in requests</h2>
-<p>Metnos resolves temporal arguments through a shared system, not separate
-date rules for each mailbox. You can use expressions such as “today”,
-“yesterday”, “the day after tomorrow”, “two days ago”, “in the last two hours”
-or “from yesterday at 10:00 to today at 11:00”. Calendar days follow the
-configured timezone; a rolling duration is measured back from the request.
-If an expression has several meanings, such as an unspecified “Thursday”,
-Metnos asks you to choose or clarify through a form. This clarifies the date;
-it is not an additional permission. A date chosen in the form stays fixed
-even if you respond later. A brief model-assisted interpretation may help with
-complex wording, but the runtime calculates and validates the dates.</p>
-
-<h3>Which date is used for mail?</h3>
-<p>Mail periods normally use the mailbox server's receipt timestamp, not the
-date typed by the sender. If the receipt timestamp is unavailable, Metnos
-falls back to the message's date. A request for a calendar day includes that
-whole day; an explicit “before” boundary excludes that instant and later mail.
-Reading leaves unread flags unchanged. Large selections remain subject to
-visible result limits: a partial result does not mean the entire mailbox has
-been examined.</p>
-
 <h2>The Gmail case</h2>
 <p class="ok">Google Workspace is a separate, OAuth-authorized integration
 built on the Gmail APIs. It handles Gmail concepts such as threads and labels.

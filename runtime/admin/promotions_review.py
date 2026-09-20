@@ -33,7 +33,6 @@ from pathlib import Path
 
 _sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import config as _C  # §7.11
-from messages import get as _msg
 
 # Cap N per group (paginazione: se >max, mostra top-max + nota).
 DEFAULT_MAX_PER_GROUP = 10
@@ -42,19 +41,19 @@ DEFAULT_ARCHIVED_DAYS = 7
 # Opzioni per gruppo. La label e' user-facing (passata al render `choice`);
 # il value e' la chiave interna che `apply_review_decisions` interpreta.
 _OPTIONS_PROMOTED_GRACE = (
-    ("confirm", "MSG_PROMOTER_REVIEW_CONFIRM"),
-    ("rollback", "MSG_PROMOTER_REVIEW_ROLLBACK"),
-    ("skip", "MSG_PROMOTER_REVIEW_SKIP"),
+    ("confirm", "Conferma promozione"),
+    ("rollback", "Rollback"),
+    ("skip", "Skip"),
 )
 _OPTIONS_REVIEW_NEEDED = (
-    ("promote_now", "MSG_PROMOTER_REVIEW_PROMOTE_NOW"),
-    ("archive", "MSG_PROMOTER_REVIEW_ARCHIVE"),
-    ("skip", "MSG_PROMOTER_REVIEW_SKIP"),
+    ("promote_now", "Promuovi ora"),
+    ("archive", "Archivia"),
+    ("skip", "Skip"),
 )
 _OPTIONS_ARCHIVED = (
-    ("confirm_archive", "MSG_PROMOTER_REVIEW_CONFIRM_ARCHIVE"),
-    ("resurrect", "MSG_PROMOTER_REVIEW_RESURRECT"),
-    ("skip", "MSG_PROMOTER_REVIEW_SKIP"),
+    ("confirm_archive", "Conferma archiviazione"),
+    ("resurrect", "Resurrect a pending"),
+    ("skip", "Skip"),
 )
 
 
@@ -89,26 +88,14 @@ def _format_item_prompt(row: dict, state: str) -> str:
     # Truncate timestamp ai primi 10 char (YYYY-MM-DD).
     promoted_short = promoted[:10] if promoted else "-"
     if state == "promoted_grace":
-        return _msg(
-            "MSG_PROMOTER_REVIEW_ITEM_PROMOTED",
-            name=name, proposal_id=pid[:24], date=promoted_short,
-        )
+        return f"`{name}` (id {pid[:24]}, promosso {promoted_short})"
     if state == "review_needed":
-        return _msg(
-            "MSG_PROMOTER_REVIEW_ITEM_PENDING",
-            name=name, proposal_id=pid[:24],
-        )
+        return f"`{name}` (id {pid[:24]}, in attesa di review)"
     if state == "archived":
         archived = row.get("archived_at") or ""
         archived_short = archived[:10] if archived else "-"
-        return _msg(
-            "MSG_PROMOTER_REVIEW_ITEM_ARCHIVED",
-            name=name, proposal_id=pid[:24], date=archived_short,
-        )
-    return _msg(
-        "MSG_PROMOTER_REVIEW_ITEM",
-        name=name, proposal_id=pid[:24],
-    )
+        return f"`{name}` (id {pid[:24]}, archiviato {archived_short})"
+    return f"`{name}` (id {pid[:24]})"
 
 
 def _build_choice_step(row: dict, state: str,
@@ -120,11 +107,11 @@ def _build_choice_step(row: dict, state: str,
         "prompt": _format_item_prompt(row, state),
         "schema": {
             "kind": "choice",
-            "choices": [_msg(label_key) for _value, label_key in options],
-            "values": [value for value, _label_key in options],
+            "choices": [label for _value, label in options],
+            "values": [value for value, _label in options],
         },
         "optional": False,
-        "default": _msg(options[-1][1]),
+        "default": options[-1][1],  # ultimo = "Skip" → default safe §7.9
         # Hint UI: nome dell'executor + practical_example per render card.
         "_meta": {
             "name": row.get("name") or "?",
@@ -198,8 +185,11 @@ def build_review_dialog(
     dialog_id = uuid.uuid4().hex[:16]
     return {
         "dialog_id": dialog_id,
-        "title": _msg("MSG_PROMOTER_REVIEW_TITLE"),
-        "description": _msg("MSG_PROMOTER_REVIEW_DESCRIPTION"),
+        "title": "Review promozioni synth",
+        "description": (
+            "Decisioni admin per le promozioni in attesa. Le scelte "
+            "vengono applicate al submit in una sola transazione."
+        ),
         "dialog": steps,
         "on_complete": {"type": "apply_review_decisions"},
         "groups": groups,
@@ -218,12 +208,21 @@ def _audit_append_session(events: list[dict], *, session_id: str) -> Path:
     return append_jsonl(audit_path, events)
 
 
-def _canonical_choice(raw_choice, options: tuple[tuple[str, str], ...]) -> str:
-    """Accept only the canonical value transported by the choice schema."""
+def _label_to_value(label: str, options: tuple[tuple[str, str], ...]) -> str:
+    """Mappa la label user-facing al value interno della tabella opzioni.
 
-    if not isinstance(raw_choice, str):
-        return ""
-    return raw_choice if raw_choice in {value for value, _key in options} else ""
+    Tollerante a case + spazi: il rendering form HTML potrebbe normalizzare.
+    Ritorna "" se la label non matcha (caller decide se skippare).
+    """
+    norm = (label or "").strip().lower()
+    for value, lbl in options:
+        if lbl.strip().lower() == norm:
+            return value
+    # Fallback: la label e' gia' il value (caller passa direttamente).
+    for value, _lbl in options:
+        if value == norm:
+            return value
+    return ""
 
 
 def _options_for(state: str) -> tuple[tuple[str, str], ...]:
@@ -294,10 +293,9 @@ def apply_review_decisions(values: dict) -> dict:
         options = _options_for(state)
         if not options:
             continue
-        # The UI renders a localized label but transports the canonical value.
-        # Interpreting a label here would make an administrative mutation
-        # depend on the active natural language.
-        value = _canonical_choice(raw_choice, options)
+        # Risolvi la scelta utente (puo' essere label "Promuovi ora" o
+        # value "promote_now" — accettiamo entrambi).
+        value = _label_to_value(str(raw_choice), options)
         if not value:
             failed += 1
             events.append({

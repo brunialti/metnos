@@ -51,9 +51,8 @@ def _issue(authority, proof=None, previous=None):
         proof=proof or _proof("alpha"), previous_cutover_id=previous,
         request_id=D("1"), signing_key_id=key_id,
         maintenance_evidence_hash=D("2"), boundary_inventory_hash=D("3"),
-        boundary_guard_version="metnos.contract-boundary-inventory/2+birth-closed/2",
-        closed_build_id=D("4"), context_transition_id=D("5"),
-        dominant_startup_receipt=D("6"), private_key=private,
+        boundary_guard_version="metnos.contract-boundary-inventory/2+birth-closed/1",
+        closed_build_id=D("4"), private_key=private,
     )
 
 
@@ -66,15 +65,7 @@ def test_zero_one_many_round_trip_bind_exact_current_proof(authority, names):
     )
     assert certificate.as_proof() == proof
     assert certificate.current_count == len(names)
-    assert cutover_module.current_receipt_catalog_id_v1(proof) == certificate.catalog_id
-    assert certificate.context_transition_id == D("5")
-    assert certificate.dominant_startup_receipt == D("6")
     assert encoded == _canonical(json.loads(encoded))
-
-
-def test_current_receipt_catalog_rejects_a_service_catalog_carrier():
-    with pytest.raises(OwnershipCutoverError, match="proof type"):
-        cutover_module.current_receipt_catalog_id_v1({"catalog_id": D("1")})
 
 
 def test_previous_cutover_is_authenticated_and_exact(authority):
@@ -86,32 +77,6 @@ def test_previous_cutover_is_authenticated_and_exact(authority):
     with pytest.raises(OwnershipCutoverError, match="birth_ownership_binding_invalid"):
         verify_ownership_cutover_certificate(
             encoded, signature, registry=authority[2], expected_previous_cutover_id=None,
-        )
-
-
-@pytest.mark.parametrize(
-    "expected",
-    ("context_transition_id", "dominant_startup_receipt"),
-)
-def test_transition_and_complete_startup_receipt_bindings_are_exact(
-    authority, expected,
-):
-    encoded, signature = _issue(authority)
-    arguments = {
-        "expected_context_transition_id": D("5"),
-        "expected_dominant_startup_receipt": D("6"),
-    }
-    arguments["expected_" + expected] = D("9")
-
-    with pytest.raises(
-        OwnershipCutoverError,
-        match="birth_ownership_binding_invalid",
-    ):
-        verify_ownership_cutover_certificate(
-            encoded,
-            signature,
-            registry=authority[2],
-            **arguments,
         )
 
 
@@ -129,8 +94,6 @@ def _resign(authority, encoded, mutate):
 @pytest.mark.parametrize("mutation", [
     lambda value: value.update(extra=True),
     lambda value: value.update(current_count=True),
-    lambda value: value.pop("context_transition_id"),
-    lambda value: value.pop("dominant_startup_receipt"),
     lambda value: value["current_receipts"].append(dict(value["current_receipts"][0])),
     lambda value: value["current_receipts"][0].update(extra="forbidden"),
 ])
@@ -149,7 +112,7 @@ def test_noncanonical_duplicate_json_tamper_and_wrong_purpose_fail(authority):
     with pytest.raises(OwnershipCutoverError, match="birth_ownership_proof_invalid"):
         verify_ownership_cutover_certificate(duplicate, signature, registry=authority[2])
     unauthorized = OwnershipCutoverRegistry({authority[1]: OwnershipCutoverKey(
-        authority[1], authority[0].public_key(), frozenset({"ownership_head_v1"}),
+        authority[1], authority[0].public_key(), frozenset({"admission_receipt_v1"}),
     )})
     with pytest.raises(OwnershipCutoverError, match="birth_ownership_key_unauthorized"):
         verify_ownership_cutover_certificate(encoded, signature, registry=unauthorized)
@@ -184,13 +147,9 @@ def test_no_replace_store_exact_retry_and_orphan_signature_resume(tmp_path, auth
     encoded, signature = _issue(authority, proof)
     first = install_ownership_cutover_certificate(
         tmp_path, encoded, signature, registry=authority[2], expected_proof=proof,
-        expected_context_transition_id=D("5"),
-        expected_dominant_startup_receipt=D("6"),
     )
     second = install_ownership_cutover_certificate(
         tmp_path, encoded, signature, registry=authority[2], expected_proof=proof,
-        expected_context_transition_id=D("5"),
-        expected_dominant_startup_receipt=D("6"),
     )
     assert first == second
 
@@ -200,8 +159,6 @@ def test_no_replace_store_exact_retry_and_orphan_signature_resume(tmp_path, auth
     os.chmod(orphan / SIGNATURE_BASENAME, 0o644)
     resumed = install_ownership_cutover_certificate(
         orphan, encoded, signature, registry=authority[2], expected_proof=proof,
-        expected_context_transition_id=D("5"),
-        expected_dominant_startup_receipt=D("6"),
     )
     assert resumed.cutover_id == first.cutover_id
 
@@ -276,20 +233,15 @@ def test_existing_different_certificate_is_a_non_overwriting_conflict(tmp_path, 
     first, first_signature = _issue(authority, proof)
     install_ownership_cutover_certificate(
         tmp_path, first, first_signature, registry=authority[2], expected_proof=proof,
-        expected_context_transition_id=D("5"),
-        expected_dominant_startup_receipt=D("6"),
     )
     second, second_signature = issue_ownership_cutover_certificate(
         proof=proof, previous_cutover_id=None, request_id=D("5"),
         signing_key_id=authority[1], maintenance_evidence_hash=D("2"),
         boundary_inventory_hash=D("3"), boundary_guard_version="guard/1",
-        closed_build_id=D("4"), context_transition_id=D("5"),
-        dominant_startup_receipt=D("6"), private_key=authority[0],
+        closed_build_id=D("4"), private_key=authority[0],
     )
     with pytest.raises(OwnershipCutoverError, match="birth_ownership_cutover_conflict"):
         install_ownership_cutover_certificate(
             tmp_path, second, second_signature, registry=authority[2], expected_proof=proof,
-            expected_context_transition_id=D("5"),
-            expected_dominant_startup_receipt=D("6"),
         )
     assert (tmp_path / PAYLOAD_BASENAME).read_bytes() == first

@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """Risoluzione deterministica delle azioni web del dominio ``sites``.
 
 Il planner fornisce linguaggio naturale; questo modulo lo riduce a un
@@ -18,23 +18,32 @@ try:
 except ImportError:  # pragma: no cover - sidecar install incompleto
     _detlex = None
 
-_ACTION_KINDS = ("goto", "click", "fill", "submit", "wait")
+_VERBS_FALLBACK = {
+    "goto": ("vai", "naviga", "apri", "visita", "go", "navigate", "open", "visit"),
+    "click": ("clicca", "premi", "seleziona", "scegli", "click", "press", "select", "choose"),
+    "fill": ("compila", "scrivi", "inserisci", "digita", "fill", "write", "enter", "type"),
+    "submit": ("invia", "conferma", "salva", "pubblica", "submit", "confirm", "save", "publish"),
+    "wait": ("attendi", "aspetta", "wait", "pause"),
+}
+
+_OVERLAY_DISMISS_FALLBACK = (
+    "close", "close dialog", "close modal", "dismiss", "dismiss dialog",
+    "not now", "maybe later", "later", "got it", "understood", "okay",
+    "ok", "cancel", "chiudi", "chiudi dialogo", "chiudi finestra", "ignora",
+    "non ora", "non adesso", "forse dopo", "piu tardi", "ho capito",
+    "capito", "va bene", "annulla",
+)
 
 
 def _verbs() -> dict[str, tuple[str, ...]]:
-    if _detlex is None:
-        return {}
-    try:
-        mapped = _detlex.native_ready_mapping(
-            "sites.action_verb", require_manual=True,
-            include_reviewed_baselines=True,
-        )
-        if set(mapped) == set(_ACTION_KINDS) and all(
-                mapped.get(kind) for kind in _ACTION_KINDS):
-            return {kind: tuple(mapped[kind]) for kind in _ACTION_KINDS}
-    except Exception:
-        pass
-    return {}
+    if _detlex is not None:
+        try:
+            mapped = _detlex.mapping("sites.action_verb")
+            if all(mapped.get(k) for k in _VERBS_FALLBACK):
+                return {k: tuple(mapped[k]) for k in _VERBS_FALLBACK}
+        except Exception:
+            pass
+    return _VERBS_FALLBACK
 
 
 def normalize(text: str) -> str:
@@ -44,15 +53,23 @@ def normalize(text: str) -> str:
 
 
 def _target_noise() -> tuple[str, ...]:
-    return _concept_forms("sites.action_target_noise")
+    if _detlex is not None:
+        try:
+            forms = tuple(normalize(x) for x in _detlex.forms(
+                "sites.action_target_noise") if normalize(x))
+            if forms:
+                return forms
+        except Exception:
+            pass
+    return ("il", "lo", "la", "un", "una", "sul", "sulla", "pulsante",
+            "bottone", "the", "a", "an", "on", "button", "link")
 
 
 def _concept_forms(concept: str) -> tuple[str, ...]:
     if _detlex is None:
         return ()
     try:
-        return tuple(normalize(x) for x in _detlex.native_ready_forms(
-                         concept, include_reviewed_baselines=True)
+        return tuple(normalize(x) for x in _detlex.forms(concept)
                      if normalize(x))
     except Exception:
         return ()
@@ -62,7 +79,7 @@ def overlay_dismiss_forms() -> tuple[str, ...]:
     """Safe, non-committing exits for obstructing transient overlays."""
     forms = (_concept_forms("sites.overlay_dismiss_target")
              + _concept_forms("sites.overlay_acknowledge_target"))
-    return forms
+    return forms or _OVERLAY_DISMISS_FALLBACK
 
 
 def privacy_reject_forms() -> tuple[str, ...]:
@@ -71,53 +88,9 @@ def privacy_reject_forms() -> tuple[str, ...]:
             + _concept_forms("sites.privacy_reject_noun_target"))
 
 
-def login_continue_forms() -> tuple[str, ...]:
-    """Translated controls that carry a page forward instead of closing it."""
-    return _concept_forms("sites.login_continue_target")
-
-
 def privacy_overlay_marker_forms() -> tuple[str, ...]:
     """Translated evidence that a fixed panel is a privacy overlay."""
     return _concept_forms("sites.privacy_overlay_marker")
-
-
-def names_privacy_container(action: str) -> bool:
-    """Does this action name the consent panel the broker already resolves?
-
-    Consent is a precondition of every action, settled before any of them, so
-    an action that names it asks for something already done and has no control
-    of its own left to hit. Resolving it against the page then picks whatever
-    is nearest: measured on turn `715e08e6` (10/9/2026), "accetta cookie
-    necessari" resolved to the button "Apri chat" at 0.62 and clicked it.
-
-    Recognition uses the container marker from the detection lexicon - the
-    same source the structural locator uses - so it covers every language the
-    lexicon covers and no list lives here.
-
-    Naming the panel is not enough. Whoever asks to REACH a document about
-    consent is asking for a destination, not giving an answer, and treating
-    that as a precondition would take their navigation away. A navigation verb
-    or an explicit URL says the destination is the point.
-
-    Declared residue: "apri la cookie policy" is still captured, because in
-    this vocabulary "apri" is a click verb and the browser boundary has no
-    concept for "consult". Adding one is a vocabulary decision (§2.2), not one
-    to take here.
-    """
-    text = normalize(action)
-    if not text:
-        return False
-    if not any(
-        marker and marker in text
-        for marker in (normalize(form) for form in privacy_overlay_marker_forms())
-    ):
-        return False
-    if re.search(r"https?://", action or "", re.I):
-        return False
-    return not any(
-        re.search(rf"\b{re.escape(normalize(verbo))}\b", text)
-        for verbo in _verbs().get("goto", ())
-    )
 
 
 def loading_marker_forms() -> tuple[str, ...]:
@@ -130,11 +103,7 @@ def is_collection_search_request(text: str) -> bool:
     if _detlex is None:
         return False
     try:
-        return any(pattern.search(text or "") for pattern in
-                   _detlex.native_ready_patterns(
-                       "sites.collection_search_request",
-                       include_reviewed_baselines=True,
-                   ))
+        return bool(_detlex.match("sites.collection_search_request", text or ""))
     except Exception:
         return False
 
@@ -172,9 +141,7 @@ def _grammatical_verb_patterns():
     patterns = []
     for concept in ("text.request_verb", "text.auxiliary_verb"):
         try:
-            patterns.extend(_detlex.native_ready_patterns(
-                concept, include_reviewed_baselines=True,
-            ))
+            patterns.extend(_detlex.regexes(concept))
         except Exception:
             continue
     return tuple(patterns)
@@ -263,16 +230,14 @@ def is_goal_navigation_request(action: str) -> bool:
         return True
 
     verbs = _verbs()
-    if not verbs:
-        return False
     # Match parse_action's precedence: an explicit atomic verb wins even if a
     # later word also happens to be a navigation verb.
     for kind in ("submit", "wait", "fill", "click"):
         if any(re.search(rf"\b{re.escape(normalize(form))}\b", normalized)
-               for form in verbs.get(kind, ())):
+               for form in verbs[kind]):
             return False
     if any(re.search(rf"\b{re.escape(normalize(form))}\b", normalized)
-           for form in verbs.get("goto", ())):
+           for form in verbs["goto"]):
         return True
     return _names_something(clause)
 
@@ -288,8 +253,6 @@ def parse_action(action: str) -> dict:
     if not norm:
         return {"ok": False, "error_class": "invalid_args"}
     verbs = _verbs()
-    if not verbs:
-        return {"ok": False, "error_class": "lexicon_unavailable"}
     url_match = re.search(r"https?://[^\s'\"<>]+", action or "", re.I)
     primitive = None
     search_verbs = _concept_forms("sites.search_action_verb")
@@ -299,7 +262,7 @@ def parse_action(action: str) -> dict:
     order = ("submit", "wait", "fill", "click", "goto")
     for kind in order if primitive is None else ():
         if any(re.search(rf"\b{re.escape(normalize(v))}\b", norm)
-               for v in verbs.get(kind, ())):
+               for v in verbs[kind]):
             primitive = kind
             break
     # Un URL esplicito rende la destinazione non ambigua. Vale anche per
@@ -342,23 +305,7 @@ def parse_action(action: str) -> dict:
 
 def _candidate_text(candidate: dict) -> str:
     return normalize(" ".join(str(candidate.get(k) or "") for k in (
-        "name", "text", "label", "role", "tag", "type", "placeholder")))
-
-
-def _candidate_names(candidate: dict) -> set[str]:
-    """Every label that names this control, not only the one ARIA settled on.
-
-    The accessible name is authored by hand and can be wrong — an unresolved
-    translation key, a leftover placeholder — while the visible text is what
-    the page actually shows. Both name the control here, so an authoring
-    mistake in one cannot hide the other. Naming is not choosing: a control
-    still has to win on score, and a wrapper still loses to the real control.
-    """
-    return {name for name in (
-        normalize(str(candidate.get("name") or "")),
-        normalize(str(candidate.get("label") or "")),
-        normalize(str(candidate.get("text") or "")),
-    ) if name}
+        "name", "label", "role", "tag", "type", "placeholder")))
 
 
 def active_goal_control_label(candidate: dict) -> str:
@@ -432,12 +379,11 @@ def _candidate_score_single(target: str, candidate: dict,
     if not hay:
         return 0.0
     score = 0.0
-    names = _candidate_names(candidate)
-    if target_n and target_n in names:
+    name = normalize(str(candidate.get("name") or candidate.get("label") or ""))
+    if target_n and target_n == name:
         score = 1.0
     elif target_n and (_contains_phrase(hay, target_n)
-                       or any(_contains_phrase(target_n, name)
-                              for name in names)):
+                       or _contains_phrase(target_n, name)):
         score = 0.88
     else:
         wanted = set(target_n.split())
@@ -465,10 +411,10 @@ def candidate_score(target: str, candidate: dict, primitive: str) -> float:
 
 
 def _candidate_has_unique_exact_name(target: str, candidate: dict) -> bool:
-    names = _candidate_names(candidate)
-    return bool(names and any(
-        name == normalize(variant)
-        for name in names for variant in _target_variants(target)))
+    name = normalize(str(
+        candidate.get("name") or candidate.get("label") or ""))
+    return bool(name and any(
+        name == normalize(variant) for variant in _target_variants(target)))
 
 
 def _is_login_target(target: str) -> bool:
@@ -589,9 +535,7 @@ def _canonical_goal_text(text: str) -> str:
         return normalized
     for concept in ("sites.goal_term_alias", "sites.goal_state_alias"):
         try:
-            aliases = _detlex.native_ready_mapping(
-                concept, include_reviewed_baselines=True,
-            )
+            aliases = _detlex.mapping(concept)
         except Exception:
             continue
         for canonical, forms in aliases.items():
@@ -651,10 +595,7 @@ def _goal_facet_tokens() -> frozenset[str]:
         return frozenset()
     try:
         return frozenset(x for x in (normalize(canonical) for canonical
-                                     in _detlex.native_ready_mapping(
-                                         "sites.goal_state_alias",
-                                         include_reviewed_baselines=True,
-                                     ))
+                                     in _detlex.mapping("sites.goal_state_alias"))
                          if x)
     except Exception:
         return frozenset()
@@ -1570,7 +1511,14 @@ def is_reveal_control(candidate: dict) -> bool:
     name = normalize(str(candidate.get("name") or candidate.get("label") or ""))
     if not name:
         return False
-    forms = _concept_forms("sites.reveal_control")
+    forms = []
+    if _detlex is not None:
+        try:
+            forms = _detlex.forms("sites.reveal_control")
+        except Exception:
+            forms = []
+    if not forms:
+        forms = ["apri menu", "mostra menu", "open menu", "show menu"]
     return any(name == normalize(form) for form in forms if normalize(form))
 
 

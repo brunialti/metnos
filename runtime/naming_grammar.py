@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """naming_grammar.py — Naming Authority + GBNF generator per §2.2.
 
 Centralizza il vincolo del vocabolario chiuso §2.2 (verbi/oggetti/qualifier)

@@ -157,42 +157,6 @@ def list_domains() -> list[str]:
     return out
 
 
-def network_addresses_for_name(name: str) -> list[set[str]]:
-    """Project only explicit name/IP associations; never return secret fields.
-
-    Flat credential records already accept named fields. Network metadata uses
-    name/hostname/host as aliases and ip/ip_address (or a literal host) as the
-    address. Protocol-prefixed pairs such as imap_host/imap_ip use the same
-    contract. No password, URL userinfo, form_data or free text is inspected.
-    An unreadable record is not evidence that its alias does not exist.
-    """
-    from network_targets import NetworkTargetError, _address
-
-    matched = []
-    alias = name.casefold()
-    for binding in list_domains():
-        try:
-            payload = load(binding)
-        except (OSError, ValueError):
-            if alias == binding.casefold():
-                raise NetworkTargetError("ERR_NETWORK_ADDRESS_UNAVAILABLE") from None
-            continue
-        if not isinstance(payload, dict):
-            continue
-        prefixes = {""}
-        prefixes.update(key[:-4] for key in payload if isinstance(key, str) and key.endswith("_host"))
-        for prefix in prefixes:
-            hosts = [payload.get(prefix + field) for field in ("name", "hostname", "host")]
-            aliases = {value.casefold() for value in hosts if isinstance(value, str)}
-            if not prefix:
-                aliases.add(binding.casefold())
-            if alias not in aliases:
-                continue
-            values = [payload.get(prefix + field) for field in ("ip", "ip_address", "host")]
-            matched.append({address for value in values if (address := _address(value))})
-    return matched
-
-
 def remove(domain: str) -> bool:
     """Rimuove la credenziale. Ritorna True se esisteva ed e' stata rimossa."""
     path = _file_for(domain)

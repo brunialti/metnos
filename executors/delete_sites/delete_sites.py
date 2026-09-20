@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """delete_sites — chiude/revoca sessioni web / kill-switch (spec sites §9 [ALTO]).
 
 Verbo `delete` (ratificato §2.2) su oggetto `sites`: terminare una sessione =

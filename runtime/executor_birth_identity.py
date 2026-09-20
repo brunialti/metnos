@@ -7,9 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-import math
 import re
-import struct
 import tomllib
 from dataclasses import dataclass
 from enum import Enum
@@ -59,7 +57,7 @@ class IdentityError(ValueError):
         super().__init__(f"{code}: {detail}" if detail else code)
 
 
-FramedValue: TypeAlias = None | str | int | float | bool | list["FramedValue"] | dict[str, "FramedValue"]
+FramedValue: TypeAlias = None | str | int | bool | list["FramedValue"] | dict[str, "FramedValue"]
 
 
 def _u64(value: int) -> bytes:
@@ -87,10 +85,6 @@ def encode_framed_v1(value: FramedValue) -> bytes:
         tag, payload = b"b", b"\x01" if value else b"\x00"
     elif type(value) is int:
         tag, payload = b"i", _signed_integer(value)
-    elif type(value) is float:
-        if not math.isfinite(value):
-            raise IdentityError("semantic_core_type_unsupported", "non-finite float")
-        tag, payload = b"f", struct.pack(">d", value)
     elif isinstance(value, str):
         tag, payload = b"s", value.encode("utf-8")
     elif isinstance(value, list):
@@ -113,29 +107,17 @@ def _identity(domain: bytes, value: FramedValue) -> str:
     return "sha256:" + hashlib.sha256(domain + encode_framed_v1(value)).hexdigest()
 
 
-def _plain(
-    value: object, *, path: str = "", allow_floats: bool = False,
-) -> FramedValue:
+def _plain(value: object, *, path: str = "") -> FramedValue:
     if value is None or isinstance(value, str) or type(value) in {bool, int}:
         return value
-    if type(value) is float:
-        if allow_floats and math.isfinite(value):
-            return value
-        raise IdentityError("semantic_core_type_unsupported", path or "float")
     if isinstance(value, list):
-        return [
-            _plain(item, path=f"{path}[{index}]", allow_floats=allow_floats)
-            for index, item in enumerate(value)
-        ]
+        return [_plain(item, path=f"{path}[{index}]") for index, item in enumerate(value)]
     if isinstance(value, Mapping):
         result: dict[str, FramedValue] = {}
         for key, item in value.items():
             if not isinstance(key, str):
                 raise IdentityError("semantic_core_type_unsupported", path)
-            result[key] = _plain(
-                item, path=f"{path}.{key}" if path else key,
-                allow_floats=allow_floats,
-            )
+            result[key] = _plain(item, path=f"{path}.{key}" if path else key)
         return result
     raise IdentityError("semantic_core_type_unsupported", path or type(value).__name__)
 
@@ -145,7 +127,7 @@ def _parse_manifest(manifest_bytes: bytes) -> dict[str, FramedValue]:
         parsed = tomllib.loads(manifest_bytes.decode("utf-8"))
     except (UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
         raise IdentityError("birth_request_invalid", "manifest_toml") from exc
-    plain = _plain(parsed, allow_floats=True)
+    plain = _plain(parsed)
     if not isinstance(plain, dict):  # pragma: no cover - TOML root is a map
         raise IdentityError("birth_request_invalid", "manifest_root")
     return plain
@@ -247,22 +229,18 @@ def candidate_id(value: CandidateIdentityInput) -> str:
 
 
 # Closed V1 manifest grammar.  Named maps are represented by the ``*`` child.
-_SCHEMA_DESCRIPTION = object()
 _SCHEMA_NODE: dict[str, object] = {}
 _SCHEMA_NODE.update({
-    "type": None, "description": _SCHEMA_DESCRIPTION,
-    "enum": None, "const": None,
+    "type": None, "description": {"*": None}, "enum": None, "const": None,
     "default": None, "required": None, "requires_one_of": None,
     "minimum": None, "maximum": None, "minLength": None, "maxLength": None,
     "minItems": None, "maxItems": None, "uniqueItems": None, "pattern": None,
     "format": None, "runtime_resolved": None, "additionalProperties": None,
     "runtime_source": None, "forbid_placeholder_values": None,
     "source_cardinality": None, "from_step_alternatives": None,
-    "complete_value": None, "from_entries_candidates_key": None,
-    "from_entries_complete": None,
+    "complete_value": None, "from_entries_complete": None,
     "from_entries_key": None, "from_entries_required": None,
     "from_result_key": None, "pipeline_role": None, "semantic_type": None,
-    "paired_device_identity": None, "paired_device_identity_mode": None,
     "properties": {"*": _SCHEMA_NODE}, "patternProperties": {"*": _SCHEMA_NODE},
     "dependentSchemas": {"*": _SCHEMA_NODE}, "items": _SCHEMA_NODE,
     "prefixItems": [_SCHEMA_NODE], "allOf": [_SCHEMA_NODE],
@@ -276,13 +254,8 @@ MANIFEST_FIELD_GRAMMAR_V1: dict[str, object] = {
     "critical": None, "intelligence": None, "platforms": None,
     "timeout_s": None, "superseded_by": None, "deprecated_at": None,
     "deprecation_ttl_hours": None, "origin": None,
-    "lre_plan": None,
-    "prerequisites": [{
-        "on_error": None, "executor": None,
-        "arguments": {"*": {"source": None, "field": None}},
-    }],
     "description": {"*": None}, "args": _SCHEMA_NODE,
-    "code": {"files": None, "dependencies": None, "digest": None},
+    "code": {"files": None, "digest": None},
     "output": {"schema_inline": None},
     "execution": {"effect": None, "parallelism_class": None, "resource_class": None,
                   "concurrency_key": None, "equivalence_gate": None},
@@ -328,13 +301,6 @@ MANIFEST_FIELD_GRAMMAR_V1: dict[str, object] = {
 def _check_grammar(value: FramedValue, grammar: object, path: tuple[str, ...] = ()) -> None:
     if grammar is None:
         return
-    if grammar is _SCHEMA_DESCRIPTION:
-        if isinstance(value, str) or (
-            isinstance(value, dict)
-            and all(isinstance(item, str) for item in value.values())
-        ):
-            return
-        raise IdentityError("semantic_core_unknown_field", ".".join(path))
     if isinstance(grammar, list):
         if not isinstance(value, list):
             raise IdentityError("semantic_core_unknown_field", ".".join(path))

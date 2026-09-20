@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """redaction — oscuramento deterministico dei campi segreti PRIMA di ogni
 capture (spec sites §3.2 CRITICO-3b, §3.3).
 

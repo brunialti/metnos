@@ -34,6 +34,7 @@ Esempio per `set_events` -> `delete_events_by_id`:
 """
 from __future__ import annotations
 
+
 # ---------------------------------------------------------------------------
 # Catalogo: object plurale -> (singolare, scope_field, delete_verb_template)
 # ---------------------------------------------------------------------------
@@ -183,29 +184,37 @@ def _validate_undo_blob_with_fallback(results, id_field, scope_field):
 # Registry hook (idempotente)
 # ---------------------------------------------------------------------------
 
-def _dispatch_call(call, catalog):
-    """Invoke one delete executor admitted by the caller's verified catalog."""
-    # Filesystem inverses do not load another executor or need its authority.
-    from admitted_module_v1 import AdmittedModuleError, load_admitted_module_v1
-
+def _dispatch_call(call):
+    """Invoca `delete_<objects>` caricando il suo modulo Python dal catalog.
+    Cerca prima in <install_root>/executors/, poi nei skill root (ADR 0160:
+    `skills/` new + `_imports/` legacy back-compat). Ritorna
+    `(ok_count, fail_count)` dell'invocazione concreta."""
+    import importlib.util
     name = call["executor"]
     args = call["args"]
-    failed = len(args.get(
-        next((key for key in args if key.endswith("_ids")), ""),
-        [],
-    ) or [1])
+    # §7.11: la install-root reale via config.PATH_EXECUTORS. Prima il bug
+    # usava il placeholder letterale "<install_root>" (mai sostituito) → path
+    # inesistente → undo di delete_<obj>_by_id no-op silenzioso sui builtin.
+    import config as _C
+    candidates = [
+        _C.PATH_EXECUTORS / name / f"{name}.py",
+    ]
+    from skills_paths import skill_roots as _sr
+    for base in _sr():
+        for skill_dir in base.iterdir():
+            cand = skill_dir / name / f"{name}.py"
+            if cand.is_file():
+                candidates.append(cand)
+    code_path = next((p for p in candidates if p.is_file()), None)
+    if code_path is None:
+        return 0, len(args.get(next((k for k in args if k.endswith("_ids")), ""), []) or [1])
+    spec = importlib.util.spec_from_file_location(f"_undo_{name}", str(code_path))
+    mod = importlib.util.module_from_spec(spec)
     try:
-        if catalog is None:
-            return 0, failed
-        executor = catalog.get(name)
-        if executor is None:
-            return 0, failed
-        mod = load_admitted_module_v1(executor)
+        spec.loader.exec_module(mod)
         obs = mod.invoke(args)
-    except (AdmittedModuleError, AttributeError, TypeError):
-        return 0, failed
     except Exception:
-        return 0, failed
+        return 0, len(args.get(next((k for k in args if k.endswith("_ids")), ""), []) or [1])
     if isinstance(obs, dict):
         results = obs.get("results") or []
         # Riconosci ENTRAMBE le convenzioni per-riga: {"status":"deleted"|"ok"}
@@ -232,7 +241,7 @@ def _make_pattern_callable(pattern_name_bound):
     `_dispatch_call` per chiudere il ciclo undo end-to-end. §2.8 no silent
     failure.
     """
-    def _delete_by_id(plan, results, *, catalog=None):
+    def _delete_by_id(plan, results):
         # Fallback robusto sul `plan` se override esplicito (es. multistage
         # reverse_pattern come list): rispettato in caso di varianti future.
         pattern_name = pattern_name_bound
@@ -250,7 +259,7 @@ def _make_pattern_callable(pattern_name_bound):
         ok_total = 0
         fail_total = 0
         for c in calls:
-            ok_i, fail_i = _dispatch_call(c, catalog)
+            ok_i, fail_i = _dispatch_call(c)
             ok_total += ok_i
             fail_total += fail_i
         return {
@@ -259,7 +268,6 @@ def _make_pattern_callable(pattern_name_bound):
             "fail_count": fail_total,
             "calls": calls,
         }
-    _delete_by_id._metnos_catalog_required = True
     return _delete_by_id
 
 

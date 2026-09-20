@@ -246,8 +246,7 @@ _BUILTIN_JOBS: list[dict[str, Any]] = [
             "endgame_book/analogy_transfer/boden_transformational/"
             "pattern_language/generative_design/counterfactual/"
             "constitutional) su tutti i telos dichiarati. Opt-in via "
-            "runtime.toml telos.nightly_enabled=true o env "
-            "METNOS_TELOS_NIGHTLY=1 (default OFF). Output: "
+            "env METNOS_TELOS_NIGHTLY=1 (default OFF). Output: "
             "~/.local/share/metnos/telos_proposals.jsonl (ADR 0156)."
         ),
     },
@@ -298,40 +297,31 @@ def builtin_job_names() -> frozenset[str]:
 
 
 def task_images_index_refresh() -> dict:
-    """Queue incremental maintenance through the ordinary signed LRE plan.
+    """Refresh incrementale dell'indice unificato immagini (ADR 0117).
 
-    The scheduler only submits work; model reservations and resumable units
-    belong to LRE. The configured data root, not the service account's home,
-    selects the archive. No direct executor import or inline analysis remains.
+    Trigger automatico daily@03:00. Invoca `create_images_indices` con
+    `force=False`: walk + stat ~11s su 30k foto, le invariate sono
+    saltate via (mtime,size); le nuove/modificate passano la pipeline
+    EXIF + ArcFace + VLM + BGE.
     """
-    import uuid
-    import config
-    import users
-    from engine.types import Framework, StepSpec
-    from loader import load_catalog
-    from lre_submission import submit_automatic_lre
-    from vaglio import guard_check
-
-    base = config.PATH_USER_DATA / "Immagini"
+    import os as _os
+    import sys as _sys
+    from pathlib import Path as _P
+    base = _P.home() / ".local/share/metnos/Immagini"
     if not base.exists():
         return {"ok": True, "skipped": True, "reason": f"absent: {base}"}
-    owners = users.list_users(role="host")
-    if len(owners) != 1 or not owners[0].get("id"):
-        return {"ok": False, "error_class": "owner_unavailable"}
-    catalog = load_catalog(verify=True)
-    executor = next((item for item in catalog
-                     if item.name == "create_images_indices"), None)
-    if executor is None or not getattr(executor, "lre_plan", ""):
-        return {"ok": False, "error_class": "contract_unavailable"}
-    args = {"base_path": str(base), "force": False, "recursive": True}
-    if not guard_check(executor.name, args, executor=executor)[0]:
-        return {"ok": False, "error_class": "guard_denied"}
-    result = submit_automatic_lre(
-        Framework(steps=[StepSpec(executor.name, args)]), catalog=catalog,
-        owner_user_id=owners[0]["id"], turn_id=uuid.uuid4().hex,
-    )
-    return (result if result is not None else
-            {"ok": False, "error_class": "workload_not_admitted"})
+    # runtime/ già su sys.path (builtin_callbacks VIVE in runtime/scheduler_v2/).
+    # Per importare create_images_indices.py serve il path del suo dir executor.
+    _rt = _os.environ.get("METNOS_RUNTIME") or next(
+        str(p / "runtime") for p in _P(__file__).resolve().parents
+        if (p / "runtime" / "config.py").is_file())
+    _exec_dir = str(_P(_rt).parent / "executors" / "create_images_indices")
+    if _exec_dir not in _sys.path:
+        _sys.path.insert(0, _exec_dir)
+    import create_images_indices as _m
+    return _m.invoke({
+        "base_path": str(base), "force": False, "recursive": True,
+    })
 
 
 def task_proposals_eta_aggregate() -> dict:
@@ -578,15 +568,6 @@ def install_default_callbacks(scheduler) -> None:
         "W1 learning-loop: pota seed shadow stantii + conta proposte (ADR 0185)",
         replace=True,
     )
-    # RM-0008 F5: consuma la coda delle quarantene esatte. Nessuna autorita'
-    # di pubblicazione: la revisione classifica, non riattiva.
-    from jobs.birth_failure_reviews import task_birth_failure_reviews
-    cb.register(
-        "birth_failure_reviews",
-        _wrap_zero_arg(task_birth_failure_reviews),
-        "Revisione bounded delle esecuzioni messe in quarantena (RM-0008 F5)",
-        replace=True,
-    )
     cb.register(
         "apply_executor_ager",
         _wrap_zero_arg(task_apply_executor_ager),
@@ -766,13 +747,13 @@ def install_default_callbacks(scheduler) -> None:
     # Telos engine nightly introspection (ADR 0156, 21/5/2026 v8).
     # Esegue le 10 lenti laterali su tutti i telos dichiarati, produce
     # proposte in `~/.local/share/metnos/telos_proposals.jsonl`.
-    # Opt-in via runtime.toml o env METNOS_TELOS_NIGHTLY=1 (default OFF) per evitare
+    # Opt-in via env METNOS_TELOS_NIGHTLY=1 (default OFF) per evitare
     # auto-run prima che la review utente sia wired (next session).
     def _task_telos_introspect_nightly(payload=None):
-        from runtime_settings import telos_nightly_enabled
-        if not telos_nightly_enabled():
+        import os
+        if os.environ.get("METNOS_TELOS_NIGHTLY", "0") != "1":
             return {"ok": True, "skipped": True,
-                    "reason": "telos.nightly_enabled=false (opt-in)"}
+                    "reason": "METNOS_TELOS_NIGHTLY=0 (opt-in)"}
         from telos_introspect import run_all_telos
         from telos_lenses import LENSES
         # Forza tutte le 10 lenti attive: in modalita' nightly ignoriamo

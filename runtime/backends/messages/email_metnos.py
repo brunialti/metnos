@@ -36,7 +36,6 @@ if _RUNTIME not in sys.path:
     sys.path.insert(0, _RUNTIME)
 
 from messages import get as _msg  # noqa: E402
-import detection_lexicon_seed_residual_am as _residual_lexicon  # noqa: E402
 
 
 # --- helpers ---------------------------------------------------------------
@@ -203,8 +202,7 @@ def _imap_date(d):
 
 def _window_now() -> datetime.datetime:
     """One clock source for both the coarse IMAP query and exact filtering."""
-    from time_window_parser import temporal_now
-    return temporal_now()
+    return datetime.datetime.now(datetime.timezone.utc).astimezone()
 
 
 def _resolve_attachments(raw, *, max_total_bytes=_MAX_ATTACH_BYTES_PER_MSG):
@@ -421,40 +419,61 @@ def send(args: dict) -> dict:
 # --- read / find -----------------------------------------------------------
 
 def _rolling_window_delta(tw):
-    """Compatibility probe; all interpretation/arithmetic lives in one parser."""
-    from time_window_parser import _normalize_llm_spec, resolve_time_bounds
-    if not isinstance(tw, str):
+    """Return the rolling duration represented by a mail time-window preset.
+
+    IMAP ``SINCE`` only has calendar-day precision.  Keeping this parser next
+    to ``_resolve_window`` lets ``read`` apply a second, exact timestamp filter
+    without changing the deliberately mail-specific meaning of ``m`` (month).
+    """
+    if not tw or isinstance(tw, dict):
         return None
-    try:
-        spec = _normalize_llm_spec(tw)
-        if not spec.startswith("last-"):
-            return None
-        start, end = resolve_time_bounds(spec, now=_window_now())
-        if spec in {"last-week", "last-month", "last-year"}:
-            end += datetime.timedelta(microseconds=1)
-        return end - start
-    except (ValueError, TypeError):
+    s = str(tw).strip().lower()
+    word_days = {
+        "last-week": 7, "last-month": 30, "last-year": 365,
+        "last-settimana": 7, "last-mese": 30, "last-anno": 365,
+    }
+    if s in word_days:
+        return datetime.timedelta(days=word_days[s])
+    norm = s.replace("now_minus_", "").replace("now-minus-", "")
+    match = re.search(
+        r"(\d+)\s*[-_ ]?\s*"
+        r"(d|day|days|giorn[oi]|h|hour|hours|or[ae]|"
+        r"w|week|weeks|settiman[ae]|mo|month|months|mes[ei]|m|min|"
+        r"y|year|years|ann[oi])\b",
+        norm,
+    )
+    if not match or not (
+            any(key in s for key in ("last", "past", "minus", "ago"))
+            or s[0:1].isdigit()):
         return None
+    n, unit = int(match.group(1)), match.group(2)
+    if n < 1:
+        return None
+    if unit in ("d", "day", "days", "giorno", "giorni"):
+        return datetime.timedelta(days=n)
+    if unit in ("h", "hour", "hours", "ora", "ore"):
+        return datetime.timedelta(hours=n)
+    if unit in ("w", "week", "weeks", "settimana", "settimane"):
+        return datetime.timedelta(weeks=n)
+    if unit in ("mo", "month", "months", "mese", "mesi", "m", "min"):
+        return datetime.timedelta(days=30 * n)
+    if unit in ("y", "year", "years", "anno", "anni"):
+        return datetime.timedelta(days=365 * n)
+    return None
 
 
 def _rolling_window_cutoff(tw, *, now=None):
-    from time_window_parser import _normalize_llm_spec, resolve_time_bounds
-    if not isinstance(tw, str):
+    delta = _rolling_window_delta(tw)
+    if delta is None:
         return None
-    try:
-        spec = _normalize_llm_spec(tw)
-        return resolve_time_bounds(spec, now=now or _window_now())[0] if spec.startswith("last-") else None
-    except (ValueError, TypeError):
-        return None
+    return (now or _window_now()) - delta
 
 
 def _entry_datetime(entry: dict):
-    """Prefer IMAP receipt time; preserve the legacy Date-header fallback."""
+    """Parse an RFC 5322 Date header, retaining unknown/naive dates safely."""
     from email.utils import parsedate_to_datetime
     try:
-        value = (datetime.datetime.fromisoformat(entry["received_at"])
-                 if entry.get("received_at") else
-                 parsedate_to_datetime(entry.get("date") or ""))
+        value = parsedate_to_datetime(entry.get("date") or "")
     except Exception:
         return None
     # A Date header without a zone cannot be compared reliably.  IMAP already
@@ -466,48 +485,47 @@ def _entry_datetime(entry: dict):
 
 
 def _resolve_window(tw, *, now=None):
-    """Compatibility IMAP adapter; never pass an unvalidated date to IMAP."""
+    """Ritorna (since_str | None, before_str | None, label)."""
     if not tw:
         return None, None, None
-    try:
-        lower, upper, _exclusive = _read_time_bounds(
-            tw, None, None, now=now or _window_now())
-        return (_imap_date(lower.date()) if lower else None,
-                _imap_date(upper.date() + datetime.timedelta(days=1)) if upper else None,
-                str(tw))
-    except (ValueError, TypeError, OverflowError):
-        return None, None, f"invalid:{tw}"
-
-
-def _read_time_bounds(window, since, before, *, now):
-    """Shared timestamps plus the protocol's explicit exclusive BEFORE bound."""
-    from time_window_parser import resolve_time_bounds
-    lower = upper = None
-    if isinstance(window, dict):
-        since = since or window.get("since")
-        before = before or window.get("before")
-    elif window:
-        lower, upper = resolve_time_bounds(window, now=now)
-    if since:
-        lower = resolve_time_bounds(since, now=now)[0]
-    if before:
-        upper = resolve_time_bounds(before, now=now)[0]
-    if lower is not None and upper is not None:
-        if lower.timestamp() > upper.timestamp():
-            raise ValueError("reversed_time_window")
-    return lower, upper, bool(before)
-
-
-def _outside_time_bounds(entry, bounds):
-    """Compare timestamps, independent of IMAP's server-local date buckets."""
-    lower, upper, exclusive = bounds
-    received = _entry_datetime(entry)
-    if received is None:
-        return False
-    stamp = received.timestamp()
-    return ((lower is not None and stamp < lower.timestamp())
-            or (upper is not None and (stamp >= upper.timestamp() if exclusive
-                                        else stamp > upper.timestamp())))
+    now = now or _window_now()
+    if isinstance(tw, dict):
+        return tw.get("since"), tw.get("before"), f"custom:{tw}"
+    s = str(tw).strip().lower()
+    if s == "today":
+        d = now.date()
+        return _imap_date(d), None, "today"
+    if s == "yesterday":
+        d = now.date() - datetime.timedelta(days=1)
+        before = now.date()
+        return _imap_date(d), _imap_date(before), "yesterday"
+    # Preset-parola senza N: last-week/month/year.
+    _WORD = {"last-week": 7, "last-month": 30, "last-year": 365,
+             "last-settimana": 7, "last-mese": 30, "last-anno": 365}
+    if s in _WORD:
+        d = (now - _rolling_window_delta(s)).date()
+        return _imap_date(d), None, s
+    # §2.4 robustezza NL→determinismo: "N unita' fa". Tollera i prefissi che
+    # l'LLM inventa (last-/past-/now_minus_/-ago) e separatori liberi. Per IMAP
+    # (granularita' GIORNO) l'unita' 'm'/'min' NON ha senso → 'm' = MESI (l'LLM
+    # scrive "12m" per 12 mesi); mesi~30d, anni~365d (approssimazione adeguata
+    # al filtro SINCE). Differisce di proposito dal time_window_parser generale
+    # (dove 'm'=minuti), perche' qui il dominio e' date-only.
+    import re as _re
+    norm = s.replace("now_minus_", "").replace("now-minus-", "")
+    m = _re.search(r"(\d+)\s*[-_ ]?\s*"
+                   r"(d|day|days|giorn[oi]|h|hour|hours|or[ae]|"
+                   r"w|week|weeks|settiman[ae]|mo|month|months|mes[ei]|m|min|"
+                   r"y|year|years|ann[oi])\b", norm)
+    if m and any(k in s for k in ("last", "past", "minus", "ago")) or (m and s[0:1].isdigit()):
+        n = int(m.group(1)); u = m.group(2)
+        if n >= 1:
+            delta = _rolling_window_delta(s)
+            if delta is None:
+                return None, None, f"unknown_preset:{s}"
+            d = (now - delta).date()
+            return _imap_date(d), None, f"last-{n}{u}"
+    return None, None, f"unknown_preset:{s}"
 
 
 def read(args: dict) -> dict:
@@ -588,23 +606,14 @@ def read(args: dict) -> dict:
     max_total = min(max_total, _MAX_TOTAL_CAP)
 
     window_now = _window_now()
-    window_label = str(time_window) if time_window else None
-    try:
-        lower, upper, upper_exclusive = _read_time_bounds(
-            time_window, since_explicit, before_explicit, now=window_now)
-    except (ValueError, TypeError, OverflowError):
+    since, before, window_label = _resolve_window(time_window, now=window_now)
+    if time_window and window_label and window_label.startswith(("invalid:", "unknown_preset:")):
         return {"ok": False, "error_code": "ERR_TIME_WINDOW_INVALID",
-                "error": _msg("ERR_TIME_WINDOW_INVALID",
-                              label=str(time_window or since_explicit or before_explicit))}
-    # IMAP SEARCH has date precision only. Never send raw model arguments;
-    # round outward, then apply exact timestamps after fetching.
-    # INTERNALDATE's offset is not necessarily the user's configured zone.
-    # Widen in UTC to cover every server-local date, then filter exact receipt
-    # instants before applying the result limit (including explicit BEFORE).
-    since = _imap_date(lower.astimezone(datetime.timezone.utc).date()
-                       - datetime.timedelta(days=1)) if lower else None
-    before = _imap_date(upper.astimezone(datetime.timezone.utc).date()
-                        + datetime.timedelta(days=2)) if upper else None
+                "error": _msg("ERR_TIME_WINDOW_INVALID", label=str(window_label))}
+    if since_explicit:
+        since = since_explicit
+    if before_explicit:
+        before = before_explicit
 
     entries, failed = [], []
     available_total = 0
@@ -623,7 +632,6 @@ def read(args: dict) -> dict:
                 account_entries, account_failed, time_window,
                 from_contains, subject_contains, body_contains,
                 open_imap, parse_envelope,
-                time_bounds=(lower, upper, upper_exclusive),
             )
         except Exception as exc:
             available = 0
@@ -650,13 +658,20 @@ def read(args: dict) -> dict:
         accounts_read += 1
     deadline_hit = bool(skipped_indexes)
 
-    # This also covers relative since/before, not just time_window. Unknown
-    # timestamps remain visible under the server-side coarse selection.
-    if (lower is not None or upper is not None) and entries:
+    # ``SINCE`` is calendar-day based: at 15:00, ``last-3d`` also returns
+    # messages from midnight to 14:59 on the boundary day.  Apply the exact
+    # rolling cutoff after fetching.  Unparseable/zone-less Date headers stay
+    # visible (the server-side filter is still authoritative for them).
+    exact_cutoff = (
+        _rolling_window_cutoff(time_window, now=window_now)
+        if time_window and not since_explicit else None
+    )
+    if exact_cutoff is not None and entries:
         exact_entries = []
         excluded = 0
         for entry in entries:
-            if _outside_time_bounds(entry, (lower, upper, upper_exclusive)):
+            received = _entry_datetime(entry)
+            if received is not None and received < exact_cutoff:
                 excluded += 1
                 continue
             exact_entries.append(entry)
@@ -703,13 +718,6 @@ def read(args: dict) -> dict:
                              skipped=", ".join(skipped) or "-")
     if window_label:
         out["window"] = window_label
-    if lower is not None or upper is not None:
-        out["time_bounds"] = {
-            "start": lower.isoformat() if lower else None,
-            "end": upper.isoformat() if upper else None,
-            "end_exclusive": upper_exclusive,
-            "timezone": str(window_now.tzinfo),
-        }
     if available_total > len(entries):
         out["truncated"] = True
         out["available_total"] = available_total
@@ -728,7 +736,7 @@ def find(args: dict) -> dict:
 def _read_one_account(account, folder, max_results, unseen_only, since, before,
                       per_account_cap, page_size, entries, failed, time_window,
                       from_contains, subject_contains, body_contains,
-                      open_imap, parse_envelope, *, time_bounds=(None, None, False)):
+                      open_imap, parse_envelope):
     try:
         conn = open_imap(account)
     except imaplib.IMAP4.error as e:
@@ -777,7 +785,7 @@ def _read_one_account(account, folder, max_results, unseen_only, since, before,
 
         # Robustezza NL→determinismo §2.4: `from_contains` e' dominio APERTO.
         # Il planner a volte include una parola-tema ("bollette eniplenitude")
-        # che NON e' nel mittente ("noreply@vendor.example.com") → IMAP FROM su
+        # che NON e' nel mittente ("noreply@eniplenitude.com") → IMAP FROM su
         # tutta la frase = 0 risultati (fallimento silenzioso). Tolleranza:
         # multi-token → OR (match se UNO qualsiasi dei token e' nel From).
         # Solo FROM (subject/body restano frasi). Turn 1671283e.
@@ -804,26 +812,18 @@ def _read_one_account(account, folder, max_results, unseen_only, since, before,
             return 0
         ids = (data[0].split() if data and data[0] else [])
         available = len(ids)
-        has_time_bounds = time_bounds[0] is not None or time_bounds[1] is not None
-        if time_window or has_time_bounds:
-            # The result limit must not become the coarse candidate limit:
-            # newer messages outside BEFORE could otherwise hide every match.
-            # Keep scanning bounded by the existing global read safety cap.
-            ids = ids[-_MAX_RESULTS_CAP:]
+        if time_window:
+            ids = ids[-per_account_cap:]
             ids.reverse()
-            cap_total = len(ids)
+            cap_total = min(len(ids), per_account_cap)
         else:
             ids = ids[-min(max_results, per_account_cap):]
             ids.reverse()
             cap_total = min(max_results, per_account_cap)
-        idx = excluded = 0
-        initial_count = len(entries)
-        matched_limit = per_account_cap if time_window else min(max_results, per_account_cap)
-        while idx < cap_total and idx < len(ids) and len(entries) - initial_count < matched_limit:
+        idx = 0
+        while idx < cap_total and idx < len(ids):
             page = ids[idx:idx + page_size]
             for uid in page:
-                if len(entries) - initial_count >= matched_limit:
-                    break
                 # Retry+reconnect sul transiente: SSLError 'BAD_RECORD_MAC' =
                 # corruzione TLS a livello-rete (.33, path WiFi MTU/GRO) che a
                 # metà lettura faceva perdere i messaggi rimanenti dell'account
@@ -834,7 +834,7 @@ def _read_one_account(account, folder, max_results, unseen_only, since, before,
                 status = raw = None
                 for _att in range(3):
                     try:
-                        status, raw = conn.uid("FETCH", uid, "(INTERNALDATE RFC822.SIZE BODY.PEEK[])")
+                        status, raw = conn.uid("FETCH", uid, "(RFC822.SIZE RFC822)")
                         break
                     except Exception as _fe:
                         if _att >= 2:
@@ -870,15 +870,6 @@ def _read_one_account(account, folder, max_results, unseen_only, since, before,
                     else:
                         header_part, body_bytes = b"", raw[0]
                     env = parse_envelope(body_bytes)
-                    received = re.search(rb'INTERNALDATE\s+"([^"]+)"', header_part)
-                    if received:
-                        from email.utils import parsedate_to_datetime
-                        try:
-                            stamp = parsedate_to_datetime(received.group(1).decode("ascii"))
-                            if stamp is not None and stamp.tzinfo is not None:
-                                env["received_at"] = stamp.isoformat()
-                        except (ValueError, TypeError, UnicodeError):
-                            pass
                 except Exception as e:
                     failed.append({"account": account, "uid": str(uid),
                                    "error_code": "ERR_PARSE_FAIL",
@@ -896,12 +887,9 @@ def _read_one_account(account, folder, max_results, unseen_only, since, before,
                 env.update({"uid": uid.decode() if isinstance(uid, bytes) else str(uid),
                             "account": account, "folder": folder,
                             "size": size if size is not None else 0})
-                if _outside_time_bounds(env, time_bounds):
-                    excluded += 1
-                    continue
                 entries.append(env)
             idx += page_size
-        return max(len(entries) - initial_count, available - excluded)
+        return available
     finally:
         try:
             conn.close()
@@ -1054,13 +1042,14 @@ def delete(args: dict) -> dict:
     return out
 
 
-# Identificatori canonici -> special-use IMAP flag. I flag sono invarianti del
-# protocollo; gli alias user-facing arrivano dal lessico native-ready.
-_FOLDER_SPECIAL_FLAGS = {
-    "junk": "\\Junk",
-    "trash": "\\Trash",
-    "sent": "\\Sent",
-    "drafts": "\\Drafts",
+# Termini user-facing -> special-use IMAP flag (§5: «Spam»/«Posta indesiderata»
+# = la cartella \Junk reale del server, non hardcodare INBOX.Junk).
+_FOLDER_SPECIAL = {
+    "junk": "\\Junk", "spam": "\\Junk", "indesiderata": "\\Junk",
+    "spazzatura": "\\Junk",
+    "trash": "\\Trash", "cestino": "\\Trash", "eliminata": "\\Trash",
+    "sent": "\\Sent", "inviata": "\\Sent", "inviate": "\\Sent",
+    "draft": "\\Drafts", "drafts": "\\Drafts", "bozze": "\\Drafts",
 }
 
 
@@ -1088,16 +1077,7 @@ def _resolve_dst_folder(conn, dst_folder: str) -> str:
             continue
         folders.append((m.group("name").strip().strip('"'), m.group("flags")))
     tl = target.lower()
-    aliases = _residual_lexicon.ready_mapping(
-        _residual_lexicon.MAIL_FOLDER_SPECIAL,
-    )
-    canonical = next(
-        (category for category in _FOLDER_SPECIAL_FLAGS
-         for forms in (aliases.get(category, ()),)
-         if any(str(form).casefold() in tl for form in forms)),
-        None,
-    )
-    want = _FOLDER_SPECIAL_FLAGS.get(canonical)
+    want = next((f for k, f in _FOLDER_SPECIAL.items() if k in tl), None)
     if want:                                   # 1) special-use flag
         for name, flags in folders:
             if want.lower() in flags.lower():

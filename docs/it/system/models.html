@@ -54,15 +54,6 @@ esterne e richiede una configurazione esplicita.</p>
 
 <h2 id="modifica">Che cosa si può modificare</h2>
 
-<p>I modelli locali per immagini e volti devono restare disponibili quando
-Metnos cambia release. Le loro cartelle condivise si possono indicare con
-<code>model_dir</code> nelle sezioni <code>[image]</code> e <code>[face]</code>
-di <code>embedding_tiers.toml</code>; per i volti il fornitore è
-<code>face</code>. Queste impostazioni selezionano dati del modello, non
-programmi eseguibili. Un executor può leggere solo i file del modello ammessi
-dal proprio contratto. Un modello mancante non viene scaricato automaticamente
-e impedisce il completamento dell'analisi che lo richiede.</p>
-
 <p>La pagina consente di modificare le configurazioni LLM e VLM e di ripristinare
 la versione precedente. Prima del salvataggio, Metnos convalida la struttura e
 i valori e conserva una copia di recupero. Password, token, credenziali e

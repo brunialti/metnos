@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """boden_transformational.py — revisione contratto di un executor.
 
 Boden 1990 trasformazionale: cambia signature args/schema/ritorno,

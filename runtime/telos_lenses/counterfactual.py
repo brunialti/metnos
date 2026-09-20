@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """counterfactual.py — analisi controfattuale di turni insoddisfacenti.
 
 Ref: Shinn et al., "Reflexion: Language Agents with Verbal Reinforcement

@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """telos_loader.py — parse `workspace/TELOS.md` e espone i telos correnti.
 
 ADR pending (riferimento: docs/it/drafts/telos_engine_v1.html, 20/5/2026).

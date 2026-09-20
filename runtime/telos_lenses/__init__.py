@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """telos_lenses — pacchetto delle 9 lenti laterali del telos engine.
 
 Ogni lens espone:
@@ -24,6 +24,7 @@ Lenti registrate (10/5/2026 -> 21/5/2026 batch):
   generative_design      — Pareto candidates per brief composto
 """
 import os
+import importlib
 
 from ._base import LensCtx, LensProposal, run_lens, paternalism_check
 
@@ -48,37 +49,7 @@ _LENS_NAMES = (
 
 def _load_lens(name: str):
     """Carica il modulo lens (cached da Python's import system)."""
-    if name == "scamper":
-        from . import scamper
-        return scamper
-    if name == "oulipo":
-        from . import oulipo
-        return oulipo
-    if name == "inverse_rl":
-        from . import inverse_rl
-        return inverse_rl
-    if name == "endgame_book":
-        from . import endgame_book
-        return endgame_book
-    if name == "analogy_transfer":
-        from . import analogy_transfer
-        return analogy_transfer
-    if name == "boden_transformational":
-        from . import boden_transformational
-        return boden_transformational
-    if name == "pattern_language":
-        from . import pattern_language
-        return pattern_language
-    if name == "generative_design":
-        from . import generative_design
-        return generative_design
-    if name == "counterfactual":
-        from . import counterfactual
-        return counterfactual
-    if name == "constitutional":
-        from . import constitutional
-        return constitutional
-    raise ValueError("unsupported telos lens")
+    return importlib.import_module(f"telos_lenses.{name}")
 
 
 LENSES = {name: _load_lens(name) for name in _LENS_NAMES}

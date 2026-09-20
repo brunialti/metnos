@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """auto_remediation.py — pattern generale install_on_demand applicato al
 contenuto (ADR 0153, 20/5/2026 v6).
 

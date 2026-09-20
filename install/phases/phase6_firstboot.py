@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """Phase 6 — First boot.
 
 Final phase. After all the moving parts are in place, this:

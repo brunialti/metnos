@@ -25,12 +25,7 @@ from typing import Optional, Callable
 
 from .types import (Intent, Framework, StepSpec, RunResult,
                     result_error_classes)
-from .recovery import (
-    classify_error,
-    is_recoverable,
-    propose_with_recovery_signal,
-    recovery_signal_for,
-)
+from .recovery import classify_error, is_recoverable
 
 log = logging.getLogger(__name__)
 
@@ -127,17 +122,11 @@ class MetisRecovery:
         #    differenza di SimpleRecovery, che escludendo il tool dell'ultimo
         #    step peggiora i casi tipo needs_content_fetch). Il Proposer
         #    multi-candidato ha un'altra chance sull'intero pool.
-        signal = recovery_signal_for(failed_run)
         failed_hash = failed_run.framework_hash
-        # ``compute_framework_hash`` identifica la shape e quindi considera
-        # uguali due find_urls con query diverse. Per il recupero ricerca la
-        # stessa shape deve restare disponibile; il dispatcher confrontera' i
-        # valori effettivi prima di autorizzare la seconda esecuzione.
-        excluded = ({failed_hash} if failed_hash else set()) if not signal else set()
+        excluded = {failed_hash} if failed_hash else set()
         try:
-            return propose_with_recovery_signal(
-                proposer=proposer, intent=intent, signal=signal,
-                query=query, pool=pool,
+            return proposer.propose(
+                query=query, intent=intent, pool=pool,
                 excluded_hashes=excluded, llm_call=llm_call, lang=lang,
                 catalog=catalog)
         except Exception as ex:

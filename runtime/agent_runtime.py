@@ -41,11 +41,10 @@ from scratchpad import Scratchpad
 from synt import Synt, make_request as synt_make_request
 import prompt_loader  # ADR 0092: prompt LLM in runtime/prompts/<lang>/
 import detection_lexicon as _detlex  # lessici NL traducibili (gemello i18n)
-import detection_lexicon_seed_runtime_safety as _runtime_safety_lexicon
-import detection_lexicon_seed_residual_am as _residual_am_lexicon
 from config import DEFAULT_TIMEZONE
 from credential_intake import (
-    credential_pairs_for_storage,
+    credential_pair_matches,
+    is_password_label,
     scrub_sensitive_text as _scrub_credentials,
 )
 from executor_birth_feedback import (
@@ -82,14 +81,18 @@ def _authenticated_dispatch_candidate_id(
     identifier.  The productive Birth bundle owns the verifier keyring, and
     the receipt adjacent to the immutable generation is the sole authority.
     """
+    from contract_store import authenticate_execution_binding
     from executor_birth_operational import _runtime_bundle_snapshot
 
-    bundle = _runtime_bundle_snapshot()
-    if bundle is None:
+    verification = _runtime_bundle_snapshot()
+    if verification is None:
         raise FeedbackError("feedback_binding_invalid", "candidate_id")
     try:
-        binding = bundle.core.commit_publisher.authenticate_execution_binding(
-            contract_id, generation_id,
+        binding = authenticate_execution_binding(
+            contract_id,
+            generation_id,
+            trusted_publics=verification.trusted_publics,
+            admission_verifier_keys=verification.admission_verifier_keys,
         )
     except Exception as exc:
         raise FeedbackError("feedback_binding_invalid", "candidate_id") from exc
@@ -206,14 +209,86 @@ DEFAULT_CAP_MAX_PER_TURN = int(os.environ.get("METNOS_CAP_MAX_PER_TURN", "3") or
 SCRATCHPAD_THRESHOLD_BYTES = 4096  # observation oltre questa dimensione vanno in scratchpad
 
 
+# Anti thinking-leak (ADR 0102, 7/5/2026). Il modello locale con think=true a volte
+# emette il proprio reasoning interno nel canale `text` invece che nel
+# canale `thinking` separato — il final_message dell'utente si riempie di
+# righe tipo "Wait, I'll check...", "Actually, I should...", "Let me think".
+# Lo scrubber e' deterministico (regex su righe standalone, §7.9):
+# rimuove SOLO righe il cui inizio e' un trigger di reasoning, preservando
+# substring legittime in mezzo a paragrafi reali (§2.8 no silent failure).
+_THINKING_LEAK_RE = re.compile(
+    r"^\s*(?:"
+    r"Wait\b|Actually\b|Let me\b|I'll\b|I will\b|Hmm\b|"
+    r"Looking at\b|One detail:|Final Answer(?:\s+construction)?:|"
+    r"Wait,?\s+I(?:'|)ll\b|Wait,?\s+I should\b|"
+    r"Now I'll\b|Actually,?\s+I'll\b|So,?\s+the answer\b|Let me think\b|"
+    r"I should\b|Rule:\s|Given\b"
+    r").*$",
+    re.IGNORECASE,
+)
+
+# Pattern italiani — meta-permission e self-talk del modello locale con think=true.
+# Caso live federvolley (7/5/2026): "(posso provare a cercarli se mi dai il
+# via libera)" e "ti suggerisco queste alternative" come list intro.
+# Politica chirurgica (the design guide §2.8 / §7.9): rimuoviamo SOLO righe in
+# parentesi che chiedono permesso, oppure righe standalone che aprono con
+# meta-permission ("se vuoi", "se mi dai il via libera", ...). Mantieni
+# substring legittime in mezzo a contenuto reale.
+
+# (a) Riga interamente fra parentesi che chiede permesso.
+_LEAK_IT_PAREN_PERMISSION_RE = re.compile(
+    r"^\s*\(\s*(?:"
+    r"posso provare|posso cercare|posso aiutarti|posso suggerirti|"
+    r"posso farlo|posso fare|posso recuperare|posso scaricare|"
+    r"se mi dai il via libera|se vuoi|se preferisci|fammi sapere|"
+    r"dimmi se|vuoi che (?:lo )?faccia|se ti serve|se hai bisogno"
+    r")[^)]*\)\s*\.?\s*$",
+    re.IGNORECASE,
+)
+
+# (b) Riga standalone che APRE con meta-permission/meta-discourse e
+# termina nello stesso periodo (no continuazione su altre frasi).
+# Pattern: la riga inizia con uno dei trigger e finisce con `.`/`?`/`!`
+# o EOL — l'intera riga e' una richiesta di permesso unica. Se prosegue
+# con altri contenuti (es. "se vuoi posso aiutarti, ma prima ..."), NON
+# scattare per evitare di mutilare contenuto utile.
+_LEAK_IT_STANDALONE_RE = re.compile(
+    r"^\s*(?:"
+    r"se mi dai il via libera|se vuoi posso|fammi sapere se|"
+    r"dimmi se vuoi|vuoi che (?:lo )?faccia|"
+    r"posso provare a|posso cercare|posso aiutarti|posso suggerirti"
+    r")\b[^.?!,;]*[.?!]?\s*$",
+    re.IGNORECASE,
+)
+
+
+# Pattern di leak runtime-internal (§2.8 guard): messaggi destinati al
+# PLANNER LLM (system messages del runtime) che il LLM a volte copia
+# nel final_answer.message. Detection deterministica §7.9.
+_RUNTIME_INTERNAL_LEAK_RE = re.compile(
+    r"(DUPLICATE_CALL:|FORMULA LA FINAL_ANSWER|"
+    r"FORMULATE (?:THE )?FINAL_ANSWER|"
+    r"^validation failed:|^vaglio rifiuta:|"
+    r"consecutive_blocked|auto_final_on_duplicate|"
+    r"cap_same_executor|VECTORIAL_VIOLATION|"
+    r"synth_request_blocked_by|requires one of \[|"
+    # Synth rejection messages (turn live 25/5/2026 bk93uc961):
+    # «request_new_executor rejected: candidate '...' copre la query
+    # (jaccard 1.00). Riusalo invece di sintetizzare.» — system msg
+    # destinato al PLANNER, non all'utente.
+    r"request_new_executor rejected|jaccard \d|"
+    r"Riusalo invece di sintetiz|"
+    r"Reuse it instead of synthesiz|"
+    r"candidate '[^']+' copre la query|"
+    r"candidate '[^']+' covers the query)",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
 def _has_runtime_internal_leak(text: str) -> bool:
     if not text or not isinstance(text, str):
         return False
-    return _runtime_safety_lexicon.matches(
-        _runtime_safety_lexicon.RUNTIME_INTERNAL_LEAK,
-        text,
-        fail_closed=True,
-    )
+    return bool(_RUNTIME_INTERNAL_LEAK_RE.search(text))
 
 
 # Set di `step.error` "meta" del runtime: indicano che il step e' stato
@@ -277,14 +352,6 @@ def _detect_unfulfilled_mutating_intent(log) -> str:
 
     intent_verb = (getattr(log, "intent_verb", "") or "").strip()
     intent_is_mutating = intent_verb in DESTRUCTIVE_VERBS
-    admission = getattr(log, "durable_admission", None)
-    if (getattr(log, "match_source", "") == "lre"
-            and isinstance(admission, dict) and admission.get("ok") is True
-            and admission.get("decision") == "accepted"
-            and admission.get("workload_id") and admission.get("revision_id")):
-        # Preserve the actual queued/running receipt. No executor has finished
-        # yet; lack of inline steps must not become a false admission failure.
-        return ""
 
     # §dominio + compound rule (ea1ba7e): un `send` SENZA destinatario
     # esplicito ("mandami il riassunto", "mandami in chat") NON e' outbound —
@@ -350,38 +417,14 @@ def _detect_unfulfilled_mutating_intent(log) -> str:
     return ""
 
 
-def _compose_honest_from_last_error(log, *, fallback: bool = True) -> str:
+def _compose_honest_from_last_error(log) -> str:
     """Compose messaggio onesto user-facing dall'ultimo step ok=False.
 
     Salta step "meta" del runtime (duplicate_call_blocked, cap_same, ecc.)
     e risale al VERO step con error semantico. Riusa il path priority
     error-first dell'invariante TurnLog.write (`MSG_VALIDATION_LOOP_FINAL`
-    o `MSG_FINAL_FALLBACK_FROM_ERROR`). Summary e' l'ultimo ripiego, solo
-    su ok=False. Con fallback=False l'assenza di fatti restituisce vuoto.
+    o `MSG_FINAL_FALLBACK_FROM_ERROR`). Fallback MSG_FINAL_FALLBACK_GENERIC.
     """
-    def _safe_detail(text: str) -> str:
-        if not isinstance(text, str) or not text.strip():
-            return ""
-        try:
-            cleaned, _ = _scrub_credentials(text.strip())
-            if _has_runtime_internal_leak(cleaned):
-                return ""
-            return cleaned.strip()
-        except Exception:
-            return ""  # mai ripiegare su dettagli non oscurati
-
-    def _humanize_error_class(raw: str) -> str:
-        # Stessa traduzione del precedente fallback terminale vuoto.
-        key = raw.split(":", 1)[0].strip()
-        if key and key.replace("_", "").isalnum():
-            try:
-                human = msg(f"ERR_{key.upper()}")
-                if human and not human.startswith("<missing:"):
-                    return human
-            except Exception:
-                pass
-        return raw
-
     for _s in reversed(getattr(log, "steps", []) or []):
         if _is_meta_step(_s):
             continue
@@ -395,49 +438,42 @@ def _compose_honest_from_last_error(log, *, fallback: bool = True) -> str:
             # dell'executor (gia' i18n, es. "Nessuna persona 'X' nel registro").
             # Ha priorita' sull'`error` grezzo (spesso un codice tipo
             # "unknown_name") e sul fallback generico.
-            _hint = _safe_detail(_obs.get("final_message_hint"))
-            if _hint:
-                return _hint
-            _err = _safe_detail(str(_obs.get("error") or ""))
-            if _err:
-                _err = _humanize_error_class(_err)
+            _hint = _obs.get("final_message_hint")
+            if isinstance(_hint, str) and _hint.strip():
+                return _hint.strip()
+            _err = _obs.get("error") or ""
             _failed = _obs.get("failed") or []
             if not _err and isinstance(_failed, list) and _failed:
-                _parts = [
-                    _humanize_error_class(detail)
-                    for f in _failed if isinstance(f, dict)
-                    if (detail := _safe_detail(str(f.get("error") or "")))
-                ]
-                _err = " ".join(dict.fromkeys(_parts))
+                _err = ", ".join(
+                    str((f or {}).get("error", "")).strip()
+                    for f in _failed
+                    if isinstance(f, dict) and f.get("error")
+                )
             _vfails = _obs.get("validation_failures") or []
             if _vfails and isinstance(_vfails, list):
-                _detail = _safe_detail("; ".join(str(v) for v in _vfails))
-                if _detail:
-                    try:
-                        return msg(
-                            "MSG_VALIDATION_LOOP_FINAL",
-                            tool=_s.chosen_tool or "", fails=_detail,
-                        )
-                    except Exception:
-                        pass
-            if not _err:
-                # Il riepilogo dell'executor puo' essere l'unica causa
-                # disponibile (nessun error/hint). Oscurare PRIMA del cap:
-                # tagliare un token grezzo ne impedirebbe il riconoscimento.
-                _err = _safe_detail(_obs.get("summary"))
-                if len(_err) > 1200:
-                    _err = _err[:1200].rstrip() + "…"
+                try:
+                    return msg(
+                        "MSG_VALIDATION_LOOP_FINAL",
+                        tool=_s.chosen_tool or "",
+                        fails="; ".join(str(v) for v in _vfails),
+                    )
+                except Exception:
+                    pass
             if _err:
+                # Scrub leak runtime-internal dall'error stesso §2.8:
+                # se l'error contiene marker runtime (request_new_executor
+                # rejected, DUPLICATE_CALL, jaccard, ...) emettere generic
+                # fallback invece di propagare il leak nel template.
+                if _has_runtime_internal_leak(str(_err)):
+                    continue  # cerca step precedente
                 try:
                     return msg(
                         "MSG_FINAL_FALLBACK_FROM_ERROR",
                         tool=_s.chosen_tool or "",
-                        error=_err,
+                        error=str(_err).strip(),
                     )
                 except Exception:
                     return f"{_s.chosen_tool}: {_err}"
-    if not fallback:
-        return ""
     try:
         return msg("MSG_FINAL_FALLBACK_GENERIC")
     except Exception:
@@ -468,24 +504,13 @@ def _scrub_thinking_leak(text):
     """
     if not text or not isinstance(text, str):
         return text
-    concepts = (
-        _runtime_safety_lexicon.THINKING_LEAK_EN,
-        _runtime_safety_lexicon.META_PERMISSION_PAREN,
-        _runtime_safety_lexicon.META_PERMISSION_LINE,
-    )
-    patterns = tuple(
-        pattern
-        for concept in concepts
-        for pattern in _runtime_safety_lexicon.patterns(concept)
-    )
-    if not patterns:
-        try:
-            return msg("MSG_FINAL_FALLBACK_GENERIC")
-        except Exception:
-            return ""
     cleaned = []
     for line in text.split("\n"):
-        if any(pattern.search(line) for pattern in patterns):
+        if _THINKING_LEAK_RE.match(line):
+            continue
+        if _LEAK_IT_PAREN_PERMISSION_RE.match(line):
+            continue
+        if _LEAK_IT_STANDALONE_RE.match(line):
             continue
         cleaned.append(line)
     out = "\n".join(cleaned).strip()
@@ -554,7 +579,7 @@ def _scrub_args_recursive(node, total: list[int]) -> object:
 
 
 # ── Estrazione credenziali dalla query (Strato 1 — ADR 0089, 4/5/2026) ──
-# Quando l'utente scrive "monta share \\\\nas\\Public user example_user pwd example_password"
+# Quando l'utente scrive "monta share \\\\nas\\Public user roberto pwd hunter2"
 # il runtime estrae user/pwd e li salva cifrati prima che la query raggiunga
 # il PLANNER. La query passata al pianificatore ha le creds rimpiazzate da
 # `<REDACTED:cred:domain>` cosi' il LLM non le vede mai. Il dominio viene
@@ -567,7 +592,7 @@ def _scrub_args_recursive(node, total: list[int]) -> object:
 # Riconoscimento del dominio:
 #   - share CIFS:  "//192.0.2.20/Public" / "\\\\host.local\\share" → cifs_<host>
 #   - URL/host web: "https://webmail.example.com" → host esatto
-#   - ssh:          "ssh user@host.example.com"        → ssh_<host>
+#   - ssh:          "ssh roberto@host.local"        → ssh_<host>
 #   - hint testuale: "share|smb|cifs|nas" → cifs ; "login|portale|sito" → web ;
 #                    "ssh" → ssh.
 #   - fallback: "generic" se nessun host derivabile (caso degenere).
@@ -605,6 +630,14 @@ _BINDING_STRONG = (
     ("web",  (r"https?://",)),
     ("cifs", (r"//\S+/", r"\\\\\S+",)),
 )
+_BINDING_WEAK = (
+    ("cifs", ("share", "smb", "cifs", "nas", "monta", "mount", "samba")),
+    ("ssh",  ("ssh", "scp", "sftp")),
+    ("web",  ("login", "sito", "portale", "registro", "banca",
+              "browser", "webmail")),
+)
+
+
 def detect_binding(query: str) -> str:
     """Ritorna 'cifs' | 'ssh' | 'web' | 'generic' in base ad hint linguistici.
 
@@ -617,11 +650,7 @@ def detect_binding(query: str) -> str:
         for p in patterns:
             if re.search(p, qlc):
                 return binding
-    weak_bindings = _residual_am_lexicon.ready_mapping(
-        _residual_am_lexicon.AGENT_BINDING_WEAK,
-    )
-    for binding in ("cifs", "ssh", "web"):
-        kws = weak_bindings.get(binding, ())
+    for binding, kws in _BINDING_WEAK:
         if any(k in qlc for k in kws):
             return binding
     return "generic"
@@ -660,7 +689,7 @@ def extract_credentials(query: str) -> list[dict]:
     Ritorna lista (puo' essere vuota) di dict con shape:
         {
           "domain":   "cifs_192.0.2.20",   # chiave canonica per credentials.store
-          "username": "example_user",
+          "username": "roberto",
           "password": "hunter2",
           "context":  {"binding": "cifs", "host": "...", "share": "..."},
           "scrub_spans": [(start, end), ...],   # offsets nel testo originale
@@ -676,8 +705,8 @@ def extract_credentials(query: str) -> list[dict]:
     """
     if not isinstance(query, str) or not query.strip():
         return []
-    pair_evidence = credential_pairs_for_storage(query)
-    if not pair_evidence:
+    pair_matches = credential_pair_matches(query, for_storage=True)
+    if not pair_matches:
         return []
 
     binding = detect_binding(query)
@@ -717,9 +746,9 @@ def extract_credentials(query: str) -> list[dict]:
             "scrub_spans": list(spans),
         })
 
-    for evidence in pair_evidence:
-        m = evidence.match
-        first_is_password = evidence.first_is_password
+    for m in pair_matches:
+        first_label = m.group(1).casefold()
+        first_is_password = is_password_label(first_label)
         if first_is_password:
             pwd_val = _clean_credential_value(m.group(2))
             user_val = _clean_credential_value(m.group(4))
@@ -1038,15 +1067,12 @@ def _check_top_k_affinity_jaccard(
     import re as _re
     if not query or not candidates:
         return None
-    stopwords = {
-        str(form).casefold() for form in _residual_am_lexicon.ready_forms(
-            _residual_am_lexicon.AGENT_AFFINITY_STOPWORD,
-        )
-    }
-    q_tokens = {
-        t for t in _re.split(r"[^\w]+", query.lower())
-        if t and t not in stopwords and len(t) >= 3
-    }
+    _stop = {"il","la","i","gli","le","un","una","di","da","del","della","dei",
+             "delle","a","al","alla","ai","alle","in","con","su","per","tra",
+             "fra","e","o","ma","che","mi","ci","ti","si","ho","ha","hai",
+             "the","a","an","of","to","in","is","it","for","on","with","and",
+             "or","but","this","that"}
+    q_tokens = {t for t in _re.split(r"[^\w]+", query.lower()) if t and t not in _stop and len(t) >= 3}
     if not q_tokens:
         return None
     # B.5 STRONG MATCH (19/5/2026 v4): se la query contiene un verbo che
@@ -1081,7 +1107,7 @@ def _check_top_k_affinity_jaccard(
         for term in aff_terms:
             if isinstance(term, str):
                 tool_tokens.update(t for t in _re.split(r"[^\w]+", term.lower())
-                                    if t and len(t) >= 3 and t not in stopwords)
+                                    if t and len(t) >= 3 and t not in _stop)
         if not tool_tokens:
             continue
         inter = q_tokens & tool_tokens
@@ -1210,10 +1236,7 @@ def planner_facing_schema(schema):
         return schema
     props = dict(schema.get("properties") or {})
     required = list(schema.get("required") or [])
-    entries_spec = props.get("entries") or {}
-    has_entries = (("entries" in props or "entries" in required)
-                   and not (isinstance(entries_spec, dict)
-                            and entries_spec.get("runtime_resolved")))
+    has_entries = "entries" in props or "entries" in required
     if has_entries:
         # Rimuovi entries dalla vista del modello: non puo' inventarle.
         props.pop("entries", None)
@@ -1546,10 +1569,7 @@ def _query_has_continuation(query: str) -> bool:
     try:
         from prefilter import tokenize, detect_canonical_verbs_all
         import re as _re
-        conjunctions = _residual_am_lexicon.ready_forms(
-            _residual_am_lexicon.AGENT_SIMPLE_CONJUNCTION,
-        )
-        for conjunction in conjunctions:
+        for conjunction in ("e", "and"):
             for match in _re.finditer(
                     rf"(?<!\w){_re.escape(conjunction)}(?!\w)",
                     query, flags=_re.IGNORECASE):
@@ -1640,6 +1660,49 @@ def _all_query_verbs_satisfied(query: str, executed_tools: list[str]) -> bool:
 # La regex e' DISTINTA da `_MULTISTEP_CONJUNCTIONS_RE`: qui catturiamo
 # il VERBO di notifica esplicito + il MEZZO (email/notifica/messaggio/
 # telegram/conferma), non solo la congiunzione strutturale.
+_NOTIFY_CONTINUATION_RE = re.compile(
+    r"("
+    # IT verbi notify con enclitici tipici mi/ci/gli — token interi via \b.
+    r"\b(?:mandami|inviami|spediscimi|notificami|avvisami|scrivimi)\b|"
+    r"\bfammi\s+sapere\b|"
+    # Forma "e/poi + verbo + (article)? + (mezzo)": multi-step strutturale
+    # con marker esplicito del mezzo. NB: \b iniziale prima della cong.
+    r"\b(?:e|and|poi)\s+(?:mi\s+)?(?:mandi|invii|spedisci|notifichi|avvisi|"
+    r"invia|manda|notifica|avvisa)\s+(?:una\s+|un\s+|la\s+)?"
+    r"(?:email|mail|messaggio|notifica|conferma|sms|telegram|whatsapp)\b|"
+    # EN verbi notify
+    r"\b(?:email|notify|alert|message|text|ping)\s+me\b|"
+    r"\bsend\s+me\s+(?:a\s+|an\s+)?(?:email|message|text|notification|notify)\b|"
+    r"\blet\s+me\s+know\b|"
+    # Marker del MEZZO di notifica esplicito: «via email», «via telegram».
+    r"\bvia\s+(?:email|mail|telegram|sms|whatsapp|notifica|notification|message)\b|"
+    # Coda «+ invia conferma», «and send confirmation»: cong NON-word (+/,)
+    # OPPURE word (e/and/poi). Senza \b sul prefix per ammettere `+`/`,`.
+    # Lookbehind senza fixed-width: usiamo char-class al posto di alternation.
+    r"(?:[\s\+,]|\b)(?:e|and|poi|\+|,)\s+(?:invia|manda|notifica|send|notify)\s+"
+    r"(?:una\s+|un\s+|la\s+|a\s+|an\s+|the\s+)?"
+    r"(?:conferma|confirmation|notifica|notification|messaggio|email|mail)\b|"
+    # Verbo notify standalone dopo cong NON-word/word (end-of-clause):
+    # «+ notifica», «and notify» a fine richiesta. Implica «notify the user».
+    r"(?:[\s\+,]|\b)(?:e|and|poi|\+|,)\s+(?:notifica|notify)(?=\s*[.!?]|\s*$)|"
+    # Cong NON-word + <noun_medium> [<noun_conferma>]: «+ email conferma»,
+    # «, email confirmation», «+ telegram avviso». Forma ellittica del
+    # verbo notify (verbo sottinteso, mezzo+oggetto espliciti). Solo per
+    # congiunzioni NON-word (+/,) che marcano gia' lo step separato; un
+    # verbo coniugato «e/and/poi» da solo NON triggera questa branch per
+    # evitare falsi positivi (es. «cerca email» — congiunzione word senza
+    # ellissi verbale).
+    r"(?:\s*[\+,])\s+"
+    r"(?:una\s+|un\s+|la\s+|a\s+|an\s+|the\s+)?"
+    r"(?:email|mail|telegram|sms|whatsapp|notifica|notification|messaggio|message)\s*"
+    r"(?:di\s+|of\s+)?"
+    r"(?:conferma|confirmation|riassunto|summary|notifica|notification|"
+    r"avviso|alert|update|aggiornamento)?\b"
+    r")",
+    re.IGNORECASE,
+)
+
+
 def _query_has_notify_continuation(query: str) -> bool:
     """True se la query contiene una continuation di notifica esplicita
     diretta all'utente.
@@ -1658,12 +1721,7 @@ def _query_has_notify_continuation(query: str) -> bool:
     """
     if not query or not isinstance(query, str):
         return False
-    return any(
-        pattern.search(query)
-        for pattern in _residual_am_lexicon.ready_patterns(
-            _residual_am_lexicon.NOTIFY_CONTINUATION,
-        )
-    )
+    return bool(_NOTIFY_CONTINUATION_RE.search(query))
 
 
 # P4 (12/5/2026) — Availability marker detection per check_availability.
@@ -1673,8 +1731,24 @@ def _query_has_notify_continuation(query: str) -> bool:
 # Defense in depth: il runtime intercetta set_events quando la query ha
 # un availability marker e read_events NON e' nei step precedenti.
 # Soluzione (c): post-hoc reject + hint, lascia che il planner ri-pianifichi.
-# Determinismo §7.9: il corpus manuale vive nel detection lexicon; se la
-# lingua attiva non e' pronta il gate e' conservativamente attivo.
+# Determinismo §7.9: regex deterministico, niente LLM.
+_AVAILABILITY_MARKERS_RE = re.compile(
+    r"\b("
+    # IT
+    r"se\s+c['’]?[eè]\s+(un\s+)?(posto|buco|slot|spazio|tempo)|"
+    r"se\s+(la\s+finestra|lo\s+slot)\s+[eè]['\s]*libera|"
+    r"se\s+sono\s+libero|se\s+sei\s+libero|"
+    r"se\s+non\s+ho\s+(altro|impegni|gi[aà])|"
+    r"verifica\s+(la\s+)?disponibilit[aà]|controlla\s+(la\s+)?disponibilit[aà]|"
+    r"se\s+disponibile|"
+    # EN
+    r"if\s+(it['’]?s\s+)?available|if\s+(i\s+am|i['’]?m)\s+free|"
+    r"if\s+there['’]?s\s+(a\s+)?(slot|opening|space|time)|"
+    r"if\s+free|check\s+availability|"
+    r"if\s+(the\s+)?(slot|window)\s+is\s+free"
+    r")\b",
+    re.IGNORECASE,
+)
 
 
 # Tool che CREANO eventi calendar: derivati dal catalog al call-time
@@ -1728,9 +1802,7 @@ def _query_requires_availability_check(query: str) -> bool:
     """
     if not query or not isinstance(query, str):
         return False
-    return _runtime_safety_lexicon.matches(
-        _runtime_safety_lexicon.AVAILABILITY, query, fail_closed=True,
-    )
+    return bool(_AVAILABILITY_MARKERS_RE.search(query))
 
 
 # P5 (12/5/2026) — Propose-intent detection per gate suggestion vs destructive.
@@ -1740,9 +1812,77 @@ def _query_requires_availability_check(query: str) -> bool:
 # lunedi-sabato (whole-week blob destructive). Atteso: read_events + final
 # testuale con N slot computati. NESSUN set_events.
 #
-# The exact IT/EN proposal grammar is a manually reviewed detection resource.
-# A missing/pending active-language row must block destructive creation rather
-# than silently reclassify a proposal as an imperative.
+# Regex SEMANTICA UNIVERSALE: cattura verbi di suggerimento IT+EN con
+# eventuali enclitici (mi/ti/ci/gli) tramite quantifier, NON enumerazione
+# enclitica esaustiva. Cattura anche le formulazioni interrogative tipiche
+# («che ne dici», «what about», «quali sono N ... liberi»). Determinismo
+# §7.9: regex compilata, niente LLM nel runtime gate.
+#
+# Pattern espliciti per «quali sono N X liberi/disponibili» perche' la
+# costruzione «quali sono i miei impegni» (read events) NON deve triggerare
+# il gate (la query e' read, non suggerimento di nuovo slot).
+_PROPOSE_INTENT_RE = re.compile(
+    r"(?:\b|^)("
+    # IT — verbi suggestion con eventuali enclitici (mi/ti/ci/gli/mela/...)
+    # Forma generale: stem + opzionale enclitico. Compatto via quantifier.
+    # Stem + opzionale enclitico (mi/ti/ci/gli/cela/...) — quantifier-based,
+    # NON enumerazione esaustiva. La forma `\w{1,5}?` cattura enclitici e
+    # desinenze di coniugazione (-armi -arci -ami -ate -ano -ebbe ...).
+    r"propon[a-z]{1,5}|propor[a-z]{2,7}|"
+    r"suggeris[a-z]{1,5}|sugger[a-z]{2,7}|"
+    r"raccomand[a-z]{1,6}|"
+    # IT — formulazioni interrogative tipiche di richiesta suggerimento.
+    # Pattern «che [ne] dici», «cosa [ne] pensi», «che dici», «consigliami N»
+    r"che(?:\s+ne)?\s+dici|cosa(?:\s+ne)?\s+(?:dici|pensi)|"
+    r"consigli[a-z]{1,5}|"
+    # IT — «quali (sono|fasce|orari|slot|...) ... liber[ie]/disponibil[ie]/...»
+    # Pattern semantico: parola interrogativa «quali» seguita entro la frase
+    # da un marker di disponibilita'/vacuita'. La distanza max 0-6 tokens.
+    # NB 22/5/2026: rimosso `aperte?` dal pattern — falso positivo su query
+    # sysinfo «quali porte TCP aperte» (network info, NON calendar). I marker
+    # canonici disponibilita' calendar sono `liber[ie]|disponibil[ie]|vuot[ei]`.
+    r"quali\s+(?:\w+\s+){0,6}(?:liber[ie]|disponibil[ie]|vuoti?|vuote)|"
+    # IT — «N alternative/opzioni/slot/orari/fasce/mattine/proposte».
+    # Forma con numero (3/2/...) + sostantivo proposta-like. Cattura
+    # «dammi 3 alternative», «cerca 3 slot 9-11», «alcune proposte»,
+    # «2 mercoledi liberi», «qualche slot». Indipendente dal verbo
+    # principale (cerca/dammi/voglio/etc.: il SOSTANTIVO + il NUMERO
+    # bastano a inferire "richiesta di N opzioni" semanticamente).
+    # Lista sostantivi: alternative/opzioni/proposte sono universali
+    # proposal-noun; slot/orari/fasce/mattine/pomeriggi/giorni-settimana
+    # sono dominio calendar (parte di `_OBJECT_HINTS["events"]`).
+    r"(?:\d+|alcun[ie]|qualche|alcune|alcuni|some)\s+"
+    r"(?:opzion[ie]|alternativ[ae]|propost[ae]|slot|slots|orari[oi]?|"
+    r"fasce?|mattine?|pomeriggi|finestre?|"
+    r"mercoled[ìi]|luned[ìi]|marted[ìi]|"
+    r"gioved[ìi]|venerd[ìi]|sabat[oi]|domenic[ah]e?)|"
+    # EN — verbs (gerund/3rd, infinitive)
+    r"propose|proposes|proposing|"
+    r"suggest|suggests|suggesting|"
+    r"recommend|recommends|recommending|"
+    # EN — interrogative
+    r"what\s+about|how\s+about|"
+    # EN — «what slots/times/X (are) free/available/open»: marker dispon-
+    # bilita' su sostantivo plurale. Stessa logica di «quali» IT.
+    r"what\s+(?:\w+\s+){0,4}(?:are\s+|is\s+)?(?:free|available|open)|"
+    r"which\s+(?:\w+\s+){0,4}(?:are\s+|is\s+)?(?:free|available|open)|"
+    # EN — «any free X», «any open X» — domanda «c'e' / ce ne sono?»
+    # Restringo al dominio calendar via lista nomi temporal: slot/time/window.
+    r"any\s+(?:free|available|open)\s+(?:slots?|times?|windows?|mornings?|afternoons?|days?|appointments?|meetings?)|"
+    # EN — «N options/alternatives/slots/morning times/...» (with optional
+    # preceding politeness verb: give me / I'd like / I want / can you).
+    # Lista nomi RISTRETTA al dominio proposal/calendar:
+    # options/alternatives/proposals = universal proposal-noun;
+    # slots/times/mornings/afternoons/openings = calendar dominio.
+    # Esclude generici (emails/files/messages) per evitare falsi positivi.
+    r"(?:\d+|some|a\s+few|several|any)\s+"
+    r"(?:morning\s+|afternoon\s+|free\s+|available\s+|open\s+|"
+    r"alternative\s+|proposed?\s+)?"
+    r"(?:options?|alternatives?|proposals?|slots?|times?|"
+    r"mornings?|afternoons?|openings?|windows?)"
+    r")(?:\b|$)",
+    re.IGNORECASE,
+)
 
 
 def _query_is_propose_intent(query: str) -> bool:
@@ -1768,9 +1908,7 @@ def _query_is_propose_intent(query: str) -> bool:
     """
     if not query or not isinstance(query, str):
         return False
-    return _runtime_safety_lexicon.matches(
-        _runtime_safety_lexicon.PROPOSE_INTENT, query, fail_closed=True,
-    )
+    return bool(_PROPOSE_INTENT_RE.search(query))
 
 
 def _has_prior_read_events_ok(steps) -> bool:
@@ -2758,8 +2896,19 @@ def extract_step_refs(args) -> set[int]:
 # contiene verbi di promessa futura E nessuno step ok ha registrato un'azione,
 # prepende notice "azione NON registrata". Notice additiva, non sostitutiva.
 
-# The natural-language promise grammar is manually reviewed in the runtime
-# safety lexicon.  Registered tool names below are closed protocol IDs.
+_HALLUCINATION_RE = re.compile(
+    r"\b("
+    # Forme "ti X-ò" (futuro semplice 1pps), con e senza accento finale
+    r"ti (informer[oò'`]|aggiorner[oò'`]|far[oò'`] sapere|dir[oò'`]|"
+    r"segnaler[oò'`]|comunicher[oò'`]|contatter[oò'`]|risponder[oò'`])"
+    # Forme "sto X-ndo" (gerundio progressivo) tranne quando seguite da
+    # una conferma esplicita di azione registrata.
+    r"|sto (cercando|effettuando|controllando|monitorando|verificando|raccogliendo)"
+    # Forme "appena X" (futuro condizionato a evento)
+    r"|appena (avr[oò'`]|trovo|trovato|trovi|disponibili|disponibile|ricever[oò'`])"
+    r")",
+    re.IGNORECASE,
+)
 
 # Tool che REGISTRANO un'azione futura concreta. Se il PLANNER promette
 # follow-up e ne ha chiamato uno con ok=true, la promessa e' supportata.
@@ -2787,6 +2936,12 @@ _REGISTERED_FUTURE_TOOLS = frozenset({
 # silent failure §2.8. Anche se fix #1 (`_resolve_from_step` SAFETY) previene
 # il bug a monte, questo check resta come safety net per altre forme di
 # divergenza tra obs ok/n_done e claim del LLM nel final.
+_FALSE_NOT_FOUND_RE = re.compile(
+    r"(non (?:e'|è) stato trovat[oai]|non trovat[oai]|"
+    r"non (?:esiste|esistono|risulta|risultano)|"
+    r"not found|does not exist|n[oa]t (?:been )?found)",
+    re.IGNORECASE,
+)
 # SoT in pipeline_effects.py (condiviso con engine/dispatch, 12/6/2026).
 from pipeline_effects import (  # noqa: E402
     MUTATING_TOOL_PREFIXES as _MUTATING_TOOL_PREFIXES,
@@ -2803,7 +2958,8 @@ def _detect_false_not_found(final_message: str | None, steps: list) -> dict | No
     """
     if not final_message:
         return None
-    contradicted = None
+    if not _FALSE_NOT_FOUND_RE.search(final_message):
+        return None
     for s in steps or []:
         tool = getattr(s, "chosen_tool", None) or (
             s.get("chosen_tool") if isinstance(s, dict) else None
@@ -2830,16 +2986,8 @@ def _detect_false_not_found(final_message: str | None, steps: list) -> dict | No
         except (TypeError, ValueError):
             ok_count = 0
         if ok_count >= 1:
-            contradicted = {"tool": tool, "ok_count": ok_count}
-            break
-    if contradicted is None:
-        return None
-    if not _runtime_safety_lexicon.matches(
-            _runtime_safety_lexicon.FALSE_NOT_FOUND,
-            final_message,
-            fail_closed=True):
-        return None
-    return contradicted
+            return {"tool": tool, "ok_count": ok_count}
+    return None
 
 
 def _detect_unbacked_promise(final_message: str | None, steps: list) -> bool:
@@ -2849,6 +2997,8 @@ def _detect_unbacked_promise(final_message: str | None, steps: list) -> bool:
     Determinismo §7.9: regex + lookup, niente LLM nel critical path.
     """
     if not final_message:
+        return False
+    if not _HALLUCINATION_RE.search(final_message):
         return False
     for s in steps or []:
         tool = getattr(s, "chosen_tool", None) or (
@@ -2860,11 +3010,7 @@ def _detect_unbacked_promise(final_message: str | None, steps: list) -> bool:
         if (tool in _REGISTERED_FUTURE_TOOLS
                 and isinstance(result, dict) and result.get("ok")):
             return False
-    return _runtime_safety_lexicon.matches(
-        _runtime_safety_lexicon.UNBACKED_PROMISE,
-        final_message,
-        fail_closed=True,
-    )
+    return True
 
 
 # --- Anti-falso-successo su pipeline vuota (§2.8, 12/6/2026) ----------------
@@ -2879,11 +3025,24 @@ def _detect_unbacked_promise(final_message: str | None, steps: list) -> bool:
 # Implementazione condivisa in `pipeline_effects.py` (12/6/2026): la stessa
 # contabilità alimenta il criterio di EFFICACIA del fastpath L0
 # (engine/dispatch._maybe_record_fastpath → ineffective_mutations).
-from pipeline_effects import pipeline_effect_counts, terminal_collection_output  # noqa: E402
+from pipeline_effects import pipeline_effect_counts  # noqa: E402
 
 
-# Positive-result language is manually reviewed; the structural counters
-# below remain the sole authority for whether an effect actually happened.
+# Claim di esito POSITIVO nel final (IT+EN). Negazioni escluse via
+# lookbehind («non ho trovato» non matcha). Pattern conservativo: meglio
+# un falso-negativo (nessuna notice) che marcare un final onesto.
+_FALSE_SUCCESS_RE = re.compile(
+    r"(?<!non )(?<!not )\b(?:"
+    r"ho\s+(?:analizzat|trovat|salvat|inviat|creat|classificat|preparat|"
+    r"scritt|spostat|cancellat|aggiornat|notificat|registrat)\w*"
+    r"|(?:bozz\w+|rispost\w+|notific\w+)\s+(?:salvat|pront|inviat|creat)\w*"
+    r"|(?:e'|è|sono)\s+stat[oaie]\s+(?:salvat|inviat|creat|notificat|"
+    r"preparat|analizzat|classificat)\w*"
+    r"|i\s+have\s+(?:analyz|found|saved|sent|creat|classifi|prepar|notifi)\w*"
+    r"|(?:drafts?|replies|notifications?)\s+(?:saved|sent|ready|created)"
+    r")",
+    re.IGNORECASE,
+)
 
 
 def _detect_false_success(final_message: str | None, counts: dict | None) -> bool:
@@ -2896,15 +3055,38 @@ def _detect_false_success(final_message: str | None, counts: dict | None) -> boo
         return False
     if counts.get("items", 0) > 0 or counts.get("mutations", 0) > 0:
         return False
-    return _runtime_safety_lexicon.matches(
-        _runtime_safety_lexicon.FALSE_SUCCESS,
-        final_message,
-        fail_closed=True,
-    )
+    return bool(_FALSE_SUCCESS_RE.search(final_message))
 
 
-# Mutation claims, their explicit negations and degenerate-final language are
-# manually reviewed resources.  Canonical effect counters remain technical.
+# Claim di MUTAZIONE su un oggetto REALE (file/foglio/documento/evento/mail/...):
+# distinto dal claim di lettura/sintesi. «ho creato il foglio» richiede una
+# mutazione vera; «ho creato un riepilogo/elenco» (testo) NON e' una mutazione e
+# NON deve matchare → object list stretta per evitare falsi positivi.
+# NB (23/6): fra articolo e oggetto sono ammesse 0-2 parole (aggettivi):
+# «creato un NUOVO foglio», «creato il MIO file di calcolo». Il bound {0,2}
+# evita falsi match che scavalcano clausole. Bug live turno eventi: il synth
+# diceva «Ho creato un nuovo foglio» su 0 mutazioni reali e il regex (che
+# pretendeva il sostantivo subito dopo l'articolo) lo mancava -> §2.8 bucato.
+_MUT_GAP = r"(?:\w+\s+){0,2}"  # 0-2 parole opzionali (aggettivi) fra art. e oggetto
+_MUTATION_CLAIM_RE = re.compile(
+    r"(?<!non )(?<!not )\b(?:"
+    r"(?:creat|generat|salvat|scritt|prepar)\w*\s+(?:(?:il|lo|la|un|uno|una|"
+    r"the|a|an)\s+)?" + _MUT_GAP + r"(?:foglio|file|document\w*|spreadsheet|"
+    r"sheet|calendari\w*|event\w*|cartell\w*|folder|tabell\w*|csv|xlsx)"
+    r"|(?:inviat|spedit|mandat|sent)\w*\s+(?:(?:il|la|un|the|a|an)\s+)?"
+    + _MUT_GAP + r"(?:mail|email|messaggi\w*|message)"
+    r"|(?:spostat|cancellat|eliminat|delet|mov)\w*\s+(?:(?:il|la|i|le|the)\s+)?"
+    + _MUT_GAP + r"(?:file|mail|email|messaggi\w*|event\w*)"
+    r"|(?:created|saved|wrote|generated|prepared)\s+(?:(?:the|a|an)\s+)?"
+    + _MUT_GAP + r"(?:file|spreadsheet|sheet|document|calendar|event|folder|"
+    r"table|csv)"
+    r")", re.IGNORECASE)
+
+
+_DEGENERATE_FINAL_RE = re.compile(
+    r"\A[\(\[\s]*\d+(?:[.,]\d+)?\s*"
+    r"(?:elementi|entries|elements|voci|risultati|results|item|items)?\s*[\)\]\s]*\Z",
+    re.IGNORECASE)
 
 
 def _is_degenerate_final(final_message: str | None) -> bool:
@@ -2918,9 +3100,7 @@ def _is_degenerate_final(final_message: str | None) -> bool:
     s = final_message.strip()
     if not s:
         return True
-    return _runtime_safety_lexicon.matches(
-        _runtime_safety_lexicon.DEGENERATE_FINAL, s, fail_closed=True,
-    )
+    return bool(_DEGENERATE_FINAL_RE.match(s))
 
 
 def _detect_false_mutation(final_message: str | None, counts: dict | None) -> bool:
@@ -2935,19 +3115,29 @@ def _detect_false_mutation(final_message: str | None, counts: dict | None) -> bo
         return False
     # Negazione esplicita dell'azione («non ho creato», «non sono riuscito a
     # inviare», «couldn't create») → il final e' gia' onesto, non toccarlo.
-    if _runtime_safety_lexicon.matches(
-            _runtime_safety_lexicon.MUTATION_NEGATION,
-            final_message,
-            fail_closed=False):
+    if re.search(r"non\s+(?:ho|sono\s+riuscit\w+\s+a|sono\s+stat\w+\s+in\s+grado"
+                 r"\s+di)\s*\w*\s*(?:creat|inviat|spedit|salvat|generat|scritt|"
+                 r"spostat|cancellat|prepar)"
+                 r"|(?:couldn'?t|could\s+not|was\s+not\s+able\s+to|did\s*n'?t)"
+                 r"\s+\w*\s*(?:creat|sen[dt]|sav|writ|generat|mov|delet|prepar)",
+                 final_message, re.IGNORECASE):
         return False
-    return _runtime_safety_lexicon.matches(
-        _runtime_safety_lexicon.MUTATION_CLAIM,
-        final_message,
-        fail_closed=True,
-    )
+    return bool(_MUTATION_CLAIM_RE.search(final_message))
 
 
-# Closed tool IDs and durable artifact-class IDs, not natural-language data.
+_ARTIFACT_COMPLETION_RE = re.compile(
+    r"\b(?:salvat|creat|generat|scritt|prodott|preparat|saved|created|"
+    r"generated|written|produced|prepared)\w*\b", re.IGNORECASE)
+_ARTIFACT_CLAIM_PATTERNS = {
+    "spreadsheet": re.compile(
+        r"\b(?:fogli\w*(?:\s+di\s+calcolo)?|spreadsheet|xlsx|csv|sheet)\b",
+        re.IGNORECASE),
+    "document": re.compile(
+        r"\b(?:rapport\w*|report\w*|riepilog\w*|document\w*)\b",
+        re.IGNORECASE),
+    "archive": re.compile(
+        r"\b(?:archivi\w*|zip|compressed\s+archive)\b", re.IGNORECASE),
+}
 _ARTIFACT_SINK_CATEGORIES = {
     "write_files": frozenset({"document"}),
     "write_files_doc": frozenset({"document"}),
@@ -3026,28 +3216,17 @@ def _detect_unbacked_artifact_claim(
     a directory cannot substantiate a claim that a report or spreadsheet was
     saved.  The rule is domain-neutral and uses only durable artifact classes.
     """
-    if not final_message or not _runtime_safety_lexicon.matches(
-            _runtime_safety_lexicon.ARTIFACT_COMPLETION,
-            final_message,
-            fail_closed=True):
+    if not final_message or not _ARTIFACT_COMPLETION_RE.search(final_message):
         return set()
     # Explicitly negative receipts are already honest.
-    if _runtime_safety_lexicon.matches(
-            _runtime_safety_lexicon.ARTIFACT_NEGATION,
-            final_message,
-            fail_closed=False):
+    if re.search(
+            r"\b(?:non|not|nessun\w*|no)\b.{0,40}\b(?:salvat|creat|generat|"
+            r"scritt|prodott|saved|created|generated|written|produced)\w*\b",
+            final_message, re.IGNORECASE | re.DOTALL):
         return set()
-    category_concepts = (
-        ("spreadsheet", _runtime_safety_lexicon.ARTIFACT_SPREADSHEET),
-        ("document", _runtime_safety_lexicon.ARTIFACT_DOCUMENT),
-        ("archive", _runtime_safety_lexicon.ARTIFACT_ARCHIVE),
-    )
-    claimed = {
-        category for category, concept in category_concepts
-        if _runtime_safety_lexicon.matches(
-            concept, final_message, fail_closed=True,
-        )
-    }
+    claimed = {category for category, pattern in
+               _ARTIFACT_CLAIM_PATTERNS.items()
+               if pattern.search(final_message)}
     return claimed - _artifact_sink_effects(steps)
 
 
@@ -3274,29 +3453,16 @@ def _fill_runtime_sourced_args(executor, args: dict) -> dict:
     return args
 
 
-def _admitted_code_dependency_projection(
-    executor,
-) -> tuple[str, list[Path], list[Path]]:
-    """Project signed dependency records and their exact read-only roots.
-
-    The parent owns the verified catalogue.  The child receives no catalogue
-    key and no free-form path: only records named by its own signed manifest.
-    """
-    from admitted_module_v1 import admitted_code_dependency_projection_v1
-
-    return admitted_code_dependency_projection_v1(executor, load_catalog())
-
-
 def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised",
                           turn_id=None, actor=None, channel=None,
                           target_device=None, owner_user_id=None,
                           execution_context=None):
-    """Invoca un executor nella sandbox OS obbligatoria.
+    """Invoca un executor, opzionalmente in sandbox bubblewrap.
 
-    Bubblewrap isola ogni executor ordinario. Se non e' disponibile oppure e'
-    disabilitato, l'invocazione fallisce chiusa prima del journal e del
-    subprocess. Il solo broker undo byte-esatto segue la propria eccezione
-    vincolata in :mod:`sandbox`.
+    Se `bwrap` e' installato e `METNOS_SANDBOX` non e' disabilitato,
+    il comando viene wrappato; altrimenti gira come subprocess Python
+    diretto (la pseudo-sandbox del runtime resta attiva: filtro path/host
+    + Vaglio).
 
     `actor` / `channel` (12/5/2026): propagati come `METNOS_ACTOR` /
     `METNOS_CHANNEL` nell'env del subprocess. Servono a `get_inputs` per
@@ -3311,33 +3477,12 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
     # anche per fast-path, resume ed esecuzione remota: gli args del chiamante
     # non possono impersonare un altro attore o canale.
     args = dict(args or {})
-    # Resolved scalar strings retain exactly one value when the signed
-    # contract requires an array.  Apply this before argument-dependent
-    # controls, for ordinary plans, piping, resumes and remote invocations.
-    from executor_helpers import normalize_array_args
-    args = normalize_array_args(args, getattr(executor, "args_schema", None))
-    from paired_device_arg_resolver import resolve_paired_device_args
-    args = resolve_paired_device_args(
-        args, getattr(executor, "args_schema", None),
-        actor=actor or "host",
-    )
     # JSON Schema `uniqueItems` dichiara quali liste sono insiemi. Normalizzare
     # qui copre in un solo punto piani diretti, piping, resume e device remoti;
     # ogni lista non annotata resta intatta perché i duplicati possono avere
     # significato (righe, messaggi, valori). Nessuna regola per nome-tool.
     from executor_helpers import normalize_unique_items
     args = normalize_unique_items(args, getattr(executor, "args_schema", None))
-    # Validate temporal values again at the common invocation boundary. This
-    # also covers direct API calls and form resumes, which have no query to
-    # reinterpret. A clarification is not an additional authorization gate.
-    from temporal_resolution import resolve_temporal_args, temporal_form_request
-    temporal_form = temporal_form_request(executor.name, args, getattr(executor, "args_schema", None))
-    if temporal_form is not None:
-        return temporal_form
-    args = resolve_temporal_args(executor.name, args, "", getattr(executor, "args_schema", None))
-    temporal_form = temporal_form_request(executor.name, args, getattr(executor, "args_schema", None))
-    if temporal_form is not None:
-        return temporal_form
     if actor is not None or "_actor" in args:
         args["_actor"] = actor or "host"
     if channel is not None or "_channel" in args:
@@ -3431,8 +3576,6 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
             return {"ok": False, "error": _pmsg(e.code, **e.fmt),
                     "error_class": "placement"}
         if _target != _placement.SERVER:
-            from program_start_consent import apply_saved
-            args = apply_saved(executor, args, owner=_who, device_id=str(_target))
             # Il wire firmato device vieta i float JSON.  I soli carrier di
             # dati runtime sono normalizzati centralmente; gli argomenti di
             # controllo float restano intatti e falliscono chiusi.
@@ -3463,8 +3606,6 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
                 turn_id=turn_id,
                 env_injections=_remote_env or None,
                 actor=actor or "", channel=channel or "", **_remote_kwargs)
-            from program_start_consent import bind_prompt
-            _obs = bind_prompt(executor, _obs, device_id=str(_target))
             # Marca l'esecuzione REALE sul device: il tag/campo del turno si
             # basa su questo (mai un tag ottimistico su un'operazione locale).
             if isinstance(_obs, dict) and target_device:
@@ -3497,25 +3638,8 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
             "error_code": "ERR_PERMISSION_DENIED",
         }
 
-    try:
-        (
-            _admitted_dependencies,
-            _dependency_roots,
-            _dependency_signer_keys,
-        ) = (
-            _admitted_code_dependency_projection(executor)
-        )
-    except Exception:
-        log.warning(
-            "verified code dependency unavailable for %s",
-            getattr(executor, "name", ""), exc_info=True,
-        )
-        return {
-            "ok": False,
-            "error": msg("ERR_DURABLE_DEPENDENCIES_UNAVAILABLE"),
-            "error_class": "dependency_unavailable",
-            "error_code": "executor_code_dependency_unavailable",
-        }
+    _undo_op = _undo_pending(executor, args, turn_id=turn_id,
+                             actor=actor, channel=channel, device="")
 
     payload = json.dumps(args)
     base_cmd = [sys.executable, str(executor.code_path)]
@@ -3527,17 +3651,7 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
     # Local IMAP authority is capability-derived and account-scoped.  The
     # resolver returns only read-only mail credential files; it never exposes
     # the shared web-credential vault directory to an executor.
-    try:
-        _extra_ro, _mail_net, _mail_environment = _sandbox.mail_extras(executor, args)
-    except ValueError:
-        log.warning("mail configuration unavailable for this invocation")
-        return {
-            "ok": False,
-            "error": msg("UI_VIRT_EDIT_ERROR_INVALID"),
-            "error_class": "configuration_invalid",
-            "error_code": "mail_configuration_invalid",
-        }
-    _extra_ro.extend(_dependency_roots)
+    _extra_ro, _mail_net = _sandbox.mail_extras(executor, args)
     # Dynamic filesystem inputs remain exact and capability-derived: only
     # signed ``fs:read`` hints such as ``arg:reference_images`` can add them.
     _extra_ro.extend(_sandbox.filesystem_extras(executor, args))
@@ -3552,46 +3666,20 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
     # che puo' contenere input sensibili altrui.
     _extra_rw.extend(_sandbox.dialog_extras(
         executor, actor=actor or "host", channel=channel or ""))
-    try:
-        cmd = _sandbox.wrap_command(
-            executor, base_cmd, autonomy=autonomy,
-            extra_ro=_extra_ro, extra_rw=_extra_rw,
-            sealed_ro_files=_dependency_signer_keys,
-            force_net=_force_net,
-        )
-    except _sandbox.SandboxUnavailableError:
-        return {
-            "ok": False,
-            "error": msg("ERR_DURABLE_DEPENDENCIES_UNAVAILABLE"),
-            "error_class": "sandbox_unavailable",
-            "error_code": "executor_os_sandbox_unavailable",
-        }
-    _undo_op = _undo_pending(executor, args, turn_id=turn_id,
-                             actor=actor, channel=channel, device="")
+    cmd = _sandbox.wrap_command(executor, base_cmd, autonomy=autonomy,
+                                extra_ro=_extra_ro, extra_rw=_extra_rw,
+                                force_net=_force_net)
     # PYTHONPATH augmentato: gli executor (specie quelli sintetizzati) importano
     # moduli runtime (mail_client, messages, platform_policy, ...) per nome.
     # Senza questo, il subprocess vede solo stdlib e fallisce con
     # ModuleNotFoundError. Vedi caso live 29/4/2026 sera (move_messages errore in
     # esecuzione anche dopo birth tests verdi).
     env = os.environ.copy()
-    env.update(_mail_environment)
-    env.pop("METNOS_ADMITTED_EXECUTORS_V1", None)
-    if _admitted_dependencies:
-        env["METNOS_ADMITTED_EXECUTORS_V1"] = _admitted_dependencies
-    # Item workers follow the signed execution contract. Native library pools
-    # in managed local children also share the host CPU allowance; neither
-    # projection mutates the daemon's process-wide environment.
+    # Executor generated under the central execution contract receive one
+    # runtime-owned item-worker budget. Legacy/handcrafted manifests without
+    # [execution] keep their exact historical internal-concurrency behavior.
     from executor_scheduler import assigned_worker_environment
-    worker_environment = assigned_worker_environment(executor, execution_context)
-    env.update(worker_environment)
-    if execution_context is not None or getattr(executor, "execution_policy_declared", False):
-        from executor_scheduler import orchestration_resource_limits
-        from native_threads import child_environment
-        env.update(child_environment(
-            cpu_slots=orchestration_resource_limits()["cpu"],
-            claimed_cpu=int(worker_environment.get("METNOS_EXECUTOR_ASSIGNED_CPU", "1")),
-            item_workers=int(worker_environment.get("METNOS_EXECUTOR_ASSIGNED_WORKERS", "1")),
-        ))
+    env.update(assigned_worker_environment(executor, execution_context))
     runtime_path = str(Path(__file__).resolve().parent)
     existing_pp = env.get("PYTHONPATH", "")
     dependency_pp = os.pathsep.join(
@@ -3632,19 +3720,10 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
     _t_start = time.perf_counter()
     parsed_result = None
     if execution_context is None:
-        try:
-            result = subprocess.run(
-                cmd, input=payload, capture_output=True, text=True, timeout=timeout_s,
-                env=env,
-            )
-        except subprocess.TimeoutExpired:
-            # Normalize at the common invocation boundary, including callers
-            # outside the engine. Never expose bwrap commands or host paths.
-            parsed_result = {
-                "ok": False, "error_class": "timeout",
-                "error": msg("ERR_EXECUTOR_TIMEOUT", tool=executor.name,
-                             seconds=int(timeout_s)),
-            }
+        result = subprocess.run(
+            cmd, input=payload, capture_output=True, text=True, timeout=timeout_s,
+            env=env,
+        )
     else:
         from bounded_subprocess import (
             SubprocessOutputLimitExceeded,
@@ -3732,34 +3811,12 @@ def _invoke_executor_impl_optional_context(
         executor, args, *, execution_context=None, **kwargs):
     if execution_context is not None:
         kwargs["execution_context"] = execution_context
-    elif getattr(executor, "lre_plan", ""):
-        # Fast paths and form resumes cross the same durable boundary as a
-        # finalized plan. Public calls cannot inject internal worker phases.
-        from engine.types import Framework, StepSpec
-        admitted = submit_automatic_lre(
-            Framework(steps=[StepSpec(executor.name, args)]), catalog=[executor],
-            owner_user_id=kwargs.get("owner_user_id") or kwargs.get("actor") or "host",
-            turn_id=kwargs.get("turn_id") or "",
-            target_device=kwargs.get("target_device"),
-        )
-        if admitted is not None:
-            return admitted
-    observation = _invoke_executor_impl(executor, args, **kwargs)
-    if execution_context is None and getattr(executor, "prerequisites", ()):
-        from executor_prerequisites import admit_prerequisite
-        return admit_prerequisite(
-            executor, args, observation, catalog_loader=load_catalog,
-            validate_args=validate_args, guard=guard_check,
-            owner_user_id=kwargs.get("owner_user_id") or kwargs.get("actor") or "host",
-            turn_id=kwargs.get("turn_id") or "",
-            target_device=kwargs.get("target_device"),
-        )
-    return observation
+    return _invoke_executor_impl(executor, args, **kwargs)
 
 
 def invoke_executor(executor, args, timeout_s=30, *, autonomy="supervised",
                     turn_id=None, actor=None, channel=None, target_device=None,
-                    owner_user_id=None, execution_context=None, _before_invoke=None):
+                    owner_user_id=None, execution_context=None):
     """Universal scheduled choke-point for local and remote executors.
 
     The scheduler is synchronous and serial-first by default, so this wrapper
@@ -3769,10 +3826,6 @@ def invoke_executor(executor, args, timeout_s=30, *, autonomy="supervised",
     from executor_scheduler import concurrency_identity_for, invoke_scheduled
 
     def call():
-        # An internal owner may require a fresh attestation after queueing.
-        # Refusal happens before transport, without replacing sandbox checks.
-        if _before_invoke is not None:
-            _before_invoke()
         return _invoke_executor_impl_optional_context(
             executor, args, timeout_s=timeout_s, autonomy=autonomy,
             turn_id=turn_id, actor=actor, channel=channel,
@@ -3792,7 +3845,7 @@ def invoke_executor(executor, args, timeout_s=30, *, autonomy="supervised",
 def submit_executor(executor, args, timeout_s=30, *, autonomy="supervised",
                     turn_id=None, actor=None, channel=None,
                     target_device=None, owner_user_id=None,
-                    execution_context=None, _before_invoke=None):
+                    execution_context=None):
     """Submit one admitted executor call to the single central pool.
 
     This is deliberately the asynchronous twin of :func:`invoke_executor`:
@@ -3803,8 +3856,6 @@ def submit_executor(executor, args, timeout_s=30, *, autonomy="supervised",
     from executor_scheduler import concurrency_identity_for, submit_scheduled
 
     def call():
-        if _before_invoke is not None:
-            _before_invoke()
         return _invoke_executor_impl_optional_context(
             executor, args, timeout_s=timeout_s, autonomy=autonomy,
             turn_id=turn_id, actor=actor, channel=channel,
@@ -4065,15 +4116,10 @@ class TurnLog:
     steps: list = field(default_factory=list)
     final_message: str = ""
     final_kind: str = ""
-    # Esito semantico separato dallo stato di protocollo. ``answer`` significa
-    # che esiste un testo da mostrare; non implica che il lavoro sia riuscito.
-    # Valori: completed | partial | failed | awaiting_input.
-    outcome: str = ""
     # Versione prodotto e origine del routing, necessarie per trend affidabili.
     # Non contengono testo utente e restano vuote sui record storici.
     metnos_version: str = ""
     match_source: str = ""
-    durable_admission: dict | None = None
     # Lista di proposte di cap expand emerse dal turno: ogni elemento e'
     # {step_num, executor, args, used, available_total, suggested_args}.
     # Popolata in write() per i daemon channel che gestiscono dialog
@@ -4632,7 +4678,6 @@ class TurnLog:
             "cap_suggested": cap_suggested,
             "args_suggested": args_suggested,
             "preview_label": preview_label,
-            "conversation_id": self.conversation_id,
         }
 
         sender_id = (
@@ -4951,9 +4996,8 @@ class TurnLog:
         # match → blocco-status completo (comportamento storico).
         _focus: set = set()
         try:
-            from tool_grammar import _strip_fs_paths
             _fmap = _detlex.mapping("health.section_focus") or {}
-            _ql = _strip_fs_paths(self.user_query or "").lower()
+            _ql = (self.user_query or "").lower()
             for _sec, _forms in _fmap.items():
                 if _detlex.match_any(_forms, _ql):
                     _focus.add(_sec)
@@ -5196,11 +5240,21 @@ class TurnLog:
             # Sostituisci con dichiarazione esplicita di incompletezza.
             _mutating_pending = _detect_unfulfilled_mutating_intent(self)
             if _mutating_pending:
-                # Riusa il motivo osservato, non il successo narrato dal
-                # finalizer. Senza fatti utili restano le guardie precedenti.
-                _failure = _compose_honest_from_last_error(self, fallback=False)
-                if _failure:
-                    self.final_message = _failure
+                # §2.8: se lo step mutante FALLITO porta un messaggio
+                # user-facing ESPLICITO (`final_message_hint`, es. delete_persons
+                # "Nessuna persona 'X' nel registro."), mostralo — NON mascherarlo
+                # col generico "azione non completata" (che maschera la causa
+                # reale e azionabile, come faceva "Pipeline malformata").
+                _mut_hint = ""
+                for _s in reversed(getattr(self, "steps", []) or []):
+                    _o = _s.result if isinstance(_s.result, dict) else None
+                    if isinstance(_o, dict) and _o.get("ok") is False:
+                        _h = _o.get("final_message_hint")
+                        if isinstance(_h, str) and _h.strip():
+                            _mut_hint = _h.strip()
+                            break
+                if _mut_hint:
+                    self.final_message = _mut_hint
                 elif self.error_class in _AUTHORITATIVE_UNFULFILLED_CLASSES:
                     # The engine already explained WHY the action did not
                     # happen (no tool can perform it).  Replacing that with
@@ -5359,8 +5413,6 @@ class TurnLog:
                   and not (self.effect_counts or {}).get("failures")):
                 self.false_success_detected = True
                 _ec = self.effect_counts or {}
-                _terminal_output = terminal_collection_output(self.steps)
-                _n = _terminal_output[2] if _terminal_output is not None else 0
                 # §2.8: un builtin che dichiara il SUO esito nel result
                 # (`final_message_hint`/`message` i18n, es. undo_last_turn
                 # «Nessuna operazione reversibile da annullare») vince sui generici — bug live
@@ -5368,25 +5420,16 @@ class TurnLog:
                 # trovato» (falso: non era una ricerca).
                 _exec_msg = ""
                 for _s in reversed(self.steps):
-                    if _s.chosen_tool == "final_answer":
-                        continue
                     _r = _s.result if isinstance(_s.result, dict) else {}
                     _declared = (_r.get("final_message_hint")
                                  or _r.get("message"))
                     if isinstance(_declared, str) and _declared.strip():
                         _exec_msg = _declared.strip()
-                    # An upstream read's presentation cannot override a later
-                    # selection, even when the terminal result has no hint.
-                    break
+                        break
                 if _exec_msg:
                     self.final_message = _exec_msg
-                elif (not _ec.get("mutating_attempted")
-                      and _terminal_output is not None and _n == 0):
-                    # A terminal filter supersedes the read/transform inputs;
-                    # processing the same rows twice is not twice the output.
-                    from engine.executor import _deterministic_zero_result
-                    self.final_message = _deterministic_zero_result(self.steps)
                 elif not _ec.get("mutating_attempted") and _ec.get("items", 0) == 0:
+                    # niente prodotto, niente mutato → no-results onesto
                     self.final_message = msg("MSG_NO_RESULTS")
                 else:
                     # qualcosa è stato letto/prodotto ma il messaggio è degenere:
@@ -5395,6 +5438,7 @@ class TurnLog:
                     # §7.13: chiavi risolte via i18n DB (lingua istanza), definite
                     # nel catalogo seed — mai testo in-linea nel sorgente. Guard:
                     # tests/runtime/i18n/test_seed_i18n_gate_keys.py.
+                    _n = _ec.get("items", 0)
                     _muts = _ec.get("mutations", 0)
                     if _muts:
                         # Mutazione RIUSCITA (es. piano da recovery, che non
@@ -5405,10 +5449,8 @@ class TurnLog:
                             "MSG_DEGENERATE_FINAL_MUTATIONS", n=_muts)
                     elif _n == 1:
                         self.final_message = msg("MSG_DEGENERATE_FINAL_ITEM_ONE")
-                    elif _terminal_output is not None:
-                        self.final_message = msg("MSG_DEGENERATE_FINAL_ITEMS", n=_n)
                     else:
-                        self.final_message = msg("MSG_FINAL_FALLBACK_GENERIC")
+                        self.final_message = msg("MSG_DEGENERATE_FINAL_ITEMS", n=_n)
         # A.2 (fase 7): avvisi fuori-turno pendenti per QUESTO destinatario
         # (es. op remota completata DOPO il timeout del suo turno) — anteposti
         # DOPO tutte le riscritture del final (honesty/degenerate/false-success
@@ -5483,10 +5525,76 @@ class TurnLog:
         #      `_compose_final_message_from_obs` (path auto-final ufficiale).
         #   3. Fallback generico MSG_FINAL_FALLBACK_GENERIC.
         # `needs_inputs` ha dialog UX dedicata: non rientra qui.
+        def _humanize_error_class(raw: str) -> str:
+            """Traduce error_class technical (es. `no_verified_channel`) in
+            testo user-facing via i18n key `ERR_<UPPERCASE>`. Fallback al
+            raw string se la chiave non esiste. Generale §7.3: ogni
+            executor che ritorna un error_class registrato come ERR_
+            i18n diventa automaticamente user-friendly senza modifiche.
+            """
+            if not raw or not isinstance(raw, str):
+                return raw or ""
+            # Strip prefisso colon-separated tipo "channel_not_paired:telegram"
+            _key_part = raw.split(":", 1)[0].strip()
+            if not _key_part or not _key_part.replace("_", "").isalnum():
+                return raw
+            _i18n_key = f"ERR_{_key_part.upper()}"
+            try:
+                _human = msg(_i18n_key)
+            except Exception:
+                return raw
+            # `msg()` ritorna `<missing:KEY>` se assente: distingui
+            if _human and not _human.startswith("<missing:"):
+                return _human
+            return raw
+
+        def _extract_error(obs: dict) -> str:
+            if not isinstance(obs, dict):
+                return ""
+            _e = obs.get("error")
+            if isinstance(_e, str) and _e.strip():
+                return _humanize_error_class(_e.strip())
+            _failed = obs.get("failed") or []
+            if isinstance(_failed, list):
+                parts = [
+                    _humanize_error_class(str((f or {}).get("error", "")).strip())
+                    for f in _failed
+                    if isinstance(f, dict) and f.get("error")
+                ]
+                # dedup conservando ordine (stessa error_class su piu' target)
+                seen = set()
+                deduped = []
+                for p in parts:
+                    if p and p not in seen:
+                        seen.add(p)
+                        deduped.append(p)
+                if deduped:
+                    return " ".join(deduped)
+            return ""
+
         if (self.final_kind in ("answer", "ask", "error", "loop_break")
                 and not (self.final_message or "").strip()):
-            # (1) Stessa priorita' e redazione della guardia unfulfilled.
-            _fallback = _compose_honest_from_last_error(self, fallback=False)
+            _fallback = ""
+            # (1) priorita': ultimo step ok=False con error → onestamente
+            #     reporta il fail. Non degradare a "completato (0 elementi)".
+            for _s in reversed(self.steps):
+                _obs = _s.result if isinstance(_s.result, dict) else {}
+                if not _obs:
+                    continue
+                if _s.chosen_tool == "final_answer":
+                    continue
+                if _obs.get("ok") is False:
+                    _err = _extract_error(_obs)
+                    if _err:
+                        try:
+                            _fallback = msg(
+                                "MSG_FINAL_FALLBACK_FROM_ERROR",
+                                tool=_s.chosen_tool or "",
+                                error=_err,
+                            )
+                        except Exception:
+                            _fallback = f"{_s.chosen_tool}: {_err}"
+                        break
             # (2) successo silente: usa compose_from_obs
             if not _fallback:
                 for _s in reversed(self.steps):
@@ -5605,25 +5713,6 @@ class TurnLog:
         # Scrubbing credenziali prima della serializzazione (ADR 0082):
         # passiamo da asdict (snapshot) e ri-iniettiamo le entry pulite.
         record = asdict(self)
-        try:
-            from reliability import classify_turn as _classify_turn
-            self.outcome = str(_classify_turn(record)["outcome"])
-        except Exception as ex:
-            # La persistenza del turno non deve dipendere dalla telemetria. Il
-            # ripiego usa soltanto segnali strutturati e resta conservativo.
-            log.warning("turn outcome classification failed: %r", ex)
-            _has_failed_step = any(
-                isinstance(getattr(step, "result", None), dict)
-                and step.result.get("ok") is False
-                for step in self.steps
-            )
-            if self.final_kind in ("ask", "needs_inputs", "input_required"):
-                self.outcome = "awaiting_input"
-            elif _has_failed_step or self.final_kind != "answer":
-                self.outcome = "failed"
-            else:
-                self.outcome = "completed"
-        record["outcome"] = self.outcome
         n_redacted_total = [0]
         cleaned_query, _n = _scrub_credentials(record.get("user_query", "") or "")
         n_redacted_total[0] += _n
@@ -5731,40 +5820,6 @@ _BUILTIN_TOOL_HANDLERS: dict = {
     "delete_preferences": handle_delete_preferences,
     "start_lre": handle_start_lre,
 }
-
-# Source modules are a closed part of the builtin contract.  Keep the mapping
-# explicit instead of recovering a module through ``sys.modules`` from a
-# handler attribute chosen at run time.
-_BUILTIN_TOOL_MODULE_FILES: dict[str, str] = {
-    "describe_entries": "describe_entries.py",
-    "classify_entries": "classify_entries.py",
-    "extract_entries": "extract_entries.py",
-    "create_tasks": "recurring_tasks.py",
-    "list_tasks": "recurring_tasks.py",
-    "delete_tasks": "recurring_tasks.py",
-    "read_tasks": "recurring_tasks.py",
-    "set_tasks": "recurring_tasks.py",
-    "read_tasks_history": "recurring_tasks.py",
-    "list_skills": "skill_admin.py",
-    "set_skills": "skill_admin.py",
-    "find_entries": "store_entries.py",
-    "write_entries": "store_entries.py",
-    "delete_entries": "store_entries.py",
-    "compare_entries": "compare_entries.py",
-    "describe_images": "describe_images.py",
-    "get_preferences": "user_preferences.py",
-    "set_preferences": "user_preferences.py",
-    "delete_preferences": "user_preferences.py",
-    "start_lre": "lre_submission.py",
-}
-
-
-def _builtin_tool_module_path(tool_name: str) -> Path:
-    try:
-        module_file = _BUILTIN_TOOL_MODULE_FILES[tool_name]
-    except KeyError as exc:
-        raise ValueError(f"unknown builtin contract: {tool_name}") from exc
-    return Path(__file__).with_name(module_file)
 
 
 @functools.lru_cache(maxsize=None)
@@ -5880,10 +5935,11 @@ def _engine_v2_catalog_with_builtins(catalog: list) -> list:
     for name in _BUILTIN_TOOL_HANDLERS:
         if name in present:
             continue
+        handler = _BUILTIN_TOOL_HANDLERS.get(name)
+        module = sys.modules.get(getattr(handler, "__module__", ""))
+        module_path = Path(getattr(module, "__file__", ""))
         try:
-            out.append(
-                builtin_contract_executor(name, _builtin_tool_module_path(name))
-            )
+            out.append(builtin_contract_executor(name, module_path))
         except (OSError, ValueError) as exc:
             log.error("builtin %s excluded: invalid signed contract: %s", name, exc)
     return out
@@ -5936,7 +5992,8 @@ def _invoke_builtin_handler(tool_name: str, args: dict, *,
         # In-process builtins use the same signed execution policy, central
         # scheduler and assigned worker budget as subprocess/remote executors.
         # Context-local injection avoids process-wide environment races.
-        module_path = str(_builtin_tool_module_path(tool_name))
+        module = sys.modules.get(getattr(handler, "__module__", ""))
+        module_path = str(Path(getattr(module, "__file__", "")))
         executor = _builtin_execution_executor(tool_name, module_path)
         from executor_scheduler import assigned_worker_budget, invoke_scheduled
         from executor_workers import worker_budget
@@ -5969,8 +6026,7 @@ def invoke_tool_by_name(tool_name: str, args: dict, *, catalog: list,
                         owner_user_id: str | None = None,
                         target_device: str | None = None,
                         turn_id: str | None = None,
-                        source_request_id: str | None = None,
-                        request_text: str | None = None) -> dict:
+                        source_request_id: str | None = None) -> dict:
     """Dispatch canonico di UN tool per nome, condiviso dal loop principale e
     dai percorsi di ripresa (post-gate/post-input, orchestration).
 
@@ -6001,22 +6057,11 @@ def invoke_tool_by_name(tool_name: str, args: dict, *, catalog: list,
     boot_register_verb_unique_builtins()
     verb_entry = VERB_UNIQUE_REGISTRY.get(tool_name)
     if verb_entry and verb_entry.get("expose_to_planner"):
-        from paired_device_arg_resolver import resolve_paired_device_args
-        args = resolve_paired_device_args(
-            dict(args or {}), getattr(exec_obj, "args_schema", None),
-            actor=actor or "host",
-        )
         call_args = {
             key: value for key, value in dict(args or {}).items()
             if not str(key).startswith("_")
         }
         call_args.setdefault("actor", actor or "host")
-        # The original request is runtime-owned: a planner value with the same
-        # name is discarded, and only builtins that opt in receive it.
-        call_args.pop("request_text", None)
-        if (verb_entry.get("accepts_request_text")
-                and isinstance(request_text, str) and request_text.strip()):
-            call_args["request_text"] = request_text
 
         def _call_verb_unique():
             return invoke_verb_unique(
@@ -6134,24 +6179,22 @@ def _bind_managed_dependency_resume(
         return None
 
     branches: dict[str, dict] = {}
-    for scope in ("once", "until_restart", "always"):
-        branch = raw_branches.get(scope)
+    for lifetime in ("session", "persistent"):
+        branch = raw_branches.get(lifetime)
         if not isinstance(branch, dict) or branch.get("tool") != starter_tool:
             return None
         branch_args = branch.get("args")
         if (not isinstance(branch_args, dict)
                 or set(branch_args) != {
-                    "programs", "lifetime", "authorization_scope",
-                    "authorization_boot_id", "actor_consent_token"}
+                    "programs", "lifetime", "actor_consent_token"}
                 or branch_args.get("programs") != [package_id]
-                or branch_args.get("lifetime") != "session"
-                or branch_args.get("authorization_scope") != scope):
+                or branch_args.get("lifetime") != lifetime):
             return None
         token = branch_args.get("actor_consent_token")
         if (not isinstance(token, str) or len(token) != 64
                 or any(char not in "0123456789abcdef" for char in token)):
             return None
-        branches[scope] = {
+        branches[lifetime] = {
             "tool": starter_tool,
             "args": dict(branch_args),
         }
@@ -6161,7 +6204,7 @@ def _bind_managed_dependency_resume(
         "type": "managed_dependency_resume",
         "branches": branches,
         "resume": {"tool": resume_tool, "args": dict(resume_args)},
-        "target_device": original_callback.get("target_device") or target_device,
+        "target_device": target_device,
     }
     return {
         **start_result,
@@ -6300,43 +6343,26 @@ ENGINE_WISE_LLM_TIMEOUT_S = _bounded_engine_llm_timeout(
     "METNOS_ENGINE_WISE_LLM_TIMEOUT_S", 90.0)
 
 
-def _llm_dependency_failure_kind(exc: Exception) -> str | None:
-    """Classify wrapped timeouts separately from provider unavailability."""
+def _llm_dependency_failure(exc: Exception) -> bool:
+    """Recognise transport/provider outages, including wrapped timeouts."""
     current = exc
     seen = set()
-    timed_out = False
-    unavailable = False
     while current is not None and id(current) not in seen:
         seen.add(id(current))
         name = type(current).__name__.lower()
         text = str(current).lower()
         if (
-            isinstance(current, TimeoutError)
-            or "timeout" in name
+            isinstance(current, (TimeoutError, ConnectionError))
+            or any(token in name for token in (
+                "timeout", "urlerror", "providererror"))
             or any(token in text for token in (
-                "timed out", "request deadline exhausted",
+                "timed out", "unreachable", "connection refused",
+                "request deadline exhausted",
             ))
         ):
-            timed_out = True
-        if (
-            isinstance(current, ConnectionError)
-            or any(token in name for token in ("urlerror", "providererror"))
-            or any(token in text for token in (
-                "unreachable", "connection refused",
-            ))
-        ):
-            unavailable = True
+            return True
         current = getattr(current, "__cause__", None)
-    if timed_out:
-        return "provider_timeout"
-    if unavailable:
-        return "provider_unavailable"
-    return None
-
-
-def _llm_dependency_failure(exc: Exception) -> bool:
-    """Return whether an exception is a known dependency failure."""
-    return _llm_dependency_failure_kind(exc) is not None
+    return False
 
 
 def _run_engine(
@@ -6383,16 +6409,11 @@ def _run_engine(
         log.warning("engine v2 import failed: %r", ex)
         return None
 
-    _llm_state = {"failure_kind": None, "reported": False}
+    _llm_state = {"unavailable": False, "reported": False}
 
-    def _report_llm_failure(failure_kind: str) -> str:
-        key = (
-            "ERR_LLM_TIMEOUT_ACTION"
-            if failure_kind == "provider_timeout"
-            else "ERR_LLM_UNAVAILABLE_ACTION"
-        )
-        message = msg(key)
-        _llm_state["failure_kind"] = failure_kind
+    def _report_llm_unavailable() -> str:
+        message = msg("ERR_LLM_UNAVAILABLE_ACTION")
+        _llm_state["unavailable"] = True
         if progress is not None and not _llm_state["reported"]:
             try:
                 progress.update_free(message)
@@ -6401,23 +6422,18 @@ def _run_engine(
         _llm_state["reported"] = True
         return message
 
-    def _dependency_failure_result():
-        failure_kind = _llm_state["failure_kind"] or "provider_unavailable"
+    def _unavailable_result():
         return {
             "steps": [],
-            "final_text": _report_llm_failure(failure_kind),
+            "final_text": _report_llm_unavailable(),
             "final_kind": "error",
             "framework_hash": "",
             "verb": "",
             "object": "",
             "keywords": [],
-            "match_source": (
-                "llm_timeout"
-                if failure_kind == "provider_timeout"
-                else "llm_unavailable"
-            ),
+            "match_source": "llm_unavailable",
             "elapsed_ms": 0,
-            "error_class": failure_kind,
+            "error_class": "provider_unavailable",
             "needs_inputs_obs": None,
             "gate_obs": None,
         }
@@ -6430,7 +6446,7 @@ def _run_engine(
         # declino intermittente → legacy). Ora: log + UN retry su errore
         # transitorio; su fallimento persistente ritorna "" e il chiamante
         # procede con intent VUOTO (non declina — vedi sotto).
-        if _llm_state["failure_kind"]:
+        if _llm_state["unavailable"]:
             return ""
         for _attempt in (1, 2):
             try:
@@ -6451,15 +6467,14 @@ def _run_engine(
                 # A full timeout or a known provider outage is not transient
                 # within this turn.  Retrying used to multiply an outage into
                 # 40 minutes of silence; surface it once and stop immediately.
-                failure_kind = _llm_dependency_failure_kind(_e)
-                if failure_kind:
-                    _report_llm_failure(failure_kind)
+                if _llm_dependency_failure(_e):
+                    _report_llm_unavailable()
                     break
         return ""
 
     # Provider LLM wise (per Proposer)
     def _llm_call_wise(sys_msg, user_msg, *, max_tokens=2048, **kw):
-        if _llm_state["failure_kind"]:
+        if _llm_state["unavailable"]:
             return ""
         try:
             from llm_router import LLMRouter
@@ -6481,15 +6496,14 @@ def _run_engine(
             return (getattr(res, "text", res) or "").strip()
         except Exception as ex:
             log.warning("engine v2 _llm_call_wise: %r", ex)
-            failure_kind = _llm_dependency_failure_kind(ex)
-            if failure_kind:
-                _report_llm_failure(failure_kind)
+            if _llm_dependency_failure(ex):
+                _report_llm_unavailable()
             return ""
 
     # Intent extraction
     intent_raw = extract_intent(query, _llm_call_fast)
-    if _llm_state["failure_kind"]:
-        return _dependency_failure_result()
+    if _llm_state["unavailable"]:
+        return _unavailable_result()
     if not intent_raw:
         # ROBUSTEZZA (ADR 0181-ext, causa-radice del declino intermittente):
         # intent VUOTO NON è fatale. `extract_intent`→None sia su query davvero
@@ -6744,7 +6758,6 @@ def _run_engine(
                     target_device=_target_name,
                     turn_id=turn_id,
                     source_request_id=source_request_id,
-                    request_text=user_query_raw or query,
                 ),
             )
         exec_obj = _catalog_by_name.get(tool_name)
@@ -6947,7 +6960,7 @@ def _run_engine(
         # Query RAW dell'utente (CON l'adjunct di destinazione): il gate-resume
         # DEVE rilanciare questa, non la query strippata — altrimenti la
         # ri-esecuzione approva su un host diverso solo se lo sticky target
-        # regge (bug live 981ddc9f 6/7: senza «su pc-example» nel resume, la
+        # regge (bug live 981ddc9f 6/7: senza «su pc-roberto» nel resume, la
         # delete sarebbe stata LOCALE senza sticky).
         "user_query_raw": user_query_raw or query,
     }
@@ -7086,40 +7099,24 @@ def _run_engine(
     # call) must not be rewritten as "query not understood".  Preserve any
     # real tool observations, but when no step ran, make the dependency and
     # user action visible.
-    _dependency_failure_without_steps = (
-        bool(_llm_state["failure_kind"]) and not steps_out
-    )
-    _failure_kind = _llm_state["failure_kind"] or "provider_unavailable"
-    _failure_message_key = (
-        "ERR_LLM_TIMEOUT_ACTION"
-        if _failure_kind == "provider_timeout"
-        else "ERR_LLM_UNAVAILABLE_ACTION"
-    )
-    _failure_match_source = (
-        "llm_timeout"
-        if _failure_kind == "provider_timeout"
-        else "llm_unavailable"
-    )
+    _outage_without_steps = _llm_state["unavailable"] and not steps_out
     return {
         "steps": steps_out,
-        "final_text": (msg(_failure_message_key)
-                       if _dependency_failure_without_steps
+        "final_text": (msg("ERR_LLM_UNAVAILABLE_ACTION")
+                       if _outage_without_steps
                        else result.final_text),
-        "final_kind": ("error" if _dependency_failure_without_steps
+        "final_kind": ("error" if _outage_without_steps
                        else result.final_kind),
         "framework_hash": result.framework_hash,
         "verb": intent.verb,
         "object": intent.object,
         "keywords": intent.keywords,
-        "match_source": (_failure_match_source
-                         if _dependency_failure_without_steps
-                         else result.match_source),
+        "match_source": result.match_source,
         "elapsed_ms": result.elapsed_ms,
-        "error_class": (_failure_kind if _dependency_failure_without_steps
+        "error_class": ("provider_unavailable" if _outage_without_steps
                         else result.error_class),
         "needs_inputs_obs": needs_inputs_obs,
         "gate_obs": gate_obs,
-        "durable_admission": getattr(result, "durable_admission", None),
     }
 
 
@@ -7133,7 +7130,6 @@ def _finalize_engine_result(log, _engine_v2_res, *, actor, channel,
     e il branch foto-allegate (engine-uploads). Comportamento byte-invariato."""
     log.steps.extend(_engine_v2_res.get("steps") or [])
     log.match_source = str(_engine_v2_res.get("match_source") or "")
-    log.durable_admission = _engine_v2_res.get("durable_admission")
     # §7.3: se Engine ha ritornato needs_inputs → handle dialog
     _ni = _engine_v2_res.get("needs_inputs_obs")
     if _ni:

@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """telos_synth_consumer.py — Consumer dei marker `synt_pending/*.json`.
 
 Pipeline accept→synt_request (C.8 fase 2, 24/5/2026). Le proposte

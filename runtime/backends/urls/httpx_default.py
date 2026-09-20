@@ -44,40 +44,19 @@ from pathlib import Path
 
 # Path dei 4 executor (siblings nella cartella `executors/`).
 _EXECUTORS_DIR = Path(__file__).resolve().parent.parent.parent.parent / "executors"
+for _sub in ("read_urls_html", "read_urls_pdf", "find_urls", "login_urls"):
+    _p = str(_EXECUTORS_DIR / _sub)
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
 
-
-def _sibling(name: str):
-    """Import the historical implementation of ONE executor, on demand.
-
-    The four modules used to be imported here, all together, the moment this
-    backend was loaded.  Outside a sandbox that worked because every executor
-    directory was reachable; inside one only the caller's own directory is
-    bound, so an executor asking for its own backend failed on a module it has
-    nothing to do with.  Each entry point below needs exactly one sibling, so
-    each one asks for exactly that.
-
-    There is no circularity: this never calls ``invoke``, only the historical
-    ``_invoke_default`` of one of the four literal modules compiled below.
-    Arbitrary sibling names are deliberately not supported by a closed build.
-    """
-    if name not in {
-        "read_urls_html", "read_urls_pdf", "find_urls", "login_urls",
-    }:
-        raise ValueError("unsupported builtin URL executor")
-    location = str(_EXECUTORS_DIR / name)
-    if location not in sys.path:
-        sys.path.insert(0, location)
-    if name == "read_urls_html":
-        import read_urls_html
-        return read_urls_html
-    if name == "read_urls_pdf":
-        import read_urls_pdf
-        return read_urls_pdf
-    if name == "find_urls":
-        import find_urls
-        return find_urls
-    import login_urls
-    return login_urls
+# Import dei moduli executor. Lazy-safe: questo backend e' import-ato
+# dal dispatcher `invoke()` di ogni executor (vedi sezione _HANDLERS la),
+# ma non c'e' circular perche' qui non chiamiamo `invoke` (rinominato a
+# `_invoke_default`): chiamiamo direttamente l'implementazione storica.
+import read_urls_html as _ru_html  # noqa: E402
+import read_urls_pdf as _ru_pdf  # noqa: E402
+import find_urls as _f_urls  # noqa: E402
+import login_urls as _login  # noqa: E402
 
 
 def read_html(args: dict) -> dict:
@@ -97,7 +76,7 @@ def read_html(args: dict) -> dict:
          meta, lang, fetched_at, iframe_urls?, linked_documents?,
          js_rendered?, error_class?}], failed=[{url, error, error_class}]}
     """
-    return _sibling("read_urls_html")._invoke_default(args)
+    return _ru_html._invoke_default(args)
 
 
 def read_pdf(args: dict) -> dict:
@@ -116,7 +95,7 @@ def read_pdf(args: dict) -> dict:
          body_text, n_pages, used_lib, fetched_at, needs_ocr?}],
          failed=[{url, error}]}
     """
-    return _sibling("read_urls_pdf")._invoke_default(args)
+    return _ru_pdf._invoke_default(args)
 
 
 def find(args: dict) -> dict:
@@ -134,7 +113,7 @@ def find(args: dict) -> dict:
          truncated_what?, used?, available_total?, cap_field?, cap_value?,
          error_class? (ADR 0101)}
     """
-    return _sibling("find_urls")._invoke_default(args)
+    return _f_urls._invoke_default(args)
 
 
 def login(args: dict) -> dict:
@@ -149,4 +128,4 @@ def login(args: dict) -> dict:
         {ok, cached, session_cookies, expires_at, login_url, domain,
          cookie_file?}
     """
-    return _sibling("login_urls")._invoke_default(args)
+    return _login._invoke_default(args)

@@ -34,8 +34,8 @@ from typing import Any, Callable, Mapping, Optional, Sequence
 # normalizza l'argv. Vale per QUALSIASI skill/CLI (github, google_workspace, ...),
 # esistente e futuro, senza toccare i singoli executor.
 _STORE_TRUE_CACHE: dict = {}  # str(script_path) -> (mtime, frozenset[flag])
-_STORE_TRUE_CANONICAL_TRUE = frozenset({"1", "true"})
-_STORE_TRUE_CANONICAL_FALSE = frozenset({"0", "false"})
+_TRUTHY = {"1", "true", "yes", "si", "sì", "on", "y", "t", "vero"}
+_FALSY = {"0", "false", "no", "off", "n", "f", "", "none", "null", "falso"}
 
 # Context injected by the trusted runtime after planning.  Generated skill
 # wrappers validate provider arguments strictly, but these values are not
@@ -72,11 +72,8 @@ def _store_true_flags(script_path: Path) -> frozenset:
 
 def _normalize_bool_flags(argv: Sequence[str], flags: frozenset) -> list:
     """Per ogni flag store_true presente in argv con un VALORE attaccato
-    (`--flag val`): ``true``/``1`` → tieni il flag NUDO; ``false``/``0`` →
-    scarta flag+valore. I soli booleani ammessi sono quelli tecnici del
-    contratto JSON: interpretare parole naturali o valori sconosciuti come True
-    allargherebbe silenziosamente l'autorita' del comando. Idempotente sui flag
-    gia' nudi."""
+    (`--flag val`): truthy → tieni il flag NUDO (scarta il valore); falsy →
+    scarta flag+valore. Idempotente sui flag gia' nudi."""
     if not flags:
         return list(argv)
     argv = list(argv)
@@ -86,14 +83,12 @@ def _normalize_bool_flags(argv: Sequence[str], flags: frozenset) -> list:
         tok = argv[i]
         if tok in flags and i + 1 < len(argv) and not str(argv[i + 1]).startswith("-"):
             v = str(argv[i + 1]).strip().lower()
-            if v in _STORE_TRUE_CANONICAL_FALSE:
+            if v in _FALSY:
                 i += 2          # falsy → droppa flag + valore
                 continue
-            if v in _STORE_TRUE_CANONICAL_TRUE:
-                out.append(tok)  # truthy → flag nudo, scarta il valore
-                i += 2
-                continue
-            raise ValueError(f"invalid value for boolean flag {tok}")
+            out.append(tok)     # truthy → flag nudo, scarta il valore
+            i += 2
+            continue
         out.append(tok)
         i += 1
     return out
@@ -162,29 +157,22 @@ def _validate_skill_args(args, *, allowed: set[str] | frozenset[str],
 
 
 def _subprocess_runner() -> Optional[Callable]:
-    """Override hook per i test: METNOS_SUBPROCESS_FAKE=skill_test_fakes.fn dove
+    """Override hook per i test: METNOS_SUBPROCESS_FAKE=mod.fn dove
     fn(argv, env, timeout_s) -> (rc, stdout, stderr).
 
-    Ritorna None soltanto se l'env non e' settato. Un override presente ma non
-    ammesso restituisce un runner di diniego: non deve mai cadere sul processo
-    reale.
+    Ritorna None se l'env non e' settato o il modulo non risolve.
     """
     fake = os.environ.get("METNOS_SUBPROCESS_FAKE")
     if not fake:
         return None
     mod_name, _, attr = fake.rpartition(".")
-    if mod_name != "skill_test_fakes" or not attr:
-        return _denied_subprocess_runner
+    if not mod_name or not attr:
+        return None
     try:
-        import skill_test_fakes as mod
-        runner = getattr(mod, attr, None)
-        return runner if callable(runner) else _denied_subprocess_runner
+        mod = __import__(mod_name, fromlist=[attr])
+        return getattr(mod, attr, None)
     except Exception:
-        return _denied_subprocess_runner
-
-
-def _denied_subprocess_runner(_argv, _env, _timeout_s):
-    return 126, "", "invalid METNOS_SUBPROCESS_FAKE override"
+        return None
 
 
 def _run_api(
@@ -225,15 +213,12 @@ def _run_api(
         except Exception:
             pass
 
-    # Normalizza i flag booleani store_true (§7.3 generale, vedi sopra).
-    # Un valore non canonico deve impedire il run: continuare con argv grezzo
-    # affiderebbe al provider una decisione che il confine ha appena rifiutato.
+    # Normalizza i flag booleani store_true (§7.3 generale, vedi sopra). Robusto:
+    # un errore di normalizzazione non deve mai impedire il run.
     try:
         argv = _normalize_bool_flags(argv, _store_true_flags(Path(script_path)))
-    except ValueError as exc:
-        return 2, "", str(exc)
     except Exception:
-        return 2, "", "invalid boolean flag normalization"
+        pass
 
     if fake is not None:
         return fake(list(argv), env, timeout_s)

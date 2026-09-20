@@ -26,7 +26,6 @@ import telos_proposals_store
 import users
 import services_registry
 import config as _C  # §7.11
-from reliability import classify_turn
 from http_auth import (
     ADMIN_COOKIE,
     ADMIN_COOKIE_TTL_S,
@@ -329,10 +328,7 @@ def _summary_turns() -> dict:
     ]
     durations.sort()
     median = durations[len(durations) // 2] if durations else 0
-    errors = sum(
-        1 for row in rows
-        if str(row.get("outcome") or classify_turn(row)["outcome"]) == "failed"
-    )
+    errors = sum(1 for r in rows if r.get("final_kind") == "error")
     return {"total": len(rows), "errors": errors, "median_ms": float(median)}
 
 
@@ -1055,7 +1051,6 @@ async def admin_turns(request: web.Request) -> web.Response:
         steps = t.get("steps") or []
         ts0 = t.get("ts_start") or 0
         ts1 = t.get("ts_end") or 0
-        outcome = str(t.get("outcome") or classify_turn(t)["outcome"])
         rows.append({
             "turn_id": t.get("turn_id") or "",
             "ts_start_iso": datetime.fromtimestamp(ts0, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ") if ts0 else "",
@@ -1063,7 +1058,6 @@ async def admin_turns(request: web.Request) -> web.Response:
             "actor": t.get("actor") or "",
             "n_steps": len(steps),
             "final_kind": t.get("final_kind") or "",
-            "outcome": outcome,
             "elapsed_s": round(ts1 - ts0, 1) if (ts0 and ts1) else 0,
             "user_query": t.get("user_query") or "",
         })

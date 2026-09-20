@@ -20,10 +20,15 @@ import re
 from typing import Callable
 
 
-# Closed provider suffix supported by this strategy.  It is a technical tool
-# name component, not a natural-language surface; the surfaces themselves are
-# read from the central ``provider.markers`` concept.
-_PENALIZED_PROVIDER_SUFFIXES = ("_google_workspace",)
+# Provider markers: aligned with ADR 0136 (SoT `vocab.PROVIDER_SUFFIXES` /
+# `detection_lexicon provider.markers`). NB: dict locale = duplicato dei marker
+# (§7.9 follow-up: consumare provider.markers invece di ridichiararli qui).
+_PROVIDER_MARKERS = {
+    "_google_workspace": (
+        "google", "drive", "gmail", "gdrive",
+        "workspace", "calendar google", "g suite",
+    ),
+}
 
 # Verb families: tool con verb diverso ma stessa famiglia → no penalty.
 _VERB_FAMILY = {
@@ -41,15 +46,14 @@ _VERB_FAMILY = {
 
 
 def _query_has_provider_marker(query: str, suffix: str) -> bool:
-    import detection_lexicon as _dl
-
-    markers = _dl.mapping("provider.markers").get(suffix, ())
-    return _dl.match_any(markers, query or "", mode="word")
+    qlow = (query or "").lower()
+    markers = _PROVIDER_MARKERS.get(suffix, ())
+    return any(re.search(r"\b" + re.escape(m) + r"\b", qlow) for m in markers)
 
 
 def _provider_suffix_of(name: str) -> str | None:
     """Ritorna il suffix provider del tool, se ne ha uno."""
-    for suffix in _PENALIZED_PROVIDER_SUFFIXES:
+    for suffix in _PROVIDER_MARKERS:
         if name.endswith(suffix):
             return suffix
     return None

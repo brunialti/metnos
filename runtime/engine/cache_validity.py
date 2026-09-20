@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """engine/cache_validity — firme di validità per le decisioni cachate (ADR 0182).
 
 Principio: ogni piano cachato (L0 fastpath, L1 autopath, alternative-cache del

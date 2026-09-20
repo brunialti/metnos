@@ -403,8 +403,7 @@ def _invalid_result(error: str, code: str) -> dict:
 
 
 _PAGE_DATE_META_KEYS = (
-    # ``published`` is the reader's canonical key for <time datetime>.
-    "article:modified_time", "article:published_time", "published", "date",
+    "article:modified_time", "article:published_time", "date",
     "dc.date", "dcterms.date", "last-modified", "last_modified",
 )
 _LABELED_PAGE_DATE_RE = re.compile(
@@ -433,12 +432,9 @@ def _page_date(meta: dict, body_text: str) -> str:
         if not isinstance(value, str) or not value.strip():
             continue
         raw = value.strip()
-        iso = re.search(r"\b(\d{4}-\d{2}-\d{2})(?=T|\b)", raw)
+        iso = re.search(r"\b(\d{4}-\d{2}-\d{2})\b", raw)
         if iso:
-            try:
-                return _dt.date.fromisoformat(iso.group(1)).isoformat()
-            except ValueError:
-                continue
+            return iso.group(1)
         try:
             parsed = parsedate_to_datetime(raw)
         except (TypeError, ValueError, OverflowError):

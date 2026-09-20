@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """Streaming HTTP download with progress + sha256 verify.
 
 Built on httpx so we get HTTP/2 and decent timeout semantics for free.

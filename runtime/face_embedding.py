@@ -47,12 +47,12 @@ __all__ = [
 
 
 def _default_model_dir() -> Path:
-    # The sandbox supplies its exact read-only projection through this value.
     env = os.environ.get("METNOS_FACE_MODEL_DIR")
     if env:
         return Path(env)
-    from virt.local_models import model_spec
-    return Path(model_spec("face")["model_dir"])
+    # ADR 0148 rename-resilient: derive from PATH_ROOT.
+    import config as _C  # local import to avoid cyclic at module load
+    return _C.PATH_ROOT / "models" / "face"
 
 
 # Template volto allineato (5 landmark standard ArcFace, 112x112)
@@ -115,8 +115,6 @@ class FaceEngine:
             opts = ort.SessionOptions()
             opts.inter_op_num_threads = 2
             opts.intra_op_num_threads = 2
-            from native_threads import configure_onnx_threads
-            configure_onnx_threads(opts)
 
             det_path = self._model_dir / "det_10g.onnx"
             emb_path = self._model_dir / "w600k_r50.onnx"

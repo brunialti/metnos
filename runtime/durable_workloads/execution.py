@@ -8,12 +8,10 @@ other capability enter through the same registered runner interfaces.
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import json
-import logging
 import re
-import sqlite3
 from typing import Any
 
 from .compiler import (
@@ -69,38 +67,8 @@ _CAPABILITY_ERRORS = frozenset({
     "placement", "permission_denied", "capability_unavailable",
     "missing_source_context",
 })
-_PERMANENT_ERRORS = frozenset({"invalid_input", "executor_permanent"})
-_REPORTED_ERROR_CLASSES = (
-    _TRANSIENT_ERRORS | _CONTRACT_ERRORS | _CAPABILITY_ERRORS
-    | _PERMANENT_ERRORS
-    | {"budget_exhausted", "publication_ambiguous", "execution_failed", "executor_unknown"}
-)
-_REPORTED_ERROR_CODE_RE = re.compile(r"[A-Za-z][A-Za-z0-9_.-]{0,95}\Z")
 _SOURCE_AUTHORITY_RE = re.compile(r"[a-z0-9][a-z0-9._:-]{0,63}")
 _CONTROL_MUTATION_BATCH = 200
-log = logging.getLogger("metnos.durable_workloads.execution")
-
-
-def _loader_failure_cause(exc: Exception) -> str:
-    """Keep a closed diagnostic, never an arbitrary exception/path/message."""
-    code = getattr(exc, "sqlite_errorcode", None)
-    if isinstance(exc, sqlite3.OperationalError) and type(code) is int:
-        if code & 0xFF in {sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED}:
-            return "database_contention"
-    # These codes are descriptive only: they never grant retries or bypass
-    # contract verification, including for custom injected loaders.
-    code = getattr(exc, "code", None)
-    if isinstance(code, str) and code in {
-        "store_snapshot_unstable", "store_inventory_invalid",
-        "catalog_lock_timeout", "catalog_lock_invalid",
-        "lock_timeout", "signature_invalid", "digest_mismatch",
-    }:
-        return code
-    if isinstance(exc, PermissionError):
-        return "permission_denied"
-    if isinstance(exc, LookupError):
-        return "executor_missing"
-    return "unclassified"
 
 
 @dataclass(frozen=True, slots=True)
@@ -185,7 +153,6 @@ class DurableExecutionBridge:
         device_selector: Callable[[Mapping[str, Any] | None], str | None] | None = None,
         executor_generation_attestor: Callable[[object], object] | None = None,
         require_generation_attestation: bool = False,
-        resource_readiness: Callable[..., None] | None = None,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         self.store = store
@@ -193,7 +160,7 @@ class DurableExecutionBridge:
         self.output_schemas = output_schemas
         self._source_resolver = source_resolver
         self._executor_loader = executor_loader or self._load_verified_executor
-        self._executor_invoker = executor_invoker
+        self._executor_invoker = executor_invoker or self._invoke_executor
         self._workload_invoker = workload_invoker
         self._internal_runners = dict(internal_runners or {})
         self._device_selector = device_selector or self._source_device
@@ -201,7 +168,6 @@ class DurableExecutionBridge:
             raise ValueError("generation attestation authority is required")
         self._executor_generation_attestor = executor_generation_attestor
         self._require_generation_attestation = bool(require_generation_attestation)
-        self._resource_readiness = resource_readiness
         self._clock = clock or _now
 
     @staticmethod
@@ -220,15 +186,14 @@ class DurableExecutionBridge:
         device_id = source.get("device_id")
         return str(device_id) if isinstance(device_id, str) and device_id else None
 
+    @staticmethod
     def _invoke_executor(
-        self,
         executor: object,
         args: Mapping[str, Any],
         context: ExecutionContext,
         timeout_s: int,
         device_id: str | None,
         autonomy: str,
-        *, usage_sink=None,
     ) -> object:
         from agent_runtime import invoke_executor
 
@@ -243,34 +208,7 @@ class DurableExecutionBridge:
             target_device=device_id,
             owner_user_id=context.owner_user_id,
             execution_context=context,
-            _before_invoke=(
-                lambda: self._attest_executor_generation(executor, usage_sink=usage_sink)
-            ) if self._require_generation_attestation else None,
         )
-
-    def _attest_executor_generation(self, executor: object, *, usage_sink=None) -> None:
-        """Reread the exact generation at a boundary after a possible wait."""
-        if not self._require_generation_attestation:
-            return
-        try:
-            assert self._executor_generation_attestor is not None
-            self._executor_generation_attestor(executor)
-        except Exception as exc:
-            if usage_sink is not None:
-                # Refusal at this hook proves transport was never entered,
-                # including when the scheduler waited after preparation.
-                usage_sink.complete_local_capture()
-            code = getattr(exc, "code", "execution.runner_absent")
-            if code not in {
-                "execution.runner_absent", "execution.dormant",
-                "execution.retired", "execution.quarantined",
-            }:
-                code = "execution.runner_absent"
-            raise self._failure(
-                "capability_unavailable", code=code,
-                message_key="ERR_DURABLE_RUNNER_UNAVAILABLE", retry="manual",
-                details={"runner_name": str(getattr(executor, "name", ""))},
-            ) from exc
 
     def _failure(
         self,
@@ -707,9 +645,7 @@ class DurableExecutionBridge:
         return digest_json(
             "durable-execution-arguments",
             semantic,
-            # Admitted literal inputs can exceed the small event envelope.
-            # This transient object is hashed, never persisted as an event.
-            max_bytes=MAX_SNAPSHOT_JSON_BYTES,
+            max_bytes=MAX_EVENT_JSON_BYTES,
         )
 
     def _context(
@@ -766,7 +702,7 @@ class DurableExecutionBridge:
     def _autonomy(effect: DurableEffect) -> str:
         return "readonly" if effect is DurableEffect.PURE else "supervised"
 
-    def _prepare_executor(
+    def _invoke(
         self,
         contract: FrozenRunnerContract,
         facts: Mapping[str, Any],
@@ -779,31 +715,13 @@ class DurableExecutionBridge:
             try:
                 executor = self._executor_loader(contract.name)
             except Exception as exc:
-                cause = _loader_failure_cause(exc)
-                from manifest_inventory import closed_inventory_diagnostics
-
-                diagnostics = closed_inventory_diagnostics(
-                    getattr(exc, "inventory_diagnostics", ()),
-                ) if cause == "store_inventory_invalid" else ()
-                details: dict[str, Any] = {"runner_name": contract.name, "loader_cause": cause}
-                if diagnostics:
-                    details["inventory_diagnostics"] = [
-                        {"code": code, "cause_code": nested, "os_errno": number}
-                        for code, nested, number in diagnostics
-                    ]
-                log.warning(
-                    "durable_executor_load_failed workload_id=%s attempt_id=%s "
-                    "runner_name=%s cause=%s inventory_diagnostics=%s",
-                    context.workload_id, context.attempt_id, contract.name, cause,
-                    diagnostics,
-                )
                 raise self._failure(
                     "capability_unavailable",
                     code=("execution.runner_absent" if self._require_generation_attestation
                           else "execution.executor_unavailable"),
                     message_key="ERR_DURABLE_RUNNER_UNAVAILABLE",
                     retry="manual",
-                    details=details,
+                    details={"runner_name": contract.name},
                 ) from exc
             lifecycle = str(getattr(executor, "lifecycle", "") or "")
             if self._require_generation_attestation and lifecycle == "quarantined":
@@ -826,6 +744,22 @@ class DurableExecutionBridge:
                     message_key="ERR_DURABLE_RUNNER_UNAVAILABLE", retry="manual",
                     details={"runner_name": contract.name},
                 )
+            if self._require_generation_attestation:
+                try:
+                    assert self._executor_generation_attestor is not None
+                    self._executor_generation_attestor(executor)
+                except Exception as exc:
+                    code = getattr(exc, "code", "execution.runner_absent")
+                    if code not in {
+                        "execution.runner_absent", "execution.dormant",
+                        "execution.retired", "execution.quarantined",
+                    }:
+                        code = "execution.runner_absent"
+                    raise self._failure(
+                        "capability_unavailable", code=code,
+                        message_key="ERR_DURABLE_RUNNER_UNAVAILABLE", retry="manual",
+                        details={"runner_name": contract.name},
+                    ) from exc
             try:
                 attestor = getattr(self.runners, "attest_executor", None)
                 if callable(attestor):
@@ -853,66 +787,9 @@ class DurableExecutionBridge:
                     retry="never",
                     details={"runner_name": contract.name},
                 ) from exc
-            if self._resource_readiness is not None:
-                from .resource_readiness import ModelResourceChanged, ModelResourceUnavailable
-                import time
-
-                try:
-                    self._resource_readiness(
-                        executor, args, contract, context, device_id,
-                        deadline_at=time.monotonic() + self._remaining_timeout(context),
-                    )
-                except ModelResourceChanged as exc:
-                    raise self._failure(
-                        "contract_violation", code="execution.model_resource_changed",
-                        message_key="ERR_DURABLE_CONTRACT_CHANGED", retry="never",
-                    ) from exc
-                except ModelResourceUnavailable as exc:
-                    raise self._failure(
-                        "capability_unavailable", code="execution.model_resource_unavailable",
-                        message_key="ERR_DURABLE_RUNNER_UNAVAILABLE", retry="manual",
-                    ) from exc
-            # RM-0008 F5 §6.9: the generation is authenticated again after
-            # resource readiness, because it can be replaced during that wait.
-            self._attest_executor_generation(executor)
-            return (
-                executor, self._remaining_timeout(context),
-                self._autonomy(DurableEffect(stage["effect_profile"])),
-            )
-
-    def _invoke(
-        self,
-        contract: FrozenRunnerContract,
-        facts: Mapping[str, Any],
-        args: Mapping[str, Any],
-        context: ExecutionContext,
-        device_id: str | None,
-        *, usage_sink=None,
-    ) -> object:
-        if contract.kind == RunnerKind.EXECUTOR.value:
-            try:
-                executor, timeout, autonomy = self._prepare_executor(
-                    contract, facts, args, context, device_id,
-                )
-                context = self._with_concurrency_targets(contract, args, context, device_id)
-            except Exception:
-                # One handler for every preparation refusal, instead of one per
-                # cause: whatever refused, transport was never entered.
-                # Preparation cannot enter executor transport. A refusal here
-                # proves that no child model call was dispatched; failures
-                # AFTER entering the invoker must still fail closed on usage.
-                if usage_sink is not None:
-                    usage_sink.complete_local_capture()
-                raise
-            if self._executor_invoker is None:
-                # The default path carries the usage sink, so a refusal at the
-                # scheduler boundary still proves transport was never entered.
-                return self._invoke_executor(
-                    executor, args, context, timeout, device_id, autonomy,
-                    usage_sink=usage_sink,
-                )
             return self._executor_invoker(
-                executor, args, context, timeout, device_id, autonomy,
+                executor, args, context, self._remaining_timeout(context), device_id,
+                self._autonomy(DurableEffect(stage["effect_profile"])),
             )
         if contract.kind == RunnerKind.WORKLOAD.value:
             if self._workload_invoker is None:
@@ -943,8 +820,6 @@ class DurableExecutionBridge:
         # success metrics without changing the runner's output contract.
         from executor_scheduler import invoke_scheduled
 
-        context = self._with_concurrency_targets(contract, args, context, device_id)
-
         scheduled = _ScheduledRunner(
             name=f"{contract.kind}:{contract.name}",
             execution_policy=dict(contract.execution_policy),
@@ -967,28 +842,8 @@ class DurableExecutionBridge:
         )
         return envelope["observation"]
 
-    def _with_concurrency_targets(self, contract, args, context, device_id):
-        resolver = getattr(self.runners, "concurrency_targets_for", None)
-        if resolver is None:
-            return context
-        from execution_isolation import validate_targets
-
-        try:
-            targets = validate_targets(resolver(contract, args, context, device_id))
-        except Exception as exc:
-            raise self._failure(
-                "contract_violation", code="execution.isolation_invalid",
-                message_key="ERR_DURABLE_CONTRACT_CHANGED", retry="never",
-                details={"runner_name": contract.name},
-            ) from exc
-        return replace(context, concurrency_targets=targets)
-
-    def _observation_failure(
-        self, observation: Mapping[str, Any], schema: ApprovedOutputSchema,
-    ) -> ExecutionFailure:
+    def _observation_failure(self, observation: Mapping[str, Any]) -> ExecutionFailure:
         observed = observation.get("error_class")
-        if type(observed) is not str or observed not in _REPORTED_ERROR_CLASSES:
-            observed = "unknown"
         if observed in _TRANSIENT_ERRORS:
             error_class, retry = "executor_transient", "automatic"
         elif observed == "budget_exhausted":
@@ -999,32 +854,14 @@ class DurableExecutionBridge:
             error_class, retry = "contract_violation", "never"
         elif observed in _CAPABILITY_ERRORS:
             error_class, retry = "capability_unavailable", "manual"
-        elif observed in _PERMANENT_ERRORS:
-            error_class, retry = "executor_permanent", "never"
         else:
-            # Missing/opaque diagnostics prove neither transience nor
-            # permanence. Never retry blindly or cancel the remaining work.
-            error_class, retry = "executor_unknown", "manual"
-        # Only this attempt's already verified schema can name diagnostic
-        # codes. A string/pattern schema is not a closed vocabulary, and a
-        # syntactically plausible observation is never authority by itself.
-        code = observation.get("error_code")
-        code_schema = schema.field_schema("error_code")
-        allowed = code_schema.get("enum") if code_schema is not None else None
-        reported_code = "unknown"
-        if (
-            type(code) is str and _REPORTED_ERROR_CODE_RE.fullmatch(code)
-            and code_schema is not None and code_schema.get("type") == "string"
-            and isinstance(allowed, (tuple, list))
-            and any(type(item) is str and item == code for item in allowed)
-        ):
-            reported_code = code
+            error_class, retry = "executor_permanent", "never"
         return self._failure(
             error_class,
             code="execution.runner_failed",
             message_key="ERR_DURABLE_EXECUTION_FAILED",
             retry=retry,
-            details={"reported_error_class": observed, "reported_error_code": reported_code},
+            details={"reported_error_class": str(observed or "unknown")[:64]},
         )
 
     @staticmethod
@@ -1060,33 +897,17 @@ class DurableExecutionBridge:
                 raise ValueError("runner used an undeclared model binding")
         return cleaned
 
-    def _budget_failure(
-        self, violation: Mapping[str, Any],
-        cause: ExecutionFailure | None = None,
-    ) -> ExecutionFailure:
-        details = dict(violation)
-        if cause is not None:
-            # Keep only the bounded structured cause, never provider payloads.
-            details["cause_code"] = json.loads(cause.error.payload_json)["code"]
-            details["cause_error_class"] = cause.error.error_class
-        if violation.get("reason_code") == "budget_accounting_incomplete":
-            return self._failure(
-                "budget_exhausted",
-                code="execution.usage_accounting_incomplete",
-                message_key="ERR_DURABLE_USAGE_ACCOUNTING_INCOMPLETE",
-                retry="manual", details=details,
-            )
-        return self._failure(
-            "budget_exhausted", code="execution.budget_exhausted",
-            message_key="ERR_DURABLE_BUDGET_EXHAUSTED",
-            retry="manual", details=details,
-        )
-
     def __call__(self, lease: Lease) -> ExecutionResult:
         facts = self.store.execution_inputs(lease)
         budget_violation = self.store.budget_violation(lease)
         if budget_violation is not None:
-            raise self._budget_failure(budget_violation)
+            raise self._failure(
+                "budget_exhausted",
+                code="execution.budget_exhausted",
+                message_key="ERR_DURABLE_BUDGET_EXHAUSTED",
+                retry="manual",
+                details=budget_violation,
+            )
         contract, schema, expected = self._verify_frozen_contract(facts)
         context = self._context(lease, facts, contract)
         args, dependency_ids, source_resolution_digest = self._build_args(
@@ -1213,10 +1034,8 @@ class DurableExecutionBridge:
                     sink=usage_sink,
                 ):
                     observation = self._invoke(
-                        contract, facts, args, context, device_id, usage_sink=usage_sink,
+                        contract, facts, args, context, device_id,
                     )
-                if contract.kind == RunnerKind.WORKLOAD.value:
-                    usage_sink.complete_local_capture()
             else:
                 observation = self._invoke(contract, facts, args, context, device_id)
             observation = self._consume_transport_usage(
@@ -1234,16 +1053,12 @@ class DurableExecutionBridge:
             )
         except Exception as exc:
             invocation_failure = self._failure(
-                "executor_unknown",
+                "executor_permanent",
                 code="execution.unhandled_exception",
                 message_key="ERR_DURABLE_EXECUTION_FAILED",
-                retry="manual",
+                retry="never",
                 details={"exception_type": type(exc).__name__[:64]},
             )
-
-        if invocation_failure is None and isinstance(observation, Mapping):
-            if observation.get("ok") is False:
-                invocation_failure = self._observation_failure(observation, schema)
 
         if usage_sink is not None:
             try:
@@ -1261,7 +1076,7 @@ class DurableExecutionBridge:
                 raise self._failure(
                     "budget_exhausted",
                     code="execution.usage_accounting_failed",
-                    message_key="ERR_DURABLE_USAGE_ACCOUNTING_INCOMPLETE",
+                    message_key="ERR_DURABLE_BUDGET_EXHAUSTED",
                     retry="manual",
                     details={"accounting_persisted": False},
                 ) from exc
@@ -1272,13 +1087,19 @@ class DurableExecutionBridge:
                 raise self._failure(
                     "budget_exhausted",
                     code="execution.usage_accounting_rejected",
-                    message_key="ERR_DURABLE_USAGE_ACCOUNTING_INCOMPLETE",
+                    message_key="ERR_DURABLE_BUDGET_EXHAUSTED",
                     retry="manual",
                     details={"accounting_persisted": False},
                 )
             budget_violation = self.store.budget_violation(lease)
             if budget_violation is not None:
-                raise self._budget_failure(budget_violation, invocation_failure)
+                raise self._failure(
+                    "budget_exhausted",
+                    code="execution.budget_exhausted",
+                    message_key="ERR_DURABLE_BUDGET_EXHAUSTED",
+                    retry="manual",
+                    details=budget_violation,
+                )
 
         if invocation_failure is not None:
             raise invocation_failure
@@ -1290,6 +1111,8 @@ class DurableExecutionBridge:
                 message_key="ERR_DURABLE_RESULT_CONTRACT_VIOLATION",
                 retry="never",
             )
+        if observation.get("ok") is False:
+            raise self._observation_failure(observation)
         invocation_id = observation.get("invocation_id")
         remote = observation.get("_remote")
         if isinstance(remote, Mapping):

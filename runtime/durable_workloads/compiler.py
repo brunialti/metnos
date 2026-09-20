@@ -168,15 +168,6 @@ class ApprovedOutputSchema:
         return current
 
     def validate(self, value: Any) -> None:
-        # Open JSON Schemas do not implicitly opt into execution semantics.
-        if isinstance(value, Mapping) and "domain_outcome" in value:
-            from .domain_outcome import domain_outcome
-            if self.field_schema("domain_outcome") is None:
-                raise OutputValidationError("domain_outcome is not explicitly approved")
-            try:
-                domain_outcome(value)
-            except ValueError as exc:
-                raise OutputValidationError("domain_outcome is invalid") from exc
         if self.validator is not None:
             self.validator(value)
         try:
@@ -477,33 +468,17 @@ class RunnerContractResolver(Protocol):
 
 
 def _semantic_schema(value: Any) -> Any:
-    """Strip annotations from schema nodes, never property names or data."""
+    """Strip localized/presentational JSON-Schema fields before hashing."""
 
+    if isinstance(value, Mapping):
+        return {
+            str(key): _semantic_schema(item)
+            for key, item in value.items()
+            if key not in {"description", "title", "examples", "$comment"}
+        }
     if isinstance(value, list):
         return [_semantic_schema(item) for item in value]
-    if not isinstance(value, Mapping):
-        return value
-    result: dict[str, Any] = {}
-    for key, item in value.items():
-        if key in {"description", "title", "examples", "$comment"}:
-            continue
-        if key in {
-            "properties", "patternProperties", "$defs", "definitions",
-            "dependentSchemas", "dependencies",
-        } and isinstance(item, Mapping):
-            result[key] = {
-                name: _semantic_schema(child) for name, child in item.items()
-            }
-        elif key in {
-            "items", "additionalItems", "additionalProperties", "contains",
-            "propertyNames", "not", "if", "then", "else", "allOf", "anyOf",
-            "oneOf", "prefixItems", "unevaluatedItems", "unevaluatedProperties",
-            "contentSchema",
-        }:
-            result[key] = _semantic_schema(item)
-        else:
-            result[key] = item
-    return result
+    return value
 
 
 class VerifiedCatalogResolver:
@@ -517,7 +492,6 @@ class VerifiedCatalogResolver:
         model_bindings: Mapping[str, Mapping[str, Any]] | None = None,
         prompt_digests: Mapping[str, str] | None = None,
         prompt_languages: Mapping[str, str] | None = None,
-        hierarchical_reducers: Sequence[str] = (),
         catalog_loader: Callable[..., Any] | None = None,
     ) -> None:
         self._output_schemas = {
@@ -544,9 +518,6 @@ class VerifiedCatalogResolver:
             str(name): str(value)
             for name, value in (prompt_languages or {}).items()
         }
-        self._hierarchical_reducers = frozenset(map(str, hierarchical_reducers))
-        if not self._hierarchical_reducers <= set(self._output_schemas):
-            raise CompilationError("executor reducers must have an approved output schema")
         if not (
             set(self._model_binding_digests)
             == set(self._prompt_digests)
@@ -562,9 +533,11 @@ class VerifiedCatalogResolver:
             raise CompilationError("verified catalog resolver accepts only executors")
         if self._catalog_loader is None:
             from loader import load_catalog
-            catalog = load_catalog(verify=True, lang="en")
+
+            loader = load_catalog
         else:
-            catalog = self._catalog_loader(verify=True, lang="en")
+            loader = self._catalog_loader
+        catalog = loader(verify=True, lang="en")
         executor = catalog.get(name)
         if executor is None:
             raise CompilationError(f"executor is absent from the verified catalog: {name}")
@@ -603,15 +576,9 @@ class VerifiedCatalogResolver:
             "implementation_digest": implementation_digest,
             "args_schema": args_schema,
             "capabilities": sorted(
-                (
-                    dict(item)
-                    for item in (getattr(executor, "capabilities", ()) or ())
-                    if isinstance(item, Mapping) and isinstance(item.get("name"), str)
-                ),
-                # Conditions and hints select authority, not presentation.
-                # Freeze the complete declaration; names alone cannot detect
-                # a changed provider or capability activation condition.
-                key=lambda item: canonical_json(item, max_bytes=MAX_SNAPSHOT_JSON_BYTES),
+                str(item.get("name"))
+                for item in (getattr(executor, "capabilities", ()) or ())
+                if isinstance(item, Mapping) and isinstance(item.get("name"), str)
             ),
             "placement": getattr(executor, "placement", {}) or {},
             "transport": str(getattr(executor, "transport", "") or ""),
@@ -624,10 +591,6 @@ class VerifiedCatalogResolver:
             "execution_policy": dict(execution_policy),
             "execution_policy_declared": execution_policy_declared,
         }
-        if name in self._hierarchical_reducers:
-            contract_facts["supports_hierarchical_reduction"] = True
-        if getattr(executor, "lre_plan", ""):
-            contract_facts["lre_plan"] = executor.lre_plan
         if name in self._prompt_languages:
             binding = self._model_bindings[name]
             contract_facts.update({
@@ -682,7 +645,6 @@ class VerifiedCatalogResolver:
             model_cost_policy=contract_facts.get("model_cost_policy"),
             execution_policy=execution_policy,
             execution_policy_declared=execution_policy_declared,
-            supports_hierarchical_reduction=name in self._hierarchical_reducers,
         )
 
 
@@ -858,13 +820,11 @@ class CompositeRunnerResolver:
 
 
 _INTERNAL_EFFECTS = {
-    "committed_entries": DurableEffect.PURE.value,
     "sealed_inventory": DurableEffect.PURE.value,
     "schema_and_coverage_validator": DurableEffect.PURE.value,
     "artifact_store_publish": DurableEffect.IDEMPOTENT.value,
 }
 _INTERNAL_INPUT_TYPES = {
-    "committed_entries": {"references": "array"},
     "sealed_inventory": {"inventory": "object"},
     "schema_and_coverage_validator": {"assembled": "object"},
     "artifact_store_publish": {"artifacts": "array", "validation": "array"},
@@ -1159,13 +1119,9 @@ def compile_plan(
                 raise CompilationError(
                     f"hierarchical reduction stage {key} must output entries"
                 )
-            if any(
-                argument != stage["cardinality"]["reduction_input"]
-                and reference["ref"] != "literal"
-                for argument, reference in stage["input_bindings"].items()
-            ):
+            if len(stage["input_bindings"]) != 1:
                 raise CompilationError(
-                    f"hierarchical reduction stage {key} needs exactly one variable input"
+                    f"hierarchical reduction stage {key} needs exactly one input"
                 )
             required_invalidation = {"reduction.order", "reduction.fan_in"}
             if not required_invalidation <= set(stage["invalidation_keys"]):

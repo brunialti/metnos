@@ -267,8 +267,7 @@ def _validate_simple(
         if endpoint:
             _validate_url(endpoint, field=f"{role}.endpoint")
         if family == "embedding":
-            allowed = ({"face"} if role == "face" else
-                       {"bge", "qwen", "siglip", "http", "openai", "remote"})
+            allowed = {"bge", "qwen", "siglip", "http", "openai", "remote"}
             if provider not in allowed:
                 raise ConfigEditError(
                     "invalid_configuration", f"{role}.provider")
@@ -389,6 +388,7 @@ def _invalidate_runtime(family: str) -> None:
             if key and str(key[0]).startswith("emb"):
                 virt._cache.pop(key, None)
     elif family == "vlm":
+        virt._vlm_started.clear()
         try:
             import vlm_client
             vlm_client.reload_configuration()

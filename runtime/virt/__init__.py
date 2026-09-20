@@ -14,9 +14,6 @@ indici. I default uguagliano la realtà attuale.
 from __future__ import annotations
 
 from . import tiers
-from .local_models import (
-    DEFAULT_EMBEDDERS, local_embedding_spec, projected_embedding_spec,
-)
 from .interfaces import (  # noqa: F401
     EmbeddingProvider, LLMProvider,
     EmbeddingUnavailableError, VLMUnavailableError, VirtError,
@@ -28,6 +25,11 @@ __all__ = [
     "EmbeddingUnavailableError", "VLMUnavailableError", "VirtError",
 ]
 
+# Default baked-in = realtà attuale (cutover behavior-preserving).
+DEFAULT_EMBEDDERS = {
+    "text":  {"provider": "bge"},      # bge_embedding.BGEEmbeddingService (1024)
+    "image": {"provider": "siglip"},   # clip_embedding.ClipEngine (768, text+image)
+}
 DEFAULT_VLM = {
     "default": {
         "provider": "llamacpp", "model": "qwen3vl-2b",
@@ -52,8 +54,7 @@ def get_embedder(role: str = "text"):
     ck = ("emb", role)
     if ck in _cache:
         return _cache[ck]
-    s = (projected_embedding_spec(role)
-         or tiers.spec("embedding", role, DEFAULT_EMBEDDERS))
+    s = tiers.spec("embedding", role, DEFAULT_EMBEDDERS)
     prov = (s.get("provider") or "bge").lower()
     if prov == "bge":
         from bge_embedding import BGEEmbeddingService
@@ -81,14 +82,14 @@ def get_local_embedder(role: str = "text"):
     """Return an in-process embedder, never an HTTP-configured backend.
 
     Read-only executors use this boundary when their signed contract declares
-    local computation only. Local BGE/Qwen/SigLIP options are preserved,
-    including the sandbox's non-sensitive projection. A remote tier is
-    deliberately ignored instead of silently enlarging network authority.
+    local computation only.  Model-path options from a local ``bge`` or
+    ``siglip`` tier are preserved; a remote tier is deliberately ignored
+    instead of silently enlarging network authority.
     """
     ck = ("emb-local", role)
     if ck in _cache:
         return _cache[ck]
-    spec = local_embedding_spec(role)
+    spec = tiers.spec("embedding", role, DEFAULT_EMBEDDERS)
     if role == "text" and spec.get("provider") == "qwen":
         from qwen_embedding import QwenEmbeddingService
         obj = QwenEmbeddingService(
@@ -132,35 +133,39 @@ def get_vlm(role: str = "default") -> dict:
     return tiers.spec("vlm", role, DEFAULT_VLM)
 
 
+# Lifecycle VLM (lazy-start + health), una sola volta per processo. Centralizzata
+# qui — non dentro un executor — cosi' OGNI consumatore del VLM la condivide
+# (Metnos possiede l'up del modello, non un effetto collaterale di un executor).
+_vlm_started: dict = {}
+
+
 def ensure_vlm_up(role: str = "default", *, wait_s: float = 35,
                   deadline_at: float | None = None) -> bool:
-    """Use the normal host launcher, with one bounded attempt per invocation.
+    """Avvia il server VLM via `scripts/vlm_server.sh` se non gia' in piedi e
+    non gia' tentato in questo processo. Ritorna True se l'endpoint risponde
+    /health entro `wait_s`, False altrimenti (il chiamante decide il fallback).
 
-    An instance-wide process lock serializes startup across HTTP and worker
-    lanes. Health is checked again while holding the lock, and successful
-    calls are not latched: the idle watchdog may legitimately stop the model
-    before the next job. The caller's deadline covers locking, startup and
-    health polling. No model inference or download is performed here.
-    """
-    import hashlib
+    Idempotente per (processo, role): un solo tentativo di start; le chiamate
+    successive ritornano lo stato dell'health corrente. Endpoint e path-script
+    sono config-driven: base_url da `get_vlm(role)`, override script via env
+    `METNOS_VLM_SERVER_SH`. Se ``deadline_at`` è fornito, start, health check
+    e attesa condividono quel deadline monotono: il lazy start non può quindi
+    oltrepassare il budget del chiamante. Deterministico, no LLM."""
     import os
     import time
     import urllib.error as _ue
     import urllib.request as _u
     from pathlib import Path
-    from urllib.parse import urlsplit, urlunsplit
-    import config
-    from process_lock import ProcessLock
 
     spec = get_vlm(role)
-    endpoint = urlsplit(os.environ.get("METNOS_VLM_URL") or spec.get("endpoint")
-                        or spec.get("base_url") or DEFAULT_VLM["default"]["base_url"])
-    health_url = urlunsplit((endpoint.scheme, endpoint.netloc, "/health", "", ""))
-    stop_at = (float(deadline_at) if deadline_at is not None
-               else time.monotonic() + 45 + max(0.0, float(wait_s)))
+    base_url = (spec.get("base_url") or "http://127.0.0.1:8081").rstrip("/")
+    health_url = base_url + "/health"
 
     def _remaining(cap_s: float) -> float:
-        return max(0.0, min(max(0.0, float(cap_s)), stop_at - time.monotonic()))
+        cap = max(0.0, float(cap_s))
+        if deadline_at is None:
+            return cap
+        return max(0.0, min(cap, float(deadline_at) - time.monotonic()))
 
     def _health_ok(timeout: float = 2.0) -> bool:
         bounded_timeout = _remaining(timeout)
@@ -172,52 +177,37 @@ def ensure_vlm_up(role: str = "default", *, wait_s: float = 35,
         except (_ue.URLError, _ue.HTTPError, OSError, TimeoutError):
             return False
 
+    # Gia' su: nessun start necessario.
     if _health_ok():
         return True
-    if (endpoint.hostname not in {"localhost", "127.0.0.1", "::1"}
-            or (spec.get("provider") or DEFAULT_VLM["default"]["provider"]) != "llamacpp"):
+    # Gia' tentato in questo processo: non ritentare lo spawn (fallback hard).
+    if _vlm_started.get(role):
+        return _health_ok()
+    _vlm_started[role] = True
+
+    helper = os.environ.get("METNOS_VLM_SERVER_SH") or str(
+        Path(__file__).resolve().parents[1].parent / "scripts" / "vlm_server.sh")
+    if not os.path.exists(helper):
         return False
-    key = hashlib.sha256(health_url.encode("utf-8")).hexdigest()
-    lock = ProcessLock(config.PATH_USER_STATE / "model-start" / (key + ".lock"),
-                       owner="local model startup")
+    import subprocess
+    start_timeout = _remaining(45)
+    if start_timeout <= 0:
+        return False
     try:
-        while _remaining(1) > 0:
-            try:
-                lock.acquire()
-                break
-            except RuntimeError as exc:
-                if not isinstance(exc.__cause__, BlockingIOError):
-                    raise
-                time.sleep(_remaining(0.05))
-        else:
+        r = subprocess.run([helper, "start", "--auto-stop-idle", "600"],
+                           timeout=start_timeout,
+                           capture_output=True, text=True)
+        if r.returncode != 0:
             return False
+    except (subprocess.TimeoutExpired, OSError):
+        return False
+    wait_deadline = time.monotonic() + max(0.0, float(wait_s))
+    if deadline_at is not None:
+        wait_deadline = min(wait_deadline, float(deadline_at))
+    while time.monotonic() < wait_deadline:
         if _health_ok():
             return True
-        helper = os.environ.get("METNOS_VLM_SERVER_SH") or str(
-            Path(__file__).resolve().parents[1].parent / "scripts" / "vlm_server.sh")
-        if not os.path.exists(helper):
-            return False
-        import subprocess
-        start_timeout = _remaining(45)
-        if start_timeout <= 0:
-            return False
-        try:
-            from .startup import vlm_startup_environment
-
-            result = subprocess.run([helper, "start", "--auto-stop-idle", "600"],
-                                    timeout=start_timeout, capture_output=True, text=True,
-                                    env=vlm_startup_environment(role))
-        except (subprocess.TimeoutExpired, OSError):
-            return False
-        if result.returncode != 0:
-            return False
-        wait_deadline = min(stop_at, time.monotonic() + max(0.0, float(wait_s)))
-        while time.monotonic() < wait_deadline:
-            if _health_ok():
-                return True
-            time.sleep(max(0.0, min(1.0, wait_deadline - time.monotonic())))
-        return False
-    except OSError:
-        return False
-    finally:
-        lock.release()
+        sleep_s = min(1.0, wait_deadline - time.monotonic())
+        if sleep_s > 0:
+            time.sleep(sleep_s)
+    return False

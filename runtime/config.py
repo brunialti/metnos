@@ -93,10 +93,6 @@ PATH_WORKSPACE     = _env_path("METNOS_WORKSPACE", PATH_ROOT / "workspace")
 PATH_DECISIONS     = PATH_ROOT / "decisions"
 PATH_DOCS          = PATH_ROOT / "docs"
 
-# Host code selection is an administrator-owned installation prerequisite,
-# never ordinary per-user model configuration or an executor argument.
-PATH_VLM_STARTUP_PROFILE = Path("/etc/metnos/vlm-startup.toml")
-
 def _home() -> Path:
     """Home robusta (specchio di `path_alias._home`, §7.2 senza import inverso):
     `Path.home()` solleva RuntimeError nella sandbox del device (env

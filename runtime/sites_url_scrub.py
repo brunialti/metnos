@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """sites_url_scrub — redazione deterministica di URL sensibili (spec sites §3.2 FIX E).
 
 Un token in un URL È un segreto: `?token=...`, `#access_token=...`, `?code=...`

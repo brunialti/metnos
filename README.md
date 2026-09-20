@@ -12,7 +12,7 @@ LLM-powered agents receive narrow mandates and bounded authority. They may
 adapt how they pursue the requested outcome, but they cannot widen their own
 goal, permissions, or admission status.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 ![Python](https://img.shields.io/badge/python-%E2%89%A53.12-green)
 ![Self-hosted](https://img.shields.io/badge/cloud-optional-success)
 [![Docs](https://img.shields.io/badge/docs-metnos.com-1A477A.svg)](https://metnos.com)
@@ -70,12 +70,6 @@ An executor is a small capability with:
 - explicit filesystem, network, credential, and device authority;
 - an observable success condition;
 - a reverse pattern when the operation is genuinely reversible.
-
-Every new or revised executor crosses one deterministic Birth boundary before
-it can become active. That boundary binds provenance, authority, checks, review,
-and any required approval to the candidate's exact bytes, then commits through
-the immutable contract store and rereads the result. A signature, copied
-directory, or service restart alone cannot activate changed code.
 
 The planner never receives an unrestricted shell or an arbitrary bag of tools.
 It sees only the capabilities admitted by the installed executor set. Shell
@@ -310,8 +304,6 @@ optional services, or non-interactive installation.
   through real natural-language scenes.
 - [Architecture guide](https://metnos.com/en/architecture/) — request flow,
   policy, memory, Tutor, devices, intelligent executors, and observability.
-- [Public roadmap](https://metnos.com/en/roadmap) — verified delivery status,
-  ordered from the most recently defined roadmap to the oldest.
 - [Generated executor catalog](https://metnos.com/en/architecture/executor_catalog)
   — the current signed capability inventory.
 - [Executor Standard](EXECUTOR_STANDARD.md) — the normative capability
@@ -329,8 +321,5 @@ observable result, and logs with secrets removed.
 
 ## License
 
-[MIT](LICENSE), copyright (c) 2026 the owner.
-
-Third-party libraries, companion services and downloaded models retain their
-own licenses. The Metnos license does not replace their terms; check those
-terms before using or redistributing the corresponding components.
+[AGPL-3.0](LICENSE). If you run a modified version as a network service, the
+AGPL network-use clause applies.

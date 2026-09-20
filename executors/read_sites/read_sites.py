@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """read_sites — legge il contenuto (testo + screenshot redatto) di sessioni
 web aperte (spec sites F1 §3.4).
 

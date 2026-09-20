@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """llm_pricing.py — FONTE UNICA delle tariffe LLM ($/Mtoken) per Metnos.
 
 Consolida (15/6/2026) le tabelle prima duplicate e DIVERGENTI in

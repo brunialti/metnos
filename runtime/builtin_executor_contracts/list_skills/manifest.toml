@@ -4,7 +4,7 @@ executor_standard = "metnos.executor/1.0"
 name = "list_skills"
 version = "1.0.0"
 author = "Metnos builtin maintainers"
-affinity = []
+affinity = ["skill", "skills", "capacità", "capability", "capabilities", "moduli", "modules", "elenco", "lista", "list"]
 platforms = ["linux"]
 revertible = false
 lifecycle = "active"
@@ -14,8 +14,8 @@ it = "SCOPO: Elenca le skill installate e il loro stato runtime. PATTERN: richie
 en = "SCOPO: Lists installed skills and their runtime state. PATTERN: natural request typed by the planner. NON: enlarge authority or invent inputs. OUT: declared JSON result."
 
 [code]
-files = ["implementation.py.src"]
-digest = "sha256:133a5c5c9a65c8227e7502b556f58785668a5fca1943087740cfaad83939cbc5"
+files = ["../../skill_admin.py"]
+digest = "sha256:28b73b52027343ac1c0018e97b0c8ed5fb89c14317ee0b31c805b4a599a38023"
 
 [args]
 type = "object"

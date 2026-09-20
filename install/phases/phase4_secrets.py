@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """Phase 4 — Sensitive data dialog.
 
 The only phase that asks for credentials. Every answer is stored

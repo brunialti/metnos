@@ -31,8 +31,7 @@ from typing import Optional, Callable, Sequence
 
 from .types import Intent, Framework
 from .proposer import (SimpleProposer, _iter_balanced_json_objects,
-                       _render_excluded_signal, _render_recovery_signal,
-                       _render_tool_pool,
+                       _render_excluded_signal, _render_tool_pool,
                        _strip_think)
 
 log = logging.getLogger(__name__)
@@ -170,20 +169,8 @@ class MetisProposer:
             epoch = catalog_epoch(catalog)
         except Exception:  # noqa: BLE001 — mai bloccare il propose
             epoch = ""
-        recovery = getattr(intent, "_recovery_signal", None)
-        if isinstance(recovery, dict):
-            recovery_blob = json.dumps(
-                recovery, ensure_ascii=False, sort_keys=True,
-                separators=(",", ":"), default=str,
-            )
-            recovery_key = hashlib.sha256(
-                recovery_blob.encode("utf-8")
-            ).hexdigest()
-        else:
-            recovery_key = ""
-        # Fix #2: lang separa IT/EN. Il segnale di recovery separa i candidati
-        # ordinari da quelli prodotti dopo un fallimento osservato.
-        return (h, intent.verb, intent.object, lang, epoch, recovery_key)
+        # Fix #2: lang separa IT/EN
+        return (h, intent.verb, intent.object, lang, epoch)
 
     def _cache_put(self, key, value):
         """LRU insert: move to end (most recent), evict oldest if over cap."""
@@ -317,7 +304,6 @@ class MetisProposer:
                 # B15: forma leggibile dei piani esclusi + istruzione di
                 # diversificazione (non hash sha opachi che il modello ignora).
                 excluded=_render_excluded_signal(excluded_hashes, lang),
-                recovery=_render_recovery_signal(intent, lang),
                 n_candidates=n_cands,
             )
         except Exception as ex:

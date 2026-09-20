@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """POC disclaimer — shown at first run, requires explicit typed acceptance.
 
 After acceptance, a sentinel is dropped at
@@ -36,7 +36,7 @@ _TEXT = {
 [bold red]DISCLAIMER — please read carefully[/bold red]
 
 Metnos is [bold]proof-of-concept[/bold] software released under the
-MIT licence. It is offered [bold]AS IS[/bold], without warranty
+AGPL-3.0 licence. It is offered [bold]AS IS[/bold], without warranty
 of any kind, express or implied.
 
 Despite the maintainer's best efforts, Metnos may behave in unexpected
@@ -63,7 +63,7 @@ confirm and continue. Anything else aborts the installation.
 [bold red]AVVERTENZA — leggere con attenzione[/bold red]
 
 Metnos è software in stato di [bold]proof-of-concept[/bold] rilasciato
-sotto licenza MIT. Viene fornito [bold]COSÌ COM'È[/bold], senza
+sotto licenza AGPL-3.0. Viene fornito [bold]COSÌ COM'È[/bold], senza
 alcuna garanzia, esplicita o implicita.
 
 Nonostante l'impegno del manutentore, Metnos può comportarsi in modo

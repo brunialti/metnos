@@ -271,50 +271,15 @@ def _probe_windows(package_id, tool_path, by_name=False):
     # The header row carries the localized column titles and mentions nothing
     # useful; a real row always has an id, and the shortest name is the
     # closest match to what was asked.
-    rows.sort(key=lambda r: (
-        len(r[0]), r[0].casefold(), r[0],
-        r[1].casefold(), r[1], r[2],
-    ))
-    name, _pkg_id, version = rows[0]
+    rows.sort(key=lambda r: (len(r[0]), r[0]))
+    name, pkg_id, version = rows[0]
     hit = {"name": name, "version": version, "source": "winget"}
-    resolved_rows = [
-        (row_name, _launch_identity(row_id), row_version)
-        for row_name, row_id, row_version in rows
-    ]
-    valid_ids = {}
-    for _row_name, resolved_id, _row_version in resolved_rows:
-        if resolved_id:
-            # Rows have a total deterministic order, so setdefault chooses the
-            # same representative even if WinGet changes provider row order.
-            valid_ids.setdefault(resolved_id.casefold(), resolved_id)
-    complete = all(resolved_id for _name, resolved_id, _version in resolved_rows)
-    if complete and len(valid_ids) == 1:
-        # WinGet can print the same installed identity more than once (for
-        # example through duplicate source rows).  Cardinality of table rows
-        # is not ambiguity; cardinality of canonical launch identities is.
-        hit["resolved_id"] = next(iter(valid_ids.values()))
-    elif len(rows) > 1:
+    if by_name and len(rows) > 1:
         hit["also_matched"] = [r[0] for r in rows[1:6]]
-        candidates_by_id = {}
-        for row_name, resolved_id, row_version in resolved_rows:
-            if not resolved_id:
-                continue
-            candidates_by_id.setdefault(resolved_id.casefold(), {
-                "name": row_name,
-                "resolved_id": resolved_id,
-                "version": row_version,
-            })
-        candidates = [
-            candidates_by_id[key] for key in sorted(candidates_by_id)
-        ]
-        if candidates:
-            # Diagnostic only.  The mutating pipeline consumes exclusively
-            # the top-level resolved_id, so it still fails closed until one
-            # exact identity is selected explicitly.
-            hit["candidates"] = candidates[:6]
-            hit["candidate_count"] = len(candidates)
-            if len(candidates) > 6:
-                hit["candidates_truncated"] = True
+    else:
+        resolved_id = _launch_identity(pkg_id)
+        if resolved_id:
+            hit["resolved_id"] = resolved_id
     return hit
 
 
@@ -326,10 +291,6 @@ def _probe_path(package_id):
         return None
     return {"name": package_id, "version": "", "source": "path",
             "path": path}
-
-
-class _DesktopInventoryUnavailable(RuntimeError):
-    pass
 
 
 def _probe(package_id, ctx):
@@ -352,36 +313,10 @@ def _probe(package_id, ctx):
             hit = _probe_linux(package_id, ctx["manager"],
                                ctx["manager_path"], by_name=True)
             match = "name" if hit else ""
-    inventory_unavailable = False
-    if (ctx["os"] == "windows" and not (hit and (
-            hit.get("candidates") or hit.get("also_matched")
-            or str(hit.get("resolved_id", "")).startswith("appx:")))):
-        # Package-manager inventory is not the user's application registry.
-        # Registered shortcuts identify individual suite applications and
-        # provide launch identities for ordinary desktop installers.
-        from windows_desktop_apps import find
-        desktop = find(hit["name"] if hit else package_id)
-        entries = desktop.get("entries") if desktop.get("ok") is True else None
-        inventory_unavailable = not isinstance(entries, list)
-        if isinstance(entries, list) and len(entries) == 1:
-            registered = entries[0]
-            if hit is None:
-                hit, match = dict(registered), "name"
-            else:
-                hit["resolved_id"] = registered["resolved_id"]
-        elif isinstance(entries, list) and len(entries) > 1:
-            hit = dict(hit) if hit else {"name": package_id, "version": "", "source": "windows_start_menu"}
-            hit.pop("resolved_id", None)
-            hit["candidates"] = entries[:6]
-            hit["candidate_count"] = len(entries)
-            hit["candidates_truncated"] = len(entries) > 6
-            match = match or "name"
     if hit is None and exact_identifier:
         hit = _probe_path(package_id)
         match = "path" if hit else ""
     if hit is None:
-        if inventory_unavailable:
-            raise _DesktopInventoryUnavailable()
         # Not an error: «not installed» is an answer, and a package the
         # machine does not have must not fail the other elements (§2.1).
         return {"package_id": package_id, "installed": False,
@@ -450,17 +385,7 @@ def invoke(args: dict) -> dict:
             continue
         if time.monotonic() >= deadline:
             break
-        try:
-            entry = _probe(package_id, ctx)
-        except _DesktopInventoryUnavailable:
-            failed.append({
-                "package_id": package_id,
-                "error": _msg("ERR_PACKAGES_INVENTORY_UNAVAILABLE"),
-                "error_code": "package_inventory_unavailable",
-                "error_class": "dependency_unavailable",
-            })
-            continue
-        entries.append(entry)
+        entries.append(_probe(package_id, ctx))
         probed += 1
 
     out = {
