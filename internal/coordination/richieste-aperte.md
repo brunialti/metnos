@@ -84,6 +84,45 @@ Serve una riga sola: **quale produttore si usa, oppure quale ne va
 aggiunto.** Va scritta in `internal/AGENTS.md` §6.2, che oggi documenta la
 lacuna.
 
+### Direzione data da Roberto il 21/9, e cosa ho verificato
+
+Roberto: gli undici sono l'origine dell'esigenza, ma «dovrebbero essere
+fattorizzati e incanalati verso una unica richiesta che discrimina, oppure
+verifica l'origine dei cambiamenti e agisce opportunamente».
+
+**L'imbuto esiste gia'.** Tutti e undici gli `submit_*` sono involucri di
+tre righe attorno a `_submit(intent, capability)`, che chiama
+`executor_birth_operational._execute_intent_with_capability`. Un solo punto
+di passaggio, gia' oggi.
+
+Gli undici non sono porte: sono **etichette di autorita'**, coppie
+`(producer_id, operation)` costruite con un sigillo
+(`_CAPABILITY_SEAL`) che un chiamante non puo' fabbricare. Dicono *chi* sta
+nascendo *che cosa*: `change_applier/extend`, `promoter/rollback`,
+`stack_reconcile/restart_sign_first`.
+
+**Quello che manca e' un produttore per la manutenzione manuale**, non un
+imbuto.
+
+### Avvertimento, dalla stessa giornata
+
+«Verificare l'origine dei cambiamenti e agire di conseguenza» e' attraente,
+ma va costruito con cura: se il produttore si **deduce** dai file toccati,
+si sta deducendo un'**autorita'** dal filesystem. E' lo stesso errore
+trovato oggi due volte in `loader.py`, dove `_is_imported` e `_is_synth`
+deducevano dalla cartella cosa fosse uno strumento
+(`internal/design/TODO.md`, AFF-OVERLAP-001): il primo tentativo di
+correzione ha fatto sparire un contratto dal catalogo, il secondo ha
+disattivato il controllo di sovrapposizione. Il sigillo esiste proprio
+perche' l'autorita' sia **concessa**, non dedotta.
+
+**Forma proposta**, che rispetta la direzione senza dedurre autorita': un
+dodicesimo produttore per la manutenzione governata, la cui capacita' non si
+deduce dai file ma si ottiene da un'**approvazione umana esplicita** — la
+filiera dei cambiamenti con il vaglio su `/admin/changes` esiste gia' ed e'
+il posto naturale. L'imbuto resta uno, la regola resta una, e chi modifica a
+mano non si autoproclama produttore.
+
 **Chiuso quando**: §6.2 riporta la procedura, e un executor modificato a
 mano e' stato pubblicato seguendola.
 
