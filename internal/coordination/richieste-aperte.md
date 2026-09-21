@@ -57,6 +57,24 @@ ritirano i sedici contratti, **poi** si toglie `github` da
 spegne mentre i sedici sono ancora installati, e una domanda sul filesystem
 locale torna a finire su GitHub (misurato: primi tre da 156 a 153).
 
+**Il ramo non contiene solo RM-0011.** Chi lo fonde deve sapere che tocca
+due cose trasversali, entrambe con la suite invariata (37 rosse prima e
+dopo, tutte del cancello di nascita):
+
+- **l'involucro dei contratti generati** guadagna un `origin` che
+  sopravvive alla promozione, e i tre punti che generano un sintetizzato lo
+  dichiarano (`generated_executor_contract.py`, `synt.py`,
+  `synth_request.py`). Serviva perche' il sintetizzatore promuove ad
+  `active`, la riga del ciclo di vita sparisce e un sintetizzato promosso
+  era indistinguibile da uno scritto a mano;
+- **`loader._is_synth` e `_is_imported` non leggono piu' il percorso** ma
+  `ex.source`. Prima l'esenzione dal confronto di sovrapposizione la
+  decideva la cartella, e la sua intera popolazione erano i sedici
+  contratti GitHub — roba nostra con un'esenzione scritta per gli estranei.
+
+Se stai lavorando su synt, sul codegen delle skill o sul caricatore,
+guarda qui prima di fondere: e' la zona dove i due lavori si incontrano.
+
 **Chiuso quando**: i contratti sono in esercizio, le prove di catalogo sono
 verdi e questa voce riporta la generazione pubblicata.
 
