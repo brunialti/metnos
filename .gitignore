@@ -122,6 +122,10 @@ docs/assets/images/*
 
 # --- Doc agente / harness Claude (internal) ------------------------------
 AGENTS.md
+# Eccezione: l'AGENTS.md di RADICE e' il contratto di coordinamento fra
+# agenti diversi (Claude, Codex) e deve stare nel repository, altrimenti non
+# raggiunge chi arriva dopo. Quelli annidati restano fuori.
+!/AGENTS.md
 CLAUDE.md
 
 # --- Dev tooling, bench, stress (non parte runtime utente) ---------------
