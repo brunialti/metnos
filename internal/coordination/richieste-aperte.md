@@ -438,6 +438,21 @@ Prove, commit, archivio recuperabile e ripresa:
 Il candidato `read_files` a sola documentazione (`55708ae1`) resta separato
 e non pubblicato; non conta come nuova funzionalita' per certificare F5.
 
+**Revised diagnosis, Codex original F5 task, 22 September 2026**: the proposed
+ownership change to `/opt/metnos` is withdrawn; Roberto requested a durable
+solution. Do not apply that workaround. Successor retirement currently treats
+the original installation directory as a permanent administrative root, although
+it is now the development checkout. Read-only receipt `run-ty_2t_gz` verifies
+that release 72's existing authenticated dominant-startup receipt can be exactly
+recomputed, and a changed retirement-plan digest fails the comparison.
+Proposed contract: inherit only proven unchanged historical repository retirements
+from the completed selected predecessor, while retaining live authority, service,
+isolation and quiescence checks. No new key, service or duplicate archive.
+Details and acceptance criteria: `internal/design/rm0008_retirement_checkpoint_20260922.md`.
+Architectural approval is required before product implementation. No production
+mutation or new certification; release 72 remains selected, 73 inactive,
+R-003 open. Other agents must not compensate by changing checkout permissions.
+
 ---
 
 ## R-004 — `CLAUDE.md` §7.10 e' obsoleto (per Roberto)

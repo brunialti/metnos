@@ -75,14 +75,19 @@ zero active HTTP turns and zero active LRE attempts.
 
 ## Resume and actual closure
 
-Roberto was asked to approve changing **only `/opt/metnos` itself** to
-root:root, preserving 0755 and leaving every descendant unchanged. This
-would restrict creation/removal of direct root entries to administrators;
-do not apply it without his answer, and do not weaken the retirement check.
+The proposed ownership change to `/opt/metnos` is **withdrawn** after reviewing
+its consequences for the shared development checkout. No ownership change was
+performed. Roberto requested a durable solution instead.
 
-After approval and fresh idle checks, resume the prepared release through
-the normal controller from the clean principal checkout. Preserve the
-signed candidate and evidence; do not rebuild unrelated history.
+Read-only observation `run-ty_2t_gz` confirms that the authenticated selected
+release already binds an exactly reproducible retirement receipt. The proposed
+fix separates this historical proof from current service and authority checks;
+it requires no new key or duplicate evidence archive. Architecture, evidence
+and acceptance criteria are in
+`internal/design/rm0008_retirement_checkpoint_20260922.md`.
+Product implementation awaits approval of that retirement-contract change.
+Release 73 remains signed but inactive; do not resume it through a permission
+workaround or patch its immutable files. Preserve candidate and evidence.
 
 The single-executor proof candidate is `55708ae1` on
 `codex/r001-rm0008-cleanup-20260922`: it corrects inaccurate scalar-only
