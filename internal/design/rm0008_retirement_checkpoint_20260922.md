@@ -1,8 +1,8 @@
 # RM-0008: separate historical retirement from current deployment
 
-Status: proposed, not implemented or activated. This replaces the proposed
-ownership change to the development checkout. The change to the retirement
-contract needs Roberto's architectural approval before product edits.
+Status: approved by Roberto on 22 September 2026; implementation in progress,
+not activated. This replaces the proposed ownership change to the development
+checkout. Roberto also requested communication through the board and AGENTS.md.
 
 ## Cause and decision
 

@@ -453,6 +453,15 @@ Architectural approval is required before product implementation. No production
 mutation or new certification; release 72 remains selected, 73 inactive,
 R-003 open. Other agents must not compensate by changing checkout permissions.
 
+**Approved implementation, original F5 task, 22 September 2026**: Roberto:
+«approvo.procedi, implementa e comunica tramite bacheco a agents.md».
+Implementing the general retirement policy above on
+`codex/r003-installed-publication`. The local root `AGENTS.md` now points to
+this coordination entry; it is intentionally excluded from Git, so this
+tracked entry preserves the notice. Do not modify checkout ownership or
+perform concurrent release/publication operations. R-003 remains open until
+the actual receipt, catalog reread and operational tests are recorded.
+
 ---
 
 ## R-004 — `CLAUDE.md` §7.10 e' obsoleto (per Roberto)
