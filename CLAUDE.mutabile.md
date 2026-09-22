@@ -67,6 +67,17 @@
   (sola sessione con PID+creation-time) e `login_urls` usano ricevute esatte;
   i segreti precedenti stanno cifrati in `protected_undo`, non nel JSONL.
   Persistenza Windows e `delete_dirs` locale restano non annullabili.
+- **Consenso per piani congelati candidato, non distribuito** (23/9,
+  `internal/design/organize_files_interaction_20260919.md`): un contratto
+  firmato dichiara preview/apply, argomento token, artefatto e journal; il
+  runtime presenta un form `form_only` su HTTP o tramite URL HTTPS Telegram e
+  concede apply soltanto nella callback monouso legata a payload finale,
+  generazione, proprietario, attore, canale e turno. L'esito Telegram usa un
+  outbox durevole e una send interrotta resta ambigua, non ritentata. Il
+  meccanismo e' generale e non contiene nomi di executor. `organize_files` e'
+  il primo candidato: journal apply/reverse write-ahead, effetti locali
+  ancorati a dirfd, identita' device+inode+metadata e undo terminale. Nessuna
+  parte di questo punto e' in esercizio prima della certificazione RM-0008.
 - **Arresto AppX verificato** (23/8, ADR 0221-0222): client Windows 0.2.62.
   La ricevuta di `run_processes` lega confine di attivazione e processi
   preesistenti; l'inverso segue la coorte del pacchetto anche quando il processo di

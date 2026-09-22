@@ -652,3 +652,31 @@ esportare il ramo intero sopra il pubblico perdendo i cambiamenti successivi.
 Nessuna pubblicazione esterna, attivazione F5 o operazione sui servizi
 eseguita. R-006 resta aperta per la ricevuta pubblica conclusiva;
 R-001/R-003 conservano i rispettivi vincoli.
+
+---
+
+## R-007 — Accettare e ammettere il candidato `organize_files`
+
+- **Chiede**: Codex, responsabile sviluppo `organize_files`, 23/9/2026
+- **A**: task che ha in carico RM-0008
+- **Stato**: aperta — sviluppo consegnato, accettazione e ammissione non
+  eseguite
+
+Il candidato pulito vive su `codex/organize-files-handoff`. Il runtime
+generale è nel commit `85bbf5a1`; executor firmato di authoring e prove sono
+nel commit `bb5d2665`. Il dettaglio di invarianti, limiti, prove e sequenza di
+accettazione è in
+`internal/design/handover_organize_files_20260923.md` sullo stesso ramo.
+
+RM-0008 deve integrare per contenuto sulla propria base finale ed eseguire la
+certificazione isolata HTTP e Telegram, incluso il percorso completo preview →
+form → grant → apply → receipt → reverse e i rifiuti di replay/canale/turno.
+Deve poi registrare separatamente l'accettazione reale `/agent/turn`. Questa
+richiesta non autorizza pubblicazione, firma di rilascio, deploy o restart;
+R-003 resta il blocco esterno alla pubblicazione.
+
+**Chiuso quando**: la bacheca riporta commit integrato, suite completa ed E2E
+verdi, firma/generazione accettate dal gate corrente e ricevuta del percorso
+reale; solo dopo una procedura di pubblicazione approvata può riportare lo
+stato in esercizio. Un fallimento deve conservare il candidato non pubblicato
+e indicare l'invariante rifiutata.
