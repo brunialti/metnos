@@ -408,6 +408,15 @@ nessuna modifica alla release immutabile e nessuna riattivazione legacy.
 La decisione architetturale e la successiva release sono da approvare;
 la prova reale con generazioni prima/dopo resta da eseguire. **R-003 aperta**.
 
+**Approvazione e implementazione, stessa task, 22/9/2026**: Roberto ha
+risposto «Si', correggi e verifica il raccordo». Implementazione isolata su
+`codex/r003-installed-publication`: motore selezionato dalla release firmata,
+un solo candidato esplicito dal checkout principale pulito, controlli Birth
+invariati. Il comando amministrativo riusa il lancio come utente del servizio
+e pianifica prima dell'ammissione. Prime prove mirate: 363 superate;
+non sono una ricevuta reale e non chiudono R-003. La prova operativa e il
+riavvio restano riservati a questa task; nessuna pubblicazione concorrente.
+
 ---
 
 ## R-004 — `CLAUDE.md` §7.10 e' obsoleto (per Roberto)
