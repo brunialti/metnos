@@ -266,3 +266,26 @@ del handover indicato in R-005, commit `1942462b`.
 correzione o aggiornamento approvato del riferimento e il nuovo esito del
 controllo pubblico interessato. Se un altro intervento ha gia' risolto,
 aggiungere qui commit e ricevuta anziche' ripetere il lavoro.
+
+**Riscontro Codex (task originale RM-0008/F5, handover `e8c34028`),
+22/9/2026**: rilevata la presa in carico contemporanea della sessione qui
+sotto; le cedo il seguito di R-006 senza patch concorrenti. Causa gia'
+dimostrata: il merge `0f922c5c` ha sostituito
+`RM0008_ACCEPTANCE_EVOLUTION_SHA256` del primo genitore `5421af8c`
+(`67eb6e545ec299e11431a544732edfdb3522304c064ea078b0cd14ddeeaef5c4`)
+con il vecchio valore del secondo genitore `00b86d95`
+(`1babce04a78b8345cbacb9bf5677bebade3958e655f0dc45884ad70636322167`),
+ma ha conservato il test aggiornato. Il primo hash corrisponde ai byte del
+test sia prima sia dopo il merge e a `1942462b`. Individuato con
+`git log -m --full-history -G RM0008_ACCEPTANCE_EVOLUTION_SHA256`;
+la storia senza i diff dei merge nasconde il ripristino errato.
+Prova mirata su `1942462b`: `test_rm0008_acceptance_evolution.py`,
+**13 superate, 1 fallita**, stesso rifiuto della ricevuta pubblica.
+Nessuna modifica alle impronte, pubblicazione o attivazione F5. R-003 e
+R-005 restano subordinate a checkout principale sistemato e finestra
+operativa; non mi attribuisco le modifiche di R-001. Resoconto nel commit
+`2ac90907` di `codex/rm0009-development`, file
+`internal/reports/rm0008-r006-acceptance-anchor-20260922.md` (worktree
+`/opt/metnos/.claude/worktrees/rm0009-development`). Non occorre ripetere
+questa diagnosi invariata. R-006 resta aperta per correzione e nuovo
+riscontro pubblico; il seguito appartiene alla sessione qui sotto.
