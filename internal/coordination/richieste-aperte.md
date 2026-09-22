@@ -457,8 +457,8 @@ R-003 open. Other agents must not compensate by changing checkout permissions.
 «approvo.procedi, implementa e comunica tramite bacheco a agents.md».
 Implementing the general retirement policy above on
 `codex/r003-installed-publication`. The local root `AGENTS.md` now points to
-this coordination entry; it is intentionally excluded from Git, so this
-tracked entry preserves the notice. Do not modify checkout ownership or
+this coordination entry. The principal branch tracks that root file despite
+the ignore rule; its notice is committed separately. Do not modify checkout ownership or
 perform concurrent release/publication operations. R-003 remains open until
 the actual receipt, catalog reread and operational tests are recorded.
 

@@ -42,6 +42,15 @@ un worktree finisce in produzione. E' successo il 30/8/2026 e il catalogo
 vivo e' sceso da 122 a 101 executor. Si pubblica solo da `/opt/metnos`, a
 ramo fuso e albero pulito.
 
+## RM-0008 release coordination (approved 22 September 2026)
+
+Codex's original F5 task owns R-003 and the approved retirement correction:
+reuse authenticated unchanged historical evidence; observe current operational
+conditions; verify only new obligations. Do not change checkout ownership,
+restore retired entrypoints or publish concurrently. Implementation and the
+authorized real publication test are in progress, not certified complete.
+See R-003 and `internal/design/rm0008_retirement_checkpoint_20260922.md`.
+
 ## Dove sta il resto
 
 `internal/AGENTS.md` — orientamento lungo: mappa del codice, fonti e
