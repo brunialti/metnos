@@ -99,6 +99,18 @@ momento il gruppo RM-0009, le note/puntatore LRE e il report
 righe di bacheca dei rispettivi autori. **R-001 non e' ancora chiusa**:
 nessun assenso a pubblicare deriva da questa pulizia parziale.
 
+**Responsabilita' finale assegnata da Roberto, 22/9/2026**:
+la chiusura complessiva di **R-001 e F5 spetta a Codex, task originale
+RM-0008/F5** (questa task, handover iniziale `e8c34028`, pulizia su
+`codex/r001-rm0008-cleanup-20260922`). Non viene delegata automaticamente
+all'autore della correzione R-006 o agli agenti LRE/RM-0009.
+I sottocompiti gia' assegnati restano ai rispettivi autori: consegnare qui
+commit e prove, senza sovrascrivere le altre modifiche. Coordino io le
+integrazioni residue e verifico personalmente il checkout principale
+pulito prima di chiudere R-001; porto poi F5 fino alle prove finali,
+certificazione e messa in esercizio. La pulizia Git non equivale alla
+chiusura F5 e non elimina i prerequisiti di R-003 o della finestra operativa.
+
 ---
 
 ## R-002 — Pubblicare RM-0011 (13 executor nuovi, 23 modificati)
@@ -299,6 +311,13 @@ Non attivare F5 per effetto di questa consegna.
 integrata e, nella finestra autorizzata, installata e verificata sulla
 release pertinente, oppure motiva esplicitamente una diversa disposizione.
 Riportare release, commit ed esito, conservando questa voce.
+
+**Coordinamento finale, disposizione di Roberto del 22/9/2026**:
+Codex della task originale RM-0008/F5 e' responsabile della chiusura di
+F5, inclusa questa consegna e l'integrazione della correzione R-006.
+Riferimento di coordinamento: assegnazione finale in R-001. Gli altri
+agenti mantengono i sottocompiti dichiarati e riportano qui gli esiti;
+nessuna attivazione F5 e' dichiarata da questa assegnazione.
 
 ---
 
