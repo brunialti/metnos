@@ -1057,6 +1057,34 @@ def test_failed_cutover_never_launches_plan_or_admission(crossing, capsys, plan_
     assert "CUTOVER_OK" not in capsys.readouterr().out
 
 
+@pytest.mark.parametrize("refused", (False, True))
+def test_release_build_uses_public_modes_and_restores_private_umask(applying, monkeypatch, refused):
+    from install import executor_birth_distribution_release as builder
+
+    build = builder.build_and_install_received_source_v1
+    masks = []
+    original_umask = os.umask(0o077)
+
+    def observed(source):
+        current = os.umask(0o022)
+        masks.append(current)
+        if refused:
+            raise RuntimeError("test build refusal")
+        return build(source)
+
+    monkeypatch.setattr(builder, "build_and_install_received_source_v1", observed)
+    try:
+        if refused:
+            with pytest.raises(RuntimeError, match="test build refusal"):
+                cycle.apply_cycle(False)
+        else:
+            assert cycle.apply_cycle(False) == 0
+        assert os.umask(0o077) == 0o077
+        assert masks == [0o022]
+    finally:
+        os.umask(original_umask)
+
+
 def test_refused_plan_ships_the_release_but_admits_nothing(crossing, capsys):
     crossing.control["plan_fails"] = True
     assert crossing.run("complete") == 78
