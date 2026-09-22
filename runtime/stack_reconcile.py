@@ -610,7 +610,8 @@ def _release_plan_details(ref, current, served, prepared, language, code, contex
 def verify_named_executors(
         names: list[str], *, sign_first: bool = False,
         changed_only: bool = False, plan_only: bool = False,
-        preview_evidence: bytes | None = None) -> list[dict]:
+        preview_evidence: bytes | None = None,
+        source_root: Path | None = None) -> list[dict]:
     """Admit/verify explicitly named direct children of ``executors/``.
 
     ``sign_first`` is retained as the public compatibility flag.  It now
@@ -625,7 +626,36 @@ def verify_named_executors(
     ``store_verified`` (admitted, and the store now serves that generation),
     ``error`` or ``not_attempted``. Publications are per contract: a refusal
     after an admission leaves the earlier admission in place and reported.
+
+    An explicit ``source_root`` selects untrusted authoring inputs only. It
+    never changes runtime imports, configuration, authority or the installed
+    catalog. Explicit names prevent a partial checkout from becoming a sweep.
     """
+    for name in names:
+        if not name or name in {".", ".."} or "/" in name or "\\" in name:
+            raise StackFailure("invalid_executor", "executor name is not canonical")
+    if source_root is not None:
+        if not names or not (sign_first or plan_only) or preview_evidence is not None:
+            raise StackFailure(
+                "source_root_invalid", "authoring input requires named admission or a plan",
+            )
+        source_root = Path(source_root)
+        try:
+            if (not source_root.is_absolute() or ".." in source_root.parts
+                    or source_root.resolve(strict=True) != source_root
+                    or not source_root.is_dir()):
+                raise ValueError("non-canonical source root")
+        except (OSError, RuntimeError, ValueError) as exc:
+            raise StackFailure("source_root_invalid", "authoring root is unavailable or linked") from exc
+        candidate_root = source_root / "executors"
+        for name in names:
+            directory = candidate_root / name
+            try:
+                if (directory.resolve(strict=True) != directory
+                        or not (directory / "manifest.toml").is_file()):
+                    raise ValueError("candidate missing or linked")
+            except (OSError, RuntimeError, ValueError) as exc:
+                raise StackFailure("candidate_unavailable", f"{name}: authoring input is unavailable") from exc
     from manifest_inventory import (
         ContractId, ManifestLayout, ManifestOrigin, inventory_manifests,
         resolve_manifest_layout,
@@ -633,7 +663,7 @@ def verify_named_executors(
     from sign import verify_executor
 
     layout = resolve_manifest_layout()
-    root = (_repo_root() / "executors").resolve()
+    root = ((source_root or _repo_root()) / "executors").resolve()
     store_refs = (
         inventory_manifests().by_id()
         if layout is ManifestLayout.STORE_ONLY else {}
@@ -1348,7 +1378,8 @@ class StackReconciler:
     def restart(self, *, executor_names: list[str] | None = None,
                 sign_first: bool = False, automatic: bool = False,
                 require_sidecar: str = "auto",
-                changed_only: bool = False) -> dict:
+                changed_only: bool = False,
+                source_root: Path | None = None) -> dict:
         from services_registry import stack_scope
 
         names = executor_names or []
@@ -1361,24 +1392,8 @@ class StackReconciler:
             if automatic:
                 breaker.assert_closed()
             self.require_quiescent()
-            owed = pending.rows() if pending is not None else []
-            if pending is not None:
-                # Before any effect: from here a restart is owed until the
-                # batch proves it published nothing, or the stack is ready.
-                pending.begin()
-            try:
-                signed = verify_named_executors(
-                    names, sign_first=sign_first, changed_only=changed_only,
-                )
-            except StackFailure as exc:
-                if pending is not None:
-                    pending.record(exc.details.get("outcomes") or [])
-                raise
-            if pending is not None:
-                pending.record(signed)
-                if not owed and not pending.published():
-                    pending.clear()
-                    return {"ok": True, "signed": signed, "restarted": False}
+            # Refuse an unusable topology before any admission, not after a
+            # successful publication that the target cannot activate.
             scope = stack_scope()
             target = self.systemctl.show(TARGET_UNIT, scope)
             if target.get("LoadState") in {"not-found", "error", ""}:
@@ -1390,13 +1405,30 @@ class StackReconciler:
                 self.systemctl.show("metnos-http.service", "system")
                 if scope == "user" else {}
             )
-            if legacy_http.get("ActiveState") in {
-                "active", "activating", "reloading",
-            }:
+            if legacy_http.get("ActiveState") in {"active", "activating", "reloading"}:
                 raise StackFailure(
                     "legacy_baseline_active",
                     "refusing to start the user target beside active system HTTP",
                 )
+            owed = pending.rows() if pending is not None else []
+            if pending is not None:
+                # Before any effect: from here a restart is owed until the
+                # batch proves it published nothing, or the stack is ready.
+                pending.begin()
+            try:
+                signed = verify_named_executors(
+                    names, sign_first=sign_first, changed_only=changed_only,
+                    **({"source_root": source_root} if source_root is not None else {}),
+                )
+            except StackFailure as exc:
+                if pending is not None:
+                    pending.record(exc.details.get("outcomes") or [])
+                raise
+            if pending is not None:
+                pending.record(signed)
+                if not owed and not pending.published():
+                    pending.clear()
+                    return {"ok": True, "signed": signed, "restarted": False}
             # Every contract read and signature is done.  From here on the
             # operation belongs to systemd, and the server it is starting must
             # be able to read its own catalog while it boots.  The lifecycle
@@ -1646,6 +1678,7 @@ def _parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument("--executor", action="append", default=[])
+    parser.add_argument("--source-root", type=Path)
     parser.add_argument("--sign", action="store_true")
     parser.add_argument("--changed-only", action="store_true")
     parser.add_argument("--plan", action="store_true")
@@ -1664,6 +1697,12 @@ def main(argv: list[str] | None = None) -> int:
         if args.preview and not (
                 args.command == "deploy" and args.plan and args.changed_only and not args.sign):
             raise StackFailure("option_invalid", "preview requires a read-only release plan")
+        if args.source_root is not None and (
+                args.command != "deploy" or not args.executor
+                or not (args.plan or args.sign) or args.preview):
+            raise StackFailure(
+                "option_invalid", "--source-root requires a named deploy admission or plan",
+            )
         reconciler = None if args.plan else StackReconciler()
         if args.command != "deploy" and (args.plan or args.changed_only or args.sign):
             raise StackFailure(
@@ -1689,6 +1728,7 @@ def main(argv: list[str] | None = None) -> int:
                 rows = verify_named_executors(
                     args.executor, changed_only=True, plan_only=True,
                     preview_evidence=sys.stdin.buffer.read() if args.preview else None,
+                    **({"source_root": args.source_root} if args.source_root is not None else {}),
                 )
                 out = {"ok": all(row["outcome"] in {"unchanged", "changed", "not_installed"}
                                  for row in rows), "plan": rows,
@@ -1703,6 +1743,7 @@ def main(argv: list[str] | None = None) -> int:
                     sign_first=args.sign,
                     require_sidecar=args.require_sidecar,
                     changed_only=args.changed_only,
+                    **({"source_root": args.source_root} if args.source_root is not None else {}),
                 )
         elif args.command == "watchdog":
             out = reconciler.watchdog(require_sidecar=args.require_sidecar)

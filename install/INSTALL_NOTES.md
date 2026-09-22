@@ -204,10 +204,22 @@ changed executors still require the full checks; missing or invalid historical
 evidence never becomes implicit initial adoption.
 
 This entry is for a release transition, not routine executor maintenance.
-After cutover, an ordinary executor edit uses
-`runtime/stack_reconcile.py deploy --executor <name> --sign`. The historical
-flag remains a command-line compatibility surface, but it now submits the
-candidate to Executor Birth and cannot select direct signing or publication.
+After cutover, an ordinary executor edit uses the reconciler from the
+authenticated installed release, running as the service account. Its command
+is `stack_reconcile deploy --executor <name> --changed-only --source-root
+<clean-primary-checkout> --sign`. The explicit source root supplies candidate
+files only; it never selects runtime code, configuration or authority. First
+replace `--sign` with `--plan` for the read-only comparison. A named deployment
+leaves unrelated contracts untouched, and unchanged input needs no new
+admission. A successful admission is followed by a quiescence-controlled
+activation and a verified catalog reread. Do not run a development checkout's
+runtime against the live store, or publish from a linked worktree.
+
+The administrative development wrapper is
+`internal/tools/rm0008_release_cycle.py publish --executor <name> [--plan]`.
+It authenticates the selected release, requires a clean primary checkout,
+and runs the plan before admission. The historical `--sign` flag submits
+the candidate to Executor Birth; it cannot select direct signing.
 
 ### Optional F5 certification custody (development)
 

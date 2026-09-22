@@ -32,6 +32,12 @@ Two stages, split by the privilege each actually needs.
                      admits nothing. A later admission/activation refusal
                      does not undo the crossing.
 
+  publish --executor NAME [--plan]
+                     root, from the clean primary checkout only. Runs the
+                     selected signed reconciler as its service account;
+                     the checkout supplies one untrusted candidate, never
+                     runtime imports. Plans first, then admits and activates.
+
 Nothing in the handoff is authority. The staged tree is measured again in
 `apply`, the product's own reviewed-root gate still runs inside the build, and
 the distribution is signed by the product's key. The handoff only lets this
@@ -1426,7 +1432,8 @@ def _stop_release_unit(unit) -> bool:
 
 
 def _release_edits_child(distribution, descriptor, catalog, *, plan_only: bool,
-                         preview: bool = False):
+                         preview: bool = False, executor_name: str | None = None,
+                         source_root: Path | None = None):
     """Use only signed launch data; the reconciler runs as the service account
     in one delegated transient unit, never as a child of this root process."""
     from executor_birth_account_identity import resolve_posix_account_snapshot_v1
@@ -1459,6 +1466,12 @@ def _release_edits_child(distribution, descriptor, catalog, *, plan_only: bool,
     command = [entry.target_executable, "-E", "-s", "-B", "-m",
                entry.python_module, "deploy", "--changed-only",
                "--plan" if plan_only else "--sign"]
+    if source_root is not None:
+        require(bool(executor_name) and not preview,
+                "authoring source requires one named executor, without preview")
+        command += ["--executor", executor_name, "--source-root", str(source_root)]
+    else:
+        require(executor_name is None, "named publication requires an authoring source")
     if preview:
         require(plan_only, "preview cannot admit")
         command += ["--preview"]
@@ -1695,6 +1708,95 @@ def _run_release_edits(distribution, descriptor, catalog, *, plan_only: bool) ->
     return 78
 
 
+def _authoring_revision(root: Path) -> str:
+    """Refuse linked worktrees and uncommitted inputs before a live admission."""
+    require(root.is_absolute() and root.resolve(strict=True) == root
+            and (root / ".git").is_dir() and not (root / ".git").is_symlink(),
+            "publication requires the primary checkout, not a linked worktree")
+
+    def git(*args):
+        # Root reads a developer-owned repository; trust only this exact path.
+        result = subprocess.run(
+            ["/usr/bin/git", "-c", f"safe.directory={root}", "-C", str(root), *args],
+            stdin=subprocess.DEVNULL, capture_output=True, check=True,
+            env=CONTROLLER_ENVIRONMENT, close_fds=True, timeout=30)
+        return result.stdout.decode("utf-8").strip()
+
+    require(git("rev-parse", "--show-toplevel") == str(root),
+            "publication source is not the repository root")
+    require(not git("status", "--porcelain=v1", "--untracked-files=all"),
+            "publication requires a clean checkout")
+    return git("rev-parse", "--verify", "HEAD")
+
+
+def publish_executor(name: str, *, plan_only: bool = False) -> int:
+    """Bridge authoring data to the authenticated installed deploy command.
+
+    The administrative proof supplies launch metadata, not a substitute Birth
+    authority. The service child independently verifies its selected context,
+    snapshots the candidate, and uses the existing admission/activation path.
+    No application configuration is imported into this root controller.
+    """
+    from types import SimpleNamespace
+
+    require(os.geteuid() == 0, "installed publication wrapper requires root")
+    require(bool(name) and name not in {".", ".."}
+            and "/" not in name and "\\" not in name,
+            "executor name is not canonical")
+    revision = _authoring_revision(WORKTREE)
+    helper = load_live_helper()
+    materials, _entry = helper._attest_service_startup_v1(RELEASE_EDITS_ENTRY)
+    facts = materials.distribution.facts
+    # Only this authenticated runtime supplies the pure account resolver used
+    # by the shared launcher. Never add the authoring root to the import path.
+    sys.dont_write_bytecode = True
+    sys.path.insert(0, str(Path(facts.installation_root) / "runtime"))
+    distribution = SimpleNamespace(installation_root=facts.installation_root)
+    catalog = SimpleNamespace(catalog=materials.catalog)
+    summary = {"source_commit": revision, "source_root": str(WORKTREE),
+               "executor": name, "release_sequence": facts.release_sequence,
+               "head_id": materials.transaction.head_id,
+               "admission_attempted": False, "cutover_completed": False}
+    for planning in ((True,) if plan_only else (True, False)):
+        require(_authoring_revision(WORKTREE) == revision,
+                "authoring checkout changed before publication")
+        selected, _entry = helper._attest_service_startup_v1(RELEASE_EDITS_ENTRY)
+        require(selected.transaction.head_id == materials.transaction.head_id,
+                "selected release changed before publication")
+        summary["admission_attempted"] = not planning
+        result = _release_edits_child(
+            distribution, materials.descriptor, catalog, plan_only=planning,
+            executor_name=name, source_root=WORKTREE)
+        payload = json.loads(result.stdout)
+        require(isinstance(payload, dict), "installed deploy result unavailable")
+        summary.update(returncode=result.returncode, result=payload)
+        say("EXECUTOR_PUBLICATION_PLAN" if planning else "EXECUTOR_PUBLICATION",
+            json.dumps(summary, sort_keys=True))
+        if result.returncode != 0 or payload.get("ok") is not True:
+            return 78
+        rows = payload.get("plan" if planning else "signed")
+        require(isinstance(rows, list) and len(rows) == 1 and isinstance(rows[0], dict)
+                and rows[0].get("name") == name,
+                "installed deploy returned a different publication scope")
+        if planning:
+            require(rows[0].get("outcome") in {"changed", "unchanged"},
+                    "candidate was not evaluated")
+        else:
+            row = rows[0]
+            require(row.get("outcome") in {"unchanged", "store_verified"},
+                    "candidate was not admitted or already current")
+            if row["outcome"] == "store_verified":
+                require(all(isinstance(row.get(key), str) and row[key] for key in (
+                    "request_id", "candidate_id", "current_generation_id")),
+                    "publication receipt is incomplete")
+                require(payload.get("restarted") is True
+                        and payload.get("readiness", {}).get("ok") is True
+                        and any(item.get("name") == name and item.get("current_generation_id")
+                                == row["current_generation_id"] for item in payload.get("activated", [])),
+                        "published generation has not been activated")
+    return 0
+
+
 # --------------------------------------------------------------------------
 # stage 3: the crossing, in its own interpreter over the installed release
 # --------------------------------------------------------------------------
@@ -1886,6 +1988,14 @@ def main() -> int:
         return cross(*arguments[1:])
     if arguments == ["prepare"]:
         return prepare()
+    if arguments[:1] == ["publish"]:
+        import argparse
+
+        parser = argparse.ArgumentParser(prog="rm0008_release_cycle.py publish")
+        parser.add_argument("--executor", required=True)
+        parser.add_argument("--plan", action="store_true")
+        options = parser.parse_args(arguments[1:])
+        return publish_executor(options.executor, plan_only=options.plan)
     if arguments[:1] == ["prune"]:
         import argparse
 
@@ -1897,7 +2007,7 @@ def main() -> int:
         return 0
     if arguments[:1] == ["apply"] and set(arguments[1:]) <= {"--cross"}:
         return apply_cycle("--cross" in arguments)
-    raise RuntimeError("usage: rm0008_release_cycle.py prepare | apply [--cross] | prune [--keep N] [--apply]")
+    raise RuntimeError("usage: rm0008_release_cycle.py prepare | apply [--cross] | publish --executor NAME [--plan] | prune [--keep N] [--apply]")
 
 
 if __name__ == "__main__":

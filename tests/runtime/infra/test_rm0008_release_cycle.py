@@ -171,6 +171,123 @@ def run_edits(release, *, plan=False):
                                     release.catalog, plan_only=plan)
 
 
+@pytest.mark.parametrize("plan", (False, True))
+def test_named_child_keeps_installed_runtime_and_passes_authoring_as_data(monkeypatch, release, tmp_path, plan):
+    calls = []
+    monkeypatch.setattr(cycle.subprocess, "run", lambda *a, **kw: calls.append((a, kw)))
+    source = tmp_path / "authoring"
+    cycle._release_edits_child(
+        release.distribution, release.descriptor, release.catalog,
+        plan_only=plan, executor_name="alpha", source_root=source)
+    argv, kwargs = calls[0][0][0], calls[0][1]
+    assert argv[-4:] == ["--executor", "alpha", "--source-root", str(source)]
+    assert release.entry.target_executable in argv
+    assert f"WorkingDirectory={release.entry.target_working_directory}" in argv
+    assert f"METNOS_INSTALL_ROOT={release.distribution.installation_root}" in argv
+    assert "--plan" in argv if plan else "--sign" in argv
+    assert not any("PYTHONPATH" in item for item in argv)
+    assert kwargs["stdin"] is subprocess.DEVNULL
+
+
+@pytest.mark.parametrize("options", (
+    {"source_root": Path("/authoring")},
+    {"executor_name": "alpha"},
+    {"executor_name": "alpha", "source_root": Path("/authoring"), "preview": True},
+))
+def test_named_child_refuses_incomplete_or_preview_scope(monkeypatch, release, options):
+    monkeypatch.setattr(cycle.subprocess, "run", lambda *a, **kw: pytest.fail("launched"))
+    with pytest.raises(RuntimeError):
+        cycle._release_edits_child(
+            release.distribution, release.descriptor, release.catalog, plan_only=True, **options)
+
+
+@pytest.fixture
+def primary_checkout(tmp_path, monkeypatch):
+    root = tmp_path / "primary"
+    root.mkdir()
+    environment = {**os.environ, "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": "/dev/null"}
+
+    def git(*args):
+        return subprocess.check_output(
+            ["git", "-C", str(root), *args], env=environment, stderr=subprocess.DEVNULL)
+
+    git("init")
+    git("-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+        "-c", "commit.gpgsign=false", "commit", "--allow-empty", "-m", "Initial test checkout")
+    monkeypatch.setattr(cycle, "WORKTREE", root)
+    return root, git
+
+
+def test_authoring_revision_requires_clean_primary_checkout(primary_checkout, tmp_path):
+    root, git = primary_checkout
+    assert cycle._authoring_revision(root) == git("rev-parse", "HEAD").decode().strip()
+    linked = tmp_path / "linked"
+    git("worktree", "add", "--detach", str(linked))
+    with pytest.raises(RuntimeError, match="primary checkout"):
+        cycle._authoring_revision(linked)
+    (root / "pending.py").write_text("pass\n")
+    with pytest.raises(RuntimeError, match="clean checkout"):
+        cycle._authoring_revision(root)
+
+
+@pytest.mark.parametrize("plan", (False, True))
+def test_publish_bridge_plans_and_launches_only_attested_release(monkeypatch, release, primary_checkout, plan):
+    root, git = primary_checkout
+    release.live.descriptor = release.descriptor
+    release.live.catalog = release.catalog.catalog
+    monkeypatch.setattr(cycle.sys, "path", list(sys.path))
+    calls = []
+
+    def child(distribution, descriptor, catalog, **options):
+        assert distribution.installation_root == release.distribution.installation_root
+        assert descriptor is release.descriptor and catalog.catalog is release.catalog.catalog
+        assert options["source_root"] == root and options["executor_name"] == "alpha"
+        assert str(root / "runtime") not in sys.path
+        assert sys.path[0] == release.distribution.installation_root + "/runtime"
+        calls.append(options["plan_only"])
+        payload = ({"ok": True, "plan": [{"name": "alpha", "outcome": "changed"}]}
+                   if options["plan_only"] else success())
+        return NS(returncode=0, stdout=json.dumps(payload).encode(), stderr=b"")
+
+    monkeypatch.setattr(cycle, "_release_edits_child", child)
+    assert cycle.publish_executor("alpha", plan_only=plan) == 0
+    assert calls == ([True] if plan else [True, False])
+
+
+@pytest.mark.parametrize("cause", ("refused_plan", "wrong_scope", "checkout_changed", "release_changed"))
+def test_publish_bridge_stops_before_admission_on_changed_inputs(monkeypatch, release, primary_checkout, cause):
+    root, git = primary_checkout
+    release.live.descriptor = release.descriptor
+    release.live.catalog = release.catalog.catalog
+    monkeypatch.setattr(cycle.sys, "path", list(sys.path))
+    calls = []
+
+    def child(*args, **options):
+        assert options["plan_only"] is True
+        calls.append(True)
+        if cause == "checkout_changed":
+            (root / "uncommitted").write_text("pending")
+        payload = {"ok": cause != "refused_plan", "plan": [
+            {"name": "other" if cause == "wrong_scope" else "alpha", "outcome": "changed"}]}
+        return NS(returncode=0, stdout=json.dumps(payload).encode(), stderr=b"")
+
+    # Resolve the helper again on each call without replacing the proof in place.
+    original = cycle.load_live_helper()
+    monkeypatch.setattr(cycle, "load_live_helper", lambda: original)
+    if cause == "release_changed":
+        changed = NS(**vars(release.live))
+        changed.transaction = NS(head_id="next-head")
+        proofs = iter((release.live, release.live, changed))
+        original._attest_service_startup_v1 = lambda entry: (next(proofs), release.entry)
+    monkeypatch.setattr(cycle, "_release_edits_child", child)
+    if cause == "refused_plan":
+        assert cycle.publish_executor("alpha") == 78
+    else:
+        with pytest.raises(RuntimeError):
+            cycle.publish_executor("alpha")
+    assert calls == [True]
+
+
 @pytest.fixture
 def retention_tree(monkeypatch, tmp_path):
     root = tmp_path / "ownership"

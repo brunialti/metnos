@@ -1086,7 +1086,7 @@ def test_restart_refuses_when_target_is_not_installed(monkeypatch, tmp_path):
     lock_type = sr.ReconcileLock
     monkeypatch.setattr(sr, "ReconcileLock", lambda: lock_type(tmp_path / "lock"))
     monkeypatch.setattr(rec, "require_quiescent", lambda: {"ok": True})
-    monkeypatch.setattr(sr, "verify_named_executors", lambda names, sign_first=False, changed_only=False: [])
+    monkeypatch.setattr(sr, "verify_named_executors", lambda *a, **k: pytest.fail("publication before topology check"))
     with pytest.raises(sr.StackFailure) as caught:
         rec.restart()
     assert caught.value.code == "target_not_installed"
@@ -1098,7 +1098,7 @@ def test_restart_never_starts_user_target_beside_legacy_http(monkeypatch, tmp_pa
     lock_type = sr.ReconcileLock
     monkeypatch.setattr(sr, "ReconcileLock", lambda: lock_type(tmp_path / "lock"))
     monkeypatch.setattr(rec, "require_quiescent", lambda: {"ok": True})
-    monkeypatch.setattr(sr, "verify_named_executors", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(sr, "verify_named_executors", lambda *a, **k: pytest.fail("publication before topology check"))
     with pytest.raises(sr.StackFailure) as caught:
         rec.restart()
     assert caught.value.code == "legacy_baseline_active"
@@ -1200,7 +1200,7 @@ def test_named_executor_store_verification_uses_live_catalog(
     }]
 
 
-def _store_only_deploy(monkeypatch, tmp_path, *, authored, edited):
+def _store_only_deploy(monkeypatch, tmp_path, *, authored, edited, external=False):
     """Deploy one executor under STORE_ONLY and return what reached Birth.
 
     ``authored`` are the bytes of the authoring tree behind the store
@@ -1241,7 +1241,8 @@ def _store_only_deploy(monkeypatch, tmp_path, *, authored, edited):
         working = repo / "executors" / "read_files"
         _signed_authoring_executor(working, "read_files")
         (working / "main.py").write_bytes(edited)
-    monkeypatch.setattr(sr, "_repo_root", lambda: repo)
+    installed = tmp_path / "installed" if external else repo
+    monkeypatch.setattr(sr, "_repo_root", lambda: installed)
     monkeypatch.setattr(
         manifest_inventory, "resolve_manifest_layout",
         lambda **_kwargs: manifest_inventory.ManifestLayout.STORE_ONLY,
@@ -1277,8 +1278,72 @@ def _store_only_deploy(monkeypatch, tmp_path, *, authored, edited):
             executors={"read_files": SimpleNamespace(digest="sha256:live")},
         ),
     )
-    sr.verify_named_executors(["read_files"], sign_first=True)
+    sr.verify_named_executors(
+        ["read_files"], sign_first=True,
+        **({"source_root": repo} if external else {}),
+    )
+    assert sr._repo_root() == installed
     return reached
+
+
+def test_explicit_source_supplies_data_without_selecting_another_runtime(monkeypatch, tmp_path):
+    reached = _store_only_deploy(
+        monkeypatch, tmp_path, authored=b"print('old')\n",
+        edited=b"print('new')\n", external=True,
+    )
+    assert [item["code"] for item in reached] == [b"print('new')\n"]
+
+
+def test_missing_explicit_source_never_falls_back_to_installed_bytes(monkeypatch, tmp_path):
+    with pytest.raises(sr.StackFailure) as caught:
+        _store_only_deploy(
+            monkeypatch, tmp_path, authored=b"print('old')\n",
+            edited=None, external=True,
+        )
+    assert caught.value.code == "candidate_unavailable"
+
+
+@pytest.mark.parametrize("names,options", [
+    ([], {"sign_first": True}),
+    (["read_files"], {}),
+    (["read_files"], {"plan_only": True, "preview_evidence": b"not-authority"}),
+])
+def test_source_root_requires_explicit_admission_scope(tmp_path, names, options):
+    with pytest.raises(sr.StackFailure) as caught:
+        sr.verify_named_executors(names, source_root=tmp_path, **options)
+    assert caught.value.code == "source_root_invalid"
+
+
+@pytest.mark.parametrize("location", ["root", "executors", "candidate"])
+def test_explicit_authoring_source_rejects_linked_directories(tmp_path, location):
+    source = tmp_path / "source"
+    candidate = source / "executors" / "read_files"
+    candidate.mkdir(parents=True)
+    (candidate / "manifest.toml").write_text("untrusted input")
+    linked = {"root": source, "executors": candidate.parent, "candidate": candidate}[location]
+    target = tmp_path / "moved"
+    linked.rename(target)
+    linked.symlink_to(target, target_is_directory=True)
+    with pytest.raises(sr.StackFailure) as caught:
+        sr.verify_named_executors(["read_files"], sign_first=True, source_root=source)
+    assert caught.value.code == ("source_root_invalid" if location == "root" else "candidate_unavailable")
+
+
+@pytest.mark.parametrize("source", [Path("relative"), Path("/missing/source"), Path("/tmp/../tmp")])
+def test_explicit_authoring_source_requires_a_canonical_existing_root(source):
+    with pytest.raises(sr.StackFailure) as caught:
+        sr.verify_named_executors(["read_files"], sign_first=True, source_root=source)
+    assert caught.value.code == "source_root_invalid"
+
+
+@pytest.mark.parametrize("argv", [
+    ["check"], ["deploy", "--sign"], ["deploy", "--executor", "read_files"],
+    ["deploy", "--executor", "read_files", "--changed-only", "--plan", "--preview"],
+])
+def test_invalid_source_cli_is_refused_before_reconciler_construction(monkeypatch, tmp_path, capsys, argv):
+    monkeypatch.setattr(sr, "StackReconciler", lambda: pytest.fail("construction before validation"))
+    assert sr.main([*argv, "--source-root", str(tmp_path)]) == 1
+    assert json.loads(capsys.readouterr().out)["error_code"] == "option_invalid"
 
 
 def test_store_only_deploy_without_an_edit_readmits_what_is_authored(
@@ -1846,6 +1911,32 @@ def test_release_admission_publishes_an_edit_and_rereads_its_generation(
         "current_generation_id": "g-alpha-1+",
     }]
     assert reached == ["alpha"]
+
+
+def test_external_named_admission_preserves_unselected_contracts(monkeypatch, tmp_path):
+    old = {"files": {"main.py": b"old\n"}}
+    edited = {"files": {"main.py": b"new\n"}}
+    _run, reached, _control, executors = _release_store(
+        monkeypatch, tmp_path,
+        working={"alpha": edited, "beta": edited}, served={"alpha": old, "beta": old},
+        builtin_working={"gamma": edited}, builtin_served={"gamma": old})
+    installed = tmp_path / "installed"
+    monkeypatch.setattr(sr, "_repo_root", lambda: installed)
+    rows = sr.verify_named_executors(
+        ["alpha"], source_root=executors.parent, changed_only=True, plan_only=True)
+    assert [(row["name"], row["outcome"]) for row in rows] == [("alpha", "changed")]
+    assert reached == []
+    rows = sr.verify_named_executors(
+        ["alpha"], source_root=executors.parent, changed_only=True, sign_first=True)
+    assert rows[0]["outcome"] == "store_verified"
+    assert rows[0]["previous_generation_id"] == "g-alpha-1"
+    assert rows[0]["current_generation_id"] == "g-alpha-1+"
+    assert reached == ["alpha"]
+    # A repeat is a no-op; it neither admits again nor sweeps the other roots.
+    rows = sr.verify_named_executors(
+        ["alpha"], source_root=executors.parent, changed_only=True, sign_first=True)
+    assert rows[0]["outcome"] == "unchanged" and reached == ["alpha"]
+    assert sr._repo_root() == installed
 
 
 @pytest.mark.parametrize("change", ["manifest", "language", "split"])
