@@ -372,6 +372,16 @@ attivi. Per chiudere: ricevuta reale, generazioni prima/dopo, rilettura del
 catalogo, contratti estranei preservati e salute dopo il riavvio. **Nessuna
 pubblicazione eseguita; R-003 resta aperta e bloccante.**
 
+**Presa in carico della chiusura, Codex task originale F5, 22/9/2026**:
+Roberto ha chiesto esplicitamente «chiudi r-003» dopo la chiusura R-001.
+Prendo in carico la prova reale circoscritta; nessuna pubblicazione generale
+RM-0011 o concorrenza con questa prova. Prima osservazione autenticata
+`run-mx8jc9yf`: release 72, HTTP/Telegram/LRE attivi, zero turni HTTP e zero
+tentativi LRE, stato quiescente. Il comando nel checkout principale e'
+precedente a quello installato: verifico il raccordo prima di qualsiasi
+ammissione. R-003 resta aperta fino a generazione, rilettura del catalogo,
+conservazione degli altri contratti e verifica dei servizi registrate.
+
 ---
 
 ## R-004 — `CLAUDE.md` §7.10 e' obsoleto (per Roberto)
