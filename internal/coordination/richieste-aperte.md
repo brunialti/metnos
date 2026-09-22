@@ -64,6 +64,29 @@ questa presa in carico e il suo esito sul ramo dedicato
 `codex/r001-r006-coordination-20260922`, integrando soltanto queste righe.
 R-001 resta aperta finche' il checkout principale e' davvero pulito.
 
+
+**Riscontro Codex (task LRE, handover 17/9), 22/9/2026**: non attribuisco
+a questa task le modifiche principali nel loro insieme. Il confronto delle
+16 cancellazioni con i rispettivi `*.retired-v1` conserva tutti e 16 i
+contenuti di HEAD: non e' un'autorizzazione a riattivare quei file o a
+committarne automaticamente il ritiro. Ho conservato il mio solo puntatore
+al handover, con avvertenza sui dati storici, sul ramo separato
+`codex/lre-coordination-20260922`, commit `4519c0f4`. Prove e confini in
+`internal/reports/lre-coordination-20260922.md` dello stesso commit.
+Nessuna pulizia di lavoro altrui, nessun cambio di permessi; R-001 aperta.
+
+**Presa in carico gruppo RM-0009, Codex (questa task RM-0009),
+22/9/2026**: accetto l'assegnazione di Roberto per i due strumenti
+`rm0009_plan_check.py` / `rm0009_test_lab.py`, i due test associati,
+`internal/reports/rm0009-baseline/` e la sola voce `UI-LOG-001` in TODO.
+Conservo contenuti e prove su `codex/r001-rm0009-cleanup-20260922`, in
+commit distinti, poi integro soltanto questi contenuti nel checkout
+principale senza cambiarne il ramo. Sistemo anche le mie tre note LRE
+del 22/9 e il mio puntatore al handover del 17/9, gia' conservati in
+`4519c0f4` / `7ed1b405`. Non prendo in carico i file RM-0008, le note
+degli altri agenti o `install/data`. Nessuna pubblicazione o modifica
+ai servizi; l'esito e i commit verranno aggiunti a questa voce.
+
 **Presa in carico RM-0008, Codex (task originale F5), 22/9/2026**:
 Roberto ha assegnato esplicitamente il gruppo RM-0008. Lo sistemo su
 `codex/r001-rm0008-cleanup-20260922`, con commit distinti per ritiro,
@@ -269,6 +292,25 @@ l'autorizzazione richiesta e registrare l'esito reale con generazione e
 rilettura del catalogo. Non occorre reinterpretare un test simulato come
 ricevuta. Stato: **aperta**, con risposta tecnica parziale.
 
+
+**Presa in carico preparatoria Codex (task LRE, handover 17/9), 22/9/2026**:
+seguo la preparazione della prova reale di R-003, senza anticiparla mentre
+R-001 e' aperta e senza presumere una finestra operativa dalle autorizzazioni
+del 17/9. Commit di riscontro `4519c0f4`, ramo
+`codex/lre-coordination-20260922`, rapporto
+`internal/reports/lre-coordination-20260922.md`.
+
+Prova circoscritta sui sorgenti principali `52a9c7ae`: in `restart()`
+l'ammissione precede i controlli sul target e sull'HTTP di sistema; il
+riavvio seleziona ancora lo scope utente. Un rifiuto successivo non dimostra
+quindi che nessuna generazione sia stata pubblicata. Il ramo LRE ha un
+raccordo diverso: va integrata e provata la versione scelta, non assunto
+che il checkout principale la contenga. Prima della prova: albero pulito,
+topologia corretta, candidato e finestra concordati, nuova misura dei lavori
+attivi. Per chiudere: ricevuta reale, generazioni prima/dopo, rilettura del
+catalogo, contratti estranei preservati e salute dopo il riavvio. **Nessuna
+pubblicazione eseguita; R-003 resta aperta e bloccante.**
+
 ---
 
 ## R-004 — `CLAUDE.md` §7.10 e' obsoleto (per Roberto)
@@ -318,6 +360,14 @@ F5, inclusa questa consegna e l'integrazione della correzione R-006.
 Riferimento di coordinamento: assegnazione finale in R-001. Gli altri
 agenti mantengono i sottocompiti dichiarati e riportano qui gli esiti;
 nessuna attivazione F5 e' dichiarata da questa assegnazione.
+
+
+**Riscontro Codex (task LRE, handover 17/9), 22/9/2026**: consegna letta;
+`3cddd734` e `1942462b` non sono antenati del checkout principale
+`52a9c7ae` (due confronti Git, entrambi esito 1). Questo non certifica
+quale codice sia installato. Non duplico il lavoro F5 ne' installo dal
+worktree; integrazione e verifica della release restano aperte e subordinate
+a R-001/R-003 e alla finestra autorizzata. Riscontro nel commit `4519c0f4`.
 
 ---
 
