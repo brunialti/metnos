@@ -154,6 +154,10 @@ class StepRun:
     # RM-0008 F5: typed exact dispatch binding.  ``None`` means the catalog
     # identity was incomplete and therefore cannot authorize feedback.
     execution_receipt: object | None = None
+    # Runtime-owned, signed classification for the final invocation args.
+    execution_effect: str | None = None
+    # Private continuation derived from a signed frozen-plan declaration.
+    frozen_plan_resume: dict | None = None
 
 
 @dataclass

@@ -125,7 +125,7 @@ SSE_KEEPALIVE_INTERVAL_S = 8.0
 # Capability corta per aprire un dialogo da un browser/device differente da
 # quello che ha originato il turno. Non sostituisce l'owner binding: concede
 # solo l'accesso a quel dialog_id e scade rapidamente.
-_DIALOG_CAP_TTL_S = 15 * 60
+from dialog_capability import TTL_S as _DIALOG_CAP_TTL_S
 _DIALOG_FORM_MARKER_RE = re.compile(
     r"INLINE_FORM:(/agent/dialog/([A-Za-z0-9][A-Za-z0-9_.-]{0,127})/form)"
     r"(?!\?cap=)"
@@ -702,6 +702,10 @@ def _apply_dialog_pending(sender_id: str, query: str,
     if not current_var:
         return None
     current_step = steps[step_index]
+    if dlg.get("form_only"):
+        return _with_dialog_form_marker(
+            _msg("MSG_FROZEN_PLAN_FORM_ONLY"), dlg, dialog_id,
+            channel=channel)
     schema = current_step.get("schema") or {}
     schema_kind = str(schema.get("kind") or "text")
     if admit_only_valid_closed and schema_kind in {
@@ -745,7 +749,7 @@ def _apply_dialog_pending(sender_id: str, query: str,
     # Avanza dialog con valore raccolto
     consume_res = consume_pending_step(
         sender_id_used, dialog_id, current_var, parsed_value,
-        owner_user_id=owner_user_id)
+        owner_user_id=owner_user_id, source="http_chat")
     if not consume_res.get("ok"):
         # A value that does not satisfy a declared dialog schema is not a new
         # operational query.  Keep the pending interaction and reprompt just
@@ -975,13 +979,6 @@ def _consume_http_get_inputs_response(
     sender_for_state = proposal.get("sender_for_state") or sender_id
     text_norm = (query or "").strip().lower()
 
-    if text_norm in ("annulla", "cancel", "abort", "stop"):
-        _dp.cancel_pending(
-            sender_for_state, dialog_id,
-            owner_user_id=owner_user_id)
-        _cap_pending_clear(sender_id)
-        return query, proposal, _msg("MSG_DIALOG_CANCELLED")
-
     state = _dp.load_pending(
         sender_for_state, dialog_id, owner_user_id=owner_user_id)
     if state is None:
@@ -990,6 +987,16 @@ def _consume_http_get_inputs_response(
         # ritornavamo un messaggio di errore che bloccava il PLANNER.
         _cap_pending_clear(sender_id)
         return query, None, None
+    if state.get("form_only"):
+        return (query, proposal, _with_dialog_form_marker(
+            _msg("MSG_FROZEN_PLAN_FORM_ONLY"), state, dialog_id,
+            channel="http"))
+    if text_norm in ("annulla", "cancel", "abort", "stop"):
+        _dp.cancel_pending(
+            sender_for_state, dialog_id,
+            owner_user_id=owner_user_id, source="http_chat")
+        _cap_pending_clear(sender_id)
+        return query, proposal, _msg("MSG_DIALOG_CANCELLED")
     dialog = state.get("dialog") or []
     idx = int(state.get("step_index") or 0)
     if idx >= len(dialog) or state.get("completed") or state.get("cancelled"):
@@ -1036,7 +1043,7 @@ def _consume_http_get_inputs_response(
 
     cres = _dp.consume_pending_step(
         sender_for_state, dialog_id, var, value,
-        owner_user_id=owner_user_id)
+        owner_user_id=owner_user_id, source="http_chat")
     if not cres.get("ok"):
         _cap_pending_clear(sender_id)
         return (query, proposal, _msg(
@@ -1205,32 +1212,15 @@ def _gallery_url_for(log_obj) -> tuple[str | None, int]:
 def _dialog_cap_sign(dialog_id: str, admin_key: str, *,
                      now: int | None = None) -> str:
     """Firma una capability HTTP limitata a un singolo dialogo."""
-    if not admin_key:
-        return ""
-    exp = int(now if now is not None else time.time()) + _DIALOG_CAP_TTL_S
-    payload = f"dialog-v1:{dialog_id}:{exp}"
-    sig = hmac.new(admin_key.encode("utf-8"), payload.encode("utf-8"),
-                   hashlib.sha256).hexdigest()
-    return f"{exp}.{sig}"
+    from dialog_capability import sign
+    return sign(dialog_id, admin_key, now=now)
 
 
 def _dialog_cap_verify(dialog_id: str, token: str, admin_key: str, *,
                        now: int | None = None) -> bool:
     """Verifica binding, firma e scadenza senza sollevare su input ostile."""
-    if not token or not admin_key or len(token) > 160:
-        return False
-    try:
-        exp_s, sig = token.split(".", 1)
-        exp = int(exp_s)
-    except (TypeError, ValueError):
-        return False
-    current = int(now if now is not None else time.time())
-    if exp < current or exp > current + _DIALOG_CAP_TTL_S + 60:
-        return False
-    payload = f"dialog-v1:{dialog_id}:{exp}"
-    expected = hmac.new(admin_key.encode("utf-8"), payload.encode("utf-8"),
-                        hashlib.sha256).hexdigest()
-    return hmac.compare_digest(sig, expected)
+    from dialog_capability import verify
+    return verify(dialog_id, token, admin_key, now=now)
 
 
 def _decorate_dialog_markers(message: str | None, admin_key: str) -> str:
@@ -1980,12 +1970,17 @@ def _dialog_lifecycle(state: dict | None) -> str:
     return "active"
 
 
-def _dialog_terminal_response(dialog_id: str, state: str) -> web.Response:
+def _dialog_terminal_response(dialog_id: str, state: str,
+                              state_data: dict | None = None) -> web.Response:
     """Risposta HTML leggibile e strutturata per uno stato non azionabile."""
     if state == "cancelled":
         message = _msg("MSG_DIALOG_CANCELLED")
     elif state == "completed":
-        message = _msg("MSG_ORCH_DIALOG_DONE")
+        receipt = ((state_data or {}).get("callback_receipt")
+                   if isinstance(state_data, dict) else None)
+        message = (str(receipt.get("text") or "")
+                   if isinstance(receipt, dict) else "")
+        message = message or _msg("MSG_ORCH_DIALOG_DONE")
     else:
         message = _msg("MSG_DIALOG_EXPIRED")
     import html as _html
@@ -2004,12 +1999,14 @@ def _dialog_terminal_response(dialog_id: str, state: str) -> web.Response:
         f"<p>{_html.escape(message)}</p>"
         f"<p>{dialog_label} <code>{_html.escape(dialog_id)}</code></p>"
         "</div>"
-        f"<script>parent.postMessage({terminal_event},'*');</script></html>"
+        f"<script>parent.postMessage({terminal_event},location.origin);</script></html>"
     )
     return web.Response(
-        text=body, status=410, content_type="text/html",
+        text=body, status=(200 if state == "completed" else 410),
+        content_type="text/html",
         headers={"Cache-Control": "no-store",
                  "Referrer-Policy": "no-referrer",
+                 "Content-Security-Policy": "frame-ancestors 'self'",
                  "X-Metnos-Dialog-State": state},
     )
 
@@ -2059,7 +2056,16 @@ async def dialog_form(request: web.Request) -> web.Response:
         return access_error
     lifecycle = _dialog_lifecycle(state)
     if lifecycle != "active":
-        return _dialog_terminal_response(dialog_id, lifecycle)
+        if lifecycle == "completed":
+            return _dialog_terminal_response(dialog_id, lifecycle, state)
+        return web.json_response(
+            {"ok": False, "error": "dialog_not_active",
+             "message": _msg("MSG_DIALOG_EXPIRED"),
+             "dialog_id": dialog_id, "state": lifecycle},
+            status=410,
+            headers={"Cache-Control": "no-store",
+                     "X-Metnos-Dialog-State": lifecycle},
+        )
     dialog_steps = [_resolve_i18n_step(s) for s in (state.get("dialog") or [])]
     html = render_template(
         "dialog_form.html",
@@ -2077,7 +2083,8 @@ async def dialog_form(request: web.Request) -> web.Response:
     return web.Response(
         text=html, content_type="text/html",
         headers={"Cache-Control": "no-store",
-                 "Referrer-Policy": "no-referrer"},
+                 "Referrer-Policy": "no-referrer",
+                 "Content-Security-Policy": "frame-ancestors 'self'"},
     )
 
 
@@ -2098,6 +2105,8 @@ async def dialog_submit(request: web.Request) -> web.Response:
         return access_error
     lifecycle = _dialog_lifecycle(state)
     if lifecycle != "active":
+        if lifecycle == "completed":
+            return _dialog_terminal_response(dialog_id, lifecycle, state)
         return web.json_response(
             {"ok": False, "error": "dialog_not_active",
              "message": _msg("MSG_DIALOG_EXPIRED"),
@@ -2162,25 +2171,35 @@ async def dialog_submit(request: web.Request) -> web.Response:
                  f"{back_label}</a></p>",
             status=400, content_type="text/html",
             headers={"Cache-Control": "no-store",
-                     "Referrer-Policy": "no-referrer"},
+                     "Referrer-Policy": "no-referrer",
+                     "Content-Security-Policy": "frame-ancestors 'self'"},
         )
     # Tutti i campi OK: marca completato applicando consume_pending_step
     # in sequenza (single source of truth: stesso storage dei dialoghi
     # incrementali, niente bypass).
     import dialog_pending
     sender_id = state.get("__sender_id") or "host"
+    _cap_token = request.query.get("cap", "")
+    _submission_source = (
+        "http_form_capability" if _dialog_cap_verify(
+            dialog_id, _cap_token,
+            app_get(request.app, APP_ADMIN_KEY, ""))
+        else "http_form_owner"
+    )
     for step in dialog:
         var = step.get("var")
         if var in values and values[var] is not None:
             consumed = dialog_pending.consume_pending_step(
                 sender_id, dialog_id, var, values[var],
                 owner_user_id=str(state.get("owner_user_id") or ""),
+                source=_submission_source,
             )
         else:
             # Optional skipped: avanza con None per coerenza idx.
             consumed = dialog_pending.consume_pending_step(
                 sender_id, dialog_id, var, None,
                 owner_user_id=str(state.get("owner_user_id") or ""),
+                source=_submission_source,
             )
         if not consumed.get("ok"):
             return web.json_response(
@@ -2213,8 +2232,10 @@ async def dialog_submit(request: web.Request) -> web.Response:
             xfp = external_request_scheme(request)
             origin_override = f"{xfp}://{request.host}"
             from orchestration import process_completion_callback
-            _cr = process_completion_callback(
-                sender_id, dialog_id, actor=actor, channel="http",
+            _cr = await asyncio.to_thread(
+                process_completion_callback,
+                sender_id, dialog_id, actor=actor,
+                channel=str(final_state.get("channel") or "http"),
                 owner_user_id=str(final_state.get("owner_user_id") or ""),
                 host_override=origin_override,
             )
@@ -2328,7 +2349,8 @@ async def dialog_submit(request: web.Request) -> web.Response:
     return web.Response(
         text=body_html, content_type="text/html",
         headers={"Cache-Control": "no-store",
-                 "Referrer-Policy": "no-referrer"},
+                 "Referrer-Policy": "no-referrer",
+                 "Content-Security-Policy": "frame-ancestors 'self'"},
     )
 
 
@@ -2488,7 +2510,11 @@ async def dialog_cancel(request: web.Request) -> web.Response:
     import dialog_pending
     dialog_pending.cancel_pending(
         sender_id, dialog_id,
-        owner_user_id=str(state.get("owner_user_id") or ""))
+        owner_user_id=str(state.get("owner_user_id") or ""),
+        source=("http_form_capability" if _dialog_cap_verify(
+            dialog_id, request.query.get("cap", ""),
+            app_get(request.app, APP_ADMIN_KEY, ""))
+            else "http_form_owner"))
     cancelled = _escape_html(_msg("MSG_DIALOG_CANCELLED"))
     return_label = _escape_html(_msg("MSG_CHAT_DIALOG_RETURN"))
     return web.Response(
@@ -2497,6 +2523,7 @@ async def dialog_cancel(request: web.Request) -> web.Response:
         content_type="text/html",
         headers={"Cache-Control": "no-store",
                  "Referrer-Policy": "no-referrer",
+                 "Content-Security-Policy": "frame-ancestors 'self'",
                  "X-Metnos-Dialog-State": "cancelled"},
     )
 

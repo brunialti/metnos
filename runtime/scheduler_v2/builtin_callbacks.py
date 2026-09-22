@@ -494,6 +494,8 @@ def task_sweep_expired_dialogs(payload=None):
     import sys as _sys
     from pathlib import Path as _P
     import os as _os
+    from orchestration import retry_pending_callback_deliveries
+    retry_pending_callback_deliveries()
     from dialog_pending import sweep_expired
     abandoned = sweep_expired()
     notified = 0

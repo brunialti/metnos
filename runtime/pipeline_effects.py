@@ -24,13 +24,14 @@ import json
 # extract_entries è in-memory (nessun side-effect) — extract_files (zip)
 # resta il limite noto del criterio a prefisso.
 MUTATING_TOOL_PREFIXES = ("delete_", "move_", "change_", "send_", "create_",
-                          "set_", "write_", "share_", "render_", "compress_")
+                          "set_", "write_", "share_", "render_", "compress_",
+                          "organize_")
 
 # Counter di successo mutating, in ordine di specificità (il primo intero
 # presente vince; fallback len(results)).
 MUTATE_COUNT_KEYS = (
     "n_deleted", "n_moved", "n_sent", "n_created", "n_written",
-    "n_set", "n_shared", "n_changed", "n_ordered", "ok_count",
+    "n_set", "n_shared", "n_changed", "n_ordered", "n_organized", "ok_count",
 )
 
 
@@ -80,6 +81,16 @@ def _step_args(s) -> dict:
     return {}
 
 
+def _is_mutating_step(s, tool: str | None = None) -> bool:
+    """Prefer the runtime-resolved signed effect, then legacy verb fallback."""
+    effect = (s.get("execution_effect") if isinstance(s, dict)
+              else getattr(s, "execution_effect", None))
+    if effect is not None:
+        return effect not in {"read_only", "interactive"}
+    tool = tool or _step_tool(s)
+    return bool(tool and tool.startswith(MUTATING_TOOL_PREFIXES))
+
+
 def pipeline_effect_counts(steps) -> dict | None:
     """Conteggio deterministico §7.9 degli effetti REALI di un turno.
 
@@ -106,14 +117,14 @@ def pipeline_effect_counts(steps) -> dict | None:
             # 1 rifiuto → ok=False ma ok_count=455. Saltare lo step intero
             # azzerava `mutations` → il finalizer degradava a falsa-mutazione
             # («0 modifiche reali») un turno che ne aveva fatte 455.
-            if any(tool.startswith(pfx) for pfx in MUTATING_TOOL_PREFIXES):
+            if _is_mutating_step(s, tool):
                 mutating_attempted = True
                 _n = _mutation_count(res)
                 if _n:
                     countable += 1
                     mutations += max(0, _n)
             continue
-        if any(tool.startswith(p) for p in MUTATING_TOOL_PREFIXES):
+        if _is_mutating_step(s, tool):
             mutating_attempted = True
             # §2.8: mutating su `entries` VUOTE (pipeline-dati a 0 input) =
             # artefatto/azione VUOTA, 0 effetto reale (es. spreadsheet da 0
@@ -169,7 +180,7 @@ def ineffective_mutations(steps) -> list[str]:
         tool = _step_tool(s)
         if not tool or tool == "final_answer" or tool.startswith("@"):
             continue
-        if not any(tool.startswith(p) for p in MUTATING_TOOL_PREFIXES):
+        if not _is_mutating_step(s, tool):
             continue
         res = _step_result(s)
         if res is None or res.get("_duplicate") is True:
@@ -214,7 +225,7 @@ def committed_mutations(steps) -> list[str]:
         tool = _step_tool(s)
         if not tool or tool == "final_answer" or tool.startswith("@"):
             continue
-        if not any(tool.startswith(p) for p in MUTATING_TOOL_PREFIXES):
+        if not _is_mutating_step(s, tool):
             continue
         res = _step_result(s)
         if res is not None and res.get("_duplicate") is True:

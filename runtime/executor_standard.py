@@ -44,7 +44,7 @@ _EQUIVALENCE_GATES = frozenset({"unverified", "verified"})
 _INTELLIGENCE_KINDS = frozenset({"deterministic", "llm", "agentic"})
 _EXECUTION_FIELDS = frozenset({
     "effect", "parallelism_class", "resource_class", "concurrency_key",
-    "equivalence_gate",
+    "equivalence_gate", "effects", "frozen_plan",
 })
 _JSON_SCHEMA_TYPES = frozenset({
     "array", "boolean", "integer", "null", "number", "object", "string",
@@ -436,6 +436,13 @@ def _validate_execution(findings: list[StandardFinding], manifest: dict,
     unknown = sorted(set(execution) - _EXECUTION_FIELDS)
     if unknown:
         _add(findings, "execution_unknown", f"unknown [execution] fields: {unknown}")
+
+    from execution_effects import validate_effects
+    from frozen_plan_consent import validate_frozen_plan
+    for message in validate_effects(manifest):
+        _add(findings, "execution_effects", message)
+    for message in validate_frozen_plan(manifest):
+        _add(findings, "execution_frozen_plan", message)
 
     effect = execution.get("effect", "unknown")
     if effect not in _EXECUTION_EFFECTS:

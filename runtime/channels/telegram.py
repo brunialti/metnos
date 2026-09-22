@@ -248,12 +248,9 @@ class TelegramChannel:
                 if message.reply_to:
                     params["reply_to_message_id"] = message.reply_to
                 if message.buttons:
-                    params["reply_markup"] = json.dumps({
-                        "inline_keyboard": [[{"text": b.get("text", "?"),
-                                               "callback_data": b.get("data", "")}
-                                              for b in row]
-                                             for row in message.buttons]
-                    })
+                    from .telegram_markup import inline_keyboard
+                    params["reply_markup"] = json.dumps(
+                        inline_keyboard(message.buttons))
             result = self._call("sendMessage", params)
             if not result.get("ok") and not result.get("delivery_ambiguous"):
                 # Fallback plain: HTML rifiutato, riprova senza parse_mode

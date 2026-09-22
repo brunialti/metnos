@@ -187,18 +187,9 @@ def _index_resource_paths(hints: list[str]) -> list[Path]:
     return out
 
 
-def filesystem_extras(executor, args) -> list[Path]:
-    """Resolve signed ``fs:read`` hints of the form ``arg:<name>``.
-
-    The manifest chooses which typed argument may carry filesystem authority;
-    the invocation can only narrow that declaration to one concrete existing
-    path. If the literal path is absent, the same central bilingual user-dir
-    resolver used by the file backends may translate it before the sandbox is
-    built. Only its closed alias vocabulary is considered, and only the exact
-    resolved target is mounted. Other arguments and unknown hints never create
-    a bind. Traditional absolute/glob hints remain handled by
-    ``_build_bwrap_args`` for migrated executors with fixed filesystem scope.
-    """
+def _filesystem_argument_extras(
+        executor, args, *, capability_name: str) -> list[Path]:
+    """Resolve exact existing paths named by signed ``arg:<name>`` hints."""
     from capabilities import effective_capabilities
 
     invocation = args if isinstance(args, dict) else {}
@@ -210,7 +201,7 @@ def filesystem_extras(executor, args) -> list[Path]:
     selected: list[Path] = []
     seen: set[str] = set()
     for capability in effective:
-        if capability.get("name") != "fs:read":
+        if capability.get("name") != capability_name:
             continue
         for hint in capability.get("hint", []) or []:
             if not isinstance(hint, str) or not hint.startswith("arg:"):
@@ -218,15 +209,29 @@ def filesystem_extras(executor, args) -> list[Path]:
             arg_name = hint[4:]
             if not arg_name or ":" in arg_name:
                 continue
+            schema = ((getattr(executor, "args_schema", None) or {})
+                      .get("properties", {}).get(arg_name, {}))
+            is_string = schema.get("type") == "string"
+            is_string_array = (
+                schema.get("type") == "array"
+                and isinstance(schema.get("items"), dict)
+                and schema["items"].get("type") == "string")
+            if not (is_string or is_string_array):
+                continue
             raw = invocation.get(arg_name)
+            if ((is_string and not isinstance(raw, str))
+                    or (is_string_array and (
+                        not isinstance(raw, list)
+                        or not all(isinstance(item, str) for item in raw)))):
+                continue
             values = raw if isinstance(raw, list) else [raw]
             for value in values:
                 if not isinstance(value, str) or not value.strip():
                     continue
                 path = Path(os.path.expanduser(value))
                 if not path.is_absolute():
-                    path = (Path.cwd() / path).resolve()
-                if not path.exists():
+                    path = Path.cwd() / path
+                if capability_name == "fs:read" and not path.exists():
                     try:
                         from path_alias import resolve_path_with_alias
                         resolved, _note = resolve_path_with_alias(value)
@@ -235,12 +240,34 @@ def filesystem_extras(executor, args) -> list[Path]:
                     if not resolved.exists():
                         continue
                     path = resolved
+                elif capability_name == "fs:write":
+                    try:
+                        current = Path(path.absolute().anchor)
+                        for part in path.absolute().parts[1:]:
+                            current /= part
+                            if current.is_symlink():
+                                raise ValueError("symlink write authority")
+                        path = path.resolve(strict=True)
+                    except (OSError, RuntimeError, ValueError):
+                        continue
                 key = str(path)
                 if key in seen:
                     continue
                 seen.add(key)
                 selected.append(path)
     return selected
+
+
+def filesystem_extras(executor, args) -> list[Path]:
+    """Resolve signed ``fs:read`` hints of the form ``arg:<name>``."""
+    return _filesystem_argument_extras(
+        executor, args, capability_name="fs:read")
+
+
+def filesystem_write_extras(executor, args) -> list[Path]:
+    """Resolve typed dynamic write roots without granting their parents."""
+    return _filesystem_argument_extras(
+        executor, args, capability_name="fs:write")
 
 
 def resolve_filesystem_read_args(executor, args) -> dict:
@@ -320,27 +347,41 @@ def resolve_filesystem_read_args(executor, args) -> dict:
 def undo_history_extras(executor, *, turn_id=None) -> list[Path]:
     """Expose only the invocation's managed undo-blob directory as RW.
 
-    The authority comes from the signed ``restore_blob_backup`` reverse
-    pattern, while ``turn_id`` narrows it to one runtime-owned directory.  A
+    Authority comes from signed ``metnos:history`` or the legacy backup
+    reverse pattern, while ``turn_id`` narrows it to one runtime-owned directory. A
     manifest cannot request another history path and an invocation argument
     cannot widen this bind.
     """
     patterns = getattr(executor, "reverse_pattern", None)
     if isinstance(patterns, str):
         patterns = [patterns]
-    if (not isinstance(patterns, list)
+    history_authority = any(
+        isinstance(cap, dict) and cap.get("name") == "metnos:history"
+        and cap.get("hint") == ["turn"] and "when" not in cap
+        for cap in (getattr(executor, "capabilities", None) or []))
+    if not history_authority and (not isinstance(patterns, list)
             or "restore_blob_backup" not in patterns):
         return []
 
-    key = str(turn_id) if turn_id is not None else "no_turn"
-    if not re.fullmatch(r"[A-Za-z0-9._-]{1,128}", key):
+    if turn_id is None or not str(turn_id):
+        return []
+    key = str(turn_id)
+    if (not re.fullmatch(r"[A-Za-z0-9._-]{1,128}", key)
+            or key in {".", ".."}):
         return []
     try:
         import config as _C
         history_root = Path(os.environ.get("METNOS_HISTORY_DIR") or (
             Path(_C.PATH_USER_DATA) / "_history"))
         blob_dir = history_root.expanduser() / key / "blob"
+        current = Path(blob_dir.absolute().anchor)
+        for part in blob_dir.absolute().parts[1:]:
+            current /= part
+            if current.is_symlink():
+                return []
         blob_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+        if blob_dir.resolve() != blob_dir.absolute():
+            return []
         return [blob_dir]
     except OSError:
         # The executor will report the backup failure and will not delete.
@@ -652,6 +693,7 @@ def wrap_command(
     extra_ro: list | None = None,
     extra_rw: list | None = None,
     force_net: bool = False,
+    invocation_args: dict | None = None,
 ) -> list[str]:
     """Wrappa un comando in bubblewrap se disponibile e non disabilitato.
 
@@ -672,9 +714,15 @@ def wrap_command(
     # l'ammissione della capability critica e lo standard la limita al server;
     # il subprocess resta separato, ma opera come broker con l'autorita' del
     # runtime. Non generalizzare questo bypass alle capability di dominio.
+    from capabilities import effective_capabilities
+    capabilities = effective_capabilities(
+        getattr(executor, "capabilities", []) or [],
+        getattr(executor, "args_schema", {}) or {},
+        invocation_args or {},
+    )
     capability_names = {
         cap.get("name") if isinstance(cap, dict) else str(cap or "")
-        for cap in (getattr(executor, "capabilities", None) or [])
+        for cap in capabilities
     }
     if "system:undo" in capability_names:
         return list(command)
@@ -683,8 +731,6 @@ def wrap_command(
         return list(command)
 
     code_path = Path(getattr(executor, "code_path", "."))
-    capabilities = getattr(executor, "capabilities", []) or []
-
     bwrap_args = _build_bwrap_args(
         code_path, capabilities,
         autonomy=autonomy,

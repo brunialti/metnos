@@ -137,6 +137,11 @@ CAPABILITY_REGISTRY: dict[str, CapabilitySpec] = {
         description="Lettura eventi da un calendario autorizzato",
     ),
     # Metnos-managed local resources
+    "metnos:history": CapabilitySpec(
+        "metnos:history", critical=False, default_approval="none",
+        target_kind="none",
+        description="Archivio transazionale privato limitato al turno runtime corrente",
+    ),
     "index:read": CapabilitySpec(
         "index:read", critical=False, default_approval="per_target",
         target_kind="exact",

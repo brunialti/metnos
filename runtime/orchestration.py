@@ -151,7 +151,8 @@ def invoke_get_inputs_internal(*,
                                 owner_user_id: str,
                                 channel: Optional[str] = None,
                                 timeout_s: Optional[int] = None,
-                                origin_turn_id: str = "") -> dict:
+                                origin_turn_id: str = "",
+                                form_only: bool = False) -> dict:
     """Orchestrazione runtime-side di `get_inputs` (ADR 0091).
 
     Replica il comportamento dell'executor `get_inputs.invoke()` ma vive nel
@@ -206,7 +207,9 @@ def invoke_get_inputs_internal(*,
         (s.get("schema") or {}).get("kind") == "choice_with_preview"
         for s in dialog
     )
-    if fmt == "auto":
+    if form_only:
+        resolved_fmt = "form"
+    elif fmt == "auto":
         if channel == "http":
             # form anche a 1 SOLO step se tutto e' cliccabile (choice/yes_no):
             # una scelta si clicca, non si trascrive — parita' con la regola
@@ -232,7 +235,8 @@ def invoke_get_inputs_internal(*,
     # con campi editabili → degrada a dialogue (sequenza testuale). Regola
     # generale, channel-aware: un executor puo' chiedere fmt='form' senza dover
     # conoscere il canale; il runtime fa il downgrade dove serve.
-    if resolved_fmt == "form" and channel and channel != "http":
+    if (not form_only and resolved_fmt == "form"
+            and channel and channel != "http"):
         resolved_fmt = "dialogue"
 
     if timeout_s is None:
@@ -265,6 +269,10 @@ def invoke_get_inputs_internal(*,
         "timeout_s": int(timeout_s),
         "completed": False,
         "cancelled": False,
+        # Security-sensitive continuations may be completed only by the
+        # authenticated HTTP form.  Telegram presents that same form as an
+        # HTTPS URL; neither typed chat nor callback_data can approve it.
+        "form_only": bool(form_only),
         # ADR 0091: callback dichiarativo. Persiste insieme allo stato
         # cosi' il completamento (sequenziale o form) puo' processarlo
         # senza rebuild lato runtime.
@@ -535,6 +543,12 @@ def _dispatch_completion(sender_id: str, dialog_id: str,
     callback_type = on_complete.get("type")
     values = state.get("values_collected") or {}
 
+    if callback_type == "resume_frozen_plan":
+        return _process_frozen_plan_resume(
+            on_complete, values, state=state, sender_id=sender_id,
+            dialog_id=dialog_id, actor=actor, channel=channel,
+        )
+
     if callback_type == "tutor_handoff":
         return _process_tutor_handoff(
             on_complete, values, state=state, sender_id=sender_id,
@@ -762,6 +776,176 @@ def _process_tutor_handoff(on_complete: dict, values: dict, *, state: dict,
         log.error("Tutor handoff result outbox commit failed dialog=%s",
                   dialog_id)
     return result
+
+
+def _frozen_plan_principal(state: dict) -> tuple[dict | None, str]:
+    """Re-read current account and Telegram authorities at consent time."""
+    owner_user_id = str(state.get("owner_user_id") or "")
+    try:
+        import users
+        owner = users.get_user(owner_user_id) if owner_user_id else None
+    except Exception:
+        return None, "principal_unavailable"
+    if owner is None:
+        return None, "principal_missing"
+    level = str(owner.get("autonomy_level") or "").casefold()
+    if level in {"read_only", "readonly"}:
+        return None, "principal_read_only"
+    if str(state.get("channel") or "") != "telegram":
+        return owner, ""
+    try:
+        import pairing
+        binding = users.get_channel(owner_user_id, "telegram")
+        recipient = str((binding or {}).get("recipient_id") or "")
+        bound_owner = users.find_user_by_recipient("telegram", recipient)
+        channel_pairing = pairing.get_pairing("telegram", recipient)
+        paired_level = str(
+            getattr(channel_pairing, "autonomy_level", "") or ""
+        ).casefold()
+        if (not binding or not binding.get("verified_at") or not recipient
+                or bound_owner is None
+                or str(bound_owner.get("id") or "") != owner_user_id
+                or channel_pairing is None or not paired_level):
+            return None, "telegram_binding_changed"
+        if paired_level in {"read_only", "readonly"}:
+            return None, "telegram_read_only"
+    except Exception:
+        return None, "telegram_binding_unavailable"
+    return owner, ""
+
+
+def _deliver_frozen_receipt(sender_id: str, dialog_id: str, nonce: str, *,
+                            owner_user_id: str) -> None:
+    """Deliver a committed receipt to the currently verified Telegram chat."""
+    claim = dialog_pending.begin_callback_delivery(
+        sender_id, dialog_id, nonce, owner_user_id=owner_user_id)
+    if claim.get("status") != "claimed":
+        return
+    ack: dict
+    try:
+        from channels import OutboundMessage
+        from channels.telegram import TelegramChannel
+        from durable_workloads.events import resolve_telegram_recipient
+        recipient = resolve_telegram_recipient(owner_user_id)
+        if not recipient:
+            ack = {"ok": False, "error": "telegram_recipient_unavailable"}
+        else:
+            channel = TelegramChannel(state_path=False)
+            sent = channel.send(
+                recipient=recipient,
+                message=OutboundMessage(
+                    text=str((claim.get("receipt") or {}).get("text") or "")),
+            )
+            ack = dict(sent) if isinstance(sent, dict) else {
+                "ok": False, "error": "invalid_channel_ack"}
+    except Exception as exc:
+        log.warning("Frozen-plan Telegram delivery failed dialog=%s: %s",
+                    dialog_id, exc)
+        # The provider may have accepted the send before the exception.  With
+        # no Telegram idempotency key this state is terminally ambiguous;
+        # retry only explicit provider acknowledgements with ok=false.
+        ack = {"ok": False, "delivery_ambiguous": True,
+               "error": f"{type(exc).__name__}: {exc}"}
+    dialog_pending.complete_callback_delivery(
+        sender_id, dialog_id, nonce, owner_user_id=owner_user_id,
+        ack=ack, delivered=ack.get("ok") is True)
+
+
+def retry_pending_callback_deliveries(*, limit: int = 100) -> dict:
+    """Scheduler entry point for the durable frozen-plan Telegram outbox."""
+    attempted = 0
+    for item in dialog_pending.pending_callback_deliveries(limit=limit):
+        attempted += 1
+        _deliver_frozen_receipt(
+            item["sender_id"], item["dialog_id"], item["nonce"],
+            owner_user_id=item["owner_user_id"])
+    return {"attempted": attempted}
+
+
+def _process_frozen_plan_resume(on_complete: dict, values: dict, *,
+                                state: dict, sender_id: str,
+                                dialog_id: str, actor: str,
+                                channel: str | None) -> CompletionResult:
+    """Consume one runtime-owned form grant and invoke only its frozen call."""
+    owner_user_id = str(state.get("owner_user_id") or "")
+    state_actor = str(state.get("actor") or "")
+    state_channel = str(state.get("channel") or "")
+    if (not state.get("form_only")
+            or str(on_complete.get("owner_user_id") or "") != owner_user_id
+            or not state_actor or not state_channel
+            or (actor and not hmac.compare_digest(str(actor), state_actor))
+            or (channel and not hmac.compare_digest(str(channel), state_channel))):
+        return CompletionResult(text=_msg("MSG_TUTOR_HANDOFF_REPLAYED"))
+    submissions = state.get("submissions") or {}
+    if (not isinstance(submissions, dict) or not submissions
+            or any(source not in {"http_form_owner", "http_form_capability"}
+                   for source in submissions.values())):
+        return CompletionResult(text=_msg("MSG_TUTOR_HANDOFF_REPLAYED"))
+
+    nonce = str(on_complete.get("nonce") or "")
+    _record_for_recovery = on_complete.get("record")
+    try:
+        from frozen_plan_consent import recovery_evidence
+        _recovery_attested = (
+            isinstance(_record_for_recovery, dict)
+            and recovery_evidence(
+                _record_for_recovery,
+                turn_id=str(on_complete.get("turn_id") or "")))
+    except Exception:
+        _recovery_attested = False
+    claim = dialog_pending.begin_callback_once(
+        sender_id, dialog_id, nonce, owner_user_id=owner_user_id,
+        durable_recovery_attested=_recovery_attested)
+    if claim.get("status") == "completed":
+        result = _completion_from_receipt(claim.get("receipt") or {})
+        if state_channel == "telegram":
+            _deliver_frozen_receipt(
+                sender_id, dialog_id, nonce, owner_user_id=owner_user_id)
+        return result
+    if claim.get("status") != "claimed":
+        return CompletionResult(text=_msg("MSG_TUTOR_HANDOFF_REPLAYED"))
+
+    def _commit(result: CompletionResult) -> CompletionResult:
+        committed = dialog_pending.complete_callback_once(
+                sender_id, dialog_id, nonce, _completion_receipt(result),
+                owner_user_id=owner_user_id)
+        if not committed:
+            log.error("Frozen-plan outbox commit failed dialog=%s", dialog_id)
+        elif state_channel == "telegram":
+            _deliver_frozen_receipt(
+                sender_id, dialog_id, nonce, owner_user_id=owner_user_id)
+        return result
+
+    if values.get("decision") != "apply":
+        return _commit(CompletionResult(text=_msg("MSG_ACTION_CANCELLED")))
+    record = on_complete.get("record")
+    turn_id = str(on_complete.get("turn_id") or "")
+    if (not isinstance(record, dict) or not turn_id
+            or int(record.get("expires_at") or 0) < int(time.time())):
+        return _commit(CompletionResult(text=_msg("MSG_TUTOR_HANDOFF_STALE")))
+    owner, reason = _frozen_plan_principal(state)
+    if owner is None:
+        log.warning("Frozen-plan principal rejected dialog=%s reason=%s",
+                    dialog_id, reason)
+        return _commit(CompletionResult(text=_msg("MSG_TUTOR_HANDOFF_STALE")))
+
+    executor = str(record.get("executor") or "")
+    args = record.get("args")
+    binding = str(record.get("executor_binding") or "")
+    if not executor or not isinstance(args, dict) or not binding:
+        return _commit(CompletionResult(text=_msg("MSG_TUTOR_HANDOFF_STALE")))
+    try:
+        result = _esegui_ramo(
+            executor, dict(args), actor=state_actor,
+            channel=state_channel, owner_user_id=owner_user_id,
+            turn_id=turn_id, contesto="frozen_plan",
+            expected_executor_binding=binding, frozen_record=record)
+    except Exception as exc:  # the durable executor journal owns recovery
+        log.exception("Frozen-plan invocation failed dialog=%s", dialog_id)
+        result = {"ok": False,
+                  "error": f"{type(exc).__name__}: {exc}",
+                  "error_class": "internal_error"}
+    return _commit(CompletionResult(text=_shape_result_for_chat(result)))
 
 
 def _process_save_credentials_and_resume(on_complete: dict, values: dict,
@@ -1059,7 +1243,9 @@ def _esegui_ramo(executor: str, args: dict, *, actor: str,
                  channel: str | None, owner_user_id: str = "",
                  target_device: str | None = None,
                  turn_id: str = "", source_request_id: str = "",
-                 contesto: str = "gate") -> dict:
+                 contesto: str = "gate",
+                 expected_executor_binding: str = "",
+                 frozen_record: dict | None = None) -> dict:
     """Esegue UN executor per conto di un dialogo. Ritorna sempre un result.
 
     Punto unico. Prima questo blocco — carica il catalogo, cerca l'executor,
@@ -1091,6 +1277,14 @@ def _esegui_ramo(executor: str, args: dict, *, actor: str,
         if ex is None:
             return {"ok": False, "orchestration_error": True, "error": _msg(
                 "MSG_ORCH_EXECUTOR_NOT_IN_CATALOG", executor=executor)}
+        if expected_executor_binding:
+            from frozen_plan_consent import executor_binding
+            current_binding = executor_binding(ex)
+            if not hmac.compare_digest(
+                    current_binding, expected_executor_binding):
+                return {"ok": False, "orchestration_error": True,
+                        "error": _msg("MSG_TUTOR_HANDOFF_STALE"),
+                        "error_class": "stale_contract"}
         import agent_runtime
         import concurrent.futures as _cf
 
@@ -1107,6 +1301,38 @@ def _esegui_ramo(executor: str, args: dict, *, actor: str,
                 owner_user_id=owner_user_id,
                 turn_id=turn_id,
                 source_request_id=source_request_id)
+
+        # ContextVar authority must remain in this exact callback context.
+        # Running frozen-plan apply in a fresh pool would silently discard the
+        # grant; copying it to an unbounded background job would outlive the
+        # authenticated form request.  The executor itself owns durable crash
+        # recovery and has a bounded signed timeout.
+        if contesto == "frozen_plan":
+            if not isinstance(frozen_record, dict):
+                return {"ok": False, "orchestration_error": True,
+                        "error": "missing frozen-plan record"}
+            # Construct the exact payload which invoke_executor will send to
+            # the child, including runtime-owned values and path resolution,
+            # before minting authority.  The subsequent choke-point sees the
+            # same bytes and rejects any drift.
+            final_args = dict(args)
+            final_args["_actor"] = actor or "host"
+            final_args["_channel"] = channel or ""
+            final_args["_turn_id"] = turn_id
+            final_args = agent_runtime.finalize_local_executor_args(
+                ex, final_args)
+            args.clear()
+            args.update(final_args)
+            grant_record = dict(frozen_record)
+            grant_record["args"] = dict(final_args)
+            from frozen_plan_consent import grant
+            with grant(grant_record, owner_user_id=owner_user_id,
+                       actor=actor, channel=channel or "", turn_id=turn_id):
+                result = _invoca()
+                if isinstance(result, dict):
+                    from frozen_plan_consent import redact_result
+                    return redact_result(ex, result)
+                return result
 
         # Il ciclo che sta girando adesso, se c'e': servira' al filo del
         # lavoro per consegnare l'esito senza toccare da fuori cose che non
@@ -2496,6 +2722,69 @@ def _inject_state_param(url: str, state: str) -> str:
 
 # ── Esposizione del mapping needs_inputs → orchestrazione ────────────
 
+def orchestrate_frozen_plan(record: dict, *, sender_id: str,
+                            actor: str, owner_user_id: str,
+                            channel: str, origin_turn_id: str,
+                            conversation_id: str = "") -> dict:
+    """Create the runtime-owned, form-only consent for one frozen plan.
+
+    The callback contains the exact verified executor binding and final args;
+    it never asks the planner to reconstruct a truncated preview.
+    """
+    if (not isinstance(record, dict) or not owner_user_id or not actor
+            or not channel or not origin_turn_id):
+        return {"ok": False, "error": "invalid_frozen_plan_record"}
+    required = {"executor", "executor_binding", "args", "token",
+                "artifact_suffix", "journal_suffix", "expires_at", "recovery"}
+    if (not required <= set(record) or not isinstance(record.get("args"), dict)
+            or record.get("recovery") != "same_token_write_ahead_v1"
+            or not all(str(record.get(key) or "")
+                       for key in ("executor", "executor_binding", "token"))):
+        return {"ok": False, "error": "invalid_frozen_plan_record"}
+    try:
+        remaining = int(record["expires_at"]) - int(time.time())
+    except (TypeError, ValueError):
+        return {"ok": False, "error": "invalid_frozen_plan_expiry"}
+    if remaining <= 0:
+        return {"ok": False, "error": "frozen_plan_expired"}
+    preview = record.get("preview") if isinstance(record.get("preview"), dict) else {}
+    summary = ", ".join(
+        f"{key.replace('_', ' ')}: {value}"
+        for key, value in preview.items() if isinstance(value, int)
+    )
+    frozen_record = {
+        key: record[key] for key in required
+    }
+    callback = {
+        "type": "resume_frozen_plan",
+        "nonce": uuid.uuid4().hex,
+        "record": frozen_record,
+        "turn_id": origin_turn_id,
+        "channel": channel,
+        "conversation_id": conversation_id,
+    }
+    return invoke_get_inputs_internal(
+        sender_id=sender_id,
+        title=_msg("MSG_FROZEN_PLAN_CONSENT_TITLE"),
+        description=_msg(
+            "MSG_FROZEN_PLAN_CONSENT_DESCRIPTION",
+            summary=summary or _msg("MSG_FROZEN_PLAN_NO_COUNTS")),
+        dialog=[{
+            "var": "decision",
+            "prompt": _msg("MSG_FROZEN_PLAN_CONSENT_PROMPT"),
+            "schema": {"kind": "choice", "choices": [
+                {"label": _msg("MSG_BTN_APPROVE"), "value": "apply"},
+                {"label": _msg("MSG_BTN_CANCEL"), "value": "cancel"},
+            ]},
+            "optional": False,
+        }],
+        fmt="form", on_complete=callback, actor=actor,
+        owner_user_id=owner_user_id, channel=channel,
+        timeout_s=min(remaining, 15 * 60),
+        origin_turn_id=origin_turn_id, form_only=True,
+    )
+
+
 def orchestrate_needs_inputs(obs: dict, *,
                               sender_id: str,
                               actor: str = "host",
@@ -2523,6 +2812,10 @@ def orchestrate_needs_inputs(obs: dict, *,
     dialog = payload.get("dialog") or []
     fmt = payload.get("fmt") or "auto"
     on_complete = payload.get("on_complete")
+    # Runtime-owned callback types are capabilities, not executor output.
+    if (isinstance(on_complete, dict)
+            and on_complete.get("type") == "resume_frozen_plan"):
+        return {"ok": False, "error": "reserved_callback_type"}
     timeout_s = int(payload.get("timeout_s") or 3600)
 
     return invoke_get_inputs_internal(

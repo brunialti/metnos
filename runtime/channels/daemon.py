@@ -641,7 +641,7 @@ class ChannelDaemon:
             str(state.get("dialog_id") or ""),
             str(step.get("var") or ""),
             parsed_value,
-            owner_user_id=principal_owner,
+            owner_user_id=principal_owner, source="telegram_chat",
         )
         if not result.get("ok"):
             self._send_text(
@@ -954,6 +954,9 @@ class ChannelDaemon:
         state, hit_key = load_pending_state(
             dialog_id, candidates, owner_user_id=owner_user_id)
 
+        if state is not None and state.get("form_only"):
+            return (_msg("MSG_FROZEN_PLAN_FORM_ONLY"), False, None)
+
         if text_norm in ("annulla", "cancel", "abort", "stop"):
             if state is not None:
                 _dp.cancel_pending(state.get("sender_id") or hit_key,
@@ -997,7 +1000,7 @@ class ChannelDaemon:
         # Avanza lo stato
         cres = _dp.consume_pending_step(
             sender_for_state, dialog_id, var, value,
-            owner_user_id=owner_user_id)
+            owner_user_id=owner_user_id, source="telegram_chat")
         if not cres.get("ok"):
             return (_msg("MSG_DIALOG_STEP_ERROR", error=cres.get('error')),
                     False, None)
@@ -1346,6 +1349,11 @@ class ChannelDaemon:
         # priorita' al campo persistito, poi alla chiave che ha risolto.
         sender_eff = state.get("sender_id") or hit_key
         if parts[2] == "cancel":
+            if state.get("form_only"):
+                self._send_text(msg.sender_id,
+                                _msg("MSG_FROZEN_PLAN_FORM_ONLY"),
+                                reply_to=msg.message_id)
+                return {"ok": False, "reason": "form_only"}
             _dp.cancel_pending(
                 sender_eff, dialog_id,
                 owner_user_id=principal_user_id)
@@ -1404,7 +1412,8 @@ class ChannelDaemon:
 
         cres = _dp.consume_pending_step(sender_eff, dialog_id,
                                         cur_step.get("var"), value,
-                                        owner_user_id=principal_user_id)
+                                        owner_user_id=principal_user_id,
+                                        source="telegram_button")
         if not cres.get("ok"):
             self._send_text(msg.sender_id,
                              _msg("MSG_DIALOG_STEP_ERROR", error=cres.get('error')),

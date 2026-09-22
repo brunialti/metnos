@@ -373,12 +373,20 @@ class HttpServerTests(AioHTTPTestCase):
         self.assertIn("turn_dialog_001", body)
         self.assertIn("test_dialog_001", body)
         self.assertEqual(r.headers.get("Cache-Control"), "no-store")
+        self.assertEqual(
+            r.headers.get("Content-Security-Policy"),
+            "frame-ancestors 'self'")
+        self.assertIn("window.location.origin", body)
+        self.assertNotIn("}, '*');", body)
 
         cancelled = await self.client.get(
             "/agent/dialog/test_dialog_001/cancel",
             headers=self.admin_hdr(**{"Accept": "text/html"}),
         )
         self.assertEqual(cancelled.status, 200)
+        self.assertEqual(
+            cancelled.headers.get("Content-Security-Policy"),
+            "frame-ancestors 'self'")
         self.assertEqual(
             cancelled.headers.get("X-Metnos-Dialog-State"), "cancelled")
         cancelled_form = await self.client.get(
@@ -395,7 +403,7 @@ class HttpServerTests(AioHTTPTestCase):
             "/agent/dialog/test_dialog_001/form",
             headers=self.admin_hdr(**{"Accept": "text/html"}),
         )
-        self.assertEqual(completed.status, 410)
+        self.assertEqual(completed.status, 200)
         self.assertEqual(
             completed.headers.get("X-Metnos-Dialog-State"), "completed")
 

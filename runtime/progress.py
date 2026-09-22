@@ -208,12 +208,8 @@ class TelegramProgress(Progress):
         reply_markup = None
         if buttons:
             import json as _json
-            reply_markup = _json.dumps({
-                "inline_keyboard": [[{"text": b.get("text", "?"),
-                                       "callback_data": b.get("data", "")}
-                                      for b in row]
-                                     for row in buttons]
-            })
+            from channels.telegram_markup import inline_keyboard
+            reply_markup = _json.dumps(inline_keyboard(buttons))
 
         # Format Markdown → HTML chunks (stesso pipeline di channel.send).
         from channels.telegram_format import format_for_telegram

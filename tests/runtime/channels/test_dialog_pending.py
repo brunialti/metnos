@@ -171,6 +171,22 @@ def test_cancel_pending_marks_state(dp):
     assert dp.list_pending("host", owner_user_id=_OWNER) == []
 
 
+def test_form_only_cancel_requires_authenticated_form_source(dp):
+    state = _make_state(dialog_id="form-cancel")
+    state["form_only"] = True
+    dp.save_pending("host", "form-cancel", state)
+    for source in ("internal", "http_chat", "telegram_chat",
+                   "telegram_button"):
+        assert dp.cancel_pending(
+            "host", "form-cancel", owner_user_id=_OWNER,
+            source=source) is False
+    assert not dp.load_pending(
+        "host", "form-cancel", owner_user_id=_OWNER)["cancelled"]
+    assert dp.cancel_pending(
+        "host", "form-cancel", owner_user_id=_OWNER,
+        source="http_form_owner") is True
+
+
 def test_list_pending_orders_by_started(dp):
     # list_pending salta gli scaduti: i fixture di ordinamento restano "attivi"
     # perche' _make_state imposta timeout_s=3600 per-dialogo (override del

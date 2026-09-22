@@ -262,6 +262,40 @@ def keyboard_for_proposal(p0: dict, *, sender_candidates: list[str],
         preview = (step if (step.get("schema") or {}).get("kind")
                    == "choice_with_preview" else None)
         return buttons, preview
+    if kind == "get_inputs_response" and p0.get("fmt") == "form":
+        dialog_id = str(p0.get("dialog_id") or "")
+        state, _key = load_pending_state(
+            dialog_id, sender_candidates, owner_user_id=owner_user_id)
+        if not state or not state.get("form_only"):
+            return None, None
+        # A Telegram button must carry the same authenticated form URL that
+        # HTTP chat renders inline.  Fail closed when no externally reachable
+        # HTTPS origin or signing key is configured.
+        try:
+            import os
+            from pathlib import Path
+            from urllib.parse import urlsplit
+            from dialog_capability import sign
+            from http_auth import ADMIN_KEY_PATH
+            from messages import get as _msg
+
+            origin = str(os.environ.get("METNOS_PUBLIC_ORIGIN") or "")
+            parsed = urlsplit(origin)
+            if (parsed.scheme != "https" or not parsed.netloc
+                    or parsed.username is not None or parsed.password is not None
+                    or parsed.path not in {"", "/"}
+                    or parsed.query or parsed.fragment):
+                return None, None
+            origin = f"https://{parsed.netloc}"
+            admin_key = Path(ADMIN_KEY_PATH).read_text(encoding="utf-8").strip()
+            cap = sign(dialog_id, admin_key)
+            if not cap:
+                return None, None
+            url = f"{origin}/agent/dialog/{dialog_id}/form?cap={cap}"
+            return [[{"text": _msg("MSG_FROZEN_PLAN_OPEN_FORM"),
+                      "url": url}]], None
+        except (OSError, ValueError):
+            return None, None
     if kind in ("admin_approval", "approval_required") and turn_id:
         return build_approval_keyboard(turn_id), None
     return None, None
