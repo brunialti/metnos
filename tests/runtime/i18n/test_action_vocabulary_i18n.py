@@ -66,6 +66,31 @@ def test_seed_editoriale_completa_e_senza_boundary_legacy():
             assert spec["boundary"][lang].strip(), (action, lang)
 
 
+def test_organize_usa_il_lessico_corrente_e_il_routing_canonico():
+    assert prefilter.detect_canonical_verbs_all(
+        prefilter.tokenize("organizza questi file")) == ["organize"]
+
+    def executor(name: str, affinity: list[str]) -> Namespace:
+        return Namespace(
+            name=name,
+            affinity=affinity,
+            description=name,
+            planning_object_aliases=(),
+        )
+
+    catalog = [
+        executor("move_files", ["move", "sposta", "file"]),
+        executor("organize_files", ["organize", "organizza", "file"]),
+        executor("find_files", ["find", "trova", "file"]),
+    ]
+    ranked = prefilter.rank_with_intent(
+        "organizza questi file", catalog,
+        {"verb": "organize", "object": "files"}, k=8,
+    )
+    assert ranked is not None
+    assert [item.name for item in ranked][0] == "organize_files"
+
+
 def test_seed_sqlite_contiene_tutti_i_confini_versionati():
     path = ROOT / "install/data/i18n_seed.sqlite"
     conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)

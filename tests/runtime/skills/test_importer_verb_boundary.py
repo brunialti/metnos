@@ -39,7 +39,18 @@ def test_share_verb_in_actions():
     # 23 → 26: +open/login/act (dominio sites, RATIFICATO D-A 10/7/2026).
     # 26 → 27: +install (dominio packages, ADR 0209, 16/8/2026).
     # 27 → 28: +run (avvio di software gia' installato, ADR 0218).
-    assert len(ACTIONS) == 28
+    # 28 → 29: +organize (politica persistente su un corpus di file).
+    assert len(ACTIONS) == 29
+
+
+def test_organize_is_bilingual_mutating_and_distinct_from_move():
+    """Una politica di organizzazione non collassa su uno spostamento."""
+    assert "organize" in DESTRUCTIVE_VERBS
+    organize = ACTION_MAPPING["organize"]
+    assert "organizza" in organize["it"]
+    assert "organize" in organize["en"]
+    assert "NON move" in organize["boundary"]["it"]
+    assert "NOT move" in organize["boundary"]["en"]
 
 
 def test_run_is_bilingual_mutating_and_distinct_from_open():

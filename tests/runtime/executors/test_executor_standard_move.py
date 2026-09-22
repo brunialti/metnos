@@ -44,6 +44,8 @@ def test_manifest_declares_mutation_and_reverse_contract() -> None:
     assert manifest["capabilities"] == [{
         "name": "fs:write", "hint": ["~/notes/**", "/tmp/**"]}]
     assert "schema_inline" in manifest["output"]
+    assert not {"ordina", "organizza", "riorganizza", "organize"} & set(
+        manifest["affinity"])
 
 
 @pytest.mark.parametrize("root", [None, [], "entries"])
@@ -195,7 +197,7 @@ def test_move_reverse_and_repeat_preserve_postcondition(tmp_path: Path) -> None:
 def test_natural_paraphrases_remain_routable() -> None:
     entries = list(_catalog().executors.values())
     for query in (
-        "riorganizza questi documenti nella cartella archivio",
+        "sposta questi documenti nella cartella archivio",
         "rename and relocate these files into the archive folder",
     ):
         names = [item.name for item in rank(query, entries, k=8, min_score=1)]

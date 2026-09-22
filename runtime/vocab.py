@@ -87,6 +87,10 @@ ACTIONS = (
     # accettare comandi, path o script arbitrari. Distinto da `open`, che resta
     # riservato alle sessioni browser persistenti del dominio sites.
     "run",
+    # Applica una politica persistente a un corpus: scopre gli elementi,
+    # decide una disposizione e la materializza. E' distinto sia dal semplice
+    # `move` di elementi gia' individuati sia dai trasformatori in-memory.
+    "organize",
 )
 
 # Oggetti ammessi (plurale).
@@ -503,6 +507,7 @@ ACTION_CATEGORIES = {
     "share": "outbound-consent",
     "open": "web-session", "login": "web-session", "act": "web-session",
     "install": "system", "run": "system",
+    "organize": "I/O fs",
 }
 
 # ── Classificazione operativa per il runtime ──────────────────────────
@@ -525,7 +530,7 @@ COVERAGE_REQUIRED_VERBS = PRODUCER_VERBS | frozenset({
     "send", "create", "write", "move", "delete", "share",
     # `install` modifica una macchina: se la query lo chiede e il piano
     # non lo porta, la decomposizione e' monca — non un dettaglio.
-    "install", "run",
+    "install", "run", "organize",
     # sites F1: azioni web esplicite da portare a termine (open precursore di
     # login; login autentica). `act` (F2) si aggiunge quando l'executor esiste.
     "open", "login"})
@@ -549,7 +554,7 @@ DESTRUCTIVE_VERBS = frozenset({"move", "delete", "send", "write", "extract",
                                # un senso piu' forte degli altri: l'ambiente
                                # cambia e non si torna indietro con un undo
                                # (ADR 0209 D3).
-                               "install", "run"})
+                               "install", "run", "organize"})
 
 # Verbi candidati per precursor injection (chi può "popolare entries"
 # upstream di un consumer come describe/filter/move/...).
@@ -906,6 +911,16 @@ ACTION_MAPPING = {
         "boundary": {
             "it": "Avvia SOFTWARE GIA' INSTALLATO su un dispositivo tramite l'identificativo registrato del pacchetto e produce un processo. Un nome umano viene prima risolto dalla sorgente software del dispositivo; ambiguita' o assenza non autorizzano supposizioni. NON open (apre una sessione browser persistente del dominio sites) · NON install (aggiunge o rimuove software) · NON admin (esegue comandi arbitrari) · NON create (crea oggetti del dominio). Non accetta path, righe di comando o script.",
             "en": "Starts ALREADY-INSTALLED SOFTWARE on a device through its registered package identifier and produces a process. A human name is first resolved against the device software source; ambiguity or absence never permits guessing. NOT open (opens a persistent browser session in the sites domain) · NOT install (adds or removes software) · NOT admin (runs arbitrary commands) · NOT create (creates domain objects). It does not accept paths, command lines, or scripts.",
+        },
+    },
+    "organize": {
+        "it": ["organizza", "organizzare", "riorganizza", "riorganizzare",
+               "sistema-i-file"],
+        "en": ["organize", "organise", "reorganize", "reorganise",
+               "arrange-files"],
+        "boundary": {
+            "it": "Applica a un corpus una politica persistente di organizzazione: scopre gli elementi, li classifica e materializza la disposizione risultante. NON move (trasferisce elementi gia' individuati verso destinazioni gia' definite) · NON sort/group (riordinano o raggruppano entries in memoria) · NON classify (assegna categorie senza materializzare la disposizione del filesystem) · NON order (costruisce un indice persistente per query future).",
+            "en": "Applies a persistent organization policy to a corpus: discovers items, classifies them, and materializes the resulting arrangement. NOT move (transfers already identified items to already defined destinations) · NOT sort/group (reorder or group in-memory entries) · NOT classify (assigns categories without materializing a filesystem arrangement) · NOT order (builds a persistent index for future queries).",
         },
     },
 }

@@ -15,6 +15,7 @@ non restano artificialmente aperte.
 | P1 | **EXEC-BIND-001** | analisi separata; nessuna implementazione autorizzata | Stabilire se e come legare i byte verificati a quelli eseguiti per processi locali, builtin e bundle remoti, censendo prima la chiusura reale delle dipendenze. |
 | P1 | **REL-001** | osservazione temporale | Almeno un ciclo di release con telemetria versionata e volume sufficiente per dominio; ratifica degli SLO sulla base dei dati osservati. |
 | — | **UI-LOG-001** | TODO richiesto il 19 settembre 2026; da implementare | Ogni log nella chat/LRE ha un riepilogo compatto di due righe con nome del job, data ed esito, più controlli ispirati alle finestre Windows per aprire/chiudere i dettagli ed eliminare il log. |
+| — | **QUERY-OUTPUT-001** | TODO richiesto il 19 settembre 2026; da progettare | Un comando successivo puo' riferirsi senza ambiguita' all'output completo di una query conclusa nello stesso contesto, senza rieseguire la query. |
 
 `AFF-I18N-001` è la massima priorità. L'analisi tecnica e il confronto delle
 alternative sono conclusi in
@@ -38,6 +39,23 @@ generale e non basata su nomi executor.
 `REL-001` dispone gia' di schema, raccolta, classificatore privacy-safe, report
 atomico e test; il tempo di osservazione non puo' essere sostituito da dati
 sintetici.
+
+### QUERY-OUTPUT-001 - Riferimento all'output di una query precedente
+
+**Problema.** Richieste come «organizza quelli che hai appena trovato» devono
+poter consumare l'output esatto di una query conclusa, mantenendo ordine,
+completezza e provenienza degli elementi. Una nuova esecuzione della ricerca
+puo' produrre un insieme diverso e non equivale al riferimento dell'utente.
+
+**Vincoli di progetto.** Il riferimento deve restare isolato per contesto e
+proprietario, dichiarare quale risultato completato usa e fallire in modo
+esplicito quando il riferimento e' assente o ambiguo. Il riuso dell'output non
+estende permessi, consenso o durata dei dati e non deve dipendere dal nome di
+un executor specifico.
+
+**Condizione di chiusura.** Contratto generale approvato, riferimenti ambigui
+risolti tramite il normale dialogo, provenienza verificabile e test di
+isolamento, completezza, scadenza e mancata riesecuzione della query sorgente.
 
 ### AFF-I18N-001 - Internazionalizzazione completa di `affinity` (priorità massima)
 

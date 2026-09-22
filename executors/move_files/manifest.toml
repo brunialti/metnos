@@ -13,10 +13,9 @@ version     = "0.10.0"
 platforms   = ["linux", "windows"]
 author      = "Roberto Brunialti"
 affinity    = [
-    "move", "sposta", "rinomina", "rename", "mv", "spostare", "rinominare", "ordina",
-                "organizza", "riorganizza", "file", "files", "documenti",
-                "relocate", "archive", "cartella", "batch"
-            ]
+    "move", "sposta", "rinomina", "rename", "mv", "spostare", "rinominare",
+    "file", "files", "documenti", "relocate", "archive", "cartella", "batch",
+]
 revertible      = true
 reverse_pattern = ["swap_src_dst", "restore_blob_backup", "delete_created_dirs"]
 
