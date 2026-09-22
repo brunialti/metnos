@@ -1,0 +1,243 @@
+{
+  "schema": "rm0009-consolidated-source-preflight-v1",
+  "observed_at_utc": "2026-09-15 16:04:33 UTC",
+  "status": "source_fixed_g0_partial",
+  "source_commit": "1c308922839f7659a3cf54d988f995bba0f215d6",
+  "source_tree": "/opt/metnos/.claude/worktrees/rm0008-reboot",
+  "development_tree": "/opt/metnos/.claude/worktrees/rm0009-development",
+  "development_branch": "codex/rm0009-development",
+  "relevant_rm0008_assignment_completed": true,
+  "rm0008_tracked_changes_at_observation": "",
+  "excluded_upstream_untracked": [
+    "BACHECA",
+    "internal/coordination/"
+  ],
+  "initially_clean_development_tree": true,
+  "working_changes_at_observation": [
+    {
+      "path": "internal/reports/rm0009-baseline/20260915/README.md",
+      "owner": "rm0009-coordinator",
+      "category": "preparatory_only",
+      "source": "selective_carry_from_rm0009_preparation"
+    },
+    {
+      "path": "internal/reports/rm0009-baseline/20260915/analysis-review.md",
+      "owner": "rm0009-coordinator",
+      "category": "preparatory_only",
+      "source": "selective_carry_from_rm0009_preparation"
+    },
+    {
+      "path": "internal/reports/rm0009-baseline/20260915/birth-contract.md",
+      "owner": "rm0009-coordinator",
+      "category": "preparatory_only",
+      "source": "selective_carry_from_rm0009_preparation"
+    },
+    {
+      "path": "internal/reports/rm0009-baseline/20260915/inventory-data.md",
+      "owner": "rm0009-coordinator",
+      "category": "preparatory_only",
+      "source": "selective_carry_from_rm0009_preparation"
+    },
+    {
+      "path": "internal/reports/rm0009-baseline/20260915/inventory-security.md",
+      "owner": "rm0009-coordinator",
+      "category": "preparatory_only",
+      "source": "selective_carry_from_rm0009_preparation"
+    },
+    {
+      "path": "internal/reports/rm0009-baseline/20260915/preflight-observation.json",
+      "owner": "rm0009-coordinator",
+      "category": "preparatory_only",
+      "source": "selective_carry_from_rm0009_preparation"
+    },
+    {
+      "path": "internal/reports/rm0009-baseline/20260915/preparation-analysis.md",
+      "owner": "rm0009-coordinator",
+      "category": "preparatory_only",
+      "source": "selective_carry_from_rm0009_preparation"
+    },
+    {
+      "path": "internal/reports/rm0009-baseline/20260915/preparation-review-followup.md",
+      "owner": "rm0009-coordinator",
+      "category": "preparatory_only",
+      "source": "selective_carry_from_rm0009_preparation"
+    },
+    {
+      "path": "internal/reports/rm0009-baseline/20260915/preparation-review.md",
+      "owner": "rm0009-coordinator",
+      "category": "preparatory_only",
+      "source": "selective_carry_from_rm0009_preparation"
+    },
+    {
+      "path": "internal/reports/rm0009-baseline/20260915/test-lab.md",
+      "owner": "rm0009-coordinator",
+      "category": "preparatory_only",
+      "source": "selective_carry_from_rm0009_preparation"
+    },
+    {
+      "path": "internal/reports/rm0009-baseline/20260915/upstream-completion.json",
+      "owner": "rm0009-coordinator",
+      "category": "preparatory_only",
+      "source": "selective_carry_from_rm0009_preparation"
+    },
+    {
+      "path": "internal/reports/rm0009-baseline/20260915/verification.json",
+      "owner": "rm0009-coordinator",
+      "category": "preparatory_only",
+      "source": "selective_carry_from_rm0009_preparation"
+    },
+    {
+      "path": "internal/roadmap/RM-0009-crescita-allineata-delle-capacita.md",
+      "owner": "rm0009-coordinator",
+      "category": "preparatory_only",
+      "source": "selective_carry_from_rm0009_preparation"
+    },
+    {
+      "path": "internal/tools/rm0009_inventory_check.py",
+      "owner": "rm0009-coordinator",
+      "category": "preparatory_only",
+      "source": "current_turn"
+    },
+    {
+      "path": "internal/tools/rm0009_plan_check.py",
+      "owner": "rm0009-coordinator",
+      "category": "preparatory_only",
+      "source": "selective_carry_from_rm0009_preparation"
+    },
+    {
+      "path": "internal/tools/rm0009_test_lab.py",
+      "owner": "rm0009-coordinator",
+      "category": "preparatory_only",
+      "source": "selective_carry_from_rm0009_preparation"
+    },
+    {
+      "path": "tests/internal/test_rm0009_inventory_check.py",
+      "owner": "rm0009-coordinator",
+      "category": "preparatory_only",
+      "source": "current_turn"
+    },
+    {
+      "path": "tests/internal/test_rm0009_plan_check.py",
+      "owner": "rm0009-coordinator",
+      "category": "preparatory_only",
+      "source": "selective_carry_from_rm0009_preparation"
+    },
+    {
+      "path": "tests/internal/test_rm0009_test_lab.py",
+      "owner": "rm0009-coordinator",
+      "category": "preparatory_only",
+      "source": "selective_carry_from_rm0009_preparation"
+    }
+  ],
+  "excluded_main_checkout": {
+    "path": "/opt/metnos",
+    "head": "037840f455c005899dcaf089cc2e52dd614f07de",
+    "reason": "No cumulative merge or cherry-pick. Existing unrelated edits remain with their owners; only named RM0009 document/reports/preparatory tools/tests carried.",
+    "unique_commits_not_merged": [
+      "0b9c56acf40ff5731b5073749b38adc98ade915f",
+      "dbbab5f137cda781c28e7e56182a924f0a7e2324",
+      "fdd1b6f403549ac2be9017d8b3e6ac41fa7d32a9",
+      "ee4b74439a0c0970f38a57cfba3a86836a624092",
+      "5a0601ebabbd3b3adad2a95e0bff503879ff5040",
+      "14ea7179ae75342ff5e7a785ff32926942b84733",
+      "10773f44a880dd285abddd0ec7e08cbd683e1fb4",
+      "2ea85c8d8af8ce34e3e9f044f4e90f2d0aa44fd6",
+      "7cc36aa940bcccaba1b17eec6d4d1245c870b887",
+      "dbf3f1d58026dcbfa6b0b22a179384f81c43e7e1",
+      "ad37442c480afe02f39df2422b39703ca7dbe498",
+      "0b28ba07587a645a0d41363e6b2192cf8c999b60",
+      "037840f455c005899dcaf089cc2e52dd614f07de"
+    ]
+  },
+  "runtime_diff_from_provisional_1a9f42fb": [
+    "runtime/agent_runtime.py",
+    "runtime/contract_boundary_guard.py",
+    "runtime/engine/dispatch.py",
+    "runtime/executor_birth_admin_preflight.py",
+    "runtime/intent_extractor.py",
+    "runtime/target_device.py"
+  ],
+  "software": {
+    "python": "3.12.3",
+    "sqlite_library": "3.45.1"
+  },
+  "principals_observed": {
+    "operator_uid": 1000,
+    "service_uid": 995,
+    "service_gid": 985,
+    "single_trusted_local_principal_proved": false
+  },
+  "services_observed": {
+    "method": "read_only_systemctl_show_and_list_units",
+    "units": [
+      {
+        "id": "metnos-http.service",
+        "load_state": "loaded",
+        "active_state": "active",
+        "sub_state": "running",
+        "user": "metnos",
+        "group": "985"
+      },
+      {
+        "id": "metnos-telegram-daemon.service",
+        "load_state": "loaded",
+        "active_state": "active",
+        "sub_state": "running",
+        "user": "metnos",
+        "group": "985"
+      },
+      {
+        "id": "metnos-durable-worker.service",
+        "load_state": "loaded",
+        "active_state": "active",
+        "sub_state": "running",
+        "user": "metnos",
+        "group": "985"
+      },
+      {
+        "id": "metnos-playwright.service",
+        "load_state": "loaded",
+        "active_state": "active",
+        "sub_state": "running",
+        "user": "metnos",
+        "group": "985"
+      }
+    ],
+    "metnos_target": "active",
+    "caveat": "State only; no functional or restart verification. An initial query used the nonexistent metnos-telegram.service; resolved through services_registry.py and actual unit listing, not treated as an outage."
+  },
+  "database_schema_versions": {
+    "installed": "not_read",
+    "source": "see inventory-data.json when finalized",
+    "snapshot_taken": false
+  },
+  "permissions_scope": {
+    "production_stores_opened": false,
+    "private_keys_read": false,
+    "services_changed": false,
+    "legacy_runner_executed": false,
+    "birth_candidate_executed": false,
+    "product_code_changed": false
+  },
+  "gates": {
+    "g0_1_full": false,
+    "g0_2_full": false,
+    "g0_3": false,
+    "g0_4": false,
+    "g0_5": false,
+    "g0_6": false,
+    "g0_7": false,
+    "g0_8": false,
+    "g0_9": false,
+    "g0_10": false,
+    "FS_A": false,
+    "FS_B": false,
+    "EXT_RM0008_F5": false
+  },
+  "limitations": [
+    "Source consolidation is not F5/F6 certification.",
+    "Installed DB schema versions and coherent snapshot are not observed here; do not mark G0.1/P0 complete.",
+    "Inventories bind selected source files; neither grep nor file hashes prove exhaustive coverage.",
+    "All product assignments still require the normative G0 gates; this manifest authorizes none."
+  ]
+}

@@ -1,0 +1,1513 @@
+{
+  "schema": "rm0009-preflight-observation-v1",
+  "observed_at_utc": "2026-09-15 15:11:47 UTC",
+  "status": "provisional_waiting_rm0008",
+  "scope": "preparatory_analysis_and_test_tools_only",
+  "product_implementation_started": false,
+  "production_stores_opened": false,
+  "current_checkout": {
+    "path": "/opt/metnos",
+    "head": "037840f455c005899dcaf089cc2e52dd614f07de",
+    "branch": "session/detection-lexicon-i18n"
+  },
+  "upstream": {
+    "path": "/opt/metnos/.claude/worktrees/rm0008-reboot",
+    "first_observed_head": "1a9f42fb3dd8dd39a84ba2f7957a9f26abb7782e",
+    "final_head": null,
+    "task": {
+      "host_id": "remote-ssh-codex-managed:beelink",
+      "thread_id": "01a0870e-0fe7-7713-889a-260d91f29a09",
+      "title": "Birth gate review",
+      "observed_status": "active"
+    },
+    "freeze_allowed": false
+  },
+  "user_directives": [
+    "Coordinator owns RM0009 development and final quality; agents may be used at appropriate levels.",
+    "Wait until the RM0008 agent finishes and commits. Meanwhile only deep analysis, preparatory development and test/verification environment."
+  ],
+  "software_observed": {
+    "python": "3.12.3",
+    "sqlite": "3.45.1"
+  },
+  "service_observation": {
+    "mode": "read_only_systemctl_show",
+    "http": {
+      "active_state": "active",
+      "sub_state": "running",
+      "user": "metnos"
+    },
+    "telegram": {
+      "active_state": "active",
+      "sub_state": "running",
+      "user": "metnos"
+    },
+    "target": "active",
+    "certification_verified": false
+  },
+  "preexisting_changes": [
+    {
+      "status": " M",
+      "path": "CLAUDE.mutabile.md",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": "c59c3503c352706c0efae8259dbcb3f4c2c72924a3d2eb612bd81ddc001c91db",
+      "hash_state": "observed"
+    },
+    {
+      "status": " D",
+      "path": "deploy/backup_nas.sh",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "path_deleted_before_this_task"
+    },
+    {
+      "status": " D",
+      "path": "deploy/run_prompts_translator.sh",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "path_deleted_before_this_task"
+    },
+    {
+      "status": " M",
+      "path": "executors/act_sites/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/act_sites/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/change_files_format/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/change_files_format/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/compress_files/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/compress_files/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/compute_entries/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/compute_entries/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/compute_files_loc/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/compute_files_loc/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/compute_signatures/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/compute_signatures/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/consult_frontier/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/consult_frontier/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/create_calendars/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/create_calendars/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/create_dirs/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/create_dirs/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/create_events/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/create_events/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/create_files_doc/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/create_files_doc/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/create_files_spreadsheet/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/create_files_spreadsheet/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/create_images_indices/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/create_images_indices/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/delete_calendars/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/delete_calendars/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/delete_credentials/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/delete_credentials/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/delete_dirs/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/delete_dirs/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/delete_events/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/delete_events/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/delete_files/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/delete_files/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/delete_images_indices/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/delete_images_indices/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/delete_persons/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/delete_persons/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/delete_sites/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/delete_sites/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/describe_numbers/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/describe_numbers/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/filter_entries/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/filter_entries/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/filter_lists/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/filter_lists/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/filter_texts_lines/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/filter_texts_lines/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/find_contacts/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/find_contacts/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/find_credentials/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/find_credentials/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/find_dirs/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/find_dirs/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/find_events_empty/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/find_events_empty/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/find_files/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/find_files/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/find_files_hash/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/find_files_hash/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/find_images_google_photos/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/find_images_google_photos/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/find_images_indices/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/find_images_indices/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/find_images_web/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/find_images_web/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/find_packages/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/find_persons_indices/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/find_places/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/find_places/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/find_urls/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/find_urls/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/get_approval/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/get_approval/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/get_files/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/get_files/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/get_images_google_photos/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/get_images_google_photos/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/get_images_indices/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/get_images_indices/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/get_inputs/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/get_inputs/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/get_location/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/get_location/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/get_now/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/get_now/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/get_persons/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/get_persons/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/get_places/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/get_places/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/get_processes/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/get_processes/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/get_proposals/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/get_proposals/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/get_signatures/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/get_signatures/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/get_urls/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/get_urls/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/group_entries/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/group_entries/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/install_packages/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/install_packages/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/list_dirs/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/list_dirs/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/login_sites/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/login_sites/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/login_urls/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/login_urls/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/move_files/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/move_files/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/move_messages/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/move_messages/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/open_sites/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/open_sites/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/read_contacts/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/read_contacts/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/read_events/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/read_events/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/read_files/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/read_files/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/read_files_csv/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/read_files_csv/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/read_files_doc/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/read_files_doc/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/read_files_ocr/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/read_files_ocr/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/read_files_spreadsheet/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/read_files_spreadsheet/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/read_files_xlsx/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/read_files_xlsx/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/read_messages/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/read_messages/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/read_persons/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/read_persons/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/read_sites/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/read_sites/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/read_urls_html/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/read_urls_html/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/read_urls_pdf/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/read_urls_pdf/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/run_processes/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/run_processes/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/send_messages/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/send_messages/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/set_credentials/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/set_credentials/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/set_messages/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/set_messages/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/set_persons/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/set_persons/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/set_signatures/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/set_signatures/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/share_files/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/share_files/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/sort_entries/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/sort_entries/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/undo_last_turn/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/write_files/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/write_files/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/write_files_doc/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/write_files_doc/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/write_files_spreadsheet/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/write_files_spreadsheet/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/write_images_google_photos/manifest.lang_state.json",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " M",
+      "path": "executors/write_images_google_photos/manifest.toml.sig",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "not_readable_in_sandbox"
+    },
+    {
+      "status": " D",
+      "path": "install/__main__.py",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "path_deleted_before_this_task"
+    },
+    {
+      "status": " D",
+      "path": "install/bootstrap.sh",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "path_deleted_before_this_task"
+    },
+    {
+      "status": " D",
+      "path": "install/download_models.sh",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "path_deleted_before_this_task"
+    },
+    {
+      "status": " D",
+      "path": "install/llm_manager.py",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "path_deleted_before_this_task"
+    },
+    {
+      "status": " D",
+      "path": "install/playwright_sidecar.py",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "path_deleted_before_this_task"
+    },
+    {
+      "status": " D",
+      "path": "install/service_control_policy.py",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "path_deleted_before_this_task"
+    },
+    {
+      "status": " D",
+      "path": "install/setup.sh",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "path_deleted_before_this_task"
+    },
+    {
+      "status": " D",
+      "path": "install/sidecar.py",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "path_deleted_before_this_task"
+    },
+    {
+      "status": " M",
+      "path": "internal/roadmap/RM-0008-porta-unica-nascita-executor.md",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": "676a33d8bd9989a75353d1b2ae50e7c4083b9d120fab0450bf4de2dd29f43490",
+      "hash_state": "observed"
+    },
+    {
+      "status": " M",
+      "path": "internal/roadmap/RM-0009-crescita-allineata-delle-capacita.md",
+      "ownership": "rm0009_coordinator_previous_document_changes",
+      "sha256": "72e1b2629f733764fe9ff95d6bd7cf1b4f8fb909454df9ba174a638afed85951",
+      "hash_state": "observed"
+    },
+    {
+      "status": " D",
+      "path": "runtime/playwright_sidecar/install.sh",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "path_deleted_before_this_task"
+    },
+    {
+      "status": " D",
+      "path": "scripts/install_git_hooks.sh",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "path_deleted_before_this_task"
+    },
+    {
+      "status": " D",
+      "path": "scripts/migrate-syspath-to-package.py",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "path_deleted_before_this_task"
+    },
+    {
+      "status": " D",
+      "path": "scripts/normalize_installed_github_executors.py",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "path_deleted_before_this_task"
+    },
+    {
+      "status": " D",
+      "path": "scripts/post-rename-verify.sh",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "path_deleted_before_this_task"
+    },
+    {
+      "status": " D",
+      "path": "scripts/rename-myclaw-to-metnos.sh",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": null,
+      "hash_state": "path_deleted_before_this_task"
+    },
+    {
+      "status": "??",
+      "path": "deploy/backup_nas.sh.retired-v1",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": "a95fc4a4389d5699ac118e75d833ed5ca3e3014ca65b992969104efbb6467be0",
+      "hash_state": "observed"
+    },
+    {
+      "status": "??",
+      "path": "deploy/run_prompts_translator.sh.retired-v1",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": "5ece8a3ebc0a4a3559e6bd513948a6bc73d1711b272421274127874bb5e8d85f",
+      "hash_state": "observed"
+    },
+    {
+      "status": "??",
+      "path": "install/__main__.py.retired-v1",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": "dad1234ddf1c47129f916802c396d82aded0c1181cb49113ab23bd5918bdb279",
+      "hash_state": "observed"
+    },
+    {
+      "status": "??",
+      "path": "install/bootstrap.sh.retired-v1",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": "7f4e62631202635ff40acdcc36f56d8f2f96c41ba4f93ee36718582fb11081f3",
+      "hash_state": "observed"
+    },
+    {
+      "status": "??",
+      "path": "install/download_models.sh.retired-v1",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": "9cc18ece375a58c2180b9100d3c802346c243c312a47f894fa98506fde5b782e",
+      "hash_state": "observed"
+    },
+    {
+      "status": "??",
+      "path": "install/llm_manager.py.retired-v1",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": "6f5fdf662ec0634e260c2982cd01c9097faf3d3ec7399fc35c432061af003965",
+      "hash_state": "observed"
+    },
+    {
+      "status": "??",
+      "path": "install/playwright_sidecar.py.retired-v1",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": "3248bb34de5f950b0682d1fa0ffbda2af7018e56232634c47f47553f16f5ff1b",
+      "hash_state": "observed"
+    },
+    {
+      "status": "??",
+      "path": "install/service_control_policy.py.retired-v1",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": "cdb6658bdfdcb9555ca091b98381d3114b87b29b34ba40106c4494f878edf898",
+      "hash_state": "observed"
+    },
+    {
+      "status": "??",
+      "path": "install/setup.sh.retired-v1",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": "593ec74d6d73a5b4f82d0ad7ebcbd2270ad69046213f9e467fe491c77c132c65",
+      "hash_state": "observed"
+    },
+    {
+      "status": "??",
+      "path": "install/sidecar.py.retired-v1",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": "5d5f99d206a08cd63ba66c53fddce8ff67c9bcb4c93feb1b1e43d8ae58b3b4ba",
+      "hash_state": "observed"
+    },
+    {
+      "status": "??",
+      "path": "internal/design/handover_rm0008_finale_6_9_2026.md",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": "9c922bb5d0a2a02cb5722a5d151ebf26bdba9e07a985f8c367de19820e8c447b",
+      "hash_state": "observed"
+    },
+    {
+      "status": "??",
+      "path": "internal/design/handover_rm0008_stop_9_9_2026_1526.md",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": "272ac47d81265b3ef43eb91c954193cd722f8445af901b18ed9391dd6a274910",
+      "hash_state": "observed"
+    },
+    {
+      "status": "??",
+      "path": "internal/design/handover_rm0008_verifica_8_9_2026.md",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": "5abb896dd828c4a0c88da05872e78af1b03121d4cf206924a49086ac5b3ec0e9",
+      "hash_state": "observed"
+    },
+    {
+      "status": "??",
+      "path": "internal/reports/publication-gii-20260908.md",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": "6fb81a70eed800e015a450608731fafffc5eee2ac8198cc6a0bbf9f540c4d83b",
+      "hash_state": "observed"
+    },
+    {
+      "status": "??",
+      "path": "internal/reports/reboot-failure-20260908.md",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": "a038532910460a94fb050fc4d3ef02eecc6756edd5b30ef34a64b3d9539ce535",
+      "hash_state": "observed"
+    },
+    {
+      "status": "??",
+      "path": "internal/reports/rm0008-maintenance-analysis-20260909.md",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": "9d7572288920e6c712dae13b44a47a6f5ba88f8930d81ff6e277cea639fa3e1b",
+      "hash_state": "observed"
+    },
+    {
+      "status": "??",
+      "path": "runtime/playwright_sidecar/install.sh.retired-v1",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": "dca06bca83d3ffa0bde42ee23599cf2f96f21040b379f563d8bf7b19784bcb8e",
+      "hash_state": "observed"
+    },
+    {
+      "status": "??",
+      "path": "scripts/install_git_hooks.sh.retired-v1",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": "3667fe8952999b98c711ff296a8d22d1ea29282bc4d524a107b3e5cbae4b23f2",
+      "hash_state": "observed"
+    },
+    {
+      "status": "??",
+      "path": "scripts/migrate-syspath-to-package.py.retired-v1",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": "7f690a409ccc8f57f03d99e813aab7c2412412b600fa2d2dfc19e0d97baabd70",
+      "hash_state": "observed"
+    },
+    {
+      "status": "??",
+      "path": "scripts/normalize_installed_github_executors.py.retired-v1",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": "7490d1eb100b758155dfbb82ad2c562c3dfe1aa7a21f75430570d5039fe1e4a4",
+      "hash_state": "observed"
+    },
+    {
+      "status": "??",
+      "path": "scripts/post-rename-verify.sh.retired-v1",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": "9fd9d7991731a3dcb59414bb399a62b9c255fa89934f04e1b0e527a4b7ded35a",
+      "hash_state": "observed"
+    },
+    {
+      "status": "??",
+      "path": "scripts/rename-myclaw-to-metnos.sh.retired-v1",
+      "ownership": "preexisting_unconfirmed_do_not_modify",
+      "sha256": "8eccc443106911c1a88825037b8bf60be2c8ffe4776751a4b561a986245824b5",
+      "hash_state": "observed"
+    }
+  ],
+  "limitations": [
+    "This is not a frozen G0.1 baseline or a P0 coherent data snapshot.",
+    "Some signature/language-state files and install/data are not readable in the sandbox; Git status is not proof of their semantic modification.",
+    "Preexisting changes of unknown authorship stay excluded; dependent assignments require ownership resolution.",
+    "Upstream is still changing; all code inventories must be repeated against its final committed source.",
+    "No runtime, executor, client, service, private key or application store is modified by this preparation."
+  ]
+}

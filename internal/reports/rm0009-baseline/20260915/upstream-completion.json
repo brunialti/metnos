@@ -1,0 +1,40 @@
+{
+  "schema_version": "rm0009-upstream-completion-observation-v1",
+  "observed_at_utc": "2026-09-15 15:37:22 UTC",
+  "scope": "coordination_only_not_release_certification",
+  "task_title": "Birth gate review",
+  "thread_id": "01a0870e-0fe7-7713-889a-260d91f29a09",
+  "host_id": "remote-ssh-codex-managed:beelink",
+  "relevant_turn": {
+    "id": "01a0a505-f5c3-74c0-9e52-c2dbe86b7b87",
+    "status": "completed",
+    "completed_at_utc": "2026-09-15T15:33:33.000Z"
+  },
+  "task_status": "idle",
+  "observed_commit": "1c308922839f7659a3cf54d988f995bba0f215d6",
+  "observed_branch": "codex/rm0008-reboot",
+  "worktree": "/opt/metnos/.claude/worktrees/rm0008-reboot",
+  "tracked_worktree_clean": true,
+  "untracked_file_count": 101,
+  "untracked_roots_preserved_not_imported": [
+    "BACHECA",
+    "internal/coordination/"
+  ],
+  "coordination_wait_condition": "satisfied_for_observed_upstream_assignment",
+  "source_baseline_frozen": false,
+  "installed_release_claim": {
+    "sequence": 53,
+    "source": "internal/reports/rm0008-release-20260915.md",
+    "reported_status": "selected and ready",
+    "independently_verified_by_this_preparation": false
+  },
+  "final_inventory_rerun": false,
+  "rm0008_f5_certified_by_this_work": false,
+  "runtime_implementation_started": false,
+  "next_step": "Reinventory and reconcile the exact committed source, ownership, release binding and G0 contracts before product development.",
+  "limitations": [
+    "A completed upstream assignment is not closure of every RM-0008 roadmap phase.",
+    "Untracked coordination material remains owned by the other task; it was not imported or modified.",
+    "The earlier inventory reports describe previous provisional commits/releases, not this final observed commit."
+  ]
+}
