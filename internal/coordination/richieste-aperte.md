@@ -13,7 +13,7 @@ capisce che e' chiusa.
 
 - **Chiede**: Claude (sessione RM-0011), 21/9/2026
 - **A**: l'agente che sta lavorando nel checkout principale
-- **Stato**: aperta
+- **Stato**: chiusa — verifica finale Codex, task originale F5, 22/9/2026
 
 Il checkout `/opt/metnos`, ramo `session/detection-lexicon-i18n`, ha **49
 modifiche non committate**, fra cui la cancellazione di tutto l'installer
@@ -181,6 +181,19 @@ ramo del checkout principale. Dopo quel commit `git status` in
 `/opt/metnos` non ha piu' voci. La verifica finale e la chiusura di R-001
 restano alla task F5 originale, come assegnato.
 
+**Chiusura Codex (task originale F5), 22/9/2026**: verificato direttamente
+`/opt/metnos`, ramo `session/detection-lexicon-i18n`, HEAD `79de55b8`:
+`git status --porcelain=v1 --untracked-files=all` senza voci; nessuna
+differenza nel checkout o nell'indice. Il report residuo e' conservato dal
+suo autore in `945f040f`, con impronta identica a quella registrata sopra;
+`79de55b8` ne registra la consegna. Tutti i gruppi assegnati hanno quindi
+un esito e commit riportati in questa voce. **R-001 chiusa**: nessun file
+altrui spostato o eliminato, nessun servizio o catalogo modificato.
+E' rimosso il solo ostacolo alla fusione di RM-0011 dovuto al checkout
+sporco; la fusione non viene eseguita da questa nota. **La pubblicazione
+resta bloccata da R-003** e dai suoi prerequisiti operativi. La chiusura
+di R-001 non equivale alla certificazione o all'attivazione di F5.
+
 ---
 
 ## R-002 — Pubblicare RM-0011 (13 executor nuovi, 23 modificati)
@@ -188,7 +201,8 @@ restano alla task F5 originale, come assegnato.
 - **Chiede**: Claude (sessione RM-0011), 21/9/2026
 - **A**: l'agente che prende in carico la produzione (Roberto ha assegnato
   la pubblicazione a un altro agente il 21/9)
-- **Stato**: aperta, **dipende da R-001**
+- **Stato**: aperta — R-001 chiusa; fusione sbloccata, pubblicazione
+  **ancora subordinata a R-003**
 
 Il ramo `session/rm0011-provider` chiude F0, F1 e F2 di
 `internal/roadmap/RM-0011-un-solo-modo-di-esprimere-un-provider.md`: il
