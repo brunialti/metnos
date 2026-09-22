@@ -52,7 +52,7 @@ BIRTH_CLOSED_GUARD_VERSION = _boundary_policy.BIRTH_CLOSED_GUARD_VERSION
 BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:07cef6b0341d2d51ff11c1e5e7c984ff9afddadaf01ddae1cda2d2fcfd4e2d0c"
+BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:cbc21912648c2cb42dba1530410cfa424c2faf3b2a5cfb84e1d249d11eacd244"
 RM0008_ACCEPTANCE_EVOLUTION_SHA256 = "sha256:67eb6e545ec299e11431a544732edfdb3522304c064ea078b0cd14ddeeaef5c4"
 DEFAULT_INVENTORY = Path("internal/reports/rm0007-m4-boundary-inventory.json")
 SCAN_ROOTS = _boundary_policy.SCAN_ROOTS

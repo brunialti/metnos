@@ -28,7 +28,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from types import MappingProxyType
+from types import MappingProxyType, SimpleNamespace
 from typing import Callable, Mapping, Sequence
 import sys
 
@@ -4582,23 +4582,28 @@ def _process_tree_references_root_v2(
 
 def _process_tree_references_entries_v2(
     root: Path, locators: tuple[str, ...], *, proc_root: Path = Path("/proc"),
+    historical: bool = False,
 ) -> bool:
-    """Observe only catalog-bound entry points, without blocking other tools."""
+    """Observe running entry points; historical names need no surviving tree."""
     try:
-        resolved_root = root.resolve(strict=True)
+        resolved_root = root if historical else root.resolve(strict=True)
     except OSError as exc:
         raise _reject("birth_transition_process_observation_invalid", exc) from None
     if (
-        type(locators) is not tuple or not locators
+        not root.is_absolute() or root == Path("/")
+        or Path(os.path.abspath(root)) != root
+        or type(locators) is not tuple or not locators
         or any(type(item) is not str or not item for item in locators)
     ):
         raise _reject("birth_transition_process_observation_invalid")
     targets: set[Path] = set()
     modules: set[str] = set()
     for locator in locators:
+        if any(part in {"", ".", ".."} for part in locator.split("/")):
+            raise _reject("birth_transition_process_observation_invalid")
         candidate = root.joinpath(*locator.split("/"))
         try:
-            parent = candidate.parent.resolve(strict=True)
+            parent = candidate.parent if historical else candidate.parent.resolve(strict=True)
         except OSError as exc:
             raise _reject(
                 "birth_transition_process_observation_invalid", exc,
@@ -4982,7 +4987,7 @@ def _observe_bound_enforcement_v2(prepared: object) -> str:
 
 
 def _transition_roots_v2(
-    prepared: object, legacy_identity: object,
+    prepared: object, legacy_identity: object, *, include_repository: bool = True,
 ) -> Mapping[str, Path]:
     """Derive every mutable root only from the authenticated candidate."""
     materials = getattr(prepared, "materials", None)
@@ -5002,10 +5007,11 @@ def _transition_roots_v2(
             legacy_identity.home / ".config/systemd/user",
             owner=(legacy_identity.uid, legacy_identity.gid),
         ),
-        "repository": _require_transition_directory_v2(
-            Path(predecessor.installation_root), owner=(0, 0),
-        ),
     }
+    if include_repository:
+        roots["repository"] = _require_transition_directory_v2(
+            Path(predecessor.installation_root), owner=(0, 0),
+        )
     return MappingProxyType(roots)
 
 
@@ -5021,7 +5027,13 @@ def _retire_bound_catalog_v2(
     )
     loaded = _capture_bound_transition_catalog_v2(distribution, prepared)
     plan = plan_catalog_retirement_v1(loaded.catalog)
-    roots = _transition_roots_v2(prepared, legacy_identity)
+    if previous_catalog is not None:
+        retirement = _observe_successor_retirement_v2(
+            loaded, previous_catalog, legacy_identity,
+            expected_previous_build_id=distribution.previous_closed_build_id,
+        )
+    else:
+        roots = _transition_roots_v2(prepared, legacy_identity)
     observed = maintenance.observe()
     unit_states = {
         (item["scope"], item["unit"]): item["active_state"]
@@ -5033,7 +5045,7 @@ def _retire_bound_catalog_v2(
     repository_locators = tuple(sorted({
         step.locator for step in repository_steps
     }, key=lambda item: item.encode("utf-8")))
-    if repository_steps and _process_tree_references_entries_v2(
+    if previous_catalog is None and repository_steps and _process_tree_references_entries_v2(
         roots["repository"], repository_locators,
     ):
         raise _reject("birth_transition_repository_in_use")
@@ -5050,9 +5062,7 @@ def _retire_bound_catalog_v2(
     require_no_legacy_in_flight_v1(plan.steps, states)
 
     if previous_catalog is not None:
-        return _observe_previous_retirement_v2(
-            loaded, previous_catalog, prepared.materials.predecessor, roots,
-        )
+        return retirement
 
     preserve_action = "preserve_replaced_system_unit"
     ordinary = tuple(
@@ -5075,8 +5085,58 @@ def _retire_bound_catalog_v2(
     return plan_digest_v1(plan.steps)
 
 
-def _observe_previous_retirement_v2(loaded, previous, predecessor, roots) -> str:
-    """Reread initial retirement without repeating any legacy mutation."""
+def _verify_completed_retirement_v2(previous, expected_previous_build_id):
+    """Authenticate the selected predecessor's existing signed crossing proof.
+
+    Historical names are data, not live administrative roots. Neither a caller
+    supplied digest nor a built, pending or abandoned release is a checkpoint.
+    """
+    from executor_birth_admin_preflight import (
+        _authenticate_fixed_ownership_snapshot_v1,
+        _load_installed_preflight_materials_v1,
+    )
+    from executor_birth_dominant_startup import (
+        DominantStartupBindingsV1, bindings_digest_v1, dominant_startup_receipt_v1,
+    )
+    from executor_birth_legacy_retirement import plan_catalog_retirement_v1, plan_digest_v1
+    from executor_birth_service_catalog import decode_service_catalog_v1
+
+    authenticated = _authenticate_fixed_ownership_snapshot_v1()
+    selected, materials = _load_installed_preflight_materials_v1(
+        authenticated, review_sources=False,
+    )
+    record = materials.transaction
+    if (
+        record.sequence != 6 or record.state != "PREFLIGHT_VERIFIED"
+        or record.closed_build_id != expected_previous_build_id
+        or previous.catalog != decode_service_catalog_v1(materials.catalog.encoded)
+        or previous.unit_fragments != materials.unit_fragments
+    ):
+        raise _reject("birth_transition_retirement_checkpoint_invalid")
+    enforcement = _observe_bound_enforcement_v2(SimpleNamespace(materials=materials))
+    bindings = DominantStartupBindingsV1(
+        record.request_id,
+        record.previous_head_id or "sha256:" + record.previous_set_id,
+        record.context_transition_id, record.catalog_id,
+        materials.prerequisite.effective_units_hash, enforcement,
+    )
+    observed = dominant_startup_receipt_v1(
+        bindings_digest_v1(bindings),
+        plan_digest_v1(plan_catalog_retirement_v1(previous.catalog).steps),
+        enforcement,
+    )
+    if observed != record.dominant_startup_receipt:
+        raise _reject("birth_transition_retirement_checkpoint_invalid")
+    return selected, materials
+
+
+def _observe_successor_retirement_v2(
+    loaded, previous, legacy_identity, *, expected_previous_build_id,
+) -> str:
+    """Reuse proven history; observe current units and only new repository steps."""
+    from executor_birth_admin_preflight import (
+        _authenticate_fixed_ownership_snapshot_v1, _select_ownership_epoch_v1,
+    )
     from executor_birth_legacy_neutralizer import _observe_retired_core_v1
     from executor_birth_legacy_retirement import (
         LegacyRetirementError, plan_catalog_retirement_v1, plan_digest_v1,
@@ -5089,6 +5149,25 @@ def _observe_previous_retirement_v2(loaded, previous, predecessor, roots) -> str
         require_successor_retirement_v1(old_plan.steps, plan.steps)
     except LegacyRetirementError as exc:
         raise _reject("birth_transition_legacy_plan_changed", exc) from None
+
+    selected, materials = _verify_completed_retirement_v2(
+        previous, expected_previous_build_id,
+    )
+    predecessor = selected.predecessor
+    previous_ids = {step.legacy_id for step in old_plan.steps}
+    added = tuple(step for step in plan.steps if step.legacy_id not in previous_ids)
+    roots = _transition_roots_v2(
+        SimpleNamespace(materials=SimpleNamespace(
+            descriptor=materials.descriptor, predecessor=predecessor,
+        )), legacy_identity, include_repository=bool(added),
+    )
+    locators = tuple(sorted({
+        step.locator for step in plan.steps if step.scope == "repository"
+    }))
+    if locators and _process_tree_references_entries_v2(
+        Path(predecessor.installation_root), locators, historical=True,
+    ):
+        raise _reject("birth_transition_repository_in_use")
     old_units = dict(previous.unit_fragments)
     new_units = dict(loaded.unit_fragments)
     retired_files = {
@@ -5098,18 +5177,20 @@ def _observe_previous_retirement_v2(loaded, previous, predecessor, roots) -> str
     # bytecode/cache. Do not infer historical absence outside that coverage, or
     # fabricate a retirement artifact for an entry that never existed there.
     absent = frozenset(
-        step.locator for step in plan.steps
+        step.locator for step in added
         if step.scope == "repository" and step.locator not in retired_files
         and step.locator.split("/")[0] in _PREDECESSOR_SOURCE_ROOTS_V2
         and "__pycache__" not in step.locator.split("/")
         and Path(step.locator).suffix not in {".pyc", ".pyo"}
     )
     for scope in ("repository", "user", "system"):
-        steps = tuple(step for step in plan.steps if step.scope == scope)
+        steps = tuple(step for step in (added if scope == "repository" else plan.steps)
+                      if step.scope == scope)
         if steps:
             _observe_retired_core_v1(
                 roots[scope], steps,
-                previous_steps=tuple(step for step in old_plan.steps if step.scope == scope),
+                previous_steps=tuple(step for step in old_plan.steps if step.scope == scope)
+                if scope != "repository" else (),
                 previous_replacement_fragments={
                     (scope, name): content for name, content in old_units.items()
                 },
@@ -5119,6 +5200,11 @@ def _observe_previous_retirement_v2(loaded, previous, predecessor, roots) -> str
                 expected_retired_files=retired_files,
                 absent_repository_locators=absent if scope == "repository" else frozenset(),
             )
+    repeated = _select_ownership_epoch_v1(
+        _authenticate_fixed_ownership_snapshot_v1().snapshot,
+    )
+    if repeated != selected:
+        raise _reject("birth_transition_retirement_checkpoint_changed")
     return plan_digest_v1(plan.steps)
 
 

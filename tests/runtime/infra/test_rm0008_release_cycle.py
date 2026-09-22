@@ -50,64 +50,34 @@ def test_unchanged_retirement_plan_can_pass_the_early_release_check():
 
 
 def test_real_retirement_plan_removal_is_refused_before_live_reads(monkeypatch):
+    from install import birth_authority_provisioner as provisioner
     previous, current = _retirement_catalog_pair()
-    monkeypatch.setattr(cycle, "load_live_helper", lambda: pytest.fail("read after unsupported change"))
-    with pytest.raises(RuntimeError, match="removed or changed"):
-        cycle._verify_retirement_transition(current, previous, "legacy-test")
+    monkeypatch.setattr(provisioner, "_resolve_legacy_service_identity_v2", lambda _: object())
+    monkeypatch.setattr(provisioner, "_verify_completed_retirement_v2",
+                        lambda *_: pytest.fail("read after unsupported change"))
+    with pytest.raises(RuntimeError, match="birth_transition_legacy_plan_changed"):
+        cycle._verify_retirement_transition(current, previous, "legacy-test", "previous-build")
 
 
-@pytest.mark.parametrize("mismatch", (None, "catalog", "census"))
-def test_early_retirement_binds_census_to_attested_selection(tmp_path, monkeypatch, mismatch):
-    import executor_birth_distribution_assembler as assembler
-    import executor_birth_ownership_coordinator as coordinator
+@pytest.mark.parametrize("refused", (False, True))
+def test_early_retirement_uses_the_authoritative_successor_verifier(monkeypatch, refused):
     from install import birth_authority_provisioner as provisioner
 
     previous, current = _retirement_catalog_pair()
-    predecessor = assembler.build_predecessor_descriptor_v1(
-        transaction_id="sha256:" + "1" * 64, installation_root=str(tmp_path),
-        files=(assembler.PredecessorFileV1("runtime/historical.py", 1, "sha256:" + "2" * 64),),
-        service_commands=(assembler.PredecessorServiceCommandV1(
-            "historical", "none", None, None, None, (), None, (),
-        ),), administrative_bundle_hash="sha256:" + "3" * 64,
-        service_catalog_id=previous.catalog.catalog_id,
-        service_coverage_hash=previous.catalog.service_coverage_hash,
-    )
-    anchor = tmp_path / "predecessor-v1.json"
-    anchor.write_bytes(assembler.encode_predecessor_descriptor_v1(predecessor))
-    anchor.chmod(0o644)
-    monkeypatch.setattr(cycle, "ROOT", tmp_path)
-    original_read = coordinator._read_control_file_v2
-
-    def read(path, maximum, *, root_owned):
-        assert path == anchor and root_owned is True
-        return original_read(path, maximum, root_owned=False)
-
-    monkeypatch.setattr(coordinator, "_read_control_file_v2", read)
-    materials = NS(
-        catalog=NS(catalog_id=previous.catalog.catalog_id if mismatch != "catalog" else "changed"),
-        prerequisite=NS(predecessor_id=predecessor.predecessor_id if mismatch != "census" else "changed"),
-        descriptor=object(),
-    )
-    monkeypatch.setattr(cycle, "load_live_helper", lambda: NS(
-        _attest_service_startup_v1=lambda entry: (materials, None),
-    ))
-    identity, roots = object(), object()
+    identity = object()
     monkeypatch.setattr(provisioner, "_resolve_legacy_service_identity_v2", lambda name: identity if name == "legacy-test" else None)
-    def get_roots(prepared, observed_identity):
-        assert prepared.materials.predecessor == predecessor
-        assert prepared.materials.descriptor is materials.descriptor
-        assert observed_identity is identity
-        return roots
-    monkeypatch.setattr(provisioner, "_transition_roots_v2", get_roots)
     calls = []
-    monkeypatch.setattr(provisioner, "_observe_previous_retirement_v2", lambda *args: calls.append(args))
-    if mismatch:
-        with pytest.raises(RuntimeError, match="retirement"):
-            cycle._verify_retirement_transition(previous, current, "legacy-test")
-        assert calls == []
+    def observe(*args, **kwargs):
+        calls.append((args, kwargs))
+        if refused:
+            raise provisioner.BirthProvisioningError("birth_transition_retirement_checkpoint_invalid")
+    monkeypatch.setattr(provisioner, "_observe_successor_retirement_v2", observe)
+    if refused:
+        with pytest.raises(RuntimeError, match="retirement_checkpoint_invalid"):
+            cycle._verify_retirement_transition(previous, current, "legacy-test", "previous-build")
     else:
-        cycle._verify_retirement_transition(previous, current, "legacy-test")
-        assert calls == [(current, previous, predecessor, roots)]
+        cycle._verify_retirement_transition(previous, current, "legacy-test", "previous-build")
+    assert calls == [((current, previous, identity), {"expected_previous_build_id": "previous-build"})]
 
 
 @pytest.fixture
@@ -127,6 +97,7 @@ def release(monkeypatch, tmp_path):
         system_unit_root=str(tmp_path / "units"),
     )
     distribution = NS(installation_root=root, release_sequence=42,
+                      previous_closed_build_id="sha256:" + "a" * 64,
                       identity=NS(closed_build_id="sha256:test-release"),
                       encoded=b"distribution", signature=b"signature",
                       files=(NS(path="runtime/stack_reconcile.py"),
