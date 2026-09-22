@@ -1,0 +1,276 @@
+manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
+
+name         = "organize_files"
+version      = "0.1.0"
+timeout_s    = 540
+intelligence = "deterministic"
+platforms    = ["linux"]
+author       = "Roberto Brunialti"
+lifecycle    = "active"
+critical     = true
+revertible   = true
+reverse_pattern = "module.reverse"
+affinity = [
+  "organizza file",
+  "organizza documenti",
+  "riorganizza file",
+  "sistema file per criterio",
+  "deduplica e organizza file",
+  "organize files",
+  "organise files",
+  "reorganize files",
+  "arrange files into folders",
+  "deduplicate and organize files",
+]
+
+[execution]
+effect            = "reversible"
+parallelism_class = 0
+resource_class    = "local_io"
+concurrency_key   = "path"
+equivalence_gate  = "unverified"
+
+[execution.frozen_plan]
+argument = "mode"
+preview_value = "preview"
+apply_value = "apply"
+token_argument = "confirmation_token"
+token_result = "confirmation_token"
+carry_arguments = ["source_paths", "compare_paths", "destination_roots"]
+artifact_suffix = ".frozen-plan.json"
+journal_suffix = ".organize-receipt.json"
+recovery = "same_token_write_ahead_v1"
+
+[[execution.effects]]
+argument = "mode"
+equals = "preview"
+effect = "read_only"
+
+[description]
+it = "SCOPO: organizza file con una politica chiusa, SHA-256 e piano congelato. PATTERN: usa mode='preview'; il runtime presenta il form e riserva mode='apply' alla ripresa autenticata. NON: spostamenti già risolti, ricerca duplicati, sort/group/classify/order, sovrascrittura, regex o codice. OUT: anteprima completa consultabile oppure ricevuta reversibile con effetti reali."
+en = "SCOPO: organizes files with a closed policy, SHA-256, and a frozen plan. PATTERN: use mode='preview'; the runtime shows the form and reserves mode='apply' for authenticated resume. NON: resolved moves, duplicate search, sort/group/classify/order, overwrite, regex, or code. OUT: a complete inspectable preview or a reversible receipt of actual effects."
+
+[code]
+files  = ["organize_files.py"]
+digest = "sha256:072c1a1becc57787266155395058189fd6dedb4d6ef20db47232bcabfd96907e"
+
+[args]
+type = "object"
+required = ["mode", "source_paths"]
+
+[args.properties.mode]
+type = "string"
+enum = ["preview", "apply"]
+
+[args.properties.mode.description]
+it = "Fase obbligatoria. `preview` legge e congela un piano senza modificare i file; `apply` esegue esclusivamente quel piano dopo conferma."
+en = "Required phase. `preview` reads and freezes a plan without changing files; `apply` executes only that plan after confirmation."
+
+[args.properties.source_paths]
+type = "array"
+items = { type = "string" }
+minItems = 1
+uniqueItems = true
+
+[args.properties.source_paths.description]
+it = "Directory sorgente esistenti e senza componenti symlink. Sono anche lo scope di scrittura per spostamenti e deduplica; in apply devono coincidere con la preview."
+en = "Existing source directories with no symlink components. They are also the write scope for moves and deduplication; apply must repeat the preview values."
+
+[args.properties.compare_paths]
+type = "array"
+items = { type = "string" }
+default = []
+uniqueItems = true
+
+[args.properties.compare_paths.description]
+it = "Directory facoltative, solo lettura, usate come riferimenti per deduplicare per SHA-256 esatto; non vengono mai modificate."
+en = "Optional read-only directories used as exact SHA-256 deduplication references; they are never modified."
+
+[args.properties.destination_roots]
+type = "array"
+items = { type = "string" }
+default = []
+uniqueItems = true
+
+[args.properties.destination_roots.description]
+it = "Elenco chiuso delle directory destinazione esistenti e scrivibili. Ogni move.destination_root deve comparire qui; nessuna destinazione può stare sotto una source_path."
+en = "Closed list of existing writable destination directories. Every move.destination_root must appear here; no destination may be inside a source_path."
+
+[args.properties.recursive]
+type = "boolean"
+default = true
+
+[args.properties.recursive.description]
+it = "Se true scandisce ricorsivamente tutte le source_paths e compare_paths; non segue symlink."
+en = "When true, recursively scans all source_paths and compare_paths; symlinks are never followed."
+
+[args.properties.max_depth]
+type = "integer"
+minimum = 0
+maximum = 64
+default = 0
+
+[args.properties.max_depth.description]
+it = "Profondità massima comune; 0 significa nessun limite entro max_files e max_bytes."
+en = "Common maximum depth; 0 means unlimited within max_files and max_bytes."
+
+[args.properties.entries]
+type = "array"
+maxItems = 100000
+items = { type = "object", required = ["path"], properties = { path = { type = "string" } } }
+
+[args.properties.entries.description]
+it = "Subset facoltativo di record arricchiti; ogni path deve essere un file regolare dentro source_paths e i metadati non ampliano l'autorità filesystem."
+en = "Optional enriched-record subset; every path must be a regular file inside source_paths and metadata never widens filesystem authority."
+
+[args.properties.select]
+type = "object"
+maxProperties = 3
+
+[args.properties.select.description]
+it = "Condizione chiusa opzionale: nodi all/any/not oppure foglie {field,operator,value}. Operatori: equals, in, exists, glob, range, before, after. Regex e codice non sono ammessi."
+en = "Optional closed condition: all/any/not nodes or {field,operator,value} leaves. Operators: equals, in, exists, glob, range, before, after. Regex and code are not allowed."
+
+[args.properties.operations]
+type = "array"
+minItems = 1
+maxItems = 128
+items = { type = "object", required = ["type"], properties = { type = { type = "string", enum = ["deduplicate", "move"] }, match = { type = "string", enum = ["sha256"] }, keep = { type = "string", enum = ["outside_sources", "first_source", "outside_sources_or_first"] }, destination_root = { type = "string" }, path_template = { type = "string", maxLength = 512 }, on_missing = { type = "string", enum = ["fail", "leave", "next"] }, on_conflict = { type = "string", enum = ["fail", "hash_suffix"] }, when = { type = "object" } } }
+
+[args.properties.operations.description]
+it = "Policy ordinata: al massimo un deduplicate SHA-256, poi move con when, destination_root dichiarata, path_template relativo e strategie missing/conflict chiuse."
+en = "Ordered policy: at most one SHA-256 deduplicate, then move rules with when, a declared destination_root, relative path_template, and closed missing/conflict strategies."
+
+[args.properties.confirmation_token]
+type = "string"
+pattern = "^[0-9a-f]{64}$"
+runtime_resolved = true
+
+[args.properties.confirmation_token.description]
+it = "Token content-addressed restituito da preview e obbligatorio in apply; è legato ad attore, host, scope, inventario, hash e scadenza."
+en = "Content-addressed token returned by preview and required for apply; bound to actor, host, scope, inventory, hashes, and expiry."
+
+[args.properties.max_files]
+type = "integer"
+minimum = 0
+maximum = 100000
+default = 10000
+
+[args.properties.max_files.description]
+it = "Limite fail-closed dei file per inventario sorgente o confronto."
+en = "Fail-closed file limit for each source or comparison inventory."
+
+[args.properties.max_bytes]
+type = "integer"
+minimum = 0
+maximum = 10995116277760
+default = 107374182400
+
+[args.properties.max_bytes.description]
+it = "Limite fail-closed dei byte da verificare con hash completo."
+en = "Fail-closed byte limit for full-hash verification."
+
+[args.properties.max_preview]
+type = "integer"
+minimum = 0
+maximum = 500
+default = 100
+pipeline_role = "presentation_limit"
+
+[args.properties.max_preview.description]
+it = "Numero massimo di azioni mostrate; il piano salvato e i conteggi restano completi."
+en = "Maximum displayed actions; the saved plan and counts remain complete."
+
+[args.properties.plan_ttl_seconds]
+type = "integer"
+minimum = 60
+maximum = 3600
+default = 900
+
+[args.properties.plan_ttl_seconds.description]
+it = "Validità del piano congelato prima che apply debba richiedere una nuova preview."
+en = "Frozen-plan lifetime before apply requires a new preview."
+
+[args.properties.client]
+type = "string"
+enum = ["local"]
+default = "local"
+runtime_resolved = true
+
+[args.properties.client.description]
+it = "Backend locale Linux; la v1 non effettua fallback su device o provider remoti."
+en = "Local Linux backend; v1 never falls back to a device or remote provider."
+
+[output]
+schema_inline = """
+{
+  ok: bool,
+  mode: 'preview' | 'apply',
+  apply_ready?: bool,
+  scan_complete?: bool,
+  decision?: 'needs_confirmation',
+  requires_confirmation?: bool,
+  confirmation_token?: str,
+  expires_at?: int,
+  source_paths?: Array<str>,
+  compare_paths?: Array<str>,
+  destination_roots?: Array<str>,
+  source_count?: int,
+  compare_count?: int,
+  move_count: int,
+  duplicate_count: int,
+  unresolved_count?: int,
+  ok_count: int,
+  fail_count: int,
+  results: Array<object>,
+  failed: Array<object>,
+  truncated?: bool,
+  truncated_what?: str,
+  used?: int,
+  available_total?: int,
+  cap_field?: str,
+  cap_value?: int,
+  partial?: bool,
+  diagnostic?: str,
+  receipt_path?: str,
+  receipt_sha256?: str,
+  _undo: {outcome: 'no_effect' | 'reversible', reverse_pattern?: 'module.reverse', receipt_path?: str, receipt_sha256?: str},
+  error_class?: str,
+  error_code?: str,
+  error?: str
+}
+"""
+
+[undo]
+outcome = "per_execution"
+
+[[capabilities]]
+name = "fs:read"
+hint = ["arg:source_paths", "arg:compare_paths", "arg:destination_roots"]
+
+[[capabilities]]
+name = "fs:write"
+hint = ["arg:source_paths", "arg:destination_roots"]
+when = { arg = "mode", values = ["apply"] }
+
+[[capabilities]]
+name = "metnos:history"
+hint = ["turn"]
+
+[[tests]]
+name = "preview_congela_senza_modificare"
+setup = "mkdir -p /tmp/metnos_organize_src /tmp/metnos_organize_dst/2024 && printf x > /tmp/metnos_organize_src/20240102_note.txt"
+input = { mode = "preview", source_paths = ["/tmp/metnos_organize_src"], destination_roots = ["/tmp/metnos_organize_dst"], operations = [{ type = "move", destination_root = "/tmp/metnos_organize_dst", path_template = "{capture_date.year}/{name}", on_missing = "fail", on_conflict = "fail" }] }
+expect = { ok = true, decision = "needs_confirmation", has_field = "confirmation_token", field_eq = { move_count = 1, duplicate_count = 0 } }
+env = { METNOS_HISTORY_DIR = "/tmp/metnos_organize_history", METNOS_TURN_ID = "birth-preview", METNOS_ACTOR = "host", METNOS_OWNER_USER_ID = "birth-owner", METNOS_DEVICE_ID = "birth-server", METNOS_CHANNEL = "http" }
+teardown = "rm -rf /tmp/metnos_organize_src /tmp/metnos_organize_dst /tmp/metnos_organize_history"
+
+[[tests]]
+name = "equivalenza_worker_piano"
+reference = "tests/runtime/executors/test_organize_files.py::test_preview_is_worker_count_invariant"
+equivalence_runs = 2
+
+[placement]
+scope = "server"
+device_ok = false
