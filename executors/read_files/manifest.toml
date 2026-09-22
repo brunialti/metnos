@@ -25,7 +25,7 @@ en = "SCOPO: reads mixed PDF/DOCX/XLSX/CSV and computes SHA-256 hash signatures.
 
 [code]
 files  = ["read_files.py"]
-digest = "sha256:29d044c06e36aaf4967ee829b9c7439995ee0a85857ab6ef92c3ff057f0fee81"  # sostituito al momento della firma
+digest = "sha256:05a832a5061a74117e17a85b2d31c9f3ec6049e2d5f6aa7b0065b1dd4e9c55c7"  # sostituito al momento della firma
 
 # --- Argomenti accettati (JSON Schema, sottoinsieme v1.1) -------------------
 [args]
