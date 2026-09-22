@@ -27,6 +27,13 @@ niente**, e la pubblicazione si fa solo da li' (`internal/AGENTS.md` §6.3).
 **Chiuso quando**: `git status` in `/opt/metnos` e' pulito, o le modifiche
 sono su un ramo proprio, e questa voce riporta cosa e' stato fatto.
 
+**Riscontro Codex, 22/9/2026**: il lavoro F5 di questa attivita' e' nei
+commit `3cddd734` e `1942462b` di `codex/rm0009-development`; il relativo
+worktree e' pulito. Le modifiche gia' presenti nel checkout principale
+non vengono incluse nei commit di questa attivita', ripulite o attribuite
+a un autore senza verifica. R-001 resta aperta. L'aggiornamento odierno
+della bacheca e di `internal/AGENTS.md` e' documentazione separata.
+
 ---
 
 ## R-002 — Pubblicare RM-0011 (13 executor nuovi, 23 modificati)
@@ -144,6 +151,37 @@ mano non si autoproclama produttore.
 **Chiuso quando**: §6.2 riporta la procedura, e un executor modificato a
 mano e' stato pubblicato seguendola.
 
+### Risposta Codex del 22/9/2026 — raccordo presente, verifica ancora aperta
+
+**Produttore gia' presente per un candidato CORE modificato:
+`stack_reconcile/restart_sign_first`; prima di aggiungerne uno, va
+verificato questo raccordo.** Il riscontro e' riportato anche in
+`internal/AGENTS.md` §6.2. Quel file e' escluso da Git dalla regola
+esplicita per gli `AGENTS.md` annidati: l'aggiornamento resta locale,
+mentre questa risposta ne conserva il riscontro nella bacheca tracciata.
+
+Nel checkout principale `845bbaf2`, `runtime/stack_reconcile.py` collega
+`deploy` con `--executor` e `--sign` a `verify_named_executors`: copia il
+candidato, costruisce il `BirthIntent` CORE e chiama
+`submit_stack_reconcile_birth`. Quest'ultimo passa dall'imbuto comune e
+dal bootstrap dell'autorita' predisposta. La precedente affermazione
+«nessuno copre il caso» non descrive quindi interamente il codice.
+
+**Non e' ancora una prova di pubblicazione riuscita.** Le due prove di
+verifica nominale del catalogo in `tests/runtime/infra/test_stack_reconcile.py`
+simulano la risposta di nascita. Il raccordo inoltre conduce al riavvio del
+target e non incorpora il vaglio su `/admin/changes` proposto sopra. Non
+e' stato eseguito: resta valido il blocco sulle pubblicazioni fino alla
+chiusura di R-003, e restano i prerequisiti di R-001 e della finestra
+operativa. Nessun nuovo produttore o approvazione e' stato dedotto dal
+percorso dei file.
+
+**Passo da chiudere con il responsabile RM-0008 e l'operatore del rilascio**:
+verificare questo flusso sulla versione destinata all'esercizio, precisare
+l'autorizzazione richiesta e registrare l'esito reale con generazione e
+rilettura del catalogo. Non occorre reinterpretare un test simulato come
+ricevuta. Stato: **aperta**, con risposta tecnica parziale.
+
 ---
 
 ## R-004 — `CLAUDE.md` §7.10 e' obsoleto (per Roberto)
@@ -159,3 +197,62 @@ contro un errore e non trova scritto da nessuna parte cosa fare.
 
 La correzione dipende da R-003: prima si stabilisce la procedura, poi si
 scrive in §7.10.
+
+---
+
+## R-005 — Consegnare la correzione del lanciatore F5 al rilascio
+
+- **Chiede**: Codex (attivita' LRE / verifica F5), 22/9/2026
+- **A**: responsabile RM-0008/F5 e operatore del rilascio
+- **Stato**: aperta — consegna del sorgente, non autorizzazione a installare
+
+La correzione e' nel commit `3cddd734` di `codex/rm0009-development`, con
+resoconto conclusivo in `1942462b`. Il worktree
+`/opt/metnos/.claude/worktrees/rm0009-development` e' pulito; questi commit
+non sono nel checkout principale verificato oggi. Il lanciatore mantiene
+bytecode e workspace fuori dai due alberi protetti e rifiuta anche percorsi
+di configurazione/dati/stato/cache che possano modificarli. Le prove
+coprono le chiamate ripetute, i permessi e la rimozione delle protezioni.
+
+Ricevuta del 20/9: **73 prove locali superate**. Dettagli e limiti in
+`internal/design/handover_rm0008_f5_17_9_2026.md` §9 del ramo indicato.
+Questa attivita' non ha installato il lanciatore ne' riavviato servizi;
+eventuali installazioni successive di altri agenti vanno riscontrate.
+Non attivare F5 per effetto di questa consegna.
+
+**Chiuso quando**: il responsabile registra come la correzione e' stata
+integrata e, nella finestra autorizzata, installata e verificata sulla
+release pertinente, oppure motiva esplicitamente una diversa disposizione.
+Riportare release, commit ed esito, conservando questa voce.
+
+---
+
+## R-006 — Attribuire il rifiuto della certificazione pubblica RM-0008 2A
+
+- **Chiede**: Codex (attivita' LRE / verifica F5), 22/9/2026
+- **A**: responsabile della certificazione RM-0008 e dell'esportazione pubblica
+- **Stato**: aperta — riscontro storico del 20/9, non misura aggiornata della CI
+
+L'aggiornamento pubblico F5 `92eab91ec16112f818d4d246b61acbf0f7678632`
+ha eliminato dal pacchetto pubblico la prova che richiedeva l'installer
+privato, aggiornato il README delle prove e rigenerato l'inventario. Le
+26 prove dell'ingresso pubblico sono superate; i sorgenti di prodotto
+sono invariati.
+
+Il controllo `RM-0008 2A / manifest` della
+[certificazione successiva](https://github.com/brunialti/metnos/actions/runs/35508891679)
+rifiuta `current acceptance anchor differs: tests/portable/test_rm0008_acceptance_evolution.py`.
+Lo stesso rifiuto e' verificato nella
+[certificazione del predecessore](https://github.com/brunialti/metnos/actions/runs/35505233907)
+`f3ac40dc99ecb4b1d128c775eb422560b0b80ea9`. L'attribuzione riguarda quel
+messaggio preciso, non ogni eventuale errore della suite. Non sono state
+aggiornate le impronte congelate per far superare il controllo.
+
+Ricevute: `ci-manifest.log` e `ci-baseline-manifest.log` in
+`/tmp/metnos-f5-public-20260920.Sc47tL/`; resoconto permanente nel §9.3
+del handover indicato in R-005, commit `1942462b`.
+
+**Chiuso quando**: sono registrati la causa del disallineamento, l'eventuale
+correzione o aggiornamento approvato del riferimento e il nuovo esito del
+controllo pubblico interessato. Se un altro intervento ha gia' risolto,
+aggiungere qui commit e ricevuta anziche' ripetere il lavoro.
