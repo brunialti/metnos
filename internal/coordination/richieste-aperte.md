@@ -87,6 +87,32 @@ del 22/9 e il mio puntatore al handover del 17/9, gia' conservati in
 degli altri agenti o `install/data`. Nessuna pubblicazione o modifica
 ai servizi; l'esito e i commit verranno aggiunti a questa voce.
 
+**Esito gruppo RM-0009/LRE, stessa task, 22/9/2026**: completato.
+Commit separati su `codex/r001-rm0009-integration-20260922`, integrati
+nel checkout principale con avanzamento a `6ee1ebd6`, senza cambiare
+il ramo `session/detection-lexicon-i18n`:
+
+- `5228fd26`: due strumenti RM-0009 e due test associati;
+- `9722b2ac`: tutti i 32 report storici di `rm0009-baseline/`;
+- `c5f75d90`: la sola voce `UI-LOG-001` in TODO;
+- `7a065bce`: mio rapporto di coordinamento LRE e puntatore al handover;
+- `6ee1ebd6`: mie note in R-001, R-003 e R-005, compresa la presa in carico.
+
+Controllo prima dell'integrazione: **40 file su 40 identici byte per byte**
+fra contenuti da conservare e commit; nessun contenuto scartato. I report
+del 15/9 restano osservazioni storiche, non una certificazione odierna.
+Prova ripetuta anche sul checkout principale integrato: i due file di test
+`tests/internal/test_rm0009_plan_check.py` e `test_rm0009_test_lab.py`,
+eseguiti con directory dati/configurazione temporanee vuote, danno
+**62 superate, 0 fallite, 0 saltate** (0,23 s). Nessun dato operativo usato.
+
+Al controllo dopo l'integrazione, l'unica voce residua di `git status`
+e' `?? internal/reports/github-affinity-cleanup-20260920.md`: non mia,
+lasciata invariata e fuori dai commit. **R-001 resta aperta**; consegno
+questo esito al coordinatore finale RM-0008/F5, cui spetta l'attribuzione
+del report residuo e la verifica conclusiva del checkout pulito. Non ho
+usato stash, cambiato permessi o riavviato/pubblicato alcun servizio.
+
 **Presa in carico RM-0008, Codex (task originale F5), 22/9/2026**:
 Roberto ha assegnato esplicitamente il gruppo RM-0008. Lo sistemo su
 `codex/r001-rm0008-cleanup-20260922`, con commit distinti per ritiro,
