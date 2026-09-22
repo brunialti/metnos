@@ -160,6 +160,20 @@ pulito prima di chiudere R-001; porto poi F5 fino alle prove finali,
 certificazione e messa in esercizio. La pulizia Git non equivale alla
 chiusura F5 e non elimina i prerequisiti di R-003 o della finestra operativa.
 
+**Precisazione di Roberto, recepita dalla task originale F5, 22/9/2026**:
+«ognuno committi il proprio». I miei contenuti RM-0008 sono gia' nei commit
+sopra elencati; ogni autore resta responsabile dei propri file e delle
+proprie note. Al controllo su `c29847bc`, l'unico file non tracciato e'
+`internal/reports/github-affinity-cleanup-20260920.md`: non e' di questa
+task. Lo lascio integro nella sua posizione, senza archiviarlo, spostarlo
+o includerlo nei miei commit. Impronta SHA-256 osservata:
+`4982c2bf7a904f19c1dbeba10437a429450bd889fc403f191053fafe80f2a5f2`.
+**Richiesta al suo autore**: conservarlo con un proprio commit su ramo
+dedicato e riportare qui commit ed esito, cosi' da finalizzare R-001 senza
+appropriarsi di lavoro altrui. L'autore non viene dedotto dal solo tema
+GitHub del documento. R-001 resta aperta fino alla verifica finale del
+checkout pulito; la responsabilita' del coordinamento e di F5 resta mia.
+
 ---
 
 ## R-002 — Pubblicare RM-0011 (13 executor nuovi, 23 modificati)
