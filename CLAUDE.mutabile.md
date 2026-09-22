@@ -6,13 +6,31 @@
 
 ## S. Stato corrente (23/8/2026)
 
+- **RM-0008: servizi recuperati, avvio distinto dalla certificazione**
+  (9/9, ADR 0225 nel worktree `rm0008-reboot`): installato il verificatore
+  amministrativo circoscritto al servizio, che esegue realmente il Python gestito.
+  HTTP, Telegram, browser e LRE operativi; controllo generale riuscito,
+  target ordinario attivo e abilitato. Richiesta reale riuscita, Telegram inviato.
+  Release immutabile, firme e catena invariate; nessun nuovo reboot eseguito.
+  Non ripetere la transizione o il ripristino del predecessore esatto.
+  F5-F6, aggiornamento generale e chiusura RM-0008 restano distinti.
+- **RM-0008: ulteriori correzioni di manutenzione testate, non distribuite**
+  (9/9): modalità HTTP autenticata di sola manutenzione, validazione SMTP per
+  invocazione e comandi sul catalogo selezionato sono nel worktree e su GitHub,
+  non ancora nella release in esercizio. Il sito bilingue è stato pubblicato
+  senza modificare il catalogo Tutor locale. Stato e prove correnti:
+  `internal/reports/rm0008-maintenance-analysis-20260909.md`.
+- **RM-0009 nella raccolta comune** (15/9): documento principale alla revisione 8
+  in `internal/roadmap/RM-0009-crescita-allineata-delle-capacita.md`.
+  Sviluppo assegnato al coordinatore; contratti e approvazione seguono G0 della
+  roadmap. F0-F6 non iniziate; nessuna modifica ai gate di esercizio RM-0008.
 - **Analisi richiesta/intent in corso (8/8)**: prima di riprendere prove di
   normalizzazione o intent extraction leggere
   `internal/design/handover_request_analysis_8_8_2026.md` e
   `internal/tools/request_analysis_lab/README.md`; contengono il checkpoint
   corrente, i blocker e le varianti da non rieseguire. È lavoro shadow, non
   ancora runtime.
-- **Host**: `.33` (Strix Halo 96GB unified). Servizi: `metnos-http.service` (SYSTEM, porta 8770) + telegram-daemon (unit USER) + llama-server `:8080`.
+- **Host**: `.33` (Strix Halo 96GB unified). Servizi: `metnos-http.service` (SYSTEM, porta 8770) + `metnos-telegram-daemon.service` (SYSTEM dopo RM-0008) + llama-server `:8080`; disponibilità corrente nel punto RM-0008 sopra.
 - **LLM**: `fast` (`micro|procedural|fidelity`), `middle`, `wise`, `creative` e `frontier` sono contratti logici risolti centralmente da `runtime/llm_router.py`; ogni consumer sceglie un workload registrato in `runtime/llm_workloads.py`. Provider, modello, endpoint, temperatura, thinking e reasoning budget appartengono al router; al consumer restano tetto di output, deadline, grammatica e schema dei tool. I tre livelli fast, `middle` e `wise` condividono oggi Qwen 3.6 35B-A3B Q4_K_M/MTP `:8080` e la stessa policy deterministica, ma i livelli fast hanno default e override indipendenti in `[fast.level.<nome>]`; `creative` eredita il binding di `wise` finché non materializzato e usa `temperature=0.35`, mentre `middle` e `wise` restano a `0`. Frontier = Anthropic Opus opt-in. SoT: `runtime/llm_router.py::{DEFAULT_TIERS,DEFAULT_FAST_LEVELS}`, registro workload e ADR 0207; MAI nomi modello o override di policy nei consumer.
 - **Slot LLM condivisi** (14/8, ADR 0120): Giorgio2 usa sempre lo slot 0
   (voce, observer e servizi); Metnos usa lo slot configurato da
@@ -185,3 +203,7 @@ Server `runtime.metnos_http_server` porta **8770** (8765=pairing). aiohttp bare:
   soltanto risultato, rischio e prossima decisione in forma breve.
 - Quando serve una scelta, presentarla con alternative concrete e comprensibili;
   non trattare un assenso generico come approvazione di opzioni non capite.
+- Tutte le note degli aggiornamenti progressivi su Git/GitHub devono essere in
+  inglese (8 settembre 2026): messaggi di commit, titoli e descrizioni delle PR,
+  note di rilascio e changelog. La conversazione resta in italiano e la
+  documentazione pubblica bilingue.
