@@ -1088,7 +1088,14 @@ def apply_cycle(cross: bool) -> int:
     from install.executor_birth_distribution_release import (
         build_and_install_received_source_v1,
     )
-    distribution = build_and_install_received_source_v1(source_id)
+    # The public release tree requires 0755 directories. A private admin
+    # launcher may inherit 0077; do not let it silently create unusable 0700
+    # staging directories. Secret files already request their own 0600 mode.
+    previous_mask = os.umask(0o022)
+    try:
+        distribution = build_and_install_received_source_v1(source_id)
+    finally:
+        os.umask(previous_mask)
     say("SIGNED_SUCCESSOR_BUILT", distribution.release_sequence,
         distribution.identity.closed_build_id, distribution.installation_root)
     require(hashlib.sha256(LIVE_HELPER.read_bytes()).hexdigest() == live_before,
