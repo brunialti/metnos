@@ -14,6 +14,7 @@ non restano artificialmente aperte.
 | P0 | **SEC-001** | attesa esterna | Audit indipendente svolto da un soggetto diverso dall'implementatore; finding classificati e chiusura verificata di quelli alti o bloccanti. |
 | P1 | **EXEC-BIND-001** | analisi separata; nessuna implementazione autorizzata | Stabilire se e come legare i byte verificati a quelli eseguiti per processi locali, builtin e bundle remoti, censendo prima la chiusura reale delle dipendenze. |
 | P1 | **REL-001** | osservazione temporale | Almeno un ciclo di release con telemetria versionata e volume sufficiente per dominio; ratifica degli SLO sulla base dei dati osservati. |
+| — | **UI-LOG-001** | TODO richiesto il 19 settembre 2026; da implementare | Ogni log nella chat/LRE ha un riepilogo compatto di due righe con nome del job, data ed esito, più controlli ispirati alle finestre Windows per aprire/chiudere i dettagli ed eliminare il log. |
 
 `AFF-I18N-001` è la massima priorità. L'analisi tecnica e il confronto delle
 alternative sono conclusi in
@@ -161,6 +162,35 @@ nuova pubblicazione, aggiornamento release, rollback e matrice Linux/Windows.
 - Gap deliberato: i record anteriori alla telemetria restano `pre-telemetry` e
   non possono sostenere confronti fra release. Le soglie per dominio saranno
   fissate soltanto dopo un campione osservato sufficiente.
+
+### UI-LOG-001 - Chat/LRE: log compatti e controlli a finestra
+
+**Richiesta (2026-09-19).** Nell'interfaccia chat/LRE, rappresentare ogni log
+con un box che nello stato compatto occupi soltanto due righe:
+
+1. Nome leggibile del job, per esempio «Indicizzazione foto», con i controlli
+   a icona allineati a destra.
+2. Data/ora ed esito del job, senza anteprime o dettagli aggiuntivi.
+
+I dettagli sono inizialmente nascosti e si aprono/chiudono su richiesta,
+mantenendo invariato il riepilogo. Usare icone ispirate ai controlli delle
+finestre Windows: quadrato o quadrati sovrapposti per aprire/espandere,
+trattino per richiudere/ridurre, croce per **eliminare il log**. Il riferimento
+visivo fornito dall'utente mostra trattino, ripristino e croce; sono ammesse
+varianti più adatte purché mantengano quella ispirazione e una funzione chiara.
+La croce non va confusa con la sola chiusura dei dettagli.
+
+**Vincoli e chiusura.** Tooltip ed etichette accessibili localizzati devono
+distinguere «Apri dettagli», «Chiudi dettagli» ed «Elimina log»; controlli
+utilizzabili anche da tastiera e su schermi piccoli. L'esito deve essere
+leggibile come testo, non affidato solo al colore. Eliminare un log non
+significa annullare il job né i suoi effetti; rispettare i vincoli di
+conservazione e audit. Eventuali conferme usano il form comune. Verificare
+stati del job, nomi lunghi, apertura/chiusura ed eliminazione, conservando
+le due righe del riepilogo compatto.
+
+**Stato.** Solo registrazione del TODO: nessuna modifica dell'interfaccia
+avviata con questa richiesta.
 
 ## Completati il 25 agosto 2026
 
