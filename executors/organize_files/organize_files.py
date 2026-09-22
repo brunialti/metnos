@@ -31,7 +31,6 @@ import secrets
 import shutil
 import signal
 import stat
-import subprocess
 import sys
 import tempfile
 import time
@@ -45,7 +44,7 @@ sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
 import config as C  # noqa: E402
 from executor_helpers import run_stdio  # noqa: E402
 from messages import get as _msg  # noqa: E402
-from parallel_walk import parallel_map_ordered, parallel_walk  # noqa: E402
+from parallel_walk import parallel_map_ordered  # noqa: E402
 
 
 _SCHEMA = 1
@@ -75,15 +74,13 @@ _IMAGE_EXTENSIONS = frozenset({
     ".jpg", ".jpeg", ".png", ".heic", ".heif", ".tif", ".tiff",
     ".webp", ".bmp", ".gif", ".avif",
 })
-_AV_EXTENSIONS = frozenset({
-    ".mp4", ".mov", ".m4v", ".3gp", ".3g2", ".avi", ".mkv",
-    ".webm", ".mts", ".m2ts", ".mpg", ".mpeg", ".mp3", ".m4a",
-    ".aac", ".flac", ".wav", ".ogg", ".opus",
-})
 _OPERATORS = frozenset({
     "equals", "in", "exists", "glob", "range", "before", "after",
 })
 _TRANSFORMS = frozenset({"lower", "upper", "slug", "year"})
+_RUNTIME_METADATA_ARGS = frozenset({
+    "_actor", "_lang", "_channel", "_turn_id",
+})
 
 
 class OrganizeError(RuntimeError):
@@ -293,12 +290,37 @@ def _actor_binding() -> dict[str, str]:
 
 
 def _directory_identity(path: Path) -> dict[str, int]:
-    info = path.lstat()
-    if stat.S_ISLNK(info.st_mode) or not stat.S_ISDIR(info.st_mode):
+    descriptor = _open_directory_chain(path)
+    try:
+        info = os.fstat(descriptor)
+    finally:
+        os.close(descriptor)
+    if not stat.S_ISDIR(info.st_mode):
         raise OrganizeError(
             "ERR_ORGANIZE_PREFLIGHT", "ERR_ORGANIZE_PREFLIGHT",
             error_class="unsafe_target", detail=str(path))
     return {"device": int(info.st_dev), "inode": int(info.st_ino)}
+
+
+def _open_directory_chain(path: Path | str) -> int:
+    """Open an absolute directory one no-follow component at a time."""
+    candidate = Path(path)
+    if not candidate.is_absolute() or any(part == ".." for part in candidate.parts):
+        raise OrganizeError(
+            "ERR_ORGANIZE_PREFLIGHT", "ERR_ORGANIZE_PREFLIGHT",
+            error_class="unsafe_target", detail=str(candidate))
+    flags = (os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC
+             | getattr(os, "O_NOFOLLOW", 0))
+    current = os.open(candidate.anchor, flags)
+    try:
+        for part in candidate.parts[1:]:
+            child = os.open(part, flags, dir_fd=current)
+            os.close(current)
+            current = child
+        return current
+    except BaseException:
+        os.close(current)
+        raise
 
 
 def _fsync_directory(path: Path) -> None:
@@ -484,7 +506,7 @@ def _normalize_policy(args: dict) -> dict:
         "recursive", "max_depth", "entries", "select",
         "operations", "max_files", "max_bytes", "max_preview",
         "plan_ttl_seconds",
-    }
+    } | _RUNTIME_METADATA_ARGS
     if set(args) - allowed_args:
         raise _invalid("preview contains unexpected arguments")
     source_paths = _normalize_path_list(
@@ -637,9 +659,13 @@ def _normalize_policy(args: dict) -> dict:
     }
 
 
-def _scan_specs(specs: list[dict], *, max_files: int) -> tuple[list[dict], list[dict]]:
+def _scan_specs(
+    specs: list[dict], *, max_files: int,
+) -> tuple[list[dict], list[dict], dict[str, dict[str, int]]]:
+    """Walk only through descriptors opened beneath the declared roots."""
     records: list[dict] = []
     failures: list[dict] = []
+    root_identities: dict[str, dict[str, int]] = {}
     seen: set[str] = set()
     for spec in specs:
         remaining = max_files - len(records)
@@ -649,36 +675,122 @@ def _scan_specs(specs: list[dict], *, max_files: int) -> tuple[list[dict], list[
                 error_class="limit_exceeded", detail="max_files",
                 message_args={"limit": max_files})
         root = Path(spec["path"])
-        result = parallel_walk(
-            root,
-            accept=lambda path, kind, _depth: (
-                kind == "file" and not path.name.startswith(".metnos-organize-")),
-            transform=lambda path, _kind, _depth, entry: {
-                "path": str(path), **_identity(entry.stat(follow_symlinks=False)),
-            },
-            recursive=bool(spec["recursive"]),
-            max_depth=None if int(spec["max_depth"]) == 0 else int(spec["max_depth"]),
-            max_items=remaining + 1,
-        )
-        if result.truncated or len(result.items) > remaining:
+        root_fd = _open_directory_chain(root)
+        root_info = os.fstat(root_fd)
+        root_identity = {
+            "device": int(root_info.st_dev), "inode": int(root_info.st_ino)}
+        root_identities[str(root)] = root_identity
+        recursive = bool(spec["recursive"])
+        max_depth = (None if int(spec["max_depth"]) == 0
+                     else int(spec["max_depth"]))
+        items: list[dict] = []
+
+        def walk(directory_fd: int, relative_parent: Path,
+                 depth: int) -> None:
+            try:
+                with os.scandir(directory_fd) as iterator:
+                    entries = sorted(
+                        list(iterator),
+                        key=lambda entry: (entry.name.casefold(), entry.name))
+            except OSError as exc:
+                failures.append({
+                    "path": str(root / relative_parent),
+                    "error_code": "ERR_PERMISSION_DENIED"
+                    if isinstance(exc, PermissionError)
+                    else "ERR_FILE_READ_FAILED",
+                    "diagnostic": f"{type(exc).__name__}: {exc}",
+                })
+                return
+            for entry in entries:
+                if len(items) > remaining:
+                    return
+                relative = relative_parent / entry.name
+                lexical = root / relative
+                try:
+                    observed = entry.stat(follow_symlinks=False)
+                    if stat.S_ISLNK(observed.st_mode):
+                        continue
+                    if stat.S_ISDIR(observed.st_mode):
+                        if (not recursive
+                                or (max_depth is not None and depth >= max_depth)):
+                            continue
+                        child_fd = os.open(
+                            entry.name,
+                            os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC
+                            | getattr(os, "O_NOFOLLOW", 0),
+                            dir_fd=directory_fd)
+                        try:
+                            opened = os.fstat(child_fd)
+                            if ((int(opened.st_dev), int(opened.st_ino))
+                                    != (int(observed.st_dev), int(observed.st_ino))):
+                                raise OrganizeError(
+                                    "ERR_ORGANIZE_STALE_PLAN",
+                                    "ERR_ORGANIZE_STALE_PLAN",
+                                    error_class="stale_plan",
+                                    detail=f"directory changed during scan: {lexical}")
+                            walk(child_fd, relative, depth + 1)
+                        finally:
+                            os.close(child_fd)
+                        continue
+                    if (not stat.S_ISREG(observed.st_mode)
+                            or entry.name.startswith(".metnos-organize-")):
+                        continue
+                    flags = (os.O_RDONLY | os.O_CLOEXEC
+                             | getattr(os, "O_NOFOLLOW", 0)
+                             | getattr(os, "O_NOATIME", 0))
+                    try:
+                        file_fd = os.open(entry.name, flags, dir_fd=directory_fd)
+                    except PermissionError:
+                        file_fd = os.open(
+                            entry.name, flags & ~getattr(os, "O_NOATIME", 0),
+                            dir_fd=directory_fd)
+                    try:
+                        opened = os.fstat(file_fd)
+                        if ((int(opened.st_dev), int(opened.st_ino))
+                                != (int(observed.st_dev), int(observed.st_ino))
+                                or not stat.S_ISREG(opened.st_mode)):
+                            raise OrganizeError(
+                                "ERR_ORGANIZE_STALE_PLAN",
+                                "ERR_ORGANIZE_STALE_PLAN",
+                                error_class="stale_plan",
+                                detail=f"file changed during scan: {lexical}")
+                        items.append({
+                            "path": str(lexical),
+                            "_root": str(root),
+                            "_relative": str(relative),
+                            "_root_identity": root_identity,
+                            **_identity(opened),
+                        })
+                    finally:
+                        os.close(file_fd)
+                    if len(items) > remaining:
+                        return
+                except (OSError, OrganizeError) as exc:
+                    failures.append({
+                        "path": str(lexical),
+                        "error_code": "ERR_PERMISSION_DENIED"
+                        if isinstance(exc, PermissionError)
+                        else "ERR_FILE_READ_FAILED",
+                        "diagnostic": f"{type(exc).__name__}: {exc}",
+                    })
+
+        try:
+            walk(root_fd, Path(), 0)
+        finally:
+            os.close(root_fd)
+        if len(items) > remaining:
             raise OrganizeError(
                 "ERR_ORGANIZE_LIMIT", "ERR_ORGANIZE_LIMIT",
                 error_class="limit_exceeded", detail="max_files",
                 message_args={"limit": max_files})
-        for item in result.items:
+        for item in items:
             if item["path"] in seen:
                 continue
             seen.add(item["path"])
             records.append(item)
-        failures.extend({
-            "path": str(error.path),
-            "error_code": "ERR_PERMISSION_DENIED" if error.reason == "permission_denied"
-            else "ERR_FILE_READ_FAILED",
-            "diagnostic": error.reason,
-        } for error in result.errors)
     records.sort(key=lambda item: (os.path.normcase(item["path"]).casefold(), item["path"]))
     failures.sort(key=lambda item: item["path"])
-    return records, failures
+    return records, failures, root_identities
 
 
 def _inventory(records: list[dict]) -> list[dict]:
@@ -727,16 +839,20 @@ def _parse_media_date(value: object) -> dt.datetime | None:
     return parsed.replace(tzinfo=None) if parsed.tzinfo else parsed
 
 
-def _capture_date(path: Path) -> dict | None:
+def _capture_date(record: dict) -> dict | None:
+    path = Path(record["path"])
     extension = path.suffix.casefold()
     parsed: dt.datetime | None = None
     source = ""
     if extension in _IMAGE_EXTENSIONS:
+        root_fd = _open_root_fd(record["_root"], record["_root_identity"])
+        descriptor = parent_fd = -1
         try:
             from PIL import ExifTags, Image
-            with Image.open(path) as image:
-                image.verify()
-            with Image.open(path) as image:
+            descriptor, parent_fd, _name = _open_regular_at(
+                root_fd, record["_relative"], expected=record)
+            with os.fdopen(os.dup(descriptor), "rb") as stream, \
+                    Image.open(stream) as image:
                 exif = image.getexif()
                 nested = exif.get_ifd(ExifTags.IFD.Exif) if hasattr(ExifTags, "IFD") else {}
                 for tag in (36867, 36868, 306):
@@ -746,33 +862,13 @@ def _capture_date(path: Path) -> dict | None:
                         break
         except Exception:
             parsed = None
-    elif extension in _AV_EXTENSIONS:
-        command = [
-            "ffprobe", "-v", "error", "-show_entries",
-            "format_tags=creation_time:stream_tags=creation_time",
-            "-of", "json", "--", str(path),
-        ]
-        try:
-            completed = subprocess.run(
-                command, check=False, capture_output=True, text=True, timeout=10)
-            payload = json.loads(completed.stdout or "{}") if completed.returncode == 0 else {}
-            values: list[object] = []
-            format_tags = ((payload.get("format") or {}).get("tags") or {})
-            if isinstance(format_tags, dict):
-                values.extend(value for key, value in format_tags.items()
-                              if key.casefold() == "creation_time")
-            for stream in payload.get("streams") or []:
-                tags = (stream or {}).get("tags") or {}
-                if isinstance(tags, dict):
-                    values.extend(value for key, value in tags.items()
-                                  if key.casefold() == "creation_time")
-            parsed_values = {item for value in values
-                             if (item := _parse_media_date(value)) is not None}
-            if len(parsed_values) == 1:
-                parsed = next(iter(parsed_values))
-                source = "embedded"
-        except (OSError, subprocess.SubprocessError, ValueError, TypeError):
-            parsed = None
+        finally:
+            for value in (descriptor, parent_fd, root_fd):
+                if value >= 0:
+                    try:
+                        os.close(value)
+                    except OSError:
+                        pass
     if parsed is None:
         parsed = _filename_date(path)
         source = "filename" if parsed is not None else ""
@@ -817,7 +913,7 @@ def _enrich_one(item: tuple[dict, bool]) -> dict:
             tz=dt.timezone.utc).isoformat(),
     })
     if need_capture_date and not isinstance(out.get("capture_date"), dict):
-        out["capture_date"] = _capture_date(path)
+        out["capture_date"] = _capture_date(record)
     return out
 
 
@@ -938,13 +1034,24 @@ def _hash_suffix(path: Path, digest: str, reserved: set[str]) -> Path:
 
 def _hash_records(records: list[dict]) -> tuple[list[dict], list[dict]]:
     def work(record: dict) -> dict:
+        root_fd = descriptor = parent_fd = -1
         try:
-            digest, _info = _stable_sha256(
-                Path(record["path"]), _identity_tuple(record))
+            root_fd = _open_root_fd(
+                record["_root"], record["_root_identity"])
+            descriptor, parent_fd, _name = _open_regular_at(
+                root_fd, record["_relative"], expected=record)
+            digest = _hash_fd(descriptor)
             return {"ok": True, "path": record["path"], "sha256": digest}
         except Exception as exc:
             return {"ok": False, "path": record["path"],
                     "diagnostic": f"{type(exc).__name__}: {exc}"}
+        finally:
+            for value in (descriptor, parent_fd, root_fd):
+                if value >= 0:
+                    try:
+                        os.close(value)
+                    except OSError:
+                        pass
 
     values = parallel_map_ordered(records, work)
     by_path = {item["path"]: item for item in values}
@@ -967,7 +1074,7 @@ def _plan_digest(plan: dict) -> str:
 
 
 def _build_plan(policy: dict) -> dict:
-    scanned_source_records, scan_failures = _scan_specs(
+    scanned_source_records, scan_failures, source_root_identities = _scan_specs(
         policy["sources"], max_files=policy["max_files"])
     source_records = scanned_source_records
     if policy["entries"] is not None:
@@ -989,7 +1096,7 @@ def _build_plan(policy: dict) -> dict:
             source_records.append(enriched_entry)
         source_records.sort(
             key=lambda item: (os.path.normcase(item["path"]).casefold(), item["path"]))
-    compare_records, compare_failures = _scan_specs(
+    compare_records, compare_failures, compare_root_identities = _scan_specs(
         policy["compare_with"], max_files=policy["max_files"])
     source_paths = {record["path"] for record in source_records}
     compare_records = [record for record in compare_records
@@ -1000,6 +1107,13 @@ def _build_plan(policy: dict) -> dict:
     need_capture_date = any(
         field == "capture_date" or field.startswith("capture_date.")
         for field in referenced_fields)
+    if (need_capture_date
+            and sum(int(record["size"]) for record in source_records)
+            > policy["max_bytes"]):
+        raise OrganizeError(
+            "ERR_ORGANIZE_LIMIT", "ERR_ORGANIZE_LIMIT",
+            error_class="limit_exceeded", detail="max_bytes",
+            message_args={"limit": policy["max_bytes"]})
     enriched = parallel_map_ordered(
         [(record, need_capture_date) for record in source_records], _enrich_one)
     selected = [record for record in enriched
@@ -1143,8 +1257,11 @@ def _build_plan(policy: dict) -> dict:
     source_roots = [item["path"] for item in policy["sources"]]
     readable_roots = source_roots + [item["path"] for item in policy["compare_with"]]
     root_identities = {
-        path: _directory_identity(Path(path))
-        for path in sorted(set(readable_roots + policy["destination_roots"]))
+        **source_root_identities, **compare_root_identities,
+        **{
+            path: _directory_identity(Path(path))
+            for path in sorted(set(policy["destination_roots"]))
+        },
     }
     for action in actions:
         if action["action"] not in {"move", "delete_duplicate"}:
@@ -1344,16 +1461,18 @@ def _assert_inventory(plan: dict) -> None:
             raise OrganizeError(
                 "ERR_ORGANIZE_STALE_PLAN", "ERR_ORGANIZE_STALE_PLAN",
                 error_class="stale_plan", detail=f"root identity changed: {path}")
-    current_sources, source_failures = _scan_specs(
+    current_sources, source_failures, source_roots = _scan_specs(
         policy["sources"], max_files=policy["max_files"])
-    current_compare, compare_failures = _scan_specs(
+    current_compare, compare_failures, compare_roots = _scan_specs(
         policy["compare_with"], max_files=policy["max_files"])
     source_paths = {record["path"] for record in current_sources}
     current_compare = [record for record in current_compare
                        if record["path"] not in source_paths]
-    if source_failures or compare_failures \
+    if (source_failures or compare_failures
+            or any((plan.get("root_identities") or {}).get(path) != identity
+                   for path, identity in {**source_roots, **compare_roots}.items())
             or _inventory(current_sources) != plan["source_inventory"] \
-            or _inventory(current_compare) != plan["compare_inventory"]:
+            or _inventory(current_compare) != plan["compare_inventory"]):
         raise OrganizeError(
             "ERR_ORGANIZE_STALE_PLAN", "ERR_ORGANIZE_STALE_PLAN",
             error_class="stale_plan")
@@ -1394,9 +1513,8 @@ def _exclusive_roots(roots: list[Path]) -> Iterator[None]:
 
 
 def _open_root_fd(path: str, expected: dict) -> int:
-    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0)
     try:
-        descriptor = os.open(path, flags)
+        descriptor = _open_directory_chain(path)
     except OSError as exc:
         raise OrganizeError(
             "ERR_ORGANIZE_STALE_PLAN", "ERR_ORGANIZE_STALE_PLAN",
@@ -1477,19 +1595,6 @@ def _hash_fd(descriptor: int) -> str:
     return digest.hexdigest()
 
 
-def _write_all(descriptor: int, data: bytes) -> None:
-    """Write one block completely, retrying an interrupted syscall."""
-    remaining = memoryview(data)
-    while remaining:
-        try:
-            written = os.write(descriptor, remaining)
-        except InterruptedError:
-            continue
-        if written <= 0:
-            raise OSError(errno.EIO, "short write made no progress")
-        remaining = remaining[written:]
-
-
 def _metadata_fd(descriptor: int) -> dict:
     info = os.fstat(descriptor)
     attributes = []
@@ -1534,66 +1639,6 @@ def _capture_restore_metadata(action: dict) -> dict:
                 error_class="unsupported_metadata", detail="ownership is not restorable")
         return metadata
     finally:
-        for value in (descriptor, parent_fd, root_fd):
-            if value >= 0:
-                try:
-                    os.close(value)
-                except OSError:
-                    pass
-
-
-def _verify_metadata_roundtrip(item: dict) -> None:
-    """Prove restore metadata on the exact source parent or fail closed."""
-    metadata = item["metadata"]
-    root_fd = _open_root_fd(item["source_root"], item["source_root_identity"])
-    parent_fd = descriptor = -1
-    name = f".metnos-metadata-probe-{secrets.token_hex(16)}"
-    try:
-        parent_fd, _target_name = _open_parent_at(
-            root_fd, item["source_relative"])
-        descriptor = os.open(
-            name, os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC
-            | getattr(os, "O_NOFOLLOW", 0), 0o600, dir_fd=parent_fd)
-        os.write(descriptor, b"metnos-metadata-probe")
-        current = os.fstat(descriptor)
-        if (int(current.st_uid), int(current.st_gid)) != (
-                int(metadata["uid"]), int(metadata["gid"])):
-            os.fchown(descriptor, int(metadata["uid"]), int(metadata["gid"]))
-        os.fchmod(descriptor, int(metadata["mode"]))
-        for attribute in metadata.get("xattrs") or []:
-            os.setxattr(
-                descriptor, str(attribute["name"]),
-                base64.b64decode(str(attribute["value_b64"]), validate=True))
-        os.utime(descriptor, ns=(
-            int(metadata["atime_ns"]), int(metadata["mtime_ns"])))
-        os.fsync(descriptor)
-        observed = _metadata_fd(descriptor)
-        expected_xattrs = metadata.get("xattrs") or []
-        if (any(int(observed[key]) != int(metadata[key]) for key in (
-                "mode", "uid", "gid", "atime_ns", "mtime_ns"))
-                or observed.get("xattrs") != expected_xattrs):
-            raise OrganizeError(
-                "ERR_ORGANIZE_PREFLIGHT", "ERR_ORGANIZE_PREFLIGHT",
-                error_class="unsupported_metadata",
-                detail="metadata roundtrip mismatch")
-    except OrganizeError:
-        raise
-    except (OSError, ValueError, KeyError) as exc:
-        raise OrganizeError(
-            "ERR_ORGANIZE_PREFLIGHT", "ERR_ORGANIZE_PREFLIGHT",
-            error_class="unsupported_metadata",
-            detail=f"metadata roundtrip failed: {exc}") from exc
-    finally:
-        if parent_fd >= 0 and descriptor >= 0:
-            try:
-                candidate = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
-                opened = os.fstat(descriptor)
-                if ((int(candidate.st_dev), int(candidate.st_ino))
-                        == (int(opened.st_dev), int(opened.st_ino))):
-                    os.unlink(name, dir_fd=parent_fd)
-                    os.fsync(parent_fd)
-            except OSError:
-                pass
         for value in (descriptor, parent_fd, root_fd):
             if value >= 0:
                 try:
@@ -1724,58 +1769,193 @@ def _rename_noreplace(source_parent_fd: int, source_name: str,
     raise OSError(error, os.strerror(error), source_name)
 
 
-def _move_noreplace(source: Path, destination: Path, action: dict) -> list[dict]:
-    source_root_fd = _open_root_fd(
-        action["source_root"], action["source_root_identity"])
+def _journaled_name(value: object, *, prefix: str) -> str:
+    if (not isinstance(value, str)
+            or not re.fullmatch(rf"{re.escape(prefix)}[0-9a-f]{{32}}", value)):
+        raise OrganizeError(
+            "ERR_ORGANIZE_RECEIPT_INVALID", "ERR_ORGANIZE_RECEIPT_INVALID",
+            error_class="integrity_error", detail=f"invalid journaled name: {value}")
+    return value
+
+
+def _sibling_relative(relative: str, name: str) -> str:
+    return str(Path(relative).parent / name)
+
+
+def _verified_noreplace_move(
+    *,
+    source_root: str,
+    source_root_identity: dict,
+    source_relative: str,
+    destination_root: str,
+    destination_root_identity: dict,
+    destination_relative: str,
+    expected_identity: dict,
+    expected_hash: str,
+    stage_name: str,
+) -> bool:
+    """Move through a journaled same-parent stage and verify every rename.
+
+    A basename swapped after the initial fd check is moved only to the stage,
+    detected there, and restored with no-replace.  The approved inode reaches
+    the destination only after its staged identity has been verified.
+    """
+    if isinstance(stage_name, str) and stage_name.startswith(
+            ".metnos-organize-stage-"):
+        stage_name = _journaled_name(
+            stage_name, prefix=".metnos-organize-stage-")
+    else:
+        stage_name = _journaled_name(
+            stage_name, prefix=".metnos-organize-undo-stage-")
+    stage_relative = _sibling_relative(source_relative, stage_name)
+    source_state, source_info = _relative_file_state(
+        source_root, source_root_identity, source_relative, expected_hash)
+    stage_state, stage_info = _relative_file_state(
+        source_root, source_root_identity, stage_relative, expected_hash)
+    destination_state, destination_info = _relative_file_state(
+        destination_root, destination_root_identity,
+        destination_relative, expected_hash)
+    source_owned = _same_file_identity(source_info, expected_identity)
+    stage_owned = _same_file_identity(stage_info, expected_identity)
+    destination_owned = _same_file_identity(destination_info, expected_identity)
+    if (source_state == "absent" and stage_state == "absent"
+            and destination_state == "expected" and destination_owned):
+        return False
+    if not (source_state == "absent" and stage_state == "expected"
+            and stage_owned and destination_state == "absent"):
+        if not (source_state == "expected" and source_owned
+                and stage_state == "absent" and destination_state == "absent"):
+            raise OrganizeError(
+                "ERR_ORGANIZE_STALE_PLAN", "ERR_ORGANIZE_STALE_PLAN",
+                error_class="conflict", detail=source_relative)
+        root_fd = _open_root_fd(source_root, source_root_identity)
+        descriptor = parent_fd = -1
+        try:
+            descriptor, parent_fd, source_name = _open_regular_at(
+                root_fd, source_relative)
+            if (not _same_file_identity(
+                    _identity(os.fstat(descriptor)), expected_identity)
+                    or _hash_fd(descriptor) != expected_hash):
+                raise OrganizeError(
+                    "ERR_ORGANIZE_STALE_PLAN", "ERR_ORGANIZE_STALE_PLAN",
+                    error_class="stale_plan", detail=source_relative)
+            opened = _identity(os.fstat(descriptor))
+            _rename_noreplace(parent_fd, source_name, parent_fd, stage_name)
+            staged = _identity(os.stat(
+                stage_name, dir_fd=parent_fd, follow_symlinks=False))
+            if not _same_file_identity(staged, opened):
+                # The basename was replaced between fd verification and
+                # rename.  Put that unapproved inode back; never unlink it.
+                _rename_noreplace(parent_fd, stage_name, parent_fd, source_name)
+                restored = _identity(os.stat(
+                    source_name, dir_fd=parent_fd, follow_symlinks=False))
+                if not _same_file_identity(restored, staged):
+                    raise OrganizeError(
+                        "ERR_ORGANIZE_APPLY", "ERR_ORGANIZE_APPLY",
+                        error_class="partial_failure",
+                        detail=f"unapproved staged inode retained as {stage_name}")
+                os.fsync(parent_fd)
+                raise OrganizeError(
+                    "ERR_ORGANIZE_STALE_PLAN", "ERR_ORGANIZE_STALE_PLAN",
+                    error_class="stale_plan", detail=source_relative)
+            os.fsync(parent_fd)
+        finally:
+            for value in (descriptor, parent_fd, root_fd):
+                if value >= 0:
+                    try:
+                        os.close(value)
+                    except OSError:
+                        pass
+        _fault("after_staging_before_destination")
+
+    source_root_fd = _open_root_fd(source_root, source_root_identity)
     destination_root_fd = _open_root_fd(
-        action["destination_root"], action["destination_root_identity"])
-    source_fd = source_parent_fd = destination_parent_fd = -1
+        destination_root, destination_root_identity)
+    stage_fd = stage_parent_fd = destination_parent_fd = -1
     try:
-        if int(os.fstat(source_root_fd).st_dev) != int(os.fstat(destination_root_fd).st_dev):
-            raise OrganizeError(
-                "ERR_ORGANIZE_PREFLIGHT", "ERR_ORGANIZE_PREFLIGHT",
-                error_class="cross_device_unsupported", detail=str(destination))
-        source_fd, source_parent_fd, source_name = _open_regular_at(
-            source_root_fd, action["source_relative"],
-            expected=action["source_identity"])
-        digest = _hash_fd(source_fd)
-        if action.get("sha256") and digest != action["sha256"]:
+        stage_fd, stage_parent_fd, opened_stage_name = _open_regular_at(
+            source_root_fd, stage_relative)
+        if (not _same_file_identity(
+                _identity(os.fstat(stage_fd)), expected_identity)
+                or _hash_fd(stage_fd) != expected_hash):
             raise OrganizeError(
                 "ERR_ORGANIZE_STALE_PLAN", "ERR_ORGANIZE_STALE_PLAN",
-                error_class="stale_plan", detail=str(source))
+                error_class="stale_plan", detail=stage_relative)
         destination_parent_fd, destination_name = _open_parent_at(
-            destination_root_fd, action["destination_relative"])
-        source_info = os.fstat(source_fd)
-        named_source = os.stat(
-            source_name, dir_fd=source_parent_fd, follow_symlinks=False)
-        if ((int(named_source.st_dev), int(named_source.st_ino))
-                != (int(source_info.st_dev), int(source_info.st_ino))):
-            raise OrganizeError(
-                "ERR_ORGANIZE_STALE_PLAN", "ERR_ORGANIZE_STALE_PLAN",
-                error_class="stale_plan", detail=str(source))
-        _rename_noreplace(
-            source_parent_fd, source_name,
-            destination_parent_fd, destination_name)
-        destination_info = os.stat(
+            destination_root_fd, destination_relative)
+        staged = _identity(os.fstat(stage_fd))
+        try:
+            _rename_noreplace(
+                stage_parent_fd, opened_stage_name,
+                destination_parent_fd, destination_name)
+        except BaseException:
+            # A destination collision must not strand our approved inode in
+            # the hidden stage when the original name is still free.
+            try:
+                _rename_noreplace(
+                    stage_parent_fd, opened_stage_name,
+                    stage_parent_fd, Path(source_relative).name)
+                os.fsync(stage_parent_fd)
+            except BaseException:
+                pass
+            raise
+        moved = _identity(os.stat(
             destination_name, dir_fd=destination_parent_fd,
-            follow_symlinks=False)
-        if ((int(destination_info.st_dev), int(destination_info.st_ino))
-                != (int(source_info.st_dev), int(source_info.st_ino))):
+            follow_symlinks=False))
+        if not _same_file_identity(moved, staged):
+            # Restore the unapproved destination-side inode to the stage.  Do
+            # not remove or overwrite it even though the transaction fails.
+            _rename_noreplace(
+                destination_parent_fd, destination_name,
+                stage_parent_fd, opened_stage_name)
+            os.fsync(destination_parent_fd)
+            os.fsync(stage_parent_fd)
             raise OrganizeError(
                 "ERR_ORGANIZE_APPLY", "ERR_ORGANIZE_APPLY",
-                error_class="integrity_error", detail=str(destination))
+                error_class="partial_failure",
+                detail=f"destination basename raced; retained {stage_relative}")
         os.fsync(destination_parent_fd)
-        if source_parent_fd != destination_parent_fd:
-            os.fsync(source_parent_fd)
-        return []
+        if stage_parent_fd != destination_parent_fd:
+            os.fsync(stage_parent_fd)
+        return True
     finally:
-        for descriptor in (source_fd, source_parent_fd, destination_parent_fd,
-                           source_root_fd, destination_root_fd):
+        for descriptor in (
+            stage_fd, stage_parent_fd, destination_parent_fd,
+            source_root_fd, destination_root_fd,
+        ):
             if descriptor >= 0:
                 try:
                     os.close(descriptor)
                 except OSError:
                     pass
+
+
+def _move_noreplace(source: Path, destination: Path, action: dict) -> list[dict]:
+    source_root_fd = _open_root_fd(
+        action["source_root"], action["source_root_identity"])
+    destination_root_fd = _open_root_fd(
+        action["destination_root"], action["destination_root_identity"])
+    try:
+        if int(os.fstat(source_root_fd).st_dev) != int(
+                os.fstat(destination_root_fd).st_dev):
+            raise OrganizeError(
+                "ERR_ORGANIZE_PREFLIGHT", "ERR_ORGANIZE_PREFLIGHT",
+                error_class="cross_device_unsupported", detail=str(destination))
+    finally:
+        os.close(source_root_fd)
+        os.close(destination_root_fd)
+    _verified_noreplace_move(
+        source_root=action["source_root"],
+        source_root_identity=action["source_root_identity"],
+        source_relative=action["source_relative"],
+        destination_root=action["destination_root"],
+        destination_root_identity=action["destination_root_identity"],
+        destination_relative=action["destination_relative"],
+        expected_identity=action["source_identity"],
+        expected_hash=action["sha256"],
+        stage_name=action["stage_name"],
+    )
+    return []
 
 
 def _relative_file_state(root: str, root_identity: dict, relative: str,
@@ -1790,144 +1970,6 @@ def _relative_file_state(root: str, root_identity: dict, relative: str,
         info = _identity(os.fstat(descriptor))
         digest = _hash_fd(descriptor)
         return ("expected", info) if digest == expected_hash else ("changed", info)
-    finally:
-        for value in (descriptor, parent_fd, root_fd):
-            if value >= 0:
-                try:
-                    os.close(value)
-                except OSError:
-                    pass
-
-
-def _restore_blob(item: dict, *, journal: dict,
-                  receipt_path: Path) -> bool:
-    expected = item["blob_sha256"]
-    target = Path(item["path"])
-    state, _info = _relative_file_state(
-        item["source_root"], item["source_root_identity"],
-        item["source_relative"], expected)
-    if state == "expected":
-        accepted = (item.get("restored_identity")
-                    or item.get("restore_intent_identity"))
-        if accepted and _same_file_identity(_info, accepted):
-            item["restored_identity"] = _info
-            return False
-        raise OrganizeError(
-            "ERR_DST_EXISTS", "ERR_DST_EXISTS", error_class="conflict",
-            detail=str(target), message_args={"path": str(target)})
-    if state != "absent":
-        raise OrganizeError(
-            "ERR_DST_EXISTS", "ERR_DST_EXISTS", error_class="conflict",
-            detail=str(target), message_args={"path": str(target)})
-    pending_identity = item.get("restore_intent_identity")
-    pending_name = item.get("restore_temp_name")
-    if pending_identity or pending_name:
-        if (not isinstance(pending_identity, dict)
-                or not isinstance(pending_name, str)
-                or not re.fullmatch(
-                    r"\.metnos-restore-[0-9a-f]{16}-[0-9a-f]{24}",
-                    pending_name)):
-            raise OrganizeError(
-                "ERR_ORGANIZE_RECEIPT_INVALID",
-                "ERR_ORGANIZE_RECEIPT_INVALID",
-                error_class="integrity_error",
-                detail="invalid pending restore intent")
-        root_fd = _open_root_fd(
-            item["source_root"], item["source_root_identity"])
-        descriptor = parent_fd = -1
-        try:
-            target_relative = Path(item["source_relative"])
-            temp_relative = str(target_relative.parent / pending_name)
-            descriptor, parent_fd, temp_name = _open_regular_at(
-                root_fd, temp_relative, expected=pending_identity)
-            if (_hash_fd(descriptor) != expected
-                    or _metadata_fd(descriptor) != (item.get("metadata") or {})):
-                raise OrganizeError(
-                    "ERR_ORGANIZE_RECEIPT_INVALID",
-                    "ERR_ORGANIZE_RECEIPT_INVALID",
-                    error_class="integrity_error",
-                    detail="pending restore temporary changed")
-            _rename_noreplace(
-                parent_fd, temp_name, parent_fd, target_relative.name)
-            item["restored_identity"] = _identity(os.fstat(descriptor))
-            os.fsync(parent_fd)
-            return True
-        finally:
-            for value in (descriptor, parent_fd, root_fd):
-                if value >= 0:
-                    try:
-                        os.close(value)
-                    except OSError:
-                        pass
-    blob = Path(item["blob_path"])
-    digest, blob_info = _stable_sha256(blob)
-    if digest != expected:
-        raise OrganizeError(
-            "ERR_ORGANIZE_RECEIPT_INVALID", "ERR_ORGANIZE_RECEIPT_INVALID",
-            error_class="integrity_error", detail=str(blob))
-    metadata = item.get("metadata") or {}
-    root_fd = _open_root_fd(item["source_root"], item["source_root_identity"])
-    parent_fd = -1
-    temporary_name = (
-        f".metnos-restore-{expected[:16]}-{secrets.token_hex(12)}")
-    descriptor = -1
-    try:
-        parent_fd, target_name = _open_parent_at(
-            root_fd, item["source_relative"])
-        descriptor = os.open(
-            temporary_name,
-            os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC
-            | getattr(os, "O_NOFOLLOW", 0), 0o600, dir_fd=parent_fd)
-        copied = hashlib.sha256()
-        with blob.open("rb") as incoming:
-            for block in iter(lambda: incoming.read(_HASH_CHUNK), b""):
-                copied.update(block)
-                _write_all(descriptor, block)
-        written_info = os.fstat(descriptor)
-        if (copied.hexdigest() != expected
-                or int(written_info.st_size) != int(blob_info.st_size)
-                or _hash_fd(descriptor) != expected):
-            raise OrganizeError(
-                "ERR_ORGANIZE_RECEIPT_INVALID", "ERR_ORGANIZE_RECEIPT_INVALID",
-                error_class="integrity_error",
-                detail=f"restored temporary differs from backup: {blob}")
-        current = os.fstat(descriptor)
-        uid, gid = int(metadata["uid"]), int(metadata["gid"])
-        if (int(current.st_uid), int(current.st_gid)) != (uid, gid):
-            os.fchown(descriptor, uid, gid)
-        os.fchmod(descriptor, int(metadata["mode"]))
-        for attribute in metadata.get("xattrs") or []:
-            os.setxattr(
-                descriptor, str(attribute["name"]),
-                base64.b64decode(str(attribute["value_b64"]), validate=True))
-        os.utime(descriptor, ns=(int(metadata["atime_ns"]), int(metadata["mtime_ns"])))
-        os.fsync(descriptor)
-        os.fsync(parent_fd)
-        # Durable inverse intent: if the process dies after rename but before
-        # the outer action journal, recovery can distinguish our inode from a
-        # same-byte file created by another actor.
-        item["restore_temp_name"] = temporary_name
-        item["restore_intent_identity"] = _identity(os.fstat(descriptor))
-        _write_journal(receipt_path, journal)
-        _fault("after_restore_intent_before_rename")
-        _rename_noreplace(
-            parent_fd, temporary_name, parent_fd, target_name)
-        item["restored_identity"] = _identity(os.fstat(descriptor))
-        os.fsync(parent_fd)
-        return True
-    except BaseException:
-        if parent_fd >= 0 and descriptor >= 0:
-            try:
-                candidate = os.stat(
-                    temporary_name, dir_fd=parent_fd,
-                    follow_symlinks=False)
-                opened = os.fstat(descriptor)
-                if ((int(candidate.st_dev), int(candidate.st_ino))
-                        == (int(opened.st_dev), int(opened.st_ino))):
-                    os.unlink(temporary_name, dir_fd=parent_fd)
-            except OSError:
-                pass
-        raise
     finally:
         for value in (descriptor, parent_fd, root_fd):
             if value >= 0:
@@ -1963,9 +2005,46 @@ def _reverse_move(item: dict) -> bool:
         "destination_relative": item["source_relative"],
         "destination_root_identity": item["source_root_identity"],
         "source_identity": destination_info, "sha256": item["sha256"],
+        "stage_name": item["undo_stage_name"],
     }
     _move_noreplace(Path(item["destination"]), Path(item["source"]), action)
     return True
+
+
+def _restore_forward_stage(item: dict) -> bool:
+    stage_name = _journaled_name(
+        item.get("stage_name"), prefix=".metnos-organize-stage-")
+    return _verified_noreplace_move(
+        source_root=item["source_root"],
+        source_root_identity=item["source_root_identity"],
+        source_relative=_sibling_relative(item["source_relative"], stage_name),
+        destination_root=item["source_root"],
+        destination_root_identity=item["source_root_identity"],
+        destination_relative=item["source_relative"],
+        expected_identity=item["source_identity"],
+        expected_hash=item["sha256"],
+        stage_name=item["undo_stage_name"],
+    )
+
+
+def _restore_delete_quarantine(item: dict) -> bool:
+    state = _delete_state(item)
+    if state == "original":
+        return False
+    quarantine_name = _journaled_name(
+        item.get("quarantine_name"), prefix=".metnos-organize-delete-")
+    return _verified_noreplace_move(
+        source_root=item["source_root"],
+        source_root_identity=item["source_root_identity"],
+        source_relative=_sibling_relative(
+            item["source_relative"], quarantine_name),
+        destination_root=item["source_root"],
+        destination_root_identity=item["source_root_identity"],
+        destination_relative=item["source_relative"],
+        expected_identity=item["source_identity"],
+        expected_hash=item["sha256"],
+        stage_name=item["undo_stage_name"],
+    )
 
 
 def _receipt_path(token: str) -> Path:
@@ -1987,12 +2066,17 @@ def _prepare_journal(plan: dict, mutations: list[dict], blob_dir: Path) -> dict:
         item = dict(action)
         item["kind"] = "delete" if action["action"] == "delete_duplicate" else "move"
         item["state"] = "pending"
+        item["stage_name"] = f".metnos-organize-stage-{secrets.token_hex(16)}"
+        item["undo_stage_name"] = (
+            f".metnos-organize-undo-stage-{secrets.token_hex(16)}")
         if item["kind"] == "delete":
             item.update({
                 "path": action["source"],
                 "blob_path": str(blob_dir / f"{action['sha256']}.bin"),
                 "blob_sha256": action["sha256"],
                 "metadata": dict(action["restore_metadata"]),
+                "quarantine_name": (
+                    f".metnos-organize-delete-{secrets.token_hex(16)}"),
             })
         entries.append(item)
     return {
@@ -2014,7 +2098,6 @@ def _ensure_backups(journal: dict, receipt_path: Path) -> None:
     for item in journal.get("actions") or []:
         if item.get("kind") != "delete" or item.get("backup_ready"):
             continue
-        _verify_metadata_roundtrip(item)
         _copy_backup(Path(item["source"]), Path(item["blob_path"]), item)
         item["backup_ready"] = True
         _write_journal(receipt_path, journal)
@@ -2027,9 +2110,16 @@ def _move_state(item: dict) -> str:
     destination_state, destination_info = _relative_file_state(
         item["destination_root"], item["destination_root_identity"],
         item["destination_relative"], item["sha256"])
+    stage_name = _journaled_name(
+        item.get("stage_name"), prefix=".metnos-organize-stage-")
+    stage_relative = _sibling_relative(item["source_relative"], stage_name)
+    stage_state, stage_info = _relative_file_state(
+        item["source_root"], item["source_root_identity"],
+        stage_relative, item["sha256"])
     source_owned = _same_file_identity(source_info, item["source_identity"])
     destination_owned = _same_file_identity(
         destination_info, item["source_identity"])
+    stage_owned = _same_file_identity(stage_info, item["source_identity"])
     if (source_state == "expected" and destination_state == "expected"
             and (source_info["device"], source_info["inode"]) == (
                 destination_info["device"], destination_info["inode"])):
@@ -2037,17 +2127,23 @@ def _move_state(item: dict) -> str:
         # a hardlink introduced outside our transaction, regardless of the
         # resulting nlink/ctime change on the shared inode.
         return "external_conflict"
-    if source_state == "expected" and source_owned \
-            and destination_state == "absent":
+    if (source_state == "changed" and stage_state == "absent"
+            and destination_state == "absent"):
+        return "external_conflict"
+    if (source_state == "expected" and source_owned
+            and stage_state == "absent" and destination_state == "absent"):
         return "original"
+    if (source_state == "absent" and stage_state == "expected"
+            and stage_owned and destination_state == "absent"):
+        return "staged"
     if ((source_state == "expected" and not source_owned
             and destination_state == "absent")
             or (source_state == "expected" and source_owned
                 and destination_state in {"expected", "changed"}
                 and not destination_owned)):
         return "external_conflict"
-    if source_state == "absent" and destination_state == "expected" \
-            and destination_owned:
+    if (source_state == "absent" and stage_state == "absent"
+            and destination_state == "expected" and destination_owned):
         return "applied"
     return "conflict"
 
@@ -2056,11 +2152,29 @@ def _delete_state(item: dict) -> str:
     state, info = _relative_file_state(
         item["source_root"], item["source_root_identity"],
         item["source_relative"], item["sha256"])
-    accepted = item.get("restored_identity") or item["source_identity"]
-    if state == "expected" and _same_file_identity(info, accepted):
+    quarantine_name = _journaled_name(
+        item.get("quarantine_name"), prefix=".metnos-organize-delete-")
+    quarantine_relative = _sibling_relative(
+        item["source_relative"], quarantine_name)
+    quarantine_state, quarantine_info = _relative_file_state(
+        item["source_root"], item["source_root_identity"],
+        quarantine_relative, item["sha256"])
+    accepted = (item.get("restored_identity")
+                or item.get("restore_intent_identity")
+                or item["source_identity"])
+    if (state == "expected" and _same_file_identity(info, accepted)
+            and quarantine_state == "absent"):
         return "original"
-    if state == "absent":
+    if (state == "absent" and quarantine_state == "expected"
+            and _same_file_identity(
+                quarantine_info, item["source_identity"])):
         return "applied"
+    if (state == "expected" and quarantine_state == "expected"
+            and (info["device"], info["inode"]) == (
+                quarantine_info["device"], quarantine_info["inode"])):
+        return "external_conflict"
+    if state == "changed" and quarantine_state == "absent":
+        return "external_conflict"
     return "conflict"
 
 
@@ -2081,6 +2195,8 @@ def _delete_anchored(item: dict) -> None:
         raise OrganizeError(
             "ERR_ORGANIZE_STALE_PLAN", "ERR_ORGANIZE_STALE_PLAN",
             error_class="stale_plan", detail=item["reference_after_apply"])
+    quarantine_name = _journaled_name(
+        item.get("quarantine_name"), prefix=".metnos-organize-delete-")
     root_fd = _open_root_fd(item["source_root"], item["source_root_identity"])
     descriptor = parent_fd = -1
     try:
@@ -2099,7 +2215,24 @@ def _delete_anchored(item: dict) -> None:
             raise OrganizeError(
                 "ERR_ORGANIZE_STALE_PLAN", "ERR_ORGANIZE_STALE_PLAN",
                 error_class="stale_plan", detail=item["source"])
-        os.unlink(name, dir_fd=parent_fd)
+        _rename_noreplace(parent_fd, name, parent_fd, quarantine_name)
+        quarantined = _identity(os.stat(
+            quarantine_name, dir_fd=parent_fd, follow_symlinks=False))
+        if not _same_file_identity(quarantined, current):
+            # A non-cooperating basename swap was quarantined.  Restore that
+            # inode to its original name; it is never unlinked.
+            _rename_noreplace(parent_fd, quarantine_name, parent_fd, name)
+            restored = _identity(os.stat(
+                name, dir_fd=parent_fd, follow_symlinks=False))
+            if not _same_file_identity(restored, quarantined):
+                raise OrganizeError(
+                    "ERR_ORGANIZE_APPLY", "ERR_ORGANIZE_APPLY",
+                    error_class="partial_failure",
+                    detail=f"unapproved inode retained as {quarantine_name}")
+            os.fsync(parent_fd)
+            raise OrganizeError(
+                "ERR_ORGANIZE_STALE_PLAN", "ERR_ORGANIZE_STALE_PLAN",
+                error_class="stale_plan", detail=item["source"])
         os.fsync(parent_fd)
     finally:
         for value in (descriptor, parent_fd, root_fd):
@@ -2122,6 +2255,11 @@ def _validate_reverse_receipt(receipt: dict, receipt_path: Path) -> None:
     for item in receipt["actions"]:
         if not isinstance(item, dict) or item.get("kind") not in {"move", "delete"}:
             raise _invalid("invalid receipt action")
+        _journaled_name(
+            item.get("stage_name"), prefix=".metnos-organize-stage-")
+        _journaled_name(
+            item.get("undo_stage_name"),
+            prefix=".metnos-organize-undo-stage-")
         expected = item.get("sha256")
         required = {
             "source_root", "source_root_identity", "source_relative", "source",
@@ -2135,6 +2273,9 @@ def _validate_reverse_receipt(receipt: dict, receipt_path: Path) -> None:
                 raise _invalid("invalid move receipt action")
             continue
         blob_value = item.get("blob_path")
+        _journaled_name(
+            item.get("quarantine_name"),
+            prefix=".metnos-organize-delete-")
         if not isinstance(blob_value, str):
             raise _invalid("invalid backup receipt action")
         blob = _resolve_without_symlinks(blob_value, expected="regular file")
@@ -2177,7 +2318,8 @@ def _journal_output(journal: dict, receipt_path: Path, receipt_sha: str) -> dict
 def _partial_failure(journal: dict, receipt_path: Path, detail: str,
                      failures: list[dict]) -> dict:
     states = _reconcile_journal(journal)
-    has_effect = any(state in {"applied", "conflict"} for state in states)
+    has_effect = any(state in {"applied", "staged", "conflict"}
+                     for state in states)
     journal["status"] = "partial" if has_effect else "rolled_back"
     journal["failure"] = detail[:1000]
     journal["rollback_failures"] = failures
@@ -2201,7 +2343,8 @@ def _partial_failure(journal: dict, receipt_path: Path, detail: str,
 
 def _persisted_failure(journal: dict, receipt_path: Path) -> dict:
     states = _reconcile_journal(journal)
-    has_effect = any(state in {"applied", "conflict"} for state in states)
+    has_effect = any(state in {"applied", "staged", "conflict"}
+                     for state in states)
     failures = journal.get("rollback_failures") or []
     error = OrganizeError(
         "ERR_ORGANIZE_ROLLBACK_PARTIAL" if has_effect else "ERR_ORGANIZE_APPLY",
@@ -2228,10 +2371,11 @@ def _rollback_journal(journal: dict, receipt_path: Path,
         try:
             state = _move_state(item) if item["kind"] == "move" else _delete_state(item)
             if item["kind"] == "delete" and state == "applied":
-                _restore_blob(
-                    item, journal=journal, receipt_path=receipt_path)
+                _restore_delete_quarantine(item)
             elif item["kind"] == "move" and state == "applied":
                 _reverse_move(item)
+            elif item["kind"] == "move" and state == "staged":
+                _restore_forward_stage(item)
             elif state in {"conflict", "external_conflict"}:
                 raise OrganizeError(
                     "ERR_ORGANIZE_UNDO", "ERR_ORGANIZE_UNDO",
@@ -2285,7 +2429,7 @@ def _apply(args: dict) -> dict:
     if set(args) - {
         "client", "mode", "confirmation_token", "source_paths",
         "compare_paths", "destination_roots",
-    }:
+    } - _RUNTIME_METADATA_ARGS:
         raise _invalid("apply contains unexpected arguments")
     token = args.get("confirmation_token")
     authorization = os.environ.get("METNOS_FROZEN_PLAN_AUTHORIZATION") or ""
@@ -2312,9 +2456,19 @@ def _apply(args: dict) -> dict:
                     detail="transaction already reversed or reverse in progress"),
                     _undo={"outcome": "no_effect"})
             states = _reconcile_journal(journal)
-            if journal.get("status") == "committed" and all(
-                    state == "applied" for state in states):
-                return _journal_output(journal, receipt_path, _receipt_digest(receipt_path))
+            if journal.get("status") == "committed":
+                if all(state == "applied" for state in states):
+                    return _journal_output(
+                        journal, receipt_path, _receipt_digest(receipt_path))
+                # A committed receipt is terminal.  External restoration or
+                # drift cannot turn the same grant into a fresh mutation.
+                return _failure(OrganizeError(
+                    "ERR_ORGANIZE_APPLY", "ERR_ORGANIZE_APPLY",
+                    error_class="conflict",
+                    detail="committed transaction state diverged"),
+                    receipt_path=str(receipt_path),
+                    receipt_sha256=_receipt_digest(receipt_path),
+                    _undo={"outcome": "no_effect"})
             if journal.get("status") in {"partial", "rolled_back"}:
                 return _persisted_failure(journal, receipt_path)
             if states and all(state == "applied" for state in states):
@@ -2322,7 +2476,8 @@ def _apply(args: dict) -> dict:
                 journal["committed_at"] = int(time.time())
                 receipt_sha = _write_journal(receipt_path, journal)
                 return _journal_output(journal, receipt_path, receipt_sha)
-            if any(state != "original" for state in states):
+            if any(state in {"conflict", "external_conflict"}
+                   for state in states):
                 return _rollback_journal(
                     journal, receipt_path, RuntimeError("recovering interrupted transaction"))
         else:
@@ -2358,6 +2513,17 @@ def _apply(args: dict) -> dict:
             _ensure_backups(journal, receipt_path)
             journal["status"] = "applying"
             for item in journal["actions"]:
+                current = (_move_state(item) if item["kind"] == "move"
+                           else _delete_state(item))
+                if current == "applied":
+                    item["state"] = "applied"
+                    _write_journal(receipt_path, journal)
+                    continue
+                if current not in {"original", "staged"}:
+                    raise OrganizeError(
+                        "ERR_ORGANIZE_STALE_PLAN", "ERR_ORGANIZE_STALE_PLAN",
+                        error_class="conflict",
+                        detail=item.get("source", ""))
                 item["state"] = "intent"
                 _write_journal(receipt_path, journal)
                 if item["kind"] == "move":
@@ -2476,9 +2642,7 @@ def reverse(_plan: dict, results: dict) -> dict:
             for item in reversed(receipt.get("actions") or []):
                 try:
                     if item["kind"] == "delete":
-                        changed = _restore_blob(
-                            item, journal=receipt,
-                            receipt_path=receipt_path)
+                        changed = _restore_delete_quarantine(item)
                         action = "restore_deleted"
                         path = item["source"]
                     else:

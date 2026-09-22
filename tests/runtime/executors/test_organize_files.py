@@ -318,6 +318,51 @@ def test_apply_is_bound_to_actor_and_exact_scope(tmp_path: Path, monkeypatch) ->
     assert item.exists()
 
 
+def test_runtime_metadata_is_accepted_exactly_and_ignored(
+        tmp_path: Path, monkeypatch) -> None:
+    source = tmp_path / "source"
+    destination = tmp_path / "destination"
+    source.mkdir()
+    destination.mkdir()
+    item = source / "a.txt"
+    item.write_bytes(b"a")
+    metadata = {
+        "_actor": "runtime-actor",
+        "_lang": "it",
+        "_channel": "telegram",
+        "_turn_id": "runtime-turn",
+    }
+
+    refused_preview = organize.invoke({
+        **_move_policy(source, destination),
+        **metadata,
+        "_runtime_private": "not-allowed",
+    })
+    assert refused_preview["ok"] is False
+    assert refused_preview["error_code"] == "ERR_ORGANIZE_POLICY"
+
+    preview = organize.invoke({**_move_policy(source, destination), **metadata})
+    assert preview["ok"] is True
+    apply_args = {**_apply_args(preview), **metadata}
+    monkeypatch.setenv(
+        "METNOS_FROZEN_PLAN_AUTHORIZATION", preview["confirmation_token"])
+
+    refused_apply = organize.invoke({
+        **apply_args,
+        "_runtime_private": "not-allowed",
+    })
+    assert refused_apply["ok"] is False
+    assert refused_apply["error_code"] == "ERR_ORGANIZE_POLICY"
+    assert item.exists()
+
+    applied = organize.invoke(apply_args)
+    assert applied["ok"] is True
+    assert not item.exists()
+    reversed_result = organize.reverse({}, applied)
+    assert reversed_result["ok"] is True
+    assert item.read_bytes() == b"a"
+
+
 def test_reverse_refuses_changed_destination_without_partial_effect(tmp_path: Path) -> None:
     source = tmp_path / "source"
     destination = tmp_path / "destination"
@@ -582,7 +627,8 @@ def test_retry_reconciles_crash_after_last_effect(
 
 
 @pytest.mark.parametrize("fault", [
-    "after_wal", "after_effect_before_journal",
+    "after_wal", "after_staging_before_destination",
+    "after_effect_before_journal",
 ])
 def test_sigkill_recovery_uses_durable_wal(
         tmp_path: Path, fault: str) -> None:
@@ -631,7 +677,7 @@ def test_sigkill_during_reverse_is_reconciled_without_second_effect(
 
 
 @pytest.mark.parametrize(("fault", "exists_after_kill", "retry_count"), [
-    ("after_restore_intent_before_rename", False, 1),
+    ("after_staging_before_destination", False, 1),
     ("after_reverse_effect_before_journal", True, 0),
 ])
 def test_sigkill_during_reverse_delete_recovers_from_durable_intent(
@@ -663,43 +709,15 @@ def test_sigkill_during_reverse_delete_recovers_from_durable_intent(
     assert retried["ok"] is True
     assert retried["ok_count"] == retry_count
     assert duplicate.read_bytes() == b"same"
-    assert list(source.glob(".metnos-restore-*")) == []
+    assert list(source.glob(".metnos-organize-*")) == []
     receipt = json.loads(Path(applied["receipt_path"]).read_text())
     assert receipt["status"] == "undone"
 
 
-def test_restore_handles_eintr_and_short_writes(
-        tmp_path: Path, monkeypatch) -> None:
-    source = tmp_path / "source"
-    compare = tmp_path / "compare"
-    destination = tmp_path / "destination"
-    source.mkdir()
-    compare.mkdir()
-    destination.mkdir()
-    duplicate = source / "duplicate.bin"
-    reference = compare / "reference.bin"
-    payload = b"same-content-long-enough-for-short-writes"
-    duplicate.write_bytes(payload)
-    reference.write_bytes(payload)
-    applied = _apply(organize.invoke(_move_policy(
-        source, destination, compare=compare, deduplicate=True)))
-    real_write = organize.os.write
-    calls = 0
-
-    def interrupted_short_write(descriptor, data):
-        nonlocal calls
-        calls += 1
-        if calls == 1:
-            raise InterruptedError
-        view = memoryview(data)
-        return real_write(descriptor, view[:max(1, len(view) // 3)])
-
-    monkeypatch.setattr(organize.os, "write", interrupted_short_write)
-    reversed_result = organize.reverse({}, applied)
-
-    assert reversed_result["ok"] is True, reversed_result
-    assert calls >= 3
-    assert duplicate.read_bytes() == payload
+def test_executor_has_no_unbounded_external_metadata_process() -> None:
+    source = _MODULE_PATH.read_text(encoding="utf-8")
+    assert "subprocess" not in source
+    assert "ffprobe" not in source
 
 
 def test_same_bytes_source_replacement_is_not_moved(
@@ -766,6 +784,80 @@ def test_destination_created_after_preflight_is_never_removed(
     assert target.read_bytes() == b"third-party"
 
 
+def test_move_basename_swap_is_restored_and_never_moved(
+        tmp_path: Path, monkeypatch) -> None:
+    source = tmp_path / "source"
+    destination = tmp_path / "destination"
+    source.mkdir()
+    destination.mkdir()
+    item = source / "a.txt"
+    item.write_bytes(b"approved")
+    displaced = tmp_path / "approved-displaced.txt"
+    preview = organize.invoke(_move_policy(source, destination))
+    real_rename = organize._rename_noreplace
+    swapped = False
+
+    def swap_before_stage(source_fd, source_name, destination_fd,
+                          destination_name):
+        nonlocal swapped
+        if (not swapped and source_name == "a.txt"
+                and destination_name.startswith(".metnos-organize-stage-")):
+            item.rename(displaced)
+            item.write_bytes(b"third-party")
+            swapped = True
+        return real_rename(
+            source_fd, source_name, destination_fd, destination_name)
+
+    monkeypatch.setattr(organize, "_rename_noreplace", swap_before_stage)
+    result = _apply(preview)
+
+    assert result["ok"] is False
+    assert result["_undo"] == {"outcome": "no_effect"}
+    assert item.read_bytes() == b"third-party"
+    assert displaced.read_bytes() == b"approved"
+    assert not (destination / "a.txt").exists()
+    assert list(source.glob(".metnos-organize-*")) == []
+
+
+def test_delete_basename_swap_is_restored_and_never_removed(
+        tmp_path: Path, monkeypatch) -> None:
+    source = tmp_path / "source"
+    compare = tmp_path / "compare"
+    destination = tmp_path / "destination"
+    source.mkdir()
+    compare.mkdir()
+    destination.mkdir()
+    duplicate = source / "duplicate.bin"
+    reference = compare / "reference.bin"
+    duplicate.write_bytes(b"approved")
+    reference.write_bytes(b"approved")
+    displaced = tmp_path / "approved-displaced.bin"
+    preview = organize.invoke(_move_policy(
+        source, destination, compare=compare, deduplicate=True))
+    real_rename = organize._rename_noreplace
+    swapped = False
+
+    def swap_before_quarantine(source_fd, source_name, destination_fd,
+                               destination_name):
+        nonlocal swapped
+        if (not swapped and source_name == "duplicate.bin"
+                and destination_name.startswith(".metnos-organize-delete-")):
+            duplicate.rename(displaced)
+            duplicate.write_bytes(b"third-party")
+            swapped = True
+        return real_rename(
+            source_fd, source_name, destination_fd, destination_name)
+
+    monkeypatch.setattr(organize, "_rename_noreplace", swap_before_quarantine)
+    result = _apply(preview)
+
+    assert result["ok"] is False
+    assert result["_undo"] == {"outcome": "no_effect"}
+    assert duplicate.read_bytes() == b"third-party"
+    assert displaced.read_bytes() == b"approved"
+    assert list(source.glob(".metnos-organize-*")) == []
+
+
 def test_hardlink_destination_created_after_preflight_is_never_removed(
         tmp_path: Path, monkeypatch) -> None:
     source = tmp_path / "source"
@@ -817,6 +909,98 @@ def test_added_hardlink_after_move_blocks_undo(tmp_path: Path) -> None:
     assert not item.exists()
     assert moved.read_bytes() == late_link.read_bytes() == b"payload"
     assert moved.stat().st_ino == late_link.stat().st_ino
+
+
+def test_committed_receipt_never_reapplies_after_external_restore(
+        tmp_path: Path) -> None:
+    source = tmp_path / "source"
+    destination = tmp_path / "destination"
+    source.mkdir()
+    destination.mkdir()
+    item = source / "a.txt"
+    item.write_bytes(b"payload")
+    preview = organize.invoke(_move_policy(source, destination))
+    applied = _apply(preview)
+    moved = destination / "a.txt"
+    moved.rename(item)
+    receipt = Path(applied["receipt_path"])
+    before = receipt.read_bytes()
+
+    replay = _apply(preview)
+
+    assert replay["ok"] is False
+    assert replay["error_class"] == "conflict"
+    assert replay["_undo"] == {"outcome": "no_effect"}
+    assert item.read_bytes() == b"payload"
+    assert not moved.exists()
+    assert receipt.read_bytes() == before
+
+
+def test_scan_refuses_directory_replaced_by_symlink(
+        tmp_path: Path, monkeypatch) -> None:
+    source = tmp_path / "source"
+    inner = source / "inner"
+    outside = tmp_path / "outside"
+    destination = tmp_path / "destination"
+    inner.mkdir(parents=True)
+    outside.mkdir()
+    destination.mkdir()
+    (inner / "inside.txt").write_bytes(b"inside")
+    secret = outside / "secret.txt"
+    secret.write_bytes(b"outside-secret")
+    held = source / "inner-held"
+    real_open = organize.os.open
+    swapped = False
+
+    def swap_directory(path, flags, *args, **kwargs):
+        nonlocal swapped
+        if (not swapped and path == "inner" and kwargs.get("dir_fd") is not None
+                and flags & os.O_DIRECTORY):
+            inner.rename(held)
+            inner.symlink_to(outside, target_is_directory=True)
+            swapped = True
+        return real_open(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(organize.os, "open", swap_directory)
+    preview = organize.invoke(_move_policy(source, destination))
+
+    assert preview["ok"] is False
+    assert preview["apply_ready"] is False
+    assert preview["scan_complete"] is False
+    assert str(secret) not in json.dumps(preview)
+
+
+def test_hash_refuses_parent_replaced_by_symlink_after_scan(
+        tmp_path: Path, monkeypatch) -> None:
+    source = tmp_path / "source"
+    inner = source / "inner"
+    outside = tmp_path / "outside"
+    destination = tmp_path / "destination"
+    inner.mkdir(parents=True)
+    outside.mkdir()
+    destination.mkdir()
+    (inner / "item.txt").write_bytes(b"approved")
+    secret = outside / "item.txt"
+    secret.write_bytes(b"outside-secret")
+    held = source / "inner-held"
+    real_parallel = organize.parallel_map_ordered
+    calls = 0
+
+    def swap_before_hash(items, worker):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            inner.rename(held)
+            inner.symlink_to(outside, target_is_directory=True)
+        return real_parallel(items, worker)
+
+    monkeypatch.setattr(organize, "parallel_map_ordered", swap_before_hash)
+    preview = organize.invoke(_move_policy(source, destination))
+
+    assert preview["ok"] is False
+    assert preview["apply_ready"] is False
+    assert preview["scan_complete"] is False
+    assert str(secret) not in json.dumps(preview)
 
 
 def test_added_hardlink_before_delete_fails_closed(
