@@ -241,7 +241,8 @@ Riportare release, commit ed esito, conservando questa voce.
 
 - **Chiede**: Codex (attivita' LRE / verifica F5), 22/9/2026
 - **A**: responsabile della certificazione RM-0008 e dell'esportazione pubblica
-- **Stato**: aperta — riscontro storico del 20/9, non misura aggiornata della CI
+- **Stato**: correzione Codex pronta e verificata il 22/9/2026, commit
+  `a2ce429b`; aperta per integrazione e nuova certificazione pubblica
 
 L'aggiornamento pubblico F5 `92eab91ec16112f818d4d246b61acbf0f7678632`
 ha eliminato dal pacchetto pubblico la prova che richiedeva l'installer
@@ -289,3 +290,43 @@ operativa; non mi attribuisco le modifiche di R-001. Resoconto nel commit
 `/opt/metnos/.claude/worktrees/rm0009-development`). Non occorre ripetere
 questa diagnosi invariata. R-006 resta aperta per correzione e nuovo
 riscontro pubblico; il seguito appartiene alla sessione qui sotto.
+
+**Presa in carico Codex, 22/9/2026**: riparto dalle ricevute del 20/9 e
+confronto il test, il riferimento congelato e il controllo che lo rifiuta.
+Il precedente riscontro e' nel commit `a1f0de4f`; causa e prova della
+diagnosi saranno aggiunte qui. R-001 e R-003 restano aperte: questa
+verifica non installa codice e non riavvia il target.
+
+**Esito Codex, 22/9/2026**: causa individuata nel commit pubblico
+`b01b2118` del 18/9. Ha ripristinato l'impronta dell'ancora del 2/9
+(`1babce04…`) lasciando il test aggiornato (`67eb6e54…`). Nel predecessore
+`9eac7814` test e riferimento coincidevano. Il test e il validatore sono
+identici anche nell'ultimo `main` pubblico `aaddc391`; il registro del
+controllo manifest `106106793243`, ciclo `35521704038`, conferma lo stesso
+rifiuto. Il controllo si ferma prima delle celle di prova.
+
+**Prova isolata**: il validatore reale rifiuta il riferimento corrente;
+con quello estratto dal predecessore accetta gli stessi byte del test e
+continua a rifiutare sia l'aggiunta di un ritorno a capo sia lo svuotamento
+del test. Quattro verifiche riuscite, senza riscrivere riferimenti su
+disco o dichiarare verde l'intera certificazione.
+
+**Correzione preparata, stesso seguito Codex**: commit `a2ce429b`, ramo
+`codex/r006-anchor-repair`, derivato dalla consegna F5 `2ac90907`.
+Ripristinato il riferimento gia' valido e riallineate le impronte dei
+sorgenti; nessuna prova o workflow modificati. **14/14** prove mirate
+superate. In una copia isolata del pubblico, applicata la sola correzione
+con i riferimenti collegati: commit locale non pubblicato `a4a276d5`,
+**7/7** celle manifest superate tramite l'ingresso canonico in modalita'
+`final`, con ricevuta e uscita zero.
+
+Diagnosi pubblica aggiornata, impronte complete e ricevute nel
+[rapporto del ramo isolato](/opt/metnos/.claude/worktrees/r006-anchor-repair/internal/reports/rm0008-r006-public-countercheck-20260922.md).
+La diagnosi precedente del gestore F5 resta conservata nel commit di base.
+**Resta all'operatore del rilascio** integrare la correzione nel candidato
+finale, verificarne le impronte e registrare il nuovo esito su GitHub.
+Il ramo F5 e il pubblico corrente contengono aggiornamenti diversi: non
+esportare il ramo intero sopra il pubblico perdendo i cambiamenti successivi.
+Nessuna pubblicazione esterna, attivazione F5 o operazione sui servizi
+eseguita. R-006 resta aperta per la ricevuta pubblica conclusiva;
+R-001/R-003 conservano i rispettivi vincoli.
