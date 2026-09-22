@@ -417,6 +417,27 @@ e pianifica prima dell'ammissione. Prime prove mirate: 363 superate;
 non sono una ricevuta reale e non chiudono R-003. La prova operativa e il
 riavvio restano riservati a questa task; nessuna pubblicazione concorrente.
 
+**Esito operativo, stessa task, 22/9/2026**: raccordo implementato in
+`727cdfcd`/`114c4bbc`, correzioni del controller in `8ebac9c9`/`17ca94dc`;
+controller integrato nel principale con `c901ff8a`, `e0f163ac`, `673f23ef`.
+391 prove iniziali superate; suite finale del controller 228 superate
+(conteggi sovrapposti), manifest pubblico isolato 7/7. Release **73 costruita
+e firmata**, ma il controllo preliminare del ritiro legacy rifiuta
+`/opt/metnos`: richiede root:root, osserva roberto:roberto, modo 0755.
+Chiesto a Roberto il cambio del **solo proprietario della cartella radice**,
+senza interventi ricorsivi: in attesa di risposta, nessun cambio eseguito.
+
+Produzione verificata in `run-_4ohnyok`: **ancora release 72**, HTTP,
+Telegram e LRE attivi, salute positiva, zero turni/lavori attivi, PID
+invariati. Nessuna ammissione, riavvio o certificazione F5. R-003 **aperta**.
+I residui compilati che ostacolavano la costruzione sono stati verificati
+e archiviati senza perdere gli originali; indice Git ripristinato senza
+cambio di contenuto e controlli amministrativi resi non scriventi.
+Prove, commit, archivio recuperabile e ripresa:
+`internal/reports/r003-installed-publication-20260922.md`.
+Il candidato `read_files` a sola documentazione (`55708ae1`) resta separato
+e non pubblicato; non conta come nuova funzionalita' per certificare F5.
+
 ---
 
 ## R-004 — `CLAUDE.md` §7.10 e' obsoleto (per Roberto)
