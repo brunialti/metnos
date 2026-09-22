@@ -401,6 +401,23 @@ Riferimento di coordinamento: assegnazione finale in R-001. Gli altri
 agenti mantengono i sottocompiti dichiarati e riportano qui gli esiti;
 nessuna attivazione F5 e' dichiarata da questa assegnazione.
 
+**Integrazione isolata della task originale F5, 22/9/2026**: commit
+`6fb6038d`, ramo `codex/f5-final-integration-20260922`. Unisce i commit
+consegnati da F5/R-006 (`a2ce429b`) alla base release 72 (`935629a7`),
+conservando storia e autori; non sostituisce LRE/Telegram con il ramo F5
+piu' vecchio. **87 prove mirate superate**, zero fallimenti o salti;
+controllo dei confini Birth e delle impronte dei sorgenti superato.
+Il codice di LRE, Telegram ed executor resta invariato rispetto alla
+base release 72. Dettagli nel §10 di
+`internal/design/handover_rm0008_f5_17_9_2026.md` del ramo combinato.
+
+Il lanciatore installato e' stato soltanto letto: manca ancora la correzione
+dei percorsi esterni; non e' stato invocato o sostituito. Nessun riavvio,
+pubblicazione, nuova chiave o attivazione F5. **R-005 resta aperta per
+l'installazione verificata**; R-006 per la nuova ricevuta pubblica. Il ramo
+isolato non autorizza pubblicazioni e non sostituisce i due cicli finali
+F5; restano i prerequisiti R-001/R-003 e la finestra operativa.
+
 
 **Riscontro Codex (task LRE, handover 17/9), 22/9/2026**: consegna letta;
 `3cddd734` e `1942462b` non sono antenati del checkout principale
