@@ -64,6 +64,53 @@ questa presa in carico e il suo esito sul ramo dedicato
 `codex/r001-r006-coordination-20260922`, integrando soltanto queste righe.
 R-001 resta aperta finche' il checkout principale e' davvero pulito.
 
+**Presa in carico RM-0008, Codex (task originale F5), 22/9/2026**:
+Roberto ha assegnato esplicitamente il gruppo RM-0008. Lo sistemo su
+`codex/r001-rm0008-cleanup-20260922`, con commit distinti per ritiro,
+documenti storici e stato operativo. Conservo il ritiro dei 16 ingressi:
+la transizione F4 registrata li prevedeva, e non e' dimostrato un incidente
+di test. Nessun ripristino eseguibile o cambio di servizio. Non tocco i
+file del coordinatore RM-0009, le note LRE o quelle RM-0011.
+`install/data` resta invariata: il controllo dei contenuti richiede
+privilegi; nessun cambio di permessi senza l'approvazione di Roberto.
+Il ramo del checkout principale non viene cambiato; solo i miei commit
+verranno integrati dopo il confronto puntuale dei contenuti.
+
+**Esito gruppo RM-0008, stessa task, 22/9/2026**: completato e integrato
+nel checkout principale, senza cambiarne il ramo, con avanzamento a
+`97dabcc5`. Commit sul ramo dedicato: `5574f9db` (16 ritiri identici al
+100%, originali recuperabili), `4c1bde27` (quattro handover, proposta G8 e
+tre report storici conservati), `aaf7b0f2` (note gia' presenti in
+`CLAUDE.mutabile.md`), `f88413b0` (ricevuta archivio e accesso).
+
+Roberto ha poi autorizzato esplicitamente **«Si', archivia e ripristina
+l'accesso»** per `install/data`. Il seed coincide con Git; tutti i vecchi
+contenuti e permessi sono conservati, senza eliminazioni, in
+`/var/lib/metnos-admin/agent-runs/run-w3hgj2v2/original-install-data`
+(9 voci, 1.060.864 byte). Il percorso originale contiene ora soltanto il
+seed invariato, directory `0755`, file `0644`, proprietario sviluppatore.
+Controllo preventivo: nessun file aperto da processi. Nessun servizio o
+catalogo modificato. Dettagli e impronte:
+[`internal/reports/r001-rm0008-cleanup-20260922.md`](../reports/r001-rm0008-cleanup-20260922.md).
+
+Il mio gruppo non compare piu' fra le modifiche pendenti. Restano al
+momento il gruppo RM-0009, le note/puntatore LRE e il report
+`github-affinity-cleanup-20260920.md`, oltre alla finalizzazione delle
+righe di bacheca dei rispettivi autori. **R-001 non e' ancora chiusa**:
+nessun assenso a pubblicare deriva da questa pulizia parziale.
+
+**Responsabilita' finale assegnata da Roberto, 22/9/2026**:
+la chiusura complessiva di **R-001 e F5 spetta a Codex, task originale
+RM-0008/F5** (questa task, handover iniziale `e8c34028`, pulizia su
+`codex/r001-rm0008-cleanup-20260922`). Non viene delegata automaticamente
+all'autore della correzione R-006 o agli agenti LRE/RM-0009.
+I sottocompiti gia' assegnati restano ai rispettivi autori: consegnare qui
+commit e prove, senza sovrascrivere le altre modifiche. Coordino io le
+integrazioni residue e verifico personalmente il checkout principale
+pulito prima di chiudere R-001; porto poi F5 fino alle prove finali,
+certificazione e messa in esercizio. La pulizia Git non equivale alla
+chiusura F5 e non elimina i prerequisiti di R-003 o della finestra operativa.
+
 ---
 
 ## R-002 — Pubblicare RM-0011 (13 executor nuovi, 23 modificati)
@@ -264,6 +311,13 @@ Non attivare F5 per effetto di questa consegna.
 integrata e, nella finestra autorizzata, installata e verificata sulla
 release pertinente, oppure motiva esplicitamente una diversa disposizione.
 Riportare release, commit ed esito, conservando questa voce.
+
+**Coordinamento finale, disposizione di Roberto del 22/9/2026**:
+Codex della task originale RM-0008/F5 e' responsabile della chiusura di
+F5, inclusa questa consegna e l'integrazione della correzione R-006.
+Riferimento di coordinamento: assegnazione finale in R-001. Gli altri
+agenti mantengono i sottocompiti dichiarati e riportano qui gli esiti;
+nessuna attivazione F5 e' dichiarata da questa assegnazione.
 
 ---
 
