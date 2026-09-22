@@ -161,19 +161,30 @@ transition bindings are checked against the current authenticated inputs.
 It is not rebuilt from paths that retirement may already have renamed, and it
 does not replace current quiescence or topology checks.
 
-A successor may add a repository retirement binding without rewriting that
+A successor authenticates the selected completed predecessor and recomputes its
+existing signed dominant-startup receipt. Identical historical repository
+retirements reuse that proof; the old checkout is not reopened or required to
+remain root-owned. A pending, abandoned or incomplete release is not a completed
+checkpoint. The selected build and receipt must match, and selection is reread
+after the live checks. This changes no first-transition requirement and grants
+no execution or publication authority to development sources.
+
+A successor may add a repository retirement binding without rewriting the
 initial census. Every previous step must remain identical; removals, changed
 identities, duplicate destinations and additional unit retirements are refused.
-An additional repository entry must either have the exact preserved size/hash
+Only an additional repository entry needs new filesystem evidence: it must
+either have the exact preserved size/hash
 from the authenticated initial census, or be absent from that census within its
 complete source-root coverage and also absent on disk. The latter observation
 uses unchanged owned directory handles without following links and refuses
 stray retirement/preservation artifacts. Entries known to the census still need
 their preserved file. No file is fabricated, deleted or renamed by a successor.
-Both observations are repeated under the transition locks; the release tool
-also checks them before stopping services, binding the census to the attested
-current startup. This early refusal is not authorization to cross. The first
-transition still requires all declared legacy repository files.
+Live service masks, unit replacements and conflicting legacy processes are
+still checked; historical process names need no surviving checkout directory.
+The release tool and the locked transition share this checkpoint/delta verifier.
+It refuses unsupported deltas before stopping services and repeats observations
+under the transition locks. No flag disables the checks. The first transition
+still requires all declared legacy repository files.
 
 The transition is resumable and exact repetition is idempotent. The live
 user-level HTTP unit is stopped inside the coordinated switch and the signed

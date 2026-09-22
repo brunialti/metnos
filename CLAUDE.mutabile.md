@@ -6,6 +6,13 @@
 
 ## S. Stato corrente (17/9/2026)
 
+- **Successor retirement uses completed evidence** (approved 22/9, ADR 0225):
+  unchanged repository retirements reuse the selected predecessor's signed
+  receipt; current service restrictions and new obligations are checked live.
+  The development checkout does not become an administrative root. Initial
+  retirement and individual-executor Birth are unchanged. Implemented and
+  tested in isolation; activation is recorded separately in coordination R-003.
+
 - **Recupero LRE da risultati verificati — installato, release 67** (17/9):
   `committed_entries` legge riferimenti espliciti dello stesso proprietario
   senza riscrivere contratti o storico. Una continuazione sottrae i consumi

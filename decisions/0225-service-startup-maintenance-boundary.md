@@ -83,3 +83,20 @@ fragments, drop-ins and policy, selected-state reread, preserved full certificat
 the managed interpreter, authenticated maintenance routes and per-invocation SMTP.
 Recovery acceptance requires normal HTTP, a real Telegram daemon and a harmless
 authenticated request that actually executes an admitted executor.
+
+## Successor retirement: historical proof versus live state
+
+Approved by Roberto on 22 September 2026. A development checkout is not a
+permanent administrative root. Successor transitions reuse unchanged repository
+retirement obligations only after authenticating the selected completed release
+and recomputing the retirement receipt already bound into its cutover certificate.
+No new key, certificate format, service or evidence archive is introduced.
+
+Current unit restrictions, conflicting legacy processes, signed runtime and
+authority checks remain live. New repository obligations require their own
+verified delta; removal or modification of existing obligations and unsupported
+unit deltas refuse before shutdown. The early release check and locked crossing
+use one verifier, and a changed selection refuses. The initial transition retains
+its strict retirement. Historical proof cannot authorize executing old code.
+The rule is independent of account names, checkout paths and release numbers;
+it adds no history scan to individual-executor Birth or user turns.

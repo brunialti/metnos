@@ -73,6 +73,15 @@
  retirements remain refused. <strong>Status:</strong> fix deployed on
  17 September 2026; the release 63-to-64 transition was verified while
  preserving an LRE job. This release neither activates nor certifies F5.</p>
+ <h2>Keep development separate from retirement evidence</h2>
+ <p>Once retirement has been verified, an unchanged historical obligation
+ can reuse the signed proof from the completed current release. The development
+ checkout does not have to remain an administrative directory. Metnos still
+ checks current service restrictions and conflicting processes; a new retirement
+ obligation needs its own proof. A missing or altered proof stops the update.</p>
+ <p><strong>Development status:</strong> this correction is being tested and is
+ not yet deployed. It introduces no new key or service and adds no history scan
+ when an individual executor is created. Initial installation checks are unchanged.</p>
  <h2>Check the present without replaying the entire history</h2>
  <p>A new admission must pass its safety checks. It should not repeat work
  already verified for every earlier release. The optimized reader uses the

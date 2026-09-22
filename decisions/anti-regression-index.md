@@ -6,10 +6,10 @@
 > Aggiornare QUI (non in CLAUDE.md) quando si aggiunge/rimuove un meccanismo.
 
 **Naming / vocab / grammatica**
-- **Ritiro storico estendibile senza riscrittura** (ADR 0224):
-  `require_successor_retirement_v1`, `_observe_previous_retirement_v2` e
-  `_observe_absent_repository_v1`; aggiunte solo nel codice, prove storiche e
-  lettura attuale obbligatorie, verifica anticipata prima dell'arresto servizi.
+- **Historical retirement versus live obligations** (ADR 0224/0225):
+  `_verify_completed_retirement_v2` and `_observe_successor_retirement_v2` reuse
+  only authenticated unchanged history; current units, processes and new
+  obligations remain checked before shutdown and under the transition locks.
 - **Lanciatore F5: alberi del codice intatti**: `internal/tools/install_f5_authority.sh::require_external_path`, `-B` su entrambi gli interpreti e workspace esterno; prove reali e controlli negativi in `tests/internal/test_f5_authority_launcher.py`.
 - **Avvio e manutenzione separati dalla certificazione** (ADR 0225):
   `executor_birth_admin_preflight._attest_service_startup_v1`,
