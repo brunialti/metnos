@@ -382,6 +382,32 @@ precedente a quello installato: verifico il raccordo prima di qualsiasi
 ammissione. R-003 resta aperta fino a generazione, rilettura del catalogo,
 conservazione degli altri contratti e verifica dei servizi registrate.
 
+**Esito della preparazione reale, stessa task, 22/9/2026**: il piano della
+release installata, eseguito come `metnos` con filesystem protetto in sola
+lettura (`run-xidyo8mb`), restituisce **107 contratti invariati, zero
+candidati cambiati**, uscita 0. Nessuna ammissione e nessun riavvio.
+Il sorgente installato di `stack_reconcile.py` coincide con `935629a7`
+(SHA-256 `e02687f012a019eea48a5a94269474cb7bf9db9ca2530df869f21a78056943ea`),
+non con il comando piu' vecchio nel checkout principale.
+
+Il raccordo da certificare deve distinguere due radici: il motore firmato
+gia' installato e i candidati modificati nel checkout. Oggi
+`verify_named_executors()` cerca questi ultimi rispetto a `__file__`, quindi
+il comando installato seleziona i sorgenti immutabili della release; non
+espone un ingresso per il candidato del checkout. Inoltre il predecessore
+firmato identifica `/opt/metnos` come radice ritirata e
+`_observe_revoked_v1()` rifiuta la ricomparsa degli ingressi dismessi:
+non ripristinarli per allineare alla cieca tutto il ramo di rilascio.
+Queste sono verifiche del codice e del piano, **non un tentativo di
+pubblicazione fallito** e non una ricevuta di chiusura.
+
+Proposto a Roberto un raccordo unico che esegua soltanto il motore della
+release verificata, consegnandogli il singolo candidato del checkout come
+input non fidato ai normali controlli Birth. Nessun nuovo produttore,
+nessuna modifica alla release immutabile e nessuna riattivazione legacy.
+La decisione architetturale e la successiva release sono da approvare;
+la prova reale con generazioni prima/dopo resta da eseguire. **R-003 aperta**.
+
 ---
 
 ## R-004 — `CLAUDE.md` §7.10 e' obsoleto (per Roberto)
