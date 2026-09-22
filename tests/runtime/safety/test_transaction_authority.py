@@ -54,6 +54,16 @@ def test_frozen_plan_rejects_unconditional_mutating_capability():
                for finding in validate_frozen_plan(safe))
 
 
+def test_frozen_plan_uses_mutation_axis_not_criticality_as_proxy():
+    noncritical_mutation = _frozen_manifest({
+        "name": "channel:out", "hint": ["arg:paths"]})
+    assert any("conditioned on apply" in finding
+               for finding in validate_frozen_plan(noncritical_mutation))
+    critical_read = _frozen_manifest({
+        "name": "auth.password_storage", "hint": ["arg:paths"]})
+    assert validate_frozen_plan(critical_read) == []
+
+
 def test_history_authority_requires_exact_turn(tmp_path, monkeypatch):
     monkeypatch.setenv("METNOS_HISTORY_DIR", str(tmp_path))
     executor = _executor([{"name": "metnos:history", "hint": ["turn"]}])

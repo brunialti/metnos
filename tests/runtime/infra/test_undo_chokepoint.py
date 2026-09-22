@@ -270,6 +270,154 @@ def test_pending_device_field(undo_log_isolated):
     assert recs[0]["device"] == "dev-abc123"
 
 
+def test_frozen_retry_reuses_one_logical_undo_operation(undo_log_isolated):
+    import agent_runtime
+
+    class _FrozenEx:
+        name = "organize_files"
+        revertible = True
+        undo = {"outcome": "per_execution"}
+        execution_policy = {"frozen_plan": {
+            "argument": "mode", "preview_value": "preview",
+            "apply_value": "apply",
+            "token_argument": "confirmation_token",
+            "token_result": "confirmation_token",
+        }}
+
+    args = {
+        "mode": "apply", "confirmation_token": "a" * 64,
+        "paths": ["/tmp/example"],
+    }
+    first = agent_runtime._undo_pending(
+        _FrozenEx(), args, turn_id="turn-1", actor="owner", channel="http")
+    retry = agent_runtime._undo_pending(
+        _FrozenEx(), args, turn_id="turn-1", actor="owner", channel="http")
+    other = agent_runtime._undo_pending(
+        _FrozenEx(), {**args, "confirmation_token": "b" * 64},
+        turn_id="turn-1", actor="owner", channel="http")
+    assert first == retry
+    assert other != first
+    assert [row["op_id"] for row in _records(undo_log_isolated)] == [
+        first, first, other]
+
+
+def _frozen_fault_executor(code_path: Path):
+    return SimpleNamespace(
+        name="frozen_undo_fault_probe",
+        revertible=True,
+        undo={"outcome": "per_execution"},
+        reverse_pattern="module.reverse",
+        execution_policy={"frozen_plan": {
+            "argument": "mode", "preview_value": "preview",
+            "apply_value": "apply",
+            "token_argument": "confirmation_token",
+            "token_result": "confirmation_token",
+        }},
+        execution_policy_declared=False,
+        args_schema={"type": "object", "properties": {
+            "mode": {"type": "string"},
+            "confirmation_token": {"type": "string"},
+        }},
+        capabilities=[],
+        placement={"scope": "server"},
+        standard_state="declared",
+        code_path=code_path,
+        contract_id="test-contract",
+        generation_id="test-generation",
+        digest="sha256:test-digest",
+        is_imported=False,
+    )
+
+
+def _invoke_authorized_frozen(agent_runtime, executor, token: str):
+    from frozen_plan_consent import executor_binding, grant
+
+    args = {"mode": "apply", "confirmation_token": token}
+    final_args = {
+        **args,
+        "_actor": "owner",
+        "_channel": "http",
+        "_turn_id": "turn-undo-fault",
+    }
+    record = {
+        "executor": executor.name,
+        "executor_binding": executor_binding(executor),
+        "args": final_args,
+        "token": token,
+    }
+    with grant(record, owner_user_id="owner", actor="owner",
+               channel="http", turn_id="turn-undo-fault"):
+        return agent_runtime._invoke_executor_impl(
+            executor, args, timeout_s=10, turn_id="turn-undo-fault",
+            actor="owner", channel="http", owner_user_id="owner",
+        )
+
+
+def test_frozen_apply_never_starts_without_durable_undo_pending(
+        tmp_path, monkeypatch):
+    import agent_runtime
+
+    marker = tmp_path / "child-started"
+    code = tmp_path / "frozen_probe.py"
+    code.write_text(
+        "from pathlib import Path\n"
+        f"Path({str(marker)!r}).touch()\n"
+        "print('{\"ok\":true,\"_undo\":{\"outcome\":\"reversible\"}}')\n",
+        encoding="utf-8",
+    )
+    executor = _frozen_fault_executor(code)
+
+    class _PendingFails:
+        def append_pending(self, *args, **kwargs):
+            raise OSError("injected pending fsync failure")
+
+    monkeypatch.setattr(agent_runtime, "UndoLog", _PendingFails)
+    monkeypatch.setenv("METNOS_SANDBOX", "0")
+
+    result = _invoke_authorized_frozen(agent_runtime, executor, "c" * 64)
+
+    assert result["ok"] is False
+    assert result["error_class"] == "execution_interrupted"
+    assert result["error_code"] == "frozen_plan_undo_pending_not_durable"
+    assert not marker.exists(), "il child mutante non doveva essere avviato"
+
+
+def test_frozen_result_stays_nonterminal_until_undo_completion_is_durable(
+        tmp_path, monkeypatch):
+    import agent_runtime
+
+    marker = tmp_path / "child-completed"
+    code = tmp_path / "frozen_probe.py"
+    code.write_text(
+        "from pathlib import Path\n"
+        f"Path({str(marker)!r}).touch()\n"
+        "print('{\"ok\":true,\"ok_count\":1,\"results\":[{\"done\":true}],"
+        "\"_undo\":{\"outcome\":\"reversible\"}}')\n",
+        encoding="utf-8",
+    )
+    executor = _frozen_fault_executor(code)
+    calls = []
+
+    class _CompletionFails:
+        def append_pending(self, *args, **kwargs):
+            calls.append("pending")
+
+        def append_completion(self, *args, **kwargs):
+            calls.append("completion")
+            raise OSError("injected completion fsync failure")
+
+    monkeypatch.setattr(agent_runtime, "UndoLog", _CompletionFails)
+    monkeypatch.setenv("METNOS_SANDBOX", "0")
+
+    result = _invoke_authorized_frozen(agent_runtime, executor, "d" * 64)
+
+    assert marker.exists(), "il fault deve avvenire dopo l'esito executor"
+    assert calls == ["pending", "completion"]
+    assert result["ok"] is False
+    assert result["error_class"] == "execution_interrupted"
+    assert result["error_code"] == "frozen_plan_undo_completion_not_durable"
+
+
 # 5. Builder deterministico delle chiamate-reverse remote.
 
 def test_build_remote_reverse_calls():

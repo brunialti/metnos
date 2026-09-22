@@ -793,6 +793,11 @@ def _frozen_plan_principal(state: dict) -> tuple[dict | None, str]:
         return None, "principal_read_only"
     if str(state.get("channel") or "") != "telegram":
         return owner, ""
+    expected_recipient = str(
+        ((state.get("on_complete") or {}).get("conversation_id") or "")
+    )
+    if not expected_recipient:
+        return None, "telegram_origin_missing"
     try:
         import pairing
         binding = users.get_channel(owner_user_id, "telegram")
@@ -803,6 +808,7 @@ def _frozen_plan_principal(state: dict) -> tuple[dict | None, str]:
             getattr(channel_pairing, "autonomy_level", "") or ""
         ).casefold()
         if (not binding or not binding.get("verified_at") or not recipient
+                or not hmac.compare_digest(recipient, expected_recipient)
                 or bound_owner is None
                 or str(bound_owner.get("id") or "") != owner_user_id
                 or channel_pairing is None or not paired_level):
@@ -827,8 +833,14 @@ def _deliver_frozen_receipt(sender_id: str, dialog_id: str, nonce: str, *,
         from channels.telegram import TelegramChannel
         from durable_workloads.events import resolve_telegram_recipient
         recipient = resolve_telegram_recipient(owner_user_id)
-        if not recipient:
-            ack = {"ok": False, "error": "telegram_recipient_unavailable"}
+        expected_recipient = str(claim.get("origin_recipient") or "")
+        if (not recipient or not expected_recipient
+                or not hmac.compare_digest(recipient, expected_recipient)):
+            # A frozen result belongs to the chat which created the plan.
+            # Rebinding the account must neither disclose the result to the
+            # new chat nor make the durable outbox retry it later.
+            ack = {"ok": False, "terminal": True,
+                   "error": "telegram_origin_changed"}
         else:
             channel = TelegramChannel(state_path=False)
             sent = channel.send(
@@ -860,6 +872,33 @@ def retry_pending_callback_deliveries(*, limit: int = 100) -> dict:
             item["sender_id"], item["dialog_id"], item["nonce"],
             owner_user_id=item["owner_user_id"])
     return {"attempted": attempted}
+
+
+def retry_pending_frozen_callbacks(*, limit: int = 100) -> dict:
+    """Scheduler entry point for incomplete same-token frozen callbacks."""
+
+    attempted = 0
+    completed = 0
+    for item in dialog_pending.pending_frozen_callbacks(limit=limit):
+        attempted += 1
+        try:
+            result = process_completion_callback(
+                item["sender_id"], item["dialog_id"],
+                actor=item["actor"], channel=item["channel"],
+                owner_user_id=item["owner_user_id"],
+            )
+            state = dialog_pending.load_pending(
+                item["sender_id"], item["dialog_id"],
+                owner_user_id=item["owner_user_id"],
+            ) or {}
+            completed += int(isinstance(state.get("callback_receipt"), dict))
+            log.info("Frozen-plan callback recovery dialog=%s result=%s",
+                     item["dialog_id"], bool(result.text))
+        except Exception:
+            # One corrupt item must not stop the bounded scheduler batch.
+            log.exception("Frozen-plan callback recovery failed dialog=%s",
+                          item["dialog_id"])
+    return {"attempted": attempted, "completed": completed}
 
 
 def _process_frozen_plan_resume(on_complete: dict, values: dict, *,
@@ -904,13 +943,28 @@ def _process_frozen_plan_resume(on_complete: dict, values: dict, *,
         return result
     if claim.get("status") != "claimed":
         return CompletionResult(text=_msg("MSG_TUTOR_HANDOFF_REPLAYED"))
+    recovered_authorized = claim.get("recovered_authorized") is True
 
     def _commit(result: CompletionResult) -> CompletionResult:
-        committed = dialog_pending.complete_callback_once(
-                sender_id, dialog_id, nonce, _completion_receipt(result),
-                owner_user_id=owner_user_id)
+        try:
+            committed = dialog_pending.complete_callback_once(
+                    sender_id, dialog_id, nonce, _completion_receipt(result),
+                    owner_user_id=owner_user_id)
+        except Exception:
+            committed = False
+            log.exception("Frozen-plan outbox commit raised dialog=%s",
+                          dialog_id)
         if not committed:
             log.error("Frozen-plan outbox commit failed dialog=%s", dialog_id)
+            try:
+                dialog_pending.defer_callback_receipt_commit(
+                    sender_id, dialog_id, nonce,
+                    owner_user_id=owner_user_id)
+            except Exception:
+                log.exception(
+                    "Frozen-plan receipt recovery persistence failed dialog=%s",
+                    dialog_id)
+            return CompletionResult(text=_msg("MSG_GATE_IN_CORSO"))
         elif state_channel == "telegram":
             _deliver_frozen_receipt(
                 sender_id, dialog_id, nonce, owner_user_id=owner_user_id)
@@ -921,19 +975,40 @@ def _process_frozen_plan_resume(on_complete: dict, values: dict, *,
     record = on_complete.get("record")
     turn_id = str(on_complete.get("turn_id") or "")
     if (not isinstance(record, dict) or not turn_id
-            or int(record.get("expires_at") or 0) < int(time.time())):
+            or (not recovered_authorized
+                and int(record.get("expires_at") or 0) < int(time.time()))):
         return _commit(CompletionResult(text=_msg("MSG_TUTOR_HANDOFF_STALE")))
-    owner, reason = _frozen_plan_principal(state)
-    if owner is None:
-        log.warning("Frozen-plan principal rejected dialog=%s reason=%s",
-                    dialog_id, reason)
+    try:
+        from frozen_plan_consent import consent_preview_binding
+        preview_bound = consent_preview_binding(record)
+    except Exception:
+        preview_bound = None
+    if not preview_bound:
         return _commit(CompletionResult(text=_msg("MSG_TUTOR_HANDOFF_STALE")))
-
     executor = str(record.get("executor") or "")
     args = record.get("args")
     binding = str(record.get("executor_binding") or "")
     if not executor or not isinstance(args, dict) or not binding:
         return _commit(CompletionResult(text=_msg("MSG_TUTOR_HANDOFF_STALE")))
+    if recovered_authorized:
+        if not hmac.compare_digest(
+                str(claim.get("authorization_binding") or ""), preview_bound):
+            return _commit(CompletionResult(
+                text=_msg("MSG_TUTOR_HANDOFF_STALE")))
+    else:
+        owner, reason = _frozen_plan_principal(state)
+        if owner is None:
+            log.warning("Frozen-plan principal rejected dialog=%s reason=%s",
+                        dialog_id, reason)
+            return _commit(CompletionResult(
+                text=_msg("MSG_TUTOR_HANDOFF_STALE")))
+        # Il marker viene scritto solo dopo aver validato integralmente il
+        # record e immediatamente prima di avviare il child mutante.
+        if not dialog_pending.authorize_callback_recovery(
+                sender_id, dialog_id, nonce, preview_bound,
+                owner_user_id=owner_user_id):
+            return _commit(CompletionResult(
+                text=_msg("MSG_TUTOR_HANDOFF_STALE")))
     try:
         result = _esegui_ramo(
             executor, dict(args), actor=state_actor,
@@ -942,9 +1017,18 @@ def _process_frozen_plan_resume(on_complete: dict, values: dict, *,
             expected_executor_binding=binding, frozen_record=record)
     except Exception as exc:  # the durable executor journal owns recovery
         log.exception("Frozen-plan invocation failed dialog=%s", dialog_id)
-        result = {"ok": False,
-                  "error": f"{type(exc).__name__}: {exc}",
-                  "error_class": "internal_error"}
+        dialog_pending.defer_callback_recovery(
+            sender_id, dialog_id, nonce, owner_user_id=owner_user_id,
+            reason=f"{type(exc).__name__}: {exc}")
+        return CompletionResult(text=_msg("MSG_GATE_IN_CORSO"))
+    if (isinstance(result, dict)
+            and result.get("error_class") in {
+                "non_json", "timeout", "remote_timeout",
+                "execution_interrupted"}):
+        dialog_pending.defer_callback_recovery(
+            sender_id, dialog_id, nonce, owner_user_id=owner_user_id,
+            reason=str(result.get("error_class") or "interrupted"))
+        return CompletionResult(text=_msg("MSG_GATE_IN_CORSO"))
     return _commit(CompletionResult(text=_shape_result_for_chat(result)))
 
 
@@ -2735,7 +2819,8 @@ def orchestrate_frozen_plan(record: dict, *, sender_id: str,
             or not channel or not origin_turn_id):
         return {"ok": False, "error": "invalid_frozen_plan_record"}
     required = {"executor", "executor_binding", "args", "token",
-                "artifact_suffix", "journal_suffix", "expires_at", "recovery"}
+                "artifact_suffix", "journal_suffix", "expires_at", "recovery",
+                "consent_preview", "consent_preview_binding"}
     if (not required <= set(record) or not isinstance(record.get("args"), dict)
             or record.get("recovery") != "same_token_write_ahead_v1"
             or not all(str(record.get(key) or "")
@@ -2747,11 +2832,34 @@ def orchestrate_frozen_plan(record: dict, *, sender_id: str,
         return {"ok": False, "error": "invalid_frozen_plan_expiry"}
     if remaining <= 0:
         return {"ok": False, "error": "frozen_plan_expired"}
-    preview = record.get("preview") if isinstance(record.get("preview"), dict) else {}
-    summary = ", ".join(
-        f"{key.replace('_', ' ')}: {value}"
-        for key, value in preview.items() if isinstance(value, int)
+    try:
+        from frozen_plan_consent import consent_preview_binding
+        projection_bound = consent_preview_binding(record)
+    except Exception:
+        projection_bound = None
+    if not projection_bound:
+        return {"ok": False, "error": "invalid_frozen_plan_preview"}
+    preview = record["consent_preview"]
+    counts = preview.get("counts") if isinstance(preview.get("counts"), dict) else {}
+    count_line = ", ".join(
+        f"{key}={value}" for key, value in sorted(counts.items())
+        if isinstance(value, int)
     )
+    action_lines = [
+        json.dumps(item, ensure_ascii=False, sort_keys=True,
+                   separators=(",", ":"))
+        for item in preview.get("items", [])
+    ]
+    summary_lines = [
+        f"plan_sha256={preview.get('plan_sha256', '')}",
+        (f"actions_shown={preview.get('shown_count', 0)} "
+         f"actions_total={preview.get('total_count', 0)} "
+         f"truncated={'true' if preview.get('truncated') else 'false'}"),
+    ]
+    if count_line:
+        summary_lines.append(count_line)
+    summary_lines.extend(action_lines)
+    summary = "\n".join(summary_lines)
     frozen_record = {
         key: record[key] for key in required
     }

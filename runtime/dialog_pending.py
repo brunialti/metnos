@@ -84,6 +84,12 @@ DEFAULT_TTL_S = int(os.environ.get("METNOS_DIALOG_TTL_S", "60"))
 # compilati: TTL piu' lungo (default 10 min) per non chiuderli sotto le dita.
 FORM_TTL_S = int(os.environ.get("METNOS_DIALOG_FORM_TTL_S", "600"))
 CALLBACK_DELIVERY_MAX_ATTEMPTS = 12
+CALLBACK_RECOVERY_MAX_ATTEMPTS = 12
+# Callback incompleti possono contenere l'unica capability che consente di
+# riconciliare un WAL gia' applicato.  Non seguono quindi il TTL breve del
+# form; restano in quarantena per una retention separata e limitata.
+CALLBACK_RECOVERY_RETENTION_S = int(os.environ.get(
+    "METNOS_CALLBACK_RECOVERY_RETENTION_S", str(30 * 24 * 60 * 60)))
 
 
 # ── Helper interni ────────────────────────────────────────────────────
@@ -596,7 +602,7 @@ def begin_callback_once(sender_id: str, dialog_id: str, nonce: str, *,
         state = load_pending(
             sender_id, dialog_id, owner_user_id=owner_user_id)
         if (state is None or not state.get("completed")
-                or state.get("cancelled") or is_expired(state)):
+                or state.get("cancelled")):
             return {"status": "invalid"}
         on_complete = state.get("on_complete") or {}
         stored = str(on_complete.get("nonce") or "")
@@ -605,16 +611,129 @@ def begin_callback_once(sender_id: str, dialog_id: str, nonce: str, *,
         receipt = state.get("callback_receipt")
         if isinstance(receipt, dict):
             return {"status": "completed", "receipt": receipt}
+        recovered = False
+        recovered_authorized = False
         if state.get("callback_claimed_at"):
-            if (not durable_recovery_attested
-                    or _claim_is_live(state.get("callback_process"))):
+            if (_claim_is_live(state.get("callback_process"))
+                    and state.get("callback_state") == "running"):
                 return {"status": "in_progress"}
+            attempts = int(state.get("callback_recovery_attempts") or 0)
+            if attempts >= CALLBACK_RECOVERY_MAX_ATTEMPTS:
+                state["callback_state"] = "recovery_exhausted"
+                save_pending(sender_id, dialog_id, state)
+                return {"status": "exhausted"}
+            # Dopo che l'autorita' originale e' stata verificata, una ripresa
+            # mutante richiede la prova del piano/WAL durevole. Prima di quel
+            # punto si puo' solo ripetere una callback ancora valida, oppure
+            # chiudere una decisione non mutante (cancel).
+            recovered_authorized = bool(state.get("callback_authorized_at"))
+            non_mutating = ((state.get("values_collected") or {}).get(
+                "decision") != "apply")
+            receipt_commit_retry = (
+                state.get("callback_recovery_reason")
+                == "receipt_commit_failed")
+            if recovered_authorized:
+                if not durable_recovery_attested:
+                    return {"status": "in_progress"}
+            elif (not non_mutating and is_expired(state)
+                  and not receipt_commit_retry):
+                return {"status": "invalid"}
+            recovered = True
             state["callback_recovered_at"] = _utc_now_iso()
+        elif is_expired(state):
+            # Il POST aveva gia' completato il form entro il TTL: reclamare la
+            # callback e' lecito, ma il consumer applichera' ancora la scadenza
+            # del piano e non avviera' una mutazione nuova.
+            recovered = False
         state["callback_claimed_at"] = _utc_now_iso()
         state["callback_process"] = _process_claim()
         state["callback_state"] = "running"
+        state["callback_recovery_attempts"] = int(
+            state.get("callback_recovery_attempts") or 0) + 1
         save_pending(sender_id, dialog_id, state)
-        return {"status": "claimed"}
+        return {
+            "status": "claimed",
+            "recovered": recovered,
+            "recovered_authorized": recovered_authorized,
+            "authorization_binding": str(
+                state.get("callback_authorization_binding") or ""),
+        }
+
+
+def authorize_callback_recovery(sender_id: str, dialog_id: str, nonce: str,
+                                authorization_binding: str, *,
+                                owner_user_id: str) -> bool:
+    """Durably attest authority immediately before the mutating child starts."""
+
+    if not nonce or not authorization_binding:
+        return False
+    with _dialog_lock(sender_id, dialog_id):
+        state = load_pending(
+            sender_id, dialog_id, owner_user_id=owner_user_id)
+        if (state is None or state.get("callback_state") != "running"
+                or not state.get("callback_claimed_at")):
+            return False
+        stored = str((state.get("on_complete") or {}).get("nonce") or "")
+        if not stored or not hmac.compare_digest(stored, str(nonce)):
+            return False
+        existing = str(state.get("callback_authorization_binding") or "")
+        if existing and not hmac.compare_digest(existing, authorization_binding):
+            return False
+        state["callback_authorized_at"] = (
+            state.get("callback_authorized_at") or _utc_now_iso())
+        state["callback_authorization_binding"] = authorization_binding
+        save_pending(sender_id, dialog_id, state)
+        return True
+
+
+def defer_callback_recovery(sender_id: str, dialog_id: str, nonce: str, *,
+                            owner_user_id: str, reason: str) -> bool:
+    """Release a claimed callback for bounded same-token WAL recovery."""
+
+    with _dialog_lock(sender_id, dialog_id):
+        state = load_pending(
+            sender_id, dialog_id, owner_user_id=owner_user_id)
+        if state is None or isinstance(state.get("callback_receipt"), dict):
+            return False
+        stored = str((state.get("on_complete") or {}).get("nonce") or "")
+        if not stored or not hmac.compare_digest(stored, str(nonce or "")):
+            return False
+        if not state.get("callback_authorized_at"):
+            return False
+        state["callback_state"] = "recovery_pending"
+        state["callback_recovery_reason"] = str(reason or "interrupted")[:500]
+        state["callback_recovery_pending_at"] = _utc_now_iso()
+        state["callback_process"] = {}
+        save_pending(sender_id, dialog_id, state)
+        return True
+
+
+def defer_callback_receipt_commit(sender_id: str, dialog_id: str, nonce: str,
+                                  *, owner_user_id: str) -> bool:
+    """Release a claim whose terminal receipt could not be persisted.
+
+    This path is also valid before mutation authorization (for example a
+    cancelled or stale plan).  The next bounded callback pass re-evaluates the
+    same frozen record and attempts the terminal outbox commit again; it never
+    treats the unpersisted response as final.
+    """
+
+    with _dialog_lock(sender_id, dialog_id):
+        state = load_pending(
+            sender_id, dialog_id, owner_user_id=owner_user_id)
+        if state is None or isinstance(state.get("callback_receipt"), dict):
+            return False
+        stored = str((state.get("on_complete") or {}).get("nonce") or "")
+        if not stored or not hmac.compare_digest(stored, str(nonce or "")):
+            return False
+        if not state.get("callback_claimed_at"):
+            return False
+        state["callback_state"] = "recovery_pending"
+        state["callback_recovery_reason"] = "receipt_commit_failed"
+        state["callback_recovery_pending_at"] = _utc_now_iso()
+        state["callback_process"] = {}
+        save_pending(sender_id, dialog_id, state)
+        return True
 
 
 def complete_callback_once(sender_id: str, dialog_id: str, nonce: str,
@@ -671,6 +790,9 @@ def begin_callback_delivery(sender_id: str, dialog_id: str, nonce: str, *,
         if state.get("callback_delivery_state") == "ambiguous":
             return {"status": "ambiguous",
                     "ack": state.get("callback_delivery_ack")}
+        if state.get("callback_delivery_state") == "failed":
+            return {"status": "failed",
+                    "ack": state.get("callback_delivery_ack")}
         if state.get("callback_delivery_state") == "running":
             if _claim_is_live(state.get("callback_delivery_process")):
                 return {"status": "in_progress"}
@@ -692,7 +814,10 @@ def begin_callback_delivery(sender_id: str, dialog_id: str, nonce: str, *,
         state["callback_delivery_started_at"] = _utc_now_iso()
         save_pending(sender_id, dialog_id, state)
         return {"status": "claimed",
-                "receipt": dict(state["callback_receipt"])}
+                "receipt": dict(state["callback_receipt"]),
+                "origin_recipient": str(
+                    (state.get("on_complete") or {}).get(
+                        "conversation_id") or "")}
 
 
 def complete_callback_delivery(sender_id: str, dialog_id: str, nonce: str,
@@ -715,7 +840,8 @@ def complete_callback_delivery(sender_id: str, dialog_id: str, nonce: str,
         state["callback_delivery_state"] = (
             "delivered" if delivered else (
                 "ambiguous" if ack.get("delivery_ambiguous") else (
-                    "failed" if attempts >= CALLBACK_DELIVERY_MAX_ATTEMPTS
+                    "failed" if (ack.get("terminal") is True
+                                 or attempts >= CALLBACK_DELIVERY_MAX_ATTEMPTS)
                     else "pending")))
         state["callback_delivery_ack"] = dict(ack)
         state["callback_delivery_finished_at"] = _utc_now_iso()
@@ -752,6 +878,50 @@ def pending_callback_deliveries(*, limit: int = 100) -> list[dict]:
                 })
                 if len(out) >= max(1, min(int(limit), 1000)):
                     return out
+    return out
+
+
+def pending_frozen_callbacks(*, limit: int = 100) -> list[dict]:
+    """Return bounded completed frozen callbacks needing execution recovery."""
+
+    if not DIALOG_DIR.exists():
+        return []
+    out: list[dict] = []
+    bound = max(1, min(int(limit), 1000))
+    for sender_dir in sorted(DIALOG_DIR.iterdir()):
+        if not sender_dir.is_dir():
+            continue
+        for path in sorted(sender_dir.glob("*.json")):
+            try:
+                state = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            callback = state.get("on_complete") or {}
+            if (not state.get("completed") or state.get("cancelled")
+                    or callback.get("type") != "resume_frozen_plan"
+                    or isinstance(state.get("callback_receipt"), dict)
+                    or not state.get("owner_user_id")):
+                continue
+            attempts = int(state.get("callback_recovery_attempts") or 0)
+            if attempts >= CALLBACK_RECOVERY_MAX_ATTEMPTS:
+                continue
+            callback_state = str(state.get("callback_state") or "")
+            eligible = not state.get("callback_claimed_at")
+            eligible = eligible or callback_state == "recovery_pending"
+            eligible = eligible or (
+                callback_state == "running"
+                and not _claim_is_live(state.get("callback_process")))
+            if not eligible:
+                continue
+            out.append({
+                "sender_id": str(state.get("sender_id") or sender_dir.name),
+                "dialog_id": str(state.get("dialog_id") or path.stem),
+                "owner_user_id": str(state["owner_user_id"]),
+                "actor": str(state.get("actor") or "host"),
+                "channel": str(state.get("channel") or "http"),
+            })
+            if len(out) >= bound:
+                return out
     return out
 
 
@@ -908,6 +1078,25 @@ def sweep_expired(now_ts: float | None = None) -> list[dict]:
                     and int(d.get("callback_delivery_attempts") or 0)
                     < CALLBACK_DELIVERY_MAX_ATTEMPTS):
                 continue
+            callback_incomplete = (
+                d.get("completed")
+                and (d.get("on_complete") or {}).get("type")
+                == "resume_frozen_plan"
+                and not isinstance(d.get("callback_receipt"), dict)
+                and (d.get("callback_claimed_at")
+                     or d.get("callback_state") in {
+                         "running", "recovery_pending", "recovery_exhausted"})
+            )
+            if callback_incomplete:
+                anchor = _started_ts(d)
+                completed = d.get("completed_at") or ""
+                try:
+                    anchor = max(anchor, datetime.fromisoformat(
+                        str(completed).replace("Z", "+00:00")).timestamp())
+                except (ValueError, AttributeError):
+                    pass
+                if not anchor or (now_ts - anchor) <= CALLBACK_RECOVERY_RETENTION_S:
+                    continue
             if not is_expired(d, now_ts):
                 continue
             started = _started_ts(d)

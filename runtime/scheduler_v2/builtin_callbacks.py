@@ -494,7 +494,11 @@ def task_sweep_expired_dialogs(payload=None):
     import sys as _sys
     from pathlib import Path as _P
     import os as _os
-    from orchestration import retry_pending_callback_deliveries
+    from orchestration import (retry_pending_callback_deliveries,
+                               retry_pending_frozen_callbacks)
+    # Prima riconcilia le callback interrotte (stesso token + WAL), poi
+    # consegna le ricevute ormai durevoli. Entrambi i batch sono limitati.
+    retry_pending_frozen_callbacks()
     retry_pending_callback_deliveries()
     from dialog_pending import sweep_expired
     abandoned = sweep_expired()

@@ -176,6 +176,13 @@ _REQUIRED_KEYS = (
     "MSG_ACTION_DELETE",
     "MSG_ACTION_MOVE",
     "MSG_LOCAL_HERE",
+    # Consenso runtime-owned per piani file congelati (organize_files).
+    "MSG_FROZEN_PLAN_CONSENT_TITLE",
+    "MSG_FROZEN_PLAN_CONSENT_DESCRIPTION",
+    "MSG_FROZEN_PLAN_NO_COUNTS",
+    "MSG_FROZEN_PLAN_CONSENT_PROMPT",
+    "MSG_FROZEN_PLAN_OPEN_FORM",
+    "MSG_FROZEN_PLAN_FORM_ONLY",
     # Fase 7 A.1 differito (7/7)
     "MSG_DEFER_TITLE",
     "MSG_DEFER_OFFER",

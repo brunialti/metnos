@@ -14,6 +14,9 @@ from typing import Iterator
 TOKEN_PATTERN = "^[0-9a-f]{64}$"
 _TOKEN_RE = re.compile(TOKEN_PATTERN)
 _ARTIFACT_SUFFIX_RE = re.compile(r"^\.[a-z0-9][a-z0-9-]{0,39}\.json$")
+_CONSENT_ITEM_FIELDS = ("action", "source", "destination", "reference")
+_CONSENT_MAX_ITEMS = 50
+_CONSENT_MAX_VALUE_CHARS = 8192
 
 
 @dataclass(frozen=True)
@@ -107,7 +110,7 @@ def validate_frozen_plan(manifest: dict) -> list[str]:
         if not isinstance(capability, dict):
             continue
         spec = CAPABILITY_REGISTRY.get(capability.get("name"))
-        if spec is None or not spec.critical:
+        if spec is None or not spec.grants_mutation:
             continue
         if capability.get("when") != {
                 "arg": argument, "values": [apply_value]}:
@@ -170,6 +173,91 @@ def redact_result(executor, result: dict) -> dict:
     return out
 
 
+def _consent_preview(executor, result: dict, token: str) -> dict | None:
+    """Build the bounded, display-safe projection approved by the user.
+
+    The public digest is domain-separated from the bearer token.  It binds
+    the form to the complete content-addressed plan without disclosing the
+    token itself.  Action values stay exact but are rendered later as JSON so
+    unusual filename characters cannot forge extra rows in the form.
+    """
+    raw_items = result.get("results")
+    if not isinstance(raw_items, list):
+        return None
+    projected: list[dict[str, str]] = []
+    for raw in raw_items[:_CONSENT_MAX_ITEMS]:
+        if not isinstance(raw, dict):
+            return None
+        item: dict[str, str] = {}
+        for key in _CONSENT_ITEM_FIELDS:
+            if key not in raw:
+                continue
+            value = raw[key]
+            if (not isinstance(value, str)
+                    or len(value) > _CONSENT_MAX_VALUE_CHARS):
+                return None
+            item[key] = value
+        if not item.get("action") or not item.get("source"):
+            return None
+        projected.append(item)
+
+    returned_count = len(raw_items)
+    available_total = result.get("available_total", returned_count)
+    if (not isinstance(available_total, int) or isinstance(available_total, bool)
+            or available_total < returned_count or available_total < 0):
+        return None
+    executor_truncated = result.get("truncated") is True
+    if available_total > returned_count and not executor_truncated:
+        return None
+    if executor_truncated and available_total <= returned_count:
+        return None
+    if "used" in result and result.get("used") != returned_count:
+        return None
+
+    counts = {
+        key: result[key] for key in (
+            "source_count", "compare_count", "move_count",
+            "duplicate_count", "unresolved_count",
+        )
+        if isinstance(result.get(key), int)
+        and not isinstance(result.get(key), bool)
+        and result[key] >= 0
+    }
+    return {
+        "schema": "metnos.frozen-consent-preview.v1",
+        "plan_sha256": hashlib.sha256(
+            b"metnos-consent-display-v1\0" + token.encode("ascii")
+        ).hexdigest(),
+        "executor_binding": executor_binding(executor),
+        "items": projected,
+        "shown_count": len(projected),
+        "returned_count": returned_count,
+        "total_count": available_total,
+        "truncated": available_total > len(projected),
+        "counts": counts,
+    }
+
+
+def consent_preview_binding(record: dict) -> str | None:
+    """Verify and return the exact form projection binding in ``record``."""
+    preview = record.get("consent_preview")
+    claimed = record.get("consent_preview_binding")
+    token = record.get("token")
+    executor_bound = record.get("executor_binding")
+    if (not isinstance(preview, dict) or not isinstance(claimed, str)
+            or not isinstance(token, str) or not _TOKEN_RE.fullmatch(token)
+            or not isinstance(executor_bound, str) or not executor_bound
+            or preview.get("executor_binding") != executor_bound):
+        return None
+    expected = fingerprint({
+        "schema": "metnos.frozen-consent-binding.v1",
+        "executor_binding": executor_bound,
+        "token": token,
+        "preview": preview,
+    })
+    return claimed if hmac.compare_digest(claimed, expected) else None
+
+
 def prepare_resume(executor, args: dict, result: dict) -> dict | None:
     """Derive private resume state from signed policy and preview output."""
     policy = policy_for(executor)
@@ -180,6 +268,9 @@ def prepare_resume(executor, args: dict, result: dict) -> dict | None:
     token = result.get(policy["token_result"])
     if not isinstance(token, str) or not _TOKEN_RE.fullmatch(token):
         return None
+    consent_preview = _consent_preview(executor, result, token)
+    if consent_preview is None:
+        return None
     from executor_helpers import normalize_unique_items
     final_args = normalize_unique_items(
         dict(args), getattr(executor, "args_schema", None))
@@ -189,7 +280,7 @@ def prepare_resume(executor, args: dict, result: dict) -> dict | None:
     }
     apply_args[policy["argument"]] = policy["apply_value"]
     apply_args[policy["token_argument"]] = token
-    return {
+    record = {
         "executor": str(getattr(executor, "name", "") or ""),
         "executor_binding": executor_binding(executor),
         "args": apply_args,
@@ -204,7 +295,15 @@ def prepare_resume(executor, args: dict, result: dict) -> dict | None:
                 "duplicate_count", "unresolved_count", "available_total",
             ) if isinstance(result.get(key), int)
         },
+        "consent_preview": consent_preview,
     }
+    record["consent_preview_binding"] = fingerprint({
+        "schema": "metnos.frozen-consent-binding.v1",
+        "executor_binding": record["executor_binding"],
+        "token": token,
+        "preview": consent_preview,
+    })
+    return record
 
 
 @contextmanager

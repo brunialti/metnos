@@ -3296,6 +3296,23 @@ def _undo_pending(executor, args, *, turn_id, actor, channel, device=""):
     try:
         import uuid as _uuid
         _op = _uuid.uuid4().hex
+        # Same-token frozen recovery is one logical operation even when the
+        # child process dies and is restarted.  A deterministic, non-secret
+        # identifier lets the eventual receipt close the original pending
+        # undo record instead of creating orphan operations on every retry.
+        from frozen_plan_consent import policy_for
+        _frozen = policy_for(executor)
+        if (_frozen
+                and args.get(_frozen.get("argument"))
+                == _frozen.get("apply_value")):
+            _token = args.get(_frozen.get("token_argument"))
+            if isinstance(_token, str) and _token:
+                _op = _uuid.uuid5(
+                    _uuid.NAMESPACE_URL,
+                    "metnos:frozen-undo-v1\0"
+                    + str(getattr(executor, "name", "")) + "\0"
+                    + str(turn_id or "") + "\0" + _token,
+                ).hex
         _undo_contract = getattr(executor, "undo", None) or {}
         _outcome_contract = str(
             _undo_contract.get("outcome") or ""
@@ -3321,7 +3338,7 @@ def _undo_done(op_id, obs, *, executor=None):
     regola; quelli condizionali dichiarano l'esito nella ricevuta. Anche
     ``no_effect`` chiude il pending e non viene scambiato per un crash."""
     if not op_id or not isinstance(obs, dict):
-        return
+        return False
     try:
         _undo_contract = getattr(executor, "undo", None) or {}
         _outcome_contract = str(
@@ -3333,8 +3350,10 @@ def _undo_done(op_id, obs, *, executor=None):
             outcome_contract=_outcome_contract)
         if outcome == "invalid":
             log.error("[undo] ricevuta per-esecuzione non valida")
+        return True
     except Exception as _ue:
         log.warning("[undo] append_done fallita (fail-open): %r", _ue)
+        return False
 
 
 _REMOTE_DATA_PLANE_ARGS = frozenset({"entries", "values", "rows"})
@@ -3685,6 +3704,30 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
 
     _undo_op = _undo_pending(executor, args, turn_id=turn_id,
                              actor=actor, channel=channel, device="")
+    _frozen_apply = bool(
+        _frozen_policy
+        and args.get(_frozen_policy.get("argument"))
+        == _frozen_policy.get("apply_value")
+    )
+    if _frozen_apply and not _undo_op:
+        # A frozen mutation is admitted only together with its durable broker
+        # record.  The generic path remains historically fail-open, but here a
+        # missing pending record would make an otherwise successful operation
+        # impossible to undo.  ``execution_interrupted`` keeps the form
+        # callback non-terminal so the same-token recovery worker can retry.
+        return {
+            "ok": False,
+            "ok_count": 0,
+            "fail_count": 0,
+            "results": [],
+            "failed": [],
+            "error": msg(
+                "MSG_ORCH_CONTINUATION_FAILED",
+                detail="undo_pending_not_durable",
+            ),
+            "error_class": "execution_interrupted",
+            "error_code": "frozen_plan_undo_pending_not_durable",
+        }
 
     payload = json.dumps(args)
     base_cmd = [sys.executable, str(executor.code_path)]
@@ -3855,7 +3898,33 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
             )
     except Exception:
         pass
-    _undo_done(_undo_op, parsed_result, executor=executor)
+    _frozen_interrupted = bool(
+        _frozen_apply
+        and isinstance(parsed_result, dict)
+        and parsed_result.get("error_class") in {
+            "non_json", "timeout", "remote_timeout", "execution_interrupted"}
+    )
+    if not _frozen_interrupted:
+        _undo_durable = _undo_done(
+            _undo_op, parsed_result, executor=executor)
+        if _frozen_apply and not _undo_durable:
+            # The executor receipt/WAL is the recovery source of truth.  Do not
+            # expose its result as terminal until the runtime-owned undo broker
+            # has durably appended the matching completion.  A same-token retry
+            # reuses ``_undo_op`` and can close the original pending record.
+            return {
+                "ok": False,
+                "ok_count": 0,
+                "fail_count": 0,
+                "results": [],
+                "failed": [],
+                "error": msg(
+                    "MSG_ORCH_CONTINUATION_FAILED",
+                    detail="undo_completion_not_durable",
+                ),
+                "error_class": "execution_interrupted",
+                "error_code": "frozen_plan_undo_completion_not_durable",
+            }
     return parsed_result
 
 
@@ -6083,19 +6152,62 @@ def invoke_tool_by_name(tool_name: str, args: dict, *, catalog: list,
     """Dispatch canonico di UN tool per nome, condiviso dal loop principale e
     dai percorsi di ripresa (post-gate/post-input, orchestration).
 
-    Builtin in-process (registro `_BUILTIN_TOOL_HANDLERS`, unica fonte di
-    verita') PRIMA, poi executor firmato del catalog. Cosi' un helper
+    L'autorita' di un frozen plan viene verificata prima di qualunque
+    trasporto (builtin, verbo unico o subprocess). Poi vengono risolti i
+    builtin in-process (registro `_BUILTIN_TOOL_HANDLERS`, unica fonte di
+    verita') e infine gli executor firmati del catalog. Cosi' un helper
     universale (`describe_entries`, `classify_entries`, ...) non e' mai un
     falso `tool_unknown` quando una pipeline riprende dopo un gate (§7.3: una
     riga nel registro basta, nessun elenco cablato per-tool).
     """
+    exec_obj = next((e for e in (catalog or [])
+                     if getattr(e, "name", None) == tool_name), None)
+    frozen_apply = False
+    if exec_obj is not None:
+        from frozen_plan_consent import authorized_token, policy_for
+        frozen_policy = policy_for(exec_obj)
+        if frozen_policy:
+            mode = (args or {}).get(frozen_policy.get("argument"))
+            if mode == frozen_policy.get("apply_value"):
+                token = authorized_token(
+                    exec_obj, dict(args or {}),
+                    owner_user_id=str(owner_user_id or ""),
+                    actor=str(actor or ""), channel=str(channel or ""),
+                    turn_id=str(turn_id or ""))
+                if not token:
+                    return {
+                        "ok": False,
+                        "error": "frozen plan authorization required",
+                        "error_code": "frozen_plan_authorization_required",
+                        "error_class": "permission_denied",
+                        "tool": tool_name,
+                    }
+                frozen_apply = True
+            elif mode != frozen_policy.get("preview_value"):
+                return {
+                    "ok": False,
+                    "error": "invalid frozen plan mode",
+                    "error_code": "frozen_plan_invalid_mode",
+                    "error_class": "invalid",
+                    "tool": tool_name,
+                }
     if tool_name in _BUILTIN_TOOL_HANDLERS:
+        if frozen_apply:
+            # Frozen mutations require the subprocess transport: it is the
+            # only path that owns the durable undo pending/completion
+            # chokepoint.  A valid consent grant must never silently downgrade
+            # that crash-safety contract by selecting an in-process handler.
+            return {
+                "ok": False,
+                "error": "frozen plan apply requires durable executor transport",
+                "error_code": "frozen_plan_in_process_apply_forbidden",
+                "error_class": "permission_denied",
+                "tool": tool_name,
+            }
         return _invoke_builtin_handler(
             tool_name, args, actor=actor, channel=channel,
             owner_user_id=owner_user_id, turn_id=turn_id,
             source_request_id=source_request_id)
-    exec_obj = next((e for e in (catalog or [])
-                     if getattr(e, "name", None) == tool_name), None)
     if exec_obj is None:
         return {"ok": False, "error": f"tool '{tool_name}' non in catalog",
                 "error_class": "tool_unknown"}
@@ -6110,6 +6222,14 @@ def invoke_tool_by_name(tool_name: str, args: dict, *, catalog: list,
     boot_register_verb_unique_builtins()
     verb_entry = VERB_UNIQUE_REGISTRY.get(tool_name)
     if verb_entry and verb_entry.get("expose_to_planner"):
+        if frozen_apply:
+            return {
+                "ok": False,
+                "error": "frozen plan apply requires durable executor transport",
+                "error_code": "frozen_plan_in_process_apply_forbidden",
+                "error_class": "permission_denied",
+                "tool": tool_name,
+            }
         call_args = {
             key: value for key, value in dict(args or {}).items()
             if not str(key).startswith("_")

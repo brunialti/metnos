@@ -1963,6 +1963,10 @@ def _dialog_lifecycle(state: dict | None) -> str:
     if state.get("cancelled"):
         return "cancelled"
     if state.get("completed"):
+        callback = state.get("on_complete") or {}
+        if (callback.get("type") == "resume_frozen_plan"
+                and not isinstance(state.get("callback_receipt"), dict)):
+            return "processing"
         return "completed"
     import dialog_pending
     if dialog_pending.is_expired(state):
@@ -1981,6 +1985,8 @@ def _dialog_terminal_response(dialog_id: str, state: str,
         message = (str(receipt.get("text") or "")
                    if isinstance(receipt, dict) else "")
         message = message or _msg("MSG_ORCH_DIALOG_DONE")
+    elif state == "processing":
+        message = _msg("MSG_GATE_IN_CORSO")
     else:
         message = _msg("MSG_DIALOG_EXPIRED")
     import html as _html
@@ -2002,7 +2008,8 @@ def _dialog_terminal_response(dialog_id: str, state: str,
         f"<script>parent.postMessage({terminal_event},location.origin);</script></html>"
     )
     return web.Response(
-        text=body, status=(200 if state == "completed" else 410),
+        text=body, status=(200 if state == "completed" else (
+            202 if state == "processing" else 410)),
         content_type="text/html",
         headers={"Cache-Control": "no-store",
                  "Referrer-Policy": "no-referrer",
@@ -2056,7 +2063,7 @@ async def dialog_form(request: web.Request) -> web.Response:
         return access_error
     lifecycle = _dialog_lifecycle(state)
     if lifecycle != "active":
-        if lifecycle == "completed":
+        if lifecycle in {"completed", "processing"}:
             return _dialog_terminal_response(dialog_id, lifecycle, state)
         return web.json_response(
             {"ok": False, "error": "dialog_not_active",
@@ -2105,7 +2112,7 @@ async def dialog_submit(request: web.Request) -> web.Response:
         return access_error
     lifecycle = _dialog_lifecycle(state)
     if lifecycle != "active":
-        if lifecycle == "completed":
+        if lifecycle in {"completed", "processing"}:
             return _dialog_terminal_response(dialog_id, lifecycle, state)
         return web.json_response(
             {"ok": False, "error": "dialog_not_active",
