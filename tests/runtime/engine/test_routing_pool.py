@@ -152,7 +152,7 @@ def test_run_processes_injects_signed_program_resolver(catalog):
                   _intent("run", "processes"), catalog)
     assert "run_processes" in pool
     assert "find_packages" in pool
-    assert pool.index("run_processes") < pool.index("open_sites")
+    assert "open_sites" not in pool
 
     # Il nome naturale puo' far classificare l'oggetto come package invece
     # che come processo: il verbo canonico conserva comunque il launcher.

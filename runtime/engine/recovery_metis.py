@@ -385,7 +385,7 @@ class MetisRecovery:
                 getattr(e, "name", None) == "find_files" for e in catalog):
             return None
         _MUTATING = ("delete", "move", "write", "create", "send", "share",
-                     "order", "change", "extract", "undo", "admin")
+                     "order", "change", "organize", "extract", "undo", "admin")
         steps: list[StepSpec] = []
         for s in failed_run.steps[:-1]:
             if (s.tool or "").split("_")[0] in _MUTATING:
@@ -464,7 +464,7 @@ class MetisRecovery:
                 getattr(e, "name", None) == "find_files" for e in catalog):
             return None
         _MUTATING = ("delete", "move", "write", "create", "send", "share",
-                     "order", "change", "extract", "undo", "admin")
+                     "order", "change", "organize", "extract", "undo", "admin")
         steps: list[StepSpec] = []
         for s in failed_run.steps[:-1]:
             if (s.tool or "").split("_")[0] in _MUTATING:

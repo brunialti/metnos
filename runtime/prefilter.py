@@ -204,9 +204,9 @@ def _localized_verb_table() -> dict[str, str]:
     return table
 
 try:
-    from vocab import SAFE_VERBS as _SAFE_VERBS_SET
+    from vocab import ROUTING_COMPATIBLE_ACTION_PAIRS
 except Exception:  # pragma: no cover - bootstrap minimale senza vocab
-    _SAFE_VERBS_SET = frozenset()
+    ROUTING_COMPATIBLE_ACTION_PAIRS = frozenset()
 
 
 def implements_intent_verb(candidate_verb: str, intent_verb: str) -> bool:
@@ -214,42 +214,16 @@ def implements_intent_verb(candidate_verb: str, intent_verb: str) -> bool:
     `intent_verb`. Concetto astratto, nessun lessico e nessuna lingua: si
     ragiona solo su token del vocabolario chiuso.
 
-    IL VERBO ESATTO NON E' UN DATO, E' UNA CONGETTURA. L'estrattore proietta la
-    richiesta su UN verbo canonico, e la proiezione e' 1:1 quindi lossy:
-    «metti/salva» finisce su `write` anche quando l'operazione giusta e'
-    `create`, «togli / azzera / rimetti al valore predefinito» finisce su `set`
-    anche quando e' `delete`. Chiudere il pool sul verbo esatto fa sparire dal
-    catalogo tool che esistono, e il planner risponde onestamente «non esiste
-    un tool per togliere una preferenza» pur avendone uno (bug spreadsheet
-    2-3/6/2026; E2E preferenze 29/7/2026).
-
-    QUELLO CHE INVECE REGGE E' LA CLASSE. Su quale verbo mutante l'estrattore
-    sbaglia spesso — `set`, `delete`, `change`, `move` sono tutti plausibili
-    per la stessa frase — ma sul fatto che la richiesta CAMBI qualcosa non
-    sbaglia. Quindi sul lato che muta il pool si chiude sulla classe, e il
-    verbo esatto resta il punteggio piu' alto (+10): recall dalla classe,
-    precisione dal verbo. La domanda «questa richiesta cambia qualcosa?» ha la
-    stessa risposta in ogni lingua, e infatti qui non compare nessuna parola.
-
-    Sul lato di SOLA LETTURA il verbo esatto resta un cancello: li' i verbi non
-    si confondono fra loro e allargare peggiora. Misurato sul corpus dei turni
-    reali (873 query, confronto sui pool costruiti dalla funzione vera):
-      - classe sui DUE lati        -> 9 cambi del primo classificato, tutti
-                                      regressioni (`get_now` -> `sort_entries`,
-                                      `describe_entries` -> `find_files_github`)
-      - classe sul SOLO lato mutante -> 13,3% dei pool toccati, 0 tool persi,
-                                      0 cambi del primo classificato
-    La stessa misura mostra che la tabella di coppie scritta a mano che stava
-    qui (`write`<->`create`) diventa ridondante: rimossa, 0 tool persi e 0
-    cambi di top-1, e `create_*` resta raggiungibile da un intento `write`.
+    Exact match is the default. Only two measured, closed ambiguities are
+    admitted: write/create and set/delete. In particular organize is not a
+    synonym for move, delete, sort, group, classify, or order.
     """
     if not candidate_verb or not intent_verb:
         return False
     if candidate_verb == intent_verb:
         return True
-    if intent_verb in _SAFE_VERBS_SET:
-        return False
-    return candidate_verb not in _SAFE_VERBS_SET
+    return (frozenset((candidate_verb, intent_verb))
+            in ROUTING_COMPATIBLE_ACTION_PAIRS)
 
 
 _DIRECT_MESSAGE_RE = re.compile(

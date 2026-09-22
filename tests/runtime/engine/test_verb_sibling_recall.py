@@ -63,6 +63,24 @@ def test_predicate_keeps_read_only_intents_strict():
     assert not P.implements_intent_verb("delete", "read")
 
 
+def test_predicate_is_an_exact_closed_action_matrix():
+    from vocab import ACTIONS, ROUTING_COMPATIBLE_ACTION_PAIRS
+
+    expected = {
+        frozenset(("write", "create")),
+        frozenset(("set", "delete")),
+    }
+    assert ROUTING_COMPATIBLE_ACTION_PAIRS == expected
+    for candidate in ACTIONS:
+        for intent in ACTIONS:
+            assert P.implements_intent_verb(candidate, intent) is (
+                candidate == intent
+                or frozenset((candidate, intent)) in expected)
+    for other in ("move", "delete", "sort", "group", "classify", "order"):
+        assert not P.implements_intent_verb("organize", other)
+        assert not P.implements_intent_verb(other, "organize")
+
+
 # --- effetto sul pool ------------------------------------------------------
 
 def test_write_intent_surfaces_create_but_primary_first():

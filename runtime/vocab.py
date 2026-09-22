@@ -93,6 +93,19 @@ ACTIONS = (
     "organize",
 )
 
+# Routing is exact-by-default.  These are the only deliberately compatible
+# action boundaries: they model two measured ambiguities in existing requests,
+# not a general "mutating verbs are interchangeable" family.  Keep this next
+# to ACTIONS so every consumer shares the same closed semantic graph.
+ROUTING_COMPATIBLE_ACTION_PAIRS = frozenset({
+    frozenset(("write", "create")),
+    frozenset(("set", "delete")),
+})
+assert all(
+    len(pair) == 2 and pair <= frozenset(ACTIONS)
+    for pair in ROUTING_COMPATIBLE_ACTION_PAIRS
+), "routing compatibility pairs must contain exactly two canonical actions"
+
 # Oggetti ammessi (plurale).
 # `files` resta oggetto generico (read/find/list/get/move/delete su qualunque
 # tipo, con filtro per kind). Domini specifici (`images` oggi, `audios`/

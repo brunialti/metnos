@@ -37,7 +37,7 @@ _READ_VERBS = frozenset({"read", "describe"})
 _ENUM_VERBS = frozenset({"find", "list", "get"})
 _TRANSFORM_VERBS = frozenset({"filter", "sort", "group", "classify", "compare"})
 _MUTATE_VERBS = frozenset({"move", "delete", "send", "write", "create",
-                            "set", "share", "change", "order"})
+                            "set", "share", "change", "order", "organize"})
 _PACKAGE_VERBS = frozenset({"compress", "extract"})
 
 
