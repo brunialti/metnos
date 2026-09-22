@@ -47,8 +47,10 @@ ramo fuso e albero pulito.
 Codex's original F5 task owns R-003 and the approved retirement correction:
 reuse authenticated unchanged historical evidence; observe current operational
 conditions; verify only new obligations. Do not change checkout ownership,
-restore retired entrypoints or publish concurrently. Implementation and the
-authorized real publication test are in progress, not certified complete.
+restore retired entrypoints or publish concurrently. The correction is deployed
+in release 73. R-003 remains open: Roberto selected `organize_files` for the real
+publication test and explicitly asked to wait while it is in development.
+Do not publish or test that candidate until Roberto says it is ready.
 See R-003 and `internal/design/rm0008_retirement_checkpoint_20260922.md`.
 
 ## Dove sta il resto

@@ -1,8 +1,11 @@
 # RM-0008: separate historical retirement from current deployment
 
-Status: approved by Roberto on 22 September 2026; implementation in progress,
-not activated. This replaces the proposed ownership change to the development
-checkout. Roberto also requested communication through the board and AGENTS.md.
+Status: approved by Roberto and deployed in release 73 on 22 September 2026.
+This replaces the proposed ownership change to the development checkout.
+Implementation: `3ae08aca`; activation receipt: `run-86r39239`.
+R-003 remains open pending the real `organize_files` publication test; Roberto
+explicitly asked to wait while that executor is in development. This is not
+F5 certification. Coordination is recorded in the board and AGENTS.md.
 
 ## Cause and decision
 

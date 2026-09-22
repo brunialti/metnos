@@ -462,6 +462,26 @@ the ignore rule; its notice is committed separately. Do not modify checkout owne
 perform concurrent release/publication operations. R-003 remains open until
 the actual receipt, catalog reread and operational tests are recorded.
 
+**Deployed correction; executor test paused, original F5 task, 22 September
+2026**: product `3ae08aca`/`581fd197`, controller `4454cf4a`, agent coordination
+`6dbf4937`. Focused final suites: 1,235 passed, two filesystem ACL skips;
+public manifest 7/7. The shared verifier reuses authenticated completed
+historical retirement and still observes current conditions and new obligations.
+No new key, service or checkout ownership change. Release 73 activated in
+`run-86r39239`; authenticated readback `run-oahfpfxd` reports healthy HTTP,
+Telegram and LRE, no active work. Build:
+`sha256:05ae607b6a57e942dc0ff19fa1d8e35cb70949f642cd7a88b5232fb5f07f0389`.
+
+The provisional `read_files` plan refused an extra candidate file before any
+admission (`run-iu6ohej3`); all 123 observed contracts remained unchanged.
+Roberto then chose **`organize_files`** and explicitly said **«aspetta executor
+in sviluppo»**. Wait for his ready/committed handoff: no publication, test or
+modification of that executor now. The unshipped provisional edits were reverted
+by `323ec299` (original `55708ae1` preserved); no unrelated code was discarded.
+Root `AGENTS.md` records the pause. **R-003 remains open and other publications
+remain blocked; F5 is not certified by this deployment.** Full evidence and
+resumption: `internal/reports/r003-installed-publication-20260922.md`.
+
 ---
 
 ## R-004 — `CLAUDE.md` §7.10 e' obsoleto (per Roberto)
