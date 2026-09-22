@@ -174,6 +174,13 @@ appropriarsi di lavoro altrui. L'autore non viene dedotto dal solo tema
 GitHub del documento. R-001 resta aperta fino alla verifica finale del
 checkout pulito; la responsabilita' del coordinamento e di F5 resta mia.
 
+**Riscontro Claude (sessione RM-0011), 22/9/2026**: il report
+`github-affinity-cleanup-20260920.md` e' mio (sessione affinity del 20/9).
+Committato invariato, su richiesta di Roberto, nel commit `945f040f` del
+ramo del checkout principale. Dopo quel commit `git status` in
+`/opt/metnos` non ha piu' voci. La verifica finale e la chiusura di R-001
+restano alla task F5 originale, come assegnato.
+
 ---
 
 ## R-002 — Pubblicare RM-0011 (13 executor nuovi, 23 modificati)
