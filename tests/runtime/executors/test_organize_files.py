@@ -630,6 +630,78 @@ def test_sigkill_during_reverse_is_reconciled_without_second_effect(
     assert retried["ok_count"] == 0
 
 
+@pytest.mark.parametrize(("fault", "exists_after_kill", "retry_count"), [
+    ("after_restore_intent_before_rename", False, 1),
+    ("after_reverse_effect_before_journal", True, 0),
+])
+def test_sigkill_during_reverse_delete_recovers_from_durable_intent(
+        tmp_path: Path, fault: str, exists_after_kill: bool,
+        retry_count: int) -> None:
+    source = tmp_path / "source"
+    compare = tmp_path / "compare"
+    destination = tmp_path / "destination"
+    source.mkdir()
+    compare.mkdir()
+    destination.mkdir()
+    duplicate = source / "duplicate.bin"
+    reference = compare / "reference.bin"
+    duplicate.write_bytes(b"same")
+    reference.write_bytes(b"same")
+    applied = _apply(organize.invoke(_move_policy(
+        source, destination, compare=compare, deduplicate=True)))
+    assert applied["ok"] is True and not duplicate.exists()
+
+    killed = _killed_executor(
+        {"plan": {}, "results": applied},
+        fault=fault, operation="reverse")
+
+    assert killed.returncode == -signal.SIGKILL
+    assert duplicate.exists() is exists_after_kill
+    if exists_after_kill:
+        assert duplicate.read_bytes() == b"same"
+    retried = organize.reverse({}, applied)
+    assert retried["ok"] is True
+    assert retried["ok_count"] == retry_count
+    assert duplicate.read_bytes() == b"same"
+    assert list(source.glob(".metnos-restore-*")) == []
+    receipt = json.loads(Path(applied["receipt_path"]).read_text())
+    assert receipt["status"] == "undone"
+
+
+def test_restore_handles_eintr_and_short_writes(
+        tmp_path: Path, monkeypatch) -> None:
+    source = tmp_path / "source"
+    compare = tmp_path / "compare"
+    destination = tmp_path / "destination"
+    source.mkdir()
+    compare.mkdir()
+    destination.mkdir()
+    duplicate = source / "duplicate.bin"
+    reference = compare / "reference.bin"
+    payload = b"same-content-long-enough-for-short-writes"
+    duplicate.write_bytes(payload)
+    reference.write_bytes(payload)
+    applied = _apply(organize.invoke(_move_policy(
+        source, destination, compare=compare, deduplicate=True)))
+    real_write = organize.os.write
+    calls = 0
+
+    def interrupted_short_write(descriptor, data):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise InterruptedError
+        view = memoryview(data)
+        return real_write(descriptor, view[:max(1, len(view) // 3)])
+
+    monkeypatch.setattr(organize.os, "write", interrupted_short_write)
+    reversed_result = organize.reverse({}, applied)
+
+    assert reversed_result["ok"] is True, reversed_result
+    assert calls >= 3
+    assert duplicate.read_bytes() == payload
+
+
 def test_same_bytes_source_replacement_is_not_moved(
         tmp_path: Path, monkeypatch) -> None:
     source = tmp_path / "source"
@@ -692,6 +764,59 @@ def test_destination_created_after_preflight_is_never_removed(
     assert result["_undo"] == {"outcome": "no_effect"}
     assert item.read_bytes() == b"ours"
     assert target.read_bytes() == b"third-party"
+
+
+def test_hardlink_destination_created_after_preflight_is_never_removed(
+        tmp_path: Path, monkeypatch) -> None:
+    source = tmp_path / "source"
+    destination = tmp_path / "destination"
+    source.mkdir()
+    destination.mkdir()
+    item = source / "a.txt"
+    item.write_bytes(b"ours")
+    preview = organize.invoke(_move_policy(source, destination))
+    target = destination / "a.txt"
+    original_write = organize._write_journal
+    injected = False
+
+    def inject_hardlink(path, journal):
+        nonlocal injected
+        digest = original_write(path, journal)
+        if (not injected and journal.get("status") == "applying"
+                and any(row.get("state") == "intent"
+                        for row in journal.get("actions") or [])):
+            os.link(item, target)
+            injected = True
+        return digest
+
+    monkeypatch.setattr(organize, "_write_journal", inject_hardlink)
+    result = _apply(preview)
+
+    assert result["ok"] is False
+    assert result["_undo"] == {"outcome": "no_effect"}
+    assert item.exists() and target.exists()
+    assert item.stat().st_ino == target.stat().st_ino
+
+
+def test_added_hardlink_after_move_blocks_undo(tmp_path: Path) -> None:
+    source = tmp_path / "source"
+    destination = tmp_path / "destination"
+    source.mkdir()
+    destination.mkdir()
+    item = source / "a.txt"
+    item.write_bytes(b"payload")
+    applied = _apply(organize.invoke(_move_policy(source, destination)))
+    moved = destination / "a.txt"
+    late_link = tmp_path / "late-link.txt"
+    os.link(moved, late_link)
+
+    reversed_result = organize.reverse({}, applied)
+
+    assert reversed_result["ok"] is False
+    assert reversed_result["fail_count"] == 1
+    assert not item.exists()
+    assert moved.read_bytes() == late_link.read_bytes() == b"payload"
+    assert moved.stat().st_ino == late_link.stat().st_ino
 
 
 def test_added_hardlink_before_delete_fails_closed(

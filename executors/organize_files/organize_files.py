@@ -161,6 +161,7 @@ def _same_file_identity(actual: dict | None, expected: dict) -> bool:
         return False
     return all(int(actual.get(key, -1)) == int(expected.get(key, -2)) for key in (
         "device", "inode", "size", "mtime_ns", "mode", "uid", "gid",
+        "nlink",
     ))
 
 
@@ -1476,6 +1477,19 @@ def _hash_fd(descriptor: int) -> str:
     return digest.hexdigest()
 
 
+def _write_all(descriptor: int, data: bytes) -> None:
+    """Write one block completely, retrying an interrupted syscall."""
+    remaining = memoryview(data)
+    while remaining:
+        try:
+            written = os.write(descriptor, remaining)
+        except InterruptedError:
+            continue
+        if written <= 0:
+            raise OSError(errno.EIO, "short write made no progress")
+        remaining = remaining[written:]
+
+
 def _metadata_fd(descriptor: int) -> dict:
     info = os.fstat(descriptor)
     attributes = []
@@ -1785,15 +1799,18 @@ def _relative_file_state(root: str, root_identity: dict, relative: str,
                     pass
 
 
-def _restore_blob(item: dict) -> bool:
+def _restore_blob(item: dict, *, journal: dict,
+                  receipt_path: Path) -> bool:
     expected = item["blob_sha256"]
     target = Path(item["path"])
     state, _info = _relative_file_state(
         item["source_root"], item["source_root_identity"],
         item["source_relative"], expected)
     if state == "expected":
-        accepted = item.get("restored_identity")
+        accepted = (item.get("restored_identity")
+                    or item.get("restore_intent_identity"))
         if accepted and _same_file_identity(_info, accepted):
+            item["restored_identity"] = _info
             return False
         raise OrganizeError(
             "ERR_DST_EXISTS", "ERR_DST_EXISTS", error_class="conflict",
@@ -1802,8 +1819,48 @@ def _restore_blob(item: dict) -> bool:
         raise OrganizeError(
             "ERR_DST_EXISTS", "ERR_DST_EXISTS", error_class="conflict",
             detail=str(target), message_args={"path": str(target)})
+    pending_identity = item.get("restore_intent_identity")
+    pending_name = item.get("restore_temp_name")
+    if pending_identity or pending_name:
+        if (not isinstance(pending_identity, dict)
+                or not isinstance(pending_name, str)
+                or not re.fullmatch(
+                    r"\.metnos-restore-[0-9a-f]{16}-[0-9a-f]{24}",
+                    pending_name)):
+            raise OrganizeError(
+                "ERR_ORGANIZE_RECEIPT_INVALID",
+                "ERR_ORGANIZE_RECEIPT_INVALID",
+                error_class="integrity_error",
+                detail="invalid pending restore intent")
+        root_fd = _open_root_fd(
+            item["source_root"], item["source_root_identity"])
+        descriptor = parent_fd = -1
+        try:
+            target_relative = Path(item["source_relative"])
+            temp_relative = str(target_relative.parent / pending_name)
+            descriptor, parent_fd, temp_name = _open_regular_at(
+                root_fd, temp_relative, expected=pending_identity)
+            if (_hash_fd(descriptor) != expected
+                    or _metadata_fd(descriptor) != (item.get("metadata") or {})):
+                raise OrganizeError(
+                    "ERR_ORGANIZE_RECEIPT_INVALID",
+                    "ERR_ORGANIZE_RECEIPT_INVALID",
+                    error_class="integrity_error",
+                    detail="pending restore temporary changed")
+            _rename_noreplace(
+                parent_fd, temp_name, parent_fd, target_relative.name)
+            item["restored_identity"] = _identity(os.fstat(descriptor))
+            os.fsync(parent_fd)
+            return True
+        finally:
+            for value in (descriptor, parent_fd, root_fd):
+                if value >= 0:
+                    try:
+                        os.close(value)
+                    except OSError:
+                        pass
     blob = Path(item["blob_path"])
-    digest, _info = _stable_sha256(blob)
+    digest, blob_info = _stable_sha256(blob)
     if digest != expected:
         raise OrganizeError(
             "ERR_ORGANIZE_RECEIPT_INVALID", "ERR_ORGANIZE_RECEIPT_INVALID",
@@ -1819,17 +1876,21 @@ def _restore_blob(item: dict) -> bool:
             root_fd, item["source_relative"])
         descriptor = os.open(
             temporary_name,
-            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC
+            os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC
             | getattr(os, "O_NOFOLLOW", 0), 0o600, dir_fd=parent_fd)
         copied = hashlib.sha256()
         with blob.open("rb") as incoming:
             for block in iter(lambda: incoming.read(_HASH_CHUNK), b""):
                 copied.update(block)
-                os.write(descriptor, block)
-        if copied.hexdigest() != expected:
+                _write_all(descriptor, block)
+        written_info = os.fstat(descriptor)
+        if (copied.hexdigest() != expected
+                or int(written_info.st_size) != int(blob_info.st_size)
+                or _hash_fd(descriptor) != expected):
             raise OrganizeError(
                 "ERR_ORGANIZE_RECEIPT_INVALID", "ERR_ORGANIZE_RECEIPT_INVALID",
-                error_class="integrity_error", detail=str(blob))
+                error_class="integrity_error",
+                detail=f"restored temporary differs from backup: {blob}")
         current = os.fstat(descriptor)
         uid, gid = int(metadata["uid"]), int(metadata["gid"])
         if (int(current.st_uid), int(current.st_gid)) != (uid, gid):
@@ -1841,6 +1902,14 @@ def _restore_blob(item: dict) -> bool:
                 base64.b64decode(str(attribute["value_b64"]), validate=True))
         os.utime(descriptor, ns=(int(metadata["atime_ns"]), int(metadata["mtime_ns"])))
         os.fsync(descriptor)
+        os.fsync(parent_fd)
+        # Durable inverse intent: if the process dies after rename but before
+        # the outer action journal, recovery can distinguish our inode from a
+        # same-byte file created by another actor.
+        item["restore_temp_name"] = temporary_name
+        item["restore_intent_identity"] = _identity(os.fstat(descriptor))
+        _write_journal(receipt_path, journal)
+        _fault("after_restore_intent_before_rename")
         _rename_noreplace(
             parent_fd, temporary_name, parent_fd, target_name)
         item["restored_identity"] = _identity(os.fstat(descriptor))
@@ -1961,6 +2030,13 @@ def _move_state(item: dict) -> str:
     source_owned = _same_file_identity(source_info, item["source_identity"])
     destination_owned = _same_file_identity(
         destination_info, item["source_identity"])
+    if (source_state == "expected" and destination_state == "expected"
+            and (source_info["device"], source_info["inode"]) == (
+                destination_info["device"], destination_info["inode"])):
+        # Atomic rename never leaves both names behind.  This is necessarily
+        # a hardlink introduced outside our transaction, regardless of the
+        # resulting nlink/ctime change on the shared inode.
+        return "external_conflict"
     if source_state == "expected" and source_owned \
             and destination_state == "absent":
         return "original"
@@ -1973,11 +2049,6 @@ def _move_state(item: dict) -> str:
     if source_state == "absent" and destination_state == "expected" \
             and destination_owned:
         return "applied"
-    if source_state == "expected" and destination_state == "expected" \
-            and source_owned and destination_owned \
-            and (source_info["device"], source_info["inode"]) == (
-                destination_info["device"], destination_info["inode"]):
-        return "linked"
     return "conflict"
 
 
@@ -2000,30 +2071,6 @@ def _reconcile_journal(journal: dict) -> list[str]:
         item["observed_state"] = current
         states.append(current)
     return states
-
-
-def _remove_linked_destination(item: dict) -> bool:
-    if _move_state(item) != "linked":
-        return False
-    root_fd = _open_root_fd(item["destination_root"], item["destination_root_identity"])
-    descriptor = parent_fd = -1
-    try:
-        descriptor, parent_fd, name = _open_regular_at(
-            root_fd, item["destination_relative"])
-        if _hash_fd(descriptor) != item["sha256"]:
-            raise OrganizeError(
-                "ERR_ORGANIZE_UNDO", "ERR_ORGANIZE_UNDO",
-                error_class="conflict", detail=item["destination"])
-        os.unlink(name, dir_fd=parent_fd)
-        os.fsync(parent_fd)
-        return True
-    finally:
-        for value in (descriptor, parent_fd, root_fd):
-            if value >= 0:
-                try:
-                    os.close(value)
-                except OSError:
-                    pass
 
 
 def _delete_anchored(item: dict) -> None:
@@ -2130,7 +2177,7 @@ def _journal_output(journal: dict, receipt_path: Path, receipt_sha: str) -> dict
 def _partial_failure(journal: dict, receipt_path: Path, detail: str,
                      failures: list[dict]) -> dict:
     states = _reconcile_journal(journal)
-    has_effect = any(state in {"applied", "linked", "conflict"} for state in states)
+    has_effect = any(state in {"applied", "conflict"} for state in states)
     journal["status"] = "partial" if has_effect else "rolled_back"
     journal["failure"] = detail[:1000]
     journal["rollback_failures"] = failures
@@ -2154,7 +2201,7 @@ def _partial_failure(journal: dict, receipt_path: Path, detail: str,
 
 def _persisted_failure(journal: dict, receipt_path: Path) -> dict:
     states = _reconcile_journal(journal)
-    has_effect = any(state in {"applied", "linked", "conflict"} for state in states)
+    has_effect = any(state in {"applied", "conflict"} for state in states)
     failures = journal.get("rollback_failures") or []
     error = OrganizeError(
         "ERR_ORGANIZE_ROLLBACK_PARTIAL" if has_effect else "ERR_ORGANIZE_APPLY",
@@ -2181,11 +2228,10 @@ def _rollback_journal(journal: dict, receipt_path: Path,
         try:
             state = _move_state(item) if item["kind"] == "move" else _delete_state(item)
             if item["kind"] == "delete" and state == "applied":
-                _restore_blob(item)
+                _restore_blob(
+                    item, journal=journal, receipt_path=receipt_path)
             elif item["kind"] == "move" and state == "applied":
                 _reverse_move(item)
-            elif item["kind"] == "move" and state == "linked":
-                _remove_linked_destination(item)
             elif state in {"conflict", "external_conflict"}:
                 raise OrganizeError(
                     "ERR_ORGANIZE_UNDO", "ERR_ORGANIZE_UNDO",
@@ -2430,15 +2476,13 @@ def reverse(_plan: dict, results: dict) -> dict:
             for item in reversed(receipt.get("actions") or []):
                 try:
                     if item["kind"] == "delete":
-                        changed = _restore_blob(item)
+                        changed = _restore_blob(
+                            item, journal=receipt,
+                            receipt_path=receipt_path)
                         action = "restore_deleted"
                         path = item["source"]
                     else:
-                        state = _move_state(item)
-                        if state == "linked":
-                            changed = _remove_linked_destination(item)
-                        else:
-                            changed = _reverse_move(item)
+                        changed = _reverse_move(item)
                         action = "move_back"
                         path = item["source"]
                     _fault("after_reverse_effect_before_journal")
