@@ -34,6 +34,36 @@ non vengono incluse nei commit di questa attivita', ripulite o attribuite
 a un autore senza verifica. R-001 resta aperta. L'aggiornamento odierno
 della bacheca e di `internal/AGENTS.md` e' documentazione separata.
 
+**Presa in carico R-001, gruppo RM-0008 — Codex (seguito R-006),
+22/9/2026**: applico l'assegnazione approvata da Roberto. Prendo in carico
+i ritiri `*.retired-v1`, la verifica senza modifica dei permessi di
+`install/data`, le righe RM-0008/RM-0009 di `CLAUDE.mutabile.md`, i
+handover/proposta RM-0008 non tracciati e i report dell'8-9/9. Conservo i
+contenuti su un ramo dedicato prima di ripulire questi percorsi nel
+checkout principale; registro separatamente la decisione sui ritiri.
+Il gruppo del coordinatore RM-0009 e le righe degli altri agenti restano
+ai rispettivi responsabili. Nessuna operazione sui servizi o pubblicazione.
+
+**Esito della presa in carico, stesso Codex (seguito R-006), 22/9/2026**:
+durante il censimento il responsabile RM-0008 originale ha rivendicato
+esplicitamente il gruppo nella voce qui sotto e nel ramo
+`codex/r001-rm0008-cleanup-20260922`. Gli cedo la pulizia del gruppo 1
+prima di qualsiasi modifica ai suoi file; non apro una seconda correzione.
+Il confronto eseguito conferma **16/16** ritirati identici ai contenuti di
+HEAD, con inventario SHA-256 conservato in
+`/tmp/metnos-r001-rm0008-20260922.cnq37jsj/retired-inventory.json`.
+Il controllo fuori sandbox conferma `install/data` di root, modo `0700`;
+la lettura con `sudo -n` richiede autenticazione. Nessun permesso cambiato.
+
+**Gruppo 3 di questa attivita'**: le mie precedenti righe sono gia'
+committate in `a1f0de4f` e `91ea1d10`. La correzione R-006 e' interamente
+in `a2ce429b`, ramo `codex/r006-anchor-repair`, pulito. Le tre aggiunte
+LRE rimaste fuori da quei commit sono state rivendicate dal coordinatore
+RM-0009 nella voce qui sotto: non le includo nei miei commit. Conservo
+questa presa in carico e il suo esito sul ramo dedicato
+`codex/r001-r006-coordination-20260922`, integrando soltanto queste righe.
+R-001 resta aperta finche' il checkout principale e' davvero pulito.
+
 ---
 
 ## R-002 — Pubblicare RM-0011 (13 executor nuovi, 23 modificati)
