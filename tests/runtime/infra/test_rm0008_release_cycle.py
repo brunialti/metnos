@@ -230,6 +230,21 @@ def test_authoring_revision_requires_clean_primary_checkout(primary_checkout, tm
         cycle._authoring_revision(root)
 
 
+def test_authoring_observation_never_refreshes_git_index(primary_checkout, monkeypatch):
+    root, _git = primary_checkout
+    original_run = subprocess.run
+    calls = []
+
+    def read_only(argv, **kwargs):
+        assert argv[:2] == ["/usr/bin/git", "--no-optional-locks"]
+        calls.append(argv)
+        return original_run(argv, **kwargs)
+
+    monkeypatch.setattr(cycle.subprocess, "run", read_only)
+    assert cycle._authoring_revision(root)
+    assert len(calls) == 3
+
+
 @pytest.mark.parametrize("plan", (False, True))
 def test_publish_bridge_plans_and_launches_only_attested_release(monkeypatch, release, primary_checkout, plan):
     root, git = primary_checkout

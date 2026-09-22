@@ -1717,7 +1717,8 @@ def _authoring_revision(root: Path) -> str:
     def git(*args):
         # Root reads a developer-owned repository; trust only this exact path.
         result = subprocess.run(
-            ["/usr/bin/git", "-c", f"safe.directory={root}", "-C", str(root), *args],
+            ["/usr/bin/git", "--no-optional-locks", "-c", f"safe.directory={root}",
+             "-C", str(root), *args],
             stdin=subprocess.DEVNULL, capture_output=True, check=True,
             env=CONTROLLER_ENVIRONMENT, close_fds=True, timeout=30)
         return result.stdout.decode("utf-8").strip()
