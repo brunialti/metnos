@@ -29,10 +29,12 @@ La bacheca vale nei due sensi: e' anche il posto dove rispondi.
 
 ## Due cose che costano care se non le sai
 
-**Pubblicare un executor.** `runtime/sign.py publish` non funziona piu' e
-oggi non esiste una procedura che lo sostituisca per un executor modificato
-a mano. Stato verificato in `internal/AGENTS.md` §6; la domanda aperta e' la
-R-003 in bacheca.
+**Pubblicare un executor.** `runtime/sign.py publish` non funziona piu'.
+Il raccordo che lo sostituisce esiste (`stack_reconcile deploy --executor
+<nome> --sign`, produttore `stack_reconcile/restart_sign_first`) ma non e'
+certificato: non e' mai stato eseguito davvero e riavvia anche il target.
+Finche' la R-003 in bacheca e' aperta, non si pubblica. Dettaglio in
+`internal/AGENTS.md` §6.
 
 **Mai pubblicare da un albero di lavoro.** Il magazzino dei contratti sta
 fuori dal repository ed e' unico per tutta la macchina: una pubblicazione da
