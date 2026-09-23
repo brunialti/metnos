@@ -1,0 +1,141 @@
+# Manifest dell'executor `set_pulls` — Metnos v1.1
+# RM-0011 F1: il fornitore e' un ARGOMENTO, non un suffisso nel nome.
+# RM-0011 F2 (decisione di Roberto, 20/9/2026): la revisione di una proposta
+# NON e' un commento. Cambia lo stato, e chi la legge la vede come un
+# verdetto: percio' sta qui, con gli altri cambiamenti di stato.
+
+manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
+
+name        = "set_pulls"
+version     = "0.1.0"
+timeout_s   = 60
+platforms   = ["linux"]
+author      = "Roberto Brunialti"
+affinity    = [
+    "approva pull request", "approvazione", "approva proposta modifica", "chiedi modifiche", "via libera", "revisione pull request", "assegna revisore", "reviewers", "etichetta pull request", "rinomina pull request"
+]
+revertible      = false
+
+[execution]
+effect            = "mutating"
+parallelism_class = 0
+resource_class    = "network_io"
+concurrency_key   = "none"
+
+[description]
+it = "SCOPO: approva una proposta, chiede modifiche, o ne cambia stato. PATTERN: set_pulls(repo=\"owner/name\", number=7, review=\"approve\", review_body=\"ok\"). NON: unirla (-> change_pulls); commentare senza verdetto (-> create_comments). OUT: results=[{number,state,review,repo}]."
+en = "SCOPO: approve a pull request, request changes, or change its state. PATTERN: set_pulls(repo=\"owner/name\", number=7, review=\"approve\", review_body=\"ok\"). NON: merge it (-> change_pulls); comment with no verdict (-> create_comments). OUT: results=[{number,state,review,repo}]."
+
+[code]
+files  = ["set_pulls.py"]
+
+[output]
+schema_inline = "{ok: bool, results: Array<object>, used: int, ok_count?: int, fail_count?: int, failed?: Array<object>, n_created?: int, n_deleted?: int, n_updated?: int, n_changed?: int, n_started?: int, issue_ids?: Array<int>, comment_ids?: Array<int>, source?: str, partial?: bool, error_class?: str, error_code?: str, error?: str}"
+
+[args]
+type     = "object"
+required = ["repo", "number"]
+
+[args.properties.repo]
+type        = "string"
+
+[args.properties.repo.description]
+it = "Repository in forma \"proprietario/nome\". Esempio: \"brunialti/metnos\"."
+en = "Repository as \"owner/name\". Example: \"brunialti/metnos\"."
+
+[args.properties.number]
+type        = "integer"
+
+[args.properties.number.description]
+it = "Numero dell'elemento nel repository. Esempio: 42."
+en = "Item number inside the repository. Example: 42."
+
+[args.properties.state]
+type        = "string"
+
+[args.properties.state.description]
+it = "Stato da filtrare o da impostare: 'open' o 'closed'."
+en = "State to filter or to set: 'open' or 'closed'."
+
+[args.properties.title]
+type        = "string"
+
+[args.properties.title.description]
+it = "Titolo, una riga. Esempio: \"Il deploy fallisce sul seme i18n\"."
+en = "Title, one line. Example: \"Deploy fails on the i18n seed\"."
+
+[args.properties.labels]
+type        = "array"
+
+[args.properties.labels.description]
+it = "Etichette, match esatto (dominio chiuso). Esempio: [\"bug\", \"urgente\"]."
+en = "Labels, exact match (closed domain). Example: [\"bug\", \"urgent\"]."
+
+[args.properties.reviewers]
+type        = "array"
+
+[args.properties.reviewers.description]
+it = "Nomi utente dei revisori, match esatto."
+en = "Reviewer user names, exact match."
+
+[args.properties.review]
+type        = "string"
+enum        = ["approve", "request_changes", "comment"]
+
+[args.properties.review.description]
+it = "Verdetto della revisione: 'approve' da' il via libera, 'request_changes' chiede modifiche, 'comment' lascia un parere senza decidere. Richiede review_body."
+en = "Review verdict: 'approve' gives the go-ahead, 'request_changes' asks for changes, 'comment' leaves an opinion without deciding. Requires review_body."
+
+[args.properties.review_body]
+type        = "string"
+
+[args.properties.review_body.description]
+it = "Le parole della revisione, obbligatorie quando review e' indicato. Sono un giudizio che altre persone leggono: le scrive chi approva, non Metnos. Esempio: \"Mi sembra a posto, unisci tu\"."
+en = "The words of the review, required whenever review is given. They are a verdict other people read: the approver writes them, not Metnos. Example: \"Looks right to me, go ahead and merge\"."
+
+[args.properties.client]
+type        = "string"
+enum        = ["github"]
+default     = "github"
+
+[args.properties.client.description]
+it = "Implementazione backend. Oggi solo 'github'. Il runtime lo sceglie: non va indicato nella richiesta."
+en = "Backend implementation. Today only 'github'. The runtime picks it: it is not stated in the request."
+
+[[capabilities]]
+# L'autorita' e' legata al VALORE dell'argomento, non al nome dello
+# strumento (ADR 0193): rete e credenziali valgono solo per il
+# provider effettivamente scelto.
+name = "provider:access"
+hint = ["github"]
+when = { arg = "client", values = ["github"] }
+
+# Prove di nascita: solo cio' che si verifica SENZA rete. Un
+# contratto che rifiuta bene e' meta' del contratto (§2.8);
+# l'altra meta' richiede il fornitore vivo e non appartiene qui.
+
+[[tests]]
+name   = "numero_mancante_rifiutato"
+input  = { repo = "o/n", title = "t" }
+expect = { ok = false, error_contains = "Argomento obbligatorio mancante" }
+
+[[tests]]
+name   = "nessuna_modifica_richiesta_rifiutata"
+input  = { repo = "o/n", number = 1 }
+expect = { ok = false, error_contains = "Argomento obbligatorio mancante" }
+
+[[tests]]
+name   = "revisione_senza_parole_rifiutata"
+input  = { repo = "o/n", number = 1, review = "approve" }
+expect = { ok = false, error_contains = "Argomento obbligatorio mancante" }
+
+[[tests]]
+name   = "verdetto_fuori_elenco_rifiutato"
+input  = { repo = "o/n", number = 1, review = "merge", review_body = "x" }
+expect = { ok = false, error_contains = "non valido" }
+
+[[tests]]
+name   = "provider_sconosciuto_rifiutato"
+input  = { repo = "o/n", number = 1, client = "gitlab" }
+expect = { ok = false, error_contains = "Operazione non applicabile per questo provider" }

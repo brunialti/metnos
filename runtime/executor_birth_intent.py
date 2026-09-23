@@ -109,6 +109,15 @@ def submit_stack_reconcile_birth(intent: BirthIntent) -> "BirthResult":
     return _submit(intent, _STACK_RECONCILE)
 
 
+def submit_stack_reconcile_retirement(
+    contract_id: ContractId, expected_generation_id: str, reason: str,
+):
+    """Data-only administrative request for an exact installed revision."""
+    from executor_birth_operational import _retire_with_runtime
+
+    return _retire_with_runtime(contract_id, expected_generation_id, reason)
+
+
 def submit_skills_birth(intent: BirthIntent) -> "BirthResult":
     return _submit(intent, _SKILLS)
 
@@ -158,4 +167,5 @@ __all__ = [
     "submit_installer_birth", "submit_builtin_generation_birth",
     "submit_promoter_rollback_birth",
     "submit_promoter_quarantine_birth",
+    "submit_stack_reconcile_retirement",
 ]

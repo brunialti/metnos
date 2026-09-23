@@ -26,11 +26,9 @@ sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
     if (p / "runtime" / "config.py").is_file()))
 from messages import get as _msg  # noqa: E402
 from executor_helpers import run_stdio  # noqa: E402
+from backends import load as _load_backend  # noqa: E402
 from backends.files import local  # noqa: E402
 
-# `google_workspace` è import LAZY (C7 Area-2 CP4, come find/read/write_files):
-# a module-load trascina moduli SERVER-only → sul DEVICE farebbe
-# ModuleNotFoundError per ogni invocazione, anche client=local.
 
 _HANDLERS = {
     "local": local,
@@ -38,15 +36,19 @@ _HANDLERS = {
 
 
 def _backend(client: str):
-    b = _HANDLERS.get(client)
-    if b is None and client == "google_workspace":
-        try:
-            from backends.files import google_workspace as _gw  # lazy, server-only
-        except ImportError:
-            return None  # device: gw assente → errore strutturato a valle (§2.8)
-        _HANDLERS[client] = _gw
-        b = _gw
-    return b
+    """Modulo del provider richiesto, o None se qui non e' disponibile.
+
+    Il valore di `client` lo possiede il runtime (`backend_resolver`), non
+    l'LLM e non l'executor. I provider non predefiniti sono caricati per
+    nome: aggiungerne uno e' un modulo sotto `backends/files/`, mai un ramo
+    qui. None risale come ERR_NOT_APPLICABLE (§2.8).
+    """
+    backend = _HANDLERS.get(client)
+    if backend is None:
+        backend = _load_backend("files", client)
+        if backend is not None:
+            _HANDLERS[client] = backend
+    return backend
 
 
 def invoke(args):
@@ -54,7 +56,7 @@ def invoke(args):
         return {
             "ok": False,
             "error_code": "ERR_ARG_INVALID",
-            "error": _msg("ERR_ARG_INVALID", arg="args", reason="must be an object"),
+            "error": _msg("ERR_ARGS_NOT_OBJECT"),
         }
     client = args.get("client") or "local"
     backend = _backend(client)

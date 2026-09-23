@@ -37,6 +37,23 @@ DOMAIN_OUTCOME_SCHEMA = {
     },
 }
 
+# A terminal producer reports the outcome of its whole branch, including
+# upstream effects. Absence means unknown, never "nothing to do". The kernel
+# projects this only after clean completion and agreement of every terminal
+# unit; it never infers it from empty entries, skipped units or zero errors.
+COMPLETION_OUTCOME_SCHEMA = {
+    "type": "string", "enum": ["no_changes", "changes_applied"],
+}
+
+
+def completion_outcome(payload: Mapping[str, Any]) -> str | None:
+    if "completion_outcome" not in payload:
+        return None
+    value = payload["completion_outcome"]
+    if not isinstance(value, str) or value not in COMPLETION_OUTCOME_SCHEMA["enum"]:
+        raise SchemaValidationError("completion_outcome is invalid")
+    return value
+
 
 def domain_outcome(payload: Mapping[str, Any]) -> dict[str, Any] | None:
     """Validate the reserved field; absence is not an error and means no facts."""
@@ -65,9 +82,15 @@ def domain_outcome(payload: Mapping[str, Any]) -> dict[str, Any] | None:
 def domain_terminal_detail(payload: Mapping[str, Any]) -> str | None:
     """One projection for both fresh commits and semantic result reuse."""
     outcome = domain_outcome(payload)
-    if outcome is None or not outcome["error_counts"]:
+    completion = completion_outcome(payload)
+    detail = {}
+    if outcome is not None and outcome["error_counts"]:
+        detail["domain_outcome"] = outcome
+    if completion is not None:
+        detail["completion_outcome"] = completion
+    if not detail:
         return None
     return canonical_json({
         "schema_version": "metnos.durable-unit-terminal/1",
-        "domain_outcome": outcome,
+        **detail,
     }, max_bytes=65536)

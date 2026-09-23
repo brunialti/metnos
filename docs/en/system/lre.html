@@ -69,6 +69,16 @@ least ten minutes. This decision uses structured metadata, not words such as
  </tbody>
 </table>
 
+<h2 id="no-action-required">Exempt: no action needed after checks</h2>
+<p>A job whose checks completed without requiring action shows <strong>Exempt</strong>
+directly in its row, keeping its dates and detail. This requires explicit
+confirmation from every final stage: zero errors or an empty list are not enough.
+For photo indexing, an unchanged archive meets this condition; additions,
+removals and forced analysis count as changes.</p>
+<p>Nightly maintenance distinguishes handing a job to LRE from completing it.
+If it finds an existing job that needs attention, it retains its reference and
+records a partial outcome; it neither duplicates the job nor reports it as successful.</p>
+
 <h2 id="error-history">Error history after completion</h2>
 
 <p>The job detail retains <strong>items with errors</strong>: the total

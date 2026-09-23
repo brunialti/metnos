@@ -1,0 +1,108 @@
+# Manifest dell'executor `set_issues` — Metnos v1.1
+# RM-0011 F1: il fornitore e' un ARGOMENTO, non un suffisso nel nome.
+
+manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
+
+name        = "set_issues"
+version     = "0.1.0"
+timeout_s   = 60
+platforms   = ["linux"]
+author      = "Roberto Brunialti"
+affinity    = [
+    "etichetta la segnalazione", "assegna issue", "label issue", "assign issue", "milestone", "riapri issue", "reopen issue", "cambia stato issue"
+]
+revertible      = false
+
+[execution]
+effect            = "mutating"
+parallelism_class = 0
+resource_class    = "network_io"
+concurrency_key   = "none"
+
+[description]
+it = "SCOPO: cambia stato, etichette, assegnatari o traguardo di una segnalazione. PATTERN: set_issues(repo=\"owner/name\", number=42, labels=[\"bug\"]). NON: aprirne una nuova (-> create_issues); agire su una proposta (-> set_pulls). OUT: results=[{number,state,labels,repo}]."
+en = "SCOPO: change state, labels, assignees or milestone of an issue. PATTERN: set_issues(repo=\"owner/name\", number=42, labels=[\"bug\"]). NON: open a new one (-> create_issues); act on a pull request (-> set_pulls). OUT: results=[{number,state,labels,repo}]."
+
+[code]
+files  = ["set_issues.py"]
+
+[output]
+schema_inline = "{ok: bool, results: Array<object>, used: int, ok_count?: int, fail_count?: int, failed?: Array<object>, n_created?: int, n_deleted?: int, n_updated?: int, n_changed?: int, n_started?: int, issue_ids?: Array<int>, comment_ids?: Array<int>, source?: str, partial?: bool, error_class?: str, error_code?: str, error?: str}"
+
+[args]
+type     = "object"
+required = ["repo", "number"]
+
+[args.properties.repo]
+type        = "string"
+
+[args.properties.repo.description]
+it = "Repository in forma \"proprietario/nome\". Esempio: \"brunialti/metnos\"."
+en = "Repository as \"owner/name\". Example: \"brunialti/metnos\"."
+
+[args.properties.number]
+type        = "integer"
+
+[args.properties.number.description]
+it = "Numero dell'elemento nel repository. Esempio: 42."
+en = "Item number inside the repository. Example: 42."
+
+[args.properties.state]
+type        = "string"
+
+[args.properties.state.description]
+it = "Stato da filtrare o da impostare: 'open' o 'closed'."
+en = "State to filter or to set: 'open' or 'closed'."
+
+[args.properties.labels]
+type        = "array"
+
+[args.properties.labels.description]
+it = "Etichette, match esatto (dominio chiuso). Esempio: [\"bug\", \"urgente\"]."
+en = "Labels, exact match (closed domain). Example: [\"bug\", \"urgent\"]."
+
+[args.properties.assignees]
+type        = "array"
+
+[args.properties.assignees.description]
+it = "Nomi utente assegnatari, match esatto."
+en = "Assignee user names, exact match."
+
+[args.properties.milestone]
+type        = "string"
+
+[args.properties.milestone.description]
+it = "Traguardo a cui legare l'elemento."
+en = "Milestone to attach the item to."
+
+[args.properties.client]
+type        = "string"
+enum        = ["github"]
+default     = "github"
+
+[args.properties.client.description]
+it = "Implementazione backend. Oggi solo 'github'. Il runtime lo sceglie: non va indicato nella richiesta."
+en = "Backend implementation. Today only 'github'. The runtime picks it: it is not stated in the request."
+
+[[capabilities]]
+# L'autorita' e' legata al VALORE dell'argomento, non al nome dello
+# strumento (ADR 0193): rete e credenziali valgono solo per il
+# provider effettivamente scelto.
+name = "provider:access"
+hint = ["github"]
+when = { arg = "client", values = ["github"] }
+
+# Prove di nascita: solo cio' che si verifica SENZA rete. Un
+# contratto che rifiuta bene e' meta' del contratto (§2.8);
+# l'altra meta' richiede il fornitore vivo e non appartiene qui.
+
+[[tests]]
+name   = "numero_mancante_rifiutato"
+input  = { repo = "o/n", state = "closed" }
+expect = { ok = false, error_contains = "Argomento obbligatorio mancante" }
+
+[[tests]]
+name   = "provider_sconosciuto_rifiutato"
+input  = { repo = "o/n", number = 1, client = "gitlab" }
+expect = { ok = false, error_contains = "Operazione non applicabile per questo provider" }

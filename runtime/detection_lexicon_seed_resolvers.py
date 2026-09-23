@@ -107,11 +107,28 @@ def register_detection() -> None:
             "google drive", "gdrive", "su drive", "in drive",
             "drive google", "google workspace",
         ],
+        # RM-0011 F0: il fornitore si nomina, non si deduce. Un solo termine
+        # inequivocabile: il match e' `substring`, quindi copre gia' «su
+        # github», «da github», «nel repository github». «repo» e
+        # «repository» NON entrano: nominano l'oggetto, non il fornitore, e
+        # un termine largo qui e' esattamente il difetto misurato in RM-0010.
+        "files.github": ["github"],
+        "dirs.github": ["github"],
+        "issues.github": ["github"],
+        "pulls.github": ["github"],
+        "workflows.github": ["github"],
+        "comments.github": ["github"],
     }, en={
         "events.local": ["local calendar", "in local"],
         "events.google_workspace": ["on google"],
         "files.google_workspace": ["google drive"],
         "dirs.google_workspace": ["google drive"],
+        "files.github": ["github"],
+        "dirs.github": ["github"],
+        "issues.github": ["github"],
+        "pulls.github": ["github"],
+        "workflows.github": ["github"],
+        "comments.github": ["github"],
     })
 
     R("resolver.calendar", "mapping", match_mode="word", it={

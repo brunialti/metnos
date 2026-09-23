@@ -80,6 +80,11 @@ _OBJECT_AFFINITY = {
         "pull request", "pull requests", "pr", "merge", "richiesta di merge",
         "patch", "contributo",
     ],
+    "comments": ["commento", "commenti", "comment", "comments", "replica", "reply"],
+    "workflows": [
+        "workflow", "workflows", "automazione", "automazioni", "pipeline",
+        "esecuzione remota", "actions",
+    ],
     "preferences": [
         "preferenza", "preferenze", "preference", "preferences",
         "impostazione", "impostazioni", "setting", "settings",
@@ -111,6 +116,7 @@ _ACTION_AFFINITY = {
     "compute": ["calcola", "compute"],
     "compare": ["confronta", "compare"],
     "order": ["ordina", "order"],
+    "organize": ["organizza", "organize", "organise"],
     "open": ["apri", "open", "avvia sessione", "start session"],
     "login": ["accedi", "autentica", "login", "sign in", "authenticate"],
     "act": [

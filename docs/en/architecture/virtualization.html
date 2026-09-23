@@ -398,6 +398,12 @@ resource reservations shared across jobs. Replicating a model on the same CPU
 is useful only when measured capacity improves; RAM, shared GPU memory and
 other processes must inform that decision. Service readiness alone cannot
 guarantee protection from memory exhaustion.</p>
+<p>Model readiness, handoff to LRE and workload completion are distinct facts.
+The domain explicitly reports whether checks required action; LRE shows
+<strong>Exempt</strong> only after clean completion with no changes confirmed by
+every final stage. An existing blocked job found by nightly maintenance produces
+a partial outcome. See
+<a href="../system/lre.html#no-action-required">activity outcomes</a>.</p>
 
 <h1 id="cap9">9. Technical references</h1>
 

@@ -1198,6 +1198,14 @@ def _quarantine_execution_with_runtime(execution):
     return _quarantine_execution_with_bundle(execution, bundle)
 
 
+def _retire_with_runtime(contract_id, expected_generation_id, reason):
+    """Administrative retirement reuses the installed authority, not F5."""
+    from executor_birth_bootstrap import bootstrap_birth_runtime
+
+    bundle = _runtime_bundle_snapshot() or bootstrap_birth_runtime()
+    return bundle.core.commit_publisher.retire(contract_id, expected_generation_id, reason)
+
+
 def _birth_executor_for_test(request: BirthRequest, *, _core: _BirthCore) -> BirthResult:
     return _execute(request, _core)
 

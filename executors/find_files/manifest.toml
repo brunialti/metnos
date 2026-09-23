@@ -104,12 +104,12 @@ en = "If true, also include directories that match. Default false (files only)."
 
 [args.properties.client]
 type        = "string"
-enum        = ["local", "google_workspace"]
+enum        = ["local", "google_workspace", "github"]
 default     = "local"
 
 [args.properties.client.description]
-it = "Implementazione backend. 'local' = filesystem locale (default). 'google_workspace' = Google Drive: cerca file su Drive per nome/query, richiede pairing Google."
-en = "Backend implementation. 'local' = local filesystem (default). 'google_workspace' = Google Drive: search files on Drive by name/query, requires Google pairing."
+it = "Implementazione backend. 'local' = filesystem locale (default). 'google_workspace' = Google Drive: cerca file su Drive per nome/query, richiede pairing Google. 'github' = albero di un repository: richiede 'repo' come \"proprietario/nome\"."
+en = "Backend implementation. 'local' = local filesystem (default). 'google_workspace' = Google Drive: search files on Drive by name/query, requires Google pairing. 'github' = a repository tree: needs 'repo' as \"owner/name\"."
 
 [args.properties.query]
 type = "string"
@@ -117,6 +117,13 @@ type = "string"
 [args.properties.query.description]
 it = "Testo cercato nel nome del file. Vale solo con client='google_workspace'; il backend locale usa 'pattern'/'patterns'. Esempio: \"KAKEBO SPESE 2026\". Senza, su Drive si ricade su 'patterns' o 'pattern'."
 en = "Text searched in the file name. Only with client='google_workspace'; the local backend uses 'pattern'/'patterns'. Example: \"KAKEBO SPESE 2026\". Without it, Drive falls back to 'patterns' or 'pattern'."
+
+[args.properties.repo]
+type = "string"
+
+[args.properties.repo.description]
+it = "Repository in forma \"proprietario/nome\". Vale solo con client='github'. Esempio: \"brunialti/metnos\"."
+en = "Repository as \"owner/name\". Only with client='github'. Example: \"brunialti/metnos\"."
 
 [output]
 schema_inline = """
@@ -168,6 +175,14 @@ hint = ["~/notes/**", "/tmp/**"]
 name = "provider:access"
 hint = ["google-workspace"]
 when = { arg = "client", values = ["google_workspace"] }
+
+[[capabilities]]
+# L'autorita' e' legata al VALORE dell'argomento, non al nome dello
+# strumento (ADR 0193): rete, credenziali e destinazione valgono solo
+# quando il provider e' effettivamente quello scelto.
+name = "provider:access"
+hint = ["github"]
+when = { arg = "client", values = ["github"] }
 
 [[tests]]
 name     = "trova_file_esatto"

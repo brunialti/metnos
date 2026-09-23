@@ -4117,6 +4117,7 @@ class DurableWorkloadStore:
             WITH progress_selected AS MATERIALIZED (
                 SELECT w.owner_user_id, w.id, w.state, w.active_revision_id,
                        r.inventory_sealed, r.usage_complete,
+                       r.caps_truncated, r.partial_output_accepted,
                        COALESCE(ru.usage_unknown, 1) AS usage_unknown,
                        CASE WHEN json_valid(r.plan_json) THEN r.plan_json END AS plan_json
                 FROM workloads w LEFT JOIN revisions r
@@ -4225,8 +4226,30 @@ class DurableWorkloadStore:
                 WHERE relevance=preferred_relevance
                   AND (relevance<>2 OR last_activity=latest_activity)
                 GROUP BY id
+            ), terminal_outcomes AS (
+                SELECT w.id,
+                       MIN(CASE WHEN u.state='committed' AND
+                           json_extract(u.terminal_detail_json, '$.completion_outcome')
+                               IN ('no_changes','changes_applied') THEN 1 ELSE 0 END) AS known,
+                       MAX(json_extract(u.terminal_detail_json, '$.completion_outcome')
+                           = 'changes_applied') AS changed
+                FROM progress_selected w JOIN stages s
+                  ON s.owner_user_id=w.owner_user_id AND s.revision_id=w.active_revision_id
+                LEFT JOIN units u ON u.owner_user_id=s.owner_user_id
+                  AND u.revision_id=s.revision_id AND u.stage_id=s.id
+                WHERE w.state='completed' AND s.stage_type<>'inventory'
+                  AND NOT w.caps_truncated AND NOT w.partial_output_accepted
+                  AND NOT EXISTS (
+                      SELECT 1 FROM stage_dependencies d
+                      WHERE d.owner_user_id=s.owner_user_id AND d.revision_id=s.revision_id
+                        AND d.depends_on_stage_id=s.id
+                  )
+                GROUP BY w.id
             )
             SELECT w.id, w.state, w.inventory_sealed, w.usage_complete,
+                   CASE WHEN outcomes.known=1 THEN
+                       CASE WHEN outcomes.changed=1 THEN 'changes_applied'
+                            ELSE 'no_changes' END END AS completion_outcome,
                    w.usage_unknown, a.uncertain_model_usage,
                    json_array_length(w.plan_json, '$.required_artifacts') AS artifacts,
                    CASE WHEN json_type(w.plan_json, '$.budgets.max_concurrency')='integer'
@@ -4246,6 +4269,7 @@ class DurableWorkloadStore:
             LEFT JOIN active_phase ap USING(id)
             LEFT JOIN phase_unit_facts pu ON pu.id=w.id AND pu.stage_id=ap.stage_id
             LEFT JOIN phase_attempt_facts pa ON pa.id=w.id AND pa.stage_id=pu.stage_id
+            LEFT JOIN terminal_outcomes outcomes ON outcomes.id=w.id
             """,
             (owner, *identifiers, owner),
         ).fetchall()
@@ -4371,6 +4395,7 @@ class DurableWorkloadStore:
                     "max_concurrency": row["max_concurrency"] if (row["max_concurrency"] or 0) > 0 else None,
                 },
                 "observed_at": observed_at,
+                "completion_outcome": row["completion_outcome"],
             }
         return result
 

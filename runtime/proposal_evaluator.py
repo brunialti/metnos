@@ -172,7 +172,7 @@ def _check_affinity_overlap(proposal: dict, *, catalog=None) -> tuple[bool, str,
     if not aff:
         return False, "", {}
     try:
-        from loader import load_catalog, SYNTHESIZED_EXECUTORS_DIR
+        from loader import load_catalog
     except Exception as ex:
         return False, f"loader import failed ({ex}); skip", {}
     if catalog is None:
@@ -191,14 +191,9 @@ def _check_affinity_overlap(proposal: dict, *, catalog=None) -> tuple[bool, str,
         other_aff = {str(t).strip().lower() for t in (getattr(ex, "affinity", []) or []) if t}
         if not other_aff:
             continue
-        # Skip altri synth piu' giovani della proposta corrente.
+        # Skip younger synthesized candidates using declared origin,
+        # which survives promotion, rather than filesystem placement.
         is_synth_other = getattr(ex, "source", "") == "synthesized"
-        try:
-            is_synth_other = is_synth_other or (
-                str(SYNTHESIZED_EXECUTORS_DIR) in str(ex.manifest_path)
-            )
-        except Exception:
-            pass
         if is_synth_other and proposal_ts > 0:
             try:
                 other_mtime = ex.manifest_path.stat().st_mtime

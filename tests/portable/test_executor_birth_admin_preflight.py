@@ -4055,7 +4055,7 @@ def test_real_boundary_policy_snapshot_is_exact_and_entry_schema_is_closed() -> 
     assert parsed["birth_closed"]["coordinator_store_owners"] == sorted(
         preflight.BIRTH_CLOSED_COORDINATOR_STORE_OWNERS,
     )
-    assert len(parsed["birth_closed"]["exceptions"]) == 16
+    assert len(parsed["birth_closed"]["exceptions"]) == 17
     for mutate in ("owners", "exceptions", "entry"):
         mutant = json.loads(encoded)
         if mutate == "owners":

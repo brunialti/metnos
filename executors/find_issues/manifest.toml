@@ -1,0 +1,133 @@
+# Manifest dell'executor `find_issues` — Metnos v1.1
+# RM-0011 F1: il fornitore e' un ARGOMENTO, non un suffisso nel nome.
+
+manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
+
+name        = "find_issues"
+version     = "0.1.0"
+timeout_s   = 60
+platforms   = ["linux"]
+author      = "Roberto Brunialti"
+affinity    = [
+    "segnalazione", "segnalazioni", "issue", "issues", "ticket", "difetti aperti", "elenca issue", "open issues", "bug list"
+]
+revertible      = false
+
+[execution]
+effect            = "read_only"
+parallelism_class = 0
+resource_class    = "network_io"
+concurrency_key   = "none"
+
+[description]
+it = "SCOPO: elenca le segnalazioni di un repository per stato, etichette e data. PATTERN: find_issues(repo=\"owner/name\", state=\"open\"). NON: leggerne una per numero (-> read_issues); le proposte di modifica (-> find_pulls). OUT: entries=[{number,title,state,repo}]."
+en = "SCOPO: list the issues of a repository by state, labels and date. PATTERN: find_issues(repo=\"owner/name\", state=\"open\"). NON: read one by number (-> read_issues); pull requests (-> find_pulls). OUT: entries=[{number,title,state,repo}]."
+
+[code]
+files  = ["find_issues.py"]
+
+[output]
+schema_inline = "{ok: bool, entries: Array<object>, used: int, available_total?: int, truncated?: bool, truncated_intentional?: bool, truncated_what?: str, source?: str, error_class?: str, error_code?: str, error?: str}"
+
+[args]
+type     = "object"
+required = ["repo"]
+
+[args.properties.repo]
+type        = "string"
+
+[args.properties.repo.description]
+it = "Repository in forma \"proprietario/nome\". Esempio: \"brunialti/metnos\"."
+en = "Repository as \"owner/name\". Example: \"brunialti/metnos\"."
+
+[args.properties.state]
+type        = "string"
+
+[args.properties.state.description]
+it = "Stato da filtrare o da impostare: 'open' o 'closed'."
+en = "State to filter or to set: 'open' or 'closed'."
+
+[args.properties.labels]
+type        = "array"
+
+[args.properties.labels.description]
+it = "Etichette, match esatto (dominio chiuso). Esempio: [\"bug\", \"urgente\"]."
+en = "Labels, exact match (closed domain). Example: [\"bug\", \"urgent\"]."
+
+[args.properties.since]
+type        = "string"
+
+[args.properties.since.description]
+it = "Solo elementi aggiornati dopo questa data ISO 8601. Esempio: \"2026-09-01\"."
+en = "Only items updated after this ISO 8601 date. Example: \"2026-09-01\"."
+
+[args.properties.limit]
+type        = "integer"
+
+[args.properties.limit.description]
+it = "Quanti elementi chiedere al fornitore. Default 50."
+en = "How many items to request from the provider. Default 50."
+
+[args.properties.top_k]
+type        = "integer"
+
+[args.properties.top_k.description]
+it = "Massimo di elementi restituiti. 0 = nessun limite. Default 100."
+en = "Maximum items returned. 0 = no limit. Default 100."
+
+[args.properties.client]
+type        = "string"
+enum        = ["github"]
+default     = "github"
+
+[args.properties.client.description]
+it = "Implementazione backend. Oggi solo 'github'. Il runtime lo sceglie: non va indicato nella richiesta."
+en = "Backend implementation. Today only 'github'. The runtime picks it: it is not stated in the request."
+
+# Modulo credenziali del dominio GitHub (ADR 0199). Sta qui, su una sola
+# lettura canonica del dominio, come `read_messages` lo porta per la posta:
+# `set_credentials` colleziona i moduli dal catalogo per TIPO, quindi una
+# dichiarazione basta e duplicarla su tredici strumenti sarebbe rumore.
+#
+# Perche' serve (RM-0011 F0-bis, chiuso il 21/9/2026): senza credenziale i
+# sedici contratti vecchi aprivano un modulo, i tredici nuovi si limitavano
+# a rifiutare. La parita' con Drive la fa questa sezione, non un ramo nel
+# codice. Le tre chiavi i18n esistevano gia' dal progetto originale e non
+# erano mai state collegate a un manifest.
+[credential_form]
+kind = "github"
+label_key = "MSG_CREDENTIAL_KIND_OPTION_GITHUB"
+binding_prefix = "github"
+detect_prefixes = ["github"]
+fields = [
+  { name = "token", required = true,  secret = true,  input = "credentials", prompt_key = "MSG_CREDENTIAL_FIELD_GITHUB_TOKEN" },
+  { name = "repo",  required = false, secret = false, input = "text",        prompt_key = "MSG_CREDENTIAL_FIELD_GITHUB_REPO" },
+]
+
+[[capabilities]]
+# L'autorita' e' legata al VALORE dell'argomento, non al nome dello
+# strumento (ADR 0193): rete e credenziali valgono solo per il
+# provider effettivamente scelto.
+name = "provider:access"
+hint = ["github"]
+when = { arg = "client", values = ["github"] }
+
+# Prove di nascita: solo cio' che si verifica SENZA rete. Un
+# contratto che rifiuta bene e' meta' del contratto (§2.8);
+# l'altra meta' richiede il fornitore vivo e non appartiene qui.
+
+[[tests]]
+name   = "repository_mancante_rifiutato"
+input  = { state = "open" }
+expect = { ok = false, error_contains = "Argomento obbligatorio mancante" }
+
+[[tests]]
+name   = "percorso_locale_non_e_un_repository"
+input  = { repo = "/var/log" }
+expect = { ok = false, error_contains = "Argomento obbligatorio mancante" }
+
+[[tests]]
+name   = "provider_sconosciuto_rifiutato"
+input  = { repo = "o/n", client = "gitlab" }
+expect = { ok = false, error_contains = "Operazione non applicabile per questo provider" }

@@ -25,6 +25,7 @@ sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
     if (p / "runtime" / "config.py").is_file()))
 from messages import get as _msg  # noqa: E402
 from executor_helpers import run_stdio  # noqa: E402
+from backends import load as _load_backend  # noqa: E402
 from backends.files import local  # noqa: E402
 
 _HANDLERS = {
@@ -33,13 +34,18 @@ _HANDLERS = {
 
 
 def _backend(client: str):
+    """Modulo del provider richiesto, o None se qui non e' disponibile.
+
+    Il valore di `client` lo possiede il runtime (`backend_resolver`), non
+    l'LLM e non l'executor. I provider non predefiniti sono caricati per
+    nome: aggiungerne uno e' un modulo sotto `backends/files/`, mai un ramo
+    qui. None risale come ERR_NOT_APPLICABLE (§2.8).
+    """
     backend = _HANDLERS.get(client)
-    if backend is None and client == "google_workspace":
-        try:
-            from backends.files import google_workspace as backend
-        except ImportError:
-            return None
-        _HANDLERS[client] = backend
+    if backend is None:
+        backend = _load_backend("files", client)
+        if backend is not None:
+            _HANDLERS[client] = backend
     return backend
 
 
@@ -78,8 +84,9 @@ def invoke(args):
             _msg("ERR_NOT_APPLICABLE", what=f"client '{client}'"),
             error_class="not_applicable",
         )
-    if client == "google_workspace":
-        return backend.delete(args)
+    # Un verbo solo per ogni provider: il dispatcher non sa chi sia il
+    # fornitore, quindi non puo' avere un nome di metodo per fornitore
+    # (RM-0011). Il backend gw esponeva `delete`, il locale `delete_files`.
     return backend.delete_files(args)
 
 

@@ -8,13 +8,11 @@ and Birth candidate preparation share these functions, so the derived
 from __future__ import annotations
 
 import hashlib
-import re
 import tomllib
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
-
-_DIGEST_RE = re.compile(r'(digest\s*=\s*")sha256:[^"]*(")')
+import tomlkit
 
 
 def code_digest_of_payloads(files: Sequence[str], payloads: Mapping[str, bytes]) -> str:
@@ -44,10 +42,17 @@ def compute_code_digest(manifest_dir: Path, code_files: Sequence[str]) -> str:
 
 
 def update_digest_in_text(manifest_text: str, new_digest: str) -> str:
-    """Replace only the derived digest field, preserving all other text."""
-    if not _DIGEST_RE.search(manifest_text):
-        raise ValueError("manifest non contiene una riga 'digest = \"sha256:...\"'")
-    return _DIGEST_RE.sub(rf'\g<1>{new_digest}\g<2>', manifest_text)
+    """Set the derived code digest, including a candidate's first preparation."""
+    document = tomlkit.parse(manifest_text)
+    code = document.get("code")
+    if not isinstance(code, Mapping):
+        raise ValueError("manifest_code_files_invalid")
+    # TOML structure, not a text pattern, owns the field. Other tables and
+    # comments may also contain a digest and must remain untouched.
+    if code.get("digest") == new_digest:
+        return manifest_text
+    code["digest"] = new_digest
+    return tomlkit.dumps(document)
 
 
 def prepare_manifest_digest_v1(

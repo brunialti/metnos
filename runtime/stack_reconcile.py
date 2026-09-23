@@ -1387,9 +1387,14 @@ class StackReconciler:
                 sign_first: bool = False, automatic: bool = False,
                 require_sidecar: str = "auto",
                 changed_only: bool = False,
-                source_root: Path | None = None) -> dict:
+                source_root: Path | None = None,
+                retirement: tuple[str, str, str] | None = None) -> dict:
         from services_registry import stack_scope
 
+        if retirement is not None:
+            if executor_names or sign_first or automatic or source_root is not None:
+                raise StackFailure("option_invalid", "retirement cannot be combined with admission")
+            changed_only = True
         names = executor_names or []
         locks = contextlib.ExitStack()
         boundaries = locks.enter_context(catalog_reconcile_lock(wait_s=2))
@@ -1424,10 +1429,10 @@ class StackReconciler:
                 # batch proves it published nothing, or the stack is ready.
                 pending.begin()
             try:
-                signed = verify_named_executors(
+                signed = ([retire_named_executor(*retirement)] if retirement else verify_named_executors(
                     names, sign_first=sign_first, changed_only=changed_only,
                     **({"source_root": source_root} if source_root is not None else {}),
-                )
+                ))
             except StackFailure as exc:
                 if pending is not None:
                     pending.record(exc.details.get("outcomes") or [])
@@ -1449,6 +1454,8 @@ class StackReconciler:
                     details={"detail": (result.stderr or result.stdout or "")[-300:]},
                 )
             ready = self.wait_ready(require_sidecar=require_sidecar)
+            if retirement is not None and retirement[0] in _catalog_names():
+                raise StackFailure("retirement_still_visible", "retired executor remains in the catalog")
             breaker.success()
             if pending is None:
                 return {"ok": True, "signed": signed, "readiness": ready}
@@ -1639,6 +1646,60 @@ class StackReconciler:
             return result
 
 
+def retire_named_executor(name: str, expected_generation: str, reason: str,
+                          *, plan_only: bool = False) -> dict:
+    """Authenticate one selected contract; keep all source and evidence files."""
+    from contract_store import ContractRetirement, current_contract, current_contract_name
+    from executor_birth_intent import submit_stack_reconcile_retirement
+    from manifest_inventory import inventory_manifests
+
+    if (not re.fullmatch(r"[a-z][a-z0-9_]*(?:-[a-z0-9]+)*", name)
+            or not re.fullmatch(r"sha256:[0-9a-f]{64}", expected_generation)
+            or not reason.strip() or len(reason) > 1024 or "\x00" in reason):
+        raise StackFailure("retirement_invalid", "invalid executor, generation or reason")
+    # The read-only plan does not bootstrap the runtime or open private keys.
+    context = _release_plan_context()
+    trusted = tuple(context.authorities.author.verifier_keys.items())
+    inventory = inventory_manifests()
+    if inventory.problems:
+        raise StackFailure("retirement_scope_invalid", "contract inventory is incomplete")
+    refs = [ref for ref in inventory.manifests
+            if current_contract_name(ref, trusted_publics=trusted) == name]
+    if len(refs) != 1:
+        raise StackFailure("retirement_scope_invalid", "executor is absent or ambiguous")
+    ref = refs[0]
+    current = current_contract(ref, trusted_publics=trusted)
+    retired = isinstance(current, ContractRetirement)
+    if retired:
+        matches = (current.previous_generation_id == expected_generation
+                   and current.actor == "stack_reconcile/retire"
+                   and current.reason == reason.strip())
+    else:
+        matches = (current.generation_id == expected_generation
+                   and current.parsed.get("name") == name)
+    if not matches:
+        raise StackFailure("retirement_conflict", "selected generation or retirement changed")
+    row = {"name": name, "origin": ref.origin.value,
+           "contract_id": ref.contract_id.value,
+           "previous_generation_id": expected_generation,
+           "outcome": "unchanged" if retired else "retire_planned"}
+    if plan_only:
+        return row
+    result = submit_stack_reconcile_retirement(ref.contract_id, expected_generation, reason)
+    reread = current_contract(ref, trusted_publics=trusted)
+    if (not isinstance(reread, ContractRetirement)
+            or reread.retirement_id != result.current_generation_id
+            or reread.previous_generation_id != expected_generation):
+        raise StackFailure("retirement_readback_failed", "retirement receipt does not match")
+    row.update(outcome="unchanged" if result.repeated else "retired",
+               retirement_id=reread.retirement_id)
+    # PendingActivation tracks only new effects. An exact retry still returns
+    # its receipt but owes no second restart unless a previous one failed.
+    if not result.repeated:
+        row["current_generation_id"] = reread.retirement_id
+    return row
+
+
 def _failure_payload(exc: StackFailure) -> dict:
     return {
         "schema_version": SCHEMA_VERSION,
@@ -1682,11 +1743,13 @@ def _parser() -> argparse.ArgumentParser:
         "command",
         choices=(
             "check", "wait-ready", "deploy", "watchdog", "inventory",
-            "catalog",
+            "catalog", "retire",
         ),
     )
     parser.add_argument("--executor", action="append", default=[])
     parser.add_argument("--source-root", type=Path)
+    parser.add_argument("--expected-generation")
+    parser.add_argument("--reason")
     parser.add_argument("--sign", action="store_true")
     parser.add_argument("--changed-only", action="store_true")
     parser.add_argument("--plan", action="store_true")
@@ -1712,11 +1775,13 @@ def main(argv: list[str] | None = None) -> int:
                 "option_invalid", "--source-root requires a named deploy admission or plan",
             )
         reconciler = None if args.plan else StackReconciler()
-        if args.command != "deploy" and (args.plan or args.changed_only or args.sign):
+        if args.command not in {"deploy", "retire"} and (args.plan or args.changed_only or args.sign):
             raise StackFailure(
                 "option_invalid",
-                "--plan, --changed-only and --sign belong to deploy only",
+                "these options require deploy or retire",
             )
+        if args.command != "retire" and (args.expected_generation or args.reason):
+            raise StackFailure("option_invalid", "retirement options require retire")
         if args.command == "check":
             out = reconciler.check(
                 require_sidecar=args.require_sidecar,
@@ -1753,6 +1818,17 @@ def main(argv: list[str] | None = None) -> int:
                     changed_only=args.changed_only,
                     **({"source_root": args.source_root} if args.source_root is not None else {}),
                 )
+        elif args.command == "retire":
+            if (len(args.executor) != 1 or not args.expected_generation or not args.reason
+                    or args.sign or args.changed_only):
+                raise StackFailure("option_invalid", "retire requires one executor, generation and reason")
+            retirement = (args.executor[0], args.expected_generation, args.reason)
+            if args.plan:
+                out = {"ok": True, "plan": [retire_named_executor(*retirement, plan_only=True)],
+                       "admission_attempted": False}
+            else:
+                out = reconciler.restart(retirement=retirement,
+                                         require_sidecar=args.require_sidecar)
         elif args.command == "watchdog":
             out = reconciler.watchdog(require_sidecar=args.require_sidecar)
         elif args.command == "inventory":

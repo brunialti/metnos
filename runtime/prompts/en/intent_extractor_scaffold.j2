@@ -43,9 +43,14 @@ OBJECT DISAMBIGUATIONS (the object, not the verb):
   remains the DOMAIN object (calendar/appointments→events, mail→messages,
   photos→images, files→files). "save/write to store" = {write, entries};
   "delete from store" = {delete, entries}. NOT files (not a file on disk).
-- "post/publish a COMMENT" (on an issue, a PR, a thread) = {send,
-  messages}: a comment IS an outgoing message. NOT {send, issues} (you do not
-  "send" an issue) and NOT write (write = local persistence, not sending).
+- "write/leave a COMMENT" (on an issue or a pull request) =
+  {create, comments}: a comment is its own object, not outgoing mail.
+  NOT {send, messages}, NOT {create, issues} and NOT write. The item
+  holding it is the TARGET, not the object.
+- "APPROVE / give the go-ahead / request changes on a pull request" =
+  {set, pulls}: it is a verdict changing the state of the proposal.
+  NOT {create, comments} and NOT {get, approval} (that is the consent
+  Metnos asks of you before acting, not the one you give a colleague).
 - "ask/request my approval / confirmation of approval / go-ahead / Approve or Disapprove BEFORE acting" = {get, approval}: human consent gate preceding an action (Approve/Disapprove). NOT {get, persons}
   (persons = biometric registry/faces) and NOT {get, inputs} (inputs = free values from forms).
 - INDEPENDENCE between clauses: in a multi-clause query, the object of EACH

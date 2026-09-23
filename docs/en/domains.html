@@ -17,8 +17,8 @@
 </style></head><body>
 <div class="shell">
 <nav><a href="index.html">← Metnos</a><a href="interface.html">The interface</a><a href="architecture/index.html">Architecture guide</a><a href="architecture/executor_catalog.html">Technical catalog</a><a href="architecture/tutor.html">How the Tutor works</a><a href="/it/domains.html" hreflang="it">IT</a></nav>
-<header class="hero"><div><div class="eyebrow">Operational reference · generated from the canonical catalog</div><h1>What you can ask Metnos, domain by domain</h1><p class="lead">This page describes every canonical domain in the Metnos vocabulary. Each example is a sentence you can use directly in chat: no executor names, arguments, or technical syntax are required.</p></div><div class="hero-note"><strong>27</strong><span>canonical domains</span><strong>107</strong><span>documented operations</span></div></header>
-<p class="contract">The reference structure comes from the runtime's 27 canonical objects; names and counts of distributed operations come from source manifests and builtin contracts. Actual availability requires Executor Birth admission. Installed skills may add providers and operations. Ask the Tutor to learn what is currently available on your instance.</p>
+<header class="hero"><div><div class="eyebrow">Operational reference · generated from the canonical catalog</div><h1>What you can ask Metnos, domain by domain</h1><p class="lead">This page describes every canonical domain in the Metnos vocabulary. Each example is a sentence you can use directly in chat: no executor names, arguments, or technical syntax are required.</p></div><div class="hero-note"><strong>29</strong><span>canonical domains</span><strong>120</strong><span>documented operations</span></div></header>
+<p class="contract">The reference structure comes from the runtime's 29 canonical objects; names and counts of distributed operations come from source manifests and builtin contracts. Actual availability requires Executor Birth admission. Installed skills may add providers and operations. Ask the Tutor to learn what is currently available on your instance.</p>
 <div class="jump"><a href="#group-content">Content and computation</a><a href="#group-composition">Result composition</a><a href="#group-communication">Communication and time</a><a href="#group-world">Web, places, and media</a><a href="#group-collaboration">Collaboration and providers</a><a href="#group-governance">Control and administration</a><a href="#group-system">Cross-domain utilities</a></div>
 
 <section class="domain-group" id="group-content">
@@ -104,8 +104,8 @@
 </article>
 <article class="domain-card" id="domain-tasks">
   <div class="domain-head"><div><span class="domain-key">tasks</span><h3>Scheduled tasks</h3></div><span class="count">6 documented operations</span></div>
-  <p>Creates, reads, changes, and deletes reminders or recurring requests and retains execution history. Skills may add remote tasks such as GitHub workflows.</p>
-  <p class="boundary"><strong>Boundary.</strong> A task executes a request at a time or trigger; it is not a calendar appointment.</p>
+  <p>Creates, reads, changes, and deletes reminders or recurring requests and retains execution history. It covers only the internal Metnos scheduler.</p>
+  <p class="boundary"><strong>Boundary.</strong> A task executes a request at a time or trigger; it is neither a calendar appointment nor a remote automation, which belongs to Remote automations.</p>
   <div class="examples"><p class="example"><span>Ask Metnos with a request like this example:</span>“Every Monday at 8, read unread mail from my work account and send me a summary on Telegram.”</p><p class="example"><span>Ask Metnos with a request like this example:</span>“Show the latest outcomes of the Photo backup task and any errors.”</p></div>
   <details><summary>Distributed operations (6)</summary><div class="operations"><code>create_tasks</code><code>delete_tasks</code><code>list_tasks</code><code>read_tasks</code><code>read_tasks_history</code><code>set_tasks</code></div></details>
 </article>
@@ -157,21 +157,35 @@
 </article></div>
 </section>
 <section class="domain-group" id="group-collaboration">
-  <div class="section-title"><span>03</span><div><h2>Collaboration and providers</h2><p>Extensions and shared work objects.</p></div></div>
+  <div class="section-title"><span>05</span><div><h2>Collaboration and providers</h2><p>Extensions and shared work objects.</p></div></div>
   <div class="domain-grid">
+<article class="domain-card" id="domain-workflows">
+  <div class="domain-head"><div><span class="domain-key">workflows</span><h3>Remote automations</h3></div><span class="count">2 documented operations</span></div>
+  <p>Starts automations already present in a repository and lists their runs with outcome, branch, and duration.</p>
+  <p class="boundary"><strong>Boundary.</strong> It is distinct from scheduled tasks, which are the internal Metnos scheduler, and from processes, which are software running on a machine.</p>
+  <div class="examples"><p class="example"><span>Ask Metnos with a request like this example:</span>“Start the ci.yml automation of acme/app on the main branch.”</p><p class="example"><span>Ask Metnos with a request like this example:</span>“Show the latest failed automation runs of acme/app.”</p></div>
+  <details><summary>Distributed operations (2)</summary><div class="operations"><code>find_workflows</code><code>run_workflows</code></div></details>
+</article>
 <article class="domain-card" id="domain-issues">
-  <div class="domain-head"><div><span class="domain-key">issues</span><h3>Issues</h3></div><span class="count">0 documented operations</span></div>
+  <div class="domain-head"><div><span class="domain-key">issues</span><h3>Issues</h3></div><span class="count">5 documented operations</span></div>
   <p>Through a provider skill, finds, reads, creates, updates, or closes project issues with state, labels, and assignees.</p>
   <p class="boundary"><strong>Boundary.</strong> The currently documented provider is GitHub and requires configured credentials; effective capabilities depend on the skills admitted by the instance.</p>
-  <div class="examples"><p class="example"><span>Ask Metnos with a request like this example:</span>“In the metnos repository, find open issues labelled bug created in the last week.”</p><p class="example"><span>Ask Metnos with a request like this example:</span>“Create an issue in acme/app with this title and assign it to Laura.”</p></div>
-  <details><summary>Distributed operations (0)</summary><div class="operations"><span class="extension">This domain becomes available when an admitted skill or provider installs its operations.</span></div></details>
+  <div class="examples"><p class="example"><span>Ask Metnos with a request like this example:</span>“In the metnos repository, find open issues labelled bug created in the last week.”</p><p class="example"><span>Ask Metnos with a request like this example:</span>“Create an issue in acme/app with this title and assign it to the release owner.”</p></div>
+  <details><summary>Distributed operations (5)</summary><div class="operations"><code>create_issues</code><code>delete_issues</code><code>find_issues</code><code>read_issues</code><code>set_issues</code></div></details>
 </article>
 <article class="domain-card" id="domain-pulls">
-  <div class="domain-head"><div><span class="domain-key">pulls</span><h3>Pull requests</h3></div><span class="count">0 documented operations</span></div>
+  <div class="domain-head"><div><span class="domain-key">pulls</span><h3>Pull requests</h3></div><span class="count">4 documented operations</span></div>
   <p>Finds and reads pull requests, diffs, and review state; updates or merges a request when the provider and mandate allow it.</p>
   <p class="boundary"><strong>Boundary.</strong> It is distinct from issues because it includes code changes, reviews, and merge. Mutating operations are gated.</p>
   <div class="examples"><p class="example"><span>Ask Metnos with a request like this example:</span>“Show open pull requests in acme/app that modify the security folder.”</p><p class="example"><span>Ask Metnos with a request like this example:</span>“Read PR 42&#x27;s diff, summarise the risks, and stop before merge.”</p></div>
-  <details><summary>Distributed operations (0)</summary><div class="operations"><span class="extension">This domain becomes available when an admitted skill or provider installs its operations.</span></div></details>
+  <details><summary>Distributed operations (4)</summary><div class="operations"><code>change_pulls</code><code>find_pulls</code><code>read_pulls</code><code>set_pulls</code></div></details>
+</article>
+<article class="domain-card" id="domain-comments">
+  <div class="domain-head"><div><span class="domain-key">comments</span><h3>Comments</h3></div><span class="count">2 documented operations</span></div>
+  <p>Writes and deletes comments on a provider&#x27;s discussion items: issues and pull requests.</p>
+  <p class="boundary"><strong>Boundary.</strong> A comment is not mail: it has no recipient, folder, or delivery. Approving or requesting changes on a pull request is a verdict instead, and belongs to Pull requests.</p>
+  <div class="examples"><p class="example"><span>Ask Metnos with a request like this example:</span>“On issue 42 of acme/app, write that the problem also shows on the new version.”</p><p class="example"><span>Ask Metnos with a request like this example:</span>“Delete the comment I left by mistake on pull request 7.”</p></div>
+  <details><summary>Distributed operations (2)</summary><div class="operations"><code>create_comments</code><code>delete_comments</code></div></details>
 </article>
 <article class="domain-card" id="domain-skills">
   <div class="domain-head"><div><span class="domain-key">skills</span><h3>Skills</h3></div><span class="count">2 documented operations</span></div>

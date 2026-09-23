@@ -857,6 +857,11 @@ class ImageIndexBuild:
                 "n_faces": counts["face"], "n_images_with_visual_emb": counts["image"],
                 "last_refresh_at": time.time(), "refreshed_count": total - reused - sum(error_counts.values()),
                 "index_created": not bool(self.context["previous_meta"]),
+                "completion_outcome": (
+                    "no_changes" if reused == total and not error_counts
+                    and self.context["previous_meta"].get("n_entries") == total
+                    else "changes_applied"
+                ),
                 "generation_files": _generation_files(temporary),
                 **(models or {}),
             }

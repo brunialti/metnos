@@ -1,0 +1,96 @@
+# Manifest dell'executor `run_workflows` — Metnos v1.1
+# RM-0011 F2: oggetto `workflows`, approvato da Roberto il 20/9/2026.
+
+manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
+
+name        = "run_workflows"
+version     = "0.1.0"
+timeout_s   = 60
+platforms   = ["linux"]
+author      = "Roberto Brunialti"
+affinity    = [
+    "avvia l'automazione", "lancia la pipeline", "esegui il workflow", "dispatch workflow", "fai partire la build", "attiva actions", "scatena l'esecuzione"
+]
+revertible      = false
+
+[execution]
+effect            = "mutating"
+parallelism_class = 0
+resource_class    = "network_io"
+concurrency_key   = "none"
+
+[description]
+it = "SCOPO: avvia una automazione gia' presente nel repository; NON annullabile. PATTERN: run_workflows(repo=\"owner/name\", workflow=\"ci.yml\", ref=\"main\"). NON: i promemoria interni (-> create_tasks); software locale (-> run_processes). OUT: results=[{run_id,workflow,ref,repo}]."
+en = "SCOPO: start an automation already present in the repository; NOT reversible. PATTERN: run_workflows(repo=\"owner/name\", workflow=\"ci.yml\", ref=\"main\"). NON: internal reminders (-> create_tasks); local software (-> run_processes). OUT: results=[{run_id,workflow,ref,repo}]."
+
+[code]
+files  = ["run_workflows.py"]
+
+[output]
+schema_inline = "{ok: bool, results: Array<object>, used: int, ok_count?: int, fail_count?: int, failed?: Array<object>, n_created?: int, n_deleted?: int, n_updated?: int, n_changed?: int, n_started?: int, issue_ids?: Array<int>, comment_ids?: Array<int>, source?: str, partial?: bool, error_class?: str, error_code?: str, error?: str}"
+
+[args]
+type     = "object"
+required = ["repo", "workflow"]
+
+[args.properties.repo]
+type        = "string"
+
+[args.properties.repo.description]
+it = "Repository in forma \"proprietario/nome\". Esempio: \"brunialti/metnos\"."
+en = "Repository as \"owner/name\". Example: \"brunialti/metnos\"."
+
+[args.properties.workflow]
+type        = "string"
+
+[args.properties.workflow.description]
+it = "Nome del file dell'automazione, match esatto. Esempio: \"ci.yml\"."
+en = "Automation file name, exact match. Example: \"ci.yml\"."
+
+[args.properties.ref]
+type        = "string"
+
+[args.properties.ref.description]
+it = "Ramo o tag su cui eseguire. Esempio: \"main\"."
+en = "Branch or tag to run on. Example: \"main\"."
+
+[args.properties.inputs]
+type        = "object"
+
+[args.properties.inputs.description]
+it = "Parametri dell'automazione, coppie nome e valore."
+en = "Automation parameters, name and value pairs."
+
+[args.properties.client]
+type        = "string"
+enum        = ["github"]
+default     = "github"
+
+[args.properties.client.description]
+it = "Implementazione backend. Oggi solo 'github'. Il runtime lo sceglie: non va indicato nella richiesta."
+en = "Backend implementation. Today only 'github'. The runtime picks it: it is not stated in the request."
+
+[[capabilities]]
+# L'autorita' e' legata al VALORE dell'argomento, non al nome dello
+# strumento (ADR 0193).
+name = "provider:access"
+hint = ["github"]
+when = { arg = "client", values = ["github"] }
+
+# Prove di nascita: solo cio' che si verifica SENZA rete.
+
+[[tests]]
+name   = "repository_mancante_rifiutato"
+input  = { workflow = "ci.yml" }
+expect = { ok = false, error_contains = "Argomento obbligatorio mancante" }
+
+[[tests]]
+name   = "automazione_mancante_rifiutata"
+input  = { repo = "o/n" }
+expect = { ok = false, error_contains = "Argomento obbligatorio mancante" }
+
+[[tests]]
+name   = "provider_sconosciuto_rifiutato"
+input  = { repo = "o/n", workflow = "ci.yml", client = "gitlab" }
+expect = { ok = false, error_contains = "Operazione non applicabile per questo provider" }

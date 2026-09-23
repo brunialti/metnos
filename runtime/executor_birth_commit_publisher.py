@@ -299,6 +299,33 @@ class _BirthCommitPublisher:
 
         return catalog_admission_lock(store_root=self._store_root)
 
+    def retire(self, contract_id, expected_generation_id: str, reason: str):
+        """Retire one exact revision with the existing sealed author authority.
+
+        The store owns the signed receipt, compare-and-swap, durable audit and
+        authenticated readback. Neither source files nor history are removed.
+        """
+        from audit_jsonl import append_unique_jsonl
+        from contract_store import retire
+        from manifest_inventory import ContractId, prospective_manifest_ref
+        import config as C
+
+        if type(contract_id) is not ContractId:
+            raise BirthCommitLinkError("retirement_contract_invalid")
+        if (self._context_selection is not None
+                and self._context_selection.staged_reattestation_only):
+            raise BirthCommitLinkError("birth_context_changed")
+        return retire(
+            prospective_manifest_ref(contract_id),
+            expected_generation_id=expected_generation_id,
+            actor="stack_reconcile/retire", reason=reason,
+            private_key=self._author_private, trusted_publics=self._author_ring,
+            audit_sink=lambda event: append_unique_jsonl(
+                C.PATH_USER_STATE / "contract-publications.audit.jsonl", event),
+            registry_reconciler=self._registry_reconciler,
+            store_root=self._store_root,
+        )
+
     def authenticate_quarantine_predecessor(self, execution):
         """Read the exact admission with the same authority used at dispatch."""
         from contract_store import _authenticate_execution_binding_with_receipt

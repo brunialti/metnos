@@ -1,0 +1,105 @@
+# Manifest dell'executor `find_workflows` — Metnos v1.1
+# RM-0011 F2: oggetto `workflows`, approvato da Roberto il 20/9/2026.
+
+manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
+
+name        = "find_workflows"
+version     = "0.1.0"
+timeout_s   = 60
+platforms   = ["linux"]
+author      = "Roberto Brunialti"
+affinity    = [
+    "esecuzioni dell'automazione", "workflow runs", "stato della pipeline", "build fallite", "ultime esecuzioni", "elenca le run", "esito della ci"
+]
+revertible      = false
+
+[execution]
+effect            = "read_only"
+parallelism_class = 0
+resource_class    = "network_io"
+concurrency_key   = "none"
+
+[description]
+it = "SCOPO: elenca le esecuzioni delle automazioni per stato e ramo. PATTERN: find_workflows(repo=\"owner/name\", status=\"failure\"). NON: avviarne una (-> run_workflows); i task interni (-> read_tasks). OUT: entries=[{run_id,workflow,status,branch,repo}]."
+en = "SCOPO: list automation runs by state and branch. PATTERN: find_workflows(repo=\"owner/name\", status=\"failure\"). NON: start one (-> run_workflows); internal tasks (-> read_tasks). OUT: entries=[{run_id,workflow,status,branch,repo}]."
+
+[code]
+files  = ["find_workflows.py"]
+
+[output]
+schema_inline = "{ok: bool, entries: Array<object>, used: int, available_total?: int, truncated?: bool, truncated_intentional?: bool, truncated_what?: str, source?: str, error_class?: str, error_code?: str, error?: str}"
+
+[args]
+type     = "object"
+required = ["repo"]
+
+[args.properties.repo]
+type        = "string"
+
+[args.properties.repo.description]
+it = "Repository in forma \"proprietario/nome\". Esempio: \"brunialti/metnos\"."
+en = "Repository as \"owner/name\". Example: \"brunialti/metnos\"."
+
+[args.properties.status]
+type        = "string"
+
+[args.properties.status.description]
+it = "Stato da filtrare: 'queued', 'in_progress', 'completed', 'failure', 'success'."
+en = "State to filter: 'queued', 'in_progress', 'completed', 'failure', 'success'."
+
+[args.properties.workflow_id]
+type        = "string"
+
+[args.properties.workflow_id.description]
+it = "Automazione di cui elencare le esecuzioni, match esatto."
+en = "Automation whose runs are listed, exact match."
+
+[args.properties.branch]
+type        = "string"
+
+[args.properties.branch.description]
+it = "Ramo di cui elencare le esecuzioni, match esatto."
+en = "Branch whose runs are listed, exact match."
+
+[args.properties.limit]
+type        = "integer"
+
+[args.properties.limit.description]
+it = "Quante esecuzioni chiedere al fornitore. Default 50."
+en = "How many runs to request from the provider. Default 50."
+
+[args.properties.top_k]
+type        = "integer"
+
+[args.properties.top_k.description]
+it = "Massimo di esecuzioni restituite. 0 = nessun limite. Default 100."
+en = "Maximum runs returned. 0 = no limit. Default 100."
+
+[args.properties.client]
+type        = "string"
+enum        = ["github"]
+default     = "github"
+
+[args.properties.client.description]
+it = "Implementazione backend. Oggi solo 'github'. Il runtime lo sceglie: non va indicato nella richiesta."
+en = "Backend implementation. Today only 'github'. The runtime picks it: it is not stated in the request."
+
+[[capabilities]]
+# L'autorita' e' legata al VALORE dell'argomento, non al nome dello
+# strumento (ADR 0193).
+name = "provider:access"
+hint = ["github"]
+when = { arg = "client", values = ["github"] }
+
+# Prove di nascita: solo cio' che si verifica SENZA rete.
+
+[[tests]]
+name   = "repository_mancante_rifiutato"
+input  = { status = "failure" }
+expect = { ok = false, error_contains = "Argomento obbligatorio mancante" }
+
+[[tests]]
+name   = "provider_sconosciuto_rifiutato"
+input  = { repo = "o/n", client = "gitlab" }
+expect = { ok = false, error_contains = "Operazione non applicabile per questo provider" }

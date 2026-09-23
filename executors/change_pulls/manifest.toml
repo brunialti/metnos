@@ -1,0 +1,101 @@
+# Manifest dell'executor `change_pulls` — Metnos v1.1
+# RM-0011 F1: il fornitore e' un ARGOMENTO, non un suffisso nel nome.
+
+manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
+
+name        = "change_pulls"
+version     = "0.1.0"
+timeout_s   = 60
+platforms   = ["linux"]
+author      = "Roberto Brunialti"
+affinity    = [
+    "unisci pull request", "merge pull request", "merge pr", "squash", "rebase", "fondi ramo", "unione ramo"
+]
+revertible      = false
+
+[execution]
+effect            = "mutating"
+parallelism_class = 0
+resource_class    = "network_io"
+concurrency_key   = "none"
+
+[description]
+it = "SCOPO: unisce una proposta di modifica al ramo di destinazione; NON annullabile. PATTERN: change_pulls(repo=\"owner/name\", number=7, merge_method=\"squash\"). NON: cambiarne i dati (-> set_pulls); chiuderla senza unire (-> set_pulls). OUT: results=[{number,merged,sha,repo}]."
+en = "SCOPO: merge a pull request into its target branch; NOT reversible. PATTERN: change_pulls(repo=\"owner/name\", number=7, merge_method=\"squash\"). NON: change its data (-> set_pulls); close it without merging (-> set_pulls). OUT: results=[{number,merged,sha,repo}]."
+
+[code]
+files  = ["change_pulls.py"]
+
+[output]
+schema_inline = "{ok: bool, results: Array<object>, used: int, ok_count?: int, fail_count?: int, failed?: Array<object>, n_created?: int, n_deleted?: int, n_updated?: int, n_changed?: int, n_started?: int, issue_ids?: Array<int>, comment_ids?: Array<int>, source?: str, partial?: bool, error_class?: str, error_code?: str, error?: str}"
+
+[args]
+type     = "object"
+required = ["repo", "number"]
+
+[args.properties.repo]
+type        = "string"
+
+[args.properties.repo.description]
+it = "Repository in forma \"proprietario/nome\". Esempio: \"brunialti/metnos\"."
+en = "Repository as \"owner/name\". Example: \"brunialti/metnos\"."
+
+[args.properties.number]
+type        = "integer"
+
+[args.properties.number.description]
+it = "Numero dell'elemento nel repository. Esempio: 42."
+en = "Item number inside the repository. Example: 42."
+
+[args.properties.merge_method]
+type        = "string"
+
+[args.properties.merge_method.description]
+it = "Come unire: 'merge', 'squash' o 'rebase'."
+en = "How to merge: 'merge', 'squash' or 'rebase'."
+
+[args.properties.commit_title]
+type        = "string"
+
+[args.properties.commit_title.description]
+it = "Titolo del commit di unione."
+en = "Title of the merge commit."
+
+[args.properties.commit_message]
+type        = "string"
+
+[args.properties.commit_message.description]
+it = "Corpo del commit di unione."
+en = "Body of the merge commit."
+
+[args.properties.client]
+type        = "string"
+enum        = ["github"]
+default     = "github"
+
+[args.properties.client.description]
+it = "Implementazione backend. Oggi solo 'github'. Il runtime lo sceglie: non va indicato nella richiesta."
+en = "Backend implementation. Today only 'github'. The runtime picks it: it is not stated in the request."
+
+[[capabilities]]
+# L'autorita' e' legata al VALORE dell'argomento, non al nome dello
+# strumento (ADR 0193): rete e credenziali valgono solo per il
+# provider effettivamente scelto.
+name = "provider:access"
+hint = ["github"]
+when = { arg = "client", values = ["github"] }
+
+# Prove di nascita: solo cio' che si verifica SENZA rete. Un
+# contratto che rifiuta bene e' meta' del contratto (§2.8);
+# l'altra meta' richiede il fornitore vivo e non appartiene qui.
+
+[[tests]]
+name   = "numero_mancante_rifiutato"
+input  = { repo = "o/n" }
+expect = { ok = false, error_contains = "Argomento obbligatorio mancante" }
+
+[[tests]]
+name   = "provider_sconosciuto_rifiutato"
+input  = { repo = "o/n", number = 1, client = "gitlab" }
+expect = { ok = false, error_contains = "Operazione non applicabile per questo provider" }

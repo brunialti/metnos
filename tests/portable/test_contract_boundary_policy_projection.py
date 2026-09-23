@@ -33,8 +33,10 @@ TOOL = ROOT / "internal" / "tools" / "render_contract_boundary_policy.py"
 # `executor_lifecycle_state`).  Measured against the payload at that commit,
 # the whole delta is additive and confined to those four: no api, module or
 # source owner was removed or altered.
+# 23/9/2026: the approved exact-generation retirement adds only the publisher's
+# retirement-only grant; existing grants and authority boundaries are unchanged.
 GOLDEN_DIGEST_V1 = (
-    "sha256:af3a2c83b3fcc3c483386f9f3d198774fa55f59d554cf3a759c95c0aa75f5e4a"
+    "sha256:f83f8b8dbe9f57d2400941e50ca91f9f862deb67f78fb11fc84393bfe27b4a65"
 )
 
 POLICY_NAMES = (

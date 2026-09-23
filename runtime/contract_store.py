@@ -1873,6 +1873,30 @@ def current_contract(
     )
 
 
+def current_contract_name(
+    ref: ManifestRef, *, trusted_publics: Iterable[TrustedPublic],
+    store_root: Path | str | None = None,
+) -> str:
+    """Read a signed name without opening executable payloads.
+
+    A tombstone retains the name in its immediate predecessor. This is an
+    identity lookup, not an execution check or a scan of historical releases.
+    """
+    trusted = _trusted_public_tuple(trusted_publics)
+    revision = _authenticate_revision_for_commit(
+        ref, current_revision_id(ref, store_root=store_root),
+        trusted_publics=trusted, store_root=store_root,
+    )
+    payloads = (_load_generation_for_commit(
+        ref, revision.previous_generation_id, trusted_publics=trusted,
+        store_root=_store_root(store_root),
+    ) if isinstance(revision, ContractRetirement) else revision)
+    name = tomllib.loads(payloads["manifest.toml"].decode("utf-8")).get("name")
+    if not isinstance(name, str) or not name.strip():
+        raise ContractStoreError("published_name_invalid", ref.contract_id.value)
+    return name
+
+
 def current_manifest(
     ref: ManifestRef,
     *,

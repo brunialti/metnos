@@ -27,12 +27,9 @@ sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
     if (p / "runtime" / "config.py").is_file()))
 from messages import get as _msg  # noqa: E402
 from executor_helpers import run_stdio  # noqa: E402
+from backends import load as _load_backend  # noqa: E402
 from backends.files import local  # noqa: E402
 
-# `google_workspace` è import LAZY (C7 Area-2 CP2): a module-load il modulo gw
-# trascina skill_wrapper/_google_api_runner (SERVER-only) → sul DEVICE questo
-# import farebbe ModuleNotFoundError per OGNI invocazione, anche client=local.
-# Il device non lo carica mai; sul server il primo uso gw lo carica una volta.
 
 _HANDLERS = {
     "local": local,
@@ -40,18 +37,19 @@ _HANDLERS = {
 
 
 def _backend(client: str):
-    b = _HANDLERS.get(client)
-    if b is None and client == "google_workspace":
-        try:
-            from backends.files import google_workspace as _gw  # lazy, server-only
-        except ImportError:
-            # DEVICE: il modulo gw (e la sua chiusura skill_wrapper/…) non è
-            # nello shim → errore STRUTTURATO a valle (ERR_NOT_APPLICABLE),
-            # mai un traceback grezzo al runner (§2.8).
-            return None
-        _HANDLERS[client] = _gw
-        b = _gw
-    return b
+    """Modulo del provider richiesto, o None se qui non e' disponibile.
+
+    Il valore di `client` lo possiede il runtime (`backend_resolver`), non
+    l'LLM e non l'executor. I provider non predefiniti sono caricati per
+    nome: aggiungerne uno e' un modulo sotto `backends/files/`, mai un ramo
+    qui. None risale come ERR_NOT_APPLICABLE (§2.8).
+    """
+    backend = _HANDLERS.get(client)
+    if backend is None:
+        backend = _load_backend("files", client)
+        if backend is not None:
+            _HANDLERS[client] = backend
+    return backend
 
 
 def invoke(args):

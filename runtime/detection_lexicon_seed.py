@@ -255,9 +255,15 @@ _PREFILTER_OBJECT_HINTS = {
                   "introvertiva", "introvertive", "introvertivo", "review",
                   "candidato", "candidati", "candidate", "candidates",
                   "dedupe", "generalize", "specialize", "pending"],
+    "issues": ["issue", "issues", "ticket", "segnalazione", "segnalazioni"],
+    "pulls": ["pull", "pulls", "pull request", "pr", "merge request"],
+    "comments": ["commento", "commenti", "comment", "comments"],
+    "workflows": ["workflow", "workflows", "pipeline"],
 }
 
 _PREFILTER_OBJECT_EN = frozenset({
+    "issue", "issues", "ticket", "pull", "pulls", "pull request", "pr",
+    "merge request", "comment", "comments", "workflow", "workflows", "pipeline",
     "mail", "email", "imap", "inbox", "junk", "spam", "trash", "archive",
     "subject", "from", "file", "files", "pdf", "csv", "xlsx", "txt",
     "photo", "photos", "image", "images", "picture", "pictures", "jpg",

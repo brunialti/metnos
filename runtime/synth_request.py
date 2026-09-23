@@ -139,7 +139,7 @@ def _install_synthesized(run, intent, user_query):
     import json as _json
     import os as _os
     cur_lang = _os.environ.get("METNOS_LANG", "it")
-    _generated_contract = generated_contract_context(lifecycle="synthesized")
+    _generated_contract = generated_contract_context(lifecycle="synthesized", origin="synthesized")
     lines = [
         f'# Manifest synthesized — Metnos synt multistage {time.strftime("%Y-%m-%d")}',
         '',

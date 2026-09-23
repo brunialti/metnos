@@ -409,7 +409,14 @@ def read(args: dict) -> dict:
     """Legge il CONTENUTO di 1+ file Drive per id (vettoriale §2.1): i Google-native
     (Doc/Sheet/Slides) sono ESPORTATI a testo, i binari scaricati. Ogni entry porta
     `content` (testo inline) + metadata. Era metadata-only (`drive get`) fino al
-    4/7/2026: `read` non tornava il testo dei Doc (bug «scrive-ma-non-legge»)."""
+    4/7/2026: `read` non tornava il testo dei Doc (bug «scrive-ma-non-legge»).
+
+    Con una destinazione locale (`dst_path`/`dst_dir`) la lettura diventa uno
+    scaricamento vero. La distinzione la conosce QUESTO backend, non il
+    dispatcher: prima era un `if client == "google_workspace"` dentro
+    read_files, cioe' il nome di un fornitore dentro un executor (RM-0011)."""
+    if isinstance(args, dict) and (args.get("dst_path") or args.get("dst_dir")):
+        return download(args)
     if not isinstance(args, dict):
         return {"ok": False, "error_code": "ERR_ARG_INVALID",
                 "error": _msg("ERR_ARG_INVALID", arg="args", reason="must be an object"),
@@ -527,7 +534,7 @@ def write(args: dict) -> dict:
 # DELETE  (trash o permanent)
 # --------------------------------------------------------------------------
 
-def delete(args: dict) -> dict:
+def delete_files(args: dict) -> dict:
     """Cancella 1+ file Drive. Default `trash` (reversibile);
     `permanent: true` per cancellazione definitiva."""
     if not isinstance(args, dict):

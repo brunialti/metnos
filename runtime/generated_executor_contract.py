@@ -35,23 +35,37 @@ class GeneratedContractError(ValueError):
     pass
 
 
-def generated_header_toml(*, lifecycle: str = "active") -> str:
-    """Render root-level standard identity for a generated manifest."""
+def generated_header_toml(*, lifecycle: str = "active",
+                          origin: str | None = None) -> str:
+    """Render root-level standard identity for a generated manifest.
+
+    Optional origin survives lifecycle promotion, so readers do not infer
+    provenance from file placement. Imported skills already declare their
+    origin through provenance.imported_from and need no redundant default.
+    """
     if lifecycle not in GENERATED_LIFECYCLES:
         raise GeneratedContractError(f"unsupported generated lifecycle: {lifecycle}")
+    if origin is not None:
+        from executor_metadata import SOURCE_KINDS
+        if origin not in SOURCE_KINDS:
+            raise GeneratedContractError(f"unsupported generated origin: {origin}")
     lines = [
         f'manifest_format = "{SUPPORTED_MANIFEST_FORMAT}"',
         f'executor_standard = "{STANDARD_ID}"',
     ]
+    if origin is not None:
+        lines.append(f'origin = "{origin}"')
     if lifecycle != "active":
         lines.append(f'lifecycle = "{lifecycle}"')
     return "\n".join(lines)
 
 
-def generated_contract_context(*, lifecycle: str = "active") -> dict[str, str]:
+def generated_contract_context(*, lifecycle: str = "active",
+                               origin: str | None = None) -> dict[str, str]:
     """Context fragments consumed by deterministic and LLM-assisted renderers."""
     return {
-        "generated_header_toml": generated_header_toml(lifecycle=lifecycle),
+        "generated_header_toml": generated_header_toml(lifecycle=lifecycle,
+                                                       origin=origin),
         "execution_policy_toml": generated_execution_policy_toml(),
     }
 

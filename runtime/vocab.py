@@ -148,6 +148,15 @@ OBJECTS = (
     # da rilanciare al fire, grace window. Sezione planner `scheduled_tasks`
     # gated automaticamente via `_OBJECT_TO_SECTIONS['tasks']`.
     "tasks",
+    # Workflows (RM-0011 F2, approvato da Roberto il 20/9/2026): automazione
+    # REMOTA e le sue esecuzioni, per esempio GitHub Actions o una pipeline
+    # GitLab. Distinto da `tasks`, che e' lo scheduler v2 interno con la sua
+    # grammatica di trigger e la sua storia, e da `processes`, che e' software
+    # locale in esecuzione. Prima di questo token una esecuzione remota si
+    # presentava come un promemoria interno (`create_tasks_github`), che e' un
+    # difetto di modellazione, non di etichettatura. Il ponte verso il
+    # fornitore usa gia' questo nome: `github_api.py workflows dispatch`.
+    "workflows",
     # Inputs: raccolta strutturata di valori forniti dall'utente in
     # risposta a un dialogo (ADR 0090, 4-5/5/2026). Plurale invariante.
     # Astratto come `signatures`: oggetto-strumento per la raccolta
@@ -183,9 +192,18 @@ OBJECTS = (
     # proprieta' che romperebbero l'invariante schema §2.6 se collassate:
     # diff sempre presente, azione `merge`, review strutturate
     # (approve/request_changes/comment). 6 executor `*_pulls_github`
-    # (find/read/create/set/change/delete). Le review sono una sub-forma di
-    # `messages` (send_messages_github con `review_event`), non un OBJECT.
+    # (find/read/create/set/change/delete). Le review NON sono commenti:
+    # cambiano lo stato della proposta e vivono in `set_pulls` (RM-0011 F2).
     "pulls",
+    # Comments (RM-0011 F2, approvato da Roberto il 20/9/2026): il commento
+    # su un elemento di discussione, issue o proposta di modifica che sia.
+    # Non e' un `messages`: quello e' posta, con mittente, cartella e thread
+    # di consegna. Misurato prima di introdurlo: nel mondo senza questo token
+    # «cancella il commento 991» non ha casa, perche' l'unica candidata
+    # (`move_messages`) porta il verbo sbagliato e perde dieci punti di
+    # bonus di verbo che nessuna affinity recupera. Prove:
+    # `internal/reports/misura-affinity-commenti-e-stopword-20260920.md`.
+    "comments",
     # Calendars (3/6/2026): CALENDARIO-contenitore (non l'evento). Distinto da
     # `events` (item) per §2.6: un calendario AGGREGA eventi, ha id/summary/
     # timezone propri; create/list/delete operano sul container, non sull'evento.
@@ -430,7 +448,8 @@ QUALIFIER_OBJECT_COMPAT = {
     # read_files_github=contents, list_dirs_github=contents single-dir) li
     # espongono. Coerente con l'asse provider §2.2 (backend non-default nel
     # qualifier). Origine: turn 6ec02267 «quanti file su github nel repo».
-    "github": frozenset({"issues", "pulls", "messages", "tasks", "files", "dirs"}),
+    "github": frozenset({"issues", "pulls", "comments", "workflows",
+                         "messages", "tasks", "files", "dirs"}),
     # Provider Google Workspace (ADR 0123): gmail (messages), calendar (events,
     # calendars), drive (files, dirs), contacts (contacts, persons). Asse provider §2.2,
     # gemello di github. Object ammessi = i domini coperti dalla skill.
@@ -609,6 +628,10 @@ OBJECT_DEFAULT_MUTATING_VERB: dict[str, str | None] = {
     # spuria. Completano la tabella vs OBJECTS (drift 21/6).
     "issues":     None,
     "pulls":      None,
+    # RM-0011 F2: «un commento sulla issue 42» e «il workflow di notte» sono
+    # menzioni, non ordini. Stessa scelta di issues/pulls, nessuna eccezione.
+    "comments":   None,
+    "workflows":  None,
     "calendars":  None,
     # sites: una mention nuda («il sito X») NON implica un verbo mutante (open e
     # login vanno chiesti esplicitamente) → None, niente orphan-injection.
@@ -1003,6 +1026,8 @@ _OBJECT_TO_SECTIONS: dict[str, tuple[str, ...]] = {
     "skills": (),                 # amministrazione catalogo skill
     "issues": (),                 # provider github, no sezione planner dedicata
     "pulls": (),                  # provider github, no sezione planner dedicata
+    "comments": (),               # provider github, no sezione planner dedicata
+    "workflows": (),              # provider github, no sezione planner dedicata
     "calendars": (),              # provider google_workspace, core-only
     # sites (F1): core-only per ora. Gli executor open/login/read/close_sites
     # sono offerti via affinity nel prefilter; una sezione planner dedicata

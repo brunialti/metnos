@@ -139,12 +139,19 @@ en = "Offset (in bytes) from which to start reading. Default 0 (start). Combined
 
 [args.properties.client]
 type        = "string"
-enum        = ["local", "google_workspace"]
+enum        = ["local", "google_workspace", "github"]
 default     = "local"
 
 [args.properties.client.description]
-it = "Implementazione backend. 'local' = filesystem locale (default). 'google_workspace' = Google Drive: legge file/Google Doc/Sheet su Drive (export a testo), richiede pairing Google."
-en = "Backend implementation. 'local' = local filesystem (default). 'google_workspace' = Google Drive: reads files/Google Docs/Sheets on Drive (export to text), requires Google pairing."
+it = "Implementazione backend. 'local' = filesystem locale (default). 'google_workspace' = Google Drive: legge file/Google Doc/Sheet su Drive (export a testo), richiede pairing Google. 'github' = file di un repository: richiede 'repo' come \"proprietario/nome\"."
+en = "Backend implementation. 'local' = local filesystem (default). 'google_workspace' = Google Drive: reads files/Google Docs/Sheets on Drive (export to text), requires Google pairing. 'github' = files in a repository: needs 'repo' as \"owner/name\"."
+
+[args.properties.repo]
+type = "string"
+
+[args.properties.repo.description]
+it = "Repository in forma \"proprietario/nome\". Vale solo con client='github'. Esempio: \"brunialti/metnos\"."
+en = "Repository as \"owner/name\". Only with client='github'. Example: \"brunialti/metnos\"."
 
 [output]
 schema_inline = """
@@ -194,6 +201,14 @@ hint = ["~/notes/**", "/tmp/**"]
 name = "provider:access"
 hint = ["google-workspace"]
 when = { arg = "client", values = ["google_workspace"] }
+
+[[capabilities]]
+# L'autorita' e' legata al VALORE dell'argomento, non al nome dello
+# strumento (ADR 0193): rete, credenziali e destinazione valgono solo
+# quando il provider e' effettivamente quello scelto.
+name = "provider:access"
+hint = ["github"]
+when = { arg = "client", values = ["github"] }
 
 [[tests]]
 name     = "legge_file_utf8_esistente"

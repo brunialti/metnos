@@ -31,6 +31,37 @@ def _gw_creds() -> bool:
         return False
 
 
+def _github_creds() -> bool:
+    """Token GitHub presente? (files/dirs provider github).
+
+    Stessa forma di :func:`_gw_creds`: una lettura del deposito credenziali,
+    nessuna chiamata di rete. `resolve_github_token` e' la SoT unica
+    (env > cred-store > gh CLI).
+    """
+    try:
+        import skill_credentials as _sc
+        return bool(_sc.resolve_github_token())
+    except Exception:
+        return False
+
+
+_CREDENTIALS = {
+    "google_workspace": _gw_creds,
+    "github": _github_creds,
+}
+
+
+def _provider_available(provider: str) -> bool:
+    """Disponibilita' di un provider: una tabella sola, nessun ramo per object.
+
+    Un provider senza voce in `_CREDENTIALS` e' sempre disponibile (il locale);
+    gli altri lo sono quando la credenziale c'e'. Aggiungere un fornitore e'
+    una riga qui, non un lambda per ogni object.
+    """
+    probe = _CREDENTIALS.get(provider)
+    return True if probe is None else bool(probe())
+
+
 # ── DEFINE: registry per-object ───────────────────────────────────────────────
 # arg        : nome dell'arg di backend nel manifest
 # providers  : ordine di PREFERENZA (il primo disponibile vince come default)
@@ -40,7 +71,7 @@ OBJECT_BACKENDS: dict[str, dict] = {
     "events": {
         "arg": "client",
         "providers": ["google_workspace", "local"],
-        "available": lambda p: _gw_creds() if p == "google_workspace" else True,
+        "available": _provider_available,
         "alias_keys": {
             "local": "events.local",
             "google_workspace": "events.google_workspace",
@@ -48,32 +79,65 @@ OBJECT_BACKENDS: dict[str, dict] = {
     },
     "files": {
         "arg": "client",
-        # local = DEFAULT (self-hosted §10.3); google_workspace opt-in solo se
-        # nominato esplicitamente (alias) — vale per find/read/write/... files.
-        "providers": ["local", "google_workspace"],
-        "available": lambda p: _gw_creds() if p == "google_workspace" else True,
+        # local = DEFAULT (self-hosted §10.3); i provider remoti sono opt-in e
+        # raggiungibili solo se NOMINATI esplicitamente (alias) — vale per
+        # find/read/write/... files. RM-0011: github e' un provider di files
+        # come Drive, non una famiglia di executor col fornitore nel nome.
+        "providers": ["local", "google_workspace", "github"],
+        "available": _provider_available,
         "alias_keys": {
             "google_workspace": "files.google_workspace",
+            "github": "files.github",
         },
+    },
+    # RM-0011 F1: `issues` e `pulls` sono gia' oggetti del vocabolario
+    # chiuso (ADR 0141). Il fornitore appartiene all'argomento, non al nome
+    # dello strumento. Un solo provider oggi; un secondo sistema di
+    # versionamento si aggiunge qui, non con altri nove executor.
+    "issues": {
+        "arg": "client",
+        "providers": ["github"],
+        "available": _provider_available,
+        "alias_keys": {"github": "issues.github"},
+    },
+    "pulls": {
+        "arg": "client",
+        "providers": ["github"],
+        "available": _provider_available,
+        "alias_keys": {"github": "pulls.github"},
+    },
+    "workflows": {
+        "arg": "client",
+        "providers": ["github"],
+        "available": _provider_available,
+        "alias_keys": {"github": "workflows.github"},
+    },
+    # RM-0011 F2: il commento e' un oggetto, non una forma di posta. Il
+    # fornitore resta un argomento, come per ogni altra voce di questa
+    # tabella.
+    "comments": {
+        "arg": "client",
+        "providers": ["github"],
+        "available": _provider_available,
+        "alias_keys": {"github": "comments.github"},
     },
     "contacts": {
         "arg": "client",
         "providers": ["google_workspace"],
-        "available": lambda p: _gw_creds(),
+        "available": _provider_available,
         "alias_keys": {},
     },
     "dirs": {
         "arg": "client",
         # Come `files` (7/7/2026, dirs mono→multi): local = DEFAULT (§10.3),
-        # google_workspace opt-in solo se nominato — i 3 dispatcher
-        # find/create/delete_dirs hanno il lazy-gw da C7 Area-2 CP4; qui si
-        # registra l'OWNER runtime che mancava (prima gw era raggiungibile
-        # solo via _GW_CLIENT_TOOLS su find_dirs). Alias = subset folder-
-        # pertinente di files (niente docs/sheet).
-        "providers": ["local", "google_workspace"],
-        "available": lambda p: _gw_creds() if p == "google_workspace" else True,
+        # i provider remoti opt-in solo se nominati. Alias = subset folder-
+        # pertinente di files (niente docs/sheet); per github e' l'albero di
+        # un repository, che si elenca come una cartella (RM-0011 F0).
+        "providers": ["local", "google_workspace", "github"],
+        "available": _provider_available,
         "alias_keys": {
             "google_workspace": "dirs.google_workspace",
+            "github": "dirs.github",
         },
     },
 }

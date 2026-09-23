@@ -1,0 +1,102 @@
+# Manifest dell'executor `create_issues` — Metnos v1.1
+# RM-0011 F1: il fornitore e' un ARGOMENTO, non un suffisso nel nome.
+
+manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
+
+name        = "create_issues"
+version     = "0.1.0"
+timeout_s   = 60
+platforms   = ["linux"]
+author      = "Roberto Brunialti"
+affinity    = [
+    "apri segnalazione", "nuova issue", "open issue", "create issue", "segnala un difetto", "apri ticket", "report bug", "crea issue"
+]
+revertible      = true
+reverse_pattern = "delete_issues_by_id"
+
+[execution]
+effect            = "mutating"
+parallelism_class = 0
+resource_class    = "network_io"
+concurrency_key   = "none"
+
+[description]
+it = "SCOPO: apre una segnalazione nel repository. PATTERN: create_issues(repo=\"owner/name\", title=\"Il deploy fallisce\"). NON: commentare una segnalazione esistente; modificarne una (-> set_issues); chiuderla (-> delete_issues). OUT: results=[{number,url,repo}], issue_ids per l'annullamento."
+en = "SCOPO: open an issue in the repository. PATTERN: create_issues(repo=\"owner/name\", title=\"Deploy fails\"). NON: comment on an existing issue; modify one (-> set_issues); close it (-> delete_issues). OUT: results=[{number,url,repo}], issue_ids for the undo."
+
+[code]
+files  = ["create_issues.py"]
+
+[output]
+schema_inline = "{ok: bool, results: Array<object>, used: int, ok_count?: int, fail_count?: int, failed?: Array<object>, n_created?: int, n_deleted?: int, n_updated?: int, n_changed?: int, n_started?: int, issue_ids?: Array<int>, comment_ids?: Array<int>, source?: str, partial?: bool, error_class?: str, error_code?: str, error?: str}"
+
+[args]
+type     = "object"
+required = ["repo", "title"]
+
+[args.properties.repo]
+type        = "string"
+
+[args.properties.repo.description]
+it = "Repository in forma \"proprietario/nome\". Esempio: \"brunialti/metnos\"."
+en = "Repository as \"owner/name\". Example: \"brunialti/metnos\"."
+
+[args.properties.title]
+type        = "string"
+
+[args.properties.title.description]
+it = "Titolo, una riga. Esempio: \"Il deploy fallisce sul seme i18n\"."
+en = "Title, one line. Example: \"Deploy fails on the i18n seed\"."
+
+[args.properties.body]
+type        = "string"
+
+[args.properties.body.description]
+it = "Testo esteso, anche su piu' righe."
+en = "Extended text, possibly multi-line."
+
+[args.properties.labels]
+type        = "array"
+
+[args.properties.labels.description]
+it = "Etichette, match esatto (dominio chiuso). Esempio: [\"bug\", \"urgente\"]."
+en = "Labels, exact match (closed domain). Example: [\"bug\", \"urgent\"]."
+
+[args.properties.assignees]
+type        = "array"
+
+[args.properties.assignees.description]
+it = "Nomi utente assegnatari, match esatto."
+en = "Assignee user names, exact match."
+
+[args.properties.client]
+type        = "string"
+enum        = ["github"]
+default     = "github"
+
+[args.properties.client.description]
+it = "Implementazione backend. Oggi solo 'github'. Il runtime lo sceglie: non va indicato nella richiesta."
+en = "Backend implementation. Today only 'github'. The runtime picks it: it is not stated in the request."
+
+[[capabilities]]
+# L'autorita' e' legata al VALORE dell'argomento, non al nome dello
+# strumento (ADR 0193): rete e credenziali valgono solo per il
+# provider effettivamente scelto.
+name = "provider:access"
+hint = ["github"]
+when = { arg = "client", values = ["github"] }
+
+# Prove di nascita: solo cio' che si verifica SENZA rete. Un
+# contratto che rifiuta bene e' meta' del contratto (§2.8);
+# l'altra meta' richiede il fornitore vivo e non appartiene qui.
+
+[[tests]]
+name   = "repository_mancante_rifiutato"
+input  = { title = "t" }
+expect = { ok = false, error_contains = "Argomento obbligatorio mancante" }
+
+[[tests]]
+name   = "provider_sconosciuto_rifiutato"
+input  = { repo = "o/n", title = "t", client = "gitlab" }
+expect = { ok = false, error_contains = "Operazione non applicabile per questo provider" }

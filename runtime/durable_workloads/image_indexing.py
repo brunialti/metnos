@@ -117,7 +117,7 @@ def _schema(name: str, entry: Mapping, *, extra: Mapping | None = None, required
 def output_schemas() -> OutputSchemaRegistry:
     from image_index_build import GROUP_SIZE
     from image_index_outcomes import DECODE_FAILURE_CODES, DESCRIPTION_FAILURE_CLASSES
-    from .domain_outcome import DOMAIN_OUTCOME_SCHEMA
+    from .domain_outcome import COMPLETION_OUTCOME_SCHEMA, DOMAIN_OUTCOME_SCHEMA
 
     error_counts = {
         "type": "object", "additionalProperties": False,
@@ -181,7 +181,8 @@ def output_schemas() -> OutputSchemaRegistry:
                 extra={"n_entries_total": {"type": "integer", "minimum": 1}, "error_code": error_code,
                        "n_indexed": {"type": "integer", "minimum": 0},
                        "n_not_indexed": {"type": "integer", "minimum": 0},
-                       "indexing_error_counts": error_counts},
+                       "indexing_error_counts": error_counts,
+                       "completion_outcome": COMPLETION_OUTCOME_SCHEMA},
                 required=("n_entries_total", "n_indexed", "n_not_indexed", "indexing_error_counts")),
     ))
 

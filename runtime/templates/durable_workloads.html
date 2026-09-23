@@ -292,9 +292,12 @@
     folder.append(node("span", copy.folder, "dw-folder-label"), node("span", path || copy.notAvailable));
     container.append(folder);
   }
-  function stateBadge(state) {
-    const badge = node("span", jobStateName(state), "dw-state");
-    badge.dataset.tone = ["running", "completed"].includes(state) ? "active"
+  function stateBadge(state, outcome) {
+    const unchanged = state === "completed" && outcome === "no_changes";
+    const label = unchanged ? copy.noChanges : jobStateName(state);
+    const badge = node("span", label, "dw-state");
+    if (unchanged) badge.title = copy.noChangesHelp;
+    badge.dataset.tone = unchanged ? "neutral" : ["running", "completed"].includes(state) ? "active"
       : state === "completed_with_errors" ? "warning"
       : ["needs_attention", "failed"].includes(state) ? "error"
       : ["paused", "pause_requested", "cancel_requested"].includes(state) ? "warning" : "neutral";
@@ -349,7 +352,7 @@
       element.dateTime = known ? value : "";
       element.title = availableDate(value);
     }
-    row.state.replaceChildren(stateBadge(workload.state));
+    row.state.replaceChildren(stateBadge(workload.state, workload.progress?.completion_outcome));
     row.remove.hidden = !isTerminalState(workload.state);
   }
 

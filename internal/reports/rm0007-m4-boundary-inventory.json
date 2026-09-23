@@ -1,6 +1,6 @@
 {
   "schema": "metnos.contract-boundary-inventory/2",
-  "source_census": "sha256:bd27a50da8e8d70e6da3f48f5f129eb05eebcf7a3171205f26b309e0cf0b125a",
+  "source_census": "sha256:5244571ed9bca02690efb484fb2cce4b37ff2287dc3ff6bb7e93fc2e3ee8d6ef",
   "scan_roots": [
     "runtime",
     "install",
@@ -2168,6 +2168,18 @@
     },
     {
       "path": "runtime/contract_store.py",
+      "scope": "current_contract_name",
+      "role": "store_owner",
+      "capabilities": [
+        "authoring_read",
+        "store_write",
+        "verified_store_read"
+      ],
+      "destination": "authenticated signed name from the current revision or immediate retirement predecessor; no executable code",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
       "scope": "current_manifest",
       "role": "store_owner",
       "capabilities": [
@@ -2728,6 +2740,17 @@
       ],
       "destination": "sealed authenticated capture and private reduce-only staging, including exact-successor recovery; no direct publication",
       "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_commit_publisher.py",
+      "scope": "_BirthCommitPublisher.retire",
+      "role": "administrative_tool",
+      "capabilities": [
+        "retire"
+      ],
+      "destination": "sealed reduce-only retirement with generation compare-and-swap and signed receipt",
+      "phase": "M4",
+      "closed_exception": "retirement_only"
     },
     {
       "path": "runtime/executor_birth_cutover.py",
@@ -5004,6 +5027,17 @@
     },
     {
       "path": "runtime/stack_reconcile.py",
+      "scope": "retire_named_executor",
+      "role": "administrative_tool",
+      "capabilities": [
+        "authoring_read",
+        "verified_store_read"
+      ],
+      "destination": "exact signed-name selection and authenticated retirement receipt readback",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/stack_reconcile.py",
       "scope": "verify_named_executors",
       "role": "operational_producer",
       "capabilities": [
@@ -5531,6 +5565,10 @@
       },
       {
         "scope": "runtime/cli/skills_cli.py:_cmd_uninstall",
+        "exception": "retirement_only"
+      },
+      {
+        "scope": "runtime/executor_birth_commit_publisher.py:_BirthCommitPublisher.retire",
         "exception": "retirement_only"
       },
       {

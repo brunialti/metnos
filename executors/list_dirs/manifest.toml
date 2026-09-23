@@ -83,6 +83,22 @@ default     = 10
 it = "Quanti livelli di sottocartelle considerare in modalità ricorsiva. 0 = nessun limite. Default 10."
 en = "How many subdirectory levels to consider in recursive mode. 0 = unlimited. Default 10."
 
+[args.properties.client]
+type        = "string"
+enum        = ["local", "google_workspace", "github"]
+default     = "local"
+
+[args.properties.client.description]
+it = "Implementazione backend. 'local' = filesystem locale (default). 'google_workspace' = cartelle su Google Drive, richiede pairing Google. 'github' = cartella di un repository: richiede 'repo' come \"proprietario/nome\"."
+en = "Backend implementation. 'local' = local filesystem (default). 'google_workspace' = folders on Google Drive, requires Google pairing. 'github' = a folder in a repository: needs 'repo' as \"owner/name\"."
+
+[args.properties.repo]
+type = "string"
+
+[args.properties.repo.description]
+it = "Repository in forma \"proprietario/nome\". Vale solo con client='github'. Esempio: \"brunialti/metnos\"."
+en = "Repository as \"owner/name\". Only with client='github'. Example: \"brunialti/metnos\"."
+
 [output]
 schema_inline = """
 {
@@ -130,6 +146,19 @@ schema_inline = """
 [[capabilities]]
 name = "fs:read"
 hint = ["arg:path"]
+
+[[capabilities]]
+# L'autorita' e' legata al VALORE dell'argomento, non al nome dello
+# strumento (ADR 0193): rete, credenziali e destinazione valgono solo
+# quando il provider e' effettivamente quello scelto.
+name = "provider:access"
+hint = ["google-workspace"]
+when = { arg = "client", values = ["google_workspace"] }
+
+[[capabilities]]
+name = "provider:access"
+hint = ["github"]
+when = { arg = "client", values = ["github"] }
 
 [[tests]]
 name     = "lista_dir_semplice"

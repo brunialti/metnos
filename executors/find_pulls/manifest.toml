@@ -1,0 +1,108 @@
+# Manifest dell'executor `find_pulls` — Metnos v1.1
+# RM-0011 F1: il fornitore e' un ARGOMENTO, non un suffisso nel nome.
+
+manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
+
+name        = "find_pulls"
+version     = "0.1.0"
+timeout_s   = 60
+platforms   = ["linux"]
+author      = "Roberto Brunialti"
+affinity    = [
+    "pull request", "proposta di modifica", "proposte di modifica", "elenca pull request", "open pull requests", "richieste di merge", "pull aperte", "branch proposto"
+]
+revertible      = false
+
+[execution]
+effect            = "read_only"
+parallelism_class = 0
+resource_class    = "network_io"
+concurrency_key   = "none"
+
+[description]
+it = "SCOPO: elenca le proposte di modifica per stato e rami. PATTERN: find_pulls(repo=\"owner/name\", state=\"open\", base=\"main\"). NON: leggerne una per numero (-> read_pulls); le segnalazioni (-> find_issues). OUT: entries=[{number,title,state,base,head,repo}]."
+en = "SCOPO: list pull requests by state and branches. PATTERN: find_pulls(repo=\"owner/name\", state=\"open\", base=\"main\"). NON: read one by number (-> read_pulls); issues (-> find_issues). OUT: entries=[{number,title,state,base,head,repo}]."
+
+[code]
+files  = ["find_pulls.py"]
+
+[output]
+schema_inline = "{ok: bool, entries: Array<object>, used: int, available_total?: int, truncated?: bool, truncated_intentional?: bool, truncated_what?: str, source?: str, error_class?: str, error_code?: str, error?: str}"
+
+[args]
+type     = "object"
+required = ["repo"]
+
+[args.properties.repo]
+type        = "string"
+
+[args.properties.repo.description]
+it = "Repository in forma \"proprietario/nome\". Esempio: \"brunialti/metnos\"."
+en = "Repository as \"owner/name\". Example: \"brunialti/metnos\"."
+
+[args.properties.state]
+type        = "string"
+
+[args.properties.state.description]
+it = "Stato da filtrare o da impostare: 'open' o 'closed'."
+en = "State to filter or to set: 'open' or 'closed'."
+
+[args.properties.base]
+type        = "string"
+
+[args.properties.base.description]
+it = "Ramo di destinazione, match esatto. Esempio: \"main\"."
+en = "Target branch, exact match. Example: \"main\"."
+
+[args.properties.head]
+type        = "string"
+
+[args.properties.head.description]
+it = "Ramo di origine, match esatto."
+en = "Source branch, exact match."
+
+[args.properties.limit]
+type        = "integer"
+
+[args.properties.limit.description]
+it = "Quanti elementi chiedere al fornitore. Default 50."
+en = "How many items to request from the provider. Default 50."
+
+[args.properties.top_k]
+type        = "integer"
+
+[args.properties.top_k.description]
+it = "Massimo di elementi restituiti. 0 = nessun limite. Default 100."
+en = "Maximum items returned. 0 = no limit. Default 100."
+
+[args.properties.client]
+type        = "string"
+enum        = ["github"]
+default     = "github"
+
+[args.properties.client.description]
+it = "Implementazione backend. Oggi solo 'github'. Il runtime lo sceglie: non va indicato nella richiesta."
+en = "Backend implementation. Today only 'github'. The runtime picks it: it is not stated in the request."
+
+[[capabilities]]
+# L'autorita' e' legata al VALORE dell'argomento, non al nome dello
+# strumento (ADR 0193): rete e credenziali valgono solo per il
+# provider effettivamente scelto.
+name = "provider:access"
+hint = ["github"]
+when = { arg = "client", values = ["github"] }
+
+# Prove di nascita: solo cio' che si verifica SENZA rete. Un
+# contratto che rifiuta bene e' meta' del contratto (§2.8);
+# l'altra meta' richiede il fornitore vivo e non appartiene qui.
+
+[[tests]]
+name   = "repository_mancante_rifiutato"
+input  = { state = "open" }
+expect = { ok = false, error_contains = "Argomento obbligatorio mancante" }
+
+[[tests]]
+name   = "provider_sconosciuto_rifiutato"
+input  = { repo = "o/n", client = "gitlab" }
+expect = { ok = false, error_contains = "Operazione non applicabile per questo provider" }

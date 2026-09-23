@@ -95,6 +95,8 @@ def register_all() -> None:
           ],
           "issues": ["issue", "issues", "segnalazione", "segnalazioni", "ticket"],
           "pulls": ["pr", "pull request", "pull", "merge request"],
+          "comments": ["commento", "commenti"],
+          "workflows": ["workflow", "pipeline"],
           "approval": [
               "approvazione", "approva", "approvare", "consenso",
               "autorizzazione", "autorizza",
@@ -122,6 +124,8 @@ def register_all() -> None:
           ],
           "issues": ["issue", "issues", "ticket"],
           "pulls": ["pull", "pulls", "pull request", "pr", "merge request"],
+          "comments": ["comment", "comments"],
+          "workflows": ["workflow", "workflows", "pipeline"],
           "approval": [
               "approval", "approve", "consent", "authorization", "authorize",
           ],

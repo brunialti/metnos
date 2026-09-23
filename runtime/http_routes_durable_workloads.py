@@ -337,6 +337,8 @@ async def workload_console(request: web.Request) -> web.Response:
                 "jobId": "JOB_ID", "operation": "OPERATION", "loading": "LOADING",
                 "selectJob": "SELECT_JOB", "readFailed": "READ_FAILED",
                 "finishedState": "JOB_FINISHED", "finishedSummary": "FINISHED_SUMMARY",
+                "noChanges": "NO_CHANGES",
+                "noChangesHelp": "NO_CHANGES_HELP",
                 "finished": "FINISHED", "duration": "DURATION",
                 "durationValue": "DURATION_VALUE", "processedBatches": "PROCESSED_BATCHES",
                 "discoveryHelp": "DISCOVERY_HELP",

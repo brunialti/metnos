@@ -1633,36 +1633,17 @@ def _check_affinity_overlap(
     rejected_local: list[dict] = []
     # Snapshot affinity per nome (set per Jaccard).
     affinities = {n: set(e.affinity or []) for n, e in catalog.executors.items()}
-    # Path: synth = path dentro SYNTHESIZED_EXECUTORS_DIR.
+    # Origin is declared by the contract and survives lifecycle promotion.
+    # Paths constrain allowed code roots, not overlap exemptions.
+
     def _is_synth(name: str) -> bool:
         ex = catalog.executors.get(name)
-        if ex is None:
-            return False
-        if getattr(ex, "source", "") == "synthesized":
-            return True
-        try:
-            return str(SYNTHESIZED_EXECUTORS_DIR) in str(ex.manifest_path)
-        except Exception:
-            return False
+        return ex is not None and getattr(ex, "source", "") == "synthesized"
 
     def _is_imported(name: str) -> bool:
-        """Imported via skill_importer (ADR 0123) - path sotto `skills/`
-        (new, ADR 0160) o `_imports/` (legacy back-compat).
-        Esentati dal pairwise overlap: il binding (provenance.imported_from)
-        qualifica esplicitamente il dominio remoto. Le keyword sovrapposte
-        sono attese e legittime, non un doppione mascherato."""
+        """Use declared skill provenance for the remote-domain exemption."""
         ex = catalog.executors.get(name)
-        if ex is None:
-            return False
-        if getattr(ex, "source", "") == "imported" or bool(
-            getattr(ex, "provenance", {}).get("imported_from")
-        ):
-            return True
-        try:
-            from skills_paths import is_skill_path as _isp
-            return _isp(ex.manifest_path)
-        except Exception:
-            return False
+        return ex is not None and getattr(ex, "source", "") == "imported"
 
     def _stable_identity(name: str) -> str:
         """Tie-break with structural identity, never mutable file metadata."""

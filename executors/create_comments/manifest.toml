@@ -1,0 +1,103 @@
+# Manifest dell'executor `create_comments` — Metnos v1.1
+# RM-0011 F2: `comments` e' un oggetto del vocabolario chiuso, approvato da
+# Roberto il 20/9/2026 dopo una misura. Il fornitore resta un ARGOMENTO.
+
+manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
+
+name        = "create_comments"
+version     = "0.1.0"
+timeout_s   = 60
+platforms   = ["linux"]
+author      = "Roberto Brunialti"
+affinity    = [
+    "commenta", "scrivi commento", "aggiungi commento", "lascia commento",
+    "rispondi con commento", "add comment", "leave comment", "post comment",
+    "write comment", "reply comment"
+]
+revertible      = true
+reverse_pattern = "delete_comments_by_id"
+
+[execution]
+effect            = "mutating"
+parallelism_class = 0
+resource_class    = "network_io"
+concurrency_key   = "none"
+
+[description]
+it = "SCOPO: scrive un commento su segnalazioni o proposte di modifica. PATTERN: create_comments(repo=\"owner/name\", targets=[\"issue:42\"], body=\"confermo\"). NON: approvare una proposta (-> set_pulls); mandare posta (-> send_messages). OUT: results=[{id,html_url,target,repo}], comment_ids."
+en = "SCOPO: write a comment on issues or pull requests. PATTERN: create_comments(repo=\"owner/name\", targets=[\"issue:42\"], body=\"confirmed\"). NON: approve a pull request (-> set_pulls); send mail (-> send_messages). OUT: results=[{id,html_url,target,repo}], comment_ids."
+
+[code]
+files  = ["create_comments.py"]
+
+[output]
+schema_inline = "{ok: bool, results: Array<object>, used: int, ok_count?: int, fail_count?: int, failed?: Array<object>, n_created?: int, n_deleted?: int, n_updated?: int, n_changed?: int, n_started?: int, issue_ids?: Array<int>, comment_ids?: Array<int>, source?: str, partial?: bool, error_class?: str, error_code?: str, error?: str}"
+
+[args]
+type     = "object"
+required = ["repo", "targets", "body"]
+
+[args.properties.repo]
+type        = "string"
+
+[args.properties.repo.description]
+it = "Repository in forma \"proprietario/nome\". Esempio: \"brunialti/metnos\"."
+en = "Repository as \"owner/name\". Example: \"brunialti/metnos\"."
+
+[args.properties.targets]
+type        = "array"
+
+[args.properties.targets.description]
+it = "Bersagli, dominio CHIUSO: match esatto, niente glob. Forma \"issue:42\" o \"pr:7\"; un numero da solo vale come \"issue:42\", perche' su GitHub segnalazioni e proposte condividono una sola numerazione. Esempio: [\"issue:42\", \"pr:7\"]."
+en = "Targets, CLOSED domain: exact match, no globs. Form \"issue:42\" or \"pr:7\"; a bare number counts as \"issue:42\", because on GitHub issues and pull requests share one numbering. Example: [\"issue:42\", \"pr:7\"]."
+
+[args.properties.body]
+type        = "string"
+
+[args.properties.body.description]
+it = "Testo del commento, anche su piu' righe. Lo stesso testo va su tutti i bersagli indicati."
+en = "Comment text, possibly multi-line. The same text goes to every listed target."
+
+[args.properties.client]
+type        = "string"
+enum        = ["github"]
+default     = "github"
+
+[args.properties.client.description]
+it = "Implementazione backend. Oggi solo 'github'. Il runtime lo sceglie: non va indicato nella richiesta."
+en = "Backend implementation. Today only 'github'. The runtime picks it: it is not stated in the request."
+
+[[capabilities]]
+# L'autorita' e' legata al VALORE dell'argomento, non al nome dello
+# strumento (ADR 0193).
+name = "provider:access"
+hint = ["github"]
+when = { arg = "client", values = ["github"] }
+
+# Prove di nascita: solo cio' che si verifica SENZA rete.
+
+[[tests]]
+name   = "repository_mancante_rifiutato"
+input  = { targets = ["issue:1"], body = "x" }
+expect = { ok = false, error_contains = "Argomento obbligatorio mancante" }
+
+[[tests]]
+name   = "testo_mancante_rifiutato"
+input  = { repo = "o/n", targets = ["issue:1"] }
+expect = { ok = false, error_contains = "Argomento obbligatorio mancante" }
+
+[[tests]]
+name   = "bersaglio_mancante_rifiutato"
+input  = { repo = "o/n", body = "x" }
+expect = { ok = false, error_contains = "Argomento obbligatorio mancante" }
+
+[[tests]]
+name   = "bersaglio_malformato_rifiutato"
+input  = { repo = "o/n", targets = ["milestone:3"], body = "x" }
+expect = { ok = false, error_contains = "non valido" }
+
+[[tests]]
+name   = "provider_sconosciuto_rifiutato"
+input  = { repo = "o/n", targets = ["issue:1"], body = "x", client = "gitlab" }
+expect = { ok = false, error_contains = "Operazione non applicabile per questo provider" }

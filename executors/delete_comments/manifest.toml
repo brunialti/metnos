@@ -1,0 +1,87 @@
+# Manifest dell'executor `delete_comments` — Metnos v1.1
+# RM-0011 F2. Il fornitore e' un ARGOMENTO, non un suffisso nel nome.
+
+manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
+
+name        = "delete_comments"
+version     = "0.1.0"
+timeout_s   = 60
+platforms   = ["linux"]
+author      = "Roberto Brunialti"
+affinity    = [
+    "cancella commento", "elimina commento", "rimuovi commento",
+    "togli commento", "delete comment", "remove comment", "erase comment",
+    "drop comment"
+]
+# Un commento cancellato non torna: il testo non e' piu' recuperabile dal
+# fornitore. Dichiararlo annullabile sarebbe un esito finto (§2.8).
+revertible      = false
+
+[execution]
+effect            = "mutating"
+parallelism_class = 0
+resource_class    = "network_io"
+concurrency_key   = "none"
+
+[description]
+it = "SCOPO: cancella uno o piu' commenti per identificativo. PATTERN: delete_comments(repo=\"owner/name\", comment_ids=[991]). NON: chiudere una segnalazione (-> delete_issues); spostare posta (-> move_messages). OUT: results=[{comment_id,deleted,repo}]."
+en = "SCOPO: delete one or more comments by identifier. PATTERN: delete_comments(repo=\"owner/name\", comment_ids=[991]). NON: close an issue (-> delete_issues); move mail to trash (-> move_messages). OUT: results=[{comment_id,deleted,repo}]."
+
+[code]
+files  = ["delete_comments.py"]
+
+[output]
+schema_inline = "{ok: bool, results: Array<object>, used: int, ok_count?: int, fail_count?: int, failed?: Array<object>, n_created?: int, n_deleted?: int, n_updated?: int, n_changed?: int, n_started?: int, issue_ids?: Array<int>, comment_ids?: Array<int>, source?: str, partial?: bool, error_class?: str, error_code?: str, error?: str}"
+
+[args]
+type     = "object"
+required = ["repo", "comment_ids"]
+
+[args.properties.repo]
+type        = "string"
+
+[args.properties.repo.description]
+it = "Repository in forma \"proprietario/nome\". Esempio: \"brunialti/metnos\"."
+en = "Repository as \"owner/name\". Example: \"brunialti/metnos\"."
+
+[args.properties.comment_ids]
+type        = "array"
+
+[args.properties.comment_ids.description]
+it = "Identificativi dei commenti, dominio CHIUSO: match esatto, niente glob. Sono i numeri che create_comments restituisce in comment_ids. Esempio: [991, 992]."
+en = "Comment identifiers, CLOSED domain: exact match, no globs. They are the numbers create_comments returns in comment_ids. Example: [991, 992]."
+
+[args.properties.client]
+type        = "string"
+enum        = ["github"]
+default     = "github"
+
+[args.properties.client.description]
+it = "Implementazione backend. Oggi solo 'github'. Il runtime lo sceglie: non va indicato nella richiesta."
+en = "Backend implementation. Today only 'github'. The runtime picks it: it is not stated in the request."
+
+[[capabilities]]
+name = "provider:access"
+hint = ["github"]
+when = { arg = "client", values = ["github"] }
+
+[[tests]]
+name   = "repository_mancante_rifiutato"
+input  = { comment_ids = [991] }
+expect = { ok = false, error_contains = "Argomento obbligatorio mancante" }
+
+[[tests]]
+name   = "identificativi_mancanti_rifiutati"
+input  = { repo = "o/n" }
+expect = { ok = false, error_contains = "Argomento obbligatorio mancante" }
+
+[[tests]]
+name   = "lista_vuota_rifiutata"
+input  = { repo = "o/n", comment_ids = [] }
+expect = { ok = false, error_contains = "Argomento obbligatorio mancante" }
+
+[[tests]]
+name   = "provider_sconosciuto_rifiutato"
+input  = { repo = "o/n", comment_ids = [991], client = "gitlab" }
+expect = { ok = false, error_contains = "Operazione non applicabile per questo provider" }

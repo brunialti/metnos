@@ -100,6 +100,10 @@ BIRTH_EXCEPTION_GRANTS_V1 = (
         'runtime/cli/skills_cli.py:_cmd_uninstall',
         'retirement_only', ('authoring_read', 'retire'),
     ),
+    BirthExceptionGrantV1(
+        'runtime/executor_birth_commit_publisher.py:_BirthCommitPublisher.retire',
+        'retirement_only', ('retire',),
+    ),
 )
 
 def _validate_grants_v1() -> None:

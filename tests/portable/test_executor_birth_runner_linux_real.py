@@ -252,6 +252,7 @@ def test_activation_catalog_uses_the_real_lock_in_isolated_state(
     from types import SimpleNamespace
     import contract_store
     import stack_reconcile
+    import contract_cutover_guard
 
     account = SimpleNamespace(uid=os.geteuid(), gid=os.getegid())
     original = contract_store._C.PATH_USER_STATE
@@ -262,6 +263,7 @@ def test_activation_catalog_uses_the_real_lock_in_isolated_state(
         assert lock.parent == tmp_path / "service-state"
         assert (lock.stat().st_uid, lock.stat().st_gid) == (account.uid, account.gid)
         assert lock.stat().st_mode & 0o777 == 0o600
+        assert contract_cutover_guard._installed_service_units_v1() is None
         with stack_reconcile.catalog_reconcile_lock(
             catalog_trusted_owner=(account.uid, account.gid),
         ):

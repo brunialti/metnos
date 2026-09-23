@@ -43,9 +43,14 @@ DISAMBIGUAZIONI D'OGGETTO (l'oggetto, non il verbo):
   resta quello di DOMINIO (calendario/impegni→events, mail→messages,
   foto→images, file→files). "salva/scrivi nello store" = {write, entries};
   "elimina dallo store" = {delete, entries}. NON files (non e' un file su disco).
-- "posta/pubblica un COMMENTO" (su una issue, una PR, un thread) = {send,
-  messages}: un commento E' un messaggio in uscita. NON {send, issues} (non si
-  "invia" una issue) e NON write (write = persistenza locale, non invio).
+- "scrivi/lascia un COMMENTO" (su una issue o una proposta di modifica) =
+  {create, comments}: il commento e' un oggetto suo, non posta in uscita.
+  NON {send, messages}, NON {create, issues} e NON write. L'elemento che lo
+  ospita e' il BERSAGLIO, non l'oggetto.
+- "APPROVA / dai il via libera / chiedi modifiche a una proposta" =
+  {set, pulls}: e' un verdetto che cambia lo stato della proposta.
+  NON {create, comments} e NON {get, approval} (quello e' il consenso che
+  Metnos chiede a te prima di agire, non quello che tu dai a un collega).
 - "chiedi/richiedi la mia approvazione / conferma di approvazione / il via
   libera / Approva o Disapprova PRIMA di agire" = {get, approval}: gate di
   consenso umano che precede un'azione (Approva/Disapprova). NON {get, persons}

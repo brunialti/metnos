@@ -73,11 +73,19 @@ _STDIO_PATH = "_metnos_birth_property_stdio_v1.py"
 _HELPER_MODEL_PATH = "_metnos_birth_helper_model_v1.py"
 _REVERSE_PATH = "_metnos_birth_reverse_v1.py"
 _REVERSE_SOURCE = b'''import json, os, pathlib, sys
-os.environ['METNOS_WORKSPACE'] = str(pathlib.Path.cwd() / 'workspace')
+os.environ['METNOS_WORKSPACE'] = str(pathlib.Path(sys.argv[2]) / 'workspace')
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent / 'runtime'))
 from reverse_patterns import apply_patterns
 value = json.load(sys.stdin)
-print(json.dumps(apply_patterns(json.loads(sys.argv[1]), value['plan'], value['results'])))
+patterns = json.loads(sys.argv[1])
+if os.environ.get('METNOS_BIRTH_PROVIDER_FIXTURE') == '1':
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+    from _metnos_birth_provider_fixture_v1 import configure_bridge, reverse
+    configure_bridge()
+    output = reverse(patterns, value['results'])
+else:
+    output = apply_patterns(patterns, value['plan'], value['results'])
+print(json.dumps(output))
 '''
 _SESSION_CLIENT_SOURCE = b'''import json, pathlib, socket
 def _request(operation, arguments):
@@ -280,6 +288,9 @@ os.environ['METNOS_WORKSPACE'] = str(work / 'workspace')
 os.environ['METNOS_SHIM_DIR'] = str(root / 'runtime')
 sys.path.insert(0, str(root / 'runtime'))
 sys.path.insert(1, str(root))
+if os.environ.get('METNOS_BIRTH_PROVIDER_FIXTURE') == '1':
+    from _metnos_birth_provider_fixture_v1 import configure_bridge
+    configure_bridge()
 sys.argv = [entrypoint]
 runpy.run_path(entrypoint, run_name='__main__')
 '''.encode("utf-8")
@@ -316,9 +327,17 @@ def invoke(value, operation='invoke', authorization=None):
         environment['METNOS_FROZEN_PLAN_AUTHORIZATION'] = authorization
     if model is not None:
         environment.update(METNOS_CLIENT_EXE=sys.executable, PYTHONSAFEPATH='1')
+    if request.get('provider_contract'):
+        environment['METNOS_BIRTH_PROVIDER_FIXTURE'] = '1'
     command = [sys.executable, '-I', str(harness_dir / '@@STDIO_PATH@@'), entrypoint, str(work)]
     if operation == 'reverse' and request.get('reverse_pattern'):
-        command = [sys.executable, '-I', str(harness_dir / '@@REVERSE_PATH@@'), json.dumps(request['reverse_pattern'])]
+        patterns = request['reverse_pattern']
+        selected = value['results'].get('_undo', {}).get('reverse_pattern', patterns)
+        allowed = [patterns] if isinstance(patterns, str) else patterns
+        selected = [selected] if isinstance(selected, str) else selected
+        if not isinstance(selected, list) or not set(selected) <= set(allowed):
+            raise RuntimeError('reverse_pattern_outside_contract')
+        command = [sys.executable, '-I', str(harness_dir / '@@REVERSE_PATH@@'), json.dumps(selected), str(work)]
     result = subprocess.run(command,
                             input=json.dumps(value).encode(),
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -331,7 +350,12 @@ def invoke(value, operation='invoke', authorization=None):
         raise RuntimeError('property_helper_unavailable')
     return parsed
 scope = contextlib.nullcontext()
-if request.get('session_contract'):
+if request.get('provider_contract'):
+    sys.path.insert(0, str(harness_dir))
+    from _metnos_birth_provider_fixture_v1 import ProviderObjectsFixture
+    model = ProviderObjectsFixture(work)
+    scope = model
+elif request.get('session_contract'):
     sys.path.insert(0, str(harness_dir))
     from _metnos_birth_helper_model_v1 import SessionBrokerFixture
     model = SessionBrokerFixture(work)
@@ -357,13 +381,39 @@ with scope:
     if request['fixture_id'] == 'private_deletion_tree':
         source = fixture / 'source.bin'; recovery = fixture / 'recovery.bin'
         source_hash = file_hash(source)
-        output = invoke(args)
-        if source.is_file() and recovery.is_file() and file_hash(recovery) == source_hash:
+        domain = request.get('deletion_contract')
+        if domain == 'deleted_files':
+            # A file in place of the recovery directory makes backup fail on
+            # every platform, including privileged test processes. Observe the
+            # source independently; never infer event ordering from a receipt.
+            denied = invoke(args)
+            blocked_hash = tree_hash()
+            history = work / 'history'
+            if denied.get('ok') is False and blocked_hash == before and history.is_file():
+                history.unlink(); history.mkdir()
+                output = invoke(args)
+                copies = [path for path in history.rglob('*.bin') if path.is_file()]
+                observations.update(
+                    backup_failure_preserved_source=True,
+                    source_before_hash=source_hash,
+                    source_removed=not source.exists(),
+                    recovery_copy_hash=file_hash(copies[0]) if len(copies) == 1 else None)
+            else:
+                output = denied
+        elif domain == 'deleted_dirs':
+            # Empty directories have no payload to copy. A nonempty directory
+            # must be refused by the default reversible operation.
             output = invoke(args)
-            if not source.exists() and recovery.is_file() and file_hash(recovery) == source_hash:
-                observations.update(filesystem_events=['copy', 'delete'],
-                                    source_before_hash=source_hash,
-                                    recovery_copy_hash=file_hash(recovery))
+            observations['nonempty_directory_preserved'] = (
+                output.get('ok') is False and tree_hash() == before)
+        else:
+            output = invoke(args)
+            if source.is_file() and recovery.is_file() and file_hash(recovery) == source_hash:
+                output = invoke(args)
+                if not source.exists() and recovery.is_file() and file_hash(recovery) == source_hash:
+                    observations.update(filesystem_events=['copy', 'delete'],
+                                        source_before_hash=source_hash,
+                                        recovery_copy_hash=file_hash(recovery))
         after = tree_hash()
     elif request.get('frozen_plan'):
         contract = request['frozen_plan']
@@ -390,8 +440,9 @@ with scope:
         observations.update(state_before_hash=before, state_after_forward_hash=after,
                             state_after_undo_hash=restored)
         if model is not None:
-            observations['fixture_contract'] = ('session_broker/v1' if request.get('session_contract')
-                                                 else 'managed_helper/v1')
+            observations['fixture_contract'] = (
+                'provider_objects/v1' if request.get('provider_contract') else
+                'session_broker/v1' if request.get('session_contract') else 'managed_helper/v1')
 print(json.dumps({'output': output, 'observations': observations},
                  sort_keys=True, separators=(',', ':')))
 '''.replace('@@STDIO_PATH@@', _STDIO_PATH).replace('@@REVERSE_PATH@@', _REVERSE_PATH).encode("utf-8")
@@ -415,7 +466,13 @@ def _candidate_files_with_support(code_files: Mapping[str, bytes]) -> dict[str, 
                   "runtime/playwright_sidecar/session_client.py": _SESSION_CLIENT_SOURCE,
                   "runtime/playwright_sidecar/stealth.py": (runtime / "playwright_sidecar/stealth.py").read_bytes(),
                   _HELPER_MODEL_PATH: _HELPER_MODEL_SOURCE,
+                  "_metnos_birth_provider_fixture_v1.py":
+                      (runtime / "executor_birth_provider_fixture.py").read_bytes(),
                   "helper": _HELPER_CLIENT_SOURCE, "package-app": _HELPER_CLIENT_SOURCE})
+    for name in ("backends/_github_bridge.py", "backends/issues/__init__.py",
+                 "backends/issues/github.py", "backends/comments/__init__.py",
+                 "backends/comments/github.py"):
+        owned['runtime/' + name] = (runtime / name).read_bytes()
     reserved = tuple(PurePosixPath(name.casefold()) for name in owned)
     for name in code_files:
         try:
@@ -460,6 +517,12 @@ def _domain_contract(manifest: Mapping[str, object]) -> str:
     def typed(key, kind):
         item = properties.get(key)
         return isinstance(item, Mapping) and item.get('type') == kind
+    if 'provider:access' in caps and typed('repo', 'string') and typed('client', 'string'):
+        if manifest.get('reverse_pattern') == 'delete_issues_by_id' and typed('title', 'string'):
+            return 'created_issues'
+        if (manifest.get('reverse_pattern') == 'delete_comments_by_id'
+                and typed('targets', 'array') and typed('body', 'string')):
+            return 'created_comments'
     if (manifest.get('reverse_pattern') == 'module.reverse'
             and 'network:sites' in caps and typed('urls', 'array')):
         return 'session_broker'
@@ -468,6 +531,20 @@ def _domain_contract(manifest: Mapping[str, object]) -> str:
             and typed('paths', 'array') and typed('dest', 'string')):
         return 'created_paths'
     patterns = manifest.get('reverse_pattern')
+    reverse = {patterns} if isinstance(patterns, str) else set(patterns or ())
+    if 'fs:write' in caps:
+        if typed('paths', 'array') and not typed('dest', 'string'):
+            if 'delete_created_paths' in reverse:
+                return 'created_dirs'
+            if 'restore_blob_backup' in reverse:
+                return 'deleted_files'
+            if 'module.reverse' in reverse and typed('force', 'boolean'):
+                return 'deleted_dirs'
+        if typed('path', 'string'):
+            if 'restore_blob_backup' in reverse and typed('content', 'string'):
+                return 'written_files'
+            if 'delete_created_paths' in reverse and typed('values', 'array'):
+                return 'created_table'
     if ('fs:write' in caps and isinstance(patterns, list)
             and 'swap_src_dst' in patterns
             and typed('entries', 'array') and typed('dst_template', 'string')):
@@ -526,15 +603,24 @@ class ObservedPropertyRunner:
             manifest = tomllib.loads(self._observed.snapshot.manifest_bytes.decode("utf-8"))
             request["helper_contract"] = _uses_managed_helper(manifest)
             domain = _domain_contract(manifest)
+            request['provider_contract'] = domain in ('created_issues', 'created_comments')
             request['session_contract'] = domain == 'session_broker'
-            request['file_contract'] = domain in ('file_moves', 'frozen_file_plan')
+            request['file_contract'] = domain in (
+                'file_moves', 'frozen_file_plan', 'created_dirs', 'deleted_dirs',
+                'deleted_files', 'written_files', 'created_table')
             if domain == 'frozen_file_plan':
                 request['frozen_plan'] = dict(manifest['execution']['frozen_plan'])
-            if domain in ('created_paths', 'file_moves'):
+            if domain in ('created_paths', 'file_moves', 'created_dirs',
+                          'deleted_files', 'written_files', 'created_table',
+                          'created_issues', 'created_comments'):
                 request['reverse_pattern'] = manifest['reverse_pattern']
         if fixture_id == "private_deletion_tree":
             request.update(source_path="fixture/source.bin",
                            recovery_path="fixture/recovery.bin")
+            manifest = tomllib.loads(self._observed.snapshot.manifest_bytes.decode('utf-8'))
+            domain = _domain_contract(manifest)
+            request['deletion_contract'] = domain
+            request['file_contract'] = domain in ('deleted_files', 'deleted_dirs')
         ops: list[FixtureOp] = [
             FixtureOp(FixtureOpKind.MKDIR, "fixture"),
             FixtureOp(FixtureOpKind.SEED_JSON, "request.json", request),
@@ -556,6 +642,7 @@ class ObservedPropertyRunner:
                 if domain == 'frozen_file_plan':
                     ops.append(FixtureOp(FixtureOpKind.MKDIR, 'fixture/destination/nested'))
                 for index in range(3):
+                    ops.append(FixtureOp(FixtureOpKind.MKDIR, f'fixture/empty-{index}'))
                     ops.append(FixtureOp(FixtureOpKind.WRITE_BYTES,
                                          f'fixture/source/{index}.txt', f'birth-{index}'.encode()))
                 if case.input_value.get('overwrite') is True:
@@ -563,6 +650,11 @@ class ObservedPropertyRunner:
                                          'fixture/destination/0.txt', b'preexisting-destination'))
         if fixture_id == "private_deletion_tree":
             ops.append(FixtureOp(FixtureOpKind.WRITE_BYTES, "fixture/source.bin", b"birth-fixture-v1"))
+            if domain == 'deleted_files':
+                ops.append(FixtureOp(FixtureOpKind.WRITE_BYTES, 'history', b'backup-unavailable'))
+            elif domain == 'deleted_dirs':
+                ops.extend((FixtureOp(FixtureOpKind.MKDIR, 'fixture/nonempty'),
+                            FixtureOp(FixtureOpKind.WRITE_BYTES, 'fixture/nonempty/keep.txt', b'keep')))
         return tuple(ops)
 
     def run(self, case: PropertyCase, *, fixture_id: str, isolation: str) -> PropertyRunResult:
@@ -627,7 +719,9 @@ class PropertyCandidateProfile:
 
     def __post_init__(self) -> None:
         if self.domain_contract not in ('', 'created_paths', 'session_broker',
-                                        'file_moves', 'frozen_file_plan'):
+                                        'file_moves', 'frozen_file_plan', 'created_dirs',
+                                        'deleted_dirs', 'deleted_files', 'written_files',
+                                        'created_table', 'created_issues', 'created_comments'):
             raise PropertyContractError('property_candidate_invalid', 'domain_contract')
         allowed_types = {"array", "boolean", "integer", "null", "number", "object", "string"}
         keys: set[str] = set()
@@ -676,6 +770,34 @@ def _truncation_cases(_candidate: PropertyCandidateProfile) -> tuple[PropertyCas
 
 
 def _undo_cases(candidate: PropertyCandidateProfile) -> tuple[PropertyCase, ...]:
+    domain = candidate.domain_contract
+    if domain == 'created_issues':
+        return (PropertyCase('undo.created_issues',
+                    {'repo': 'birth/fixture', 'title': 'Birth fixture', 'client': 'github'},
+                    {'declared_input': True}),)
+    if domain == 'created_comments':
+        return tuple(PropertyCase(f'undo.created_comments.{count}',
+                         {'repo': 'birth/fixture', 'body': 'Birth fixture', 'client': 'github',
+                          'targets': ['issue:7', 'pr:8', 'issue:9'][:count]},
+                         {'declared_input': True}) for count in (1, 3))
+    if domain in ('created_dirs', 'deleted_dirs', 'deleted_files'):
+        template = {'created_dirs': 'fixture/destination/new-{index}',
+                    'deleted_dirs': 'fixture/empty-{index}',
+                    'deleted_files': 'fixture/source/{index}.txt'}[domain]
+        return tuple(PropertyCase(f'undo.{domain}.{count}',
+                         {'paths': [template.format(index=index) for index in range(count)]},
+                         {'declared_input': True}) for count in (1, 3))
+    if domain == 'written_files':
+        return tuple(PropertyCase(f'undo.write.{index}', value, {'declared_input': True})
+                     for index, value in enumerate((
+                         {'path': 'fixture/destination/new.txt', 'content': 'new'},
+                         {'path': 'fixture/source/0.txt', 'content': 'replace'},
+                         {'path': 'fixture/source/0.txt', 'content': 'append', 'mode': 'append'})))
+    if domain == 'created_table':
+        return tuple(PropertyCase(f'undo.table.{suffix}',
+                         {'path': f'fixture/destination/table.{suffix}',
+                          'values': [['heading', 'value'], ['row', 2]]},
+                         {'declared_input': True}) for suffix in ('xlsx', 'csv'))
     if candidate.domain_contract == 'file_moves':
         return tuple(PropertyCase(f'undo.file_moves.{count}',
                          {'entries': [{'path': f'fixture/source/{index}.txt'} for index in range(count)],
@@ -722,13 +844,19 @@ def _undo_cases(candidate: PropertyCandidateProfile) -> tuple[PropertyCase, ...]
                  for index, value in enumerate(candidate.positive_inputs))
 
 
+def _delete_cases(candidate: PropertyCandidateProfile) -> tuple[PropertyCase, ...]:
+    paths = {'deleted_files': 'fixture/source.bin', 'deleted_dirs': 'fixture/nonempty'}
+    path = paths.get(candidate.domain_contract)
+    return (PropertyCase('delete.copy_before', {'paths': [path]} if path else {}, {}),)
+
+
 _GENERATORS = {
     "declared_output_cases": _single("output.actual"),
     "cardinality_cases": _collection_cases,
     "limit_boundary_cases": _limit_cases,
     "truncation_cases": _truncation_cases,
     "undo_round_trip_cases": _undo_cases,
-    "delete_copy_cases": _single("delete.copy_before"),
+    "delete_copy_cases": _delete_cases,
     "entries_results_cases": _single("entries.results"),
 }
 
@@ -786,7 +914,16 @@ def _state_round_trip(_output, _candidate, _expect, observations):
     )
 
 
-def _copy_precedes_delete(_output, _candidate, _expect, observations):
+def _copy_precedes_delete(output, candidate, _expect, observations):
+    if candidate.domain_contract == 'deleted_dirs':
+        return observations.get('nonempty_directory_preserved') is True
+    if candidate.domain_contract == 'deleted_files':
+        source = observations.get('source_before_hash')
+        return (output.get('ok') is True
+                and observations.get('backup_failure_preserved_source') is True
+                and observations.get('source_removed') is True
+                and isinstance(source, str) and _DIGEST_RE.fullmatch(source) is not None
+                and observations.get('recovery_copy_hash') == source)
     events = observations.get("filesystem_events")
     source = observations.get("source_before_hash")
     recovery = observations.get("recovery_copy_hash")

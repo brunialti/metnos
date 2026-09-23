@@ -17,8 +17,8 @@
 </style></head><body>
 <div class="shell">
 <nav><a href="index.html">← Metnos</a><a href="interface.html">L'interfaccia</a><a href="architecture/index.html">Guida all'architettura</a><a href="architecture/executor_catalog.html">Catalogo tecnico</a><a href="architecture/tutor.html">Come funziona il Tutor</a><a href="/en/domains.html" hreflang="en">EN</a></nav>
-<header class="hero"><div><div class="eyebrow">Riferimento operativo · generato dal catalogo canonico</div><h1>Che cosa puoi chiedere a Metnos, dominio per dominio</h1><p class="lead">Questa pagina descrive tutti i domini canonici del vocabolario Metnos. Ogni esempio è una frase che puoi usare direttamente in chat: non occorre conoscere executor, argomenti o sintassi tecniche.</p></div><div class="hero-note"><strong>27</strong><span>domini canonici</span><strong>107</strong><span>operazioni documentate</span></div></header>
-<p class="contract">La struttura del riferimento deriva dai 27 oggetti canonici del runtime; nomi e conteggi delle operazioni distribuite derivano dai manifest sorgente e dai contratti integrati. La disponibilità effettiva richiede l'ammissione di Executor Birth. Le skill installate possono aggiungere fornitori e operazioni. Per sapere che cosa è disponibile adesso sulla tua istanza, chiedi al Tutor.</p>
+<header class="hero"><div><div class="eyebrow">Riferimento operativo · generato dal catalogo canonico</div><h1>Che cosa puoi chiedere a Metnos, dominio per dominio</h1><p class="lead">Questa pagina descrive tutti i domini canonici del vocabolario Metnos. Ogni esempio è una frase che puoi usare direttamente in chat: non occorre conoscere executor, argomenti o sintassi tecniche.</p></div><div class="hero-note"><strong>29</strong><span>domini canonici</span><strong>120</strong><span>operazioni documentate</span></div></header>
+<p class="contract">La struttura del riferimento deriva dai 29 oggetti canonici del runtime; nomi e conteggi delle operazioni distribuite derivano dai manifest sorgente e dai contratti integrati. La disponibilità effettiva richiede l'ammissione di Executor Birth. Le skill installate possono aggiungere fornitori e operazioni. Per sapere che cosa è disponibile adesso sulla tua istanza, chiedi al Tutor.</p>
 <div class="jump"><a href="#group-content">Contenuti e calcolo</a><a href="#group-composition">Composizione dei risultati</a><a href="#group-communication">Comunicazione e tempo</a><a href="#group-world">Web, luoghi e media</a><a href="#group-collaboration">Collaborazione e fornitori</a><a href="#group-governance">Controllo e amministrazione</a><a href="#group-system">Funzioni trasversali</a></div>
 
 <section class="domain-group" id="group-content">
@@ -104,8 +104,8 @@
 </article>
 <article class="domain-card" id="domain-tasks">
   <div class="domain-head"><div><span class="domain-key">tasks</span><h3>Attività programmate</h3></div><span class="count">6 operazioni documentate</span></div>
-  <p>Crea, consulta, modifica ed elimina promemoria o richieste ricorrenti; conserva anche la cronologia delle esecuzioni. Le skill possono aggiungere attività remote, come i workflow di GitHub.</p>
-  <p class="boundary"><strong>Confine.</strong> Un&#x27;attività programmata esegue una richiesta a un&#x27;ora stabilita o al verificarsi di un evento; non è un appuntamento di calendario.</p>
+  <p>Crea, consulta, modifica ed elimina promemoria o richieste ricorrenti; conserva anche la cronologia delle esecuzioni. Riguarda soltanto lo scheduler interno di Metnos.</p>
+  <p class="boundary"><strong>Confine.</strong> Un&#x27;attività programmata esegue una richiesta a un&#x27;ora stabilita o al verificarsi di un evento; non è un appuntamento di calendario né un&#x27;automazione remota, che appartiene ad Automazioni remote.</p>
   <div class="examples"><p class="example"><span>Chiedi a Metnos con una richiesta come quella di questo esempio:</span>«Ogni lunedì alle 8 leggi le mail non lette dell&#x27;account lavoro e mandami un riepilogo su Telegram.»</p><p class="example"><span>Chiedi a Metnos con una richiesta come quella di questo esempio:</span>«Mostrami gli ultimi esiti dell&#x27;attività Backup foto e gli eventuali errori.»</p></div>
   <details><summary>Operazioni distribuite (6)</summary><div class="operations"><code>create_tasks</code><code>delete_tasks</code><code>list_tasks</code><code>read_tasks</code><code>read_tasks_history</code><code>set_tasks</code></div></details>
 </article>
@@ -157,21 +157,35 @@
 </article></div>
 </section>
 <section class="domain-group" id="group-collaboration">
-  <div class="section-title"><span>03</span><div><h2>Collaborazione e fornitori</h2><p>Estensioni e oggetti di lavoro condiviso.</p></div></div>
+  <div class="section-title"><span>05</span><div><h2>Collaborazione e fornitori</h2><p>Estensioni e oggetti di lavoro condiviso.</p></div></div>
   <div class="domain-grid">
+<article class="domain-card" id="domain-workflows">
+  <div class="domain-head"><div><span class="domain-key">workflows</span><h3>Automazioni remote</h3></div><span class="count">2 operazioni documentate</span></div>
+  <p>Avvia le automazioni già presenti in un repository ed elenca le loro esecuzioni con esito, ramo e durata.</p>
+  <p class="boundary"><strong>Confine.</strong> È distinto dalle attività programmate, che sono lo scheduler interno di Metnos, e dai processi, che sono software in esecuzione su una macchina.</p>
+  <div class="examples"><p class="example"><span>Chiedi a Metnos con una richiesta come quella di questo esempio:</span>«Avvia l&#x27;automazione ci.yml di acme/app sul ramo principale.»</p><p class="example"><span>Chiedi a Metnos con una richiesta come quella di questo esempio:</span>«Mostrami le ultime esecuzioni fallite delle automazioni di acme/app.»</p></div>
+  <details><summary>Operazioni distribuite (2)</summary><div class="operations"><code>find_workflows</code><code>run_workflows</code></div></details>
+</article>
 <article class="domain-card" id="domain-issues">
-  <div class="domain-head"><div><span class="domain-key">issues</span><h3>Issue</h3></div><span class="count">0 operazioni documentate</span></div>
+  <div class="domain-head"><div><span class="domain-key">issues</span><h3>Issue</h3></div><span class="count">5 operazioni documentate</span></div>
   <p>Attraverso la skill di un fornitore, cerca, legge, crea, aggiorna o chiude segnalazioni di progetto con stato, etichette e assegnatari.</p>
   <p class="boundary"><strong>Confine.</strong> Il fornitore qui documentato è GitHub e richiede credenziali configurate; le capacità effettive dipendono dalle skill ammesse nell&#x27;istanza.</p>
-  <div class="examples"><p class="example"><span>Chiedi a Metnos con una richiesta come quella di questo esempio:</span>«Nel repository metnos trova le issue aperte con etichetta bug create nell&#x27;ultima settimana.»</p><p class="example"><span>Chiedi a Metnos con una richiesta come quella di questo esempio:</span>«Crea una issue nel repository acme/app con questo titolo e assegnala a Laura.»</p></div>
-  <details><summary>Operazioni distribuite (0)</summary><div class="operations"><span class="extension">Questo dominio è disponibile quando una skill o un fornitore ammesso ne installa le operazioni.</span></div></details>
+  <div class="examples"><p class="example"><span>Chiedi a Metnos con una richiesta come quella di questo esempio:</span>«Nel repository metnos trova le issue aperte con etichetta bug create nell&#x27;ultima settimana.»</p><p class="example"><span>Chiedi a Metnos con una richiesta come quella di questo esempio:</span>«Crea una issue nel repository acme/app con questo titolo e assegnala a chi segue il rilascio.»</p></div>
+  <details><summary>Operazioni distribuite (5)</summary><div class="operations"><code>create_issues</code><code>delete_issues</code><code>find_issues</code><code>read_issues</code><code>set_issues</code></div></details>
 </article>
 <article class="domain-card" id="domain-pulls">
-  <div class="domain-head"><div><span class="domain-key">pulls</span><h3>Pull request</h3></div><span class="count">0 operazioni documentate</span></div>
+  <div class="domain-head"><div><span class="domain-key">pulls</span><h3>Pull request</h3></div><span class="count">4 operazioni documentate</span></div>
   <p>Cerca e legge pull request, differenze nel codice e stato della revisione; aggiorna o integra una richiesta quando il fornitore e il mandato lo consentono.</p>
   <p class="boundary"><strong>Confine.</strong> È distinto dalle issue perché comprende modifiche al codice, revisione e integrazione. Le operazioni che producono effetti sono soggette a vaglio.</p>
   <div class="examples"><p class="example"><span>Chiedi a Metnos con una richiesta come quella di questo esempio:</span>«Mostrami le pull request aperte di acme/app che modificano la cartella security.»</p><p class="example"><span>Chiedi a Metnos con una richiesta come quella di questo esempio:</span>«Leggi il diff della PR 42, riassumi i rischi e fermati prima del merge.»</p></div>
-  <details><summary>Operazioni distribuite (0)</summary><div class="operations"><span class="extension">Questo dominio è disponibile quando una skill o un fornitore ammesso ne installa le operazioni.</span></div></details>
+  <details><summary>Operazioni distribuite (4)</summary><div class="operations"><code>change_pulls</code><code>find_pulls</code><code>read_pulls</code><code>set_pulls</code></div></details>
+</article>
+<article class="domain-card" id="domain-comments">
+  <div class="domain-head"><div><span class="domain-key">comments</span><h3>Commenti</h3></div><span class="count">2 operazioni documentate</span></div>
+  <p>Scrive e cancella commenti sugli elementi di discussione di un fornitore: segnalazioni e proposte di modifica.</p>
+  <p class="boundary"><strong>Confine.</strong> Un commento non è posta: non ha destinatario, cartella né consegna. Approvare o chiedere modifiche a una proposta è invece un verdetto e appartiene a Pull request.</p>
+  <div class="examples"><p class="example"><span>Chiedi a Metnos con una richiesta come quella di questo esempio:</span>«Scrivi sulla issue 42 di acme/app che il problema si presenta anche sulla versione nuova.»</p><p class="example"><span>Chiedi a Metnos con una richiesta come quella di questo esempio:</span>«Cancella il commento che ho lasciato per sbaglio sulla proposta 7.»</p></div>
+  <details><summary>Operazioni distribuite (2)</summary><div class="operations"><code>create_comments</code><code>delete_comments</code></div></details>
 </article>
 <article class="domain-card" id="domain-skills">
   <div class="domain-head"><div><span class="domain-key">skills</span><h3>Skill</h3></div><span class="count">2 operazioni documentate</span></div>

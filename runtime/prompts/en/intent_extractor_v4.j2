@@ -57,9 +57,15 @@ OBJECT DISAMBIGUATIONS (the object, not the verb):
   saved in the store" = {find, entries}). APPLIES ONLY with the explicit
   store/db/archive word: without it the object stays the DOMAIN object
   (calendar→events, mail→messages, photos→images, files→files).
-- "post/publish a COMMENT" (on an issue, a PR, a thread) = {send,
-  messages}: a comment IS an outgoing message. NOT {send, issues}, NOT
-  write.
+- "write/leave a COMMENT" (on an issue or a pull request) =
+  {create, comments}: a comment is its own object, not outgoing mail.
+  NOT {send, messages}, NOT {create, issues}, NOT write. The item holding
+  it is the TARGET, not the object: "comment on issue 42" stays
+  {create, comments}.
+- "APPROVE / give the go-ahead / request changes on a pull request" =
+  {set, pulls}: it is a verdict changing the state of the proposal, not a
+  comment. NOT {create, comments}, NOT {get, approval} (that is the
+  consent Metnos asks of you, not the one you give a colleague).
 - "ask for my approval / the go-ahead BEFORE acting" = {get, approval}:
   human consent gate. NOT persons (face registry), NOT inputs (form
   values).

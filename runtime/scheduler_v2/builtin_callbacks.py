@@ -802,7 +802,7 @@ def install_default_callbacks(scheduler) -> None:
     # il daemon fa `await fn(payload)`.
     async def _task_nightly_maintenance(payload=None):
         import nightly_orchestrator
-        return await nightly_orchestrator.run_nightly(cb, payload)
+        return await nightly_orchestrator.scheduled_nightly(cb, payload)
     cb.register(
         "nightly_maintenance",
         _task_nightly_maintenance,

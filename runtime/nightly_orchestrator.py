@@ -14,9 +14,9 @@ Vincoli (richiesta utente):
 
 Proprieta':
   - ORDINE rispettato (dipendenze): observer dopo materialize; reaper dopo aging;
-    digest dopo promoter; refresh indice immagini (GPU-heavy) per primo e da solo.
-  - GPU-SAFE per costruzione: esecuzione sequenziale (un task alla volta) → mai
-    due task GPU-heavy in parallelo (supera lo staggering a orari fissi, ADR 0167).
+    digest dopo promoter; consegna del refresh indice immagini per prima.
+  - I callback sono sequenziali; un lavoro consegnato a LRE continua in modo
+    asincrono. Le sue risorse sono regolate da LRE, non da questa sequenza.
   - ERROR-ISOLATION (§2.8): un task che fallisce NON abortisce gli altri; ogni esito
     e' catturato; ritorna un sommario {task: ok|error|missing}.
   - async-aware: invoca callback sync e async (CallbackInfo.is_async).
@@ -28,14 +28,15 @@ UTENTE (i `user_*`): restano entry separate. (github_watcher RITIRATO → execut
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 
 log = logging.getLogger("metnos.nightly_orchestrator")
 
 # Sequenza ordinata dei task housekeeping notturni (per callback_key).
-# L'ordine codifica le dipendenze + mette il GPU-heavy per primo e isolato.
+# L'ordine codifica le dipendenze tra callback, non il termine dei lavori LRE.
 NIGHTLY_SEQUENCE: tuple[str, ...] = (
-    "images_index_refresh",      # GPU-heavy: per primo, da solo (sequenziale)
+    "images_index_refresh",      # consegna asincrona a LRE
     "change_intent_materialize",
     "change_observer",           # dopo materialize
     "nightly_aging",
@@ -57,6 +58,11 @@ def _declared_failure(result) -> str | None:
     """Normalizza i comuni report job senza imporre una shape unica."""
     if not isinstance(result, dict):
         return None
+    if result.get("workload_id") and result.get("state") in {
+        "needs_attention", "failed", "completed_with_errors", "paused",
+        "pause_requested", "cancel_requested", "cancelled",
+    }:
+        return "workload_" + result["state"]
     if result.get("ok") is False:
         return str(result.get("error_class") or result.get("error")
                    or result.get("reason") or "reported_failure")
@@ -79,9 +85,10 @@ async def run_nightly(callbacks, payload: dict | None = None) -> dict:
     """Esegue la sequenza notturna invocando i callback registrati per chiave.
 
     `callbacks`: il CallbackRegistry del daemon (ha `.get(key) -> CallbackInfo`).
-    Ritorna `{ok, ran: {key: "ok"|"missing"|"error: ..."}, ok_count, fail_count}`.
+    Ritorna gli esiti dei callback e i riferimenti ai lavori LRE consegnati.
     """
     ran: dict[str, str] = {}
+    workloads: dict[str, dict] = {}
     loop = asyncio.get_running_loop()
     for key in NIGHTLY_SEQUENCE:
         info = callbacks.get(key) if callbacks is not None else None
@@ -97,6 +104,11 @@ async def run_nightly(callbacks, payload: dict | None = None) -> dict:
                 result = await info.fn(None)
             else:
                 result = await loop.run_in_executor(None, info.fn, None)
+            if isinstance(result, dict) and result.get("workload_id"):
+                # Keep only bounded operational facts, never the input,
+                # prompts or full receipt. Admission is not job completion.
+                workloads[key] = {name: str(result[name])[:128] for name in
+                                  ("workload_id", "state") if name in result}
             reason = _declared_failure(result)
             if reason:
                 ran[key] = f"error: {reason}"
@@ -104,12 +116,30 @@ async def run_nightly(callbacks, payload: dict | None = None) -> dict:
                     "nightly_maintenance: %s ha dichiarato fallimento: %s",
                     key, reason)
             else:
-                ran[key] = "ok"
-                log.info("nightly_maintenance: %s ok", key)
+                ran[key] = ("workload: " + str(result.get("state", "unknown"))
+                            if key in workloads else "ok")
+                log.info("nightly_maintenance: %s %s", key, ran[key])
         except Exception as e:  # §2.8 error-isolation: un fallimento non abortisce
             ran[key] = f"error: {type(e).__name__}: {e}"
             log.warning("nightly_maintenance: %s FALLITO: %r", key, e)
-    ok_count = sum(1 for v in ran.values() if v == "ok")
+    ok_count = sum(1 for v in ran.values() if v == "ok" or v.startswith("workload:"))
     fail_count = sum(1 for v in ran.values() if v.startswith("error"))
-    return {"ok": True, "ran": ran, "ok_count": ok_count,
-            "fail_count": fail_count, "total": len(NIGHTLY_SEQUENCE)}
+    missing_count = sum(1 for v in ran.values() if v == "missing")
+    return {"ok": not (fail_count or missing_count), "ran": ran, "workloads": workloads,
+            "ok_count": ok_count, "fail_count": fail_count, "missing_count": missing_count,
+            "total": len(NIGHTLY_SEQUENCE)}
+
+
+async def scheduled_nightly(callbacks, payload: dict | None = None):
+    """Give the scheduler an explicit outcome so partial runs cannot look green."""
+    from scheduler_v2.models import CallbackOutcome
+
+    report = await run_nightly(callbacks, payload)
+    return CallbackOutcome(
+        status="success" if report["ok"] else "partial",
+        output=json.dumps(report, ensure_ascii=True, separators=(",", ":")),
+        error=None if report["ok"] else "; ".join(
+            f"{key}: {value}" for key, value in report["ran"].items()
+            if value == "missing" or value.startswith("error:")
+        ),
+    )

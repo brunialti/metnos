@@ -1168,6 +1168,7 @@ def _demote(account: _ServiceAccountV1):
 def _prepare_activation_catalog(tmp_path, account, monkeypatch) -> Path:
     """Bind real locks to the isolated account, not runtime discovery."""
     import contract_store
+    import contract_cutover_guard
     import stack_reconcile
 
     state = tmp_path / "service-state"
@@ -1177,6 +1178,11 @@ def _prepare_activation_catalog(tmp_path, account, monkeypatch) -> Path:
     lock.touch(mode=0o600, exist_ok=False)
     os.chown(lock, account.uid, account.gid)
     monkeypatch.setattr(contract_store._C, "PATH_USER_STATE", state)
+    # Ownership material below belongs to the standalone startup-gate cell,
+    # not an installed Metnos runtime. There is no additional runtime topology
+    # to discover. Real maintenance-unit observations and the signed systemd
+    # gate remain enabled; only unrelated runtime provisioning is isolated.
+    monkeypatch.setattr(contract_cutover_guard, "_installed_service_units_v1", lambda: None)
     # This cell certifies the standalone signed startup gate. It deliberately
     # has no runtime Birth installation from which to discover a lock scope.
     # Keep both real locks and their real service identity in the same fixture.

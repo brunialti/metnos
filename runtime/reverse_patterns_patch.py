@@ -45,6 +45,15 @@ _OBJECT_REGISTRY = {
     "messages": {"singular": "message", "scope": "folder"},
     "contacts": {"singular": "contact", "scope": "address_book_id"},
     "files":    {"singular": "file",    "scope": "drive_id"},
+    # RM-0011 F1: aprire una segnalazione si annulla chiudendola. Su GitHub
+    # una issue non si cancella, e chiuderla e' l'inverso onesto di averla
+    # aperta (§2.8): l'executor inverso e' `delete_issues`, che chiude.
+    "issues":   {"singular": "issue", "scope": "repo",
+                 "id_field": "number", "argument": "number", "plural": False},
+    # RM-0011 F2: lasciare un commento si annulla cancellandolo. Qui
+    # l'inverso e' esatto, non una approssimazione: GitHub cancella
+    # davvero un commento, al contrario di una segnalazione.
+    "comments": {"singular": "comment", "scope": "repo"},
 }
 
 
@@ -119,9 +128,14 @@ def build_undo_calls(pattern_name, results):
 
     singular = spec["singular"]
     scope_field = spec["scope"]
-    id_field = f"{singular}_id"
-    ids_field = f"{singular}_ids"
+    id_field = spec.get("id_field", f"{singular}_id")
+    ids_field = spec.get("argument", f"{singular}_ids")
     executor = f"delete_{object_plural}"
+
+    def calls_for(ids, scope):
+        values = [ids] if spec.get("plural", True) else ids
+        return [{"executor": executor, "args": {**scope, ids_field: value}}
+                for value in values]
 
     # Sorgenti possibili di ID (in ordine di preferenza):
     # 1. `results._undo.ids` (lista canonica scritta dall'executor produttore).
@@ -132,16 +146,17 @@ def build_undo_calls(pattern_name, results):
     if isinstance(undo_meta, dict) and isinstance(undo_meta.get("ids"), list) and undo_meta["ids"]:
         ids = list(undo_meta["ids"])
         # Nessuno scope-grouping disponibile da _undo.ids: tutto in un gruppo.
-        args = {ids_field: ids}
+        args = {}
         scope = undo_meta.get("scope")
         if isinstance(scope, dict):
             # Scope JIT emesso dal backend firmato (es. provider/client). Non
             # viene ricostruito in seguito e non proviene dal planner.
             args.update({key: value for key, value in scope.items()
                          if isinstance(key, str) and not key.startswith("_")})
-        return [{"executor": executor, "args": args}], None
+        return calls_for(ids, args), None
 
-    rows, err = _validate_undo_blob_with_fallback(results, id_field, scope_field)
+    rows, err = _validate_undo_blob_with_fallback(
+        results, id_field, scope_field, fallback_id="id_field" not in spec)
     if err:
         return [], err
 
@@ -149,15 +164,16 @@ def build_undo_calls(pattern_name, results):
     calls = []
     for scope_value, group_rows in groups.items():
         # Mantieni ordine di apparizione interno al gruppo (deterministico).
-        ids = [r.get(id_field) or r.get("id") for r in group_rows]
-        args = {ids_field: ids}
+        ids = [r[id_field] if "id_field" in spec else r.get(id_field) or r.get("id")
+               for r in group_rows]
+        args = {}
         if scope_value is not None:
             args[scope_field] = scope_value
-        calls.append({"executor": executor, "args": args})
+        calls.extend(calls_for(ids, args))
     return calls, None
 
 
-def _validate_undo_blob_with_fallback(results, id_field, scope_field):
+def _validate_undo_blob_with_fallback(results, id_field, scope_field, *, fallback_id=True):
     """Variante che accetta `id` come fallback di `<singular>_id`."""
     if not isinstance(results, dict):
         return [], "results must be a dict"
@@ -170,7 +186,7 @@ def _validate_undo_blob_with_fallback(results, id_field, scope_field):
     for r in rows:
         if not isinstance(r, dict):
             continue
-        rid = r.get(id_field) or r.get("id")
+        rid = r.get(id_field) or (r.get("id") if fallback_id else None)
         if not rid:
             continue
         valid.append(r)
