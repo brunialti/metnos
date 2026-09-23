@@ -73,7 +73,7 @@
       scope: "Guide e riferimenti pubblici di Metnos",
       groups: [
         ["Inizia qui", "L'essenziale per entrare, orientarti e formulare una richiesta.", [
-          ["home", "Panoramica della documentazione"], ["webui", "Aprire e usare Metnos"], ["interface", "Mappa dell'interfaccia"], ["domains", "Cosa puoi chiedere"], ["quick_tour", "Giro rapido"], ["organize_files", "Organizzare file — in attivazione"],
+          ["home", "Panoramica della documentazione"], ["webui", "Aprire e usare Metnos"], ["interface", "Mappa dell'interfaccia"], ["domains", "Cosa puoi chiedere"], ["quick_tour", "Giro rapido"], ["organize_files", "Organizzare file"],
         ]],
         ["Concetti fondamentali", "Le basi di autorità, esecuzione e sicurezza.", [
           ["executor", "Executor: azioni e limiti"], ["lifecycle", "Ciclo di vita di una richiesta"], ["policy", "Policy e autorità"], ["approval_ux", "Conferme e controlli"], ["multilingual_by_definition", "Multilingue per definizione"], ["sandbox", "Sandbox"],
@@ -118,7 +118,7 @@
       scope: "Public Metnos guides and references",
       groups: [
         ["Start here", "The essentials for getting in, finding your way, and asking for something.", [
-          ["home", "Documentation overview"], ["webui", "Opening Metnos"], ["interface", "Interface map"], ["domains", "What you can ask"], ["quick_tour", "Quick tour"], ["organize_files", "Organizing files — activation pending"],
+          ["home", "Documentation overview"], ["webui", "Opening Metnos"], ["interface", "Interface map"], ["domains", "What you can ask"], ["quick_tour", "Quick tour"], ["organize_files", "Organizing files"],
         ]],
         ["Core concepts", "The foundations of authority, execution, and safety.", [
           ["executor", "Executors: admitted actions"], ["lifecycle", "The lifecycle of a request"], ["policy", "Policy and authority"], ["approval_ux", "Approval and review"], ["multilingual_by_definition", "Multilingual by definition"], ["sandbox", "Sandbox"],
