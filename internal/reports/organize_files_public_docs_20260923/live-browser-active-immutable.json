@@ -1,0 +1,29 @@
+{
+  "cases": [
+    {
+      "lang": "it",
+      "width": 390,
+      "http": 200,
+      "url": "https://dd683f03.mykleos.pages.dev/it/organize_files"
+    },
+    {
+      "lang": "it",
+      "width": 1440,
+      "http": 200,
+      "url": "https://dd683f03.mykleos.pages.dev/it/organize_files"
+    },
+    {
+      "lang": "en",
+      "width": 390,
+      "http": 200,
+      "url": "https://dd683f03.mykleos.pages.dev/en/organize_files"
+    },
+    {
+      "lang": "en",
+      "width": 1440,
+      "http": 200,
+      "url": "https://dd683f03.mykleos.pages.dev/en/organize_files"
+    }
+  ],
+  "browser_errors": []
+}

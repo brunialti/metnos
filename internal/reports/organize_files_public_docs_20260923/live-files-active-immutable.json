@@ -1,0 +1,758 @@
+[
+  {
+    "path": "serve.py",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "8f17478883be67eb6073cd27754f0811522d7c0b83651ee3657c22f488b054a9"
+  },
+  {
+    "path": "sitemap.xml",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "2b851c91005b584be54697bb5d42988eff5817faccf1373d1536da27f1f26fa9"
+  },
+  {
+    "path": "robots.txt",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "c9e7fce4f7740a992efa7e2c242d447245da664887ebfa42e22c48b11f31644c"
+  },
+  {
+    "path": "a826bda7707c17d0a54ce8960327de48.txt",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "8733cf5f75bc0ac6f28fcee25f2a7174d5afb2c4ff16cee6494e1a5a5db9402e"
+  },
+  {
+    "path": "security/index.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "0076c79fde768bf075c0ff8be8279d7ad29f15746ebaf677620cceddc8821f5c"
+  },
+  {
+    "path": "en/Metnos_Dialogue_Executors_v1.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "4296fc30de2289fa8e2046ed3f61abefa87dcd82cd16c86384116f7b0ea36fb6"
+  },
+  {
+    "path": "en/index.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "c74ea32df6d42389aef461d750a489a4bf414242b69f61d28bd6e621136dcf0f"
+  },
+  {
+    "path": "en/domains.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "f034d6d77dfdfe7907250878628fd475a3cd26c05d47211a3e5e3ae8594267d2"
+  },
+  {
+    "path": "en/Metnos_Perspectives_Judgement_v1.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "232f6f442005e6da02e831c42103d01991813eb53943e24ee3abe858f7f5d46c"
+  },
+  {
+    "path": "en/organize_files.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "d1e7ea81d911f882cd3d5e6e10521b3c0accc7d54bc58e5df4268cf172fc8de2"
+  },
+  {
+    "path": "en/Metnos_Dialogue_v1.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "176258fcaab88a59a1461a2f73544c7dda6ba76dda4d2622f2ad61da0d6581b1"
+  },
+  {
+    "path": "en/webui.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "81a3d0f995949156ed1995d9f2d277c9187e44868d9784fb1ede21da70e030d9"
+  },
+  {
+    "path": "en/Metnos_Glossary_v1.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "ccf22fac11cb4a84572a8df755464886ea85ba2c569d7c586957b093ff329150"
+  },
+  {
+    "path": "en/Metnos_QuickTour.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "d2c82032c13abc6365f0312c317f27e5df0d8b5354aef572f99babd1e02eafe1"
+  },
+  {
+    "path": "en/interface.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "4011d26032e77dec6a2877889844e7acb8743fc2b7a5d1cc626f26f616a1ef08"
+  },
+  {
+    "path": "en/code.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "9597b51a545bd76e0c3d5b38f6c10d86cb5cc1906e72ba1f39cae5b05be7b268"
+  },
+  {
+    "path": "en/Metnos_Extended_Perspectives_v1.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "59b3ca159cba37b08e6acd6ba51c1b23663c4684746295bc6a0b8ffa837f2589"
+  },
+  {
+    "path": "en/Metnos_QuickTour.pdf",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "22ad29b4727b9e8ebfe4dbcb735c7174cc8f7c7e48c888dff771857e483708cf"
+  },
+  {
+    "path": "en/roadmap.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "2af86d44f2fac0dc7ecb8cab8132c0921c485de54c50e5e2343c5b2dec341081"
+  },
+  {
+    "path": "it/Metnos_Glossario_v1.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "bbd7ddd8b639812f5f8c0847a88d0ba43f9ef0f6503dc0441c5c7a8c3c7072b2"
+  },
+  {
+    "path": "it/index.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "643f9dfb4bedebb3f74ab456e39a6c90a8c76c185a942b5d08fcd491c89d903c"
+  },
+  {
+    "path": "it/Metnos_Prospettive_Estese_v1.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "cf29190e078c69acac04a39b1243d6f97d7f986ce60e036d040775e76881016a"
+  },
+  {
+    "path": "it/Metnos_Dialogo_v1.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "bd7662ab5453805899f6a0dee974d304eb52378e26273d147996b322bc2319ca"
+  },
+  {
+    "path": "it/Metnos_Dialogo_Executor_v1.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "2755486560134664e21774b265e51a29763f84823215f259e979bf23a4ddf5c7"
+  },
+  {
+    "path": "it/domains.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "c75078e41cc2758f37c6c8315eaa1d2f5e508718f99c98c854d8581f4fa571bd"
+  },
+  {
+    "path": "it/organize_files.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "ba8f0a46cc6967b63d32a52540b1af03c6b892e256028a60cdbb00d7ecca07a1"
+  },
+  {
+    "path": "it/webui.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "54adebb0828c0aadfcf45bebb0e7d1e293a35ac3802a5a76b85bace149a08e2c"
+  },
+  {
+    "path": "it/Metnos_QuickTour.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "40fa63d43150946eded0539b813be134a66b35ac1cec89bc1bd0238674011b5a"
+  },
+  {
+    "path": "it/interface.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "b19c50246704e0b4c0c2e40ffc750724d180a1c66ba6d1957304054d8a8d8786"
+  },
+  {
+    "path": "it/code.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "96480d05ed0dc5fec8f9fafa38e6e3999ba9e4be3d95f31b79dc1a416c723536"
+  },
+  {
+    "path": "it/Metnos_Prospettive_Giudizio_v1.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "ba7080fa89b155b2a9369a5eb055e9170510d75ba3ffa7dad584917a30525f30"
+  },
+  {
+    "path": "it/Metnos_QuickTour.pdf",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "795f063b380036e4d8bc02562dfd3d62257762f99311f247b05225f649b1e5d1"
+  },
+  {
+    "path": "it/roadmap.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "98ac47d8eef89cd51d3cb5fd93d1299e2dbc45ac4afb31308744fd623daac757"
+  },
+  {
+    "path": "assets/metnos.css",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "3da84cfe0ba5926e0b74a6f5e51cdce0224bcc10a1dcd2091fe53c1f46379de9"
+  },
+  {
+    "path": "assets/verified-seal-en.svg",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "20a321f9aa2c52dbe9b9e62427e1520b6933dad94f657259d97ef4640123266d"
+  },
+  {
+    "path": "assets/wiki-shell.js",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "145ed58119db414bfb80817f8b2a1d85ef7d7a6cb190bfe1a142a5653e8a64b9"
+  },
+  {
+    "path": "assets/multilingual-flow.svg",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "f14f8615343a35600e6fb4455c346e0677b3e0a218245bc2c09a028eab5e2330"
+  },
+  {
+    "path": "assets/ChatGPT Image 25 mag 2026, 23_39_36.png",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "8aabe3149c1c094e0ec97acb242c0840238741305ae137d891dd41afcc5a9ab6"
+  },
+  {
+    "path": "assets/wax_seal.svg",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "4f40281342c6850b909e7f9ae957a63d68276af43ac604f9d02fea676a0fae6c"
+  },
+  {
+    "path": "assets/quicktour-print.css",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "d1427d70bfa3be3098860a020743031a69cff9f4830df1e9a6b3e5c5ed2408d1"
+  },
+  {
+    "path": "assets/architecture-flow.png",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "2edd9a818e56c73eda4abcfb3cba75df464600c2de0f54510fdd6438f7ab3280"
+  },
+  {
+    "path": "assets/verified-seal.svg",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "20a321f9aa2c52dbe9b9e62427e1520b6933dad94f657259d97ef4640123266d"
+  },
+  {
+    "path": "assets/metnos-quicktour-cover.png",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "f2318d1974b2f121edfdd1b7db22a27d79e2ff5f145cf6c882740d3b686d9580"
+  },
+  {
+    "path": ".well-known/security.txt",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "296412b224eaff26d6ba860574e54cad36648a4570285a1cf6300dc85be9b6fa"
+  },
+  {
+    "path": "en/system/index.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "f889c996b321a3012bfcc1e666454553f32d17108bef3fcc304f283c4db6ead2"
+  },
+  {
+    "path": "en/system/safety.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "ea625e7728dcc788604a53e4b8bb05b3e1af03ba04d97220ee57be50609871ca"
+  },
+  {
+    "path": "en/system/users.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "379b3fa0ae766aef7cdf04c34aee68f24c784918795b2aebf8adcd484aba63e4"
+  },
+  {
+    "path": "en/system/lre.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "f3c198796f32bc5e83cba603350f492c2d5015e588c32147514aa85d09bb2a4d"
+  },
+  {
+    "path": "en/system/services.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "1cd7ddb563c51d65cf8f8a31910157ac7156abc8c392ff25fd85d7c11e349e81"
+  },
+  {
+    "path": "en/system/models.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "44231a0bcdbcca4dc41380f1b552fd6f44ef3cb70e48b329bcd53c4d605b8527"
+  },
+  {
+    "path": "en/system/devices.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "16f187f3a0d3ce529bc3983388018e0f73500821a08e50ae4c3c6bc3e4247538"
+  },
+  {
+    "path": "en/architecture/fast_path.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "c86fa00186eed1168c58b7895d86f7265169acba197e3f09fe70d6783f51d619"
+  },
+  {
+    "path": "en/architecture/telos.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "7071e35ad99cc01d4eb88039b10fe5384186401664d68ca31992eed70f1ac1a3"
+  },
+  {
+    "path": "en/architecture/index.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "abcd0c7b2e901124d4c263d7eb13730c4c6cd8cc5701b48590a03b6e13bc9f4d"
+  },
+  {
+    "path": "en/architecture/scratchpad.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "7fbeaa1019eca45925ba20ce40f1dd42860df0903d89f3fd2d6d9e03870cccc0"
+  },
+  {
+    "path": "en/architecture/remote_executors.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "cee997f580156bc774065029a9289093c46d26b2030560f542b621e076fcbcb5"
+  },
+  {
+    "path": "en/architecture/multilang.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "66ddc9f360f73a1079c29172dbd38980973d55f18e5d6b2a337198f25c333ad6"
+  },
+  {
+    "path": "en/architecture/http_api.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "71878e5e3bb5980888f2b492480a30a337ea9adeb867d3ba30613caf242b601b"
+  },
+  {
+    "path": "en/architecture/vaglio.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "31c79bf0ae4a1279e749724aacb066daf6bf79b6b137d9441d22cbf97adf386b"
+  },
+  {
+    "path": "en/architecture/lifecycle.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "32d75dbb908d3c0b5827926a38d15a64e84aa8e21b9e3ed5b022cef30d7e1b64"
+  },
+  {
+    "path": "en/architecture/synt.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "b6dde2f284bcced4e2fc1ed09fca96b5778275269daf73dd9bdeb4c3e1821c74"
+  },
+  {
+    "path": "en/architecture/observability.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "bf329cbac8baff87d348316174e151af592cbaf8358e893d7a370b1f2ab80441"
+  },
+  {
+    "path": "en/architecture/skills_backends.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "f0023dcd985c8455fbf05c60d3bf6b31ac43e78f56ca8efbadaf5f5de9ce45a8"
+  },
+  {
+    "path": "en/architecture/mnestome.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "b0ec1e672e1282862f00359b726e95fb5f95f5781c1c2709128293d06364073a"
+  },
+  {
+    "path": "en/architecture/mail_accounts.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "b1ed8a218d922c292a619b31bf2ce73c81752de0f757c1aaabf41aeaef5dad34"
+  },
+  {
+    "path": "en/architecture/agent_runtime.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "7b13755a027b1279db9e58591198d9f28d2caedadc412202329f86b676baa7cd"
+  },
+  {
+    "path": "en/architecture/grammar.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "5895f9ada2d5c0b477995292dde4e105bbffc52a9ff5584a0a7a657ff46b3813"
+  },
+  {
+    "path": "en/architecture/executor.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "e9f55f3e7e98715c3d357e0ec79fa4ae830b3ba4c978245452d506af8b1412b2"
+  },
+  {
+    "path": "en/architecture/mnest.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "365c5b1ae3574feb82b3b0c8591900979a9dc8bf8e7e78a0914458105903422f"
+  },
+  {
+    "path": "en/architecture/sandbox.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "c487a2386e6d4e7f3b076e8795dab119312d68c766859a525d6e43d1da0a0f95"
+  },
+  {
+    "path": "en/architecture/approval_ux.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "4498b320f4ea199a5da68146946753a76bb70699597b521c5f58f1cd024d5dba"
+  },
+  {
+    "path": "en/architecture/policy.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "29de4bad2ed4f251405143d5aaf86cf33ef01df797d4f6eeac0d09b1bfa9058e"
+  },
+  {
+    "path": "en/architecture/tutor.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "4c8d727a310c0e7d21d3939a5309d7cb77e27ded977e1a2194b72a397a9e1cb1"
+  },
+  {
+    "path": "en/architecture/intelligent_executors.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "8df9c896956bafd9268c049fe96cef0f5cac29002dd8d3382d4d00ac803f914e"
+  },
+  {
+    "path": "en/architecture/pairing.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "dc21149c959200d3fb1aa73b107c1e02ea4a711d07e1bafb338acda2661cc1d8"
+  },
+  {
+    "path": "en/architecture/multilingual_by_definition.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "69e248747efc3f3dbd79f9bcc5357101428cbc84391995393e15f0b0f52898c1"
+  },
+  {
+    "path": "en/architecture/executor_catalog.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "28476f40584d4bbbb80a8394c1ac095c7f554413435775c219904bc158b44e92"
+  },
+  {
+    "path": "en/architecture/virtualization.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "99594b029b8d8cd75203a0c93caade900f6f62de8024a37772277baa8b3b1b6b"
+  },
+  {
+    "path": "en/architecture/praxis_engine.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "4b1ce830d014b0d5de24e13384ec3c0872f909dfb11e4a0ca13ba406a065cdb7"
+  },
+  {
+    "path": "en/architecture/skill_importer.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "018787ce509c8353dede151ff05d259ac55cd55b70eced2fb9c6b1066feee652"
+  },
+  {
+    "path": "en/architecture/channel.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "3f4e8134bf9b65c7a8c056c58d5029a4c485f48d16581f2e411ca05af051e184"
+  },
+  {
+    "path": "en/architecture/executor_birth.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "7f0fd64be490b06d14d754fbbcc125b29c1b7d4b11cc203a1f3188adc20008a1"
+  },
+  {
+    "path": "it/system/index.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "6a8ce777c3f47cc616b760675c2d61d324d0ea4579ee11e1fe8e818094e31904"
+  },
+  {
+    "path": "it/system/safety.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "f1dd0aca36a26c0d75734d462bc62ab844fb5858d8e1c563f53e14dd360e0258"
+  },
+  {
+    "path": "it/system/users.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "f6644b86bdfc76c8a14b107bee4ff4b2b4e362b2772229a13e65b54054d14db1"
+  },
+  {
+    "path": "it/system/lre.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "828d744b616fd73f294327b0cf2574412cf8dfb9a0e943a36bb0e8a52c6ba712"
+  },
+  {
+    "path": "it/system/services.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "f5237c804acedfd66944865b43a3e417cfd20a12aaea73182060ebcf90f55045"
+  },
+  {
+    "path": "it/system/models.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "bcb340a8571f0d590caaee251616ff83537d1c52551efd280125b5e8676658af"
+  },
+  {
+    "path": "it/system/devices.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "20a27428a6daacfae36ae6c6a2d25fd2200530411c43c2a0287b1c21e7123ad0"
+  },
+  {
+    "path": "it/architecture/fast_path.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "9c7e790500646b3b6497542d94e5be84e295fe21bc418f8f9ee01a4acf58ff52"
+  },
+  {
+    "path": "it/architecture/telos.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "0b48023d92916c4f88c27e93feacce88114ae0fdaebe011fde846915b96caf00"
+  },
+  {
+    "path": "it/architecture/index.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "400ffe4050bfba60984482aaf657e84e50bc6043e5ce6877e63aaa717476b42c"
+  },
+  {
+    "path": "it/architecture/scratchpad.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "99c44a929f7f16638f554cf0e4ed7923fb4ee7929fbe812f31b662384b4d1684"
+  },
+  {
+    "path": "it/architecture/remote_executors.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "16b20349369728fa23a1b8542288a645a5bf842b4f626fdb2a96e8d8fe99f892"
+  },
+  {
+    "path": "it/architecture/multilang.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "104857855dcf1b2ac1ac147e09ec774334cb114bdef9c586873e46792f17494e"
+  },
+  {
+    "path": "it/architecture/http_api.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "9f777d2bceba89aa9f4357fefaae30b54f122ad900b8e8fcba7decf1f5c85b80"
+  },
+  {
+    "path": "it/architecture/vaglio.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "249f386c622af17f807d1c95605071602ecbc6d14f7af3e6f9e3a291325c85b3"
+  },
+  {
+    "path": "it/architecture/lifecycle.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "c91c747721f56ce0d604dec420cbaa42bf3f9e1eb3fa176d3655354e8ad4a47b"
+  },
+  {
+    "path": "it/architecture/mnestoma.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "a10f72b7137ac6115b5e36918c52f592223845a43ea28afc4f4984252aa7e264"
+  },
+  {
+    "path": "it/architecture/synt.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "396cb4092e0f986631a9b263fcda2f1a455a8d1adb6e03b3cfb87ffaad7c4765"
+  },
+  {
+    "path": "it/architecture/observability.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "25dfb2e4e0000f415a34c6163da087f8887974d000d7f4c9d3663e0e3b3d8488"
+  },
+  {
+    "path": "it/architecture/skills_backends.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "44599ef00287d8e40a11710aa21dcb454999f4eebe5333a9b524f933aa91b276"
+  },
+  {
+    "path": "it/architecture/mail_accounts.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "393462da0b304cb95a9c26a8ab6294870e3c1244c8be95ec5b61bb84df4e3d7a"
+  },
+  {
+    "path": "it/architecture/agent_runtime.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "8b88e8e83b633b058ddf5b4bdc130177c6be50bf4a7dec07b85eb4dca574f179"
+  },
+  {
+    "path": "it/architecture/grammar.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "d24b65128cabd9187480c6ecdd21fa1d18b7b58654adadd82451ae4320f8c06d"
+  },
+  {
+    "path": "it/architecture/executor.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "74494946964a1db1a028a0f8214a5ec4d33ff2bb6e7534bb0ceb350eebcbbbfc"
+  },
+  {
+    "path": "it/architecture/mnest.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "e8bcd5f3c4b56ce5e32065e6f6c00a25cb7b8ec30c3570d91094c99f04b96734"
+  },
+  {
+    "path": "it/architecture/sandbox.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "7cf8994ee5be20f5685392c68c23ca027a15c206a88932b6f532853eae716e80"
+  },
+  {
+    "path": "it/architecture/approval_ux.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "dcfdcab56048a9d9fd913bbf9afefdf154265b95741499e946ac80c44fb59963"
+  },
+  {
+    "path": "it/architecture/policy.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "76235b839b1fd3ac4dec3cc05acfab57206e39faaafd1bbb0a51f0340d9e56d7"
+  },
+  {
+    "path": "it/architecture/tutor.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "981e518b04910574e37241fe63ac3fc70a82db462224b05205c9f6c66dc0de39"
+  },
+  {
+    "path": "it/architecture/intelligent_executors.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "ae59f9a552b2ce69cbbf62745fd141178cf1e81c1c9b951ccce72bc76ca9d703"
+  },
+  {
+    "path": "it/architecture/pairing.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "4fec52f9d160af1f52847033a1f03a2c7fe83899fe289441ec1955a37d054961"
+  },
+  {
+    "path": "it/architecture/multilingual_by_definition.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "204e425c12e49735a874421d67c5a124bde987a90c12893fa6dc6be477e986e5"
+  },
+  {
+    "path": "it/architecture/executor_catalog.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "831c4d90df2950fa7f4b7a51f3e6b9c6696d225f5ec701e530f5d7e6463a7e42"
+  },
+  {
+    "path": "it/architecture/virtualization.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "389f74151ba5f267fab1b1c24962d9b79e25584df5c81406c06b104d8cfef570"
+  },
+  {
+    "path": "it/architecture/praxis_engine.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "77f6f6ed6a95f04ee5448031d4f86363bff5963eea760a556ffd0b6f09fcb9a4"
+  },
+  {
+    "path": "it/architecture/skill_importer.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "591fa3b3d9049ae779065742edb8fb026d93f884518a5875773664394d1086b8"
+  },
+  {
+    "path": "it/architecture/channel.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "5817d987d02b3430db2883fded0d0f959edf978320315bf844ffeca643800357"
+  },
+  {
+    "path": "it/architecture/executor_birth.html",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "b3993d5ea49379a1cbf6735c8704f90e840ab9a461388d9106d6f3ec810b6358"
+  },
+  {
+    "path": "assets/images/system-lre-ui-it.png",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "23211bd673606e92cd552fcd11e27e7ab94c371df624a00afd4c8b81541a81be"
+  },
+  {
+    "path": "assets/images/system-users-ui-it.png",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "86a98db670837ceb6f6d8adc6445b881fa778a7cec12628b125fbaca025ca243"
+  },
+  {
+    "path": "assets/images/system-safety-ui-it.png",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "6e8a7aa4d182b799dd9c918647356655342d181f20380ce9ebd0de5b6e51c17a"
+  },
+  {
+    "path": "assets/images/system-devices-ui-it.png",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "a5c0caadc32c7aaaae40281d94c10497eae7ef40c4cdf62f38089986ee4b6af1"
+  },
+  {
+    "path": "assets/images/system-services-ui-it.png",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "e727fc359a0638f70c7c609bbfd95c95b9cba73b73cbec957c08308c096217a7"
+  },
+  {
+    "path": "assets/images/system-models-ui-it.png",
+    "matched": true,
+    "comparison": "exact bytes",
+    "sha256": "912ca6859b6ac5bc5521313bb8578120a51c0353ce3da593bbdb2fbaa42ad12f"
+  }
+]

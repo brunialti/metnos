@@ -1,4 +1,5 @@
 """Read-only post-deploy checks for the complete static publication."""
+import argparse
 from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import json
@@ -9,9 +10,17 @@ import subprocess
 from urllib.parse import quote
 from playwright.sync_api import sync_playwright
 
-root = Path('/opt/metnos/.claude/worktrees/organize-files-public-docs')
+parser = argparse.ArgumentParser()
+parser.add_argument('root', type=Path)
+parser.add_argument('output', type=Path)
+parser.add_argument('--base-url', default='https://metnos.com')
+args = parser.parse_args()
+
+root = args.root.resolve()
 artifact = root / '.wrangler/organize-docs-site'
-output = Path('/tmp/metnos-organize-docs.bZIVCJ')
+output = args.output.resolve()
+output.mkdir(parents=True, exist_ok=True)
+base_url = args.base_url.rstrip('/')
 
 def decoded_email(value):
     encoded = bytes.fromhex(value)
@@ -30,7 +39,7 @@ def normalize_edge_email(body):
 
 def verify(path):
     rel = str(path.relative_to(artifact))
-    url = 'https://metnos.com/' + quote(rel)
+    url = base_url + '/' + quote(rel)
     try:
         body = subprocess.check_output(['curl', '-fLsS', '--max-time', '25', url], stderr=subprocess.PIPE)
         expected = path.read_bytes()
@@ -59,13 +68,15 @@ with sync_playwright() as pw:
         for width in (390, 1440):
             page = browser.new_page(viewport={'width': width, 'height': 900})
             page.on('pageerror', lambda error: browser_errors.append(str(error)))
-            response = page.goto(f'https://metnos.com/{lang}/organize_files', wait_until='networkidle')
+            response = page.goto(f'{base_url}/{lang}/organize_files', wait_until='networkidle')
             assert response.status == 200
             assert page.locator('html').get_attribute('lang') == lang
             assert page.locator('.wiki-tree a[aria-current="page"]').get_attribute('href') == f'/{lang}/organize_files.html'
             assert page.locator('.wiki-locale').get_attribute('hidden') is None
             assert page.evaluate('document.documentElement.scrollWidth') <= width + 1
-            assert page.locator('header .lead').inner_text().find('attivazione' if lang == 'it' else 'activation') >= 0
+            lead = page.locator('header .lead').inner_text().casefold()
+            assert ('organizza file locali' if lang == 'it' else 'organizes local files') in lead
+            assert ('attivazione' if lang == 'it' else 'activation') not in lead
             page.screenshot(path=str(root / '.wrangler/organize-docs-checks' / f'live-{lang}-{width}.png'), full_page=True)
             cases.append({'lang': lang, 'width': width, 'http': response.status, 'url': page.url})
             page.close()

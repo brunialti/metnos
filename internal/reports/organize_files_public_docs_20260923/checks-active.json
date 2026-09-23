@@ -1,0 +1,522 @@
+{
+  "canonical_documents": 101,
+  "distribution_files": 125,
+  "local_links": 1986,
+  "link_issues": [
+    {
+      "page": "security/index.html",
+      "ref": "/",
+      "reason": "missing file",
+      "changed_page": false
+    },
+    {
+      "page": "en/index.html",
+      "ref": "webui.html",
+      "reason": "missing file",
+      "changed_page": false
+    },
+    {
+      "page": "en/Metnos_Dialogue_v1.html",
+      "ref": "architecture/telos.html#cap7",
+      "reason": "missing fragment",
+      "changed_page": false
+    },
+    {
+      "page": "en/Metnos_Glossary_v1.html",
+      "ref": "architecture/agent_runtime.html#cap9",
+      "reason": "missing fragment",
+      "changed_page": false
+    },
+    {
+      "page": "en/Metnos_Glossary_v1.html",
+      "ref": "architecture/agent_runtime.html#cap11",
+      "reason": "missing fragment",
+      "changed_page": false
+    },
+    {
+      "page": "en/Metnos_Glossary_v1.html",
+      "ref": "architecture/index.html#s9",
+      "reason": "missing fragment",
+      "changed_page": false
+    },
+    {
+      "page": "en/Metnos_Glossary_v1.html",
+      "ref": "/en/architecture/pairing.html#cap6",
+      "reason": "missing fragment",
+      "changed_page": false
+    },
+    {
+      "page": "en/Metnos_Glossary_v1.html",
+      "ref": "architecture/agent_runtime.html#cap11",
+      "reason": "missing fragment",
+      "changed_page": false
+    },
+    {
+      "page": "en/Metnos_Glossary_v1.html",
+      "ref": "architecture/index.html#s9",
+      "reason": "missing fragment",
+      "changed_page": false
+    },
+    {
+      "page": "en/Metnos_Glossary_v1.html",
+      "ref": "architecture/agent_runtime.html#cap4",
+      "reason": "missing fragment",
+      "changed_page": false
+    },
+    {
+      "page": "en/Metnos_Glossary_v1.html",
+      "ref": "architecture/index.html#s8",
+      "reason": "missing fragment",
+      "changed_page": false
+    },
+    {
+      "page": "en/Metnos_Glossary_v1.html",
+      "ref": "architecture/index.html#cap9",
+      "reason": "missing fragment",
+      "changed_page": false
+    },
+    {
+      "page": "en/Metnos_Glossary_v1.html",
+      "ref": "architecture/index.html#cap9",
+      "reason": "missing fragment",
+      "changed_page": false
+    },
+    {
+      "page": "en/Metnos_Glossary_v1.html",
+      "ref": "architecture/index.html#cap5",
+      "reason": "missing fragment",
+      "changed_page": false
+    },
+    {
+      "page": "en/Metnos_Glossary_v1.html",
+      "ref": "architecture/index.html#cap10",
+      "reason": "missing fragment",
+      "changed_page": false
+    },
+    {
+      "page": "en/Metnos_Glossary_v1.html",
+      "ref": "architecture/agent_runtime.html#cap11_2",
+      "reason": "missing fragment",
+      "changed_page": false
+    },
+    {
+      "page": "en/Metnos_Glossary_v1.html",
+      "ref": "architecture/index.html#s3",
+      "reason": "missing fragment",
+      "changed_page": false
+    },
+    {
+      "page": "en/Metnos_Glossary_v1.html",
+      "ref": "architecture/agent_runtime.html#cap10",
+      "reason": "missing fragment",
+      "changed_page": false
+    },
+    {
+      "page": "en/Metnos_Glossary_v1.html",
+      "ref": "architecture/index.html#s9",
+      "reason": "missing fragment",
+      "changed_page": false
+    },
+    {
+      "page": "en/interface.html",
+      "ref": "webui.html",
+      "reason": "missing file",
+      "changed_page": false
+    },
+    {
+      "page": "it/Metnos_Glossario_v1.html",
+      "ref": "architecture/agent_runtime.html#cap9",
+      "reason": "missing fragment",
+      "changed_page": false
+    },
+    {
+      "page": "it/Metnos_Glossario_v1.html",
+      "ref": "architecture/index.html#cap5",
+      "reason": "missing fragment",
+      "changed_page": false
+    },
+    {
+      "page": "it/Metnos_Glossario_v1.html",
+      "ref": "architecture/agent_runtime.html#cap11",
+      "reason": "missing fragment",
+      "changed_page": false
+    },
+    {
+      "page": "it/Metnos_Glossario_v1.html",
+      "ref": "architecture/index.html#s9",
+      "reason": "missing fragment",
+      "changed_page": false
+    },
+    {
+      "page": "it/Metnos_Glossario_v1.html",
+      "ref": "architecture/pairing.html#cap6",
+      "reason": "missing fragment",
+      "changed_page": false
+    },
+    {
+      "page": "it/Metnos_Glossario_v1.html",
+      "ref": "architecture/agent_runtime.html#cap11",
+      "reason": "missing fragment",
+      "changed_page": false
+    },
+    {
+      "page": "it/Metnos_Glossario_v1.html",
+      "ref": "architecture/index.html#s9",
+      "reason": "missing fragment",
+      "changed_page": false
+    },
+    {
+      "page": "it/Metnos_Glossario_v1.html",
+      "ref": "architecture/agent_runtime.html#cap4",
+      "reason": "missing fragment",
+      "changed_page": false
+    },
+    {
+      "page": "it/Metnos_Glossario_v1.html",
+      "ref": "architecture/index.html#s8",
+      "reason": "missing fragment",
+      "changed_page": false
+    },
+    {
+      "page": "it/Metnos_Glossario_v1.html",
+      "ref": "architecture/index.html#cap9",
+      "reason": "missing fragment",
+      "changed_page": false
+    },
+    {
+      "page": "it/Metnos_Glossario_v1.html",
+      "ref": "architecture/index.html#cap9",
+      "reason": "missing fragment",
+      "changed_page": false
+    },
+    {
+      "page": "it/Metnos_Glossario_v1.html",
+      "ref": "architecture/index.html#cap10",
+      "reason": "missing fragment",
+      "changed_page": false
+    },
+    {
+      "page": "it/Metnos_Glossario_v1.html",
+      "ref": "architecture/agent_runtime.html#cap11_2",
+      "reason": "missing fragment",
+      "changed_page": false
+    },
+    {
+      "page": "it/Metnos_Glossario_v1.html",
+      "ref": "architecture/index.html#s3",
+      "reason": "missing fragment",
+      "changed_page": false
+    },
+    {
+      "page": "it/Metnos_Glossario_v1.html",
+      "ref": "architecture/agent_runtime.html#cap10",
+      "reason": "missing fragment",
+      "changed_page": false
+    },
+    {
+      "page": "it/Metnos_Glossario_v1.html",
+      "ref": "architecture/index.html#s9",
+      "reason": "missing fragment",
+      "changed_page": false
+    },
+    {
+      "page": "it/index.html",
+      "ref": "webui.html",
+      "reason": "missing file",
+      "changed_page": false
+    },
+    {
+      "page": "it/Metnos_Dialogo_v1.html",
+      "ref": "architecture/telos.html#cap7",
+      "reason": "missing fragment",
+      "changed_page": false
+    },
+    {
+      "page": "it/interface.html",
+      "ref": "webui.html",
+      "reason": "missing file",
+      "changed_page": false
+    },
+    {
+      "page": "en/architecture/channel.html",
+      "ref": "../guide/getting-started.html",
+      "reason": "missing file",
+      "changed_page": false
+    },
+    {
+      "page": "it/architecture/channel.html",
+      "ref": "../guide/getting-started.html",
+      "reason": "missing file",
+      "changed_page": false
+    }
+  ],
+  "tutor": {
+    "it": {
+      "guide_blocks": 29,
+      "quick_tour_added_blocks": 1
+    },
+    "en": {
+      "guide_blocks": 29,
+      "quick_tour_added_blocks": 1
+    }
+  },
+  "browser_cases": [
+    {
+      "lang": "it",
+      "page": "organize_files",
+      "width": 320,
+      "scroll": 320,
+      "overflow": false,
+      "baseline_scroll": null
+    },
+    {
+      "lang": "it",
+      "page": "organize_files",
+      "width": 390,
+      "scroll": 390,
+      "overflow": false,
+      "baseline_scroll": null
+    },
+    {
+      "lang": "it",
+      "page": "organize_files",
+      "width": 768,
+      "scroll": 768,
+      "overflow": false,
+      "baseline_scroll": null
+    },
+    {
+      "lang": "it",
+      "page": "organize_files",
+      "width": 1440,
+      "scroll": 1440,
+      "overflow": false,
+      "baseline_scroll": null
+    },
+    {
+      "lang": "it",
+      "page": "organize_files.html",
+      "width": 320,
+      "scroll": 320,
+      "overflow": false,
+      "baseline_scroll": null
+    },
+    {
+      "lang": "it",
+      "page": "organize_files.html",
+      "width": 390,
+      "scroll": 390,
+      "overflow": false,
+      "baseline_scroll": null
+    },
+    {
+      "lang": "it",
+      "page": "organize_files.html",
+      "width": 768,
+      "scroll": 768,
+      "overflow": false,
+      "baseline_scroll": null
+    },
+    {
+      "lang": "it",
+      "page": "organize_files.html",
+      "width": 1440,
+      "scroll": 1440,
+      "overflow": false,
+      "baseline_scroll": null
+    },
+    {
+      "lang": "it",
+      "page": "Metnos_QuickTour",
+      "width": 320,
+      "scroll": 337,
+      "overflow": true,
+      "baseline_scroll": 337
+    },
+    {
+      "lang": "it",
+      "page": "Metnos_QuickTour",
+      "width": 390,
+      "scroll": 390,
+      "overflow": false,
+      "baseline_scroll": null
+    },
+    {
+      "lang": "it",
+      "page": "Metnos_QuickTour",
+      "width": 768,
+      "scroll": 768,
+      "overflow": false,
+      "baseline_scroll": null
+    },
+    {
+      "lang": "it",
+      "page": "Metnos_QuickTour",
+      "width": 1440,
+      "scroll": 1440,
+      "overflow": false,
+      "baseline_scroll": null
+    },
+    {
+      "lang": "it",
+      "page": "Metnos_QuickTour.html",
+      "width": 320,
+      "scroll": 337,
+      "overflow": true,
+      "baseline_scroll": 337
+    },
+    {
+      "lang": "it",
+      "page": "Metnos_QuickTour.html",
+      "width": 390,
+      "scroll": 390,
+      "overflow": false,
+      "baseline_scroll": null
+    },
+    {
+      "lang": "it",
+      "page": "Metnos_QuickTour.html",
+      "width": 768,
+      "scroll": 768,
+      "overflow": false,
+      "baseline_scroll": null
+    },
+    {
+      "lang": "it",
+      "page": "Metnos_QuickTour.html",
+      "width": 1440,
+      "scroll": 1440,
+      "overflow": false,
+      "baseline_scroll": null
+    },
+    {
+      "lang": "en",
+      "page": "organize_files",
+      "width": 320,
+      "scroll": 320,
+      "overflow": false,
+      "baseline_scroll": null
+    },
+    {
+      "lang": "en",
+      "page": "organize_files",
+      "width": 390,
+      "scroll": 390,
+      "overflow": false,
+      "baseline_scroll": null
+    },
+    {
+      "lang": "en",
+      "page": "organize_files",
+      "width": 768,
+      "scroll": 768,
+      "overflow": false,
+      "baseline_scroll": null
+    },
+    {
+      "lang": "en",
+      "page": "organize_files",
+      "width": 1440,
+      "scroll": 1440,
+      "overflow": false,
+      "baseline_scroll": null
+    },
+    {
+      "lang": "en",
+      "page": "organize_files.html",
+      "width": 320,
+      "scroll": 320,
+      "overflow": false,
+      "baseline_scroll": null
+    },
+    {
+      "lang": "en",
+      "page": "organize_files.html",
+      "width": 390,
+      "scroll": 390,
+      "overflow": false,
+      "baseline_scroll": null
+    },
+    {
+      "lang": "en",
+      "page": "organize_files.html",
+      "width": 768,
+      "scroll": 768,
+      "overflow": false,
+      "baseline_scroll": null
+    },
+    {
+      "lang": "en",
+      "page": "organize_files.html",
+      "width": 1440,
+      "scroll": 1440,
+      "overflow": false,
+      "baseline_scroll": null
+    },
+    {
+      "lang": "en",
+      "page": "Metnos_QuickTour",
+      "width": 320,
+      "scroll": 320,
+      "overflow": false,
+      "baseline_scroll": null
+    },
+    {
+      "lang": "en",
+      "page": "Metnos_QuickTour",
+      "width": 390,
+      "scroll": 390,
+      "overflow": false,
+      "baseline_scroll": null
+    },
+    {
+      "lang": "en",
+      "page": "Metnos_QuickTour",
+      "width": 768,
+      "scroll": 768,
+      "overflow": false,
+      "baseline_scroll": null
+    },
+    {
+      "lang": "en",
+      "page": "Metnos_QuickTour",
+      "width": 1440,
+      "scroll": 1440,
+      "overflow": false,
+      "baseline_scroll": null
+    },
+    {
+      "lang": "en",
+      "page": "Metnos_QuickTour.html",
+      "width": 320,
+      "scroll": 320,
+      "overflow": false,
+      "baseline_scroll": null
+    },
+    {
+      "lang": "en",
+      "page": "Metnos_QuickTour.html",
+      "width": 390,
+      "scroll": 390,
+      "overflow": false,
+      "baseline_scroll": null
+    },
+    {
+      "lang": "en",
+      "page": "Metnos_QuickTour.html",
+      "width": 768,
+      "scroll": 768,
+      "overflow": false,
+      "baseline_scroll": null
+    },
+    {
+      "lang": "en",
+      "page": "Metnos_QuickTour.html",
+      "width": 1440,
+      "scroll": 1440,
+      "overflow": false,
+      "baseline_scroll": null
+    }
+  ],
+  "browser_errors": []
+}

@@ -70,22 +70,26 @@ for path, page in pages.items():
                            'changed_page': path in changed})
 
 tutor = {}
-for lang, pending in [('it', 'in corso di attivazione'), ('en', 'activation in progress')]:
+for lang, active, tour_phrase in [
+        ('it', 'organizza file locali', 'applica regole ai file locali'),
+        ('en', 'organizes local files', 'applies rules to local files')]:
     guide = docs / lang / 'organize_files.html'
     text = guide.read_text()
     assert pages[guide].lang == lang
     assert not re.search(r'confirmation_token|grant|/opt/|stack_reconcile|\bBirth\b', text)
+    assert 'tutor-exclude' not in text
     blocks = _HTMLBlocks()
     blocks.feed(text)
-    assert len(blocks.blocks) == 2, blocks.blocks
-    assert pending in blocks.blocks[1][1]
+    assert len(blocks.blocks) > 20, len(blocks.blocks)
+    assert active in ' '.join(block[1] for block in blocks.blocks)
     tour = docs / lang / 'Metnos_QuickTour.html'
     before = _HTMLBlocks()
-    before.feed(subprocess.check_output(['git', 'show', f'581fd197:docs/{lang}/Metnos_QuickTour.html'], cwd=root).decode())
+    before.feed(subprocess.check_output(['git', 'show', f'4ef2d8bf:docs/{lang}/Metnos_QuickTour.html'], cwd=root).decode())
     after = _HTMLBlocks()
     after.feed(tour.read_text())
-    assert before.blocks == after.blocks, 'Pending workflow leaked into Tutor Quick Tour'
-    tutor[lang] = {'guide_blocks': len(blocks.blocks), 'quick_tour_unchanged': True}
+    assert len(after.blocks) == len(before.blocks) + 1
+    assert tour_phrase in ' '.join(block[1] for block in after.blocks)
+    tutor[lang] = {'guide_blocks': len(blocks.blocks), 'quick_tour_added_blocks': 1}
 assert pages[docs / 'it/organize_files.html'].ids == pages[docs / 'en/organize_files.html'].ids
 urls = [element.text for element in ET.parse(docs / 'sitemap.xml').iter()
         if element.tag.endswith('}loc')]
