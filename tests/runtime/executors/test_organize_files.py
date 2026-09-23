@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import shutil
 import signal
+import stat
 import subprocess
 import sys
 import tempfile
@@ -1059,6 +1060,121 @@ def test_move_preserves_existing_hardlink_topology(tmp_path: Path) -> None:
     assert moved.stat().st_nlink == 2
     assert organize.reverse({}, applied)["ok"] is True
     assert item.stat().st_ino == peer.stat().st_ino == inode
+
+
+def test_bind_mount_exdev_uses_verified_copy_and_reverses_losslessly(
+        tmp_path: Path, monkeypatch) -> None:
+    source = tmp_path / "source"
+    destination = tmp_path / "destination"
+    source.mkdir()
+    destination.mkdir()
+    item = source / "a.bin"
+    item.write_bytes(b"copy fallback payload\x00")
+    item.chmod(0o640)
+    os.utime(item, ns=(1_700_000_000_000_000_000,
+                       1_700_000_001_000_000_000))
+    try:
+        os.setxattr(item, "user.metnos-copy-test", b"preserve")
+    except OSError as exc:
+        pytest.skip(f"xattrs unavailable: {exc}")
+    before = item.stat()
+    original_rename = organize._rename_noreplace
+    calls = 0
+
+    def fail_only_cross_mount(source_parent_fd, source_name,
+                              destination_parent_fd, destination_name):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise organize.OrganizeError(
+                "ERR_ORGANIZE_PREFLIGHT", "ERR_ORGANIZE_PREFLIGHT",
+                error_class="cross_device_unsupported",
+                detail=destination_name)
+        return original_rename(
+            source_parent_fd, source_name,
+            destination_parent_fd, destination_name)
+
+    monkeypatch.setattr(organize, "_rename_noreplace", fail_only_cross_mount)
+    applied = _apply(organize.invoke(_move_policy(source, destination)))
+
+    moved = destination / item.name
+    assert applied["ok"] is True, applied
+    assert not item.exists()
+    assert moved.read_bytes() == b"copy fallback payload\x00"
+    moved_stat = moved.stat()
+    assert stat.S_IMODE(moved_stat.st_mode) == stat.S_IMODE(before.st_mode)
+    assert moved_stat.st_mtime_ns == before.st_mtime_ns
+    assert os.getxattr(moved, "user.metnos-copy-test") == b"preserve"
+    receipt = json.loads(Path(applied["receipt_path"]).read_text(encoding="ascii"))
+    assert receipt["actions"][0]["transfer_mode"] == "copy_delete"
+
+    reversed_result = organize.reverse({}, applied)
+
+    assert reversed_result["ok"] is True
+    assert item.read_bytes() == b"copy fallback payload\x00"
+    restored = item.stat()
+    assert stat.S_IMODE(restored.st_mode) == stat.S_IMODE(before.st_mode)
+    assert restored.st_ino == before.st_ino
+    assert restored.st_mtime_ns == before.st_mtime_ns
+    assert os.getxattr(item, "user.metnos-copy-test") == b"preserve"
+    assert not moved.exists()
+    assert not list(tmp_path.rglob(".metnos-organize-*"))
+
+
+def test_copy_write_all_handles_interrupt_and_short_writes(monkeypatch) -> None:
+    read_fd, write_fd = os.pipe()
+    real_write = organize.os.write
+    calls = 0
+
+    def interrupted_short_write(descriptor, value):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise InterruptedError()
+        return real_write(descriptor, bytes(value[:2]))
+
+    monkeypatch.setattr(organize.os, "write", interrupted_short_write)
+    try:
+        organize._write_all(write_fd, b"abcdef")
+        os.close(write_fd)
+        write_fd = -1
+        assert os.read(read_fd, 32) == b"abcdef"
+    finally:
+        if write_fd >= 0:
+            os.close(write_fd)
+        os.close(read_fd)
+
+
+@pytest.mark.parametrize("fault", [
+    "after_copy_inode_journal",
+    "after_copy_data_before_identity_journal",
+    "after_copy_ready",
+    "after_copy_installed",
+])
+def test_sigkill_copy_move_recovers_without_temp_or_duplicate(
+        tmp_path: Path, monkeypatch, fault: str) -> None:
+    source = tmp_path / "source"
+    destination = tmp_path / "destination"
+    source.mkdir()
+    destination.mkdir()
+    item = source / "a.bin"
+    item.write_bytes(b"copy crash payload")
+    preview = organize.invoke(_move_policy(source, destination))
+    monkeypatch.setenv("METNOS_TESTING", "1")
+    monkeypatch.setenv("METNOS_ORGANIZE_FORCE_COPY_MOVE", "1")
+
+    killed = _killed_executor(_apply_args(preview), fault=fault)
+    assert killed.returncode == -signal.SIGKILL
+
+    recovered = _apply(preview)
+    assert recovered["ok"] is True, recovered
+    assert not item.exists()
+    assert (destination / item.name).read_bytes() == b"copy crash payload"
+    reversed_result = organize.reverse({}, recovered)
+    assert reversed_result["ok"] is True
+    assert item.read_bytes() == b"copy crash payload"
+    assert not (destination / item.name).exists()
+    assert not list(tmp_path.rglob(".metnos-organize-*"))
 
 
 def test_cross_filesystem_move_is_blocked_in_preview(tmp_path: Path) -> None:

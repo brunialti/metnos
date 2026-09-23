@@ -53,7 +53,7 @@ en = "SCOPO: organizes files with a closed policy, SHA-256, and a frozen plan. P
 
 [code]
 files  = ["organize_files.py"]
-digest = "sha256:7eca8cf421ac855acf23f3930e8c3bdb3f8916c1c55743a9698cc948cd2e9e2d"
+digest = "sha256:369302ef16a040c178b784a4c7605f2bc49fed93814ce326d39352bee66a80cf"
 
 [args]
 type = "object"

@@ -1614,13 +1614,46 @@ def _metadata_fd(descriptor: int) -> dict:
     }
 
 
+def _apply_metadata_fd(descriptor: int, metadata: dict) -> None:
+    """Materialize the metadata captured for a copy-based move."""
+    current = os.fstat(descriptor)
+    if (int(current.st_uid), int(current.st_gid)) != (
+            int(metadata["uid"]), int(metadata["gid"])):
+        os.fchown(descriptor, int(metadata["uid"]), int(metadata["gid"]))
+    os.fchmod(descriptor, int(metadata["mode"]))
+    for attribute in metadata.get("xattrs") or []:
+        os.setxattr(
+            descriptor, attribute["name"],
+            base64.b64decode(attribute["value_b64"], validate=True))
+    os.utime(descriptor, ns=(
+        int(metadata["atime_ns"]), int(metadata["mtime_ns"])))
+    os.fsync(descriptor)
+
+
+def _write_all(descriptor: int, value: bytes) -> None:
+    view = memoryview(value)
+    while view:
+        try:
+            written = os.write(descriptor, view)
+        except InterruptedError:
+            continue
+        if written <= 0:
+            raise OSError(errno.EIO, "short write while copying move payload")
+        view = view[written:]
+
+
 def _capture_restore_metadata(action: dict) -> dict:
     """Read and bind all metadata required for a byte-exact restore."""
     root_fd = _open_root_fd(action["source_root"], action["source_root_identity"])
     descriptor = parent_fd = -1
     try:
         descriptor, parent_fd, _name = _open_regular_at(
-            root_fd, action["source_relative"], expected=action["source_identity"])
+            root_fd, action["source_relative"])
+        if not _same_file_identity(
+                _identity(os.fstat(descriptor)), action["source_identity"]):
+            raise OrganizeError(
+                "ERR_ORGANIZE_STALE_PLAN", "ERR_ORGANIZE_STALE_PLAN",
+                error_class="stale_plan", detail=action["source"])
         if _hash_fd(descriptor) != action["sha256"]:
             raise OrganizeError(
                 "ERR_ORGANIZE_STALE_PLAN", "ERR_ORGANIZE_STALE_PLAN",
@@ -1958,6 +1991,236 @@ def _move_noreplace(source: Path, destination: Path, action: dict) -> list[dict]
     return []
 
 
+def _prepare_copy_transfer(item: dict, journal: dict, receipt_path: Path) -> None:
+    if item.get("transfer_mode") == "copy_delete":
+        return
+    metadata = _capture_restore_metadata(item)
+    if int(metadata["nlink"]) != 1:
+        raise OrganizeError(
+            "ERR_ORGANIZE_PREFLIGHT", "ERR_ORGANIZE_PREFLIGHT",
+            error_class="unsupported_metadata",
+            detail="copy-based move cannot preserve hardlink topology")
+    item["transfer_mode"] = "copy_delete"
+    item["restore_metadata"] = metadata
+    _write_journal(receipt_path, journal)
+
+
+def _create_or_verify_copy_stage(
+    item: dict, journal: dict, receipt_path: Path,
+) -> None:
+    copy_relative, _cleanup_relative = _copy_transfer_paths(item)
+    source_root_fd = _open_root_fd(
+        item["source_root"], item["source_root_identity"])
+    destination_root_fd = _open_root_fd(
+        item["destination_root"], item["destination_root_identity"])
+    source_fd = source_parent_fd = copy_fd = copy_parent_fd = -1
+    try:
+        source_fd, source_parent_fd, _source_name = _open_regular_at(
+            source_root_fd, item["source_relative"])
+        if not _same_file_identity(
+                _identity(os.fstat(source_fd)), item["source_identity"]):
+            raise OrganizeError(
+                "ERR_ORGANIZE_STALE_PLAN", "ERR_ORGANIZE_STALE_PLAN",
+                error_class="stale_plan", detail=item["source"])
+        if (_hash_fd(source_fd) != item["sha256"]
+                or _metadata_fd(source_fd) != item["restore_metadata"]):
+            raise OrganizeError(
+                "ERR_ORGANIZE_STALE_PLAN", "ERR_ORGANIZE_STALE_PLAN",
+                error_class="stale_plan", detail=item["source"])
+        copy_parent_fd, copy_name = _open_parent_at(
+            destination_root_fd, copy_relative)
+        flags = (os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC
+                 | getattr(os, "O_NOFOLLOW", 0)
+                 | getattr(os, "O_NOATIME", 0))
+        created = False
+        try:
+            copy_fd = os.open(copy_name, flags, 0o600, dir_fd=copy_parent_fd)
+            created = True
+        except FileExistsError:
+            copy_fd = os.open(
+                copy_name,
+                os.O_RDWR | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0)
+                | getattr(os, "O_NOATIME", 0),
+                dir_fd=copy_parent_fd)
+            existing = os.fstat(copy_fd)
+            copy_inode = item.get("copy_inode") or {}
+            if (int(existing.st_dev), int(existing.st_ino)) == (
+                    int(copy_inode.get("device", -1)),
+                    int(copy_inode.get("inode", -1))):
+                created = True
+        if created:
+            item["copy_inode"] = {
+                "device": int(os.fstat(copy_fd).st_dev),
+                "inode": int(os.fstat(copy_fd).st_ino),
+            }
+            _write_journal(receipt_path, journal)
+            _fault("after_copy_inode_journal")
+            digest = hashlib.sha256()
+            os.lseek(source_fd, 0, os.SEEK_SET)
+            os.ftruncate(copy_fd, 0)
+            os.lseek(copy_fd, 0, os.SEEK_SET)
+            while True:
+                block = os.read(source_fd, _HASH_CHUNK)
+                if not block:
+                    break
+                digest.update(block)
+                _write_all(copy_fd, block)
+            if (digest.hexdigest() != item["sha256"]
+                    or not _same_file_identity(
+                        _identity(os.fstat(source_fd)), item["source_identity"])):
+                raise OrganizeError(
+                    "ERR_ORGANIZE_STALE_PLAN", "ERR_ORGANIZE_STALE_PLAN",
+                    error_class="stale_plan", detail=item["source"])
+            os.fsync(copy_fd)
+            if _hash_fd(copy_fd) != item["sha256"]:
+                raise OrganizeError(
+                    "ERR_ORGANIZE_APPLY", "ERR_ORGANIZE_APPLY",
+                    error_class="integrity_error", detail=item["destination"])
+            _apply_metadata_fd(copy_fd, item["restore_metadata"])
+            os.fsync(copy_parent_fd)
+            _fault("after_copy_data_before_identity_journal")
+        copy_identity = _identity(os.fstat(copy_fd))
+        inode = item.get("copy_inode") or {}
+        if (inode and (int(copy_identity["device"]), int(copy_identity["inode"]))
+                != (int(inode.get("device", -1)), int(inode.get("inode", -1)))):
+            raise OrganizeError(
+                "ERR_ORGANIZE_STALE_PLAN", "ERR_ORGANIZE_STALE_PLAN",
+                error_class="conflict", detail=copy_relative)
+        if (_hash_fd(copy_fd) != item["sha256"]
+                or _metadata_fd(copy_fd) != item["restore_metadata"]):
+            raise OrganizeError(
+                "ERR_ORGANIZE_STALE_PLAN", "ERR_ORGANIZE_STALE_PLAN",
+                error_class="conflict", detail=copy_relative)
+        item["copy_identity"] = copy_identity
+        _write_journal(receipt_path, journal)
+        _fault("after_copy_ready")
+    finally:
+        for descriptor in (
+            source_fd, source_parent_fd, copy_fd, copy_parent_fd,
+            source_root_fd, destination_root_fd,
+        ):
+            if descriptor >= 0:
+                try:
+                    os.close(descriptor)
+                except OSError:
+                    pass
+
+
+def _install_copy_destination(
+    item: dict, journal: dict, receipt_path: Path,
+) -> None:
+    copy_relative, _cleanup_relative = _copy_transfer_paths(item)
+    root_fd = _open_root_fd(
+        item["destination_root"], item["destination_root_identity"])
+    copy_fd = copy_parent_fd = destination_parent_fd = -1
+    try:
+        copy_fd, copy_parent_fd, copy_name = _open_regular_at(
+            root_fd, copy_relative)
+        copy_identity = _identity(os.fstat(copy_fd))
+        if (not _same_file_identity(copy_identity, item["copy_identity"])
+                or _hash_fd(copy_fd) != item["sha256"]):
+            raise OrganizeError(
+                "ERR_ORGANIZE_STALE_PLAN", "ERR_ORGANIZE_STALE_PLAN",
+                error_class="conflict", detail=copy_relative)
+        destination_parent_fd, destination_name = _open_parent_at(
+            root_fd, item["destination_relative"])
+        _rename_noreplace(
+            copy_parent_fd, copy_name,
+            destination_parent_fd, destination_name)
+        installed = _identity(os.stat(
+            destination_name, dir_fd=destination_parent_fd,
+            follow_symlinks=False))
+        if not _same_file_identity(installed, copy_identity):
+            raise OrganizeError(
+                "ERR_ORGANIZE_APPLY", "ERR_ORGANIZE_APPLY",
+                error_class="partial_failure",
+                detail="copy destination identity changed during install")
+        os.fsync(destination_parent_fd)
+        if destination_parent_fd != copy_parent_fd:
+            os.fsync(copy_parent_fd)
+        item["destination_identity"] = installed
+        _write_journal(receipt_path, journal)
+        _fault("after_copy_installed")
+    finally:
+        for descriptor in (
+            copy_fd, copy_parent_fd, destination_parent_fd, root_fd,
+        ):
+            if descriptor >= 0:
+                try:
+                    os.close(descriptor)
+                except OSError:
+                    pass
+
+
+def _stage_copy_source(item: dict) -> None:
+    root_fd = _open_root_fd(item["source_root"], item["source_root_identity"])
+    descriptor = parent_fd = -1
+    stage_name = _journaled_name(
+        item.get("stage_name"), prefix=".metnos-organize-stage-")
+    try:
+        descriptor, parent_fd, source_name = _open_regular_at(
+            root_fd, item["source_relative"])
+        current = _identity(os.fstat(descriptor))
+        if (not _same_file_identity(current, item["source_identity"])
+                or _hash_fd(descriptor) != item["sha256"]
+                or _metadata_fd(descriptor) != item["restore_metadata"]):
+            raise OrganizeError(
+                "ERR_ORGANIZE_STALE_PLAN", "ERR_ORGANIZE_STALE_PLAN",
+                error_class="stale_plan", detail=item["source"])
+        _rename_noreplace(parent_fd, source_name, parent_fd, stage_name)
+        staged = _identity(os.stat(
+            stage_name, dir_fd=parent_fd, follow_symlinks=False))
+        if not _same_file_identity(staged, current):
+            _rename_noreplace(parent_fd, stage_name, parent_fd, source_name)
+            os.fsync(parent_fd)
+            raise OrganizeError(
+                "ERR_ORGANIZE_STALE_PLAN", "ERR_ORGANIZE_STALE_PLAN",
+                error_class="stale_plan", detail=item["source"])
+        os.fsync(parent_fd)
+    finally:
+        for value in (descriptor, parent_fd, root_fd):
+            if value >= 0:
+                try:
+                    os.close(value)
+                except OSError:
+                    pass
+
+
+def _copy_delete_move(item: dict, journal: dict, receipt_path: Path) -> None:
+    state = _copy_move_state(item)
+    if state in {"original", "copy_incomplete", "copy_ready_unrecorded"}:
+        _create_or_verify_copy_stage(item, journal, receipt_path)
+        state = _copy_move_state(item)
+    if state == "copy_staged":
+        _install_copy_destination(item, journal, receipt_path)
+        state = _copy_move_state(item)
+    if state == "copy_installed":
+        _stage_copy_source(item)
+        state = _copy_move_state(item)
+    if state != "applied":
+        raise OrganizeError(
+            "ERR_ORGANIZE_STALE_PLAN", "ERR_ORGANIZE_STALE_PLAN",
+            error_class="conflict", detail=item["source"])
+
+
+def _execute_move(item: dict, journal: dict, receipt_path: Path) -> None:
+    if item.get("transfer_mode") == "copy_delete":
+        _copy_delete_move(item, journal, receipt_path)
+        return
+    if (os.environ.get("METNOS_TESTING") == "1"
+            and os.environ.get("METNOS_ORGANIZE_FORCE_COPY_MOVE") == "1"):
+        _prepare_copy_transfer(item, journal, receipt_path)
+        _copy_delete_move(item, journal, receipt_path)
+        return
+    try:
+        _move_noreplace(Path(item["source"]), Path(item["destination"]), item)
+    except OrganizeError as exc:
+        if exc.error_class != "cross_device_unsupported":
+            raise
+        _prepare_copy_transfer(item, journal, receipt_path)
+        _copy_delete_move(item, journal, receipt_path)
+
+
 def _relative_file_state(root: str, root_identity: dict, relative: str,
                          expected_hash: str) -> tuple[str, dict | None]:
     root_fd = _open_root_fd(root, root_identity)
@@ -1980,6 +2243,8 @@ def _relative_file_state(root: str, root_identity: dict, relative: str,
 
 
 def _reverse_move(item: dict) -> bool:
+    if item.get("transfer_mode") == "copy_delete":
+        return _reverse_copy_move(item)
     source_state, _source_info = _relative_file_state(
         item["source_root"], item["source_root_identity"],
         item["source_relative"], item["sha256"])
@@ -2025,6 +2290,157 @@ def _restore_forward_stage(item: dict) -> bool:
         expected_hash=item["sha256"],
         stage_name=item["undo_stage_name"],
     )
+
+
+def _remove_owned_copy_at(
+    item: dict, relative: str, *, expected_identity: dict,
+    require_hash: bool = True,
+) -> None:
+    root_fd = _open_root_fd(
+        item["destination_root"], item["destination_root_identity"])
+    descriptor = parent_fd = -1
+    try:
+        descriptor, parent_fd, name = _open_regular_at(root_fd, relative)
+        current = _identity(os.fstat(descriptor))
+        if (not _same_file_identity(current, expected_identity)
+                or (require_hash and _hash_fd(descriptor) != item["sha256"])
+                or int(os.fstat(descriptor).st_nlink) != 1):
+            raise OrganizeError(
+                "ERR_ORGANIZE_UNDO", "ERR_ORGANIZE_UNDO",
+                error_class="conflict", detail=relative)
+        named = _identity(os.stat(
+            name, dir_fd=parent_fd, follow_symlinks=False))
+        if not _same_file_identity(named, current):
+            raise OrganizeError(
+                "ERR_ORGANIZE_UNDO", "ERR_ORGANIZE_UNDO",
+                error_class="conflict", detail=relative)
+        # The copy has first been isolated under a journaled name.  Recheck
+        # link topology immediately before removing that owned copy.
+        if int(os.fstat(descriptor).st_nlink) != 1:
+            raise OrganizeError(
+                "ERR_ORGANIZE_UNDO", "ERR_ORGANIZE_UNDO",
+                error_class="conflict", detail=relative)
+        os.unlink(name, dir_fd=parent_fd)
+        os.fsync(parent_fd)
+    finally:
+        for value in (descriptor, parent_fd, root_fd):
+            if value >= 0:
+                try:
+                    os.close(value)
+                except OSError:
+                    pass
+
+
+def _quarantine_and_remove_copy(item: dict) -> bool:
+    _copy_relative, cleanup_relative = _copy_transfer_paths(item)
+    destination_state, destination_info = _relative_file_state(
+        item["destination_root"], item["destination_root_identity"],
+        item["destination_relative"], item["sha256"])
+    cleanup_state, cleanup_info = _relative_file_state(
+        item["destination_root"], item["destination_root_identity"],
+        cleanup_relative, item["sha256"])
+    expected = item["copy_identity"]
+    changed = False
+    if destination_state == "expected" and _same_file_identity(
+            destination_info, expected):
+        root_fd = _open_root_fd(
+            item["destination_root"], item["destination_root_identity"])
+        source_fd = source_parent_fd = cleanup_parent_fd = -1
+        try:
+            source_fd, source_parent_fd, source_name = _open_regular_at(
+                root_fd, item["destination_relative"])
+            if (not _same_file_identity(
+                    _identity(os.fstat(source_fd)), expected)
+                    or _hash_fd(source_fd) != item["sha256"]):
+                raise OrganizeError(
+                    "ERR_ORGANIZE_UNDO", "ERR_ORGANIZE_UNDO",
+                    error_class="conflict", detail=item["destination"])
+            cleanup_parent_fd, cleanup_name = _open_parent_at(
+                root_fd, cleanup_relative)
+            _rename_noreplace(
+                source_parent_fd, source_name,
+                cleanup_parent_fd, cleanup_name)
+            isolated = _identity(os.stat(
+                cleanup_name, dir_fd=cleanup_parent_fd,
+                follow_symlinks=False))
+            if not _same_file_identity(isolated, expected):
+                _rename_noreplace(
+                    cleanup_parent_fd, cleanup_name,
+                    source_parent_fd, source_name)
+                os.fsync(source_parent_fd)
+                raise OrganizeError(
+                    "ERR_ORGANIZE_UNDO", "ERR_ORGANIZE_UNDO",
+                    error_class="conflict", detail=item["destination"])
+            os.fsync(source_parent_fd)
+            if cleanup_parent_fd != source_parent_fd:
+                os.fsync(cleanup_parent_fd)
+            changed = True
+        finally:
+            for value in (
+                source_fd, source_parent_fd, cleanup_parent_fd, root_fd,
+            ):
+                if value >= 0:
+                    try:
+                        os.close(value)
+                    except OSError:
+                        pass
+        cleanup_state, cleanup_info = _relative_file_state(
+            item["destination_root"], item["destination_root_identity"],
+            cleanup_relative, item["sha256"])
+    if cleanup_state == "expected" and _same_file_identity(cleanup_info, expected):
+        _remove_owned_copy_at(
+            item, cleanup_relative, expected_identity=expected)
+        return True
+    if destination_state == "absent" and cleanup_state == "absent":
+        return changed
+    raise OrganizeError(
+        "ERR_ORGANIZE_UNDO", "ERR_ORGANIZE_UNDO",
+        error_class="conflict", detail=item["destination"])
+
+
+def _reverse_copy_move(item: dict) -> bool:
+    state = _copy_move_state(item)
+    if state == "original":
+        return False
+    changed = False
+    if state in {"copy_incomplete", "copy_ready_unrecorded"}:
+        copy_relative, _cleanup_relative = _copy_transfer_paths(item)
+        copy_state, copy_info = _relative_file_state(
+            item["destination_root"], item["destination_root_identity"],
+            copy_relative, item["sha256"])
+        inode = item.get("copy_inode") or {}
+        if (copy_state not in {"changed", "expected"}
+                or not isinstance(copy_info, dict)
+                or (int(copy_info["device"]), int(copy_info["inode"])) != (
+                    int(inode.get("device", -1)),
+                    int(inode.get("inode", -1)))):
+            raise OrganizeError(
+                "ERR_ORGANIZE_UNDO", "ERR_ORGANIZE_UNDO",
+                error_class="conflict", detail=copy_relative)
+        _remove_owned_copy_at(
+            item, copy_relative, expected_identity=copy_info,
+            require_hash=False)
+        return True
+    if state == "copy_staged":
+        copy_relative, _cleanup_relative = _copy_transfer_paths(item)
+        expected = item.get("copy_identity")
+        if not isinstance(expected, dict):
+            raise OrganizeError(
+                "ERR_ORGANIZE_UNDO", "ERR_ORGANIZE_UNDO",
+                error_class="conflict", detail=copy_relative)
+        _remove_owned_copy_at(item, copy_relative, expected_identity=expected)
+        return True
+    if state == "applied":
+        changed = _restore_forward_stage(item) or changed
+        state = _copy_move_state(item)
+    if state in {"copy_installed", "cleanup_staged"}:
+        changed = _quarantine_and_remove_copy(item) or changed
+        state = _copy_move_state(item)
+    if state != "original":
+        raise OrganizeError(
+            "ERR_ORGANIZE_UNDO", "ERR_ORGANIZE_UNDO",
+            error_class="conflict", detail=item["destination"])
+    return changed
 
 
 def _restore_delete_quarantine(item: dict) -> bool:
@@ -2078,6 +2494,12 @@ def _prepare_journal(plan: dict, mutations: list[dict], blob_dir: Path) -> dict:
                 "quarantine_name": (
                     f".metnos-organize-delete-{secrets.token_hex(16)}"),
             })
+        else:
+            item.update({
+                "copy_name": f".metnos-organize-copy-{secrets.token_hex(16)}",
+                "cleanup_name": (
+                    f".metnos-organize-cleanup-{secrets.token_hex(16)}"),
+            })
         entries.append(item)
     return {
         "schema": _SCHEMA,
@@ -2103,7 +2525,91 @@ def _ensure_backups(journal: dict, receipt_path: Path) -> None:
         _write_journal(receipt_path, journal)
 
 
+def _copy_transfer_paths(item: dict) -> tuple[str, str]:
+    copy_name = _journaled_name(
+        item.get("copy_name"), prefix=".metnos-organize-copy-")
+    cleanup_name = _journaled_name(
+        item.get("cleanup_name"), prefix=".metnos-organize-cleanup-")
+    return (
+        _sibling_relative(item["destination_relative"], copy_name),
+        _sibling_relative(item["destination_relative"], cleanup_name),
+    )
+
+
+def _copy_move_state(item: dict) -> str:
+    source_state, source_info = _relative_file_state(
+        item["source_root"], item["source_root_identity"],
+        item["source_relative"], item["sha256"])
+    stage_name = _journaled_name(
+        item.get("stage_name"), prefix=".metnos-organize-stage-")
+    stage_state, stage_info = _relative_file_state(
+        item["source_root"], item["source_root_identity"],
+        _sibling_relative(item["source_relative"], stage_name), item["sha256"])
+    destination_state, destination_info = _relative_file_state(
+        item["destination_root"], item["destination_root_identity"],
+        item["destination_relative"], item["sha256"])
+    copy_relative, cleanup_relative = _copy_transfer_paths(item)
+    copy_state, copy_info = _relative_file_state(
+        item["destination_root"], item["destination_root_identity"],
+        copy_relative, item["sha256"])
+    cleanup_state, cleanup_info = _relative_file_state(
+        item["destination_root"], item["destination_root_identity"],
+        cleanup_relative, item["sha256"])
+    original_owned = lambda info: _same_file_identity(  # noqa: E731
+        info, item["source_identity"])
+    copy_identity = item.get("copy_identity")
+    copy_inode = item.get("copy_inode") or {}
+    copy_owned = lambda info: (  # noqa: E731
+        isinstance(copy_identity, dict)
+        and _same_file_identity(info, copy_identity))
+    absent_aux = copy_state == "absent" and cleanup_state == "absent"
+    if (source_state == "expected" and original_owned(source_info)
+            and stage_state == "absent" and destination_state == "absent"
+            and absent_aux):
+        return "original"
+    if (source_state == "expected" and original_owned(source_info)
+            and stage_state == "absent" and destination_state == "absent"
+            and copy_state == "expected"
+            and copy_owned(copy_info)
+            and cleanup_state == "absent"):
+        return "copy_staged"
+    if (source_state == "expected" and original_owned(source_info)
+            and stage_state == "absent" and destination_state == "absent"
+            and copy_state == "expected" and copy_identity is None
+            and cleanup_state == "absent" and isinstance(copy_info, dict)
+            and (int(copy_info["device"]), int(copy_info["inode"])) == (
+                int(copy_inode.get("device", -1)),
+                int(copy_inode.get("inode", -1)))):
+        return "copy_ready_unrecorded"
+    if (source_state == "expected" and original_owned(source_info)
+            and stage_state == "absent" and destination_state == "absent"
+            and copy_state == "changed" and cleanup_state == "absent"
+            and isinstance(copy_info, dict)
+            and (int(copy_info["device"]), int(copy_info["inode"])) == (
+                int(copy_inode.get("device", -1)),
+                int(copy_inode.get("inode", -1)))):
+        return "copy_incomplete"
+    if (source_state == "expected" and original_owned(source_info)
+            and stage_state == "absent" and destination_state == "expected"
+            and copy_owned(destination_info) and absent_aux):
+        return "copy_installed"
+    if (source_state == "absent" and stage_state == "expected"
+            and original_owned(stage_info) and destination_state == "expected"
+            and copy_owned(destination_info) and absent_aux):
+        return "applied"
+    if (source_state == "expected" and original_owned(source_info)
+            and stage_state == "absent" and destination_state == "absent"
+            and copy_state == "absent" and cleanup_state == "expected"
+            and copy_owned(cleanup_info)):
+        return "cleanup_staged"
+    return "external_conflict" if any(state == "changed" for state in (
+        source_state, stage_state, destination_state, copy_state, cleanup_state,
+    )) else "conflict"
+
+
 def _move_state(item: dict) -> str:
+    if item.get("transfer_mode") == "copy_delete":
+        return _copy_move_state(item)
     source_state, source_info = _relative_file_state(
         item["source_root"], item["source_root_identity"],
         item["source_relative"], item["sha256"])
@@ -2271,6 +2777,14 @@ def _validate_reverse_receipt(receipt: dict, receipt_path: Path) -> None:
             if not {"destination_root", "destination_root_identity",
                     "destination_relative", "destination"}.issubset(item):
                 raise _invalid("invalid move receipt action")
+            _journaled_name(
+                item.get("copy_name"), prefix=".metnos-organize-copy-")
+            _journaled_name(
+                item.get("cleanup_name"), prefix=".metnos-organize-cleanup-")
+            if item.get("transfer_mode") == "copy_delete":
+                if (not isinstance(item.get("copy_identity"), dict)
+                        or not isinstance(item.get("restore_metadata"), dict)):
+                    raise _invalid("invalid copy move receipt action")
             continue
         blob_value = item.get("blob_path")
         _journaled_name(
@@ -2366,12 +2880,19 @@ def _persisted_failure(journal: dict, receipt_path: Path) -> dict:
 
 def _rollback_journal(journal: dict, receipt_path: Path,
                       cause: BaseException) -> dict:
+    journal["status"] = "rolling_back"
+    journal["failure"] = f"{type(cause).__name__}: {cause}"[:1000]
+    _write_journal(receipt_path, journal)
     failures: list[dict] = []
     for item in reversed(journal.get("actions") or []):
         try:
             state = _move_state(item) if item["kind"] == "move" else _delete_state(item)
             if item["kind"] == "delete" and state == "applied":
                 _restore_delete_quarantine(item)
+            elif (item["kind"] == "move"
+                    and item.get("transfer_mode") == "copy_delete"
+                    and state != "original"):
+                _reverse_copy_move(item)
             elif item["kind"] == "move" and state == "applied":
                 _reverse_move(item)
             elif item["kind"] == "move" and state == "staged":
@@ -2471,6 +2992,10 @@ def _apply(args: dict) -> dict:
                     _undo={"outcome": "no_effect"})
             if journal.get("status") in {"partial", "rolled_back"}:
                 return _persisted_failure(journal, receipt_path)
+            if journal.get("status") == "rolling_back":
+                return _rollback_journal(
+                    journal, receipt_path,
+                    RuntimeError("resuming interrupted rollback"))
             if states and all(state == "applied" for state in states):
                 journal["status"] = "committed"
                 journal["committed_at"] = int(time.time())
@@ -2519,7 +3044,10 @@ def _apply(args: dict) -> dict:
                     item["state"] = "applied"
                     _write_journal(receipt_path, journal)
                     continue
-                if current not in {"original", "staged"}:
+                if current not in {
+                    "original", "staged", "copy_incomplete",
+                    "copy_ready_unrecorded", "copy_staged", "copy_installed",
+                }:
                     raise OrganizeError(
                         "ERR_ORGANIZE_STALE_PLAN", "ERR_ORGANIZE_STALE_PLAN",
                         error_class="conflict",
@@ -2527,7 +3055,7 @@ def _apply(args: dict) -> dict:
                 item["state"] = "intent"
                 _write_journal(receipt_path, journal)
                 if item["kind"] == "move":
-                    _move_noreplace(Path(item["source"]), Path(item["destination"]), item)
+                    _execute_move(item, journal, receipt_path)
                 else:
                     _delete_anchored(item)
                 _fault("after_effect_before_journal")
