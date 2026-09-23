@@ -42,9 +42,11 @@ def service_account(tmp_path, monkeypatch):
 
 @pytest.fixture(autouse=True)
 def service_control(monkeypatch):
-    """Keep the Linux-only adapter outside the portable policy under test."""
+    """Keep Linux-only service adapters outside the portable policy under test."""
     monkeypatch.setitem(sys.modules, "stack_reconcile", SimpleNamespace(
         Systemctl=lambda **kwargs: pytest.fail("service observation not configured")))
+    monkeypatch.setitem(sys.modules, "services_registry", SimpleNamespace(
+        owned_service_units_v1=lambda: pytest.fail("service catalog not configured")))
 
 
 # --- which stores the cutover reads ------------------------------------------
