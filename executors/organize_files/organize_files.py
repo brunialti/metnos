@@ -2464,7 +2464,15 @@ def _restore_delete_quarantine(item: dict) -> bool:
 
 
 def _receipt_path(token: str) -> Path:
-    return _history_blob_dir() / f"{token}{_RECEIPT_SUFFIX}"
+    # ``token`` is the bearer that authorizes this exact frozen plan.  The
+    # receipt path is necessarily returned in the undo envelope and therefore
+    # reaches the append-only undo journal; never encode the bearer itself in
+    # that path.  A domain-separated digest preserves a deterministic path for
+    # same-token crash recovery without disclosing reusable consent material.
+    receipt_id = hashlib.sha256(
+        b"metnos-organize-receipt-v1\0" + token.encode("ascii")
+    ).hexdigest()
+    return _history_blob_dir() / f"{receipt_id}{_RECEIPT_SUFFIX}"
 
 
 def _write_journal(path: Path, journal: dict) -> str:

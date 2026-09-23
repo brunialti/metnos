@@ -403,6 +403,23 @@ def test_receipt_is_private_and_content_verified(tmp_path: Path) -> None:
     assert reversed_result["error_code"] == "ERR_ORGANIZE_RECEIPT_INVALID"
 
 
+def test_receipt_path_does_not_disclose_confirmation_token(tmp_path: Path) -> None:
+    source = tmp_path / "source"
+    destination = tmp_path / "destination"
+    source.mkdir()
+    destination.mkdir()
+    (source / "a.txt").write_bytes(b"a")
+    preview = organize.invoke(_move_policy(source, destination))
+
+    applied = _apply(preview)
+
+    receipt = Path(applied["receipt_path"])
+    token = preview["confirmation_token"]
+    assert token not in receipt.name
+    assert receipt.name.endswith(".organize-receipt.json")
+    assert _apply(preview)["receipt_path"] == str(receipt)
+
+
 def test_copied_preview_token_cannot_authorize_apply(tmp_path: Path) -> None:
     source = tmp_path / "source"
     destination = tmp_path / "destination"
