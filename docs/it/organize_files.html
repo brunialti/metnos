@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Organizzare i file — Metnos</title>
+  <meta name="description" content="organize_files, in corso di attivazione: capire il piano, approvare le modifiche, leggere la ricevuta e annullare in sicurezza.">
+  <link rel="canonical" href="https://metnos.com/it/organize_files">
+  <link rel="alternate" hreflang="it" href="https://metnos.com/it/organize_files">
+  <link rel="alternate" hreflang="en" href="https://metnos.com/en/organize_files">
+  <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/organize_files">
+  <link rel="stylesheet" href="/assets/metnos.css?v=20260822-2">
+  <script defer src="/assets/wiki-shell.js?v=20260923-organize"></script>
+</head>
+<body>
+<nav class="lang-switch" aria-label="Lingua">
+  <a href="/it/organize_files.html" class="active" lang="it" hreflang="it">IT</a> ·
+  <a href="/en/organize_files.html" lang="en" hreflang="en">EN</a>
+</nav>
+<header>
+  <h1>Organizzare i file</h1>
+  <p class="lead"><code>organize_files</code> è <strong>in corso di attivazione</strong>.
+  Questa guida descrive il percorso previsto; non annuncia una funzione già disponibile.</p>
+</header>
+<!-- Keep pending capability instructions out of the current Tutor corpus. -->
+<main class="tutor-exclude">
+  <h2 id="organizzare">Organizzare non significa soltanto spostare</h2>
+  <p>Spostare significa portare file già scelti in una destinazione già indicata.
+  Organizzare significa applicare una regola a un insieme preciso: per esempio
+  eliminare copie identiche dalla sorgente e distribuire i file rimanenti in base
+  alla data o al progetto. Ordinare una lista di risultati, invece, non cambia i file.</p>
+  <p>Indica le cartelle da trattare, se includere le sottocartelle, le eventuali
+  cartelle di confronto e le destinazioni. I riferimenti usati soltanto per il
+  confronto non vengono modificati. Un nome uguale o una foto somigliante non
+  bastano per decidere che due file sono duplicati: si confronta il contenuto completo.</p>
+
+  <h2 id="percorso">Prima il piano, poi la decisione</h2>
+  <ol>
+    <li><strong>Completa la richiesta nel form.</strong> Se mancano informazioni,
+    Metnos le chiede con un modulo. Anche scelte e consenso passano da form:
+    nella chat web oppure tramite il collegamento al modulo ricevuto su Telegram.
+    Un semplice «sì» scritto in chat non sostituisce la conferma.</li>
+    <li><strong>Esamina il piano completo.</strong> La preview non sposta e non
+    cancella i tuoi file. Il piano distingue spostamenti, copie duplicate da
+    rimuovere, file lasciati al loro posto e problemi da risolvere. Riporta le
+    destinazioni e gli eventuali nomi alternativi. Un riepilogo abbreviato deve
+    dichiararlo: non equivale alla consultazione di tutte le azioni.</li>
+    <li><strong>Autorizza soltanto effetti reali.</strong> Se il piano non prevede
+    alcuna modifica, la preview termina senza chiedere autorizzazione. Se invece
+    prevede spostamenti o rimozioni, puoi confermare o annullare nel form.
+    La conferma vale soltanto per quel piano, che rimane congelato.</li>
+    <li><strong>Leggi la ricevuta.</strong> Dopo il consenso Metnos applica
+    esattamente le azioni approvate, senza ricalcolare altre destinazioni o
+    aggiungere file. La ricevuta documenta ciò che è realmente avvenuto,
+    compresi eventuali problemi: una preview non è una ricevuta di lavoro eseguito.</li>
+    <li><strong>Annulla, se necessario.</strong> L'undo usa la ricevuta per
+    ripristinare gli spostamenti e le copie rimosse. Prima verifica che il
+    ripristino sia ancora sicuro; non sovrascrive un file cambiato nel frattempo.
+    Ripetere un annullamento già concluso non ripete gli effetti.</li>
+  </ol>
+  <aside class="callout note">
+    <p><strong>Verifica ancora aperta.</strong> Per elenchi lunghi il modulo
+    mostra un riepilogo limitato, dichiarato come tale. La consultazione
+    dell'intero piano prima del consenso resta da verificare prima di
+    presentare il percorso qui descritto come disponibile.</p>
+  </aside>
+
+  <h2 id="esempi">Come formulare la richiesta</h2>
+  <p>Questi esempi illustrano l'uso previsto dopo l'attivazione; non sono
+  trascrizioni di operazioni già eseguite.</p>
+  <blockquote><p>Organizza le foto nella cartella «Da organizzare» sul server
+  Metnos, senza entrare nelle sottocartelle. Confrontale con «Archivio foto»:
+  rimuovi dalla sorgente soltanto le copie identiche già presenti nell'archivio
+  e distribuisci le altre per anno e mese di scatto. Mostrami prima il piano.</p></blockquote>
+  <p>Le due cartelle devono essere distinte. La cartella sorgente delimita dove
+  si possono rimuovere duplicati; l'archivio è il riferimento da conservare.
+  Se una data manca, la destinazione non va inventata: si definisce nel form
+  se lasciare il file dov'è oppure fermare il piano.</p>
+  <blockquote><p>Trova i documenti nella cartella «Da archiviare» sul server
+  Metnos, estrai il progetto dal contenuto e organizza quei risultati nelle
+  cartelle di progetto già esistenti. Prima mostrami il piano.</p></blockquote>
+  <p>Qui ricerca, estrazione e organizzazione appartengono alla stessa richiesta.
+  La regola usa il campo <code>project</code> estratto, non inventa un progetto
+  dal nome del file. Non dare per scontato che «questi file» richiami i risultati
+  di una richiesta precedente già conclusa: indica di nuovo l'ambito.</p>
+
+  <h2 id="collisioni">Se un nome è già occupato</h2>
+  <p>Non si sovrascrive il file esistente. La regola può fermare il piano oppure
+  proporre un nome con un suffisso ricavato dal contenuto. Anche quando due file
+  in ingresso avrebbero lo stesso nome, il nome finale deve comparire nella
+  preview. Questa scelta non autorizza a eliminare il file già presente.</p>
+
+  <h2 id="limiti">Limiti della prima versione</h2>
+  <ul>
+    <li>File locali sul server Linux di Metnos: non file di un PC Windows
+    collegato, dispositivi remoti o archivi cloud.</li>
+    <li>Spostamenti sullo stesso filesystem: il passaggio a un altro disco
+    o filesystem non è supportato.</li>
+    <li>Cartelle sorgenti e destinazioni già esistenti, comprese le sottocartelle
+    finali. Le destinazioni devono stare fuori dalle cartelle sorgenti:
+    questa versione non crea automaticamente la struttura anno/mese.</li>
+    <li>Percorsi senza collegamenti simbolici. Le rimozioni di duplicati con
+    collegamenti fisici multipli non sono ammesse.</li>
+  </ul>
+
+  <h2 id="cambiamenti">Se i file cambiano dopo la preview</h2>
+  <p>Se un file o una cartella non corrisponde più a quanto verificato, oppure
+  una destinazione viene occupata, Metnos rifiuta di proseguire con quel piano.
+  Occorre una nuova preview e, se ci sono effetti reali, un nuovo consenso.
+  Non adatta silenziosamente il piano già approvato.</p>
+  <p>Se un problema sopraggiunge durante l'applicazione, Metnos tenta di
+  ripristinare le operazioni già compiute e ne conserva l'esito nella ricevuta.
+  Anche il ripristino può essere impedito da cambiamenti esterni: controlla
+  l'esito, senza presumere che tutti i file siano tornati al loro posto.
+  L'undo non sostituisce un backup indipendente.</p>
+  <p>Per proseguire: <a href="Metnos_QuickTour.html#cap3">ricercare duplicati nel giro rapido</a>
+  · <a href="architecture/tutor.html">che cosa fa il Tutor</a>.</p>
+</main>
+</body>
+</html>

@@ -5,6 +5,7 @@
   if (!document.body || document.body.dataset.wikiReady) return;
 
   const paths = {
+    organize_files: { it: "/it/organize_files.html", en: "/en/organize_files.html" },
     home: { it: "/it/", en: "/en/" },
     webui: { it: "/it/webui.html", en: "/en/webui.html" },
     interface: { it: "/it/interface.html", en: "/en/interface.html" },
@@ -72,7 +73,7 @@
       scope: "Guide e riferimenti pubblici di Metnos",
       groups: [
         ["Inizia qui", "L'essenziale per entrare, orientarti e formulare una richiesta.", [
-          ["home", "Panoramica della documentazione"], ["webui", "Aprire e usare Metnos"], ["interface", "Mappa dell'interfaccia"], ["domains", "Cosa puoi chiedere"], ["quick_tour", "Giro rapido"],
+          ["home", "Panoramica della documentazione"], ["webui", "Aprire e usare Metnos"], ["interface", "Mappa dell'interfaccia"], ["domains", "Cosa puoi chiedere"], ["quick_tour", "Giro rapido"], ["organize_files", "Organizzare file — in attivazione"],
         ]],
         ["Concetti fondamentali", "Le basi di autorità, esecuzione e sicurezza.", [
           ["executor", "Executor: azioni e limiti"], ["lifecycle", "Ciclo di vita di una richiesta"], ["policy", "Policy e autorità"], ["approval_ux", "Conferme e controlli"], ["multilingual_by_definition", "Multilingue per definizione"], ["sandbox", "Sandbox"],
@@ -117,7 +118,7 @@
       scope: "Public Metnos guides and references",
       groups: [
         ["Start here", "The essentials for getting in, finding your way, and asking for something.", [
-          ["home", "Documentation overview"], ["webui", "Opening Metnos"], ["interface", "Interface map"], ["domains", "What you can ask"], ["quick_tour", "Quick tour"],
+          ["home", "Documentation overview"], ["webui", "Opening Metnos"], ["interface", "Interface map"], ["domains", "What you can ask"], ["quick_tour", "Quick tour"], ["organize_files", "Organizing files — activation pending"],
         ]],
         ["Core concepts", "The foundations of authority, execution, and safety.", [
           ["executor", "Executors: admitted actions"], ["lifecycle", "The lifecycle of a request"], ["policy", "Policy and authority"], ["approval_ux", "Approval and review"], ["multilingual_by_definition", "Multilingual by definition"], ["sandbox", "Sandbox"],
@@ -154,7 +155,7 @@
   const text = copy[lang];
   const canonicalPath = (value) => {
     const pathname = new URL(value, window.location.origin).pathname;
-    const withoutIndex = pathname.replace(/\/index\.html$/, "/");
+    const withoutIndex = pathname.replace(/\/index\.html$/, "/").replace(/\.html$/, "");
     return withoutIndex.length > 1 ? withoutIndex.replace(/\/$/, "") : withoutIndex;
   };
   const current = canonicalPath(window.location.pathname);

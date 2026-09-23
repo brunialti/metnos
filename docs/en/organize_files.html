@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Organizing files — Metnos</title>
+  <meta name="description" content="organize_files, activation in progress: understand the plan, approve changes, read the receipt and undo safely.">
+  <link rel="canonical" href="https://metnos.com/en/organize_files">
+  <link rel="alternate" hreflang="it" href="https://metnos.com/it/organize_files">
+  <link rel="alternate" hreflang="en" href="https://metnos.com/en/organize_files">
+  <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/organize_files">
+  <link rel="stylesheet" href="/assets/metnos.css?v=20260822-2">
+  <script defer src="/assets/wiki-shell.js?v=20260923-organize"></script>
+</head>
+<body>
+<nav class="lang-switch" aria-label="Language">
+  <a href="/it/organize_files.html" lang="it" hreflang="it">IT</a> ·
+  <a href="/en/organize_files.html" class="active" lang="en" hreflang="en">EN</a>
+</nav>
+<header>
+  <h1>Organizing files</h1>
+  <p class="lead"><code>organize_files</code>: <strong>activation in progress</strong>.
+  This guide describes the intended workflow, not a feature already available.</p>
+</header>
+<!-- Keep pending capability instructions out of the current Tutor corpus. -->
+<main class="tutor-exclude">
+  <h2 id="organizzare">Organizing is more than moving</h2>
+  <p>Moving means taking selected files to a specified destination. Organizing
+  means applying a rule to a clearly defined set: for example, removing identical
+  copies from the source and distributing the remaining files by date or project.
+  Sorting a list of results, by contrast, does not change the files.</p>
+  <p>Specify the source folders, whether to include subfolders, any comparison
+  folders and the destinations. Folders used only for comparison are not modified.
+  A matching name or a similar-looking photo does not establish a duplicate:
+  the complete file contents are compared.</p>
+
+  <h2 id="percorso">First the plan, then your decision</h2>
+  <ol>
+    <li><strong>Complete the request in a form.</strong> If information is missing,
+    Metnos asks for it in a form. Choices and consent also use forms: within web
+    chat, or through the form link received on Telegram. Simply typing “yes” in
+    chat does not replace confirmation.</li>
+    <li><strong>Review the complete plan.</strong> The preview does not move or
+    delete your files. The plan distinguishes moves, duplicate copies to remove,
+    files left in place and issues to resolve. It includes destinations and any
+    alternative names. An abbreviated summary must say so: it is not the same
+    as being able to inspect every action.</li>
+    <li><strong>Authorize only actual changes.</strong> If the plan contains no
+    changes, the preview ends without asking for authorization. If it contains
+    moves or removals, you can confirm or cancel in the form. Confirmation
+    applies only to that plan, which remains frozen.</li>
+    <li><strong>Read the receipt.</strong> After consent, Metnos applies exactly
+    the approved actions, without recalculating destinations or adding files.
+    The receipt records what actually happened, including any problems:
+    a preview is not a receipt for completed work.</li>
+    <li><strong>Undo if needed.</strong> Undo uses the receipt to reverse moves
+    and restore removed copies. It first checks that restoration is still safe;
+    it does not overwrite a file that has changed in the meantime. Repeating
+    a completed undo does not repeat its effects.</li>
+  </ol>
+  <aside class="callout note">
+    <p><strong>One check is still open.</strong> For long lists the form shows
+    a limited summary, explicitly marked as such. Viewing the entire plan
+    before consent still needs verification before the workflow described
+    here can be presented as available.</p>
+  </aside>
+
+  <h2 id="esempi">How to ask</h2>
+  <p>These examples illustrate intended use after activation; they are not
+  transcripts of completed operations.</p>
+  <blockquote><p>Organize the photos in “To organize” on the Metnos server,
+  without entering subfolders. Compare them with “Photo archive”: remove from
+  the source only identical copies already in the archive, and distribute the
+  rest by capture year and month. Show me the plan first.</p></blockquote>
+  <p>The two folders must be separate. The source folder defines where duplicates
+  may be removed; the archive is the reference to preserve. If a date is missing,
+  the destination must not be invented: use the form to choose whether to leave
+  the file in place or block the plan.</p>
+  <blockquote><p>Find the documents in “To file” on the Metnos server, extract
+  their project from the contents and organize those results into the existing
+  project folders. Show me the plan first.</p></blockquote>
+  <p>Search, extraction and organization belong to the same request here.
+  The rule uses the extracted <code>project</code> field; it does not invent a
+  project from the filename. Do not assume that “these files” retrieves the
+  output of a previous, completed request: specify the scope again.</p>
+
+  <h2 id="collisioni">If a name is already taken</h2>
+  <p>The existing file is not overwritten. The rule can block the plan or propose
+  a name with a suffix derived from the contents. Even when two incoming files
+  would have the same name, the final name must appear in the preview. This
+  choice does not authorize deletion of the existing file.</p>
+
+  <h2 id="limiti">First-version limits</h2>
+  <ul>
+    <li>Local files on the Metnos Linux server only: not files on a connected
+    Windows PC, remote devices or cloud storage.</li>
+    <li>Moves within the same filesystem only: moving to another disk or
+    filesystem is not supported.</li>
+    <li>Source and destination folders must already exist, including final
+    subfolders. Destinations must be outside the source folders: this version
+    does not automatically create the year/month structure.</li>
+    <li>Paths must not contain symbolic links. Removing duplicate files with
+    multiple hard links is not allowed.</li>
+  </ul>
+
+  <h2 id="cambiamenti">If files change after the preview</h2>
+  <p>If a file or folder no longer matches what was checked, or a destination
+  becomes occupied, Metnos refuses to continue with that plan. A new preview
+  is needed, followed by new consent if there are actual changes. It does not
+  silently adapt a plan you already approved.</p>
+  <p>If a problem occurs during application, Metnos attempts to restore the
+  operations already performed and records the outcome in the receipt.
+  External changes can also prevent restoration: check the outcome rather
+  than assuming every file is back in place. Undo is not a replacement for
+  an independent backup.</p>
+  <p>Continue with <a href="Metnos_QuickTour.html#cap3">finding duplicates in the quick tour</a>
+  · <a href="architecture/tutor.html">what the Tutor does</a>.</p>
+</main>
+</body>
+</html>
