@@ -4,7 +4,9 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import stat
 import sys
+from types import SimpleNamespace
 
 import pytest
 
@@ -29,33 +31,51 @@ def account(home="/var/lib/metnos-service"):
     )
 
 
+@pytest.fixture(autouse=True)
+def service_account(tmp_path, monkeypatch):
+    """Portable policy tests must not depend on an installed service account."""
+    snapshot = account(str(tmp_path / "service-home"))
+    monkeypatch.setattr(cutover, "resolve_posix_account_snapshot_v1",
+                        lambda name: snapshot)
+    return snapshot
+
+
+@pytest.fixture(autouse=True)
+def service_control(monkeypatch):
+    """Keep the Linux-only adapter outside the portable policy under test."""
+    monkeypatch.setitem(sys.modules, "stack_reconcile", SimpleNamespace(
+        Systemctl=lambda **kwargs: pytest.fail("service observation not configured")))
+
+
 # --- which stores the cutover reads ------------------------------------------
 
-def test_the_selected_stores_mirror_the_service_defaults():
-    resolved = cutover.selected_sources_v1({}, account())
-    assert [(kind, str(path), table) for kind, path, table in resolved] == [
+def test_the_selected_stores_mirror_the_service_defaults(service_account):
+    home = Path(service_account.record.home)
+    resolved = cutover.selected_sources_v1({}, service_account)
+    assert list(resolved) == [
         ("statistics",
-         "/var/lib/metnos-service/.local/state/metnos/executor_stats.db",
+         home / ".local/state/metnos/executor_stats.db",
          "executor_stats"),
         ("promotions",
-         "/var/lib/metnos-service/.local/share/metnos/promoter.sqlite",
+         home / ".local/share/metnos/promoter.sqlite",
          "proposal_promote"),
     ]
 
 
-def test_a_service_override_wins_over_the_default_path():
+def test_a_service_override_wins_over_the_default_path(tmp_path, service_account):
     resolved = cutover.selected_sources_v1({
-        "METNOS_EXECUTOR_STATS_DB": "/srv/elsewhere/stats.db",
-        "METNOS_USER_DATA": "/srv/data",
-    }, account())
-    paths = {kind: str(path) for kind, path, _table in resolved}
-    assert paths["statistics"] == "/srv/elsewhere/stats.db"
-    assert paths["promotions"] == "/srv/data/promoter.sqlite"
+        "METNOS_EXECUTOR_STATS_DB": str(tmp_path / "elsewhere/stats.db"),
+        "METNOS_USER_DATA": str(tmp_path / "data"),
+    }, service_account)
+    paths = {kind: path for kind, path, _table in resolved}
+    assert paths["statistics"] == tmp_path / "elsewhere/stats.db"
+    assert paths["promotions"] == tmp_path / "data/promoter.sqlite"
 
 
-def test_a_service_home_override_moves_both_stores():
-    resolved = cutover.selected_sources_v1({"HOME": "/srv/home"}, account())
-    assert all(str(path).startswith("/srv/home/") for _kind, path, _t in resolved)
+def test_a_service_home_override_moves_both_stores(tmp_path, service_account):
+    home = tmp_path / "override-home"
+    resolved = cutover.selected_sources_v1({"HOME": str(home)}, service_account)
+    assert all(path.is_relative_to(home) for _kind, path, _t in resolved)
 
 
 def test_a_relative_override_is_refused_rather_than_resolved():
@@ -175,7 +195,7 @@ def test_a_damaged_marker_is_not_silently_rewritten(marker_root):
 
 @pytest.mark.parametrize("command", ["plan", "apply"])
 def test_neither_command_runs_without_administrative_privilege(monkeypatch, command):
-    monkeypatch.setattr(cutover.os, "geteuid", lambda: 1000)
+    monkeypatch.setattr(cutover.os, "geteuid", lambda: 1000, raising=False)
     monkeypatch.setattr(cutover, "_managed_authority_platform_supported_v1", lambda: True)
     entry = cutover.apply_cutover_v1 if command == "apply" else cutover.plan_cutover_v1
     with pytest.raises(cutover.LifecycleCutoverError) as raised:
@@ -435,7 +455,13 @@ def test_a_copied_store_is_made_unwritable_and_reported(tmp_path):
     path = tmp_path / "executor_stats.db"
     path.write_bytes(b"")
     retired = cutover._retire_sources((("statistics", path, "executor_stats"),))
-    assert retired == [{"kind": "statistics", "read_only": True, "mode": "0o400"}]
+    observed_mode = stat.S_IMODE(path.stat().st_mode)
+    assert observed_mode & 0o222 == 0
+    # Windows chmod removes writes but cannot enforce owner-only POSIX access.
+    assert retired == [{"kind": "statistics", "read_only": observed_mode == 0o400,
+                        "mode": oct(observed_mode)}]
+    if sys.platform.startswith("linux"):
+        assert observed_mode == 0o400
 
 
 def test_a_store_that_cannot_be_retired_says_so(tmp_path):
@@ -452,17 +478,17 @@ def test_the_command_line_accepts_only_its_two_stages():
 # --- locating the service's store from a root-run tool -----------------------
 
 @pytest.mark.parametrize("environment,expected", [
-    ({"METNOS_USER_STATE": "/srv/state"}, "/srv/state/birth/executor_epochs.sqlite"),
-    ({"HOME": "/srv/home"}, "/srv/home/.local/state/metnos/birth/executor_epochs.sqlite"),
-    ({"METNOS_USER_STATE": "/srv/state", "HOME": "/ignored"},
-     "/srv/state/birth/executor_epochs.sqlite"),
+    ({"METNOS_USER_STATE": "state"}, "state/birth/executor_epochs.sqlite"),
+    ({"HOME": "home"}, "home/.local/state/metnos/birth/executor_epochs.sqlite"),
+    ({"METNOS_USER_STATE": "state", "HOME": "ignored"},
+     "state/birth/executor_epochs.sqlite"),
 ])
-def test_the_epoch_store_is_located_by_the_recorded_overrides(environment, expected):
-    assert str(cutover.service_epoch_db_v1(environment)) == expected
+def test_the_epoch_store_is_located_by_the_recorded_overrides(tmp_path, environment, expected):
+    absolute = {key: str(tmp_path / value) for key, value in environment.items()}
+    assert cutover.service_epoch_db_v1(absolute) == tmp_path / expected
 
 
-def test_without_an_override_the_service_account_decides_not_the_caller():
+def test_without_an_override_the_service_account_decides_not_the_caller(service_account):
     """Root has its own state directory, and it is never the answer."""
-    located = str(cutover.service_epoch_db_v1({}))
-    assert located.endswith("/.local/state/metnos/birth/executor_epochs.sqlite")
-    assert not located.startswith("/root/")
+    assert cutover.service_epoch_db_v1({}) == (
+        Path(service_account.record.home) / ".local/state/metnos/birth/executor_epochs.sqlite")

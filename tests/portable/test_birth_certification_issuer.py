@@ -15,6 +15,7 @@ import executor_birth_activation_mode as mode
 import executor_birth_authority_files as files
 import executor_birth_lifecycle as lifecycle
 import install.birth_certification_issuer as issuer
+from executor_birth_account_identity import PosixAccountRecordV1, PosixAccountSnapshotV1
 from executor_birth_canonical import encode_canonical_ascii_v1 as encode
 from executor_birth_certification_authority import CertificationPublicKeyV1
 from executor_birth_keystore import birth_key_id
@@ -105,6 +106,11 @@ def test_an_unmigrated_installation_cannot_be_certified(monkeypatch):
 def _migrated(monkeypatch, tmp_path):
     import install.birth_lifecycle_migration as cutover
 
+    snapshot = PosixAccountSnapshotV1(
+        PosixAccountRecordV1("metnos", 995, 985, str(tmp_path / "service-home"),
+                             "/usr/sbin/nologin"), (985,))
+    monkeypatch.setattr(cutover, "resolve_posix_account_snapshot_v1",
+                        lambda name: snapshot)
     monkeypatch.setattr(issuer, "_require_root_v1", lambda: None)
     monkeypatch.setattr(mode, "read_birth_activation_state",
                         lambda: mode.BirthActivationState(
@@ -151,7 +157,7 @@ def test_the_issuer_rereads_the_store_the_migration_used(monkeypatch, tmp_path):
 @pytest.mark.parametrize("command", ["derive", "issue"])
 def test_neither_command_runs_without_administrative_privilege(monkeypatch, command):
     monkeypatch.setattr(issuer, "_managed_authority_platform_supported_v1", lambda: True)
-    monkeypatch.setattr(issuer.os, "geteuid", lambda: 1000)
+    monkeypatch.setattr(issuer.os, "geteuid", lambda: 1000, raising=False)
     with pytest.raises(issuer.CertificationIssueError) as raised:
         issuer.issue_certificate_v1(apply=command == "issue")
     assert raised.value.code == "certification_root_required"
