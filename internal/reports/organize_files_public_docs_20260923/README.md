@@ -3,6 +3,44 @@
 Date: 23 September 2026. Owner: Codex, organize_files documentation task.
 Coordination: R-007, with the executor publication gate still owned by R-003/RM-0008.
 
+## Final availability update
+
+RM-0008 subsequently closed R-003 and R-007 with an actual Birth receipt,
+catalog readback and post-restart checks in release 77. `organize_files` is now
+in exercise. The public guides were therefore updated from the truthful
+activation-pending state recorded below to the active workflow, without changing
+their safety qualifications or the documented bounded-summary limitation.
+
+- Active documentation commits: `5739b0fe` and `6b8d875f` on
+  `codex/organize-files-public-docs`; both are pushed to the public Git remote.
+- Public guides: <https://metnos.com/it/organize_files> and
+  <https://metnos.com/en/organize_files>.
+- Final Pages deployment: `dd683f03-66cb-4db0-a486-f32f63bc08f1`, source
+  `6b8d875`, <https://dd683f03.mykleos.pages.dev>.
+- The upload starts from the newer production deployment
+  `1eb32901-577a-48c5-8604-a5155a2057e7` (source `1285614`), then overlays only
+  the two guides, shared navigation, Quick Tour HTML/PDF and sitemap. This
+  preserves the concurrently published LRE and web-interface documentation.
+- The resulting artifact has 128 files and 103 canonical documents. All 126
+  HTTP-served bodies match on both the immutable deployment and `metnos.com`;
+  four browser cases on each endpoint cover IT/EN at 390px and 1440px with no
+  script errors or horizontal overflow.
+- The focused source checks cover 1,986 links, 32 local browser cases and Tutor
+  ingestion: each guide contributes 29 blocks and each Quick Tour one new block.
+  No edited page has a link failure. The 41 previously recorded findings remain
+  outside the edited pages.
+- The active wording is indexable by Tutor; no ad-hoc product string, token,
+  administrative command or Birth procedure was added. No executor, runtime,
+  manifest, signature, service, product seed or main checkout was modified.
+
+An intermediate Pages receipt `49aea2a9-b8b8-4ac5-b615-5e50908a1b56` had the
+same bytes but was immediately superseded because the full source SHA supplied
+to the provider did not match the actual commit after its visible prefix. The
+final deployment uploaded zero changed assets and attaches the exact commit
+`6b8d875f222950f124cdcb5ee0a29ed7c216f537`. Machine-readable final evidence
+uses the `*-active*` filenames adjacent to this report; the files without that
+suffix preserve the initial activation-pending deployment described below.
+
 ## Outcome and scope
 
 The bilingual public documentation has been deployed successfully. This is a

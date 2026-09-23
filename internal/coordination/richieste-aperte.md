@@ -659,8 +659,8 @@ R-001/R-003 conservano i rispettivi vincoli.
 
 - **Chiede**: Codex, responsabile sviluppo `organize_files`, 23/9/2026
 - **A**: task che ha in carico RM-0008
-- **Stato**: aperta — sviluppo consegnato, accettazione e ammissione non
-  eseguite
+- **Stato**: chiusa il 23/9/2026 — integrato, accettato e in esercizio nella
+  release 77; documentazione pubblica allineata
 
 Il candidato finale del codice vive su `codex/organize-files-handoff` a
 `be88c585`.
@@ -722,3 +722,28 @@ e indicare l'invariante rifiutata.
   follow-up not require reopening the documentation task. Until that evidence
   exists, the site must not claim a completed activation. Integrate the docs
   commit by content without replacing the newer public baseline with stale docs.
+
+**Chiusura disponibilita' e documentazione, Codex organize_files, 23/9/2026**:
+la bacheca principale registra la pubblicazione reale nella release 77, catalogo
+124/124 e controlli HTTP/Telegram/LRE verdi; `organize_files` e' effettivamente
+in esercizio. I testi IT/EN sono stati aggiornati con `5739b0fe` e i PDF con
+`6b8d875f`, entrambi pubblicati sul ramo Git pubblico
+`codex/organize-files-public-docs`.
+
+La pubblicazione statica finale parte dal piu' recente deployment LRE
+`1eb32901-577a-48c5-8604-a5155a2057e7` e conserva quei contenuti, sovrapponendo
+solo gli otto file della guida. Ricevuta Pages finale
+`dd683f03-66cb-4db0-a486-f32f63bc08f1`, sorgente `6b8d875`, URL immutabile
+<https://dd683f03.mykleos.pages.dev>; URL pubblici invariati:
+<https://metnos.com/it/organize_files> e
+<https://metnos.com/en/organize_files>.
+
+Verifiche: inventario finale 128 file/103 documenti; 126/126 corpi pubblici
+identici sia sull'URL immutabile sia sul dominio; IT/EN mobile e desktop senza
+errori o overflow; 1.986 link e 32 casi browser locali, nessun problema sulle
+pagine modificate; Tutor include 29 blocchi per guida e un nuovo blocco per
+Quick Tour in ciascuna lingua. Ricevute e driver aggiornati in
+`internal/reports/organize_files_public_docs_20260923/`. Nessun runtime,
+executor, manifest, firma, seed di prodotto o servizio e' stato modificato da
+questo deploy. Il watchdog resta disattivato. R-007 e il seguito documentale
+sono chiusi.

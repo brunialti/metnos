@@ -1,0 +1,50 @@
+{
+  "recorded_at": "2026-09-23T13:23:08+02:00",
+  "executor_state": {
+    "release": 77,
+    "active": true,
+    "coordination": ["R-003", "R-007"]
+  },
+  "documentation": {
+    "branch": "codex/organize-files-public-docs",
+    "commits": [
+      "5739b0fef7c93140938f249780c616b49a97695c",
+      "6b8d875f222950f124cdcb5ee0a29ed7c216f537"
+    ],
+    "public_git_pushed": true
+  },
+  "baseline_deployment": {
+    "id": "1eb32901-577a-48c5-8604-a5155a2057e7",
+    "source": "1285614",
+    "url": "https://1eb32901.mykleos.pages.dev"
+  },
+  "final_deployment": {
+    "id": "dd683f03-66cb-4db0-a486-f32f63bc08f1",
+    "source": "6b8d875",
+    "url": "https://dd683f03.mykleos.pages.dev",
+    "public_urls": [
+      "https://metnos.com/it/organize_files",
+      "https://metnos.com/en/organize_files"
+    ]
+  },
+  "artifact": {
+    "files": 128,
+    "canonical_documents": 103,
+    "served_files": 126,
+    "tree_sha256": "c92e11ad3ee79e15b6d0d627b8d195ba748d596b853e14a8b0d9b0aa96e4a346"
+  },
+  "verification": {
+    "local_links": 1986,
+    "local_browser_cases": 32,
+    "changed_page_link_issues": 0,
+    "immutable_served_body_issues": 0,
+    "public_served_body_issues": 0,
+    "immutable_browser_cases": 4,
+    "public_browser_cases": 4,
+    "browser_errors": 0
+  },
+  "superseded_same_bytes_receipt": {
+    "id": "49aea2a9-b8b8-4ac5-b615-5e50908a1b56",
+    "reason": "replaced immediately to attach the exact full Git commit SHA"
+  }
+}
