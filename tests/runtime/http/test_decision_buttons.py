@@ -163,6 +163,39 @@ def test_senza_decisione_una_query_normale_resta_trasparente(monkeypatch):
     assert (q, consumed, msg) == ("che ore sono", None, None)
 
 
+def test_un_modulo_form_only_completato_non_intercetta_la_query_successiva(
+        monkeypatch):
+    """Il submit standalone completa il dialogo senza consumare il suo
+    gemello cap_pending.  Quello stato residuo non deve riproporre il modulo
+    ne' bloccare un comando nuovo (in particolare l'undo post-applicazione)."""
+    import http_routes_agent as H
+    from channels import daemon as D
+    import dialog_pending as DP
+
+    cleared = []
+    monkeypatch.setattr(D, "_cap_pending_clear", cleared.append)
+    monkeypatch.setattr(DP, "load_pending", lambda *a, **kw: {
+        "form_only": True,
+        "completed": True,
+        "cancelled": False,
+        "step_index": 1,
+        "dialog": [{"var": "confirm", "schema": {"kind": "yes_no"}}],
+    })
+
+    proposal = {
+        "kind": "get_inputs_response",
+        "dialog_id": "dlg-completato",
+        "sender_for_state": "sender-state",
+    }
+    result = H._consume_http_get_inputs_response(
+        proposal, "annulla l'ultima azione", sender_id="sender-http",
+        actor="host", owner_user_id="u1",
+    )
+
+    assert result == ("annulla l'ultima azione", None, None)
+    assert cleared == ["sender-http"]
+
+
 # ── Il valore arriva dal client: va validato ──────────────────────────
 @pytest.mark.parametrize("valore", [
     "YES", " yes ", "true", "1", "si", "sì", "approva", "ok", "y",

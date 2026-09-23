@@ -987,6 +987,17 @@ def _consume_http_get_inputs_response(
         # ritornavamo un messaggio di errore che bloccava il PLANNER.
         _cap_pending_clear(sender_id)
         return query, None, None
+    dialog = state.get("dialog") or []
+    idx = int(state.get("step_index") or 0)
+    if idx >= len(dialog) or state.get("completed") or state.get("cancelled"):
+        # Il submit del modulo standalone completa dialog_pending, ma non
+        # passa da questo consumer e puo' quindi lasciare il suo gemello in
+        # cap_pending.  Uno stato terminale deve perdere sempre contro la
+        # query nuova, anche quando il dialogo era form_only: altrimenti il
+        # modulo ormai chiuso viene riproposto e intercetta, fra gli altri,
+        # il comando di undo immediatamente successivo.
+        _cap_pending_clear(sender_id)
+        return query, None, None
     if state.get("form_only"):
         return (query, proposal, _with_dialog_form_marker(
             _msg("MSG_FROZEN_PLAN_FORM_ONLY"), state, dialog_id,
@@ -997,15 +1008,6 @@ def _consume_http_get_inputs_response(
             owner_user_id=owner_user_id, source="http_chat")
         _cap_pending_clear(sender_id)
         return query, proposal, _msg("MSG_DIALOG_CANCELLED")
-    dialog = state.get("dialog") or []
-    idx = int(state.get("step_index") or 0)
-    if idx >= len(dialog) or state.get("completed") or state.get("cancelled"):
-        # Dialog finito (completato dal form HTTP submit, o cancellato):
-        # cap_pending e' rimasto stale. Pulisci e tratta la nuova query
-        # come turno fresco (10/5/2026 fix: prima il messaggio Bob
-        # con 13 foto veniva DROPPATO dopo Roberto enrollment).
-        _cap_pending_clear(sender_id)
-        return query, None, None
     cur_step = dialog[idx]
     var = cur_step.get("var")
     schema = cur_step.get("schema") or {}

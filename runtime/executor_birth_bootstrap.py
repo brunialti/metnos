@@ -782,7 +782,8 @@ def _build(
             created_paths=created_paths,
         ) != approval_db:
             raise BirthBootstrapError("birth_approval_store_unavailable")
-        verifier.recover_authoring(recovery_plan)
+        if recovery_plan:
+            verifier.recover_authoring(recovery_plan)
     except BaseException:
         _rollback_created_private_paths(created_paths)
         raise

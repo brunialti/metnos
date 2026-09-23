@@ -17,7 +17,8 @@ from executor_birth_intent import _producer_capabilities_for_bootstrap
 from executor_birth_keystore import BirthKeyStoreError, birth_key_id, raw_public_key
 from executor_birth_intent import BirthIntent
 from manifest_inventory import (
-    ContractId, ManifestInventory, ManifestOrigin, ManifestRef, ManifestStatus,
+    ContractId, ManifestInventory, ManifestLayout, ManifestOrigin, ManifestRef,
+    ManifestStatus, resolve_manifest_layout,
 )
 
 
@@ -334,6 +335,50 @@ def test_build_end_to_end_from_explicit_material_and_dedicated_keystores(monkeyp
     assert not hasattr(state.verification, "core")
     assert not hasattr(state.verification, "execute_request")
     assert not hasattr(state.verification, "publisher")
+
+
+def test_build_skips_empty_recovery_without_switching_catalog_layout(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    config, _author = _valid_bootstrap_config(tmp_path)
+    contract_id = ContractId(ManifestOrigin.USER, "demo/manifest.toml")
+    canonical = tmp_path / "authoring" / "demo"
+    canonical.mkdir(parents=True)
+    ref = ManifestRef(
+        contract_id,
+        ManifestOrigin.USER,
+        ManifestStatus.ADMITTED,
+        canonical.parent,
+        canonical / "manifest.toml",
+        "demo/manifest.toml",
+        (canonical,),
+    )
+    import config as runtime_config
+    import executor_birth_authoring as authoring
+    import manifest_inventory
+
+    monkeypatch.setattr(
+        manifest_inventory,
+        "inventory_authoring_manifests",
+        lambda: ManifestInventory((ref,), ()),
+    )
+    user_state = tmp_path / "runtime-state"
+    monkeypatch.setattr(runtime_config, "PATH_USER_STATE", user_state)
+
+    bootstrap._build(
+        bootstrap.BirthBootstrapPaths(config, tmp_path / "bootstrap-state"),
+        now=lambda: datetime(2026, 8, 25, 12, 0, tzinfo=timezone.utc),
+    )
+
+    control = authoring.authoring_paths(canonical, contract_id.value)
+    publication_container = user_state / "contract-publications"
+    assert not control.control.exists()
+    assert not publication_container.exists()
+    assert resolve_manifest_layout(
+        store_root=publication_container / "v1",
+        active_marker=user_state / "contract-publications.ACTIVE",
+    ) is ManifestLayout.AUTHORING
 
 
 @pytest.mark.parametrize("reused_by", ["admission", "producer"])
