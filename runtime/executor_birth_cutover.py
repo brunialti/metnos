@@ -290,7 +290,12 @@ def enumerate_authenticated_current_generations(
     for ref in inventory.manifests:
         revision = current_contract(
             ref, trusted_publics=tuple(trusted_publics), store_root=store_root,
+            allow_unpublished=True,
         )
+        # A first publication creates its authenticated binding before its
+        # generation.  It does not belong to the predecessor census.
+        if revision is None:
+            continue
         if isinstance(revision, ContractRetirement):
             continue
         if not isinstance(revision, VerifiedManifest) or revision.generation_id is None:

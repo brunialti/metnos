@@ -11,19 +11,15 @@
 
 <div class="dw-layout" id="durableWorkloads" data-api="/agent/workloads">
   <section class="dw-panel" aria-labelledby="dw-list-title">
-    <div class="dw-panel-head"><h2 id="dw-list-title">{{ msg("UI_DURABLE_JOB_LIST") }}</h2></div>
+    <div class="dw-panel-head">
+      <h2 id="dw-list-title">{{ msg("UI_DURABLE_JOB_LIST") }}</h2>
+      <span class="dw-live" id="dwLive" aria-live="polite"></span>
+    </div>
     <div id="dwList" class="empty">{{ msg("UI_DURABLE_LOADING") }}</div>
     <div class="dw-pager" id="dwListPager"></div>
   </section>
-
-  <section class="dw-panel" aria-labelledby="dw-detail-title">
-    <div class="dw-panel-head">
-      <h2 id="dw-detail-title">{{ msg("UI_DURABLE_JOB_DETAIL") }}</h2>
-      <span class="dw-live" id="dwLive" aria-live="polite"></span>
-    </div>
-    <div class="dw-detail" id="dwDetail" hidden></div>
-    <div class="empty" id="dwPlaceholder">{{ msg("UI_DURABLE_LOADING") }}</div>
-  </section>
+  <div class="dw-detail" id="dwDetail" role="region" aria-label="{{ msg('UI_DURABLE_JOB_DETAIL') }}" hidden></div>
+  <div class="empty" id="dwPlaceholder" hidden></div>
 </div>
 
 <script>
@@ -37,6 +33,8 @@
   const placeholder = document.getElementById("dwPlaceholder");
   const live = document.getElementById("dwLive");
   const api = root.dataset.api;
+  const jobRows = new Map();
+  const dismissedIds = new Set();
   let listCursor = null;
   let selected = null;
   let stream = null;
@@ -169,23 +167,6 @@
     element.textContent = reason ? copy.notAvailable : estimateText(element.progress, element.estimateScope);
     element.reasonNode.textContent = reason ? (copy.estimateReasons[reason] || copy.estimateReasons.insufficient_data) : "";
     element.reasonNode.hidden = !reason;
-  }
-  function appendProgress(container, progress) {
-    appendFact(container, copy.started, availableDate(progress?.started_at));
-    const phase = progress?.current_phase;
-    const fact = appendFact(container, copy.phaseProgress, percentText(phase?.known_units_percent));
-    if (Number.isInteger(phase?.committed_units) && phase.committed_units >= 0
-        && Number.isInteger(phase?.total_units) && phase.total_units > 0 && phase.committed_units <= phase.total_units) {
-      fact.append(node("small", copy.phaseCount.replace("{completed}", countText(phase.committed_units))
-        .replace("{total}", countText(phase.total_units)), "dw-phase-count"));
-    }
-    appendEstimate(container, progress, "phase");
-  }
-  function appendFinishedListSummary(container, workload) {
-    const processed = processedCount(workload.counters);
-    appendFact(container, copy.finished, availableDate(workload.updated_at));
-    appendFact(container, copy.processedBatches, processed === null
-      ? copy.notAvailable : `${countText(processed)} / ${countText(workload.counters?.total)}`);
   }
   function appendEstimate(container, progress, scope) {
     const fact = node("span", "", "dw-fact");
@@ -320,10 +301,15 @@
     return badge;
   }
   function highlightSelection() {
-    for (const row of list.querySelectorAll(".dw-job-choice")) {
-      const selectedNow = row.dataset.workloadId === selectedId;
-      row.setAttribute("aria-current", String(selectedNow));
-      row.setAttribute("aria-expanded", String(selectedNow));
+    for (const [id, row] of jobRows) {
+      const selectedNow = id === selectedId;
+      row.element.dataset.expanded = String(selectedNow);
+      row.choice.setAttribute("aria-current", String(selectedNow));
+      row.choice.setAttribute("aria-expanded", String(selectedNow));
+      const label = selectedNow ? copy.collapseDetails : copy.expandDetails;
+      row.choice.setAttribute("aria-label", `${label}: ${jobTitle(row.workload)}`);
+      row.choice.title = label;
+      row.choice.textContent = selectedNow ? "−" : "□";
     }
   }
   function clearRemovedSelection() {
@@ -336,16 +322,74 @@
     detailGeneration += 1; detailRenderGeneration += 1; unitsGeneration += 1;
     detailLoading = false;
     clear(detail); detail.hidden = true;
+    root.append(detail, placeholder);
     live.textContent = ""; placeholder.hidden = false;
     placeholder.textContent = list.querySelectorAll(".dw-job-choice").length ? copy.selectJob : copy.empty;
+    placeholder.hidden = Boolean(jobRows.size);
     highlightSelection();
   }
   function toggleDetail(workloadId) {
-    if (selectedId === workloadId && !detail.hidden) {
+    if (selectedId === workloadId) {
       clearRemovedSelection();
       return;
     }
     loadDetail(workloadId);
+  }
+
+  function updateJobRow(workload) {
+    const row = jobRows.get(workload.workload_id);
+    row.workload = workload;
+    row.title.textContent = jobTitle(workload);
+    row.title.title = jobFolder(workload) || jobTitle(workload);
+    for (const [element, value] of [[row.started, workload.progress?.started_at],
+      [row.finished, isTerminalState(workload.state) ? workload.updated_at : null]]) {
+      const known = typeof value === "string" && Number.isFinite(Date.parse(value));
+      element.textContent = known
+        ? new Date(value).toLocaleString(uiLocale, {dateStyle: "short", timeStyle: "short"}) : "—";
+      element.dateTime = known ? value : "";
+      element.title = availableDate(value);
+    }
+    row.state.replaceChildren(stateBadge(workload.state));
+    row.remove.hidden = !isTerminalState(workload.state);
+  }
+
+  function createJobRow(workload) {
+    const id = workload.workload_id;
+    const element = node("div", "", "dw-job-row");
+    element.dataset.workloadId = id;
+    const header = node("div", "", "dw-job-header");
+    const summary = node("div", "", "dw-job-summary");
+    summary.tabIndex = 0; // Allow keyboard scrolling of the single line on small screens.
+    summary.setAttribute("role", "group");
+    summary.setAttribute("aria-label", jobTitle(workload));
+    const fields = node("div", "", "dw-job-fields");
+    const title = node("strong", "", "dw-job-title");
+    const date = (label, key) => {
+      const field = node("span", "", "dw-job-date");
+      field.dataset.field = key;
+      const value = node("time");
+      field.append(node("span", `${label}: `, "dw-date-label"), value);
+      return {field, value};
+    };
+    const started = date(copy.started, "started"), finished = date(copy.finished, "finished");
+    const state = node("span", "", "dw-job-state");
+    fields.append(title, started.field, finished.field);
+    summary.append(fields);
+    const choice = button("", () => toggleDetail(id));
+    choice.className = "dw-job-choice";
+    choice.dataset.workloadId = id;
+    choice.setAttribute("aria-controls", "dwDetail");
+    const remove = button("×", () => dismissListedWorkload(jobRows.get(id).workload, remove), {danger: true});
+    remove.className = "dw-job-dismiss";
+    remove.setAttribute("aria-label", copy.dismiss);
+    remove.title = copy.dismiss;
+    const controls = node("div", "", "dw-job-controls");
+    controls.append(choice, remove);
+    header.append(summary, state, controls);
+    element.append(header);
+    const row = {element, title, started: started.value, finished: finished.value, state, choice, remove};
+    jobRows.set(id, row);
+    return row;
   }
   function disclosure(key, label, openSections) {
     const section = node("details", "", "dw-disclosure");
@@ -362,43 +406,36 @@
     try {
       const query = listCursor ? `?cursor=${encodeURIComponent(listCursor)}` : "";
       const payload = await request(`${api}${query}`);
-      if (reset) { clear(list); listPages = 1; } else { listPages += 1; }
-      const items = payload.items || [];
-      if (!items.length && !list.childElementCount) list.textContent = copy.empty;
-      for (const workload of items) {
-        if (list.classList.contains("empty")) { list.classList.remove("empty"); clear(list); }
-        const row = node("div", "", "dw-job-row");
-        row.dataset.workloadId = workload.workload_id;
-        const choice = button("", () => toggleDetail(workload.workload_id));
-        choice.className = "dw-job-choice";
-        choice.dataset.workloadId = workload.workload_id;
-        choice.setAttribute("aria-controls", "dwDetail");
-        const heading = node("span", "", "dw-job-heading");
-        const trailing = node("span", "", "dw-job-heading-actions");
-        const toggle = node("span", "⌄", "dw-job-toggle"); toggle.setAttribute("aria-hidden", "true");
-        trailing.append(stateBadge(workload.state), toggle);
-        heading.append(node("strong", jobTitle(workload)), trailing);
-        choice.append(heading);
-        appendFolder(choice, workload);
-        if (!isTerminalState(workload.state)) appendPhase(choice, workload);
-        const meta = node("span", "", "dw-timing");
-        if (isTerminalState(workload.state)) appendFinishedListSummary(meta, workload);
-        else appendProgress(meta, displayedProgress(workload));
-        choice.append(meta); row.append(choice);
-        if (isTerminalState(workload.state)) {
-          const remove = button("×", () => dismissListedWorkload(workload, remove), {danger: true});
-          remove.className = "dw-job-dismiss";
-          remove.setAttribute("aria-label", copy.dismiss);
-          remove.setAttribute("title", copy.dismiss);
-          row.append(remove);
+      if (reset) listPages = 1; else listPages += 1;
+      const items = (payload.items || []).filter(workload => !dismissedIds.has(workload.workload_id));
+      if (!jobRows.size) clear(list);
+      const focused = document.activeElement;
+      const incoming = new Set(items.map(workload => workload.workload_id));
+      if (reset) {
+        for (const [id, row] of jobRows) {
+          // A selected job may have moved to a later page; only its own 404
+          // proves it disappeared. Keep its open detail until then.
+          if (!incoming.has(id) && id !== selectedId) {
+            row.element.remove(); jobRows.delete(id);
+          }
         }
-        list.append(row);
       }
+      let position = reset ? 0 : jobRows.size;
+      for (const workload of items) {
+        const row = jobRows.get(workload.workload_id) || createJobRow(workload);
+        updateJobRow(workload);
+        const anchor = list.children[position++] || null;
+        if (anchor !== row.element) list.insertBefore(row.element, anchor);
+      }
+      list.classList.toggle("empty", !jobRows.size);
+      if (!jobRows.size) list.textContent = copy.empty;
+      if (focused && list.contains(focused) && document.activeElement !== focused) focused.focus({preventScroll: true});
       highlightSelection();
       listCursor = payload.next_cursor || null;
       clear(listPager);
       if (listCursor) listPager.append(button(copy.loadMore, () => loadList(false)));
       if (!selectedId) placeholder.textContent = list.querySelectorAll(".dw-job-choice").length ? copy.selectJob : copy.empty;
+      if (!selectedId) placeholder.hidden = true;
       return true;
     } catch (_) {
       // No response is not an empty history. Keep any last-known jobs visible.
@@ -513,11 +550,6 @@
         method: "POST",
         body: JSON.stringify({expected_version: selected.version, idempotency_key: idempotencyKey()})
       });
-      if (command === "dismiss") {
-        if (selectedId === workloadId) clearRemovedSelection();
-        await loadList(true);
-        return;
-      }
       if (selectedId === workloadId) await loadDetail(workloadId, true);
       await loadList(true);
     } catch (_) { live.textContent = copy.actionFailed; }
@@ -532,6 +564,12 @@
         body: JSON.stringify({expected_version: workload.version, idempotency_key: idempotencyKey()})
       });
       if (selectedId === workload.workload_id) clearRemovedSelection();
+      // An older list request may still be in flight. Its response must not
+      // reinsert a record whose removal the server has already confirmed.
+      dismissedIds.add(workload.workload_id);
+      jobRows.get(workload.workload_id)?.element.remove();
+      jobRows.delete(workload.workload_id);
+      if (!jobRows.size) { list.classList.add("empty"); list.textContent = copy.empty; }
       await loadList(true);
     } catch (_) {
       control.disabled = false;
@@ -601,7 +639,11 @@
       detailRenderGeneration += 1;
       selected = null;
       detailSignature = null;
+      unitsCursor = null; unitsState = null;
+      clear(detail);
       detail.hidden = true;
+      const row = jobRows.get(workloadId);
+      if (row) row.element.append(detail, placeholder);
       placeholder.hidden = false;
       placeholder.textContent = copy.loading;
       highlightSelection();
@@ -623,13 +665,11 @@
       detailSignature = signature;
       detailRenderGeneration += 1;
       selected = payload.workload;
+      if (jobRows.has(workloadId)) { updateJobRow(selected); highlightSelection(); }
       unitsCursor = null;
       clear(detail);
       placeholder.hidden = true;
       detail.hidden = false;
-      const heading = node("div", "", "dw-job-heading");
-      heading.append(node("h3", jobTitle(selected)), stateBadge(selected.state));
-      detail.append(heading);
       appendFolder(detail, selected, true);
       const phase = selected.description?.kind === "image_indexing" ? phaseKey(selected) : null;
       if (!isTerminalState(selected.state)) appendPhase(detail, selected);
@@ -666,7 +706,6 @@
       if (selected.state === "paused") actions.append(button(copy.resume, () => runAction("resume")));
       if (selected.state === "needs_attention") actions.append(button(copy.retry, () => runAction("retry")));
       if (!terminal) actions.append(button(copy.cancel, () => runAction("cancel", copy.cancelConfirm), {danger: true}));
-      if (terminal) actions.append(button(copy.dismiss, () => runAction("dismiss", copy.dismissConfirm), {danger: true}));
       if (actions.childElementCount) detail.append(actions);
       const help = disclosure("help", copy.readProgress, openSections);
       help.append(node("p", copy.progressHelp), node("p", copy.phaseScopeHelp), node("p", copy.timingHelp));
@@ -723,6 +762,7 @@
         await loadList(true);
         return true;
       }
+      if (detail.hidden) placeholder.textContent = copy.readFailed;
       live.textContent = copy.unavailable; markStale();
       return false;
     }

@@ -19,7 +19,7 @@ import i18n as _i18n
 
 
 def _msg(key: str, **kwargs) -> str:
-    _codegen_seed.ensure_registered()
+    _codegen_seed.ensure_output_registered()
     return _i18n.get(key, **kwargs)
 
 

@@ -108,12 +108,13 @@ def _execution_receipt_for_dispatch(
     candidate_id = _authenticated_dispatch_candidate_id(
         executor, contract_id, generation_id,
     )
+    from frozen_plan_consent import redact_args, redact_result
     return make_execution_receipt(
         request_id=request_id,
         turn_id=dispatch_identifier_reference("turn", turn_id),
         reduced_query_ref=reduced_query_ref,
-        arguments=reduce_retainable_payload(arguments),
-        reduced_output=reduce_retainable_payload(output),
+        arguments=reduce_retainable_payload(redact_args(executor, arguments)),
+        reduced_output=reduce_retainable_payload(redact_result(executor, output)),
         contract_id=contract_id,
         executor_name=getattr(executor, "name", None),
         candidate_id=candidate_id,
@@ -1587,11 +1588,11 @@ def _format_send_messages_detail(obs: dict) -> str:
 
 _MUTATING_VERBS = frozenset({
     # Sottoinsieme di ACTIONS §2.2 con side-effect remoto:
-    # send, create, delete, set, write, move, share, change, render.
+    # send, create, delete, set, write, move, share, change, render, organize.
     # NON include: read, find, get, list, filter, sort, group, classify,
     # describe, compute, compare, order, extract, compress.
     "send", "create", "delete", "set", "write", "move", "share",
-    "change", "render",
+    "change", "render", "organize",
 })
 
 
@@ -3116,12 +3117,30 @@ def _undo_pending(executor, args, *, turn_id, actor, channel, device=""):
     try:
         import uuid as _uuid
         _op = _uuid.uuid4().hex
+        # Same-token frozen recovery is one logical operation even when the
+        # child process dies and is restarted.  A deterministic, non-secret
+        # identifier lets the eventual receipt close the original pending
+        # undo record instead of creating orphan operations on every retry.
+        from frozen_plan_consent import policy_for
+        _frozen = policy_for(executor)
+        if (_frozen
+                and args.get(_frozen.get("argument"))
+                == _frozen.get("apply_value")):
+            _token = args.get(_frozen.get("token_argument"))
+            if isinstance(_token, str) and _token:
+                _op = _uuid.uuid5(
+                    _uuid.NAMESPACE_URL,
+                    "metnos:frozen-undo-v1\0"
+                    + str(getattr(executor, "name", "")) + "\0"
+                    + str(turn_id or "") + "\0" + _token,
+                ).hex
         _undo_contract = getattr(executor, "undo", None) or {}
         _outcome_contract = str(
             _undo_contract.get("outcome") or ""
         ) if isinstance(_undo_contract, dict) else ""
+        from frozen_plan_consent import redact_args
         UndoLog().append_pending(
-            _op, turn_id or "", executor.name, args, plan={},
+            _op, turn_id or "", executor.name, redact_args(executor, args), plan={},
             actor=actor or "host", channel=channel or "", device=device,
             outcome_contract=_outcome_contract)
         return _op
@@ -3140,18 +3159,22 @@ def _undo_done(op_id, obs, *, executor=None):
     regola; quelli condizionali dichiarano l'esito nella ricevuta. Anche
     ``no_effect`` chiude il pending e non viene scambiato per un crash."""
     if not op_id or not isinstance(obs, dict):
-        return
+        return False
     try:
         _undo_contract = getattr(executor, "undo", None) or {}
         _outcome_contract = str(
             _undo_contract.get("outcome") or ""
         ) if isinstance(_undo_contract, dict) else ""
+        from frozen_plan_consent import redact_result
         outcome = UndoLog().append_completion(
-            op_id, obs, outcome_contract=_outcome_contract)
+            op_id, redact_result(executor, obs),
+            outcome_contract=_outcome_contract)
         if outcome == "invalid":
             log.error("[undo] ricevuta per-esecuzione non valida")
+        return True
     except Exception as _ue:
         log.warning("[undo] append_done fallita (fail-open): %r", _ue)
+        return False
 
 
 _REMOTE_DATA_PLANE_ARGS = frozenset({"entries", "values", "rows"})
@@ -3287,6 +3310,13 @@ def _admitted_code_dependency_projection(
     return admitted_code_dependency_projection_v1(executor, load_catalog())
 
 
+def finalize_local_executor_args(executor, args: dict) -> dict:
+    """Return the exact server-local child payload before authorization."""
+    import sandbox as _sandbox
+    final = _fill_runtime_sourced_args(executor, dict(args or {}))
+    return _sandbox.resolve_filesystem_read_args(executor, final)
+
+
 def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised",
                           turn_id=None, actor=None, channel=None,
                           target_device=None, owner_user_id=None,
@@ -3338,6 +3368,12 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
     temporal_form = temporal_form_request(executor.name, args, getattr(executor, "args_schema", None))
     if temporal_form is not None:
         return temporal_form
+    # Frozen-plan authority is checked later, after every runtime-owned
+    # argument/path transformation.  Keep only the signed discriminator here
+    # so placement can fail closed before any remote dispatch.
+    from frozen_plan_consent import policy_for
+    _frozen_policy = policy_for(executor)
+    _frozen_plan_environment = {}
     if actor is not None or "_actor" in args:
         args["_actor"] = actor or "host"
     if channel is not None or "_channel" in args:
@@ -3383,6 +3419,16 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
     # esecuzione locale invariata (prod-safe §7.1).
     _plc = getattr(executor, "placement", None) or {}
     _plc_scope = (_plc.get("scope") or "").strip().lower()
+    if (_frozen_policy
+            and args.get(_frozen_policy["argument"]) == _frozen_policy["apply_value"]
+            and _plc_scope != "server"):
+        return {
+            "ok": False, "error_class": "permission_denied",
+            "error_code": "frozen_plan_server_required",
+            "error": msg("MSG_ORCH_CONTINUATION_FAILED",
+                         detail="frozen_plan_server_required"),
+            "_undo": {"outcome": "no_effect"},
+        }
     # F2 + rilievo #4 (2026-07-04): eleggibilità al device PURO MANIFEST-DRIVEN
     # (`[placement] device_ok = true`). La whitelist DEVICE_ELIGIBLE è stata
     # RIMOSSA (transizione finita: i 3 executor read-only dichiarano device_ok):
@@ -3445,6 +3491,7 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
             _remote_env = assigned_worker_environment(
                 executor, execution_context,
             )
+            _remote_env.update(_frozen_plan_environment)
             if execution_context is not None:
                 _attempt_id = str(getattr(
                     execution_context, "attempt_id", "") or "")
@@ -3472,16 +3519,33 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
             _undo_done(_undo_op, _obs, executor=executor)
             return _obs
 
-    # Runtime-resolved values are server-owned observations or registries.
-    # Inject them only after placement has selected the server: otherwise a
-    # device-capable executor would carry server state to the remote machine
-    # and could report it as if it belonged to that device.
-    args = _fill_runtime_sourced_args(executor, args)
-
-    # Resolve manifest-declared local read paths only after placement chose
-    # this server.  Cached plans keep logical/user paths; the concrete path is
-    # per-host execution state and must match the exact bubblewrap grant.
-    args = _sandbox.resolve_filesystem_read_args(executor, args)
+    # A frozen callback finalizes with the shared helper before minting its
+    # ContextVar grant.  Recognize only that exact runtime-owned binding;
+    # ordinary and forged calls are finalized here after placement.  This
+    # avoids resolving paths twice and binding consent to stale path state.
+    from frozen_plan_consent import grant_environment
+    _frozen_plan_environment = grant_environment(
+        executor, args, owner_user_id=str(owner_user_id or ""),
+        actor=str(actor or ""), channel=str(channel or ""),
+        turn_id=str(turn_id or ""))
+    if not _frozen_plan_environment:
+        args = finalize_local_executor_args(executor, args)
+        _frozen_plan_environment = grant_environment(
+            executor, args, owner_user_id=str(owner_user_id or ""),
+            actor=str(actor or ""), channel=str(channel or ""),
+            turn_id=str(turn_id or ""))
+    if (_frozen_policy
+            and args.get(_frozen_policy["argument"]) == _frozen_policy["apply_value"]
+            and not _frozen_plan_environment):
+        return {
+            "ok": False, "ok_count": 0, "fail_count": 0,
+            "results": [], "failed": [],
+            "error": msg("MSG_ORCH_CONTINUATION_FAILED",
+                         detail="frozen_plan_authorization_required"),
+            "error_class": "needs_confirmation",
+            "error_code": "frozen_plan_authorization_required",
+            "_undo": {"outcome": "no_effect"},
+        }
 
     # Signed opt-in path preflight: this remains effective when bubblewrap is
     # unavailable/disabled and runs before journaling or any subprocess side
@@ -3517,6 +3581,33 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
             "error_code": "executor_code_dependency_unavailable",
         }
 
+    _undo_op = _undo_pending(executor, args, turn_id=turn_id,
+                             actor=actor, channel=channel, device="")
+    _frozen_apply = bool(
+        _frozen_policy
+        and args.get(_frozen_policy.get("argument"))
+        == _frozen_policy.get("apply_value")
+    )
+    if _frozen_apply and not _undo_op:
+        # A frozen mutation is admitted only together with its durable broker
+        # record.  The generic path remains historically fail-open, but here a
+        # missing pending record would make an otherwise successful operation
+        # impossible to undo.  ``execution_interrupted`` keeps the form
+        # callback non-terminal so the same-token recovery worker can retry.
+        return {
+            "ok": False,
+            "ok_count": 0,
+            "fail_count": 0,
+            "results": [],
+            "failed": [],
+            "error": msg(
+                "MSG_ORCH_CONTINUATION_FAILED",
+                detail="undo_pending_not_durable",
+            ),
+            "error_class": "execution_interrupted",
+            "error_code": "frozen_plan_undo_pending_not_durable",
+        }
+
     payload = json.dumps(args)
     base_cmd = [sys.executable, str(executor.code_path)]
     # Extras skill-backed (10/7, bug B2): senza, dal 9/7 (bubblewrap installato)
@@ -3541,6 +3632,7 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
     # Dynamic filesystem inputs remain exact and capability-derived: only
     # signed ``fs:read`` hints such as ``arg:reference_images`` can add them.
     _extra_ro.extend(_sandbox.filesystem_extras(executor, args))
+    _extra_rw.extend(_sandbox.filesystem_write_extras(executor, args))
     # Reversible destructive executors write content-addressed backup blobs to
     # one runtime-managed directory.  Mount only this turn's leaf, derived
     # from the signed reverse pattern; never expose the shared history root.
@@ -3558,6 +3650,7 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
             extra_ro=_extra_ro, extra_rw=_extra_rw,
             sealed_ro_files=_dependency_signer_keys,
             force_net=_force_net,
+            invocation_args=args,
         )
     except _sandbox.SandboxUnavailableError:
         return {
@@ -3566,8 +3659,6 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
             "error_class": "sandbox_unavailable",
             "error_code": "executor_os_sandbox_unavailable",
         }
-    _undo_op = _undo_pending(executor, args, turn_id=turn_id,
-                             actor=actor, channel=channel, device="")
     # PYTHONPATH augmentato: gli executor (specie quelli sintetizzati) importano
     # moduli runtime (mail_client, messages, platform_policy, ...) per nome.
     # Senza questo, il subprocess vede solo stdlib e fallisce con
@@ -3603,6 +3694,8 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
     # Gli executor (canonical e synthesized) la leggono per bootstrap sys.path
     # senza assunzioni di depth o location filesystem. ADR 0148 universal pattern.
     env["METNOS_RUNTIME"] = runtime_path
+    env.pop("METNOS_FROZEN_PLAN_AUTHORIZATION", None)
+    env.update(_frozen_plan_environment)
     if execution_context is not None:
         # The child emits only bounded counters and model digests.  The LRE
         # bridge associates them with the authenticated attempt after return;
@@ -3713,18 +3806,47 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
     try:
         if getattr(executor, "is_imported", False):
             from skill_audit import audit_skill_invocation
+            from frozen_plan_consent import redact_args, redact_result
+            safe_args = redact_args(executor, args)
+            safe_result = redact_result(executor, parsed_result)
             audit_skill_invocation(
                 executor_name=executor.name,
                 provenance=getattr(executor, "provenance", {}),
-                args=args,
-                result=parsed_result,
+                args=safe_args,
+                result=safe_result,
                 elapsed_ms=_elapsed_ms,
-                error_class=(parsed_result.get("error_class")
-                              if isinstance(parsed_result, dict) else None),
+                error_class=(safe_result.get("error_class")
+                              if isinstance(safe_result, dict) else None),
             )
     except Exception:
         pass
-    _undo_done(_undo_op, parsed_result, executor=executor)
+    _frozen_interrupted = bool(
+        _frozen_apply
+        and isinstance(parsed_result, dict)
+        and parsed_result.get("error_class") in {
+            "non_json", "timeout", "remote_timeout", "execution_interrupted"}
+    )
+    if not _frozen_interrupted:
+        _undo_durable = _undo_done(
+            _undo_op, parsed_result, executor=executor)
+        if _frozen_apply and not _undo_durable:
+            # The executor receipt/WAL is the recovery source of truth.  Do not
+            # expose its result as terminal until the runtime-owned undo broker
+            # has durably appended the matching completion.  A same-token retry
+            # reuses ``_undo_op`` and can close the original pending record.
+            return {
+                "ok": False,
+                "ok_count": 0,
+                "fail_count": 0,
+                "results": [],
+                "failed": [],
+                "error": msg(
+                    "MSG_ORCH_CONTINUATION_FAILED",
+                    detail="undo_completion_not_durable",
+                ),
+                "error_class": "execution_interrupted",
+                "error_code": "frozen_plan_undo_completion_not_durable",
+            }
     return parsed_result
 
 
@@ -3863,6 +3985,7 @@ class StepLog:
     # RM-0008 F5 (inactive until its certified threshold): exact typed dispatch
     # identity.  Legacy steps remain representable through the explicit None.
     execution_receipt: ExecutionReceipt | None = None
+    execution_effect: str | None = None
 
 
 # Pentade ADR 0161 ext: pattern strutturale per intent count.
@@ -5974,19 +6097,62 @@ def invoke_tool_by_name(tool_name: str, args: dict, *, catalog: list,
     """Dispatch canonico di UN tool per nome, condiviso dal loop principale e
     dai percorsi di ripresa (post-gate/post-input, orchestration).
 
-    Builtin in-process (registro `_BUILTIN_TOOL_HANDLERS`, unica fonte di
-    verita') PRIMA, poi executor firmato del catalog. Cosi' un helper
+    L'autorita' di un frozen plan viene verificata prima di qualunque
+    trasporto (builtin, verbo unico o subprocess). Poi vengono risolti i
+    builtin in-process (registro `_BUILTIN_TOOL_HANDLERS`, unica fonte di
+    verita') e infine gli executor firmati del catalog. Cosi' un helper
     universale (`describe_entries`, `classify_entries`, ...) non e' mai un
     falso `tool_unknown` quando una pipeline riprende dopo un gate (§7.3: una
     riga nel registro basta, nessun elenco cablato per-tool).
     """
+    exec_obj = next((e for e in (catalog or [])
+                     if getattr(e, "name", None) == tool_name), None)
+    frozen_apply = False
+    if exec_obj is not None:
+        from frozen_plan_consent import authorized_token, policy_for
+        frozen_policy = policy_for(exec_obj)
+        if frozen_policy:
+            mode = (args or {}).get(frozen_policy.get("argument"))
+            if mode == frozen_policy.get("apply_value"):
+                token = authorized_token(
+                    exec_obj, dict(args or {}),
+                    owner_user_id=str(owner_user_id or ""),
+                    actor=str(actor or ""), channel=str(channel or ""),
+                    turn_id=str(turn_id or ""))
+                if not token:
+                    return {
+                        "ok": False,
+                        "error": "frozen plan authorization required",
+                        "error_code": "frozen_plan_authorization_required",
+                        "error_class": "permission_denied",
+                        "tool": tool_name,
+                    }
+                frozen_apply = True
+            elif mode != frozen_policy.get("preview_value"):
+                return {
+                    "ok": False,
+                    "error": "invalid frozen plan mode",
+                    "error_code": "frozen_plan_invalid_mode",
+                    "error_class": "invalid",
+                    "tool": tool_name,
+                }
     if tool_name in _BUILTIN_TOOL_HANDLERS:
+        if frozen_apply:
+            # Frozen mutations require the subprocess transport: it is the
+            # only path that owns the durable undo pending/completion
+            # chokepoint.  A valid consent grant must never silently downgrade
+            # that crash-safety contract by selecting an in-process handler.
+            return {
+                "ok": False,
+                "error": "frozen plan apply requires durable executor transport",
+                "error_code": "frozen_plan_in_process_apply_forbidden",
+                "error_class": "permission_denied",
+                "tool": tool_name,
+            }
         return _invoke_builtin_handler(
             tool_name, args, actor=actor, channel=channel,
             owner_user_id=owner_user_id, turn_id=turn_id,
             source_request_id=source_request_id)
-    exec_obj = next((e for e in (catalog or [])
-                     if getattr(e, "name", None) == tool_name), None)
     if exec_obj is None:
         return {"ok": False, "error": f"tool '{tool_name}' non in catalog",
                 "error_class": "tool_unknown"}
@@ -6001,6 +6167,14 @@ def invoke_tool_by_name(tool_name: str, args: dict, *, catalog: list,
     boot_register_verb_unique_builtins()
     verb_entry = VERB_UNIQUE_REGISTRY.get(tool_name)
     if verb_entry and verb_entry.get("expose_to_planner"):
+        if frozen_apply:
+            return {
+                "ok": False,
+                "error": "frozen plan apply requires durable executor transport",
+                "error_code": "frozen_plan_in_process_apply_forbidden",
+                "error_class": "permission_denied",
+                "tool": tool_name,
+            }
         from paired_device_arg_resolver import resolve_paired_device_args
         args = resolve_paired_device_args(
             dict(args or {}), getattr(exec_obj, "args_schema", None),
@@ -6064,7 +6238,7 @@ def invoke_tool_by_name(tool_name: str, args: dict, *, catalog: list,
     result = invoke_executor(
         exec_obj, args, timeout_s=(getattr(exec_obj, "timeout_s", None) or 120),
         actor=actor, channel=channel, owner_user_id=owner_user_id,
-        target_device=target_device)
+        target_device=target_device, turn_id=turn_id)
     contract = getattr(exec_obj, "presentation", None)
     if isinstance(result, dict) and contract:
         result = dict(result)
@@ -7042,6 +7216,7 @@ def _run_engine(
     # Converti DispatchResult → dict shape legacy (per minimal change caller)
     steps_out = []
     needs_inputs_obs = None
+    frozen_plan_resume = None
     gate_obs = None
     # §2.11 errore-runtime→form: il form viene dal RECOVERY (non da uno step) →
     # propagalo dal DispatchResult diretto (vedi _error_disambiguation_form).
@@ -7054,6 +7229,7 @@ def _run_engine(
             sl.raw_args = dict(s.args)
             sl.resolved_args = dict(s.args)
             sl.exec_ms = s.latency_ms
+            sl.execution_effect = getattr(s, "execution_effect", None)
             _step_result = dict(s.result) if isinstance(s.result, dict) else s.result
             if isinstance(_step_result, dict):
                 _step_result.pop(EXECUTION_RECEIPT_RESULT_KEY, None)
@@ -7065,6 +7241,9 @@ def _run_engine(
             # §7.3: propaga needs_inputs all'upstream per dialog handling
             if isinstance(s.result, dict) and s.result.get("decision") == "needs_inputs":
                 needs_inputs_obs = s.result
+            if isinstance(getattr(s, "frozen_plan_resume", None), dict):
+                frozen_plan_resume = dict(s.frozen_plan_resume)
+                frozen_plan_resume["original_query"] = str(query or "")
             # gate-resume (20/6): il gate get_approval (decision=input_required)
             # ha GIA' salvato il proprio dialog_pending + expandable_caps (FIX 1);
             # propaga il suo result cosi' l'upstream surfacea gli expandable_caps
@@ -7118,6 +7297,7 @@ def _run_engine(
         "error_class": (_failure_kind if _dependency_failure_without_steps
                         else result.error_class),
         "needs_inputs_obs": needs_inputs_obs,
+        "frozen_plan_resume": frozen_plan_resume,
         "gate_obs": gate_obs,
         "durable_admission": getattr(result, "durable_admission", None),
     }
@@ -7134,6 +7314,31 @@ def _finalize_engine_result(log, _engine_v2_res, *, actor, channel,
     log.steps.extend(_engine_v2_res.get("steps") or [])
     log.match_source = str(_engine_v2_res.get("match_source") or "")
     log.durable_admission = _engine_v2_res.get("durable_admission")
+    _frozen = _engine_v2_res.get("frozen_plan_resume")
+    if isinstance(_frozen, dict):
+        try:
+            from orchestration import orchestrate_frozen_plan
+            _sender_id = f"{channel or 'http'}:{actor or 'host'}"
+            if conversation_id:
+                _sender_id = f"{_sender_id}:{conversation_id}"
+            _dlg = orchestrate_frozen_plan(
+                _frozen, sender_id=_sender_id, actor=actor or "host",
+                channel=channel or "http", owner_user_id=log.owner_user_id,
+                origin_turn_id=turn_id or log.turn_id or "",
+                conversation_id=conversation_id or "")
+            if isinstance(_dlg, dict) and _dlg.get("ok"):
+                log.final_kind = "ask"
+                log.final_message = str(_dlg.get("final_message_hint") or "")
+                log.intent_verb = _engine_v2_res.get("verb", "") or ""
+                _caps = _dlg.get("expandable_caps")
+                if isinstance(_caps, list) and _caps:
+                    log.expandable_caps = _caps
+                _apply_device_tag(log)
+                log.ts_end = time.time()
+                log.write()
+                return log
+        except Exception as _ex:
+            log.warning("engine frozen-plan handler failed: %s", _ex)
     # §7.3: se Engine ha ritornato needs_inputs → handle dialog
     _ni = _engine_v2_res.get("needs_inputs_obs")
     if _ni:

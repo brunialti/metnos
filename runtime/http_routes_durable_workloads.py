@@ -363,6 +363,8 @@ async def workload_console(request: web.Request) -> web.Response:
         "created": message("UI_DURABLE_CREATED"),
         "progress": message("UI_DURABLE_PROGRESS"),
         "open": message("UI_DURABLE_OPEN"),
+        "expandDetails": message("UI_DURABLE_EXPAND_DETAILS"),
+        "collapseDetails": message("UI_DURABLE_COLLAPSE_DETAILS"),
         "revision": message("UI_DURABLE_REVISION"),
         "plan": message("UI_DURABLE_PLAN"),
         "planDigest": message("UI_DURABLE_PLAN_DIGEST"),

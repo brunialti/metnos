@@ -40,6 +40,7 @@ ApprovalMode = Literal["none", "per_target", "always"]
 class CapabilitySpec:
     name: str
     critical: bool
+    grants_mutation: bool
     default_approval: ApprovalMode
     target_kind: TargetKind
     description: str
@@ -48,117 +49,122 @@ class CapabilitySpec:
 CAPABILITY_REGISTRY: dict[str, CapabilitySpec] = {
     # Deterministic in-memory computation
     "compute:pure": CapabilitySpec(
-        "compute:pure", critical=False, default_approval="none",
+        "compute:pure", critical=False, grants_mutation=False, default_approval="none",
         target_kind="none",
         description="Calcolo deterministico in memoria senza I/O esterno",
     ),
     # File system
     "fs:read": CapabilitySpec(
-        "fs:read", critical=False, default_approval="per_target",
+        "fs:read", critical=False, grants_mutation=False, default_approval="per_target",
         target_kind="path_glob",
         description="Leggere file dal filesystem locale entro path_glob dichiarati",
     ),
     "fs:write": CapabilitySpec(
-        "fs:write", critical=True, default_approval="per_target",
+        "fs:write", critical=True, grants_mutation=True, default_approval="per_target",
         target_kind="path_glob",
         description="Scrivere/modificare file entro path_glob dichiarati (critico)",
     ),
     # Code/shell execution
     "code:exec": CapabilitySpec(
-        "code:exec", critical=True, default_approval="always",
+        "code:exec", critical=True, grants_mutation=True, default_approval="always",
         target_kind="exact",
         description="Eseguire un comando shell di una whitelist (es. pkg manager)",
     ),
     # Network
     "network:http": CapabilitySpec(
-        "network:http", critical=False, default_approval="per_target",
+        "network:http", critical=False, grants_mutation=True, default_approval="per_target",
         target_kind="host",
         description="HTTP/HTTPS GET/POST verso host autorizzati",
     ),
     "network:sites": CapabilitySpec(
-        "network:sites", critical=False, default_approval="per_target",
+        "network:sites", critical=False, grants_mutation=True, default_approval="per_target",
         target_kind="host",
         description="Sessione browser controllata verso origini autorizzate",
     ),
     # LLM
     "llm:local": CapabilitySpec(
-        "llm:local", critical=False, default_approval="none",
+        "llm:local", critical=False, grants_mutation=False, default_approval="none",
         target_kind="none",
         description="Chiamata LLM locale (Ollama/llama.cpp), costo zero",
     ),
     "llm:online": CapabilitySpec(
-        "llm:online", critical=False, default_approval="per_target",
+        "llm:online", critical=False, grants_mutation=False, default_approval="per_target",
         target_kind="none",
         description="Chiamata LLM online (Anthropic/OpenAI/...), costo > 0",
     ),
     # Mail
     "mail:read": CapabilitySpec(
-        "mail:read", critical=False, default_approval="per_target",
+        "mail:read", critical=False, grants_mutation=False, default_approval="per_target",
         target_kind="exact",
         description="Lettura messaggi IMAP da una mailbox autorizzata",
     ),
     "mail:send": CapabilitySpec(
-        "mail:send", critical=True, default_approval="always",
+        "mail:send", critical=True, grants_mutation=True, default_approval="always",
         target_kind="exact",
         description="Invio SMTP a destinatari (irreversibile, alta posta in gioco)",
     ),
     "mail:write": CapabilitySpec(
-        "mail:write", critical=True, default_approval="always",
+        "mail:write", critical=True, grants_mutation=True, default_approval="always",
         target_kind="exact",
         description="Modifica cartelle, label o stato di messaggi esistenti",
     ),
     # Channel
     "channel:in": CapabilitySpec(
-        "channel:in", critical=False, default_approval="none",
+        "channel:in", critical=False, grants_mutation=False, default_approval="none",
         target_kind="exact",
         description="Ricezione messaggi da un canale (Telegram, CLI, voice)",
     ),
     "channel:out": CapabilitySpec(
-        "channel:out", critical=False, default_approval="per_target",
+        "channel:out", critical=False, grants_mutation=True, default_approval="per_target",
         target_kind="exact",
         description="Invio messaggi a un canale specifico",
     ),
     # Time
     "time:read": CapabilitySpec(
-        "time:read", critical=False, default_approval="none",
+        "time:read", critical=False, grants_mutation=False, default_approval="none",
         target_kind="none",
         description="Lettura ora corrente e fusi orari",
     ),
     # Parse
     "parse:local": CapabilitySpec(
-        "parse:local", critical=False, default_approval="none",
+        "parse:local", critical=False, grants_mutation=False, default_approval="none",
         target_kind="none",
         description="Parsing locale di formati noti (PDF, HTML, JSON, CSV)",
     ),
     # Calendar
     "calendar:read": CapabilitySpec(
-        "calendar:read", critical=False, default_approval="per_target",
+        "calendar:read", critical=False, grants_mutation=False, default_approval="per_target",
         target_kind="exact",
         description="Lettura eventi da un calendario autorizzato",
     ),
     # Metnos-managed local resources
+    "metnos:history": CapabilitySpec(
+        "metnos:history", critical=False, grants_mutation=False, default_approval="none",
+        target_kind="none",
+        description="Archivio transazionale privato limitato al turno runtime corrente",
+    ),
     "index:read": CapabilitySpec(
-        "index:read", critical=False, default_approval="per_target",
+        "index:read", critical=False, grants_mutation=False, default_approval="per_target",
         target_kind="exact",
         description="Lettura di un indice locale amministrato da Metnos",
     ),
     "metnos:read": CapabilitySpec(
-        "metnos:read", critical=False, default_approval="per_target",
+        "metnos:read", critical=False, grants_mutation=False, default_approval="per_target",
         target_kind="exact",
         description="Lettura di una risorsa locale amministrata da Metnos",
     ),
     "metnos:write": CapabilitySpec(
-        "metnos:write", critical=True, default_approval="per_target",
+        "metnos:write", critical=True, grants_mutation=True, default_approval="per_target",
         target_kind="exact",
         description="Modifica di una risorsa amministrata da Metnos",
     ),
     "metnos:create": CapabilitySpec(
-        "metnos:create", critical=True, default_approval="per_target",
+        "metnos:create", critical=True, grants_mutation=True, default_approval="per_target",
         target_kind="exact",
         description="Creazione di una risorsa amministrata da Metnos",
     ),
     "metnos:cache": CapabilitySpec(
-        "metnos:cache", critical=False, default_approval="none",
+        "metnos:cache", critical=False, grants_mutation=False, default_approval="none",
         target_kind="none",
         description=(
             "Scrittura best-effort in una cache tecnica amministrata da "
@@ -166,52 +172,52 @@ CAPABILITY_REGISTRY: dict[str, CapabilitySpec] = {
         ),
     ),
     "metnos:credentials_metadata_only": CapabilitySpec(
-        "metnos:credentials_metadata_only", critical=False,
+        "metnos:credentials_metadata_only", critical=False, grants_mutation=False,
         default_approval="none", target_kind="none",
         description="Vincolo metadata-only per il ciclo di vita del vault credenziali",
     ),
     # Read-only host/device introspection. Resource hints constrain which
     # kernel and service surfaces the sandbox exposes.
     "system:read": CapabilitySpec(
-        "system:read", critical=False, default_approval="per_target",
+        "system:read", critical=False, grants_mutation=False, default_approval="per_target",
         target_kind="exact",
         description="Lettura diagnostica di sistema su un host o dispositivo autorizzato",
     ),
     # Delega vincolata alla sola autorita' gia' esercitata dall'ultimo turno
     # dello stesso attore. Non concede una mutazione nuova o un target nuovo.
     "system:undo": CapabilitySpec(
-        "system:undo", critical=True, default_approval="none",
+        "system:undo", critical=True, grants_mutation=True, default_approval="none",
         target_kind="exact",
         description="Ribaltare operazioni revertibili dell'ultimo turno posseduto",
     ),
     # Comando privilegiato mediato dal verb-unique builtin admin. Resta
     # sempre soggetto al vaglio/whitelist e non equivale a code:exec libero.
     "system:admin": CapabilitySpec(
-        "system:admin", critical=True, default_approval="always",
+        "system:admin", critical=True, grants_mutation=True, default_approval="always",
         target_kind="exact",
         description="Esecuzione privilegiata mediata dal vaglio amministrativo",
     ),
     # Remote-provider authority. The hint is a closed provider-skill binding;
     # an invocation-level ``when`` clause may narrow it to one backend.
     "provider:access": CapabilitySpec(
-        "provider:access", critical=False, default_approval="per_target",
+        "provider:access", critical=False, grants_mutation=True, default_approval="per_target",
         target_kind="exact",
         description="Accesso a rete e credenziali di un provider autorizzato",
     ),
     "auth.password_storage": CapabilitySpec(
-        "auth.password_storage", critical=True, default_approval="per_target",
+        "auth.password_storage", critical=True, grants_mutation=False, default_approval="per_target",
         target_kind="exact",
         description="Lettura controllata di credenziali cifrate per uno scope autorizzato",
     ),
     "drive:permissions": CapabilitySpec(
-        "drive:permissions", critical=True, default_approval="always",
+        "drive:permissions", critical=True, grants_mutation=True, default_approval="always",
         target_kind="exact",
         description="Concessione o modifica di permessi ACL su file Drive",
     ),
     # Interazione umana posseduta dal runtime: accede soltanto alla directory
     # del dialogo pendente già ristretta da sandbox.dialog_extras.
     "dialog.user_input": CapabilitySpec(
-        "dialog.user_input", critical=False, default_approval="none",
+        "dialog.user_input", critical=False, grants_mutation=False, default_approval="none",
         target_kind="none",
         description="Raccolta di una risposta umana tramite dialogo pendente",
     ),

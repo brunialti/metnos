@@ -69,11 +69,13 @@ def _connector_pattern(_lang: str) -> "re.Pattern":
 
 # Verb categories from §2.2 vocab (canonical):
 # - Producer (read_family): find/read/get/list — produce entries
-# - Mutating: write/create/set/move/delete/send/share/compress/extract/change
+# - Mutating: write/create/set/move/delete/send/share/compress/extract/change/
+#   organize
 # - Transformative: filter/sort/group/classify/describe/render/compute/compare
 PRODUCER_VERBS = {"find", "read", "get", "list"}
 MUTATING_VERBS = {"write", "create", "set", "move", "delete", "send",
-                   "share", "compress", "extract", "change", "order"}
+                   "share", "compress", "extract", "change", "order",
+                   "organize"}
 
 # Mapping format/qualifier hint NL → (object, qualifier). Fonte UNICA condivisa
 # da decompose_query (_detect_format_obj) e derive_tool_name (scelta della

@@ -1834,10 +1834,37 @@ def current_contract(
     *,
     trusted_publics: Iterable[TrustedPublic],
     store_root: Path | str | None = None,
-) -> VerifiedManifest | ContractRetirement:
-    """Return the authenticated active generation or retirement tombstone."""
+    allow_unpublished: bool = False,
+) -> VerifiedManifest | ContractRetirement | None:
+    """Return the active revision, optionally accepting an exact new placeholder."""
     trusted = _trusted_public_tuple(trusted_publics)
-    identifier = current_revision_id(ref, store_root=store_root)
+    if not allow_unpublished:
+        identifier = current_revision_id(ref, store_root=store_root)
+    else:
+        _validate_manifest_ref(ref)
+        contract_dir = _existing_contract_directory(
+            ref.contract_id, store_root=store_root,
+        )
+        identifier = _read_current_optional(contract_dir)
+        if identifier is None:
+            generations = contract_dir / "generations"
+            writer_lock = contract_dir / "writer.lock"
+            _require_plain_directory(
+                generations, code="generations_directory_invalid",
+            )
+            _require_regular_file(writer_lock, code="lock_file_invalid")
+            try:
+                exact_placeholder = (
+                    {entry.name for entry in contract_dir.iterdir()}
+                    == {BINDING_FILE, "generations", "writer.lock"}
+                    and writer_lock.stat().st_size == 1
+                    and not tuple(generations.iterdir())
+                )
+            except OSError as exc:
+                raise ContractStoreError("current_missing", str(exc)) from exc
+            if exact_placeholder:
+                return None
+            raise ContractStoreError("current_missing", str(ref.contract_id))
     return _load_revision(
         ref,
         identifier,

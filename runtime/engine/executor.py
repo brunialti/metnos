@@ -2870,6 +2870,9 @@ class Executor:
             if (_parallel_call is None
                     and _references_server_producer(step, result.steps)):
                 args = {**args, "_colocate_server": True}
+            from execution_effects import resolve_execution_effect
+            _execution_effect = resolve_execution_effect(
+                self._catalog_map.get(_exec_tool), args)
             t0 = time.time()
             if _parallel_call is not None:
                 if args != _parallel_call.args:
@@ -2960,10 +2963,17 @@ class Executor:
                 _candidate_receipt = r.pop(EXECUTION_RECEIPT_RESULT_KEY, None)
                 if isinstance(_candidate_receipt, ExecutionReceipt):
                     _execution_receipt = _candidate_receipt
-            sr = StepRun(step_idx=i + 1, tool=_exec_tool, args=args,
+            from frozen_plan_consent import prepare_resume, redact_args, redact_result
+            _frozen_plan_resume = prepare_resume(
+                self._catalog_map.get(_exec_tool), args, r)
+            _logged_args = redact_args(self._catalog_map.get(_exec_tool), args)
+            r = redact_result(self._catalog_map.get(_exec_tool), r)
+            sr = StepRun(step_idx=i + 1, tool=_exec_tool, args=_logged_args,
                           result=r, ok=bool(r.get("ok")), latency_ms=lat_ms,
                           host=_host, data_host=_data_host,
-                          execution_receipt=_execution_receipt)
+                          execution_receipt=_execution_receipt,
+                          execution_effect=_execution_effect,
+                          frozen_plan_resume=_frozen_plan_resume)
             result.steps.append(sr)
             if sr.ok:
                 result.ok_count += 1
@@ -2972,6 +2982,11 @@ class Executor:
             # (agent_runtime._run_engine) gestisce il dialog_pending +
             # form rendering. NON proseguire con steps successivi.
             if r.get("decision") == "needs_inputs":
+                result.final_kind = "ask"
+                result.final_text = ""
+                break
+
+            if _frozen_plan_resume is not None:
                 result.final_kind = "ask"
                 result.final_text = ""
                 break

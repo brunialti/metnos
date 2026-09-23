@@ -256,6 +256,7 @@ _SCHEMA_NODE.update({
     "minimum": None, "maximum": None, "minLength": None, "maxLength": None,
     "minItems": None, "maxItems": None, "uniqueItems": None, "pattern": None,
     "format": None, "runtime_resolved": None, "additionalProperties": None,
+    "minProperties": None, "maxProperties": None,
     "runtime_source": None, "forbid_placeholder_values": None,
     "source_cardinality": None, "from_step_alternatives": None,
     "complete_value": None, "from_entries_candidates_key": None,
@@ -269,6 +270,22 @@ _SCHEMA_NODE.update({
     "anyOf": [_SCHEMA_NODE], "oneOf": [_SCHEMA_NODE], "not": _SCHEMA_NODE,
 })
 _FREE_MAP = {"*": None}
+_EXECUTION_EFFECT_RULE = {
+    "argument": None,
+    "equals": None,
+    "effect": None,
+}
+_FROZEN_PLAN = {
+    "argument": None,
+    "preview_value": None,
+    "apply_value": None,
+    "token_argument": None,
+    "token_result": None,
+    "carry_arguments": None,
+    "artifact_suffix": None,
+    "journal_suffix": None,
+    "recovery": None,
+}
 MANIFEST_FIELD_GRAMMAR_V1: dict[str, object] = {
     "manifest_format": None, "executor_standard": None, "name": None,
     "version": None, "author": None, "affinity": None, "revertible": None,
@@ -284,8 +301,15 @@ MANIFEST_FIELD_GRAMMAR_V1: dict[str, object] = {
     "description": {"*": None}, "args": _SCHEMA_NODE,
     "code": {"files": None, "dependencies": None, "digest": None},
     "output": {"schema_inline": None},
-    "execution": {"effect": None, "parallelism_class": None, "resource_class": None,
-                  "concurrency_key": None, "equivalence_gate": None},
+    "execution": {
+        "effect": None,
+        "parallelism_class": None,
+        "resource_class": None,
+        "concurrency_key": None,
+        "equivalence_gate": None,
+        "effects": [_EXECUTION_EFFECT_RULE],
+        "frozen_plan": _FROZEN_PLAN,
+    },
     "placement": {"scope": None, "min_sandbox": None, "device_ok": None},
     "sandbox": {"network_allowed": None, "fs_read": None, "fs_write": None,
                 "exec_allowed": None},

@@ -1099,7 +1099,7 @@ def complete_invocation(result: dict, *, raw_body: bytes | None = None,
 # Verbi che LASCIANO UNO STATO reversibile (allineati a reverse_patterns): solo
 # per questi ha senso chiudere un undo tardivo.
 _MUTATING_PREFIXES = ("delete", "move", "write", "create", "send", "share",
-                      "order", "change")
+                      "order", "change", "organize")
 
 
 def _notify_late_outcome(payload_json, result: dict, state: str,

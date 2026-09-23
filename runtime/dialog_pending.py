@@ -56,6 +56,7 @@ import hmac
 import hashlib
 import os
 import re
+import stat
 import time
 from contextlib import contextmanager
 from datetime import datetime
@@ -82,6 +83,13 @@ DEFAULT_TTL_S = int(os.environ.get("METNOS_DIALOG_TTL_S", "60"))
 # I form (>=2 step) e i dialoghi di credenziali richiedono tempo per essere
 # compilati: TTL piu' lungo (default 10 min) per non chiuderli sotto le dita.
 FORM_TTL_S = int(os.environ.get("METNOS_DIALOG_FORM_TTL_S", "600"))
+CALLBACK_DELIVERY_MAX_ATTEMPTS = 12
+CALLBACK_RECOVERY_MAX_ATTEMPTS = 12
+# Callback incompleti possono contenere l'unica capability che consente di
+# riconciliare un WAL gia' applicato.  Non seguono quindi il TTL breve del
+# form; restano in quarantena per una retention separata e limitata.
+CALLBACK_RECOVERY_RETENTION_S = int(os.environ.get(
+    "METNOS_CALLBACK_RECOVERY_RETENTION_S", str(30 * 24 * 60 * 60)))
 
 
 # ── Helper interni ────────────────────────────────────────────────────
@@ -125,12 +133,26 @@ def _dialog_lock(sender_id: str, dialog_id: str):
     # Un solo lock stabile per sender: evita file-lock orfani per ogni dialogo
     # e serializza le risposte che, semanticamente, appartengono allo stesso
     # flusso conversazionale.
-    lock_path = sd / ".dialog.lock"
-    with lock_path.open("a+") as lock_file:
-        try:
-            os.chmod(lock_path, 0o600)
-        except OSError:
-            pass
+    dir_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    dir_flags |= getattr(os, "O_NOFOLLOW", 0)
+    dir_fd = os.open(sd, dir_flags)
+    try:
+        directory_stat = os.fstat(dir_fd)
+        if (not stat.S_ISDIR(directory_stat.st_mode)
+                or directory_stat.st_uid != os.geteuid()):
+            raise PermissionError("unsafe dialog directory")
+        lock_flags = os.O_RDWR | os.O_CREAT
+        lock_flags |= getattr(os, "O_NOFOLLOW", 0)
+        lock_fd = os.open(".dialog.lock", lock_flags, 0o600, dir_fd=dir_fd)
+    finally:
+        os.close(dir_fd)
+    with os.fdopen(lock_fd, "a+") as lock_file:
+        lock_stat = os.fstat(lock_file.fileno())
+        if (not stat.S_ISREG(lock_stat.st_mode)
+                or lock_stat.st_uid != os.geteuid()
+                or lock_stat.st_nlink != 1):
+            raise PermissionError("unsafe dialog lock")
+        os.fchmod(lock_file.fileno(), 0o600)
         fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
         try:
             yield
@@ -208,16 +230,37 @@ def save_pending(sender_id: str, dialog_id: str, payload: dict) -> Path:
     # Scrittura atomica (tmp + os.replace): list_pending/consume/sweep non
     # devono mai leggere JSON parziale (lost update / parse error spuri).
     # chmod sul tmp PRIMA del replace così il file finale nasce 0600.
-    owner_tag = hashlib.sha256(
-        ("dialog-owner-v1\0" + owner).encode("utf-8")
-    ).hexdigest()[:20]
-    tmp = p.with_name(f"{p.name}.{owner_tag}.tmp")
-    tmp.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    import secrets
+    tmp = p.with_name(f".{p.name}.{secrets.token_hex(16)}.tmp")
+    encoded = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    flags |= getattr(os, "O_NOFOLLOW", 0)
     try:
-        os.chmod(tmp, 0o600)
-    except OSError as ex:
-        log.debug("chmod 0600 fallito su %s: %s", tmp, ex)
-    os.replace(tmp, p)
+        fd = os.open(tmp, flags, 0o600)
+        try:
+            with os.fdopen(fd, "wb", closefd=True) as stream:
+                stream.write(encoded)
+                stream.flush()
+                os.fsync(stream.fileno())
+        except Exception:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+            raise
+        os.replace(tmp, p)
+    finally:
+        try:
+            tmp.unlink()
+        except FileNotFoundError:
+            pass
+    # The callback receipt is an outbox record.  Persist both its bytes and
+    # the directory entry before reporting completion to a channel.
+    dir_fd = os.open(sd, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+    try:
+        os.fsync(dir_fd)
+    finally:
+        os.close(dir_fd)
     return p
 
 
@@ -443,6 +486,10 @@ def _consume_pending_step_unlocked(sender_id: str, dialog_id: str, var: str,
     if is_expired(state):
         return {"ok": False, "error": "dialog_expired",
                 "dialog_id": dialog_id}
+    if (state.get("form_only")
+            and source not in {"http_form_owner", "http_form_capability"}):
+        return {"ok": False, "error": "form_only",
+                "dialog_id": dialog_id}
     dialog = state.get("dialog") or []
     idx = int(state.get("step_index") or 0)
     if idx >= len(dialog):
@@ -496,11 +543,12 @@ def _consume_pending_step_unlocked(sender_id: str, dialog_id: str, var: str,
 
 
 def cancel_pending(sender_id: str, dialog_id: str, *,
-                   owner_user_id: str) -> bool:
+                   owner_user_id: str, source: str = "internal") -> bool:
     """Marca il dialogo come cancellato. Idempotente: True se esisteva."""
     with _dialog_lock(sender_id, dialog_id):
         return _cancel_pending_unlocked(
-            sender_id, dialog_id, owner_user_id=owner_user_id)
+            sender_id, dialog_id, owner_user_id=owner_user_id,
+            source=source)
 
 
 def claim_callback_once(sender_id: str, dialog_id: str, nonce: str, *,
@@ -517,8 +565,42 @@ def claim_callback_once(sender_id: str, dialog_id: str, nonce: str, *,
         owner_user_id=owner_user_id).get("status") == "claimed"
 
 
+def _process_claim() -> dict:
+    """Identity strong enough to reject PID reuse after a callback crash."""
+    try:
+        boot_id = Path("/proc/sys/kernel/random/boot_id").read_text().strip()
+    except OSError:
+        boot_id = ""
+    try:
+        fields = Path(f"/proc/{os.getpid()}/stat").read_text().split()
+        start_ticks = fields[21]
+    except (OSError, IndexError):
+        start_ticks = ""
+    return {"boot_id": boot_id, "pid": os.getpid(),
+            "start_ticks": start_ticks}
+
+
+def _claim_is_live(claim: object) -> bool:
+    if not isinstance(claim, dict):
+        return True  # legacy claim: preserve historical at-most-once policy
+    try:
+        pid = int(claim.get("pid") or 0)
+        if pid <= 0:
+            return False
+        current_boot = Path(
+            "/proc/sys/kernel/random/boot_id").read_text().strip()
+        current_fields = Path(f"/proc/{pid}/stat").read_text().split()
+        return (hmac.compare_digest(str(claim.get("boot_id") or ""),
+                                    current_boot)
+                and hmac.compare_digest(str(claim.get("start_ticks") or ""),
+                                        current_fields[21]))
+    except (OSError, ValueError, IndexError):
+        return False
+
+
 def begin_callback_once(sender_id: str, dialog_id: str, nonce: str, *,
-                        owner_user_id: str) -> dict:
+                        owner_user_id: str,
+                        durable_recovery_attested: bool = False) -> dict:
     """Claim a callback or return its durable terminal receipt.
 
     The callback remains at-most-once: a process crash after the claim is
@@ -533,7 +615,7 @@ def begin_callback_once(sender_id: str, dialog_id: str, nonce: str, *,
         state = load_pending(
             sender_id, dialog_id, owner_user_id=owner_user_id)
         if (state is None or not state.get("completed")
-                or state.get("cancelled") or is_expired(state)):
+                or state.get("cancelled")):
             return {"status": "invalid"}
         on_complete = state.get("on_complete") or {}
         # Ordinary gates already have a unique, owner-bound dialog identity.
@@ -544,12 +626,129 @@ def begin_callback_once(sender_id: str, dialog_id: str, nonce: str, *,
         receipt = state.get("callback_receipt")
         if isinstance(receipt, dict):
             return {"status": "completed", "receipt": receipt}
+        recovered = False
+        recovered_authorized = False
         if state.get("callback_claimed_at"):
-            return {"status": "in_progress"}
+            if (_claim_is_live(state.get("callback_process"))
+                    and state.get("callback_state") == "running"):
+                return {"status": "in_progress"}
+            attempts = int(state.get("callback_recovery_attempts") or 0)
+            if attempts >= CALLBACK_RECOVERY_MAX_ATTEMPTS:
+                state["callback_state"] = "recovery_exhausted"
+                save_pending(sender_id, dialog_id, state)
+                return {"status": "exhausted"}
+            # Dopo che l'autorita' originale e' stata verificata, una ripresa
+            # mutante richiede la prova del piano/WAL durevole. Prima di quel
+            # punto si puo' solo ripetere una callback ancora valida, oppure
+            # chiudere una decisione non mutante (cancel).
+            recovered_authorized = bool(state.get("callback_authorized_at"))
+            non_mutating = ((state.get("values_collected") or {}).get(
+                "decision") != "apply")
+            receipt_commit_retry = (
+                state.get("callback_recovery_reason")
+                == "receipt_commit_failed")
+            if recovered_authorized:
+                if not durable_recovery_attested:
+                    return {"status": "in_progress"}
+            elif (not non_mutating and is_expired(state)
+                  and not receipt_commit_retry):
+                return {"status": "invalid"}
+            recovered = True
+            state["callback_recovered_at"] = _utc_now_iso()
+        elif is_expired(state):
+            # Il POST aveva gia' completato il form entro il TTL: reclamare la
+            # callback e' lecito, ma il consumer applichera' ancora la scadenza
+            # del piano e non avviera' una mutazione nuova.
+            recovered = False
         state["callback_claimed_at"] = _utc_now_iso()
+        state["callback_process"] = _process_claim()
         state["callback_state"] = "running"
+        state["callback_recovery_attempts"] = int(
+            state.get("callback_recovery_attempts") or 0) + 1
         save_pending(sender_id, dialog_id, state)
-        return {"status": "claimed"}
+        return {
+            "status": "claimed",
+            "recovered": recovered,
+            "recovered_authorized": recovered_authorized,
+            "authorization_binding": str(
+                state.get("callback_authorization_binding") or ""),
+        }
+
+
+def authorize_callback_recovery(sender_id: str, dialog_id: str, nonce: str,
+                                authorization_binding: str, *,
+                                owner_user_id: str) -> bool:
+    """Durably attest authority immediately before the mutating child starts."""
+
+    if not nonce or not authorization_binding:
+        return False
+    with _dialog_lock(sender_id, dialog_id):
+        state = load_pending(
+            sender_id, dialog_id, owner_user_id=owner_user_id)
+        if (state is None or state.get("callback_state") != "running"
+                or not state.get("callback_claimed_at")):
+            return False
+        stored = str((state.get("on_complete") or {}).get("nonce") or "")
+        if not stored or not hmac.compare_digest(stored, str(nonce)):
+            return False
+        existing = str(state.get("callback_authorization_binding") or "")
+        if existing and not hmac.compare_digest(existing, authorization_binding):
+            return False
+        state["callback_authorized_at"] = (
+            state.get("callback_authorized_at") or _utc_now_iso())
+        state["callback_authorization_binding"] = authorization_binding
+        save_pending(sender_id, dialog_id, state)
+        return True
+
+
+def defer_callback_recovery(sender_id: str, dialog_id: str, nonce: str, *,
+                            owner_user_id: str, reason: str) -> bool:
+    """Release a claimed callback for bounded same-token WAL recovery."""
+
+    with _dialog_lock(sender_id, dialog_id):
+        state = load_pending(
+            sender_id, dialog_id, owner_user_id=owner_user_id)
+        if state is None or isinstance(state.get("callback_receipt"), dict):
+            return False
+        stored = str((state.get("on_complete") or {}).get("nonce") or "")
+        if not stored or not hmac.compare_digest(stored, str(nonce or "")):
+            return False
+        if not state.get("callback_authorized_at"):
+            return False
+        state["callback_state"] = "recovery_pending"
+        state["callback_recovery_reason"] = str(reason or "interrupted")[:500]
+        state["callback_recovery_pending_at"] = _utc_now_iso()
+        state["callback_process"] = {}
+        save_pending(sender_id, dialog_id, state)
+        return True
+
+
+def defer_callback_receipt_commit(sender_id: str, dialog_id: str, nonce: str,
+                                  *, owner_user_id: str) -> bool:
+    """Release a claim whose terminal receipt could not be persisted.
+
+    This path is also valid before mutation authorization (for example a
+    cancelled or stale plan).  The next bounded callback pass re-evaluates the
+    same frozen record and attempts the terminal outbox commit again; it never
+    treats the unpersisted response as final.
+    """
+
+    with _dialog_lock(sender_id, dialog_id):
+        state = load_pending(
+            sender_id, dialog_id, owner_user_id=owner_user_id)
+        if state is None or isinstance(state.get("callback_receipt"), dict):
+            return False
+        stored = str((state.get("on_complete") or {}).get("nonce") or "")
+        if not stored or not hmac.compare_digest(stored, str(nonce or "")):
+            return False
+        if not state.get("callback_claimed_at"):
+            return False
+        state["callback_state"] = "recovery_pending"
+        state["callback_recovery_reason"] = "receipt_commit_failed"
+        state["callback_recovery_pending_at"] = _utc_now_iso()
+        state["callback_process"] = {}
+        save_pending(sender_id, dialog_id, state)
+        return True
 
 
 def complete_callback_once(sender_id: str, dialog_id: str, nonce: str,
@@ -581,15 +780,175 @@ def complete_callback_once(sender_id: str, dialog_id: str, nonce: str,
         state["callback_receipt"] = dict(receipt)
         state["callback_state"] = "completed"
         state["callback_finished_at"] = _utc_now_iso()
+        if (state.get("channel") == "telegram"
+                and (state.get("on_complete") or {}).get("type")
+                == "resume_frozen_plan"):
+            state["callback_delivery_state"] = "pending"
         save_pending(sender_id, dialog_id, state)
         return True
 
 
+def begin_callback_delivery(sender_id: str, dialog_id: str, nonce: str, *,
+                            owner_user_id: str) -> dict:
+    """Claim delivery of a committed callback receipt to its origin channel."""
+    with _dialog_lock(sender_id, dialog_id):
+        state = load_pending(
+            sender_id, dialog_id, owner_user_id=owner_user_id)
+        if state is None or not isinstance(state.get("callback_receipt"), dict):
+            return {"status": "invalid"}
+        stored = str((state.get("on_complete") or {}).get("nonce") or "")
+        if not stored or not hmac.compare_digest(stored, str(nonce or "")):
+            return {"status": "invalid"}
+        if state.get("callback_delivery_state") == "delivered":
+            return {"status": "delivered",
+                    "ack": state.get("callback_delivery_ack")}
+        if state.get("callback_delivery_state") == "ambiguous":
+            return {"status": "ambiguous",
+                    "ack": state.get("callback_delivery_ack")}
+        if state.get("callback_delivery_state") == "failed":
+            return {"status": "failed",
+                    "ack": state.get("callback_delivery_ack")}
+        if state.get("callback_delivery_state") == "running":
+            if _claim_is_live(state.get("callback_delivery_process")):
+                return {"status": "in_progress"}
+            # Telegram has no idempotency key.  A dead sender may have crashed
+            # after provider acceptance but before persisting the ack; retrying
+            # would risk a duplicate, so record the uncertainty terminally.
+            state["callback_delivery_state"] = "ambiguous"
+            state["callback_delivery_ack"] = {
+                "ok": False, "delivery_ambiguous": True,
+                "error": "sender_process_died_before_ack"}
+            state["callback_delivery_finished_at"] = _utc_now_iso()
+            save_pending(sender_id, dialog_id, state)
+            return {"status": "ambiguous",
+                    "ack": state["callback_delivery_ack"]}
+        state["callback_delivery_state"] = "running"
+        state["callback_delivery_attempts"] = int(
+            state.get("callback_delivery_attempts") or 0) + 1
+        state["callback_delivery_process"] = _process_claim()
+        state["callback_delivery_started_at"] = _utc_now_iso()
+        save_pending(sender_id, dialog_id, state)
+        return {"status": "claimed",
+                "receipt": dict(state["callback_receipt"]),
+                "origin_recipient": str(
+                    (state.get("on_complete") or {}).get(
+                        "conversation_id") or "")}
+
+
+def complete_callback_delivery(sender_id: str, dialog_id: str, nonce: str,
+                               *, owner_user_id: str, ack: dict,
+                               delivered: bool) -> bool:
+    """Persist provider acknowledgement, or make a failed send retryable."""
+    try:
+        json.dumps(ack, ensure_ascii=False)
+    except (TypeError, ValueError):
+        return False
+    with _dialog_lock(sender_id, dialog_id):
+        state = load_pending(
+            sender_id, dialog_id, owner_user_id=owner_user_id)
+        if state is None:
+            return False
+        stored = str((state.get("on_complete") or {}).get("nonce") or "")
+        if not stored or not hmac.compare_digest(stored, str(nonce or "")):
+            return False
+        attempts = int(state.get("callback_delivery_attempts") or 0)
+        state["callback_delivery_state"] = (
+            "delivered" if delivered else (
+                "ambiguous" if ack.get("delivery_ambiguous") else (
+                    "failed" if (ack.get("terminal") is True
+                                 or attempts >= CALLBACK_DELIVERY_MAX_ATTEMPTS)
+                    else "pending")))
+        state["callback_delivery_ack"] = dict(ack)
+        state["callback_delivery_finished_at"] = _utc_now_iso()
+        save_pending(sender_id, dialog_id, state)
+        return True
+
+
+def pending_callback_deliveries(*, limit: int = 100) -> list[dict]:
+    """Return bounded durable outbox items eligible for channel retry."""
+    if not DIALOG_DIR.exists():
+        return []
+    out: list[dict] = []
+    for sender_dir in sorted(DIALOG_DIR.iterdir()):
+        if not sender_dir.is_dir():
+            continue
+        for path in sorted(sender_dir.glob("*.json")):
+            try:
+                state = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            callback = state.get("on_complete") or {}
+            if (state.get("completed")
+                    and state.get("channel") == "telegram"
+                    and callback.get("type") == "resume_frozen_plan"
+                    and state.get("callback_delivery_state") in {
+                        "pending", "running"}
+                    and state.get("callback_receipt")
+                    and state.get("owner_user_id")):
+                out.append({
+                    "sender_id": str(state.get("sender_id") or sender_dir.name),
+                    "dialog_id": str(state.get("dialog_id") or path.stem),
+                    "nonce": str(callback.get("nonce") or ""),
+                    "owner_user_id": str(state["owner_user_id"]),
+                })
+                if len(out) >= max(1, min(int(limit), 1000)):
+                    return out
+    return out
+
+
+def pending_frozen_callbacks(*, limit: int = 100) -> list[dict]:
+    """Return bounded completed frozen callbacks needing execution recovery."""
+
+    if not DIALOG_DIR.exists():
+        return []
+    out: list[dict] = []
+    bound = max(1, min(int(limit), 1000))
+    for sender_dir in sorted(DIALOG_DIR.iterdir()):
+        if not sender_dir.is_dir():
+            continue
+        for path in sorted(sender_dir.glob("*.json")):
+            try:
+                state = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            callback = state.get("on_complete") or {}
+            if (not state.get("completed") or state.get("cancelled")
+                    or callback.get("type") != "resume_frozen_plan"
+                    or isinstance(state.get("callback_receipt"), dict)
+                    or not state.get("owner_user_id")):
+                continue
+            attempts = int(state.get("callback_recovery_attempts") or 0)
+            if attempts >= CALLBACK_RECOVERY_MAX_ATTEMPTS:
+                continue
+            callback_state = str(state.get("callback_state") or "")
+            eligible = not state.get("callback_claimed_at")
+            eligible = eligible or callback_state == "recovery_pending"
+            eligible = eligible or (
+                callback_state == "running"
+                and not _claim_is_live(state.get("callback_process")))
+            if not eligible:
+                continue
+            out.append({
+                "sender_id": str(state.get("sender_id") or sender_dir.name),
+                "dialog_id": str(state.get("dialog_id") or path.stem),
+                "owner_user_id": str(state["owner_user_id"]),
+                "actor": str(state.get("actor") or "host"),
+                "channel": str(state.get("channel") or "http"),
+            })
+            if len(out) >= bound:
+                return out
+    return out
+
+
 def _cancel_pending_unlocked(sender_id: str, dialog_id: str, *,
-                             owner_user_id: str) -> bool:
+                             owner_user_id: str,
+                             source: str = "internal") -> bool:
     state = load_pending(
         sender_id, dialog_id, owner_user_id=owner_user_id)
     if state is None:
+        return False
+    if (state.get("form_only")
+            and source not in {"http_form_owner", "http_form_capability"}):
         return False
     if state.get("cancelled"):
         return True
@@ -730,6 +1089,29 @@ def sweep_expired(now_ts: float | None = None) -> list[dict]:
                     pass
                 continue
             terminal = bool(d.get("completed") or d.get("cancelled"))
+            if (d.get("callback_delivery_state") in {"pending", "running"}
+                    and int(d.get("callback_delivery_attempts") or 0)
+                    < CALLBACK_DELIVERY_MAX_ATTEMPTS):
+                continue
+            callback_incomplete = (
+                d.get("completed")
+                and (d.get("on_complete") or {}).get("type")
+                == "resume_frozen_plan"
+                and not isinstance(d.get("callback_receipt"), dict)
+                and (d.get("callback_claimed_at")
+                     or d.get("callback_state") in {
+                         "running", "recovery_pending", "recovery_exhausted"})
+            )
+            if callback_incomplete:
+                anchor = _started_ts(d)
+                completed = d.get("completed_at") or ""
+                try:
+                    anchor = max(anchor, datetime.fromisoformat(
+                        str(completed).replace("Z", "+00:00")).timestamp())
+                except (ValueError, AttributeError):
+                    pass
+                if not anchor or (now_ts - anchor) <= CALLBACK_RECOVERY_RETENTION_S:
+                    continue
             if not is_expired(d, now_ts):
                 continue
             started = _started_ts(d)

@@ -262,6 +262,43 @@ def test_store_verification_uses_owner_aware_read_only_catalog(monkeypatch):
     ]
 
 
+def test_store_verification_accepts_exact_unpublished_placeholder(monkeypatch):
+    import contract_store
+    import loader
+    import manifest_inventory
+
+    manifest_path = "/contracts/new/manifest.toml"
+    ref = SimpleNamespace(manifest_path=manifest_path)
+    monkeypatch.setattr(
+        manifest_inventory,
+        "inventory_manifests",
+        lambda *, skill_enabled=None: SimpleNamespace(
+            problems=(), manifests=(ref,),
+        ),
+    )
+    monkeypatch.setattr(
+        contract_store,
+        "current_contract",
+        lambda candidate, *, trusted_publics, allow_unpublished=False: (
+            None
+            if candidate is ref and allow_unpublished
+            else pytest.fail("unpublished contract was not read explicitly")
+        ),
+    )
+    monkeypatch.setattr(
+        loader,
+        "_load_catalog_for_cutover_audit_v1",
+        lambda **_kwargs: SimpleNamespace(
+            rejected=[(manifest_path, "current_missing: core:new")],
+            get=lambda _name: None,
+        ),
+    )
+
+    assert guard._verify_store_only_catalog_locked(
+        trusted_publics=(("key", object()),),
+    ) == {"bindings": 1, "loaded": 0, "retired": 0}
+
+
 def test_initial_maintenance_accepts_an_absent_legacy_unit() -> None:
     class Systemctl:
         @staticmethod

@@ -69,6 +69,7 @@ _REVIEWED_MODULE_REVERSE_DIGESTS_V1 = {
     "delete_dirs": "sha256:dd7106b098c107a0282b41a3ea37d363848ad78be509fffc5d7ba9c9e5c7d60d",
     "login_urls": "sha256:bcac469765b5e27ac0fe0a975e9b51b9d4dd6ef70ac577b66ccb4689d45d1c1f",
     "open_sites": "sha256:c63e58a07045ad7f2563a6f03e1fdccce98ff0ac384f47fece1c7ae8350f6877",
+    "organize_files": "sha256:4d5ac38d9fab260ee7f7b9af26e568c142841e9fafbe1b5890d112b038539ea0",
     "run_processes": "sha256:47eef328046d85d0e241af373e16bbff7064b9dbc2884ad3f24b975dabaa76b9",
     "set_messages": "sha256:6ad6030d29d86a7374dee06e9f7244f2e35719bfbd30160b3aa213378fe774c5",
     "set_signatures": "sha256:5e975030b99cfac4b61a8b35fe4410f2cf20bed0d4b4703b152da117bb69b173",

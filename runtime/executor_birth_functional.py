@@ -32,6 +32,10 @@ MAX_CASES = 6
 FUNCTIONAL_SUPPORT_FILES_V1 = (
     "executor_helpers.py", "messages.py", "i18n.py", "config.py",
     "logging_setup.py", "worker_policy.py", "hashutil.py",
+    "executor_workers.py", "parallel_walk.py", "platform_policy.py",
+    "tabular_projection.py", "path_alias.py",
+    "backends/__init__.py", "backends/files/__init__.py",
+    "backends/files/local.py",
 )
 _HARNESS_NAME = "_metnos_functional_v1.py"
 _INPUT_NAME = "_metnos_functional_input.json"

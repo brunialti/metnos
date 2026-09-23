@@ -1269,6 +1269,49 @@ def test_v2_product_composition_reaches_receipts_after_set_publication(
 
 
 @pytest.mark.skipif(os.name == "nt", reason=support.POSIX_SCENARIO_ONLY_V1)
+def test_cutover_skips_only_an_empty_first_publication_placeholder(
+    tmp_path, monkeypatch,
+):
+    import config as runtime_config
+    from contract_bootstrap import STORE_RELATIVE
+    from contract_store import (
+        ContractStoreError, contract_storage_key, encode_binding,
+        publish_signed_source,
+    )
+    from executor_birth_cutover import enumerate_authenticated_current_generations
+    from manifest_inventory import ContractId, ManifestOrigin
+
+    author = Ed25519PrivateKey.generate()
+    ref = _real_revertible_contract(tmp_path, author)
+    monkeypatch.setattr(runtime_config, "PATH_SYNTH_EXECUTORS", ref.source_root)
+    trusted = (("initial-author", author.public_key()),)
+    store_root = tmp_path / "state" / STORE_RELATIVE
+    published = publish_signed_source(
+        ref, expected_generation_id=None,
+        trusted_publics=trusted, store_root=store_root,
+    )
+
+    pending_id = ContractId(ManifestOrigin.USER, "organize_files/manifest.toml")
+    pending = store_root / contract_storage_key(pending_id)
+    (pending / "generations").mkdir(parents=True)
+    (pending / "writer.lock").write_bytes(b"\0")
+    (pending / "binding.json").write_bytes(encode_binding(pending_id))
+
+    current = enumerate_authenticated_current_generations(
+        trusted_publics=trusted, store_root=store_root,
+    )
+    assert tuple(item.generation_id for item in current) == (
+        published.current_generation_id,
+    )
+
+    (pending / "generations" / ("0" * 64)).mkdir()
+    with pytest.raises(ContractStoreError, match="current_missing"):
+        enumerate_authenticated_current_generations(
+            trusted_publics=trusted, store_root=store_root,
+        )
+
+
+@pytest.mark.skipif(os.name == "nt", reason=support.POSIX_SCENARIO_ONLY_V1)
 def test_initial_v2_transition_reattests_a_real_revertible_contract(
     tmp_path, monkeypatch,
 ):

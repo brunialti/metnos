@@ -950,12 +950,16 @@ class ChannelDaemon:
         state, hit_key = load_pending_state(
             dialog_id, candidates, owner_user_id=owner_user_id)
 
+        if state is not None and state.get("form_only"):
+            return (_msg("MSG_FROZEN_PLAN_FORM_ONLY"), False, None)
+
         cancel_decision = _dialog_cancel_lex.exact_match(msg_text or "")
         if cancel_decision is not False:
             if state is not None:
                 _dp.cancel_pending(state.get("sender_id") or hit_key,
                                    dialog_id,
-                                   owner_user_id=owner_user_id)
+                                   owner_user_id=owner_user_id,
+                                   source="telegram_chat")
             if cancel_decision is None:
                 return (_msg("ERR_EXT_SVC_UNAVAILABLE"), False, None)
             if state is not None:
@@ -1346,6 +1350,11 @@ class ChannelDaemon:
         # priorita' al campo persistito, poi alla chiave che ha risolto.
         sender_eff = state.get("sender_id") or hit_key
         if parts[2] == "cancel":
+            if state.get("form_only"):
+                self._send_text(msg.sender_id,
+                                _msg("MSG_FROZEN_PLAN_FORM_ONLY"),
+                                reply_to=msg.message_id)
+                return {"ok": False, "reason": "form_only"}
             _dp.cancel_pending(
                 sender_eff, dialog_id,
                 owner_user_id=principal_user_id)

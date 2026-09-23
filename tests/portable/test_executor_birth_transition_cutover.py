@@ -660,6 +660,19 @@ class _Maintenance:
         }
 
 
+def _stub_retirement_checkpoint(monkeypatch, predecessor):
+    """Unit-observer seam; checkpoint authentication has its own tests."""
+    import executor_birth_admin_preflight as admin
+
+    selected = SimpleNamespace(predecessor=predecessor)
+    materials = SimpleNamespace(descriptor=object())
+    monkeypatch.setattr(provisioner, "_verify_completed_retirement_v2",
+                        lambda *_: (selected, materials))
+    monkeypatch.setattr(admin, "_authenticate_fixed_ownership_snapshot_v1",
+                        lambda: SimpleNamespace(snapshot=selected))
+    monkeypatch.setattr(admin, "_select_ownership_epoch_v1", lambda snapshot: snapshot)
+
+
 @LINUX_ONLY
 def test_retirement_preserves_the_occupied_fragment_before_replacement(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
@@ -794,11 +807,14 @@ def test_successor_retirement_wrapper_only_observes_exact_preserved_files(
         content_hash="sha256:" + hashlib.sha256(script.read_bytes()).hexdigest(),
     )
     prepared = SimpleNamespace(materials=SimpleNamespace(
-        predecessor=SimpleNamespace(files=(historical_file,)),
+        predecessor=SimpleNamespace(files=(historical_file,),
+                                    installation_root=str(roots["repository"])),
     ))
+    distribution = SimpleNamespace(previous_closed_build_id=D("4"))
+    _stub_retirement_checkpoint(monkeypatch, prepared.materials.predecessor)
     monkeypatch.setattr(provisioner, "_capture_bound_transition_catalog_v2", lambda *_: current)
-    monkeypatch.setattr(provisioner, "_transition_roots_v2", lambda *_: roots)
-    monkeypatch.setattr(provisioner, "_process_tree_references_entries_v2", lambda *_: False)
+    monkeypatch.setattr(provisioner, "_transition_roots_v2", lambda *_a, **_k: roots)
+    monkeypatch.setattr(provisioner, "_process_tree_references_entries_v2", lambda *_a, **_k: False)
     # Establish the historical backup and receipt using the real initial writer.
     expected = provisioner._retire_bound_catalog_v2(object(), prepared, _Maintenance(), object())
     if live_version != "missing":
@@ -821,11 +837,11 @@ def test_successor_retirement_wrapper_only_observes_exact_preserved_files(
     if live_version in {"changed", "missing"}:
         with pytest.raises((neutralizer.LegacyNeutralizerError, OSError)):
             provisioner._retire_bound_catalog_v2(
-                object(), prepared, _Maintenance(), object(), previous_catalog=previous,
+                distribution, prepared, _Maintenance(), object(), previous_catalog=previous,
             )
     else:
         assert provisioner._retire_bound_catalog_v2(
-            object(), prepared, _Maintenance(), object(), previous_catalog=previous,
+            distribution, prepared, _Maintenance(), object(), previous_catalog=previous,
         ) == expected
     after = snapshot()
     assert before.keys() == after.keys()
@@ -867,14 +883,16 @@ def test_successor_can_add_a_proven_absent_repository_entry_and_replay(
     current = SimpleNamespace(catalog=replace(catalog, legacy_bindings=tuple(sorted(
         (*catalog.legacy_bindings, binding), key=lambda item: item.legacy_id,
     ))), unit_fragments=previous.unit_fragments)
-    predecessor = SimpleNamespace(files=(SimpleNamespace(
+    predecessor = SimpleNamespace(installation_root=str(roots["repository"]), files=(SimpleNamespace(
         path=script.name, size=script.stat().st_size,
         content_hash="sha256:" + hashlib.sha256(script.read_bytes()).hexdigest(),
     ),))
+    distribution = SimpleNamespace(previous_closed_build_id=D("4"))
+    _stub_retirement_checkpoint(monkeypatch, predecessor)
     prepared = SimpleNamespace(materials=SimpleNamespace(predecessor=predecessor))
     monkeypatch.setattr(provisioner, "_capture_bound_transition_catalog_v2", lambda *_: previous)
-    monkeypatch.setattr(provisioner, "_transition_roots_v2", lambda *_: roots)
-    monkeypatch.setattr(provisioner, "_process_tree_references_entries_v2", lambda *_: False)
+    monkeypatch.setattr(provisioner, "_transition_roots_v2", lambda *_a, **_k: roots)
+    monkeypatch.setattr(provisioner, "_process_tree_references_entries_v2", lambda *_a, **_k: False)
     provisioner._retire_bound_catalog_v2(object(), prepared, _Maintenance(), object())
     (roots["system"] / "metnos-http.service").write_bytes(b"signed unit")
     (roots["system"] / "metnos-http.service").chmod(0o644)
@@ -918,16 +936,17 @@ def test_successor_can_add_a_proven_absent_repository_entry_and_replay(
         script.write_bytes(b"recreated")
     monkeypatch.setattr(neutralizer, "_neutralize_core_v1", lambda *_a, **_k: pytest.fail("observer wrote"))
     monkeypatch.setattr(provisioner, "_capture_bound_transition_catalog_v2", lambda *_: current)
-    if case not in {"absent", "retired"}:
+    # A completed checkpoint, not these mutable old names, now proves history.
+    if case not in {"absent", "retired", "old_missing", "old_recreated"}:
         with pytest.raises((neutralizer.LegacyNeutralizerError, OSError)):
             provisioner._retire_bound_catalog_v2(
-                object(), prepared, _Maintenance(), object(), previous_catalog=previous,
+                distribution, prepared, _Maintenance(), object(), previous_catalog=previous,
             )
         return
     expected = plan_digest_v1(plan_catalog_retirement_v1(current.catalog).steps)
     for old in (previous, previous, current):
         assert provisioner._retire_bound_catalog_v2(
-            object(), prepared, _Maintenance(), object(), previous_catalog=old,
+            distribution, prepared, _Maintenance(), object(), previous_catalog=old,
         ) == expected
     if case == "absent":
         assert list((roots["repository"] / "install").iterdir()) == []

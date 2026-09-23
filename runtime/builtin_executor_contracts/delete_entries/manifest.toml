@@ -15,7 +15,7 @@ en = "SCOPO: Deletes records from a declared store. PATTERN: natural request typ
 
 [code]
 files = ["implementation.py.src"]
-digest = "sha256:b70aa056c7673e1abd5faa3305eb8e1056080b53cc2130ded20259e538637eb1"
+digest = "sha256:0ae86fb64f13b9a51dd3d27f73ea9a4dea0b7ce0548ed82598ff49cca735ceba"
 
 [args]
 type = "object"

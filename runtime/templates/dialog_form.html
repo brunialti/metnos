@@ -178,7 +178,7 @@
   // contenuto). Re-emit su resize/mutation.
   function postHeight(){
     const h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
-    window.parent.postMessage({type:'metnos.dialog.height', height: h}, '*');
+    window.parent.postMessage({type:'metnos.dialog.height', height: h}, window.location.origin);
   }
   window.addEventListener('load', postHeight);
   new ResizeObserver(postHeight).observe(document.body);
@@ -247,7 +247,7 @@
           if(mM && mM[1]){ try{ turn_meta = JSON.parse(atob(mM[1])); }catch(e){} }
           window.parent.postMessage(
             {type:'metnos.dialog.done', redirect_url, completion_text, turn_id,
-             attachments, turn_meta}, '*');
+             attachments, turn_meta}, window.location.origin);
         } else {
           if(r.status === 404 || r.status === 410){
             const state = r.headers.get('X-Metnos-Dialog-State')
@@ -255,7 +255,7 @@
             window.parent.postMessage(
               {type:'metnos.dialog.terminal', state,
                turn_id:form.dataset.turnId || '',
-               dialog_id:form.dataset.dialogId || ''}, '*');
+               dialog_id:form.dataset.dialogId || ''}, window.location.origin);
             return;
           }
           _reenable();
@@ -297,7 +297,8 @@
           window.parent.postMessage(
             {type:'metnos.dialog.cancelled',
              turn_id:form ? (form.dataset.turnId || '') : '',
-             dialog_id:form ? (form.dataset.dialogId || '') : ''}, '*');
+             dialog_id:form ? (form.dataset.dialogId || '') : ''},
+            window.location.origin);
           return;
         }
         if(r.status === 404 || r.status === 410){
@@ -305,7 +306,8 @@
             {type:'metnos.dialog.terminal',
              state:r.headers.get('X-Metnos-Dialog-State') || 'missing',
              turn_id:form ? (form.dataset.turnId || '') : '',
-             dialog_id:form ? (form.dataset.dialogId || '') : ''}, '*');
+             dialog_id:form ? (form.dataset.dialogId || '') : ''},
+            window.location.origin);
           return;
         }
         alert(dialogText('httpError', {status: r.status}));

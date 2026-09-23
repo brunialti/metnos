@@ -450,9 +450,15 @@ def _verify_store_only_catalog_locked(
     if not trusted:
         raise ContractCutoverGuardError("trusted_keys_missing")
     expected: dict[str, tuple[str, str]] = {}
+    unpublished_paths: set[str] = set()
     retired = 0
     for ref in structural.manifests:
-        revision = current_contract(ref, trusted_publics=trusted)
+        revision = current_contract(
+            ref, trusted_publics=trusted, allow_unpublished=True,
+        )
+        if revision is None:
+            unpublished_paths.add(str(ref.manifest_path))
+            continue
         if isinstance(revision, ContractRetirement):
             retired += 1
             continue
@@ -476,6 +482,9 @@ def _verify_store_only_catalog_locked(
         for path, reason in catalog.rejected
         if not reason.startswith(RESTRICTED_REJECT_PREFIX)
         and not reason.startswith("contract_retired:")
+        and not (
+            path in unpublished_paths and reason.startswith("current_missing:")
+        )
     ]
     if fatal:
         raise ContractCutoverGuardError(

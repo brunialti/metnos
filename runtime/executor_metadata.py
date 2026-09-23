@@ -148,6 +148,22 @@ def execution_policy(manifest: dict | None = None) -> dict:
         policy["concurrency_key"] = raw["concurrency_key"]
     if raw.get("equivalence_gate") in {"unverified", "verified"}:
         policy["equivalence_gate"] = raw["equivalence_gate"]
+    from execution_effects import validate_effects
+    from frozen_plan_consent import normalized_policy as _frozen_policy
+    effect_findings = validate_effects(data)
+    if not effect_findings:
+        rules = raw.get("effects")
+        if isinstance(rules, list):
+            policy["effects"] = tuple(dict(rule) for rule in rules)
+    elif "effects" in raw:
+        # A malformed refinement must invalidate the whole effect claim;
+        # retaining a mutating/read-only fallback would let admission bypass
+        # reinterpret a broken conditional contract as trusted authority.
+        policy["effect"] = "unknown"
+        policy["parallelism_class"] = 0
+    frozen = _frozen_policy(data)
+    if frozen is not None:
+        policy["frozen_plan"] = frozen
 
     # Defence in depth: even if validation was bypassed, an incomplete opt-in
     # degrades to serial rather than acquiring parallel execution authority.
