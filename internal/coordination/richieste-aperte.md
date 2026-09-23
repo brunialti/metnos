@@ -662,18 +662,26 @@ R-001/R-003 conservano i rispettivi vincoli.
 - **Stato**: aperta — sviluppo consegnato, accettazione e ammissione non
   eseguite
 
-Il candidato pulito vive su `codex/organize-files-handoff`. Il runtime
-generale è nel commit `85bbf5a1`; executor firmato di authoring e prove sono
-nel commit `bb5d2665`. Il dettaglio di invarianti, limiti, prove e sequenza di
-accettazione è in
+Il candidato finale del codice vive su `codex/organize-files-handoff` a
+`be88c585`.
+I commit di sviluppo sono `38362151`, `85bbf5a1`, `bb5d2665`, `e5dae2d6`,
+`5658f1aa`, `935c52a2`, `3da784a0`, `b1a1f75b`, `4d530701`, `309ee661` e
+`be88c585`; `ec685a33` introduce questo handover. Il dettaglio di invarianti,
+limiti, prove e sequenza di accettazione è in
 `internal/design/handover_organize_files_20260923.md` sullo stesso ramo.
 
-RM-0008 deve integrare per contenuto sulla propria base finale ed eseguire la
-certificazione isolata HTTP e Telegram, incluso il percorso completo preview →
-form → grant → apply → receipt → reverse e i rifiuti di replay/canale/turno.
-Deve poi registrare separatamente l'accettazione reale `/agent/turn`. Questa
-richiesta non autorizza pubblicazione, firma di rilascio, deploy o restart;
-R-003 resta il blocco esterno alla pubblicazione.
+Sul candidato sono verdi 124 prove executor/bootstrap/standard/loader/firma,
+154 prove runtime con 5 subtest e l'E2E HTTP isolata. Quest'ultima attraversa
+query pubblica → routing → preview troncata → form → grant → apply del piano
+completo → replay → undo pubblico; verifica byte, journal e assenza del bearer
+da output e log. Firma authoring verificata al digest
+`sha256:ad5e72b7c30bf42df46319cf89e626746f9c34dd9c40e8bc292f8c7c5a829d54`.
+
+RM-0008 deve integrare per contenuto sulla propria base finale, ripetere le
+prove, completare l'accettazione Telegram sul trasporto reale e registrare
+separatamente l'accettazione `/agent/turn`. Questa richiesta non autorizza
+pubblicazione, firma di rilascio, deploy o restart; R-003 resta il blocco
+esterno alla pubblicazione.
 
 **Chiuso quando**: la bacheca riporta commit integrato, suite completa ed E2E
 verdi, firma/generazione accettate dal gate corrente e ricevuta del percorso
