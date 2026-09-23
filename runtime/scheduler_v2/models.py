@@ -51,10 +51,9 @@ class ScheduleEntry:
     last_error: str | None = None
     total_runs: int = 0
     total_failures: int = 0
-    # Streak di fallimenti CONSECUTIVI (azzerato al primo success). Alimenta il
-    # circuit-breaker: a soglia, il task ricorrente viene disabilitato e l'owner
-    # notificato (continua/sospendi/cancella). Distinto da total_failures
-    # (cumulativo, mai resettato).
+    # Consecutive hard failures reset on success/partial. At the threshold,
+    # recurring attempts slow down and the owner is notified; the schedule
+    # remains enabled. Distinct from cumulative total_failures.
     consecutive_failures: int = 0
     description: str = ""
     id: int | None = None

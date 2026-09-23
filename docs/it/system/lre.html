@@ -215,6 +215,15 @@ intermedi verificati possono essere riutilizzati; un nuovo lavoro non garantisce
 il riuso di checkpoint privati di una generazione fallita. Gli originali e lo
 storico non vengono cancellati.</p>
 
+<p>Un lavoro LRE pianificato che richiede attenzione resta disponibile per la
+diagnosi e il recupero manuale. Non blocca però tutte le scadenze successive:
+una nuova scadenza può creare un nuovo lavoro, mentre una consegna ripetuta
+della stessa scadenza non ne crea un duplicato. Se un altro lavoro equivalente
+è già in esecuzione o in coda, la nuova richiesta usa quello. Il nuovo lavoro
+non eredita automaticamente i salvataggi privati del precedente. Dopo errori
+ripetuti, il pianificatore allunga l'intervallo prima del tentativo seguente
+senza disabilitare definitivamente l'attività.</p>
+
 <h3 id="photo-indexing-publication">Verifica dei file pubblicati</h3>
 
 <p>La pubblicazione verifica dimensioni e impronte dei cinque file dell'indice,

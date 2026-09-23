@@ -206,6 +206,14 @@ reused within the same generation; a new workload does not guarantee reuse of
 private checkpoints from a failed generation. Originals and history are not
 deleted.</p>
 
+<p>A scheduled LRE job that needs attention remains available for diagnosis
+and manual recovery. It does not block every later occurrence: a later
+occurrence may create a new job, while redelivery of the same occurrence
+does not create a duplicate. If an equivalent job is already queued or
+running, the new request uses it. A new job does not automatically inherit
+the earlier job's private checkpoints. After repeated failures, the scheduler
+delays the next attempt without permanently disabling the task.</p>
+
 <h3 id="photo-indexing-publication">Verifying published files</h3>
 
 <p>Publication verifies the sizes and fingerprints of all five index files,

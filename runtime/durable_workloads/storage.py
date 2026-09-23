@@ -1094,15 +1094,28 @@ class DurableWorkloadStore:
         return _row_to_workload(row)
 
     def find_active_submission(
-        self, owner_user_id: str, scope_digest: str,
+        self, owner_user_id: str, scope_digest: str, *,
+        include_attention: bool | None = None,
     ) -> WorkloadRecord | None:
-        """Find one owner's existing nonterminal submission by its exact scope."""
+        """Find one owner's nonterminal submission by scope.
+
+        Scheduled submissions ignore a previous job awaiting manual attention.
+        Explicit request-key lookup still replays the same occurrence, and
+        interactive queries retain the existing scope reuse behavior.
+        """
 
         owner = _require_owner(owner_user_id)
         if not isinstance(scope_digest, str) or not _SHA256_RE.fullmatch(scope_digest):
             raise ValueError("submission scope must be a canonical SHA-256 digest")
+        if include_attention is None:
+            from treated_issues_guard import is_scheduled_turn
+            include_attention = not is_scheduled_turn()
         terminal = tuple(sorted(state.value for state in _TERMINAL_WORKLOAD_STATES))
         placeholders = ",".join("?" for _state in terminal)
+        attention_clause = "" if include_attention else "AND state != ?"
+        params = (owner, *terminal)
+        if not include_attention:
+            params += (WorkloadState.NEEDS_ATTENTION.value,)
         row = self._connection.execute(
             f"""
             SELECT owner_user_id, id, request_key, state, priority,
@@ -1110,11 +1123,12 @@ class DurableWorkloadStore:
                    terminal_reason_json
             FROM workloads
             WHERE owner_user_id=? AND state NOT IN ({placeholders})
+              {attention_clause}
               AND json_extract(redacted_request_json, '$.payload.submission_scope')=?
             ORDER BY created_at, id
             LIMIT 1
             """,
-            (owner, *terminal, scope_digest),
+            (*params, scope_digest),
         ).fetchone()
         return None if row is None else _row_to_workload(row)
 

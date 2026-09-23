@@ -305,11 +305,14 @@ def task_images_index_refresh() -> dict:
     selects the archive. No direct executor import or inline analysis remains.
     """
     import uuid
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
     import config
     import users
     from engine.types import Framework, StepSpec
     from loader import load_catalog
     from lre_submission import submit_automatic_lre
+    from treated_issues_guard import scheduled_turn_scope
     from vaglio import guard_check
 
     base = config.PATH_USER_DATA / "Immagini"
@@ -326,10 +329,15 @@ def task_images_index_refresh() -> dict:
     args = {"base_path": str(base), "force": False, "recursive": True}
     if not guard_check(executor.name, args, executor=executor)[0]:
         return {"ok": False, "error_class": "guard_denied"}
-    result = submit_automatic_lre(
-        Framework(steps=[StepSpec(executor.name, args)]), catalog=catalog,
-        owner_user_id=owners[0]["id"], turn_id=uuid.uuid4().hex,
-    )
+    occurrence = (
+        "schedule:images_index_refresh:"
+        + datetime.now(ZoneInfo("Europe/Rome")).date().isoformat())
+    with scheduled_turn_scope(task_name="images_index_refresh"):
+        result = submit_automatic_lre(
+            Framework(steps=[StepSpec(executor.name, args)]), catalog=catalog,
+            owner_user_id=owners[0]["id"], turn_id=uuid.uuid4().hex,
+            source_request_id=occurrence,
+        )
     return (result if result is not None else
             {"ok": False, "error_class": "workload_not_admitted"})
 
@@ -815,8 +823,8 @@ def install_default_callbacks(scheduler) -> None:
     from recurring_tasks import (  # type: ignore
         _run_user_query_callback,
         _wrap_with_times_tracking,
-        _notify_circuit_break,
     )
+    from .retry_notice import notify_retry_cooldown
 
     user_cb = _wrap_with_times_tracking(_run_user_query_callback)
     cb.register(
@@ -826,9 +834,9 @@ def install_default_callbacks(scheduler) -> None:
         replace=True,
     )
 
-    # Circuit-breaker: il daemon e' channel-agnostico; qui gli diamo il
-    # notifier che conosce il canale del task (continua/sospendi/cancella).
-    scheduler.on_circuit_break = _notify_circuit_break
+    # The scheduler stays channel-agnostic; this owner-scoped hook reports
+    # cooldown without changing the registry or disabling the task.
+    scheduler.on_circuit_break = notify_retry_cooldown
 
 
 def install_default_jobs(scheduler) -> int:

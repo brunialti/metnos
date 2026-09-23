@@ -27,12 +27,17 @@ log = logging.getLogger(__name__)
 _MAX_SLEEP_S = 60.0   # cap on idle sleep so DST transitions can't strand us
 _MIN_SLEEP_S = 0.001  # floor to avoid busy-spin if a timer is in the past
 
-# Circuit-breaker: dopo N fallimenti CONSECUTIVI (error/timeout) un task
-# ricorrente viene auto-disabilitato, per non ri-sparare all'infinito una
-# pipeline rotta (PAT scaduto, repo rimosso, ...). L'owner viene notificato
-# via hook `on_circuit_break` (continua/sospendi/cancella). Soglia override
-# via env per ops. Allineato a 3 come l'escalation Strato 3 (≥3 ✗).
+# After N consecutive hard failures, slow down recurring attempts and notify
+# the owner. Never turn a transient failure into permanent schedule disablement.
 _CIRCUIT_BREAK_AFTER = int(os.environ.get("METNOS_SCHED_CIRCUIT_BREAK_AFTER") or 3)
+_RETRY_BASE_S = 15 * 60
+_RETRY_MAX_S = 24 * 60 * 60
+
+
+def _retry_cooldown_s(consecutive_failures: int) -> int:
+    """Bound fast recurring retries while retaining their future schedule."""
+    steps = max(0, consecutive_failures - _CIRCUIT_BREAK_AFTER)
+    return min(_RETRY_MAX_S, _RETRY_BASE_S * (1 << min(steps, 16)))
 
 
 
@@ -77,8 +82,8 @@ class SchedulerDaemon:
         self._heartbeat_at_epoch: float | None = None
         self._last_error_class = ""
         self._last_error_summary = ""
-        # Hook opzionale invocato quando un task ricorrente viene
-        # auto-disabilitato dal circuit-breaker. Firma: (entry, error: str|None).
+        # Hook opzionale invocato alla prima apertura del circuit-breaker.
+        # Firma: (entry, error: str|None).
         # Settato da chi conosce i canali (recurring_tasks): il daemon resta
         # channel-agnostico. None = solo log.
         self.on_circuit_break = None
@@ -399,6 +404,15 @@ class SchedulerDaemon:
                     error = str(result.error or "")[:1000] or None
                     if result.status not in allowed:
                         error = f"invalid callback status: {result.status!r}"
+                elif isinstance(result, dict) and result.get("ok") is False:
+                    # Builtin callbacks commonly return an executor-style
+                    # receipt. A failed receipt is a failed scheduled run,
+                    # even when the Python call itself did not raise.
+                    status = "error"
+                    error = str(
+                        result.get("error_class") or result.get("error")
+                        or "callback_returned_not_ok"
+                    )[:1000]
                 elif result is not None:
                     output = str(result)[:4096]
         except asyncio.TimeoutError:
@@ -432,13 +446,17 @@ class SchedulerDaemon:
                     decrement_remaining = True
                     if entry.remaining_runs - 1 <= 0:
                         disable = True
-                # Circuit-breaker: N fallimenti CONSECUTIVI → auto-disable.
-                # entry.consecutive_failures e' il valore PRE-run; +1 = quello
-                # che record_outcome scrivera' (coerente, stesso incremento).
-                if status in {"error", "timeout"} and _CIRCUIT_BREAK_AFTER > 0:
-                    if (entry.consecutive_failures or 0) + 1 >= _CIRCUIT_BREAK_AFTER:
-                        disable = True
-                        circuit_broken = True
+                # A recurring entry must retry after a bounded cooldown; only
+                # explicit suspension, expiration or run count can disable it.
+                if (status in {"error", "timeout"}
+                        and _CIRCUIT_BREAK_AFTER > 0 and not disable):
+                    failures = (entry.consecutive_failures or 0) + 1
+                    if failures >= _CIRCUIT_BREAK_AFTER:
+                        new_next = max(
+                            new_next or 0,
+                            time.time() + _retry_cooldown_s(failures),
+                        )
+                        circuit_broken = failures == _CIRCUIT_BREAK_AFTER
             else:
                 disable = True  # one-shot fired (success or error): disable
             self.storage.record_outcome(
@@ -452,8 +470,8 @@ class SchedulerDaemon:
             )
             if circuit_broken:
                 log.warning(
-                    "entry %s: circuit-break dopo %d fallimenti consecutivi "
-                    "(last_error=%s) → disabilitato",
+                    "entry %s: %d fallimenti consecutivi "
+                    "(last_error=%s) → nuovo tentativo differito",
                     entry.name, _CIRCUIT_BREAK_AFTER, error,
                 )
                 hook = self.on_circuit_break
@@ -462,7 +480,7 @@ class SchedulerDaemon:
                         try:
                             _h(_e, _err)
                         except Exception:
-                            # Notifica mai-bloccante: auto-disable gia' persistito.
+                            # Notification must not block the scheduler.
                             log.exception(
                                 "entry %s: on_circuit_break hook fallito", _e.name)
                     # Il hook fa I/O bloccante (send Telegram, timeout 30s): NON

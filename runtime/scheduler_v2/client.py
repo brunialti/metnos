@@ -271,8 +271,9 @@ def toggle_job(name: str, enabled: bool) -> bool:
 
 
 def resume_job(name: str) -> bool:
-    """Riattiva un task auto-disabilitato dal circuit-breaker: enabled=1 +
-    azzera consecutive_failures + ricalcola next_fire_at dal trigger (riparte
+    """Reset an enabled task's retry delay, or re-enable a suspended task.
+
+    Azzera consecutive_failures e ricalcola next_fire_at dal trigger (riparte
     dal prossimo slot, non spara subito). Returns True se esisteva.
     L'invariante vive in `storage.enable()`."""
     storage = get_storage()

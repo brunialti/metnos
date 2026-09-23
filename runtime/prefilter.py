@@ -299,10 +299,35 @@ def detect_canonical_verbs_all(qtokens) -> list[str]:
             # Try clitic stripping (mettili → metti, inviamelo → invia)
             stem = _strip_italian_clitic(tok)
             if stem:
-                v = verb_table.get(stem)
+                # Italian infinitives drop their final -e before a clitic:
+                # "cancellarli" -> "cancellare". Finite forms keep the stem.
+                v = verb_table.get(stem) or verb_table.get(stem + "e")
         if v and v not in seen:
             seen.append(v)
     return seen
+
+
+def canonical_verb_spans(text: str) -> list[tuple[str, int]]:
+    """Canonical action and source offset, excluding path-like arguments.
+
+    The offset lets syntax-level polarity apply to each occurrence rather
+    than to an unordered bag of words. Unknown or ambiguous forms are left
+    to the intent parser, as in ``detect_canonical_verbs_all``.
+    """
+    from tool_grammar import _strip_fs_paths
+
+    masked = _strip_fs_paths(text or "", preserve_offsets=True)
+    table = _localized_verb_table()
+    spans = []
+    for match in _WORD_RE.finditer(masked):
+        token = match.group(0).casefold()
+        verb = table.get(token)
+        if not verb:
+            stem = _strip_italian_clitic(token)
+            verb = (table.get(stem) or table.get(stem + "e")) if stem else None
+        if verb:
+            spans.append((verb, match.start()))
+    return spans
 
 
 ## Domain (web) detector: regex strutturale (non hardcoded TLD list).

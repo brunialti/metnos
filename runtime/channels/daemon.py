@@ -1625,12 +1625,12 @@ class ChannelDaemon:
 
     def _handle_scheduler_callback(self, msg: InboundMessage,
                                     data: str) -> dict:
-        """Gestisce i bottoni della notifica circuit-breaker dello scheduler
-        (recurring_tasks._notify_circuit_break). Formato
+        """Gestisce i bottoni dell'avviso di pausa fra tentativi dello scheduler
+        (scheduler_v2.retry_notice.notify_retry_cooldown). Formato
         `sched:<azione>:<task_id>` con azione cont|susp|canc.
 
-        - cont  → resume_job: riabilita + azzera streak + ricalcola next_fire.
-        - susp  → resta disabilitato (toggle off idempotente). Ripristinabile.
+        - cont  → resume_job: azzera streak + ricalcola next_fire.
+        - susp  → disabilita (toggle off idempotente). Ripristinabile.
         - canc  → cancella la schedulazione (scheduler entry + record utente).
 
         task_id e' il riferimento numerico breve della registry utente; il

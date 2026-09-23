@@ -755,7 +755,7 @@ def _looks_like_fs_path(tok: str) -> bool:
     return bool(_RE_PATH_EXT.search(tok))
 
 
-def _strip_fs_paths(query_lc: str) -> str:
+def _strip_fs_paths(query_lc: str, *, preserve_offsets: bool = False) -> str:
     """Exclude path arguments from lexical markers; preserve URLs and prose.
 
     The same structural rule serves action tokens and provider recognition.
@@ -763,7 +763,9 @@ def _strip_fs_paths(query_lc: str) -> str:
     """
     def _drop(m: "re.Match[str]") -> str:
         tok = m.group(0)
-        return " " if _looks_like_fs_path(tok) else tok
+        if _looks_like_fs_path(tok):
+            return " " * len(tok) if preserve_offsets else " "
+        return tok
     return _RE_FS_PATH_TOKEN.sub(_drop, query_lc)
 
 

@@ -504,7 +504,8 @@ def _maybe_record_fastpath(query: str, intent: Intent,
     # `find_packages` miss used to be cached for an explicit install request:
     # the executor was healthy, but the requested side effect was absent.
     # Check the intent/framework contract before teaching L0 the plan.
-    if _dropped_required_verbs(framework, query, intent, catalog):
+    if (_dropped_required_verbs(framework, query, intent, catalog)
+            or _prohibited_plan_verbs(framework, query)):
         log.info("[L0 fastpath] skip record: required action absent from plan")
         return
     # Cacheabilità L0 (Roberto 15/6): solo pipeline multi-step che NON bakeizzano
@@ -2161,6 +2162,45 @@ def _is_get_inputs_misroute(framework: Framework) -> bool:
     return exec_steps == ["get_inputs"]
 
 
+def _query_verb_polarities(query: str) -> tuple[set[str], set[str]]:
+    """Return asserted and prohibited canonical actions with source scope.
+
+    Source offsets and grammar come from the same localized lexicon used by
+    other safety checks. An unknown polarity cannot prove a prohibition and
+    therefore cannot remove an action supplied by the intent parser.
+    """
+    from detection_lexicon import polarity_state_at
+    from prefilter import canonical_verb_spans
+
+    affirmed: set[str] = set()
+    negated: set[str] = set()
+    for verb, offset in canonical_verb_spans(query or ""):
+        state = polarity_state_at(query, offset)
+        if state == "asserted":
+            affirmed.add(verb)
+        elif state == "negated":
+            negated.add(verb)
+    return affirmed, negated
+
+
+def _negated_only_query_verbs(query: str) -> set[str]:
+    affirmed, negated = _query_verb_polarities(query)
+    return negated - affirmed
+
+
+def _prohibited_plan_verbs(framework: Framework, query: str) -> set[str]:
+    """Fail closed when a plan tries to run an explicitly negated action."""
+    _, forbidden = _query_verb_polarities(query)
+    # If the same action is both requested and prohibited, verb-only evidence
+    # cannot prove that a proposed step targets the allowed object. Refuse
+    # that plan rather than silently widening the negative clause's scope.
+    return {
+        (step.tool or "").split("_", 1)[0]
+        for step in framework.steps
+        if (step.tool or "").split("_", 1)[0] in forbidden
+    }
+
+
 def _dropped_required_verbs(framework: Framework, query: str, intent=None,
                             catalog=None) -> set:
     """Verbi RICHIESTI dalla query ma ASSENTI dal framework → decomposizione
@@ -2225,6 +2265,10 @@ def _dropped_required_verbs(framework: Framework, query: str, intent=None,
     primary_verb = str(getattr(intent, "verb", "") or "").lower()
     if primary_verb in ACTIONS:
         qverbs.add(primary_verb)
+    # Intent extraction may include negated clauses. They are constraints,
+    # never obligations, even when the planner lists them in intent.actions.
+    prohibited = _negated_only_query_verbs(query or "")
+    qverbs.difference_update(prohibited)
     # Producer-only requests stay permissive: find/read/get/list are a
     # substitutable family.  A *single explicit mutation*, however, must not
     # disappear just because the original guard was introduced for compound
@@ -2271,6 +2315,8 @@ def _dropped_required_verbs(framework: Framework, query: str, intent=None,
     if not has_admin:
         for action in requested_actions:
             verb, obj = action.get("verb"), action.get("object")
+            if verb in prohibited:
+                continue
             # entries is an abstract in-memory carrier, not a concrete domain.
             if verb not in required_effects or verb not in fw_verbs or not obj or obj == "entries":
                 continue
@@ -7245,6 +7291,19 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
     ) -> tuple[Optional[DispatchResult], Optional[RunResult]]:
         """Use the single durable boundary before every inline execution."""
 
+        prohibited = _prohibited_plan_verbs(framework_to_run, query)
+        if prohibited:
+            from messages import get as _msg_get
+            log.info("[intent-fulfilment] prohibited actions=%s",
+                     ",".join(sorted(prohibited)))
+            return DispatchResult(
+                final_text=_msg_get("MSG_ACTION_PROHIBITED_BY_REQUEST"),
+                final_kind="error", match_source="terminator",
+                framework_hash=compute_framework_hash(framework_to_run),
+                elapsed_ms=int((time.time() - t_start) * 1000),
+                framework=framework_to_run,
+                error_class="capability_missing"), None
+
         durable = _admit_finalized_long_work(
             framework_to_run, admit_long_work_cb, started_at=t_start,
         )
@@ -7403,6 +7462,9 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                      "assente dal piano → morte + fall-through", fp_hit.fp_id)
             _fp.delete(fp_hit.fp_id)
             fp_hit = None
+        if fp_hit is not None and _prohibited_plan_verbs(fp_hit.framework, query):
+            log.info("[L0 fastpath] REJECT: prohibited action in cached plan")
+            fp_hit = None
         if fp_hit is not None:
             if verbose:
                 log.info("[L0 fastpath] hit (%s, sim=%.2f): %s",
@@ -7500,6 +7562,9 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                 ap_hit.framework, query, intent, catalog):
             log.info("[L1 autopath] REJECT: azione richiesta assente dal "
                      "piano → fall-through a L3")
+            ap_hit = None
+        if ap_hit is not None and _prohibited_plan_verbs(ap_hit.framework, query):
+            log.info("[L1 autopath] REJECT: prohibited action in cached plan")
             ap_hit = None
         if ap_hit is not None:
             if verbose:
@@ -7720,7 +7785,7 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                  ",".join(sorted(_missing_actions)))
         return DispatchResult(
             final_text=_msg_get("MSG_REQUIRED_ACTION_NOT_PLANNED"),
-            final_kind="answer", match_source="terminator",
+            final_kind="error", match_source="terminator",
             framework_hash=compute_framework_hash(framework),
             elapsed_ms=int((time.time() - t_start) * 1000),
             framework=framework, error_class="capability_missing")
@@ -7841,7 +7906,7 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                              ",".join(sorted(_missing_alt)))
                     return DispatchResult(
                         final_text=_msg_get("MSG_REQUIRED_ACTION_NOT_PLANNED"),
-                        final_kind="answer", match_source="terminator",
+                        final_kind="error", match_source="terminator",
                         framework_hash=compute_framework_hash(framework_alt),
                         elapsed_ms=int((time.time() - t_start) * 1000),
                         framework=framework_alt,

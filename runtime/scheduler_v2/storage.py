@@ -320,7 +320,7 @@ class SchedulerStorage:
         """Riabilita un timer e RICALCOLA next_fire_at dal trigger, così non
         spara un catch-up immediato per il tempo trascorso da disabilitato.
         Azzera anche `consecutive_failures` (riabilitare = ripartenza pulita:
-        evita che il circuit-breaker riscatti dopo un solo fallimento residuo).
+        evita che la pausa progressiva riparta da un errore residuo).
         Invariante centralizzato qui, riusato da client.{enable,resume_job}."""
         import time as _time
         from .schedule_parser import next_fire_at as _nf
