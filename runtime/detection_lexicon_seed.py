@@ -27,22 +27,11 @@ from vocab import (  # identita' canoniche = vocabolario (SoT unica)
 )
 
 
-# Marker NL (linguistici, i18n) per ogni provider — SOLO i VALORI. Le CHIAVI
-# (l'identità dei provider) NON si ripetono qui: derivano da
-# `vocab.PROVIDER_SUFFIXES` (SoT unica). Un nuovo provider si aggiunge in vocab
-# + qui i suoi marker; le due liste devono coprire lo stesso set (guard:
-# `test_provider_markers_cover_suffixes`). Le altre lingue le sintetizza il
-# daemon dal word-list tradotto (it={} → fallback en).
-#
-# DEBITO i18n (NON sanare finché lo scope è IT+EN, §1 — YAGNI): questo `{it,en}`
-# è un dict a 2 LOCALI FISSI, non i18n vero. Conseguenza: «aggiungi una lingua =
-# lascia cadere un file» NON funziona — il 3° locale richiede PRIMA il refactor
-# verso il DB i18n locale-driven (chiavi semantiche + fallback xx→en, come
-# `messages.get`/METNOS_LANG §11) + `validate_invariant` su set-locali APERTO
-# (oggi esige parità IT/EN incondizionata). Vedi memoria project-i18n-lexicon-debt.
+# Linguistic markers for the remaining legacy suffix families, not for all
+# provider identities. Keys derive from vocab.PROVIDER_SUFFIXES; argument-based
+# backends use the central provider resolver. The locale registry translates
+# these seed values and invalidates stale translations when the seed changes.
 _PROVIDER_MARKERS_EN = {
-    "github": ["github", "pr", "issue", "issues", "repo", "repository",
-               "commit", "branch", "workflow", "gist", "fork", "merge"],
     "google_workspace": ["google", "drive", "gmail", "gdrive", "workspace",
                          "calendar google", "g suite"],
     # SOLO brand: MAI "photos"/"foto" nudo — parola comune che dirotterebbe le

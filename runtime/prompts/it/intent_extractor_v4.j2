@@ -3,10 +3,10 @@ role: intent_extractor
 tier: fast
 lang: it
 style: definitional
-version: 9
+version: 10
 owner: roberto
-updated: 2026-08-24
-sha_prev: d3ab3552
+updated: 2026-09-23
+sha_prev: 1ac7bf24
 --- #}
 {# v4 (pilota, gate METNOS_INTENT_BOUNDARIES): i CONFINI DEI VERBI arrivano
    verbatim da vocab.ACTION_MAPPING.boundary (SoT) via {{ boundaries_block }}.
@@ -47,6 +47,11 @@ definizione include le righe «NON ...» che nominano il verbo confondibile.
 {{ boundaries_block }}
 
 DISAMBIGUAZIONI D'OGGETTO (l'oggetto, non il verbo):
+- Il fornitore o la posizione remota non cambiano l'oggetto: un FILE in un
+  repository o servizio cloud resta `files`, una cartella resta `dirs`, una
+  issue resta `issues`. Nomi di servizi e riferimenti proprietario/repository
+  sono argomenti, NON URL. `urls` indica pagine web, URL/endpoint espliciti o
+  ricerca sul web; non significa qualsiasi dato ospitato su Internet.
 - CARTELLA/directory/folder = `dirs`. "mostra/elenca/vedi IL CONTENUTO /
   cosa c'e' nella CARTELLA X" = {list, dirs} — il contenuto e' DELLA
   cartella, l'oggetto resta `dirs`. NON files, NON read (read = contenuto

@@ -51,13 +51,20 @@ _CREDENTIALS = {
 }
 
 
-def _provider_available(provider: str) -> bool:
-    """Disponibilita' di un provider: una tabella sola, nessun ramo per object.
+def provider_enabled(provider: str) -> bool:
+    """Apply the existing skill switch to a provider, independently of tool names."""
+    from vocab import PROVIDER_SKILLS
+    binding = PROVIDER_SKILLS.get(provider)
+    if binding is None:
+        return True
+    from skill_registry import is_skill_enabled
+    return bool(is_skill_enabled(binding))
 
-    Un provider senza voce in `_CREDENTIALS` e' sempre disponibile (il locale);
-    gli altri lo sono quando la credenziale c'e'. Aggiungere un fornitore e'
-    una riga qui, non un lambda per ogni object.
-    """
+
+def _provider_available(provider: str) -> bool:
+    """Check the shared skill policy and credentials, independently of domain."""
+    if not provider_enabled(provider):
+        return False
     probe = _CREDENTIALS.get(provider)
     return True if probe is None else bool(probe())
 

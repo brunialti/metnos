@@ -75,14 +75,14 @@
     "version_hash": "sha256:8495bcae4cf8191cbec00586ebffdc496444dfc809284737a7290dc4fdfe988f"
   },
   "engine_proposer": {
-    "source_hash": "sha256:119c6c5a2253ee8897af22cd58561b422f01e21e2563650162efcab5e880d06f",
-    "source_lang": "it",
-    "version_hash": "sha256:68d9bc634488418afe459dddfefb5891c0e06d3a8d554822c95ec1edde9ed17b"
+    "source_hash": null,
+    "source_lang": null,
+    "version_hash": "sha256:dedf56f2788e7435705c6c1f2cdfa36bdc57e245096480ea78c2371dd03e58d6"
   },
   "engine_proposer_metis": {
-    "source_hash": "sha256:8456beadf2b327f99bc783489188f6db8eb1201ca6cae5ac8a2dfb1b17f3d7d0",
-    "source_lang": "it",
-    "version_hash": "sha256:2699ef5a4b34ebe4d2fa38e4e5269fbe5760f492b299a224b6d70e8aac4de2d3"
+    "source_hash": null,
+    "source_lang": null,
+    "version_hash": "sha256:73ae98b5ee9ddc72dc1eb7741e93ec9fdca11e8c09221933dbffbccbdba67f77"
   },
   "engine_skeleton": {
     "source_hash": "sha256:3bbfc3dc6b1ee12864c4932d40ad51a334e254f80ce492e0d8a092fcd566f367",
@@ -125,14 +125,14 @@
     "version_hash": "sha256:bbabe7907bb44098ac7063bffd6787e95d81cb4a6b675dcea551d46acd40a604"
   },
   "intent_extractor_scaffold": {
-    "source_hash": "sha256:3eafb23d05b4886738dce2b96072031753093dc6884601fc74e50f21e14832a2",
+    "source_hash": "sha256:2db53e08a26dc79ae6fb50ead96a87b7631c2552684da1417fc28a13aeacfccb",
     "source_lang": "it",
-    "version_hash": "sha256:e266742e18eeee08c91cbce1a49ee684497f0083956b58725ca20fba0af70bd3"
+    "version_hash": "sha256:475f370be7c9ae961fd914e7d4bb0b2684152fd1f5bae0ca5eab81fd5125ea6b"
   },
   "intent_extractor_v4": {
-    "source_hash": "sha256:91af45acfa5b909dd0689ce55d686c6088a956e47899c7d963d82ea0432a4903",
+    "source_hash": "sha256:ff5035f24af09f7907cb822b76b27ae23e05288d6d812694d9160d38df832113",
     "source_lang": "it",
-    "version_hash": "sha256:dbd1e0d7b3227ff16d484592f357244ba3abe60f325e8c75580e0784b906d46c"
+    "version_hash": "sha256:4418b576bf0d5e8d8caea812ef2b87766aebba1c48b70f3d769faa42f4401ce7"
   },
   "planner": {
     "source_hash": "sha256:5916a4a34e0b7e9c74b4e9e669d3ad0fbdb9e2ad50d01188c77645190489ff2f",

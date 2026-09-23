@@ -111,19 +111,28 @@ linguistico non sceglie da un elenco di marche.</p>
 <table>
 <thead><tr><th>Famiglia</th><th>Servizi correnti</th><th>Comportamento senza indicazione esplicita</th></tr></thead>
 <tbody>
-<tr><td>file e cartelle</td><td>locale, Google Workspace</td><td>locale; Google viene scelto quando la richiesta nomina Drive, Docs, Sheets o Google Workspace</td></tr>
+<tr><td>file e cartelle</td><td>locale, Google Workspace, GitHub, secondo l'operazione</td><td>locale; nominare GitHub, Drive o Google Workspace seleziona quel servizio, se supportato</td></tr>
 <tr><td>eventi</td><td>Google Workspace, calendario locale</td><td>primo servizio disponibile nell'ordine configurato; quello locale resta disponibile per le operazioni che supporta</td></tr>
 <tr><td>contatti</td><td>Google Workspace</td><td>il servizio viene usato soltanto se sono disponibili le credenziali richieste</td></tr>
+<tr><td>segnalazioni, pull request, commenti, workflow</td><td>GitHub</td><td>viene scelto l'unico servizio supportato; credenziali e permessi vengono comunque verificati</td></tr>
 </tbody>
 </table>
 
 <p>La posta applica lo stesso principio attraverso il risolutore degli account:
 l'account indicato esplicitamente prevale, altrimenti vale l'account predefinito
-configurato. GitHub conserva executor qualificati dal fornitore; il motore li
-recluta semanticamente quando la richiesta nomina GitHub. Gli archivi SQL
+configurato. GitHub usa i normali nomi delle operazioni, con il servizio
+nell'argomento <code>client</code>: per esempio, <code>read_files</code> con
+<code>client="github"</code>. Nella domanda basta chiedere di leggere un file
+da un repository GitHub, senza indicare argomenti tecnici. Gli archivi SQL
 scelgono invece il servizio dal registro dello specifico archivio. Sono forme
 diverse di una regola unica: la configurazione e il contesto esplicito possiedono
 la scelta, non un'ipotesi libera del pianificatore.</p>
+
+<p>Per leggere un file in un repository, indica il repository e il percorso
+del file al suo interno, per esempio <code>docs/guida.md</code>. Non serve
+costruire un indirizzo web del file. Se non specifichi un ramo, viene usato
+quello predefinito del repository. Per un file locale, indica invece il suo
+percorso sul dispositivo.</p>
 
 <p>Se il servizio richiesto non &egrave; disponibile o non &egrave; ammesso dallo schema di
 quell'executor, Metnos restituisce un errore esplicito. Non sostituisce in

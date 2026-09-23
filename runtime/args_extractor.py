@@ -383,9 +383,16 @@ _PLACEHOLDER_OWNERS = {"owner", "org", "organization", "user", "username",
 
 
 def _extract_repo_slug(query: str) -> Optional[str]:
-    """Primo 'owner/name' plausibile nella query (no path/URL/placeholder)."""
+    """Extract a repository coordinate, excluding unquoted sentence dots."""
     for m in _REPO_SLUG_RE.finditer(query or ""):
         s = m.group(1)
+        # A quoted identifier is literal, including a legitimate final dot.
+        # In prose, trailing dots delimit the sentence, not the repository.
+        opening = query[m.start() - 1:m.start()] if m.start() else ""
+        closing = query[m.end():m.end() + 1]
+        quote_pairs = {"'": "'", '"': '"', "`": "`", "‘": "’", "“": "”", "«": "»"}
+        if not opening or quote_pairs.get(opening) != closing:
+            s = s.rstrip(".")
         if s.count("/") != 1:
             continue
         if s.split("/", 1)[0].strip().lower() in _PLACEHOLDER_OWNERS:

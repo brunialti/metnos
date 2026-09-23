@@ -33,6 +33,9 @@ def _load_declared(area: str, provider: str):
 
 def load(area: str, provider: str):
     """Return a provider, or None if absent; expose broken installed imports."""
+    from backend_resolver import provider_enabled
+    if not provider_enabled(provider):
+        return None
     key = (area, provider)
     if key in _LOADED:
         return _LOADED[key]

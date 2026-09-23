@@ -3498,20 +3498,13 @@ _READ_INTENT_VERBS = ("read", "find", "get", "list")
 
 def _route_filename_pattern_to_find(framework: Framework, query: str,
                                     catalog: Optional[list]) -> Framework:
-    """§4.3 deterministico — «no path INVENTATO: FIND prima di READ». Un
-    `read_<obj>[_provider]` con `paths=[X]` dove X è un NOME-FILE (basename) che
-    l'utente ha citato come PLURALE («i/tutti i file readme.md») non è UN path
-    noto: è un PATTERN da cercare. Il proposer copia X dal PATTERN del manifest
-    (es. read_files_github PATTERN mostra `paths=["README.md"]`, §2.5 magnetico)
-    → legge UN solo file. Qui si INSERISCE prima il FIND gemello
-    (`find_<obj>[_provider](pattern=X)`) e si ricuce il read alle sue entries
-    (`from_step`) → catena find→read→describe su TUTTI i file.
+    """Find plural filename matches before reading, preserving backend scope.
 
-    GENERALE (non per-github): vale per ogni coppia read/find dello stesso object
-    e provider (read_files↔find_files, read_files_github↔find_files_github). Il
-    find gemello si deriva dal nome (read→find, stesso suffisso). Tool-existence-
-    safe (solo se il find gemello è nel catalog) + idempotente (read già
-    `from_step` non rimatcha). No LLM. Bug live 22f32adb/582b4824 (26/6)."""
+    A single basename mentioned in the plural is a search pattern, not a known
+    path. Insert the admitted find sibling and reconnect downstream references.
+    Explicit paths, already linked reads and missing siblings remain unchanged.
+    Both canonical and still-supported legacy families use the same rule.
+    """
     try:
         names = catalog_names(catalog)
         q = (query or "").lower()
@@ -3542,9 +3535,9 @@ def _route_filename_pattern_to_find(framework: Framework, query: str,
             if (not name or "/" in name or name in ("*", "*.*")
                     or name.lower() not in q):
                 continue
-            # find gemello: pattern=X, propaga repo/base_path dal read.
+            # The inserted search must retain the read's provider and scope.
             find_args = {"pattern": name}
-            for k in ("repo", "base_path", "path_prefix", "ref"):
+            for k in ("client", "repo", "base_path", "path_prefix", "ref"):
                 if k in s.args:
                     find_args[k] = s.args[k]
             s.args = {k: v for k, v in s.args.items() if k != "paths"}

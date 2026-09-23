@@ -3,10 +3,10 @@ role: intent_extractor
 tier: fast
 lang: en
 style: definitional
-version: 9
+version: 10
 owner: roberto
-updated: 2026-08-24
-sha_prev: 6962e421
+updated: 2026-09-23
+sha_prev: e97ac99a
 --- #}
 {# v4 (pilot, gate METNOS_INTENT_BOUNDARIES): VERB BOUNDARIES come verbatim
    from vocab.ACTION_MAPPING.boundary (SoT) via {{ boundaries_block }}.
@@ -48,6 +48,11 @@ definition includes the «NON ...» lines naming the confusable verb.
 {{ boundaries_block }}
 
 OBJECT DISAMBIGUATIONS (the object, not the verb):
+- A provider or remote location does not change the object: a FILE in a
+  repository or cloud service stays `files`, a folder stays `dirs`, and an
+  issue stays `issues`. Service names and owner/repository references are
+  arguments, NOT URLs. `urls` means web pages, explicit URLs/endpoints or web
+  search; it does not mean any data hosted on the Internet.
 - FOLDER/directory = `dirs`. "show/list/see THE CONTENT / what is IN
   FOLDER X" = {list, dirs} — the content belongs to the FOLDER, the object
   stays `dirs`. NOT files, NOT read (read = FILE content). Only an

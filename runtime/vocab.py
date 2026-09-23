@@ -347,37 +347,21 @@ QUALIFIERS = (
     # Candidati a promozione graylist→whitelist
     # (find_signatures_promotion_candidates → qualifier "promotion").
     "promotion", "candidates",
-    # Famiglia 4 — Provider (ADR 0136): backend non-default come qualifier.
-    # `_metnos` (default) e' omesso; i provider espliciti sono token vocab.
-    # `github` (ADR 0141): issues/pulls/messages/tasks/files/dirs su GitHub REST.
-    # `google_workspace` (ADR 0123): gmail/calendar/drive. Erano gestiti solo a
-    # livello skill importer → `validate_name(read_events_google_workspace)`
-    # FALLIVA (bug latente scoperto 26/6: i vendorizzati firmati bypassano la
-    # validazione, ma un provider SINTETIZZATO sarebbe rifiutato). Ora membri
-    # espliciti della famiglia provider (vedi PROVIDER_SUFFIXES sotto).
-    "github",
+    # Legacy provider-qualified families remain valid until their replacements
+    # are admitted and their contracts retired. GitHub uses client=github
+    # instead (ADR 0227); Workspace/Photos migration is outside that retirement.
     "google_workspace",
     # `google_photos` (spec Google Photos): dominio `images` app-created
     # (upload/album/find/download). Provider a se', NON un backend di `files`.
     "google_photos",
 )
 
-# ── Famiglia PROVIDER (asse ortogonale §2.2) ─────────────────────────────
-# Sottoinsieme dei QUALIFIERS che identificano un BACKEND non-default (stesso
-# intento, provider diverso) — distinti dai qualifier-MODALITA' (ocr/csv/...)
-# che cambiano l'intento. È l'asse su cui vale la regola di FOCUSING: un nome
-# `verbo_oggetto_<provider>` ESTENDE (contiene) il generico `verbo_oggetto` →
-# col marker provider presente, il generico è escluso (provider_gate_names).
-# Un qualifier-modalita' NON ha questa relazione (read_files_ocr ≠ read_files).
-#
-# FONTE UNICA dell'IDENTITÀ provider: l'identità (quali provider esistono) è
-# vocabolario chiuso e vive QUI. `detection_lexicon_seed` DERIVA da qui le chiavi
-# di `provider.markers` e vi aggiunge solo i marker NL i18n (i valori). Zero
-# duplicazione: vocab è puro (0 import, radice); il seed importa vocab (direzione
-# sicura, mai il contrario). `_metnos` (default) è OMESSO dal nome → non qui.
-PROVIDER_SUFFIXES = frozenset({"github", "google_workspace", "google_photos"})
+# Legacy naming families, not the registry of provider identities. The seed
+# derives suffix-routing markers from this set; provider-as-argument dispatch
+# uses the backend registry and keeps its identity and invocation authority.
+PROVIDER_SUFFIXES = frozenset({"google_workspace", "google_photos"})
 
-# Product-facing names for the same canonical provider identities.  Provider
+# Product-facing names for canonical provider identities. Provider
 # registries and user interfaces consume these labels instead of re-inventing
 # capitalization from technical suffixes.
 PROVIDER_DISPLAY_NAMES = {
@@ -395,14 +379,10 @@ PROVIDER_DISPLAY_NAMES = {
 # dal remap routability dell'intent_extractor (carrier images/texts→files).
 FILE_CARRIER_OBJECTS = frozenset({"images", "texts"})
 
-# Mappa provider → SKILL che ne custodisce credenziali/CLI (identità chiusa,
-# stessa natura di PROVIDER_SUFFIXES: dato, SoT unica — guard
-# `test_provider_skills_cover_suffixes`). `google_photos` usa la STESSA skill
-# google-workspace (spec Photos D4: stesso client secret/token, scope aggiunti).
-# Consumata dalla capability canonica `provider:access` e da
-# `sandbox.invocation_skills`: lo stesso binding effettivo (1) rende
-# l'invocazione non eleggibile al device e (2) concede a bwrap la home skill RW
-# + rete. I segnali per nome/client restano solo nel ripiego legacy.
+# Provider identity -> credential/CLI owner. Both argument-based backends and
+# remaining suffix families use this authority map. The effective
+# provider:access capability controls placement and sandbox access; removing
+# a naming suffix must not remove the provider's credential identity.
 PROVIDER_SKILLS = {
     "github": "github",
     "google_workspace": "google-workspace",
@@ -441,18 +421,7 @@ QUALIFIER_OBJECT_COMPAT = {
     "reversibility": frozenset({"signatures"}),
     "promotion": frozenset({"signatures"}),
     "candidates": frozenset({"signatures", "proposals"}),
-    # Provider GitHub (ADR 0141): issues/pulls + messages (commenti/review) +
-    # tasks (workflow runs). +files/dirs (25/6/2026, supersede della riga
-    # «NON files/dirs» di ADR 0141): un repo È file e cartelle; gli executor
-    # repo-tree/contents (find_files_github=git/trees ricorsivo,
-    # read_files_github=contents, list_dirs_github=contents single-dir) li
-    # espongono. Coerente con l'asse provider §2.2 (backend non-default nel
-    # qualifier). Origine: turn 6ec02267 «quanti file su github nel repo».
-    "github": frozenset({"issues", "pulls", "comments", "workflows",
-                         "messages", "tasks", "files", "dirs"}),
-    # Provider Google Workspace (ADR 0123): gmail (messages), calendar (events,
-    # calendars), drive (files, dirs), contacts (contacts, persons). Asse provider §2.2,
-    # gemello di github. Object ammessi = i domini coperti dalla skill.
+    # Legacy Google Workspace family: only domains covered by its skill.
     "google_workspace": frozenset({"messages", "events", "calendars", "files", "dirs",
                                    "contacts", "persons"}),
     # Provider Google Photos (spec Google Photos): SOLO l'object `images`

@@ -3,10 +3,10 @@ role: intent_extractor
 tier: fast
 lang: en
 style: definitional
-version: 6
+version: 7
 owner: roberto
-updated: 2026-08-24
-sha_prev: 8e858375
+updated: 2026-09-23
+sha_prev: b9d3bee1
 --- #}
 {# scaffold (hybrid, gate METNOS_INTENT_SCAFFOLD): testa = v4 (confini SoT +
    regole oggetto + esempi mono). Sezione COMPOUND riscritta: segmentazione
@@ -28,6 +28,11 @@ definition includes the lines «NON ...» that name the confusing verb.
 {{ boundaries_block }}
 
 OBJECT DISAMBIGUATIONS (the object, not the verb):
+- A provider or remote location does not change the object: a FILE in a
+  repository or cloud service stays `files`, a folder stays `dirs`, and an
+  issue stays `issues`. Service names and owner/repository references are
+  arguments, NOT URLs. `urls` means web pages, explicit URLs/endpoints or web
+  search; it does not mean any data hosted on the Internet.
 - FOLDER/directory/folder = object `dirs` (filesystem container).
   "show/list/see THE CONTENT / what is in FOLDER X" = {list, dirs}:
   you enumerate the FOLDER (list_dirs gives files+subfolders). The object remains `dirs`

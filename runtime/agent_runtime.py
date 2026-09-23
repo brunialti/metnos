@@ -2959,26 +2959,16 @@ _ARTIFACT_SINK_CATEGORIES = {
 }
 
 
-def _artifact_was_requested(intent_verb: str, steps: list) -> bool:
-    """True se questo turno poteva davvero produrre un artefatto.
+def _mutation_was_requested(intent_verb: str, steps: list) -> bool:
+    """Scope mutation claims to the turn's intent or actual mutating plan.
 
-    La guardia sotto legge il final_message con un'espressione regolare, e un
-    testo che ELENCA contenuti altrui puo' contenere le stesse parole di un
-    testo che RACCONTA le proprie azioni: «decisions/» pieno di documenti con
-    «creazione» nel titolo bastava a far sostituire una risposta corretta con
-    «l'azione write/create artifacts non e' stata completata» (E2E 29/7,
-    `elenca i file in /opt/metnos/decisions`).
-
-    La premessa mancante era che il turno CAMBIASSE qualcosa. Due segnali
-    deterministici gia' presenti: l'intento estratto e' un verbo mutante,
-    oppure il piano ha chiamato almeno un tool mutante — e allora un artefatto
-    poteva nascere e mancare davvero (caso vivo: cartella creata, rapporto
-    promesso e mai scritto). Se il turno e' di sola lettura quelle parole sono
-    contenuto altrui, non una promessa (§7.9, §2.8).
+    Retrieved file, message or issue content may describe actions without
+    claiming that this turn performed them. Both artifact and mutation-claim
+    checks use this structural prerequisite, independent of provider or text.
     """
     try:
         from vocab import DESTRUCTIVE_VERBS
-    except Exception:  # noqa: BLE001 — vocabolario assente: nessun gate
+    except Exception:  # noqa: BLE001 — retain checks without the vocabulary
         return True
     if (intent_verb or "").strip() in DESTRUCTIVE_VERBS:
         return True
@@ -5441,11 +5431,11 @@ class TurnLog:
             # (caso live: maintenance github schedulata su 0 issue aperte,
             # store a 0 righe). Notice additiva deterministica §7.9, simmetrica
             # a _detect_false_not_found; preserva il messaggio LLM per audit.
+            _mutation_requested = _mutation_was_requested(
+                getattr(self, "intent_verb", "") or "", self.steps)
             _missing_artifacts = (
                 _detect_unbacked_artifact_claim(self.final_message, self.steps)
-                if _artifact_was_requested(
-                    getattr(self, "intent_verb", "") or "", self.steps)
-                else set())
+                if _mutation_requested else set())
             if _missing_artifacts:
                 self.false_success_detected = True
                 self.final_message = msg(
@@ -5465,7 +5455,8 @@ class TurnLog:
             # 0 mutazioni reali — anche con items>0 (es. ha LETTO mail ma NON
             # creato il foglio): il synth mente sull'azione. Sostituisci con la
             # verità (§2.8, bug live 21/6 fatture Anthropic).
-            elif _detect_false_mutation(self.final_message, self.effect_counts):
+            elif (_mutation_requested
+                  and _detect_false_mutation(self.final_message, self.effect_counts)):
                 self.false_success_detected = True
                 self.final_message = msg("MSG_FALSE_MUTATION_NOTICE")
             # Final DEGENERE §2.8 (23/6, banco #1): un final_message nudo-conteggio

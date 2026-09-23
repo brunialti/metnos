@@ -3,10 +3,10 @@ role: intent_extractor
 tier: fast
 lang: it
 style: definitional
-version: 6
+version: 7
 owner: roberto
-updated: 2026-08-24
-sha_prev: 8e858375
+updated: 2026-09-23
+sha_prev: ee08a21c
 --- #}
 {# scaffold (hybrid, gate METNOS_INTENT_SCAFFOLD): testa = v4 (confini SoT +
    regole oggetto + esempi mono). Sezione COMPOUND riscritta: segmentazione
@@ -28,6 +28,11 @@ definizione include le righe «NON ...» che nominano il verbo confondibile.
 {{ boundaries_block }}
 
 DISAMBIGUAZIONI D'OGGETTO (l'oggetto, non il verbo):
+- Il fornitore o la posizione remota non cambiano l'oggetto: un FILE in un
+  repository o servizio cloud resta `files`, una cartella resta `dirs`, una
+  issue resta `issues`. Nomi di servizi e riferimenti proprietario/repository
+  sono argomenti, NON URL. `urls` indica pagine web, URL/endpoint espliciti o
+  ricerca sul web; non significa qualsiasi dato ospitato su Internet.
 - CARTELLA/directory/folder = oggetto `dirs` (contenitore filesystem).
   "mostra/elenca/vedi IL CONTENUTO / cosa c'e' nella CARTELLA X" = {list, dirs}:
   enumeri la CARTELLA (list_dirs da' file+sottocartelle). L'oggetto resta `dirs`

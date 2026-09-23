@@ -111,18 +111,26 @@ from a list of brands.</p>
 <table>
 <thead><tr><th>Family</th><th>Current backends</th><th>Behaviour without an explicit provider</th></tr></thead>
 <tbody>
-<tr><td>files and directories</td><td>local, Google Workspace</td><td>local; Google is selected when the request names Drive, Docs, Sheets, or Google Workspace</td></tr>
+<tr><td>files and directories</td><td>local, Google Workspace, GitHub, according to the operation</td><td>local; naming GitHub, Drive or Google Workspace selects that service, when supported</td></tr>
 <tr><td>events</td><td>Google Workspace, local calendar</td><td>the first available backend in configured order; local remains available for the operations it supports</td></tr>
 <tr><td>contacts</td><td>Google Workspace</td><td>used only when the required credentials are available</td></tr>
+<tr><td>issues, pull requests, comments, workflows</td><td>GitHub</td><td>the only supported backend is selected; credentials and permissions are still checked</td></tr>
 </tbody>
 </table>
 
 <p>Mail applies the same principle through the account resolver: an explicitly
 named account wins; otherwise the configured default account is used. GitHub
-keeps provider-qualified executors, and the engine recruits them semantically
-when the request names GitHub. SQL stores select their backend from the
+uses ordinary operation names, with the backend in the <code>client</code>
+argument: for example, <code>read_files</code> with <code>client="github"</code>.
+You can simply ask to read a file from a GitHub repository; no technical
+argument is needed in the question. SQL stores select their backend from the
 individual store's registry. These are different forms of one rule:
 configuration and explicit context own the choice, not a free planner guess.</p>
+
+<p>To read a repository file, name the repository and the file's path inside
+it, for example <code>docs/guide.md</code>. You do not need to construct a web
+address for the file. If you do not specify a branch, the repository's default
+branch is used. For a local file, give its path on the device instead.</p>
 
 <p>If the requested backend is unavailable or not admitted by that executor's
 schema, Metnos returns an explicit error. It does not silently replace the

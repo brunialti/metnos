@@ -20,8 +20,8 @@ affinity    = ["read", "leggi", "lettura", "apri", "file", "documento", "testo",
 # qui dichiarato. Mismatch → executor rifiutato.
 
 [description]
-it = "SCOPO: legge PDF/DOCX/XLSX/CSV misti e calcola firme hash SHA-256. PATTERN: read_files(from_step=N, parse=\"auto\", deduplicate_content=true). NON: singolo foglio -> read_files_spreadsheet/read_files_xlsx; OCR -> read_files_ocr. OUT: entries con testo, leggibilità, sha256 e origine; duplicates."
-en = "SCOPO: reads mixed PDF/DOCX/XLSX/CSV and computes SHA-256 hash signatures. PATTERN: read_files(from_step=N, parse=\"auto\", deduplicate_content=true). NON: one sheet -> read_files_spreadsheet/read_files_xlsx; OCR -> read_files_ocr. OUT: entries with text, readability, sha256, source; duplicates."
+it = "SCOPO: legge file locali o remoti, anche PDF/DOCX/XLSX/CSV. PATTERN: read_files(path=P, repo=R), P relativo nel repository; oppure from_step=N. NON: fogli -> read_files_spreadsheet; OCR -> read_files_ocr. OUT: entries con testo, leggibilità, sha256 e origine; duplicates."
+en = "SCOPO: reads local or remote files, including PDF/DOCX/XLSX/CSV. PATTERN: read_files(path=P, repo=R), P relative in repositories; or from_step=N. NON: sheets -> read_files_spreadsheet; OCR -> read_files_ocr. OUT: entries with text, readability, sha256, source; duplicates."
 
 [code]
 files  = ["read_files.py"]
@@ -43,15 +43,15 @@ requires_one_of = [["path", "paths", "entries", "name"]]
 type        = "string"
 
 [args.properties.path.description]
-it = "Forma scalare (UN file): path assoluto del file da leggere. Per piu' file usa `paths` o `from_step` (entries), NON ripetere path."
-en = "Scalar form (ONE file): absolute path of the file to read. For many files use `paths` or `from_step` (entries), do NOT repeat path."
+it = "UN file: percorso assoluto per il filesystem locale; percorso relativo alla radice del repository quando repo e' specificato; identificativo del file per Drive. Usa il riferimento fornito, senza inventare URL. Per piu' file usa paths o from_step (entries)."
+en = "ONE file: absolute path for the local filesystem; path relative to the repository root when repo is supplied; file identifier for Drive. Use the supplied reference without inventing URLs. For many files use paths or from_step (entries)."
 
 [args.properties.paths]
 type        = "array"
 
 [args.properties.paths.description]
-it = "Lista di path assoluti esatti, senza glob `*`/`?`; anche uno solo. `from_step` puo' proiettare entries[*].path."
-en = "List of exact absolute paths, without `*`/`?` globs; one is valid. `from_step` may project entries[*].path."
+it = "Lista di riferimenti esatti nel formato di path del backend, senza glob * o ?; anche uno solo. from_step puo' proiettare entries[*].path."
+en = "List of exact references in the backend's path format, without * or ? globs; one is valid. from_step may project entries[*].path."
 
 [args.properties.entries]
 type        = "array"

@@ -1268,18 +1268,6 @@ def _authenticate_payloads(
     )
     if not isinstance(declared, str) or not _DIGEST_RE.fullmatch(declared):
         raise ContractStoreError("declared_code_digest_invalid")
-    # Publication is an admission boundary, not a compatibility reader.  The
-    # declaration must therefore be checked unconditionally: making the
-    # validator conditional on the field itself would let an update bypass the
-    # standard simply by deleting that field.
-    from executor_standard import validate_for_lifecycle
-
-    findings = validate_for_lifecycle(parsed, require_declaration=True)
-    if findings:
-        detail = "; ".join(
-            f"{finding.code}:{finding.message}" for finding in findings[:8]
-        )
-        raise ContractStoreError("executor_standard_invalid", detail)
     try:
         language_state = decode_language_state(state_bytes, manifest=parsed)
     except LanguageStateError as exc:
@@ -1299,6 +1287,19 @@ def _authenticate_payloads(
     )
 
 
+def _validate_current_standard(parsed: Mapping[str, Any]) -> None:
+    """Apply today's admission rules to served or candidate code, not history."""
+    from executor_standard import validate_for_lifecycle
+
+    # Removing the declaration must never bypass the admission standard.
+    findings = validate_for_lifecycle(parsed, require_declaration=True)
+    if findings:
+        detail = "; ".join(
+            f"{finding.code}:{finding.message}" for finding in findings[:8]
+        )
+        raise ContractStoreError("executor_standard_invalid", detail)
+
+
 def _verify_payloads(
     ref: ManifestRef,
     payloads: Mapping[str, bytes],
@@ -1314,6 +1315,7 @@ def _verify_payloads(
         identifier=identifier,
         require_inventory_hash=require_inventory_hash,
     )
+    _validate_current_standard(authenticated.parsed)
     actual = _code_digest(ref, authenticated.parsed)
     if authenticated.declared_code_digest != actual:
         raise ContractStoreError(
@@ -1655,8 +1657,10 @@ def _load_generation_for_commit(
     A technical publisher necessarily observes the old signed generation
     after authoring code has changed.  Its CAS base must still have a valid
     signature, structure, language state and generation digest, while the new
-    candidate alone must match the current code.  Live readers and localization
-    publication continue to use :func:`current_manifest`, which verifies code.
+    candidate alone must match the current code and admission standard. Old
+    signed evidence does not acquire new vocabulary or lifecycle obligations.
+    Live readers and localization publication use :func:`current_manifest`,
+    which verifies both current policy and code.
     """
     _validate_manifest_ref(ref)
     physical = generation_directory_name(identifier)
@@ -4974,6 +4978,7 @@ def _authenticate_execution_binding_with_receipt(
                 parsed = tomllib.loads(payloads["manifest.toml"].decode("utf-8"))
             except (KeyError, UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
                 raise ContractStoreError("execution_binding_invalid", "manifest") from exc
+            _validate_current_standard(parsed)
             executor_name = parsed.get("name")
             if not isinstance(executor_name, str) or not executor_name.strip():
                 raise ContractStoreError("execution_binding_invalid", "executor_name")
