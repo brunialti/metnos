@@ -688,3 +688,37 @@ verdi, firma/generazione accettate dal gate corrente e ricevuta del percorso
 reale; solo dopo una procedura di pubblicazione approvata può riportare lo
 stato in esercizio. Un fallimento deve conservare il candidato non pubblicato
 e indicare l'invariante rifiutata.
+
+**Public documentation deployment, Codex organize_files, 23 September 2026**
+
+- **From / to**: Codex documentation task → RM-0008 release owner; unrelated
+  existing website link/layout findings → public documentation maintainer.
+- **Status**: bilingual static documentation deployed; executor availability
+  remains activation in progress. This appendix does not close R-007 or R-003.
+- **Commit**: `4ef2d8bf`, branch `codex/organize-files-public-docs`, based on the
+  last deployed documentation source `581fd197`; eight documentation files.
+- **Published URLs**: <https://metnos.com/it/organize_files> and
+  <https://metnos.com/en/organize_files>.
+- **Deploy receipt**: Pages `e96949ed-25d6-4399-a46c-9374bc680a68`, source
+  `4ef2d8b`, <https://e96949ed.mykleos.pages.dev>. Static website only: no
+  executor, runtime, seed, manifest, signature, service or main-checkout edit.
+- **Evidence**: `internal/reports/organize_files_public_docs_20260923/README.md`
+  and adjacent JSON/check drivers. Canonical inventory/build, bilingual PDFs,
+  1,986 links, 32 local browser cases, four live mobile/desktop cases and all
+  123 served file bodies checked. No new broken links or guide overflow; 40
+  pre-existing site link findings and a pre-existing 320px Quick Tour overflow
+  are documented. Tutor ingestion includes the pending-status lead and excludes
+  the operational instructions until availability is verified.
+- **Observed acceptance correction**: the main board now records integration
+  `59d02eaa` and pre-publication acceptance. A fresh isolated zero-effects preview
+  test and five explicit-consent-marker checks pass; the old consent defect is
+  resolved. These are our focused checks, not a rerun of RM-0008's E2E suite.
+- **Remaining discrepancy / closure proof**: the current confirmation fixture
+  displays 50 of 151 actions. Applying all frozen actions is not proof that the
+  user can consult the entire plan first; RM-0008 must verify that public path.
+  After explicit successful publication under R-003/R-007, the release owner
+  updates IT/EN availability labels, Quick Tour/PDF and Tutor inclusion together,
+  recording the resulting docs commit and URL here. Roberto requested that this
+  follow-up not require reopening the documentation task. Until that evidence
+  exists, the site must not claim a completed activation. Integrate the docs
+  commit by content without replacing the newer public baseline with stale docs.
