@@ -5907,31 +5907,62 @@ def publish_technical_update(
     )
 
 
+def _birth_predecessor_snapshot_locked(
+    ref: ManifestRef, revision_id: str | None,
+    payloads: Mapping[str, bytes] | None, *, contract_dir: Path,
+    receipt_verifier: BirthReceiptVerifier | None,
+    context_selection: object | None,
+):
+    """Bind lifecycle evidence to the same locked immutable predecessor."""
+    from executor_birth_predecessor import predecessor_snapshot
+
+    encoded = None
+    lifecycle = None
+    if revision_id is not None and receipt_verifier is not None:
+        path = _birth_receipt_path_for_context(contract_dir, revision_id, context_selection)
+        if path.exists() or _is_link_like(path):
+            encoded = _read_regular_file(path, code="birth_receipt_invalid")
+            receipt = receipt_verifier(encoded)
+            if (receipt.contract_id != ref.contract_id.value
+                    or receipt.generation_id != revision_id
+                    or (context_selection is not None and receipt.admission_context_id
+                        != context_selection.admission_context_id)):
+                raise ContractStoreError("birth_receipt_binding_invalid", "predecessor")
+            lifecycle = receipt.approved_lifecycle.value
+            if _read_regular_file(path, code="birth_receipt_invalid") != encoded:
+                raise ContractStoreError("birth_receipt_reread_mismatch")
+    return predecessor_snapshot(
+        revision_id, "absent" if revision_id is None else "generation", payloads,
+        approved_lifecycle=lifecycle, admission_receipt=encoded,
+    )
+
+
 def authenticate_birth_predecessor(
     ref: ManifestRef, *, trusted_publics: Iterable[TrustedPublic],
     store_root: Path | str | None = None,
     lock_timeout: float = DEFAULT_LOCK_TIMEOUT,
+    receipt_verifier: BirthReceiptVerifier | None = None,
+    context_selection: object | None = None,
 ) -> tuple[object, Mapping[str, bytes] | None]:
     """Observe the verified immutable base and return a detached snapshot.
 
     Publication reconstructs this snapshot under its writer lock and compares
     its canonical identifier, closing the observation-to-commit interval.
     """
-    from executor_birth_predecessor import predecessor_snapshot
-
     root, _productive = _publication_root(store_root)
     _validate_manifest_ref(ref)
     trusted = _trusted_public_tuple(trusted_publics)
     with catalog_admission_lock(store_root=root, timeout=lock_timeout):
         with _writer_lock(ref.contract_id, store_root=root, timeout=lock_timeout):
-            _contract_dir, _generations, revision_id, payloads = _publication_base_locked(
+            contract_dir, _generations, revision_id, payloads = _publication_base_locked(
                 ref, trusted_publics=trusted, store_root=root, technical_base=True,
             )
             detached = None if payloads is None else {
                 name: bytes(value) for name, value in payloads.items()
             }
-            return predecessor_snapshot(
-                revision_id, "absent" if revision_id is None else "generation", detached,
+            return _birth_predecessor_snapshot_locked(
+                ref, revision_id, detached, contract_dir=contract_dir,
+                receipt_verifier=receipt_verifier, context_selection=context_selection,
             ), detached
 
 
@@ -5996,13 +6027,16 @@ def commit_birth_snapshot(
             # the authenticated predecessor from the selected immutable
             # revision and re-confirm every pin before accepting its receipt.
             from executor_birth_predecessor import (
-                derive_revision_facts, predecessor_snapshot,
+                derive_revision_facts,
                 revision_facts_id as canonical_revision_facts_id,
             )
-            pinned_predecessor = predecessor_snapshot(
-                previous,
-                "absent" if previous is None else "generation",
-                current_payloads,
+            pinned_predecessor = _birth_predecessor_snapshot_locked(
+                ref, previous, current_payloads, contract_dir=contract_dir,
+                receipt_verifier=(birth_authorization.verifier if (
+                    birth_authorization.predecessor_snapshot_id is not None
+                    or birth_authorization.revision_facts_id is not None
+                ) else None),
+                context_selection=birth_authorization.context_selection,
             )
             if (
                 birth_authorization.predecessor_snapshot_id is not None

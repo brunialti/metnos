@@ -25,7 +25,7 @@ from executor_birth_primitive_table_v1 import (
 from executor_birth_runner import (
     FixtureOp, FixtureOpKind, LinuxSandboxRegistry, RunnerStatus,
     WindowsSandboxRegistry,
-    run_birth_phase,
+    begin_birth_deadline, run_birth_phase,
 )
 
 
@@ -577,6 +577,7 @@ class ObservedPropertyRunner:
         self._observed = observed
         self._windows_registry = windows_registry
         self._linux_registry = linux_registry
+        self._deadline = None
 
     def _entrypoint(self) -> str:
         try:
@@ -660,6 +661,8 @@ class ObservedPropertyRunner:
     def run(self, case: PropertyCase, *, fixture_id: str, isolation: str) -> PropertyRunResult:
         # A fixed core harness supplies stdin from the immutable request file;
         # neither command nor candidate bytes come from the Birth caller.
+        if self._deadline is None:
+            self._deadline = begin_birth_deadline()
         entrypoint = self._entrypoint()
         if sys.platform == "win32":
             command = (_HARNESS_PATH, entrypoint)
@@ -680,13 +683,24 @@ class ObservedPropertyRunner:
             candidate_files=candidate_files,
             windows_registry=self._windows_registry,
             linux_registry=self._linux_registry,
+            deadline=self._deadline,
         )
         attestation_hash = _attestation_hash(
             result, candidate_id=self._observed.identities.candidate_id,
             case_id=case.case_id, fixture_id=fixture_id, isolation=isolation,
         )
-        if result.status is not RunnerStatus.PASSED:
+        if (result.status is not RunnerStatus.PASSED or result.error_code is not None
+                or result.returncode != 0):
             raise RuntimeError(result.error_code or "property_runner_unavailable")
+        attestation = result.attestation
+        isolated = (attestation.sandboxed and attestation.network_unshared
+                    and attestation.tree_empty and attestation.termination_attested)
+        if sys.platform.startswith("linux"):
+            isolated = (isolated and attestation.pid_unshared and attestation.user_unshared
+                        and attestation.ipc_unshared and attestation.uts_unshared
+                        and attestation.cgroup_v2)
+        if not isolated:
+            raise RuntimeError("property_runner_unavailable")
         try:
             envelope = json.loads(result.stdout)
         except (TypeError, ValueError) as exc:
@@ -762,6 +776,13 @@ def _single(case_id: str):
     def generate(_candidate: PropertyCandidateProfile) -> tuple[PropertyCase, ...]:
         return (PropertyCase(case_id, {}, {}),)
     return generate
+
+
+def _declared_output_cases(candidate: PropertyCandidateProfile) -> tuple[PropertyCase, ...]:
+    if not candidate.positive_inputs:
+        return _single("output.actual")(candidate)
+    return tuple(PropertyCase(f"output.positive.{index}", value, {"ok": True})
+                 for index, value in enumerate(candidate.positive_inputs))
 
 
 def _truncation_cases(_candidate: PropertyCandidateProfile) -> tuple[PropertyCase, ...]:
@@ -851,7 +872,7 @@ def _delete_cases(candidate: PropertyCandidateProfile) -> tuple[PropertyCase, ..
 
 
 _GENERATORS = {
-    "declared_output_cases": _single("output.actual"),
+    "declared_output_cases": _declared_output_cases,
     "cardinality_cases": _collection_cases,
     "limit_boundary_cases": _limit_cases,
     "truncation_cases": _truncation_cases,
@@ -861,7 +882,7 @@ _GENERATORS = {
 }
 
 
-def _output_schema(output, candidate, _expect, _observations):
+def _output_schema(output, candidate, expect, _observations):
     def matches(value: object, type_name: str) -> bool:
         return {
             "array": lambda: isinstance(value, list),
@@ -875,7 +896,7 @@ def _output_schema(output, candidate, _expect, _observations):
             "string": lambda: isinstance(value, str),
         }[type_name]()
 
-    return bool(candidate.output_schema) and all(
+    return (expect.get("ok") is not True or output.get("ok") is True) and bool(candidate.output_schema) and all(
         key in output and matches(output[key], type_name)
         for key, type_name in candidate.output_schema
     )

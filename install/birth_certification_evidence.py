@@ -83,6 +83,17 @@ def _json(raw: bytes):
 
 
 @dataclass(frozen=True)
+class ProfileBindingsV1:
+    """The identities frozen in the authenticated profile event."""
+
+    installation_id: str
+    head_id: str
+    source_id: str
+    catalog_id: str
+    harness_id: str
+
+
+@dataclass(frozen=True)
 class EvidenceFrontierV1:
     """An observed ledger frontier, explicitly not a signed qualification."""
 
@@ -93,6 +104,7 @@ class EvidenceFrontierV1:
     profile: str | None
     consecutive_successes: tuple[str, ...]
     pending_cycle: str | None
+    profile_bindings: ProfileBindingsV1 | None
 
 
 @dataclass
@@ -102,6 +114,7 @@ class _State:
     scope: str | None = None
     findings: dict[str, str | None] = field(default_factory=dict)
     profile: str | None = None
+    profile_bindings: ProfileBindingsV1 | None = None
     cases: dict[str, dict] = field(default_factory=dict)
     pending: str | None = None
     successes: tuple[str, ...] = ()
@@ -141,7 +154,8 @@ class _Evidence:
         state = self._state
         return EvidenceFrontierV1(state.head, state.count, state.scope,
                                   tuple(sorted(key for key, value in state.findings.items() if value is not None)),
-                                  state.profile, state.successes, state.pending)
+                                  state.profile, state.successes, state.pending,
+                                  state.profile_bindings)
 
     def _artifact(self, digest: str) -> bytes:
         _digest(digest)
@@ -223,6 +237,9 @@ class _Evidence:
             if manifest.get("case_matrix_sha256") != hashlib.sha256(matrix).hexdigest():
                 raise EvidenceError("profile matrix binding")
             state.profile, state.cases, state.successes = digest, selected, ()
+            state.profile_bindings = ProfileBindingsV1(**{
+                name: payload[name] for name in _BASE
+            })
         elif kind == "cycle_started":
             if state.profile is None or payload["profile"] != state.profile:
                 raise EvidenceError("cycle profile")
@@ -411,4 +428,5 @@ def administrative_evidence_v1():
         yield evidence
 
 
-__all__ = ["EvidenceError", "EvidenceFrontierV1", "administrative_evidence_v1"]
+__all__ = ["EvidenceError", "EvidenceFrontierV1", "ProfileBindingsV1",
+           "administrative_evidence_v1"]

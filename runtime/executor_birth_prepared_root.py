@@ -273,11 +273,14 @@ def _load_historical_transition_verifiers_v1() -> HistoricalTransitionVerifiersV
             )
 
 
-def _load_sealed_authorities_from_set_v1(session, prepared, open_sources):
+def _load_sealed_authorities_from_set_v1(
+    session, prepared, open_sources, *, previous_distribution: bool = False,
+):
     """Load one already selected set while its root barrier is held."""
     from executor_birth_context import _context_epoch
     from executor_birth_context_v1 import (
         ContextMaterialError, prepare_context_material_v1,
+        rebuild_previous_context_material_v1,
     )
     from executor_birth_keystore import (
         BirthKeyStoreError, _load_birth_keystore_in_session,
@@ -298,7 +301,9 @@ def _load_sealed_authorities_from_set_v1(session, prepared, open_sources):
     registry = authority_registry_v1(session, location)
     sources = open_sources()
     try:
-        rebuilt = prepare_context_material_v1(sources, registry)
+        rebuild = (rebuild_previous_context_material_v1 if previous_distribution
+                   else prepare_context_material_v1)
+        rebuilt = rebuild(sources, registry)
     except ContextMaterialError as exc:
         raise PreparedRootError(exc.code, exc) from None
     finally:
@@ -524,7 +529,9 @@ def _load_staged_reattestation_context_v1(
     return StagedReattestationContextV1(selection, authorities)
 
 
-def _load_context_runtime_from_chain_v1(chain) -> RequiredContextRuntimeV1:
+def _load_context_runtime_from_chain_v1(
+    chain, *, previous_distribution: bool = False,
+) -> RequiredContextRuntimeV1:
     """Load the exact set and distribution already selected by one chain."""
     from executor_birth_context_selection import (
         _context_selection_from_required_chain_v1,
@@ -564,6 +571,7 @@ def _load_context_runtime_from_chain_v1(chain) -> RequiredContextRuntimeV1:
                 lambda: _open_distribution_sources_for_verified_v1(
                     distribution,
                 ),
+                previous_distribution=previous_distribution,
             )
             selection = _context_selection_from_required_chain_v1(
                 transition, prepared, distribution,
@@ -653,7 +661,7 @@ def load_previous_context_runtime_v1(current_record) -> PreviousContextRuntimeV1
 
     before = inspect_transition_ownership_window_v1(current_record)
     previous = _previous_chain_for_transition_v1(before, current_record)
-    loaded = _load_context_runtime_from_chain_v1(previous)
+    loaded = _load_context_runtime_from_chain_v1(previous, previous_distribution=True)
     after = inspect_transition_ownership_window_v1(current_record)
     repeated = _previous_chain_for_transition_v1(after, current_record)
     if after != before or repeated != previous:

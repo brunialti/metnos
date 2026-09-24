@@ -1,8 +1,7 @@
-"""Inactive, fail-closed RM-0008 F5 preexercise eligibility policy.
+"""Closed preexercise policy, used by Birth before isolated property checks.
 
-The policy is intentionally a pure decision function.  It is not connected to
-the loader, router, publisher, or durable workloads and therefore cannot make
-preexercise productive before the real-admission threshold is certified.
+Eligibility never authorizes ordinary selection or durable invocation. The
+candidate is exercised only by the core-owned, bounded hermetic Birth runner.
 """
 from __future__ import annotations
 
@@ -10,6 +9,8 @@ from dataclasses import dataclass
 from enum import Enum
 from types import MappingProxyType
 from typing import Mapping
+
+from policy import CAPABILITY_REGISTRY
 
 
 class PreexerciseError(ValueError):
@@ -96,6 +97,35 @@ class PreexerciseDecision:
     policy_version: str
     denial: PreexerciseDenial | None
     detail: str | None
+
+
+PREEXERCISE_POLICY_V1 = PreexercisePolicy(
+    "v1", {name: spec.preexercise_eligible for name, spec in CAPABILITY_REGISTRY.items()},
+)
+
+
+def observed_preexercise_facts(manifest: Mapping[str, object], *,
+                               synthesized_origin: bool) -> PreexerciseFacts:
+    """Read capability names only from Birth's authenticated frozen manifest.
+
+    The vocabulary is core-owned and pinned in the admission context. Candidate
+    flags cannot classify a capability as safe. The negative facts describe the
+    hermetic execution envelope, whose attestation must pass independently.
+    """
+    declarations = manifest.get("capabilities")
+    if not isinstance(declarations, (list, tuple)) or not declarations:
+        raise PreexerciseError("preexercise_capabilities_invalid")
+    names = []
+    for declaration in declarations:
+        if not isinstance(declaration, Mapping) or not isinstance(declaration.get("name"), str):
+            raise PreexerciseError("preexercise_capabilities_invalid")
+        names.append(declaration["name"])
+    # Unknown names are denied by the closed policy, not silently discarded.
+    read_only = not any(
+        CAPABILITY_REGISTRY[name].grants_mutation
+        for name in names if name in CAPABILITY_REGISTRY
+    )
+    return PreexerciseFacts(synthesized_origin, read_only, tuple(names))
 
 
 def decide_preexercise(

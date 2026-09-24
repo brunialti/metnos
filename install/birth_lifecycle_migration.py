@@ -86,8 +86,6 @@ def _service_environment(pid: int, account: PosixAccountSnapshotV1) -> dict[str,
     process = _PROC_ROOT_V1 / str(pid)
     if process.stat().st_uid != account.record.uid:
         raise LifecycleCutoverError("cutover_service_unavailable", "owner mismatch")
-    allowed = {"HOME", "METNOS_USER_DATA", "METNOS_USER_STATE",
-               "METNOS_EXECUTOR_STATS_DB", "METNOS_PROMOTER_DB"}
     with open(process / "environ", "rb") as stream:
         raw = stream.read(65537)
     if len(raw) > 65536:
@@ -95,7 +93,7 @@ def _service_environment(pid: int, account: PosixAccountSnapshotV1) -> dict[str,
     selected = {}
     for entry in raw.split(b"\0"):
         key, separator, value = entry.partition(b"=")
-        if separator and key.decode("utf-8", "replace") in allowed:
+        if separator and key.decode("utf-8", "replace") in _CARRIED_ENVIRONMENT_V1:
             selected[key.decode()] = value.decode("utf-8", "replace")
     return selected
 
@@ -138,48 +136,38 @@ def service_epoch_db_v1(environment: dict[str, str]) -> Path:
     return state / "birth" / "executor_epochs.sqlite"
 
 
-def _drop_to_service(account: PosixAccountSnapshotV1) -> None:
-    """Become the service account permanently, and prove it."""
-    account.assert_unchanged(resolve_posix_account_snapshot_v1(SERVICE_ACCOUNT_NAME_V1))
-    os.setgroups(list(account.supplementary_gids))
-    os.setgid(account.record.gid)
-    os.setuid(account.record.uid)
-    if os.geteuid() != account.record.uid or os.getuid() != account.record.uid:
-        raise LifecycleCutoverError("cutover_privilege_retained")
-    for key, value in metnos_xdg_layout_v1(account.record).environment().items():
-        os.environ.setdefault(key, value)
+def _service_worker() -> int:
+    """Run only in the fresh, already unprivileged administrative child."""
+    try:
+        raw = sys.stdin.buffer.read(_MAX_REPORT_BYTES + 1)
+        if len(raw) > _MAX_REPORT_BYTES:
+            raise LifecycleCutoverError("cutover_report_oversized")
+        request = json.loads(raw)
+        if request["operation"] == "qualify":
+            from install.birth_certification_issuer import _derive_as_service_v1
 
-
-def _plan_as_service(report_fd: int) -> int:
-    """Observe the running installation: which stores, and what they mean."""
-    account = resolve_posix_account_snapshot_v1(SERVICE_ACCOUNT_NAME_V1)
-    pid = _service_main_pid()
-    environment = _service_environment(pid, account)
-    sources = selected_sources_v1(environment, account)
-    if _service_main_pid() != pid:
-        raise LifecycleCutoverError("cutover_service_unavailable", "service changed")
-    _drop_to_service(account)
-    for key, value in environment.items():
-        os.environ[key] = value
-    _write_report(report_fd, _observe_installation(sources))
-    return 0
-
-
-def _apply_as_service(report_fd: int, handoff: dict) -> int:
-    """Migrate with the stack already quiescent, against the planned stores."""
-    account = resolve_posix_account_snapshot_v1(SERVICE_ACCOUNT_NAME_V1)
-    _drop_to_service(account)
-    for key, value in handoff["environment"].items():
-        os.environ[key] = value
-    sources = tuple((item["kind"], Path(item["path"]), item["legacy_table"])
-                    for item in handoff["sources"])
-    observed = _observe_installation(sources)
-    if observed["migration_id"] != handoff["migration_id"]:
-        # The stores or the catalog moved between planning and applying. The
-        # plan is the reviewed decision; a different one is not a retry.
-        raise LifecycleCutoverError("cutover_plan_stale", handoff["migration_id"])
-    _write_report(report_fd, _migrate_as_service(sources, handoff))
-    return 0
+            report = _derive_as_service_v1(request)
+        elif request["operation"] in ("plan", "apply"):
+            sources = tuple((item["kind"], Path(item["path"]), item["legacy_table"])
+                            for item in request["sources"])
+            observed = _observe_installation(sources)
+            if request["operation"] == "plan":
+                report = observed
+            else:
+                handoff = request["handoff"]
+                if observed["migration_id"] != handoff["migration_id"]:
+                    raise LifecycleCutoverError("cutover_plan_stale", handoff["migration_id"])
+                report = _migrate_as_service(sources, handoff)
+        else:
+            raise LifecycleCutoverError("cutover_operation_invalid")
+        _write_report(sys.stdout.fileno(), report)
+        return 0
+    except Exception as exc:
+        _write_report(sys.stdout.fileno(), {
+            "error": getattr(exc, "code", type(exc).__name__),
+            "detail": str(getattr(exc, "detail", "") or ""),
+        })
+        return 1
 
 
 def _write_report(report_fd: int, report: dict) -> None:
@@ -363,43 +351,71 @@ def _installation_id() -> str:
     return _installation_id_v1(load_ownership_public_registries_v1())
 
 
-def _in_service_child(work) -> dict:
-    """Run one half in a child that can drop privilege for good.
+def _in_service_child(
+    operation: str, handoff: dict | None = None, *, qualification: dict | None = None,
+) -> dict:
+    """Load runtime configuration only after adopting the service environment.
 
-    Dropping is irreversible, so it cannot happen in the process that must
-    still hold the maintenance barrier and write a root-owned marker. The child
-    reports through a pipe; it returns no object and shares no handle.
+    A fork alone inherits imported configuration, including root's paths. A
+    fresh interpreter starts under the observed account and receives only the
+    service's selected path overrides. The root parent retains the maintenance
+    barrier and remains the only process allowed to install the marker or sign
+    a certificate. Qualification shares this boundary to read the same stores.
     """
-    read_fd, write_fd = os.pipe()
-    child = os.fork()
-    if child == 0:  # pragma: no cover - the real child, exercised natively
-        os.close(read_fd)
-        try:
-            os._exit(work(write_fd))
-        except BaseException as exc:
-            os.write(write_fd, json.dumps({
-                "error": getattr(exc, "code", type(exc).__name__),
-                "detail": str(getattr(exc, "detail", "") or ""),
-            }).encode("ascii", "replace"))
-            os._exit(1)
-    os.close(write_fd)
-    chunks: list[bytes] = []
-    total = 0
-    while total <= _MAX_REPORT_BYTES:
-        chunk = os.read(read_fd, 65536)
-        if not chunk:
-            break
-        chunks.append(chunk)
-        total += len(chunk)
-    os.close(read_fd)
-    _pid, status = os.waitpid(child, 0)
+    account = resolve_posix_account_snapshot_v1(SERVICE_ACCOUNT_NAME_V1)
+    if operation == "plan":
+        pid = _service_main_pid()
+        environment = _service_environment(pid, account)
+        sources = selected_sources_v1(environment, account)
+        if _service_main_pid() != pid:
+            raise LifecycleCutoverError("cutover_service_unavailable", "service changed")
+        request = {"operation": operation, "sources": [
+            {"kind": kind, "path": str(path), "legacy_table": table}
+            for kind, path, table in sources]}
+    elif operation == "apply" and handoff is not None:
+        environment = handoff["environment"]
+        request = {"operation": operation, "sources": handoff["sources"],
+                   "handoff": handoff}
+    elif operation == "qualify" and handoff is not None and qualification is not None:
+        environment = handoff["environment"]
+        request = {"operation": operation, "qualification": qualification}
+    else:
+        raise LifecycleCutoverError("cutover_operation_invalid")
+    child_environment = {
+        "HOME": account.record.home, "USER": account.record.name,
+        "LOGNAME": account.record.name, "PATH": "/usr/bin:/bin", "LANG": "C.UTF-8",
+        **{key: value for key, value in environment.items()
+           if key in _CARRIED_ENVIRONMENT_V1},
+    }
+    account.assert_unchanged(resolve_posix_account_snapshot_v1(SERVICE_ACCOUNT_NAME_V1))
+    root = Path(__file__).resolve().parents[1]
+    bootstrap = (
+        "import sys; "
+        f"sys.path[:0] = {[str(root), str(root / 'runtime')]!r}; "
+        "from install.birth_lifecycle_migration import _service_worker; "
+        "raise SystemExit(_service_worker())"
+    )
+    payload = json.dumps(request, ensure_ascii=True).encode("ascii")
+    if len(payload) > _MAX_REPORT_BYTES:
+        raise LifecycleCutoverError("cutover_report_oversized")
     try:
-        report = json.loads(b"".join(chunks).decode("ascii"))
+        completed = subprocess.run(
+            [sys.executable, "-I", "-B", "-c", bootstrap], input=payload,
+            capture_output=True, close_fds=True, env=child_environment,
+            user=account.record.uid, group=account.record.gid,
+            extra_groups=account.supplementary_gids, umask=0o077, timeout=300,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise LifecycleCutoverError("cutover_child_failed") from exc
+    if len(completed.stdout) > _MAX_REPORT_BYTES:
+        raise LifecycleCutoverError("cutover_report_oversized")
+    try:
+        report = json.loads(completed.stdout.decode("ascii"))
         if type(report) is not dict:
             raise ValueError("report shape")
     except (UnicodeDecodeError, ValueError) as exc:
         raise LifecycleCutoverError("cutover_report_invalid") from exc
-    if status != 0 or "error" in report:
+    if completed.returncode != 0 or "error" in report:
         raise LifecycleCutoverError(
             str(report.get("error") or "cutover_child_failed"),
             str(report.get("detail") or ""),
@@ -470,10 +486,10 @@ def plan_cutover_v1() -> dict:
     """Observe the running installation and record the decision for review.
 
     The plan is written while the services run because only a live process can
-    say which stores this installation selected. It changes nothing.
+    say which stores this installation selected. It preserves the source stores.
     """
     _require_root_v1()
-    observed = _in_service_child(_plan_as_service)
+    observed = _in_service_child("plan")
     document = {
         "schema_version": 1, "purpose": HANDOFF_PURPOSE_V1,
         "service_user": SERVICE_ACCOUNT_NAME_V1, "planned_at": _utc_now(),
@@ -552,8 +568,7 @@ def apply_cutover_v1() -> dict:
         # points idle. It does not prove the current ones idle, so that is
         # asked here, of the installed catalog, before anything is copied.
         stopped = _prove_productive_services_stopped_v1(handoff["service_user"])
-        report = _in_service_child(
-            lambda descriptor: _apply_as_service(descriptor, handoff))
+        report = _in_service_child("apply", handoff)
         applied = report["applied"]
         if applied.get("pending"):
             # An open case must receive a disposition before the marker makes

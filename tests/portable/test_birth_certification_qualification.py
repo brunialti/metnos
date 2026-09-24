@@ -35,6 +35,7 @@ class Frontier:
     profile: str | None
     consecutive_successes: tuple
     pending_cycle: str | None
+    profile_bindings: object
 
 
 def act(number, issuer="builtin_contract_generator"):
@@ -55,11 +56,16 @@ def reconciliation(*, admissions=5, issuers=2, issues=()):
 
 
 def frontier(reconciled, **overrides):
+    from install.birth_certification_evidence import ProfileBindingsV1
+
     base = dict(
         head="sha256:" + "e" * 64,
         census_scope=evidence_scope_id_v1(reconciled.issues),
         open_findings=(), profile="sha256:" + "p" * 64,
         consecutive_successes=("cycle-a", "cycle-b"), pending_cycle=None,
+        profile_bindings=ProfileBindingsV1(
+            HEAD, reconciled.required_head_id, HEAD, HEAD, HEAD,
+        ),
     )
     base.update(overrides)
     return Frontier(**base)
@@ -119,6 +125,15 @@ def test_a_gap_the_census_never_declared_refuses_the_certificate():
     assert raised.value.code == "undisclosed_evidence_gap"
 
 
+def test_completed_cycles_cannot_qualify_a_different_required_head():
+    reconciled = reconciliation()
+    frozen = frontier(reconciled)
+    changed = replace(reconciled, required_head_id="sha256:" + "9" * 64)
+    with pytest.raises(QualificationRefused) as refused:
+        derive_qualification_v1(changed, frozen)
+    assert refused.value.code == "profile_head_mismatch"
+
+
 def test_a_declared_and_closed_gap_does_not_block_the_certificate():
     issues = (HistoricalEvidenceIssueV1("receipt", "known", "historical_context_policy_unavailable"),)
     reconciled = reconciliation(issues=issues)
@@ -130,6 +145,7 @@ def test_a_declared_and_closed_gap_does_not_block_the_certificate():
     ({"open_findings": ("terminal-binding",)}, "open_defect"),
     ({"pending_cycle": "cycle-c"}, "cycle_interrupted"),
     ({"profile": None}, "profile_absent"),
+    ({"profile_bindings": None}, "profile_bindings_absent"),
     ({"consecutive_successes": ("cycle-a",)}, "consecutive_cycles_insufficient"),
     ({"consecutive_successes": ()}, "consecutive_cycles_insufficient"),
 ])

@@ -15,6 +15,7 @@ refuses is the failure an operator cannot diagnose.
 from __future__ import annotations
 
 import base64
+from dataclasses import asdict
 import json
 import os
 from pathlib import Path
@@ -128,6 +129,47 @@ def _completed_migration_id() -> str:
     except LifecycleMigrationError as exc:
         raise CertificationIssueError(exc.code, exc.detail) from exc
     return state.migration_id
+
+
+def _derive_as_service_v1(request: dict) -> dict:
+    """Derive in the fresh service process; no private authority crosses over."""
+    from install.birth_certification_evidence import EvidenceFrontierV1, ProfileBindingsV1
+    from install.birth_certification_qualification import derive_qualification_v1
+
+    supplied = request["qualification"]
+    values = dict(supplied["frontier"])
+    for field in ("open_findings", "consecutive_successes"):
+        values[field] = tuple(values[field])
+    if values["profile_bindings"] is not None:
+        values["profile_bindings"] = ProfileBindingsV1(**values["profile_bindings"])
+    frontier = EvidenceFrontierV1(**values)
+    sources = tuple((path, base64.b64decode(encoded, validate=True))
+                    for path, encoded in supplied["public_sources"])
+    observed = observe_history_v1(public_sources=sources)
+    return asdict(derive_qualification_v1(observed, frontier))
+
+
+def _service_qualification_v1(frontier: object, public_sources: tuple) -> object:
+    """Use the migration's reviewed service paths, never imported root paths."""
+    from install.birth_certification_qualification import QualificationV1
+    from install.birth_lifecycle_migration import (
+        LifecycleCutoverError, _in_service_child, read_handoff_v1,
+    )
+
+    try:
+        report = _in_service_child("qualify", read_handoff_v1(), qualification={
+            "frontier": asdict(frontier),
+            "public_sources": [(path, base64.b64encode(raw).decode("ascii"))
+                               for path, raw in public_sources],
+        })
+    except LifecycleCutoverError as exc:
+        raise CertificationIssueError(exc.code, exc.detail) from exc
+    try:
+        for field in ("cycle_ids", "admission_receipts", "authenticated_producers"):
+            report[field] = tuple(report[field])
+        return QualificationV1(**report)
+    except (KeyError, TypeError) as exc:
+        raise CertificationIssueError("certification_report_invalid") from exc
 
 
 def _installation_frontier_v1() -> tuple[str, str, str]:
@@ -245,22 +287,27 @@ def issue_certificate_v1(
 ) -> dict:
     """Derive, bind and sign, or report exactly what would be signed."""
     from install.birth_certification_evidence import administrative_evidence_v1
-    from install.birth_certification_qualification import (
-        QualificationRefused, derive_qualification_v1,
-    )
 
     _require_root_v1()
     migration_id = _completed_migration_id()
     installation_id, head_id, closed_build_id = _installation_frontier_v1()
-    observed = observe_history_v1(public_sources=public_sources)
     with administrative_evidence_v1() as evidence:
         frontier = evidence.frontier
-    try:
-        qualification = derive_qualification_v1(observed, frontier)
-    except QualificationRefused as exc:
-        raise CertificationIssueError(exc.code, exc.detail) from exc
+    if frontier.profile is not None:
+        bindings = frontier.profile_bindings
+        if bindings is None:
+            raise CertificationIssueError("profile_bindings_absent")
+        if bindings.installation_id != installation_id or bindings.head_id != head_id:
+            raise CertificationIssueError("certification_profile_mismatch")
+    qualification = _service_qualification_v1(frontier, public_sources)
     if qualification.required_head_id != head_id:
         raise CertificationIssueError("certification_frontier_changed", "qualification")
+    with administrative_evidence_v1() as evidence:
+        if evidence.frontier != frontier:
+            raise CertificationIssueError("certification_frontier_changed", "evidence")
+    if (_completed_migration_id() != migration_id
+            or _installation_frontier_v1() != (installation_id, head_id, closed_build_id)):
+        raise CertificationIssueError("certification_frontier_changed", "installation")
     report = {
         "qualification_id": qualification.qualification_id,
         "technical_admissions": qualification.technical_admissions,

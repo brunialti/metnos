@@ -23,7 +23,7 @@ from executor_birth_identity import (
 )
 from executor_birth_operational import (
     _BirthCore, _BorrowedObserved, _candidate_source_id_from_snapshot,
-    _is_birth_core, _receipt_checks,
+    _is_birth_core, _receipt_checks, approval_scope,
 )
 from executor_birth_predecessor import AdmissionContextPin
 from executor_birth_producer_store import (
@@ -652,6 +652,7 @@ def _execute(request: ReattestationRequest, core: _ReattestationCore) -> Reattes
 
         shadow = birth.shadow_dependencies
         continuity = _current_continuity_v1(core, request, observed)
+        previous_lifecycle = continuity.approved_lifecycle if continuity is not None else None
         property_runner = shadow.property_runner
         if property_runner is None and initial_adoption is None and continuity is None:
             property_runner = ObservedPropertyRunner(
@@ -659,7 +660,9 @@ def _execute(request: ReattestationRequest, core: _ReattestationCore) -> Reattes
                 linux_registry=shadow.linux_sandbox_registry,
             )
         approval_subject, approval_evidence = birth.approval_resolver(
-            request, observed, ShadowRevisionClass.REATTESTATION, instant,  # type: ignore[arg-type]
+            request, observed,  # type: ignore[arg-type]
+            approval_scope(observed, ShadowRevisionClass.REATTESTATION, previous_lifecycle),
+            instant,
         )
         dependencies = replace(
             shadow,
@@ -668,6 +671,7 @@ def _execute(request: ReattestationRequest, core: _ReattestationCore) -> Reattes
             approval_subject=approval_subject, approval_evidence=approval_evidence,
             now=instant,
             current_continuity=continuity,
+            previous_approved_lifecycle=previous_lifecycle,
         )
         report = _observe_birth_for_test(
             request.current.ref.manifest_dir,

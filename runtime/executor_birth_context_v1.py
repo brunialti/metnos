@@ -62,8 +62,9 @@ CONTEXT_CATALOG_V1: tuple[tuple[str, str, tuple[str, ...], str], ...] = (
         "productive",
     ),
     (
-        "property_catalog", "1",
-        ("executor_birth_properties.py", "executor_birth_property_runner.py"),
+        "property_catalog", "2",
+        ("executor_birth_properties.py", "executor_birth_property_runner.py",
+         "executor_birth_preexercise.py"),
         "productive",
     ),
     (
@@ -275,6 +276,66 @@ def prepare_context_material_v1(
     attest the frozen bytes; they do not attest that any check consumes them
     (section 9.1).
     """
+    return _prepare_context_material_v1(sources, authority_registry, CONTEXT_CATALOG_V1)
+
+
+def rebuild_previous_context_material_v1(
+    sources, authority_registry: Mapping[str, object],
+) -> PreparedContextMaterialV1:
+    """Rebuild N from N's authenticated source during an explicit N+1 update.
+
+    The distribution reader authenticates every byte, including the literal
+    catalogue declaration. No historical module is executed and no persisted
+    material claim replaces a source rebuild. Ordinary runtime construction
+    continues to use the current closed catalogue.
+    """
+    import ast
+    from contract_boundary_guard import _bounded_ast_metrics
+    from executor_birth_identity import AdmissionContextV1
+    from executor_birth_secure_fs import BirthSecureFSError
+
+    try:
+        encoded = sources.read_file(
+            ("executor_birth_context_v1.py",),
+            maximum=MAXIMUM_CONTEXT_SOURCE_BYTES_V1, exact_private=False,
+        )
+        tree = ast.parse(encoded.decode("utf-8"))
+        _bounded_ast_metrics(tree)
+        name = "CONTEXT_CATALOG_V1"
+        stores = [node for node in ast.walk(tree) if isinstance(node, ast.Name)
+                  and node.id == name and isinstance(node.ctx, (ast.Store, ast.Del))]
+        declarations = [node for node in tree.body if isinstance(node, ast.AnnAssign)
+                        and isinstance(node.target, ast.Name) and node.target.id == name]
+        if len(stores) != 1 or len(declarations) != 1:
+            raise ValueError("catalogue declaration")
+        catalog = ast.literal_eval(declarations[0].value)
+        if (type(catalog) is not tuple
+                or len(catalog) != len(AdmissionContextV1.__dataclass_fields__)):
+            raise ValueError("catalogue shape")
+        for item in catalog:
+            if type(item) is not tuple or len(item) != 4:
+                raise ValueError("component shape")
+            component, version, files, state = item
+            if (type(component) is not str or type(version) is not str or not version
+                    or type(files) is not tuple or state not in {"productive", "prepared_only"}
+                    or any(type(label) is not str or not label
+                           or label in {".", ".."} or any(c in label for c in "/\\\0")
+                           for label in files)
+                    or len(files) != len(set(files))
+                    or component == "authority_registry" and files):
+                raise ValueError("component value")
+        if tuple(item[0] for item in catalog) != tuple(AdmissionContextV1.__dataclass_fields__):
+            raise ValueError("component order")
+    except BirthSecureFSError as exc:
+        raise ContextMaterialError(exc.code, exc) from None
+    except (UnicodeError, SyntaxError, RecursionError, ValueError, TypeError,
+            OverflowError, MemoryError) as exc:
+        raise ContextMaterialError("birth_context_catalog_invalid", exc) from None
+    return _prepare_context_material_v1(sources, authority_registry, catalog)
+
+
+def _prepare_context_material_v1(sources, authority_registry, catalog):
+    """The common V1 framing, independent of the selected catalogue revision."""
     from executor_birth_context import (
         FrozenComponentMaterial, _canonical_json, _component_digest,
         _context_epoch,
@@ -288,7 +349,7 @@ def prepare_context_material_v1(
     components: dict[str, dict[str, object]] = {}
     digests: dict[str, ContextComponent] = {}
     inventory: list[dict[str, object]] = []
-    for name, version, files, enforcement in CONTEXT_CATALOG_V1:
+    for name, version, files, enforcement in catalog:
         payloads: dict[str, bytes] = {}
         records: list[dict[str, object]] = []
         for label in files:
@@ -347,5 +408,5 @@ __all__ = [
     "CONTEXT_CATALOG_V1", "CONTEXT_CONTAINER_BASENAME_V1",
     "CONTEXT_MATERIAL_BASENAME_V1", "ContextMaterialError",
     "PreparedContextMaterialV1", "component_configuration_v1",
-    "prepare_context_material_v1",
+    "prepare_context_material_v1", "rebuild_previous_context_material_v1",
 ]

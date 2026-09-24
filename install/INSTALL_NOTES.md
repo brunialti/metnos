@@ -280,10 +280,12 @@ publishes no executor and retires no file.
 
 It is two commands, because its halves need opposite conditions. `plan` runs
 while the services run: only a live process can say which stores this
-installation selected. A child reads that process's environment — only `HOME`,
-`METNOS_USER_DATA`, `METNOS_USER_STATE`, `METNOS_EXECUTOR_STATS_DB` and
-`METNOS_PROMOTER_DB`, with the main PID rechecked — drops permanently to the
-service account, censuses the stores and decides. The reviewed decision is
+installation selected. The administrator reads that process's environment — only
+`HOME`, `METNOS_USER_DATA`, `METNOS_USER_STATE`, `METNOS_EXECUTOR_STATS_DB` and
+`METNOS_PROMOTER_DB`, with the main PID rechecked — and starts a fresh isolated
+interpreter under the service account to census the stores and decide. This
+prevents configuration imported by the administrator from selecting root's
+stores after the identity change. The reviewed decision is
 recorded root-owned at `certification-v1/migration-plan.json` (0644). Planning
 changes nothing else. The selected sources are `executor_stats` in the state
 root and `proposal_promote` in the data root.
@@ -303,7 +305,7 @@ or the catalog selection moved. After the copy each source is made unwritable
 and cannot close a handle a running process already holds, which is again why
 the barrier comes first.
 
-Inside the privileged child the epoch store must already exist at
+Inside the service-account child the epoch store must already exist at
 `birth/executor_epochs.sqlite`; it is not created here. Every selectable
 generation is admitted first, so no window exists in which a restricted
 executor becomes visible again. The stores are then read read-only and
@@ -337,12 +339,27 @@ to is the one thing this order exists to prevent. The migration marker is read
 first, the migration it names must verify against the epoch store, and only
 then is the qualification derived.
 
-The issuer composes the historical reconciliation itself, through the owner
-readers, and rereads both raw inventories afterwards. Its only input is the
+The issuer composes the historical reconciliation in the same fresh service
+process used by the migration, using the service paths in its reviewed plan.
+This prevents the administrative interpreter's imported configuration from
+selecting root's history. The parent passes only its authenticated evidence
+frontier and public archive bytes; private keys remain in the root process.
+The child uses the owner readers and rereads both raw inventories afterwards.
+Before signing, the parent rereads the evidence, migration and installed
+frontiers and refuses if any changed. Its only caller input is the
 bounded public archive candidates, which remain untrusted bytes: the
 declaration owner accepts them where path, role, size and hash match the
 historical signed distribution. No count, receipt list or cycle outcome is
 accepted from a caller, and the signed payload carries none.
+
+The evidence frontier retains the frozen profile's installation, required head,
+source, catalog and harness identities from its authenticated event. Derivation
+refuses a history whose required head differs from that profile; the issuer also
+refuses a different installation before deriving or signing. A new profile
+resets consecutive successes, so completed cycles cannot be rebound by merely
+selecting another installed head. The harness must still record authentic
+observations of its declared source/catalog and implementation; retaining these
+identities is not itself proof that the focused HTTP cycles ran.
 
 The threshold is the approved one — at least five genuine technical
 admissions, at least two authenticated producers, two complete consecutive

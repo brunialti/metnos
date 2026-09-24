@@ -138,14 +138,22 @@ def _event_id(key: NodeKey, kind: OutboxEventKind, payload_json: str,
 
 
 def enqueue_owner_event(*, key: NodeKey, payload: Mapping[str, object],
-                        created_at: str, db_path: Path) -> str:
-    """Durably enqueue one deterministic event; an exact replay is a no-op."""
+                        created_at: str, db_path: Path,
+                        retry_event_id: str | None = None) -> str:
+    """Enqueue once, or resume a persisted event without changing its identity.
+
+    A caller retrying after an uncertain outcome carries the original event ID.
+    Its new observation time must not create a second owner mutation. Unknown
+    retry IDs are refused; a retry never manufactures missing history.
+    """
     if not isinstance(key, NodeKey):
         raise RetentionIntegrationError("retention_outbox_invalid", "node key")
     created = _timestamp(created_at)
     payload_json = _canonical_payload(payload)
     kind = OutboxEventKind.OWNER_RECONCILE
     identifier = _event_id(key, kind, payload_json, created)
+    if retry_event_id is not None:
+        identifier = _text(retry_event_id, "retry_event_id")
     connection = _open(db_path)
     try:
         connection.execute("BEGIN IMMEDIATE")
@@ -153,6 +161,12 @@ def enqueue_owner_event(*, key: NodeKey, payload: Mapping[str, object],
             "SELECT event_version,node_type,node_id,event_kind,payload_json,created_at "
             "FROM retention_outbox WHERE event_id=?", (identifier,),
         ).fetchone()
+        if retry_event_id is not None:
+            if existing is None:
+                raise RetentionIntegrationError("retention_outbox_retry_missing", identifier)
+            created = _timestamp(existing["created_at"])
+            if identifier != _event_id(key, kind, payload_json, created):
+                raise RetentionIntegrationError("retention_outbox_conflict", identifier)
         expected = (1, key.node_type.value, key.node_id, kind.value,
                     payload_json, created)
         if existing is None:

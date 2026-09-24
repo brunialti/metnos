@@ -441,11 +441,16 @@ class _BirthCommitPublisher:
         which keys authenticate a generation, and no caller can substitute it.
         """
         from contract_store import authenticate_birth_predecessor
+        from executor_birth_receipts import verify_admission_receipt
 
         return authenticate_birth_predecessor(
             request.manifest_ref,
             trusted_publics=self._author_ring,
             store_root=self._store_root,
+            receipt_verifier=lambda encoded: verify_admission_receipt(
+                encoded, verifier_keys=self._admission_verifiers,
+            ),
+            context_selection=self._context_selection,
         )
 
     def _capture_current_reattestation(self, current):

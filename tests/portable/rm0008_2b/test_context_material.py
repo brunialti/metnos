@@ -45,7 +45,7 @@ GOLDEN_CONTEXT_EPOCH = (
 REGISTRY = {"author": {"key_ids": ["one"]}}
 
 
-def test_published_v1_membership_remains_readable_by_the_successor():
+def test_published_v1_membership_remains_readable_by_the_successor(tmp_path, monkeypatch):
     # Published membership, not implementation bytes: those must still evolve.
     # Changing these tuples breaks predecessor reconstruction. A new catalogue
     # requires version-aware historical selection before it can be published.
@@ -75,11 +75,78 @@ def test_published_v1_membership_remains_readable_by_the_successor():
         ),
         ("dependency_allowlist", "1"): ("code_file_paths.py",),
     }
-    assert len(catalog.CONTEXT_CATALOG_V1) == len(published)
-    assert {
-        (name, version): files
-        for name, version, files, _state in catalog.CONTEXT_CATALOG_V1
-    } == published
+    previous_catalog = tuple(
+        (name, version, files, "productive")
+        for (name, version), files in published.items()
+    )
+    stage = support.stage_runtime_sources(tmp_path, monkeypatch)
+    # A signed distribution carries its own declaration. Reading it must not
+    # import the old module, whose executable body is deliberately unusable.
+    (stage / "executor_birth_context_v1.py").write_text(
+        f"CONTEXT_CATALOG_V1: tuple = {previous_catalog!r}\n"
+        "raise RuntimeError('historical code must not run')\n"
+    )
+    (stage / "executor_birth_context_v1.py").chmod(0o644)
+    with monkeypatch.context() as previous:
+        previous.setattr(catalog, "CONTEXT_CATALOG_V1", previous_catalog)
+        published_material = provisioning._prepare_installed_admission_context_v1(REGISTRY)
+    current = provisioning._prepare_installed_admission_context_v1(REGISTRY)
+    assert current.prepared_admission_context_id != published_material.prepared_admission_context_id
+    sources = provisioning._resolve_context_sources_v1()
+    try:
+        rebuilt = catalog.rebuild_previous_context_material_v1(sources, REGISTRY)
+    finally:
+        sources.close()
+    assert rebuilt == published_material
+
+
+@pytest.mark.parametrize("mutation", (
+    "missing", "duplicate", "assignment", "expression", "order", "path",
+    "duplicate_file", "authority_file", "version", "state", "source_refusal",
+))
+def test_previous_catalogue_refuses_invalid_or_unauthenticated_declaration(mutation):
+    from executor_birth_secure_fs import BirthSecureFSError
+
+    declaration = catalog.CONTEXT_CATALOG_V1
+    if mutation == "order":
+        declaration = tuple(reversed(declaration))
+    elif mutation in {"path", "duplicate_file", "authority_file", "version", "state"}:
+        items = list(declaration)
+        index = 3 if mutation == "authority_file" else 0
+        name, version, files, state = items[index]
+        if mutation == "path":
+            files = ("../outside.py",)
+        elif mutation == "duplicate_file":
+            files = (files[0], files[0])
+        elif mutation == "authority_file":
+            files = ("keys.py",)
+        elif mutation == "version":
+            version = ""
+        else:
+            state = "unknown"
+        items[index] = (name, version, files, state)
+        declaration = tuple(items)
+    text = f"CONTEXT_CATALOG_V1: tuple = {declaration!r}\n"
+    if mutation == "missing":
+        text = "pass\n"
+    elif mutation == "duplicate":
+        text += "CONTEXT_CATALOG_V1 = ()\n"
+    elif mutation == "assignment":
+        text = text.replace(": tuple", "")
+    elif mutation == "expression":
+        text = "CONTEXT_CATALOG_V1: tuple = tuple()\n"
+
+    class Sources:
+        def read_file(self, parts, **_kwargs):
+            assert parts == ("executor_birth_context_v1.py",)
+            if mutation == "source_refusal":
+                raise BirthSecureFSError("birth_distribution_source_changed")
+            return text.encode()
+
+    expected = ("birth_distribution_source_changed" if mutation == "source_refusal"
+                else "birth_context_catalog_invalid")
+    with pytest.raises(catalog.ContextMaterialError, match=expected):
+        catalog.rebuild_previous_context_material_v1(Sources(), REGISTRY)
 
 
 def _prepare(tmp_path: Path, monkeypatch, registry=None):

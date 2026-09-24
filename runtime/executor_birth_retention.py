@@ -553,7 +553,7 @@ def close_edge(source: NodeKey, target: NodeKey, *, edge_type: EdgeType,
         connection.close()
 
 
-def _reachable(connection: sqlite3.Connection) -> set[tuple[str, str]]:
+def _reachable(connection: sqlite3.Connection, observed_at: str) -> set[tuple[str, str]]:
     # Until every durable owner event has been reconciled, absence of a graph
     # edge or root is not evidence of unreachability.  Treat the whole live
     # graph as rooted; this deliberately trades collection progress for safety.
@@ -564,12 +564,16 @@ def _reachable(connection: sqlite3.Connection) -> set[tuple[str, str]]:
         return {(row[0], row[1]) for row in connection.execute(
             "SELECT node_type,node_id FROM retention_nodes WHERE state!='deleted'"
         )}
+    # Unexpired owners retain their dependencies even when those dependencies
+    # have older windows. Reevaluate at sweep time as well as at marking time.
     # Open nodes and both endpoints of open references are conservative roots.
     roots = {(row[0], row[1]) for row in connection.execute(
         "SELECT node_type,node_id FROM retention_roots UNION "
-        "SELECT node_type,node_id FROM retention_nodes WHERE state='open' UNION "
+        "SELECT node_type,node_id FROM retention_nodes WHERE state='open' "
+        "OR (state='closed' AND eligible_after>?) UNION "
         "SELECT source_type,source_id FROM retention_edges WHERE state='open' UNION "
-        "SELECT target_type,target_id FROM retention_edges WHERE state='open'"
+        "SELECT target_type,target_id FROM retention_edges WHERE state='open'",
+        (observed_at,),
     )}
     reached, frontier = set(roots), list(roots)
     while frontier:
@@ -595,7 +599,7 @@ def mark(*, run_id: str, observed_at: str, db_path: Path) -> tuple[NodeKey, ...]
         ).fetchone()
         connection.execute("INSERT INTO retention_runs VALUES(?,?,?,?,?)",
                            (run, meta[0], meta[1], now, "marked"))
-        reachable = _reachable(connection)
+        reachable = _reachable(connection, now)
         candidates: list[NodeKey] = []
         for row in connection.execute(
             "SELECT node_type,node_id,object_version,eligible_after FROM retention_nodes "
@@ -690,6 +694,74 @@ def verify_minimal_receipt(*, key: NodeKey, run_id: str, object_version: int,
     return key_id
 
 
+def _reserve_component(connection: sqlite3.Connection, key: NodeKey, *,
+                       run: str, now: str, receipt_key_id: str,
+                       receipt_private_key: Ed25519PrivateKey) -> CandidateStatus:
+    """Freeze a complete obsolete component before detaching any reference.
+
+    The caller holds the graph writer lock. Every connected owner must be an
+    unchanged candidate of this run; otherwise none of the component is
+    reserved. Existing per-object intents persist the freeze across crashes.
+    """
+    adjacency: dict[tuple[str, str], set[tuple[str, str]]] = {}
+    for edge in connection.execute(
+            "SELECT source_type,source_id,target_type,target_id FROM retention_edges"):
+        source, target = (edge[0], edge[1]), (edge[2], edge[3])
+        adjacency.setdefault(source, set()).add(target)
+        adjacency.setdefault(target, set()).add(source)
+    component = {(key.node_type.value, key.node_id)}
+    frontier = list(component)
+    while frontier:
+        for neighbor in adjacency.get(frontier.pop(), ()):
+            if neighbor not in component:
+                component.add(neighbor)
+                frontier.append(neighbor)
+    if component & _reachable(connection, now):
+        return CandidateStatus.REFERENCED
+    versions = {}
+    for member in sorted(component):
+        row = connection.execute(
+            "SELECT n.object_version,n.state,n.eligible_after,"
+            "c.observed_version,c.status FROM retention_nodes n "
+            "LEFT JOIN retention_candidates c ON c.node_type=n.node_type "
+            "AND c.node_id=n.node_id AND c.run_id=? "
+            "WHERE n.node_type=? AND n.node_id=?", (run, *member),
+        ).fetchone()
+        if (row is None or row['state'] != 'closed'
+                or row['status'] not in {'marked', 'deleting'}
+                or row['object_version'] != row['observed_version']):
+            return CandidateStatus.STATE_CHANGED
+        if row['eligible_after'] > now:
+            return CandidateStatus.WINDOW_OPEN
+        versions[member] = int(row['object_version'])
+    for member, version in versions.items():
+        existing = connection.execute(
+            "SELECT run_id,object_version FROM retention_receipts "
+            "WHERE node_type=? AND node_id=?", member,
+        ).fetchone()
+        if existing is None:
+            authentication = _receipt(
+                NodeKey(NodeType(member[0]), member[1]), run, version, now,
+                receipt_key_id, receipt_private_key,
+            )
+            connection.execute("INSERT INTO retention_receipts VALUES(?,?,?,?,?,?)",
+                               (run, *member, version, now, authentication))
+        elif tuple(existing) != (run, version):
+            raise RetentionError("retention_state_changed", "receipt conflict")
+        connection.execute(
+            "UPDATE retention_candidates SET status='deleting' "
+            "WHERE run_id=? AND node_type=? AND node_id=?", (run, *member),
+        )
+    # All endpoints are now frozen in this transaction. Removing only these
+    # closed references cannot expose a partially collected owner to reuse.
+    for member in versions:
+        connection.execute(
+            "DELETE FROM retention_edges WHERE source_type=? AND source_id=?", member,
+        )
+    connection.execute("UPDATE retention_meta SET graph_version=graph_version+1 WHERE singleton=1")
+    return CandidateStatus.DELETED
+
+
 def sweep(*, run_id: str, observed_at: str, receipt_key_id: str,
           receipt_private_key: Ed25519PrivateKey, db_path: Path,
           receipt_public_keys: Mapping[str, Ed25519PublicKey],
@@ -726,8 +798,8 @@ def sweep(*, run_id: str, observed_at: str, receipt_key_id: str,
         ordered: list[tuple[str, str]] = []
         # A source owns/refers to its targets, therefore targets are the leaves
         # to tombstone first.  Strongly connected garbage has no leaf; its
-        # deterministic first member breaks the cycle without affecting a live
-        # reference (reachability is checked again under the write lock).
+        # deterministic first member starts the component reservation. Every
+        # member is frozen before the first external effect.
         while pending:
             sources_with_targets = {(row[0], row[1]) for row in probe.execute(
                 "SELECT source_type,source_id,target_type,target_id FROM retention_edges"
@@ -762,48 +834,60 @@ def sweep(*, run_id: str, observed_at: str, receipt_key_id: str,
                 status = CandidateStatus.STATE_CHANGED
             elif node["eligible_after"] > now:
                 status = CandidateStatus.WINDOW_OPEN
-            elif (key.node_type.value, key.node_id) in _reachable(connection):
+            elif (key.node_type.value, key.node_id) in _reachable(connection, now):
                 status = CandidateStatus.REFERENCED
-            elif key.node_type is NodeType.GENERATION and connection.execute(
-                    "SELECT 1 FROM retention_edges WHERE (source_type=? AND source_id=?) "
-                    "OR (target_type=? AND target_id=?) LIMIT 1",
-                    (key.node_type.value, key.node_id,
-                     key.node_type.value, key.node_id)).fetchone() is not None:
-                # Generations have a stricter rule than generic graph leaves:
-                # no closed reference may be removed merely as part of sweep.
-                status = CandidateStatus.REFERENCED
+            elif marked['status'] == CandidateStatus.MARKED.value:
+                status = _reserve_component(
+                    connection, key, run=run, now=now,
+                    receipt_key_id=receipt_key_id,
+                    receipt_private_key=receipt_private_key,
+                )
             if status is CandidateStatus.DELETED:
-                # Persist the signed receipt and per-object intent first.  The
-                # triggers above freeze references to this object, so a crash
-                # can safely resume the idempotent callback.
-                existing_receipt = connection.execute(
+                # Reservation already persisted every member intent; never
+                # manufacture a missing receipt when recovering a deletion.
+                connection.commit()
+
+                # Authenticate every still-pending intent before any member's
+                # external effect. This also covers recovery after the graph
+                # references were detached but no acknowledgement committed.
+                for intent in connection.execute(
+                    "SELECT c.node_type,c.node_id,c.observed_version,"
+                    "r.run_id,r.object_version,r.deleted_at,r.authentication "
+                    "FROM retention_candidates c LEFT JOIN retention_receipts r "
+                    "ON r.node_type=c.node_type AND r.node_id=c.node_id "
+                    "WHERE c.run_id=? AND c.status='deleting'", (run,),
+                ):
+                    if (intent['run_id'] != run
+                            or intent['object_version'] != intent['observed_version']):
+                        raise RetentionError('retention_state_changed', 'receipt conflict')
+                    verify_minimal_receipt(
+                        key=NodeKey(NodeType(intent['node_type']), intent['node_id']),
+                        run_id=run, object_version=int(intent['observed_version']),
+                        deleted_at=intent['deleted_at'],
+                        authentication=intent['authentication'],
+                        public_keys=receipt_public_keys,
+                    )
+
+                # Authenticate the committed bytes before every destructive
+                # attempt, including the first. A successful signature call
+                # is not proof that the durable receipt binds this object.
+                persisted_receipt = connection.execute(
                     "SELECT run_id,object_version,deleted_at,authentication "
                     "FROM retention_receipts WHERE node_type=? AND node_id=?",
                     (key.node_type.value, key.node_id),
                 ).fetchone()
-                if existing_receipt is None:
-                    auth = _receipt(key, run, int(node["object_version"]), now,
-                                    receipt_key_id, receipt_private_key)
-                    connection.execute("INSERT INTO retention_receipts VALUES(?,?,?,?,?,?)",
-                                       (run, key.node_type.value, key.node_id,
-                                        node["object_version"], now, auth))
-                elif (existing_receipt["run_id"] != run
-                      or int(existing_receipt["object_version"]) != int(node["object_version"])):
+                if (persisted_receipt is None
+                        or persisted_receipt["run_id"] != run
+                        or int(persisted_receipt["object_version"])
+                        != int(marked["observed_version"])):
                     raise RetentionError("retention_state_changed", "receipt conflict")
-                else:
-                    verify_minimal_receipt(
-                        key=key, run_id=run,
-                        object_version=int(existing_receipt["object_version"]),
-                        deleted_at=existing_receipt["deleted_at"],
-                        authentication=existing_receipt["authentication"],
-                        public_keys=receipt_public_keys,
-                    )
-                connection.execute(
-                    "UPDATE retention_candidates SET status='deleting' WHERE run_id=? "
-                    "AND node_type=? AND node_id=?",
-                    (run, key.node_type.value, key.node_id),
+                verify_minimal_receipt(
+                    key=key, run_id=run,
+                    object_version=int(marked["observed_version"]),
+                    deleted_at=persisted_receipt["deleted_at"],
+                    authentication=persisted_receipt["authentication"],
+                    public_keys=receipt_public_keys,
                 )
-                connection.commit()
 
                 guard: GenerationDeletionGuard | None = None
                 if key.node_type is NodeType.GENERATION:
@@ -855,8 +939,12 @@ def sweep(*, run_id: str, observed_at: str, receipt_key_id: str,
                 deleted.append(key)
             else:
                 preserved.append((key, status))
+                # A committed intent may already have deleted the external
+                # object before an interrupted acknowledgement. Pausing a
+                # retry must preserve its freeze and its recovery identity.
                 connection.execute(
-                    "UPDATE retention_candidates SET status=? WHERE run_id=? AND node_type=? AND node_id=?",
+                    "UPDATE retention_candidates SET status=? WHERE run_id=? "
+                    "AND node_type=? AND node_id=? AND status!='deleting'",
                     (status.value, run, key.node_type.value, key.node_id),
                 )
                 connection.commit()
@@ -880,6 +968,8 @@ def sweep(*, run_id: str, observed_at: str, receipt_key_id: str,
 def diagnostic_has_admission_edge(key: NodeKey, *, db_path: Path) -> bool:
     """Report a graph edge without making any selection or authority claim.
 
+    The dependency direction is generation -> admission receipt, so a live
+    generation retains its admission proof through ordinary reachability.
     Retention edges are bookkeeping, not authenticated RM-0007 or Birth
     records.  Productive rollbackability must be established by the owning
     stores and must never use this diagnostic as a gate.
@@ -890,9 +980,9 @@ def diagnostic_has_admission_edge(key: NodeKey, *, db_path: Path) -> bool:
     try:
         row = connection.execute(
             "SELECT 1 FROM retention_edges e JOIN retention_nodes r "
-            "ON r.node_type=e.source_type AND r.node_id=e.source_id "
-            "WHERE e.target_type=? AND e.target_id=? AND e.edge_type='admits' "
-            "AND e.source_type='admission_receipt' AND r.state!='deleted' LIMIT 1",
+            "ON r.node_type=e.target_type AND r.node_id=e.target_id "
+            "WHERE e.source_type=? AND e.source_id=? AND e.edge_type='admits' "
+            "AND e.target_type='admission_receipt' AND r.state!='deleted' LIMIT 1",
             (key.node_type.value, key.node_id),
         ).fetchone()
         return row is not None

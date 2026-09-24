@@ -2,10 +2,11 @@
 from __future__ import annotations
 
 import base64
+from contextlib import contextmanager
 import json
 from pathlib import Path
 import sys
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, replace
 from types import SimpleNamespace
 
 import pytest
@@ -145,13 +146,156 @@ def test_the_issuer_rereads_the_store_the_migration_used(monkeypatch, tmp_path):
                             path=epoch_db_path, identity=migration_id))
     monkeypatch.setattr(issuer, "_installation_frontier_v1",
                         lambda: (INSTALLATION, HEAD, BUILD))
-    monkeypatch.setattr(issuer, "observe_history_v1",
-                        lambda **_k: (_ for _ in ()).throw(
-                            issuer.CertificationIssueError("stop", "after the reread")))
-    with pytest.raises(issuer.CertificationIssueError):
-        issuer.issue_certificate_v1(apply=False)
+    assert issuer._completed_migration_id() == MIGRATION
     assert seen["path"] == tmp_path / "birth" / "executor_epochs.sqlite"
     assert seen["identity"] == MIGRATION
+
+
+@pytest.fixture
+def qualification_inputs(monkeypatch):
+    from install.birth_certification_evidence import EvidenceFrontierV1, ProfileBindingsV1
+    from install.birth_certification_qualification import evidence_scope_id_v1
+
+    history = SimpleNamespace(
+        required_head_id=HEAD, issues=(),
+        technical_acts=tuple(SimpleNamespace(encoded_hash=digest(str(i))) for i in range(5)),
+        technical_issuers=("builtin_contract_generator", "stack_reconcile"),
+    )
+    frontier = EvidenceFrontierV1(
+        digest("evidence"), 12, evidence_scope_id_v1(()), (), digest("profile"),
+        ("cycle-a", "cycle-b"), None,
+        ProfileBindingsV1(INSTALLATION, HEAD, digest("source"),
+                          digest("catalog"), digest("harness")),
+    )
+    monkeypatch.setattr(issuer, "observe_history_v1", lambda **_k: history)
+    return history, frontier
+
+
+def test_service_derivation_uses_authenticated_history_and_decodes_archives(
+    monkeypatch, qualification_inputs,
+):
+    from install.birth_certification_qualification import derive_qualification_v1
+
+    history, frontier = qualification_inputs
+    observed = []
+    monkeypatch.setattr(issuer, "observe_history_v1", lambda **kwargs: (
+        observed.append(kwargs["public_sources"]) or history))
+    result = issuer._derive_as_service_v1({"qualification": {
+        "frontier": asdict(frontier),
+        "public_sources": [["archive/source.py", base64.b64encode(b"public bytes").decode()]],
+    }})
+    assert result == asdict(derive_qualification_v1(history, frontier))
+    assert observed == [(("archive/source.py", b"public bytes"),)]
+
+
+def test_qualification_uses_the_reviewed_service_paths(monkeypatch, qualification_inputs):
+    import install.birth_lifecycle_migration as cutover
+    from install.birth_certification_qualification import derive_qualification_v1
+
+    history, frontier = qualification_inputs
+    handoff = {"environment": {"METNOS_USER_STATE": "/reviewed-service-state"}}
+    monkeypatch.setattr(cutover, "read_handoff_v1", lambda: handoff)
+
+    def child(operation, reviewed, *, qualification):
+        assert operation == "qualify" and reviewed is handoff
+        return json.loads(json.dumps(issuer._derive_as_service_v1({
+            "qualification": qualification,
+        })))
+
+    monkeypatch.setattr(cutover, "_in_service_child", child)
+    assert issuer._service_qualification_v1(frontier, ()) == derive_qualification_v1(history, frontier)
+
+
+def test_service_refusal_never_becomes_a_qualification(monkeypatch, qualification_inputs):
+    import install.birth_lifecycle_migration as cutover
+
+    _history, frontier = qualification_inputs
+    monkeypatch.setattr(cutover, "read_handoff_v1", lambda: {})
+
+    def refuse(*_a, **_k):
+        raise cutover.LifecycleCutoverError("technical_admissions_insufficient", "0")
+
+    monkeypatch.setattr(cutover, "_in_service_child", refuse)
+    with pytest.raises(issuer.CertificationIssueError) as raised:
+        issuer._service_qualification_v1(frontier, ())
+    assert (raised.value.code, raised.value.detail) == ("technical_admissions_insufficient", "0")
+
+
+@pytest.mark.parametrize("apply", [False, True])
+@pytest.mark.parametrize("changed", [None, "evidence", "migration", "installation", "head"])
+def test_issuance_rereads_every_authority_before_signing(
+    monkeypatch, qualification_inputs, apply, changed,
+):
+    import install.birth_certification_evidence as evidence
+    import install.birth_certification_qualification as qualification
+    import executor_birth_certification_authority as authority
+
+    history, frontier = qualification_inputs
+    derived = qualification.derive_qualification_v1(history, frontier)
+    if changed == "head":
+        derived = replace(derived, required_head_id=digest("other-head"))
+    monkeypatch.setattr(issuer, "_require_root_v1", lambda: None)
+    migrations = iter([MIGRATION, digest("other") if changed == "migration" else MIGRATION])
+    installations = iter([(INSTALLATION, HEAD, BUILD), (
+        INSTALLATION, HEAD, digest("other") if changed == "installation" else BUILD)])
+    monkeypatch.setattr(issuer, "_completed_migration_id", lambda: next(migrations))
+    monkeypatch.setattr(issuer, "_installation_frontier_v1", lambda: next(installations))
+    monkeypatch.setattr(issuer, "_service_qualification_v1", lambda *_a: derived)
+    frontiers = iter([frontier, replace(frontier, head=digest("other"))
+                      if changed == "evidence" else frontier])
+
+    @contextmanager
+    def ledger():
+        yield SimpleNamespace(frontier=next(frontiers))
+
+    monkeypatch.setattr(evidence, "administrative_evidence_v1", ledger)
+    signed = []
+    monkeypatch.setattr(authority, "load_certification_public_key_v1",
+                        lambda: SimpleNamespace(key_id="dedicated-key"))
+    monkeypatch.setattr(issuer, "_sign_certificate_v1",
+                        lambda payload: signed.append(payload) or b"signed")
+    monkeypatch.setattr(issuer, "_install_certificate_v1", lambda *_a: Path("active.json"))
+    if changed:
+        with pytest.raises(issuer.CertificationIssueError) as refused:
+            issuer.issue_certificate_v1(apply=apply)
+        assert refused.value.code == "certification_frontier_changed"
+        assert signed == []
+    else:
+        result = issuer.issue_certificate_v1(apply=apply)
+        assert result["technical_admissions"] == 5
+        assert len(signed) == int(apply)
+        assert result["certificate"] == ("active.json" if apply else None)
+
+
+@pytest.mark.parametrize("apply", [False, True])
+@pytest.mark.parametrize("changed", ["installation_id", "head_id", "missing"])
+def test_a_frozen_profile_cannot_move_to_another_installation_or_head(
+    monkeypatch, qualification_inputs, apply, changed,
+):
+    import install.birth_certification_evidence as evidence
+
+    _history, frontier = qualification_inputs
+    bindings = (None if changed == "missing" else
+                replace(frontier.profile_bindings, **{changed: digest("different")}))
+    frontier = replace(frontier, profile_bindings=bindings)
+    monkeypatch.setattr(issuer, "_require_root_v1", lambda: None)
+    monkeypatch.setattr(issuer, "_completed_migration_id", lambda: MIGRATION)
+    monkeypatch.setattr(issuer, "_installation_frontier_v1",
+                        lambda: (INSTALLATION, HEAD, BUILD))
+
+    @contextmanager
+    def ledger():
+        yield SimpleNamespace(frontier=frontier)
+
+    monkeypatch.setattr(evidence, "administrative_evidence_v1", ledger)
+    monkeypatch.setattr(issuer, "_service_qualification_v1",
+                        lambda *_a: pytest.fail("mismatched profile reached derivation"))
+    monkeypatch.setattr(issuer, "_sign_certificate_v1",
+                        lambda *_a: pytest.fail("mismatched profile reached signing"))
+    with pytest.raises(issuer.CertificationIssueError) as refused:
+        issuer.issue_certificate_v1(apply=apply)
+    assert refused.value.code == ("profile_bindings_absent" if changed == "missing"
+                                  else "certification_profile_mismatch")
 
 
 @pytest.mark.parametrize("command", ["derive", "issue"])

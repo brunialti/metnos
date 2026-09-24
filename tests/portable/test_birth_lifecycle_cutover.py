@@ -93,6 +93,7 @@ def test_only_the_path_overrides_are_read_from_the_service(tmp_path, monkeypatch
     (proc / "4242").mkdir(parents=True)
     (proc / "4242" / "environ").write_bytes(
         b"HOME=/srv/home\0METNOS_PROMOTER_DB=/srv/p.sqlite\0"
+        b"METNOS_USER_CONFIG=/srv/config\0"
         b"ANTHROPIC_API_KEY=secret\0PATH=/usr/bin\0")
     monkeypatch.setattr(cutover, "_PROC_ROOT_V1", proc)
     owner = os.stat(proc / "4242").st_uid
@@ -100,7 +101,7 @@ def test_only_the_path_overrides_are_read_from_the_service(tmp_path, monkeypatch
         4242, PosixAccountSnapshotV1(
             PosixAccountRecordV1("metnos", owner, 985, "/srv/home", "/usr/sbin/nologin"),
             (985,)))
-    assert set(observed) == {"HOME", "METNOS_PROMOTER_DB"}
+    assert set(observed) == {"HOME", "METNOS_PROMOTER_DB", "METNOS_USER_CONFIG"}
 
 
 def test_a_process_owned_by_another_account_is_refused(tmp_path, monkeypatch):
@@ -231,7 +232,7 @@ def _as_root(monkeypatch):
 @native
 def test_planning_records_the_decision_and_changes_nothing(marker_root, monkeypatch):
     _as_root(monkeypatch)
-    monkeypatch.setattr(cutover, "_in_service_child", lambda work: dict(OBSERVED))
+    monkeypatch.setattr(cutover, "_in_service_child", lambda *args: dict(OBSERVED))
     document = cutover.plan_cutover_v1()
     assert document["purpose"] == cutover.HANDOFF_PURPOSE_V1
     assert document["migration_id"] == MIGRATION
@@ -242,10 +243,10 @@ def test_planning_records_the_decision_and_changes_nothing(marker_root, monkeypa
 @native
 def test_replanning_replaces_the_previous_plan(marker_root, monkeypatch):
     _as_root(monkeypatch)
-    monkeypatch.setattr(cutover, "_in_service_child", lambda work: dict(OBSERVED))
+    monkeypatch.setattr(cutover, "_in_service_child", lambda *args: dict(OBSERVED))
     cutover.plan_cutover_v1()
     revised = dict(OBSERVED, migration_id="sha256:" + "7" * 64)
-    monkeypatch.setattr(cutover, "_in_service_child", lambda work: dict(revised))
+    monkeypatch.setattr(cutover, "_in_service_child", lambda *args: dict(revised))
     assert cutover.plan_cutover_v1()["migration_id"] == revised["migration_id"]
     assert cutover.read_handoff_v1()["migration_id"] == revised["migration_id"]
 
@@ -255,7 +256,7 @@ def test_replanning_replaces_the_previous_plan(marker_root, monkeypatch):
                                     "extra", "missing", "sources"])
 def test_a_document_that_is_not_exactly_a_plan_is_refused(marker_root, monkeypatch, damage):
     _as_root(monkeypatch)
-    monkeypatch.setattr(cutover, "_in_service_child", lambda work: dict(OBSERVED))
+    monkeypatch.setattr(cutover, "_in_service_child", lambda *args: dict(OBSERVED))
     document = cutover.plan_cutover_v1()
     if damage == "extra":
         document["unexpected"] = 1
@@ -373,7 +374,7 @@ def test_an_empty_topology_is_not_a_quiescent_one(monkeypatch):
 @pytest.fixture
 def planned(marker_root, monkeypatch):
     _as_root(monkeypatch)
-    monkeypatch.setattr(cutover, "_in_service_child", lambda work: dict(OBSERVED))
+    monkeypatch.setattr(cutover, "_in_service_child", lambda *args: dict(OBSERVED))
     cutover.plan_cutover_v1()
     barrier = []
 
@@ -399,7 +400,7 @@ def planned(marker_root, monkeypatch):
 @native
 def test_the_migration_runs_inside_the_quiescent_barrier(planned, monkeypatch):
     order = []
-    monkeypatch.setattr(cutover, "_in_service_child", lambda work: (
+    monkeypatch.setattr(cutover, "_in_service_child", lambda *args: (
         order.append("migrated") or {"applied": {
             "migration_id": MIGRATION, "preserved": 2, "resolved": 2,
             "restricted": 1, "pending": 0}}))
@@ -413,7 +414,7 @@ def test_the_migration_runs_inside_the_quiescent_barrier(planned, monkeypatch):
 
 @native
 def test_an_open_disposition_blocks_the_marker(planned, monkeypatch):
-    monkeypatch.setattr(cutover, "_in_service_child", lambda work: {"applied": {
+    monkeypatch.setattr(cutover, "_in_service_child", lambda *args: {"applied": {
         "migration_id": MIGRATION, "preserved": 2, "resolved": 2,
         "restricted": 1, "pending": 2}})
     monkeypatch.setattr(cutover, "_install_marker",
@@ -427,7 +428,7 @@ def test_an_open_disposition_blocks_the_marker(planned, monkeypatch):
 
 @native
 def test_a_different_decision_than_the_reviewed_one_blocks_the_marker(planned, monkeypatch):
-    monkeypatch.setattr(cutover, "_in_service_child", lambda work: {"applied": {
+    monkeypatch.setattr(cutover, "_in_service_child", lambda *args: {"applied": {
         "migration_id": "sha256:" + "f" * 64, "preserved": 2, "resolved": 2,
         "restricted": 1, "pending": 0}})
     monkeypatch.setattr(cutover, "_install_marker",
@@ -439,7 +440,7 @@ def test_a_different_decision_than_the_reviewed_one_blocks_the_marker(planned, m
 
 @native
 def test_a_failed_child_never_reaches_the_marker(planned, monkeypatch):
-    def failing(_work):
+    def failing(*_args):
         raise cutover.LifecycleCutoverError("cutover_epoch_store_absent", "/x")
 
     monkeypatch.setattr(cutover, "_in_service_child", failing)
@@ -494,3 +495,46 @@ def test_without_an_override_the_service_account_decides_not_the_caller(service_
     """Root has its own state directory, and it is never the answer."""
     assert cutover.service_epoch_db_v1({}) == (
         Path(service_account.record.home) / ".local/state/metnos/birth/executor_epochs.sqlite")
+
+
+@native
+@pytest.mark.parametrize("operation", ["plan", "apply", "qualify"])
+def test_service_child_loads_fresh_configuration(operation, tmp_path, monkeypatch,
+                                                service_account):
+    """The real interpreter must not retain the parent's imported root paths."""
+    import config
+    import subprocess
+
+    service_home = tmp_path / "observed-home"
+    state = tmp_path / "observed-state"
+    environment = {"HOME": str(service_home), "METNOS_USER_STATE": str(state)}
+    monkeypatch.setenv("HOME", str(tmp_path / "caller-home"))
+    monkeypatch.setenv("METNOS_USER_DATA", str(tmp_path / "caller-data"))
+    monkeypatch.setenv("UNRELATED_SECRET", "must-not-cross")
+    monkeypatch.setattr(config, "PATH_USER_STATE", tmp_path / "already-imported")
+    monkeypatch.setattr(cutover, "_service_main_pid", lambda: 4242)
+    monkeypatch.setattr(cutover, "_service_environment", lambda *args: environment)
+    run = subprocess.run
+
+    def run_as_test_account(command, **kwargs):
+        # Exercise the actual fresh interpreter without requiring root in CI.
+        assert kwargs.pop("user") == service_account.record.uid
+        assert kwargs.pop("group") == service_account.record.gid
+        assert kwargs.pop("extra_groups") == service_account.supplementary_gids
+        # Isolate catalog/storage observations; configuration imports are real.
+        command = list(command)
+        command[-1] = command[-1].replace(
+            "raise SystemExit(_service_worker())",
+            "import config, json, os; "
+            "print(json.dumps({'state': str(config.PATH_USER_STATE), "
+            "'data': str(config.PATH_USER_DATA), "
+            "'secret': os.environ.get('UNRELATED_SECRET')}))")
+        return run(command, **kwargs)
+
+    monkeypatch.setattr(cutover.subprocess, "run", run_as_test_account)
+    handoff = {"environment": environment, "sources": [], "migration_id": MIGRATION}
+    report = cutover._in_service_child(operation, handoff, qualification={})
+    assert report == {"state": str(state),
+                      "data": str(service_home / ".local/share/metnos"),
+                      "secret": None}
+    assert config.PATH_USER_STATE == tmp_path / "already-imported"

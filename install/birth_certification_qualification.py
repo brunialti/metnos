@@ -79,7 +79,8 @@ def derive_qualification_v1(reconciliation: object, frontier: object) -> Qualifi
             or acts is None or issuers is None or issues is None):
         raise QualificationRefused("qualification_input_invalid", "reconciliation")
     for field in ("census_scope", "open_findings", "profile",
-                  "consecutive_successes", "pending_cycle", "head"):
+                  "consecutive_successes", "pending_cycle", "head",
+                  "profile_bindings"):
         if not hasattr(frontier, field):
             raise QualificationRefused("qualification_input_invalid", "frontier")
 
@@ -96,6 +97,10 @@ def derive_qualification_v1(reconciliation: object, frontier: object) -> Qualifi
         raise QualificationRefused("cycle_interrupted")
     if frontier.profile is None:
         raise QualificationRefused("profile_absent")
+    if frontier.profile_bindings is None:
+        raise QualificationRefused("profile_bindings_absent")
+    if frontier.profile_bindings.head_id != required_head:
+        raise QualificationRefused("profile_head_mismatch")
     cycles = tuple(frontier.consecutive_successes)
     if len(cycles) < REQUIRED_CONSECUTIVE_CYCLES_V1:
         raise QualificationRefused("consecutive_cycles_insufficient", str(len(cycles)))

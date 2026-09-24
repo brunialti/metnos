@@ -36,6 +36,8 @@ FUNCTIONAL_SUPPORT_FILES_V1 = (
     "tabular_projection.py", "path_alias.py",
     "backends/__init__.py", "backends/files/__init__.py",
     "backends/files/local.py",
+    "backend_resolver.py", "vocab.py", "skill_registry.py", "skills_paths.py",
+    "detection_lexicon.py", "detection_lexicon_seed_resolvers.py",
 )
 _HARNESS_NAME = "_metnos_functional_v1.py"
 _INPUT_NAME = "_metnos_functional_input.json"

@@ -35,12 +35,21 @@ class AuthenticatedPredecessorSnapshot:
     revision_kind: str
     payload_hashes: Mapping[str, str]
     snapshot_id: str
+    approved_lifecycle: str | None = None
+    admission_receipt_hash: str | None = None
 
     def __post_init__(self) -> None:
         if self.revision_kind not in {"absent", "generation", "retirement"}:
             raise ValueError("predecessor_snapshot_invalid: revision_kind")
         if (self.revision_id is None) != (self.revision_kind == "absent"):
             raise ValueError("predecessor_snapshot_invalid: revision_id")
+        if (self.approved_lifecycle is None) != (self.admission_receipt_hash is None):
+            raise ValueError("predecessor_snapshot_invalid: admission")
+        if self.approved_lifecycle is not None:
+            from executor_birth_receipts import ApprovedLifecycle
+            ApprovedLifecycle(self.approved_lifecycle)
+            if self.revision_kind != "generation":
+                raise ValueError("predecessor_snapshot_invalid: admission revision")
         object.__setattr__(self, "payload_hashes", MappingProxyType(dict(self.payload_hashes)))
 
 
@@ -53,15 +62,22 @@ class AdmissionContextPin:
 def predecessor_snapshot(
     revision_id: str | None, revision_kind: str,
     payloads: Mapping[str, bytes] | None,
+    *, approved_lifecycle: str | None = None,
+    admission_receipt: bytes | None = None,
 ) -> AuthenticatedPredecessorSnapshot:
     hashes = {} if payloads is None else {
         name: _sha256(payload) for name, payload in sorted(payloads.items())
     }
     value = {"revision_id": revision_id, "revision_kind": revision_kind,
              "payload_hashes": hashes}
+    receipt_hash = None if admission_receipt is None else _sha256(admission_receipt)
+    if receipt_hash is not None:
+        value.update(approved_lifecycle=approved_lifecycle,
+                     admission_receipt_hash=receipt_hash)
     return AuthenticatedPredecessorSnapshot(
         revision_id, revision_kind, hashes,
         _canonical_id("metnos.executor-birth.predecessor-snapshot/v1", value),
+        approved_lifecycle, receipt_hash,
     )
 
 
@@ -86,8 +102,8 @@ def derive_revision_facts(
 ) -> RevisionFacts:
     """Derive byte-backed facts from the authenticated predecessor.
 
-    State transitions such as promotion and reactivation require a separate
-    authenticated lifecycle record and therefore are intentionally false here.
+    Promotion requires the admission authenticated by the store, independently
+    of the lifecycle claimed in the author's manifest.
     """
     if predecessor.revision_kind == "absent":
         return RevisionFacts(first_birth=True)
@@ -97,6 +113,9 @@ def derive_revision_facts(
         raise ValueError("predecessor_snapshot_invalid: manifest.toml")
     old_manifest = tomllib.loads(predecessor_payloads["manifest.toml"].decode("utf-8"))
     new_manifest = tomllib.loads(candidate.manifest_bytes.decode("utf-8"))
+    if (predecessor.approved_lifecycle == "active"
+            and new_manifest.get("lifecycle") in {"synthesized", "preexercise"}):
+        raise ValueError("birth_active_to_preexercise_forbidden")
     # Immutable generations authenticate the manifest and its declared code
     # digest/file map; source bytes are deliberately not duplicated in the
     # contract store.  Comparing this closed declaration is consequently the
@@ -111,6 +130,8 @@ def derive_revision_facts(
     exact = (old_manifest == new_manifest and
              predecessor_payloads.get("manifest.lang_state.json") == candidate.language_state_bytes)
     return RevisionFacts(
+        promotion=(predecessor.approved_lifecycle == "preexercise"
+                   and new_manifest.get("lifecycle", "active") == "active"),
         code_changed=code_changed,
         contract_changed=contract_changed,
         linguistic_surface_changed=linguistic_changed,

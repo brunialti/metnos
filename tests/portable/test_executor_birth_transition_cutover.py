@@ -2019,6 +2019,14 @@ def test_maintenance_session_retains_quiescence_across_named_load_states(
         yield object()
 
     monkeypatch.setattr(stack_reconcile, "catalog_reconcile_lock", catalog_lock)
+    # Supply the installed topology alongside the fake service observer. The
+    # host's actual ownership chain is not part of this transition fixture.
+    monkeypatch.setattr(
+        contract_cutover_guard, "_installed_service_units_v1", lambda: (
+            ("system", "metnos-http.service"),
+            ("system", "metnos-durable-worker.service"),
+        ),
+    )
     with contract_cutover_guard._contract_cutover_guard_core_v1(
         reconciler,
     ) as (session, evidence):

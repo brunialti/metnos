@@ -44,6 +44,7 @@ class CapabilitySpec:
     default_approval: ApprovalMode
     target_kind: TargetKind
     description: str
+    preexercise_eligible: bool = False
 
 
 CAPABILITY_REGISTRY: dict[str, CapabilitySpec] = {
@@ -52,6 +53,7 @@ CAPABILITY_REGISTRY: dict[str, CapabilitySpec] = {
         "compute:pure", critical=False, grants_mutation=False, default_approval="none",
         target_kind="none",
         description="Calcolo deterministico in memoria senza I/O esterno",
+        preexercise_eligible=True,
     ),
     # File system
     "fs:read": CapabilitySpec(
@@ -124,12 +126,14 @@ CAPABILITY_REGISTRY: dict[str, CapabilitySpec] = {
         "time:read", critical=False, grants_mutation=False, default_approval="none",
         target_kind="none",
         description="Lettura ora corrente e fusi orari",
+        preexercise_eligible=True,
     ),
     # Parse
     "parse:local": CapabilitySpec(
         "parse:local", critical=False, grants_mutation=False, default_approval="none",
         target_kind="none",
         description="Parsing locale di formati noti (PDF, HTML, JSON, CSV)",
+        preexercise_eligible=True,
     ),
     # Calendar
     "calendar:read": CapabilitySpec(

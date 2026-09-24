@@ -28,7 +28,7 @@ from executor_birth_intent import BirthIntent, _ProducerCapability, _producer_ca
 from executor_birth_operational import (
     BirthRequest, BirthRuntimeBundle, _assemble_birth_core,
     _assemble_birth_runtime_bundle, _install_birth_runtime_bundle,
-    _runtime_bundle_snapshot, approval_scope, candidate_source_id,
+    _runtime_bundle_snapshot, candidate_source_id,
 )
 from executor_birth_producer_store import (
     BIRTH_STATE_BASENAME_V1, PRODUCER_RECEIPTS_BASENAME_V1,
@@ -699,13 +699,13 @@ def _prepare_sealed_birth_assembly_v1(
     )
     verifier.recover_authoring()
 
-    def approval_resolver(request, observed, revision, instant):
+    def approval_resolver(request, observed, scope, instant):
         return resolve_request_approval(
             approval_refs=request.approval_refs, request_id=request.request_id,
             candidate_id=observed.identities.candidate_id,
             semantic_core_id=observed.identities.semantic_core_id,
             admission_context_id=observed.identities.admission_context_id,
-            scope=approval_scope(observed, revision), now=instant,
+            scope=scope, now=instant,
             db_path=approval_db, authority=sealed.approval,
         )
 

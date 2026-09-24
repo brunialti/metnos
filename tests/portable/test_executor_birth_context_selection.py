@@ -568,9 +568,11 @@ def _previous_context_fixture(monkeypatch, *, advanced):
     monkeypatch.setattr(
         prepared_module, "load_authority_set_v1", lambda *_args, **_kwargs: prepared,
     )
-    monkeypatch.setattr(
-        root, "_load_sealed_authorities_from_set_v1", lambda *_args, **_kwargs: authorities,
-    )
+    def load_previous_authorities(*_args, **kwargs):
+        assert kwargs.get("previous_distribution") is True
+        return authorities
+
+    monkeypatch.setattr(root, "_load_sealed_authorities_from_set_v1", load_previous_authorities)
     return chain, current, checks
 
 

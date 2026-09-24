@@ -70,6 +70,7 @@ def test_complete_chronology_is_reread_without_signing_or_activation(tmp_path):
         assert not hasattr(final, "certificate")
     with _open(tmp_path) as owner:
         assert owner.frontier == final
+        assert owner.frontier.profile_bindings == evidence.ProfileBindingsV1(**BASE)
     path = tmp_path / evidence.DIRECTORY_V1 / "evidence.sqlite"
     assert path.stat().st_mode & 0o777 == 0o600
     with sqlite3.connect(path) as connection:
@@ -93,6 +94,10 @@ def test_successes_cannot_be_selected_across_a_broken_sequence(tmp_path, break_k
                 _finish(owner, passed=False)
     with _open(tmp_path) as owner:
         assert not owner.frontier.consecutive_successes
+        if break_kind == "changed-profile":
+            assert owner.frontier.profile_bindings == evidence.ProfileBindingsV1(
+                **{**BASE, "catalog_id": "sha256:" + "b" * 64},
+            )
         owner.start_cycle()
         assert len(_finish(owner).consecutive_successes) == 1
 

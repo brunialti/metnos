@@ -86,10 +86,9 @@ def _candidate_source_id_from_snapshot(snapshot: object) -> str:
     return _digest(b"metnos.executor-birth.candidate-source/v1\0", fields)
 
 
-def approval_scope(observed: ObservedCandidate, revision: RevisionClass) -> str | None:
+def approval_scope(observed: ObservedCandidate, revision: RevisionClass,
+                   previous: ApprovedLifecycle | None = None) -> str | None:
     """Derive the only permissible approval scope from observed core facts."""
-    if observed.executor_origin is ExecutorOrigin.SYNTHESIZED:
-        return "preexercise"
     scopes = {
         RevisionClass.AUTHORITY: "authority",
         RevisionClass.PROMOTION: "promotion",
@@ -97,6 +96,10 @@ def approval_scope(observed: ObservedCandidate, revision: RevisionClass) -> str 
     }
     if revision in scopes:
         return scopes[revision]
+    if observed.executor_origin is ExecutorOrigin.SYNTHESIZED:
+        if previous is ApprovedLifecycle.ACTIVE:
+            return "active"
+        return "preexercise"
     return None
 
 
@@ -453,7 +456,7 @@ PostconditionVerifier = Callable[
     PublicationResult | tuple[PublicationResult, bytes | None] | None,
 ]
 ApprovalResolver = Callable[
-    [BirthRequest, ObservedCandidate, RevisionClass, datetime],
+    [BirthRequest, ObservedCandidate, str | None, datetime],
     tuple[ApprovalSubject | None, ApprovalEvidence | None],
 ]
 
@@ -849,6 +852,10 @@ def _execute(request: BirthRequest, core: _BirthCore, *, quarantine_execution=No
             predecessor_snapshot, predecessor_payloads, observed.snapshot,
         )
         revision = classify_revision(facts).revision_class
+        previous_lifecycle = (
+            ApprovedLifecycle(predecessor_snapshot.approved_lifecycle)
+            if predecessor_snapshot.approved_lifecycle is not None else None
+        )
         phase = "approval"
         approval_evidence = None
         if quarantine_execution is not None:
@@ -859,11 +866,19 @@ def _execute(request: BirthRequest, core: _BirthCore, *, quarantine_execution=No
                 predecessor_payloads, facts, core.commit_publisher,
             )
         else:
-            approval_subject, approval_evidence = core.approval_resolver(request, observed, revision, instant)
+            approval_subject, approval_evidence = core.approval_resolver(
+                request, observed, approval_scope(observed, revision, previous_lifecycle), instant,
+            )
             phase = "checks"
             report = _ordinary_admission_report(
                 request, core, observed, producer, context, facts, instant,
-                approval_subject, approval_evidence,
+                approval_subject, approval_evidence, previous_lifecycle,
+            )
+        if (predecessor_snapshot.approved_lifecycle == "active"
+                and report.outcome is BirthOutcome.PREEXERCISE):
+            report = replace(
+                report, outcome=BirthOutcome.REJECTED,
+                error_code="birth_active_to_preexercise_forbidden",
             )
         phase = "checks"
         if (report.outcome not in _PUBLISHED_OUTCOMES or report.error_code is not None
@@ -991,7 +1006,7 @@ def _execute(request: BirthRequest, core: _BirthCore, *, quarantine_execution=No
 
 
 def _ordinary_admission_report(request, core, observed, producer, context, facts, instant,
-                               approval_subject, approval_evidence):
+                               approval_subject, approval_evidence, previous_lifecycle):
     shadow = core.shadow_dependencies
     property_runner = shadow.property_runner or ObservedPropertyRunner(
         observed, windows_registry=shadow.windows_sandbox_registry,
@@ -1002,6 +1017,7 @@ def _ordinary_admission_report(request, core, observed, producer, context, facts
         shadow, observer=lambda *_args, **_kwargs: _BorrowedObserved(observed),
         property_runner=property_runner, approval_subject=approval_subject,
         approval_evidence=approval_evidence, now=instant,
+        previous_approved_lifecycle=previous_lifecycle,
     )
     report = _observe_birth_for_test(
         request.candidate_source_root, contract_id=request.manifest_ref.contract_id,
