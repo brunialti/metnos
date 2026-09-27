@@ -280,6 +280,7 @@ def test_proof_publication_authenticates_before_mutating_selected_authority(docu
     from install.synth_review import _record_evidence
     import executor_birth_semantic_authority as semantic
     import executor_birth_prepared_root as prepared
+    from install import birth_authority_provisioner as provisioner
     current = setup.current
     subject = ApprovalSubject(D, D, D, "preexercise", "2026-09-27T13:00:00Z")
     record = {"subject": asdict(subject), "tests": document["human_cases"]}
@@ -298,9 +299,11 @@ def test_proof_publication_authenticates_before_mutating_selected_authority(docu
     writes = []
     session = NS(global_lock=lambda **_: nullcontext(),
                  create_file_exclusive=lambda *a, **k: writes.append((a, k)))
-    monkeypatch.setattr(prepared, "open_prepared_root_session_v1", lambda: nullcontext(session))
+    monkeypatch.setattr(provisioner, "_open_installer_layout_v1",
+                        lambda: NS(birth_session=nullcontext(session)))
     monkeypatch.setattr(semantic, "_load_semantic_authority_in_session", lambda *_: authority)
-    monkeypatch.setattr(review, "_current", lambda: NS(selection="changed") if scenario == "context_changed" else current)
+    monkeypatch.setattr(prepared, "load_required_context_runtime_v1",
+                        lambda: NS(selection="changed") if scenario == "context_changed" else current)
     if scenario in {"wrong_key", "full", "context_changed"}:
         with pytest.raises((ValueError, semantic.SemanticReviewError)):
             PUBLISH(proof, current, review._digest(record))

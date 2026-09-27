@@ -219,35 +219,8 @@ def _record_evidence(record: dict, key) -> bytes:
 
 
 def _publish_evidence(encoded: bytes, current, review_id: str) -> None:
-    from executor_birth_prepared_root import open_prepared_root_session_v1
-    from executor_birth_prepared_set import AUTHORITY_SETS_BASENAME_V1
-    from executor_birth_secure_fs import _BirthObjectRole
-    from executor_birth_semantic_authority import (
-        _load_semantic_authority_in_session, _MAX_EVIDENCE_FILES,
-    )
-    if _current().selection != current.selection:
-        raise ValueError("synth_review_context_changed")
-    with open_prepared_root_session_v1() as session:
-        with session.global_lock(exclusive=True, create=False):
-            base = (AUTHORITY_SETS_BASENAME_V1, current.selection.set_id, "semantic")
-            authority = _load_semantic_authority_in_session(
-                base + ("authority.json",), base + ("public",), base + ("evidence",), session,
-            )
-            # Authenticate against the selected public authority before writing:
-            # a stale private key must never poison subsequent runtime loads.
-            proof = authority._decode_record(encoded, review_id)
-            records = authority._records_from_capability()
-            existing = next((item for item in records if item.evidence_id == review_id), None)
-            if existing is not None:
-                if existing != proof:
-                    raise ValueError("synth_review_evidence_changed")
-                return
-            if len(records) >= _MAX_EVIDENCE_FILES:
-                raise ValueError("synth_review_evidence_store_full")
-            session.create_file_exclusive(
-                base + ("evidence", review_id.removeprefix("sha256:") + ".json"), encoded,
-                role=_BirthObjectRole.birth_integrity_only,
-            )
+    from install.birth_authority_provisioner import publish_independent_evidence_v1
+    publish_independent_evidence_v1(encoded, current.selection, review_id)
 
 
 def review(document: dict) -> dict:

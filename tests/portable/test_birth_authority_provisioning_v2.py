@@ -140,7 +140,8 @@ def _real_revertible_contract(tmp_path: Path, author: Ed25519PrivateKey):
     from manifest_inventory import inventory_authoring_manifests
 
     observed = inventory_authoring_manifests((ManifestSource(
-        ManifestOrigin.USER, source_root,
+        # This fixture copies a human-maintained core contract, not Synth output.
+        ManifestOrigin.CORE, source_root,
         min_depth=1, max_depth=1, allowed_code_roots=(source_root,),
     ),))
     assert not observed.problems, observed.problems
@@ -203,7 +204,7 @@ def test_stale_v1_anchor_supports_only_verification_transition_consumers(
     previous = prepared_root.read_prepared_set_v1()
 
     ref = _real_revertible_contract(tmp_path / "contract", author)
-    monkeypatch.setattr(runtime_config, "PATH_SYNTH_EXECUTORS", ref.source_root)
+    monkeypatch.setattr(runtime_config, "PATH_EXECUTORS", ref.source_root)
     state_root = tmp_path / "service-state"
     store_root = state_root / STORE_RELATIVE
     trusted = (("fixture-author", author.public_key()),)
@@ -212,6 +213,7 @@ def test_stale_v1_anchor_supports_only_verification_transition_consumers(
         trusted_publics=trusted, store_root=store_root,
     )
     monkeypatch.setattr(runtime_config, "PATH_USER_STATE", state_root)
+    shutil.copytree(ref.source_root, state_root / "contract-authoring/v1/core")
     monkeypatch.setenv("METNOS_INSTALL_ROOT", str(convergence._REPOSITORY))
 
     # Keep the source census isolated while retaining its real parser and
@@ -219,7 +221,7 @@ def test_stale_v1_anchor_supports_only_verification_transition_consumers(
     # name, which would otherwise create an unrelated cross-origin collision.
     inventory_authoring = manifest_inventory.inventory_authoring_manifests
     source = manifest_inventory.ManifestSource(
-        manifest_inventory.ManifestOrigin.USER,
+        manifest_inventory.ManifestOrigin.CORE,
         ref.source_root,
         min_depth=1,
         max_depth=1,
@@ -1283,13 +1285,15 @@ def test_cutover_skips_only_an_empty_first_publication_placeholder(
 
     author = Ed25519PrivateKey.generate()
     ref = _real_revertible_contract(tmp_path, author)
-    monkeypatch.setattr(runtime_config, "PATH_SYNTH_EXECUTORS", ref.source_root)
+    monkeypatch.setattr(runtime_config, "PATH_EXECUTORS", ref.source_root)
     trusted = (("initial-author", author.public_key()),)
     store_root = tmp_path / "state" / STORE_RELATIVE
+    shutil.copytree(ref.source_root, tmp_path / "state/contract-authoring/v1/core")
     published = publish_signed_source(
         ref, expected_generation_id=None,
         trusted_publics=trusted, store_root=store_root,
     )
+    monkeypatch.setattr(runtime_config, "PATH_USER_STATE", tmp_path / "state")
 
     pending_id = ContractId(ManifestOrigin.USER, "organize_files/manifest.toml")
     pending = store_root / contract_storage_key(pending_id)
@@ -1346,7 +1350,7 @@ def test_initial_v2_transition_reattests_a_real_revertible_contract(
         installation_root=str(Path(runtime_config.PATH_RUNTIME).parent),
     )
     ref = _real_revertible_contract(tmp_path, author)
-    monkeypatch.setattr(runtime_config, "PATH_SYNTH_EXECUTORS", ref.source_root)
+    monkeypatch.setattr(runtime_config, "PATH_EXECUTORS", ref.source_root)
     trusted = (("initial-author", author.public_key()),)
     state_root = tmp_path / "service-state"
     store_root = state_root / STORE_RELATIVE
@@ -1355,6 +1359,7 @@ def test_initial_v2_transition_reattests_a_real_revertible_contract(
         trusted_publics=trusted, store_root=store_root,
     )
     monkeypatch.setattr(runtime_config, "PATH_USER_STATE", state_root)
+    shutil.copytree(ref.source_root, state_root / "contract-authoring/v1/core")
     monkeypatch.setenv(
         "METNOS_INSTALL_ROOT",
         str(Path(reattestation_module.__file__).resolve().parents[1]),

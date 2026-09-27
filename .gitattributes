@@ -36,6 +36,10 @@ x.png                   export-ignore
 # Cloudflare dev-only (ADR 0144)
 deploy.sh               export-ignore
 
+# I dati privati restano esclusi anche quando tracciati per errore.
+*.sqlite                export-ignore
+install/data/i18n_seed.sqlite -export-ignore
+
 # Normalizzazione fine-riga su sorgenti testuali
 *.py        text eol=lf
 *.md        text eol=lf

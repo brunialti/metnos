@@ -1963,7 +1963,34 @@ def exposed():
             "def _ensure_executor_birth_authorities_prepared():",
         )
     )
+    review_calls_the_layout = dict(baseline)
+    review_calls_the_layout["install/synth_review.py"] = """
+def review():
+    from install.birth_authority_provisioning import open_birth_provisioning_layout_v1
+    return open_birth_provisioning_layout_v1()
+"""
+    review_calls_a_mutation = dict(baseline)
+    review_calls_a_mutation["install/synth_review.py"] = """
+def review(session):
+    return session.create_file_exclusive()
+"""
+    review_calls_provisioning = dict(baseline)
+    review_calls_provisioning["install/synth_review.py"] = """
+def review():
+    from install.birth_authority_provisioner import ensure_executor_birth_authorities_prepared
+    return ensure_executor_birth_authorities_prepared()
+"""
+    runtime_publishes_evidence = dict(baseline)
+    runtime_publishes_evidence["runtime/escape.py"] = """
+def exposed():
+    from install.birth_authority_provisioner import publish_independent_evidence_v1
+    return publish_independent_evidence_v1()
+"""
     for mutant in (
+        review_calls_the_layout,
+        review_calls_a_mutation,
+        review_calls_provisioning,
+        runtime_publishes_evidence,
         reader_gains_a_mutation,
         third_construction_site,
         phase_calls_a_mutation,
@@ -2151,6 +2178,8 @@ def prepare_or_defer_until_legacy_author_exists():
 def ensure_executor_birth_authorities_prepared():
     return _provision_prepared_authorities_v1(None)
 def complete_transition_cutover_v2():
+    return _provision_prepared_authorities_v1(None)
+def publish_independent_evidence_v1():
     return _provision_prepared_authorities_v1(None)
 """,
         "install/executor_birth_transition.py": """

@@ -37,6 +37,7 @@ def test_archive_keeps_required_public_boundary_artifacts(tmp_path):
 
     git("init", "-q")
     git("add", ".")
+    git("add", "-f", "install/data/private.sqlite")
     tree = git("write-tree").decode().strip()
     with tarfile.open(fileobj=io.BytesIO(git("archive", tree))) as archive:
         included = {entry.name for entry in archive.getmembers() if entry.isfile()}

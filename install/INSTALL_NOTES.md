@@ -89,6 +89,9 @@ systemd unit. The existing Birth runner receives that unit's cgroup delegation
 under the service identity; code never runs with the authority's root identity.
 Interruption stops the entire unit. Review records and keys remain root-only;
 only a verified signed proof reaches the service's semantic evidence store.
+The existing Birth provisioner owns that write: it authenticates the proof
+against the selected authority and uses its exclusive installation session.
+The review caller cannot select a storage path or mutate the reader session.
 Review grants no admission: a separate expiring consent resumes the original
 producer through all Birth checks. This administrative integration currently
 requires the supported Linux distribution; portable runner tests do not prove
