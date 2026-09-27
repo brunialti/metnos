@@ -58,6 +58,9 @@ facts with the installation author key and atomically writes
 `$METNOS_USER_STATE/i18n/localization_request.json`. Re-running the installer
 with the same selection and corpus version leaves the signed document byte for
 byte unchanged.
+The corpus includes authenticated published revisions only. An exact empty
+reservation left by a rejected first admission contributes no content. A missing
+current pointer with history, malformed pointer or link still stops verification.
 
 ## Birth authority inputs (RM-0008 group 2)
 
