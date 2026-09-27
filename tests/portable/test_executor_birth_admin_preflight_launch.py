@@ -170,6 +170,7 @@ def test_launch_plan_uses_only_signed_identity_environment_and_root(
     )
     monkeypatch.setattr(preflight.os, "readlink", lambda _path: "/usr/bin/python3")
     monkeypatch.setenv("ATTACKER_PATH", "/tmp/attacker")
+    monkeypatch.setenv("METNOS_INSTALL_ROOT", "/tmp/attacker")
 
     plan = preflight._make_launch_plan_v1(_materials(entry), entry)
 
@@ -178,12 +179,30 @@ def test_launch_plan_uses_only_signed_identity_environment_and_root(
     assert plan.service_supplementary_gids == (44, 991)
     assert dict(plan.environment) == {
         "HOME": "/var/lib/metnos", "LOGNAME": "metnos",
+        "METNOS_INSTALL_ROOT": "/release",
         "PROBE_MODE": "signed", "SHELL": "/usr/sbin/nologin",
         "USER": "metnos",
     }
     assert "ATTACKER_PATH" not in dict(plan.environment)
     assert plan.python_path == ("/release", "/release/runtime")
     assert plan.umask == 0o027
+
+
+def test_authenticated_launch_satisfies_productive_store_source_binding(monkeypatch):
+    import contract_store
+
+    entry = _entry()
+    materials = _materials(entry)
+    source = Path(contract_store.__file__).resolve().parents[1]
+    materials.descriptor.installation_root = str(source)
+    monkeypatch.setattr(preflight, "_trusted_python_path_v1", lambda *args: ())
+    monkeypatch.setattr(preflight.os, "readlink", lambda _path: "/usr/bin/python3")
+    monkeypatch.setenv("METNOS_INSTALL_ROOT", "/tmp/unselected-checkout")
+    monkeypatch.setattr(contract_store._C, "PATH_ROOT", source)
+
+    plan = preflight._make_launch_plan_v1(materials, entry)
+    monkeypatch.setenv("METNOS_INSTALL_ROOT", dict(plan.environment)["METNOS_INSTALL_ROOT"])
+    contract_store._require_productive_installation_source()
 
 
 @pytest.mark.parametrize("changed", [False, True])

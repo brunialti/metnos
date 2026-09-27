@@ -905,7 +905,7 @@ _REQUIRED_MANIFEST_PATHS = {
 _BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:f4bc8e8c13be646aa6bdb4e37276c3c28037419193d0a2d823ab50b4b3b9ef04"
+_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:cd1a0cebc33d6a6fc7515b62e7b58f2d1eaa77c1ea72c0157719e6146d448648"
 _SOURCE_REVIEW_PIN_VALUE_V1 = (
     rb'(?:(?:"sha256:" \+ "0" \* 64)|(?:"sha256:[0-9a-f]{64}"))'
 )
@@ -15122,6 +15122,10 @@ def _make_launch_plan_v1(
     environment = {
         "HOME": descriptor.service_home,
         "LOGNAME": descriptor.service_user,
+        # Publication must identify the selected installation explicitly.
+        # Derive this from the authenticated descriptor, never caller/catalog
+        # environment (where this name remains forbidden).
+        "METNOS_INSTALL_ROOT": descriptor.installation_root,
         "SHELL": descriptor.service_shell,
         "USER": descriptor.service_user,
     }

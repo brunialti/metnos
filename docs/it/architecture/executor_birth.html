@@ -129,6 +129,9 @@
  dei processi. Ogni vista deve identificare dal kernel soltanto i processi
  del laboratorio; una vista illeggibile o dell'host impedisce l'autorizzazione
  temporanea di prova.</p>
+ <p>Il lanciatore comunica ai servizi la cartella dell'installazione verificata.
+ La pubblicazione controlla che il codice provenga proprio da quella cartella;
+ un valore ereditato dall'ambiente non può sostituirla.</p>
  <p>Una verifica dello sviluppo riguarda i lavori in attesa: un executor può
  diventare indisponibile mentre il lavoro aspetta un modello o un posto per
  l'esecuzione. Il percorso con controllo delle generazioni rilegge quindi lo

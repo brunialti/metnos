@@ -120,6 +120,9 @@
  A nested laboratory may need a second process filesystem. Each such view
  must independently identify only the laboratory's process namespace;
  an unreadable or host view refuses temporary test authorization.</p>
+ <p>The launcher passes the verified installation directory to its services.
+ Publication checks that the running code comes from that exact directory;
+ a value inherited from the environment cannot override it.</p>
  <p>One development check concerns waiting jobs: an executor can become
  unavailable while a job waits for a model or an execution slot. The strict
  attempt path therefore rereads its exact generation after waiting and before
