@@ -331,6 +331,11 @@ can still prevent recovery. Explicit permanent errors and invalid contracts do
 not become recoverable. History distinguishes the general code and, when
 available, its approved cause; these counts are attempts, not items.</p>
 
+<p>Before an operation runs, a catalog read failure is confirmed with one
+additional verified read. If it succeeds, work continues; if it fails again,
+attention is required. Explicit security refusals remain immediate. This check
+does not repeat the operation or increase its limits.</p>
+
 <div class="callout note"><p><strong>The precise guarantee.</strong> LRE uses
 attempts with <em>at least once</em> semantics and admits one valid commit per unit. It can make an
 observable effect effectively once when the operation is pure, idempotent, or

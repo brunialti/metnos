@@ -3751,7 +3751,13 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
                 ),
                 stderr_limit_bytes=MAX_ERROR_JSON_BYTES,
             )
-        except SubprocessOutputLimitExceeded:
+        except SubprocessOutputLimitExceeded as exc:
+            log.warning(
+                "durable_transport_failed attempt_id=%s cause=output_limit stream=%s limit_bytes=%d",
+                execution_context.attempt_id,
+                exc.stream if exc.stream in {"stdout", "stderr"} else "unknown",
+                exc.limit_bytes,
+            )
             parsed_result = {
                 "ok": False,
                 "error_class": "contract_violation",
@@ -3759,6 +3765,8 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
                 "error": msg("ERR_DURABLE_RESULT_CONTRACT_VIOLATION"),
             }
         except SubprocessTerminationError:
+            log.warning("durable_transport_failed attempt_id=%s cause=termination_unconfirmed",
+                        execution_context.attempt_id)
             # Do not start another unattended process while the previous
             # process group cannot be proven dead.
             parsed_result = {
@@ -3768,6 +3776,8 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
                 "error": msg("ERR_DURABLE_EXECUTION_FAILED"),
             }
         except subprocess.TimeoutExpired as exc:
+            log.warning("durable_transport_failed attempt_id=%s cause=deadline_expired",
+                        execution_context.attempt_id)
             # ``subprocess.TimeoutExpired`` is not a ``TimeoutError``.  The
             # durable bridge intentionally classifies the latter as a
             # retryable timed-out attempt.
@@ -3778,6 +3788,12 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
             parsed_result = json.loads(result.stdout)
         except json.JSONDecodeError:
             if execution_context is not None:
+                log.warning(
+                    "durable_transport_failed attempt_id=%s cause=non_json returncode=%d "
+                    "stdout_chars=%d stderr_chars=%d",
+                    execution_context.attempt_id, result.returncode,
+                    len(result.stdout), len(result.stderr),
+                )
                 parsed_result = {
                     "ok": False,
                     "error_class": "non_json",

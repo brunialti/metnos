@@ -345,6 +345,11 @@ impedire la ripresa. Errori esplicitamente permanenti o contratti non validi non
 vengono trasformati in recuperabili. Lo storico distingue il codice generale e,
 quando disponibile, la causa approvata; i conteggi sono tentativi, non elementi.</p>
 
+<p>Prima di eseguire un'operazione, un errore di lettura del catalogo viene
+confermato con una sola nuova lettura verificata. Se riesce, il lavoro prosegue;
+se fallisce ancora, chiede attenzione. I rifiuti espliciti di sicurezza restano
+immediati. Questa verifica non ripete l'operazione e non aumenta i limiti.</p>
+
 <div class="callout note"><p><strong>Garanzia corretta.</strong> LRE usa
 tentativi con semantica <em>at least once</em> e ammette un solo commit valido per unità. Può rendere un
 effetto osservabile una sola volta quando l'operazione è pura, idempotente o

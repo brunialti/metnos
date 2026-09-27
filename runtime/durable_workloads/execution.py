@@ -87,8 +87,8 @@ def _loader_failure_cause(exc: Exception) -> str:
     if isinstance(exc, sqlite3.OperationalError) and type(code) is int:
         if code & 0xFF in {sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED}:
             return "database_contention"
-    # These codes are descriptive only: they never grant retries or bypass
-    # contract verification, including for custom injected loaders.
+    # These diagnostics never grant another unit attempt or bypass contract
+    # verification, including for custom injected loaders.
     code = getattr(exc, "code", None)
     if isinstance(code, str) and code in {
         "store_snapshot_unstable", "store_inventory_invalid",
@@ -101,6 +101,16 @@ def _loader_failure_cause(exc: Exception) -> str:
     if isinstance(exc, LookupError):
         return "executor_missing"
     return "unclassified"
+
+
+def _loader_failure_numbers(exc: Exception) -> tuple[int | None, int | None]:
+    """Keep OS/SQLite diagnostics without exception text or private paths."""
+    os_code = getattr(exc, "errno", None) if isinstance(exc, OSError) else None
+    sql_code = getattr(exc, "sqlite_errorcode", None) if isinstance(exc, sqlite3.Error) else None
+    return (
+        os_code if type(os_code) is int and 0 <= os_code <= 4095 else None,
+        sql_code if type(sql_code) is int and 0 <= sql_code <= 65535 else None,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -208,7 +218,29 @@ class DurableExecutionBridge:
     def _load_verified_executor(name: str) -> object:
         from loader import load_catalog
 
-        executor = load_catalog(verify=True, lang="en").get(name)
+        # A catalog read precedes all execution and model calls. Confirm an
+        # unavailable read once before requiring human intervention; every
+        # read still authenticates the catalog, and the returned executor must
+        # pass the frozen-contract, lifecycle and deadline checks below.
+        # This never retries an invocation or grants another unit attempt.
+        for read in range(2):
+            try:
+                catalog = load_catalog(verify=True, lang="en")
+                break
+            except Exception as exc:
+                cause = _loader_failure_cause(exc)
+                if read or cause not in {
+                    "database_contention", "store_snapshot_unstable",
+                    "catalog_lock_timeout", "lock_timeout", "unclassified",
+                }:
+                    raise
+                os_code, sql_code = _loader_failure_numbers(exc)
+                log.warning(
+                    "durable_catalog_read_recheck runner_name=%s cause=%s "
+                    "os_errno=%s sqlite_errorcode=%s",
+                    name, cause, os_code, sql_code,
+                )
+        executor = catalog.get(name)
         if executor is None:
             raise LookupError("verified executor is unavailable")
         return executor
@@ -786,6 +818,11 @@ class DurableExecutionBridge:
                     getattr(exc, "inventory_diagnostics", ()),
                 ) if cause == "store_inventory_invalid" else ()
                 details: dict[str, Any] = {"runner_name": contract.name, "loader_cause": cause}
+                os_code, sql_code = _loader_failure_numbers(exc)
+                if os_code is not None:
+                    details["loader_os_errno"] = os_code
+                if sql_code is not None:
+                    details["loader_sqlite_errorcode"] = sql_code
                 if diagnostics:
                     details["inventory_diagnostics"] = [
                         {"code": code, "cause_code": nested, "os_errno": number}
@@ -793,9 +830,10 @@ class DurableExecutionBridge:
                     ]
                 log.warning(
                     "durable_executor_load_failed workload_id=%s attempt_id=%s "
-                    "runner_name=%s cause=%s inventory_diagnostics=%s",
+                    "runner_name=%s cause=%s os_errno=%s sqlite_errorcode=%s "
+                    "inventory_diagnostics=%s",
                     context.workload_id, context.attempt_id, contract.name, cause,
-                    diagnostics,
+                    os_code, sql_code, diagnostics,
                 )
                 raise self._failure(
                     "capability_unavailable",
