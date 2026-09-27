@@ -2,10 +2,10 @@ role: synt_tests
 tier: middle
 lang: en
 style: definitional
-version: 2
+version: 3
 owner: roberto
-updated: 2026-09-12
-sha_prev: "6cc75382cbfa4aa82"
+updated: 2026-09-27
+sha_prev: 23110e74
 
 section:
   name: synt_tests
@@ -21,6 +21,14 @@ context:
     reverse_pattern: "{{ reverse_pattern }}"
   user_request: "{{ user_request }}"
 rules:
+  - name: invocation_contract
+    body: |
+      Tests invoke the function directly with concrete arguments matching the
+      declared schema. Only when from_step is declared, replace that reference
+      with entries containing the actual records; no scratchpad exists in a test.
+      Do not invent argument names or a from_step value. For an invalid item in a
+      best-effort batch, check fail_count_eq and error_contains; ok=false is for
+      an invalid invocation, such as a non-list where a list is required.
   - name: test_count
     body: "Produce 4-6 tests with unique names."
   - name: declarative_only

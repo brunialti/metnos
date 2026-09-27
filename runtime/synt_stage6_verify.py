@@ -64,9 +64,13 @@ DESCRIPTION dichiara:
 CODE body:
 {code_body}
 
-Output JSON SOLO (niente preamble): {{"aligned": bool, "mismatch": "spiegazione max 200 char"}}.
-- aligned=true se il code esegue ESATTAMENTE quello che la description promette.
-- aligned=false se il code non corrisponde, copre solo una parte, o fa cose extra non documentate.
+Output: un solo oggetto JSON, senza testo esterno o chiavi aggiuntive.
+- Se il codice esegue ESATTAMENTE quanto promesso, restituisci
+  {{"aligned": true, "mismatch": ""}}. Il campo mismatch DEVE essere vuoto.
+- Se il codice non corrisponde, copre solo una parte o fa cose extra, restituisci
+  {{"aligned": false, "mismatch": "motivo concreto"}}. Il motivo DEVE essere
+  non vuoto, senza NUL, al massimo 200 byte UTF-8.
+Non aggiungere spiegazioni di approvazione nel campo mismatch.
 """
 
 

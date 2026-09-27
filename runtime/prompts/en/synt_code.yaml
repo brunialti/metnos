@@ -2,10 +2,10 @@ role: synt_code
 tier: wise
 lang: en
 style: few_shot
-version: 1
+version: 2
 owner: roberto
-updated: 2026-05-13
-sha_prev: ""
+updated: 2026-09-27
+sha_prev: f286bb21
 
 section:
   name: synt_code
@@ -26,6 +26,12 @@ context:
   user_request: "{{ user_request }}"
 
 rules:
+  - name: functional_cases
+    body: |
+      STAGE 3 FUNCTIONAL CASES (fixed input/output contract):
+      {{ tests_json }}
+      Implement the full requested behavior, including these cases. Do not change
+      the cases or hardcode their answers. Preserve their argument and result fields.
   - name: presentation_contract
     body: |
       MANIFEST PRESENTATION CONTRACT: the user view is declarative, not

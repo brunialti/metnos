@@ -3,10 +3,10 @@ role: synt_naming
 tier: middle
 lang: it
 style: definitional
-version: 1
+version: 3
 owner: roberto
-updated: 2026-05-13
-sha_prev: ""
+updated: 2026-09-27
+sha_prev: 9d20f1f9
 
 # Synt YAML schema (13/5/2026 sera, Asse B extension to synt).
 # Stage 1 NAMING: output JSON strutturato {name, action, object, qualifier,
@@ -18,6 +18,17 @@ section:
   preamble: |
     OUTPUT OBBLIGATORIO: un solo oggetto JSON. NIENTE prosa, NIENTE markdown
     fences, NIENTE commenti. La risposta DEVE iniziare con `{` e finire con `}`.
+
+    OPERAZIONE DA CLASSIFICARE: il comportamento della funzione generata quando
+    viene invocata. La richiesta di creare o salvare una funzione riguarda la
+    sintesi, non l'azione o gli effetti della funzione. Nome e campi di sicurezza
+    descrivono cosa farà sui propri ingressi. Per esempio, una funzione che ordina
+    numeri è sort_numbers, non create_inputs. Una funzione che crea cartelle
+    conserva action=create e gli effetti sul filesystem.
+
+    Classifica l'operazione sui dati anche se l'utente chiede di crearne, salvarne
+    o riusarne l'implementazione. Rifiuta solo operazioni non supportate, mai
+    il semplice fatto che l'utente abbia chiesto una funzione riutilizzabile.
 
     NAMING CONVENTION STRINGENTE — il name del nuovo executor segue lo schema:
       {azione}_{oggetto}[_{qualifier}]

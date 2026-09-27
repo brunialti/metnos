@@ -2,10 +2,10 @@ role: synt_tests
 tier: middle
 lang: it
 style: definitional
-version: 2
+version: 3
 owner: roberto
-updated: 2026-09-12
-sha_prev: "fc0423f1c4a5c40f"
+updated: 2026-09-27
+sha_prev: 509eae94
 
 section:
   name: synt_tests
@@ -21,6 +21,15 @@ context:
     reverse_pattern: "{{ reverse_pattern }}"
   user_request: "{{ user_request }}"
 rules:
+  - name: invocation_contract
+    body: |
+      I test invocano direttamente la funzione con argomenti concreti conformi
+      allo schema dichiarato. Solo se è dichiarato from_step, sostituisci quel
+      riferimento con entries contenente i record effettivi; nel test non esiste
+      lo scratchpad. Non inventare nomi di argomenti o valori from_step. Per un
+      elemento invalido in un batch best-effort verifica fail_count_eq ed
+      error_contains; ok=false riguarda invocazioni invalide, come un numero
+      al posto di una lista richiesta.
   - name: test_count
     body: "Produci 4-6 test, con nomi unici."
   - name: declarative_only

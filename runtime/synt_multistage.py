@@ -397,6 +397,7 @@ def run_stage5(user_request: str, stage1: dict, stage2: dict, stage3: dict, stag
         revertible=str(stage1["revertible"]),
         reverse_pattern=str(stage2.get("reverse_pattern")),
         description=stage4["description"],
+        tests_json=json.dumps(stage3["tests"], ensure_ascii=False, indent=2),
         user_request=user_request,
         scope=scope or "",
     )

@@ -1522,11 +1522,15 @@ class Synt:
     def approve_proposal(self, proposal_id: str, *,
                          executors_dir: Path | str = str(_C.PATH_EXECUTORS),
                          key_name: str = "author") -> dict:
-        """Stadi 6 (approval = chiamata stessa) + 7 (firma e install).
+        """Legacy proposal approval; retained Birth candidates need exact consent.
 
         Verifica: birth_tests passati. Sposta in executors_dir/<name>/, calcola
         digest, firma il manifest. Ritorna dict di risultato.
         """
+        if (self.proposals_dir / proposal_id / "candidate").is_dir():
+            from messages import get as message
+            return {"ok": False, "error": "synth_review_required",
+                    "message": message("MSG_SYNTH_REVIEW_REQUIRED")}
         executors_dir = Path(executors_dir)
         prop_dir = self.proposals_dir / proposal_id
         if not prop_dir.exists():
@@ -2015,6 +2019,10 @@ def _cli():
     p_intro.add_argument("--cluster-min", type=int, default=3,
                          help="cluster minimo per proporre generalize")
     sub.add_parser("proposals", help="Lista le proposte pendenti")
+    p_review = sub.add_parser("review", help="Esporta una proposta conservata con i casi umani")
+    p_review.add_argument("proposal_id")
+    p_review.add_argument("--cases", type=Path, required=True,
+                          help="JSON dei 3–6 casi forniti o confermati dall'operatore")
     p_app = sub.add_parser("approve", help="Approva una proposta (firma + install)")
     p_app.add_argument("proposal_id")
     p_app.add_argument("--executors-dir", default=str(_C.PATH_EXECUTORS))
@@ -2102,6 +2110,11 @@ def _cli():
             print(f"        birth: {p['birth_summary']}")
             print(f"        created: {p['created_at']}")
             print(f"        dir: {p['proposal_dir']}\n")
+    elif args.cmd == "review":
+        from synth_proposal_store import review_document
+        document = review_document(s.proposals_dir, args.proposal_id,
+                                   json.loads(args.cases.read_text(encoding="utf-8")))
+        print(json.dumps(document, ensure_ascii=False))
     elif args.cmd == "approve":
         res = s.approve_proposal(
             args.proposal_id,

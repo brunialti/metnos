@@ -28,6 +28,12 @@ interpreter, missing lock, failed dependency installation or failed core import
 stops installation; `--force` cannot bypass the supported platform. Bootstrap
 does not upgrade pip or install an independent list of unpinned packages.
 
+Source archives retain the same two public boundary-policy inputs as the Git
+clone: `internal/reports/rm0007-m4-boundary-inventory.json` and
+`internal/tools/render_contract_boundary_policy.py`. `.gitattributes` must
+exclude their private neighbours without excluding those installation inputs.
+`tests/portable/test_distribution_archive.py` checks the actual Git archive.
+
 Downloaded models live in `$METNOS_USER_DATA/models`, independently of the
 sealed source release. `METNOS_MODELS_DIR` explicitly selects an existing
 model directory. Installer, runtime, Tutor fingerprints and sandbox projections
@@ -67,6 +73,26 @@ Private operator/reviewer keys live under
 are copied to the service account. Existing exact authorities are verified on
 re-entry. Links, changed bytes, ownership or permissions fail closed. A phase
 marker or a service-account write cannot authorize activation.
+
+The operator registry grants the named Birth scopes (`active`, `authority`,
+`preexercise`, `promotion`, `reactivation`), never a generic `birth` scope.
+Existing installations retain their exact registry by default. An explicit
+`python -m install.operator_authority --user <service-account> --upgrade-scopes` replaces only that
+legacy scope list in the provisioning input, preserving both private keys.
+It takes effect only in the next authenticated release selection.
+
+The installed F5 authority also accepts `proposal review` and `proposal approve`.
+The first consumes candidate bytes and three to six operator-confirmed cases;
+the second consumes only the exact review identity, subject hash and decision.
+Both run the authenticated installed implementation in a bounded transient
+systemd unit. The existing Birth runner receives that unit's cgroup delegation
+under the service identity; code never runs with the authority's root identity.
+Interruption stops the entire unit. Review records and keys remain root-only;
+only a verified signed proof reaches the service's semantic evidence store.
+Review grants no admission: a separate expiring consent resumes the original
+producer through all Birth checks. This administrative integration currently
+requires the supported Linux distribution; portable runner tests do not prove
+equivalent administrative custody on Windows.
 
 The complete authenticated transition prepares the distribution and initial
 catalog while services remain inactive. Activation happens only after the

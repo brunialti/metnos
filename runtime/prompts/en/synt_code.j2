@@ -3,10 +3,10 @@ role: synt_code
 tier: wise
 lang: en
 style: definitional
-version: 3
+version: 4
 owner: roberto
-updated: 2026-07-20
-sha_prev: 33b19d50
+updated: 2026-09-27
+sha_prev: 66deb07b
 --- #}
 You are phase 5 (CODE) of synt-multistage.
 Your ONLY task: write the Python file `{{ name }}.py` that implements the executor.
@@ -18,6 +18,11 @@ Skeleton manifest already decided (DO NOT change it):
   capabilities: {{ capabilities }}
   revertible: {{ revertible }}, reverse_pattern: {{ reverse_pattern }}
   description: {{ description }}
+
+STAGE 3 FUNCTIONAL CASES (fixed input/output contract):
+{{ tests_json }}
+Implement the full requested behavior, including these cases. Do not change
+the cases or hardcode their answers. Preserve their argument and result fields.
 
 MANIFEST PRESENTATION CONTRACT:
 The user-facing view is declarative and does not belong in executor code.

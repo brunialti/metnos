@@ -2,10 +2,10 @@ role: synt_code
 tier: wise
 lang: it
 style: few_shot
-version: 1
+version: 2
 owner: roberto
-updated: 2026-05-13
-sha_prev: ""
+updated: 2026-09-27
+sha_prev: 01e8a899
 
 # Stage 5 CODE: stile `few_shot` (§6.1) — output Python code, non JSON.
 # Niente DEVI/NON DEVI sistematici sul JSON; le rules sono principi guida +
@@ -31,6 +31,12 @@ context:
   user_request: "{{ user_request }}"
 
 rules:
+  - name: functional_cases
+    body: |
+      CASI FUNZIONALI STAGE 3 (contratto input/output fissato):
+      {{ tests_json }}
+      Implementa tutto il comportamento richiesto, inclusi questi casi. Non cambiare
+      i casi né codificarne le risposte. Rispetta i campi di argomenti e risultati.
   - name: presentation_contract
     body: |
       CONTRATTO DI PRESENTAZIONE DEL MANIFEST: la vista utente e' dichiarativa,
