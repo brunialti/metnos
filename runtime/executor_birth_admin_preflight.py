@@ -905,7 +905,7 @@ _REQUIRED_MANIFEST_PATHS = {
 _BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:8ff7b56ab9306292c9ead01d7e93ed21222a4d1dd7afaeb39b0672d9e58455ee"
+_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:2e9fa6c8b43ea1d1bc9a58a314cfdeac419eb6275bf53eac6ef4280af67647a9"
 _SOURCE_REVIEW_PIN_VALUE_V1 = (
     rb'(?:(?:"sha256:" \+ "0" \* 64)|(?:"sha256:[0-9a-f]{64}"))'
 )
@@ -4726,7 +4726,7 @@ def _install_transaction_id_v1(value: dict[str, object]) -> str:
 
 
 # BEGIN GENERATED LEGACY STATE PREFLIGHT V1
-_LEGACY_STATE_PROJECTION_SHA256_V1 = "sha256:59a817d588bdd5e8863573f9168cc92c88ff866926803270dd3cf7a82950be6d"
+_LEGACY_STATE_PROJECTION_SHA256_V1 = "sha256:3eac30cab1ce2a61e6603c8df269a68d645f8040f8f443ee6c6a2638c0832c6f"
 _LEGACY_STATE_CANONICAL_ASCII_V1 = b'{"dispositions":["exact-service","fresh","root-adoption-required"],"fsm":[["PLANNED","INVENTORY"],["INVENTORIED","ADOPT_AUTHORING"],["AUTHORING_ADOPTED","CONVERGE_CONTRACTS_AND_VERIFY"],["LEGACY_STATE_READY",null]],"maximum_record_bytes":65536,"output_fields":[["sequence","int"],["state","str"],["intent","str | None"],["previous_record_sha256","str | None"],["request_id","str"],["policy_sha256","str"],["inventory_sha256","str | None"],["inventory_disposition","str | None"],["adoption_target_sha256","str | None"],["authoring_sha256","str | None"],["ready_sha256","str | None"],["record_sha256","str"]],"policy_sha256":"sha256:eec5f97f5ddfe081f61800c49896abb17858e74d4b0175c03e4a9148d3bf8a11","protocol":"metnos.executor-birth.legacy-state/v1","record_domain":"metnos.executor-birth.legacy-state-record/v1\\u0000","record_keys":["adoption_target_sha256","authoring_sha256","intent","inventory_disposition","inventory_sha256","policy_sha256","previous_record_sha256","protocol","ready_sha256","record_sha256","request_id","schema_version","sequence","state"]}'
 _LEGACY_STATE_PROFILE_DATA_V1 = json.loads(
     _LEGACY_STATE_CANONICAL_ASCII_V1.decode('ascii'))
@@ -4869,6 +4869,37 @@ def decode_legacy_state_wire_chain_v1(
     ):
         raise invalid("record_chain")
     return records
+
+
+def decode_legacy_state_wire_history_v1(
+    raw, expected_terminal_sha256, profile, digest_pattern, decode_canonical,
+    encode_canonical, framed_sha256, invalid,
+):
+    """Read completed history pinned by the authenticated ownership chain.
+
+    The historical policy is part of the pinned record chain. It cannot
+    authorize a new adoption or resume an unfinished one under old rules.
+    """
+    if (
+        type(raw) is not tuple or len(raw) != len(profile["fsm"])
+        or any(type(item) is not bytes for item in raw)
+        or not legacy_state_wire_is_digest_v1(expected_terminal_sha256, digest_pattern)
+    ):
+        raise invalid("history_binding")
+    terminal = decode_canonical(raw[-1], profile["maximum_record_bytes"])
+    legacy_state_wire_require_schema_v1(terminal, profile, invalid)
+    policy = terminal["policy_sha256"]
+    if not legacy_state_wire_is_digest_v1(policy, digest_pattern):
+        raise invalid("history_policy")
+    historical_profile = dict(profile)
+    historical_profile["policy_sha256"] = policy
+    records = decode_legacy_state_wire_chain_v1(
+        raw, historical_profile, digest_pattern, decode_canonical,
+        encode_canonical, framed_sha256, invalid,
+    )
+    if records[-1]["record_sha256"] != expected_terminal_sha256:
+        raise invalid("history_binding")
+    return records
 class _DecodedLegacyStateRecordV1(NamedTuple):
     sequence: int
     state: str
@@ -4901,6 +4932,14 @@ def _decode_legacy_state_chain_v1(encoded_records):
     values = decode_legacy_state_wire_chain_v1(
         encoded_records, _LEGACY_STATE_WIRE_PROFILE_V1, _DIGEST_RE,
         decode_canonical_json_v1, _canonical_json,
+        _framed_sha256_v1, _invalid)
+    return tuple(_legacy_state_decoded_record_v1(value) for value in values)
+
+
+def _decode_legacy_state_history_v1(encoded_records, expected_terminal_sha256):
+    values = decode_legacy_state_wire_history_v1(
+        encoded_records, expected_terminal_sha256, _LEGACY_STATE_WIRE_PROFILE_V1,
+        _DIGEST_RE, decode_canonical_json_v1, _canonical_json,
         _framed_sha256_v1, _invalid)
     return tuple(_legacy_state_decoded_record_v1(value) for value in values)
 # END GENERATED LEGACY STATE PREFLIGHT V1
@@ -7930,10 +7969,30 @@ def _authenticate_fixed_ownership_snapshot_core_v1(
             raise _recovery("duplicate successor claim")
         legacy_state_terminal = None
         if candidate.legacy_state_adoption_records:
-            legacy_state_chain = durable(
-                _decode_legacy_state_chain_v1,
-                candidate.legacy_state_adoption_records,
+            # A completed adoption is pinned by the already selected release.
+            # Its policy is historical; new/unfinished adoption stays current.
+            selected_legacy_pins = tuple(
+                item.decoded_prefix.records[0].legacy_state_record_sha256
+                for item in candidate.transactions
+                if candidate.required_head is not None
+                and item.decoded_prefix is not None
+                and item.decoded_prefix.records
+                and item.decoded_prefix.records[0].release_sequence
+                == candidate.required_head.release_sequence
             )
+            if candidate.required_head is not None:
+                if len(selected_legacy_pins) != 1:
+                    raise _recovery("selected legacy state binding")
+                legacy_state_chain = durable(
+                    _decode_legacy_state_history_v1,
+                    candidate.legacy_state_adoption_records,
+                    selected_legacy_pins[0],
+                )
+            else:
+                legacy_state_chain = durable(
+                    _decode_legacy_state_chain_v1,
+                    candidate.legacy_state_adoption_records,
+                )
             if (
                 len(legacy_state_chain) != len(_LEGACY_STATE_FSM_V1)
                 or legacy_state_chain[-1].state != "LEGACY_STATE_READY"

@@ -25,6 +25,56 @@ def _read(root, *, between=None):
     )
 
 
+def _change_current_adoption_policy(monkeypatch):
+    profile = dict(preflight._LEGACY_STATE_WIRE_PROFILE_V1)
+    profile["policy_sha256"] = preflight._raw_sha256_v1(b"new-adoption-policy")
+    monkeypatch.setattr(preflight, "_LEGACY_STATE_WIRE_PROFILE_V1", profile)
+
+
+def test_selected_history_survives_policy_change_but_new_adoption_does_not(
+    tmp_path, monkeypatch,
+):
+    root, _ = _authenticated_fixed_ownership_fixture(tmp_path, release_count=4)
+    original = tuple((root / "legacy-state-adoption-v1" / f"record-{i:03d}.json").read_bytes()
+                     for i in range(4))
+    _change_current_adoption_policy(monkeypatch)
+    with pytest.raises(preflight.PreflightError, match="record_grammar"):
+        preflight._decode_legacy_state_chain_v1(original)
+    result = _read(root)
+    assert result.required_head.release_sequence == 4
+    assert tuple((root / "legacy-state-adoption-v1" / f"record-{i:03d}.json").read_bytes()
+                 for i in range(4)) == original
+
+
+@pytest.mark.parametrize("damage", ("partial", "rehashed", "signature"))
+def test_historical_policy_never_waives_history_binding(tmp_path, monkeypatch, damage):
+    root, _ = _authenticated_fixed_ownership_fixture(tmp_path, release_count=4)
+    _change_current_adoption_policy(monkeypatch)
+    journal = root / "legacy-state-adoption-v1"
+    if damage == "partial":
+        (journal / "record-003.json").unlink()
+    elif damage == "signature":
+        signature = sorted((root / "chain-v1/heads-v1").glob("*.sig"))[-1]
+        _write_control_file(signature, b"x" * 64)
+    else:
+        # Even an internally coherent replacement must not replace the pinned
+        # completed adoption. Recompute all hashes and links, not just a byte.
+        previous = None
+        for index in range(4):
+            path = journal / f"record-{index:03d}.json"
+            value = json.loads(path.read_bytes())
+            value["policy_sha256"] = preflight._raw_sha256_v1(b"replacement-policy")
+            value["previous_record_sha256"] = previous
+            value.pop("record_sha256")
+            previous = preflight._framed_sha256_v1(
+                preflight.LEGACY_STATE_RECORD_DOMAIN_V1, preflight._canonical_json(value),
+            )
+            value["record_sha256"] = previous
+            _write_control_file(path, preflight._canonical_json(value))
+    with pytest.raises(preflight.PreflightError):
+        _read(root)
+
+
 @pytest.mark.parametrize("count", (1, 3, 12))
 def test_current_window_access_is_bounded_without_archive_enumeration(tmp_path, monkeypatch, count):
     root, _ = _authenticated_fixed_ownership_fixture(tmp_path, release_count=count)

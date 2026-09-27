@@ -305,11 +305,13 @@ def historical_repository(tmp_path: Path):
     )
     candidate = service_catalog.decode_service_catalog_v1(built.encoded)
     # This fixture is the fixed initial installation, not today's recipe.
-    # The operator-authority binding was added later; mixing it into the old
-    # catalog made thirteen root-only history tests fail before their oracle.
+    # Operator authority and managed installation were added later; neither
+    # belongs to the fixed historical census below.
     initial_bindings = tuple(
         binding for binding in candidate.legacy_bindings
-        if binding.legacy_id != "legacy-install-operator-authority"
+        if binding.legacy_id not in {
+            "legacy-install-operator-authority", "legacy-install-managed",
+        }
     )
     assert len(initial_bindings) == 39
     assert {binding.locator for binding in initial_bindings if binding.scope == "repository"} == set(old_paths)
@@ -992,8 +994,9 @@ def test_successor_can_add_a_proven_absent_repository_entry_and_replay(
         script.write_bytes(b"recreated")
     monkeypatch.setattr(neutralizer, "_neutralize_core_v1", lambda *_a, **_k: pytest.fail("observer wrote"))
     monkeypatch.setattr(provisioner, "_capture_bound_transition_catalog_v2", lambda *_: current)
-    # A completed checkpoint, not these mutable old names, now proves history.
-    if case not in {"absent", "retired", "old_missing", "old_recreated"}:
+    # Complete historical absence is independent of later authoring files,
+    # links, artifacts or ownership. Known or uncensused entries stay strict.
+    if case in {"known_missing", "outside_census", "bytecode", "cache"}:
         with pytest.raises((neutralizer.LegacyNeutralizerError, OSError)):
             provisioner._retire_bound_catalog_v2(
                 distribution, prepared, _Maintenance(), object(), previous_catalog=previous,

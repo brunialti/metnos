@@ -195,13 +195,14 @@ no execution or publication authority to development sources.
 A successor may add a repository retirement binding without rewriting the
 initial census. Every previous step must remain identical; removals, changed
 identities, duplicate destinations and additional unit retirements are refused.
-Only an additional repository entry needs new filesystem evidence: it must
-either have the exact preserved size/hash
-from the authenticated initial census, or be absent from that census within its
-complete source-root coverage and also absent on disk. The latter observation
-uses unchanged owned directory handles without following links and refuses
-stray retirement/preservation artifacts. Entries known to the census still need
-their preserved file. No file is fabricated, deleted or renamed by a successor.
+An additional repository entry present in the authenticated initial census
+needs its exact preserved size/hash. An entry absent within that census's
+complete source-root coverage never belonged to the previous installation:
+the signed history proves that no retirement was needed. Later authoring files
+at that name do not acquire historical authority and need not be deleted or
+root-owned. Outside the census coverage, absence cannot be inferred; bytecode
+and cache paths are excluded. Known entries still need their preserved file.
+No file is fabricated, deleted or renamed by a successor.
 Live service masks, unit replacements and conflicting legacy processes are
 still checked; historical process names need no surviving checkout directory.
 The release tool and the locked transition share this checkpoint/delta verifier.

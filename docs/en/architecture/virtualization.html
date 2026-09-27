@@ -344,6 +344,10 @@ not replace authority checks. This path does not support <code>--skip</code>.</p
 <p>The service catalog also covers the managed installer entrypoint. On
 first preparation, the store owner creates missing directories after checking
 their path; symbolic links are not accepted as store directories.</p>
+<p>Updates authenticate the original installation inventory. A new component
+that never belonged to that inventory does not require retiring a file from
+the development checkout. Existing retirement evidence, service protections
+and checks for conflicting processes remain mandatory.</p>
 <p>The service registry and Tutor observe the profile's verified endpoints;
 external services offer no local start or stop commands. In a container, the
 memory check also accounts for the container's assigned limits. The initial

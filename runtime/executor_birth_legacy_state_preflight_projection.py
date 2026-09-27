@@ -245,6 +245,12 @@ def _adapter_lines_v1(fields: tuple[tuple[str, str], ...]) -> tuple[str, ...]:
         "        decode_canonical_json_v1, _canonical_json,",
         "        _framed_sha256_v1, _invalid)",
         "    return tuple(_legacy_state_decoded_record_v1(value) for value in values)",
+        "", "", "def _decode_legacy_state_history_v1(encoded_records, expected_terminal_sha256):",
+        "    values = decode_legacy_state_wire_history_v1(",
+        "        encoded_records, expected_terminal_sha256, _LEGACY_STATE_WIRE_PROFILE_V1,",
+        "        _DIGEST_RE, decode_canonical_json_v1, _canonical_json,",
+        "        _framed_sha256_v1, _invalid)",
+        "    return tuple(_legacy_state_decoded_record_v1(value) for value in values)",
     ))
     return tuple(lines)
 

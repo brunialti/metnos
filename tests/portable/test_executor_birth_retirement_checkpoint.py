@@ -161,6 +161,43 @@ def test_successor_checks_for_conflicting_legacy_processes(checkpoint, monkeypat
             checkpoint.previous, checkpoint.previous, object(), expected_previous_build_id=D("a"))
 
 
+@pytest.mark.parametrize("running", (False, True))
+def test_new_name_absent_from_signed_history_never_opens_authoring_root(
+    checkpoint, monkeypatch, running,
+):
+    from executor_birth_service_catalog import ServiceLegacyBindingV1
+    import executor_birth_legacy_neutralizer as neutralizer
+
+    binding = ServiceLegacyBindingV1(
+        "legacy-new", "entry-installer", "python_module", "repository",
+        "install/new_module.py", "retire_in_group7",
+    )
+    current = NS(catalog=replace(checkpoint.previous.catalog, legacy_bindings=tuple(sorted(
+        (*checkpoint.previous.catalog.legacy_bindings, binding),
+        key=lambda item: item.legacy_id,
+    ))), unit_fragments=checkpoint.previous.unit_fragments)
+    def roots(*_args, include_repository):
+        assert include_repository is False
+        return {"system": Path("/test/system"), "user": Path("/test/user")}
+    def processes(root, locators, *, historical):
+        assert historical is True and binding.locator in locators
+        return running
+    def observe(_root, steps, **_kwargs):
+        assert all(step.scope != "repository" for step in steps)
+    monkeypatch.setattr(provisioner, "_transition_roots_v2", roots)
+    monkeypatch.setattr(provisioner, "_process_tree_references_entries_v2", processes)
+    monkeypatch.setattr(neutralizer, "_observe_retired_core_v1", observe)
+    if running:
+        with pytest.raises(provisioner.BirthProvisioningError, match="repository_in_use"):
+            provisioner._observe_successor_retirement_v2(
+                current, checkpoint.previous, object(), expected_previous_build_id=D("a"))
+    else:
+        assert provisioner._observe_successor_retirement_v2(
+            current, checkpoint.previous, object(), expected_previous_build_id=D("a"),
+        ) == plan_digest_v1(plan_catalog_retirement_v1(current.catalog).steps)
+    assert not Path(checkpoint.selected.predecessor.installation_root).exists()
+
+
 @pytest.mark.skipif(os.name == "nt", reason="Linux process observation adapter")
 @pytest.mark.parametrize("running", (False, True))
 def test_historical_process_observer_needs_no_old_directory(tmp_path, running):

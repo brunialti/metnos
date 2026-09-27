@@ -19,6 +19,7 @@ LEGACY_STATE_WIRE_HELPER_CATALOG_V1 = (
     "legacy_state_wire_record_v1",
     "legacy_state_wire_records_linked_v1",
     "decode_legacy_state_wire_chain_v1",
+    "decode_legacy_state_wire_history_v1",
 )
 
 
@@ -150,10 +151,42 @@ def decode_legacy_state_wire_chain_v1(
     return records
 
 
+def decode_legacy_state_wire_history_v1(
+    raw, expected_terminal_sha256, profile, digest_pattern, decode_canonical,
+    encode_canonical, framed_sha256, invalid,
+):
+    """Read completed history pinned by the authenticated ownership chain.
+
+    The historical policy is part of the pinned record chain. It cannot
+    authorize a new adoption or resume an unfinished one under old rules.
+    """
+    if (
+        type(raw) is not tuple or len(raw) != len(profile["fsm"])
+        or any(type(item) is not bytes for item in raw)
+        or not legacy_state_wire_is_digest_v1(expected_terminal_sha256, digest_pattern)
+    ):
+        raise invalid("history_binding")
+    terminal = decode_canonical(raw[-1], profile["maximum_record_bytes"])
+    legacy_state_wire_require_schema_v1(terminal, profile, invalid)
+    policy = terminal["policy_sha256"]
+    if not legacy_state_wire_is_digest_v1(policy, digest_pattern):
+        raise invalid("history_policy")
+    historical_profile = dict(profile)
+    historical_profile["policy_sha256"] = policy
+    records = decode_legacy_state_wire_chain_v1(
+        raw, historical_profile, digest_pattern, decode_canonical,
+        encode_canonical, framed_sha256, invalid,
+    )
+    if records[-1]["record_sha256"] != expected_terminal_sha256:
+        raise invalid("history_binding")
+    return records
+
+
 __all__ = [
     "LEGACY_STATE_WIRE_HELPER_CATALOG_V1",
     "LEGACY_STATE_WIRE_OUTPUT_FIELDS_V1",
     "decode_legacy_state_wire_chain_v1",
+    "decode_legacy_state_wire_history_v1",
     "legacy_state_wire_is_digest_v1",
     "legacy_state_wire_record_v1",
     "legacy_state_wire_records_linked_v1",

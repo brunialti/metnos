@@ -5193,11 +5193,6 @@ def _observe_successor_retirement_v2(
     predecessor = selected.predecessor
     previous_ids = {step.legacy_id for step in old_plan.steps}
     added = tuple(step for step in plan.steps if step.legacy_id not in previous_ids)
-    roots = _transition_roots_v2(
-        SimpleNamespace(materials=SimpleNamespace(
-            descriptor=materials.descriptor, predecessor=predecessor,
-        )), legacy_identity, include_repository=bool(added),
-    )
     locators = tuple(sorted({
         step.locator for step in plan.steps if step.scope == "repository"
     }))
@@ -5220,10 +5215,20 @@ def _observe_successor_retirement_v2(
         and "__pycache__" not in step.locator.split("/")
         and Path(step.locator).suffix not in {".pyc", ".pyo"}
     )
+    # A name absent from the authenticated complete original census is not
+    # an old component to retire. Later authoring files at that name have no
+    # historical authority. Known/uncensused entries still need live evidence;
+    # all locators above still participate in the conflicting-process check.
+    pending = tuple(step for step in added if step.locator not in absent)
+    roots = _transition_roots_v2(
+        SimpleNamespace(materials=SimpleNamespace(
+            descriptor=materials.descriptor, predecessor=predecessor,
+        )), legacy_identity, include_repository=bool(pending),
+    )
     for scope in ("repository", "user", "system"):
         if scope in {"repository", "user"} and scope not in roots:
             continue
-        steps = tuple(step for step in (added if scope == "repository" else plan.steps)
+        steps = tuple(step for step in (pending if scope == "repository" else plan.steps)
                       if step.scope == scope)
         if steps:
             _observe_retired_core_v1(
@@ -5237,7 +5242,6 @@ def _observe_successor_retirement_v2(
                     (scope, name): content for name, content in new_units.items()
                 },
                 expected_retired_files=retired_files,
-                absent_repository_locators=absent if scope == "repository" else frozenset(),
             )
     repeated = _select_ownership_epoch_v1(
         _authenticate_fixed_ownership_snapshot_v1().snapshot,
