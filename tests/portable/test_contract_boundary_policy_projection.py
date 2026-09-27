@@ -43,7 +43,7 @@ TOOL = ROOT / "internal" / "tools" / "render_contract_boundary_policy.py"
 # 27/9/2026: the managed installer and source preparation delegate to the
 # existing root-only installation transition; no additional runtime authority.
 GOLDEN_DIGEST_V1 = (
-    "sha256:375c012b71239891ea3d27910dd6fbc129f2e84437bda53ca4608914d26a9201"
+    "sha256:c5c2a6431f30a570600cce2017e1cfb20581fff29d5772d6518b06dac7829006"
 )
 
 POLICY_NAMES = (

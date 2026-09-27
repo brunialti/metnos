@@ -20,9 +20,11 @@ POLICY_NAMES = (
 # Includes the administrative evidence-store scopes and the reviewed
 # retirement-only grant for _BirthCommitPublisher.retire. The empty inventory
 # consequently reports that additional missing exception scope.
-POLICY_SHA256 = "e57b28ccddb778f0f301abfe5478cdea9a0c69d0ddea8e40c3f6a86a17ead104"
-INVENTORY_SHA256 = "90d74b1db94434aff523694e46a9e625d5889ad5865d1dca95af7615a16ff39c"
-FINDINGS_SHA256 = "82f53bc8b280cea9e23f756be76e2157fca0313776a4b3c53d57c9bf606ec821"
+# 27/9: the five reviewed initial-installation coordinator scopes delegate
+# only to the existing transition; no publication or runtime grant is added.
+POLICY_SHA256 = "2cc84c3ae0e6288e40a305380af1b75eaf01d96ab0efecc48af7336a02e7b7e6"
+INVENTORY_SHA256 = "6b68632f718f1f54d5fc498225f24ede67e25c20e6b93aa288882c95f54268d0"
+FINDINGS_SHA256 = "47589c63cb73360b2fce503be53a19907a60686db39a484feaf431cf232a7e6e"
 
 DIRECT_MANIFEST_ROLES = frozenset({
     "migration_boundary", "offline_authoring", "store_owner",
@@ -118,7 +120,7 @@ def test_inventory_and_findings_outputs_are_frozen() -> None:
     embedded = standalone.birth_closed_findings((), inventory)
     first = [(item.code, item.scope, item.message) for item in imported]
     second = [(item.code, item.scope, item.message) for item in embedded]
-    assert first == second and len(first) == 170
+    assert first == second and len(first) == 175
     assert _sha256(first) == FINDINGS_SHA256
 
 

@@ -1287,7 +1287,7 @@ def _transition_historical_receipt_v1(
 def prepare_initial_installer_catalog_v1(*, prove_quiescent: object) -> dict:
     """Build the initial shadow through a private, non-installed Birth bundle."""
     from contract_bootstrap import ProductionStoreMode
-    from contract_store import production_store_mode
+    from contract_store import _ensure_directory_chain, production_store_mode
     from executor_birth_intent import _INSTALLER
     from executor_birth_authority_gate import closed_build_enforcement
     from executor_birth_prepared_root import load_sealed_authorities_v1
@@ -1307,6 +1307,9 @@ def prepare_initial_installer_catalog_v1(*, prove_quiescent: object) -> dict:
         (ref, _initial_candidate_payloads_v1(ref)) for ref in refs
     )
     shadow_root = _initial_shadow_root_v1(sealed.prepared.set_id, candidates)
+    # Recovery observes the empty store before the first publication. Use the
+    # store owner's checked creation, including refusal of linked components.
+    _ensure_directory_chain(shadow_root, code="store_root_invalid")
     trusted = tuple(sorted(sealed.author.verifier_keys.items()))
     catalog: dict[str, str] = {}
     receipts: dict[str, str] = {}

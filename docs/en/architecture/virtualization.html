@@ -341,6 +341,9 @@ own management and receive no local units. After phase 2 the profile remains
 unchanged during resumption; changing it on an installed instance requires
 an administrative update and a restart window. Completed-phase records do
 not replace authority checks. This path does not support <code>--skip</code>.</p>
+<p>The service catalog also covers the managed installer entrypoint. On
+first preparation, the store owner creates missing directories after checking
+their path; symbolic links are not accepted as store directories.</p>
 <p>The service registry and Tutor observe the profile's verified endpoints;
 external services offer no local start or stop commands. In a container, the
 memory check also accounts for the container's assigned limits. The initial

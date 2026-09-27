@@ -854,6 +854,9 @@ SERVICE_SOURCE_V1 = tuple(sorted((
                 "legacy-install-module", "python_module", "install/__main__.py",
             ),
             _repository_entry(
+                "legacy-install-managed", "python_module", "install/managed_install.py",
+            ),
+            _repository_entry(
                 "legacy-install-operator-authority", "python_module",
                 "install/operator_authority.py",
             ),

@@ -219,7 +219,12 @@ def test_the_provisioner_never_uses_the_previous_decoder():
         and node.module == "executor_birth_bootstrap"
         for imported in node.names
     }
-    assert bootstrap_imports == {"verify_initial_installer_store_v1"}
+    # Initial adoption reuses the exact candidate-byte reader, never the old
+    # free-form admission-context decoder.
+    assert bootstrap_imports == {
+        "verify_initial_installer_store_v1",
+        "_initial_candidate_payloads_v1", "_regular_source_bytes_v1",
+    }
     assert "_context_builder" not in source
     assert "build_admission_context" not in source
     assert "MaterialFile" not in source

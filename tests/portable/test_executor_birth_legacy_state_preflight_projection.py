@@ -17,7 +17,9 @@ ROOT = Path(__file__).resolve().parents[2]
 PREFLIGHT = ROOT / "runtime" / "executor_birth_admin_preflight.py"
 TOOL = ROOT / "internal/tools/render_contract_boundary_policy.py"
 GOLDEN_DIGEST_V1 = (
-    "sha256:0ecdbe19957f3cb1a94814c9c390e438d66691e7ee7cd7dba38ac8c997c61c59"
+    # Reviewed initial adoption: exact empty serialization locks are not a
+    # catalog; retained shadow locks keep their validated inode and payload.
+    "sha256:59a817d588bdd5e8863573f9168cc92c88ff866926803270dd3cf7a82950be6d"
 )
 
 

@@ -240,42 +240,44 @@ _SERVICE_BOUNDING_STATUS_V1 = {
 # Bubblewrap's mandatory nested-user-namespace lockdown before executor start.
 # 27/9/2026: the watchdog uses the reviewed preference-driven periodic runner;
 # its timer starts it once and the runner owns subsequent scheduling.
+# 27/9/2026: managed_install joins the existing installer entry. Only the
+# repository entrypoint coverage changes; service commands and privileges do not.
 _EXPECTED_SERVICE_SOURCE_IDENTITY_V1 = (
-    "sha256:a4fd1d5e5559cae346e2618b80a7a91893d6533001f6ad2bc49adc4c06aeb807"
+    "sha256:6b217282f4ae159a095ae8353d681e54fff4cd24eb52da725724114deb624b39"
 )
 # Reviewed fixed recipes for optional remote companions. These pins are never
 # computed from a candidate in the administrative process.
 _EXPECTED_REMOTE_SERVICE_SOURCE_IDENTITIES_V1 = {
     ('llm',):
-        'sha256:44a88b33f0aa9cab00789ec20abb0859ff7417fa3ad522cb9a6b44e417f492ce',
+        'sha256:3becb2321f7c763b4b8457a14d168a64bdc62baafced503283a11f1c1b66c7a6',
     ('photon',):
-        'sha256:05dc0cdc703bbd704de838f0f5becbb973c5619636c85ced21d6df2afc1c4b6e',
+        'sha256:f76ef6d8ee8edbfd226293d0e6e36e2a97e145d3db800ed30a5549e6a24a6223',
     ('playwright',):
-        'sha256:b7f1573cb40b5781b9d2fae43e0062e4fcbf23eb933a0c5526f8a3b7a39e771a',
+        'sha256:4eafb91de2f346043bc9c308c152deffda1b128b895594003ed10c41808bd8c4',
     ('searxng',):
-        'sha256:050d4945a62a11204867b450dd1739bc5c3c0cae5fff8f37a92bf8c0ffd25e8b',
+        'sha256:d6c2a52da4a4ad31fdc721c477f4546550b83a6d0aa387ce8ad8b3db69aab1a9',
     ('llm', 'photon'):
-        'sha256:972fca9a2e347f939f4cf3c71d68fd27c816bec126dca3b9ee2467c442323acf',
+        'sha256:963b1a593e2a25b83a3d385374de42801707e7c3ca42bbc2e1b2f17416b2e8fb',
     ('llm', 'playwright'):
-        'sha256:c0442cf4c1c9fa11b54a7b0b4e50f2c75a0cff2a4eab76935fca8f2f6e95045e',
+        'sha256:250faf33ac1776c170648af44842a9b2577e6964156434b5baafbd0972942762',
     ('llm', 'searxng'):
-        'sha256:6534cd4900a48a148b6c7feea3c7b573dd5f1fea7a8ac7f8848ba28615b25293',
+        'sha256:9273cb6590ed515c81c17d5df81ac3922ce229aa811a71457c088b355c303ab6',
     ('photon', 'playwright'):
-        'sha256:320ab40be911a0cd6c4e619fc22adaf437bfc843c68abb62a2e384298e06d462',
+        'sha256:40d608b7658d3a49784a00a3706596ff8d3c696346be2771e9ee2476d43bd41a',
     ('photon', 'searxng'):
-        'sha256:0a9851d026476c385ddb31ea92e0c5804c0477fdec0bc71bcf4b9d382317a2d8',
+        'sha256:83929b5aaaa9f1a1fa773b677e825c602449978a3bf555ec22e62094565e72c7',
     ('playwright', 'searxng'):
-        'sha256:bf0d54f3009f25977de401c858467fab2135c933ac3f633a9d73cf3539048eef',
+        'sha256:305af3207fe1cab8964f91758878369b4e6e113505591a48888a6df8b1c0e8f4',
     ('llm', 'photon', 'playwright'):
-        'sha256:f61df9264041eeb7daceeaa5a9efa8b48c587503f5587768f96c96fba897041c',
+        'sha256:5dd281e8f3f975b0d65f0166b054c76fa90f6ac6ce8c2cbd42cf0f94099797d2',
     ('llm', 'photon', 'searxng'):
-        'sha256:8718bb6129e951027367d1942e4eeaa681a20dbd4b5d18ec8eeb2f172c0c8a4a',
+        'sha256:4589785b6745e640bcf68328db020e95376adbe2be58ffe5c1342364ca7ee0e8',
     ('llm', 'playwright', 'searxng'):
-        'sha256:c825278bf97717bdc9b0d3f7e20ddde7b37b0f4e4180d710917b71dec8272cec',
+        'sha256:e063e4a00c04a246b54200389735a0a33500fb7f76716267828f66a92312a365',
     ('photon', 'playwright', 'searxng'):
-        'sha256:e9addb1d28d5cdca2c0dc1aba5316e98c225012097c44c142de485fb29310cc9',
+        'sha256:078a0425c48cb11cf99bde33ab2b4edf9a7e7a5e804cbaf3bacf33a76b52c54d',
     ('llm', 'photon', 'playwright', 'searxng'):
-        'sha256:3cbb59f09403c973ccc6fa91f0bc168ae1f902f8215a8c6657a84b5ebc804975',
+        'sha256:6f2ffe579d6db7366698773bc0658c847eef303555217a11e02d2566dfb1a4dc',
 }
 _ISOLATED_G6C_NAMESPACE_RE_V1 = re.compile(r"[0-9a-f]{16}")
 _ISOLATED_G6C_SOURCE_IDENTITY_V1 = (
@@ -903,7 +905,7 @@ _REQUIRED_MANIFEST_PATHS = {
 _BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:2bafb50e26403278faecd3f4d755afd5ebf0a9f1913ba9021ed2536a8807e8ac"
+_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:721f7a57390a5ec7a30e8c6ae39afa89e3667d7c28d633bfbad286eb591473cc"
 _SOURCE_REVIEW_PIN_VALUE_V1 = (
     rb'(?:(?:"sha256:" \+ "0" \* 64)|(?:"sha256:[0-9a-f]{64}"))'
 )

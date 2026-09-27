@@ -635,6 +635,7 @@ def test_source_compiler_binds_targets_environment_and_supplementary_groups() ->
             ("script", "repository", "install/bootstrap.sh"),
             ("script", "repository", "install/setup.sh"),
             ("python_module", "repository", "install/__main__.py"),
+            ("python_module", "repository", "install/managed_install.py"),
             ("python_module", "repository", "install/operator_authority.py"),
         },
         "install-playwright": {
