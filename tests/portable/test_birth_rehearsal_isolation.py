@@ -1,5 +1,6 @@
 """Native isolation facts cannot activate F5 without a signed permit."""
 from dataclasses import replace
+import sys
 
 import pytest
 
@@ -120,8 +121,8 @@ def test_unsupported_platform_cannot_claim_isolation(monkeypatch):
         isolation.observe_local_rehearsal_v1()
 
 
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="native Linux kernel observer")
 def test_unreadable_kernel_facts_refuse(monkeypatch):
-    monkeypatch.setattr(isolation.sys, "platform", "linux")
     def unreadable(*args):
         raise PermissionError("kernel observation")
     monkeypatch.setattr(isolation, "_read", unreadable)

@@ -27,6 +27,7 @@ def D(character: str) -> str:
 
 @pytest.mark.parametrize("activate", [False, True])
 @pytest.mark.parametrize("profile", [{}, {"llm": {"url": "http://model.example.test"}}])
+@LINUX_ONLY
 def test_first_install_uses_closed_release_without_a_legacy_instance(monkeypatch, tmp_path, activate, profile):
     from install import operator_authority, services
     from install import birth_ownership_authority_provisioner as authorities

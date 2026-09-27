@@ -109,7 +109,7 @@ def test_real_authoring_paths_and_store_layout_are_accepted() -> None:
 def test_activated_shadow_keeps_its_original_catalog_lock(payload: bytes) -> None:
     from contract_store import _catalog_lock_path
 
-    state = Path(_request().state_root)
+    state = Path(_request().state_root).resolve()
     candidate = state / "contract-publications-shadow" / ("a" * 64) / "v1"
     lock = _file(_catalog_lock_path(candidate).relative_to(state).as_posix(), payload)
     # Activation atomically moves the candidate container into production.

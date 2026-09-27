@@ -1,6 +1,7 @@
 """A new instance records absence, never a fabricated predecessor tree."""
 import hashlib
 import json
+import sys
 
 import pytest
 
@@ -103,6 +104,7 @@ def test_independent_maintenance_verifier_accepts_absent_user_manager_only():
 
 
 @pytest.mark.parametrize("fault", [None, "resume", "not-new", "unsigned", "manifest", "code", "language", "foreign", "unprivileged", "unsealed", "wrong-root"])
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux sealed memfd authority handoff")
 def test_initial_catalog_handoff_binds_authority_origin_and_exact_source(monkeypatch, tmp_path, fault):
     import fcntl
     import os

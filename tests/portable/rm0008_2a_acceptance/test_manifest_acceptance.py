@@ -16,6 +16,7 @@ from pathlib import Path
 
 import pytest
 
+
 from .certification_v1 import (
     ACTIVITIES,
     CertificationError,
@@ -2206,6 +2207,8 @@ def test_g6_required_cell_inventory(slug: str) -> None:
 def test_g6_collection_exact(slug: str, tmp_path: Path) -> None:
     manifest = validate_manifest()
     assert validate_collection(manifest) == collect_a_node_ids()
+    for variant in ("reviewed", "source", "target", "mode"):
+        _assert_installer_dependency_requires_exact_reviewed_requirement(variant)
 
     source_root = REPO_ROOT / "tests/portable/rm0008_2a_acceptance"
     shadow_root = tmp_path / "shadow-repository"
@@ -2504,3 +2507,31 @@ def pytest_runtest_makereport(item, call):
         if (REPO_ROOT / relative).is_file()
     }
     assert effective_support <= scanned
+
+
+def _assert_installer_dependency_requires_exact_reviewed_requirement(variant):
+    from . import certification_v1 as certification
+
+    source = {
+        path: ("100644", "a" * 40)
+        for path in certification._REVIEWED_ACCEPTANCE_EVOLUTIONS
+    }
+    current = {path: ("100644", "b" * 40) for path in source}
+    current.update({
+        path: ("100644", "c" * 40)
+        for path in certification._FROZEN_CURRENT_EXACT_PATHS
+    })
+    requirements = "tests/portable/requirements.txt"
+    source[requirements] = ("100644", "7f8078e8ce6ae4fa14b952c440efe3fc830c40c1")
+    current[requirements] = ("100644", "ffea1fcc6f2897bb58dd20bef63557113aaf866c")
+    if variant == "source":
+        source[requirements] = ("100644", "d" * 40)
+    elif variant == "target":
+        current[requirements] = ("100644", "d" * 40)
+    elif variant == "mode":
+        current[requirements] = ("100755", current[requirements][1])
+    if variant == "reviewed":
+        certification._validate_reviewed_acceptance_tree_evolution(source, current)
+    else:
+        with pytest.raises(certification.CertificationError, match="unreviewed evolution"):
+            certification._validate_reviewed_acceptance_tree_evolution(source, current)

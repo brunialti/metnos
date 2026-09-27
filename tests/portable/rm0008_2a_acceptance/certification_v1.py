@@ -79,6 +79,12 @@ _REVIEWED_PORTABLE_SUPPORT_GIT_EDGE = (
     ("100644", "255ae1beaceec12cfd9ae81a7484e95a62f07309"),
     ("100644", "4451e8a45192011cb72d36a20e6ace51ec7096ed"),
 )
+# Rich is an installer import dependency. Only this exact locked addition is
+# accepted; the historical test dependencies and acceptance cells stay fixed.
+_REVIEWED_PORTABLE_REQUIREMENTS_GIT_EDGE = (
+    ("100644", "7f8078e8ce6ae4fa14b952c440efe3fc830c40c1"),
+    ("100644", "ffea1fcc6f2897bb58dd20bef63557113aaf866c"),
+)
 _EFFECTIVE_PYTEST_SUPPORT_SHA256 = {
     "conftest.py": "c31a567f781dcbd3e1ce06c67c901a1b3be07c21a5d8c4030cc8bf262a753015",
     "tests/portable/conftest.py": (
@@ -2764,6 +2770,11 @@ def _validate_reviewed_acceptance_tree_evolution(
         source_tree[portable_support], current_tree[portable_support],
     ) == _REVIEWED_PORTABLE_SUPPORT_GIT_EDGE:
         changed.remove(portable_support)
+    requirements = "tests/portable/requirements.txt"
+    if requirements in changed and (
+        source_tree[requirements], current_tree[requirements],
+    ) == _REVIEWED_PORTABLE_REQUIREMENTS_GIT_EDGE:
+        changed.remove(requirements)
     if (
         missing
         or added != set(_FROZEN_CURRENT_EXACT_PATHS)
