@@ -4,9 +4,11 @@ from contextlib import nullcontext
 from dataclasses import asdict, replace
 from datetime import datetime, timedelta, timezone
 import json
+import hashlib
 import os
 from pathlib import Path
 import subprocess
+import tomllib
 from types import SimpleNamespace as NS
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -128,6 +130,9 @@ def setup(monkeypatch, tmp_path):
 
     def request(intent, cap):
         assert cap.producer_id == "synt_multistage"
+        manifest = tomllib.loads((intent.candidate_source_root / "manifest.toml").read_text())
+        source = (intent.candidate_source_root / "example.py").read_bytes()
+        assert manifest["code"]["digest"] == "sha256:" + hashlib.sha256(source).hexdigest()
         # Bind the real closed candidate bytes and the allocated token, just
         # as the runtime factory does (its algorithm has separate tests).
         candidate = review._digest({"source": (intent.candidate_source_root / "example.py").read_text(),
@@ -157,6 +162,25 @@ def setup(monkeypatch, tmp_path):
                         lambda path, **_: path.read_bytes())
     return NS(keys=keys, current=current, bundle=bundle, calls=calls,
               published=published, root=tmp_path)
+
+
+@pytest.mark.parametrize("declared", [None, "sha256:placeholder", "sha256:" + "0" * 64])
+def test_retained_authoring_proposal_is_prepared_before_review(document, declared):
+    proposal = document["proposal"]
+    manifest = base64.b64decode(proposal["files"]["manifest.toml"])
+    if declared is not None:
+        manifest += f'digest="{declared}"\n'.encode()
+    proposal["files"]["manifest.toml"] = base64.b64encode(manifest).decode()
+    original = json.dumps(proposal, sort_keys=True)
+    with review._candidate(proposal) as (snapshot, _contract, _producer):
+        prepared = tomllib.loads(snapshot.manifest_bytes.decode())
+        expected = tomllib.loads(manifest.decode())
+        source = base64.b64decode(proposal["files"]["example.py"])
+        expected["code"]["digest"] = "sha256:" + hashlib.sha256(source).hexdigest()
+        assert prepared == expected
+        assert snapshot.code_files == {"example.py": source}
+        assert snapshot.language_state_bytes == base64.b64decode(proposal["files"]["manifest.lang_state.json"])
+    assert json.dumps(proposal, sort_keys=True) == original
 
 
 def test_review_runs_supplied_cases_and_binds_complete_results(document, setup):

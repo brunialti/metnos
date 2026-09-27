@@ -92,6 +92,9 @@ only a verified signed proof reaches the service's semantic evidence store.
 The existing Birth provisioner owns that write: it authenticates the proof
 against the selected authority and uses its exclusive installation session.
 The review caller cannot select a storage path or mutate the reader session.
+Before review and approval, retained authoring bytes pass through the existing
+closed-candidate preparation. It computes the code digest from captured source
+bytes before binding tests or consent; source and language state are preserved.
 Review grants no admission: a separate expiring consent resumes the original
 producer through all Birth checks. This administrative integration currently
 requires the supported Linux distribution; portable runner tests do not prove

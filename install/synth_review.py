@@ -38,7 +38,9 @@ from executor_birth_operational import (
     _validate_synth_tests,
 )
 from executor_birth_semantic_authority import EVIDENCE_DOMAIN, _canonical
-from executor_birth_snapshot import acquire_candidate_snapshot
+from executor_birth_snapshot import (
+    acquire_candidate_snapshot, materialize_birth_candidate_from_authoring,
+)
 from manifest_inventory import ContractId, ManifestOrigin
 
 
@@ -94,7 +96,8 @@ def _candidate(proposal: dict):
         # silently test only a subset of a multi-file candidate.
         raise ValueError("synth_review_single_source_required")
     with tempfile.TemporaryDirectory(prefix="metnos-review-") as name:
-        stage = Path(name)
+        stage = Path(name) / "proposal"
+        stage.mkdir(mode=0o700)
         for filename, payload in files.items():
             if (type(filename) is not str or type(payload) is not str
                     or (filename not in {"manifest.toml", "manifest.lang_state.json"}
@@ -104,7 +107,11 @@ def _candidate(proposal: dict):
             if not raw or len(raw) > 1024 * 1024:
                 raise ValueError("synth_review_file_size_invalid")
             (stage / filename).write_bytes(raw)
-        with acquire_candidate_snapshot(stage) as snapshot:
+        # Use the same preparation as the producer, before binding tests or
+        # consent. A retained authoring proposal may still contain a placeholder
+        # digest; only the captured source bytes can determine the real value.
+        prepared = materialize_birth_candidate_from_authoring(stage, Path(name) / "candidate")
+        with acquire_candidate_snapshot(prepared) as snapshot:
             if len(snapshot.code_files) != 1:
                 raise ValueError("synth_review_single_source_required")
             yield snapshot, contract, producer
