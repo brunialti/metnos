@@ -130,6 +130,8 @@ PATH_USER_CACHE    = _env_path(
     "METNOS_USER_CACHE",
     Path(os.environ.get("XDG_CACHE_HOME") or (_home() / ".cache")) / "metnos",
 )
+# Downloaded model data is writable independently of the sealed release.
+PATH_MODELS = _env_path("METNOS_MODELS_DIR", PATH_USER_DATA / "models")
 
 # Signed, instance-wide localization request (RM-0005 F0).  This file is the
 # persistent authority once present and valid; METNOS_LANG remains the safe
@@ -857,8 +859,11 @@ def ensure_dirs() -> None:
                     ensure_private_file(candidate)
 
 
-# Auto-ensure al primo import (idempotente, low cost).
-ensure_dirs()
+# Administrative processes read the service configuration too. They must not
+# create root-owned files inside another account's private runtime directories.
+# Runtime processes initialize their own directories under their actual owner.
+if not hasattr(os, "geteuid") or os.geteuid() != 0:
+    ensure_dirs()
 
 
 # --- Backward-compat aliases (deprecabili gradualmente) ------------------

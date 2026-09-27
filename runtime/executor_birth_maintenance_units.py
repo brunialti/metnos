@@ -8,7 +8,7 @@ from executor_birth_service_catalog import (
 
 CONTRACT_CUTOVER_UNITS = contract_cutover_units_from_source_v1()
 MAINTENANCE_TARGETS_V1 = maintenance_targets_from_source_v1()
-QUIESCENT_LOAD_STATES_V1 = frozenset({"loaded", "masked", "not-found"})
+QUIESCENT_LOAD_STATES_V1 = frozenset({"loaded", "masked", "not-found", "manager-absent"})
 
 
 __all__ = [

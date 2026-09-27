@@ -1,4 +1,4 @@
-"""The four administrative F5 operations, behind one closed entry point.
+"""The closed administrative F5 operations, behind one closed entry point.
 
 An operator reaches these through a root-owned launcher with a fixed argument
 set, so this module is the only place where the operations exist and the only
@@ -6,7 +6,9 @@ place their inputs are validated. It adds no authority: each subcommand calls
 the owner that already holds it, and every one of them refuses on its own terms.
 
 Evidence is the one operation with a payload, and it arrives on standard input
-as a closed document rather than as arguments. Artifacts are bytes, and bytes
+as a closed JSON line rather than as arguments. A cycle exchanges start and
+finish lines in one process, keeping the evidence owner open across the test.
+Artifacts are bytes, and bytes
 do not belong in an argument vector an operator can mistype or a process list
 can leak.
 
@@ -54,8 +56,8 @@ def _artifact(value: object, field: str) -> bytes:
 
 
 def _read_document() -> dict:
-    """Read one closed evidence document from standard input."""
-    raw = sys.stdin.buffer.read(_MAX_DOCUMENT_BYTES + 1)
+    """Read one bounded JSON line without waiting for the client to close."""
+    raw = sys.stdin.buffer.readline(_MAX_DOCUMENT_BYTES + 1)
     if len(raw) > _MAX_DOCUMENT_BYTES:
         raise AuthorityInputError("evidence_document_invalid", "size")
     try:
@@ -141,6 +143,12 @@ def _evidence() -> dict:
 
     document = _read_document()
     with administrative_evidence_v1() as owner:
+        if document["kind"] == "start_cycle":
+            started = _apply_evidence(owner, document)
+            print(json.dumps(started, ensure_ascii=True, sort_keys=True), flush=True)
+            document = _read_document()
+            if document["kind"] != "finish_cycle":
+                raise AuthorityInputError("evidence_document_invalid", "finish_cycle required")
         return _apply_evidence(owner, document)
 
 
@@ -156,6 +164,12 @@ def _certify(stage: str) -> dict:
     return issue_certificate_v1(apply=stage == "issue")
 
 
+def _rehearse(stage: str) -> dict:
+    from install.birth_certification_issuer import issue_rehearsal_v1
+
+    return issue_rehearsal_v1(apply=stage == "issue")
+
+
 _COMMANDS = {
     ("provision-key",): _provision_key,
     ("evidence",): _evidence,
@@ -163,6 +177,8 @@ _COMMANDS = {
     ("migrate", "apply"): lambda: _migrate("apply"),
     ("certify", "derive"): lambda: _certify("derive"),
     ("certify", "issue"): lambda: _certify("issue"),
+    ("rehearse", "plan"): lambda: _rehearse("plan"),
+    ("rehearse", "issue"): lambda: _rehearse("issue"),
 }
 
 
@@ -171,7 +187,7 @@ def main(argv: list[str] | None = None) -> int:
     command = _COMMANDS.get(arguments)
     if command is None:
         print("usage: f5_authority.py provision-key | evidence | "
-              "migrate plan|apply | certify derive|issue", file=sys.stderr)
+              "migrate plan|apply | certify derive|issue | rehearse plan|issue", file=sys.stderr)
         return 64
     try:
         report = command()

@@ -999,6 +999,41 @@ def test_receipts_complete_v2_carries_prepared_and_requires_exact_inventory():
         )
 
 
+@pytest.mark.parametrize("drift", [None, "receipt", "context", "release"])
+def test_receipt_replay_reuses_history_only_with_unchanged_bindings(drift):
+    from executor_birth_ownership_coordinator import _reuse_receipts_complete_v2
+    from executor_birth_ownership_preflight import canonical_maintenance_proof
+
+    prepared = record_v2(0)
+    old = _receipts_complete_record_v2(
+        prepared, proof=proof(), maintenance_before=maintenance(), maintenance_after=maintenance(),
+    )
+    changed = json.loads(maintenance())
+    changed["units"][0]["load_state"] = "masked"
+    live = canonical_maintenance_proof(source=changed["source"], units=changed["units"])
+    current = _receipts_complete_record_v2(
+        prepared, proof=proof(), maintenance_before=live, maintenance_after=live,
+    )
+    if drift == "receipt":
+        current = replace(current, current_proof=CurrentReceiptProof(
+            current.current_proof.identities,
+            {identity: D("f") for identity in current.current_proof.identities},
+        ))
+    elif drift == "context":
+        current = replace(current, context_transition_id=D("f"))
+    elif drift == "release":
+        transaction = current.install_transaction_value()
+        transaction["closed_build_id"] = D("f")
+        current = replace(current, closed_build_id=D("f"),
+                          install_transaction_id=_install_transaction_id_v1(transaction))
+    if drift:
+        with pytest.raises(OwnershipCoordinatorError, match="journal_conflict"):
+            _reuse_receipts_complete_v2(old, current)
+    else:
+        assert old.encode() != current.encode()
+        assert _reuse_receipts_complete_v2(old, current) is old
+
+
 def startup_prerequisite(complete: OwnershipCoordinatorRecordV2):
     return build_startup_prerequisite_v1(
         request_id=complete.request_id,

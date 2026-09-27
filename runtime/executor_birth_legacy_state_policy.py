@@ -1,7 +1,7 @@
 """Pure legacy-adoption grammar; store owners authenticate publication bytes."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum
 import hashlib
 from pathlib import PurePosixPath
@@ -42,6 +42,7 @@ _PUBLICATION_DIRS = frozenset({
 _ORIGINS = frozenset({"core", "builtin", "builtin_skill", "retired"})
 _CONTROL_RE = re.compile(r"\.(.+)\.birth-control-([0-9a-f]{64})\Z")
 _TRANSACTION_RE = re.compile(r"\.birth-(?:stage|backup)-[0-9a-f]{64}\Z")
+_SHADOW_LOCK_RE = re.compile(r"\.[0-9a-f]{64}-v1\.catalog-admission\.lock\Z")
 _CONTROL_LEAF_SIZES = {"authoring.lock": 1, "version.json": None}
 _SCAFFOLD_ROOTS = (_AUTHORING, *tuple(sorted(_PUBLICATION_DIRS)))
 LEGACY_STATE_FSM_V1 = (
@@ -98,10 +99,7 @@ class LegacyPathObservationV1:
     def __post_init__(self) -> None:
         path = self.relative_path
         regular = self.node_kind is LegacyNodeKindV1.regular_file
-        valid_size = (
-            type(self.size) is int
-            and 0 <= self.size <= MAX_LEGACY_STATE_FILE_BYTES_V1
-        )
+        valid_size = type(self.size) is int and 0 <= self.size <= MAX_LEGACY_STATE_FILE_BYTES_V1
         if (
             type(self.node_kind) is not LegacyNodeKindV1
             or type(path) is not PurePosixPath or path.is_absolute() or not path.parts
@@ -144,10 +142,7 @@ class LegacyStateObservationV1:
 
     @property
     def observation_sha256(self) -> str:
-        return _digest(
-            _OBSERVATION_DOMAIN,
-            [_entry_value(item) for item in self.entries],
-        )
+        return _digest(_OBSERVATION_DOMAIN, [_entry_value(item) for item in self.entries])
 
 
 def _entry_value(entry: LegacyPathObservationV1) -> dict[str, object]:
@@ -230,9 +225,24 @@ def _authoring_shape_valid(entries: dict[str, LegacyPathObservationV1]) -> bool:
     return True
 
 
+def _serialization_lock(entry: LegacyPathObservationV1) -> bool:
+    payloads = {0: b"", 1: b"\0"}
+    return (entry.node_kind is LegacyNodeKindV1.regular_file
+            and entry.size in payloads
+            and entry.content_sha256 == legacy_state_file_sha256_v1(payloads[entry.size]))
+
+
 def _topology_valid(entries: dict[str, LegacyPathObservationV1]) -> bool:
+    # Activation moves the candidate container but retains its lock inode.
+    shadow = "contract-publications-shadow"
+    locks = {name for name, entry in entries.items()
+             if entry.relative_path.parent.as_posix() == shadow
+             and _SHADOW_LOCK_RE.fullmatch(entry.relative_path.name)
+             and _serialization_lock(entry)}
     for name, entry in entries.items():
         parts = PurePosixPath(name).parts
+        if name in locks:
+            continue
         if len(parts) == 1:
             directory = name == _AUTHORING or name in _PUBLICATION_DIRS
             if directory != (entry.node_kind is LegacyNodeKindV1.directory):
@@ -245,6 +255,10 @@ def _topology_valid(entries: dict[str, LegacyPathObservationV1]) -> bool:
             return False
     for root in _SCAFFOLD_ROOTS:
         if root in entries:
+            if root == shadow and locks and all(
+                name in locks for name in entries if name.startswith(shadow + "/")
+            ):
+                continue
             scaffold = entries.get(root + "/v1")
             if scaffold is None or scaffold.node_kind is not LegacyNodeKindV1.directory:
                 return False
@@ -252,8 +266,7 @@ def _topology_valid(entries: dict[str, LegacyPathObservationV1]) -> bool:
 
 
 def _classify_legacy_state_core_v1(
-    request: LegacyStateRequestV1,
-    observation: LegacyStateObservationV1,
+    request: LegacyStateRequestV1, observation: LegacyStateObservationV1,
 ) -> LegacyStateDispositionV1:
     """Classify structure/metadata; store owners authenticate opaque bytes."""
     if type(request) is not LegacyStateRequestV1 or type(observation) is not LegacyStateObservationV1:
@@ -275,6 +288,16 @@ def _classify_legacy_state_core_v1(
             root_seen |= owner == (0, 0)
         elif owner != service:
             return LegacyStateDispositionV1.invalid
+    # Validated serialization locks are not an existing catalog.
+    lock_paths = {
+        item.as_posix() for item in LEGACY_STATE_RESERVED_TOP_LEVEL_V1
+        if item.name.endswith(".lock")
+    }
+    if all(
+        name in lock_paths and _serialization_lock(entry)
+        for name, entry in entries.items()
+    ):
+        return LegacyStateDispositionV1.fresh
     return (
         LegacyStateDispositionV1.root_adoption_required
         if root_seen else LegacyStateDispositionV1.exact_service
@@ -282,16 +305,14 @@ def _classify_legacy_state_core_v1(
 
 
 def classify_legacy_state_v1(
-    request: LegacyStateRequestV1,
-    observation: LegacyStateObservationV1,
+    request: LegacyStateRequestV1, observation: LegacyStateObservationV1,
 ) -> LegacyStateDispositionV1:
     require_canonical_legacy_state_request_v1(request)
     return _classify_legacy_state_core_v1(request, observation)
 
 
 def _classify_legacy_state_for_test_v1(
-    request: LegacyStateRequestV1,
-    observation: LegacyStateObservationV1,
+    request: LegacyStateRequestV1, observation: LegacyStateObservationV1,
 ) -> LegacyStateDispositionV1:
     if type(request) is not LegacyStateRequestV1 or request._canonical is not False:
         raise _invalid("test_classification_request")
@@ -305,16 +326,11 @@ def _project_adoption_entry_v1(
     owner = (entry.uid, entry.gid)
     if authoring and owner == (0, 0):
         owner = (request.service_uid, request.service_gid)
-    return LegacyPathObservationV1(
-        entry.relative_path, entry.node_kind, *owner, entry.mode, entry.nlink,
-        entry.size, entry.content_sha256,
-        entry.has_access_acl, entry.has_default_acl, entry.device, entry.inode,
-    )
+    return replace(entry, uid=owner[0], gid=owner[1])
 
 
 def project_legacy_state_adoption_v1(
-    request: LegacyStateRequestV1,
-    observation: LegacyStateObservationV1,
+    request: LegacyStateRequestV1, observation: LegacyStateObservationV1,
 ) -> LegacyStateObservationV1:
     """Project any valid partial adoption to its sole permitted final state."""
     if (
@@ -331,8 +347,7 @@ def project_legacy_state_adoption_v1(
 
 
 def legacy_state_adoption_target_sha256_v1(
-    request: LegacyStateRequestV1,
-    observation: LegacyStateObservationV1,
+    request: LegacyStateRequestV1, observation: LegacyStateObservationV1,
 ) -> str:
     return project_legacy_state_adoption_v1(
         request, observation,
@@ -362,6 +377,8 @@ def legacy_state_policy_sha256_v1() -> str:
         "request_binding": "canonical-host-layout-state-role+typed-account",
         "reserved": [item.as_posix() for item in LEGACY_STATE_RESERVED_TOP_LEVEL_V1],
         "scaffolds": [root + "/v1" for root in _SCAFFOLD_ROOTS],
+        "retained_shadow_lock_pattern": _SHADOW_LOCK_RE.pattern,
+        "retained_shadow_lock_payloads": ["", "00"],
         "transaction_pattern": _TRANSACTION_RE.pattern,
         "transactions": "reject",
     })

@@ -255,6 +255,7 @@ def readiness_catalog() -> tuple[ServiceSpec, ...]:
     if Path(distribution.installation_root) != Path(_C.PATH_ROOT):
         raise ValueError("readiness distribution root mismatch")
     loaded = capture_current_service_catalog_v1(distribution)
+    profile = json.loads(loaded.catalog.service_profile)
     targets = {
         entry.unit_name: ServiceTarget(entry.unit_name, entry.scope)
         for entry in loaded.catalog.entries if entry.unit_name is not None
@@ -265,6 +266,14 @@ def readiness_catalog() -> tuple[ServiceSpec, ...]:
     })
     result = []
     for spec in SERVICES:
+        if spec.key == "side_display" and "playwright" in profile:
+            continue  # The display belongs to the external browser host.
+        if spec.key in profile:
+            result.append(replace(
+                spec, targets=(), base_url=profile[spec.key]["url"],
+                endpoint_env="", health_policy="endpoint", integrated=False,
+            ))
+            continue
         selected = tuple(dict.fromkeys(
             targets[target.unit] for target in spec.targets if target.unit in targets
         ))
@@ -446,6 +455,8 @@ def _record_desired_state(key: str, value: str) -> None:
 
 
 def _allowed_actions(spec: ServiceSpec, state: dict) -> list[str]:
+    if not spec.targets:
+        return []
     if state.get("load_state") in {"not-found", "error"}:
         return []
     # Stopping the HTTP server from the page it serves would remove the only
@@ -571,6 +582,11 @@ def resolve_target(spec: ServiceSpec, *,
     active system rollback baseline.  Choosing merely the first loaded unit
     would therefore report and control the wrong process.
     """
+    if not spec.targets:
+        return {
+            "unit": "", "scope": "external", "load_state": "external",
+            "active_state": "unknown", "sub_state": "unknown",
+        }
     fallback: dict | None = None
     loaded: dict | None = None
     for target in spec.targets:
@@ -602,7 +618,9 @@ def endpoint(key: str, *, include_env: bool = True) -> str:
 
 
 def health_url(spec: ServiceSpec) -> str:
-    base = endpoint(spec.key)
+    base = spec.base_url.rstrip("/")
+    if spec.endpoint_env:
+        base = os.environ.get(spec.endpoint_env, "").strip().rstrip("/") or base
     if not base:
         return ""
     return base + spec.health_path
@@ -651,6 +669,8 @@ def _probe_process(state: dict) -> tuple[bool | None, str]:
 
 
 def _canonical_status(row: dict, *, required: bool, healthy: bool | None) -> str:
+    if row.get("scope") == "external":
+        return "running" if healthy is True else "degraded" if healthy is False else "unknown"
     if row.get("load_state") == "not-found":
         return "missing"
     active = row.get("active_state")
@@ -717,7 +737,7 @@ def snapshot_one(spec: ServiceSpec, *, probe_endpoint: bool = True,
         healthy, health_detail = _probe(url, deadline_at=deadline_at)
     installed = state.get("load_state") not in {"not-found", "error"}
     actions = _allowed_actions(spec, state) if installed else []
-    target_state = desired_state(spec.key)
+    target_state = desired_state(spec.key) if spec.targets else "running"
     row = {
         **asdict(spec), **state,
         "installed": installed,
@@ -752,7 +772,7 @@ def snapshot_one(spec: ServiceSpec, *, probe_endpoint: bool = True,
 
 
 def _failed_snapshot(spec: ServiceSpec, reason: str) -> dict:
-    target = spec.targets[0]
+    target = spec.targets[0] if spec.targets else ServiceTarget("", "external")
     row = {
         **asdict(spec),
         "unit": target.unit,

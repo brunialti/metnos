@@ -180,6 +180,7 @@ BOUNDARY_API_OWNERS_V1 = (
     BoundaryApiOwnerV1('birth_lifecycle_migration', (
         ('plan_cutover_v1', ('store_write',)),
         ('apply_cutover_v1', ('store_write',)),
+        ('_apply_handoff_v1', ('store_write',)),
         ('main', ('store_write',)),
     )),
     # The evidence-derived F5 issuer. It signs one derived qualification and
@@ -191,9 +192,11 @@ BOUNDARY_API_OWNERS_V1 = (
         ('_evidence', ('store_write',)),
         ('_migrate', ('store_write',)),
         ('_certify', ('store_write',)),
+        ('_rehearse', ('store_write',)),
     )),
     BoundaryApiOwnerV1('birth_certification_issuer', (
         ('issue_certificate_v1', ('store_write',)),
+        ('issue_rehearsal_v1', ('store_write',)),
         ('main', ('store_write',)),
     )),
     BoundaryApiOwnerV1('birth_certification_evidence', (
@@ -241,13 +244,18 @@ BOUNDARY_API_OWNERS_V1 = (
         ('<module>', ('authoring_read', 'authoring_write', 'birth', 'store_write', 'verified_store_read')),
         ('_source_generation_has_historical_receipt', ('store_write', 'verified_store_read')),
         ('_candidate_for_transition', ('authoring_read', 'authoring_write')),
+        ('_initial_shadow_root', ('authoring_read',)),
+        ('_finish_initial_catalog', ('store_write', 'verified_store_read')),
         ('converge', ('authoring_read', 'authoring_write', 'birth', 'store_write', 'verified_store_read')),
         ('main', ('authoring_read', 'authoring_write', 'birth', 'store_write', 'verified_store_read')),
     )),
     BoundaryApiOwnerV1('executor_birth_transition', (
         ('<module>', ('store_write',)),
+        ('_prepare_initial_author_v1', ('store_write',)),
+        ('_prepare_service_authorities_child_v1', ('store_write',)),
         ('_provisioned_service_environment_v1', ('store_write',)),
         ('deploy_source_v1', ('store_write',)),
+        ('install_source_v1', ('store_write',)),
         ('main', ('store_write',)),
     )),
     BoundaryApiOwnerV1('executor_birth_host_provisioning', (

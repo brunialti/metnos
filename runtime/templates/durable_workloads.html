@@ -797,11 +797,15 @@
       target.append(attempts);
     }
     const errors = node("section", "", "dw-notice dw-warning");
-    if (summary.blocking_reason) errors.append(node("p", errorName(summary.blocking_reason)));
+    const displayedCodes = new Set();
     for (const error of summary.error_categories || []) {
       const code = error.error_code === "budget_exhausted" && summary.blocking_reason === "budget_accounting_incomplete"
         ? summary.blocking_reason : error.error_code;
+      displayedCodes.add(code);
       errors.append(node("p", `${errorName(code)} · ${error.count}`));
+    }
+    if (summary.blocking_reason && !displayedCodes.has(summary.blocking_reason)) {
+      errors.prepend(node("p", errorName(summary.blocking_reason)));
     }
     if (errors.childElementCount) { errors.prepend(node("h3", copy.errors)); target.append(errors); }
     for (const warning of summary.warnings || []) target.append(node("p", copy.warningsByCode[warning] || copy.unknown, "dw-notice"));

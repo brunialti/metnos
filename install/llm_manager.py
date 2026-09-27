@@ -98,12 +98,10 @@ class Plan:
 # 1. Rilevamento hardware
 # ---------------------------------------------------------------------------
 def _ram_gb() -> int:
+    from .preflight import memory_bytes
     try:
-        with open("/proc/meminfo") as f:
-            for line in f:
-                if line.startswith("MemTotal:"):
-                    return int(line.split()[1]) // (1024 * 1024)
-    except OSError:
+        return memory_bytes()[0] // (1024 ** 3)
+    except (OSError, ValueError):
         pass
     return 0
 
@@ -226,14 +224,13 @@ def recommend(hw: dict) -> Plan:
 # 3. Provisioning
 # ---------------------------------------------------------------------------
 def _models_dir() -> Path:
-    base = os.environ.get("METNOS_MODELS_DIR") or \
-        (os.environ.get("METNOS_INSTALL_ROOT", "/opt/metnos") + "/models")
-    return Path(base) / "llm"
+    from runtime import config
+    return config.PATH_MODELS / "llm"
 
 
 def _llama_dir() -> Path:
-    base = os.environ.get("METNOS_INSTALL_ROOT", "/opt/metnos")
-    return Path(base) / "llm" / "llama.cpp"
+    from runtime import config
+    return config.PATH_USER_DATA / "llm" / "llama.cpp"
 
 
 def _tiers_toml_path() -> Path:
@@ -673,7 +670,8 @@ def health_check(llama_bin: Path, model_file: Path, *, port: int, ngl: int,
             proc.kill()
 
 
-def provision(plan: Plan, *, dry_run: bool = True, assume_yes: bool = False) -> dict:
+def provision(plan: Plan, *, dry_run: bool = True, assume_yes: bool = False,
+              activate: bool = True) -> dict:
     out: dict = {"dry_run": dry_run, "steps": []}
 
     def emit(msg: str):
@@ -711,10 +709,11 @@ def provision(plan: Plan, *, dry_run: bool = True, assume_yes: bool = False) -> 
     emit(f"Scrivere {tiers} (tier locali → llamacpp {model_file.name} "
          f"@ {plan.endpoint})")
     # 4) servizio
-    emit(f"Installare+abilitare+avviare llama-server (systemd USER unit "
-         f"metnos-llm, no sudo) su {plan.endpoint}")
+    emit(f"{'Installare+abilitare+avviare' if activate else 'Predisporre'} "
+         f"llama-server su {plan.endpoint}")
     # 5) verifica
-    emit(f"Health-ping {plan.endpoint}/health + completion di prova")
+    if activate:
+        emit(f"Health-ping {plan.endpoint}/health + completion di prova")
 
     if dry_run:
         out["feasible"] = True
@@ -764,7 +763,18 @@ def provision(plan: Plan, *, dry_run: bool = True, assume_yes: bool = False) -> 
     ngl = 0 if plan.backend == "cpu" else 999
     unit = llama.parent / "metnos-llm.service"
     _write_systemd_unit(binp, model_file, plan.endpoint, ngl, unit)
+    # Typed preparation data; the administrator never executes a user unit.
+    from .services import _write
+    _write(llama.parent / "server.json", json.dumps({
+        "executable": str(binp), "model": str(model_file), "ngl": ngl,
+    }))
     out["systemd_unit"] = str(unit)
+    if not activate:
+        out["service"] = {"prepared": True, "installed": False,
+                          "enabled": False, "started": False,
+                          "healthy": False, "reason": "activation_deferred"}
+        out["ok"] = True
+        return out
     wait_s = int(os.environ.get("METNOS_LLM_START_TIMEOUT_S", "180"))
     svc = install_user_unit(unit, endpoint=plan.endpoint, wait_s=wait_s)
     out["service"] = svc

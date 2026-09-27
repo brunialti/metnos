@@ -219,7 +219,8 @@ def _searxng_secret(settings_path: Path) -> str:
     return secrets.token_hex(32)
 
 
-def install_searxng(*, yes: bool = False, port: int | None = None) -> dict:
+def install_searxng(*, yes: bool = False, port: int | None = None,
+                   activate: bool = True) -> dict:
     """Real SearXNG install: clone + dedicated venv + settings + user unit."""
     if port is None:
         port = int(os.environ.get("METNOS_SEARXNG_PORT", "8888"))
@@ -277,6 +278,9 @@ def install_searxng(*, yes: bool = False, port: int | None = None) -> dict:
     settings.write_text(_searxng_settings(port, _searxng_secret(settings)))
     ui.ok(f"wrote {settings}")
 
+    if not activate:
+        return {"searxng": "prepared", "searxng_port": port}
+
     # 4. user unit
     enabled = _render_and_install_unit(
         "metnos-searxng.service.tmpl", "metnos-searxng.service",
@@ -321,8 +325,8 @@ _VLM_MMPROJ = "mmproj-Qwen3VL-2B-Instruct-F16.gguf"
 
 
 def _vlm_models_dir() -> Path:
-    base = os.environ.get("METNOS_MODELS_DIR") or (str(_repo_dir()) + "/models")
-    return Path(base) / "vlm"
+    from runtime import config
+    return config.PATH_MODELS / "vlm"
 
 
 def _write_vlm_dropin(model: Path, mmproj: Path, llama: Path | None) -> bool:
@@ -335,7 +339,7 @@ def _write_vlm_dropin(model: Path, mmproj: Path, llama: Path | None) -> bool:
     return _write_http_dropin("vlm.conf", env)
 
 
-def install_vlm(*, yes: bool = False) -> dict:
+def install_vlm(*, yes: bool = False, activate: bool = True, managed: bool = False) -> dict:
     """Fetch the VLM model + mmproj and wire the lazy launcher (no service)."""
     from . import llm_manager
     dest = _vlm_models_dir()
@@ -354,19 +358,23 @@ def install_vlm(*, yes: bool = False) -> dict:
     # Reuse the base install's llama-server (the VLM runs a local llama-server
     # on :8081). Absent → wired to an external LLM endpoint with no local
     # binary: be honest, the models are useless without it.
-    llama = _resolve_vlm_llama(llm_manager)
+    llama = _resolve_vlm_llama(llm_manager, managed=managed)
     if not llama:
         ui.warn("no managed llama-server found — VLM captions need a LOCAL "
                 "llama-server. Models are downloaded; install/run the local LLM "
                 "tier (base provisioning) and re-run.")
 
+    if not activate:
+        return {"vlm": "prepared" if llama else "models_ready_no_llama",
+                "vlm_model": str(model), "vlm_mmproj": str(mmproj),
+                "vlm_llama_bin": str(llama) if llama else None}
     _write_vlm_dropin(model, mmproj, llama)
     ui.info("VLM is lazy: the first image-index run starts it on :8081 "
             "(auto-stops after 10min idle).")
     return {"vlm": "models_ready" if llama else "models_ready_no_llama"}
 
 
-def _resolve_vlm_llama(llm_manager) -> Path | None:
+def _resolve_vlm_llama(llm_manager, *, managed: bool = False) -> Path | None:
     """Resolve or acquire the local binary required by the lazy VLM.
 
     A base install may intentionally use an already-running external LLM
@@ -374,7 +382,7 @@ def _resolve_vlm_llama(llm_manager) -> Path | None:
     still needs a local executable for its own model on port 8081.
     """
     override = os.environ.get("METNOS_VLM_LLAMA_BIN", "").strip()
-    if override and Path(override).is_file():
+    if not managed and override and Path(override).is_file():
         return Path(override)
     try:
         managed = llm_manager._find_llama_bin(
@@ -382,7 +390,7 @@ def _resolve_vlm_llama(llm_manager) -> Path | None:
         if managed:
             return managed
         system_bin = shutil.which("llama-server")
-        if system_bin:
+        if not managed and system_bin:
             return Path(system_bin)
         plan = llm_manager.recommend(llm_manager.detect_hardware())
         return llm_manager.acquire_llama(plan.backend, llm_manager._llama_dir())
@@ -542,7 +550,7 @@ def _photon_dump_valid(dump: Path) -> bool:
 
 
 def install_photon(*, yes: bool = False, country: str | None = None,
-                   port: int | None = None) -> dict:
+                   port: int | None = None, activate: bool = True) -> dict:
     """Real Photon install: komoot jar + per-country dump + import + user unit."""
     from . import downloads  # shared robust_fetch (parallel chunks + sha gate)
 
@@ -672,6 +680,10 @@ def install_photon(*, yes: bool = False, country: str | None = None,
         current.unlink()
     current.symlink_to(country)
 
+    if not activate:
+        return {"photon": "prepared", "photon_country": country,
+                "photon_port": port}
+
     # 4. user unit
     enabled = _render_and_install_unit(
         "metnos-photon.service.tmpl", "metnos-photon.service",
@@ -706,10 +718,10 @@ def _photon_dropin(port: int) -> None:
 
 # ─── registry (single source of truth for the optional list) ─────────
 
-def install_playwright(*, yes: bool = False) -> dict:
+def install_playwright(*, yes: bool = False, activate: bool = True, managed: bool = False) -> dict:
     """Install the browser sidecar through the common sidecar contract."""
     from . import playwright_sidecar
-    return playwright_sidecar.install(yes=yes)
+    return playwright_sidecar.install(yes=yes, activate=activate, managed=managed)
 
 SIDECARS: dict[str, dict] = {
     "searxng": {

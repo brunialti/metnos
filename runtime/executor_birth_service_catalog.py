@@ -10,12 +10,13 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import PurePosixPath
 from types import MappingProxyType
 from typing import Iterable, Mapping, NamedTuple
 
 import executor_birth_account_identity as _account_identity
+import service_profile as _service_profile
 
 
 CATALOG_PATH_V1 = "deployment/executor-birth-service-catalog-v1.json"
@@ -193,6 +194,7 @@ class _SourceCompileContextV1:
     systemctl_executable: str
     target_hashes: tuple[tuple[str, str], ...]
     administrative_python_executable: str | None = None
+    service_profile: bytes = b"{}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -270,6 +272,7 @@ class DecodedServiceCatalogV1:
     legacy_bindings: tuple[ServiceLegacyBindingV1, ...]
     encoded: bytes
     service_coverage_hash: str
+    service_profile: bytes = b"{}"
 
 
 _LOADED_CATALOG_SEAL = object()
@@ -607,7 +610,7 @@ SERVICE_SOURCE_V1 = tuple(sorted((
     _service(
         "service-stack-watchdog", "metnos-stack-watchdog.service",
         target_recipe=_python_target(
-            "stack_reconcile", "watchdog", "--require-sidecar", "auto",
+            "periodic_services", "stack-watchdog",
             working_directory="@installation_root@/runtime",
             environment=_TARGET_DATA_ENVIRONMENT_V1,
         ),
@@ -616,8 +619,9 @@ SERVICE_SOURCE_V1 = tuple(sorted((
             _source_directive(
                 "Service", "SyslogIdentifier", "metnos-stack-watchdog",
             ),
-            _source_directive("Service", "TimeoutStartSec", "180s"),
-            _source_directive("Service", "Type", "oneshot"),
+            _source_directive("Service", "Restart", "on-failure"),
+            _source_directive("Service", "RestartSec", "30s"),
+            _source_directive("Service", "Type", "simple"),
         ),
     ),
     _service(
@@ -779,7 +783,6 @@ SERVICE_SOURCE_V1 = tuple(sorted((
         "service-stack-watchdog", schedule=(
             _source_directive("Timer", "AccuracySec", "15s"),
             _source_directive("Timer", "OnActiveSec", "3min"),
-            _source_directive("Timer", "OnUnitActiveSec", "2min"),
         ),
     ),
     ServiceSourceEntryV1(
@@ -1090,11 +1093,44 @@ def _validate_service_source_v1() -> None:
     ))
 
 
-def legacy_bindings_from_source_v1() -> tuple[dict[str, object], ...]:
+def _validated_service_profile_v1(value: object) -> dict:
+    try:
+        return _service_profile.validate_profile(value, resolved=True)
+    except (ValueError, TypeError) as exc:
+        raise ServiceCatalogError(
+            "birth_ownership_service_catalog_invalid", "service profile",
+        ) from exc
+
+
+def _source_for_profile_v1(profile: dict) -> tuple[ServiceSourceEntryV1, ...]:
+    """Omit only local companions explicitly replaced by a typed endpoint."""
+    profile = _validated_service_profile_v1(profile)
+    excluded = {"service-" + name for name in profile if name != "vlm"}
+    if "playwright" in profile:
+        excluded.add("service-side-display")
+    markers = {"@unit:" + name + "@" for name in excluded}
+    result = []
+    for source in SERVICE_SOURCE_V1:
+        if source.entry_id in excluded:
+            continue
+        directives = tuple(
+            directive._replace(values=tuple(
+                value for value in directive.values if value not in markers
+            ))
+            for directive in source.unit_recipe
+            if any(value not in markers for value in directive.values)
+        )
+        result.append(replace(source, unit_recipe=directives))
+    return tuple(result)
+
+
+def legacy_bindings_from_source_v1(service_profile: dict | None = None) -> tuple[dict[str, object], ...]:
+    profile = _validated_service_profile_v1({} if service_profile is None else service_profile)
+    available = {item.entry_id for item in _source_for_profile_v1(profile)}
     bindings = [
         {
             "legacy_id": binding.legacy_id,
-            "entry_id": item.entry_id,
+            "entry_id": item.entry_id if item.entry_id in available else "target-stack",
             "kind": binding.kind,
             "scope": binding.scope,
             "locator": binding.locator,
@@ -1601,7 +1637,7 @@ def _validate_compile_context_v1(
         )
     target_hashes = dict(context.target_hashes)
     executable_ids = {
-        item.entry_id for item in SERVICE_SOURCE_V1
+        item.entry_id for item in _source_for_profile_v1(json.loads(context.service_profile))
         if item.target_recipe.execution_kind != "none"
     }
     if (
@@ -1622,13 +1658,15 @@ def _compile_service_source_v1(
     """Compile the sole source; no caller may add entries or directives."""
 
     target_hashes = _validate_compile_context_v1(context)
-    by_id = {item.entry_id: item for item in SERVICE_SOURCE_V1}
+    profile = _validated_service_profile_v1(json.loads(context.service_profile))
+    sources = _source_for_profile_v1(profile)
+    by_id = {item.entry_id: item for item in _source_for_profile_v1(json.loads(context.service_profile))}
     stop_units = tuple(sorted(
-        str(item.unit_name) for item in SERVICE_SOURCE_V1
+        str(item.unit_name) for item in _source_for_profile_v1(json.loads(context.service_profile))
         if item.class_name in {"gated_service", "gated_timer"}
     ))
     entries: list[ServiceCatalogEntryV1] = []
-    for source in SERVICE_SOURCE_V1:
+    for source in sources:
         recipe = source.target_recipe
 
         def resolve_values(values: Iterable[str]) -> tuple[str, ...]:
@@ -1661,6 +1699,12 @@ def _compile_service_source_v1(
             )
             for name, value in recipe.target_environment
         ), key=lambda item: item.name.encode("utf-8")))
+        if source.class_name == "gated_service" and recipe.execution_kind == "python_module":
+            bindings = _service_profile.target_environment(profile, context.service_home)
+            environment = tuple(sorted((
+                *environment, *(ServiceEnvironmentV1(name, value)
+                                for name, value in bindings.items()),
+            ), key=lambda item: item.name.encode("utf-8")))
         unit_spec = None
         if source.unit_name is not None:
             directives: list[ServiceDirectiveV1] = []
@@ -2100,7 +2144,7 @@ def decode_service_catalog_v1(encoded: bytes) -> DecodedServiceCatalogV1:
             "birth_ownership_service_catalog_invalid", "catalog json",
         ) from exc
     if (
-        not isinstance(value, dict) or set(value) != _CATALOG_KEYS
+        not isinstance(value, dict) or set(value) not in (_CATALOG_KEYS, _CATALOG_KEYS | {"service_profile"})
         or _canonical(value) != encoded
         or type(value.get("schema_version")) is not int
         or value.get("schema_version") != 1
@@ -2108,6 +2152,9 @@ def decode_service_catalog_v1(encoded: bytes) -> DecodedServiceCatalogV1:
         raise ServiceCatalogError(
             "birth_ownership_service_catalog_invalid", "catalog schema",
         )
+    profile = _validated_service_profile_v1(value.get("service_profile", {}))
+    if "service_profile" in value and (not profile or profile != value["service_profile"]):
+        raise ServiceCatalogError("birth_ownership_service_catalog_invalid", "service profile canonical")
     declared_id = _digest(value.get("catalog_id"), "catalog id")
     if declared_id != _catalog_id(value):
         raise ServiceCatalogError(
@@ -2172,7 +2219,7 @@ def decode_service_catalog_v1(encoded: bytes) -> DecodedServiceCatalogV1:
         )
     return DecodedServiceCatalogV1(
         declared_id, entries, legacy, bytes(encoded),
-        service_coverage_hash_v1(encoded),
+        service_coverage_hash_v1(encoded), _canonical(profile),
     )
 
 
@@ -2227,6 +2274,7 @@ def _legacy_document(value: ServiceLegacyBindingV1) -> dict[str, object]:
 def _encode_service_catalog_v1(
     entries: Iterable[ServiceCatalogEntryV1],
     legacy_bindings: Iterable[ServiceLegacyBindingV1],
+    service_profile: dict | None = None,
 ) -> bytes:
     document: dict[str, object] = {
         "schema_version": 1,
@@ -2234,6 +2282,9 @@ def _encode_service_catalog_v1(
         "entries": [_entry_document(item) for item in entries],
         "legacy_bindings": [_legacy_document(item) for item in legacy_bindings],
     }
+    profile = _validated_service_profile_v1({} if service_profile is None else service_profile)
+    if profile:
+        document["service_profile"] = profile
     document["catalog_id"] = _catalog_id(document)
     encoded = _canonical(document)
     decode_service_catalog_v1(encoded)
@@ -2244,11 +2295,13 @@ def _source_identity(
     catalog: DecodedServiceCatalogV1, installation_root: str,
 ) -> None:
     _absolute_path(installation_root, "installation root")
-    if len(catalog.entries) != len(SERVICE_SOURCE_V1):
+    profile = _validated_service_profile_v1(json.loads(catalog.service_profile))
+    sources = _source_for_profile_v1(profile)
+    if len(catalog.entries) != len(sources):
         raise ServiceCatalogError(
             "birth_ownership_service_catalog_invalid", "source coverage",
         )
-    for observed, source in zip(catalog.entries, SERVICE_SOURCE_V1, strict=True):
+    for observed, source in zip(catalog.entries, sources, strict=True):
         if (
             observed.entry_id != source.entry_id
             or observed.class_name != source.class_name
@@ -2263,14 +2316,14 @@ def _source_identity(
     observed_by_id = {item.entry_id: item for item in catalog.entries}
     python_paths = {
         observed_by_id[source.entry_id].target_executable
-        for source in SERVICE_SOURCE_V1
+        for source in sources
         if source.target_recipe.target_executable == "@python@"
     }
     administrative_python: set[str] = set()
     service_users: set[str] = set()
     service_gids: set[int] = set()
     supplementary_gids: set[tuple[int, ...]] = set()
-    for source in SERVICE_SOURCE_V1:
+    for source in sources:
         if source.class_name != "gated_service":
             continue
         directives = _directive_index(observed_by_id[source.entry_id].unit_spec)
@@ -2295,13 +2348,13 @@ def _source_identity(
         )
     data_paths = {
         environment.value
-        for source in SERVICE_SOURCE_V1
+        for source in sources
         for environment in observed_by_id[source.entry_id].target_environment
         if environment.name == "METNOS_USER_DATA"
     }
     workspace_paths = {
         environment.value
-        for source in SERVICE_SOURCE_V1
+        for source in sources
         for environment in observed_by_id[source.entry_id].target_environment
         if environment.name == "METNOS_WORKSPACE"
     }
@@ -2338,7 +2391,7 @@ def _source_identity(
         next(iter(service_users)), next(iter(service_gids)),
         next(iter(supplementary_gids)), service_home,
         str(stop_entry.target_executable), target_hashes,
-        str(next(iter(administrative_python))),
+        str(next(iter(administrative_python))), catalog.service_profile,
     ))
     if catalog.entries != expected_entries:
         raise ServiceCatalogError(
@@ -2349,7 +2402,7 @@ def _source_identity(
             str(item["legacy_id"]), str(item["entry_id"]), str(item["kind"]),
             str(item["scope"]), str(item["locator"]), str(item["disposition"]),
         )
-        for item in legacy_bindings_from_source_v1()
+        for item in legacy_bindings_from_source_v1(profile)
     )
     if catalog.legacy_bindings != expected_legacy:
         raise ServiceCatalogError(
@@ -2363,6 +2416,7 @@ def _build_service_catalog_v1(
     service_home: str, systemctl_executable: str,
     target_executables: tuple[tuple[str, bytes], ...],
     administrative_python_executable: str | None = None,
+    service_profile: dict | None = None,
 ) -> _BuiltServiceCatalogV1:
     """Compile the fixed service source against exact executable bytes.
 
@@ -2370,6 +2424,9 @@ def _build_service_catalog_v1(
     bindings, unit fragments and target identities remain derived here from
     ``SERVICE_SOURCE_V1``; no caller can add or remove a catalog entry.
     """
+    profile = _validated_service_profile_v1({} if service_profile is None else service_profile)
+    profile_bytes = _canonical(profile)
+    sources = _source_for_profile_v1(profile)
     if type(target_executables) is not tuple or any(
         type(item) is not tuple or len(item) != 2
         or type(item[0]) is not str or type(item[1]) is not bytes
@@ -2390,12 +2447,12 @@ def _build_service_catalog_v1(
     base_context = _SourceCompileContextV1(
         installation_root, python_executable, service_user, service_gid,
         service_supplementary_gids, service_home, systemctl_executable, (),
-        administrative_python,
+        administrative_python, profile_bytes,
     )
-    by_id = {item.entry_id: item for item in SERVICE_SOURCE_V1}
+    by_id = {item.entry_id: item for item in sources}
     resolved_targets: list[tuple[str, str]] = []
     expected_paths: set[str] = set()
-    for source in SERVICE_SOURCE_V1:
+    for source in sources:
         recipe = source.target_recipe
         if recipe.execution_kind == "none":
             continue
@@ -2423,13 +2480,13 @@ def _build_service_catalog_v1(
     entries = _compile_service_source_v1(_SourceCompileContextV1(
         installation_root, python_executable, service_user, service_gid,
         service_supplementary_gids, service_home, systemctl_executable,
-        tuple(resolved_targets), administrative_python,
+        tuple(resolved_targets), administrative_python, profile_bytes,
     ))
     legacy = tuple(ServiceLegacyBindingV1(
         str(item["legacy_id"]), str(item["entry_id"]), str(item["kind"]),
         str(item["scope"]), str(item["locator"]), str(item["disposition"]),
-    ) for item in legacy_bindings_from_source_v1())
-    encoded = _encode_service_catalog_v1(entries, legacy)
+    ) for item in legacy_bindings_from_source_v1(profile))
+    encoded = _encode_service_catalog_v1(entries, legacy, profile)
     decoded = decode_service_catalog_v1(encoded)
     _source_identity(decoded, installation_root)
     fragments = tuple(sorted((

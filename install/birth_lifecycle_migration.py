@@ -7,9 +7,9 @@ because every legacy writer lives in those services and a single call during
 the copy would write a row nobody preserves — silent loss is the one outcome a
 migration may not produce.
 
-Within `apply`, privilege also splits. Dropping to the service account is
-irreversible, so the process that writes the service-owned stores cannot also
-write the root-owned marker: a child migrates, the parent records. The marker is
+Within `apply`, one fresh administrative process owns the maintenance barrier.
+It temporarily adopts the service identity for its stores, using the existing
+Birth identity boundary, then restores root to record the marker. The marker is
 the last thing written, so an interruption anywhere before it leaves an
 installation that still uses its name-based state and can simply be run again.
 
@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+from types import SimpleNamespace
 import stat
 import subprocess
 import sys
@@ -46,9 +47,12 @@ SERVICE_UNIT_V1 = "metnos-http.service"
 # Filesystem seam for isolated tests; the productive value is fixed.
 _PROC_ROOT_V1 = Path("/proc")
 _MAX_REPORT_BYTES = 1 << 20
+# Qualification carries authenticated historical sources as well as metadata.
+# Keep its input bounded separately from the small administrative report.
+_MAX_REQUEST_BYTES = 64 << 20
 _CARRIED_ENVIRONMENT_V1 = frozenset({
     "HOME", "METNOS_USER_DATA", "METNOS_USER_STATE", "METNOS_USER_CONFIG",
-    "METNOS_EXECUTOR_STATS_DB", "METNOS_PROMOTER_DB",
+    "METNOS_EXECUTOR_STATS_DB", "METNOS_PROMOTER_DB", "METNOS_WORKSPACE",
 })
 # Every legacy store this cutover knows how to read, and the exact table in it.
 _SELECTED_SOURCES_V1 = (
@@ -137,27 +141,22 @@ def service_epoch_db_v1(environment: dict[str, str]) -> Path:
 
 
 def _service_worker() -> int:
-    """Run only in the fresh, already unprivileged administrative child."""
+    """Run with fresh service configuration; only apply retains root."""
     try:
-        raw = sys.stdin.buffer.read(_MAX_REPORT_BYTES + 1)
-        if len(raw) > _MAX_REPORT_BYTES:
+        raw = sys.stdin.buffer.read(_MAX_REQUEST_BYTES + 1)
+        if len(raw) > _MAX_REQUEST_BYTES:
             raise LifecycleCutoverError("cutover_report_oversized")
         request = json.loads(raw)
         if request["operation"] == "qualify":
             from install.birth_certification_issuer import _derive_as_service_v1
 
             report = _derive_as_service_v1(request)
-        elif request["operation"] in ("plan", "apply"):
+        elif request["operation"] == "apply":
+            report = _apply_handoff_v1(request["handoff"])
+        elif request["operation"] == "plan":
             sources = tuple((item["kind"], Path(item["path"]), item["legacy_table"])
                             for item in request["sources"])
-            observed = _observe_installation(sources)
-            if request["operation"] == "plan":
-                report = observed
-            else:
-                handoff = request["handoff"]
-                if observed["migration_id"] != handoff["migration_id"]:
-                    raise LifecycleCutoverError("cutover_plan_stale", handoff["migration_id"])
-                report = _migrate_as_service(sources, handoff)
+            report = _observe_installation(sources)
         else:
             raise LifecycleCutoverError("cutover_operation_invalid")
         _write_report(sys.stdout.fileno(), report)
@@ -357,10 +356,10 @@ def _in_service_child(
     """Load runtime configuration only after adopting the service environment.
 
     A fork alone inherits imported configuration, including root's paths. A
-    fresh interpreter starts under the observed account and receives only the
-    service's selected path overrides. The root parent retains the maintenance
-    barrier and remains the only process allowed to install the marker or sign
-    a certificate. Qualification shares this boundary to read the same stores.
+    fresh interpreter receives only the service's selected path overrides.
+    Plan and qualification run unprivileged. Apply retains root so that its
+    barrier, service-owned migration and root-owned marker share one process;
+    otherwise the child waits on the catalog lock held by its own parent.
     """
     account = resolve_posix_account_snapshot_v1(SERVICE_ACCOUNT_NAME_V1)
     if operation == "plan":
@@ -383,7 +382,10 @@ def _in_service_child(
         raise LifecycleCutoverError("cutover_operation_invalid")
     child_environment = {
         "HOME": account.record.home, "USER": account.record.name,
-        "LOGNAME": account.record.name, "PATH": "/usr/bin:/bin", "LANG": "C.UTF-8",
+        "LOGNAME": account.record.name,
+        # The root apply worker uses runuser for the retired user manager.
+        # Keep a closed OS search path, including administrative commands.
+        "PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C.UTF-8",
         **{key: value for key, value in environment.items()
            if key in _CARRIED_ENVIRONMENT_V1},
     }
@@ -396,14 +398,16 @@ def _in_service_child(
         "raise SystemExit(_service_worker())"
     )
     payload = json.dumps(request, ensure_ascii=True).encode("ascii")
-    if len(payload) > _MAX_REPORT_BYTES:
+    if len(payload) > _MAX_REQUEST_BYTES:
         raise LifecycleCutoverError("cutover_report_oversized")
     try:
         completed = subprocess.run(
             [sys.executable, "-I", "-B", "-c", bootstrap], input=payload,
             capture_output=True, close_fds=True, env=child_environment,
-            user=account.record.uid, group=account.record.gid,
-            extra_groups=account.supplementary_gids, umask=0o077, timeout=300,
+            user=0 if operation == "apply" else account.record.uid,
+            group=0 if operation == "apply" else account.record.gid,
+            extra_groups=() if operation == "apply" else account.supplementary_gids,
+            umask=0o077, timeout=300,
         )
     except (OSError, subprocess.SubprocessError) as exc:
         raise LifecycleCutoverError("cutover_child_failed") from exc
@@ -553,6 +557,12 @@ def read_handoff_v1() -> dict:
 
 
 def apply_cutover_v1() -> dict:
+    """Apply in a fresh interpreter with the observed service configuration."""
+    _require_root_v1()
+    return _in_service_child("apply", read_handoff_v1())
+
+
+def _apply_handoff_v1(handoff: dict) -> dict:
     """Migrate with the stack quiescent, then record the marker.
 
     The barrier is not an optimisation. Every legacy writer lives in the
@@ -560,15 +570,31 @@ def apply_cutover_v1() -> dict:
     preserves.
     """
     _require_root_v1()
-    handoff = read_handoff_v1()
+    if handoff != read_handoff_v1():
+        raise LifecycleCutoverError("cutover_plan_stale", "handoff changed")
     from contract_cutover_guard import _contract_cutover_guard_for_service_user_v1
+    from install.birth_authority_provisioner import _service_owned_birth_identity_v2
 
-    with _contract_cutover_guard_for_service_user_v1(handoff["service_user"]):
+    account = resolve_posix_account_snapshot_v1(handoff["service_user"])
+    with _contract_cutover_guard_for_service_user_v1(
+        handoff["service_user"],
+        catalog_trusted_owner=(account.record.uid, account.record.gid),
+    ):
         # The barrier holds lifecycle exclusion and proves the retired entry
         # points idle. It does not prove the current ones idle, so that is
         # asked here, of the installed catalog, before anything is copied.
         stopped = _prove_productive_services_stopped_v1(handoff["service_user"])
-        report = _in_service_child("apply", handoff)
+        identity = SimpleNamespace(
+            service_uid=account.record.uid, service_gid=account.record.gid,
+            service_supplementary_gids=account.supplementary_gids,
+        )
+        sources = tuple((item["kind"], Path(item["path"]), item["legacy_table"])
+                        for item in handoff["sources"])
+        with _service_owned_birth_identity_v2(identity):
+            observed = _observe_installation(sources)
+            if observed["migration_id"] != handoff["migration_id"]:
+                raise LifecycleCutoverError("cutover_plan_stale", handoff["migration_id"])
+            report = _migrate_as_service(sources, handoff)
         applied = report["applied"]
         if applied.get("pending"):
             # An open case must receive a disposition before the marker makes

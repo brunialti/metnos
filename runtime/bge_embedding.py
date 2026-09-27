@@ -31,10 +31,10 @@ class BGEEmbeddingService:
     def __init__(self, model_dir: str | None = None,
                  model_file: str = "onnx/sentence_transformers_int8.onnx",
                  max_length: int = 256):
-        # ADR 0148 rename-resilient: default derived from install root.
+        # Models belong to instance data, independently of the sealed release.
         if model_dir is None:
             import config as _C
-            model_dir = str(_C.PATH_ROOT / "models" / "embedding-bge")
+            model_dir = str(_C.PATH_MODELS / "embedding-bge")
         self._dir = Path(model_dir)
         onnx_path = self._dir / model_file
         tok_path = self._dir / "tokenizer.json"

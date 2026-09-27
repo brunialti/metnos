@@ -615,6 +615,17 @@ canonical value; a disabled or different watchdog after start is rejected.
 Unexpected triggers, new dependencies and changes to explicitly configured
 values remain subject to strict verification.</p>
 
+<p>Service verification also distinguishes kernel-discovered mounts, which may
+have no configuration file. Their origin and effective parameters are captured
+twice. This includes systemd's automatically created root mount, which may
+declare no source file; additional configuration or unknown origins remain
+rejected.</p>
+
+<p>During first installation, checks use the already authenticated service
+catalog to follow service creation without depending on the incomplete
+ownership chain. Every service must remain inactive with no processes;
+resuming repeats these checks. Unreadable state remains an error.</p>
+
 <p>The service reads the signed ownership chain without opening the private
 root-owned writer lock; it still verifies the lock's exact metadata.
 Administrative checks also inspect its marker. Startup checks may reuse the

@@ -29,6 +29,17 @@
   <p class="service-action-help">{{ msg("UI_SERVICES_ACTION_HELP") }}</p>
   <div class="service-summary"><span>{{ msg("UI_SERVICES_SUMMARY_RUNNING", count=running) }}</span><span>{{ msg("UI_SERVICES_SUMMARY_INSTALLED", count=installed) }}</span>{% if degraded %}<span>{{ msg("UI_SERVICES_SUMMARY_DEGRADED", count=degraded) }}</span>{% endif %}<span>{{ msg("UI_SERVICES_REFRESH") }}</span></div>
 </section>
+{% if periodic_services %}<section class="service-alerts" id="periodic-services">
+  <h2>{{ msg("UI_PERIODIC_TITLE") }}</h2>
+  <p>{{ msg("UI_PERIODIC_HELP") }}</p>
+  {% if interval_notice == 'saved' %}<p role="status">{{ msg("UI_PERIODIC_SAVED") }}</p>{% elif interval_notice == 'failed' %}<p role="alert">{{ msg("UI_PERIODIC_FAILED") }}</p>{% endif %}
+  {% for p in periodic_services %}<form method="post" action="/admin/services/periodic/{{ p.name }}">
+    <label for="interval-{{ p.name }}">{{ msg(p.label_key) }} — {{ msg("UI_PERIODIC_MINUTES") }}</label>
+    <input id="interval-{{ p.name }}" name="interval_minutes" type="number" min="{{ p.minimum_minutes }}" max="{{ p.maximum_minutes }}" value="{{ p.interval_minutes }}" required>
+    <button type="submit">{{ msg("UI_PERIODIC_SAVE") }}</button>
+    {% if not p.valid %}<p role="alert">{{ msg("UI_PERIODIC_INVALID") }}</p>{% endif %}
+  </form>{% endfor %}
+</section>{% endif %}
 {% if notifications %}<section class="service-alerts" aria-labelledby="service-alerts-title">
   <h2 id="service-alerts-title">{{ msg("UI_SERVICES_ALERTS_TITLE") }}</h2>
   {% for event in notifications %}<div class="service-alert {{ event.severity|default('warning') }}">
@@ -106,6 +117,10 @@ document.querySelectorAll('form[data-confirm]').forEach((form) => {
     if (!window.confirm(form.dataset.confirm || '')) event.preventDefault();
   });
 });
-setInterval(() => { if (!document.hidden) location.reload(); }, 15000);
+let editingInterval = false;
+document.querySelectorAll('#periodic-services input').forEach((input) => {
+  input.addEventListener('input', () => { editingInterval = true; });
+});
+setInterval(() => { if (!document.hidden && !editingInterval) location.reload(); }, 15000);
 </script>
 {% endblock %}

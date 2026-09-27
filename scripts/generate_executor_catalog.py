@@ -146,6 +146,7 @@ _TEXT = {
         "other": "EN",
         "lead": "Questa pagina risponde a una domanda pratica: quali azioni sono fornite con Metnos e che cosa dichiara il contratto di ciascuna? Gli executor sono raggruppati automaticamente in base al loro nome canonico; l'elenco non viene ricopiato e riordinato a mano.",
         "generated": "L'elenco qui sotto proviene da {count} manifest sorgente nella distribuzione: descrive le capacità, non ne certifica l'ammissione in esercizio. Ogni capacità deve superare Executor Birth prima di essere usata. Non comprende le capacità interne al processo, gli executor aggiunti da skill o quelli creati nella singola installazione. Per vedere tutto ciò che l'istanza può usare in questo momento, apri <strong>Settings → Ciclo di vita → Executor</strong> nella chat web.",
+        "initial_installation": "<strong>Prima installazione — candidato in collaudo.</strong> Su un’istanza nuova l’installer può adottare il catalogo esatto di una distribuzione accettata, verificandone integrità, struttura e autorizzazioni. Ogni elemento riceve una ricevuta locale che distingue l’adozione dalle prove dinamiche: non è una nuova ammissione qualificante per F5. Componenti nuovi o modificati seguono le verifiche complete di Executor Birth.",
         "concept": "Un executor può seguire una procedura diretta oppure adattare alcuni passi entro un <a href=\"intelligent_executors.html\">mandato ristretto</a>. In entrambi i casi conserva lo stesso contratto pubblico: scopo, argomenti, autorità, collocazione e forma del risultato. La ricevuta finale distingue un'azione realmente compiuta da uno stato già raggiunto: per esempio, un programma già chiuso non viene contato né annunciato come appena chiuso.",
         "properties_explanation": "Nella colonna <strong>Contratto</strong>, <code>standard</code> e <code>critico</code> indicano la classe di rischio; <code>server</code>, <code>any</code> e le piattaforme indicano dove l'executor può essere collocato. Il trattino segnala che il manifest non limita esplicitamente la piattaforma.",
         "launch_consent_title": "Per quanto tempo autorizzi l'avvio di un programma",
@@ -181,6 +182,7 @@ _TEXT = {
         "other": "IT",
         "lead": "This page answers a practical question: which actions come with Metnos, and what does each contract declare? Executors are grouped automatically from their canonical names; nobody copies and rearranges this inventory by hand.",
         "generated": "The list below comes from {count} source manifests in the distribution: it describes capabilities, not their live admission. Every capability must pass Executor Birth before use. It does not include in-process capabilities, executors added by skills, or executors created within one installation. To see everything the instance can use right now, open <strong>Settings → Lifecycle → Executors</strong> in web chat.",
+        "initial_installation": "<strong>First installation — candidate under test.</strong> On a new instance, the installer can adopt the exact catalog of an accepted distribution after checking integrity, structure, and authorization. Each item receives a local receipt distinguishing adoption from dynamic tests: this is not a new qualifying F5 admission. New or modified components follow the full Executor Birth checks.",
         "concept": "An executor may follow a direct procedure or adapt some steps within a <a href=\"intelligent_executors.html\">narrow mandate</a>. Either way, it keeps the same public contract: purpose, arguments, authority, placement, and result shape. The final receipt distinguishes a performed action from an already-satisfied state: an application that was already closed is neither counted nor announced as newly closed.",
         "properties_explanation": "In the <strong>Contract</strong> column, <code>standard</code> and <code>critical</code> indicate the risk class; <code>server</code>, <code>any</code>, and the platform names show where the executor may run. A dash means that the manifest does not explicitly restrict the platform.",
         "launch_consent_title": "How long you authorize launching an application",
@@ -309,6 +311,7 @@ def render(entries: list[ExecutorEntry], lang: str) -> str:
 <h1>{text["title"]}</h1>
 <p class="lead">{text["lead"]}</p>
 <div class="status">{generated}</div>
+<p>{text["initial_installation"]}</p>
 <p>{text["concept"]}</p>
 <h2 id="launch-consent">{text["launch_consent_title"]}</h2>
 <p>{text["launch_consent"]}</p>

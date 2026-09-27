@@ -115,6 +115,9 @@ def test_authoring_records_are_frozen() -> None:
 
 @pytest.mark.parametrize("scope", (
     "install/executor_birth_systemd.py:_prepare_administrative_stage_v1",
+    "install/executor_birth_transition.py:_prepare_initial_author_v1",
+    "install/executor_birth_transition.py:_prepare_service_authorities_child_v1",
+    "install/executor_birth_transition.py:install_source_v1",
     "runtime/executor_birth_ownership_chain.py:inspect_transition_ownership_chain_v1",
     "runtime/executor_birth_ownership_coordinator.py:_head_required_transition_locked_v2",
 ))

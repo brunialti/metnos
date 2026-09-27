@@ -131,6 +131,7 @@ def _write_summary(
     port: int = 8770,
     bind_host: str = "0.0.0.0",
     lan_urls: tuple[str, ...] | None = None,
+    managed: bool = False,
 ) -> Path:
     home = Path(os.environ.get("METNOS_USER_DATA", Path.home() / ".local" / "share" / "metnos"))
     home.mkdir(parents=True, exist_ok=True)
@@ -170,6 +171,32 @@ def _write_summary(
                 "the network interface, then run `ip -brief address`."
             )
 
+    maintenance = [
+        "systemctl --user status metnos-http",
+        "systemctl --user restart metnos-http",
+        "journalctl --user -u metnos-http -f",
+        "python -m install --force-phase 4   # re-run secrets dialog",
+        "python -m install.sidecar --list    # optional self-hosted sidecars",
+        "python -m install.sidecar searxng   # add self-hosted web search",
+    ]
+    components = [
+        "Self-hosted companion services use user-level systemd units.",
+        "- **SearXNG** — web search. `python -m install.sidecar searxng`",
+        "- **Photon** — geocoding. **VLM** — image captions.",
+    ]
+    if managed:
+        maintenance = [
+            "systemctl --failed",
+            "systemctl list-units 'metnos*'",
+            "sudo journalctl --since today",
+            "python -m install --force-phase 4   # re-run secrets dialog from the clone",
+        ]
+        components = [
+            "Services are selected before installation in `services.toml`.",
+            "Services not listed there are prepared locally. Changing the signed",
+            "service profile requires a new release; do not add competing user units.",
+        ]
+
     lines += [
         "",
         "## Files of interest",
@@ -177,29 +204,19 @@ def _write_summary(
         "- `~/.config/metnos/admin.key` — HMAC key for admin onboarding (mode 0600)",
         "- `~/.config/metnos/llm_tiers.toml` — tier routing config",
         "- `~/.local/share/metnos/install_summary.md` — this file",
-        "- `<METNOS_INSTALL_ROOT>/.venv/` — Python virtual environment",
+        f"- `{os.environ.get('METNOS_VENV', '<METNOS_INSTALL_ROOT>/.venv')}` — Python environment",
+        f"- Service account home: `{Path.home()}` (the `~` paths here refer to this account)",
         "- `~/.local/state/metnos/install/phase*.done` — phase sentinels (delete to re-run)",
         "",
         "## Day-2 commands",
         "",
         "```bash",
-        "systemctl --user status metnos-http",
-        "systemctl --user restart metnos-http",
-        "journalctl --user -u metnos-http -f",
-        "python -m install --force-phase 4   # re-run secrets dialog",
-        "python -m install.sidecar --list    # optional self-hosted sidecars",
-        "python -m install.sidecar searxng   # add self-hosted web search",
+        *maintenance,
         "```",
         "",
         "## Optional sidecars",
         "",
-        "Self-hosted companion services you can add any time (each is a "
-        "user-level systemd unit, no sudo):",
-        "",
-        "- **SearXNG** — self-hosted web search backing `find_urls`. "
-        "`python -m install.sidecar searxng`",
-        "- **Photon** / **VLM** — offline geocoding / image captions "
-        "(installers coming soon).",
+        *components,
         "",
         "## How to connect",
         "",
@@ -356,6 +373,7 @@ def run(args: Any) -> dict[str, Any]:
     ui.step(i18n.t("p6_step_summary"))
     summary_path = _write_summary(
         state.summary(), port=port, bind_host=http_host, lan_urls=lan_urls,
+        managed=getattr(args, "managed", False),
     )
     ui.ok(i18n.t("p6_summary_at", path=summary_path))
     notes["summary_path"] = str(summary_path)

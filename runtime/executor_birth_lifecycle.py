@@ -1,7 +1,8 @@
 """Sealed RM-0008 F5 lifecycle integration.
 
-The module stays unreachable from productive routing until an operator-issued,
-authenticated F5 certification record is loaded. Lifecycle publications are
+Productive routing requires an authenticated F5 certification. The separate,
+short-lived rehearsal permit admits only its verified isolated installation.
+Lifecycle publications are
 accepted only after the caller's independent RM-0007 reread returns the exact
 AdmissionReceipt and predecessor relation expected by this coordinator.
 """
@@ -17,6 +18,7 @@ from typing import TYPE_CHECKING, Callable
 if TYPE_CHECKING:
     from executor_birth_feedback import ExecutionReceipt, FeedbackResult
     from executor_birth_operational import BirthRuntimeBundle
+    from executor_birth_rehearsal import F5Rehearsal
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
@@ -251,13 +253,13 @@ def _apply_execution_failure_with_bundle(
 def apply_execution_failure(
     execution: ExecutionReceipt, *, failure_evidence_hash: str, error_code: str,
 ) -> FeedbackResult:
-    """Certified exact-feedback entry; no caller-selected store or publisher."""
+    """Authorized exact feedback; no caller-selected store or publisher."""
     import config
-    from executor_birth_activation_mode import require_f5_certificate
+    from executor_birth_rehearsal import require_f5_lifecycle_authorization
     from executor_birth_bootstrap import bootstrap_birth_runtime, _secure_state_dir, _secure_state_db
     from executor_birth_feedback import utc_now_seconds
 
-    require_f5_certificate()
+    require_f5_lifecycle_authorization()
     bundle = bootstrap_birth_runtime()
     state = _secure_state_dir(Path(config.PATH_USER_STATE) / "birth")
     epochs = state / "executor_epochs.sqlite"
@@ -277,24 +279,32 @@ VerifyAdmission = Callable[[bytes], AdmissionReceipt]
 
 class LifecycleCoordinator:
     """Lifecycle ordering primitive; productive owner composition is required."""
-    __slots__ = ("_db_path", "_publish", "_verify_admission")
+    __slots__ = ("_db_path", "_publish", "_verify_admission", "_rehearsal")
 
-    def __init__(self, activation: F5Activation, *, db_path: Path,
+    def __init__(self, activation: F5Activation | F5Rehearsal, *, db_path: Path,
                  publish_and_reread: PublishRevision,
                  verify_admission: VerifyAdmission) -> None:
-        if not isinstance(activation, F5Activation):
+        from executor_birth_rehearsal import F5Rehearsal
+
+        if not isinstance(activation, (F5Activation, F5Rehearsal)):
             raise LifecycleError("f5_activation_required")
         if (not isinstance(db_path, Path) or not callable(publish_and_reread)
                 or not callable(verify_admission)):
             raise LifecycleError("lifecycle_binding_invalid", "dependencies")
         self._db_path, self._publish = db_path, publish_and_reread
         self._verify_admission = verify_admission
+        self._rehearsal = activation if isinstance(activation, F5Rehearsal) else None
 
     def revise(
         self, key: EpochCacheKey, *, expected_version: int,
         target: BirthLifecycle, name: str, source: str, occurred_at: str,
         historic_epoch_ref: str | None = None,
     ) -> LifecycleResult:
+        if self._rehearsal is not None:
+            from executor_birth_rehearsal import load_f5_rehearsal
+
+            if load_f5_rehearsal().permit != self._rehearsal.permit:
+                raise LifecycleError("f5_rehearsal_invalid", "changed coordinator authorization")
         if target not in {BirthLifecycle.PREEXERCISE, BirthLifecycle.ACTIVE,
                           BirthLifecycle.QUARANTINED}:
             raise LifecycleError("lifecycle_transition_invalid", "target")

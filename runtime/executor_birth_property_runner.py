@@ -532,13 +532,23 @@ def _domain_contract(manifest: Mapping[str, object]) -> str:
         return 'created_paths'
     patterns = manifest.get('reverse_pattern')
     reverse = {patterns} if isinstance(patterns, str) else set(patterns or ())
+    required = args.get('required', ()) if isinstance(args, Mapping) else ()
+    paths_suffice = (isinstance(required, (list, tuple))
+                     and all(isinstance(key, str) and key == 'paths'
+                             for key in required))
     if 'fs:write' in caps:
-        if typed('paths', 'array') and not typed('dest', 'string'):
-            if 'delete_created_paths' in reverse:
+        if (typed('paths', 'array') and not typed('dest', 'string')
+                and paths_suffice):
+            # A shared inverse does not establish the forward operation.
+            # These fixtures only supply paths; e.g. a conversion also needs
+            # a target format and cannot be exercised as directory creation.
+            if reverse == {'delete_created_paths'}:
                 return 'created_dirs'
-            if 'restore_blob_backup' in reverse:
+            if ('restore_blob_backup' in reverse
+                    and reverse <= {'restore_blob_backup', 'restore_trashed_files'}):
                 return 'deleted_files'
-            if 'module.reverse' in reverse and typed('force', 'boolean'):
+            if ('module.reverse' in reverse and typed('force', 'boolean')
+                    and reverse <= {'module.reverse', 'restore_trashed_files'}):
                 return 'deleted_dirs'
         if typed('path', 'string'):
             if 'restore_blob_backup' in reverse and typed('content', 'string'):

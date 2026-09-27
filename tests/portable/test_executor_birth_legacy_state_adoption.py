@@ -112,6 +112,34 @@ def test_ready_refuses_fresh_state_before_contract_convergence() -> None:
     assert len(effects.raw) == 3
 
 
+def test_fresh_origin_survives_partial_convergence_and_ready() -> None:
+    effects = _Effects(policy.LegacyStateObservationV1(()))
+    prepared = prepare_legacy_state_authoring_v1(_request(), effects)
+    assert prepared.initially_empty is True
+    # Convergence creates service-owned state after the initial inventory.
+    effects.observation = policy.project_legacy_state_adoption_v1(
+        _request(), _root_authoring(),
+    )
+    resumed = prepare_legacy_state_authoring_v1(_request(), effects)
+    assert resumed.initially_empty is True
+    assert resumed.record_sha256 == prepared.record_sha256
+    ready = _complete_legacy_state_ready_v1(
+        _request(), effects, expected_record_sha256=resumed.record_sha256,
+    )
+    assert ready.ready is True and ready.initially_empty is True
+    assert prepare_legacy_state_authoring_v1(_request(), effects).initially_empty is True
+
+
+def test_existing_authoring_is_never_reported_as_new_instance() -> None:
+    effects = _Effects(_root_authoring())
+    prepared = prepare_legacy_state_authoring_v1(_request(), effects)
+    assert prepared.initially_empty is False
+    ready = _complete_legacy_state_ready_v1(
+        _request(), effects, expected_record_sha256=prepared.record_sha256,
+    )
+    assert ready.initially_empty is False
+
+
 def test_crash_after_convergence_resumes_before_ready_append() -> None:
     effects = _Effects(_root_authoring())
     prepared = prepare_legacy_state_authoring_v1(_request(), effects)

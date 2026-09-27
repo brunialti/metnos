@@ -83,6 +83,23 @@ def _ensure_directory(
     )
 
 
+def _require_account_parent(path: Path, *, owner: tuple[int, int]) -> None:
+    """Accept private account parents or administrator-owned shared parents.
+
+    The managed service home and its XDG parents belong to root. They must
+    remain traversable and cannot be writable by the service account; only
+    the Metnos child directory is account-owned.
+    """
+    result = _status(path)
+    actual_owner = (result.st_uid, result.st_gid)
+    mode = stat.S_IMODE(result.st_mode)
+    if not stat.S_ISDIR(result.st_mode) or not (
+        (actual_owner == owner and mode in {0o700, 0o755})
+        or (actual_owner == (0, 0) and mode == 0o755)
+    ):
+        raise OperatorAuthorityError("operator_authority_unsafe_path", str(path))
+
+
 def _read_private(path: Path, *, owner: tuple[int, int]) -> Ed25519PrivateKey:
     result = _status(path)
     if (
@@ -210,10 +227,11 @@ def provision_paths(
 
     if not target_config.is_absolute() or not private_base.is_absolute():
         raise OperatorAuthorityError("operator_authority_unsafe_path")
-    _ensure_directory(
-        target_config.parent, owner=target_owner, mode=0o700,
-        existing_modes=frozenset({0o700, 0o755}),
-    )
+    try:
+        target_config.parent.lstat()
+    except FileNotFoundError:
+        _ensure_directory(target_config.parent, owner=target_owner, mode=0o700)
+    _require_account_parent(target_config.parent, owner=target_owner)
     _ensure_directory(target_config, owner=target_owner, mode=0o700)
     birth = target_config / "birth"
     _ensure_directory(birth, owner=target_owner, mode=0o755)
@@ -226,6 +244,18 @@ def provision_paths(
         raise OperatorAuthorityError(
             "operator_authority_private_invalid", ",".join(sorted(unexpected)),
         )
+    public = birth / "operator-input-v1"
+    if public.exists() or public.is_symlink():
+        # Existing public authority cannot be repaired by replacing lost keys.
+        operator = _read_private(private / "operator-key.priv", owner=private_owner)
+        reviewer = _read_private(private / "review-key.priv", owner=private_owner)
+        expected = _documents(_public_bytes(operator), _public_bytes(reviewer))
+        _verify_public(public, expected, owner=target_owner)
+        return {
+            "status": "verified", "private_created": False,
+            "private_dir": str(private), "public_dir": str(public),
+        }
+
     operator, operator_created = _load_or_create_private(
         private / "operator-key.priv", owner=private_owner,
     )
@@ -233,14 +263,6 @@ def provision_paths(
         private / "review-key.priv", owner=private_owner,
     )
     expected = _documents(_public_bytes(operator), _public_bytes(reviewer))
-
-    public = birth / "operator-input-v1"
-    if public.exists() or public.is_symlink():
-        _verify_public(public, expected, owner=target_owner)
-        return {
-            "status": "verified", "private_created": False,
-            "private_dir": str(private), "public_dir": str(public),
-        }
 
     temporary = Path(tempfile.mkdtemp(prefix=".operator-input-v1.", dir=birth))
     try:
@@ -298,9 +320,7 @@ def main(argv: list[str] | None = None) -> int:
         if account.pw_uid == 0 or not account.pw_dir.startswith("/"):
             raise OperatorAuthorityError("operator_authority_target_invalid", args.user)
         home = Path(account.pw_dir)
-        home_status = _status(home)
-        if not stat.S_ISDIR(home_status.st_mode) or home_status.st_uid != account.pw_uid:
-            raise OperatorAuthorityError("operator_authority_target_invalid", args.user)
+        _require_account_parent(home, owner=(account.pw_uid, account.pw_gid))
         result = provision_paths(
             target_config=home / ".config" / "metnos",
             private_base=PRIVATE_BASE,

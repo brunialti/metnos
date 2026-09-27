@@ -40,6 +40,9 @@ _SSE_MAX_TOTAL = 128
 _DURABLE_ERROR_MESSAGE_KEYS = {
     "budget_accounting_incomplete": "UI_DURABLE_ERROR_ACCOUNTING_INCOMPLETE",
     "usage_accounting_incomplete": "UI_DURABLE_ERROR_ACCOUNTING_INCOMPLETE",
+    "execution.usage_accounting_incomplete": "UI_DURABLE_ERROR_ACCOUNTING_INCOMPLETE",
+    "budget_limit_exceeded": "UI_DURABLE_ERROR_BUDGET_LIMIT",
+    "execution.budget_exhausted": "UI_DURABLE_ERROR_BUDGET_LIMIT",
     "budget_exhausted": "UI_DURABLE_ERROR_BUDGET_GUARD",
     "cancelled": "UI_DURABLE_ERROR_CANCELLED",
     "capability_unavailable": "UI_DURABLE_ERROR_CAPABILITY_UNAVAILABLE",

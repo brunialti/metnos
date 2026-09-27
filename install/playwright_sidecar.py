@@ -329,15 +329,22 @@ def _health_8771(timeout_s: int = 20) -> bool:
 
 # ─── orchestrazione ──────────────────────────────────────────────
 
-def install(*, yes: bool = False) -> dict:
+def install(*, yes: bool = False, activate: bool = True, managed: bool = False) -> dict:
     """Installa il sidecar Playwright. Ritorna note per lo stato fase."""
     if not _ensure_venv():
         return {"playwright": "venv_failed"}
     py = _venv_python()
-    if not _pip_install(py):
+    if managed:
+        # This environment is the immutable, hash-verified release closure.
+        from importlib.metadata import version
+        if version("playwright") != "1.61.0":
+            return {"playwright": "pip_failed"}
+    elif not _pip_install(py):
         return {"playwright": "pip_failed"}
     if not _install_browsers(py):
         return {"playwright": "chromium_failed"}
+    if not activate:
+        return {"playwright": "prepared"}
     if not _install_unit():
         return {"playwright": "installed_no_unit"}
     # §2.8: non dichiarare "avviato" senza verificare. Probe /health.

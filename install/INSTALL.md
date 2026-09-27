@@ -1,33 +1,16 @@
 # Installare Metnos
 
-Questa guida descrive il percorso supportato per installare Metnos su una
-macchina Linux con systemd. L’installazione del programma e l’ambiente Python
-sono condivisi dalla macchina; configurazione, credenziali, sessioni e dati
-restano separati per ciascun utente.
+Il percorso supportato è `install/bootstrap.sh`, su Linux x86-64 con systemd
+e Python 3.12. L’installer richiede privilegi amministrativi e prepara un
+account di servizio dedicato, `metnos`. Le domande e le operazioni applicative
+sono eseguite con quell’account; la preparazione e l’attivazione della
+configurazione firmata passano dal coordinatore amministrativo.
 
-## Requisiti
+## Preparazione
 
-Servono:
-
-- Python 3.12 o successivo;
-- Git e accesso a Internet durante il primo avvio;
-- almeno 8 GB liberi, oltre allo spazio richiesto dai modelli scelti;
-- una sessione utente systemd;
-- `libstdc++` 11 o successiva e `libgomp` per i modelli ONNX.
-
-Alcune capacità richiedono programmi di sistema aggiuntivi. Per esempio,
-Tesseract e Poppler servono per l’OCR; Xvfb serve per il browser grafico Side.
-Il manifest d’installazione contiene l’inventario di base per Debian/Ubuntu e
-quello completo Ubuntu 24.04 per tutti i componenti locali selezionabili,
-compresi Java e zstd per Photon, Vulkan e le librerie native di Chromium.
-
-Una GPU non è obbligatoria. I livelli LLM possono usare un motore locale su CPU,
-un endpoint compatibile su un’altra macchina oppure un servizio frontier. La
-qualità e la latenza dipendono dai modelli assegnati ai livelli.
-
-## Procedura supportata
-
-Il solo punto d’ingresso supportato è `install/bootstrap.sh`:
+Servono accesso a Internet, Git, almeno 8 GB liberi oltre ai modelli scelti e i
+pacchetti di sistema del manifest. Una GPU non è obbligatoria. Ubuntu 24.04 è
+il riferimento per l’inventario completo dei componenti locali.
 
 ```bash
 git clone https://github.com/brunialti/metnos.git
@@ -35,227 +18,118 @@ cd metnos
 sudo apt-get update
 sudo apt-get install -y $(python3 -c 'import tomllib; p=tomllib.load(open("install/manifest.toml","rb"))["system_packages"]; print(" ".join(p["debian"]+p["debian_optional"]+p["ubuntu_24_04_all_local"]))')
 bash install/bootstrap.sh --check
-sudo "$PWD/.venv/bin/python" -m install.operator_authority --user "$USER"
 bash install/bootstrap.sh
 ```
 
-Lo script individua Python, crea l’ambiente virtuale nella directory
-`<installazione>/.venv`, installa le dipendenze e avvia l’installatore in sei
-fasi. L’ambiente virtuale appartiene all’installazione: non viene creato nella
-directory dati di un utente e non dipende dal suo nome.
+Prima dell’ultimo comando puoi preparare il file facoltativo
+`~/.config/metnos/services.toml`, seguendo il [manuale dei servizi](SERVICES.md).
+Solo i servizi dichiarati vengono riusati. Senza file, o per le voci mancanti,
+l’installer prepara componenti locali. Non cerca server nella rete e non passa
+a servizi cloud in caso di errore. Un endpoint dichiarato deve essere
+raggiungibile dall’ambiente in cui installi.
 
-Il comando amministrativo per le autorità genera identità nuove per questa
-installazione. Conserva le chiavi private dell’operatore e del revisore in
-`/var/lib/metnos-operator-authority/<uid>/`, directory accessibile soltanto a
-root, e mette nel profilo Metnos esclusivamente i registri e la chiave pubblica.
-Non importa autorità da installazioni esistenti; una seconda esecuzione verifica
-byte, proprietari e permessi senza sostituirli.
+Il bootstrap crea `.venv` nel clone per avviare la procedura. Il runtime usa
+poi l’ambiente Python amministrato, con versioni e impronte fissate in
+`requirements-linux-x86_64.lock`. L’installer genera nuove autorità per la
+nuova installazione; non occorre un comando manuale separato né copiare chiavi
+da altre istanze. Le chiavi amministrative rimangono accessibili solo a root.
 
-Per controllare prima i requisiti:
-
-```bash
-bash install/bootstrap.sh --check
-```
-
-Con questa forma il bootstrap può creare o aggiornare `.venv` prima del
-controllo; non avvia però le fasi applicative e non crea configurazioni,
-credenziali, stato o dati di Metnos. Se `.venv` esiste già, il controllo diretto è:
-
-```bash
-./.venv/bin/python -m install --check
-```
+`--check` controlla i prerequisiti senza eseguire le fasi applicative; il
+bootstrap può comunque creare o aggiornare `.venv`. Se questa esiste già,
+`./.venv/bin/python -m install --check` esegue direttamente il controllo.
 
 ## Le sei fasi
 
-| Fase | Operazione | Risultato principale |
-|---:|---|---|
-| 1 | Preparazione | controlli preliminari, dipendenze Python e directory utente |
-| 2 | Infrastruttura AI | embedder BGE-M3, collegamenti dei livelli LLM e sidecar scelti |
-| 3 | Codice e cataloghi | verifica del sorgente, database iniziali, catalogo i18n, pubblicazione immutabile di tutti i contratti executor installati e non ritirati, compresi quelli degli skill disattivati, e catalogo Tutor verificato |
-| 4 | Dati sensibili | chiave amministrativa e credenziali cifrate |
-| 5 | Servizi | unità systemd dell’utente, target integrato e controllo di salute HTTP |
-| 6 | Primo accesso | scelta delle capacità, collegamento amministrativo temporaneo e riepilogo |
+| Fase | Risultato |
+|---:|---|
+| 1 | Verifica di prerequisiti e dipendenze; directory dell’account di servizio |
+| 2 | BGE-M3 locale, modelli e componenti locali o collegamenti dichiarati |
+| 3 | Sorgente e catalogo iniziale autenticati; database, traduzioni e Tutor |
+| 4 | Chiave amministrativa e credenziali cifrate facoltative |
+| 5 | Attivazione della distribuzione firmata e controlli dei servizi |
+| 6 | Collegamento di primo accesso e riepilogo |
 
-Ogni fase conclusa scrive un marcatore in
-`~/.local/state/metnos/install/`. Un’esecuzione successiva riprende dal primo
-punto incompleto. Per ripetere una fase:
+I componenti della fase 2 vengono preparati prima dell’attivazione. Il catalogo
+iniziale proviene dalla distribuzione verificata. La sua adozione non è una
+certificazione di nuove funzioni prodotte successivamente.
 
-```bash
-./.venv/bin/python -m install --force-phase 4
-```
+I marcatori sotto `/var/lib/metnos-service/.local/state/metnos/install/`
+consentono la ripresa, ma non autorizzano l’avvio: ogni continuazione ripete
+la verifica autenticata. Per riprendere, esegui di nuovo
+`bash install/bootstrap.sh`. Per ripetere una fase usa `--force-phase N`;
+`--only-phase N` richiede che quelle precedenti siano complete.
 
-La prima compilazione del Tutor trasforma la documentazione pubblica e i
-manifest correnti in un catalogo semantico firmato; su una macchina che usa la
-CPU può richiedere alcuni minuti. Avviene nella fase 3, prima dell’avvio del
-servizio, così il controllo di prontezza non può interromperla. Alle esecuzioni
-successive il compilatore confronta il contenuto delle fonti e riutilizza i
-vettori invariati; una modifica documentale invalida invece il catalogo e ne
-provoca l’aggiornamento.
+Le altre opzioni sono `--force` per gli avvisi non bloccanti e `--yes` per le
+scelte non sensibili. L’accettazione iniziale resta interattiva. Il percorso
+amministrato richiede un insieme completo di servizi e non accetta `--skip`:
+per riusarli altrove prepara il profilo prima dell’installazione.
 
-Le opzioni principali sono:
+Il Tutor viene compilato e verificato prima dell’avvio. Su CPU la prima
+compilazione può richiedere alcuni minuti; quelle successive riusano i vettori
+delle fonti invariate. Il compilatore rispetta la quota CPU disponibile,
+anche nel contenitore, evitando di moltiplicare i processi di calcolo.
 
-```text
---check               controlla i prerequisiti senza eseguire le fasi
---force               prosegue oltre gli avvisi non bloccanti
---force-phase N       ripete la fase N
---only-phase N        esegue soltanto la fase N
---yes, -y             accetta le scelte non sensibili in modo non interattivo
---enable COMPONENT    installa un componente opzionale indicato
---skip COMPONENT      non installa un componente opzionale indicato
-```
+## Modelli, configurazione e dati
 
-L’accettazione iniziale e l’inserimento delle credenziali restano interattivi:
-`--yes` non sostituisce un consenso necessario.
+BGE-M3 è locale ed eseguito nello stesso processo. I modelli scaricati risiedono
+nella directory dati, separata dal codice immutabile. Il profilo può collegare
+modello testuale e visione a servizi esistenti; ricerca SearXNG, geografia
+Photon e browser Playwright seguono la stessa regola. I servizi locali usano
+unità di sistema e l’account `metnos`. La visione locale parte su richiesta.
 
-## Modelli e livelli
+Il profilo selezionato fa parte della distribuzione firmata. Se una fase 2 è
+già completa, riprendi con lo stesso profilo. Cambiare i servizi di un’istanza
+già installata richiede un nuovo rilascio amministrato, non la modifica dei
+file generati o il solo riavvio.
 
-Metnos distingue `fast` (livelli `micro`, `procedural`, `fidelity`), `wise`,
-`creative` e `frontier`; non impone un modello unico. La configurazione
-effettiva è in:
+Le directory dell’account di servizio sono:
 
-```text
-~/.config/metnos/llm_tiers.toml
-~/.config/metnos/embedding_tiers.toml
-~/.config/metnos/vlm_tiers.toml
-```
+| Contenuto | Directory |
+|---|---|
+| Configurazioni e credenziali | `/var/lib/metnos-service/.config/metnos` |
+| Dati, modelli e riepilogo | `/var/lib/metnos-service/.local/share/metnos` |
+| Stato e marcatori | `/var/lib/metnos-service/.local/state/metnos` |
 
-Il modello di embedding testuale BGE-M3 è installato dentro Metnos e viene
-eseguito nello stesso processo. Non dipende dall’ambiente Python o dai modelli
-di altri progetti.
+Il codice verificato e Python vivono nei depositi amministrati, separati dai
+dati. Le variabili `METNOS_INSTALL_ROOT`, `METNOS_VENV`, `METNOS_USER_CONFIG`,
+`METNOS_USER_DATA` e `METNOS_USER_STATE` mantengono questi ruoli distinti.
 
-Se un endpoint compatibile risponde già all’indirizzo configurato, la fase 2 lo
-collega ai livelli locali senza scaricare un altro LLM. In alternativa può
-predisporre un motore locale gestito oppure usare il livello frontier, se sono
-state fornite le relative credenziali.
+La fase 4 può raccogliere credenziali per Telegram, posta, GitHub e provider
+frontier. Il cloud richiede una scelta esplicita e credenziali. Google Workspace
+si collega dopo l’installazione tramite OAuth. I parametri dei modelli sono
+consultabili nella chat da **Impostazioni → Sistema → Modelli**.
 
-Dopo l’installazione, la configurazione effettiva dei modelli si consulta e si
-modifica nella chat web seguendo **Impostazioni → Sistema → Modelli**. La pagina
-mostra anche provenienza dei valori, parametri di generazione e configurazioni
-implicite. Il comando **Ripristina** ricrea i valori forniti dalla versione
-installata; non recupera una configurazione personale precedente.
-
-## Servizi opzionali
-
-I componenti opzionali si possono scegliere durante la fase 2 oppure aggiungere
-in seguito:
+## Primo accesso e verifica
 
 ```bash
-./.venv/bin/python -m install.sidecar --list
-./.venv/bin/python -m install.sidecar searxng
-./.venv/bin/python -m install.sidecar photon
-./.venv/bin/python -m install.sidecar vlm
-./.venv/bin/python -m install.sidecar playwright
-```
-
-| Componente | Capacità servita | Comportamento |
-|---|---|---|
-| SearXNG | ricerca web | servizio locale dell’utente |
-| Photon | ricerca e georeferenziazione dei luoghi | servizio locale dell’utente |
-| VLM | descrizione e arricchimento delle immagini | avvio su richiesta, arresto dopo inattività |
-| Playwright | pagine JavaScript e sessioni grafiche sui siti | servizio locale con Chromium; il browser Side usa Xvfb |
-
-Photon conserva l’archivio del Paese mentre costruisce l’indice locale. Se
-l’espansione dell’archivio o l’importazione viene interrotta, all’esecuzione
-successiva scarta l’output parziale non verificato e riprende dall’ultimo
-artefatto certificato. Verifica inoltre che l’archivio compresso sia un frame
-zstd completo. I marcatori persistenti vengono scritti soltanto dopo la corretta
-conclusione dell’espansione e del processo Java: la sola presenza di un file
-JSONL o della directory `photon_data/` non è mai considerata una prova di
-successo.
-
-Se un componente manca, Metnos non inventa il risultato: la capacità resta
-inattiva oppure restituisce una degradazione esplicita. Le altre capacità
-continuano a funzionare.
-
-## Credenziali e utenti
-
-La fase 4 può raccogliere credenziali per Telegram, posta, provider frontier e
-GitHub. Le salva nel deposito cifrato di Metnos; non crea file temporanei in
-chiaro. Google Workspace si collega in seguito con il proprio flusso OAuth,
-senza condividere le credenziali dell’account con l’installatore.
-
-Le directory canoniche sono:
-
-```text
-METNOS_INSTALL_ROOT   codice e ambiente virtuale condivisi
-METNOS_USER_DATA      dati applicativi dell’utente
-METNOS_USER_STATE     stato operativo e marcatori dell’utente
-METNOS_USER_CONFIG    configurazione e credenziali dell’utente
-```
-
-I valori predefiniti delle ultime tre directory seguono le convenzioni XDG:
-`~/.local/share/metnos`, `~/.local/state/metnos` e `~/.config/metnos`. Ogni
-account di sistema dispone quindi di configurazione, sessioni e dati propri.
-
-## Avvio e verifica
-
-Su una macchina nuova, la fase 5 installa un unico `metnos.target` a livello
-utente. Il target coordina il server HTTP e gli eventuali componenti integrati.
-Per mantenerlo attivo anche senza una sessione aperta:
-
-```bash
-sudo loginctl enable-linger "$USER"
-```
-
-Controlli essenziali:
-
-```bash
-systemctl --user status metnos.target
-./.venv/bin/python runtime/stack_reconcile.py check
+systemctl --failed
+systemctl list-units 'metnos*'
 curl http://127.0.0.1:8770/agent/health
 ```
 
-Al termine, la fase 6 stampa l’URL locale e gli URL esatti rilevati per le
-interfacce IPv4 della LAN privata. Sul server si apre l’URL con
-`127.0.0.1`; da un altro dispositivo sulla stessa rete fidata si apre uno degli
-URL LAN stampati. L’installazione guidata propone l’accesso LAN come scelta
-predefinita; è possibile scegliere l’ascolto solo locale. Anche `--yes` abilita
-la LAN.
+La fase 6 stampa gli indirizzi locale e LAN e un collegamento amministrativo
+valido 15 minuti, utilizzabile una sola volta. Il listener amministrato usa la
+porta 8770 e accetta la LAN. Usa la rete fidata: il collegamento predefinito è
+HTTP e non va esposto direttamente a Internet.
 
-Il listener predefinito usa HTTP non cifrato: non inoltrare la porta dal router
-e non esporla direttamente a Internet. Il collegamento di onboarding è valido
-15 minuti e si usa una sola volta. Se scade, eseguire
-`./.venv/bin/python -m install --force-phase 6`, oppure accedere a
-`/admin/login` con la chiave in `~/.config/metnos/admin.key`. Gli stessi URL
-restano nel file `~/.local/share/metnos/install_summary.md`.
+Il riepilogo è in
+`/var/lib/metnos-service/.local/share/metnos/install_summary.md`. Se il link
+scade, ripeti la fase 6 oppure accedi a `/admin/login` con la chiave
+amministrativa dell’istanza. Non condividere questa chiave.
 
-La fase 5 verifica l’avvio e l’endpoint di salute. Non certifica da sola la
-qualità del modello né esegue un turno applicativo completo. Dopo il primo
-accesso alla chat, inviare una richiesta innocua, per esempio:
+La salute HTTP verifica l’avvio. Per completare la prova, entra nella chat e
+invia una richiesta innocua, per esempio: “Che ora è e quale fuso orario stai
+usando?”. Verifica anche il Tutor e i servizi scelti. Un servizio avviato non
+certifica da solo la qualità delle risposte.
 
-> Chiedi a Metnos con una richiesta come quella di questo esempio: “Che ora è e
-> quale fuso orario stai usando?”
+## Aggiornamenti
 
-L’installazione è operativamente completa solo se la chat restituisce una
-risposta e i servizi selezionati superano i rispettivi controlli.
+L’installer non sovrascrive un servizio preesistente incompatibile. Gli
+aggiornamenti e le migrazioni richiedono il percorso di rilascio amministrato,
+con verifica della configurazione e finestra di riavvio. La pagina
+**Impostazioni → Sistema → Servizi** mostra i componenti gestibili.
 
-## Aggiornamento di un’installazione esistente
-
-Se è già attivo un vecchio `metnos-http.service` a livello di sistema, la fase 5
-installa le unità dell’utente ma non avvia un secondo listener e non disabilita
-il servizio esistente. Il passaggio al target integrato richiede il controllo
-guidato descritto in [`../systemd/README.md`](../systemd/README.md), con due cicli
-di prova e ripristino verificato.
-
-Lo stato dei componenti è visibile nella chat web seguendo **Impostazioni →
-Sistema → Servizi**. La pagina propone **Avvia** per un servizio arrestato e
-**Arresta** o **Riavvia** per un servizio attivo, sempre entro il catalogo
-chiuso dei componenti gestibili. Le operazioni di deploy coordinato continuano
-a passare dal riconciliatore dello stack.
-
-## Ruolo del manifest
-
-[`manifest.toml`](manifest.toml) è l’inventario leggibile dalla macchina dei
-componenti correnti: requisiti di sistema, modelli incorporati o opzionali,
-unità, directory e configurazioni. Il comportamento eseguibile resta definito
-dalle sorgenti che lo applicano:
-
-- `requirements.txt` e `requirements-optional.txt` per i pacchetti Python;
-- `install/phases/` per le sei fasi;
-- `install/sidecar.py` per i servizi opzionali;
-- `install/units/*.tmpl` per le unità systemd;
-- `runtime/virt/` e `runtime/llm_router.py` per la configurazione dei modelli.
-
-Una modifica a uno di questi contratti deve aggiornare nello stesso cambiamento
-anche il manifest e questa guida. Il manifest descrive lo stato installabile
-corrente: non ospita un diario dello sviluppo.
+[`manifest.toml`](manifest.toml) contiene l’inventario dei requisiti;
+[`INSTALL_NOTES.md`](INSTALL_NOTES.md) descrive i vincoli per chi mantiene
+l’installer. La procedura eseguibile rimane quella del bootstrap e del
+coordinatore `managed_install.py`.

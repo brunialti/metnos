@@ -12,6 +12,10 @@ from dataclasses import dataclass, field
 from typing import Protocol, runtime_checkable
 
 
+class ChannelNotConfigured(ValueError):
+    """An optional channel has no credentials yet; other services may run."""
+
+
 @dataclass(frozen=True)
 class InboundMessage:
     """Un messaggio in arrivo da un canale, normalizzato."""

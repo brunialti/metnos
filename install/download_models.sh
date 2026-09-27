@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # /opt/metnos/install/download_models.sh
 #
-# Scarica i modelli ML necessari a Metnos in `/opt/metnos/models/`.
+# Scarica i modelli ML necessari a Metnos nei dati dell'istanza.
 # Idempotente: se il file esiste e ha sha256 corretto, salta.
 # Se il manifest dichiara `<TBD-on-download>`, scarica e stampa lo sha256
 # perche' venga incollato nel manifest al primo run.
@@ -12,8 +12,7 @@
 #   2. InsightFace buffalo_l (RetinaFace det_10g + ArcFace w600k_r50)
 #      → $MODELS_DIR/face/
 #
-# MODELS_DIR deriva da METNOS_MODELS_DIR o da METNOS_INSTALL_ROOT (§7.11,
-# rename-resilient), default <install_root>/models.
+# MODELS_DIR deriva da METNOS_MODELS_DIR, default <user_data>/models.
 #
 # Nota: il modello text-embedding (MiniLM/BGE) e' usato in-process via il
 # backend embedding (ai_backend). Su un'installazione condivisa puo' essere
@@ -48,10 +47,8 @@ for arg in "$@"; do
 done
 [[ ${#TARGETS[@]} -eq 0 ]] && TARGETS=(siglip face)
 
-# §7.11 rename-resilient: niente path assoluto hardcoded. Override esplicito
-# via METNOS_MODELS_DIR; altrimenti derivato da METNOS_INSTALL_ROOT (ADR 0148),
-# default <install_root>/models.
-MODELS_DIR="${METNOS_MODELS_DIR:-${METNOS_INSTALL_ROOT:-/opt/metnos}/models}"
+# Same default as runtime/config.py, independent of the sealed source tree.
+MODELS_DIR="${METNOS_MODELS_DIR:-${METNOS_USER_DATA:-$HOME/.local/share/metnos}/models}"
 SIGLIP_DIR="${MODELS_DIR}/siglip"
 FACE_DIR="${MODELS_DIR}/face"
 

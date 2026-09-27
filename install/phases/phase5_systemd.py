@@ -25,7 +25,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from .. import i18n, llm_manager, state, ui
+from .. import i18n, llm_manager, services, state, ui
 
 
 STACK_UNIT_TEMPLATES = (
@@ -154,6 +154,17 @@ def _install_unit(
         ui.warn(f"missing template: {template_path}")
         return False
     rendered = _substitute(template_path.read_text(), port, lang, http_host)
+    if dest_name == "metnos.target":
+        external = services.unit_names(services.load())
+        lines = []
+        for line in rendered.splitlines():
+            if line.startswith("Wants="):
+                wanted = [unit for unit in line[6:].split() if unit not in external]
+                if not wanted:
+                    continue  # Empty Wants= would reset earlier dependencies.
+                line = "Wants=" + " ".join(wanted)
+            lines.append(line)
+        rendered = "\n".join(lines) + "\n"
     dest = _systemd_user_dir() / dest_name
     dest.write_text(rendered)
     ui.ok(f"wrote {dest}")
@@ -303,7 +314,7 @@ def _runtime_module_importable(module: str) -> bool:
 
 
 def _wait_for_http(port: int, *, timeout_s: int = 20) -> bool:
-    """Poll http://127.0.0.1:<port>/agent/health until 200 or timeout."""
+    """Wait for an operational runtime, not just a live maintenance endpoint."""
     import httpx  # already in venv
     deadline = time.time() + timeout_s
     url = f"http://127.0.0.1:{port}/agent/health"
@@ -314,8 +325,13 @@ def _wait_for_http(port: int, *, timeout_s: int = 20) -> bool:
             try:
                 r = httpx.get(url, timeout=2.0)
                 if r.status_code == 200:
-                    return True
-            except httpx.RequestError as e:
+                    health = r.json()
+                    if (isinstance(health, dict) and health.get("ok") is True
+                            and health.get("operational") is True
+                            and health.get("maintenance_only") is False):
+                        return True
+                    last_err = "HTTP responds but the runtime is not operational"
+            except (httpx.RequestError, ValueError) as e:
                 last_err = f"{type(e).__name__}: {e}"
             elapsed = timeout_s - (deadline - time.time())
             p.update(task, completed=elapsed)
@@ -325,13 +341,46 @@ def _wait_for_http(port: int, *, timeout_s: int = 20) -> bool:
     return False
 
 
+def _verify_managed(args: Any) -> dict[str, Any]:
+    """The parent activated the signed topology; this phase only verifies it."""
+    ui.banner("Phase 5 — Systemd services", i18n.t("managed_health"))
+    profile = services.load()
+    services.validate_choices(profile, args)
+    phase2, phase4 = state.load(2), state.load(4)
+    if not phase2 or phase2.notes.get("services_profile") != services.fingerprint(profile):
+        raise ValueError(i18n.t("managed_profile_changed"))
+    services.probe(profile)
+    if not _wait_for_http(8770):
+        raise RuntimeError(i18n.t("managed_http_failed"))
+    return {
+        "http_port": 8770, "http_host": "0.0.0.0",
+        "http_enabled": True, "http_healthy": True, "service_scope": "system",
+        "lang": (phase4.notes.get("locale") if phase4 else None) or "en",
+        "telegram_unit_installed": bool(phase4 and phase4.notes.get("telegram")),
+        "services_profile": services.fingerprint(profile),
+    }
+
+
 def run(args: Any) -> dict[str, Any]:
+    if getattr(args, "managed", False):
+        return _verify_managed(args)
     notes: dict[str, Any] = {}
     ui.banner("Phase 5 — Systemd services",
               "Install user units · enable · health-probe")
 
     if not shutil.which("systemctl"):
         ui.fail("systemctl not found — this installer requires systemd (Linux user session).")
+
+    profile = services.load()
+    services.validate_choices(profile, args)
+    phase2 = state.load(2)
+    recorded = phase2.notes.get("services_profile") if phase2 else None
+    if (profile or recorded) and recorded != services.fingerprint(profile):
+        raise ValueError(i18n.t("services_changed"))
+    models = services.probe(profile)
+    external_units = services.unit_names(profile)
+    services.validate_units(profile, _systemd_user_dir())
+    env_file = services.apply(profile, models)
 
     # Look up port / language / Telegram choice from phase 4
     phase4 = state.load(4)
@@ -347,6 +396,7 @@ def run(args: Any) -> dict[str, Any]:
     notes["http_port"] = port
     notes["http_host"] = http_host
     notes["lang"] = lang
+    notes["services_profile"] = services.fingerprint(profile)
     notes["telegram_unit_installed"] = telegram_enabled
 
     # Locate templates
@@ -382,7 +432,9 @@ def run(args: Any) -> dict[str, Any]:
     # Xvfb is an explicit host prerequisite; do not silently fall back to
     # headless when it is unavailable.
     side_display_src = _repo_dir() / "systemd" / "metnos-side-display.service"
-    if shutil.which("Xvfb"):
+    if "playwright" in profile:
+        notes["side_display_unit_installed"] = False
+    elif shutil.which("Xvfb"):
         notes["side_display_unit_installed"] = _install_optional_unit(
             side_display_src, "metnos-side-display.service", port, lang,
             http_host,
@@ -416,7 +468,19 @@ def run(args: Any) -> dict[str, Any]:
     # Bind them to the new owner through a drop-in instead of overwriting the
     # unit body. Fresh templates already declare the same relationship.
     for owned_unit in STACK_OWNED_OPTIONAL_UNITS:
-        _install_stack_ownership_dropin(owned_unit)
+        if owned_unit not in external_units:
+            _install_stack_ownership_dropin(owned_unit)
+
+    # One generated EnvironmentFile reaches every Metnos consumer, including
+    # readiness, background work and Telegram. External servers are not owned.
+    consumers = {"metnos-http.service", "metnos-telegram-daemon.service"}
+    consumers.update(unit for _, unit in STACK_UNIT_TEMPLATES if unit.endswith(".service"))
+    for unit in consumers:
+        if not (_systemd_user_dir() / unit).exists():
+            continue
+        dest = _systemd_user_dir() / f"{unit}.d" / "30-metnos-services.conf"
+        escaped = str(env_file).replace("\\", "\\\\").replace('"', '\\"').replace("%", "%%")
+        services._write(dest, f'[Service]\nEnvironmentFile="{escaped}"\n')
 
     # 3. daemon-reload
     ui.step("Reloading systemd user unit catalog")

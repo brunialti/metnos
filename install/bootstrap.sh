@@ -12,8 +12,8 @@
 #        curl -fsSL https://metnos.com/install.sh | sh
 #
 # This shell layer is intentionally minimal. It only does what cannot be
-# done in Python yet: find a working python3.12+, create a venv, install
-# the bootstrap dependencies (rich, httpx, tomli on py<3.11), then hand
+# done in Python yet: find the supported Python 3.12, create a venv, install
+# the release's hashed dependencies (including rich and httpx), then hand
 # off to `python -m install`. Everything else lives in Python so it can
 # be reviewed and stepped through.
 #
@@ -62,18 +62,18 @@ printf "  %sA self-hosted architecture shaped by its installed executors.%s\n" "
 printf "  %sMIT · metnos.com%s\n\n" "$DIM" "$RESET"
 
 # ─────── 1. Find a suitable python ────────────────────────────────
-step "Locating Python ≥ ${PYTHON_MIN_MAJOR}.${PYTHON_MIN_MINOR}"
+step "Locating CPython ${PYTHON_MIN_MAJOR}.${PYTHON_MIN_MINOR} for Linux x86_64"
 PY_BIN=""
-for candidate in python3.13 python3.12 python3; do
+for candidate in python3.12 python3; do
   if command -v "$candidate" >/dev/null 2>&1; then
-    if "$candidate" -c "import sys; sys.exit(0 if sys.version_info >= (${PYTHON_MIN_MAJOR}, ${PYTHON_MIN_MINOR}) else 1)" 2>/dev/null; then
+    if "$candidate" -c "import platform,sys; sys.exit(0 if sys.implementation.name == 'cpython' and sys.version_info[:2] == (${PYTHON_MIN_MAJOR}, ${PYTHON_MIN_MINOR}) and platform.system() == 'Linux' and platform.machine() == 'x86_64' else 1)" 2>/dev/null; then
       PY_BIN="$candidate"
       break
     fi
   fi
 done
 if [ -z "$PY_BIN" ]; then
-  fail "No Python ${PYTHON_MIN_MAJOR}.${PYTHON_MIN_MINOR}+ found. Install python3.12 or newer and re-run."
+  fail "This release requires Linux x86_64 and CPython ${PYTHON_MIN_MAJOR}.${PYTHON_MIN_MINOR}. Install python3.12 and re-run."
 fi
 PY_VER=$("$PY_BIN" -c 'import sys; print(".".join(map(str, sys.version_info[:3])))')
 ok "Python ${PY_VER} at $(command -v "$PY_BIN")"
@@ -109,6 +109,7 @@ METNOS_VENV="${METNOS_VENV:-$REPO_DIR/.venv}"
 # ─────── 3. Create / verify venv ──────────────────────────────────
 step "Setting up Python virtual environment"
 if [ -d "$METNOS_VENV" ] && [ -x "$METNOS_VENV/bin/python" ]; then
+  "$METNOS_VENV/bin/python" -c "import sys; sys.exit(0 if sys.implementation.name == 'cpython' and sys.version_info[:2] == (${PYTHON_MIN_MAJOR}, ${PYTHON_MIN_MINOR}) else 1)" || fail "Existing virtual environment uses an unsupported Python; choose a Python 3.12 environment."
   EXISTING_VER=$("$METNOS_VENV/bin/python" -c 'import sys; print(".".join(map(str, sys.version_info[:3])))')
   ok "Reusing existing venv ($METNOS_VENV, Python $EXISTING_VER)"
 else
@@ -120,18 +121,9 @@ fi
 VENV_PY="$METNOS_VENV/bin/python"
 VENV_PIP="$METNOS_VENV/bin/pip"
 
-# ─────── 4. Install bootstrap dependencies ────────────────────────
-step "Installing bootstrap dependencies (rich, httpx)"
-"$VENV_PIP" install --quiet --upgrade pip 2>&1 | grep -v 'already' || true
-"$VENV_PIP" install --quiet rich httpx 2>&1 | tail -3 || fail "pip install failed"
-ok "Bootstrap dependencies installed"
-
-# ─────── 4.bis Install Metnos runtime dependencies ────────────────
-# Core runtime deps (HTTP server boot + base operation) are declared in
-# requirements.txt. Optional deps (torch/google-*/playwright) live in
-# requirements-optional.txt and are pulled by the skill selection (phase6).
-if [ -f "$REPO_DIR/requirements.txt" ]; then
-  step "Installing Metnos runtime dependencies (requirements.txt)"
+# ─────── 4. Install the exact release dependencies ────────────────
+if [ -f "$REPO_DIR/requirements-linux-x86_64.lock" ]; then
+  step "Installing hash-verified release dependencies"
   # Retry: alcune reti corrompono i transfer TLS grandi a tratti (bad record
   # mac). Riprova l'intero install fino a 4 volte prima di arrendersi.
   # Log su file (niente pipe) così l'exit status è quello di pip, non di tail.
@@ -145,7 +137,8 @@ if [ -f "$REPO_DIR/requirements.txt" ]; then
   _deps_ok=0
   for _a in 1 2 3 4; do
     if "$VENV_PIP" install --no-cache-dir --timeout 90 --retries 5 \
-         -r "$REPO_DIR/requirements.txt" >"$_piplog" 2>&1; then
+         --require-hashes --no-deps --only-binary=:all: \
+         -r "$REPO_DIR/requirements-linux-x86_64.lock" >"$_piplog" 2>&1; then
       _deps_ok=1; break
     fi
     warn "dependency install attempt $_a failed (network?), retrying…"
@@ -154,7 +147,7 @@ if [ -f "$REPO_DIR/requirements.txt" ]; then
   [ "$_deps_ok" = 1 ] || { tail -4 "$_piplog"; fail "runtime dependency install failed after retries (see $_piplog)"; }
   ok "Runtime dependencies installed"
 else
-  warn "requirements.txt not found in $REPO_DIR — the runtime may fail to start"
+  fail "Release dependency lock missing from $REPO_DIR; use a complete public release."
 fi
 
 # ─────── 5. Hand off to Python installer ──────────────────────────

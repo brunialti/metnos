@@ -5,7 +5,9 @@ from dataclasses import dataclass
 from typing import Protocol
 
 import executor_birth_legacy_state_journal as journal
-from executor_birth_legacy_state_policy import LegacyStateObservationV1
+from executor_birth_legacy_state_policy import (
+    LegacyStateDispositionV1, LegacyStateObservationV1,
+)
 from executor_birth_legacy_state_request import (
     LegacyStateError,
     LegacyStateRequestV1,
@@ -42,6 +44,7 @@ class LegacyStateAdoptionResultV1:
     record_sha256: str
     changed: bool
     ready: bool
+    initially_empty: bool
 
 
 def _records_v1(effects: LegacyStateEffectsV1):
@@ -122,6 +125,7 @@ def prepare_legacy_state_authoring_v1(
         if latest.state is journal.LegacyStateV1.LEGACY_STATE_READY:
             return LegacyStateAdoptionResultV1(
                 latest.record_sha256, changed, True,
+                latest.inventory_disposition is LegacyStateDispositionV1.fresh,
             )
         if latest.state is journal.LegacyStateV1.PLANNED:
             latest = _inventoried_v1(request, effects, latest)
@@ -131,6 +135,7 @@ def prepare_legacy_state_authoring_v1(
             raise _fail("journal terminal", recovery=True)
         return LegacyStateAdoptionResultV1(
             latest.record_sha256, changed, False,
+            latest.inventory_disposition is LegacyStateDispositionV1.fresh,
         )
     except LegacyStateAdoptionError:
         raise
@@ -159,6 +164,7 @@ def _complete_legacy_state_ready_v1(
             raise _fail("journal terminal", recovery=True)
         return LegacyStateAdoptionResultV1(
             latest.record_sha256, changed, True,
+            latest.inventory_disposition is LegacyStateDispositionV1.fresh,
         )
     except LegacyStateAdoptionError:
         raise

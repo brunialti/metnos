@@ -244,6 +244,54 @@ class _UnchangedCurrentContinuityV1:
         )
 
 
+def _catalog_candidate_digest_v1(contract_id, origin, payloads):
+    """Exact catalog bytes, including localization and the complete file set."""
+    parts = ["initial-catalog-candidate-v1", contract_id, origin]
+    for name, content in sorted(payloads.items()):
+        parts.extend((name, hashlib.sha256(content).hexdigest()))
+    return _shadow_evidence(*parts)
+
+
+@dataclass(frozen=True, slots=True)
+class _InitialCatalogAdoptionV1:
+    """Authority delivered by the initial administrative installer only."""
+    evidence_id: str
+    admission_context_id: str
+    candidates: Mapping[str, str]
+    _seal: object
+
+    def __post_init__(self):
+        if (self._seal is not _DEPENDENCY_SEAL
+                or not self.candidates
+                or any(_DIGEST_RE.fullmatch(value) is None for value in (
+                    self.evidence_id, self.admission_context_id,
+                    *self.candidates.values()))):
+            raise ValueError("birth_initial_catalog_adoption_invalid")
+        object.__setattr__(self, "candidates", MappingProxyType(dict(self.candidates)))
+
+    def check(self, observed, decision, check_id):
+        snapshot = observed.snapshot
+        digest = _catalog_candidate_digest_v1(
+            observed.contract_id.value, observed.executor_origin.value,
+            {"manifest.toml": snapshot.manifest_bytes,
+             "manifest.lang_state.json": snapshot.language_state_bytes,
+             **snapshot.code_files},
+        )
+        if (decision.revision_class is not RevisionClass.FIRST_BIRTH
+                or observed.executor_origin not in {ExecutorOrigin.CORE, ExecutorOrigin.BUILTIN}
+                or self.admission_context_id != observed.identities.admission_context_id
+                or self.candidates.get(observed.contract_id.value) != digest):
+            raise ValueError("birth_initial_catalog_adoption_binding_invalid")
+        return CheckResult(
+            check_id, "v1",
+            CheckStatus.PASSED if check_id == "initial_catalog_adoption_v1"
+            else CheckStatus.NOT_APPLICABLE,
+            None, _shadow_evidence(check_id, self.evidence_id, digest,
+                                   self.admission_context_id),
+            "initial_catalog_adoption_v1:" + self.evidence_id,
+        )
+
+
 @dataclass(frozen=True, slots=True)
 class _BirthDependencies:
     """Trusted runtime services. Construction is guarded by the module seal."""
@@ -262,10 +310,13 @@ class _BirthDependencies:
     _seal: object
     current_continuity: _UnchangedCurrentContinuityV1 | None = None
     previous_approved_lifecycle: ApprovedLifecycle | None = None
+    initial_catalog_adoption: _InitialCatalogAdoptionV1 | None = None
 
     def __post_init__(self) -> None:
         if (
             self._seal is not _DEPENDENCY_SEAL
+            or (self.initial_catalog_adoption is not None
+                and type(self.initial_catalog_adoption) is not _InitialCatalogAdoptionV1)
             or (self.previous_approved_lifecycle is not None
                 and type(self.previous_approved_lifecycle) is not ApprovedLifecycle)
             or (self.current_continuity is not None
@@ -292,6 +343,7 @@ def _sealed_dependencies_for_test(**overrides: object) -> _BirthDependencies:
         "initial_current_adoption_transition_id": None,
         "current_continuity": None,
         "previous_approved_lifecycle": None,
+        "initial_catalog_adoption": None,
     }
     if set(overrides) - set(values):
         raise ValueError("birth_dependencies_invalid")
@@ -303,6 +355,7 @@ def _assemble_production_dependencies(
     *, semantic_authority=None, windows_sandbox_registry=None,
     linux_sandbox_registry=None,
     initial_current_adoption_transition_id: str | None = None,
+    initial_catalog_adoption: _InitialCatalogAdoptionV1 | None = None,
 ) -> _BirthDependencies:
     """Single core-owned assembler; it cannot alter the fixed check catalog."""
     # The runner is constructed only after Birth owns the observation.  Keeping
@@ -312,6 +365,7 @@ def _assemble_production_dependencies(
         property_runner=None, semantic_authority=semantic_authority,
         windows_sandbox_registry=windows_sandbox_registry,
         linux_sandbox_registry=linux_sandbox_registry,
+        initial_catalog_adoption=initial_catalog_adoption,
         initial_current_adoption_transition_id=(
             initial_current_adoption_transition_id
         ),
@@ -511,6 +565,8 @@ def _requires_preexercise(origin: ExecutorOrigin, revision: RevisionClass,
 
 
 def _property_check(observed: ObservedCandidate, _decision: RevisionDecision, deps: _BirthDependencies) -> CheckResult:
+    if deps.initial_catalog_adoption is not None:
+        return deps.initial_catalog_adoption.check(observed, _decision, "properties")
     if deps.current_continuity is not None:
         return deps.current_continuity.check(observed, _decision, "properties")
     transition_id = deps.initial_current_adoption_transition_id
@@ -570,6 +626,8 @@ def _property_check(observed: ObservedCandidate, _decision: RevisionDecision, de
 
 
 def _semantic_check(observed: ObservedCandidate, _decision: RevisionDecision, deps: _BirthDependencies) -> CheckResult:
+    if deps.initial_catalog_adoption is not None:
+        return deps.initial_catalog_adoption.check(observed, _decision, "semantic_review")
     if deps.current_continuity is not None:
         return deps.current_continuity.check(observed, _decision, "semantic_review")
     transition_id = deps.initial_current_adoption_transition_id
@@ -696,6 +754,13 @@ def _observe_birth(
     specs = tuple(CheckSpec(check_id, version, mandatory, applicable,
                             lambda observed, decision, runner=runner: runner(observed, decision, _dependencies))
                   for check_id, version, mandatory, applicable, runner in _CHECK_CATALOG_V1)
+    adoption = _dependencies.initial_catalog_adoption
+    if adoption is not None:
+        specs = (CheckSpec(
+            "initial_catalog_adoption_v1", "v1", True, _always,
+            lambda observed, decision: adoption.check(
+                observed, decision, "initial_catalog_adoption_v1"),
+        ), *specs)
     observed: ObservedCandidate | None = None
     results: list[tuple[CheckSpec, CheckResult]] = []
     try:

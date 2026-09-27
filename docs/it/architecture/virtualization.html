@@ -329,6 +329,39 @@ valida.</p>
 
 <h1 id="cap7">7. Confini locali e remoti</h1>
 
+<h2 id="installer-services">Servizi scelti durante l'installazione</h2>
+<p>L'installer legge il file facoltativo
+<code>~/.config/metnos/services.toml</code> dell'utente che lo avvia. Senza
+file predispone i servizi localmente; con un file parziale riusa solo gli
+indirizzi indicati e predispone localmente tutti gli altri componenti.
+Il file non cerca server nella rete: nel container <code>localhost</code>
+indica il container stesso.</p>
+<p>Le sezioni disponibili sono <code>llm</code>, <code>vlm</code>,
+<code>searxng</code>, <code>photon</code> e <code>playwright</code>; BGE-M3
+resta locale. La verifica degli indirizzi precede download e avvio. Un
+servizio indicato ma non disponibile ferma l'installazione, senza copie
+locali né sostituzioni cloud. Il profilo mantiene frontier spento salvo
+abilitazione esplicita. Un controllo del protocollo non sostituisce una
+prova reale della chat o delle immagini.</p>
+<p>Il percorso a sei fasi richiede accesso amministrativo e usa un account
+Metnos separato. Prepara i componenti senza avviarli, verifica distribuzione
+e catalogo iniziale e attiva le unità di sistema previste. Il profilo fa
+parte della distribuzione firmata: i servizi esterni conservano la propria
+gestione e non ricevono unità locali. Dopo la fase 2 il profilo resta
+invariato durante la ripresa; per cambiarlo su un'istanza installata occorre
+un aggiornamento amministrativo con finestra di riavvio. Le fasi completate
+non sostituiscono i controlli di autorità. L'opzione <code>--skip</code> non
+è supportata da questo percorso.</p>
+<p>Il registro dei servizi e il Tutor osservano gli indirizzi verificati del
+profilo; per i servizi esterni non propongono comandi locali di avvio o
+arresto. Nel contenitore il controllo della memoria considera anche i limiti
+assegnati al contenitore stesso. Anche la compilazione iniziale del Tutor
+rispetta la quota CPU disponibile. La verifica HTTP finale richiede un sistema
+operativo, non la sola risposta della pagina di manutenzione.</p>
+<p><strong>Stato:</strong> raccordo alle sei fasi in collaudo, non ancora
+pubblicato. Esempi e procedura:
+<a href="https://github.com/brunialti/metnos/blob/main/install/SERVICES.md">manuale dei servizi esistenti</a>.</p>
+
 <table>
 <thead><tr><th>Famiglia</th><th>Confine operativo</th></tr></thead>
 <tbody>

@@ -28,6 +28,7 @@ import re
 import signal
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -37,7 +38,7 @@ import agent_server  # noqa: E402
 import approval_registry  # noqa: E402
 import pairing  # noqa: E402
 from progress import NullProgress, TelegramProgress  # noqa: E402
-from . import Channel, InboundMessage, OutboundMessage  # noqa: E402
+from . import Channel, ChannelNotConfigured, InboundMessage, OutboundMessage  # noqa: E402
 from .telegram import TelegramChannel  # noqa: E402
 import config as _C  # noqa: E402  §7.11
 import detection_lexicon as _dl  # noqa: E402  lessici NL traducibili
@@ -2804,7 +2805,11 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     if args.channel == "telegram":
-        ch = TelegramChannel()
+        try:
+            ch = TelegramChannel()
+        except ChannelNotConfigured:
+            ch = None
+            log.info("channel %s is not configured; device service remains available", args.channel)
     else:
         raise SystemExit(f"channel non supportato: {args.channel}")
 
@@ -2822,18 +2827,25 @@ def main(argv: list[str] | None = None) -> int:
     else:
         srv = None
 
-    d = ChannelDaemon(ch, dry_run=args.dry_run,
-                      bootstrap_default_sender=not args.no_bootstrap)
+    d = (ChannelDaemon(ch, dry_run=args.dry_run,
+                       bootstrap_default_sender=not args.no_bootstrap)
+         if ch is not None else None)
+    stopped = threading.Event()
 
     # SIGTERM da systemd -> stop pulito; SIGINT da terminale -> idem.
     def _handle_signal(signum, _frame):
         log.info("ricevuto segnale %s, fermo il daemon", signum)
-        d.stop()
+        stopped.set()
+        if d is not None:
+            d.stop()
     signal.signal(signal.SIGTERM, _handle_signal)
     signal.signal(signal.SIGINT, _handle_signal)
 
     try:
-        d.run_forever()
+        if d is not None:
+            d.run_forever()
+        elif srv is not None:
+            stopped.wait()
     except KeyboardInterrupt:
         log.info("interrotto da tastiera")
     finally:

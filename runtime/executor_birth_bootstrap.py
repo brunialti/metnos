@@ -107,14 +107,14 @@ def _secure_state_db(state_dir: Path, basename: str) -> Path:
         raise BirthBootstrapError("birth_state_unavailable") from exc
 
 
-def _manifest_ref(intent: BirthIntent) -> ManifestRef:
+def _manifest_ref(intent: BirthIntent, *, store_root: Path | None = None) -> ManifestRef:
     from manifest_inventory import (
         ManifestLayout, inventory_authoring_manifests,
         inventory_store_manifests, prospective_manifest_ref, resolve_manifest_layout,
     )
-    store_only = resolve_manifest_layout() is ManifestLayout.STORE_ONLY
+    store_only = store_root is not None or resolve_manifest_layout() is ManifestLayout.STORE_ONLY
     inventory = (
-        inventory_store_manifests()
+        inventory_store_manifests(store_root=store_root)
         if store_only
         else inventory_authoring_manifests()
     )
@@ -141,7 +141,8 @@ def _hash(domain: bytes, *parts: str) -> str:
 
 def _request_factory(authority: _ProducerAuthority, registry: IssuerRegistry,
                      db_path: Path, ttl_seconds: int, now: Callable[[], datetime],
-                     context_builder: object, *, selection: object | None = None):
+                     context_builder: object, *, selection: object | None = None,
+                     store_root: Path | None = None):
     from executor_birth_context_selection import is_context_selection_v1
     from executor_birth_intent import _STACK_RECONCILE
 
@@ -204,7 +205,7 @@ def _request_factory(authority: _ProducerAuthority, registry: IssuerRegistry,
             db_path=db_path, issue=issue,
         )
         return BirthRequest(
-            request_id, _manifest_ref(intent), receipt, authority.issuer_id,
+            request_id, _manifest_ref(intent, store_root=store_root), receipt, authority.issuer_id,
             intent.reason, intent.approval_refs, authority.capability.operation,
             intent.candidate_source_root,
         )
@@ -488,7 +489,7 @@ class _PostconditionAdapter:
     def recover_authoring(self) -> None:
         # Execute the same closed recovery matrix as the publisher, under the
         # same lock order, before exposing any productive facade.
-        from manifest_inventory import inventory_manifests
+        from manifest_inventory import inventory_manifests, inventory_store_manifests
         from executor_birth_authoring import (
             advance_version, authoring_paths, authoring_token, authoring_tree_id,
             cleanup_transaction, load_prepared_journal, observe_tree, rollback_prepared,
@@ -500,7 +501,10 @@ class _PostconditionAdapter:
             catalog_admission_lock,
         )
         from executor_birth_receipts import verify_admission_receipt
-        inventory = inventory_manifests()
+        inventory = (
+            inventory_store_manifests(store_root=self.store_root)
+            if self.store_root is not None else inventory_manifests()
+        )
         if inventory.problems:
             raise BirthBootstrapError("birth_authoring_inventory_invalid")
         for ref in inventory.manifests:
@@ -640,6 +644,7 @@ def _prepare_sealed_birth_assembly_v1(
     now: Callable[[], datetime],
     store_root: Path | None = None,
     initial_current_adoption_transition_id: str | None = None,
+    initial_catalog_adoption: object | None = None,
     context_selection: object | None = None,
 ) -> _SealedBirthAssemblyV1:
     """Build one core from authorities read once under the root barrier.
@@ -715,6 +720,7 @@ def _prepare_sealed_birth_assembly_v1(
         context_epoch_resolver=context_builder.current_epoch,
         approval_resolver=approval_resolver,
         shadow_dependencies=_assemble_production_dependencies(
+            initial_catalog_adoption=initial_catalog_adoption,
             semantic_authority=sealed.semantic, windows_sandbox_registry=None,
             linux_sandbox_registry=sealed.sandbox,
             initial_current_adoption_transition_id=(
@@ -865,20 +871,17 @@ class _InitialTransitionInstallerRuntimeV1:
 
         if self._seal is not _INITIAL_TRANSITION_INSTALLER_RUNTIME_SEAL_V1:
             raise BirthBootstrapError("birth_initial_transition_invalid")
+        _require_initial_transition_v1()
         request = self._factory(intent)
         return _execute(request, self._core)
 
 
-def _build_initial_transition_installer_runtime_v1(
-) -> _InitialTransitionInstallerRuntimeV1:
-    """Build only the installer producer before the first head is published."""
-    from executor_birth_intent import _INSTALLER
+def _require_initial_transition_v1() -> None:
+    """A prepared, still-empty closed-build chain is the initial authority."""
     from executor_birth_authority_gate import closed_build_enforcement
     from executor_birth_ownership_chain import (
         _InitialOwnershipChainStateV1, inspect_ownership_chain_state_v1,
     )
-    from executor_birth_prepared_root import load_sealed_authorities_v1
-
     state = inspect_ownership_chain_state_v1()
     if (
         closed_build_enforcement() is not True
@@ -886,14 +889,76 @@ def _build_initial_transition_installer_runtime_v1(
         or _runtime_bundle_snapshot() is not None
     ):
         raise BirthBootstrapError("birth_initial_transition_invalid")
+
+
+def _read_initial_catalog_adoption_v1(sealed):
+    """Consume the root installer's immutable, anonymous handoff on stdin.
+
+    The administrative parent already holds the deployment lock and checks
+    the accepted source and original empty-state journal. Kernel ownership
+    and write seals authenticate its handoff; a CLI flag grants nothing.
+    This descriptor is inherited only by the initial one-shot service.
+    """
+    import fcntl
+    import json
+    from config import PATH_ROOT
+    from executor_birth_shadow import _DEPENDENCY_SEAL, _InitialCatalogAdoptionV1
+
+    try:
+        metadata = os.fstat(0)
+        required = (fcntl.F_SEAL_SEAL | fcntl.F_SEAL_WRITE
+                    | fcntl.F_SEAL_GROW | fcntl.F_SEAL_SHRINK)
+        if (not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != 0
+                or stat.S_IMODE(metadata.st_mode) != 0o400
+                or metadata.st_nlink != 0 or not 0 < metadata.st_size <= 1024 * 1024
+                or fcntl.fcntl(0, fcntl.F_GET_SEALS) & required != required):
+            raise ValueError("administrative handoff")
+        encoded = os.pread(0, metadata.st_size + 1, 0)
+        value = json.loads(encoded)
+        if (set(value) != {"schema", "installation_root", "source_id",
+                          "closed_build_id", "journal_hash", "candidates"}
+                or value["schema"] != "initial_catalog_adoption_v1"
+                or value["installation_root"] != str(PATH_ROOT)
+                or not isinstance(value["candidates"], dict)
+                or any(not isinstance(key, str) or not isinstance(digest, str)
+                       for key, digest in value["candidates"].items())
+                or any(not isinstance(value[key], str)
+                       or len(value[key]) != 71 or not value[key].startswith("sha256:")
+                       for key in ("source_id", "closed_build_id", "journal_hash"))):
+            raise ValueError("administrative handoff binding")
+        return _InitialCatalogAdoptionV1(
+            "sha256:" + hashlib.sha256(encoded).hexdigest(),
+            sealed.prepared.prepared_admission_context_id,
+            value["candidates"], _DEPENDENCY_SEAL,
+        )
+    except (OSError, ValueError, TypeError, KeyError, AttributeError) as exc:
+        raise BirthBootstrapError("birth_initial_catalog_adoption_invalid") from exc
+
+
+def _build_initial_transition_installer_runtime_v1(
+    *, store_root: Path | None = None,
+) -> _InitialTransitionInstallerRuntimeV1:
+    """Build only the installer producer before the first head is published."""
+    from executor_birth_intent import _INSTALLER
+    from executor_birth_prepared_root import load_sealed_authorities_v1
+
+    _require_initial_transition_v1()
     sealed = load_sealed_authorities_v1()
+    adoption = _read_initial_catalog_adoption_v1(sealed)
+    if store_root is not None:
+        from contract_store import _ensure_directory_chain, _m2_shadow_root
+
+        _ensure_directory_chain(
+            _m2_shadow_root(store_root), code="birth_initial_shadow_invalid",
+        )
     assembly = _prepare_sealed_birth_assembly_v1(
-        sealed, now=lambda: datetime.now(timezone.utc),
+        sealed, now=lambda: datetime.now(timezone.utc), store_root=store_root,
+        initial_catalog_adoption=adoption,
     )
     factory = _request_factory(
         assembly.authorities[_INSTALLER], assembly.registry,
         assembly.producer_db, assembly.ttl_seconds, assembly.now,
-        assembly.context_builder,
+        assembly.context_builder, store_root=store_root,
     )
     return _InitialTransitionInstallerRuntimeV1(
         core=assembly.core, factory=factory,

@@ -400,6 +400,50 @@ def _require_link_directory_v1(
         raise _invalid("topology_link_directory_invalid", path.name)
 
 
+def _install_link_directory_v1(
+    path: Path, owner: tuple[int, int], *,
+    _crash_seam: Callable[[str], None] | None,
+) -> None:
+    """Publish an empty directory with exact permissions, independently of umask."""
+    temporary = path.with_name(f".{path.name}.installing")
+    if path.exists() or path.is_symlink():
+        _require_link_directory_v1(path, owner)
+        if temporary.exists() or temporary.is_symlink():
+            raise _invalid("topology_temporary_conflict", path.name)
+        return
+    descriptor = None
+    try:
+        try:
+            temporary.mkdir(mode=0o700)
+            _sync_directory_v1(path.parent)
+        except FileExistsError:
+            pass
+        descriptor = os.open(
+            temporary, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+        )
+        info = os.fstat(descriptor)
+        if (
+            not stat.S_ISDIR(info.st_mode)
+            or (info.st_uid, info.st_gid) != owner
+            or stat.S_IMODE(info.st_mode) not in (0o700, 0o755)
+            or os.listdir(descriptor)
+        ):
+            raise _invalid("topology_link_directory_invalid", path.name)
+        if _crash_seam is not None:
+            _crash_seam("dominant_enablement_directory_created")
+        os.fchmod(descriptor, 0o755)
+        os.fsync(descriptor)
+        if _crash_seam is not None:
+            _crash_seam("dominant_enablement_directory_staged")
+    except OSError as exc:
+        raise _invalid("topology_link_directory_invalid", path.name) from exc
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+    _publish_staged_v1(temporary, path)
+    _require_link_directory_v1(path, owner)
+
+
 def _enablement_parts_v1(link: object) -> tuple[str, str, str, str]:
     from executor_birth_distribution_assembler import (
         DEFAULT_SYSTEM_UNIT_ROOT_TEXT_V1,
@@ -454,16 +498,7 @@ def _install_enablement_links_core_v1(
     installed: list[InstalledEnablementLinkV1] = []
     for logical, parent_name, unit_name, target in decoded:
         parent = root / parent_name
-        try:
-            parent.mkdir(mode=0o755)
-            _sync_directory_v1(root)
-        except FileExistsError:
-            pass
-        except OSError as exc:
-            raise _invalid(
-                "topology_link_directory_invalid", parent_name,
-            ) from exc
-        _require_link_directory_v1(parent, owner)
+        _install_link_directory_v1(parent, owner, _crash_seam=_crash_seam)
         final = parent / unit_name
         try:
             info = final.lstat()

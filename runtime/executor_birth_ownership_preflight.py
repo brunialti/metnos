@@ -161,6 +161,7 @@ def canonical_maintenance_proof(
             scope not in {"system", "user"}
             or not _safe_text(unit, maximum=256)
             or load_state not in QUIESCENT_LOAD_STATES_V1
+            or (load_state == "manager-absent" and scope != "user")
             or active_state not in _QUIESCENT_STATES
             or isinstance(main_pid, bool)
             or not isinstance(main_pid, int)
@@ -199,6 +200,22 @@ def maintenance_evidence_hash(encoded: bytes) -> str:
     if canonical != encoded:
         raise OwnershipPreflightError("birth_ownership_maintenance_invalid", "canonical")
     return "sha256:" + hashlib.sha256(MAINTENANCE_DOMAIN + encoded).hexdigest()
+
+
+def same_maintenance_quiescence_v1(previous: bytes, current: bytes) -> bool:
+    """Compare valid stopped scopes while allowing admitted load-state changes.
+
+    Retirement and topology installation change loaded/masked/not-found names.
+    Both observations must still prove the exact scope, activity and zero PIDs.
+    Historical bytes and their hashes remain unchanged.
+    """
+    for proof in (previous, current):
+        maintenance_evidence_hash(proof)
+    before, after = json.loads(previous), json.loads(current)
+    for value in (before, after):
+        for unit in value["units"]:
+            del unit["load_state"]
+    return before == after
 
 
 def verify_root_owned_certificate_directory(

@@ -42,7 +42,10 @@ def _prove_stack_stopped_v1(reconciler, *, load_states: frozenset[str]) -> dict:
             main_pid = int(state.get("MainPID") or 0)
         except (TypeError, ValueError):
             main_pid = -1
-        if load_state not in load_states or state.get("ManagerError"):
+        if (
+            load_state not in load_states or state.get("ManagerError")
+            or (load_state == "manager-absent" and scope != "user")
+        ):
             raise ContractCutoverGuardError(
                 "quiescence_unknown", f"cannot inspect {scope} unit {unit}",
             )
@@ -176,8 +179,8 @@ def _prove_installed_topology_stopped_v1(reconciler) -> None:
             )
 
 
-def _prove_release_stopped_v1(reconciler, catalog) -> None:
-    """Keep successor-only observations outside the historical proof schema."""
+def _prove_release_stopped_v1(reconciler, catalog, *, load_states=("loaded",)) -> None:
+    """Observe authenticated release units outside the historical proof schema."""
     from install.executor_birth_systemd_quiescence import (
         _plan_release_systemd_quiescence_v1,
     )
@@ -190,7 +193,7 @@ def _prove_release_stopped_v1(reconciler, catalog) -> None:
         except (TypeError, ValueError):
             pid = -1
         if (
-            state.get("LoadState") != "loaded" or state.get("ManagerError")
+            state.get("LoadState") not in load_states or state.get("ManagerError")
             or state.get("ActiveState") not in _QUIESCENT_STATES or pid != 0
         ):
             raise ContractCutoverGuardError("cutover_blocked", unit)
@@ -201,10 +204,11 @@ class _MaintenanceProofV1:
 
     __slots__ = (
         "_reconciler", "_token", "_owner_process", "_active", "_seal",
-        "_transition_evidence", "_release_catalog",
+        "_transition_evidence", "_release_catalog", "_initial_catalog",
     )
 
-    def __init__(self, reconciler, token: object, seal: object, release_catalog=None) -> None:
+    def __init__(self, reconciler, token: object, seal: object,
+                 release_catalog=None, initial_catalog=None) -> None:
         if seal is not _MAINTENANCE_SESSION_SEAL_V1:
             raise ContractCutoverGuardError("cutover_session_invalid")
         self._reconciler = reconciler
@@ -214,6 +218,7 @@ class _MaintenanceProofV1:
         self._seal = seal
         self._transition_evidence = None
         self._release_catalog = release_catalog
+        self._initial_catalog = initial_catalog
 
     def __copy__(self):
         raise TypeError("maintenance sessions cannot be copied")
@@ -230,6 +235,16 @@ class _MaintenanceProofV1:
     def observe(self) -> dict:
         if self._release_catalog is not None:
             _prove_release_stopped_v1(self._reconciler, self._release_catalog)
+        elif self._initial_catalog is not None:
+            from executor_birth_maintenance_units import QUIESCENT_LOAD_STATES_V1
+
+            # First installation can create these units while this session is
+            # held. Reobserve every declared unit, including newly loaded ones,
+            # without reading the ownership chain it is still establishing.
+            _prove_release_stopped_v1(
+                self._reconciler, self._initial_catalog,
+                load_states=QUIESCENT_LOAD_STATES_V1 - {"manager-absent"},
+            )
         else:
             _prove_installed_topology_stopped_v1(self._reconciler)
         if self._transition_evidence is not None:
@@ -297,7 +312,7 @@ def _maintenance_evidence_under_transition_v1(session: object) -> bytes:
 @contextmanager
 def _contract_cutover_guard_core_v1(
     reconciler, *, catalog_trusted_owner: tuple[int, int] | None = None,
-    release_catalog=None,
+    release_catalog=None, initial_catalog=None,
 ):
     """Hold lifecycle exclusion for one already bound service observer."""
     if sys.platform != "linux":
@@ -315,7 +330,10 @@ def _contract_cutover_guard_core_v1(
     if catalog_trusted_owner is not None:
         guard_options["catalog_trusted_owner"] = catalog_trusted_owner
     try:
-        if release_catalog is not None:
+        if release_catalog is not None and initial_catalog is not None:
+            raise ValueError("conflicting release catalogs")
+        bound_catalog = release_catalog if release_catalog is not None else initial_catalog
+        if bound_catalog is not None:
             from pathlib import Path
             import pwd
 
@@ -327,10 +345,10 @@ def _contract_cutover_guard_core_v1(
                 _plan_release_systemd_quiescence_v1,
             )
 
-            # The successor runs before its head is selected. Its ordinary
-            # readiness reader must reject that root mismatch; use the already
-            # bound previous system catalog instead, without weakening it.
-            _plan_release_systemd_quiescence_v1(release_catalog)
+            # A transition runs before its head is selected. The ordinary
+            # reader must reject partial chains and root mismatches; bind the
+            # lock to the authenticated deployment account instead.
+            _plan_release_systemd_quiescence_v1(bound_catalog)
             owner = catalog_trusted_owner
             if (type(owner) is not tuple or len(owner) != 2
                     or any(type(value) is not int for value in owner)
@@ -362,7 +380,8 @@ def _contract_cutover_guard_core_v1(
             )
         token = object()
         proof = _MaintenanceProofV1(
-            reconciler, token, _MAINTENANCE_SESSION_SEAL_V1, release_catalog,
+            reconciler, token, _MAINTENANCE_SESSION_SEAL_V1,
+            release_catalog, initial_catalog,
         )
         with _MAINTENANCE_SESSION_GUARD_V1:
             _ACTIVE_MAINTENANCE_SESSIONS_V1[token] = proof
@@ -392,7 +411,7 @@ def contract_cutover_guard():
 def _contract_cutover_guard_for_service_user_v1(
     service_user: str,
     *, catalog_trusted_owner: tuple[int, int] | None = None,
-    release_catalog=None,
+    release_catalog=None, initial_catalog=None,
 ):
     """Bind user-scope observations to the verified deployment account."""
     if (
@@ -414,6 +433,7 @@ def _contract_cutover_guard_for_service_user_v1(
     with _contract_cutover_guard_core_v1(
         reconciler, catalog_trusted_owner=catalog_trusted_owner,
         release_catalog=release_catalog,
+        initial_catalog=initial_catalog,
     ) as boundary:
         yield boundary
 

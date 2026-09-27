@@ -3,10 +3,11 @@ Description=Metnos bounded composite watchdog
 After=metnos.target
 
 [Service]
-Type=oneshot
+Type=simple
 WorkingDirectory=@REPO_DIR@/runtime
-ExecStart=@VENV@/bin/python -m stack_reconcile watchdog --require-sidecar auto
-TimeoutStartSec=180
+ExecStart=@VENV@/bin/python -m periodic_services stack-watchdog --scope user
+Restart=on-failure
+RestartSec=30s
 Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONPATH=@REPO_DIR@/runtime
 Environment=METNOS_INSTALL_ROOT=@REPO_DIR@

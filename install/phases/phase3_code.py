@@ -772,6 +772,9 @@ def _compile_tutor_catalog() -> dict[str, Any]:
         pythonpath + (":" + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
     )
     code = (
+        "import os; "
+        "from native_threads import child_environment; "
+        "os.environ.update(child_environment(cpu_slots=1)); "
         "from tutor.catalog import compile_catalog, verify_catalog; "
         "digest=compile_catalog(); "
         "assert verify_catalog(), 'Tutor catalog verification failed'; "
@@ -862,15 +865,17 @@ def run(args: Any) -> dict[str, Any]:
     # entry resumes an interrupted preparation.  On a fresh installation the
     # author key does not exist yet, so this call defers without creating any
     # object.
-    ui.step("Verifying the Birth authority inputs")
-    notes["birth_inputs"] = _prepare_birth_authorities_or_defer()
-
-    # 5. Canonical, resumable publication boundary. Every new generation,
-    # including the first installed catalog, crosses the sealed Birth gate.
-    # An interrupted cutover resumes only from authenticated durable evidence.
-    ui.step("Publishing and verifying executor contracts")
-    notes["contracts"] = _install_executor_contracts()
-    notes["birth_authorities"] = notes["contracts"]["birth_authorities"]
+    if getattr(args, "managed", False):
+        # Initial adoption was completed by the authenticated administrative
+        # transition. This process verifies it without publishing generations.
+        ui.step("Verifying the installed executor catalog")
+        notes["contracts"] = _verify_contract_store_for_installation()
+    else:
+        ui.step("Verifying the Birth authority inputs")
+        notes["birth_inputs"] = _prepare_birth_authorities_or_defer()
+        ui.step("Publishing and verifying executor contracts")
+        notes["contracts"] = _install_executor_contracts()
+        notes["birth_authorities"] = notes["contracts"]["birth_authorities"]
 
     # The language selection predates the signing key. Materialize its signed,
     # atomic authority now; repeating phase 3 is byte-idempotent.

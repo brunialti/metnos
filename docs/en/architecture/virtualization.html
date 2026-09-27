@@ -320,6 +320,37 @@ distinguishes any fallback values from a valid configuration.</p>
 
 <h1 id="cap7">7. Local and remote boundaries</h1>
 
+<h2 id="installer-services">Service selection during installation</h2>
+<p>The installer reads the optional
+<code>~/.config/metnos/services.toml</code> of the user who starts it. An
+absent file provisions services locally; a partial file reuses only the
+listed endpoints and provisions every other component locally. The file
+does not discover servers: inside a container, <code>localhost</code>
+means the container itself.</p>
+<p>Supported sections are <code>llm</code>, <code>vlm</code>,
+<code>searxng</code>, <code>photon</code> and <code>playwright</code>; BGE-M3
+remains local. Endpoint checks precede downloads and startup. An unavailable
+selected server stops installation without a local copy or cloud fallback.
+The profile keeps frontier disabled unless explicitly enabled. A protocol
+check does not replace testing a real chat turn or image.</p>
+<p>The six-phase path needs administrative access and uses a separate Metnos
+account. It prepares components without starting them, verifies the
+distribution and initial catalog, then activates the declared system units.
+The profile is part of the signed distribution: external services keep their
+own management and receive no local units. After phase 2 the profile remains
+unchanged during resumption; changing it on an installed instance requires
+an administrative update and a restart window. Completed-phase records do
+not replace authority checks. This path does not support <code>--skip</code>.</p>
+<p>The service registry and Tutor observe the profile's verified endpoints;
+external services offer no local start or stop commands. In a container, the
+memory check also accounts for the container's assigned limits. The initial
+Tutor compilation also respects the available CPU quota. Final HTTP
+verification requires an operational system, not merely a response from the
+maintenance page.</p>
+<p><strong>Status:</strong> six-phase integration is under test and has not
+been published. Examples and instructions:
+<a href="https://github.com/brunialti/metnos/blob/main/install/SERVICES.md">existing-service configuration manual</a>.</p>
+
 <table>
 <thead><tr><th>Family</th><th>Operational boundary</th></tr></thead>
 <tbody>

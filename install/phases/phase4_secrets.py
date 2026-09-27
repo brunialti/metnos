@@ -284,11 +284,12 @@ def run(args: Any) -> dict[str, Any]:
     # 2. Admin user
     notes.update(_ask_admin(args))
 
-    # 3. HTTP port
-    notes["http_port"] = _ask_http_port(args)
-
-    # 4. Web UI reachability
-    notes["http_host"] = _ask_http_host(args)
+    if getattr(args, "managed", False):
+        ui.info(i18n.t("managed_http_binding"))
+        notes.update(http_port=8770, http_host="0.0.0.0")
+    else:
+        notes["http_port"] = _ask_http_port(args)
+        notes["http_host"] = _ask_http_host(args)
 
     # 5. Locale
     notes["locale"] = _write_locale(args)

@@ -1,6 +1,7 @@
 """G7-F: the topology is installed, re-read, and safe to install again."""
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -157,6 +158,74 @@ def test_enablement_links_are_reread_and_idempotent(tmp_path: Path) -> None:
     assert first[0].repeated is False
     assert second[0].repeated is True
     assert first[0].logical_path == links[0].path
+
+
+@POSIX_ONLY
+def test_enablement_links_work_under_restrictive_umask(tmp_path: Path) -> None:
+    tmp_path.chmod(0o755)
+    previous = os.umask(0o077)
+    try:
+        topology.install_links_for_test_v1(_capability(tmp_path), (_link(),))
+    finally:
+        os.umask(previous)
+    parent = tmp_path / "metnos.target.wants"
+    assert parent.stat().st_mode & 0o7777 == 0o755
+    assert (parent / "metnos-probe.service").is_symlink()
+
+
+@POSIX_ONLY
+@pytest.mark.parametrize("stage", [
+    "dominant_enablement_directory_created",
+    "dominant_enablement_directory_staged",
+])
+def test_enablement_directory_interruption_converges(
+    tmp_path: Path, stage: str,
+) -> None:
+    tmp_path.chmod(0o755)
+
+    def interrupt(observed: str) -> None:
+        if observed == stage:
+            raise RuntimeError("interrupted")
+
+    with pytest.raises(RuntimeError, match="interrupted"):
+        topology.install_links_for_test_v1(
+            _capability(tmp_path), (_link(),), _crash_seam=interrupt,
+        )
+    assert not (tmp_path / "metnos.target.wants").exists()
+    topology.install_links_for_test_v1(_capability(tmp_path), (_link(),))
+    assert (tmp_path / "metnos.target.wants" / "metnos-probe.service").is_symlink()
+    assert not (tmp_path / ".metnos.target.wants.installing").exists()
+
+
+@POSIX_ONLY
+@pytest.mark.parametrize("case", [
+    "existing_permissions", "existing_symlink", "staging_permissions",
+    "staging_symlink", "staging_not_empty", "staging_collision",
+])
+def test_unsafe_enablement_directories_are_not_repaired(
+    tmp_path: Path, case: str,
+) -> None:
+    tmp_path.chmod(0o755)
+    final = tmp_path / "metnos.target.wants"
+    staging = tmp_path / ".metnos.target.wants.installing"
+    path = final if case.startswith("existing") else staging
+    if case.endswith("symlink"):
+        path.symlink_to(tmp_path, target_is_directory=True)
+    else:
+        path.mkdir(mode=0o700)
+        if case.endswith("permissions"):
+            path.chmod(0o777 if path == staging else 0o700)
+        if case == "staging_not_empty":
+            (path / "keep").write_text("preserved")
+        if case == "staging_collision":
+            final.mkdir(mode=0o755)
+    before = path.lstat()
+    with pytest.raises(topology.DominantTopologyError):
+        topology.install_links_for_test_v1(_capability(tmp_path), (_link(),))
+    after = path.lstat()
+    assert (before.st_ino, before.st_mode) == (after.st_ino, after.st_mode)
+    if case == "staging_not_empty":
+        assert (path / "keep").read_text() == "preserved"
 
 
 @POSIX_ONLY

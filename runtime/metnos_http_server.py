@@ -120,6 +120,7 @@ async def maintenance_middleware(request: web.Request, handler):
         http_routes_admin.admin_login, http_routes_admin.admin_logout,
         http_routes_admin.admin_home, http_routes_admin.admin_services,
         http_routes_admin.admin_service_action,
+        http_routes_admin.admin_periodic_service_config,
         http_routes_admin.admin_lre_feature_action,
         http_routes_admin.admin_virt, http_routes_admin.admin_virt_save,
         http_routes_admin.admin_virt_reset,

@@ -25,6 +25,147 @@ def D(character: str) -> str:
     return "sha256:" + character * 64
 
 
+@pytest.mark.parametrize("activate", [False, True])
+@pytest.mark.parametrize("profile", [{}, {"llm": {"url": "http://model.example.test"}}])
+def test_first_install_uses_closed_release_without_a_legacy_instance(monkeypatch, tmp_path, activate, profile):
+    from install import operator_authority, services
+    from install import birth_ownership_authority_provisioner as authorities
+    from install import executor_birth_distribution_release as release
+    from install import executor_birth_source_receiver as receiver
+
+    events = []
+    environment = {"METNOS_USER_CONFIG": str(tmp_path / "config")}
+    candidate = object()
+    monkeypatch.setattr(transition, "_require_root_linux_v1", lambda: None)
+    monkeypatch.setattr(transition, "_provisioned_service_environment_v1", lambda _: ("metnos", environment))
+    monkeypatch.setattr(transition.os, "environ", {})
+    monkeypatch.setattr(receiver, "_service_account_snapshot_v1", lambda _: SimpleNamespace(uid=995, gid=995))
+    monkeypatch.setattr(operator_authority, "provision_paths", lambda **kw: events.append(("operator", kw)))
+    monkeypatch.setattr(transition, "_prepare_service_authorities_v1", lambda *a, **kw: events.append(("author", kw)))
+    monkeypatch.setattr(authorities, "provision_root_ownership_authorities_v1", lambda: events.append(("root", {})))
+    monkeypatch.setattr(receiver, "_receive_source_v1", lambda *_: D("1"))
+    monkeypatch.setattr(services, "load", lambda: profile)
+    monkeypatch.setattr(services, "probe", lambda _: {"llm": "local-model"} if profile else {})
+    builds = []
+    monkeypatch.setattr(release, "build_and_install_received_source_v1",
+                        lambda source_id, **kw: builds.append((source_id, kw)) or candidate)
+    monkeypatch.setattr(transition, "_invoke_closed_release_v1", lambda **kw: events.append(("closed", kw)) or {"state": "PREFLIGHT_VERIFIED"})
+
+    assert transition.install_source_v1(tmp_path, "metnos", activate=activate) == {"state": "PREFLIGHT_VERIFIED"}
+    assert [event[0] for event in events] == ["operator", "author", "root", "closed"]
+    assert events[0][1]["private_owner"] == (0, 0)
+    assert events[0][1]["target_owner"] == (995, 995)
+    assert events[1][1] == {"new_instance": True}
+    expected = {"llm": {**profile["llm"], "model": "local-model", "frontier": False}} if profile else {}
+    assert builds == [(D("1"), {"service_profile": expected})]
+    closed = events[-1][1]
+    assert closed["distribution"] is candidate
+    assert closed["legacy_service_user"] is closed["legacy_installation_root"] is None
+    assert closed["activate"] is activate
+
+
+@pytest.mark.parametrize("activate", [0, 1, "false", None])
+def test_first_install_rejects_ambiguous_activation_before_provisioning(monkeypatch, activate):
+    monkeypatch.setattr(transition, "_require_root_linux_v1", lambda: None)
+    monkeypatch.setattr(transition, "_provisioned_service_environment_v1",
+                        lambda *_: pytest.fail("invalid request must not create an account"))
+    with pytest.raises(transition.TransitionEntryError, match="birth_ownership_deployment_invalid"):
+        transition.install_source_v1("/candidate", "metnos", activate=activate)
+
+
+@pytest.mark.parametrize("legacy_user,legacy_root", [("metnos", None), (None, "/old")])
+def test_closed_completion_rejects_mixed_origins_before_reading_handoff(legacy_user, legacy_root):
+    with pytest.raises(transition.TransitionEntryError, match="birth_ownership_request_conflict"):
+        transition._complete_closed_v1(
+            expected_source_id=D("1"), expected_service_user="metnos",
+            expected_legacy_service_user=legacy_user,
+            expected_legacy_installation_root=legacy_root,
+            expected_service_state_root="/state", frame=b"not a valid handoff",
+        )
+
+
+@pytest.mark.parametrize("survivor", [None, "container", "marker", "link"])
+def test_first_author_creation_requires_absent_store(monkeypatch, tmp_path, survivor):
+    from install import birth_authority_provisioner as authorities
+    from install.phases import phase3_code
+    import contract_store
+
+    container, marker = tmp_path / "store", tmp_path / "active"
+    if survivor == "container":
+        container.mkdir()
+    elif survivor == "marker":
+        marker.write_bytes(b"existing")
+    elif survivor == "link":
+        marker.symlink_to(tmp_path / "missing")
+    monkeypatch.setattr(authorities, "prepare_or_defer_until_legacy_author_exists", lambda: SimpleNamespace(
+        outcome=authorities.AuthorProvisioningOutcomeV1.author_not_yet_created,
+    ))
+    monkeypatch.setattr(contract_store, "_production_paths", lambda: (container, container / "root", marker))
+    created = []
+    monkeypatch.setattr(phase3_code, "_ensure_author_keypair", lambda **kw: created.append(kw))
+    if survivor:
+        with pytest.raises(transition.TransitionEntryError, match="birth_author_identity_incomplete"):
+            transition._prepare_initial_author_v1()
+        assert created == []
+    else:
+        transition._prepare_initial_author_v1()
+        assert created == [{"allow_create": True}]
+
+
+@LINUX_ONLY
+@pytest.mark.parametrize("new_instance", [False, True])
+def test_fresh_preparation_creates_catalog_lock_as_service_owner(monkeypatch, tmp_path, new_instance):
+    from install import birth_authority_provisioner as authorities
+    import contract_store
+
+    account = SimpleNamespace(uid=os.geteuid(), gid=os.getegid())
+    monkeypatch.setattr(transition, "_service_environment_v1", lambda _: ("metnos", {}))
+    monkeypatch.setattr(transition._account_identity, "resolve_posix_account_v1", lambda _: account)
+    monkeypatch.setattr(transition._account_identity, "resolve_supplementary_gids_v1",
+                        lambda *_: tuple(sorted(set(os.getgroups()))))
+    monkeypatch.setattr(transition.os, "environ", {})
+    monkeypatch.setattr(transition, "_prepare_initial_author_v1", lambda: None)
+    monkeypatch.setattr(authorities, "ensure_executor_birth_authorities_prepared", lambda: None)
+    store = tmp_path / "contract-publications-v1"
+    real_lock = contract_store.catalog_admission_lock
+    monkeypatch.setattr(contract_store, "catalog_admission_lock", lambda: real_lock(store_root=store))
+
+    assert transition._prepare_service_authorities_child_v1(
+        "metnos", new_instance=new_instance,
+    ) == {"prepared": True}
+    lock = contract_store._catalog_lock_path(store)
+    assert lock.exists() is new_instance
+    assert not store.exists()
+    if new_instance:
+        assert (lock.stat().st_uid, lock.stat().st_gid) == (account.uid, account.gid)
+        assert lock.read_bytes() == b"\0"
+
+
+def test_existing_author_authority_is_reused(monkeypatch):
+    from install import birth_authority_provisioner as authorities
+    from install.phases import phase3_code
+
+    monkeypatch.setattr(authorities, "prepare_or_defer_until_legacy_author_exists", lambda: SimpleNamespace(
+        outcome=authorities.AuthorProvisioningOutcomeV1.already_installed,
+    ))
+    monkeypatch.setattr(phase3_code, "_ensure_author_keypair", lambda **_: pytest.fail("recreated author"))
+    transition._prepare_initial_author_v1()
+
+
+@pytest.mark.parametrize("activate", [False, True])
+def test_initial_cli_keeps_activation_explicit(activate):
+    arguments = ["install", "--source", "/srv/source", "--service-user", "metnos"]
+    assert transition._parse_cli_v1(arguments + (["--activate"] if activate else [])) == (
+        "install-and-activate" if activate else "install", "/srv/source", "metnos", None, None,
+    )
+    assert transition._parse_cli_v1(["prepare-new", "--service-user", "metnos"]) == (
+        "prepare-new", "", "metnos", None, None,
+    )
+    for extra in (["--legacy-service-user", "legacy"], ["--activate", "--activate"], ["--unknown"]):
+        with pytest.raises(transition.TransitionEntryError):
+            transition._parse_cli_v1(arguments + extra)
+
+
 @pytest.mark.parametrize("sequence", [1, 2, 3])
 def test_deploy_disables_legacy_units_only_for_the_initial_release(
     monkeypatch, tmp_path, sequence,
@@ -108,9 +249,11 @@ def test_handoff_bound_covers_the_distribution_payload_abi() -> None:
     )
 
 
+@pytest.mark.parametrize("new_instance,activate", [(False, True), (True, False), (True, True)])
 def test_source_process_invokes_only_the_verified_release_entry(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    new_instance: bool, activate: bool,
 ) -> None:
     import executor_birth_distribution_manifest as manifest
     import executor_birth_service_catalog as catalog
@@ -174,18 +317,35 @@ def test_source_process_invokes_only_the_verified_release_entry(
         distribution=distribution,
         source_id=D("2"),
         service_user="metnos",
-        legacy_service_user="legacy-metnos",
-        legacy_installation_root="/opt/metnos",
+        legacy_service_user=None if new_instance else "legacy-metnos",
+        legacy_installation_root=None if new_instance else "/opt/metnos",
         service_environment={"HOME": "/srv/metnos", "USER": "metnos"},
+        activate=activate,
     )
 
     assert result["state"] == "PREFLIGHT_VERIFIED"
-    assert observed["command"] == [
-        managed_python.as_posix(), "-I", "-B", entry.as_posix(), "complete",
+    expected_command = [
+        managed_python.as_posix(), "-I", "-B", entry.as_posix(),
+        "complete-new" if new_instance else "complete",
         "--source-id", D("2"), "--service-user", "metnos",
-        "--legacy-service-user", "legacy-metnos",
-        "--legacy-installation-root", "/opt/metnos",
     ]
+    expected_command += (
+        (["--activate"] if activate else []) if new_instance else [
+            "--legacy-service-user", "legacy-metnos",
+            "--legacy-installation-root", "/opt/metnos",
+        ]
+    )
+    assert observed["command"] == expected_command
+    operation, source_id, user, old_user, old_root = transition._parse_cli_v1(
+        observed["command"][4:],
+    )
+    assert operation == (
+        ("activate-new" if activate else "complete-new") if new_instance else "complete"
+    )
+    assert (source_id, user) == (D("2"), "metnos")
+    assert (old_user, old_root) == (
+        (None, None) if new_instance else ("legacy-metnos", "/opt/metnos")
+    )
     assert transition._decode_handoff_frame_v1(observed["input"])[0] == D("2")
     assert observed["env"]["METNOS_INSTALL_ROOT"] == release.as_posix()
     assert observed["env"]["HOME"] == "/srv/metnos"
@@ -202,8 +362,9 @@ def test_closed_release_timeout_covers_convergence_and_activation() -> None:
 
 
 @LINUX_ONLY
+@pytest.mark.parametrize("new_instance,activate", [(False, True), (True, False), (True, True)])
 def test_closed_process_binds_distribution_source_user_and_final_state(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, new_instance: bool, activate: bool,
 ) -> None:
     import executor_birth_distribution_manifest as manifest
     from install import birth_authority_provisioner as provisioner
@@ -246,8 +407,8 @@ def test_closed_process_binds_distribution_source_user_and_final_state(
             deployment_session is held["session"]
             and candidate is distribution
             and source_id == D("6")
-            and legacy_service_user == "legacy-metnos"
-            and legacy_installation_root == "/opt/metnos"
+            and legacy_service_user == ("metnos" if new_instance else "legacy-metnos")
+            and legacy_installation_root == (None if new_instance else "/opt/metnos")
             and Path(service_state_root)
             == Path("/srv/metnos/.local/state/metnos")
         )
@@ -258,7 +419,7 @@ def test_closed_process_binds_distribution_source_user_and_final_state(
         lambda candidate, bound_descriptor: {
             "target_unit": "metnos.target",
             "readiness_unit": "metnos-stack-ready.service",
-        } if candidate is distribution and bound_descriptor is descriptor
+        } if activate and candidate is distribution and bound_descriptor is descriptor
         else pytest.fail("activation binding changed"),
     )
     frame = transition._handoff_frame_v1(
@@ -268,14 +429,17 @@ def test_closed_process_binds_distribution_source_user_and_final_state(
     completed = transition._complete_closed_v1(
         expected_source_id=D("6"),
         expected_service_user="metnos",
-        expected_legacy_service_user="legacy-metnos",
-        expected_legacy_installation_root="/opt/metnos",
+        expected_legacy_service_user=None if new_instance else "legacy-metnos",
+        expected_legacy_installation_root=None if new_instance else "/opt/metnos",
         expected_service_state_root="/srv/metnos/.local/state/metnos",
         frame=frame,
+        activate=activate,
     )
     assert completed == {
-        "target_unit": "metnos.target",
-        "readiness_unit": "metnos-stack-ready.service",
+        **({
+            "target_unit": "metnos.target",
+            "readiness_unit": "metnos-stack-ready.service",
+        } if activate else {}),
         "closed_build_id": D("3"),
         "cutover_id": D("4"),
         "request_id": D("5"),
@@ -327,7 +491,7 @@ def _deployment_lock_is_free(base: Path) -> bool:
         os.close(fd)
 
 
-def _closed_process(monkeypatch, root: Path, *, final, during_activation=None):
+def _closed_process(monkeypatch, root: Path, *, final, during_activation=None, activate=True):
     """The closed entry with completion, activation and selection simulated."""
     import executor_birth_distribution_manifest as manifest
     import executor_birth_ownership_coordinator as coordinator
@@ -353,13 +517,13 @@ def _closed_process(monkeypatch, root: Path, *, final, during_activation=None):
         else pytest.fail("completion did not receive the held session"),
     )
 
-    def activate(*_args):
+    def activate_topology(*_args):
         if during_activation is not None:
             during_activation()
         return {"target_unit": "metnos.target",
                 "readiness_unit": "metnos-stack-ready.service"}
 
-    monkeypatch.setattr(transition, "_activate_signed_topology_v1", activate)
+    monkeypatch.setattr(transition, "_activate_signed_topology_v1", activate_topology)
     monkeypatch.setattr(
         coordinator, "_completed_transition_locked_v2",
         lambda session, _candidate: final
@@ -376,6 +540,7 @@ def _closed_process(monkeypatch, root: Path, *, final, during_activation=None):
         expected_legacy_installation_root="/opt/metnos",
         expected_service_state_root="/srv/metnos/.local/state/metnos",
         frame=frame,
+        activate=activate,
     )
 
 
@@ -403,13 +568,14 @@ def test_the_deployment_lock_is_held_through_activation(
 
 
 @LINUX_ONLY
+@pytest.mark.parametrize("activate", [False, True])
 @pytest.mark.parametrize("final", (
     None,
     SimpleNamespace(request_id=D("9"), cutover_id=D("4")),
     SimpleNamespace(request_id=D("5"), cutover_id=D("9")),
 ))
 def test_a_selection_that_moved_is_not_reported_as_started(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, final,
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, final, activate,
 ) -> None:
     """The reviewer's interleaving: the selection is already N+1 at the end.
 
@@ -417,7 +583,7 @@ def test_a_selection_that_moved_is_not_reported_as_started(
     the same lock, the final transaction for this release is gone or belongs
     to another request, and that is a failure with its own name.
     """
-    run = _closed_process(monkeypatch, tmp_path, final=final)
+    run = _closed_process(monkeypatch, tmp_path, final=final, activate=activate)
     with pytest.raises(
         transition.TransitionEntryError,
         match="birth_transition_selection_changed",

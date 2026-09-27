@@ -1534,6 +1534,30 @@ def test_fixed_ownership_authentication_rejects_missing_predecessor_at_receipts(
 
 
 @LINUX_ONLY
+def test_new_origin_rejects_existing_service_inventory(tmp_path: Path) -> None:
+    from executor_birth_distribution_assembler import (
+        build_predecessor_descriptor_v1, encode_predecessor_descriptor_v1,
+    )
+
+    root, _temporary = _authenticated_fixed_ownership_fixture(tmp_path)
+    path = root / "predecessor-v1.json"
+    old = json.loads(path.read_bytes())
+    origin = build_predecessor_descriptor_v1(
+        transaction_id=old["transaction_id"], installation_root=None,
+        files=(), service_commands=(),
+        administrative_bundle_hash=old["administrative_bundle_hash"],
+        service_catalog_id=old["service_catalog_id"],
+        service_coverage_hash=old["service_coverage_hash"],
+    )
+    _write_control_file(path, encode_predecessor_descriptor_v1(origin))
+    error = _recovery(
+        preflight._authenticate_fixed_ownership_snapshot_for_test_v1,
+        root, openssl_executable=Path("/usr/bin/openssl"),
+    )
+    assert error.detail == "new instance origin was not empty"
+
+
+@LINUX_ONLY
 def test_fixed_ownership_authentication_rejects_orphan_predecessor(
     tmp_path: Path,
 ) -> None:

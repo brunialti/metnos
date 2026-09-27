@@ -210,7 +210,8 @@ class PredecessorServiceCommandV1:
 class PredecessorDescriptorV1:
     predecessor_id: str
     transaction_id: str
-    installation_root: str
+    # None is an explicit new-instance origin, with no predecessor artifacts.
+    installation_root: str | None
     files: tuple[PredecessorFileV1, ...]
     service_commands: tuple[PredecessorServiceCommandV1, ...]
     administrative_bundle_hash: str
@@ -1094,7 +1095,7 @@ def _validated_service_commands(
 
 def _predecessor_document(
     *, predecessor_id: str | None, transaction_id: str,
-    installation_root: str, files: tuple[PredecessorFileV1, ...],
+    installation_root: str | None, files: tuple[PredecessorFileV1, ...],
     service_commands: tuple[PredecessorServiceCommandV1, ...],
     administrative_bundle_hash: str, service_catalog_id: str,
     service_coverage_hash: str,
@@ -1115,7 +1116,7 @@ def _predecessor_document(
 
 
 def build_predecessor_descriptor_v1(
-    *, transaction_id: str, installation_root: str,
+    *, transaction_id: str, installation_root: str | None,
     files: tuple[PredecessorFileV1, ...],
     service_commands: tuple[PredecessorServiceCommandV1, ...],
     administrative_bundle_hash: str, service_catalog_id: str,
@@ -1124,9 +1125,14 @@ def build_predecessor_descriptor_v1(
     if type(files) is not tuple or type(service_commands) is not tuple:
         raise _invalid("predecessor descriptor sequences")
     transaction = _digest(transaction_id, "predecessor transaction id")
-    root = _absolute_path(installation_root, "predecessor installation root")
-    compiled_files = _validated_predecessor_files(files, sort=True)
-    compiled_commands = _validated_service_commands(service_commands, sort=True)
+    if installation_root is None:
+        if files or service_commands:
+            raise _invalid("new instance predecessor artifacts")
+        root, compiled_files, compiled_commands = None, (), ()
+    else:
+        root = _absolute_path(installation_root, "predecessor installation root")
+        compiled_files = _validated_predecessor_files(files, sort=True)
+        compiled_commands = _validated_service_commands(service_commands, sort=True)
     bundle_hash = _digest(
         administrative_bundle_hash, "predecessor administrative bundle hash",
     )

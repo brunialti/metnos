@@ -73,6 +73,7 @@ from executor_birth_posix_metadata import snapshot_stat_v1
 from executor_birth_service_catalog import (
     _build_service_catalog_v1, decode_service_catalog_v1,
 )
+from service_profile import validate_profile
 
 from install.executor_birth_source_receiver import (
     INCOMING_DIRECTORY_BASENAME_V1,
@@ -303,6 +304,15 @@ def _ensure_directory_v1(path: Path, *, root_owned: bool) -> None:
         pass
     except OSError as exc:
         raise _fail("release directory", recovery=True) from exc
+    else:
+        # The invoking administrator may use umask 077. Only a directory
+        # created here gets its declared mode; existing objects stay strict.
+        descriptor = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            os.fchmod(descriptor, 0o755)
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
     try:
         info = path.lstat()
     except OSError as exc:
@@ -451,11 +461,13 @@ def _assemble_staging_v1(
     account: _ServiceAccountV1, edge: _ReleaseEdgeV1, signing_key_id: str,
     release_directory: Path, root_owned: bool,
     service_python_executable: str | None = None,
+    service_profile: dict | None = None,
 ) -> _StagedReleaseV1:
     if type(source) is not ReceivedSourceV1 or type(account) is not _ServiceAccountV1:
         raise _fail("release inputs")
     if source.service_user != account.name:
         raise _fail("service account")
+    profile = validate_profile({} if service_profile is None else service_profile, resolved=True)
     final_root = release_directory / f"{edge.sequence:020d}"
     staging_root = release_directory / (
         f".release-{edge.sequence:020d}-"
@@ -510,11 +522,10 @@ def _assemble_staging_v1(
         os.path.realpath(sys.executable)
         if service_python_executable is None else service_python_executable
     )
-    target_executables = tuple((path, payload) for path, payload in (
-        (service_python, _read_executable_v1(service_python)),
-        (_SYSTEMCTL_V1, _read_executable_v1(_SYSTEMCTL_V1)),
-        (_XVFB_V1, _read_executable_v1(_XVFB_V1)),
-    ))
+    executable_paths = [service_python, _SYSTEMCTL_V1]
+    if "playwright" not in profile:
+        executable_paths.append(_XVFB_V1)
+    target_executables = tuple((path, _read_executable_v1(path)) for path in executable_paths)
     built_catalog = _build_service_catalog_v1(
         installation_root=final_root.as_posix(),
         python_executable=service_python, service_user=account.name,
@@ -523,6 +534,7 @@ def _assemble_staging_v1(
         service_home=account.home, systemctl_executable=_SYSTEMCTL_V1,
         target_executables=target_executables,
         administrative_python_executable=python_executable,
+        service_profile=profile,
     )
     catalog_path = "deployment/executor-birth-service-catalog-v1.json"
     content[catalog_path] = (built_catalog.encoded, 0o644)
@@ -598,7 +610,9 @@ def _remove_repeated_staging_v1(staged: _StagedReleaseV1) -> None:
     staged.staging_root.rmdir()
 
 
-def build_and_install_received_source_v1(source_id: object) -> VerifiedDistribution:
+def build_and_install_received_source_v1(
+    source_id: object, *, service_profile: dict | None = None,
+) -> VerifiedDistribution:
     """Build, sign, preverify and publish one fixed received source."""
     if not sys.platform.startswith("linux"):
         raise _fail("platform")
@@ -606,6 +620,7 @@ def build_and_install_received_source_v1(source_id: object) -> VerifiedDistribut
         raise _fail("root required")
     if type(source_id) is not str:
         raise _fail("source id")
+    profile = validate_profile({} if service_profile is None else service_profile, resolved=True)
     with _deployment_lock_v1() as session:
         _require_deployment_lock_session_v1(session)
         source = _load_received_source_with_product_session_v1(
@@ -648,6 +663,7 @@ def build_and_install_received_source_v1(source_id: object) -> VerifiedDistribut
             release_directory=DEFAULT_RELEASE_DIRECTORY_V1,
             root_owned=True,
             service_python_executable=python_environment.python_executable.as_posix(),
+            service_profile=profile,
         )
         signature = _sign_distribution_payload_v1(authority, staged.encoded)
         snapshot = _load_fixed_ownership_public_snapshot_v1()

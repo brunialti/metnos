@@ -33,20 +33,21 @@ def feed(monkeypatch, document):
 
 # --- the closed argument set -------------------------------------------------
 
-def test_only_the_six_exact_forms_exist():
+def test_only_the_eight_exact_forms_exist():
     assert set(authority._COMMANDS) == {
         ("provision-key",), ("evidence",), ("migrate", "plan"),
         ("migrate", "apply"), ("certify", "derive"), ("certify", "issue"),
+        ("rehearse", "plan"), ("rehearse", "issue"),
     }
 
 
 @pytest.mark.parametrize("argv", [
     [], ["migrate"], ["certify"], ["migrate", "plan", "--force"],
     ["provision-key", "extra"], ["certify", "sign"], ["evidence", "census"],
-    ["MIGRATE", "plan"],
+    ["MIGRATE", "plan"], ["rehearse", "issue", "--host"], ["rehearse", "renew"],
 ])
 def test_anything_else_is_refused_before_anything_runs(argv, monkeypatch):
-    for name in ("_provision_key", "_evidence", "_migrate", "_certify"):
+    for name in ("_provision_key", "_evidence", "_migrate", "_certify", "_rehearse"):
         monkeypatch.setattr(authority, name,
                             lambda *_a, **_k: pytest.fail("an operation ran"))
     assert authority.main(argv) == 64
@@ -171,3 +172,65 @@ def test_the_key_operation_returns_public_material_only(monkeypatch):
         lambda: type("K", (), {"key_id": "key-1", "status": "active",
                                "public_key": object()})())
     assert authority._provision_key() == {"key_id": "key-1", "status": "active"}
+
+
+@pytest.mark.skipif(__import__('sys').platform != 'linux', reason='native evidence custody')
+@pytest.mark.parametrize('ending', ['finish', 'disconnect', 'wrong_document'])
+def test_cycle_session_preserves_its_owner_and_records_interruption(tmp_path, ending):
+    """A real pipe client can finish two cycles; a lost client cannot pass."""
+    import hashlib
+    from pathlib import Path
+    import selectors
+    import subprocess
+    import sys
+    import install.birth_certification_evidence as evidence
+    from executor_birth_canonical import encode_canonical_ascii_v1 as canonical
+
+    tmp_path.chmod(0o755)
+    cases = [{'case_id': 'observable', 'postcondition_probes': ['effect']}]
+    matrix = canonical(cases[0]) + b'\n'
+    base = dict.fromkeys(('installation_id', 'head_id', 'source_id', 'catalog_id', 'harness_id'), DIGEST)
+    with evidence._evidence_at_v1(tmp_path, root_owned=False) as owner:
+        owner.census(scope_id=DIGEST, sources=(b'fixture source',), review=b'fixture review', findings={})
+        owner.profile(base=base, manifest=canonical({'case_matrix_sha256': hashlib.sha256(matrix).hexdigest()}),
+                      cases=canonical(cases))
+    root = Path(__file__).resolve().parents[2]
+    code = '\n'.join([
+        'import sys', 'from pathlib import Path',
+        f'sys.path[:0] = {[str(root), str(root / "runtime")]!r}',
+        'import install.birth_certification_evidence as evidence',
+        'evidence.administrative_evidence_v1 = lambda: evidence._evidence_at_v1(Path(sys.argv[1]), root_owned=False)',
+        'from install.f5_authority import main', 'raise SystemExit(main(["evidence"]))',
+    ])
+    for number in range(2 if ending == 'finish' else 1):
+        with subprocess.Popen([sys.executable, '-I', '-B', '-c', code, str(tmp_path)],
+                              stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                              stderr=subprocess.PIPE) as process:
+            try:
+                process.stdin.write(b'{"kind":"start_cycle"}\n')
+                process.stdin.flush()
+                with selectors.DefaultSelector() as ready:
+                    ready.register(process.stdout, selectors.EVENT_READ)
+                    assert ready.select(10), 'start acknowledgment must not wait for EOF'
+                started = json.loads(process.stdout.readline())
+                assert started['pending_cycle']
+                if ending == 'finish':
+                    result = [{'case_id': 'observable', 'verdict': 'pass', 'failure_reasons': [],
+                               'probe_results': [{'name': 'effect', 'passed': True, 'detail': 'fixture'}]}]
+                    document = {'kind': 'finish_cycle', 'start': started['pending_cycle'],
+                                'results': b64(canonical(result)),
+                                'turns': {'observable': {f'turn-{number}': b64(f'turn body {number}'.encode())}}}
+                    output, error = process.communicate(json.dumps(document).encode() + b'\n', timeout=10)
+                    assert process.returncode == 0, error
+                    assert len(json.loads(output)['consecutive_successes']) == number + 1
+                else:
+                    payload = b'{"kind":"start_cycle"}\n' if ending == 'wrong_document' else b''
+                    process.communicate(payload, timeout=10)
+                    assert process.returncode == 1
+            finally:
+                if process.poll() is None:
+                    process.kill()
+                    process.wait()
+    with evidence._evidence_at_v1(tmp_path, root_owned=False) as owner:
+        assert owner.frontier.pending_cycle is None
+        assert len(owner.frontier.consecutive_successes) == (2 if ending == 'finish' else 0)

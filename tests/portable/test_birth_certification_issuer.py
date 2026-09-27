@@ -31,6 +31,45 @@ def digest(label):
     return "sha256:" + hashlib.sha256(label.encode()).hexdigest()
 
 
+def test_historical_observer_keeps_contexts_outside_runtime_window(monkeypatch):
+    import contract_store
+    import executor_birth_history as history
+    import executor_birth_ownership_chain as chain
+    import executor_birth_prepared_root as prepared
+    import executor_birth_producer_store as producers
+
+    old, current, unknown = (digest(label) for label in ("old", "current", "unknown"))
+    head = digest("required")
+    full = chain.VerifiedOwnershipChain(
+        anchor_cutover_id=digest("anchor"),
+        heads=(SimpleNamespace(head_id=head),),
+        context_transitions=tuple(SimpleNamespace(prepared_admission_context_id=x)
+                                  for x in (old, current)),
+    )
+    inventory = SimpleNamespace(contracts=(SimpleNamespace(receipts=tuple(
+        SimpleNamespace(encoded=json.dumps({"admission_context_id": x}).encode())
+        for x in (old, current, unknown))),))
+    monkeypatch.setattr(chain, "OwnershipChainStore", lambda: SimpleNamespace(
+        read_required_chain_cold_v1=lambda: full))
+    monkeypatch.setattr(contract_store, "read_historical_birth_inventory_v1", lambda: inventory)
+    producer_history = object()
+    monkeypatch.setattr(producers, "read_producer_history_v1", lambda: producer_history)
+    selected = []
+    sources = (("runtime/public.py", b"inert candidate"),)
+
+    def declarations(contexts, **kwargs):
+        selected.extend(contexts)
+        assert kwargs == {"include_reattestation": True, "public_sources": sources}
+        return (SimpleNamespace(context=SimpleNamespace(required_head_id=head)),)
+
+    monkeypatch.setattr(prepared, "load_historical_producer_declarations_for_contexts_v1",
+                        declarations)
+    joined = SimpleNamespace(required_head_id=head)
+    monkeypatch.setattr(history, "reconcile_historical_birth_v1", lambda *_args: joined)
+    assert issuer.observe_history_v1(public_sources=sources) is joined
+    assert set(selected) == {old, current}
+
+
 QUALIFICATION = digest("qualification")
 MIGRATION = digest("migration")
 INSTALLATION = digest("installation")

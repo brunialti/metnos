@@ -4331,6 +4331,27 @@ def _receipts_complete_record_v2(
     )
 
 
+def _reuse_receipts_complete_v2(previous, current):
+    """Reuse history only when all receipt bindings and live quiescence agree."""
+    from executor_birth_ownership_preflight import same_maintenance_quiescence_v1
+
+    if (
+        type(previous) is not OwnershipCoordinatorRecordV2
+        or type(current) is not OwnershipCoordinatorRecordV2
+        or previous.state is not OwnershipCoordinatorStateV1.RECEIPTS_COMPLETE
+        or current.state is not OwnershipCoordinatorStateV1.RECEIPTS_COMPLETE
+        or not same_maintenance_quiescence_v1(previous.maintenance_proof, current.maintenance_proof)
+        or replace(
+            current,
+            maintenance_before_hash=previous.maintenance_before_hash,
+            maintenance_after_hash=previous.maintenance_after_hash,
+            maintenance_proof=previous.maintenance_proof,
+        ) != previous
+    ):
+        raise OwnershipCoordinatorError("birth_ownership_journal_conflict", "receipt replay")
+    return previous
+
+
 def _append_receipts_complete_locked_v2(
     session: _DeploymentLockSessionV1,
     publication: object, *, proof: object,
@@ -4351,6 +4372,11 @@ def _append_receipts_complete_locked_v2(
         maintenance_before=maintenance_before,
         maintenance_after=maintenance_after,
     )
+    snapshot = _resolve_ownership_coordinator_locked_v2(session)
+    graph = _require_locked_coordinator_graph_snapshot_v2(snapshot, session)
+    for transaction in graph.transactions:
+        if transaction.claim.request_id == record.request_id and len(transaction.records) > 1:
+            record = _reuse_receipts_complete_v2(transaction.records[1], record)
     persisted = _append_ownership_transaction_locked_v2(session, record)
     snapshot = _resolve_ownership_coordinator_locked_v2(session)
     graph = _require_locked_coordinator_graph_snapshot_v2(snapshot, session)

@@ -24,28 +24,10 @@ from typing import Any
 from .. import i18n, preflight, ui
 
 
-# Runtime deps — kept tight to minimise install time. The skill bundles
-# add their own deps lazily on first use.
-_RUNTIME_DEPS = [
-    "aiohttp>=3.9",          # HTTP server (metnos-http)
-    "httpx>=0.27",           # HTTP client (web crawl, frontier API)
-    "Jinja2>=3.1",           # docs templates + dialog forms
-    "MarkupSafe>=2.1",       # used by Jinja2
-    "pydantic>=2.6",         # manifest validation, config
-    "tomli>=2.0; python_version < '3.11'",
-    "tomlkit==0.15.0",       # byte-preserving contract publication
-    "rich>=13.7",            # already installed by bootstrap, pinned here
-    "cryptography>=42",      # Fernet for credentials store (ADR 0131)
-    "onnxruntime>=1.17",     # BGE-M3 embedder (ADR 0117)
-    "numpy>=1.26",
-    "Pillow>=10.2",          # image read for create_images_indices
-    "anthropic>=0.34",       # optional, but kept core
-    "openai>=1.40",          # optional, frontier fallback
-    "prompt_toolkit>=3.0",   # dialog form
-    "google-api-python-client==2.196.0",  # first-party Workspace executors
-    "google-auth-oauthlib==1.4.0",
-    "google-auth",
-]
+def _requirements_path() -> Path:
+    root = Path(os.environ.get(
+        "METNOS_INSTALL_ROOT", Path(__file__).resolve().parents[2]))
+    return root / "requirements-linux-x86_64.lock"
 
 
 def _venv_pip() -> str:
@@ -75,37 +57,28 @@ def _runtime_dirs() -> list[Path]:
     ]
 
 
-def _install_deps() -> tuple[int, int]:
-    """Install the runtime deps. Returns (installed, already_present)."""
+def _install_deps() -> int:
+    """Use the release's exact dependency closure; failure stops this phase."""
+    from ..executor_birth_python_environment_posix import _lock_requirements_v1
+
+    requirements = _requirements_path()
+    names = _lock_requirements_v1(requirements.read_bytes())
     pip = _venv_pip()
     if not Path(pip).exists():
         ui.fail(i18n.t("p1_pip_not_found", pip=pip))
 
-    installed = 0
-    skipped = 0
-    with ui.progress() as p:
-        task = p.add_task(i18n.t("p1_progress_deps"), total=len(_RUNTIME_DEPS))
-        for dep in _RUNTIME_DEPS:
-            # `pip install` is the simplest path; pip's resolver handles
-            # already-satisfied as a quick no-op. We capture output so
-            # the progress bar isn't drowned out.
-            try:
-                r = subprocess.run(
-                    [pip, "install", "--quiet", "--upgrade-strategy", "only-if-needed", dep],
-                    capture_output=True, text=True, timeout=180,
-                )
-                if r.returncode != 0:
-                    reason = r.stderr.strip().splitlines()[-1] if r.stderr else 'unknown'
-                    ui.warn(i18n.t("p1_dep_install_failed", dep=dep, reason=reason))
-                else:
-                    if "already satisfied" in (r.stdout + r.stderr).lower():
-                        skipped += 1
-                    else:
-                        installed += 1
-            except subprocess.TimeoutExpired:
-                ui.warn(i18n.t("p1_dep_timeout", dep=dep))
-            p.update(task, advance=1)
-    return installed, skipped
+    try:
+        result = subprocess.run(
+            [pip, "install", "--require-hashes", "--no-deps", "--only-binary=:all:",
+             "-r", str(requirements)],
+            capture_output=True, text=True, timeout=900,
+        )
+    except subprocess.TimeoutExpired:
+        ui.fail(i18n.t("p1_dep_timeout", dep=requirements.name))
+    if result.returncode != 0:
+        reason = result.stderr.strip().splitlines()[-1] if result.stderr.strip() else "pip"
+        ui.fail(i18n.t("p1_dep_install_failed", dep=requirements.name, reason=reason))
+    return len(names)
 
 
 def run(args: Any) -> dict[str, Any]:
@@ -115,6 +88,9 @@ def run(args: Any) -> dict[str, Any]:
 
     # 1. Pre-flight
     ui.step("Running pre-flight checks")
+    supported = preflight.check_python()
+    if not supported.ok:
+        ui.fail(supported.detail)
     ok = preflight.run_all(min_disk_gb=8)
     if not ok and not getattr(args, "force", False):
         ui.fail("Pre-flight failed. Re-run with --force to ignore (not recommended) or fix the issues above.")
@@ -134,12 +110,15 @@ def run(args: Any) -> dict[str, Any]:
     ui.ok(f"{len(_runtime_dirs())} directories ready")
     notes["dirs_created"] = len(_runtime_dirs())
 
-    # 3. Install full dependency set
-    ui.step(f"Installing {len(_RUNTIME_DEPS)} Python dependencies (this can take a few minutes)")
-    installed, skipped = _install_deps()
-    ui.ok(f"{installed} installed, {skipped} already present")
-    notes["pip_installed"] = installed
-    notes["pip_already_present"] = skipped
+    # 3. Use the same hashed closure as the signed runtime.
+    ui.step(i18n.t("p1_progress_deps"))
+    if getattr(args, "managed", False):
+        # The administrative parent already verified the immutable environment.
+        from ..executor_birth_python_environment_posix import _lock_requirements_v1
+        notes["dependencies_verified"] = len(_lock_requirements_v1(_requirements_path().read_bytes()))
+    else:
+        notes["dependencies_verified"] = _install_deps()
+    ui.ok(i18n.t("p1_deps_verified", count=notes["dependencies_verified"]))
 
     # 4. Sanity import
     ui.step("Verifying core imports")
@@ -150,12 +129,10 @@ def run(args: Any) -> dict[str, Any]:
         import jinja2  # noqa: F401
         import onnxruntime  # noqa: F401
         import PIL  # noqa: F401
-        import pydantic  # noqa: F401
         import tomlkit  # noqa: F401
         ui.ok("Core modules importable")
         notes["import_ok"] = True
     except ImportError as e:
-        ui.warn(f"import failure: {e}")
-        notes["import_ok"] = False
+        ui.fail(i18n.t("p1_import_failure", err=e))
 
     return notes

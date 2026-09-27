@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import sys
+import os
+import json
 import shutil
 import platform
 from pathlib import Path
@@ -113,8 +115,9 @@ def _account() -> release._ServiceAccountV1:
 
 
 @LINUX_ONLY
+@pytest.mark.parametrize("umask", [0o022, 0o077])
 def test_assembly_derives_catalog_descriptor_manifest_and_exact_repetition(
-    tmp_path, monkeypatch,
+    tmp_path, monkeypatch, umask,
 ) -> None:
     source_root, source = _source_tree(tmp_path)
     releases = tmp_path / "releases-v1"
@@ -129,8 +132,12 @@ def test_assembly_derives_catalog_descriptor_manifest_and_exact_repetition(
         edge=release._ReleaseEdgeV1(1, None), signing_key_id=key_id,
         release_directory=releases, root_owned=False,
     )
-    first = release._assemble_staging_v1(**values)
-    second = release._assemble_staging_v1(**values)
+    previous = os.umask(umask)
+    try:
+        first = release._assemble_staging_v1(**values)
+        second = release._assemble_staging_v1(**values)
+    finally:
+        os.umask(previous)
     assert first == second
     document, files = manifest._parse(first.encoded)
     assert document["installation_root"] == (releases / f"{1:020d}").as_posix()
@@ -159,6 +166,43 @@ def test_assembly_derives_catalog_descriptor_manifest_and_exact_repetition(
         release.ADMIN_PREFLIGHT_RELEASE_PATH_V1,
         *(item.path for item in files if item.role == "service_unit"),
     }
+
+
+@LINUX_ONLY
+def test_release_directory_never_repairs_existing_permissions(tmp_path):
+    directory = tmp_path / "existing"
+    directory.mkdir(mode=0o700)
+    with pytest.raises(assembler.DistributionAssemblerError):
+        release._ensure_directory_v1(directory, root_owned=False)
+    assert directory.stat().st_mode & 0o777 == 0o700
+
+
+@LINUX_ONLY
+def test_remote_browser_assembly_needs_no_local_display_and_seals_profile(tmp_path, monkeypatch):
+    source_root, source = _source_tree(tmp_path)
+    releases = tmp_path / "releases-v1"
+    releases.mkdir(mode=0o755)
+    monkeypatch.setattr(assembler, "DEFAULT_RELEASE_ROOT_TEXT_V1", releases.as_posix())
+    original_read = release._read_executable_v1
+    def read_executable(path):
+        assert path != release._XVFB_V1, "remote browser must not require a local display"
+        return original_read(path)
+    monkeypatch.setattr(release, "_read_executable_v1", read_executable)
+    profile = {"playwright": {"url": "http://browser.example.test"}}
+    values = dict(source=source, source_root=source_root, account=_account(),
+                  edge=release._ReleaseEdgeV1(1, None),
+                  signing_key_id=manifest.distribution_key_id(Ed25519PrivateKey.generate().public_key()),
+                  release_directory=releases, root_owned=False, service_profile=profile)
+    first = release._assemble_staging_v1(**values)
+    assert release._assemble_staging_v1(**values) == first
+    document = json.loads((first.staging_root / "deployment/executor-birth-service-catalog-v1.json").read_bytes())
+    assert document["service_profile"] == profile
+    assert {"service-playwright", "service-side-display"}.isdisjoint(
+        item["entry_id"] for item in document["entries"])
+    # A signed release is immutable: editing a profile cannot replace its bytes.
+    values["service_profile"] = {"playwright": {"url": "http://different.example.test"}}
+    with pytest.raises(assembler.DistributionAssemblerError):
+        release._assemble_staging_v1(**values)
 
 
 def test_release_edge_resumes_same_source_and_advances_only_after_completion() -> None:

@@ -105,6 +105,76 @@ def test_real_authoring_paths_and_store_layout_are_accepted() -> None:
     ) is legacy.LegacyStateDispositionV1.exact_service
 
 
+@pytest.mark.parametrize("payload", (b"", b"\0"))
+def test_activated_shadow_keeps_its_original_catalog_lock(payload: bytes) -> None:
+    from contract_store import _catalog_lock_path
+
+    state = Path(_request().state_root)
+    candidate = state / "contract-publications-shadow" / ("a" * 64) / "v1"
+    lock = _file(_catalog_lock_path(candidate).relative_to(state).as_posix(), payload)
+    # Activation atomically moves the candidate container into production.
+    # Its lock remains outside that container with the original inode.
+    entries = (
+        *_real_authoring().entries,
+        _directory("contract-publications"),
+        _directory("contract-publications/v1"),
+        _file(ACTIVE_RELATIVE.as_posix(), b"v1\n"),
+        _directory("contract-publications-shadow"),
+    )
+    assert legacy.classify_legacy_state_v1(
+        _request(), _observation(*entries, lock),
+    ) is legacy.LegacyStateDispositionV1.exact_service
+    for invalid in (
+        replace(lock, mode=0o644), replace(lock, uid=0, gid=0),
+        replace(lock, nlink=2), replace(lock, has_access_acl=True),
+        _file(lock.relative_path.as_posix(), b"x"),
+        _file("contract-publications-shadow/.unknown-v1.catalog-admission.lock", payload),
+        _directory(lock.relative_path.as_posix()),
+    ):
+        assert legacy.classify_legacy_state_v1(
+            _request(), _observation(*entries, invalid),
+        ) is legacy.LegacyStateDispositionV1.invalid
+    assert legacy.classify_legacy_state_v1(
+        _request(), _observation(*entries, lock, _file(
+            lock.relative_path.as_posix() + "/child", b"",
+        )),
+    ) is legacy.LegacyStateDispositionV1.invalid
+
+
+@pytest.mark.parametrize("payload", (b"", b"\0"))
+def test_serialization_locks_do_not_make_an_existing_catalog(payload: bytes) -> None:
+    locks = tuple(
+        _file(path.as_posix(), payload)
+        for path in policy_module.LEGACY_STATE_RESERVED_TOP_LEVEL_V1
+        if path.name.endswith(".lock")
+    )
+    assert locks
+    request = _request()
+    assert legacy.classify_legacy_state_v1(
+        request, _observation(*locks),
+    ) is legacy.LegacyStateDispositionV1.fresh
+    for entry in locks:
+        assert legacy.classify_legacy_state_v1(
+            request, _observation(entry),
+        ) is legacy.LegacyStateDispositionV1.fresh
+        for changes in (
+            {"uid": 0, "gid": 0}, {"mode": 0o644}, {"nlink": 2},
+            {"has_access_acl": True},
+        ):
+            assert legacy.classify_legacy_state_v1(
+                request, _observation(replace(entry, **changes)),
+            ) is legacy.LegacyStateDispositionV1.invalid
+        assert legacy.classify_legacy_state_v1(
+            request, _observation(_file(entry.relative_path.as_posix(), b"x")),
+        ) is legacy.LegacyStateDispositionV1.exact_service
+    assert legacy.classify_legacy_state_v1(
+        request, _observation(
+            *locks, _directory("contract-publications"),
+            _directory("contract-publications/v1"),
+        ),
+    ) is legacy.LegacyStateDispositionV1.exact_service
+
+
 @pytest.mark.parametrize("mutation", ("extra", "symlink", "hardlink", "staging", "control"))
 def test_invalid_authoring_inventory_is_rejected(mutation: str) -> None:
     entries = list(_real_authoring().entries)
@@ -165,7 +235,7 @@ def test_protocol_has_stable_golden_digests() -> None:
     observation = _observation()
     planned = legacy.plan_legacy_state_v1(request)
     assert legacy.legacy_state_policy_sha256_v1() == (
-        "sha256:cbbc2c326de1aef494f9a31a6ab0437e7f67e4af018de0e09920962347752f12"
+        "sha256:eec5f97f5ddfe081f61800c49896abb17858e74d4b0175c03e4a9148d3bf8a11"
     )
     assert request.request_id == (
         "sha256:9839f15abbaab1b6fb19bdb6292e55368f6aa7aa85f1681f775907acc948142f"
@@ -174,7 +244,7 @@ def test_protocol_has_stable_golden_digests() -> None:
         "sha256:8080b6a3a55bcaa5c4142928f04172d19296e2e00b44407dd40724504537aacb"
     )
     assert planned.record_sha256 == (
-        "sha256:ef7522a9f78acdeeda551a991cfcb08b5105294d9907c6d4a5fb3b6ab5d345d4"
+        "sha256:7ae40937f458bd49caae28bb5bd52dfe5b85b2489f1531ef87248969ed82d4fe"
     )
 
 

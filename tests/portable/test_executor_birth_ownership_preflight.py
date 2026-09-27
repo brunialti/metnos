@@ -77,6 +77,34 @@ def test_maintenance_proof_rejects_an_unknown_load_state():
         _maintenance(load_state="bad")
 
 
+def test_maintenance_replay_preserves_scope_and_rejects_activity():
+    before = _maintenance(load_state="not-found")
+    assert preflight.same_maintenance_quiescence_v1(before, _maintenance(load_state="masked"))
+    for field, value in (("main_pid", 42), ("active_state", "active"), ("load_state", "error"), ("unit", "unexpected.service")):
+        changed = json.loads(before)
+        changed["units"][0][field] = value
+        encoded = json.dumps(changed, sort_keys=True, separators=(",", ":")).encode("ascii")
+        with pytest.raises(preflight.OwnershipPreflightError):
+            preflight.same_maintenance_quiescence_v1(before, encoded)
+
+
+@pytest.mark.parametrize("scope", ("user", "system"))
+def test_absent_manager_evidence_is_valid_only_for_user_scope(scope):
+    document = json.loads(_maintenance())
+    unit = next(item for item in document["units"] if item["scope"] == scope)
+    unit["load_state"] = "manager-absent"
+    if scope == "user":
+        encoded = preflight.canonical_maintenance_proof(
+            source=document["source"], units=document["units"],
+        )
+        assert json.loads(encoded) == document
+    else:
+        with pytest.raises(preflight.OwnershipPreflightError, match="not_quiescent"):
+            preflight.canonical_maintenance_proof(
+                source=document["source"], units=document["units"],
+            )
+
+
 def _installed(tmp_path: Path):
     private, key_id, registry = _authority()
     proof = _proof()

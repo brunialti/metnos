@@ -15,9 +15,10 @@ bash install/bootstrap.sh --check   # check requirements; may initialise .venv
 bash install/bootstrap.sh           # interactive, six-phase setup
 ```
 
-`bootstrap.sh` finds Python 3.12 or newer, creates the virtual environment,
-installs the dependencies, then hands off to the orchestrator
-(`python -m install`). It provisions the selected model bindings, runtime data,
+`bootstrap.sh` finds Python 3.12 on Linux x86-64, creates the virtual environment,
+installs the dependencies, then hands off to the administrative orchestrator
+(`python -m install`). It requests administrative privileges, prepares the
+dedicated `metnos` service account and fresh authorities, and provisions the selected model bindings, runtime data,
 signed executors, and optional support services, then verifies service startup
 and the HTTP health endpoint. A complete installation check also requires one
 harmless request through the chat after onboarding.
@@ -27,7 +28,7 @@ is enabled, the exact URL for every detected private IPv4 address. Use the
 local URL on the server or a printed LAN URL from another device on the same
 trusted network. The UI is plain HTTP by default: never port-forward that port
 or expose it directly to the Internet. The same connection details are saved
-in `~/.local/share/metnos/install_summary.md`.
+in `/var/lib/metnos-service/.local/share/metnos/install_summary.md`.
 
 ## Architecture: Metnos is self-contained
 

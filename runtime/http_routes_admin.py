@@ -25,6 +25,7 @@ import proposals_state
 import telos_proposals_store
 import users
 import services_registry
+import periodic_services
 import config as _C  # §7.11
 from reliability import classify_turn
 from http_auth import (
@@ -165,8 +166,10 @@ async def admin_services(request: web.Request) -> web.Response:
     )
     import i18n as _i18n
     rows = services_registry.localized(rows, _i18n.current_lang())
+    periodic = [periodic_services.configuration(name)
+                for name in periodic_services.SERVICES]
     if not wants_html(request):
-        return web.json_response({"services": rows})
+        return web.json_response({"services": rows, "periodic_services": periodic})
     notice = request.query.get("notice", "")
     notice_service = request.query.get("service", "")
     notice_action = request.query.get("action", "")
@@ -185,6 +188,8 @@ async def admin_services(request: web.Request) -> web.Response:
         text=render_template(
             "services.html",
             services=rows,
+            periodic_services=periodic,
+            interval_notice=request.query.get("interval_notice", ""),
             notice=notice,
             notice_service=(notice_row or {}).get("label", ""),
             notice_service_key=notice_service if notice_row else "",
@@ -194,6 +199,24 @@ async def admin_services(request: web.Request) -> web.Response:
         content_type="text/html",
         headers={"Cache-Control": "no-store"},
     )
+
+
+async def admin_periodic_service_config(request: web.Request) -> web.Response:
+    """Change only a bounded period, never a command or execution authority."""
+    if request.get("role", "anonymous") != "admin":
+        return _error(403, "forbidden", "admin role required")
+    try:
+        body = await request.post()
+        await asyncio.to_thread(
+            periodic_services.configure, request.match_info["name"],
+            int(body.get("interval_minutes", "")),
+        )
+    except (KeyError, TypeError, ValueError):
+        return _error(400, "invalid_interval", "invalid periodic service interval")
+    except OSError:
+        log.exception("periodic service preference write failed")
+        raise web.HTTPFound("/admin/services?interval_notice=failed#periodic-services")
+    raise web.HTTPFound("/admin/services?interval_notice=saved#periodic-services")
 
 
 async def admin_lre_console(request: web.Request) -> web.Response:
@@ -2074,6 +2097,7 @@ ROUTES = (
     ("GET",  "/admin/services",                  admin_services),
     ("GET",  "/admin/lre",                       admin_lre_console),
     ("POST", r"/admin/services/{name}/{action:start|stop|restart}", admin_service_action),
+    ("POST", r"/admin/services/periodic/{name}", admin_periodic_service_config),
     ("POST", r"/admin/services/durable_workloads/feature/{action:enable|disable}", admin_lre_feature_action),
     # /admin/skills/{id}/history rimossa 13/6/2026: store Praxis dismesso (Engine v2).
     ("GET",  "/admin/timers",                     admin_timers),

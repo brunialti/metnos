@@ -126,7 +126,70 @@ def _candidate_for_transition(
     return candidate
 
 
-def converge() -> dict[str, int]:
+def _initial_shadow_root(source_inventory) -> Path | None:
+    """Use the existing candidate-bound shadow until the complete catalog is verified."""
+    from contract_store import ProductionStoreMode, production_store_mode
+    from executor_birth_bootstrap import (
+        _initial_candidate_payloads_v1, _initial_shadow_root_v1,
+    )
+    from executor_birth_prepared_root import load_sealed_authorities_v1
+
+    mode = production_store_mode()
+    if mode is ProductionStoreMode.ACTIVE:
+        return None
+    if mode not in {ProductionStoreMode.LEGACY, ProductionStoreMode.RECOVERY_REQUIRED}:
+        raise _fail("birth_transition_initial_catalog_changed")
+    sealed = load_sealed_authorities_v1()
+    candidates = tuple(
+        (ref, _initial_candidate_payloads_v1(ref))
+        for ref in sorted(source_inventory.manifests, key=lambda item: item.contract_id.value)
+    )
+    return _initial_shadow_root_v1(sealed.prepared.set_id, candidates)
+
+
+def _finish_initial_catalog(sources, *, shadow_root, store_root, trusted, admission_verifiers):
+    """Verify every Birth receipt before the existing atomic catalog activation.
+
+    The administrative parent retains deployment/startup exclusion and proves
+    maintenance before and after this service-owned child. The child is usable
+    only through the sealed installer on the still-empty ownership chain.
+    """
+    import contract_store
+    from executor_birth_bootstrap import (
+        _require_initial_transition_v1, _verified_initial_receipt_v1,
+    )
+
+    _require_initial_transition_v1()
+    _container, production_root, _marker = contract_store._production_paths()
+    with contract_store.catalog_admission_lock(store_root=production_root):
+        with contract_store.catalog_admission_lock(store_root=store_root):
+            expected = {}
+            for contract_id, ref in sources.items():
+                generation = contract_store.current_revision_id(ref, store_root=store_root)
+                _verified_initial_receipt_v1(
+                    ref, generation, store_root=store_root,
+                    trusted_publics=trusted, admission_verifiers=admission_verifiers,
+                )
+                expected[contract_id] = generation
+            if shadow_root is not None:
+                shadow_v1, shadow_container = contract_store._canonical_activation_shadow(shadow_root)
+                contract_store._activate_store_locked(
+                    expected, shadow_v1=shadow_v1, shadow_container=shadow_container,
+                    trusted=trusted, production_container=_container,
+                    production_root=production_root, marker=_marker,
+                    mode=contract_store.production_store_mode(),
+                )
+
+
+def converge(*, new_instance: bool = False) -> dict[str, int]:
+    """Converge the catalog selected by the administrative transition.
+
+    The parent proves a fresh initial journal before selecting ``new_instance``.
+    An empty store alone never selects it. Every new or resumed admission still
+    requires the sealed initial-chain installer Producer below.
+    """
+    if type(new_instance) is not bool:
+        raise _fail("birth_transition_contract_catalog_mismatch")
     if not hasattr(os, "geteuid") or os.geteuid() == 0:
         raise _fail("birth_transition_service_identity_required")
     if Path(os.path.abspath(os.environ.get("METNOS_INSTALL_ROOT", ""))) != _REPOSITORY:
@@ -138,7 +201,7 @@ def converge() -> dict[str, int]:
         _build_initial_transition_installer_runtime_v1,
     )
     from manifest_inventory import (
-        ManifestOrigin, inventory_authoring_manifests,
+        ManifestInventory, ManifestOrigin, inventory_authoring_manifests,
         inventory_store_manifests,
     )
     from executor_birth_prepared_root import (
@@ -146,23 +209,47 @@ def converge() -> dict[str, int]:
     )
 
     source_inventory = inventory_authoring_manifests()
+    if source_inventory.problems:
+        raise _fail("birth_transition_contract_inventory_invalid")
     _container, store_root, _marker = contract_store._production_paths()
-    store_inventory = inventory_store_manifests(store_root=store_root)
+    shadow_root = _initial_shadow_root(source_inventory) if new_instance else None
+    if shadow_root is not None:
+        store_root = shadow_root
+    try:
+        store_root.lstat()
+    except FileNotFoundError:
+        if not new_instance:
+            raise _fail("birth_transition_contract_catalog_mismatch")
+        # Only the authenticated initial transition may start without a store.
+        # Birth populates a separate shadow; a dangling link is not absence.
+        store_inventory = ManifestInventory((), ())
+    else:
+        store_inventory = inventory_store_manifests(store_root=store_root)
     if source_inventory.problems or store_inventory.problems:
         raise _fail("birth_transition_contract_inventory_invalid")
     sources = source_inventory.by_id()
     stored = store_inventory.by_id()
-    if not set(stored).issubset(sources) or not stored:
+    if not sources or not set(stored).issubset(sources) or (not stored and not new_instance):
         raise _fail("birth_transition_contract_catalog_mismatch")
+
+    admitted_origins = {
+        ManifestOrigin.CORE, ManifestOrigin.BUILTIN, ManifestOrigin.BUILTIN_SKILL,
+    }
+    if new_instance and any(item.origin not in admitted_origins for item in sources):
+        raise _fail("birth_transition_external_contract_changed")
 
     historical = _load_historical_transition_verifiers_v1()
     trusted = tuple(sorted(historical.author_verifier_keys.items()))
     admission_verifiers = historical.admission_verifier_keys
-    transition_runtime = None
+    transition_runtime = (
+        _build_initial_transition_installer_runtime_v1(store_root=shadow_root)
+        if new_instance else None
+    )
     examined = 0
     changed = 0
     current = 0
-    for contract_id in sorted(stored, key=lambda item: item.value):
+    selected = sources if new_instance else stored
+    for contract_id in sorted(selected, key=lambda item: item.value):
         examined += 1
         source_ref = sources[contract_id]
         with tempfile.TemporaryDirectory(
@@ -176,20 +263,21 @@ def converge() -> dict[str, int]:
             candidate_state = (
                 candidate / "manifest.lang_state.json"
             ).read_bytes()
-            try:
-                generation_id = contract_store.current_revision_id(
-                    source_ref, store_root=store_root,
-                )
-                installed = contract_store._load_generation(
-                    source_ref,
-                    generation_id,
-                    trusted_publics=trusted,
-                    store_root=store_root,
-                )
-            except contract_store.ContractStoreError as error:
-                if error.code != "code_digest_mismatch":
-                    raise
-                installed = None
+            installed = None
+            if contract_id in stored:
+                try:
+                    generation_id = contract_store.current_revision_id(
+                        source_ref, store_root=store_root,
+                    )
+                    installed = contract_store._load_generation(
+                        source_ref,
+                        generation_id,
+                        trusted_publics=trusted,
+                        store_root=store_root,
+                    )
+                except contract_store.ContractStoreError as error:
+                    if new_instance or error.code != "code_digest_mismatch":
+                        raise
             if (
                 installed is not None
                 and installed.manifest_bytes == candidate_manifest
@@ -197,13 +285,11 @@ def converge() -> dict[str, int]:
             ):
                 current += 1
                 continue
-            if contract_id.origin not in {
-                ManifestOrigin.CORE,
-                ManifestOrigin.BUILTIN,
-                ManifestOrigin.BUILTIN_SKILL,
-            }:
+            if new_instance and contract_id in stored:
+                raise _fail("birth_transition_initial_catalog_changed", contract_id.value)
+            if contract_id.origin not in admitted_origins:
                 raise _fail("birth_transition_external_contract_changed")
-            if _source_generation_has_historical_receipt(
+            if not new_instance and _source_generation_has_historical_receipt(
                 source_ref, store_root=store_root,
                 trusted_publics=trusted,
                 admission_verifiers=admission_verifiers,
@@ -239,6 +325,11 @@ def converge() -> dict[str, int]:
                 )
             changed += 1
 
+    if new_instance:
+        _finish_initial_catalog(
+            sources, shadow_root=shadow_root, store_root=store_root,
+            trusted=trusted, admission_verifiers=admission_verifiers,
+        )
     contract_store.materialize_repository_authoring_for_transition_v1(
         trusted_publics=trusted,
     )
@@ -247,7 +338,10 @@ def converge() -> dict[str, int]:
 
 def main() -> int:
     try:
-        result = converge()
+        arguments = sys.argv[1:]
+        if arguments not in ([], ["--new-instance"]):
+            raise _fail("birth_transition_contract_catalog_mismatch")
+        result = converge(new_instance=bool(arguments))
     except BaseException as error:
         code = getattr(error, "code", "birth_transition_contract_convergence_failed")
         sys.stderr.write(str(code) + "\n")

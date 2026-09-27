@@ -66,15 +66,17 @@ def observe_history_v1(
     from contract_store import read_historical_birth_inventory_v1
     from executor_birth_history import reconcile_historical_birth_v1
     from executor_birth_ownership_chain import (
-        OwnershipChainStore, VerifiedOwnershipWindowV1,
+        OwnershipChainStore, VerifiedOwnershipChain,
     )
     from executor_birth_prepared_root import (
         load_historical_producer_declarations_for_contexts_v1,
     )
     from executor_birth_producer_store import read_producer_history_v1
 
-    chain = OwnershipChainStore().read_required_window_v1()
-    if not isinstance(chain, VerifiedOwnershipWindowV1):
+    # Historical reconciliation needs every authenticated context. The bounded
+    # runtime window deliberately omits older admissions and their predecessors.
+    chain = OwnershipChainStore().read_required_chain_cold_v1()
+    if not isinstance(chain, VerifiedOwnershipChain):
         raise CertificationIssueError("certification_frontier_invalid")
     producer_history = read_producer_history_v1()
     inventory = read_historical_birth_inventory_v1()
@@ -209,8 +211,13 @@ def _sign_certificate_v1(payload: dict) -> bytes:
     private = Ed25519PrivateKey.from_private_bytes(raw)
     del raw
     from executor_birth_lifecycle import CERTIFICATION_DOMAIN
+    from executor_birth_rehearsal import REHEARSAL_DOMAIN_V1
 
-    signature = private.sign(CERTIFICATION_DOMAIN + encode_canonical_ascii_v1(payload))
+    domains = {"f5_activation_v1": CERTIFICATION_DOMAIN,
+               "f5_rehearsal_v1": REHEARSAL_DOMAIN_V1}
+    if payload.get("purpose") not in domains:
+        raise CertificationIssueError("certification_purpose_invalid")
+    signature = private.sign(domains[payload["purpose"]] + encode_canonical_ascii_v1(payload))
     return encode_canonical_ascii_v1({
         **payload, "signature": base64.b64encode(signature).decode("ascii"),
     })
@@ -333,6 +340,84 @@ def issue_certificate_v1(
         _install_certificate_v1(_sign_certificate_v1(payload), payload)
     )
     return report
+
+
+def _install_rehearsal_v1(encoded: bytes) -> str:
+    from executor_birth_rehearsal import REHEARSAL_BASENAME_V1, load_f5_rehearsal
+
+    _root_owned_chain(ACTIVATION_DIRECTORY_V1)
+    with _provisioning_lock(DEFAULT_OWNERSHIP_ROOT_V1, root_owned=True):
+        _directory_metadata(ACTIVATION_DIRECTORY_V1, root_owned=True)
+        path = ACTIVATION_DIRECTORY_V1 / REHEARSAL_BASENAME_V1
+        staged = path.with_suffix(".staged")
+        descriptor = os.open(staged, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o644)
+        try:
+            with os.fdopen(descriptor, "wb") as stream:
+                stream.write(encoded)
+                stream.flush()
+                os.fchmod(stream.fileno(), 0o644)
+                os.fsync(stream.fileno())
+            os.replace(staged, path)
+            _sync_directory(ACTIVATION_DIRECTORY_V1)
+        finally:
+            staged.unlink(missing_ok=True)
+        try:
+            accepted = load_f5_rehearsal()
+            if _read_regular(path, maximum=8192, mode=0o644, root_owned=True) != encoded:
+                raise CertificationIssueError("rehearsal_frontier_changed")
+        except Exception:
+            # An unsuccessful issue never leaves a usable authorization behind.
+            path.unlink(missing_ok=True)
+            _sync_directory(ACTIVATION_DIRECTORY_V1)
+            raise
+    return accepted.permit.permit_id
+
+
+def issue_rehearsal_v1(*, apply: bool) -> dict:
+    """Issue one hour for this isolated installation and its frozen profile.
+
+    This does not derive qualification or claim successful cycles. Productive
+    issuance continues through issue_certificate_v1 with unchanged thresholds.
+    """
+    from executor_birth_certification_authority import load_certification_public_key_v1
+    from executor_birth_rehearsal import (
+        REHEARSAL_POLICY_V1, REHEARSAL_SECONDS_V1, _clock_v1,
+    )
+    from executor_birth_rehearsal_isolation import observe_local_rehearsal_v1
+    from install.birth_certification_evidence import administrative_evidence_v1
+
+    _require_root_v1()
+    isolation = observe_local_rehearsal_v1()
+    migration = _completed_migration_id()
+    installation, head, build = _installation_frontier_v1()
+    with administrative_evidence_v1() as evidence:
+        frontier = evidence.frontier
+    bindings = frontier.profile_bindings
+    if (frontier.profile is None or bindings is None
+            or (bindings.installation_id, bindings.head_id) != (installation, head)):
+        raise CertificationIssueError("rehearsal_profile_mismatch")
+    if frontier.open_findings:
+        raise CertificationIssueError("rehearsal_open_findings")
+    public = load_certification_public_key_v1()
+    if public.status != "active":
+        raise CertificationIssueError("certification_authority_revoked")
+    issued_at, issued_boot_ns = _clock_v1()
+    payload = {
+        "schema_version": 1, "purpose": "f5_rehearsal_v1", "policy_id": REHEARSAL_POLICY_V1,
+        "installation_id": installation, "head_id": head, "closed_build_id": build,
+        "migration_id": migration, "profile_id": frontier.profile, "source_id": bindings.source_id,
+        "isolation_id": isolation.observation_id, "key_id": public.key_id,
+        "issued_at": issued_at, "expires_at": issued_at + REHEARSAL_SECONDS_V1,
+        "issued_boot_ns": issued_boot_ns,
+        "expires_boot_ns": issued_boot_ns + REHEARSAL_SECONDS_V1 * 10**9,
+    }
+    with administrative_evidence_v1() as evidence:
+        if evidence.frontier != frontier:
+            raise CertificationIssueError("rehearsal_frontier_changed", "profile")
+    if (observe_local_rehearsal_v1() != isolation or _completed_migration_id() != migration
+            or _installation_frontier_v1() != (installation, head, build)):
+        raise CertificationIssueError("rehearsal_frontier_changed", "installation")
+    return {**payload, "permit_id": _install_rehearsal_v1(_sign_certificate_v1(payload)) if apply else None}
 
 
 def main(argv: list[str] | None = None) -> int:

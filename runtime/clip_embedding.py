@@ -58,9 +58,8 @@ def _default_model_dir() -> Path:
     env = os.environ.get("METNOS_CLIP_MODEL_DIR")
     if env:
         return Path(env)
-    # ADR 0148: derive from PATH_ROOT.
     import config as _C
-    return _C.PATH_ROOT / "models" / "siglip"
+    return _C.PATH_MODELS / "siglip"
 
 
 # ── Engine ──────────────────────────────────────────────────────────

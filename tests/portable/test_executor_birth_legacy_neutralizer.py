@@ -153,6 +153,57 @@ def test_successor_observer_accepts_mask_created_from_absent_name(tmp_path):
 
 
 @POSIX_ONLY
+@pytest.mark.parametrize("case", [
+    "previous", "current", "later_release", "missing_record", "changed_record",
+    "record_mode", "record_link", "record_hardlink", "unexpected_history",
+    "wrong_unit", "missing_unit", "wrong_legacy_id", "wrong_hash",
+])
+def test_successor_observes_initial_absence_without_recreating_history(tmp_path, case):
+    from executor_birth_legacy_retirement import LegacyRetirementStepV1
+
+    root = _tree(tmp_path)
+    steps = (LegacyRetirementStepV1(
+        "initial", "a", "system_unit", "system", "systemd/new.service",
+        "preserve_replaced_system_unit",
+    ),)
+    key = ("system", steps[0].locator)
+    previous, current = {key: b"release N"}, {key: b"release N+1"}
+    _apply(root, steps, previous)
+    unit = root / steps[0].locator
+    preserved = unit.with_name(unit.name + neutralizer.PRESERVED_EXTENSION_V1)
+    record = preserved.with_name(preserved.name + ".receipt.json")
+    unit.write_bytes(previous[key] if case == "previous" else current[key])
+    unit.chmod(0o644)
+    if case == "later_release":
+        previous, current = current, {key: b"release N+2"}
+        unit.write_bytes(current[key])
+    elif case == "missing_record": record.unlink()
+    elif case == "changed_record": record.write_bytes(b"{}"); record.chmod(0o600)
+    elif case == "record_mode": record.chmod(0o644)
+    elif case == "record_link":
+        record.rename(root / "elsewhere")
+        record.symlink_to(root / "elsewhere")
+    elif case == "record_hardlink": os.link(record, root / "elsewhere")
+    elif case == "unexpected_history": preserved.write_bytes(b"unexpected")
+    elif case == "wrong_unit": unit.write_bytes(b"unsigned")
+    elif case == "missing_unit": unit.unlink()
+    elif case in {"wrong_legacy_id", "wrong_hash"}:
+        content = record.read_text().replace(
+            '"initial"' if case == "wrong_legacy_id" else '"sha256:',
+            '"other"' if case == "wrong_legacy_id" else '"invalid:',
+        )
+        record.write_text(content)
+    before = _read_only_snapshot(root)
+    fixture = (root, steps, previous, current, {})
+    if case in {"previous", "current", "later_release"}:
+        assert _observe_retired(fixture).startswith("sha256:")
+    else:
+        with pytest.raises((neutralizer.LegacyNeutralizerError, OSError)):
+            _observe_retired(fixture)
+    assert _read_only_snapshot(root) == before
+
+
+@POSIX_ONLY
 @pytest.mark.parametrize("case", ["permission", "replacement", "appeared", "wrong_owner"])
 def test_absence_observer_refuses_unsafe_or_racing_directories(tmp_path, monkeypatch, case):
     root = _tree(tmp_path)
@@ -397,7 +448,7 @@ def test_the_replaced_system_unit_is_preserved_and_reread(tmp_path: Path) -> Non
 
 
 @POSIX_ONLY
-@pytest.mark.parametrize("state", ["occupied_history", "changed_final", "missing"])
+@pytest.mark.parametrize("state", ["occupied_history", "changed_final"])
 def test_preservation_accepts_only_the_named_states(
     tmp_path: Path, state: str,
 ) -> None:
@@ -419,6 +470,59 @@ def test_preservation_accepts_only_the_named_states(
         preserved.write_bytes(b"previous")
     with pytest.raises(neutralizer.LegacyNeutralizerError):
         _apply(root, [step], {("system", step.locator): replacement})
+
+
+@POSIX_ONLY
+@pytest.mark.parametrize("interrupted", [False, True])
+def test_initially_absent_unit_converges_before_and_after_publication(tmp_path, interrupted):
+    root = _tree(tmp_path)
+    unit = root / "systemd" / "metnos-http.service"
+    step = _Step("legacy-http", "preserve_replaced_system_unit", "systemd/metnos-http.service")
+    replacements = {("system", step.locator): b"signed replacement"}
+
+    def crash(stage):
+        assert stage == "preservation_record_published"
+        raise InterruptedError
+
+    if interrupted:
+        with pytest.raises(InterruptedError):
+            neutralizer.neutralize_for_test_v1(
+                _capability(root), [step], replacement_fragments=replacements,
+                _crash_seam=crash,
+            )
+    initial = _apply(root, [step], replacements)[0]
+    assert initial.repeated is interrupted
+    assert not unit.exists()
+    assert not unit.with_name(unit.name + neutralizer.PRESERVED_EXTENSION_V1).exists()
+    assert _apply(root, [step], replacements)[0].repeated
+    unit.write_bytes(replacements[("system", step.locator)])
+    repeated = _apply(root, [step], replacements)[0]
+    assert repeated.repeated and repeated.content_hash == initial.content_hash
+    assert unit.read_bytes() == b"signed replacement"
+
+
+@POSIX_ONLY
+@pytest.mark.parametrize("tamper", ["unit", "history", "receipt", "replacement", "link"])
+def test_initial_absence_does_not_accept_unexpected_material(tmp_path, tamper):
+    root = _tree(tmp_path)
+    unit = root / "systemd" / "metnos-http.service"
+    step = _Step("legacy-http", "preserve_replaced_system_unit", "systemd/metnos-http.service")
+    replacements = {("system", step.locator): b"signed replacement"}
+    initial = _apply(root, [step], replacements)[0]
+    if tamper == "unit":
+        unit.write_bytes(b"unexpected")
+    elif tamper == "history":
+        unit.with_name(unit.name + neutralizer.PRESERVED_EXTENSION_V1).write_bytes(b"unexpected")
+    elif tamper == "receipt":
+        unit.with_name(initial.observed).write_bytes(b"{}")
+    elif tamper == "replacement":
+        replacements[("system", step.locator)] = b"different release"
+    else:
+        target = root / "target"
+        target.write_bytes(b"signed replacement")
+        unit.symlink_to(target)
+    with pytest.raises(neutralizer.LegacyNeutralizerError):
+        _apply(root, [step], replacements)
 
 
 @POSIX_ONLY

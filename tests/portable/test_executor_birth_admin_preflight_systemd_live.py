@@ -551,6 +551,113 @@ def test_origin_denies_transient_or_unclassified_units(
     ).detail.startswith("systemd origin identity")
 
 
+def _kernel_mount_observation(monkeypatch, *, unit="var-data.mount", changes=None):
+    observed = {
+        "FragmentPath": "", "Id": unit, "LoadState": "loaded",
+        "SourcePath": "/proc/self/mountinfo", "Transient": "no",
+        "UnitFileState": "", "DropInPaths": "",
+        "Where": "/" if unit == "-.mount" else "/var/data",
+        "What": "tmpfs", "Type": "tmpfs", "Options": "rw,nosuid,nodev",
+    }
+    observed.update(changes or {})
+
+    def show(_executable, _unit, properties):
+        assert properties == tuple(sorted(set(properties)))
+        return {name: (observed[name],) for name in properties}
+
+    monkeypatch.setattr(preflight, "_run_systemctl_show_v1", show)
+    return preflight._capture_systemd_origin_v1(
+        unit, systemctl_executable="/usr/bin/systemctl",
+        capture_file=lambda *_args: pytest.fail("kernel mounts have no file"),
+    )
+
+
+@pytest.mark.parametrize("unit", ["var-data.mount", "tmp.mount", "-.mount"])
+def test_kernel_mount_binds_observed_parameters_without_file_claims(monkeypatch, unit):
+    origin = _kernel_mount_observation(monkeypatch, unit=unit)
+    assert origin.origin_kind == "kernel_mount"
+    assert origin.source_path == "/proc/self/mountinfo"
+    assert origin.source_size > 0
+    assert origin.fragment_path is origin.source_uid is origin.source_mode is None
+    edge = preflight._SystemdManagerAddedEdgeV1(relation="After", **origin._asdict())
+    preflight._validate_systemd_manager_added_edge_v1(edge)
+    for field, value in (
+        ("source_path", "/tmp/mountinfo"), ("source_uid", 0),
+        ("fragment_path", "/etc/systemd/system/tmp.mount"),
+        ("source_size", 0), ("source_content_hash", "invalid"),
+        ("unit_file_state", "static"), ("unit_name", "tmp.service"),
+    ):
+        _assert_invalid(preflight._validate_systemd_manager_added_edge_v1,
+                        edge._replace(**{field: value}))
+
+
+@pytest.mark.parametrize("field,value", [
+    ("Where", "/srv/data"), ("What", "/dev/vda1"),
+    ("Type", "ext4"), ("Options", "ro,nosuid,nodev"),
+])
+def test_kernel_mount_parameter_change_changes_signed_observation(monkeypatch, field, value):
+    before = _kernel_mount_observation(monkeypatch)
+    after = _kernel_mount_observation(monkeypatch, changes={field: value})
+    assert before.source_content_hash != after.source_content_hash
+
+
+def test_perpetual_root_mount_binds_parameters_and_absent_source(monkeypatch):
+    origin = _kernel_mount_observation(
+        monkeypatch, unit="-.mount", changes={"SourcePath": ""},
+    )
+    assert origin.origin_kind == "kernel_mount"
+    assert origin.source_path is None
+    edge = preflight._SystemdManagerAddedEdgeV1(relation="After", **origin._asdict())
+    preflight._validate_systemd_manager_added_edge_v1(edge)
+    _assert_invalid(preflight._validate_systemd_manager_added_edge_v1,
+                    edge._replace(unit_name="var-data.mount"))
+    with_source = _kernel_mount_observation(monkeypatch, unit="-.mount")
+    changed = _kernel_mount_observation(
+        monkeypatch, unit="-.mount", changes={"SourcePath": "", "Options": "ro"},
+    )
+    assert len({origin.source_content_hash, with_source.source_content_hash,
+                changed.source_content_hash}) == 3
+
+
+@pytest.mark.parametrize("changes", [
+    {"Where": "/var/data"}, {"SourcePath": "/etc/fstab"},
+    {"DropInPaths": "/etc/systemd/system/-.mount.d/override.conf"},
+    {"Transient": "yes"}, {"Options": ""},
+])
+def test_perpetual_root_mount_rejects_invalid_origin(monkeypatch, changes):
+    _assert_invalid(_kernel_mount_observation, monkeypatch, unit="-.mount",
+                    changes={"SourcePath": "", **changes})
+
+
+@pytest.mark.parametrize("changes", [
+    {"SourcePath": "/tmp/mountinfo"}, {"SourcePath": ""},
+    {"Transient": "yes"}, {"UnitFileState": "generated"},
+    {"DropInPaths": "/etc/systemd/system/var-data.mount.d/override.conf"},
+    {"Where": "relative"}, {"Where": "/var/../data"},
+    {"What": ""}, {"Type": ""}, {"Options": ""},
+])
+def test_kernel_mount_rejects_unknown_or_incomplete_origin(monkeypatch, changes):
+    _assert_invalid(_kernel_mount_observation, monkeypatch, changes=changes)
+
+
+def test_kernel_mount_rejects_origin_drift_between_queries(monkeypatch):
+    _kernel_mount_observation(monkeypatch)
+    original = preflight._run_systemctl_show_v1
+
+    def show(executable, unit, properties):
+        result = original(executable, unit, properties)
+        if "Where" in properties:
+            result["SourcePath"] = ("/etc/fstab",)
+        return result
+
+    monkeypatch.setattr(preflight, "_run_systemctl_show_v1", show)
+    _assert_invalid(
+        preflight._capture_systemd_origin_v1, "var-data.mount",
+        systemctl_executable="/usr/bin/systemctl",
+        capture_file=lambda *_args: pytest.fail("must not read files"),
+    )
+
+
 @LINUX_ONLY
 def test_double_observation_runs_exact_sequence_and_returns_test_only_type(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,

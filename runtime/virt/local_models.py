@@ -114,7 +114,7 @@ def model_spec(role: str) -> dict:
                 "face": ("face", "METNOS_FACE_MODEL_DIR"),
             }[provider]
             path = (Path(os.environ[variable]) if variable and os.environ.get(variable)
-                    else config.PATH_ROOT / "models" / directory)
+                    else config.PATH_MODELS / directory)
         spec["model_dir"] = str(path)
     return spec
 

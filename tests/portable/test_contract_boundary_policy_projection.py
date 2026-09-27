@@ -35,8 +35,15 @@ TOOL = ROOT / "internal" / "tools" / "render_contract_boundary_policy.py"
 # source owner was removed or altered.
 # 23/9/2026: the approved exact-generation retirement adds only the publisher's
 # retirement-only grant; existing grants and authority boundaries are unchanged.
+# 24/9/2026: the approved first installation adds two exact convergence scopes:
+# read its initial source set, then verify every Birth receipt before activation.
+# 26/9/2026: completion retains its two declared capabilities; it is not an
+# ownership-chain coordinator (that narrower class permits only store_write).
+# 26/9/2026: explicit temporary isolated rehearsal reuses the F5 owner.
+# 27/9/2026: the managed installer and source preparation delegate to the
+# existing root-only installation transition; no additional runtime authority.
 GOLDEN_DIGEST_V1 = (
-    "sha256:f83f8b8dbe9f57d2400941e50ca91f9f862deb67f78fb11fc84393bfe27b4a65"
+    "sha256:375c012b71239891ea3d27910dd6fbc129f2e84437bda53ca4608914d26a9201"
 )
 
 POLICY_NAMES = (
@@ -112,6 +119,8 @@ def test_contract_convergence_owner_is_exact_in_all_three_registries() -> None:
             "store_write", "verified_store_read",
         )),
         ("_candidate_for_transition", ("authoring_read", "authoring_write")),
+        ("_initial_shadow_root", ("authoring_read",)),
+        ("_finish_initial_catalog", ("store_write", "verified_store_read")),
         ("converge", (
             "authoring_read", "authoring_write", "birth", "store_write",
             "verified_store_read",

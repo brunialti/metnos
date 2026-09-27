@@ -128,9 +128,10 @@ def test_successor_stops_under_exclusion_and_rechecks_additional_units(
     assert not held
 
 
+@pytest.mark.parametrize("binding", ["release_catalog", "initial_catalog"])
 @pytest.mark.parametrize("changed", ["uid", "gid"])
 def test_successor_rejects_an_owner_inconsistent_with_layout(
-        monkeypatch, service_binding, changed):
+        monkeypatch, service_binding, changed, binding):
     import stack_reconcile
     from install import executor_birth_systemd_quiescence as quiescence
 
@@ -146,9 +147,88 @@ def test_successor_rejects_an_owner_inconsistent_with_layout(
                         lambda *args: pytest.fail("unbound release stopped"))
     with pytest.raises(guard.ContractCutoverGuardError, match="identity or state changed") as refused:
         with guard._contract_cutover_guard_core_v1(
-                SimpleNamespace(), release_catalog=catalog, catalog_trusted_owner=owner):
+                SimpleNamespace(), **{binding: catalog}, catalog_trusted_owner=owner):
             pytest.fail("changed service identity accepted")
     assert refused.value.code == "cutover_lock_unavailable"
+
+
+@pytest.mark.parametrize("unsafe", [
+    {"ActiveState": "active"}, {"MainPID": 123}, {"MainPID": "invalid"},
+    {"LoadState": "error"}, {"LoadState": "manager-absent"},
+    {"ManagerError": "unreachable"},
+])
+def test_initial_catalog_stays_observable_across_partial_chain(
+        monkeypatch, service_binding, unsafe):
+    import stack_reconcile
+    from install import executor_birth_systemd_quiescence as quiescence
+
+    account, layout = service_binding
+    owner = (account.uid, account.gid)
+    catalog, unit, held = object(), "metnos-future.timer", []
+    plan = quiescence.SystemdQuiescencePlanV1(
+        (quiescence.SystemdQuiescenceBatchV1("system", (unit,)),),
+        "sha256:" + "1" * 64,
+    )
+    monkeypatch.setattr(quiescence, "_plan_release_systemd_quiescence_v1", lambda value: (
+        plan if value is catalog else pytest.fail("catalog binding lost")
+    ))
+    monkeypatch.setattr(guard, "_installed_service_units_v1", lambda: pytest.fail(
+        "first installation read the incomplete ownership chain",
+    ))
+    monkeypatch.setattr(quiescence, "_quiesce_release_systemd_core_v1",
+                        lambda *args: pytest.fail("initial units must not be stopped"))
+    state = {"LoadState": "not-found", "ActiveState": "inactive", "MainPID": 0}
+
+    class Systemctl:
+        def show(self, name, scope):
+            assert held == [True]
+            if name == unit:
+                assert scope == "system"
+                return dict(state)
+            return {"LoadState": "masked", "ActiveState": "inactive", "MainPID": 0}
+
+    @contextmanager
+    def exclusion(**kwargs):
+        assert kwargs == {
+            "wait_s": 2, "catalog_trusted_owner": owner,
+            "path": layout.state / "metnos-stack-reconcile.lock",
+            "owner_uid": account.uid,
+        }
+        held.append(True)
+        try:
+            yield
+        finally:
+            held.pop()
+
+    monkeypatch.setattr(stack_reconcile, "catalog_reconcile_lock", exclusion)
+    reconciler = SimpleNamespace(systemctl=Systemctl(), require_quiescent=lambda: {
+        "source": "inactive_http_and_inactive_sidecar",
+    })
+    with guard._contract_cutover_guard_core_v1(
+            reconciler, initial_catalog=catalog,
+            catalog_trusted_owner=owner) as (proof, _evidence):
+        for load_state in ("not-found", "masked", "loaded"):
+            state["LoadState"] = load_state
+            guard._require_maintenance_session_v1(proof)
+        state.update(unsafe)
+        with pytest.raises(guard.ContractCutoverGuardError, match="cutover_blocked"):
+            guard._require_maintenance_session_v1(proof)
+    assert not held
+
+
+@pytest.mark.parametrize("catalogs", [
+    {"initial_catalog": object()},
+    {"initial_catalog": object(), "release_catalog": object()},
+])
+def test_initial_catalog_requires_authentication_before_lock(monkeypatch, catalogs):
+    import stack_reconcile
+
+    monkeypatch.setattr(stack_reconcile, "catalog_reconcile_lock",
+                        lambda **kwargs: pytest.fail("unverified catalog acquired lock"))
+    with pytest.raises(guard.ContractCutoverGuardError, match="cutover_lock_unavailable"):
+        with guard._contract_cutover_guard_core_v1(
+                SimpleNamespace(), catalog_trusted_owner=(41, 42), **catalogs):
+            pytest.fail("unverified or conflicting catalogs accepted")
 
 
 def test_maintenance_session_is_live_only_inside_the_held_guard(monkeypatch):

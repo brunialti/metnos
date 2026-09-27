@@ -36,6 +36,19 @@ fallisce. Viceversa, un timer in attesa o un worker di LRE la cui funzione non
 sia abilitata possono essere sani proprio perché stanno aspettando. Prima di intervenire va
 quindi letto il messaggio di salute, non soltanto il colore dell'indicatore.</p>
 
+<h2 id="controlli-periodici">Frequenza dei controlli</h2>
+<p>In <strong>Servizi → Controlli periodici</strong> l'amministratore può
+scegliere ogni quanti minuti controllare e, se necessario, ripristinare i
+servizi: 30 minuti per impostazione predefinita, da 5 a 1.440 minuti.
+La preferenza è persistente e non richiede riavvio o nuova certificazione.
+Un controllo già avviato termina normalmente; i successivi usano il nuovo
+intervallo. Il primo controllo dopo l'avvio dello stack parte dopo tre minuti.</p>
+<p>La frequenza modifica soltanto la pianificazione: comandi, limiti e
+verifiche di sicurezza restano quelli del programma firmato. Il controllo
+completo libera la memoria al termine; il piccolo processo che attende la
+scadenza funziona anche quando l'interfaccia web non risponde. Arrestando lo
+stack si arrestano anche i controlli periodici.</p>
+
 <h2 id="azioni">Avviare, arrestare e riavviare</h2>
 
 <p><strong>Avvia</strong> rende operativo un servizio arrestato.

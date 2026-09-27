@@ -22,7 +22,7 @@ import urllib.request
 from pathlib import Path
 from typing import Literal
 
-from . import InboundMessage, OutboundMessage
+from . import ChannelNotConfigured, InboundMessage, OutboundMessage
 import config as _C  # §7.11
 
 API_BASE = "https://api.telegram.org/bot{token}/{method}"
@@ -85,8 +85,8 @@ class TelegramChannel:
             or legacy.get("TELEGRAM_CHAT_ID")
         )
         if not self.token:
-            raise ValueError("TELEGRAM_BOT_TOKEN mancante (env, "
-                             "credentials store, o credentials.env)")
+            raise ChannelNotConfigured("TELEGRAM_BOT_TOKEN mancante (env, "
+                                       "credentials store, o credentials.env)")
         # state_path=False disabilita la persistenza (utile in test);
         # state_path=None usa il default; altrimenti il path indicato.
         if state_path is False:

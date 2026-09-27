@@ -163,7 +163,7 @@ def _embedding_model_files() -> tuple[Path, ...]:
         return resolved_model_files(spec.get("model_dir"))
     configured = spec.get("model_dir") if spec.get("provider") == "bge" else None
     model_dir = Path(configured) if configured else (
-        config.PATH_ROOT / "models" / "embedding-bge")
+        config.PATH_MODELS / "embedding-bge")
     return (
         model_dir / "onnx" / "sentence_transformers_int8.onnx",
         model_dir / "tokenizer.json",

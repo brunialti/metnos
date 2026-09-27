@@ -13,13 +13,27 @@ bash install/bootstrap.sh
 ```
 
 The bootstrap script resolves the source tree, creates or reuses
-`<METNOS_INSTALL_ROOT>/.venv`, installs the declared Python dependencies and
+`<METNOS_INSTALL_ROOT>/.venv`, installs the exact hashed release dependencies and
 then runs the six-phase Python orchestrator from that same checkout. Direct
 orchestrator commands must use the installation environment:
 
 ```bash
 ./.venv/bin/python -m install
 ```
+
+The supported closed distribution is Linux x86_64 with CPython 3.12. Bootstrap
+and phase 1 both use `requirements-linux-x86_64.lock` with mandatory hashes,
+binary wheels and no dependency resolution outside the lock. An incompatible
+interpreter, missing lock, failed dependency installation or failed core import
+stops installation; `--force` cannot bypass the supported platform. Bootstrap
+does not upgrade pip or install an independent list of unpinned packages.
+
+Downloaded models live in `$METNOS_USER_DATA/models`, independently of the
+sealed source release. `METNOS_MODELS_DIR` explicitly selects an existing
+model directory. Installer, runtime, Tutor fingerprints and sandbox projections
+resolve the same location. Moving a deployment that used `<install_root>/models`
+requires selecting that existing location or moving the verified model files
+before activation; changing code alone does not relocate models.
 
 The shell handoff prepends both the selected repository root and its `runtime/`
 directory to `PYTHONPATH`. This is required by the runtime's reviewed flat peer
@@ -41,38 +55,29 @@ byte unchanged.
 
 ## Birth authority inputs (RM-0008 group 2)
 
-Phase 3 prepares an **inactive** Birth authority set. It does not activate the
-Birth runtime and it migrates no caller.
+The public six-phase coordinator `install/managed_install.py` requests
+administrative privileges after real user consent. It prepares the dedicated
+service account and calls the existing closed installation transition.
+`_prepare_install_source_v1` creates fresh installation author material,
+root-only operator/reviewer keys and public registries using the existing
+provisioners. Users do not run a separate authority command.
 
-Before Phase 3 the administrator uses the public, idempotent procedure:
+Private operator/reviewer keys live under
+`/var/lib/metnos-operator-authority/<uid>/`; only the public authority registries
+are copied to the service account. Existing exact authorities are verified on
+re-entry. Links, changed bytes, ownership or permissions fail closed. A phase
+marker or a service-account write cannot authorize activation.
 
-```bash
-sudo "$PWD/.venv/bin/python" -m install.operator_authority --user "$USER"
-```
-
-The procedure creates two fresh private keys in the root-only fixed location
-`/var/lib/metnos-operator-authority/<uid>/` and installs two public registries
-in `$METNOS_USER_CONFIG/birth/operator-input-v1/`:
-
-- `approval-authority.json` — public approver keys, actors and scopes;
-- `semantic-authority.json` plus `semantic-public/<name>.pub` — the public
-  semantic reviewer keys the document references.
-
-The corresponding private keys must never be placed there, in the authority set
-or anywhere the Birth process can read. The procedure refuses a root target,
-symlinks, unexpected objects, changed bytes, owners or modes; re-entry verifies
-an exact completed result. Phase 3 performs a read-only preflight
-of these two documents before it publishes the executor contracts: a missing or
-malformed registry stops the phase with a distinct error rather than being
-completed by a generated key.
-
-On a fresh installation the author key does not exist yet, so the first call
-defers without creating any object; the provisioner runs to completion right
-after the contracts are installed, and is idempotent. It creates
-`author-root-v1`, one immutable `authority-sets/<set_id>` and the marker
-`prepared-v1.json`, whose state is `prepared_not_active`.
+The complete authenticated transition prepares the distribution and initial
+catalog while services remain inactive. Activation happens only after the
+application preparation phases, through the same administrative transition.
 
 ## Closed-build administrative installation (RM-0008 group 6)
+
+Reading runtime configuration from the administrative process must not create
+directories in the service account's data tree. The unprivileged runtime
+creates its own private subdirectories; host provisioning owns the canonical
+parent layout. Importing configuration as root has no initialization effects.
 
 The root-only G6 installer consumes an authenticated closed distribution while
 the fixed deployment lock is held. It verifies the full release twice around
@@ -122,6 +127,16 @@ configured target remain subject to strict checks. An unconfigured watchdog's
 equivalent disabled values (`0` and `infinity`) have one canonical identity;
 explicitly configured watchdog values are still checked against the signature.
 
+Kernel-discovered mount dependencies are recorded as `kernel_mount`, without
+inventing a root-owned fragment. They require a non-transient loaded `.mount`,
+the exact `/proc/self/mountinfo` origin, no fragment, unit-file state or drop-ins,
+and a digest of the manager's mount point, source, filesystem type and options.
+The perpetual root mount synthesized by systemd (`-.mount`, `Where=/`) may
+have an empty `SourcePath`; this absence is bound in the digest, with the same
+parameter checks. Other mounts cannot use an empty source.
+Origin identity is rechecked with those parameters; the existing double
+observation detects changes. Other unclassified origins remain denied.
+
 The complete Linux x86_64 CPython 3.12 release uses
 `requirements-linux-x86_64.lock`, including Playwright and its pinned runtime
 dependencies because the signed catalog installs the browser sidecar. The
@@ -160,6 +175,14 @@ On replay, the immutable predecessor census is securely reread and all its
 transition bindings are checked against the current authenticated inputs.
 It is not rebuilt from paths that retirement may already have renamed, and it
 does not replace current quiescence or topology checks.
+
+Initial contract convergence runs as the signed service account in one bounded
+transient system service. Like the runtime Birth host, it uses `Delegate=yes`
+and `DelegateSubgroup=metnos-birth-host`: a plain uid-switched subprocess cannot
+provide the runner's required isolation. Its environment is cleared and rebuilt
+from the authenticated descriptor; interruption stops the entire transient unit,
+with a separate manager timeout if the controller is killed. This starts no
+catalog consumer and creates no persistent service.
 
 A successor authenticates the selected completed predecessor and recomputes its
 existing signed dominant-startup receipt. Identical historical repository
@@ -226,6 +249,19 @@ admission. A successful admission is followed by a quiescence-controlled
 activation and a verified catalog reread. Do not run a development checkout's
 runtime against the live store, or publish from a linked worktree.
 
+After initial catalog activation, the candidate's serialization lock remains
+outside the moved container. Legacy-state verification accepts this exact
+digest-named lock with empty or NUL content and unchanged private service
+ownership, permissions and link count. The lock is not deleted or treated as
+an incomplete catalog; other unexpected shadow entries remain invalid.
+
+Initial transition maintenance binds its lifecycle lock to the authenticated
+deployment account and observes the current signed service catalog. Units may
+start absent and become installed, but must remain inactive with PID zero.
+This works while the first ownership chain is incomplete, including retry;
+ordinary readers continue to reject partial chains. Unknown system-manager
+state is refused, and initial services are never stopped implicitly.
+
 The administrative development wrapper is
 `internal/tools/rm0008_release_cycle.py publish --executor <name> [--plan]`.
 It authenticates the selected release, requires a clean primary checkout,
@@ -264,12 +300,25 @@ harness, issue an F5 certificate, migrate state or activate lifecycle changes.
 New prepared sets also contain the maintenance capability
 `promoter:quarantine`, with its own producer key through the existing catalog.
 An older set without that optional F5 capability can still bootstrap F4.
-Quarantine itself requires the fixed F5 activation and an already migrated
+Productive quarantine requires the fixed F5 activation and an already migrated
 `birth/executor_epochs.sqlite` in the selected instance state. Its review
 outbox is `birth/failure_reviews.sqlite` in the same private directory.
 These files are neither populated by ordinary F4 startup nor synthesized as
 replacement migration evidence. Live feedback wiring and final qualification
 remain development work; provisioning the optional capability does not enable it.
+
+The approved laboratory candidate adds `rehearse plan` and `rehearse issue`
+to the existing administrative F5 launcher. It requires completed migration,
+a frozen evidence profile and independently observed native isolation. The
+same certification owner signs a separate one-hour `rehearsal.json`; neither
+the permit nor its runtime type is accepted as productive certification.
+Every use checks expiry, authority, installation/head/build, migration and
+native containment again. A present invalid permit refuses rather than
+falling back to production. No automatic renewal, service or extra key is
+introduced. Currently only private Linux directory containers with private
+namespaces are supported; other native layouts refuse. This candidate has
+unit and native observer evidence, but has not completed installed HTTP
+acceptance. See `internal/reports/rm0008-f5-certification-order-20260924.md`.
 
 ### Optional one-time lifecycle cutover (development)
 
@@ -290,6 +339,19 @@ recorded root-owned at `certification-v1/migration-plan.json` (0644). Planning
 changes nothing else. The selected sources are `executor_stats` in the state
 root and `proposal_promote` in the data root.
 
+The administrative launcher selects data, state and configuration paths from
+the authenticated HTTP service catalog before importing runtime configuration.
+Caller overrides cannot redirect these readers. Its scratch workspace remains
+separate. The administrative worker binds the catalog lock to the resolved service
+account's UID/GID; it never creates a replacement root-owned service lock.
+It starts with fresh service configuration and retains the same lock while
+using the existing temporary service identity for catalog reads and migration.
+It restores root before recording completion. No subprocess tries to acquire
+the lock held by its parent.
+Its fixed command search path includes the operating system's administrative
+directories, so checking a retired user manager can resolve `runuser` without
+inheriting executable paths from the caller.
+
 `apply` holds the existing maintenance barrier for the whole migration and then
 proves separately that the services which write those stores are stopped. The
 barrier's own target list is the legacy bindings the F4 transition retired;
@@ -305,7 +367,7 @@ or the catalog selection moved. After the copy each source is made unwritable
 and cannot close a handle a running process already holds, which is again why
 the barrier comes first.
 
-Inside the service-account child the epoch store must already exist at
+Under the service identity the epoch store must already exist at
 `birth/executor_epochs.sqlite`; it is not created here. Every selectable
 generation is admitted first, so no window exists in which a restricted
 executor becomes visible again. The stores are then read read-only and
@@ -314,7 +376,7 @@ the exact source object rechecked before and after. Counters and instants do
 not cross: **the inactivity clock restarts at cutover**, so nothing can be
 archived for `METNOS_EXECUTOR_DEPRECATED_DAYS` afterwards.
 
-The root parent writes `certification-v1/migration.json` (0644, root-owned)
+The same worker restores root and writes `certification-v1/migration.json` (0644, root-owned)
 last, inside the barrier, and only when every decision is settled. An open promotion or a
 restriction with no selectable generation blocks the marker: those cases need a
 disposition, and losing them silently is what retirement must not do. A
@@ -328,6 +390,13 @@ certificate, and without it they refuse individually rather than reselecting the
 retired state.
 
 ### Optional evidence-derived F5 certificate (development)
+
+The administrative `evidence` command accepts one bounded JSON line. For a
+cycle, send `start_cycle`, read its flushed acknowledgment, perform the tests,
+then send `finish_cycle` on the same input stream. The evidence owner stays
+open throughout. Disconnecting or sending another document interrupts the
+cycle; reopening records that interruption and resets consecutive successes.
+
 
 `install.birth_certification_issuer` signs the F5 activation document. It is
 not part of the six-phase installer, ordinary Birth or service startup, and it
@@ -408,57 +477,50 @@ its legacy drop-ins; preserve private choices in the existing configuration.
 
 ## Canonical paths and user isolation
 
-The installer and every generated unit use the same environment contract as
-`runtime/config.py`:
+The bootstrap `.venv` only launches the administrative installer. The installed
+source and Python environment live in the existing root-owned release stores.
+`METNOS_INSTALL_ROOT` and `METNOS_VENV` identify those verified objects.
 
-| Purpose | Variable | Default |
-|---|---|---|
-| source tree | `METNOS_INSTALL_ROOT` | resolved checkout |
-| Python environment | `METNOS_VENV` | `<METNOS_INSTALL_ROOT>/.venv` |
-| user data | `METNOS_USER_DATA` | `~/.local/share/metnos` |
-| user state | `METNOS_USER_STATE` | `~/.local/state/metnos` |
-| user configuration | `METNOS_USER_CONFIG` | `~/.config/metnos` |
+The fixed service account uses `/var/lib/metnos-service` as its home. Its
+`METNOS_USER_CONFIG`, `METNOS_USER_DATA` and `METNOS_USER_STATE` remain distinct
+XDG directories, respectively `.config/metnos`, `.local/share/metnos` and
+`.local/state/metnos`. The caller's optional services profile and real consent
+are copied into this installation; private authorities from other instances,
+credentials, history, sessions and mutable databases must never be borrowed.
 
-The source tree and its virtual environment belong to the installation. Data,
-credentials, sessions, capability choices and operational state belong to the
-account running Metnos. Code must not derive the virtual environment from an
-application user's name or data directory, and must not collapse the three XDG
-roots into one path.
-
-An installation test must override all three user roots and the workspace before
-importing runtime modules. Tests must never borrow the live user's credentials,
-turn history, signing keys, session registry or mutable databases.
+Clean-install tests use a separate systemd guest with its own service account,
+stores and units. A container on the same host sees its own localhost; explicit
+reachable endpoints are required to reuse host services.
 
 ## Six-phase responsibilities
 
-1. **Bootstrap** runs pre-flight checks, creates the per-user directory layout,
-   installs the full Python dependency set and verifies core imports.
-2. **Infrastructure** installs the mandatory BGE-M3 text embedder, binds the
-   logical LLM tiers and installs only the sidecars explicitly selected.
-3. **Metnos source** verifies `install/`, `runtime/` and `executors/`, creates
-   initial stores, copies the complete i18n seed, publishes executor contracts
-   with a key trusted by this installation and uses the same key to sign the
-   accepted instance-localization request. On a fresh installation this phase
-   also performs the one-way switch to the immutable contract store before the
-   runtime services that admit work, read contracts or publish contract
-   translations are installed and started. Infrastructure prepared by phase 2,
-   such as a local language-model service, may already be running.
-4. **Sensitive data** creates the administrator key and can collect Telegram,
-   IMAP/SMTP, Anthropic, OpenAI and GitHub credentials through the encrypted
-   runtime store. It also records whether the Web UI listens on every private-
-   LAN IPv4 interface (the guided and `--yes` default) or on loopback only.
-   Google Workspace is connected later through OAuth.
-5. **Systemd services** renders user units, establishes `metnos.target` as the
-   integrated owner where safe, and records bounded health results.
-6. **First boot** selects catalogued capabilities, emits a consumable
-   administrator link only when the HTTP service is available, prints exact
-   detected local/LAN URLs without placeholders, and writes those URLs to the
-   installation summary.
+1. **Bootstrap:** verify the exact installed dependency lock, prerequisite
+   imports and service-account directories.
+2. **Infrastructure:** download verified BGE-M3 assets and prepare every local
+   companion unless explicitly replaced in `services.toml`. No new service is
+   activated here; `--skip` is not accepted by the managed flow.
+3. **Metnos source:** verify the installed authenticated initial catalog, seed
+   stores and localization, then compile and verify Tutor before startup.
+   Project the existing native CPU budget into the compiler before importing
+   numerical libraries; respect affinity, container quotas and tighter caps.
+4. **Sensitive data:** create the administrator key and collect optional
+   credentials through the encrypted store. The managed listener uses
+   `0.0.0.0:8770`; Google Workspace connects later through OAuth.
+5. **System services:** the administrative parent activates the authenticated
+   transition; the unprivileged phase checks HTTP and selected service health.
+6. **First boot:** select catalogued capabilities, print a consumable onboarding
+   link and exact detected URLs, and save the installation summary.
 
-Each completed phase writes a per-user sentinel below
-`$METNOS_USER_STATE/install/`. Re-running the installer skips completed phases;
-`--force-phase N` removes and rebuilds only the selected phase's result. A
-mandatory failure must stop the run and must not commit that phase's sentinel.
+The parent runs application phases as the fixed service account, using the
+installed Python environment. It writes LRE's default-off configuration before
+activation. Local dependency units are prepared inactive under fixed system
+names; existing incompatible units are refused.
+
+Sentinels under `$METNOS_USER_STATE/install/` support resumption. They are not
+security evidence: every continuation authenticates the received source,
+distribution and durable transition. `--force-phase N` repeats a phase;
+`--only-phase N` requires earlier phases. A failed phase never commits its
+sentinel. Changing the profile after phase 2 stops resumption.
 
 ## Model and asset contract
 
@@ -478,9 +540,9 @@ An absent or corrupt mandatory asset aborts the phase. Optional assets must
 likewise use a pinned revision or digest whenever the upstream distribution
 provides a stable artifact.
 
-A compatible text endpoint may be local or remote. If one already answers at
-the configured address, phase 2 binds the local tiers to it without downloading
-another engine. Managed local provisioning must report artifact installation,
+A compatible text endpoint may be local or remote. Reuse requires an explicit
+entry in `services.toml`; a responding undeclared local endpoint is a conflict,
+not permission to adopt it. Managed local provisioning must report artifact installation,
 service start and endpoint health separately; downloaded files alone are not a
 healthy model service.
 
@@ -496,45 +558,12 @@ from that bundled baseline when it opens the per-user catalog. It never
 overwrites an existing translation. Consequently a release can add a string or
 a language without discarding that user's reviewed wording.
 
-Executor signatures distributed by the project do not grant trust on a new
-host. Phase 3 generates or reuses that installation's trusted signing material.
-It writes each key component atomically and the private component first. If a
-fresh key creation stops between the two writes, the next fresh-install retry
-derives the missing public component from the valid private key; a public-only
-or malformed remainder stays fail-closed. Phase 3 then normalizes the
-language-state companions, signs and verifies every installed, non-retired
-contract, prepares an isolated immutable generation catalog and activates it.
-This census also includes contracts belonging to disabled
-skills: disabling a skill controls visibility, but does not remove its installed
-contract or authorize a later fallback to mutable source files. The preparation
-report is written durably before activation, so a crash between the marker and
-the store move can be resumed without
-guessing. The activation is allowed only while the central lifecycle lock is
-held, HTTP and the contract readers, schedulers, publishers and restart
-controllers are proven inactive, and the browser broker reports no work in
-progress. Phase-2 utilities that do not consume contracts, such as an LLM or a
-search service, need not be stopped. An older live installation must therefore
-be stopped explicitly; a momentarily idle HTTP endpoint is not sufficient
-evidence of quiescence. Phase 3 does not stop or later restart a live stack on
-the operator's behalf: it fails with a stable diagnostic and leaves its phase
-sentinel uncommitted, so the phase can be resumed after an explicit maintenance
-stop.
-
-Once the immutable store is active, phase 3 never runs `sign-all` again. A
-re-run sends each installed, non-retired authoring source through the
-layout-aware technical publisher, which signs and publishes under one
-per-contract lock. The publisher preserves authenticated retirement tombstones:
-reinstalling does not
-silently reactivate an executor whose authoring directory still exists. The
-marker-only and root-only recovery states remain fail-closed for normal runtime
-readers. Under the same stopped-stack guard, the installer completes a
-marker-only recovery only from the exact saved preparation report. For a valid
-root-only store it instead reconstructs the current catalog by authenticating
-the bindings and revisions already present in that root; an old initial report
-would be stale after later publications. Missing, stale or inconsistent
-evidence blocks the phase with a diagnostic instead of inventing recovery
-state. Catalog verification finally authenticates every binding and loads the
-resulting contracts through the same loader used by the server.
+Distributed executor signatures alone do not establish local trust. The
+administrative initial-adoption path below binds the reviewed received source,
+catalog and local receipts. Phase 3 verifies the resulting immutable catalog
+through the ordinary authenticated loader. It does not run `sign-all`, restore
+retired contracts or use an old technical-publisher bypass. Disabled skills
+still retain their installed contracts; visibility is a separate concern.
 
 Phase 6 reads the first-party capability switches from
 `runtime/skills_catalog.py`; documentation must not maintain a competing list.
@@ -544,6 +573,20 @@ OAuth-backed provider flow, not through a distinct phase-6 switch.
 Documentation changes affect Tutor's knowledge base. Any change to public
 documentation, UI navigation, manifests, executor descriptions or installation
 guides requires a Tutor rebuild and a query-level verification before release.
+
+## Initial distributed catalog adoption
+
+A proven new instance may adopt the exact catalog of a reviewed distribution.
+The root provisioner validates the accepted source census and authenticated
+initial journal, then passes an immutable anonymous root-owned descriptor to
+the delegated initial producer. Each submission must match its bound code,
+manifest, language state, origin and admission context. Resume accepts only
+the same catalog. An empty store or a newly generated signature is insufficient.
+Standard, lint, closure and authorization checks remain mandatory; signed local
+receipts explicitly mark adoption and dynamic checks not applicable. These acts
+never count toward F5 technical-admission thresholds. Ordinary new, modified or
+imported components still require full Birth. Catalog activation remains atomic.
+This candidate requires complete isolated installation acceptance before release.
 
 ## Credentials
 
@@ -567,20 +610,30 @@ source from which lists and tests should be derived:
 
 | Name | Purpose | Lifecycle |
 |---|---|---|
-| `searxng` | self-hosted web search | user service with health check |
-| `photon` | offline geocoding | user service with health check |
+| `searxng` | self-hosted web search | system service with health check |
+| `photon` | offline geocoding | system service with health check |
 | `vlm` | visual-language enrichment | lazy process; no persistent unit |
 | `playwright` | JavaScript rendering and graphical site sessions | user service; Side also requires Xvfb |
 
-Sidecars are optional and off by default. An absent sidecar leaves only its
+Sidecars are optional capabilities but are installed locally by default.
+The optional user `services.toml` selects existing endpoints; every omitted
+component stays local. Explicit `--skip` excludes a companion. The profile
+is validated and probed before phase-2 downloads and before phase-5 startup;
+invalid or unreachable selections stop rather than provisioning replacements.
+No cloud fallback is selected after a local failure. Generated private
+application bindings agree with the profile included in the signed system
+service catalog, which excludes externally owned services. Profile identity is recorded in phases 2 and 5;
+resume detects changes, including removal. Existing local companion ownership
+must be migrated explicitly before switching. See `install/SERVICES.md`.
+An absent sidecar leaves only its
 dependent capability dormant or explicitly degraded. A sidecar installer must
 distinguish downloaded, installed, started, healthy and failed states; it must
 not turn a partial result into success.
 
-All persistent units installed by this flow are user units and require no
-`sudo`. Keeping them alive without an interactive login may require the separate
-host-administrator command `loginctl enable-linger`. The VLM remains lazy even
-when its assets have been installed.
+Persistent units are system units running as the dedicated service account.
+The administrative coordinator prepares them; no user linger is required. The
+VLM remains lazy. For locally installed vision the coordinator writes the
+following restricted startup profile from the verified asset paths.
 
 For a closed-build system service, optional native vision assets are separate
 installation prerequisites, not changes to a signed unit. An administrator can
@@ -615,8 +668,8 @@ user state/data roots, including in isolated test installations.
 
 ## Integrated service lifecycle
 
-On a fresh host, `metnos.target` owns the HTTP server and installed companion
-units. The i18n translator timer is a non-optional dependency: phase 5 installs
+On a fresh host, the signed system-service catalog owns the HTTP server and
+selected companion units. The i18n translator timer is a non-optional dependency: phase 5 installs
 it before target activation, the target requires it, and composite readiness
 fails when the timer is not active. Its oneshot worker may be inactive between
 runs; the continuously active timer is the lifecycle and health object shown in
@@ -626,7 +679,15 @@ only checking whether a port is open. Coordinated lifecycle operations use
 `runtime/stack_reconcile.py` and must first establish that there is no active
 turn or browser session that would be interrupted.
 
-Phase 5 also installs the supervised LRE worker and creates
+The stack watchdog starts three minutes after timer activation. Its lightweight
+clock runs the check every 30 minutes by default; administrators can save a
+5–1440 minute interval on Services without a restart or another release.
+Only the interval is mutable; the command remains in the signed catalog.
+An in-progress check finishes before a preference change takes effect.
+Installer templates and the signed service catalog must agree; adopting this
+clock in an existing installation requires the first signed release.
+
+Before activation, the coordinator configures the supervised LRE worker and creates
 `~/.config/metnos/lre.env` with mode `0600` only when the file does not already
 exist. A fresh installation is disabled. An update preserves the existing file
 byte for byte, including an invalid file that requires operator attention;
@@ -634,7 +695,7 @@ missing, linked, oversized, ambiguous or malformed configuration fails closed.
 The worker and the HTTP control plane read this file through the same strict
 runtime parser. The unit must not load it as a systemd `EnvironmentFile`, which
 would introduce a second parser with different acceptance rules. The Services
-page writes only the canonical form and restarts the exact catalogued user
+page writes only the canonical form and restarts the exact catalogued
 unit. Disabling LRE never removes its store or artifacts, and the idle worker
 continues to publish health state.
 
@@ -662,14 +723,10 @@ roots: the installation root for `runtime.*` modules and its `runtime/`
 directory for top-level runtime packages such as `durable_workloads`. It uses
 the same installation virtual environment as the rendered units.
 
-If a system-level `metnos-http.service` is already active, phase 5 installs the
-user units but does not start a competing listener and does not disable the
-working baseline. The guarded migration procedure in `systemd/README.md` must
-prove the replacement and its rollback before ownership changes. Non-listening
-companions that must survive a reboot—including the idle LRE worker, the i18n
-timer and the watchdog—are attached directly to the user `default.target`
-during this transition. They are the same units later owned by
-`metnos.target`; the compatibility path does not create duplicate services.
+Existing installations use the administrative migration/release path. The
+fresh installer must not install competing user units, disable an unrelated
+listener or replace an incompatible local companion. Ownership changes and
+restarts require the guarded transition and a maintenance window.
 
 The HTTP health endpoint proves reachability, not planning quality or end-to-end
 operation. A release installation is complete only after a harmless natural-
@@ -732,9 +789,9 @@ Use the Metnos environment for all Python checks:
 ```
 
 Before a public release, also run the public-export gate and a clean install
-under a dedicated account with isolated data, state, configuration, workspace,
-ports and user services. That run must cover dependency installation, asset
-integrity, executor signing, catalog loading, server readiness, one real chat
+in a separate systemd guest with isolated data, state, configuration, workspace,
+ports and system services. That run must cover dependency installation, asset
+integrity, authenticated initial adoption, catalog loading, server readiness, one real chat
 turn, the full isolated test suite, service shutdown and restoration of the
 pre-existing instance. Preserve logs on failure; remove the isolated account's
 artifacts only after the result has been recorded.

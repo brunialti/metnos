@@ -66,6 +66,57 @@ def test_legacy_identity_facade_preserves_the_public_error_code(monkeypatch) -> 
     assert captured.value.code == "birth_transition_service_identity_changed"
 
 
+@LINUX_ONLY
+@pytest.mark.parametrize("obstruction", (None, "user-root", "account-changed", "open-authority"))
+def test_new_instance_roots_require_closed_account_and_absent_user_units(
+    tmp_path, monkeypatch, obstruction,
+):
+    from install import executor_birth_source_receiver as receiver
+
+    home = tmp_path / "service"
+    home.mkdir()
+    identity = provisioner._LegacyServiceIdentityV2(
+        "metnos", 991, 992, home, provisioner._LEGACY_SERVICE_IDENTITY_SEAL_V2,
+    )
+    descriptor = SimpleNamespace(
+        service_user="metnos", service_uid=991, service_gid=992,
+        system_unit_root=str(tmp_path / "system"),
+    )
+    prepared = SimpleNamespace(materials=SimpleNamespace(
+        descriptor=descriptor, predecessor=SimpleNamespace(installation_root=None),
+    ))
+    checked = []
+
+    def closed_account(name):
+        checked.append(name)
+        if obstruction == "open-authority":
+            raise RuntimeError("user authority is writable")
+        return SimpleNamespace(
+            name=name, uid=993 if obstruction == "account-changed" else 991,
+            gid=992, home=str(home),
+        )
+
+    def require_directory(path, *, owner):
+        assert path == Path(descriptor.system_unit_root) and owner == (0, 0)
+        return path
+
+    if obstruction == "user-root":
+        (home / ".config/systemd/user").mkdir(parents=True)
+    monkeypatch.setattr(receiver, "_service_account_snapshot_v1", closed_account)
+    monkeypatch.setattr(provisioner, "_require_transition_directory_v2", require_directory)
+    if obstruction is None:
+        assert dict(provisioner._transition_roots_v2(prepared, identity)) == {
+            "system": Path(descriptor.system_unit_root),
+        }
+        assert not (home / ".config").exists()
+        # Re-entry observes the account again rather than trusting past absence.
+        provisioner._transition_roots_v2(prepared, identity)
+        assert checked == ["metnos", "metnos"]
+    else:
+        with pytest.raises(provisioner.BirthProvisioningError, match="birth_transition_root_invalid"):
+            provisioner._transition_roots_v2(prepared, identity)
+
+
 def test_transition_child_environment_uses_the_shared_xdg_layout() -> None:
     descriptor = SimpleNamespace(
         installation_root="/var/lib/metnos/releases/1",
@@ -565,8 +616,9 @@ def test_initial_predecessor_replay_binds_every_historical_header(
 
 
 @LINUX_ONLY
+@pytest.mark.parametrize("new_instance", (False, True))
 def test_initial_predecessor_is_published_from_the_bound_legacy_entry(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, new_instance: bool,
 ):
     import executor_birth_ownership_authorities as authorities
     import executor_birth_ownership_coordinator as coordinator
@@ -634,15 +686,19 @@ def test_initial_predecessor_is_published_from_the_bound_legacy_entry(
     )
 
     provisioner._publish_initial_predecessor_v2(
-        "distribution", complete, root,
+        "distribution", complete, None if new_instance else root,
     )
 
     decoded = decode_predecessor_descriptor_v1(published["encoded"])
     assert published["root"] == tmp_path
     assert published["name"] == "predecessor-v1.json"
     assert decoded.transaction_id == D("3")
-    assert decoded.installation_root == root.as_posix()
-    assert decoded.files[0].path == "legacy.sh"
+    assert decoded.installation_root == (None if new_instance else root.as_posix())
+    if new_instance:
+        assert decoded.files == decoded.service_commands == ()
+        assert entry.read_bytes() == b"#!/bin/sh\nexit 0\n"
+    else:
+        assert decoded.files[0].path == "legacy.sh"
     assert decoded.service_catalog_id == catalog.catalog_id
 
 
@@ -953,12 +1009,14 @@ def test_successor_can_add_a_proven_absent_repository_entry_and_replay(
 
 
 @LINUX_ONLY
-@pytest.mark.parametrize(("release_sequence", "failure_point"), (
-    (1, None), (1, "authentication"), (1, "catalog"),
-    (2, None), (2, "authentication"), (2, "catalog"), (2, "previous"),
+@pytest.mark.parametrize(("release_sequence", "failure_point", "new_instance"), (
+    (1, None, False), (1, "authentication", False), (1, "catalog", False),
+    (2, None, False), (2, "authentication", False), (2, "catalog", False),
+    (2, "previous", False), (1, None, True), (1, "initial-origin", True),
 ))
 def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
     monkeypatch: pytest.MonkeyPatch, release_sequence: int, failure_point: str | None,
+    new_instance: bool,
 ):
     import config
     import contract_cutover_guard
@@ -1060,10 +1118,15 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
     transition_current = object()
 
     @contextmanager
-    def maintenance_guard(_service_user, *, catalog_trusted_owner, release_catalog=None):
+    def maintenance_guard(_service_user, *, catalog_trusted_owner,
+                          release_catalog=None, initial_catalog=None):
         assert catalog_trusted_owner == (41, 42)
         assert held == ["deployment", "startup"]
         assert release_catalog is (previous_catalog if successor else None)
+        if successor:
+            assert initial_catalog is None
+        else:
+            assert initial_catalog.catalog is catalog
         events.append("maintenance-enter")
         held.append("maintenance")
         yield maintenance, _Maintenance().observe()
@@ -1092,11 +1155,11 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
     )
     service_state_root = Path("/srv/metnos/.local/state/metnos")
     monkeypatch.setattr(config, "PATH_USER_STATE", service_state_root)
-    legacy_identity = SimpleNamespace(name="legacy-metnos")
+    legacy_identity = SimpleNamespace(name="metnos" if new_instance else "legacy-metnos")
     monkeypatch.setattr(
         provisioner, "_resolve_legacy_service_identity_v2",
         lambda name: legacy_identity
-        if name == "legacy-metnos"
+        if name == legacy_identity.name
         else pytest.fail("legacy service identity changed"),
     )
     monkeypatch.setattr(manifest, "verify_current_installation_distribution_v1", lambda *_: distribution)
@@ -1211,8 +1274,9 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
     )
     monkeypatch.setattr(
         provisioner, "_converge_transition_contracts_v2",
-        lambda candidate, verified: events.append("contract-convergence")
+        lambda candidate, verified, **kwargs: events.append("contract-convergence")
         if candidate is descriptor and verified is distribution
+        and kwargs.get("new_instance", False) is new_instance
         else pytest.fail("contract convergence lost the signed descriptor"),
     )
     def prepare_legacy(candidate, verified, proof, *, require_live_ready):
@@ -1221,7 +1285,10 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
             pytest.fail("legacy adoption lost its ordered lock binding")
         assert require_live_ready is True
         events.append("legacy-state-adoption")
-        return SimpleNamespace(record_sha256=D("7"), ready=False)
+        return SimpleNamespace(
+            record_sha256=D("7"), ready=False,
+            initially_empty=new_instance and failure_point != "initial-origin",
+        )
 
     def complete_legacy(candidate, verified, prepared_record, proof, *, live):
         assert not successor, "successor repeated initial legacy inspection"
@@ -1254,7 +1321,7 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
         lambda candidate, record, root: events.append("predecessor")
         if (
             candidate is distribution and record is complete
-            and root == "/opt/metnos"
+            and root == (None if new_instance else "/opt/metnos")
         )
         else pytest.fail("predecessor binding changed"),
     )
@@ -1346,9 +1413,16 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
     monkeypatch.setattr(dominant, "_require_live_sessions_v1", require_sessions)
 
     arguments = dict(
-        service_state_root=service_state_root, legacy_service_user="legacy-metnos",
-        legacy_installation_root="/opt/metnos",
+        service_state_root=service_state_root, legacy_service_user=legacy_identity.name,
+        legacy_installation_root=None if new_instance else "/opt/metnos",
     )
+    if failure_point == "initial-origin":
+        with pytest.raises(provisioner.BirthProvisioningError, match="birth_transition_initial_origin_invalid"):
+            provisioner.complete_transition_cutover_v2(distribution, D("a"), **arguments)
+        assert "contract-convergence" not in events
+        assert "predecessor" not in events
+        assert effect_calls == []
+        return
     if authentication_fails:
         with pytest.raises(manifest.DistributionManifestError) as failure:
             provisioner.complete_transition_cutover_v2(distribution, D("a"), **arguments)
@@ -1368,7 +1442,7 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
         assert effect_calls == []
         return
     assert provisioner.complete_transition_cutover_v2(distribution, D("a"), **arguments) is result
-    assert len(catalog_reads) == 2
+    assert len(catalog_reads) == (2 if successor else 3)
     assert effect_calls == ["retirement", "topology"] * 2
     assert len(previous_reads) == (3 if successor else 0)
     assert held == []
@@ -1660,8 +1734,10 @@ def test_product_wrapper_denies_before_lock_when_closed_policy_is_absent(
         )
 
 
+@pytest.mark.parametrize("new_instance", (False, True))
+@pytest.mark.parametrize("failure", (None, "timeout", "interrupted", "specifier"))
 def test_contract_convergence_child_is_bound_to_the_signed_service_identity(
-    monkeypatch, tmp_path,
+    monkeypatch, tmp_path, new_instance, failure,
 ) -> None:
     service_python = tmp_path / "managed-python"
     service_python.write_bytes(b"managed python")
@@ -1672,7 +1748,10 @@ def test_contract_convergence_child_is_bound_to_the_signed_service_identity(
         service_supplementary_gids=(44, 992),
         service_home="/var/lib/metnos-service",
         service_shell="/usr/sbin/nologin",
+        systemctl_executable="/usr/bin/systemctl",
     )
+    if failure == "specifier":
+        descriptor.installation_root += "/%u"
     distribution = object()
     catalog = SimpleNamespace(entries=(
         SimpleNamespace(
@@ -1680,11 +1759,24 @@ def test_contract_convergence_child_is_bound_to_the_signed_service_identity(
             target_executable=service_python.as_posix(),
         ),
     ))
-    observed = {}
+    observed, calls = {}, []
+
+    @contextmanager
+    def initial_input(*_args):
+        yield 83
+
+    monkeypatch.setattr(provisioner, "_initial_catalog_adoption_input_v1", initial_input)
 
     def run(command, **options):
+        calls.append(command)
+        if command[0] == descriptor.systemctl_executable:
+            return SimpleNamespace(returncode=0)
         observed["command"] = command
         observed.update(options)
+        if failure == "timeout":
+            raise provisioner.subprocess.TimeoutExpired(command, options["timeout"])
+        if failure == "interrupted":
+            raise KeyboardInterrupt
         return SimpleNamespace(
             returncode=0,
             stdout=b'{"changed":24,"current":98,"examined":122}\n',
@@ -1699,23 +1791,45 @@ def test_contract_convergence_child_is_bound_to_the_signed_service_identity(
         else pytest.fail("convergence lost the verified distribution"),
     )
 
+    if failure is not None:
+        expected = KeyboardInterrupt if failure == "interrupted" else provisioner.BirthProvisioningError
+        with pytest.raises(expected):
+            provisioner._converge_transition_contracts_v2(
+                descriptor, distribution, new_instance=new_instance,
+            )
+        if failure == "specifier":
+            assert calls == []
+        else:
+            assert len(calls) == 2
+            unit = next(value.split("=", 1)[1] for value in calls[0] if value.startswith("--unit="))
+            assert calls[1] == [descriptor.systemctl_executable, "stop", "--", unit]
+        return
     assert provisioner._converge_transition_contracts_v2(
-        descriptor, distribution,
+        descriptor, distribution, new_instance=new_instance,
     ) == {
         "changed": 24, "current": 98, "examined": 122,
     }
-    assert observed["command"] == [
+    command = observed["command"]
+    assert command[0] == "/usr/bin/systemd-run"
+    assert {"--wait", "--pipe", "--collect", "--expand-environment=no"} <= set(command)
+    properties = [command[i + 1] for i, value in enumerate(command) if value == "-p"]
+    assert {"User=991", "Group=992", "SupplementaryGroups=44 992",
+            "Delegate=yes", "DelegateSubgroup=metnos-birth-host",
+            "KillMode=control-group", "UMask=0077", "RuntimeMaxSec=1200"} <= set(properties)
+    child = command[command.index("--") + 1:]
+    assert child[:2] == ["/usr/bin/env", "-i"]
+    assert "HOME=" + descriptor.service_home in child
+    assert "METNOS_INSTALL_ROOT=" + descriptor.installation_root in child
+    python_index = child.index(service_python.as_posix())
+    assert child[python_index:] == [
         service_python.as_posix(), "-I", "-B",
         descriptor.installation_root
         + "/install/executor_birth_contract_convergence.py",
-    ]
-    assert observed["command"][0] != descriptor.python_executable
-    assert observed["user"] == descriptor.service_uid
-    assert observed["group"] == descriptor.service_gid
-    assert observed["extra_groups"] == descriptor.service_supplementary_gids
-    assert observed["umask"] == 0o077
-    assert observed["env"]["HOME"] == descriptor.service_home
-    assert observed["env"]["METNOS_INSTALL_ROOT"] == descriptor.installation_root
+    ] + (["--new-instance"] if new_instance else [])
+    assert not {"user", "group", "extra_groups"}.intersection(observed)
+    assert "HOME" not in observed["env"]
+    assert observed["timeout"] > 1200
+    assert observed["stdin"] == (83 if new_instance else provisioner.subprocess.DEVNULL)
 
 
 @pytest.mark.parametrize("python_count", [0, 2])
@@ -1956,11 +2070,13 @@ def test_initial_transition_runtime_exposes_only_the_installer_submission(
     monkeypatch.setattr(authority_gate, "closed_build_enforcement", lambda: True)
     monkeypatch.setattr(bootstrap, "_runtime_bundle_snapshot", lambda: None)
     monkeypatch.setattr(prepared_root, "load_sealed_authorities_v1", object)
+    monkeypatch.setattr(bootstrap, "_read_initial_catalog_adoption_v1", lambda sealed: object())
     monkeypatch.setattr(
         bootstrap, "_prepare_sealed_birth_assembly_v1", lambda *_args, **_kwargs: assembly,
     )
 
-    def factory(*args):
+    def factory(*args, store_root=None):
+        assert store_root is None
         observed["factory_args"] = args
         return lambda value: request if value is intent else None
 

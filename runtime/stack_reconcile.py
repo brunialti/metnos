@@ -337,6 +337,50 @@ class Systemctl:
         except (FileNotFoundError, OSError, subprocess.TimeoutExpired) as exc:
             raise StackFailure("systemctl_failed", type(exc).__name__) from exc
 
+    def _absent_user_manager(self, unit: str) -> dict[str, str] | None:
+        """Observe an absent user manager through the live system manager.
+
+        No failed bus connection is evidence by itself. Inactive user@UID,
+        no processes/cgroup and absent runtime markers jointly prove that
+        this scope has no running units. Keep this distinct from not-found.
+        """
+        uid = self._service_uid()
+        manager = f"user@{uid}.service"
+        result = self.run(
+            "system", "show", manager,
+            "--property=Id,LoadState,ActiveState,SubState,MainPID,ControlPID,ControlGroup",
+            timeout_s=10,
+        )
+        if result.returncode:
+            return None
+        observed = dict(
+            line.split("=", 1) for line in result.stdout.splitlines() if "=" in line
+        )
+        if (
+            observed.get("Id") != manager
+            or observed.get("LoadState") not in {"loaded", "masked", "not-found"}
+            or observed.get("ActiveState") != "inactive"
+            or observed.get("SubState") != "dead"
+            or observed.get("MainPID") != "0"
+            or observed.get("ControlPID") != "0"
+            or observed.get("ControlGroup") != ""
+        ):
+            return None
+        for name in ("systemd", "bus"):
+            try:
+                (Path(f"/run/user/{uid}") / name).lstat()
+            except FileNotFoundError:
+                continue
+            except OSError:
+                return None
+            return None
+        if self._service_uid() != uid:
+            return None
+        return {
+            "Id": unit, "LoadState": "manager-absent", "ActiveState": "inactive",
+            "SubState": "dead", "MainPID": "0",
+        }
+
     def show(self, unit: str, scope: str = "user") -> dict[str, str]:
         # The service topology is the sole authority for both productive and
         # legacy maintenance observations.  In particular, cutover must prove
@@ -361,6 +405,10 @@ class Systemctl:
                 key, value = line.split("=", 1)
                 values[key] = value
         if result.returncode and not values:
+            if scope == "user":
+                absent = self._absent_user_manager(unit)
+                if absent is not None:
+                    return absent
             values["LoadState"] = "error"
             values["ManagerError"] = (result.stderr or "")[-300:]
         return values
@@ -466,13 +514,16 @@ def _watched_service_snapshot(key: str, *,
     occupy its slots; its critical false-``active`` failure is instead
     detected from a stopped systemd MainPID (Linux state ``T``/``t``).
     Recovery performs an explicit endpoint probe before declaring success.
+    External dependencies have no local process: their endpoint is the proof.
     """
     from services_registry import get, snapshot_one
 
     spec = get(key) if spec is None else spec
     if spec is None or spec.key != key or key not in WATCHED_SERVICE_KEYS:
         raise StackFailure("unknown_service", "service is outside watchdog scope")
-    should_probe = key == "searxng" if probe_endpoint is None else probe_endpoint
+    should_probe = (
+        key == "searxng" or not spec.targets
+    ) if probe_endpoint is None else probe_endpoint
     row = snapshot_one(spec, probe_endpoint=should_probe)
     if key == "llm":
         try:
@@ -505,6 +556,8 @@ def _watched_service_ok(key: str, row: dict) -> bool:
         return not bool(row.get("observation_error"))
     if row.get("observation_error"):
         return False
+    if row.get("scope") == "external":
+        return row.get("healthy") is True
     if row.get("active_state") != "active":
         return False
     if key == "searxng":
@@ -1124,6 +1177,8 @@ class StackReconciler:
             return True
         if mode == "no":
             return False
+        if not spec.targets:
+            return True
         from services_registry import desired_state
         if desired_state("playwright") == "stopped":
             return False

@@ -373,6 +373,8 @@ def test_an_empty_topology_is_not_a_quiescent_one(monkeypatch):
 
 @pytest.fixture
 def planned(marker_root, monkeypatch):
+    from types import SimpleNamespace
+
     _as_root(monkeypatch)
     monkeypatch.setattr(cutover, "_in_service_child", lambda *args: dict(OBSERVED))
     cutover.plan_cutover_v1()
@@ -388,39 +390,60 @@ def planned(marker_root, monkeypatch):
             return False
 
     import contract_cutover_guard
+    account = SimpleNamespace(record=SimpleNamespace(uid=1234, gid=2345),
+                              supplementary_gids=(2345,))
+    monkeypatch.setattr(cutover, "resolve_posix_account_snapshot_v1",
+                        lambda user: account)
+
+    def guard(user, **kw):
+        assert user == cutover.SERVICE_ACCOUNT_NAME_V1
+        assert kw == {"catalog_trusted_owner": (1234, 2345)}
+        return _Barrier()
+
     monkeypatch.setattr(
         contract_cutover_guard, "_contract_cutover_guard_for_service_user_v1",
-        lambda user, **kw: _Barrier())
+        guard)
     monkeypatch.setattr(cutover, "_prove_productive_services_stopped_v1",
                         lambda user: ({"scope": "system", "unit": "metnos-http.service",
                                        "active_state": "inactive"},))
+    from contextlib import contextmanager
+    @contextmanager
+    def identity(descriptor):
+        assert barrier == ["held"]
+        assert descriptor.service_uid == 1234
+        yield
+        assert barrier == ["held"]
+
+    monkeypatch.setattr(
+        "install.birth_authority_provisioner._service_owned_birth_identity_v2", identity)
+    monkeypatch.setattr(cutover, "_observe_installation", lambda *args: dict(OBSERVED))
     return barrier
 
 
 @native
 def test_the_migration_runs_inside_the_quiescent_barrier(planned, monkeypatch):
     order = []
-    monkeypatch.setattr(cutover, "_in_service_child", lambda *args: (
+    monkeypatch.setattr(cutover, "_migrate_as_service", lambda *args: (
         order.append("migrated") or {"applied": {
             "migration_id": MIGRATION, "preserved": 2, "resolved": 2,
             "restricted": 1, "pending": 0}}))
     monkeypatch.setattr(cutover, "_installation_id", lambda: INSTALLATION)
     monkeypatch.setattr(cutover, "_install_marker",
                         lambda *a: order.append("marker") or Path("/marker"))
-    cutover.apply_cutover_v1()
+    cutover._apply_handoff_v1(cutover.read_handoff_v1())
     assert planned == ["held", "released"]
     assert order == ["migrated", "marker"]
 
 
 @native
 def test_an_open_disposition_blocks_the_marker(planned, monkeypatch):
-    monkeypatch.setattr(cutover, "_in_service_child", lambda *args: {"applied": {
+    monkeypatch.setattr(cutover, "_migrate_as_service", lambda *args: {"applied": {
         "migration_id": MIGRATION, "preserved": 2, "resolved": 2,
         "restricted": 1, "pending": 2}})
     monkeypatch.setattr(cutover, "_install_marker",
                         lambda *a: pytest.fail("marker written with open cases"))
     with pytest.raises(cutover.LifecycleCutoverError) as raised:
-        cutover.apply_cutover_v1()
+        cutover._apply_handoff_v1(cutover.read_handoff_v1())
     assert raised.value.code == "cutover_pending_disposition"
     assert raised.value.detail == "2"
     assert planned == ["held", "released"]
@@ -428,13 +451,13 @@ def test_an_open_disposition_blocks_the_marker(planned, monkeypatch):
 
 @native
 def test_a_different_decision_than_the_reviewed_one_blocks_the_marker(planned, monkeypatch):
-    monkeypatch.setattr(cutover, "_in_service_child", lambda *args: {"applied": {
+    monkeypatch.setattr(cutover, "_migrate_as_service", lambda *args: {"applied": {
         "migration_id": "sha256:" + "f" * 64, "preserved": 2, "resolved": 2,
         "restricted": 1, "pending": 0}})
     monkeypatch.setattr(cutover, "_install_marker",
                         lambda *a: pytest.fail("marker written for another decision"))
     with pytest.raises(cutover.LifecycleCutoverError) as raised:
-        cutover.apply_cutover_v1()
+        cutover._apply_handoff_v1(cutover.read_handoff_v1())
     assert raised.value.code == "cutover_plan_stale"
 
 
@@ -443,11 +466,11 @@ def test_a_failed_child_never_reaches_the_marker(planned, monkeypatch):
     def failing(*_args):
         raise cutover.LifecycleCutoverError("cutover_epoch_store_absent", "/x")
 
-    monkeypatch.setattr(cutover, "_in_service_child", failing)
+    monkeypatch.setattr(cutover, "_migrate_as_service", failing)
     monkeypatch.setattr(cutover, "_install_marker",
                         lambda *a: pytest.fail("marker written after a failure"))
     with pytest.raises(cutover.LifecycleCutoverError) as raised:
-        cutover.apply_cutover_v1()
+        cutover._apply_handoff_v1(cutover.read_handoff_v1())
     assert raised.value.code == "cutover_epoch_store_absent"
     assert planned == ["held", "released"]
 
@@ -507,10 +530,13 @@ def test_service_child_loads_fresh_configuration(operation, tmp_path, monkeypatc
 
     service_home = tmp_path / "observed-home"
     state = tmp_path / "observed-state"
-    environment = {"HOME": str(service_home), "METNOS_USER_STATE": str(state)}
+    workspace = tmp_path / "observed-workspace"
+    environment = {"HOME": str(service_home), "METNOS_USER_STATE": str(state),
+                   "METNOS_WORKSPACE": str(workspace)}
     monkeypatch.setenv("HOME", str(tmp_path / "caller-home"))
     monkeypatch.setenv("METNOS_USER_DATA", str(tmp_path / "caller-data"))
     monkeypatch.setenv("UNRELATED_SECRET", "must-not-cross")
+    monkeypatch.setenv("PATH", str(tmp_path / "untrusted-commands"))
     monkeypatch.setattr(config, "PATH_USER_STATE", tmp_path / "already-imported")
     monkeypatch.setattr(cutover, "_service_main_pid", lambda: 4242)
     monkeypatch.setattr(cutover, "_service_environment", lambda *args: environment)
@@ -518,23 +544,78 @@ def test_service_child_loads_fresh_configuration(operation, tmp_path, monkeypatc
 
     def run_as_test_account(command, **kwargs):
         # Exercise the actual fresh interpreter without requiring root in CI.
-        assert kwargs.pop("user") == service_account.record.uid
-        assert kwargs.pop("group") == service_account.record.gid
-        assert kwargs.pop("extra_groups") == service_account.supplementary_gids
+        assert kwargs.pop("user") == (0 if operation == "apply" else service_account.record.uid)
+        assert kwargs.pop("group") == (0 if operation == "apply" else service_account.record.gid)
+        assert kwargs.pop("extra_groups") == (() if operation == "apply" else service_account.supplementary_gids)
         # Isolate catalog/storage observations; configuration imports are real.
         command = list(command)
         command[-1] = command[-1].replace(
             "raise SystemExit(_service_worker())",
-            "import config, json, os; "
+            "import config, json, os, subprocess; "
             "print(json.dumps({'state': str(config.PATH_USER_STATE), "
             "'data': str(config.PATH_USER_DATA), "
-            "'secret': os.environ.get('UNRELATED_SECRET')}))")
+            "'workspace': str(config.PATH_WORKSPACE), "
+            "'secret': os.environ.get('UNRELATED_SECRET'), "
+            "'runuser': subprocess.run(['runuser', '--version'], "
+            "capture_output=True, check=True).stdout.decode().strip()}))")
         return run(command, **kwargs)
 
     monkeypatch.setattr(cutover.subprocess, "run", run_as_test_account)
     handoff = {"environment": environment, "sources": [], "migration_id": MIGRATION}
     report = cutover._in_service_child(operation, handoff, qualification={})
+    assert report.pop("runuser").startswith("runuser from util-linux")
     assert report == {"state": str(state),
                       "data": str(service_home / ".local/share/metnos"),
+                      "workspace": str(workspace),
                       "secret": None}
     assert config.PATH_USER_STATE == tmp_path / "already-imported"
+
+
+@native
+def test_service_qualification_accepts_bounded_historical_sources(tmp_path, monkeypatch,
+                                                               service_account):
+    """Archived public sources can exceed a report's size without enlarging reports."""
+    import subprocess
+
+    run = subprocess.run
+    def run_as_test_account(command, **kwargs):
+        assert kwargs.pop("user") == service_account.record.uid
+        assert kwargs.pop("group") == service_account.record.gid
+        assert kwargs.pop("extra_groups") == service_account.supplementary_gids
+        command = list(command)
+        command[-1] = command[-1].replace(
+            "raise SystemExit(_service_worker())",
+            "import install.birth_certification_issuer as issuer; "
+            "issuer._derive_as_service_v1 = lambda request: "
+            "{'source_bytes': len(request['qualification']['public_source'])}; "
+            "raise SystemExit(_service_worker())")
+        return run(command, **kwargs)
+
+    monkeypatch.setattr(cutover.subprocess, "run", run_as_test_account)
+    handoff = {"environment": {"METNOS_WORKSPACE": str(tmp_path / "workspace")}}
+    source = "x" * (2 << 20)
+    assert cutover._in_service_child(
+        "qualify", handoff, qualification={"public_source": source},
+    ) == {"source_bytes": len(source)}
+
+
+def test_service_request_budget_refuses_before_spawning(monkeypatch):
+    monkeypatch.setattr(cutover, "_MAX_REQUEST_BYTES", 512)
+    monkeypatch.setattr(cutover.subprocess, "run",
+                        lambda *args, **kwargs: pytest.fail("oversized child request"))
+    with pytest.raises(cutover.LifecycleCutoverError, match="cutover_report_oversized"):
+        cutover._in_service_child("qualify", {"environment": {}},
+                                  qualification={"public_source": "x" * 1024})
+
+
+def test_service_worker_refuses_oversized_request(monkeypatch):
+    import io
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(cutover, "_MAX_REQUEST_BYTES", 512)
+    monkeypatch.setattr(cutover.sys, "stdin", SimpleNamespace(
+        buffer=io.BytesIO(b"x" * 1024)))
+    reports = []
+    monkeypatch.setattr(cutover, "_write_report", lambda fd, value: reports.append(value))
+    assert cutover._service_worker() == 1
+    assert reports == [{"error": "cutover_report_oversized", "detail": ""}]

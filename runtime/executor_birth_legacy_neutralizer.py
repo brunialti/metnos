@@ -344,13 +344,53 @@ def _preserve_regular_name_v1(
     raise _invalid("neutralizer_preservation_missing", path.name)
 
 
+def _initial_absence_record_v1(legacy_id: str, path: Path, replacement_hash: str) -> bytes:
+    if (
+        type(replacement_hash) is not str or len(replacement_hash) != 71
+        or not replacement_hash.startswith("sha256:")
+        or any(char not in "0123456789abcdef" for char in replacement_hash[7:])
+    ):
+        raise _invalid("neutralizer_preservation_record_invalid", path.name)
+    return json.dumps({
+        "schema_version": 2,
+        "legacy_id": legacy_id,
+        "original_name": path.name,
+        "preserved_name": path.name + PRESERVED_EXTENSION_V1,
+        "original_absent": True,
+        "replacement_hash": replacement_hash,
+    }, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("ascii")
+
+
 def _preserve_replaced_unit_v1(
     legacy_id: str, path: Path, replacement: bytes, *,
     _crash_seam: Callable[[str], None] | None = None,
 ) -> tuple[str, bool]:
-    """Preserve one occupied unit and recognize only the four named states."""
+    """Record initial absence, or preserve and re-read an occupied unit."""
     if type(replacement) is not bytes or not replacement:
         raise _invalid("neutralizer_replacement_invalid", path.name)
+    preserved = path.with_name(path.name + PRESERVED_EXTENSION_V1)
+    record = path.with_name(path.name + PRESERVED_EXTENSION_V1 + ".receipt.json")
+    absent_record = _initial_absence_record_v1(
+        legacy_id, path, f"sha256:{hashlib.sha256(replacement).hexdigest()}",
+    )
+    initially_absent = not any(os.path.lexists(item) for item in (path, preserved, record))
+    if initially_absent:
+        _publish_preservation_record_v1(path, absent_record)
+        if _crash_seam is not None:
+            _crash_seam("preservation_record_published")
+    if os.path.lexists(record):
+        _regular_file_evidence_v1(record)  # Reject links and non-regular receipts.
+        if record.read_bytes() == absent_record:
+            if os.path.lexists(preserved):
+                raise _invalid("neutralizer_preservation_conflict", path.name)
+            if os.path.lexists(path):
+                observed = _regular_file_evidence_v1(path)
+                if (
+                    observed.content_hash != f"sha256:{hashlib.sha256(replacement).hexdigest()}"
+                    or observed.size != len(replacement)
+                ):
+                    raise _invalid("neutralizer_preservation_conflict", path.name)
+            return record.name, not initially_absent
     state = _preserve_regular_name_v1(
         legacy_id, path,
         record_stage="preservation_record_published",
@@ -593,7 +633,7 @@ def _observe_absent_repository_v1(root: Path, locator: str) -> None:
 
 
 def _observe_replaced_v1(path: Path, legacy_id: str, choices: tuple) -> None:
-    _observe_preserved_v1(path, legacy_id, required=True)
+    _observe_preserved_v1(path, legacy_id, required=True, allow_initial_absence=True)
     observed = _observe_regular_v1(path)
     if (
         any(type(value) is not bytes or not value for value in choices)
@@ -607,13 +647,15 @@ def _observe_replaced_v1(path: Path, legacy_id: str, choices: tuple) -> None:
         raise _invalid("neutralizer_preservation_conflict", path.name)
 
 
-def _observe_preserved_v1(path: Path, legacy_id: str, *, required: bool) -> None:
+def _observe_preserved_v1(
+    path: Path, legacy_id: str, *, required: bool, allow_initial_absence: bool = False,
+) -> None:
     preserved = path.with_name(path.name + PRESERVED_EXTENSION_V1)
     record = preserved.with_name(preserved.name + ".receipt.json")
     present = os.path.lexists(preserved), os.path.lexists(record)
     if present == (False, False) and not required:
         return
-    if present != (True, True):
+    if present != (True, True) and not (allow_initial_absence and present == (False, True)):
         raise _invalid("neutralizer_preservation_missing", path.name)
     recorded = _observe_regular_v1(record, maximum=16384)
     if (
@@ -632,6 +674,18 @@ def _observe_preserved_v1(path: Path, legacy_id: str, *, required: bool) -> None
         or _observe_regular_v1(record) != recorded
     ):
         raise _invalid("neutralizer_preservation_record_invalid", path.name)
+    if present == (False, True):
+        try:
+            value = json.loads(encoded)
+        except (ValueError, UnicodeError) as exc:
+            raise _invalid("neutralizer_preservation_record_invalid", path.name) from exc
+        if type(value) is not dict or encoded != _initial_absence_record_v1(
+            legacy_id, path, value.get("replacement_hash"),
+        ):
+            raise _invalid("neutralizer_preservation_record_invalid", path.name)
+        # This root-owned receipt records the original release, which may be
+        # older than N. The caller independently checks the live N/N+1 bytes.
+        return
     expected = _evidence_from_record_v1(
         encoded, legacy_id=legacy_id, path=path, preserved=preserved,
     )

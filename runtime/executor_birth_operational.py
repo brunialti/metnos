@@ -1206,10 +1206,10 @@ def _quarantine_execution_with_bundle(execution, bundle):
 
 
 def _quarantine_execution_with_runtime(execution):
-    from executor_birth_lifecycle import load_f5_activation
+    from executor_birth_rehearsal import require_f5_lifecycle_authorization
     from executor_birth_bootstrap import bootstrap_birth_runtime
 
-    load_f5_activation()
+    require_f5_lifecycle_authorization()
     bundle = _runtime_bundle_snapshot() or bootstrap_birth_runtime()
     return _quarantine_execution_with_bundle(execution, bundle)
 

@@ -24,7 +24,7 @@ import re
 import secrets
 import stat
 import subprocess
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -4856,11 +4856,13 @@ def _publish_initial_predecessor_v2(
         raise _reject("birth_transition_predecessor_invalid")
     if complete.release_sequence != 1:
         return
-    try:
-        root = Path(os.fspath(legacy_installation_root))
-    except TypeError as exc:
-        raise _reject("birth_transition_predecessor_invalid", exc) from None
-    root = _require_transition_directory_v2(root, owner=(0, 0))
+    root = None
+    if legacy_installation_root is not None:
+        try:
+            root = Path(os.fspath(legacy_installation_root))
+        except TypeError as exc:
+            raise _reject("birth_transition_predecessor_invalid", exc) from None
+        root = _require_transition_directory_v2(root, owner=(0, 0))
     from executor_birth_service_catalog import (
         capture_current_service_catalog_v1,
     )
@@ -4874,10 +4876,12 @@ def _publish_initial_predecessor_v2(
     try:
         anchor.lstat()
     except FileNotFoundError:
-        locators = _predecessor_file_locators_v2(root, catalog)
-        files = tuple(_capture_predecessor_file_v2(root, item) for item in locators)
-        if _predecessor_file_locators_v2(root, catalog) != locators:
-            raise _reject("birth_transition_predecessor_changed")
+        files = ()
+        if root is not None:
+            locators = _predecessor_file_locators_v2(root, catalog)
+            files = tuple(_capture_predecessor_file_v2(root, item) for item in locators)
+            if _predecessor_file_locators_v2(root, catalog) != locators:
+                raise _reject("birth_transition_predecessor_changed")
     else:
         # Retirement may already have renamed files. Reuse only the immutable
         # historical inventory; rebuild every transition binding below.
@@ -4887,8 +4891,11 @@ def _publish_initial_predecessor_v2(
         files = decode_predecessor_descriptor_v1(stored).files
     predecessor = build_predecessor_descriptor_v1(
         transaction_id=complete.install_transaction_id,
-        installation_root=root.as_posix(), files=files,
-        service_commands=_predecessor_service_commands_v2(catalog),
+        installation_root=root.as_posix() if root is not None else None,
+        files=files,
+        service_commands=(
+            _predecessor_service_commands_v2(catalog) if root is not None else ()
+        ),
         administrative_bundle_hash=complete.administrative_bundle_hash,
         service_catalog_id=catalog.catalog_id,
         service_coverage_hash=catalog.service_coverage_hash,
@@ -5003,12 +5010,38 @@ def _transition_roots_v2(
         "system": _require_transition_directory_v2(
             Path(descriptor.system_unit_root), owner=(0, 0),
         ),
-        "user": _require_transition_directory_v2(
+    }
+    if predecessor.installation_root is None:
+        # A fresh protected account has no user manager or writable user-unit
+        # roots. Do not create migration artifacts for a nonexistent scope.
+        # Repeat the receiver's live closure proof even on a successor/retry.
+        from install.executor_birth_source_receiver import _service_account_snapshot_v1
+
+        try:
+            account = _service_account_snapshot_v1(legacy_identity.name)
+            if (
+                account.name != descriptor.service_user
+                or account.uid != descriptor.service_uid
+                or account.gid != descriptor.service_gid
+                or account.uid != legacy_identity.uid
+                or account.gid != legacy_identity.gid
+                or Path(account.home) != legacy_identity.home
+            ):
+                raise _reject("birth_transition_root_invalid")
+            try:
+                (legacy_identity.home / ".config/systemd/user").lstat()
+            except FileNotFoundError:
+                pass
+            else:
+                raise _reject("birth_transition_root_invalid")
+        except Exception as exc:
+            raise _reject("birth_transition_root_invalid", exc) from None
+    else:
+        roots["user"] = _require_transition_directory_v2(
             legacy_identity.home / ".config/systemd/user",
             owner=(legacy_identity.uid, legacy_identity.gid),
-        ),
-    }
-    if include_repository:
+        )
+    if include_repository and predecessor.installation_root is not None:
         roots["repository"] = _require_transition_directory_v2(
             Path(predecessor.installation_root), owner=(0, 0),
         )
@@ -5045,7 +5078,7 @@ def _retire_bound_catalog_v2(
     repository_locators = tuple(sorted({
         step.locator for step in repository_steps
     }, key=lambda item: item.encode("utf-8")))
-    if previous_catalog is None and repository_steps and _process_tree_references_entries_v2(
+    if previous_catalog is None and "repository" in roots and repository_steps and _process_tree_references_entries_v2(
         roots["repository"], repository_locators,
     ):
         raise _reject("birth_transition_repository_in_use")
@@ -5072,6 +5105,10 @@ def _retire_bound_catalog_v2(
         step for step in plan.steps if step.action == preserve_action
     )
     for scope in ("repository", "user", "system"):
+        # Roots omitted only after authenticated origin and live closure
+        # checks have no historical files to neutralize.
+        if scope in {"repository", "user"} and scope not in roots:
+            continue
         scoped = tuple(step for step in ordinary if step.scope == scope)
         if scoped:
             _neutralize_core_v1(roots[scope], scoped, {})
@@ -5164,7 +5201,7 @@ def _observe_successor_retirement_v2(
     locators = tuple(sorted({
         step.locator for step in plan.steps if step.scope == "repository"
     }))
-    if locators and _process_tree_references_entries_v2(
+    if predecessor.installation_root is not None and locators and _process_tree_references_entries_v2(
         Path(predecessor.installation_root), locators, historical=True,
     ):
         raise _reject("birth_transition_repository_in_use")
@@ -5184,6 +5221,8 @@ def _observe_successor_retirement_v2(
         and Path(step.locator).suffix not in {".pyc", ".pyo"}
     )
     for scope in ("repository", "user", "system"):
+        if scope in {"repository", "user"} and scope not in roots:
+            continue
         steps = tuple(step for step in (added if scope == "repository" else plan.steps)
                       if step.scope == scope)
         if steps:
@@ -5290,14 +5329,81 @@ def _transition_service_environment_v2(descriptor: object) -> dict[str, str]:
     return environment
 
 
+@contextmanager
+def _initial_catalog_adoption_input_v1(descriptor, distribution, source, initial_state):
+    """Bind the accepted source and initial journal; hand off no private keys."""
+    import fcntl
+    from executor_birth_distribution_assembler import received_source_file_hash_v1
+    from executor_birth_distribution_manifest import is_verified_distribution
+    from executor_birth_bootstrap import _initial_candidate_payloads_v1, _regular_source_bytes_v1
+    from executor_birth_producer_table_v1 import executor_origin_v1
+    from executor_birth_shadow import _catalog_candidate_digest_v1
+    from manifest_code_digest import prepare_manifest_digest_v1
+    from manifest_inventory import ManifestOrigin, inventory_authoring_manifests
+
+    if (os.geteuid() != 0 or not is_verified_distribution(distribution)
+            or distribution.release_sequence != 1
+            or distribution.previous_closed_build_id is not None
+            or source is None or initial_state is None
+            or initial_state.initially_empty is not True):
+        raise _reject("birth_transition_initial_origin_invalid")
+    inventory = inventory_authoring_manifests()
+    if inventory.problems or not inventory.by_id():
+        raise _reject("birth_transition_contract_inventory_invalid")
+    accepted = {item.path: item for item in source.files}
+    candidates = {}
+    for contract_id, ref in inventory.by_id().items():
+        if ref.origin not in {ManifestOrigin.CORE, ManifestOrigin.BUILTIN, ManifestOrigin.BUILTIN_SKILL}:
+            raise _reject("birth_transition_external_contract_changed")
+        payloads = dict(_initial_candidate_payloads_v1(ref))
+        original = _regular_source_bytes_v1(ref.manifest_dir, "manifest.toml")
+        raw_payloads = {**payloads, "manifest.toml": original}
+        for name, content in raw_payloads.items():
+            relative = (ref.manifest_dir / name).relative_to(descriptor.installation_root).as_posix()
+            entry = accepted.get(relative)
+            if (entry is None or entry.size != len(content)
+                    or entry.content_hash != received_source_file_hash_v1(relative, len(content), (content,))):
+                raise _reject("birth_transition_distribution_changed")
+        code = {name: content for name, content in payloads.items()
+                if name not in {"manifest.toml", "manifest.lang_state.json"}}
+        if prepare_manifest_digest_v1(original, code) != payloads["manifest.toml"]:
+            raise _reject("birth_transition_distribution_changed")
+        candidates[contract_id.value] = _catalog_candidate_digest_v1(
+            contract_id.value, executor_origin_v1(ref.origin).value, payloads,
+        )
+    encoded = json.dumps({
+        "schema": "initial_catalog_adoption_v1",
+        "installation_root": descriptor.installation_root,
+        "closed_build_id": distribution.identity.closed_build_id,
+        "source_id": source.source_id, "journal_hash": initial_state.record_sha256,
+        "candidates": candidates,
+    }, sort_keys=True, separators=(",", ":")).encode("ascii")
+    if len(encoded) > 1024 * 1024:
+        raise _reject("birth_initial_catalog_adoption_invalid")
+    fd = os.memfd_create("metnos-initial-catalog", os.MFD_CLOEXEC | os.MFD_ALLOW_SEALING)
+    try:
+        with os.fdopen(os.dup(fd), "wb") as writer:
+            writer.write(encoded)
+        os.fchmod(fd, 0o400)
+        fcntl.fcntl(fd, fcntl.F_ADD_SEALS, fcntl.F_SEAL_SEAL | fcntl.F_SEAL_WRITE
+                    | fcntl.F_SEAL_GROW | fcntl.F_SEAL_SHRINK)
+        os.lseek(fd, 0, os.SEEK_SET)
+        yield fd
+    finally:
+        os.close(fd)
+
+
 def _converge_transition_contracts_v2(
-    descriptor: object, distribution: object,
+    descriptor: object, distribution: object, *, new_instance: bool = False,
+    initial_source: object | None = None, initial_state: object | None = None,
 ) -> dict[str, int]:
     """Run the installed, governed catalog convergence as the service owner."""
     from executor_birth_service_catalog import (
         capture_current_service_catalog_v1,
     )
 
+    if type(new_instance) is not bool:
+        raise _reject("birth_transition_contract_convergence_failed")
     loaded = capture_current_service_catalog_v1(distribution)
     python_executables = {
         item.target_executable for item in loaded.catalog.entries
@@ -5312,21 +5418,62 @@ def _converge_transition_contracts_v2(
     service_python = str(next(iter(python_executables)))
     release_root = Path(descriptor.installation_root)
     entry = release_root / "install" / "executor_birth_contract_convergence.py"
+    # A uid switch alone inherits the administrator's cgroup. Birth needs
+    # systemd's delegated service boundary, including its occupied subgroup,
+    # just as it does in the installed HTTP service and release controller.
+    # Keep this one-shot preparation separate from the consumer topology.
+    unit = "metnos-birth-convergence-" + secrets.token_hex(8) + ".service"
+    environment = _transition_service_environment_v2(descriptor)
+    controller_environment = {
+        "LANG": "C", "LC_ALL": "C", "PATH": "/usr/sbin:/usr/bin:/sbin:/bin",
+    }
+    properties = (
+        "Type=exec", f"User={descriptor.service_uid}",
+        f"Group={descriptor.service_gid}",
+        "SupplementaryGroups=" + " ".join(
+            str(gid) for gid in descriptor.service_supplementary_gids),
+        "Delegate=yes", "DelegateSubgroup=metnos-birth-host", "UMask=0077",
+        "KillMode=control-group", "TimeoutStopSec=5", "WorkingDirectory=/",
+        f"RuntimeMaxSec={_CONTRACT_CONVERGENCE_TIMEOUT_SECONDS_V2}",
+        "NoNewPrivileges=yes", "MemoryAccounting=yes", "TasksAccounting=yes",
+    )
+    service = [
+        "/usr/bin/env", "-i",
+        *(f"{name}={value}" for name, value in environment.items()),
+        service_python, "-I", "-B", entry.as_posix(),
+        *(["--new-instance"] if new_instance else []),
+    ]
+    # systemd resolves percent specifiers even when environment expansion is
+    # disabled. Signed installation paths must reach the process literally.
+    if any("%" in part for part in (*properties, *service)):
+        raise _reject("birth_transition_contract_convergence_failed")
+    command = [
+        "/usr/bin/systemd-run", "--wait", "--pipe", "--collect", "--quiet",
+        "--expand-environment=no", f"--unit={unit}",
+    ]
+    for value in properties:
+        command.extend(("-p", value))
+    command.extend(("--", *service))
     try:
-        completed = subprocess.run(
-            [service_python, "-I", "-B", entry.as_posix()],
-            stdin=subprocess.DEVNULL,
-            capture_output=True,
-            check=False,
-            close_fds=True,
-            cwd="/",
-            env=_transition_service_environment_v2(descriptor),
-            user=descriptor.service_uid,
-            group=descriptor.service_gid,
-            extra_groups=descriptor.service_supplementary_gids,
-            umask=0o077,
-            timeout=_CONTRACT_CONVERGENCE_TIMEOUT_SECONDS_V2,
-        )
+        try:
+            with (_initial_catalog_adoption_input_v1(
+                descriptor, distribution, initial_source, initial_state,
+            ) if new_instance else nullcontext(subprocess.DEVNULL)) as source_input:
+                completed = subprocess.run(
+                    command, stdin=source_input, capture_output=True,
+                    check=False, close_fds=True, cwd="/",
+                    env=controller_environment,
+                    timeout=_CONTRACT_CONVERGENCE_TIMEOUT_SECONDS_V2 + 10,
+                )
+        except BaseException:
+            # Losing the controller must not leave its candidate tests alive.
+            # The unit's own RuntimeMaxSec also bounds an uncatchable kill.
+            subprocess.run(
+                [descriptor.systemctl_executable, "stop", "--", unit],
+                stdin=subprocess.DEVNULL, capture_output=True, check=False,
+                close_fds=True, env=controller_environment, timeout=10,
+            )
+            raise
     except (OSError, subprocess.SubprocessError) as exc:
         raise _reject("birth_transition_contract_convergence_failed", exc) from None
     if completed.returncode != 0:
@@ -5583,7 +5730,9 @@ def complete_transition_cutover_v2(
         BirthAuthorityGateClosed, require_closed_build_v1,
     )
     from executor_birth_startup_gate import _exclusive_startup_gate_v1
-    from executor_birth_service_catalog import load_previous_service_catalog_v1
+    from executor_birth_service_catalog import (
+        capture_current_service_catalog_v1, load_previous_service_catalog_v1,
+    )
     from install.executor_birth_source_receiver import (
         _load_received_source_with_product_session_v1,
     )
@@ -5615,6 +5764,9 @@ def complete_transition_cutover_v2(
         verified, signed_descriptor = (
             capture_current_deployment_descriptor_v1(verified)
         )
+        new_instance = legacy_installation_root is None
+        if new_instance and legacy_identity.name != signed_descriptor.service_user:
+            raise _reject("birth_transition_service_identity_changed")
         _require_administrative_python_bound_to_tcb_v1(signed_descriptor)
         from config import PATH_USER_STATE
 
@@ -5658,7 +5810,9 @@ def complete_transition_cutover_v2(
         descriptor = preparation.descriptor
         if descriptor != signed_descriptor:
             raise _reject("birth_transition_service_identity_changed")
-        previous_artifacts = previous_catalog = None
+        previous_artifacts = previous_catalog = initial_catalog = None
+        if verified.release_sequence == 1:
+            initial_catalog = capture_current_service_catalog_v1(verified)
         if verified.release_sequence > 1:
             current_record = authenticate_distribution_record_v1(
                 verified.encoded, verified.signature,
@@ -5695,6 +5849,7 @@ def complete_transition_cutover_v2(
                 with _contract_cutover_guard_for_service_user_v1(
                     legacy_identity.name,
                     catalog_trusted_owner=catalog_owner,
+                    initial_catalog=initial_catalog,
                 ) as (pre_convergence_maintenance, _pre_evidence):
                     if (
                         _resolve_legacy_service_identity_v2(
@@ -5709,10 +5864,19 @@ def complete_transition_cutover_v2(
                         descriptor, verified, pre_convergence_maintenance,
                         require_live_ready=transition_phase is None,
                     )
+                    # Only the root-owned journal can prove original absence.
+                    # A partial retry keeps that origin even after Birth has
+                    # populated some of the service-owned catalog.
+                    if new_instance and legacy_preparation.initially_empty is not True:
+                        raise _reject("birth_transition_initial_origin_invalid")
                     if transition_phase is not None and not legacy_preparation.ready:
                         raise _reject("birth_legacy_state_recovery_required")
                 if not legacy_preparation.ready:
-                    _converge_transition_contracts_v2(descriptor, verified)
+                    _converge_transition_contracts_v2(
+                        descriptor, verified,
+                        **({"new_instance": True, "initial_source": received,
+                            "initial_state": legacy_preparation} if new_instance else {}),
+                    )
             with _service_owned_birth_identity_v2(descriptor):
                 transition_current = _transition_current_enumerator_v2(
                     transition_gate, deployment_session,
@@ -5721,7 +5885,7 @@ def complete_transition_cutover_v2(
                 legacy_identity.name,
                 catalog_trusted_owner=catalog_owner,
                 **({"release_catalog": previous_catalog}
-                   if previous_catalog is not None else {}),
+                   if previous_catalog is not None else {"initial_catalog": initial_catalog}),
             ) as (maintenance, evidence):
                 if (
                     _resolve_legacy_service_identity_v2(legacy_identity.name)
@@ -5776,7 +5940,7 @@ def complete_transition_cutover_v2(
                         complete, verified,
                     )
                     _begin_topology_transition_v1(
-                        maintenance, complete.maintenance_proof,
+                        maintenance, frozen[2],
                     )
                     sessions = (
                         deployment_session, startup_session, maintenance,
@@ -5827,9 +5991,16 @@ def complete_transition_cutover_v2(
                         return observed.snapshot.effective_units_hash
 
                     def observe_maintenance() -> bytes:
-                        return _maintenance_evidence_under_transition_v1(
+                        from executor_birth_ownership_preflight import same_maintenance_quiescence_v1
+
+                        current = _maintenance_evidence_under_transition_v1(
                             maintenance,
                         )
+                        if not same_maintenance_quiescence_v1(complete.maintenance_proof, current):
+                            raise _reject("birth_ownership_maintenance_changed")
+                        # The certificate binds historical receipt completion;
+                        # the held guard keeps proving this session quiescent.
+                        return complete.maintenance_proof
 
                     def cross(receipt) -> None:
                         if len(effective_observations) < 2:

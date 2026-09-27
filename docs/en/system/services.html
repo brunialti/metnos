@@ -36,6 +36,18 @@ Conversely, a waiting timer or an LRE worker with its feature disabled can be
 healthy precisely because it is waiting. Read the health explanation before
 acting; the status dot alone is not enough.</p>
 
+<h2 id="periodic-checks">Check frequency</h2>
+<p>In <strong>Services → Periodic checks</strong>, administrators can choose
+how often to check and, if necessary, recover services: 30 minutes by default,
+with a range of 5 to 1,440 minutes. This persistent preference requires neither
+a restart nor recertification. A running check finishes normally; subsequent
+checks use the new interval. The first check starts three minutes after stack
+activation.</p>
+<p>The interval changes scheduling only. Commands, limits, and security checks
+remain part of the signed program. Each full check releases its memory when it
+finishes; the small waiting process works independently of the web interface.
+Stopping the stack also stops periodic checks.</p>
+
 <h2 id="actions">Start, stop, and restart</h2>
 
 <p><strong>Start</strong> makes a stopped service operational.

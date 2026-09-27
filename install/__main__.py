@@ -10,7 +10,7 @@ The supported flow has six resumable phases::
   2 infra       BGE-M3 model + optional services (llama.cpp, VLM, photon, …)
   3 code        source verification + initial stores + executor signing
   4 secrets     interactive dialog for admin / Telegram / IMAP / API keys
-  5 systemd     user units + reachability tests
+  5 systemd     signed services + reachability tests
   6 firstboot   admin onboarding link + optional sample index
 
 Each phase runs at most once unless its sentinel is missing or
@@ -22,10 +22,9 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-import time
 from dataclasses import dataclass
 
-from . import disclaimer, i18n, state, ui
+from . import disclaimer, i18n, services, state, ui
 
 # Phase registry: (number, module-name, human-name)
 _PHASES = [
@@ -46,7 +45,6 @@ class Args:
     force_phase: int | None
     only_phase: int | None
     yes: bool
-    enable: list[str]
     skip: list[str]
 
 
@@ -67,10 +65,8 @@ def _parse() -> Args:
                    help="Run only phase N and stop. Other phases unchanged.")
     p.add_argument("--yes", "-y", action="store_true",
                    help="Auto-confirm every yes/no prompt (non-interactive).")
-    p.add_argument("--enable", action="append", default=[], metavar="COMPONENT",
-                   help="Force an optional component on (e.g. --enable vlm).")
     p.add_argument("--skip", action="append", default=[], metavar="COMPONENT",
-                   help="Force an optional component off (e.g. --skip photon).")
+                   help="Unsupported for signed installations; use services.toml for existing services.")
     ns = p.parse_args()
     return Args(
         check=ns.check,
@@ -79,7 +75,6 @@ def _parse() -> Args:
         force_phase=ns.force_phase,
         only_phase=ns.only_phase,
         yes=ns.yes,
-        enable=list(ns.enable),
         skip=list(ns.skip),
     )
 
@@ -87,8 +82,6 @@ def _parse() -> Args:
 def _welcome() -> None:
     ui.banner(i18n.t("main_welcome_title"), i18n.t("main_welcome_subtitle"))
     ui.console().print(i18n.t("main_welcome_intro"))
-    rows = state.summary()
-    ui.summary_panel(rows)
 
 
 def _gate_language_and_disclaimer(args: Args) -> str:
@@ -151,6 +144,12 @@ def _phase_module(mod_name: str):
 
 def _run_phase(num: int, mod_name: str, human_name: str, args: Args) -> bool:
     if state.is_done(num) and args.force_phase != num:
+        if num in {2, 5}:
+            profile = services.load()
+            record = state.load(num)
+            recorded = record.notes.get("services_profile") if record else None
+            if (profile or recorded) and recorded != services.fingerprint(profile):
+                ui.fail(i18n.t("services_changed"))
         ui.info(i18n.t("main_phase_already_done", num=num, human_name=human_name))
         return True
     if args.force_phase == num:
@@ -180,6 +179,11 @@ def _run_phase(num: int, mod_name: str, human_name: str, args: Args) -> bool:
 
 def main() -> int:
     args = _parse()
+    try:
+        profile = services.load()
+        services.validate_choices(profile, args)
+    except ValueError as exc:
+        ui.fail(str(exc))
 
     # --check: pre-flight only. Runs the resource checks and exits WITHOUT
     # writing anything (no disclaimer sentinel, no state dirs, no models) — runs
@@ -188,6 +192,11 @@ def main() -> int:
         from . import preflight
         ui.banner("Metnos installer · pre-flight", "system checks only — nothing is written")
         ok = preflight.run_all(min_disk_gb=8)
+        try:
+            services.probe(profile)
+        except ValueError as exc:
+            ui.warn(str(exc))
+            ok = False
         ui.ok("Pre-flight passed — system looks ready.") if ok else \
             ui.warn("Pre-flight found issues (see above). Nothing was written.")
         return 0 if ok else 1
@@ -208,20 +217,8 @@ def main() -> int:
         ui.info(i18n.t("main_aborted"))
         return 0
 
-    phases_to_run = _PHASES
-    if args.only_phase is not None:
-        phases_to_run = [p for p in _PHASES if p[0] == args.only_phase]
-
-    for num, mod_name, human_name in phases_to_run:
-        if not _run_phase(num, mod_name, human_name, args):
-            ui.warn("Aborting at this phase. Re-run installer to resume.")
-            return 2
-        time.sleep(0.2)  # let stdout flush between phases
-
-    # Final summary
-    ui.banner("Install complete", "Run `systemctl --user status metnos-http` to verify")
-    ui.summary_panel(state.summary())
-    return 0
+    from . import managed_install
+    return managed_install.launch(args, profile)
 
 
 if __name__ == "__main__":

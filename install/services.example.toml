@@ -1,0 +1,25 @@
+# Optional existing services. Copy to ~/.config/metnos/services.toml before
+# running bootstrap, then uncomment ONLY the services you intend to reuse.
+# An absent or empty file installs every service locally.
+# Unlisted services are also installed locally; --skip NAME excludes a sidecar.
+# Configurazione facoltativa: decommenta solo i servizi da riusare.
+# File assente/vuoto e servizi non indicati: installazione locale.
+# See SERVICES.md / consulta SERVICES.md.
+
+# [llm]
+# url = "http://models.example.test:8080"
+# model = "model.gguf"  # required only if /v1/models lists multiple models
+# frontier = false     # paid cloud tier disabled; no automatic fallback
+
+# [vlm]
+# url = "http://vision.example.test:8081"
+# model = "vision.gguf"
+
+# [searxng]
+# url = "http://search.example.test:8888"
+
+# [photon]
+# url = "http://geo.example.test:2322"
+
+# [playwright]
+# url = "http://browser.example.test:8771"

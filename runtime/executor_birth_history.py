@@ -174,7 +174,9 @@ def reconcile_historical_birth_v1(
                     # happened, never a new one, and counting it would let a
                     # withdrawal raise the admission threshold.
                     classification = (
-                        "quarantine" if admission.approved_lifecycle is ApprovedLifecycle.QUARANTINED
+                        "initial_catalog_adoption" if "initial_catalog_adoption_v1"
+                        in admission.check_results
+                        else "quarantine" if admission.approved_lifecycle is ApprovedLifecycle.QUARANTINED
                         else "preexercise" if admission.approved_lifecycle is ApprovedLifecycle.PREEXERCISE
                         else "technical_candidate" if admission.revision_class in _TECHNICAL_REVISIONS
                         else "nontechnical_revision"

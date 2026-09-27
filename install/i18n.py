@@ -12,6 +12,103 @@ def locale() -> str:
     return "en"
 
 _CATALOG: dict[str, dict[str, str]] = {
+    'managed_adopt': {
+        'en': 'Verifying the release and registering its initial catalog. This can take several minutes.',
+        'it': 'Verifica della release e registrazione del catalogo iniziale. Può richiedere alcuni minuti.',
+    },
+    'managed_activate': {
+        'en': 'Activating the verified services. This can take several minutes.',
+        'it': 'Attivazione dei servizi verificati. Può richiedere alcuni minuti.',
+    },
+    'managed_skip': {
+        'en': 'The signed installation requires every service. Configure existing services in services.toml before installing; --skip is not supported.',
+        'it': 'L’installazione firmata richiede tutti i servizi. Configura quelli esistenti in services.toml prima di installare; --skip non è supportato.',
+    },
+    'managed_consent': {
+        'en': 'Installation consent is missing. Restart the installer interactively.',
+        'it': 'Manca il consenso all’installazione. Riavvia l’installer interattivamente.',
+    },
+    'managed_privilege': {
+        'en': 'System installation needs administrator access. Your dialogs continue under the separate Metnos service account.',
+        'it': 'L’installazione di sistema richiede accesso amministrativo. Le domande proseguono con l’account separato del servizio Metnos.',
+    },
+    'managed_prerequisites': {
+        'en': 'Required system programs are missing: {paths}. Install the prerequisites listed in INSTALL_NOTES.md and retry.',
+        'it': 'Mancano programmi di sistema necessari: {paths}. Installa i prerequisiti elencati in INSTALL_NOTES.md e riprova.',
+    },
+    'managed_profile_changed': {
+        'en': 'The service profile differs from the prepared installation. Restore its services.toml. A different profile requires a new signed release.',
+        'it': 'Il profilo dei servizi è diverso da quello preparato. Ripristina services.toml. Un profilo diverso richiede una nuova release firmata.',
+    },
+    'managed_previous_phases': {
+        'en': 'Earlier installation phases are incomplete. Rerun without --only-phase to resume them first.',
+        'it': 'Le fasi precedenti sono incomplete. Ripeti senza --only-phase per completarle prima.',
+    },
+    'managed_http_binding': {
+        'en': 'This signed release serves the Web UI on port 8770 on the server’s network interfaces. Use it on a trusted private network.',
+        'it': 'Questa release firmata espone l’interfaccia web sulla porta 8770 delle interfacce di rete del server. Usala su una rete privata fidata.',
+    },
+    'managed_health': {
+        'en': 'Verify signed services and configured external services',
+        'it': 'Verifica dei servizi firmati e dei servizi esterni configurati',
+    },
+    'managed_http_failed': {
+        'en': 'The signed HTTP service did not become ready. Inspect the system journal, fix the reported error and rerun the installer.',
+        'it': 'Il servizio HTTP firmato non è pronto. Consulta il registro di sistema, correggi l’errore segnalato e ripeti l’installer.',
+    },
+    'managed_complete': {'en': 'Installation complete', 'it': 'Installazione completata'},
+    'managed_inspect': {
+        'en': 'Use the connection details below and systemctl --failed to inspect system services.',
+        'it': 'Usa i dettagli di connessione e systemctl --failed per verificare i servizi di sistema.',
+    },
+    'managed_failed': {
+        'en': 'Installation stopped: {reason}. Correct the error and rerun to resume.',
+        'it': 'Installazione interrotta: {reason}. Correggi l’errore e ripeti per riprendere.',
+    },
+    'services_invalid': {
+        "en": 'Invalid {path}: use documented service sections and HTTP(S) URLs without credentials, query or fragment.',
+        "it": 'File {path} non valido: usa le sezioni documentate e URL HTTP(S) senza credenziali, query o frammenti.',
+    },
+    'services_local_conflict': {
+        'en': 'A service already answers at {endpoint}. Declare it in services.toml to reuse it, then rerun the installer.',
+        'it': 'Un servizio risponde già su {endpoint}. Dichiaralo in services.toml per riusarlo, poi ripeti l’installazione.',
+    },
+    'services_skip_unknown': {
+        "en": 'Unknown optional components for --skip: {names}. Choose searxng, photon, vlm or playwright.',
+        "it": 'Componenti opzionali sconosciuti per --skip: {names}. Scegli searxng, photon, vlm o playwright.',
+    },
+    'services_skip_conflict': {
+        "en": 'Services configured but also excluded with --skip: {names}. Remove one of the conflicting choices.',
+        "it": 'Servizi configurati ma anche esclusi con --skip: {names}. Rimuovi una delle scelte in conflitto.',
+    },
+    'services_unavailable': {
+        "en": 'Service {name} at {url} is unavailable or incompatible. Check its URL, protocol and model ID in services.toml; no local or cloud replacement was selected.',
+        "it": 'Servizio {name} su {url} non disponibile o incompatibile. Verifica indirizzo, protocollo e nome del modello in services.toml; nessuna sostituzione locale o cloud selezionata.',
+    },
+    'services_changed': {
+        "en": 'Service configuration changed or phase 2 is incomplete. Resume with the original services.toml. Changing installed services requires a new signed release.',
+        "it": 'Configurazione servizi cambiata o fase 2 incompleta. Riprendi con il services.toml originale. Cambiare i servizi installati richiede un nuovo rilascio firmato.',
+    },
+    'services_unit_conflict': {
+        "en": 'Local unit {unit} already exists for an external service. Stop and remove that local unit explicitly before switching; the installer does not remove existing services.',
+        "it": 'Esiste gia la unita locale {unit} per un servizio esterno. Fermala e rimuovila esplicitamente prima del cambio; l’installer non rimuove servizi esistenti.',
+    },
+    'services_local_llm_failed': {
+        "en": 'The local model could not be installed and started. Fix the reported prerequisite or configure an existing server in services.toml, then rerun phase 2. No cloud fallback.',
+        "it": 'Il modello locale non puo essere installato e avviato. Risolvi il prerequisito segnalato oppure configura un server esistente in services.toml, poi ripeti la fase 2. Nessuna sostituzione cloud.',
+    },
+    'services_frontier_prompt': {
+        "en": 'Enable the paid Anthropic frontier tier explicitly?',
+        "it": 'Abilitare esplicitamente il ruolo frontier Anthropic a pagamento?',
+    },
+    'services_local_install': {
+        "en": 'Local installation: {name} ({size}). Existing services can be selected in services.toml before installation.',
+        "it": 'Installazione locale: {name} ({size}). Puoi scegliere servizi esistenti in services.toml prima dell’installazione.',
+    },
+    'services_local_failed': {
+        "en": 'Local component {name} could not be prepared ({status}). Fix the reported prerequisite and rerun the installer.',
+        "it": 'Il componente locale {name} non può essere preparato ({status}). Risolvi il prerequisito segnalato e ripeti l’installer.',
+    },
     # ─── __main__ (orchestrator) ─────────────────────────────────
     "main_welcome_title": {
         "en": "Metnos installer",
@@ -108,8 +205,12 @@ _CATALOG: dict[str, dict[str, str]] = {
         "it": "installazione di {dep} fallita: {reason}",
     },
     "p1_dep_timeout": {
-        "en": "timeout installing {dep}, skipping",
-        "it": "timeout durante l'installazione di {dep}, la salto",
+        "en": "Timed out installing {dep}. Installation stopped; check the network and retry.",
+        "it": "Tempo scaduto installando {dep}. Installazione fermata: verifica la rete e riprova.",
+    },
+    "p1_deps_verified": {
+        "en": "{count} release dependencies installed or already present at their required versions",
+        "it": "{count} dipendenze della release installate o gia presenti nelle versioni richieste",
     },
     "p1_step_preflight": {
         "en": "Running pre-flight checks",

@@ -1,6 +1,6 @@
 {
   "schema": "metnos.contract-boundary-inventory/2",
-  "source_census": "sha256:19bbb6d731a5ed2feb77e439f2708a49d10208539c9fcd4b9fde4786d976c0c9",
+  "source_census": "sha256:2bafb50e26403278faecd3f4d755afd5ebf0a9f1913ba9021ed2536a8807e8ac",
   "scan_roots": [
     "runtime",
     "install",
@@ -48,6 +48,16 @@
         "store_write"
       ],
       "destination": "caller-held or call-scoped deployment lock session for completion (review A-05, §17 decision of Roberto 2026-09-11)",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_authority_provisioner.py",
+      "scope": "_initial_catalog_adoption_input_v1",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_read"
+      ],
+      "destination": "root-owned sealed inventory of exact reviewed source bytes for authenticated fresh-instance adoption",
       "phase": "M4"
     },
     {
@@ -156,6 +166,16 @@
     },
     {
       "path": "install/birth_certification_issuer.py",
+      "scope": "_install_rehearsal_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "publish the purpose-separated signed rehearsal permit under existing custody and verify runtime readback",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_certification_issuer.py",
       "scope": "issue_certificate_v1",
       "role": "store_owner",
       "capabilities": [
@@ -166,12 +186,32 @@
     },
     {
       "path": "install/birth_certification_issuer.py",
+      "scope": "issue_rehearsal_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "derive a one-hour isolated rehearsal permit from native confinement and the frozen profile; not productive qualification",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_certification_issuer.py",
       "scope": "main",
       "role": "store_owner",
       "capabilities": [
         "store_write"
       ],
       "destination": "administrative entry point; derive only reports, issue signs and publishes",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_lifecycle_migration.py",
+      "scope": "_apply_handoff_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "fixed administrative migration worker; single maintenance barrier, service identity for stores, root only for the final marker",
       "phase": "M4"
     },
     {
@@ -202,6 +242,16 @@
         "live_artifact_read"
       ],
       "destination": "the exact generations a verified catalog load currently selects",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_lifecycle_migration.py",
+      "scope": "_service_worker",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "fixed administrative migration worker; single maintenance barrier, service identity for stores, root only for the final marker",
       "phase": "M4"
     },
     {
@@ -435,6 +485,27 @@
         "authoring_write"
       ],
       "destination": "private deterministic packaging candidate materialization",
+      "phase": "M4"
+    },
+    {
+      "path": "install/executor_birth_contract_convergence.py",
+      "scope": "_finish_initial_catalog",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write",
+        "verified_store_read"
+      ],
+      "destination": "first-transition owner verifying every initial Birth receipt before atomic shadow activation",
+      "phase": "M4"
+    },
+    {
+      "path": "install/executor_birth_contract_convergence.py",
+      "scope": "_initial_shadow_root",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_read"
+      ],
+      "destination": "read exact initial source candidates to resolve the existing candidate-bound shadow",
       "phase": "M4"
     },
     {
@@ -1060,6 +1131,36 @@
     },
     {
       "path": "install/executor_birth_transition.py",
+      "scope": "_prepare_initial_author_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "R-014: first author only with absent identity and absent store; surviving state refuses recreation",
+      "phase": "M4"
+    },
+    {
+      "path": "install/executor_birth_transition.py",
+      "scope": "_prepare_install_source_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "R-014: root-only source reception and signed preparation, shared with the six-phase installer",
+      "phase": "M4"
+    },
+    {
+      "path": "install/executor_birth_transition.py",
+      "scope": "_prepare_service_authorities_child_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "R-014: service authorities prepared only under the canonical account identity and environment",
+      "phase": "M4"
+    },
+    {
+      "path": "install/executor_birth_transition.py",
       "scope": "_provisioned_service_environment_v1",
       "role": "store_owner",
       "capabilities": [
@@ -1076,6 +1177,16 @@
         "store_write"
       ],
       "destination": "one-shot handoff to the verified release and signed topology activation",
+      "phase": "M4"
+    },
+    {
+      "path": "install/executor_birth_transition.py",
+      "scope": "install_source_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "R-014: first installation through the root receiver and signed release, with explicit absent predecessor; activation deferred",
       "phase": "M4"
     },
     {
@@ -1136,6 +1247,26 @@
         "store_write"
       ],
       "destination": "provision the dedicated certification key through its installer owner; returns public material only",
+      "phase": "M4"
+    },
+    {
+      "path": "install/f5_authority.py",
+      "scope": "_rehearse",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "plan or issue isolated rehearsal through the existing certification issuer owner",
+      "phase": "M4"
+    },
+    {
+      "path": "install/managed_install.py",
+      "scope": "_run",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "R-014: root-only ordered administrative handoff; dialogs and downloads use the fixed service account; activation only through the verified transition",
       "phase": "M4"
     },
     {
@@ -2522,6 +2653,16 @@
     },
     {
       "path": "runtime/executor_birth_bootstrap.py",
+      "scope": "_InitialTransitionInstallerRuntimeV1.submit",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "recheck initial ownership chain before each initial catalog submission; inherited inspection capability, no alternate store writer",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_bootstrap.py",
       "scope": "_PostconditionAdapter.recover_authoring",
       "role": "store_owner",
       "capabilities": [
@@ -2602,6 +2743,16 @@
         "store_write"
       ],
       "destination": "sealed startup assembly bound to context-selected current receipts",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_bootstrap.py",
+      "scope": "_require_initial_transition_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sealed initial-transition guard inspecting the fixed empty ownership chain; conservative store-owner capability inherited from chain inspection",
       "phase": "M4"
     },
     {
@@ -5439,8 +5590,13 @@
       "install/executor_birth_systemd.py:_publish_isolated_units_for_test_v1",
       "install/executor_birth_systemd.py:install_group6_administrative_v1",
       "install/executor_birth_transition.py:<module>",
+      "install/executor_birth_transition.py:_prepare_initial_author_v1",
+      "install/executor_birth_transition.py:_prepare_install_source_v1",
+      "install/executor_birth_transition.py:_prepare_service_authorities_child_v1",
       "install/executor_birth_transition.py:deploy_source_v1",
+      "install/executor_birth_transition.py:install_source_v1",
       "install/executor_birth_transition.py:main",
+      "install/managed_install.py:_run",
       "runtime/executor_birth_commit_publisher.py:_BirthCommitPublisher._persist_current_reattestation",
       "runtime/executor_birth_ownership_chain.py:OwnershipChainStore._append_pair",
       "runtime/executor_birth_ownership_chain.py:OwnershipChainStore._update_required_head_locked",

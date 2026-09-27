@@ -13,6 +13,7 @@ warn and continue.
 from __future__ import annotations
 
 import os
+import platform
 import shutil
 import socket
 import subprocess
@@ -33,12 +34,13 @@ class CheckResult:
 
 def check_python() -> CheckResult:
     v = sys.version_info
-    if v >= (3, 12):
-        return CheckResult("Python ≥ 3.12", True, f"{v.major}.{v.minor}.{v.micro}")
+    if (sys.implementation.name == "cpython" and v[:2] == (3, 12)
+            and platform.system() == "Linux" and platform.machine() == "x86_64"):
+        return CheckResult("Linux x86_64 · CPython 3.12", True, f"{v.major}.{v.minor}.{v.micro}")
     return CheckResult(
-        "Python ≥ 3.12",
+        "Linux x86_64 · CPython 3.12",
         False,
-        f"found {v.major}.{v.minor}.{v.micro} — install python3.12 or newer",
+        f"found {v.major}.{v.minor}.{v.micro} on {platform.system()} {platform.machine()} — use the supported release platform",
     )
 
 
@@ -67,22 +69,48 @@ def check_disk(min_free_gb: int = 8) -> CheckResult:
     )
 
 
-def check_ram(min_available_gb: int = 8) -> CheckResult:
-    """Read /proc/meminfo MemAvailable (kB). Non-fatal warning below threshold."""
+def memory_bytes() -> tuple[int, int]:
+    """Total and available RAM, capped by visible cgroup v2 limits."""
+    info = {}
+    for line in Path("/proc/meminfo").read_text().splitlines():
+        key, _, value = line.partition(":")
+        fields = value.split()
+        if fields and fields[0].isdigit():
+            info[key] = int(fields[0]) * 1024
+    total = info.get("MemTotal", 0)
+    available = info.get("MemAvailable", info.get("MemFree", 0))
+    root = Path("/sys/fs/cgroup")
     try:
-        info: dict[str, int] = {}
-        with open("/proc/meminfo") as f:
-            for line in f:
-                if ":" not in line:
-                    continue
-                k, v = line.split(":", 1)
-                parts = v.strip().split()
-                if parts and parts[0].isdigit():
-                    info[k.strip()] = int(parts[0])
-        avail_kb = info.get("MemAvailable", 0) or info.get("MemFree", 0)
-        total_kb = info.get("MemTotal", 0)
-        avail_gb = avail_kb // (1024 * 1024)
-        total_gb = total_kb // (1024 * 1024)
+        memberships = Path("/proc/self/cgroup").read_text().splitlines()
+    except OSError:
+        memberships = []
+    for line in memberships:
+        if not line.startswith("0::/"):
+            continue
+        relative = Path(line[4:])
+        if ".." in relative.parts:
+            continue
+        current = root / relative
+        while True:
+            try:
+                limit = int((current / "memory.max").read_text().strip())
+                used = int((current / "memory.current").read_text().strip())
+                total = min(total, limit)
+                available = min(available, max(0, limit - used))
+            except (OSError, ValueError):
+                pass  # Absent or unlimited cgroup; parent may still cap it.
+            if current == root:
+                break
+            current = current.parent
+    return total, available
+
+
+def check_ram(min_available_gb: int = 8) -> CheckResult:
+    """Non-fatal warning below the memory actually available to this process."""
+    try:
+        total, available = memory_bytes()
+        avail_gb = available // (1024 ** 3)
+        total_gb = total // (1024 ** 3)
         if avail_gb >= min_available_gb:
             return CheckResult(
                 "RAM", True,
@@ -194,15 +222,16 @@ def check_libstdcpp() -> CheckResult:
     for c in candidates:
         if Path(c).exists():
             try:
-                out = subprocess.run(
-                    ["strings", c],
-                    capture_output=True,
-                    text=True,
-                    timeout=5,
-                ).stdout
-                if "GLIBCXX_3.4.29" in out:
+                # The symbol table is in the library itself; binutils is not
+                # an installer prerequisite on a minimal Linux image.
+                import mmap
+                with open(c, "rb") as library, mmap.mmap(
+                    library.fileno(), 0, access=mmap.ACCESS_READ,
+                ) as contents:
+                    available = contents.find(b"GLIBCXX_3.4.29\x00") >= 0
+                if available:
                     return CheckResult("libstdc++ ≥ 11", True, c)
-            except (subprocess.SubprocessError, FileNotFoundError):
+            except (OSError, ValueError):
                 pass
     return CheckResult(
         "libstdc++ ≥ 11",
