@@ -84,6 +84,9 @@
  It introduces no new key or service and adds no history scan
  when an individual executor is created. Initial installation checks are unchanged.</p>
  <h2>Check the present without replaying the entire history</h2>
+ <p>Producer requests identify the verified software version. Repeating the
+ same request within that version reuses its receipt. After an update, a new
+ request uses the current authority; earlier receipts remain intact.</p>
  <p>A new admission must pass its safety checks. It should not repeat work
  already verified for every earlier release. The optimized reader uses the
  signed current-release reference, checks its link to the predecessor and

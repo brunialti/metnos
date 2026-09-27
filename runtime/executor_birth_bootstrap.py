@@ -144,13 +144,14 @@ def _request_factory(authority: _ProducerAuthority, registry: IssuerRegistry,
                      context_builder: object, *, selection: object | None = None,
                      store_root: Path | None = None):
     from executor_birth_context_selection import is_context_selection_v1
-    from executor_birth_intent import _STACK_RECONCILE
-
     if selection is not None and not is_context_selection_v1(selection):
         raise BirthBootstrapError("birth_context_selection_invalid")
     release_build_id = (
         selection.distribution.identity.closed_build_id
-        if selection is not None and authority.capability is _STACK_RECONCILE
+        if selection is not None and any(
+            authority.capability is capability
+            for capability in _producer_capabilities_for_bootstrap()
+        )
         else None
     )
 
@@ -161,7 +162,7 @@ def _request_factory(authority: _ProducerAuthority, registry: IssuerRegistry,
         objective = producer_objective_hash_v1(intent.reason, intent.approval_refs)
         if release_build_id is not None:
             # Same-build retries retain their identity; a new verified build
-            # gets its own release edit without replacing any old receipt.
+            # gets its own producer request without replacing any old receipt.
             objective = _hash(
                 b"metnos.executor-birth.release-edit-objective/v1\0",
                 objective, release_build_id,
