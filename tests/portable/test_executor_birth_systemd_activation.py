@@ -1423,6 +1423,7 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
         expected_groups = list(fixture.account.supplementary_gids)
         expected_environment = {
             "HOME": fixture.account.home,
+            "METNOS_INSTALL_ROOT": RELEASE_ROOT.as_posix(),
             # A real Python process performs PEP 538 locale initialization.
             # The previous in-process runpy call did not. No ambient values
             # are accepted: the complete environment is still compared.
