@@ -134,6 +134,34 @@ def test_real_delegated_executor_dependency_sandbox(
     _group4_support().exercise_authenticated_dependency_subprocess(tmp_path)
 
 
+def test_real_runner_exposes_only_the_registered_copied_interpreter(tmp_path):
+    """The managed installer copies Python outside /usr; neighbours stay hidden."""
+    from dataclasses import replace
+    import shutil
+
+    runner = _runner()
+    registry = _registered_backend(runner)
+    interpreter = tmp_path / "managed" / "bin" / "python"
+    interpreter.parent.mkdir(parents=True)
+    shutil.copy2(registry.interpreter_path, interpreter)
+    secret = interpreter.parent / "private-neighbour"
+    secret.write_text("must-not-cross-boundary")
+    registry = replace(registry, interpreter_path=interpreter,
+                       interpreter_binary_hash=runner._binary_digest_v1(interpreter))
+    source = ("import json, pathlib, sys\n"
+              "print(json.dumps({'python': sys.executable, 'secret_visible': "
+              f"pathlib.Path({str(secret)!r}).exists()}}))\n").encode()
+    result = runner.run_birth_phase(
+        (str(interpreter), "-I", "/work/candidate/main.py"),
+        candidate_id="sha256:" + "c" * 64,
+        candidate_files={"main.py": source}, linux_registry=registry,
+    )
+    _require_real(result)
+    assert result.status is runner.RunnerStatus.PASSED, (result.error_code, result.stderr)
+    assert json.loads(result.stdout) == {"python": str(interpreter), "secret_visible": False}
+    assert result.attestation.tree_empty and result.attestation.termination_attested
+
+
 def test_root_owned_deployment_authorities_deny_service_identity() -> None:
     """G5-A: real root ownership, cold load and a real unprivileged denial."""
     if os.environ.get("METNOS_REQUIRE_REAL_BIRTH_LINUX") != "1":

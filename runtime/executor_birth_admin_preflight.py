@@ -905,7 +905,7 @@ _REQUIRED_MANIFEST_PATHS = {
 _BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:721f7a57390a5ec7a30e8c6ae39afa89e3667d7c28d633bfbad286eb591473cc"
+_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:f4bc8e8c13be646aa6bdb4e37276c3c28037419193d0a2d823ab50b4b3b9ef04"
 _SOURCE_REVIEW_PIN_VALUE_V1 = (
     rb'(?:(?:"sha256:" \+ "0" \* 64)|(?:"sha256:[0-9a-f]{64}"))'
 )

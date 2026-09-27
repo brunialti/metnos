@@ -135,16 +135,47 @@ def _validate_mounts(guest: tuple[_Mount, ...], host: tuple[_Mount, ...],
         raise RehearsalIsolationError("host disk mount shared")
 
 
-def _validate_proc(status: bytes, mounts: tuple[_Mount, ...], device: str, pid: int) -> None:
+def _validate_proc(status: bytes, mounts: tuple[_Mount, ...], device: str, pid: int,
+                   additional: tuple[tuple[str, bytes], ...] = ()) -> None:
     # A private PID namespace alone does not prove that /proc was remounted:
     # a host procfs bind would still expose host processes. NSpid is expressed
     # relative to procfs's owning namespace, so exactly the local PID must show.
-    identities = [line.split()[1:] for line in status.splitlines()
-                  if line.startswith(b"NSpid:")]
-    if identities != [[str(pid).encode("ascii")]]:
-        raise RehearsalIsolationError("host process filesystem shared")
-    if any(m.filesystem == "proc" and m.device != device for m in mounts):
+    verified = {device}
+    for observed_device, observed_status in ((device, status), *additional):
+        identities = [line.split()[1:] for line in observed_status.splitlines()
+                      if line.startswith(b"NSpid:")]
+        if identities != [[str(pid).encode("ascii")]]:
+            raise RehearsalIsolationError("host process filesystem shared")
+        verified.add(observed_device)
+    if any(m.filesystem == "proc" and m.device not in verified for m in mounts):
         raise RehearsalIsolationError("additional process filesystem shared")
+
+
+def _additional_proc_status(mount: _Mount) -> bytes:
+    """Read a kernel status from this exact procfs, never a covering file."""
+    if mount.root != "/":
+        raise RehearsalIsolationError("additional process filesystem root")
+    expected = tuple(map(int, mount.device.split(":")))
+    root = os.open(mount.target, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    try:
+        info = os.fstat(root)
+        if (os.major(info.st_dev), os.minor(info.st_dev)) != expected:
+            raise RehearsalIsolationError("process filesystem covered")
+        descriptor = os.open("self/status", os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC,
+                             dir_fd=root)
+        try:
+            info = os.fstat(descriptor)
+            if (not stat.S_ISREG(info.st_mode)
+                    or (os.major(info.st_dev), os.minor(info.st_dev)) != expected):
+                raise RehearsalIsolationError("process status covered")
+            raw = os.read(descriptor, 16385)
+            if not raw or len(raw) > 16384:
+                raise RehearsalIsolationError("process status size")
+            return raw
+        finally:
+            os.close(descriptor)
+    finally:
+        os.close(root)
 
 
 def _observe_local_rehearsal_v1() -> RehearsalIsolationV1:
@@ -187,8 +218,13 @@ def _observe_local_rehearsal_v1() -> RehearsalIsolationV1:
     raw_mounts = _read(proc / "mountinfo", 512 * 1024)
     mounts = _mounts(raw_mounts)
     proc_device = proc.stat().st_dev
+    device = f"{os.major(proc_device)}:{os.minor(proc_device)}"
+    additional = {}
+    for mount in mounts:
+        if mount.filesystem == "proc" and mount.device != device and mount.device not in additional:
+            additional[mount.device] = _additional_proc_status(mount)
     _validate_proc(_read(proc / "status", 16384), mounts,
-                   f"{os.major(proc_device)}:{os.minor(proc_device)}", os.getpid())
+                   device, os.getpid(), tuple(additional.items()))
     if any(m.target == "/" and m.root == "/" for m in mounts):
         raise RehearsalIsolationError("private directory root required")
     overflow_uid = int(_read(Path("/proc/sys/kernel/overflowuid"), 32))

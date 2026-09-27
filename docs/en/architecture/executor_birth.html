@@ -115,6 +115,11 @@
  <p>The final checks focus on Birth, generations, caches, feedback and recovery,
  rather than repeating unchanged mail or calendar tests. Integration is tested
  in isolation first; certification must succeed before production activation.</p>
+ <p>Linux checks also cover Python installed outside the system directories:
+ the sandbox exposes only its registered executable, without adjacent files.
+ A nested laboratory may need a second process filesystem. Each such view
+ must independently identify only the laboratory's process namespace;
+ an unreadable or host view refuses temporary test authorization.</p>
  <p>One development check concerns waiting jobs: an executor can become
  unavailable while a job waits for a model or an execution slot. The strict
  attempt path therefore rereads its exact generation after waiting and before

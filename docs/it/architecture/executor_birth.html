@@ -123,6 +123,12 @@
  riscontri e ripresa, senza ripetere le prove di posta o calendari non modificati.
  Prima si prova l'integrazione in un ambiente isolato; la certificazione deve
  riuscire prima dell'attivazione in produzione.</p>
+ <p>Le verifiche Linux coprono anche Python installato fuori dalle directory
+ di sistema: la sandbox espone soltanto il suo eseguibile registrato, senza
+ i file adiacenti. Un laboratorio annidato può richiedere un secondo filesystem
+ dei processi. Ogni vista deve identificare dal kernel soltanto i processi
+ del laboratorio; una vista illeggibile o dell'host impedisce l'autorizzazione
+ temporanea di prova.</p>
  <p>Una verifica dello sviluppo riguarda i lavori in attesa: un executor può
  diventare indisponibile mentre il lavoro aspetta un modello o un posto per
  l'esecuzione. Il percorso con controllo delle generazioni rilegge quindi lo

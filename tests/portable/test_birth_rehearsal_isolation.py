@@ -54,12 +54,34 @@ def test_procfs_must_show_only_the_callers_local_pid(status):
         isolation._validate_proc(status, (), "0:9", 12)
 
 
-def test_private_procfs_cannot_be_accompanied_by_another_procfs():
+def test_every_additional_procfs_requires_its_own_native_identity():
     proc = _mount("/", "/proc", device="0:9", filesystem="proc")
     isolation._validate_proc(b"NSpid:\t12\n", (proc,), "0:9", 12)
     host = _mount("/", "/host-proc", device="0:10", filesystem="proc")
     with pytest.raises(isolation.RehearsalIsolationError, match="additional process filesystem"):
         isolation._validate_proc(b"NSpid:\t12\n", (proc, host), "0:9", 12)
+    isolation._validate_proc(b"NSpid:\t12\n", (proc, host), "0:9", 12,
+                             (("0:10", b"NSpid:\t12\n"),))
+    with pytest.raises(isolation.RehearsalIsolationError, match="host process filesystem"):
+        isolation._validate_proc(b"NSpid:\t12\n", (proc, host), "0:9", 12,
+                                 (("0:10", b"NSpid:\t9000\t12\n"),))
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="native procfs identity")
+def test_additional_proc_status_reads_kernel_bytes_and_refuses_covering_files(tmp_path):
+    import os
+    from pathlib import Path
+
+    proc_device = Path("/proc").stat().st_dev
+    mount = _mount("/", "/proc", device=f"{os.major(proc_device)}:{os.minor(proc_device)}",
+                   filesystem="proc")
+    assert b"NSpid:" in isolation._additional_proc_status(mount)
+    (tmp_path / "self").mkdir()
+    (tmp_path / "self/status").write_bytes(f"NSpid:\t{os.getpid()}\n".encode())
+    with pytest.raises(isolation.RehearsalIsolationError, match="filesystem covered"):
+        isolation._additional_proc_status(replace(mount, target=str(tmp_path)))
+    with pytest.raises(isolation.RehearsalIsolationError, match="filesystem root"):
+        isolation._additional_proc_status(replace(mount, root="/sys"))
 
 
 def test_shared_control_groups_must_be_scoped_to_the_observed_guest():

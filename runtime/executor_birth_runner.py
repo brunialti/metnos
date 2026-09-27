@@ -346,7 +346,8 @@ def _command(command: Sequence[str]) -> tuple[str, ...]:
     return value
 
 
-def _bwrap_command(bwrap: str, work: Path, command: tuple[str, ...]) -> tuple[str, ...]:
+def _bwrap_command(bwrap: str, work: Path, command: tuple[str, ...],
+                   interpreter: str) -> tuple[str, ...]:
     args = [
         bwrap,
         "--die-with-parent",
@@ -368,6 +369,10 @@ def _bwrap_command(bwrap: str, work: Path, command: tuple[str, ...]) -> tuple[st
     for host_path in ("/usr", "/bin", "/lib", "/lib64"):
         if Path(host_path).exists():
             args.extend(("--ro-bind", host_path, host_path))
+    # Managed installations keep a copied Python outside the system roots.
+    # Expose only the authenticated executable, never its surrounding stores
+    # or the service's whole environment. The standard library is under /usr.
+    args.extend(("--ro-bind", interpreter, interpreter))
     candidate = work / "candidate"
     if candidate.is_dir():
         # Mode 0400 alone is not read-only: the owner could chmod or replace
@@ -595,7 +600,7 @@ def run_birth_phase(
             return _unavailable("cgroup_scope_unavailable", "linux-bwrap-cgroup-v2", started)
 
         launcher = template_v1("runner.linux_launcher")
-        wrapped = _bwrap_command(bwrap, work, argv)
+        wrapped = _bwrap_command(bwrap, work, argv, interpreter)
         # The placeholder is replaced in the launcher with a private pipe passed only to
         # bwrap.  Its JSON event is emitted after namespaces and mounts exist.
         wrapped = (wrapped[0], "--json-status-fd", "{STATUS_FD}", *wrapped[1:])
