@@ -17,6 +17,10 @@ _NEGATIVE_CASES = (
 )
 _ANCHOR = "tests/portable/test_rm0008_acceptance_evolution.py"
 _EXPECTED_PRODUCTIVE_GRAPH_MUTANTS = (
+    "review_calls_the_layout",
+    "review_calls_a_mutation",
+    "review_calls_provisioning",
+    "runtime_publishes_evidence",
     "reader_gains_a_mutation",
     "third_construction_site",
     "phase_calls_a_mutation",
@@ -76,7 +80,7 @@ _EXPECTED_PRODUCTIVE_GRAPH_MUTANTS = (
     "copied_descriptor_catalog",
 )
 _EXPECTED_PRODUCTIVE_GRAPH_TEST_AST_SHA256 = (
-    "9c0c5b703e46883b0a60673eaa5bcd4cd755416e517cea0c12a33c041606267a"
+    "0f14f9ac0754d3df13ce6ca24abff1ee5e33d1ca6b81fe42146925e522e3e0b3"
 )
 
 
@@ -203,12 +207,19 @@ def test_portable_import_prerequisite_requires_the_exact_reviewed_edge(variant):
             certification._validate_reviewed_acceptance_tree_evolution(source, current)
 
 
-def test_removing_a_productive_graph_negative_case_is_detected() -> None:
+@pytest.mark.parametrize("removed", (
+    "unreviewed_transition_entry",
+    "review_calls_the_layout",
+    "review_calls_a_mutation",
+    "review_calls_provisioning",
+    "runtime_publishes_evidence",
+))
+def test_removing_a_productive_graph_negative_case_is_detected(removed: str) -> None:
     source = (
         certification.REPO_ROOT / _NEGATIVE_CASES
     ).read_text(encoding="utf-8")
     reduced = source.replace(
-        "        unreviewed_transition_entry,\n",
+        f"        {removed},\n",
         "",
         1,
     )
