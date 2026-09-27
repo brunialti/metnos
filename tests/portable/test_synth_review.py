@@ -34,6 +34,7 @@ def launcher(monkeypatch, tmp_path):
         monkeypatch.setenv(name, str(tmp_path / name.lower()))
     monkeypatch.setenv("PYTHONPATH", "/untrusted/imports")
     monkeypatch.setenv("METNOS_INSTALL_ROOT", "/untrusted/release")
+    monkeypatch.setenv("METNOS_LLM_TIERS_CONFIG", str(tmp_path / "services-llm-tiers.toml"))
     calls = []
 
     def run(command, **kwargs):
@@ -55,6 +56,7 @@ def test_administrative_review_delegates_only_installed_code_and_passes_data_on_
     assert "/untrusted/imports" not in str(command)
     assert "/untrusted/release" not in str(command)
     assert "METNOS_INSTALL_ROOT=" + str(Path(review.__file__).resolve().parents[1]) in command
+    assert "METNOS_LLM_TIERS_CONFIG=" + os.environ["METNOS_LLM_TIERS_CONFIG"] in command
     assert document["proposal"]["reason"] not in str(command)
     assert json.loads(kwargs["input"]) == document
     assert kwargs["timeout"] == 610 and set(kwargs["env"]) == {"PATH", "LANG"}
@@ -71,7 +73,7 @@ def test_administrative_review_rejects_invalid_launch_before_execution(document,
     elif fault == "environment":
         monkeypatch.delenv("METNOS_USER_STATE")
     else:
-        monkeypatch.setenv("METNOS_USER_STATE", "/tmp/%i")
+        monkeypatch.setenv("METNOS_LLM_TIERS_CONFIG", "/tmp/%i")
     with pytest.raises(ValueError):
         review.run_delegated(operation, document)
     assert launcher == []

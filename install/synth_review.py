@@ -324,8 +324,13 @@ def run_delegated(operation: str, document: dict) -> dict:
                  [str(root), str(root / "runtime")], operation)
     environment = {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C.UTF-8",
                    "METNOS_INSTALL_ROOT": str(root)}
-    for name in ("METNOS_USER_DATA", "METNOS_USER_STATE", "METNOS_USER_CONFIG",
-                 "METNOS_WORKSPACE"):
+    paths = ["METNOS_USER_DATA", "METNOS_USER_STATE", "METNOS_USER_CONFIG",
+             "METNOS_WORKSPACE"]
+    # The launcher selects this binding from the authenticated service catalog.
+    # Omitting it would silently choose the default provider in the new unit.
+    if "METNOS_LLM_TIERS_CONFIG" in os.environ:
+        paths.append("METNOS_LLM_TIERS_CONFIG")
+    for name in paths:
         value = os.environ.get(name)
         if not value or not Path(value).is_absolute():
             raise ValueError("synth_review_service_environment_missing")
