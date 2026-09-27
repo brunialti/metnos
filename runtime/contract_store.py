@@ -5953,6 +5953,16 @@ def authenticate_birth_predecessor(
     _validate_manifest_ref(ref)
     trusted = _trusted_public_tuple(trusted_publics)
     with catalog_admission_lock(store_root=root, timeout=lock_timeout):
+        contract_dir = root / contract_storage_key(ref.contract_id)
+        if _is_link_like(contract_dir):
+            raise ContractStoreError("contract_directory_invalid", str(contract_dir))
+        if not contract_dir.exists():
+            # The catalog lock excludes first publication too. Observing an
+            # absent predecessor must not create a visible, unadmitted binding.
+            return _birth_predecessor_snapshot_locked(
+                ref, None, None, contract_dir=contract_dir,
+                receipt_verifier=receipt_verifier, context_selection=context_selection,
+            ), None
         with _writer_lock(ref.contract_id, store_root=root, timeout=lock_timeout):
             contract_dir, _generations, revision_id, payloads = _publication_base_locked(
                 ref, trusted_publics=trusted, store_root=root, technical_base=True,

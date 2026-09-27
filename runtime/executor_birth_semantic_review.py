@@ -169,6 +169,16 @@ def _pairs(items: list[tuple[str, object]]) -> dict[str, object]:
     return result
 
 
+def _canonical_response(response: str) -> bytes:
+    """Serialize the complete model response without extraction or coercion."""
+    if not isinstance(response, str):
+        raise SemanticReviewError("semantic_review_failed", "response type")
+    try:
+        return _canonical(json.loads(response, object_pairs_hook=_pairs))
+    except (ValueError, RecursionError) as exc:
+        raise SemanticReviewError("semantic_review_failed", "json") from exc
+
+
 def validate_semantic_review(encoded: bytes | str) -> SemanticReview:
     """Validate the exact canonical V1 response without extraction/coercion."""
     raw = encoded.encode("utf-8") if isinstance(encoded, str) else encoded
@@ -347,8 +357,8 @@ def review_candidate_semantics(
             )
         except Exception as exc:
             raise SemanticReviewError("semantic_review_unavailable", type(exc).__name__) from exc
-        raw = response.encode("utf-8") if isinstance(response, str) else b""
         try:
+            raw = _canonical_response(response)
             review = validate_semantic_review(raw)
             break
         except SemanticReviewError:

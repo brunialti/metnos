@@ -23,6 +23,13 @@
  candidate is kept separate from the installed version until the required
  checks succeed. Generating an executor is not a release of the whole
  Metnos system and does not require replaying every past certification.</p>
+ <p>The reviewer's complete response is parsed as JSON and serialized into
+ canonical form before validation. Whitespace and key order do not change
+ the verdict; duplicate keys, incorrect values and incomplete responses are
+ rejected. A model opinion still requires independent evidence.</p>
+ <p>Checking a new candidate does not create a catalog entry. A rejected
+ candidate therefore cannot leave an incomplete function that blocks the
+ next update.</p>
  <p>Property and semantic checks run outside the catalog publication lock.
  The short publication step checks the candidate and reserves its name
  against the signed identities already installed. It does not recheck the

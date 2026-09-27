@@ -1,6 +1,6 @@
 {
   "schema": "metnos.contract-boundary-inventory/2",
-  "source_census": "sha256:c873fdcb16e7c420429aed0b5333ff2a29d15445ab58ff9b0901afb73819c819",
+  "source_census": "sha256:a26bd01e65ebb916421f9ee352dc2d0c84416fc67b7f4528a19de3d523b0fad1",
   "scan_roots": [
     "runtime",
     "install",
@@ -2246,8 +2246,10 @@
       "scope": "authenticate_birth_predecessor",
       "role": "store_owner",
       "capabilities": [
+        "authoring_read",
         "authoring_write",
-        "store_write"
+        "store_write",
+        "verified_store_read"
       ],
       "destination": "sole owner of authenticated predecessor reads under publication-store locks",
       "phase": "M4"
