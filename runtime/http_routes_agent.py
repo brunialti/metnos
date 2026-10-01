@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import hmac
+import html
 import ipaddress
 import json
 import os
@@ -2349,6 +2350,8 @@ async def dialog_submit(request: web.Request) -> web.Response:
             )
 
     if completion_message:
+        completion_message = _decorate_dialog_markers(
+            completion_message, app_get(request.app, APP_ADMIN_KEY, ""))
         # Marker strutturato `__REDIRECT__:<url>\n<msg>` (core, general):
         # il callback chiede una browser navigation diretta. Estraiamo
         # l'URL, includiamo `data-redirect-url` cosi' che lo script JS
@@ -2435,12 +2438,8 @@ async def dialog_submit(request: web.Request) -> web.Response:
 
 
 def _escape_html(text: str) -> str:
-    """Escape minimo per output testuale in completion page."""
-    if not text:
-        return ""
-    return (text.replace("&", "&amp;")
-                 .replace("<", "&lt;")
-                 .replace(">", "&gt;"))
+    """Escape per testo e attributi della pagina di completamento."""
+    return html.escape(text or "")
 
 
 async def dialog_preview(request: web.Request) -> web.Response:

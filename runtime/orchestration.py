@@ -627,7 +627,10 @@ def _dispatch_completion(sender_id: str, dialog_id: str,
 
     if callback_type == "resume_executor_with_values":
         return _process_resume_executor_with_values(
-            on_complete, values, actor=actor, channel=channel,
+            on_complete, values, sender_id=sender_id,
+            owner_user_id=owner_user_id,
+            origin_turn_id=str(state.get("origin_turn_id") or ""),
+            actor=actor, channel=channel,
         )
 
     if callback_type == "resume_executor_values_tail":
@@ -1936,7 +1939,10 @@ def _process_resume_engine_gate(on_complete: dict, values: dict, *,
 
 
 def _process_resume_executor_with_values(on_complete: dict, values: dict,
-                                          *, actor: str = "host",
+                                          *, sender_id: str,
+                                          owner_user_id: str,
+                                          origin_turn_id: str = "",
+                                          actor: str = "host",
                                           channel: str | None = None) -> str:
     """Ri-invoca un executor con args originali patchati con i values raccolti.
 
@@ -1976,6 +1982,17 @@ def _process_resume_executor_with_values(on_complete: dict, values: dict,
     # c'e' stato.
     if res.get("pending"):
         return str(res.get("final_message_hint") or "")
+
+    # Un executor può richiedere un secondo modulo dopo il primo invio
+    # (per esempio la scelta del mandato di una credenziale). Il testo del
+    # risultato, da solo, non crea il dialogo: conservarne proprietario,
+    # mittente e turno evita che la ripresa si perda o cambi autorità.
+    if res.get("decision") == "needs_inputs":
+        return _shape_result_for_chat(orchestrate_needs_inputs(
+            res, sender_id=sender_id, actor=actor,
+            owner_user_id=owner_user_id, channel=channel,
+            origin_turn_id=origin_turn_id,
+        ))
 
     # Cattura scope-arg dal form: il valore confermato/inserito diventa default
     # per il giro dopo (§7.9). Resume bypassa Executor.run → cattura esplicita qui.
