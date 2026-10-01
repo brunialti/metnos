@@ -857,6 +857,40 @@ def _is_credentials_store_only_intent(intent) -> bool:
     )
 
 
+def _site_credential_binding_from_url(value: str) -> str:
+    """Use the validated host, never a full URL, as a site credential key."""
+    if not isinstance(value, str):
+        return ""
+    from urllib.parse import urlsplit
+    from sites_origin import _norm_host, origin_of_url
+    try:
+        parsed = urlsplit(value.strip())
+        if parsed.username is not None or parsed.password is not None:
+            return ""
+        if not origin_of_url(value.strip()):
+            return ""
+        return _norm_host(parsed.hostname) or ""
+    except ValueError:
+        return ""
+
+
+def _site_credential_target(query: str) -> str:
+    """Return one explicit site in a credential request, or leave it to planning."""
+    binding = detect_binding(query or "")
+    if binding in {"ssh", "cifs"}:
+        return ""
+    urls = [m.group(0).rstrip(".,;!?)]}") for m in
+            re.finditer(r"https?://[^\s\"'<>]+", query or "", re.IGNORECASE)]
+    if urls:
+        hosts = [_site_credential_binding_from_url(url) for url in urls]
+        return hosts[0] if all(hosts) and len(set(hosts)) == 1 else ""
+    if (binding not in {"web", "generic"}
+            or re.search(r"\b[a-z][a-z0-9+.-]*://", query or "", re.IGNORECASE)):
+        return ""
+    hosts = {m.group(1).lower() for m in _BARE_HOST_RE.finditer(query or "")}
+    return next(iter(hosts)) if len(hosts) == 1 else ""
+
+
 
 # --- Prompt + tools rendering ---------------------------------------------
 # PLANNER prompt è in runtime/prompts/<METNOS_LANG>/planner.j2 (ADR 0092).
@@ -6927,6 +6961,12 @@ def _run_engine(
 
     # Invoke executor callback wrapped — Executor v2 chiama via tool name
     def _invoke(tool_name: str, args: dict) -> dict:
+        if (tool_name == "set_credentials"
+                and args.get("credential_kind") in (None, "site")):
+            binding = _site_credential_binding_from_url(args.get("binding"))
+            if binding:
+                args = {**args, "binding": binding}
+                args.setdefault("credential_kind", "site")
         if tool_name in _BUILTIN_TOOL_HANDLERS:
             return _invoke_builtin_handler(
                 tool_name, args, actor=actor or "host", channel=channel or "",
@@ -7225,6 +7265,39 @@ def _run_engine(
             source_request_id=source_request_id,
             target_device=_target_name,
         )
+
+    # A pure request to save credentials for one explicit site only needs the
+    # protected form. No planner call or secret value is needed to open it.
+    _site_binding = _site_credential_target(query)
+    if (_is_credentials_store_only_intent(intent) and _site_binding
+            and "set_credentials" in _catalog_by_name
+            and not seed_state and not resume_steps and not pre_approved_gate):
+        args = {"binding": _site_binding, "credential_kind": "site"}
+        observation = _invoke("set_credentials", args)
+        step = StepLog(step_num=1)
+        step.chosen_tool = "set_credentials"
+        step.raw_args = dict(args)
+        step.resolved_args = dict(args)
+        step.result = dict(observation)
+        receipt = step.result.pop(EXECUTION_RECEIPT_RESULT_KEY, None)
+        if isinstance(receipt, ExecutionReceipt):
+            step.execution_receipt = receipt
+        needs_inputs = observation.get("decision") == "needs_inputs"
+        return {
+            "steps": [step],
+            "final_text": (observation.get("final_message_hint")
+                           or observation.get("error") or ""),
+            "final_kind": ("ask" if needs_inputs else
+                           "answer" if observation.get("ok") else "error"),
+            "framework_hash": "",
+            "verb": intent.verb, "object": intent.object,
+            "keywords": intent.keywords,
+            "match_source": "credential_form",
+            "elapsed_ms": 0,
+            "error_class": observation.get("error_class") or "",
+            "needs_inputs_obs": observation if needs_inputs else None,
+            "gate_obs": None,
+        }
 
     try:
         result = _dispatch.run_turn(
