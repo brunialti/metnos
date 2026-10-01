@@ -40,6 +40,7 @@ from playwright_sidecar import redaction
 from playwright_sidecar import action_resolver
 from playwright_sidecar import browser_surface
 from playwright_sidecar import cookie_privacy
+from playwright_sidecar import login_navigation
 import sites_audit
 import sites_observed  # ADR 0191 P4 — codici osservativi navigazione
 import sites_origin  # ADR 0191 P2 — il consenso appartiene a un'ORIGINE
@@ -192,7 +193,7 @@ _MAX_COLLECTION_SCROLLS = _bounded_int_env(
     "METNOS_SITES_MAX_COLLECTION_SCROLLS", default=20,
     minimum=1, maximum=100)
 _MAX_ACTION_REPLANS = 2
-_MAX_LOGIN_ENTRY_STEPS = 4
+_MAX_LOGIN_ENTRY_STEPS = login_navigation.MAX_ACTIONS
 _MAX_GOAL_STEPS = 4           # steps that MOVED something
 _MAX_GOAL_STERILE = 3         # own budget for empty steps: a click that moves
                               # nothing must neither starve the four
@@ -848,7 +849,8 @@ def _request_provenance(request) -> dict:
 
 
 def _observe_blocked_request(store: dict, host: str, resource_type: str,
-                             provenance: dict | None = None) -> None:
+                             provenance: dict | None = None,
+                             request_url: str = "") -> None:
     """Registra un host negato con tipi e provenienza bounded (§2.3 handoff).
 
     L'osservazione non concede accesso: alimenta soltanto la preparazione di
@@ -869,6 +871,14 @@ def _observe_blocked_request(store: dict, host: str, resource_type: str,
         observation["top_host"] = str(provenance["top_host"])
     if provenance.get("parent_host"):
         observation["parent_host"] = str(provenance["parent_host"])
+    # Keep the exact blocked top-level destination only in the private,
+    # short-lived browser session.  It may contain a one-time login token:
+    # never put it in an approval, audit event or agent result.
+    if (resource_type == "document" and provenance.get("navigation")
+            and request_url
+            and urllib.parse.urlsplit(request_url).scheme in {"http", "https"}
+            and _host_of_url(request_url) == host):
+        observation["navigation_url"] = request_url
 
 
 def _audit_auto_allow(ctx: dict | None, host: str, resource_type: str) -> None:
@@ -926,7 +936,7 @@ def _make_route_guard(allowlist: set[str],
                             and resource_type in _DISCOVERABLE_RESOURCE_TYPES):
                         _observe_blocked_request(
                             blocked_requests, host, resource_type,
-                            _request_provenance(request))
+                            _request_provenance(request), request_url=url)
                     # Sblocco automatico (preferenza per-utente, default OFF).
                     # L'utente ha scelto di rinunciare al gate: l'host entra
                     # nell'allowlist VIVA della sessione — la closure osserva
@@ -1816,10 +1826,11 @@ async def op_login(*, session_id: str, owner: str | None = None,
             if executed.get("error_class") in {"target_changed", "page_changed"}:
                 entry.get("pending_actions", {}).pop(approval_token, None)
                 entry["gate_pending"] = False
-                if plan.get("kind") == "credential_origin":
+                if plan.get("kind") == "credential_origin" or plan.get("login_choice"):
                     entry.pop("login_flow", None)
                     return {"ok": True, "logged_in": False,
-                            "reason_code": "origin_unverified",
+                            "reason_code": ("origin_unverified" if plan.get(
+                                "kind") == "credential_origin" else "selector_missing"),
                             "error_class": executed.get("error_class"),
                             "session_id": session_id}
                 key = str(plan.get("replan_key") or "")
@@ -1862,9 +1873,6 @@ async def op_login(*, session_id: str, owner: str | None = None,
             return await _clear_login_surface(entry, settle=settle)
 
         async def _reach_login_area(purpose: str = "login") -> dict:
-            if int(flow.get("steps", 0)) >= _MAX_LOGIN_ENTRY_STEPS:
-                return {"ok": False, "error_class": "login_step_limit"}
-
             if purpose == "privacy_reject":
                 outcome = await _reject_privacy_overlay(settle=True)
                 return {"ok": outcome.status != "blocked",
@@ -1872,46 +1880,19 @@ async def op_login(*, session_id: str, owner: str | None = None,
                         "error_class": ("cookie_precondition_unresolved"
                                         if outcome.status == "blocked" else ""),
                         "primitive": "click"}
-            action = {
-                "login": "click login",
-                "continue": "click login continue",
-            }.get(purpose)
-            if not action:
+            if purpose == "login":
+                reached = await _discover_login_entry(entry, session_id, flow)
+                if reached.get("login_entry_refreshed"):
+                    return await _discover_login_entry(entry, session_id, flow)
+                return reached
+            if int(flow.get("steps", 0)) >= _MAX_LOGIN_ENTRY_STEPS:
+                return {"ok": False, "error_class": "login_step_limit"}
+            if purpose != "continue":
                 return {"ok": False, "error_class": "unsupported_action"}
-            # SPA lente: per il vero ingresso login attendi fino a due secondi
-            # usando solo il resolver deterministico; il modello entra una sola
-            # volta, alla fine, se il controllo resta semanticamente ignoto.
-            attempts = (max(1, _REVEAL_SETTLE_MS // _REVEAL_POLL_MS)
-                        if purpose == "login" else 1)
-            prepared = {"ok": False, "error_class": "selector_missing"}
-            for attempt in range(attempts):
-                # Reobserve late panels without consuming login entry steps.
-                if purpose == "login":
-                    # L'overlay puo' apparire dopo il primo probe: tentane la
-                    # rimozione (budget proprio, sopra) prima di ogni
-                    # riosservazione, senza consumare il budget d'ingresso.
-                    outcome = await _reject_privacy_overlay(settle=False)
-                    if outcome.status == "blocked":
-                        return {"ok": False,
-                                "error_class": "cookie_precondition_unresolved",
-                                "obstruction_kind": outcome.kind,
-                                "obstruction_reason": outcome.reason}
-                prepared = await _prepare_action(
-                    entry, session_id, action, None, allow_model=False)
-                if (prepared.get("ok") or prepared.get("error_class")
-                        not in {"selector_missing", "selector_ambiguous",
-                                "target_changed"}):
-                    break
-                if attempt + 1 < attempts:
-                    if hasattr(entry["page"], "wait_for_timeout"):
-                        await entry["page"].wait_for_timeout(_REVEAL_POLL_MS)
-                    else:
-                        await asyncio.sleep(_REVEAL_POLL_MS / 1000)
-            if (purpose == "login" and not prepared.get("ok")
-                    and prepared.get("error_class") in {
-                        "selector_missing", "selector_ambiguous"}):
-                prepared = await _prepare_action_with_resource_fallback(
-                    entry, session_id, action, None, allow_model=True)
+            # After filling identity, continuation remains deterministic.
+            action = "click login continue"
+            prepared = await _prepare_action(
+                entry, session_id, action, None, allow_model=False)
             if prepared.get("ok"):
                 (prepared.get("plan") or {})["login_flow"] = True
                 (prepared.get("plan") or {})["login_procedure"] = purpose
@@ -1946,6 +1927,9 @@ async def op_login(*, session_id: str, owner: str | None = None,
             if not stage or flow.get("phase") == stage:
                 return
             flow["phase"] = stage
+            if stage in {"username_fill", "primary_fill", "username_submit",
+                         "primary_submit", "factor_pending", "factor_submit"}:
+                flow["credentials_started"] = True
             flow["phase_started"] = time.time()
             if stage in {"factor_pending", "factor_resolving",
                          "factor_submit"}:
@@ -2526,11 +2510,238 @@ async def _reduce_site_goal(query: str) -> str:
     return str(outcome.result or "")
 
 
+def _login_entry_candidates(candidates: list[dict]) -> list[dict]:
+    """Navigation only: no fields, form submissions or preference toggles."""
+    return [candidate for candidate in
+            action_resolver.goal_navigation_candidates(candidates)
+            if str(candidate.get("form_method") or "").upper() != "POST"
+            and str(candidate.get("type") or "").lower() not in {
+                "reset", "checkbox", "radio"}
+            and str(candidate.get("role") or "").lower() not in {
+                "checkbox", "radio", "switch", "combobox"}]
+
+
+async def _discover_login_entry(entry: dict, session_id: str, flow: dict) -> dict:
+    """Explore before fill; all forward/replayed controls use ordinary gates."""
+    state = flow.setdefault("entry_search", {})
+
+    def unsafe() -> bool:
+        return bool(entry.get("authenticated") or entry.get("secret_pending")
+                    or flow.get("credentials_started"))
+
+    async def observe() -> dict:
+        if unsafe():
+            return {"terminal": {"ok": False,
+                                 "error_class": "mandate_scope_exceeded"}}
+        # A redirect can finish after the click returned. Check the current
+        # top-level destination before reading or interacting with its page.
+        host = _host_of_url(getattr(entry.get("page"), "url", ""))
+        if host and host not in set(entry.get("allowlist") or ()):
+            return {"terminal": await _resume_blocked_login_destination(
+                entry, session_id, state, {"ok": True, "executed": True})}
+        outcome = await _clear_login_surface(entry, settle=False)
+        if outcome.status == "blocked":
+            return {"terminal": {"ok": False,
+                    "error_class": "cookie_precondition_unresolved"}}
+        page = entry["page"]
+        host = _host_of_url(page.url)
+        if host and host not in set(entry.get("allowlist") or ()):
+            return {"terminal": await _resume_blocked_login_destination(
+                entry, session_id, state, {"ok": True, "executed": True})}
+        state.setdefault("pages", set()).add(page)
+        blocker = await credential_injection.classify_login_surface(page)
+        if blocker:
+            return {"terminal": {"ok": False, "reason_code": blocker,
+                                 "error_class": blocker}}
+        if await credential_injection._wait_for_login_surface(
+                page, _REVEAL_SETTLE_MS / 1000.0):
+            return {"terminal": {"ok": True, "executed": True}}
+        username_stage = await page.evaluate(
+            credential_injection._LOCATE_USERNAME_STAGE_JS)
+        if isinstance(username_stage, dict) and username_stage.get("ambiguous"):
+            return {"terminal": {"ok": False, "error_class": "selector_ambiguous"}}
+        candidates = await _enumerate_candidates(page)
+        scroll = action_resolver.choose_scroll_candidate(
+            "login", candidates, "click")
+        if (not action_resolver.choose_candidate(
+                "login", candidates, "click").get("ok")
+                and scroll.get("ok") and await _scroll_candidate_into_view(
+                    entry, scroll["candidate"])):
+            candidates = await _enumerate_candidates(page)
+        return {"key": login_navigation.state_key(page.url, candidates),
+                "url": page.url, "page": page,
+                "candidates": _login_entry_candidates(candidates),
+                "all_candidates": candidates}
+
+    async def choose(observation: dict, tried: set[str]) -> dict | None:
+        candidates = [candidate for candidate in observation["candidates"]
+                      if login_navigation.candidate_key(candidate) not in tried]
+        chosen = action_resolver.choose_candidate("login", candidates, "click")
+        if chosen.get("ok") and not chosen.get("ambiguous"):
+            return {"candidate": chosen["candidate"],
+                    "confidence": chosen.get("confidence", 1.0)}
+        # Reuse the multilingual resolver and DOM relations. A sole menu is
+        # also useful on pages that expose no login words yet.
+        reveal = action_resolver.choose_reveal_candidate(
+            "login", [item for item in observation["all_candidates"]
+                      if login_navigation.candidate_key(item) not in tried], "click")
+        reveals = [candidate for candidate in candidates
+                   if action_resolver.is_reveal_control(candidate)
+                   and str(candidate.get("aria_expanded") or "").lower() != "true"]
+        candidate = reveal.get("candidate") if reveal.get("ok") else None
+        if candidate is None and len(reveals) == 1:
+            candidate = reveals[0]
+        if candidate is not None and candidate in candidates:
+            return {"candidate": candidate, "confidence": 0.5}
+        candidate = await _local_llm_choose_goal_candidate(
+            entry, "login", candidates, [], set(), login=True)
+        if candidate is not None:
+            return {"candidate": candidate, "confidence": 0.5,
+                    "model_selected": True}
+        return None
+
+    async def execute(choice: dict) -> dict:
+        prepared = await _prepare_action(
+            entry, session_id, "click login", None, allow_model=False,
+            login_choice=choice)
+        if prepared.get("ok"):
+            prepared["plan"].update({"login_flow": True,
+                                     "login_procedure": "login",
+                                     "login_choice": choice})
+            _apply_login_intent_grant(entry, prepared)
+        handled = await _handle_prepared_action(
+            entry, session_id, "click login", prepared)
+        if handled.get("ok") and handled.get("executed"):
+            return await _resume_blocked_login_destination(
+                entry, session_id, state, handled)
+        return handled
+
+    async def restore(root: dict) -> dict:
+        # A GET to the broker-observed entry URL is the only rewind primitive.
+        # Never reload/re-submit a form or synthesize an inverse UI action.
+        url = root["url"]
+        if (unsafe() or urllib.parse.urlsplit(url).scheme not in {"http", "https"}
+                or _host_of_url(url) not in set(entry.get("allowlist") or ())):
+            return {"ok": False, "error_class": "mandate_scope_exceeded"}
+        page = root["page"]
+        if page.is_closed():
+            return {"ok": False, "error_class": "session_lost"}
+        entry["page"] = page
+        try:
+            await page.goto(url, wait_until="load", timeout=int(_OP_TIMEOUT_S * 1000))
+            # Close only tabs adopted by this search (including nested ones).
+            for child in state.get("pages", set()) - {page}:
+                await child.close()
+            state["pages"] = {page}
+        except Exception:
+            return {"ok": False, "error_class": "navigation_failed"}
+        sites_audit.record(
+            "login_backtrack", owner=entry.get("owner", ""),
+            session_id=session_id, domain=entry.get("domain", ""),
+            depth=len(state.get("frames") or ()) - 1,
+            steps=int(state.get("actions", 0)))
+        return {"ok": True, "executed": True}
+
+    remaining = float(state.setdefault("remaining_s", _LOGIN_TIMEOUT_S))
+    if remaining <= 0:
+        return {"ok": False, "error_class": "login_timeout"}
+    started = _monotonic()
+    try:
+        result = await asyncio.wait_for(login_navigation.discover(
+            state, observe=observe, choose=choose, execute=execute, restore=restore),
+            timeout=remaining)
+        if (result.get("error_class") == "selector_missing"
+                and not state.get("resource_attempted")
+                and int(state.get("actions", 0)) < login_navigation.MAX_ACTIONS):
+            expansion = _prepare_resource_expansion(
+                entry, session_id, "click login", None)
+            if expansion is not None:
+                state["resource_attempted"] = True
+                state["actions"] = int(state.get("actions", 0)) + 1
+                expansion["plan"].update({"login_flow": True,
+                    "login_procedure": "login", "login_entry_refresh": True})
+                return await _handle_prepared_action(
+                    entry, session_id, "click login", expansion)
+        return result
+    except asyncio.TimeoutError:
+        return {"ok": False, "error_class": "login_timeout"}
+    finally:
+        state["remaining_s"] = max(0.0, remaining - (_monotonic() - started))
+
+
+async def _resume_blocked_login_destination(entry: dict, session_id: str,
+                                            state: dict, handled: dict) -> dict:
+    """Gate an observed cross-host login redirect before exploring its page."""
+    page_url = getattr(entry.get("page"), "url", "")
+    parsed = urllib.parse.urlsplit(page_url)
+    host = (_host_of_url(page_url) if parsed.scheme in {"http", "https"}
+            else "")
+    if host in set(entry.get("allowlist") or ()):
+        return handled
+    if not host and _browser_navigation_failure(page_url):
+        hosts = _blocked_login_navigation_hosts(entry)
+        if len(hosts) != 1:
+            return {"ok": False, "error_class": "navigation_failed"}
+        host = hosts[0]
+    if not host:
+        return {"ok": False, "error_class": "mandate_scope_exceeded"}
+    observed = (entry.get("blocked_requests") or {}).get(host) or {}
+    blocked_document = (observed.get("main_frame")
+                        and observed.get("navigation")
+                        and "document" in set(observed.get("types") or ()))
+    # Chromium may follow an allowed HTTP redirect before route interception;
+    # only its script/style requests are then blocked. The browser's current
+    # top-level URL plus same-host main-frame assets are exact evidence for a
+    # one-host approval gate, never permission to load those assets silently.
+    redirected_page = (host == _host_of_url(page_url)
+                       and observed.get("main_frame")
+                       and observed.get("top_host") == host
+                       and bool({"script", "stylesheet"}
+                                & set(observed.get("types") or ())))
+    if not (blocked_document or redirected_page):
+        return {"ok": False, "error_class": "mandate_scope_exceeded"}
+    if int(state.get("actions", 0)) >= login_navigation.MAX_ACTIONS:
+        return {"ok": False, "error_class": "login_step_limit"}
+    expansion = _prepare_resource_expansion(
+        entry, session_id, "click login", None, required_hosts={host})
+    if expansion is None:
+        return {"ok": False, "error_class": "mandate_scope_exceeded"}
+    if not expansion.get("ok"):
+        return expansion
+    expansion["plan"].update({"login_flow": True,
+                              "login_procedure": "login",
+                              "login_entry_cross_host": True})
+    return await _handle_prepared_action(
+        entry, session_id, "click login", expansion)
+
+
+def _blocked_login_navigation_hosts(entry: dict, *, popup: bool = False
+                                    ) -> list[str]:
+    """Only observed HTTP(S) documents can become login destinations.
+
+    Playwright may not expose the frame for a popup's first navigation.  A
+    unique blocked document plus the observed failed popup is sufficient;
+    ordinary navigation still requires an identified main frame.
+    """
+    allowed = set(entry.get("allowlist") or ())
+    return sorted(host for host, observed in
+                  (entry.get("blocked_requests") or {}).items()
+                  if host not in allowed and isinstance(observed, dict)
+                  and (popup or observed.get("main_frame"))
+                  and observed.get("navigation")
+                  and "document" in set(observed.get("types") or ())
+                  and _host_of_url(observed.get("navigation_url") or "") == host
+                  and urllib.parse.urlsplit(
+                      observed.get("navigation_url") or "").scheme
+                  in {"http", "https"})
+
+
 async def _local_llm_choose_goal_candidate(entry: dict, target: str,
                                            candidates: list[dict],
                                            history: list[str],
-                                           excluded: set[str]) -> dict | None:
-    """Fallback testuale locale per un passo di navigazione autenticato.
+                                           excluded: set[str], *,
+                                           login: bool = False) -> dict | None:
+    """Fallback testuale locale per un passo di navigazione nel mandato.
 
     Il modello vede solo ID e nomi accessibili enumerati dal broker. Non vede
     DOM, valori dei campi, screenshot, URL di destinazione o credenziali; la
@@ -2562,7 +2773,7 @@ async def _local_llm_choose_goal_candidate(entry: dict, target: str,
         goal={"primitive": "navigate_toward_goal", "target": target},
         observed=observed,
         constraints={
-            "forbidden": "unrelated_control",
+            "forbidden": "login_entry" if login else "unrelated_control",
         },
         history=history[-_MAX_GOAL_STEPS:],
     )
@@ -2978,7 +3189,8 @@ async def _clear_login_surface(
 async def _prepare_action(entry: dict, session_id: str, action: str,
                           value_ref: str | None, primitive_override: str | None = None,
                           target_override: str | None = None,
-                          allow_model: bool = True) -> dict:
+                          allow_model: bool = True,
+                          login_choice: dict | None = None) -> dict:
     privacy = await _dismiss_privacy_obstruction(entry)
     if isinstance(privacy, cookie_privacy.CookieOutcome) and privacy.status == "blocked":
         return {"ok": False, "error_class": "cookie_precondition_unresolved",
@@ -3003,7 +3215,23 @@ async def _prepare_action(entry: dict, session_id: str, action: str,
     collection_facet_key = ""
     # goto/wait non hanno un elemento DOM; cred:* viene risolto esclusivamente
     # dal broker, quindi anche il fill ignora ogni target suggerito.
-    if primitive == "search":
+    if login_choice is not None:
+        # Private broker choice, revalidated against a fresh DOM. It never
+        # accepts a selector, URL or candidate supplied by the model/client.
+        if (primitive != "click" or value_ref
+                or entry.get("secret_pending") or entry.get("authenticated")
+                or (entry.get("login_flow") or {}).get("credentials_started")):
+            return {"ok": False, "error_class": "mandate_scope_exceeded"}
+        expected = login_choice.get("candidate") or {}
+        fresh = await _enumerate_candidates(entry["page"])
+        matches = [item for item in _login_entry_candidates(fresh)
+                   if _candidate_signature(item) == _candidate_signature(expected)]
+        if len(matches) != 1:
+            return {"ok": False, "error_class": "target_changed"}
+        candidate = matches[0]
+        confidence = float(login_choice.get("confidence", 0.5))
+        model_selected = bool(login_choice.get("model_selected"))
+    elif primitive == "search":
         goal_flow_key = hashlib.sha256(
             action_resolver.normalize(action).encode("utf-8")).hexdigest()
         flows = entry.setdefault("goal_flows", {})
@@ -4005,6 +4233,8 @@ def _inherit_login_plan_context(parent: dict, prepared: dict) -> None:
         return
     child["login_flow"] = True
     child["login_procedure"] = parent.get("login_procedure") or "login"
+    if parent.get("login_choice"):
+        child["login_choice"] = parent["login_choice"]
 
 
 async def _execute_resource_expansion(entry: dict, token: str,
@@ -4016,6 +4246,26 @@ async def _execute_resource_expansion(entry: dict, token: str,
     observed = _blocked_hosts_for_action(entry)
     if any(host not in observed for host in hosts):
         return {"ok": False, "error_class": "target_changed"}
+    navigation_url = ""
+    if plan.get("login_entry_cross_host"):
+        current_url = getattr(entry.get("page"), "url", "")
+        current_host = (_host_of_url(current_url)
+                        if urllib.parse.urlsplit(current_url).scheme
+                        in {"http", "https"} else "")
+        if current_host not in hosts:
+            if len(hosts) != 1:
+                return {"ok": False, "error_class": "target_changed"}
+            navigation_url = str((entry.get("blocked_requests") or {})
+                                 .get(hosts[0], {}).get("navigation_url") or "")
+            if (urllib.parse.urlsplit(navigation_url).scheme
+                    not in {"http", "https"}
+                    or _host_of_url(navigation_url) != hosts[0]):
+                return {"ok": False, "error_class": "target_changed"}
+    if plan.get("login_choice") or plan.get("login_entry_cross_host"):
+        state = (entry.get("login_flow") or {}).get("entry_search", {})
+        if int(state.get("actions", 0)) >= login_navigation.MAX_ACTIONS:
+            return {"ok": False, "error_class": "login_step_limit"}
+        state["actions"] = int(state.get("actions", 0)) + 1
     allowlist = entry.get("allowlist")
     if not isinstance(allowlist, set):
         allowlist = set(allowlist or ())
@@ -4042,7 +4292,11 @@ async def _execute_resource_expansion(entry: dict, token: str,
     page = entry["page"]
     try:
         await asyncio.wait_for(
-            page.reload(wait_until="load", timeout=int(_OP_TIMEOUT_S * 1000)),
+            (page.goto(navigation_url, wait_until="load",
+                       timeout=int(_OP_TIMEOUT_S * 1000))
+             if navigation_url else
+             page.reload(wait_until="load",
+                         timeout=int(_OP_TIMEOUT_S * 1000))),
             timeout=_OP_TIMEOUT_S)
         await _settle_resource_discovery(page)
     except Exception as exc:
@@ -4054,6 +4308,14 @@ async def _execute_resource_expansion(entry: dict, token: str,
     entry.setdefault("reveal_attempts", set()).clear()
     entry.setdefault("action_replans", {}).clear()
     await _touch(entry)
+    if plan.get("login_entry_cross_host"):
+        # The original click already happened. Re-observe the exact blocked
+        # destination; a Chromium error page itself is never a destination.
+        return {"ok": True, "executed": True,
+                "primitive": "goto" if navigation_url else "reload"}
+    if plan.get("login_entry_refresh"):
+        entry["login_flow"]["entry_search"]["refreshed"] = True
+        return {"ok": True, "executed": True, "login_entry_refreshed": True}
     goal_flow_key = str(plan.get("goal_flow_key") or "")
     goal_flow = (entry.get("goal_flows") or {}).get(goal_flow_key)
     if isinstance(goal_flow, dict):
@@ -4068,9 +4330,22 @@ async def _execute_resource_expansion(entry: dict, token: str,
     prepare_kwargs = {}
     if plan.get("goal_target"):
         prepare_kwargs["goal_target"] = plan["goal_target"]
-    prepared = await _prepare_action_with_resource_fallback(
-        entry, entry.get("_sid", ""), plan.get("original_action") or "",
-        plan.get("value_ref"), **prepare_kwargs)
+    if plan.get("login_choice"):
+        choice = dict(plan["login_choice"])
+        candidates = await _enumerate_candidates(entry["page"])
+        matches = [candidate for candidate in _login_entry_candidates(candidates)
+                   if login_navigation.candidate_key(candidate) ==
+                   login_navigation.candidate_key(choice["candidate"])]
+        if len(matches) != 1:
+            return {"ok": False, "error_class": "target_changed"}
+        choice["candidate"] = matches[0]
+        prepared = await _prepare_action(
+            entry, entry.get("_sid", ""), "click login", None,
+            allow_model=False, login_choice=choice)
+    else:
+        prepared = await _prepare_action_with_resource_fallback(
+            entry, entry.get("_sid", ""), plan.get("original_action") or "",
+            plan.get("value_ref"), **prepare_kwargs)
     # Il reload autorizzativo non e' un passo della procedura. Il nuovo piano
     # DOM verra' contato solo quando l'azione effettiva sara' eseguita.
     _inherit_login_plan_context(plan, prepared)
@@ -4401,21 +4676,45 @@ async def _execute_plan(entry: dict, token: str, plan: dict) -> dict:
                     except Exception:
                         pass
                 return {"ok": False, "error_class": "popup_ambiguous"}
+            if (new_pages and plan.get("login_flow") and candidate
+                    and action_resolver.is_reveal_control(candidate)):
+                # A menu reveal stays on its page. Any simultaneous popup
+                # is not the selected navigation branch.
+                try:
+                    await new_pages[0].close()
+                except Exception:
+                    pass
+                new_pages = []
             if new_pages:
                 popup = new_pages[0]
                 try:
                     await popup.wait_for_load_state("domcontentloaded", timeout=1500)
                 except Exception:
                     pass
-                popup_host = _host_of_url(popup.url)
+                popup_url = popup.url
+                popup_host = (_host_of_url(popup_url)
+                              if urllib.parse.urlsplit(popup_url).scheme
+                              in {"http", "https"} else "")
+                blocked_login_popup = bool(
+                    plan.get("login_flow")
+                    and _browser_navigation_failure(popup_url))
+                if blocked_login_popup:
+                    observed_hosts = _blocked_login_navigation_hosts(
+                        entry, popup=True)
+                    if len(observed_hosts) != 1:
+                        await popup.close()
+                        return {"ok": False,
+                                "error_class": "popup_host_unverified"}
+                    popup_host = observed_hosts[0]
                 allowlist = set(entry.get("allowlist") or ())
                 if popup_host and popup_host not in allowlist:
-                    _observe_blocked_request(
-                        entry.setdefault("blocked_requests", {}),
-                        popup_host, "document",
-                        {"main_frame": True, "navigation": True,
-                         "top_host": popup_host,
-                         "parent_host": _host_of_url(entry["page"].url)})
+                    if not blocked_login_popup:
+                        _observe_blocked_request(
+                            entry.setdefault("blocked_requests", {}),
+                            popup_host, "document",
+                            {"main_frame": True, "navigation": True,
+                             "top_host": popup_host,
+                             "parent_host": _host_of_url(entry["page"].url)})
                     try:
                         await popup.close()
                     except Exception:
@@ -4430,6 +4729,8 @@ async def _execute_plan(entry: dict, token: str, plan: dict) -> dict:
                         return {"ok": False,
                                 "error_class": "popup_host_unverified"}
                     _inherit_login_plan_context(plan, expansion)
+                    if blocked_login_popup and expansion.get("ok"):
+                        expansion["plan"]["login_entry_cross_host"] = True
                     return await _handle_prepared_action(
                         entry, entry.get("_sid", ""),
                         plan.get("original_action") or "", expansion)
@@ -4681,7 +4982,9 @@ async def _handle_prepared_action(entry: dict, session_id: str, action: str,
             entry["pending_actions"].pop(token, None)
             entry["gate_pending"] = False
             return {"ok": False, "error_class": "screenshot_failed"}
-        destination = plan.get("destination_url") or ""
+        # An approval needs the destination site and path, not opaque query
+        # values that may be one-time login credentials.
+        destination = _destinazione_di(plan)
         description = (scrub_url(plan["target"])
                        if plan["primitive"] == "goto" else action)
         additions = list(plan.get("resource_hosts") or ())

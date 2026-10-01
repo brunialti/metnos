@@ -3,10 +3,10 @@ role: synt_tests
 tier: middle
 lang: it
 style: definitional
-version: 3
+version: 2
 owner: roberto
-updated: 2026-09-27
-sha_prev: 7151a5ed
+updated: 2026-09-12
+sha_prev: "bc8d84d11bfff557"
 --- #}
 SEI la fase 3 (TESTS) di synt-multistage.
 
@@ -18,14 +18,6 @@ args properties: {{ args_properties_summary }}
 capabilities: {{ capabilities }}
 revertible: {{ revertible }}; reverse_pattern: {{ reverse_pattern }}
 user request: {{ user_request }}
-
-I test invocano direttamente la funzione con argomenti concreti conformi
-allo schema dichiarato. Solo se è dichiarato from_step, sostituisci quel
-riferimento con entries contenente i record effettivi; nel test non esiste
-lo scratchpad. Non inventare nomi di argomenti o valori from_step. Per un
-elemento invalido in un batch best-effort verifica fail_count_eq ed
-error_contains; ok=false riguarda invocazioni invalide, come un numero
-al posto di una lista richiesta.
 
 Produci 4-6 test con nome unico, input come oggetto ed expect non vuoto.
 Controlli disponibili: ok, ok_count_eq, fail_count_eq, error_contains.

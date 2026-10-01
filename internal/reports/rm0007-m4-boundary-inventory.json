@@ -1,6 +1,6 @@
 {
   "schema": "metnos.contract-boundary-inventory/2",
-  "source_census": "sha256:37fe5b6d367d8222a59b7d21665f85d86f92e876ab45af9c2d24f3ec93c8ca39",
+  "source_census": "sha256:61205ac170c2b2ad40900474a844bead01df62d94bc4db9adb88157b15ed52d0",
   "scan_roots": [
     "runtime",
     "install",
@@ -1374,16 +1374,6 @@
         "legacy_bootstrap"
       ],
       "destination": "one-time legacy bootstrap under the shared quiescence and cold-load barrier",
-      "phase": "M4"
-    },
-    {
-      "path": "install/synth_review.py",
-      "scope": "review",
-      "role": "store_owner",
-      "capabilities": [
-        "store_write"
-      ],
-      "destination": "persist exact independent review inputs and native test results before publishing their signed digest through the semantic evidence owner",
       "phase": "M4"
     },
     {

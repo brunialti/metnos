@@ -6,14 +6,8 @@
 # Restano tracciati nel repo per chi clone-a; non vengono pubblicati come
 # parte dei release artifact.
 
-# Materiale interno escluso, salvo i due artefatti pubblici necessari al build.
-internal/*             export-ignore
-internal/reports       -export-ignore
-internal/reports/*     export-ignore
-internal/reports/rm0007-m4-boundary-inventory.json -export-ignore
-internal/tools         -export-ignore
-internal/tools/*       export-ignore
-internal/tools/render_contract_boundary_policy.py -export-ignore
+# Materiale interno — mai parte di un archivio di distribuzione.
+internal/              export-ignore
 docs/it/internal/      export-ignore
 docs/en/internal/      export-ignore
 
@@ -35,10 +29,6 @@ x.png                   export-ignore
 
 # Cloudflare dev-only (ADR 0144)
 deploy.sh               export-ignore
-
-# I dati privati restano esclusi anche quando tracciati per errore.
-*.sqlite                export-ignore
-install/data/i18n_seed.sqlite -export-ignore
 
 # Normalizzazione fine-riga su sorgenti testuali
 *.py        text eol=lf

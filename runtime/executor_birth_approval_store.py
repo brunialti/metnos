@@ -5,7 +5,6 @@ import secrets
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable
 
 from executor_birth_approval import (
     ApprovalDecision,
@@ -92,40 +91,16 @@ def create_pending_approval(
     db_path: Path,
 ) -> str:
     """Create one unique pending subject; duplicates fail instead of aliasing."""
-    return prepare_pending_approval(
-        lambda _token: subject, requested_actor=requested_actor,
-        created_at=created_at, db_path=db_path,
-    )
-
-
-def prepare_pending_approval(
-    subject_factory: Callable[[str], ApprovalSubject],
-    *,
-    requested_actor: str,
-    created_at: datetime,
-    db_path: Path,
-) -> str:
-    """Allocate the reference before Birth computes its exact subject.
-
-    Producer intent already binds approval references. Supplying the newly
-    allocated reference to the owner avoids changing that identity after
-    review, without changing existing candidate identities or receipt rules.
-    The callback grants no approval: the resulting row is still pending and
-    requires the usual signed operator decision.
-    """
     actor = _actor(requested_actor)
     now = _utc(created_at, field="created_at")
-    opaque = secrets.token_urlsafe(24)
-    if len(opaque) < 16 or opaque != opaque.strip():  # pragma: no cover - secrets contract
-        raise BirthApprovalError("approval_invalid", "token")
-    subject = subject_factory(opaque)
-    if not isinstance(subject, ApprovalSubject):
-        raise BirthApprovalError("approval_invalid", "subject")
     expires = datetime.strptime(subject.expires_at, "%Y-%m-%dT%H:%M:%SZ").replace(
         tzinfo=timezone.utc
     )
     if now >= expires:
         raise BirthApprovalError("approval_expired")
+    opaque = secrets.token_urlsafe(24)
+    if len(opaque) < 16 or opaque != opaque.strip():  # pragma: no cover - secrets contract
+        raise BirthApprovalError("approval_invalid", "token")
     connection = _open(db_path)
     try:
         connection.execute("BEGIN IMMEDIATE")

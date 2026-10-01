@@ -120,6 +120,26 @@
  una ricerca aperta, una strategia fra domini o un compito senza un criterio
  netto di completamento: quelle decisioni appartengono al pianificatore.</p>
 
+ <h2 id="login-entry">Trovare l'ingresso a un sito</h2>
+ <p>Per accedere, Metnos cerca prima un modulo di autenticazione. Se non lo
+ trova, cerca un ingresso all'area personale, un menu o un passaggio intermedio
+ plausibile. Usa prima i segnali della pagina; solo quando non bastano chiede
+ al modello locale di scegliere fra i controlli osservati. Non contiene
+ percorsi speciali per singoli siti.</p>
+ <p>La ricerca scende al massimo di quattro passaggi per percorso. Se incontra
+ un vicolo cieco, torna alla pagina iniziale e ripercorre i passaggi verificati
+ fino alla diramazione utile, dove prova un'alternativa non ancora tentata.
+ Avanzamenti e ritorni condividono un limite di 32 azioni e un
+ tempo di ricerca limitato; una pausa per il consenso non azzera i tentativi.
+ Se nel frattempo il percorso cambia, Metnos si ferma.</p>
+ <p>I normali confini del sito e i moduli di consenso restano validi anche
+ durante la ricerca. I cookie seguono la procedura separata di rifiuto delle
+ opzioni facoltative, ricontrollata prima dell'invio se compare un nuovo banner.
+ Trovato il modulo, l'inserimento delle credenziali resta
+ deterministico: il modello non riceve i valori dei campi e non esplora altre
+ strade dopo l'inizio della digitazione. CAPTCHA e verifiche aggiuntive
+ richiedono l'intervento dell'utente, non vengono aggirati.</p>
+
  <h2>Se non riesce</h2>
  <p>Se nessuna proposta viene ammessa, il ciclo &egrave; <code>inconclusive</code>. Se
  sono terminati i tentativi o il tempo disponibile, &egrave; <code>exhausted</code>.

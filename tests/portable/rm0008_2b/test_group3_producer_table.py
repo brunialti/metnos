@@ -45,30 +45,13 @@ def test_the_author_is_the_one_the_producer_always_writes():
     (ManifestOrigin.CORE, ExecutorOrigin.CORE),
     (ManifestOrigin.BUILTIN, ExecutorOrigin.BUILTIN),
     (ManifestOrigin.BUILTIN_SKILL, ExecutorOrigin.BUILTIN),
-    (ManifestOrigin.USER, ExecutorOrigin.SYNTHESIZED),
+    (ManifestOrigin.USER, ExecutorOrigin.HUMAN),
     (ManifestOrigin.EXPLICIT, ExecutorOrigin.HUMAN),
     (ManifestOrigin.USER_SKILL, ExecutorOrigin.IMPORTED),
     (ManifestOrigin.LEGACY_IMPORT, ExecutorOrigin.IMPORTED),
 ])
 def test_the_kind_comes_from_where_the_manifest_lives(manifest, expected):
     assert table.executor_origin_v1(manifest) is expected
-
-
-def test_synth_inventory_enters_exact_candidate_consent_without_changing_human_origin():
-    from types import SimpleNamespace
-
-    import config as C
-    from executor_birth_shadow import RevisionClass
-    from executor_birth_operational import approval_scope
-    from manifest_inventory import default_manifest_sources
-
-    sources = [source for source in default_manifest_sources()
-               if source.root == C.PATH_SYNTH_EXECUTORS]
-    assert len(sources) == 1
-    generated = SimpleNamespace(executor_origin=table.executor_origin_v1(sources[0].origin))
-    human = SimpleNamespace(executor_origin=table.executor_origin_v1(ManifestOrigin.EXPLICIT))
-    assert approval_scope(generated, RevisionClass.FIRST_BIRTH) == "preexercise"
-    assert approval_scope(human, RevisionClass.FIRST_BIRTH) is None
 
 
 def test_a_location_without_a_birth_is_refused():

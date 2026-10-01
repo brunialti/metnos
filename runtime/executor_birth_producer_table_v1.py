@@ -58,9 +58,7 @@ _MANIFEST_ORIGIN_TO_EXECUTOR_V1 = MappingProxyType({
     ManifestOrigin.CORE: ExecutorOrigin.CORE,
     ManifestOrigin.BUILTIN: ExecutorOrigin.BUILTIN,
     ManifestOrigin.BUILTIN_SKILL: ExecutorOrigin.BUILTIN,
-    # USER is the inventory's PATH_SYNTH_EXECUTORS topology; explicitly
-    # supplied human contracts have the separate EXPLICIT origin.
-    ManifestOrigin.USER: ExecutorOrigin.SYNTHESIZED,
+    ManifestOrigin.USER: ExecutorOrigin.HUMAN,
     ManifestOrigin.EXPLICIT: ExecutorOrigin.HUMAN,
     ManifestOrigin.USER_SKILL: ExecutorOrigin.IMPORTED,
     ManifestOrigin.LEGACY_IMPORT: ExecutorOrigin.IMPORTED,

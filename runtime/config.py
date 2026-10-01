@@ -289,13 +289,7 @@ def localization_corpus_version() -> str:
             )
             raise RuntimeError(f"contract inventory is not clean: {detail}")
         for ref in structural.manifests:
-            revision = current_contract(
-                ref, trusted_publics=trusted, allow_unpublished=True,
-            )
-            if revision is None:
-                # An exact empty publication reservation has no corpus yet.
-                # The store still rejects missing pointers with history.
-                continue
+            revision = current_contract(ref, trusted_publics=trusted)
             identifier = (
                 revision.retirement_id
                 if isinstance(revision, ContractRetirement)

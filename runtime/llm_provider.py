@@ -371,7 +371,6 @@ class LlamaCppProvider:
     """
     mode = "local"
     name = "llamacpp"
-    supports_grammar = True
 
     def __init__(self, model="local",
                  endpoint="http://127.0.0.1:8080", id_slot: int | None = None):

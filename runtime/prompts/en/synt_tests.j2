@@ -3,10 +3,10 @@ role: synt_tests
 tier: middle
 lang: en
 style: definitional
-version: 3
+version: 2
 owner: roberto
-updated: 2026-09-27
-sha_prev: b8d089b2
+updated: 2026-09-12
+sha_prev: "c2d8648cd0de2a72"
 --- #}
 YOU are phase 3 (TESTS) of synt-multistage.
 
@@ -18,13 +18,6 @@ args properties: {{ args_properties_summary }}
 capabilities: {{ capabilities }}
 revertible: {{ revertible }}; reverse_pattern: {{ reverse_pattern }}
 user request: {{ user_request }}
-
-Tests invoke the function directly with concrete arguments matching the
-declared schema. Only when from_step is declared, replace that reference
-with entries containing the actual records; no scratchpad exists in a test.
-Do not invent argument names or a from_step value. For an invalid item in a
-best-effort batch, check fail_count_eq and error_contains; ok=false is for
-an invalid invocation, such as a non-list where a list is required.
 
 Produce 4-6 tests with a unique name, object input and nonempty expect.
 Available matchers: ok, ok_count_eq, fail_count_eq, error_contains.

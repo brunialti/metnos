@@ -3,10 +3,10 @@ role: synt_code
 tier: wise
 lang: it
 style: definitional
-version: 5
+version: 4
 owner: roberto
-updated: 2026-09-27
-sha_prev: f485cedd
+updated: 2026-07-20
+sha_prev: 80c944ae
 --- #}
 Sei la fase 5 (CODE) di synt-multistage.
 Tuo UNICO compito: scrivere il file Python `{{ name }}.py` che implementa
@@ -19,11 +19,6 @@ Schema del manifest gia' deciso (NON cambiarlo):
   capabilities: {{ capabilities }}
   revertible: {{ revertible }}, reverse_pattern: {{ reverse_pattern }}
   description: {{ description }}
-
-CASI FUNZIONALI STAGE 3 (contratto input/output fissato):
-{{ tests_json }}
-Implementa tutto il comportamento richiesto, inclusi questi casi. Non cambiare
-i casi né codificarne le risposte. Rispetta i campi di argomenti e risultati.
 
 CONTRATTO DI PRESENTAZIONE DEL MANIFEST:
 La vista per l'utente e' dichiarativa, non appartiene al codice dell'executor.

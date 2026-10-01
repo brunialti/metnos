@@ -147,7 +147,7 @@ def _public_bytes(key: Ed25519PrivateKey) -> bytes:
     )
 
 
-def _documents(operator_public: bytes, reviewer_public: bytes, *, legacy_scope: bool = False) -> dict[str, bytes]:
+def _documents(operator_public: bytes, reviewer_public: bytes) -> dict[str, bytes]:
     runtime_dir = Path(__file__).resolve().parents[1] / "runtime"
     if str(runtime_dir) not in sys.path:
         sys.path.insert(0, str(runtime_dir))
@@ -156,10 +156,7 @@ def _documents(operator_public: bytes, reviewer_public: bytes, *, legacy_scope: 
     kinds = sorted(item.value for item in IndependentEvidenceKind)
     approval = _canonical({
         "actors": {
-            "operator": {"key_ids": ["operator-key"], "scopes": (
-                ["birth"] if legacy_scope else
-                ["active", "authority", "preexercise", "promotion", "reactivation"]
-            )},
+            "operator": {"key_ids": ["operator-key"], "scopes": ["birth"]},
         },
         "keys": {"operator-key": base64.b64encode(operator_public).decode("ascii")},
         "revision": 1,
@@ -224,7 +221,7 @@ def _verify_public(directory: Path, expected: dict[str, bytes], *, owner: tuple[
 
 def provision_paths(
     *, target_config: Path, private_base: Path, target_owner: tuple[int, int],
-    private_owner: tuple[int, int], upgrade_scopes: bool = False,
+    private_owner: tuple[int, int],
 ) -> dict[str, object]:
     """Create or verify one fresh, separated operator authority set."""
 
@@ -253,25 +250,10 @@ def provision_paths(
         operator = _read_private(private / "operator-key.priv", owner=private_owner)
         reviewer = _read_private(private / "review-key.priv", owner=private_owner)
         expected = _documents(_public_bytes(operator), _public_bytes(reviewer))
-        legacy_scope = False
-        try:
-            _verify_public(public, expected, owner=target_owner)
-        except OperatorAuthorityError:
-            # Never expand an installed authority silently. Recognise the
-            # exact previous installer output, preserving its original keys.
-            legacy = _documents(_public_bytes(operator), _public_bytes(reviewer),
-                                legacy_scope=True)
-            _verify_public(public, legacy, owner=target_owner)
-            legacy_scope = True
-        if legacy_scope and upgrade_scopes:
-            _upgrade_approval_input(public, legacy["approval-authority.json"],
-                                    expected["approval-authority.json"], owner=target_owner)
-            _verify_public(public, expected, owner=target_owner)
-            legacy_scope = False
+        _verify_public(public, expected, owner=target_owner)
         return {
             "status": "verified", "private_created": False,
             "private_dir": str(private), "public_dir": str(public),
-            "approval_scope_upgrade_required": legacy_scope,
         }
 
     operator, operator_created = _load_or_create_private(
@@ -324,57 +306,11 @@ def provision_paths(
     }
 
 
-def _upgrade_approval_input(directory: Path, before: bytes, after: bytes,
-                            *, owner: tuple[int, int]) -> None:
-    """Explicit, atomic upgrade of provisioning input, never a selected set.
-
-    Pin the service-owned directory before root writes; replacement of its
-    pathname must not redirect the administrative write elsewhere.
-    """
-    import secrets
-    descriptor = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
-    name = ".approval-upgrade-" + secrets.token_hex(16)
-    created = False
-    try:
-        info = os.fstat(descriptor)
-        if (info.st_uid, info.st_gid) != owner or stat.S_IMODE(info.st_mode) != 0o755:
-            raise OperatorAuthorityError("operator_authority_public_invalid")
-        original = os.open("approval-authority.json", os.O_RDONLY | os.O_NOFOLLOW,
-                           dir_fd=descriptor)
-        try:
-            info = os.fstat(original)
-            if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
-                    or (info.st_uid, info.st_gid) != owner
-                    or stat.S_IMODE(info.st_mode) != 0o644
-                    or os.read(original, len(before) + 1) != before):
-                raise OperatorAuthorityError("operator_authority_public_invalid")
-        finally:
-            os.close(original)
-        replacement = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
-                              0o600, dir_fd=descriptor)
-        created = True
-        with os.fdopen(replacement, "wb") as stream:
-            stream.write(after)
-            stream.flush()
-            os.fchown(stream.fileno(), *owner)
-            os.fchmod(stream.fileno(), 0o644)
-            os.fsync(stream.fileno())
-        os.replace(name, "approval-authority.json", src_dir_fd=descriptor, dst_dir_fd=descriptor)
-        created = False
-        os.fsync(descriptor)
-    finally:
-        if created:
-            os.unlink(name, dir_fd=descriptor)
-        os.close(descriptor)
-
-
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Install fresh public Birth registries for one Metnos account.",
     )
     parser.add_argument("--user", required=True, help="non-root Metnos service account")
-    parser.add_argument("--upgrade-scopes", action="store_true",
-                        help="explicitly upgrade legacy consent scopes for the next release")
     args = parser.parse_args(argv)
     if os.geteuid() != 0:
         print(_canonical({"error": "operator_authority_requires_root"}).decode())
@@ -390,7 +326,6 @@ def main(argv: list[str] | None = None) -> int:
             private_base=PRIVATE_BASE,
             target_owner=(account.pw_uid, account.pw_gid),
             private_owner=(0, 0),
-            upgrade_scopes=args.upgrade_scopes,
         )
     except (KeyError, OperatorAuthorityError, OSError) as exc:
         code = getattr(exc, "code", "operator_authority_target_invalid")

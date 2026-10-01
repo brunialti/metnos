@@ -1132,9 +1132,9 @@ def _validate_synth_tests(data):
     )
 
 
-def _request_for_intent_with_capability(
+def _execute_intent_with_capability(
     intent: "BirthIntent", capability: "_ProducerCapability",
-) -> tuple[BirthRequest, BirthRuntimeBundle]:
+) -> BirthResult:
     from executor_birth_intent import BirthIntent, _is_producer_capability, _PROMOTER_QUARANTINE
     if not isinstance(intent, BirthIntent):
         raise ValueError("birth_intent_invalid")
@@ -1158,54 +1158,6 @@ def _request_for_intent_with_capability(
     request = factory(intent)
     if not isinstance(request, BirthRequest):
         raise ValueError("birth_request_invalid")
-    return request, bundle
-
-
-def _preview_approval_subject(request: BirthRequest, core: _BirthCore,
-                              *, expires_at: str) -> ApprovalSubject:
-    """Observe the exact consent subject without claiming or admitting it.
-
-    Used by the administrative reviewer after allocating its approval reference.
-    The normal Birth path repeats these observations at admission; this preview
-    is neither an approval nor a publication capability.
-    """
-    if not _is_birth_core(core):
-        raise ValueError("birth_core_untrusted")
-    context, pin = core.context_resolver(request)
-    if (not isinstance(pin, AdmissionContextPin)
-            or pin.admission_context_id != admission_context_id(context)
-            or core.context_epoch_resolver() != pin.context_epoch):
-        raise ValueError("birth_context_pin_invalid")
-    with core.commit_publisher.admission_lock():
-        producer = _peek_receipt(core, request, core.now().astimezone(timezone.utc))
-        with observe_candidate(
-            request.candidate_source_root, contract_id=request.manifest_ref.contract_id,
-            executor_origin=producer.executor_origin,
-            revision_authorship=producer.revision_authorship,
-            objective_hash=producer.objective_hash, admission_context=context,
-        ) as observed:
-            if candidate_source_id(observed) != producer.candidate_source_id:
-                raise ValueError("birth_candidate_source_changed")
-            predecessor, payloads = core.predecessor_resolver(request)
-            if not isinstance(predecessor, AuthenticatedPredecessorSnapshot):
-                raise ValueError("birth_predecessor_snapshot_invalid")
-            facts = derive_revision_facts(predecessor, payloads, observed.snapshot)
-            revision = classify_revision(facts).revision_class
-            previous = (ApprovedLifecycle(predecessor.approved_lifecycle)
-                        if predecessor.approved_lifecycle is not None else None)
-            scope = approval_scope(observed, revision, previous)
-            if scope is None:
-                raise ValueError("birth_approval_not_applicable")
-            return ApprovalSubject(
-                observed.identities.candidate_id, observed.identities.semantic_core_id,
-                observed.identities.admission_context_id, scope, expires_at,
-            )
-
-
-def _execute_intent_with_capability(
-    intent: "BirthIntent", capability: "_ProducerCapability",
-) -> BirthResult:
-    request, bundle = _request_for_intent_with_capability(intent, capability)
     # Use the core from the same bundle snapshot as the producer factory.
     return _execute(request, bundle.core)
 

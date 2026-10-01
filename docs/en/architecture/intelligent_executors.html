@@ -119,6 +119,25 @@
  cross-domain strategy, or a task without a crisp completion criterion inside
  an executor. Those decisions belong to the planner.</p>
 
+ <h2 id="login-entry">Finding a site's sign-in entry</h2>
+ <p>To sign in, Metnos first looks for an authentication form. If none is
+ present, it looks for an account entry, a menu, or a plausible intermediate
+ step. It uses page signals first; only when those are insufficient does it
+ ask the local model to choose among observed controls. There are no special
+ navigation paths for individual sites.</p>
+ <p>Search follows at most four steps along each path. At a dead end, it
+ returns to the starting page, replays the verified path to a useful fork,
+ and tries an alternative not yet attempted. Forward and
+ return steps share a 32-action cap and a limited search time;
+ waiting for consent does not reset the attempts. If the path changes in
+ the meantime, Metnos stops.</p>
+ <p>The usual site boundaries and consent forms still apply during search.
+ Cookies use the separate procedure for rejecting optional choices, checked
+ again before submission if a new banner appears. Once a
+ form is found, credential entry remains deterministic: the model receives
+ no field values and explores no further paths once typing begins. CAPTCHA
+ and additional verification require user intervention; they are not bypassed.</p>
+
  <h2>When it cannot finish</h2>
  <p>If no proposal is admitted, the loop is <code>inconclusive</code>. If its
  attempts or elapsed-time budget runs out, it is <code>exhausted</code>. The

@@ -1642,6 +1642,7 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
                     factor_state=factor_state, budget=budget,
                     checkpoint=checkpoint, force=True)
 
+            await _checkpoint(checkpoint, "username_fill")
             advanced = await _advance_username_stage(
                 page=page, vault_domain=domain,
                 origin_ok=_origin_ok, username=username,
@@ -1720,7 +1721,6 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
                         "reason_code": "mandate_scope_exceeded",
                         "error_class": "mandate_scope_exceeded"}
             if dismissed.get("ok") and dismissed.get("executed"):
-                entry_steps += 1
                 page = current_page(page)
                 password_visible = await _has_toplevel_password(page)
                 continue
@@ -1733,10 +1733,16 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
             return out
         if not reached.get("ok") or not reached.get("executed"):
             error_class = reached.get("error_class") or "no_login_form"
+            blocker = reached.get("reason_code")
+            if blocker in {"two_factor_required", "two_factor_push_required",
+                           "captcha_required"}:
+                await _checkpoint(checkpoint, "factor_pending")
+                return {"ok": True, "logged_in": False, "reason_code": blocker}
             return {"ok": True, "logged_in": False,
                     "reason_code": (
-                        "mandate_scope_exceeded"
-                        if error_class == "mandate_scope_exceeded"
+                        error_class if error_class in {
+                            "mandate_scope_exceeded", "login_entry_stalled",
+                            "login_timeout"}
                         else "selector_missing"),
                     "error_class": error_class}
         page = current_page(page)
@@ -1813,6 +1819,7 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
 
     # 4. CRITICO-2/3 — digita nei SOLI campi risolti dal broker. Il pw field è
     #    già marcato `data-metnos-redact`. Nessuno screenshot fra fill e submit.
+    await _checkpoint(checkpoint, "primary_fill")
     try:
         action_timeout = budget.remaining(op_timeout_s)
         # TOCTOU: una pagina puo' cambiare form.action dopo il primo controllo.
@@ -1856,6 +1863,12 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
                 "error_class": "fill_failed"}
 
     # 5-6. Submit deterministico + attesa navigazione/idle (bounded).
+    # A consent banner may appear while the fields are being filled. Reuse
+    # the separate privacy precondition before submitting, with secrets
+    # redacted and the form origin checked again below. No entry discovery.
+    page, obstruction = await prepared_page(page)
+    if obstruction:
+        return obstruction
     try:
         await _checkpoint(checkpoint, "primary_submit")
         current_action = await page.evaluate(_CURRENT_FORM_ACTION_JS)
