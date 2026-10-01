@@ -182,6 +182,7 @@ _MODEL_FALLBACKS_ENABLED = _enabled_env(
     "METNOS_SITES_MODEL_FALLBACKS", default=True)
 _RESOURCE_DISCOVERY_MS = 1000 # finestra bounded per richieste client-side
 _REVEAL_SETTLE_MS = 2000      # attesa bounded target dopo controllo reveal
+_LOGIN_ENTRY_SETTLE_S = 5.0   # attesa totale per un ingresso ancora vuoto
 _REVEAL_POLL_MS = 100
 _CONTENT_SETTLE_MS = _bounded_int_env(
     "METNOS_SITES_CONTENT_SETTLE_MS", default=10000,
@@ -2510,10 +2511,15 @@ async def _reduce_site_goal(query: str) -> str:
     return str(outcome.result or "")
 
 
-def _login_entry_candidates(candidates: list[dict]) -> list[dict]:
+def _login_entry_candidates(candidates: list[dict], current_url: str = "") -> list[dict]:
     """Navigation only: no fields, form submissions or preference toggles."""
+    current_place = action_resolver.url_place_key(current_url)
     return [candidate for candidate in
             action_resolver.goal_navigation_candidates(candidates)
+            if not (current_place
+                    and action_resolver.goal_place_key(candidate) == current_place
+                    and str(candidate.get("aria_current") or "").lower() in {
+                        "true", "page", "step", "location"})
             if str(candidate.get("form_method") or "").upper() != "POST"
             and str(candidate.get("type") or "").lower() not in {
                 "reset", "checkbox", "radio"}
@@ -2556,11 +2562,25 @@ async def _discover_login_entry(entry: dict, session_id: str, flow: dict) -> dic
         if await credential_injection._wait_for_login_surface(
                 page, _REVEAL_SETTLE_MS / 1000.0):
             return {"terminal": {"ok": True, "executed": True}}
+        candidates = await _enumerate_candidates(page)
+        # The document may be loaded while its login UI is still rendering.
+        # Spend a little more of the same search budget only after a click
+        # that left neither a form nor a usable next entry on screen.
+        if (state.get("pending")
+                and not action_resolver.choose_candidate(
+                    "login", candidates, "click").get("ok")
+                and not action_resolver.choose_reveal_candidate(
+                    "login", candidates, "click").get("ok")):
+            extra_s = max(0.0, _LOGIN_ENTRY_SETTLE_S
+                          - _REVEAL_SETTLE_MS / 1000.0)
+            if extra_s and await credential_injection._wait_for_login_surface(
+                    page, extra_s):
+                return {"terminal": {"ok": True, "executed": True}}
+            candidates = await _enumerate_candidates(page)
         username_stage = await page.evaluate(
             credential_injection._LOCATE_USERNAME_STAGE_JS)
         if isinstance(username_stage, dict) and username_stage.get("ambiguous"):
             return {"terminal": {"ok": False, "error_class": "selector_ambiguous"}}
-        candidates = await _enumerate_candidates(page)
         scroll = action_resolver.choose_scroll_candidate(
             "login", candidates, "click")
         if (not action_resolver.choose_candidate(
@@ -2570,7 +2590,7 @@ async def _discover_login_entry(entry: dict, session_id: str, flow: dict) -> dic
             candidates = await _enumerate_candidates(page)
         return {"key": login_navigation.state_key(page.url, candidates),
                 "url": page.url, "page": page,
-                "candidates": _login_entry_candidates(candidates),
+                "candidates": _login_entry_candidates(candidates, page.url),
                 "all_candidates": candidates}
 
     async def choose(observation: dict, tried: set[str]) -> dict | None:
@@ -2593,6 +2613,11 @@ async def _discover_login_entry(entry: dict, session_id: str, flow: dict) -> dic
             candidate = reveals[0]
         if candidate is not None and candidate in candidates:
             return {"candidate": candidate, "confidence": 0.5}
+        hint = action_resolver.choose_login_area_hint(
+            candidates, observation["url"])
+        if hint.get("ok"):
+            return {"candidate": hint["candidate"],
+                    "confidence": hint["confidence"]}
         candidate = await _local_llm_choose_goal_candidate(
             entry, "login", candidates, [], set(), login=True)
         if candidate is not None:

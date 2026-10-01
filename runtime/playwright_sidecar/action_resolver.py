@@ -885,6 +885,21 @@ def prefer_verifiable_goal_candidates(candidates: list[dict]) -> list[dict]:
     return out
 
 
+def choose_login_area_hint(candidates: list[dict], current_url: str) -> dict:
+    """Try one translated weak area clue only when it leads elsewhere."""
+    current = _safe_navigation_identity({"href": current_url})
+    eligible = [candidate for candidate in goal_navigation_candidates(candidates)
+                if _candidate_matches_concept(candidate, "sites.login_area_hint")
+                and (destination := _safe_navigation_identity(candidate))
+                and destination != current]
+    eligible = prefer_verifiable_goal_candidates(eligible)
+    destinations = {_safe_navigation_identity(candidate) for candidate in eligible}
+    if len(destinations) != 1:
+        return {"ok": False, "error_class": (
+            "selector_ambiguous" if destinations else "selector_missing")}
+    return {"ok": True, "candidate": eligible[0], "confidence": 0.5}
+
+
 def choose_authenticated_reveal_candidate(
         candidates: list[dict], *, excluded: set[str] | None = None,
         account_only: bool = False) -> dict:

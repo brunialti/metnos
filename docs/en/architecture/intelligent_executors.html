@@ -125,6 +125,11 @@
  step. It uses page signals first; only when those are insufficient does it
  ask the local model to choose among observed controls. There are no special
  navigation paths for individual sites.</p>
+ <p>A label such as “Private customers” or “customer area” can hint at a route
+ to sign-in, but it is not itself a sign-in control. Metnos follows that clue
+ only when it leads to a different page and no explicit entry is available;
+ after a click, it also waits briefly for menus and forms that appear late.
+ The terms come from its multilingual lexicon.</p>
  <p>Search follows at most four steps along each path. At a dead end, it
  returns to the starting page, replays the verified path to a useful fork,
  and tries an alternative not yet attempted. Forward and

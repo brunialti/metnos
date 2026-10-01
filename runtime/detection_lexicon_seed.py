@@ -851,6 +851,13 @@ def register_all() -> None:
     R("sites.login_direct_target", "phrases", match_mode="word",
       it=["accedi", "accesso", "entra", "login", "log in", "sign in"],
       en=["sign in", "log in", "log on", "login", "access", "enter"])
+    # Indizi di un'area per gli utenti, non prove di un modulo di accesso.
+    # L'esplorazione li usa solo se il link porta a una pagina diversa; un
+    # ingresso esplicito resta sempre prioritario.
+    R("sites.login_area_hint", "phrases", match_mode="word",
+      it=["privati", "area privata", "clienti", "utenti registrati"],
+      en=["private", "private customers", "members", "registered users",
+          "customer area"])
     # Intento forte di autenticazione espresso sull'intero comando. E' distinto
     # dal nome di un controllo: impedisce che un semplice testo "Accedi" nella
     # pagina recluti login_sites, ma copre le formulazioni naturali con cui
