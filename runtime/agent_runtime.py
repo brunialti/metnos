@@ -6884,11 +6884,12 @@ def _run_engine(
         _site_credential_mode = "default"
     # ADR 0191 P1: master + tecniche stealth indipendenti, risolti per-turno
     # dalle preferenze dell'attore. Il broker applica poi il ceiling deployment.
+    _site_owner = owner_user_id or actor
     try:
         import users as _users
         import devices as _devices
         # Fix adversarial #9: la pref e' per-UTENTE, non per-actor grezzo.
-        _site_owner = _devices.owner_id_for_actor(actor) or actor
+        _site_owner = owner_user_id or _devices.owner_id_for_actor(actor) or actor
         _site_stealth_pref = _users.get_pref(
             _site_owner, "sites_stealth", "off") or "off"
         _site_browser_mode = _users.get_pref(
@@ -6911,6 +6912,36 @@ def _run_engine(
         _site_stealth_techniques = []
         _site_lang = _detlex.current_lang()
         _site_auto_allow = False
+
+    # A user's invocation label is only an address-book entry. It never grants
+    # network access, credential use or consent; those remain broker decisions.
+    _site_invocation_url = ""
+    try:
+        site_intent = (
+            str(getattr(intent, "object", "") or "").lower() == "sites"
+            or any(isinstance(a, dict)
+                   and str(a.get("object") or "").lower() == "sites"
+                   for a in (getattr(intent, "actions", None) or []))
+            or (_is_credentials_store_only_intent(intent)
+                and detect_binding(query) not in {"ssh", "cifs"})
+        )
+        if site_intent and _site_owner:
+            import users as _users
+            _site_invocation_url = _users.resolve_site_invocation(
+                _site_owner, query)
+    except Exception as exc:  # An absent address book cannot break other turns.
+        log.warning("site invocation lookup failed: %r", exc)
+    if _site_invocation_url is None:
+        return {
+            "steps": [], "final_text": msg("MSG_SITE_INVOCATIONS_AMBIGUOUS"),
+            "final_kind": "ask", "framework_hash": "",
+            "verb": intent.verb, "object": intent.object,
+            "keywords": intent.keywords, "match_source": "site_invocation",
+            "elapsed_ms": 0, "error_class": "", "needs_inputs_obs": None,
+            "gate_obs": None,
+        }
+    _site_query = (query + "\n" + _site_invocation_url
+                   if _site_invocation_url else query)
 
     _catalog_by_name = {
         e.name: e for e in catalog if getattr(e, "name", None)
@@ -7167,6 +7198,7 @@ def _run_engine(
 
     runtime_ctx = {
         "actor": actor or "",
+        "site_invocation_url": _site_invocation_url,
         # The dispatch layer rewrites pending dialog callbacks after executor
         # execution.  Keep the authenticated immutable owner in that context:
         # actor/channel alone identify the conversation endpoint, not the
@@ -7268,7 +7300,7 @@ def _run_engine(
 
     # A pure request to save credentials for one explicit site only needs the
     # protected form. No planner call or secret value is needed to open it.
-    _site_binding = _site_credential_target(query)
+    _site_binding = _site_credential_target(_site_query)
     if (_is_credentials_store_only_intent(intent) and _site_binding
             and "set_credentials" in _catalog_by_name
             and not seed_state and not resume_steps and not pre_approved_gate):
@@ -7301,7 +7333,7 @@ def _run_engine(
 
     try:
         result = _dispatch.run_turn(
-            query=query, intent=intent, catalog=catalog_v2,
+            query=_site_query, intent=intent, catalog=catalog_v2,
             invoke_executor_cb=_invoke,
             submit_executor_cb=_submit,
             can_parallelize_cb=_can_parallelize,

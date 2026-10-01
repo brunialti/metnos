@@ -1216,6 +1216,7 @@ async def admin_user_detail(request: web.Request) -> web.Response:
         "devices": dev_rows,
         # W2 v1 (ADR 0187): preferenze esplicite (vocabolario chiuso).
         "prefs": users.list_prefs(u["id"]),
+        "site_invocations": users.list_site_invocations(u["id"]),
     }
     if "text/html" in request.headers.get("Accept", ""):
         stealth_options = users.sites_stealth_preference_specs()
@@ -1234,6 +1235,8 @@ async def admin_user_detail(request: web.Request) -> web.Response:
                                    if key not in web_pref_keys
                                },
                                stealth_options=stealth_options,
+                               site_invocations=payload["site_invocations"],
+                               site_error=request.query.get("site_error") == "invalid",
                                flash=request.query.get("flash", ""))
         return web.Response(text=html, content_type="text/html")
     return web.json_response(payload)
@@ -1280,6 +1283,23 @@ async def admin_user_prefs(request: web.Request) -> web.Response:
             r = users.set_pref(user_id, key, val)
             results.append(f"{key}={val}" if r.get("ok")
                            else f"{key}: {r.get('error')}")
+    raise web.HTTPFound(f"/admin/users/{user_id}")
+
+
+async def admin_user_sites(request: web.Request) -> web.Response:
+    """Save or remove a per-user invocation name and its site URL."""
+    user_id = request.match_info["id"]
+    data = await request.post()
+    name = str(data.get("name") or "")
+    try:
+        if data.get("action") == "delete":
+            users.delete_site_invocation(user_id, name)
+        elif data.get("action") == "save":
+            users.set_site_invocation(user_id, name, str(data.get("url") or ""))
+        else:
+            raise ValueError("invalid action")
+    except ValueError:
+        raise web.HTTPFound(f"/admin/users/{user_id}?site_error=invalid")
     raise web.HTTPFound(f"/admin/users/{user_id}")
 
 
@@ -2135,6 +2155,7 @@ ROUTES = (
     ("POST", "/admin/users",                      admin_users),
     ("GET",  "/admin/users/{id}",                 admin_user_detail),
     ("POST", "/admin/users/{id}/prefs",          admin_user_prefs),
+    ("POST", "/admin/users/{id}/sites",          admin_user_sites),
     ("POST", "/admin/users/{id}/delete",          admin_user_delete),
     ("POST", "/admin/users/{id}/update",           admin_user_update),
     ("POST", "/admin/users/{id}/autonomy",        admin_user_set_autonomy),

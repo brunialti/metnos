@@ -54,6 +54,18 @@ data, permissions, and conversations remain separate.</p>
 or remove channels; and list devices owned by the user. Available preferences
 come from a closed vocabulary: the interface does not accept arbitrary keys.</p>
 
+<p>In the user detail page, <strong>Site names</strong> pairs the name used in
+requests with a URL. For example, you can save “telepas” with
+<code>https://www.telepass.com/</code>: when you ask Metnos to open or use that
+site, it starts from the saved address instead of guessing it from the name.
+Associations are separate for each user; an explicit URL in the request takes
+precedence. If a request names several saved sites, Metnos asks which one to
+use.</p>
+
+<p>The association contains no password and grants no extra permission:
+credential handling, consent, and checks against the actual site remain
+separate.</p>
+
 <p>Deletion is a lifecycle operation, not merely removal of a row. Metnos stops
 the active administrator from deleting themselves and protects the sole host.
 For an eligible user, access and running work are revoked and data is removed

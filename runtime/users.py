@@ -28,12 +28,15 @@ from __future__ import annotations
 
 import calendar
 import os
+import re
 import secrets
 import sqlite3
 import time
+import unicodedata
 import uuid
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 import config as _C  # §7.11
 from playwright_sidecar import stealth as _sites_stealth
@@ -73,6 +76,14 @@ CREATE INDEX IF NOT EXISTS idx_channels_recipient ON user_channels(channel, reci
 CREATE TABLE IF NOT EXISTS deleted_user_tombstones (
     user_id TEXT PRIMARY KEY,
     deleted_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS site_invocations (
+    user_id TEXT NOT NULL,
+    name_key TEXT NOT NULL,
+    name TEXT NOT NULL,
+    url TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (user_id, name_key)
 );
 """
 
@@ -450,6 +461,8 @@ def delete_user(user_id: str) -> bool:
                 if "user_prefs" in tables:
                     conn.execute(
                         "DELETE FROM user_prefs WHERE user_id=?", (user_id,))
+                conn.execute(
+                    "DELETE FROM site_invocations WHERE user_id=?", (user_id,))
                 conn.execute(
                     "DELETE FROM user_channels WHERE user_id=?", (user_id,))
                 conn.execute(
@@ -1015,6 +1028,113 @@ def list_prefs(user_id_or_name: str) -> dict:
     """{key: value} — proiezione essenziale, per i consumatori di solo valore."""
     return {k: rec["value"]
             for k, rec in list_prefs_detailed(user_id_or_name).items()}
+
+
+def _site_invocation_name(name: str) -> tuple[str, str]:
+    if not isinstance(name, str):
+        raise ValueError("invalid invocation name")
+    display = " ".join(unicodedata.normalize("NFKC", name or "").split())
+    if (not 1 <= len(display) <= 80
+            or not all(c.isalnum() or c in " -_" for c in display)):
+        raise ValueError("invalid invocation name")
+    return display, display.casefold()
+
+
+def _site_invocation_url(value: str) -> str:
+    from sites_origin import _norm_host, origin_of_url
+
+    if not isinstance(value, str):
+        raise ValueError("invalid site URL")
+    raw = (value or "").strip()
+    if not raw or len(raw) > 2048 or any(c.isspace() or c == "\\" for c in raw):
+        raise ValueError("invalid site URL")
+    if "://" not in raw:
+        raw = "https://" + raw
+    try:
+        parts = urlsplit(raw)
+        if (parts.username is not None or parts.password is not None
+                or parts.query or parts.fragment or parts.port == 0
+                or not origin_of_url(raw)):
+            raise ValueError("invalid site URL")
+        # Preserve a useful entry path; normalize the scheme and host only.
+        host = _norm_host(parts.hostname)
+        if not host:
+            raise ValueError("invalid site URL")
+        if ":" in host and not host.startswith("["):
+            host = f"[{host}]"
+        netloc = host + (f":{parts.port}" if parts.port else "")
+        return urlunsplit((parts.scheme.lower(), netloc, parts.path or "/", "", ""))
+    except ValueError as exc:
+        raise ValueError("invalid site URL") from exc
+
+
+def set_site_invocation(user_id_or_name: str, name: str, url: str) -> dict:
+    """Save a user's invocation label separately from site credentials."""
+    user = get_user(user_id_or_name)
+    if not user:
+        raise ValueError("unknown user")
+    display, key = _site_invocation_name(name)
+    normalized_url = _site_invocation_url(url)
+    conn = _open_db()
+    try:
+        conn.execute(
+            "INSERT INTO site_invocations(user_id,name_key,name,url,updated_at) "
+            "VALUES (?,?,?,?,?) ON CONFLICT(user_id,name_key) DO UPDATE SET "
+            "name=excluded.name,url=excluded.url,updated_at=excluded.updated_at",
+            (user["id"], key, display, normalized_url, _now_iso()),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return {"name": display, "url": normalized_url}
+
+
+def list_site_invocations(user_id_or_name: str) -> list[dict]:
+    user = get_user(user_id_or_name)
+    if not user:
+        return []
+    conn = _open_db()
+    try:
+        rows = conn.execute(
+            "SELECT name,url FROM site_invocations WHERE user_id=? "
+            "ORDER BY name_key", (user["id"],),
+        ).fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        conn.close()
+
+
+def delete_site_invocation(user_id_or_name: str, name: str) -> bool:
+    user = get_user(user_id_or_name)
+    if not user:
+        return False
+    _, key = _site_invocation_name(name)
+    conn = _open_db()
+    try:
+        deleted = conn.execute(
+            "DELETE FROM site_invocations WHERE user_id=? AND name_key=?",
+            (user["id"], key),
+        ).rowcount > 0
+        conn.commit()
+        return deleted
+    finally:
+        conn.close()
+
+
+def resolve_site_invocation(user_id_or_name: str, query: str) -> str | None:
+    """Resolve one explicit label; ask for clarification when several match."""
+    if re.search(r"https?://|(?<![@\w])(?:[\w-]+\.)+[\w-]{2,63}\b|\blocalhost\b",
+                 query or "", re.IGNORECASE):
+        return ""
+    folded = " ".join(unicodedata.normalize("NFKC", query or "").casefold().split())
+    matched = {
+        entry["url"] for entry in list_site_invocations(user_id_or_name)
+        if re.search(r"(?<!\w)" + re.escape(entry["name"].casefold())
+                     + r"(?!\w)", folded)
+    }
+    if len(matched) > 1:
+        return None
+    return next(iter(matched)) if matched else ""
 
 
 def delete_pref(user_id_or_name: str, key: str) -> bool:

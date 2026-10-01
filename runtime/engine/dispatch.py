@@ -6513,8 +6513,13 @@ def _finalize_framework_for_run(framework: Framework, intent, query: str,
     all'intent). Un path che esegue un piano senza passare da qui reintroduce
     quella classe di regressione. I guard sono idempotenti (T4): la doppia
     passata sul path normale è un no-op."""
+    _site_url = (runtime_ctx or {}).get("site_invocation_url")
+    if _site_url:
+        framework = _bind_site_invocation(framework, _site_url)
     framework = _apply_deterministic_structure_guards(
         framework, intent, query, catalog)
+    if _site_url:
+        framework = _bind_site_invocation(framework, _site_url)
     # Output-policy deterministica (matrice intent×data_kind → modo, §7.9):
     # il runtime — non il proposer — sceglie il TERMINALE di presentazione.
     if is_output_policy_enabled():
@@ -6541,6 +6546,30 @@ def _finalize_framework_for_run(framework: Framework, intent, query: str,
     # mass-mutation gate (6/7): delete/move di massa → conferma umana.
     framework = _insert_mass_mutation_gate(framework, query, runtime_ctx)
     return framework
+
+
+def _bind_site_invocation(framework: Framework, url: str) -> Framework:
+    """Pin a resolved site entry without changing broker authorization."""
+    from sites_origin import origin_of_url
+    if not origin_of_url(url):
+        return framework
+    steps = []
+    for step in framework.steps:
+        args = dict(step.args or {})
+        if step.tool == "open_sites":
+            args["urls"] = [url]
+        elif step.tool == "login_sites":
+            # The broker derives the credential host from the real session.
+            args.pop("domain", None)
+        steps.append(StepSpec(
+            tool=step.tool, args=args,
+            if_prev_entries_nonempty=step.if_prev_entries_nonempty,
+        ))
+    return Framework(
+        steps=steps, fillers=dict(framework.fillers),
+        final_message=framework.final_message,
+        runtime_step_cap=framework.runtime_step_cap,
+    )
 
 
 def _insert_consent_gate_if_scheduled(framework, query: str, runtime_ctx):

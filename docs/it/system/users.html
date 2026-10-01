@@ -57,6 +57,18 @@ autonomia, associare o rimuovere canali e consultare i dispositivi posseduti.
 Le preferenze disponibili appartengono a un vocabolario chiuso: l'interfaccia non
 accetta chiavi arbitrarie.</p>
 
+<p>Nel dettaglio utente, <strong>Nomi dei siti</strong> associa il nome usato
+nelle richieste a un URL. Per esempio, puoi registrare «telepas» con
+<code>https://www.telepass.com/</code>: quando chiedi di aprire o usare quel sito,
+Metnos parte dall'indirizzo registrato invece di ricavarlo dal nome. Le
+associazioni sono separate per utente; un URL scritto esplicitamente nella
+richiesta ha la precedenza. Se la richiesta nomina più siti registrati,
+Metnos chiede quale usare.</p>
+
+<p>L'associazione non contiene password e non dà permessi aggiuntivi: la
+gestione delle credenziali, i consensi e i controlli sul sito effettivo restano
+separati.</p>
+
 <p>La cancellazione è un'operazione di ciclo di vita, non la semplice rimozione
 di una riga. Metnos impedisce all'amministratore attivo di cancellare se stesso
 e protegge l'unico host. Per un utente cancellabile, vengono revocati accessi e
