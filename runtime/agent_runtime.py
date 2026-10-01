@@ -595,7 +595,14 @@ _URL_HOST_RE = re.compile(
 )
 # host bare (FQDN o IP) — usato solo quando hint = ssh/login/sito
 _BARE_HOST_RE = re.compile(
-    r"\b((?:\d{1,3}\.){3}\d{1,3}|(?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,})\b"
+    r"(?<![A-Za-z0-9@._-])"
+    r"((?:\d{1,3}\.){3}\d{1,3}|(?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,})"
+    r"(?![A-Za-z0-9@._-])"
+)
+_SSH_COMMAND_HOST_RE = re.compile(
+    r"\bssh\s+[^\s@]+@"
+    r"((?:\d{1,3}\.){3}\d{1,3}|(?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,})"
+    r"(?![A-Za-z0-9@._-])", re.IGNORECASE,
 )
 # Hint del binding: parole-spia per CIFS/web/ssh.
 # Prioritizziamo discriminatori inequivocabili (ssh come comando, https://, //)
@@ -646,6 +653,12 @@ def _detect_host(query: str, binding: str) -> tuple[str, dict]:
             host = m.group(1).lower()
             ctx["host"] = host
             return host, ctx
+    if binding == "ssh":
+        m = _SSH_COMMAND_HOST_RE.search(query)
+        if m:
+            host = m.group(1).lower()
+            ctx["host"] = host
+            return host, ctx
     # Fallback bare host (vale anche per ssh)
     m = _BARE_HOST_RE.search(query)
     if m:
@@ -681,8 +694,15 @@ def extract_credentials(query: str) -> list[dict]:
     if not pair_evidence:
         return []
 
-    binding = detect_binding(query)
-    host, ctx = _detect_host(query, binding)
+    # Username and password values are data, never evidence for the target.
+    # In particular, the dotted local part of an email is not a site host.
+    value_spans = [
+        (e.match.start(group), e.match.end(group))
+        for e in pair_evidence for group in (2, 4)
+    ]
+    target_query = _redact_spans(query, value_spans, "hidden")
+    binding = detect_binding(target_query)
+    host, ctx = _detect_host(target_query, binding)
     # Una coppia credenziale + FQDN senza indicatori CIFS/SSH e' un binding
     # web naturale ("credenziali di telepass.com"), non ``host_*``.
     if binding == "generic" and host:
@@ -694,7 +714,8 @@ def extract_credentials(query: str) -> list[dict]:
     elif host:
         domain = f"{domain_prefix}_{host}"
     else:
-        domain = f"{domain_prefix}_unknown"
+        # An origin-bound secret cannot be saved under an invented target.
+        domain = ""
 
     out: list[dict] = []
     seen_spans: set[tuple[int, int]] = set()
@@ -770,16 +791,20 @@ def prepare_credentials_for_routing(
         for credential in creds
         for span in (credential.get("scrub_spans") or [])
     ]
+    target_required = any(not c["domain"] for c in creds)
+    if target_required:
+        safe_meta.append({"domain": "", "target_required": True})
     if all_spans:
         # Redaction is independent from storage availability: a missing
         # keyring can make the operation unavailable, never expose the value.
         redacted = _redact_spans(
-            original, all_spans, creds[0]["domain"])
+            original, all_spans,
+            "target-required" if target_required else creds[0]["domain"])
     try:
         import credentials  # type: ignore
     except ImportError:
         credentials = None
-    if credentials is not None:
+    if credentials is not None and not target_required:
         for c in creds:
             try:
                 credentials.store(
@@ -7785,6 +7810,16 @@ def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, progress=None,
         log.user_query = redacted_query  # niente plaintext nel log
         log.redacted = True
         log.n_redacted_fields = max(log.n_redacted_fields, prepared_count)
+
+    if any(m.get("target_required") for m in extracted_meta):
+        # The values have been redacted, but no binding has been stored.
+        # Ask for a verifiable target instead of routing an ambiguous secret.
+        log.turn_id = uuid.uuid4().hex[:16]
+        log.final_message = msg("MSG_CREDENTIAL_TARGET_REQUIRED")
+        log.final_kind = "answer"
+        log.ts_end = time.time()
+        log.write()
+        return log
 
     # Admin chat commands shortcut (11/5/2026): `/admin user <action>` per
     # gestire utenti e pair URL via chat o Telegram. Determinismo §7.9:

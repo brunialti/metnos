@@ -32,6 +32,11 @@ not grant access to another user's data.</p>
 <p>If Metnos asks for credentials during a conversation, enter them in the
 protected chat form, not in a message. After submission, the form shows
 progress and then gives way to the result; one submission is enough.</p>
+<p>If a request nevertheless includes credentials in its text, Metnos redacts
+them before processing it. It saves them only when the request also names the
+website or server address: a user's email address does not identify the
+destination. If the address is missing, Metnos asks for the request again with
+the address and for the credentials to be re-entered in the protected form.</p>
 
 <div class="toc">
  <h2>On this page</h2>
