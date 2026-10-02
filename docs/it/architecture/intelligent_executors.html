@@ -177,6 +177,12 @@
  la corrispondenza prima di proseguire; una discordanza impedisce l'invio.
  I valori rimangono nel broker e non sono riportati nei risultati o nei log.</p>
 
+ <p>L’attesa dopo l’invio usa gli stessi criteri della verifica finale,
+ compresi eventuali cookie di sessione dichiarati. Un cookie generico
+ cambiato durante il caricamento non interrompe l’osservazione. Restano
+ invariati il limite di tempo, il singolo invio e la gestione separata
+ di CAPTCHA, codici e rifiuti.</p>
+
  <h2>Se non riesce</h2>
  <p>Se nessuna proposta viene ammessa, il ciclo &egrave; <code>inconclusive</code>. Se
  sono terminati i tentativi o il tempo disponibile, &egrave; <code>exhausted</code>.

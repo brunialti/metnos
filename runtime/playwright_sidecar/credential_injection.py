@@ -832,6 +832,7 @@ async def _cross_interstitial(page, *, op_timeout_s: float) -> bool:
 async def _observe_post_submit(*, page, context, cookies_before: dict,
                                url_before: str,
                                op_timeout_s: float,
+                               session_cookie_names: list[str],
                                await_challenge_clear: bool = False,
                                resolve_captcha=None) -> dict:
     """Osserva una transizione di autenticazione SPA senza inferenze premature."""
@@ -904,7 +905,11 @@ async def _observe_post_submit(*, page, context, cookies_before: dict,
         if (await_challenge_clear and (otp or push)):
             pass
         elif (otp or captcha or push or password_rejected
-                or state["stable_positive"]):
+                or (state["stable_positive"] and post_submit_outcome(
+                    state, session_cookie_names) == "login_verified")):
+            # A rotated analytics cookie can stabilize while the SPA is still
+            # loading. Stop only on the same evidence accepted by the caller,
+            # including its configured session-cookie requirement.
             break
         if attempt + 1 >= attempts:
             break
@@ -1225,6 +1230,7 @@ async def _complete_one_time_code_stage(*, page, context,
         page=page, context=context, cookies_before=cookies_before,
         url_before=url_before,
         op_timeout_s=min(op_timeout_s, _FACTOR_SUBMIT_SETTLE_S),
+        session_cookie_names=session_cookie_names,
         await_challenge_clear=True, resolve_captcha=resolve_captcha)
     outcome = post_submit_outcome(observed, session_cookie_names)
     logged_in = (outcome == "login_verified")
@@ -1239,7 +1245,11 @@ async def _complete_one_time_code_stage(*, page, context,
         else:
             reason = "login_failed"
     sites_audit.record("login_attempt", owner=owner, session_id=session_id,
-                       domain=vault_domain, outcome=logged_in, reason=reason)
+                       domain=vault_domain, outcome=logged_in, reason=reason,
+                       post_submit_outcome=outcome,
+                       surface_checked=observed["surface_checked"],
+                       login_surface=observed["login_surface"],
+                       navigation_confirmed=observed["navigation_confirmed"])
     _apply_cooldown_outcome(owner, storage_domain, outcome, payload=payload)
     return {"ok": True, "logged_in": logged_in, "reason_code": reason}
 
@@ -1637,6 +1647,7 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
             page=page, context=context, cookies_before=cookies_before,
             url_before=url_before,
             op_timeout_s=budget.remaining(_LOGIN_SURFACE_SETTLE_S),
+            session_cookie_names=session_cookie_names,
             resolve_captcha=resolve_captcha)
         otp = bool(observed["otp"])
         captcha = bool(observed["captcha"])
@@ -1658,6 +1669,7 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
                     page=page, context=context, cookies_before=cookies_before,
                     url_before=url_before,
                     op_timeout_s=budget.remaining(_LOGIN_SURFACE_SETTLE_S),
+                    session_cookie_names=session_cookie_names,
                     resolve_captcha=resolve_captcha)
                 otp = bool(observed["otp"])
                 captcha = bool(observed["captcha"])
@@ -1693,6 +1705,7 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
                     page=page, context=context, cookies_before=cookies_before,
                     url_before=url_before,
                     op_timeout_s=budget.remaining(_LOGIN_SURFACE_SETTLE_S),
+                    session_cookie_names=session_cookie_names,
                     resolve_captcha=resolve_captcha)
                 outcome = post_submit_outcome(observed, session_cookie_names)
                 logged_in = (outcome == "login_verified")
@@ -1715,7 +1728,11 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
         # 9. Audit dell'esito; ogni campo usato e' gia' registrato subito dopo il
         # fill, prima che una navigazione possa interrompere il controllo.
         sites_audit.record("login_attempt", owner=owner, session_id=session_id,
-                           domain=domain, outcome=logged_in, reason=reason)
+                           domain=domain, outcome=logged_in, reason=reason,
+                           post_submit_outcome=outcome,
+                           surface_checked=observed["surface_checked"],
+                           login_surface=observed["login_surface"],
+                           navigation_confirmed=observed["navigation_confirmed"])
         await _checkpoint(
             checkpoint,
             "complete" if logged_in else
