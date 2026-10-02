@@ -69,6 +69,7 @@ class RuntimeRegistration:
     output_schema_names: tuple[str, ...]
     workload_invoker: Callable[[str, Mapping[str, Any], object], object] | None = None
     candidate_plan_factory: Callable[[], Mapping[str, Any]] | None = None
+    temporary_workspaces_resolver: Callable[[Mapping[str, Any]], tuple] | None = None
     concurrency_targets_resolver: Callable[
         [FrozenRunnerContract, Mapping[str, Any], object, str | None], tuple[str, ...]
     ] | None = None
@@ -106,6 +107,9 @@ class RuntimeRegistration:
         if (self.concurrency_targets_resolver is not None
                 and not callable(self.concurrency_targets_resolver)):
             raise TypeError("runtime concurrency target resolver must be callable")
+        if (self.temporary_workspaces_resolver is not None
+                and not callable(self.temporary_workspaces_resolver)):
+            raise TypeError("runtime temporary workspace resolver must be callable")
 
 
 class _RunnerRouter:
@@ -265,6 +269,17 @@ class RuntimeRegistry:
         """Return the closed, canonical set of plans open to admission."""
 
         return tuple(sorted(self._candidate_plan_json, key=str.encode))
+
+    def temporary_workspaces(self, plan):
+        """Only approved package code can identify disposable private paths."""
+        paths = set()
+        bindings = {(s["runner"]["kind"], s["runner"]["name"]) for s in plan["stages"]}
+        for registration in self._registrations:
+            if bindings.intersection(registration.runner_bindings):
+                resolver = registration.temporary_workspaces_resolver
+                if resolver is not None:
+                    paths.update(resolver(plan))
+        return tuple(paths)
 
     def candidate_plan(self, name: str) -> dict[str, Any]:
         """Return a fresh admitted-plan candidate from the closed registry."""
@@ -433,6 +448,11 @@ class RuntimeFactory:
                 remote_attestor=self._remote_attestor,
             )
             registry = self.registry()
+            from .temporary_storage import TemporaryStorage
+            temporary_storage = TemporaryStorage(
+                store, registry.temporary_workspaces,
+                artifact_workspace=artifacts.temporary_workspace,
+            )
             from .resource_readiness import ensure_model_resource
             from executor_birth_durable_guard import productive_birth_attempt_guard
 
@@ -465,6 +485,7 @@ class RuntimeFactory:
                         limit=100,
                     )
                     authority.prune(limit=1000)
+                    temporary_storage.maintain()
                     self._next_source_maintenance = now + 60.0
 
             return BoundExecutionBridge(

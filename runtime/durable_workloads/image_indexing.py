@@ -263,6 +263,24 @@ def concurrency_targets(contract, args, context, device_id):
         return ()
 
 
+def temporary_workspaces(plan):
+    from image_index_build import ImageIndexBuild
+
+    paths = set()
+    for stage in plan["stages"]:
+        if stage["runner"] != {"kind": "executor", "name": EXECUTOR}:
+            continue
+        bindings = stage["input_bindings"]
+        values = []
+        for key in ("base_path", "generation"):
+            binding = bindings[key]
+            if binding.get("ref") != "literal":
+                raise ValueError("image workspace identity must be literal")
+            values.append(binding["value"])
+        paths.add(ImageIndexBuild.workspace(*values))
+    return tuple(paths)
+
+
 def registration(*, catalog_loader=None, binding_resolver=None, language=None,
                  vlm_binding=None, prompt_digests=None) -> RuntimeRegistration:
     import config
@@ -311,6 +329,7 @@ def registration(*, catalog_loader=None, binding_resolver=None, language=None,
             binding_identity=lambda: runners.resolve("workload", FOLDER_WORKLOAD).model_binding_digest,
         ),
         concurrency_targets_resolver=concurrency_targets,
+        temporary_workspaces_resolver=temporary_workspaces,
     )
 
 

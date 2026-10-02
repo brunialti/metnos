@@ -354,6 +354,23 @@
     }
     row.state.replaceChildren(stateBadge(workload.state, workload.progress?.completion_outcome));
     row.remove.hidden = !isTerminalState(workload.state);
+    row.remove.disabled = workload.temporary_storage?.can_dismiss !== true;
+    row.remove.title = row.remove.disabled ? temporarySummary(workload) : copy.dismiss;
+    row.temporary.textContent = temporarySummary(workload);
+  }
+
+  function temporarySummary(workload) {
+    const storage = workload.temporary_storage || {status: "pending"};
+    const parts = [copy.temporaryLabel];
+    if (Number.isFinite(storage.size_bytes)) {
+      let value = storage.size_bytes, unit = 0;
+      const units = ["B", "KiB", "MiB", "GiB", "TiB"];
+      while (value >= 1024 && unit < units.length - 1) { value /= 1024; unit += 1; }
+      parts.push(`${new Intl.NumberFormat(uiLocale, {maximumFractionDigits: 1}).format(value)} ${units[unit]}`);
+    }
+    if (Number.isInteger(storage.file_count)) parts.push(`${countText(storage.file_count)} ${copy.temporaryFiles}`);
+    parts.push(copy.temporaryStates?.[storage.status] || copy.temporaryStates?.pending);
+    return parts.filter(Boolean).join(" · ");
   }
 
   function createJobRow(workload) {
@@ -389,8 +406,10 @@
     const controls = node("div", "", "dw-job-controls");
     controls.append(choice, remove);
     header.append(summary, state, controls);
-    element.append(header);
-    const row = {element, title, started: started.value, finished: finished.value, state, choice, remove};
+    const temporary = node("p", "", "dw-progress-summary");
+    temporary.dataset.field = "temporary-storage";
+    element.append(header, temporary);
+    const row = {element, title, started: started.value, finished: finished.value, state, choice, remove, temporary};
     jobRows.set(id, row);
     return row;
   }
@@ -674,6 +693,7 @@
       placeholder.hidden = true;
       detail.hidden = false;
       appendFolder(detail, selected, true);
+      detail.append(node("p", temporarySummary(selected), "dw-notice"));
       const phase = selected.description?.kind === "image_indexing" ? phaseKey(selected) : null;
       if (!isTerminalState(selected.state)) appendPhase(detail, selected);
       if (selected.state === "needs_attention") detail.append(node("p", copy.blockedHelp, "dw-notice dw-warning"));

@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Final
 
 
-CURRENT_SCHEMA_VERSION: Final[int] = 8
+CURRENT_SCHEMA_VERSION: Final[int] = 9
 BUSY_TIMEOUT_MS: Final[int] = 5_000
 
 
@@ -1414,9 +1414,27 @@ _V8_STATEMENTS: tuple[str, ...] = (
 )
 
 
+_V9_STATEMENTS: tuple[str, ...] = (
+    """
+    CREATE TABLE workload_temporary_storage (
+        owner_user_id TEXT NOT NULL,
+        workload_id TEXT NOT NULL,
+        workload_version INTEGER NOT NULL CHECK (workload_version >= 1),
+        status TEXT NOT NULL CHECK (status IN ('clean', 'retained', 'pending', 'shared', 'error')),
+        size_bytes INTEGER CHECK (size_bytes >= 0),
+        file_count INTEGER CHECK (file_count >= 0),
+        checked_at TEXT NOT NULL,
+        PRIMARY KEY (owner_user_id, workload_id),
+        FOREIGN KEY (owner_user_id, workload_id)
+            REFERENCES workloads(owner_user_id, id) ON DELETE CASCADE
+    ) WITHOUT ROWID
+    """,
+)
+
+
 _MIGRATIONS = (
     _V1_STATEMENTS, _V2_STATEMENTS, _V3_STATEMENTS, _V4_STATEMENTS,
-    _V5_STATEMENTS, _V6_STATEMENTS, _V7_STATEMENTS, _V8_STATEMENTS,
+    _V5_STATEMENTS, _V6_STATEMENTS, _V7_STATEMENTS, _V8_STATEMENTS, _V9_STATEMENTS,
 )
 
 _REQUIRED_V1_TABLES = frozenset({
@@ -1650,6 +1668,20 @@ def _validate_schema_shape(connection: sqlite3.Connection, version: int) -> None
             ("workloads", "workload_id", "id", "CASCADE"),
         }:
             raise MigrationError("schema v8 has incompatible dismissal ownership")
+
+    if version >= 9:
+        columns = {str(row[1]) for row in connection.execute(
+            "PRAGMA table_info(workload_temporary_storage)")}
+        if columns != {"owner_user_id", "workload_id", "workload_version", "status",
+                       "size_bytes", "file_count", "checked_at"}:
+            raise MigrationError("schema v9 has incompatible temporary storage columns")
+        ownership = {(str(row[2]), str(row[3]), str(row[4]), str(row[6]).upper())
+                     for row in connection.execute("PRAGMA foreign_key_list(workload_temporary_storage)")}
+        if ownership != {
+            ("workloads", "owner_user_id", "owner_user_id", "CASCADE"),
+            ("workloads", "workload_id", "id", "CASCADE"),
+        }:
+            raise MigrationError("schema v9 has incompatible temporary storage ownership")
 
 
 def migrate(

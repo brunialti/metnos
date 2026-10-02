@@ -303,39 +303,40 @@ def invoke(args):
     if not isinstance(phase, str) or phase not in {"discover", "analyze", "merge", "publish"}:
         return _error("phase_invalid")
     try:
-        store = ImageIndexBuild(base, args.get("generation"))
-        if phase == "discover":
-            result = store.discover(
-                device_id=args.get("device_id", "server"), max_files=max_files,
-                max_total_bytes=args.get("max_total_bytes", MAX_SOURCE_BYTES),
-                max_depth=args.get("max_depth", MAX_SOURCE_DEPTH), recursive=args.get("recursive", True),
-            )
-            return result if result["source_count"] else _error(
-                "image_corpus_empty", key="ERR_DURABLE_SOURCE_MISSING")
-        entries = args.get("entries", [])
-        if phase == "analyze":
-            import i18n
-            records, contexts = store.discovery_group(entries)
-            identity = analysis_identity(i18n.current_lang())
-            receipts = [_analyze_one(
-                store, record, context=contexts[folder_label(Path(record["original_path"]).parent.name)],
-                identity=identity, force=bool(args.get("force", False)),
-            ) for record in records]
-            error_counts = {}
-            for item in receipts:
-                entry = store._part(item)["entry"]
-                if entry.get("indexing_status") == "not_indexed":
-                    code = entry["indexing_error_code"]
-                    error_counts[code] = error_counts.get(code, 0) + 1
-            failed = sum(error_counts.values())
-            return {"ok": True, "entries": [store.merge(receipts)],
-                    "ok_count": len(receipts) - failed, "fail_count": failed,
-                    # Originating units report each handled outcome once.
-                    # Reducers/publication must not recount the same failures.
-                    "domain_outcome": {"version": 1, "error_counts": error_counts}}
-        if phase == "merge":
-            return {"ok": True, "entries": [store.merge(entries)]}
-        return store.publish(entries, expected_count=args.get("expected_count"))
+        with ImageIndexBuild.workspace(base, args.get("generation")).use():
+            store = ImageIndexBuild(base, args.get("generation"))
+            if phase == "discover":
+                result = store.discover(
+                    device_id=args.get("device_id", "server"), max_files=max_files,
+                    max_total_bytes=args.get("max_total_bytes", MAX_SOURCE_BYTES),
+                    max_depth=args.get("max_depth", MAX_SOURCE_DEPTH), recursive=args.get("recursive", True),
+                )
+                return result if result["source_count"] else _error(
+                    "image_corpus_empty", key="ERR_DURABLE_SOURCE_MISSING")
+            entries = args.get("entries", [])
+            if phase == "analyze":
+                import i18n
+                records, contexts = store.discovery_group(entries)
+                identity = analysis_identity(i18n.current_lang())
+                receipts = [_analyze_one(
+                    store, record, context=contexts[folder_label(Path(record["original_path"]).parent.name)],
+                    identity=identity, force=bool(args.get("force", False)),
+                ) for record in records]
+                error_counts = {}
+                for item in receipts:
+                    entry = store._part(item)["entry"]
+                    if entry.get("indexing_status") == "not_indexed":
+                        code = entry["indexing_error_code"]
+                        error_counts[code] = error_counts.get(code, 0) + 1
+                failed = sum(error_counts.values())
+                return {"ok": True, "entries": [store.merge(receipts)],
+                        "ok_count": len(receipts) - failed, "fail_count": failed,
+                        # Originating units report each handled outcome once.
+                        # Reducers/publication must not recount the same failures.
+                        "domain_outcome": {"version": 1, "error_counts": error_counts}}
+            if phase == "merge":
+                return {"ok": True, "entries": [store.merge(entries)]}
+            return store.publish(entries, expected_count=args.get("expected_count"))
     except (OSError, ValueError, TypeError, KeyError, IndexError) as error:
         log.warning("Image-index phase %s failed (%s)", phase, type(error).__name__)
         return _error(str(error) if isinstance(error, ImageIndexBuildError) else "image_index_phase_failed")

@@ -466,6 +466,14 @@ per lo stesso executor nello stesso processo: non sostituisce le protezioni
 del filesystem o il coordinamento fra processi diversi. Non cambia permessi,
 contratti congelati o risultati gi&agrave; salvati.</p>
 
+<p>I pacchetti LRE dichiarano anche le proprie cartelle temporanee private,
+derivate dai piani ammessi. Il ciclo di manutenzione comune conserva i
+checkpoint dei lavori sospesi e pulisce quelli conclusi o annullati,
+coordinandosi con i processi che scrivono e con gli altri lavori che li usano.
+La console legge il resoconto salvato, senza scandire il disco a ogni apertura;
+una pulizia non verificata impedisce di nascondere il lavoro. Originali e
+risultati pubblicati restano separati. Non viene aggiunto un watchdog.</p>
+
 <p>I tetti centrali delle risorse sono configurabili nella sezione
 <code>[execution_resources]</code> del <code>runtime.toml</code> privato,
 per esempio <code>cpu = 4</code> e <code>vlm = 4</code>. Le variabili

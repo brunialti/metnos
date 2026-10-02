@@ -3796,6 +3796,9 @@ class DurableWorkloadStore:
                 raise InvalidTransitionError(
                     "a workload with active attempts cannot be dismissed"
                 )
+            from .temporary_storage import reports
+            if not reports(self, owner, (workload_id,))[workload_id]["can_dismiss"]:
+                raise InvalidTransitionError("temporary workspace cleanup must complete before dismissal")
             connection.execute(
                 """
                 INSERT INTO workload_dismissals(

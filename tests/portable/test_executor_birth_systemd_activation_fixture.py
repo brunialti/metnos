@@ -128,11 +128,17 @@ def test_g6_fixture_history_is_complete_and_bound(tmp_path, monkeypatch, mutatio
         paths[-1].rename(tmp_path / "withheld-ready.json")
     if mutation is not None:
         expected = ("legacy state journal inventory" if mutation == "missing-record"
-                    else "claim transaction binding")
-        with pytest.raises(preflight.PreflightError, match=expected):
+                    else "fixed ownership authentication")
+        with pytest.raises(preflight.PreflightError, match=expected) as failure:
             preflight._authenticate_fixed_ownership_snapshot_for_test_v1(
                 root, openssl_executable=Path(openssl).resolve(),
             )
+        assert failure.value.code == preflight.CODE_RECOVERY
+        if mutation == "wrong-binding":
+            # The selected-history pin now rejects the mismatch before the
+            # later claim/transaction consistency check can run.
+            assert isinstance(failure.value.__cause__, preflight.PreflightError)
+            assert failure.value.__cause__.detail == "history_binding"
         return
     assert head.legacy_state_record_sha256 == canonical[-1].record_sha256
     snapshot = preflight._authenticate_fixed_ownership_snapshot_for_test_v1(

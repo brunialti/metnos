@@ -29,6 +29,7 @@ from .models import (
     WorkloadRecord,
     WorkloadState,
 )
+from .temporary_storage import reports as temporary_storage_reports
 from .storage import (
     DurableStoreError,
     DurableWorkloadStore,
@@ -328,6 +329,9 @@ class DurableWorkloadControl:
                 owner_user_id, tuple(record.workload_id for record in visible),
                 projector=self._describe_plan,
             )
+            temporary = temporary_storage_reports(
+                self._store, owner_user_id, tuple(record.workload_id for record in visible),
+            )
             next_cursor = None
             if len(records) > page_size and visible:
                 last = visible[-1]
@@ -343,7 +347,8 @@ class DurableWorkloadControl:
                         record,
                         counters[record.workload_id],
                     ).to_dict(), "progress": progress[record.workload_id],
-                     "description": descriptions[record.workload_id]}
+                     "description": descriptions[record.workload_id],
+                     "temporary_storage": temporary[record.workload_id]}
                     for record in visible
                 ],
                 "next_cursor": next_cursor,
@@ -371,6 +376,8 @@ class DurableWorkloadControl:
                     owner_user_id, (workload_id,),
                 )[workload_id], "description": self._store.descriptions_many(
                     owner_user_id, (workload_id,), projector=self._describe_plan,
+                )[workload_id], "temporary_storage": temporary_storage_reports(
+                    self._store, owner_user_id, (workload_id,),
                 )[workload_id]},
                 "revision": revision,
             }

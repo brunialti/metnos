@@ -422,6 +422,13 @@ execution remains serial. This control covers the same executor in the same
 process; it does not replace filesystem protection or coordination across
 processes. Permissions, frozen contracts, and saved results remain unchanged.</p>
 
+<p>LRE packages also declare private temporary workspaces derived from admitted
+plans. The shared maintenance cycle retains checkpoints for suspended jobs and
+cleans up ended or cancelled jobs, coordinating with actual writers and other
+jobs sharing their data. The console reads the saved report without scanning
+the disk on each visit; unverified cleanup prevents hiding the job. Originals
+and published results remain separate. No additional watchdog is introduced.</p>
+
 <p>Central resource capacities are configurable in the
 <code>[execution_resources]</code> section of the private
 <code>runtime.toml</code>, for example <code>cpu = 4</code> and

@@ -18,7 +18,7 @@ import stat
 import threading
 import uuid
 from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, ExitStack
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from enum import Enum
@@ -1320,15 +1320,17 @@ class ArtifactStore:
         finally:
             os.close(descriptor)
 
-    def _install_without_overwrite(self, directory_fd: int, temporary: str, final: str) -> None:
+    def _install_without_overwrite(self, directory_fd: int, temporary: str, final: str,
+                                   *, source_fd: int | None = None) -> None:
+        source_fd = directory_fd if source_fd is None else source_fd
         changed = False
         try:
             # link+unlink is the portable no-overwrite installation primitive.
-            # Both names are in the same directory and therefore filesystem.
+            # Scratch and destination belong to the same private filesystem.
             os.link(
                 temporary,
                 final,
-                src_dir_fd=directory_fd,
+                src_dir_fd=source_fd,
                 dst_dir_fd=directory_fd,
                 follow_symlinks=False,
             )
@@ -1336,12 +1338,21 @@ class ArtifactStore:
         except FileExistsError:
             pass
         try:
-            os.unlink(temporary, dir_fd=directory_fd)
+            os.unlink(temporary, dir_fd=source_fd)
             changed = True
         except FileNotFoundError:
             pass
         if changed:
             self._fsync(directory_fd)
+            if source_fd != directory_fd:
+                self._fsync(source_fd)
+
+    def temporary_workspace(self, owner_user_id, workload_id):
+        from .temporary_storage import TemporaryWorkspace
+
+        owner = _require_owner(owner_user_id)
+        _require_id(workload_id)
+        return TemporaryWorkspace(self._root / "owners" / _owner_key(owner) / "temporary", workload_id)
 
     def _blob_directory(self, owner_user_id: str, *, create: bool):
         return self._directory(
@@ -1371,19 +1382,27 @@ class ArtifactStore:
         self,
         owner_user_id: str,
         payload: bytes | bytearray | memoryview | BinaryIO,
+        *,
+        workspace=None,
     ) -> Blob:
         owner = _require_owner(owner_user_id)
         temporary = f".blob-{uuid.uuid4().hex}.tmp"
-        with self._blob_directory(owner, create=True) as directory:
+        with ExitStack() as stack:
+            directory = stack.enter_context(self._blob_directory(owner, create=True))
+            staging = directory
+            if workspace is not None:
+                stack.enter_context(workspace.use())
+                staging = stack.enter_context(self._directory(
+                    "owners", _owner_key(owner), "temporary", workspace.name, create=True))
             digest, size = self._write_temp(
-                directory,
+                staging,
                 temporary,
                 self._payload_chunks(payload),
                 checkpoint="blob_after_fsync",
             )
             final = digest[7:]
             self._checkpoint("blob_before_install")
-            self._install_without_overwrite(directory, temporary, final)
+            self._install_without_overwrite(directory, temporary, final, source_fd=staging)
             self._checkpoint("blob_after_atomic_install")
             self._checkpoint("blob_before_final_verification")
             observed_digest, observed_size = self._verify_file(directory, final)
@@ -1569,7 +1588,7 @@ class ArtifactStore:
         _require_instant(retention_until)
         if not isinstance(schema_valid, bool) or not isinstance(postconditions_valid, bool):
             raise ArtifactContractError("artifact_validation_flags_invalid")
-        blob = self.stage(owner, payload)
+        blob = self.stage(owner, payload, workspace=self.temporary_workspace(owner, workload_id))
         self._checkpoint("blob_before_registration_verification")
         with self._verified_registration(owner, blob) as verify_current_identity:
             self._checkpoint("blob_after_registration_verification")
@@ -2010,11 +2029,37 @@ class ArtifactStore:
                 top_names: set[str] = set()
                 with os.scandir(owner) as entries:
                     for entry in entries:
-                        if entry.name not in {"blobs", "publications"}:
+                        if entry.name not in {"blobs", "publications", "temporary"}:
                             raise ArtifactSecurityError(
                                 "artifact_delete_owner_tree_unsafe"
                             )
                         top_names.add(entry.name)
+
+                if "temporary" in top_names:
+                    temporary = self._open_child_directory(owner, "temporary")
+                    try:
+                        jobs = set()
+                        with os.scandir(temporary) as entries:
+                            for entry in entries:
+                                name = entry.name.removeprefix(".lre-lock-").removeprefix(".lre-cleanup-")
+                                _require_id(name)
+                                jobs.add(name)
+                        for name in jobs:
+                            workspace = self.temporary_workspace(owner_user_id, name)
+                            with workspace.use(exclusive=True) as lock:
+                                _size, count = workspace.measure()
+                                workspace.retire(lock)
+                                workspace.detach()
+                                workspace.purge()
+                                files += count
+                        files += self._delete_files(
+                            temporary, lambda name: name.startswith(".lre-lock-")
+                            and name.removeprefix(".lre-lock-") in jobs)
+                        self._fsync(temporary)
+                        self._remove_open_directory(owner, "temporary", temporary)
+                        directories += 1
+                    finally:
+                        os.close(temporary)
 
                 if "publications" in top_names:
                     publications = self._open_child_directory(owner, "publications")

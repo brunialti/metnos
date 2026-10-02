@@ -24,7 +24,7 @@ en = "SCOPO: builds or refreshes the photo index through resumable LRE units; re
 
 [code]
 files = ["create_images_indices.py"]
-digest = "sha256:8dd5acd0f341011648d74e03fd1f76ed7998ef019eb98cad18d3190587e2d00b"
+digest = "sha256:4758a9deb1df4e622be47d1a94ab030535658f8ca87379649b501a2f859d62a9"
 
 [args]
 type = "object"

@@ -411,6 +411,12 @@ async def workload_console(request: web.Request) -> web.Response:
         "unavailable": message("UI_DURABLE_UNAVAILABLE"),
         "cancelConfirm": message("UI_DURABLE_CANCEL_CONFIRM"),
         "dismissConfirm": message("UI_DURABLE_DISMISS_CONFIRM"),
+        "temporaryLabel": message("UI_DURABLE_TEMPORARY_LABEL"),
+        "temporaryFiles": message("UI_DURABLE_TEMPORARY_FILES"),
+        "temporaryStates": {
+            state: message("UI_DURABLE_TEMPORARY_" + state.upper())
+            for state in ("clean", "retained", "pending", "shared", "error")
+        },
         "actionFailed": message("UI_DURABLE_ACTION_FAILED"),
         "live": message("UI_DURABLE_LIVE"),
         "reconnecting": message("UI_DURABLE_RECONNECTING"),

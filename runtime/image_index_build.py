@@ -337,6 +337,17 @@ def _validate_analysis(leaf: dict, base_path: str) -> dict:
 class ImageIndexBuild:
     """One opaque build generation, bound to the previously active reference."""
 
+    @staticmethod
+    def workspace(base_path, generation):
+        from durable_workloads.temporary_storage import TemporaryWorkspace
+
+        if not isinstance(generation, str) or not _GENERATION.fullmatch(generation):
+            raise ImageIndexBuildError("generation_invalid")
+        base = Path(base_path)
+        if not base.is_absolute() or ".." in base.parts:
+            raise ImageIndexBuildError("base_path_invalid")
+        return TemporaryWorkspace(image_corpus_dir(base) / "unified" / ".builds", generation)
+
     def __init__(self, base_path, generation, *, create=True):
         if not isinstance(generation, str) or not _GENERATION.fullmatch(generation):
             raise ImageIndexBuildError("generation_invalid")
@@ -778,7 +789,7 @@ class ImageIndexBuild:
         completed = self._activate(receipt, target)
         if completed is not None:
             return self._published_result(receipt, target, completed)
-        temporary = Path(tempfile.mkdtemp(prefix=".publishing-", dir=generations))
+        temporary = Path(tempfile.mkdtemp(prefix=".publishing-", dir=self.work))
         try:
             with sqlite3.connect(temporary / "lookup.sqlite") as database:
                 database.execute("CREATE TABLE parts(part TEXT PRIMARY KEY)")
