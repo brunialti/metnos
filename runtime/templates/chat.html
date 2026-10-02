@@ -25,7 +25,7 @@ body{font-size:var(--fs-3);line-height:1.5;display:flex;flex-direction:column;
      min-height:100vh}
 
 /* ---------- header ---------- */
-header{display:flex;align-items:center;gap:.9rem;padding:.55rem 1rem;
+header{display:flex;flex-wrap:wrap;align-items:center;gap:.9rem;padding:.55rem 1rem;
        background:var(--surface);border-bottom:1px solid var(--border);
        position:sticky;top:0;z-index:10}
 header .brand{font-weight:650;font-size:var(--fs-3);letter-spacing:-.01em;
@@ -218,7 +218,7 @@ form#f{display:flex;gap:.55rem;align-items:flex-end;justify-content:center;
      position:sticky;bottom:0;z-index:10}
 /* textarea auto-grow (Invio invia, Shift+Invio = a capo). 16px: sotto i
    16px iOS Safari zooma la pagina al focus. */
-#q{flex:1;max-width:780px;padding:.55rem .75rem;
+#q{flex:1;min-width:0;padding:.55rem .75rem;
    font:16px/1.45 var(--font-ui);color:var(--ink);background:var(--surface);
    border:1px solid var(--border-strong);border-radius:var(--r-2);
    /* U7: maniglia verticale a mano + cap relativo al viewport (si adatta a
@@ -370,6 +370,8 @@ body.readonly #log .dialog-stale button{opacity:.5;pointer-events:none;cursor:no
 /* Risposta ricca temporanea: una tabella ha bisogno della colonna intera;
    il resto delle risposte mantiene la misura di lettura compatta. */
 .msg.bot.wide-table:not(.gallery){width:100%;max-width:none}
+/* I moduli di input seguono la larghezza disponibile anche dopo un resize. */
+.msg.bot.input-dialog:not(.gallery){width:100%;max-width:none}
 /* R3 raggruppamento dei turni: più aria PRIMA del messaggio utente, così
    ogni coppia domanda→risposta si legge come un blocco (il #log ha gap .7). */
 .msg.me{margin-top:.7rem}
@@ -979,6 +981,7 @@ function add(cls, text, meta, persist, attachments, galleryInfo, htmlMode){
         });
         inlineFormContext = preview;
       }
+      d.classList.add('input-dialog');
       const wrap = document.createElement('div');
       wrap.style.cssText = 'margin-top:.6rem;border:1px solid var(--border);'
                         + 'border-radius:.4rem;overflow:hidden;background:#fff;';

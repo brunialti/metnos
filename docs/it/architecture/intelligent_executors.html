@@ -158,8 +158,11 @@
  <p>Il pannello CAPTCHA mostra la pagina della sessione già aperta, con i
  campi sensibili oscurati. L'utente può cliccare e scorrere, aggiornare
  l'immagine e premere <strong>Riprendi</strong>. Metnos ricontrolla l'accesso
- e continua la richiesta originale; un CAPTCHA ancora presente riapre il
- pannello. Se le credenziali erano già state inviate, verifica quel tentativo
+ e continua la richiesta originale; un CAPTCHA ancora da completare riapre il
+ pannello. Il controllo associa la risposta al singolo widget anche quando
+ resta visibile dopo il completamento: la risposta di un altro widget non vale.
+ Se il CAPTCHA precedeva il modulo, inserisce ora le credenziali. Se erano
+ già state inviate, verifica quel tentativo
  senza inviarle nuovamente. Il pannello scade dopo dieci minuti; annullarlo
  chiude la sua sessione. Le verifiche che richiedono tastiera o audio non
  sono supportate da questo pannello.</p>

@@ -15,8 +15,8 @@ main{padding:0;margin:0}
 .section{margin:0;padding:0;border:none;border-radius:0;
          background:transparent;box-shadow:none}
 .section h2{margin:0 0 .45rem 0}
-/* campi: larghezza di lettura cap a 480px dentro la bolla */
-input:not([type=radio]):not([type=checkbox]),select,textarea{max-width:480px}
+/* I campi seguono il contenitore del dialogo durante il resize. */
+input:not([type=radio]):not([type=checkbox]),select,textarea{min-width:0;max-width:100%}
 /* bottoni dialog: padding piu' generoso del default console */
 .btn{padding:.45rem 1.1rem}
 /* Opzioni con preview (choice_with_preview): card cliccabile, hover e

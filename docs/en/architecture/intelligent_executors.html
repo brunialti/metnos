@@ -156,8 +156,11 @@
  <p>The CAPTCHA panel shows the already open session, with sensitive fields
  hidden. The user can click, scroll, refresh the image and press
  <strong>Resume</strong>. Metnos checks the login again and continues the
- original request; an unresolved CAPTCHA opens the panel again. If
- credentials were already submitted, it checks that attempt without
+ original request; an unresolved CAPTCHA opens the panel again. The check
+ associates the response with its own widget, even if it remains visible
+ after completion; another widget's response does not count. When the CAPTCHA
+ preceded the form, Metnos now fills the credentials. If they were already
+ submitted, it checks that attempt without
  submitting them again. The panel expires after ten minutes; cancelling
  closes its session. Challenges requiring keyboard or audio input are not
  supported by this panel.</p>

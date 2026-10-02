@@ -256,7 +256,7 @@ _DETECT_CAPTCHA_JS = r"""
   // one solved widget must not mask a second pending one. No token leaves JS.
   const answered = el => {
     const widget = el.closest('.g-recaptcha, #g-recaptcha, .h-captcha, .cf-turnstile, [data-sitekey]');
-    const container = widget || el.parentElement;
+    let container = widget || el.parentElement;
     if (!container || (!widget && ['BODY', 'HTML', 'FORM'].includes(container.tagName))) return false;
     const frame = el.matches('iframe') ? el : el.querySelector('iframe');
     const src = (frame?.src || '').toLowerCase();
@@ -265,8 +265,19 @@ _DETECT_CAPTCHA_JS = r"""
       src.includes('turnstile') ? 'cf-turnstile-response' :
       container.matches('.g-recaptcha, #g-recaptcha') || src.includes('recaptcha') ? 'g-recaptcha-response' : null;
     if (!name) return false;
-    const responses = container.querySelectorAll(`[name="${name}"]`);
-    return responses.length === 1 && Boolean(responses[0].value.trim());
+    // Explicit rendering can wrap the frame without a provider CSS class.
+    // Find its response in the nearest isolated container, never in the whole
+    // form/page or across another widget. A neighbour's token is not an answer.
+    while (container && !['BODY', 'HTML', 'FORM'].includes(container.tagName)) {
+      const frames = [...container.querySelectorAll('iframe')].filter(f =>
+        /recaptcha|hcaptcha|turnstile|\/cdn-cgi\/challenge-platform\//i.test(f.src || ''));
+      if (frames.some(f => f !== frame)) return false;
+      const responses = container.querySelectorAll(`[name="${name}"]`);
+      if (responses.length) return responses.length === 1 && Boolean(responses[0].value.trim());
+      if (container === widget) return false;
+      container = container.parentElement;
+    }
+    return false;
   };
   const markers = Array.from(document.querySelectorAll(
     '.g-recaptcha, #g-recaptcha, .h-captcha, [data-sitekey], .cf-turnstile'));
