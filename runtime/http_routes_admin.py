@@ -1287,10 +1287,17 @@ async def admin_user_prefs(request: web.Request) -> web.Response:
 
 
 async def admin_user_sites(request: web.Request) -> web.Response:
-    """Save or remove a per-user invocation name and its site URL."""
+    """Suggest, save or remove a per-user invocation name and site URL."""
     user_id = request.match_info["id"]
     data = await request.post()
     name = str(data.get("name") or "")
+    if data.get("action") == "suggest":
+        try:
+            proposal = users.suggest_site_invocation_name(
+                user_id, str(data.get("url") or ""))
+        except ValueError:
+            return _error(400, "invalid_input", "invalid site URL")
+        return web.json_response(proposal, headers={"Cache-Control": "no-store"})
     try:
         if data.get("action") == "delete":
             users.delete_site_invocation(user_id, name)

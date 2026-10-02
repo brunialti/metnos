@@ -27,6 +27,7 @@ Schema: vedi SCHEMA sotto.
 from __future__ import annotations
 
 import calendar
+import ipaddress
 import os
 import re
 import secrets
@@ -1066,6 +1067,39 @@ def _site_invocation_url(value: str) -> str:
         return urlunsplit((parts.scheme.lower(), netloc, parts.path or "/", "", ""))
     except ValueError as exc:
         raise ValueError("invalid site URL") from exc
+
+
+def suggest_site_invocation_name(user_id_or_name: str, url: str) -> dict:
+    """Propose an editable invocation name from a URL; never save it."""
+    if not get_user(user_id_or_name):
+        raise ValueError("unknown user")
+    normalized_url = _site_invocation_url(url)
+    entries = list_site_invocations(user_id_or_name)
+    for entry in entries:
+        if entry["url"] == normalized_url:
+            return {"name": entry["name"], "url": normalized_url}
+
+    host = urlsplit(normalized_url).hostname or ""
+    try:
+        ipaddress.ip_address(host)
+        raw_name = host
+    except ValueError:
+        raw_name = host.removeprefix("www.").split(".", 1)[0]
+        try:
+            raw_name = raw_name.encode("ascii").decode("idna")
+        except UnicodeError:
+            pass
+    base = " ".join("".join(
+        char if char.isalnum() or char in "-_" else " " for char in raw_name
+    ).split())[:80].strip() or "site"
+    occupied = {entry["name"].casefold() for entry in entries}
+    candidate = base
+    serial = 2
+    while candidate.casefold() in occupied:
+        suffix = f" {serial}"
+        candidate = base[:80 - len(suffix)].rstrip() + suffix
+        serial += 1
+    return {"name": candidate, "url": normalized_url}
 
 
 def set_site_invocation(user_id_or_name: str, name: str, url: str) -> dict:
