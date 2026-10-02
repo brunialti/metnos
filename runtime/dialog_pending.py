@@ -955,6 +955,20 @@ def _cancel_pending_unlocked(sender_id: str, dialog_id: str, *,
     state["cancelled"] = True
     state["cancelled_at"] = _utc_now_iso()
     save_pending(sender_id, dialog_id, state)
+    # A cancelled human handoff must release its own browser, not the owner's
+    # other sessions. The broker is local and the call has a small bound.
+    from playwright_sidecar import session_client
+    for step in state.get("dialog") or []:
+        schema = step.get("schema") or {}
+        if schema.get("kind") == "browser_session" and schema.get("session_id"):
+            result = session_client.session_close(
+                session_id=schema["session_id"], owner=state.get("actor") or "host",
+                timeout_s=3.0)
+            if not result.get("ok"):
+                import logging
+                logging.getLogger(__name__).warning(
+                    "browser dialog cancelled; session cleanup pending expiry: %s",
+                    result.get("error_class"))
     return True
 
 

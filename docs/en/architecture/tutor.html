@@ -235,8 +235,12 @@ match, or the confirmation has already been consumed, no operation starts.
 After confirmation, the same controls as any new turn still apply: planning,
 Vaglio, autonomy, consent, and executors.</p>
 
-<p>An existing dialog is never replaced. If clause separation is not safe,
-Metnos asks the user to state the explanation and action separately.</p>
+<p>An existing dialog is never replaced. Tutor checks the clauses before
+offering a choice: if it cannot identify a distinct explanation and action,
+it leaves the complete request to the ordinary Metnos engine. If it identifies
+both but another interaction is still active, it does not start the action and
+asks the user to complete or cancel that interaction before sending a new,
+complete request. A finished form does not mark the next request as pending.</p>
 
 <p>For example: “How do I archive email? Also archive yesterday's messages.”</p>
 

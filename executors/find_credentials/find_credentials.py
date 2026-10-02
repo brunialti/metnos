@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -33,15 +32,6 @@ import credentials as _cred  # noqa: E402
 # Invariante credentials_metadata_only centralizzata in runtime/credentials.py
 # (ADR 0123, regola del 3 §7.2).
 from credentials import assert_no_secrets_in_return as _assert_no_secrets_in_return  # noqa: E402
-
-
-def _override_cred_dir() -> None:
-    """Test isolation: se METNOS_USER_DATA e' settato, sposta CRED_DIR
-    sotto $METNOS_USER_DATA/credentials/. Altrimenti usa il default di
-    `credentials.py` (~/.config/metnos/credentials)."""
-    v = os.environ.get("METNOS_USER_DATA")
-    if v:
-        _cred.CRED_DIR = Path(v) / "credentials"
 
 
 def _fingerprint_payload(payload: dict) -> str:
@@ -161,17 +151,13 @@ def _matches_query(entry: dict, query: str) -> bool:
 
 
 def invoke(args):
-    _override_cred_dir()
-
     query = args.get("query")
     top_k = args.get("top_k")
 
     if query is not None:
         if not isinstance(query, str):
             return {"ok": False, "error": _msg("ERR_ARG_NOT_STRING", arg="query")}
-        if not query.strip():
-            return {"ok": False,
-                    "error": _msg("ERR_ARG_NOT_NONEMPTY_STRING", arg="query")}
+        query = query.strip() or None
     if top_k is not None:
         if not isinstance(top_k, int) or isinstance(top_k, bool):
             return {"ok": False, "error": _msg("ERR_ARG_NOT_INT", arg="top_k")}

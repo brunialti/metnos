@@ -152,6 +152,34 @@ def _cap_pending_load(sender_id, *, owner_user_id: str):
     return d
 
 
+def _cap_pending_actionable(sender_id, *, owner_user_id: str) -> bool:
+    """A completed form cannot make a new request look like a pending reply."""
+    pending = _cap_pending_load(sender_id, owner_user_id=owner_user_id)
+    if not pending:
+        return False
+    proposal = pending.get("proposal") or {}
+    if not isinstance(proposal, dict):
+        return False
+    if proposal.get("kind") != "get_inputs_response":
+        return True
+    import dialog_pending
+
+    dialog_id = proposal.get("dialog_id") or ""
+    state = dialog_pending.load_pending(
+        proposal.get("sender_for_state") or sender_id,
+        dialog_id, owner_user_id=owner_user_id,
+    )
+    if not state or state.get("completed") or state.get("cancelled"):
+        return False
+    if dialog_pending.is_expired(state):
+        return False
+    dialog = state.get("dialog") or []
+    try:
+        return 0 <= int(state.get("step_index") or 0) < len(dialog)
+    except (TypeError, ValueError):
+        return False
+
+
 def _cap_pending_clear(sender_id):
     p = _cap_pending_path(sender_id)
     try: p.unlink()
@@ -409,6 +437,9 @@ def parse_step_value(raw: str, schema: dict) -> tuple[bool, object, str]:
         return False, None, _msg("ERR_DIALOG_PARSE_EMPTY")
     if kind in ("text", "credentials", "file_path", "location"):
         return True, s, ""
+    if kind == "browser_session":
+        return ((True, True, "") if s == "true" else
+                (False, None, _msg("MSG_BROWSER_USER_PROMPT")))
     if kind == "yes_no":
         # Language forms come from the lexicon, single authority together
         # with `_classify_yes_no`; the technical literals stay here because
@@ -2061,11 +2092,11 @@ class ChannelDaemon:
             if trusted_principal is None:
                 raise RuntimeError("authenticated Tutor principal unavailable")
             if not sensitive_fields:
-                _has_pending = bool(_cap_pending_load(
+                _has_pending = _cap_pending_actionable(
                     msg.sender_id,
                     owner_user_id=str(
                         trusted_principal.get("user_id") or ""),
-                ))
+                )
                 try:
                     import dialog_pending as _tutor_dp
                     _has_pending = _has_pending or bool(

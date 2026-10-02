@@ -104,3 +104,70 @@ def test_packaged_executable_mode_is_bound_to_the_environment_inventory() -> Non
         environment.decode_python_environment_v1(json.dumps(
             drift, ensure_ascii=True, sort_keys=True, separators=(",", ":"),
         ).encode("ascii"))
+
+
+@pytest.mark.parametrize("relative", (
+    "__pycache__/helper.cpython-314.pyc",
+    "__pycache__/helper.cpython-312.opt-2.pyc",
+    "helper.pyc", "helper.pyo",
+))
+def test_wheel_bytecode_with_source_is_removed_before_sealing(tmp_path, relative):
+    package = tmp_path / "lib/python3.12/site-packages/example"
+    cache = package / relative
+    cache.parent.mkdir(parents=True)
+    source = package / "helper.py"
+    source.write_bytes(b"VALUE = 42\n")
+    cache.write_bytes(b"foreign interpreter bytecode")
+    installer._remove_packaged_bytecode_v1(tmp_path)
+    assert not cache.exists()
+    assert not (package / "__pycache__").exists()
+    assert source.read_bytes() == b"VALUE = 42\n"
+    installer._remove_packaged_bytecode_v1(tmp_path)  # repeat is harmless
+
+
+@pytest.mark.parametrize("source_kind", ("missing", "symlink", "directory"))
+def test_packaged_bytecode_requires_a_regular_source(tmp_path, source_kind):
+    package = tmp_path / "lib/python3.12/site-packages/example"
+    package.mkdir(parents=True)
+    source = package / "helper.py"
+    if source_kind == "symlink":
+        source.symlink_to(tmp_path / "outside.py")
+        (tmp_path / "outside.py").write_text("VALUE = 42\n")
+    elif source_kind == "directory":
+        source.mkdir()
+    cache = package / "helper.pyc"
+    cache.write_bytes(b"cache")
+    with pytest.raises(installer.PythonEnvironmentPosixError):
+        installer._remove_packaged_bytecode_v1(tmp_path)
+    assert cache.read_bytes() == b"cache"
+
+
+def test_bytecode_cleanup_never_follows_links_or_removes_other_files(tmp_path):
+    package = tmp_path / "lib/python3.12/site-packages/example"
+    package.mkdir(parents=True)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "helper.pyc").write_bytes(b"untouched")
+    (package / "__pycache__").symlink_to(outside, target_is_directory=True)
+    hook = package / "load.pth"
+    hook.write_bytes(b"import example\n")
+    installer._remove_packaged_bytecode_v1(tmp_path)
+    assert (outside / "helper.pyc").read_bytes() == b"untouched"
+    assert hook.read_bytes() == b"import example\n"
+    with pytest.raises(environment.PythonEnvironmentError):
+        environment.python_environment_file_hash_v1(
+            hook.relative_to(tmp_path).as_posix(), hook.stat().st_size,
+            (hook.read_bytes(),),
+        )
+
+
+def test_bytecode_link_is_rejected_even_when_source_exists(tmp_path):
+    package = tmp_path / "lib/python3.12/site-packages/example"
+    package.mkdir(parents=True)
+    (package / "helper.py").write_text("VALUE = 42\n")
+    outside = tmp_path / "outside.pyc"
+    outside.write_bytes(b"untouched")
+    (package / "helper.pyc").symlink_to(outside)
+    with pytest.raises(installer.PythonEnvironmentPosixError):
+        installer._remove_packaged_bytecode_v1(tmp_path)
+    assert outside.read_bytes() == b"untouched"

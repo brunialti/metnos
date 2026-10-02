@@ -117,6 +117,7 @@ def invoke(args: dict) -> dict:
     entries = []
     pending = []
     otp_pending = []
+    captcha_pending = []
     attachments = []
     for sid in session_ids:
         res = session_client.session_login(
@@ -135,6 +136,11 @@ def invoke(args: dict) -> dict:
             continue
         logged_in = bool(res.get("logged_in"))
         reason = res.get("reason_code")
+        if not logged_in and not reason:
+            # Keep a classified blocker when a transport/broker failure has
+            # no separate reason_code; otherwise CAPTCHA loses its handoff
+            # and unresolved privacy becomes an unexplained login failure.
+            reason = res.get("error_class") or "login_failed"
         # A rejected/expired email code is recoverable.  Keep the browser
         # session alive so the user can submit a fresh code instead of
         # restarting the whole login flow.
@@ -165,6 +171,8 @@ def invoke(args: dict) -> dict:
                 entry["session_closed"] = bool(closed.get("count", 0))
         if reason == "two_factor_required":
             otp_pending.append(sid)
+        if reason == "captcha_required":
+            captcha_pending.append(sid)
         entries.append(entry)
 
     if pending:
@@ -207,8 +215,9 @@ def invoke(args: dict) -> dict:
         gate["pending_sessions"] = list(tokens)
         return gate
 
-    if otp_pending:
-        prompt = _msg("MSG_SITES_RC_TWO_FACTOR_REQUIRED")
+    if otp_pending or captcha_pending:
+        prompt = _msg("MSG_BROWSER_USER_TITLE" if captcha_pending
+                      else "MSG_SITES_RC_TWO_FACTOR_REQUIRED")
         dialog = []
         otp_vars = {}
         for index, sid in enumerate(otp_pending, start=1):
@@ -217,11 +226,21 @@ def invoke(args: dict) -> dict:
             otp_vars[var] = sid
             dialog.append({
                 "var": var,
-                "prompt": prompt,
+                "prompt": _msg("MSG_SITES_RC_TWO_FACTOR_REQUIRED"),
                 "schema": {"kind": "credentials", "secret": True},
             })
+        for index, sid in enumerate(captcha_pending, start=1):
+            dialog.append({
+                "var": f"browser_resume_{index}",
+                "prompt": _msg("MSG_BROWSER_USER_PROMPT"),
+                "schema": {"kind": "browser_session", "session_id": sid},
+            })
         resume_args = {
-            "session_ids": otp_pending,
+            # Reuse successful sessions too: broker returns already_authenticated,
+            # preserving all vector results for the untouched original pipeline.
+            "session_ids": [e["session_id"] for e in entries
+                            if e["logged_in"] or e["session_id"] in
+                            otp_pending + captcha_pending],
             "_otp_session_vars": otp_vars,
             "_credential_mode": credential_mode,
         }
@@ -244,7 +263,8 @@ def invoke(args: dict) -> dict:
                 },
             },
             "entries": entries,
-            "metadata": {"logged_in": 0, "total": len(entries)},
+            "metadata": {"logged_in": sum(e["logged_in"] for e in entries),
+                         "total": len(entries)},
             "final_message_hint": prompt,
         }
 

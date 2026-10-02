@@ -145,7 +145,11 @@ decoded in process, including digest-named private snapshots. The corresponding
 hash-verified wheel must be present in the offline wheelhouse before building.
 No source photo is converted or overwritten on disk. The
 offline builder verifies wheel hashes and publishes a new content-addressed
-Python environment; it never patches an existing environment. Sealing keeps
+Python environment; it never patches an existing environment. Before sealing,
+source-backed bytecode shipped inside wheels is removed: `--no-compile`
+only prevents new caches. Source-less bytecode, links and other forbidden files
+still fail validation; original wheel hashes and source files remain unchanged.
+Sealing keeps
 packaged executable files executable, normalizes permissions to 0755/0644,
 and removes special permission bits. Browser binaries and native libraries
 remain separate installation prerequisites. This complete release profile
@@ -630,6 +634,26 @@ An absent sidecar leaves only its
 dependent capability dormant or explicitly degraded. A sidecar installer must
 distinguish downloaded, installed, started, healthy and failed states; it must
 not turn a partial result into success.
+
+The browser engine defaults to Chromium. `METNOS_SITES_BROWSER_ENGINE=camoufox`
+selects the pinned Linux x86_64 Camoufox installation, including its integrated
+fingerprint masking; `METNOS_SITES_STEALTH_ALLOWED=false` forbids that selection.
+Camoufox also requires explicit `METNOS_SITES_WEBSOCKETS_ALLOWED=1`. This setting
+allows unrestricted WebSocket destinations for either engine; its public default
+is false, and Camoufox fails closed because its isolated world cannot enforce
+Playwright's WebSocket interception. HTTP host and credential controls remain.
+There is no engine fallback or additional browser extension.
+
+`python -m install.playwright_sidecar --prepare` and the delegating shell script
+prepare without activating services. The installer verifies the exact archive
+length and SHA-256 before extraction, then records the pinned receipt. Startup
+never downloads a browser. The engine, socket choice, stealth ceiling and browser directory are
+saved atomically with mode 0600 in `$METNOS_USER_DATA/browser-engine.env`, loaded
+by the server before engine selection (also under the signed minimal environment)
+and preserved on later installation runs; explicit process environment values
+override saved choices, including an administrative false ceiling. The complete release lock includes
+Camoufox 0.5.6, Playwright 1.61.0 and playwright-captcha 0.1.5; the CAPTCHA
+library's API-client dependencies do not authorize or activate an external solver.
 
 Persistent units are system units running as the dedicated service account.
 The administrative coordinator prepares them; no user linger is required. The

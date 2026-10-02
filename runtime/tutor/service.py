@@ -938,16 +938,6 @@ def answer_request(request: TutorRequest) -> TutorAnswer | None:
     working_query = request.query_redacted
     handoff_query = ""
     if mode == "MIXED":
-        if request.has_pending:
-            return TutorAnswer(
-                esito="clarification",
-                answer_md=_with_pending_note(
-                    _msg("MSG_TUTOR_MIXED_CLARIFY"), request),
-                score_band="high",
-                elapsed_ms=int((time.monotonic() - started) * 1000),
-                detection="semantic_mixed",
-                gap_reason="mode_ambiguity",
-            )
         try:
             from .handoff import MixedSplitUnavailable, split_mixed_query
             split = split_mixed_query(
@@ -971,6 +961,19 @@ def answer_request(request: TutorRequest) -> TutorAnswer | None:
             # planner. Tutor must not steal an OBSERVE+ACT request or force a
             # clarification it cannot resolve.
             return None
+        if request.has_pending:
+            # A whole-query MIXED label is only a hypothesis.  A pending
+            # interaction must not turn an unproven multi-step operation into
+            # a choice that has no resumable action behind it.
+            return TutorAnswer(
+                esito="clarification",
+                answer_md=_with_pending_note(
+                    _msg("MSG_TUTOR_MIXED_CLARIFY"), request),
+                score_band="high",
+                elapsed_ms=int((time.monotonic() - started) * 1000),
+                detection="semantic_mixed",
+                gap_reason="mode_ambiguity",
+            )
         working_query = split.explanation
         handoff_query = split.action
         # CURRENT/FOLLOWUP belong to the exact clause being answered.  The

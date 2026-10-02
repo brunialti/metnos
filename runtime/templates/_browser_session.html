@@ -1,0 +1,13 @@
+<span class="browser-session" data-endpoint="/agent/dialog/{{ dialog_id }}/browser/{{ loop.index0 }}{{ dialog_cap_query|e }}"
+      style="display:flex;flex-direction:column;gap:.5rem;min-width:0;">
+  <small class="browser-location muted" style="overflow-wrap:anywhere;"></small>
+  <span style="display:flex;flex-wrap:wrap;gap:.4rem;">
+    <button type="button" class="btn" data-browser-action="snapshot">{{ msg('MSG_BROWSER_USER_REFRESH') }}</button>
+    <button type="button" class="btn" data-browser-action="scroll" data-direction="up">{{ msg('MSG_BROWSER_USER_UP') }}</button>
+    <button type="button" class="btn" data-browser-action="scroll" data-direction="down">{{ msg('MSG_BROWSER_USER_DOWN') }}</button>
+  </span>
+  <img class="browser-viewport" alt="{{ msg('MSG_BROWSER_USER_PROMPT') }}"
+       draggable="false" hidden style="width:100%;height:auto;cursor:crosshair;border:1px solid var(--border);">
+  <span class="browser-status muted" role="status" aria-live="polite"></span>
+  <input id="{{ var_id }}" name="{{ step.var }}" type="hidden" value="true">
+</span>

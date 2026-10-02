@@ -145,6 +145,11 @@ def session_login(*, session_id: str, owner: str | None = None,
                                     "credential_mode": credential_mode}, **kw)
 
 
+def session_user_control(*, action: dict, proof: str, **kw) -> dict:
+    kw.setdefault("timeout_s", 25.0)
+    return _post("/session/user-control", {"action": action, "proof": proof}, **kw)
+
+
 def session_screenshot(*, session_id: str, owner: str | None = None, **kw) -> dict:
     return _post("/session/screenshot", {"session_id": session_id,
                                           "owner": owner}, **kw)

@@ -167,7 +167,9 @@ _DETECT_OTP_JS = r"""
   const inputs = Array.from(document.querySelectorAll('input'));
   for (const el of inputs) {
     if (!visible(el)) continue;
-    if ((el.autocomplete || '') === 'one-time-code') return true;
+    // Firefox can expose an empty DOM property for a valid HTML token.
+    const autocomplete = (el.getAttribute('autocomplete') || '').toLowerCase().trim().split(/\s+/);
+    if (autocomplete.includes('one-time-code')) return true;
     if (el.type === 'password') continue;  // la password è gestita a parte
     if (RE.test(el.name || '') || RE.test(el.id || '') ||
         RE.test(el.getAttribute('aria-label') || '') ||
@@ -196,7 +198,8 @@ _LOCATE_OTP_FORM_JS = r"""
     if (!visible(el) || el.type === 'password') return false;
     const attrs = [el.name, el.id, el.getAttribute('aria-label'), el.placeholder]
       .filter(Boolean).join(' ');
-    return (el.autocomplete || '') === 'one-time-code' || RE.test(attrs);
+    const autocomplete = (el.getAttribute('autocomplete') || '').toLowerCase().trim().split(/\s+/);
+    return autocomplete.includes('one-time-code') || RE.test(attrs);
   });
   if (!candidates.length) return {found: false};
   let segmented = false;
@@ -249,15 +252,32 @@ _DETECT_CAPTCHA_JS = r"""
     return r.width >= 2 && r.height >= 2 && st.display !== 'none' &&
       st.visibility !== 'hidden' && Number.parseFloat(st.opacity || '1') >= 0.05;
   };
+  // A completed widget remains on screen. Inspect only its own response;
+  // one solved widget must not mask a second pending one. No token leaves JS.
+  const answered = el => {
+    const widget = el.closest('.g-recaptcha, #g-recaptcha, .h-captcha, .cf-turnstile, [data-sitekey]');
+    const container = widget || el.parentElement;
+    if (!container || (!widget && ['BODY', 'HTML', 'FORM'].includes(container.tagName))) return false;
+    const frame = el.matches('iframe') ? el : el.querySelector('iframe');
+    const src = (frame?.src || '').toLowerCase();
+    const name = container.matches('.h-captcha') || src.includes('hcaptcha') ? 'h-captcha-response' :
+      container.matches('.cf-turnstile') || src.includes('/cdn-cgi/challenge-platform/') ||
+      src.includes('turnstile') ? 'cf-turnstile-response' :
+      container.matches('.g-recaptcha, #g-recaptcha') || src.includes('recaptcha') ? 'g-recaptcha-response' : null;
+    if (!name) return false;
+    const responses = container.querySelectorAll(`[name="${name}"]`);
+    return responses.length === 1 && Boolean(responses[0].value.trim());
+  };
   const markers = Array.from(document.querySelectorAll(
     '.g-recaptcha, #g-recaptcha, .h-captcha, [data-sitekey], .cf-turnstile'));
-  if (markers.some(visible)) return true;
+  if (markers.some(el => visible(el) && !answered(el))) return true;
   const ifr = Array.from(document.querySelectorAll('iframe'));
   for (const f of ifr) {
     if (!visible(f)) continue;
     const s = (f.src || '').toLowerCase();
-    if (s.includes('recaptcha') || s.includes('hcaptcha') ||
-        s.includes('turnstile')) return true;
+    if ((s.includes('recaptcha') || s.includes('hcaptcha') ||
+         s.includes('turnstile') || s.includes('/cdn-cgi/challenge-platform/')) &&
+        !answered(f)) return true;
   }
   return false;
 }
@@ -765,7 +785,8 @@ async def _cross_interstitial(page, *, op_timeout_s: float) -> bool:
 async def _observe_post_submit(*, page, context, cookies_before: dict,
                                url_before: str,
                                op_timeout_s: float,
-                               await_challenge_clear: bool = False) -> dict:
+                               await_challenge_clear: bool = False,
+                               resolve_captcha=None) -> dict:
     """Osserva una transizione di autenticazione SPA senza inferenze premature."""
     attempts = max(1, min(25, int(op_timeout_s * 5)))
     state = {
@@ -792,6 +813,9 @@ async def _observe_post_submit(*, page, context, cookies_before: dict,
         try:
             otp = bool(await page.evaluate(_DETECT_OTP_JS))
             captcha = bool(await page.evaluate(_DETECT_CAPTCHA_JS))
+            if captcha and resolve_captcha is not None:
+                await resolve_captcha(page)
+                captcha = bool(await page.evaluate(_DETECT_CAPTCHA_JS))
             password_rejected = bool(
                 await page.evaluate(_PASSWORD_REJECTED_JS))
         except Exception:
@@ -1128,7 +1152,7 @@ async def _complete_one_time_code_stage(*, page, context,
                                         owner: str, session_id: str,
                                         op_timeout_s: float,
                                         payload: dict | None = None,
-                                        stealth_techniques=()) -> dict:
+                                        stealth_techniques=(), resolve_captcha=None) -> dict:
     try:
         cookies_before = {
             (c.get("name"), c.get("domain"), c.get("path")): c.get("value")
@@ -1154,7 +1178,7 @@ async def _complete_one_time_code_stage(*, page, context,
         page=page, context=context, cookies_before=cookies_before,
         url_before=url_before,
         op_timeout_s=min(op_timeout_s, _FACTOR_SUBMIT_SETTLE_S),
-        await_challenge_clear=True)
+        await_challenge_clear=True, resolve_captcha=resolve_captcha)
     outcome = post_submit_outcome(observed, session_cookie_names)
     logged_in = (outcome == "login_verified")
     reason = None
@@ -1372,7 +1396,7 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
                         reach_login=None, authorize_origin=None,
                         approved_origin: str | None = None,
                         max_entry_steps: int = 3,
-                        page_provider=None, prepare_page=None,
+                        page_provider=None, prepare_page=None, resolve_captcha=None,
                         factor_state: dict | None = None,
                         checkpoint=None,
                         total_timeout_s: float | None = None,
@@ -1472,9 +1496,25 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
             if not isinstance(outcome, CookieOutcome):
                 outcome = CookieOutcome("blocked", reason="invalid_precondition_outcome")
             if outcome.status == "blocked":
-                return current_page(previous), {
+                observed_page = current_page(previous)
+                blocker = await classify_login_surface(observed_page)
+                if blocker == "captcha_required":
+                    if resolve_captcha is not None and await resolve_captcha(observed_page):
+                        # Solving a challenge never counts as a privacy decision.
+                        # Re-observe the separate cookie precondition once.
+                        outcome = await prepare_page(redact=redact)
+                        if not isinstance(outcome, CookieOutcome):
+                            outcome = CookieOutcome("blocked", reason="invalid_precondition_outcome")
+                        if outcome.status != "blocked":
+                            return current_page(observed_page), None
+                        blocker = await classify_login_surface(current_page(observed_page))
+                    if blocker == "captcha_required":
+                        await _checkpoint(checkpoint, "factor_pending")
+                        return observed_page, {"ok": True, "logged_in": False,
+                                               "reason_code": blocker}
+                return observed_page, {
                     "ok": True, "logged_in": False,
-                    "reason_code": "selector_missing",
+                    "reason_code": "cookie_precondition_unresolved",
                     "error_class": "cookie_precondition_unresolved",
                     "obstruction_kind": outcome.kind,
                     "obstruction_reason": outcome.reason}
@@ -1497,7 +1537,7 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
             session_cookie_names=session_cookie_names,
             owner=owner, session_id=session_id,
             op_timeout_s=budget.remaining(op_timeout_s), payload=payload,
-            stealth_techniques=stealth_techniques)
+            stealth_techniques=stealth_techniques, resolve_captcha=resolve_captcha)
         await _checkpoint(
             checkpoint,
             "complete" if completed.get("logged_in") else "factor_pending")
@@ -1519,7 +1559,7 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
                 session_cookie_names=session_cookie_names,
                 owner=owner, session_id=session_id,
                 op_timeout_s=budget.remaining(op_timeout_s), payload=payload,
-                stealth_techniques=stealth_techniques)
+                stealth_techniques=stealth_techniques, resolve_captcha=resolve_captcha)
             if completed.get("logged_in"):
                 await _checkpoint(checkpoint, "complete")
                 return completed
@@ -1533,15 +1573,123 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
         return {"ok": True, "logged_in": False,
                 "reason_code": "two_factor_required"}
 
+    async def finish_submission(cookies_before, url_before):
+        # 7. Rilevazioni oneste. Il click di una SPA puo' completare molto dopo il
+        # ritorno di `wait_for_load_state`; si osservano solo segnali deterministici
+        # per un intervallo bounded prima di classificare l'esito.
+        observed = await _observe_post_submit(
+            page=page, context=context, cookies_before=cookies_before,
+            url_before=url_before,
+            op_timeout_s=budget.remaining(_LOGIN_SURFACE_SETTLE_S),
+            resolve_captcha=resolve_captcha)
+        otp = bool(observed["otp"])
+        captcha = bool(observed["captcha"])
+        push = bool(observed["push"])
+        forced_reason = None
+        if otp and totp_secret and not captcha:
+            await _checkpoint(checkpoint, "factor_submit")
+            advanced = await _advance_totp_stage(
+                page=page, vault_domain=domain,
+                origin_ok=_origin_ok, totp_secret=str(totp_secret),
+                storage_domain=storage_domain, owner=owner,
+                session_id=session_id,
+                op_timeout_s=budget.remaining(op_timeout_s),
+                digits=totp_digits, period=totp_period,
+                algorithm=str(totp_algorithm),
+                stealth_techniques=stealth_techniques)
+            if advanced.get("ok"):
+                observed = await _observe_post_submit(
+                    page=page, context=context, cookies_before=cookies_before,
+                    url_before=url_before,
+                    op_timeout_s=budget.remaining(_LOGIN_SURFACE_SETTLE_S),
+                    resolve_captcha=resolve_captcha)
+                otp = bool(observed["otp"])
+                captcha = bool(observed["captcha"])
+                push = bool(observed["push"])
+            elif advanced.get("error_class") == "origin_mismatch":
+                forced_reason = "origin_unverified"
+
+        # Email is the first channel resolved automatically.  It is attempted
+        # only when the page explicitly identifies email as the factor channel and
+        # the login identity is an email address; otherwise the manual OTP dialog
+        # remains the deterministic fallback.
+        if otp and not captcha and not totp_secret:
+            return await _handle_email_factor()
+
+        # 8. Verifica ESITO onesta (§2.8): cookie di sessione dichiarati presenti,
+        #    OPPURE il campo password è sparito (e non c'è OTP/errore residuo).
+        password_rejected = bool(observed["password_rejected"])
+        # Un cookie gia' presente sulla pagina di login non prova
+        # l'autenticazione: il segnale deve essere nuovo o ruotato dal submit.
+        outcome = post_submit_outcome(observed, session_cookie_names)
+        logged_in = (outcome == "login_verified")
+
+        # Un intermezzo NON e' un rifiuto. Il sito puo' accettare le credenziali e
+        # interporre una pagina promozionale: non ha niente da chiudere, ha solo
+        # una via in avanti, e chi si aspetta la destinazione la legge come un
+        # accesso fallito. Misurato sulla replica: strati tutti sgombrati, modulo
+        # inviato, pagina `/intermezzo`, verdetto `login_failed`.
+        if (not logged_in and not (captcha or otp or push or forced_reason)
+                and not observed["password_rejected"]):
+            if await _cross_interstitial(page, op_timeout_s=budget.remaining(
+                    _LOGIN_SURFACE_SETTLE_S)):
+                observed = await _observe_post_submit(
+                    page=page, context=context, cookies_before=cookies_before,
+                    url_before=url_before,
+                    op_timeout_s=budget.remaining(_LOGIN_SURFACE_SETTLE_S),
+                    resolve_captcha=resolve_captcha)
+                outcome = post_submit_outcome(observed, session_cookie_names)
+                logged_in = (outcome == "login_verified")
+
+        reason = None
+        if not logged_in:
+            if forced_reason:
+                reason = forced_reason
+            elif captcha:
+                reason = "captcha_required"
+            elif otp:
+                reason = "two_factor_required"
+            elif push:
+                reason = "two_factor_push_required"
+            elif password_rejected:
+                reason = "password_wrong"
+            else:
+                reason = "login_failed"
+
+        # 9. Audit dell'esito; ogni campo usato e' gia' registrato subito dopo il
+        # fill, prima che una navigazione possa interrompere il controllo.
+        sites_audit.record("login_attempt", owner=owner, session_id=session_id,
+                           domain=domain, outcome=logged_in, reason=reason)
+        await _checkpoint(
+            checkpoint,
+            "complete" if logged_in else
+            "factor_pending" if reason in {
+                "two_factor_required", "two_factor_push_required",
+                "captcha_required"} else "failed")
+
+        _apply_cooldown_outcome(owner, storage_domain, outcome, payload=payload)
+        if logged_in or reason not in {"captcha_required", "two_factor_required", "two_factor_push_required"}:
+            factor_state.pop("post_submit_context", None)
+        return {"ok": True, "logged_in": logged_in, "reason_code": reason}
+
     # A resumed executor can already be on the factor page.  Recognize that
     # checkpoint before attempting to rediscover or click the login entry.
     initial_blocker = await classify_login_surface(page)
+    if (initial_blocker == "captcha_required" and resolve_captcha is not None
+            and await resolve_captcha(page)):
+        initial_blocker = await classify_login_surface(page)
     if initial_blocker == "two_factor_required" and not totp_secret:
         return await _handle_email_factor()
     if initial_blocker:
         await _checkpoint(checkpoint, "factor_pending")
         return {"ok": True, "logged_in": False,
                 "reason_code": initial_blocker}
+
+    # A human can finish the challenge after the primary form was submitted.
+    # Recheck that exact attempt; never restart discovery or refill credentials.
+    suspended = factor_state.get("post_submit_context")
+    if isinstance(suspended, dict):
+        return await finish_submission(suspended["cookies"], suspended["url"])
 
     # 2. Macchina a stati bounded, invisibile al planner:
     #    landing -> ingresso login -> [username ->] password. Il modello puo'
@@ -1669,9 +1817,15 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
             # non si tenta un click fuzzy: fail-closed sul nuovo stato.
             try:
                 if await page.evaluate(_DETECT_CAPTCHA_JS):
-                    await _checkpoint(checkpoint, "factor_pending")
-                    return {"ok": True, "logged_in": False,
-                            "reason_code": "captcha_required"}
+                    if resolve_captcha is not None:
+                        await resolve_captcha(page)
+                    if await page.evaluate(_DETECT_CAPTCHA_JS):
+                        await _checkpoint(checkpoint, "factor_pending")
+                        return {"ok": True, "logged_in": False,
+                                "reason_code": "captcha_required"}
+                    password_visible = await _has_toplevel_password(page)
+                    if password_visible:
+                        break
                 if await page.evaluate(_DETECT_OTP_JS):
                     if not totp_secret:
                         return await _handle_email_factor()
@@ -1742,9 +1896,11 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
                     "reason_code": (
                         error_class if error_class in {
                             "mandate_scope_exceeded", "login_entry_stalled",
-                            "login_timeout"}
+                            "login_timeout", "cookie_precondition_unresolved"}
                         else "selector_missing"),
-                    "error_class": error_class}
+                    "error_class": error_class,
+                    **{key: reached[key] for key in (
+                        "obstruction_kind", "obstruction_reason") if key in reached}}
         page = current_page(page)
         superficie = await _wait_for_login_surface(
             page, budget.remaining(_LOGIN_SURFACE_SETTLE_S))
@@ -1906,95 +2062,6 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
     except Exception:
         pass
 
-    # 7. Rilevazioni oneste. Il click di una SPA puo' completare molto dopo il
-    # ritorno di `wait_for_load_state`; si osservano solo segnali deterministici
-    # per un intervallo bounded prima di classificare l'esito.
-    observed = await _observe_post_submit(
-        page=page, context=context, cookies_before=cookies_before,
-        url_before=url_before,
-        op_timeout_s=budget.remaining(_LOGIN_SURFACE_SETTLE_S))
-    otp = bool(observed["otp"])
-    captcha = bool(observed["captcha"])
-    push = bool(observed["push"])
-    forced_reason = None
-    if otp and totp_secret and not captcha:
-        await _checkpoint(checkpoint, "factor_submit")
-        advanced = await _advance_totp_stage(
-            page=page, vault_domain=domain,
-            origin_ok=_origin_ok, totp_secret=str(totp_secret),
-            storage_domain=storage_domain, owner=owner,
-            session_id=session_id,
-            op_timeout_s=budget.remaining(op_timeout_s),
-            digits=totp_digits, period=totp_period,
-            algorithm=str(totp_algorithm),
-            stealth_techniques=stealth_techniques)
-        if advanced.get("ok"):
-            observed = await _observe_post_submit(
-                page=page, context=context, cookies_before=cookies_before,
-                url_before=url_before,
-                op_timeout_s=budget.remaining(_LOGIN_SURFACE_SETTLE_S))
-            otp = bool(observed["otp"])
-            captcha = bool(observed["captcha"])
-            push = bool(observed["push"])
-        elif advanced.get("error_class") == "origin_mismatch":
-            forced_reason = "origin_unverified"
+    factor_state["post_submit_context"] = {"cookies": cookies_before, "url": url_before}
 
-    # Email is the first channel resolved automatically.  It is attempted
-    # only when the page explicitly identifies email as the factor channel and
-    # the login identity is an email address; otherwise the manual OTP dialog
-    # remains the deterministic fallback.
-    if otp and not captcha and not totp_secret:
-        return await _handle_email_factor()
-
-    # 8. Verifica ESITO onesta (§2.8): cookie di sessione dichiarati presenti,
-    #    OPPURE il campo password è sparito (e non c'è OTP/errore residuo).
-    password_rejected = bool(observed["password_rejected"])
-    # Un cookie gia' presente sulla pagina di login non prova
-    # l'autenticazione: il segnale deve essere nuovo o ruotato dal submit.
-    outcome = post_submit_outcome(observed, session_cookie_names)
-    logged_in = (outcome == "login_verified")
-
-    # Un intermezzo NON e' un rifiuto. Il sito puo' accettare le credenziali e
-    # interporre una pagina promozionale: non ha niente da chiudere, ha solo
-    # una via in avanti, e chi si aspetta la destinazione la legge come un
-    # accesso fallito. Misurato sulla replica: strati tutti sgombrati, modulo
-    # inviato, pagina `/intermezzo`, verdetto `login_failed`.
-    if (not logged_in and not (captcha or otp or push or forced_reason)
-            and not observed["password_rejected"]):
-        if await _cross_interstitial(page, op_timeout_s=budget.remaining(
-                _LOGIN_SURFACE_SETTLE_S)):
-            observed = await _observe_post_submit(
-                page=page, context=context, cookies_before=cookies_before,
-                url_before=url_before,
-                op_timeout_s=budget.remaining(_LOGIN_SURFACE_SETTLE_S))
-            outcome = post_submit_outcome(observed, session_cookie_names)
-            logged_in = (outcome == "login_verified")
-
-    reason = None
-    if not logged_in:
-        if forced_reason:
-            reason = forced_reason
-        elif captcha:
-            reason = "captcha_required"
-        elif otp:
-            reason = "two_factor_required"
-        elif push:
-            reason = "two_factor_push_required"
-        elif password_rejected:
-            reason = "password_wrong"
-        else:
-            reason = "login_failed"
-
-    # 9. Audit dell'esito; ogni campo usato e' gia' registrato subito dopo il
-    # fill, prima che una navigazione possa interrompere il controllo.
-    sites_audit.record("login_attempt", owner=owner, session_id=session_id,
-                       domain=domain, outcome=logged_in, reason=reason)
-    await _checkpoint(
-        checkpoint,
-        "complete" if logged_in else
-        "factor_pending" if reason in {
-            "two_factor_required", "two_factor_push_required",
-            "captcha_required"} else "failed")
-
-    _apply_cooldown_outcome(owner, storage_domain, outcome, payload=payload)
-    return {"ok": True, "logged_in": logged_in, "reason_code": reason}
+    return await finish_submission(cookies_before, url_before)

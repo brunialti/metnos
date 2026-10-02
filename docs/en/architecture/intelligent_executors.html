@@ -140,8 +140,27 @@
  Cookies use the separate procedure for rejecting optional choices, checked
  again before submission if a new banner appears. Once a
  form is found, credential entry remains deterministic: the model receives
- no field values and explores no further paths once typing begins. CAPTCHA
- and additional verification require user intervention; they are not bypassed.</p>
+ no field values and explores no further paths once typing begins.</p>
+ <p>Saving, listing, login and deletion share one encrypted credential vault.
+ The list contains metadata only; changing the instance data directory does
+ not select a different vault.</p>
+ <p>For supported Cloudflare challenges, Metnos tries the local
+ <code>playwright-captcha</code> library once, in the same session, for no
+ more than 10 seconds. The attempt counts towards the login limits and its
+ result is checked against the page. It uses no paid service. If the
+ challenge remains pending or is unsupported, such as reCAPTCHA, Metnos
+ requests user intervention and keeps the session. OTP codes follow a
+ separate procedure: the user provides them unless explicit permission for
+ automation already exists. The CAPTCHA solver neither accepts cookies
+ nor reads OTP codes.</p>
+ <p>The CAPTCHA panel shows the already open session, with sensitive fields
+ hidden. The user can click, scroll, refresh the image and press
+ <strong>Resume</strong>. Metnos checks the login again and continues the
+ original request; an unresolved CAPTCHA opens the panel again. If
+ credentials were already submitted, it checks that attempt without
+ submitting them again. The panel expires after ten minutes; cancelling
+ closes its session. Challenges requiring keyboard or audio input are not
+ supported by this panel.</p>
 
  <h2>When it cannot finish</h2>
  <p>If no proposal is admitted, the loop is <code>inconclusive</code>. If its

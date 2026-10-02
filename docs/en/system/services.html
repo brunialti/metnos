@@ -83,6 +83,26 @@ signal. Process state, technical health and PID are under
 active interactive turns and read any warning shown by the page. A restart is
 not a visual refresh: it actually interrupts the selected process.</p></div>
 
+<h2 id="browser">Browser for websites</h2>
+
+<p>The browser service uses Chromium by default. On Linux x86_64, an administrator
+can select Camoufox for the instance: it includes browser fingerprint masking
+and requires a dedicated installation. This choice does not guarantee access to
+every site or CAPTCHA resolution; an unresolved obstacle requires the user.</p>
+
+<p>When the CAPTCHA panel appears in chat, complete the challenge in the page
+image, use <strong>Refresh</strong> when it changes, then press
+<strong>Resume</strong>. The panel supports clicking and scrolling, keeps
+the session for ten minutes and resumes the original request after checking
+the login. <strong>Cancel</strong> closes that session. OTP codes are requested
+in a separate form.</p>
+
+<p>Camoufox also requires an explicit choice to allow WebSockets: these connections
+can reach destinations outside the hosts approved for ordinary navigation. The
+option is off by default; with Camoufox, the service stops if it has not been
+authorized. HTTP requests, credential origins and consent retain their controls.
+Changing the engine requires the normal authorized service restart.</p>
+
 <h2 id="screen">The Services screen</h2>
 
 <figure class="ui-guide">

@@ -6,7 +6,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "find_credentials"
-version     = "0.2.0"
+version     = "0.2.2"
 revertible  = false
 author      = "Roberto Brunialti"
 affinity    = ["credenziali", "chiavi", "token", "segreti", "configurate",
@@ -15,12 +15,12 @@ affinity    = ["credenziali", "chiavi", "token", "segreti", "configurate",
                 "configured services", "api keys", "logins"]
 
 [description]
-it = "SCOPO: elenca account e servizi configurati (mail, api, cloud): credenziali metadata-only. PATTERN: find_credentials(query=\"google\", top_k=10). NON: leggere le mail (-> read_messages); valori segreti (-> set_credentials). OUT: {ok, entries:[{binding, fingerprint, scopes, age_days, status, fields_present}], n_entries, truncated, available_total}."
-en = "SCOPO: lists configured accounts and services (mail, api, cloud): metadata-only credentials. PATTERN: find_credentials(query=\"google\", top_k=10). NON: reading account mail (-> read_messages); secret values (-> set_credentials). OUT: {ok, entries:[{binding, fingerprint, scopes, age_days, status, fields_present}], n_entries, truncated, available_total}."
+it = "SCOPO: elenca account e servizi configurati (mail, api, cloud): credenziali metadata-only. PATTERN: find_credentials() per tutti; query filtra per nome. NON: leggere le mail (-> read_messages); valori segreti (-> set_credentials). OUT: {ok, entries:[{binding, fingerprint, scopes, age_days, status, fields_present}], n_entries, truncated, available_total}."
+en = "SCOPO: lists configured accounts and services (mail, api, cloud): metadata-only credentials. PATTERN: find_credentials() for all; query filters by name. NON: reading account mail (-> read_messages); secret values (-> set_credentials). OUT: {ok, entries:[{binding, fingerprint, scopes, age_days, status, fields_present}], n_entries, truncated, available_total}."
 
 [code]
 files  = ["find_credentials.py"]
-digest = "sha256:504d11f8e9746df1a4994b0e7d07e3aff946c5f731e6667c5c406576e30706f1"
+digest = "sha256:db010327ff4464b4047e47267ce8743fd553c1362562621a9fbf31a8d6c9b797"
 
 [args]
 type     = "object"
@@ -30,8 +30,8 @@ required = []
 type        = "string"
 
 [args.properties.query.description]
-it = "Substring case-insensitive di filtro su binding e scopes (opzionale). Se omesso ritorna tutte le entry. Stringa esplicitamente vuota e' rifiutata."
-en = "Case-insensitive substring filter on binding and scopes (optional). If omitted returns all entries. Explicitly empty string is rejected."
+it = "Filtro facoltativo, senza distinzione maiuscole/minuscole, su binding e scopes. Se omesso o vuoto, elenca tutte le entry."
+en = "Optional case-insensitive filter on binding and scopes. If omitted or blank, lists all entries."
 
 [args.properties.top_k]
 type        = "integer"
@@ -79,6 +79,6 @@ name = "metnos:read"
 hint = []
 
 [[tests]]
-name   = "rejects_explicit_empty_query"
+name   = "lists_with_explicit_empty_query"
 input  = { query = "" }
-expect = { ok = false, error_contains = "query" }
+expect = { ok = true }

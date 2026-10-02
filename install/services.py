@@ -105,7 +105,7 @@ def probe(profile: dict) -> dict[str, str]:
                 elif name == "photon":
                     if body.get("type") != "FeatureCollection" or not isinstance(body.get("features"), list):
                         raise ValueError("features")
-                elif body.get("ok") is not True or body.get("browser") != "chromium":
+                elif body.get("ok") is not True or body.get("browser") not in {"chromium", "camoufox"}:
                     raise ValueError("health")
             except (httpx.HTTPError, ValueError, KeyError, TypeError):
                 raise _error("services_unavailable", name=name, url=entry["url"]) from None

@@ -486,9 +486,9 @@ def _http_has_pending(sender_id: str, actor: str, owner_user_id: str,
     except Exception:
         pass
     try:
-        from channels.daemon import _cap_pending_load
-        return bool(_cap_pending_load(
-            sender_id, owner_user_id=owner_user_id))
+        from channels.daemon import _cap_pending_actionable
+        return _cap_pending_actionable(
+            sender_id, owner_user_id=owner_user_id)
     except Exception:
         return False
 
@@ -2173,6 +2173,51 @@ async def dialog_form(request: web.Request) -> web.Response:
     )
 
 
+async def dialog_browser(request: web.Request) -> web.Response:
+    """Relay one explicit user action to the existing challenge session."""
+    from playwright_sidecar import session_client, user_control
+    headers = {"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"}
+    did = request.match_info["dialog_id"]
+    state = _resolve_dialog_state(request, did)
+    if state is None:
+        return web.json_response({"ok": False}, status=404, headers=headers)
+    denied = _dialog_access_error(request, did, state)
+    if denied is not None:
+        return denied
+    if _dialog_lifecycle(state) != "active":
+        return web.json_response({"ok": False}, status=410, headers=headers)
+    # JSON + same-origin fetch protect cookie-authenticated dialogs against
+    # cross-site forms. A dialog capability remains scoped to that dialog.
+    if request.content_type != "application/json" or request.headers.get(
+            "Sec-Fetch-Site") == "cross-site":
+        return web.json_response({"ok": False}, status=403, headers=headers)
+    try:
+        index = int(request.match_info["step_idx"])
+        if index < 0:
+            raise ValueError()
+        schema = state["dialog"][index]["schema"]
+        body = await request.json()
+        if (schema.get("kind") != "browser_session" or not isinstance(body, dict)
+                or not isinstance(schema.get("session_id"), str)):
+            raise ValueError()
+        operation = body.get("operation")
+        if not isinstance(operation, str) or operation not in {"snapshot", "click", "scroll"}:
+            raise ValueError()
+    except (ValueError, TypeError, KeyError, IndexError):
+        return web.json_response({"ok": False}, status=400, headers=headers)
+    action = {"dialog_id": did, "session_id": schema["session_id"],
+              "owner": state.get("actor") or "host", "operation": operation,
+              "revision": body.get("revision"), "x": body.get("x"),
+              "y": body.get("y"), "direction": body.get("direction")}
+    try:
+        proof = user_control.sign(action, app_get(request.app, APP_ADMIN_KEY, ""))
+    except (ValueError, TypeError):
+        return web.json_response({"ok": False}, status=400, headers=headers)
+    result = await asyncio.to_thread(session_client.session_user_control,
+                                     action=action, proof=proof)
+    return web.json_response(result, headers=headers)
+
+
 async def dialog_submit(request: web.Request) -> web.Response:
     """POST /agent/dialog/<dialog_id>/submit — riceve i form fields.
 
@@ -2364,7 +2409,7 @@ async def dialog_submit(request: web.Request) -> web.Response:
             redirect_url = head[len("__REDIRECT__:"):].strip()
             msg_for_display = rest or msg_for_display
         if redirect_url:
-            esc_url = redirect_url.replace('"', "&quot;")
+            esc_url = _escape_html(redirect_url)
             setup_started = _escape_html(
                 _msg("MSG_CHAT_DIALOG_SETUP_STARTED")
             )
@@ -2393,7 +2438,7 @@ async def dialog_submit(request: web.Request) -> web.Response:
             # Badge sul turno REALE del resume quando c'è (feedback ✓/✗ sul
             # risultato); fallback al turno che ha emesso il form.
             _tid = (completion_meta.get("turn_id") or origin_turn_id or "")
-            esc_tid = _tid.replace('"', "&quot;")
+            esc_tid = _escape_html(_tid)
             import base64 as _b64
             import json as _json
             _att_b64 = ""
@@ -4290,6 +4335,7 @@ ROUTES = (
     ("GET",  "/agent/devices/me",      device_self),
     ("GET",  "/agent/dialog/{dialog_id}/form",   dialog_form),
     ("POST", "/agent/dialog/{dialog_id}/submit", dialog_submit),
+    ("POST", "/agent/dialog/{dialog_id}/browser/{step_idx}", dialog_browser),
     ("GET",  "/agent/dialog/{dialog_id}/cancel", dialog_cancel),
     ("GET",  "/agent/dialog/{dialog_id}/preview/{step_idx}/{option_idx}", dialog_preview),
     ("GET",  "/agent/dialog/{dialog_id}/preview/{option_idx}",            dialog_preview),

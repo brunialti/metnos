@@ -6,6 +6,7 @@ import ctypes
 import errno
 import fcntl
 import hashlib
+import importlib.util
 import os
 from pathlib import Path
 import platform
@@ -196,6 +197,32 @@ def _build_staging_v1(
         python.as_posix(), "-I", "-B", "-m", "pip", "uninstall", "--yes", "pip",
     ], cwd=staging)
     _remove_bootstrap_v1(staging)
+    _remove_packaged_bytecode_v1(staging)
+
+
+def _remove_packaged_bytecode_v1(staging: Path) -> None:
+    """Discard reproducible wheel caches, never source-less or linked code."""
+    site = staging / "lib/python3.12/site-packages"
+    for current, directories, files in os.walk(site, topdown=False, followlinks=False):
+        parent = Path(current)
+        for name in files:
+            path = parent / name
+            if path.suffix.lower() not in {".pyc", ".pyo"}:
+                continue
+            try:
+                source = (
+                    Path(importlib.util.source_from_cache(str(path)))
+                    if parent.name == "__pycache__" else path.with_suffix(".py")
+                )
+                if not all(stat.S_ISREG(item.lstat().st_mode) for item in (path, source)):
+                    _fail("birth_python_environment_tree_invalid", "linked bytecode or source")
+                path.unlink()
+            except (OSError, ValueError) as exc:
+                _fail("birth_python_environment_tree_invalid", "bytecode without source", exc)
+        for name in directories:
+            path = parent / name
+            if name == "__pycache__" and not path.is_symlink() and not any(path.iterdir()):
+                path.rmdir()
 
 
 def _seal_tree_v1(root: Path, owner: tuple[int, int]) -> None:

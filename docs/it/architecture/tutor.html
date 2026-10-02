@@ -244,8 +244,12 @@ consumata, nessuna operazione viene avviata. Dopo la conferma si applicano gli
 stessi controlli di qualunque nuovo turno: pianificazione, Vaglio, autonomia,
 consensi ed executor.</p>
 
-<p>Un dialogo gi&agrave; aperto non viene sostituito. Se la separazione delle clausole
-non &egrave; sicura, Metnos chiede di formulare separatamente spiegazione e azione.</p>
+<p>Un dialogo gi&agrave; aperto non viene sostituito. Il Tutor verifica le clausole
+prima di proporre una scelta: se non trova una spiegazione e un'azione distinte,
+lascia la richiesta completa al normale motore di Metnos. Se invece le trova ma
+c'&egrave; ancora un'interazione attiva, non avvia l'azione e chiede di completare o
+annullare quell'interazione prima di inviare una nuova richiesta completa. Un
+modulo gi&agrave; concluso non rende in attesa la richiesta successiva.</p>
 
 <p>Per esempio: &laquo;Come si archiviano le email? Archivia anche quelle di
 ieri&raquo;.</p>

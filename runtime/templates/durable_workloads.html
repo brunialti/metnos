@@ -15,6 +15,18 @@
       <h2 id="dw-list-title">{{ msg("UI_DURABLE_JOB_LIST") }}</h2>
       <span class="dw-live" id="dwLive" aria-live="polite"></span>
     </div>
+    <div class="dw-job-header dw-list-columns">
+      <div class="dw-job-summary" tabindex="0" role="group" aria-label="{{ msg('UI_DURABLE_JOB_LIST') }}">
+        <div class="dw-job-fields">
+          <span id="dw-column-operation">{{ msg("UI_DURABLE_OPERATION") }}</span>
+          <span id="dw-column-started">{{ msg("UI_DURABLE_STARTED") }}</span>
+          <span id="dw-column-finished">{{ msg("UI_DURABLE_FINISHED") }}</span>
+          <span id="dw-column-temporary">{{ msg("UI_DURABLE_TEMPORARY_LABEL") }}</span>
+        </div>
+      </div>
+      <span class="dw-job-state" id="dw-column-state">{{ msg("UI_DURABLE_STATE") }}</span>
+      <span class="dw-job-controls" aria-hidden="true"></span>
+    </div>
     <div id="dwList" class="empty">{{ msg("UI_DURABLE_LOADING") }}</div>
     <div class="dw-pager" id="dwListPager"></div>
   </section>
@@ -356,18 +368,28 @@
     row.remove.hidden = !isTerminalState(workload.state);
     row.remove.disabled = workload.temporary_storage?.can_dismiss !== true;
     row.remove.title = row.remove.disabled ? temporarySummary(workload) : copy.dismiss;
-    row.temporary.textContent = temporarySummary(workload);
+    row.temporary.textContent = temporaryCell(workload);
+    row.temporary.title = temporarySummary(workload);
+    row.temporary.setAttribute("aria-label", temporarySummary(workload));
+  }
+
+  function temporarySize(bytes) {
+    let value = bytes, unit = 0;
+    const units = ["B", "KiB", "MiB", "GiB", "TiB"];
+    while (value >= 1024 && unit < units.length - 1) { value /= 1024; unit += 1; }
+    return `${new Intl.NumberFormat(uiLocale, {maximumFractionDigits: 1}).format(value)} ${units[unit]}`;
+  }
+
+  function temporaryCell(workload) {
+    const storage = workload.temporary_storage;
+    if (!Number.isInteger(storage?.file_count) || !Number.isFinite(storage?.size_bytes)) return "—";
+    return `${countText(storage.file_count)} ${copy.temporaryFiles} · ${temporarySize(storage.size_bytes)}`;
   }
 
   function temporarySummary(workload) {
     const storage = workload.temporary_storage || {status: "pending"};
     const parts = [copy.temporaryLabel];
-    if (Number.isFinite(storage.size_bytes)) {
-      let value = storage.size_bytes, unit = 0;
-      const units = ["B", "KiB", "MiB", "GiB", "TiB"];
-      while (value >= 1024 && unit < units.length - 1) { value /= 1024; unit += 1; }
-      parts.push(`${new Intl.NumberFormat(uiLocale, {maximumFractionDigits: 1}).format(value)} ${units[unit]}`);
-    }
+    if (Number.isFinite(storage.size_bytes)) parts.push(temporarySize(storage.size_bytes));
     if (Number.isInteger(storage.file_count)) parts.push(`${countText(storage.file_count)} ${copy.temporaryFiles}`);
     parts.push(copy.temporaryStates?.[storage.status] || copy.temporaryStates?.pending);
     return parts.filter(Boolean).join(" · ");
@@ -388,12 +410,14 @@
       const field = node("span", "", "dw-job-date");
       field.dataset.field = key;
       const value = node("time");
-      field.append(node("span", `${label}: `, "dw-date-label"), value);
+      value.setAttribute("aria-label", label);
+      field.append(value);
       return {field, value};
     };
     const started = date(copy.started, "started"), finished = date(copy.finished, "finished");
     const state = node("span", "", "dw-job-state");
-    fields.append(title, started.field, finished.field);
+    const temporary = node("span", "", "dw-job-temporary");
+    fields.append(title, started.field, finished.field, temporary);
     summary.append(fields);
     const choice = button("", () => toggleDetail(id));
     choice.className = "dw-job-choice";
@@ -406,9 +430,7 @@
     const controls = node("div", "", "dw-job-controls");
     controls.append(choice, remove);
     header.append(summary, state, controls);
-    const temporary = node("p", "", "dw-progress-summary");
-    temporary.dataset.field = "temporary-storage";
-    element.append(header, temporary);
+    element.append(header);
     const row = {element, title, started: started.value, finished: finished.value, state, choice, remove, temporary};
     jobRows.set(id, row);
     return row;
@@ -884,6 +906,14 @@
   }
 
   document.getElementById("dwRefresh").addEventListener("click", () => { listPages = 1; refresh(); });
+  // Keep the common headings aligned when a narrow screen scrolls a row.
+  root.addEventListener("scroll", event => {
+    if (!event.target.classList.contains("dw-job-summary")) return;
+    const left = event.target.scrollLeft;
+    for (const summary of root.querySelectorAll(".dw-job-summary")) {
+      if (summary.scrollLeft !== left) summary.scrollLeft = left;
+    }
+  }, true);
   refresh();
   startPolling();
   document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });

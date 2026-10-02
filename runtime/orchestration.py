@@ -358,6 +358,10 @@ def _build_final_message_hint(state: dict, fmt: str) -> str:
         _tutto_a_scelte = bool(dialog) and all(
             (step.get("schema") or {}).get("kind") in ("choice", "yes_no")
             for step in dialog)
+        if any((step.get("schema") or {}).get("kind") == "browser_session"
+               for step in dialog):
+            lines.append(_msg("MSG_BROWSER_USER_PROMPT"))
+            return "\n".join(lines)
         lines.append(_msg("MSG_ORCH_FORM_CHOICE_HINT") if _tutto_a_scelte
                      else _msg("MSG_ORCH_FORM_FIELDS_HINT", n=n))
         return "\n".join(lines)
@@ -3035,4 +3039,6 @@ def orchestrate_needs_inputs(obs: dict, *,
         channel=channel,
         timeout_s=timeout_s,
         origin_turn_id=origin_turn_id,
+        form_only=any((s.get("schema") or {}).get("kind") == "browser_session"
+                      for s in dialog if isinstance(s, dict)),
     )

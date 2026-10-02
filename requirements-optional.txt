@@ -9,3 +9,5 @@ sentence-transformers
 
 # --- sidecar automazione web (playwright) ---
 playwright==1.61.0
+camoufox==0.5.6
+playwright-captcha==0.1.5

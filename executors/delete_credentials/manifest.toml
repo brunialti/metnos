@@ -7,7 +7,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "delete_credentials"
-version     = "0.2.0"
+version     = "0.2.1"
 revertible  = false
 author      = "Roberto Brunialti"
 affinity    = ["dimentica credenziale", "rimuovi token", "cancella credenziali",
@@ -21,7 +21,7 @@ en = "SCOPO: delete credentials from storage (purge or bindings). PATTERN: delet
 
 [code]
 files  = ["delete_credentials.py"]
-digest = "sha256:3cfc9b4a5cec32007a24cd1f46c520b8c69f461bcae6ee0a5cf09f742cf4d2c7"
+digest = "sha256:3d16fbd78f4fb85b168bf13c18c81f7bc49efddabb0a1aeb42bed437c3d94a85"
 
 [args]
 type     = "object"

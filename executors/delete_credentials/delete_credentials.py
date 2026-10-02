@@ -17,7 +17,6 @@ Determinismo §7.9: niente LLM, solo filesystem via `runtime/credentials.py`.
 """
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 
@@ -32,12 +31,6 @@ import credentials as _cred  # noqa: E402
 # Invariante credentials_metadata_only centralizzata in runtime/credentials.py
 # (ADR 0123, regola del 3 §7.2).
 from credentials import assert_no_secrets_in_return as _assert_no_secrets_in_return  # noqa: E402
-
-
-def _override_cred_dir() -> None:
-    v = os.environ.get("METNOS_USER_DATA")
-    if v:
-        _cred.CRED_DIR = Path(v) / "credentials"
 
 
 def _count_fields_for(binding: str) -> int:
@@ -84,8 +77,6 @@ def _coalesce_targets(args) -> tuple[list, str | None]:
 
 
 def invoke(args):
-    _override_cred_dir()
-
     targets, err = _coalesce_targets(args)
     if err is not None:
         return {"ok": False, "error": err}

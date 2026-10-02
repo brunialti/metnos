@@ -142,8 +142,27 @@
  opzioni facoltative, ricontrollata prima dell'invio se compare un nuovo banner.
  Trovato il modulo, l'inserimento delle credenziali resta
  deterministico: il modello non riceve i valori dei campi e non esplora altre
- strade dopo l'inizio della digitazione. CAPTCHA e verifiche aggiuntive
- richiedono l'intervento dell'utente, non vengono aggirati.</p>
+ strade dopo l'inizio della digitazione.</p>
+ <p>Salvataggio, elenco, login e cancellazione condividono un unico deposito
+ cifrato delle credenziali. L'elenco mostra solo metadati; cambiare la cartella
+ dei dati dell'istanza non seleziona un altro deposito.</p>
+ <p>Per i CAPTCHA Cloudflare supportati, Metnos prova una sola volta la
+ libreria locale <code>playwright-captcha</code>, nella stessa sessione e per
+ non più di 10 secondi. Il tentativo rientra nei limiti del login e il suo
+ esito viene ricontrollato sulla pagina. Non usa servizi a pagamento.
+ Se la verifica resta aperta o non è supportata, come reCAPTCHA, chiede
+ l'intervento dell'utente e conserva la sessione. I codici OTP seguono una
+ procedura distinta: vengono chiesti all'utente, salvo automatismi
+ autorizzati esplicitamente. Il risolutore CAPTCHA non accetta cookie
+ e non legge OTP.</p>
+ <p>Il pannello CAPTCHA mostra la pagina della sessione già aperta, con i
+ campi sensibili oscurati. L'utente può cliccare e scorrere, aggiornare
+ l'immagine e premere <strong>Riprendi</strong>. Metnos ricontrolla l'accesso
+ e continua la richiesta originale; un CAPTCHA ancora presente riapre il
+ pannello. Se le credenziali erano già state inviate, verifica quel tentativo
+ senza inviarle nuovamente. Il pannello scade dopo dieci minuti; annullarlo
+ chiude la sua sessione. Le verifiche che richiedono tastiera o audio non
+ sono supportate da questo pannello.</p>
 
  <h2>Se non riesce</h2>
  <p>Se nessuna proposta viene ammessa, il ciclo &egrave; <code>inconclusive</code>. Se

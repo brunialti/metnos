@@ -88,6 +88,27 @@ se sono in corso turni interattivi e leggi l'eventuale avviso della pagina. Un
 riavvio non è un semplice aggiornamento visivo: interrompe davvero il processo
 selezionato.</p></div>
 
+<h2 id="browser">Browser per i siti</h2>
+
+<p>Il servizio browser usa Chromium per impostazione predefinita. L'amministratore
+può scegliere Camoufox per l'istanza su Linux x86_64: include mascheramento del
+browser e richiede un'installazione dedicata. La scelta non garantisce accesso a
+ogni sito o risoluzione dei CAPTCHA; un ostacolo non risolto richiede l'utente.</p>
+
+<p>Quando compare il pannello CAPTCHA nella chat, completa la verifica
+nell'immagine della pagina, usa <strong>Aggiorna</strong> se cambia e premi
+<strong>Riprendi</strong>. Il pannello consente clic e scorrimento, conserva
+la sessione per dieci minuti e riprende la richiesta originale dopo la
+verifica dell'accesso. <strong>Annulla</strong> chiude quella sessione.
+I codici OTP vengono chiesti in un modulo separato.</p>
+
+<p>Camoufox richiede inoltre una scelta esplicita per consentire i WebSocket:
+queste connessioni possono raggiungere destinazioni fuori dagli host approvati
+per la normale navigazione. L'opzione è disattivata per impostazione predefinita;
+con Camoufox il servizio si ferma se non è stata autorizzata. Restano i controlli
+sulle richieste HTTP, sulle origini delle credenziali e sui consensi. La scelta
+del motore richiede il normale riavvio autorizzato del servizio.</p>
+
 <h2 id="schermata">La schermata Servizi</h2>
 
 <figure class="ui-guide">

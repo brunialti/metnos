@@ -16,19 +16,57 @@ Use the common sidecar installer:
 python -m install.sidecar playwright
 ```
 
-The installer creates a Metnos-owned virtual environment and browser cache
-under the user data directory, installs Chromium, renders the user systemd
+The installer creates a Metnos-owned virtual environment and browser cache,
+installs the selected browser (Chromium by default), renders the user systemd
 unit, and verifies `/health`. It does not reuse Python environments or browser
 caches belonging to other projects.
 
 Graphical sessions also use `metnos-side-display.service`, a persistent Xvfb
 display. The selected browser surface is fixed when a session opens:
 
-- `headless`: Chromium without a visible display;
-- `side`: a real graphical Chromium window driven through Playwright.
+- `headless`: the selected browser without a visible display;
+- `side`: a real graphical browser window driven through Playwright.
 
 Automation-reduction techniques are separate configuration switches. Selecting
 the graphical surface does not automatically enable every technique.
+
+### Explicit Camoufox installation
+
+On Linux x86_64, select Camoufox for the whole instance before installation:
+
+```bash
+METNOS_SITES_BROWSER_ENGINE=camoufox METNOS_SITES_WEBSOCKETS_ALLOWED=1 \
+  python -m install.playwright_sidecar --prepare
+```
+
+`--prepare` installs without starting services. The installer persists the engine,
+WebSocket choice, stealth ceiling and browser path in `browser-engine.env` under
+the Metnos data directory. The server reads these four values before selecting
+the browser, including when the signed launcher supplies a minimal environment;
+subsequent installer runs read the same configuration.
+An explicit environment value overrides the saved choice during installation.
+Changing the browser requires the normal authorized service restart.
+
+Camoufox includes integrated fingerprint masking. Selecting it is an explicit
+instance choice of that behavior; individual Chromium stealth switches do not
+disable it. `METNOS_SITES_STEALTH_ALLOWED=false` forbids Camoufox. Chromium-only
+techniques are rejected explicitly. There is no automatic fallback between engines.
+
+`METNOS_SITES_WEBSOCKETS_ALLOWED` defaults to false. When true, site WebSockets
+are unrestricted, including their destination hosts: the HTTP request allowlist
+does not cover that transport. The exception applies to either browser engine.
+Camoufox cannot enforce the default WebSocket block through Playwright's isolated
+world and therefore refuses to start unless this exception is explicitly enabled.
+HTTP host checks, credential origins, consent, blocked service workers and WebRTC,
+and session isolation remain in force for site sessions. No extension, main-world
+evaluation bypass, COOP bypass, or external solver is enabled by this engine choice.
+
+The installer pins Python Camoufox 0.5.6, Playwright 1.61.0 and browser
+156.0.1-beta.33. It checks the official Linux archive's exact length and SHA-256
+before extraction (about 1.3 GB download, plus extracted space). Runtime startup
+requires the pinned installation receipt and never fetches a browser. A missing
+or different installation fails explicitly. The browser is a prerelease; its
+synthetic checks do not guarantee access to a particular website or solve CAPTCHA.
 
 ## Responsibilities
 
@@ -88,7 +126,7 @@ and `contract_aligned` for diagnosis.
 
 Typical failures are explicit:
 
-- missing Chromium or display service prevents the requested surface from
+- missing selected browser or display service prevents the requested surface from
   opening;
 - navigation timeouts return a typed error;
 - browser restart invalidates old sessions;

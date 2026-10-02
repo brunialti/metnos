@@ -1,0 +1,83 @@
+<script>
+(function(){
+  const texts = {
+    loading: {{ msg('MSG_CHAT_DIALOG_PROCESSING')|tojson }},
+    pending: {{ msg('MSG_BROWSER_USER_PROMPT')|tojson }},
+    ready: {{ msg('MSG_BROWSER_USER_READY')|tojson }},
+    failed: {{ msg('MSG_BROWSER_USER_ERROR')|tojson }},
+    stale: {{ msg('MSG_BROWSER_USER_STALE')|tojson }},
+    expired: {{ msg('MSG_DIALOG_EXPIRED')|tojson }},
+  };
+  const widgets = [...document.querySelectorAll('.browser-session')];
+  if(!widgets.length) return;
+  const form = widgets[0].closest('form');
+  const submit = form.querySelector('button[type="submit"]');
+  let submitting = false;
+  function updateSubmit(){
+    submit.disabled = submitting || widgets.some(w => w.dataset.busy === 'true' || w.dataset.loaded !== 'true');
+  }
+  form.addEventListener('submit', e => {
+    if(submit.disabled){ e.preventDefault(); e.stopImmediatePropagation(); return; }
+    submitting = true;
+    widgets.forEach(w => w.querySelectorAll('button').forEach(b => b.disabled = true));
+  }, true);
+  form.addEventListener('metnos:submit-error', () => {
+    submitting = false;
+    widgets.forEach(w => w.querySelectorAll('button').forEach(b => b.disabled = false));
+    updateSubmit();
+  });
+  for(const widget of widgets){
+    const view = widget.querySelector('.browser-viewport');
+    const status = widget.querySelector('.browser-status');
+    const buttons = [...widget.querySelectorAll('button')];
+    let revision = '', busy = false;
+    async function action(operation, extra = {}){
+      if(busy || submitting) return;
+      busy = true; widget.dataset.busy = 'true';
+      buttons.forEach(b => b.disabled = true); updateSubmit();
+      status.textContent = texts.loading;
+      try {
+        const response = await fetch(widget.dataset.endpoint, {
+          method:'POST', credentials:'same-origin', cache:'no-store',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({operation, revision, ...extra}),
+          signal:AbortSignal.timeout(30000),
+        });
+        if(response.status === 404 || response.status === 410){
+          widget.dataset.loaded = 'false'; view.hidden = true;
+          throw new Error(texts.expired);
+        }
+        if(!response.ok) throw new Error(texts.failed);
+        const result = await response.json();
+        if(!result.ok){
+          if(result.error_class === 'user_control_complete'){
+            status.textContent = texts.ready; return;
+          }
+          revision = '';
+          throw new Error(result.error_class === 'page_changed' ? texts.stale : texts.failed);
+        }
+        revision = result.revision;
+        view.src = 'data:image/png;base64,' + result.image;
+        await view.decode();
+        view.hidden = false; widget.dataset.loaded = 'true';
+        widget.querySelector('.browser-location').textContent = result.url || '';
+        status.textContent = result.pending ? texts.pending : texts.ready;
+      } catch(error){
+        status.textContent = [texts.expired, texts.stale].includes(error.message) ? error.message : texts.failed;
+      } finally {
+        busy = false; widget.dataset.busy = 'false';
+        buttons.forEach(b => b.disabled = false); updateSubmit();
+      }
+    }
+    buttons.forEach(button => button.addEventListener('click', () =>
+      action(button.dataset.browserAction, {direction:button.dataset.direction})));
+    view.addEventListener('click', event => {
+      if(!revision) { status.textContent = texts.stale; return; }
+      const rect = view.getBoundingClientRect();
+      action('click', {x:Math.max(0,Math.min(1,(event.clientX-rect.left)/rect.width)),
+                       y:Math.max(0,Math.min(1,(event.clientY-rect.top)/rect.height))});
+    });
+    action('snapshot');
+  }
+})();
+</script>

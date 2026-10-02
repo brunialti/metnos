@@ -36,6 +36,7 @@ import urllib.parse
 from pathlib import Path
 
 from playwright_sidecar import credential_injection
+from playwright_sidecar import captcha_solver
 from playwright_sidecar import redaction
 from playwright_sidecar import action_resolver
 from playwright_sidecar import browser_surface
@@ -143,7 +144,10 @@ def _stealth_allowed() -> bool:
 def _context_kwargs(*, stealth_techniques=(),
                     lang: str | None = None,
                     browser_version: str = "") -> dict:
-    # DEFAULT (stealth off): UA NATIVO del Chromium — nessun override (forzare
+    from playwright_sidecar import browser_engine
+    if browser_engine.incompatible_techniques(stealth_techniques):
+        raise RuntimeError("browser_technique_unsupported")
+    # UA del motore selezionato — nessun override (forzare
     # una UA e' spoofing, non igiene). Localizzazione benigna derivata dalla
     # lingua dell'istanza + timezone di sistema (H1), viewport, WebRTC off.
     kw = {
@@ -1090,7 +1094,8 @@ async def _reaper_loop() -> None:
                 if e.get("factor_pending"):
                     starts.append(float(e.get("factor_started") or now))
                 started = min(starts or [now])
-                if now - started <= _GATE_MAX_S:
+                deadline = 600 if e.get("user_control_pending") else _GATE_MAX_S
+                if now - started <= deadline:
                     continue  # TTL in pausa, ma bounded
                 dead.append(sid)
                 continue
@@ -1323,6 +1328,19 @@ async def op_open(*, owner: str, url: str, allowlist_arg=None,
             sites_audit.record("stealth_denied_by_ceiling", owner=owner)
         except Exception:
             pass
+    from playwright_sidecar import browser_engine
+    try:
+        incompatible = browser_engine.incompatible_techniques(effective_techniques)
+    except RuntimeError as exc:
+        return {"ok": False, "error": str(exc),
+                "error_class": "browser_unavailable",
+                "reason_code": "browser_unavailable"}
+    if incompatible:
+        return {"ok": False, "error": "browser technique unsupported",
+                "error_class": "browser_unavailable",
+                "reason_code": "browser_unavailable",
+                "browser_engine": browser_engine.selected(),
+                "unsupported_techniques": list(incompatible)}
     if _st.technique_enabled(
             "reuse_live_session", techniques=effective_techniques):
         reused = await _reuse_compatible_session(
@@ -1390,12 +1408,7 @@ async def op_open(*, owner: str, url: str, allowlist_arg=None,
                 auto_allowed=auto_allowed_hosts,
                 audit_ctx={"owner": owner, "domain": _canonical_host(
                     _host_of_url(url)), "session_label": session_label}))
-        if hasattr(context, "route_web_socket"):
-            async def _ws_guard(ws):
-                host = _host_of_url(ws.url)
-                if host not in allowlist:
-                    await ws.close()
-            await context.route_web_socket("**/*", _ws_guard)
+        await browser_engine.apply_websocket_policy(context)
     except Exception as e:
         await context.close()
         return {"ok": False, "error": f"context setup failed: {e}",
@@ -1556,40 +1569,115 @@ async def op_open(*, owner: str, url: str, allowlist_arg=None,
             **({"reason_code": observed_reason} if observed_reason else {})}
 
 
-async def _capture_screenshot(entry: dict) -> str | None:
-    """Cattura uno screenshot REDATTO (§3.3). Ritorna il path (0600) o None.
-    §3.2 CRITICO-3: la redazione avviene PRIMA del capture; se fallisce, NON
-    si cattura (fail-closed)."""
+async def _redacted_viewport(entry: dict) -> bytes | None:
+    """One privacy boundary for diagnostic and interactive screenshots."""
     page = entry["page"]
-    owner = entry["owner"]
-    # CRITICO-3: anche con overlay, nessun capture fra fill credenziale e
-    # submit. Questo flag viene azzerato solo dopo submit/navigazione.
     if entry.get("secret_pending"):
         return None
-    redacted = await redaction.apply_redaction(page)
-    if redacted < 0:
-        return None  # redazione fallita → mai catturare (fail-closed)
-    _sweep_old_shots(owner)
-    d = _shots_dir(owner)
-    fname = f"{entry.get('_sid','s')}_{int(time.time()*1000)}.png"
-    path = d / fname
     try:
-        # Le coordinate degli overlay di redazione sono viewport-relative.
-        # full_page=True disallineerebbe gli overlay: deve restare False.
-        mask = [page.locator(
+        frames = page.frames
+        for frame in frames:
+            if await redaction.apply_redaction(frame) < 0:
+                return None
+        mask = [frame.locator(
             'input[type=password], input[type=email], '
             'input[autocomplete="username" i], '
             'input[autocomplete="email" i], '
             'input[autocomplete="one-time-code" i], '
             'input[name*="otp" i], input[id*="otp" i], '
             'input[name*="verification" i], input[id*="verification" i], '
-            '[data-metnos-redact="1"]')]
-        await page.screenshot(path=str(path), full_page=False, mask=mask,
-                              mask_color="#000000")
-        path.chmod(0o600)
+            '[data-metnos-redact="1"]') for frame in frames]
+        return await page.screenshot(full_page=False, mask=mask,
+                                     mask_color="#000000")
     except Exception:
         return None
+
+
+async def _capture_screenshot(entry: dict) -> str | None:
+    data = await _redacted_viewport(entry)
+    if data is None:
+        return None
+    owner = entry["owner"]
+    _sweep_old_shots(owner)
+    path = _shots_dir(owner) / f"{entry.get('_sid','s')}_{int(time.time()*1000)}.png"
+    try:
+        # O_EXCL + 0600 avoid a window with broader permissions.
+        with os.fdopen(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "wb") as f:
+            f.write(data)
+    except OSError:
+        return None
     return str(path)
+
+
+async def op_user_control(*, action: dict, proof: str) -> dict:
+    """An authenticated human controls only a pending login challenge.
+
+    Coordinates refer to the last redacted viewport, never to a selector or
+    page-provided code. Revisions reject duplicate/stale clicks. No polling,
+    files, keyboard input or new browser/context are created here.
+    """
+    import base64
+    import math
+    from playwright_sidecar import user_control
+
+    def fail(reason):
+        return {"ok": False, "error_class": reason}
+
+    if not isinstance(action, dict) or not user_control.verify(
+            action, proof, user_control.instance_key()):
+        return fail("forbidden")
+    sid, owner = action.get("session_id"), action.get("owner")
+    entry, error = _validate_owned(sid, owner)
+    if entry is None:
+        return fail(error)
+    async with entry["lock"]:
+        if (not entry.get("user_control_pending") or entry.get("gate_pending")
+                or entry.get("authenticated") or entry.get("secret_pending")
+                or time.time() - float(entry.get("factor_started", 0)) > 600):
+            return fail("user_control_unavailable")
+        page = entry["page"]
+        operation = action.get("operation")
+        if not isinstance(operation, str) or operation not in {"snapshot", "click", "scroll"}:
+            return fail("invalid_args")
+        if operation != "snapshot":
+            frame = entry.get("user_control_frame") or {}
+            if (not action.get("revision") or action["revision"] != frame.get("revision")
+                    or page.url != frame.get("url")):
+                return fail("page_changed")
+            # A completed challenge closes manual control even before Resume.
+            if await credential_injection.classify_login_surface(page) != "captcha_required":
+                return fail("user_control_complete")
+            if operation == "click":
+                x, y = action.get("x"), action.get("y")
+                if any(type(v) not in (int, float) or not math.isfinite(v)
+                       or not 0 <= v <= 1 for v in (x, y)):
+                    return fail("invalid_args")
+            elif (not isinstance(action.get("direction"), str)
+                  or action["direction"] not in {"up", "down"}):
+                return fail("invalid_args")
+            # Invalidate before acting, including on timeout: never replay.
+            entry.pop("user_control_frame", None)
+            if operation == "click":
+                await page.mouse.click(x * frame["width"], y * frame["height"])
+            else:
+                await page.mouse.wheel(0, (1 if action["direction"] == "down" else -1)
+                                       * frame["height"] * 0.65)
+            # One bounded render interval, not a background watcher.
+            await asyncio.sleep(0.35)
+            sites_audit.record("login_user_action", owner=owner,
+                               session_id=sid, action=operation)
+        await _touch(entry)
+        data = await _redacted_viewport(entry)
+        if data is None:
+            entry.pop("user_control_frame", None)
+            return fail("redaction_failed")
+        viewport = await page.evaluate("() => ({width:innerWidth,height:innerHeight})")
+        revision = secrets.token_hex(16)
+        entry["user_control_frame"] = {**viewport, "revision": revision, "url": page.url}
+        return {"ok": True, "image": base64.b64encode(data).decode("ascii"),
+                "revision": revision, "url": scrub_url(page.url),
+                "pending": await credential_injection.classify_login_surface(page)
+                           == "captcha_required"}
 
 
 async def op_read(*, session_id: str, owner: str | None = None,
@@ -1803,6 +1891,8 @@ async def op_login(*, session_id: str, owner: str | None = None,
                     "reason_code": "already_authenticated",
                     "session_id": session_id}
         entry["_sid"] = session_id
+        entry.pop("user_control_pending", None)
+        entry.pop("user_control_frame", None)
         flow = entry.get("login_flow")
         if (not isinstance(flow, dict) or flow.get("domain") != dom
                 or time.time() - float(flow.get("started", 0)) > _GATE_MAX_S):
@@ -1961,6 +2051,8 @@ async def op_login(*, session_id: str, owner: str | None = None,
                     max_entry_steps=_MAX_LOGIN_ENTRY_STEPS,
                     page_provider=lambda: entry.get("page"),
                     prepare_page=_reject_privacy_overlay,
+                    resolve_captcha=lambda page: _resolve_login_captcha(
+                        entry, session_id, flow, page),
                     factor_state=flow.setdefault("factor_state", {}),
                     checkpoint=_login_checkpoint,
                     total_timeout_s=_LOGIN_TIMEOUT_S,
@@ -1995,6 +2087,8 @@ async def op_login(*, session_id: str, owner: str | None = None,
         elif not res.get("approval_required"):
             entry["factor_pending"] = False
             entry.pop("factor_started", None)
+        entry["user_control_pending"] = (res.get("reason_code") == "captcha_required"
+                                           and not res.get("approval_required"))
         # Ogni login non completato deve lasciare evidenza diagnostica
         # redatta. La tassonomia puo' crescere senza creare buchi di
         # osservabilita'; approval resta esclusa perche' ha il proprio gate.
@@ -2527,6 +2621,29 @@ def _login_entry_candidates(candidates: list[dict], current_url: str = "") -> li
                 "checkbox", "radio", "switch", "combobox"}]
 
 
+async def _resolve_login_captcha(entry: dict, session_id: str, flow: dict, page) -> bool:
+    """One local attempt within the existing login's permission and budgets."""
+    attempt = flow.setdefault("captcha_state", {})
+    search = flow.setdefault("entry_search", {})
+    if (attempt.get("attempted") or page is not entry.get("page")
+            or int(search.get("actions", 0)) >= login_navigation.MAX_ACTIONS):
+        return False
+    remaining = float(search.get("remaining_s", _LOGIN_TIMEOUT_S))
+    if remaining <= 0:
+        return False
+    started = _monotonic()
+    try:
+        return await captcha_solver.solve_once(
+            page=page, state=attempt, allowed_hosts=set(entry.get("allowlist") or ()),
+            pending_script=credential_injection._DETECT_CAPTCHA_JS,
+            owner=entry.get("owner", ""), session_id=session_id,
+            domain=entry.get("domain", ""), timeout_s=remaining)
+    finally:
+        if attempt.get("status") not in {"unsupported", "unavailable", "origin_unverified"}:
+            search["actions"] = int(search.get("actions", 0)) + 1
+        search["remaining_s"] = max(0.0, remaining - (_monotonic() - started))
+
+
 async def _discover_login_entry(entry: dict, session_id: str, flow: dict) -> dict:
     """Explore before fill; all forward/replayed controls use ordinary gates."""
     state = flow.setdefault("entry_search", {})
@@ -2545,10 +2662,19 @@ async def _discover_login_entry(entry: dict, session_id: str, flow: dict) -> dic
         if host and host not in set(entry.get("allowlist") or ()):
             return {"terminal": await _resume_blocked_login_destination(
                 entry, session_id, state, {"ok": True, "executed": True})}
+        blocker = await credential_injection.classify_login_surface(entry["page"])
+        if blocker == "captcha_required" and await _resolve_login_captcha(
+                entry, session_id, flow, entry["page"]):
+            blocker = await credential_injection.classify_login_surface(entry["page"])
+        if blocker:
+            return {"terminal": {"ok": False, "reason_code": blocker,
+                                 "error_class": blocker}}
         outcome = await _clear_login_surface(entry, settle=False)
         if outcome.status == "blocked":
             return {"terminal": {"ok": False,
-                    "error_class": "cookie_precondition_unresolved"}}
+                    "error_class": "cookie_precondition_unresolved",
+                    "obstruction_kind": outcome.kind,
+                    "obstruction_reason": outcome.reason}}
         page = entry["page"]
         host = _host_of_url(page.url)
         if host and host not in set(entry.get("allowlist") or ()):
@@ -2556,6 +2682,9 @@ async def _discover_login_entry(entry: dict, session_id: str, flow: dict) -> dic
                 entry, session_id, state, {"ok": True, "executed": True})}
         state.setdefault("pages", set()).add(page)
         blocker = await credential_injection.classify_login_surface(page)
+        if blocker == "captcha_required" and await _resolve_login_captcha(
+                entry, session_id, flow, page):
+            blocker = await credential_injection.classify_login_surface(page)
         if blocker:
             return {"terminal": {"ok": False, "reason_code": blocker,
                                  "error_class": blocker}}
@@ -3121,13 +3250,26 @@ async def _dismiss_privacy_obstruction(entry: dict, *,
         state["origin"] = origin
     clicks_before = state.get("clicks", 0)
     deadline = _monotonic() + (_REVEAL_SETTLE_MS / 1000.0 if settle else 0.0)
+    reobservations = 0
     while True:
+        if (reobservations and sites_origin.origin_of_url(
+                getattr(entry["page"], "url", "") or "") != origin):
+            break
         outcome = await cookie_privacy.reject_cookies(
             entry["page"], state, redact=entry.get("_cookie_redact"),
             timeout_s=_LOCAL_RESOLVER_TIMEOUT_MS / 1000.0,
             enabled=_MODEL_FALLBACKS_ENABLED)
-        if (outcome.panels or outcome.status == "blocked"
-                or _monotonic() >= deadline):
+        # A SPA can replace the observed nodes while the local classifier
+        # runs. Never click that stale snapshot. Reobserve fresh nodes within
+        # the same origin and the existing decision/click/time budgets.
+        refresh = (outcome.status == "blocked" and outcome.reason == "stale_dom"
+                   and reobservations < _MAX_ACTION_REPLANS and bool(origin)
+                   and sites_origin.origin_of_url(
+                       getattr(entry["page"], "url", "") or "") == origin)
+        if refresh:
+            reobservations += 1
+        elif (outcome.panels or outcome.status == "blocked"
+              or _monotonic() >= deadline):
             break
         if hasattr(entry["page"], "wait_for_timeout"):
             await entry["page"].wait_for_timeout(_REVEAL_POLL_MS)
@@ -3207,7 +3349,8 @@ async def _clear_login_surface(
     returned, because only that one can refuse.
     """
     outcome = await _dismiss_privacy_obstruction(entry, settle=settle)
-    await _dismiss_obstructing_overlay(entry, settle=settle)
+    if outcome.status != "blocked":
+        await _dismiss_obstructing_overlay(entry, settle=settle)
     return outcome
 
 
@@ -4441,7 +4584,7 @@ async def _wait_for_goal_navigation_commit(page, before_url: str, *,
 
 
 def _browser_navigation_failure(url: str) -> str:
-    """Classify Chromium-owned top-level error documents.
+    """Classify browser-owned top-level error documents.
 
     A click can be dispatched successfully while the browser fails the
     resulting network navigation and commits ``chrome-error://chromewebdata``
@@ -4722,8 +4865,12 @@ async def _execute_plan(entry: dict, token: str, plan: dict) -> dict:
                               in {"http", "https"} else "")
                 blocked_login_popup = bool(
                     plan.get("login_flow")
-                    and _browser_navigation_failure(popup_url))
+                    and (_browser_navigation_failure(popup_url)
+                         or popup_url == "about:blank"))
                 if blocked_login_popup:
+                    # Firefox can abort before committing an error document.
+                    # A blank popup alone proves no destination: require the
+                    # same unique blocked HTTP(S) document as an error popup.
                     observed_hosts = _blocked_login_navigation_hosts(
                         entry, popup=True)
                     if len(observed_hosts) != 1:

@@ -38,7 +38,7 @@ from pathlib import Path
 VALID_KINDS = (
     "text", "credentials", "yes_no", "choice", "multi_choice",
     "number", "date", "file_path", "location",
-    "choice_with_preview",
+    "choice_with_preview", "browser_session",
 )
 
 MAX_STEPS = 30
@@ -123,6 +123,10 @@ def _validate_dialog(dialog) -> tuple[bool, str | None]:
         if kind not in VALID_KINDS:
             return False, _msg("ERR_DLG_KIND_INVALID", i=i, var=var,
                                kind=repr(kind), allowed=", ".join(VALID_KINDS))
+        if kind == "browser_session" and not (
+                isinstance(schema.get("session_id"), str)
+                and 1 <= len(schema["session_id"]) <= 128):
+            return False, _msg("ERR_ARG_INVALID", arg="session_id", reason="browser_session")
         # choice / multi_choice richiedono `choices` esplicite OPPURE
         # derivazione da entries (ADR 0127 propose-and-fire): se lo step
         # ha `display_template` (o flag `from_entries=true`), `choices`

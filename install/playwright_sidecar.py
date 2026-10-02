@@ -3,11 +3,11 @@
 
 Abilita la lettura di pagine rese via JavaScript (SPA: shopping, social,
 molti siti moderni) che il fetch HTTP statico non riesce a leggere. Il
-rendering avviene **interamente in locale** (Chromium headless su questa
+rendering avviene **interamente in locale** (browser selezionato su questa
 macchina): nessuna pagina passa da un servizio o provider esterno.
 
-Opzionale ma consigliato se la macchina ha risorse (~180 MB di download
-una-tantum per Chromium + ~200 MB di RAM quando il sidecar e' attivo).
+Chromium resta il default. Camoufox richiede una scelta esplicita su Linux
+x86_64 e un archivio verificato di circa 1,3 GB, oltre allo spazio estratto.
 Senza, Metnos degrada con onesta': read_urls_html segnala "pagina SPA non
 leggibile" invece di restituire contenuto vuoto.
 
@@ -19,17 +19,22 @@ Robustezza rete: il download di Chromium viene scaricato a blocchi con
 verifica d'integrita' per-blocco (doppio-fetch concorde) e md5 totale
 contro l'hash ufficiale dell'oggetto. Cosi' una linea instabile (reset,
 corruzione silenziosa) non produce un browser corrotto.
+Camoufox usa una release esatta con limite di dimensione e SHA-256 fissati;
+nessun download o cambio motore avviene durante l'esecuzione.
 """
 
 from __future__ import annotations
 
 import base64
 import hashlib
+import json
 import os
 import re
 import subprocess
 import sys
 from pathlib import Path
+
+from runtime.playwright_sidecar import browser_engine
 
 try:
     from . import ui
@@ -88,9 +93,12 @@ def _pip_install(py: str) -> bool:
         if core.returncode != 0:
             ui.warn(f"pip core fallito: {core.stderr.strip()[-300:]}")
             return False
+    packages = ["playwright==1.61.0", "playwright-captcha==0.1.5"]
+    if browser_engine.selected() == "camoufox":
+        packages.append("camoufox==0.5.6")
     r = subprocess.run(
         [py, "-m", "pip", "install", "--upgrade",
-         "playwright==1.61.0"],
+         *packages],
         capture_output=True, text=True,
     )
     if r.returncode != 0:
@@ -266,6 +274,84 @@ def _install_browsers(py: str) -> bool:
     return all_ok
 
 
+def _install_camoufox() -> bool:
+    """Install the pinned official Linux build; verify before atomic admission."""
+    import httpx
+    import tempfile
+    import time
+    import zipfile
+
+    destination = browser_engine.browser_directory()
+    try:
+        try:
+            browser_engine.installed_binary()
+        except RuntimeError:
+            if destination.exists():
+                raise RuntimeError("camoufox destination exists but is not the pinned installation")
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            with tempfile.TemporaryDirectory(prefix=".camoufox-", dir=destination.parent) as temp:
+                archive = Path(temp) / "browser.zip"
+                digest = hashlib.sha256()
+                size = 0
+                deadline = time.monotonic() + 600
+                with httpx.stream("GET", browser_engine.CAMOUFOX_URL,
+                                  follow_redirects=True, timeout=60) as response:
+                    response.raise_for_status()
+                    with archive.open("wb") as stream:
+                        for block in response.iter_bytes(1024 * 1024):
+                            size += len(block)
+                            if size > browser_engine.CAMOUFOX_SIZE or time.monotonic() > deadline:
+                                raise RuntimeError("camoufox download limit exceeded")
+                            stream.write(block)
+                            digest.update(block)
+                if (size != browser_engine.CAMOUFOX_SIZE or
+                        digest.hexdigest() != browser_engine.CAMOUFOX_SHA256):
+                    raise RuntimeError("camoufox archive SHA-256 mismatch")
+                extracted = Path(temp) / "browser"
+                extracted.mkdir()
+                with zipfile.ZipFile(archive) as bundle:
+                    for member in bundle.infolist():
+                        target = (extracted / member.filename).resolve()
+                        if not target.is_relative_to(extracted.resolve()):
+                            raise RuntimeError("camoufox archive path outside destination")
+                        bundle.extract(member, extracted)
+                        mode = (member.external_attr >> 16) & 0o777
+                        if mode:
+                            target.chmod(mode)
+                binary = extracted / "camoufox-bin"
+                if not binary.is_file() or not os.access(binary, os.X_OK):
+                    raise RuntimeError("camoufox executable missing")
+                (extracted / "version.json").write_text(json.dumps({
+                    "version": browser_engine.CAMOUFOX_VERSION,
+                    "release": browser_engine.CAMOUFOX_BUILD}))
+                (extracted / "metnos-install.json").write_text(json.dumps({
+                    "sha256": browser_engine.CAMOUFOX_SHA256,
+                    "url": browser_engine.CAMOUFOX_URL}))
+                extracted.rename(destination)
+            browser_engine.installed_binary()
+        # The Python launcher and Firefox use different application directories.
+        # Prepare both while installing, including for a read-only service home.
+        for name in (".camoufox", "camoufox"):
+            (Path.home() / name).mkdir(mode=0o700, exist_ok=True)
+    except Exception as exc:
+        ui.warn(f"Camoufox installation failed: {exc}")
+        return False
+    ui.ok(f"Camoufox {browser_engine.CAMOUFOX_RELEASE}: verified")
+    return True
+
+
+def _save_browser_configuration() -> None:
+    from .services import _write
+
+    values = {"METNOS_SITES_BROWSER_ENGINE": browser_engine.selected(),
+              "METNOS_SITES_WEBSOCKETS_ALLOWED": "1" if browser_engine.websockets_allowed() else "0",
+              "METNOS_SITES_STEALTH_ALLOWED": os.environ.get("METNOS_SITES_STEALTH_ALLOWED", "1"),
+              "METNOS_CAMOUFOX_BROWSERS_PATH": str(browser_engine.browser_directory().parent)}
+    # JSON strings, read only by the shared runtime parser, never by a shell.
+    _write(browser_engine.configuration_path(), "".join(
+        f"{key}={json.dumps(value)}\n" for key, value in values.items()))
+
+
 # ─── systemd user unit ───────────────────────────────────────────
 
 def _install_unit() -> bool:
@@ -331,18 +417,30 @@ def _health_8771(timeout_s: int = 20) -> bool:
 
 def install(*, yes: bool = False, activate: bool = True, managed: bool = False) -> dict:
     """Installa il sidecar Playwright. Ritorna note per lo stato fase."""
+    try:
+        browser_engine.load_configuration()
+        engine = browser_engine.selected()
+    except (RuntimeError, ValueError, OSError):
+        return {"playwright": "browser_configuration_failed"}
     if not _ensure_venv():
         return {"playwright": "venv_failed"}
     py = _venv_python()
     if managed:
         # This environment is the immutable, hash-verified release closure.
-        from importlib.metadata import version
-        if version("playwright") != "1.61.0":
+        from importlib.metadata import PackageNotFoundError, version
+        try:
+            valid = (version("playwright") == "1.61.0" and
+                     version("playwright-captcha") == "0.1.5" and
+                     (engine != "camoufox" or version("camoufox") == "0.5.6"))
+        except PackageNotFoundError:
+            valid = False
+        if not valid:
             return {"playwright": "pip_failed"}
     elif not _pip_install(py):
         return {"playwright": "pip_failed"}
-    if not _install_browsers(py):
-        return {"playwright": "chromium_failed"}
+    if not (_install_camoufox() if engine == "camoufox" else _install_browsers(py)):
+        return {"playwright": f"{engine}_failed"}
+    _save_browser_configuration()
     if not activate:
         return {"playwright": "prepared"}
     if not _install_unit():
@@ -360,9 +458,10 @@ def install(*, yes: bool = False, activate: bool = True, managed: bool = False) 
 def main() -> int:
     yes = "--yes" in sys.argv or "-y" in sys.argv
     ui.step("JS-render sidecar (locale, nessun provider esterno)")
-    notes = install(yes=yes)
+    prepare = "--prepare" in sys.argv
+    notes = install(yes=yes, activate=not prepare)
     print(notes)
-    return 0 if notes.get("playwright", "") in ("running", "started_unhealthy") else 1
+    return 0 if notes.get("playwright", "") in ("running", "started_unhealthy", "prepared") else 1
 
 
 if __name__ == "__main__":

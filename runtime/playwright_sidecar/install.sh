@@ -1,8 +1,9 @@
 #!/bin/bash
 # install.sh — setup del sidecar Playwright (ADR 0125).
 #
-# Scarica ~300MB (Chromium headless). NON eseguito automaticamente: Roberto
-# lancia manualmente quando vuole abilitare il JS-rendering.
+# Prepara il motore selezionato senza avviare servizi. Chromium e' il default;
+# Camoufox (Linux x86_64) richiede METNOS_SITES_BROWSER_ENGINE=camoufox
+# e l'eccezione esplicita METNOS_SITES_WEBSOCKETS_ALLOWED=1.
 #
 # Uso:
 #   ./install.sh                # venv Metnos canonico
@@ -15,6 +16,8 @@ METNOS_USER_DATA="${METNOS_USER_DATA:-$HOME/.local/share/metnos}"
 METNOS_VENV="${METNOS_VENV:-$ROOT/.venv}"
 PYTHON="$METNOS_VENV/bin/python"
 export PLAYWRIGHT_BROWSERS_PATH="${PLAYWRIGHT_BROWSERS_PATH:-$METNOS_USER_DATA/playwright-browsers}"
+export METNOS_USER_DATA METNOS_VENV
+export METNOS_INSTALL_ROOT="$ROOT"
 
 if [ ! -x "$PYTHON" ]; then
     BASE_PYTHON="${BASE_PYTHON:-python3}"
@@ -23,17 +26,6 @@ if [ ! -x "$PYTHON" ]; then
     "$BASE_PYTHON" -m venv "$METNOS_VENV"
 fi
 
-echo "[1/2] pip install dipendenze Metnos + playwright..."
-"$PYTHON" -m pip install --upgrade-strategy only-if-needed \
-    -r "$ROOT/requirements.txt"
-"$PYTHON" -m pip install --upgrade "playwright==1.61.0"
-
-echo "[2/2] playwright install chromium (~300MB download)..."
-"$PYTHON" -m playwright install chromium
-
-echo
-echo "OK. Avvia il sidecar:"
-echo "  $PYTHON -m playwright_sidecar.server --host 127.0.0.1 --port 8771"
-echo "Oppure abilita il servizio systemd-user:"
-echo "  systemctl --user daemon-reload"
-echo "  systemctl --user enable --now metnos-playwright.service"
+cd "$ROOT"
+"$PYTHON" -m install.playwright_sidecar --prepare
+echo "Motore preparato; configurazione: $METNOS_USER_DATA/browser-engine.env"

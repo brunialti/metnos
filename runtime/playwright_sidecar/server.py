@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Sidecar HTTP server per JS-rendering via Playwright headless Chromium.
+"""Sidecar HTTP server per JS-rendering via Playwright e motore esplicito.
 
 ADR 0125, Phase 1.
 
@@ -13,7 +13,7 @@ Body POST /render: {"url": str, "wait_ms"?: int=2000, "viewport"?: {w, h}}.
 
 Design:
     - aiohttp server async, single-process, single-browser.
-    - Un solo `browser` Chromium persistente (~200MB RAM); ogni request
+    - Un solo `browser` persistente; ogni request
       apre un nuovo `context` (isolamento cookie/storage) + `page`.
     - Timeout hard 30s per page-load + render-wait combinato.
     - Fail-loud §2.8: tutti i path d'errore producono dict esplicito,
@@ -47,6 +47,7 @@ import time
 from aiohttp import web
 
 from playwright_sidecar import contract as _contract
+from playwright_sidecar import browser_engine as _engine
 
 logger = logging.getLogger("playwright_sidecar")
 
@@ -85,7 +86,8 @@ async def _contract_middleware(request: web.Request, handler):
     response.headers[_contract.HEADER_NAME] = _contract.LOADED_FINGERPRINT
     return response
 
-# Stato globale browser. HONEST = `_browser` (default onesto, sempre pronto).
+# Stato globale browser. `_browser` e' il motore base, sempre pronto.
+# Chromium e' nativo; Camoufox comprende mascheramento integrato dichiarato.
 # Le varianti non-default sono lazy: headless+LAUNCH, side, side+LAUNCH.
 # Owner ESCLUSIVO di Playwright/browser = questo modulo (B1): il broker riceve
 # un provider (`_get_browser`) e non lancia mai.
@@ -148,7 +150,7 @@ def _side_browser_available() -> bool:
 
 
 def _browser_environment() -> dict[str, str]:
-    """Keep Chromium's configuration/crash database inside writable app roots."""
+    """Keep browser configuration/cache inside writable app roots."""
     environment = dict(os.environ)
     if sys.platform.startswith("linux"):
         import config as C
@@ -163,16 +165,33 @@ def _browser_environment() -> dict[str, str]:
     return environment
 
 
+async def _launch_browser(*, headless: bool, launch_stealth: bool = False):
+    environment = _browser_environment()
+    if _engine.selected() == "camoufox":
+        if launch_stealth:
+            raise RuntimeError("browser_technique_unsupported")
+        return await _engine.launch(_playwright, headless=headless,
+                                    environment=environment)
+    from playwright_sidecar import stealth
+    args = list(_HONEST_LAUNCH_ARGS)
+    if launch_stealth:
+        stealth.apply_launch_args(args, techniques=("webdriver_launch_arg",))
+    return await _playwright.chromium.launch(
+        headless=headless, args=args, env=environment)
+
+
 async def _get_browser(browser_mode: str, launch_stealth: bool):
     """Ritorna la variante esatta richiesta, lanciandola lazy.
 
     `headless` usa il browser base o la variante LAUNCH stealth. `side` usa il
-    Chromium completo grafico, pilotato da Playwright, con una variante distinta
-    quando e' selezionato WebDriver. Nessun fallback fra superfici.
+    motore grafico selezionato, pilotato da Playwright. La variante WebDriver
+    esiste solo con Chromium. Nessun fallback fra motori o superfici.
     """
     global _browser_stealth, _browser_side, _browser_side_stealth
     if browser_mode not in {"headless", "side"}:
         raise RuntimeError("invalid_browser_mode")
+    if _engine.selected() == "camoufox" and launch_stealth:
+        raise RuntimeError("browser_technique_unsupported")
     if browser_mode == "headless" and not launch_stealth:
         if not _browser_connected():
             raise RuntimeError("browser_unavailable")
@@ -194,18 +213,13 @@ async def _get_browser(browser_mode: str, launch_stealth: bool):
                    else _browser_side)
         if _is_connected(current):
             return current
-        from playwright_sidecar import stealth as _stealth_mod
-        args = list(_HONEST_LAUNCH_ARGS)
-        if launch_stealth:
-            _stealth_mod.apply_launch_args(
-                args, techniques=("webdriver_launch_arg",))
         try:
-            browser = await _playwright.chromium.launch(
-                headless=(browser_mode == "headless"), args=args,
-                env=_browser_environment())
+            browser = await _launch_browser(
+                headless=(browser_mode == "headless"),
+                launch_stealth=launch_stealth)
         except Exception as exc:  # noqa: BLE001
-            logger.error("%s chromium launch failed (launch_stealth=%s): %s",
-                         browser_mode, launch_stealth, exc)
+            logger.error("%s %s launch failed (launch_stealth=%s): %s",
+                         browser_mode, _engine.selected(), launch_stealth, exc)
             error = ("side_browser_unavailable" if browser_mode == "side"
                      else "browser_unavailable")
             raise RuntimeError(error) from exc
@@ -217,8 +231,8 @@ async def _get_browser(browser_mode: str, launch_stealth: bool):
             _browser_side_stealth = browser
         else:
             _browser_side = browser
-        logger.info("%s chromium launched (lazy, launch_stealth=%s)",
-                    browser_mode, launch_stealth)
+        logger.info("%s %s launched (lazy, launch_stealth=%s)",
+                    browser_mode, _engine.selected(), launch_stealth)
         return browser
 
 
@@ -265,7 +279,7 @@ async def _watchdog_loop() -> None:
     while True:
         await asyncio.sleep(interval)
         if not _browser_connected():
-            _sd_notify("STATUS=Chromium disconnected; waiting for restart")
+            _sd_notify("STATUS=Browser disconnected; waiting for restart")
             return
         if not _broker_health_snapshot().get("reaper_running"):
             logger.critical("session reaper stopped; waiting for watchdog restart")
@@ -279,9 +293,9 @@ async def _terminate_after_disconnect() -> None:
     global _browser
     if _stopping:
         return
-    logger.critical("chromium disconnected unexpectedly; restarting sidecar")
+    logger.critical("browser disconnected unexpectedly; restarting sidecar")
     _browser = None
-    _sd_notify("STATUS=Chromium disconnected; restarting")
+    _sd_notify("STATUS=Browser disconnected; restarting")
     try:
         from playwright_sidecar import session_broker
         await session_broker.shutdown()
@@ -296,7 +310,7 @@ def _browser_disconnected() -> None:
     try:
         asyncio.get_running_loop().create_task(_terminate_after_disconnect())
     except RuntimeError:
-        logger.critical("chromium disconnected without a running event loop")
+        logger.critical("browser disconnected without a running event loop")
 
 
 def _classify_playwright_error(exc: BaseException) -> str:
@@ -337,12 +351,16 @@ async def handle_health(request: web.Request) -> web.Response:
         )
     out = {
         "ok": True,
-        "browser": "chromium",
+        "browser": _engine.selected(),
+        "browser_integrated_masking": _engine.selected() == "camoufox",
+        "browser_websockets_allowed": _engine.websockets_allowed(),
         "version": _browser_version,
         "generation": _browser_generation,
         "uptime_s": max(0, int(time.monotonic() - _browser_ready_since)),
         # ADR 0191 P1/C3: stato separato delle varianti browser.
-        "browser_honest_connected": _browser_connected(),
+        "browser_base_connected": _browser_connected(),
+        "browser_honest_connected": (
+            _engine.selected() == "chromium" and _browser_connected()),
         "browser_stealth_state": (
             "not_started" if _browser_stealth is None
             else "connected" if _is_connected(_browser_stealth)
@@ -410,6 +428,7 @@ async def handle_render(request: web.Request) -> web.Response:
             viewport={"width": vw, "height": vh},
             user_agent="metnos-crawler/1.2 (+metnos@metnos.com) playwright",
         )
+        await _engine.apply_websocket_policy(context)
         page = await context.new_page()
         # Hard cap: navigation + wait combinati non eccedano il timeout.
         # goto wait_until="load" attende l'evento load (DOM + assets sync).
@@ -559,6 +578,12 @@ async def handle_session_screenshot(request):
     return await _broker_call(request, _op)
 
 
+async def handle_session_user_control(request):
+    async def _op(sb, b):
+        return await sb.op_user_control(action=b.get("action"), proof=b.get("proof"))
+    return await _broker_call(request, _op, timeout_s=20.0)
+
+
 async def handle_session_login(request):
     async def _op(sb, b):
         return await sb.op_login(
@@ -615,7 +640,7 @@ handle_session_wait = _primitive_handler("op_wait", value_key="seconds")
 
 
 async def _on_startup(app: web.Application) -> None:
-    """Inizializza Playwright + Chromium browser."""
+    """Initialize Playwright and the explicitly selected instance browser."""
     global _browser, _playwright, _browser_version, _browser_ready_since
     global _browser_generation, _watchdog_task, _stopping, _stealth_launch_lock
     _stopping = False
@@ -630,27 +655,30 @@ async def _on_startup(app: web.Application) -> None:
                      "`runtime/playwright_sidecar/install.sh`", e)
         raise SystemExit(1)
 
+    try:
+        _engine.load_configuration()
+        _engine.prepare_environment(_browser_environment())
+    except Exception as exc:
+        logger.error("browser configuration failed: %s", exc)
+        raise SystemExit(1) from exc
     _playwright = await async_playwright().start()
     _stealth_launch_lock = asyncio.Lock()
-    # Browser HONEST (default onesto, ADR 0191): nessun flag anti-rilevamento.
-    # `navigator.webdriver` resta nativo. Le altre combinazioni superficie/layer
-    # LAUNCH sono lazy in `_get_browser` e cambiano per-sessione dalla UI Website
-    # browsing senza restart.
-    launch_args = list(_HONEST_LAUNCH_ARGS)
+    # Chromium resta nativo (ADR 0191); Camoufox include il proprio mascheramento,
+    # selezionato esplicitamente dall'istanza e vincolato al ceiling globale.
+    # Le superfici aggiuntive sono lazy in `_get_browser`.
     last_error = None
     for attempt in range(1, 4):
         try:
-            _browser = await _playwright.chromium.launch(
-                headless=True, args=launch_args, env=_browser_environment())
+            _browser = await _launch_browser(headless=True)
             break
         except Exception as exc:  # noqa: BLE001
             last_error = exc
-            logger.warning("chromium launch attempt %d/3 failed: %s",
-                           attempt, exc)
+            logger.warning("%s launch attempt %d/3 failed: %s",
+                           _engine.selected(), attempt, exc)
             if attempt < 3:
                 await asyncio.sleep(0.5 * attempt)
     if _browser is None:
-        logger.error("chromium launch failed after 3 attempts: %s", last_error)
+        logger.error("%s launch failed after 3 attempts: %s", _engine.selected(), last_error)
         await _playwright.stop()
         _playwright = None
         raise SystemExit(1)
@@ -678,13 +706,12 @@ async def _on_startup(app: web.Application) -> None:
             await _playwright.stop()
             _playwright = None
             raise SystemExit(1)
-        _sd_notify("READY=1\nSTATUS=Chromium ready")
+        _sd_notify(f"READY=1\nSTATUS={_engine.selected()} ready")
         _watchdog_task = asyncio.create_task(_watchdog_loop())
-        logger.info("playwright chromium %s ready", _browser_version)
+        logger.info("playwright %s %s ready", _engine.selected(), _browser_version)
     except Exception as e:
-        # Tipico: `playwright install chromium` non eseguito.
-        logger.error("chromium launch failed: %s — run `playwright install "
-                     "chromium`", e)
+        logger.error("browser initialization failed: %s — run "
+                     "`runtime/playwright_sidecar/install.sh`", e)
         await _playwright.stop()
         raise SystemExit(1)
 
@@ -751,6 +778,7 @@ def make_app() -> web.Application:
     app.router.add_post("/session/read", handle_session_read)
     app.router.add_post("/session/screenshot", handle_session_screenshot)
     app.router.add_post("/session/login", handle_session_login)
+    app.router.add_post("/session/user-control", handle_session_user_control)
     app.router.add_post("/session/close", handle_session_close)
     app.router.add_post("/session/act", handle_session_act)
     app.router.add_post("/session/goto", handle_session_goto)

@@ -244,11 +244,14 @@ form.tp-filters label{display:inline-flex;gap:.35rem;align-items:center;
 .dw-job-header{display:flex;align-items:center;gap:8px;padding:4px 8px;background:var(--surface-2)}
 .dw-job-row[data-expanded="true"]>.dw-job-header{background:var(--accent-soft,#e1efec);box-shadow:inset 3px 0 var(--accent,#127665)}
 .dw-job-summary{flex:1;min-width:0;overflow-x:auto;scrollbar-width:thin;container-type:inline-size}
-.dw-job-fields{display:grid;grid-template-columns:minmax(150px,1fr) repeat(2,15rem);align-items:center;gap:20px;width:100%;min-width:max-content;padding:4px 8px;font-size:.85rem;white-space:nowrap}
+.dw-job-fields{display:grid;grid-template-columns:minmax(150px,1fr) repeat(2,10rem) minmax(10.5rem,11rem);align-items:center;gap:16px;width:100%;min-width:max-content;padding:4px 8px;font-size:.85rem;white-space:nowrap}
+.dw-list-columns{font-size:.75rem;font-weight:600;color:var(--muted);border-bottom:1px solid var(--border)}
+.dw-list-columns .dw-job-fields{font-size:inherit}
 .dw-job-state{flex:0 0 12rem;text-align:right}
 .dw-job-controls{display:grid;grid-template-columns:repeat(2,36px);gap:4px;flex:none}
 .dw-job-title{overflow:hidden;text-overflow:ellipsis;max-width:320px}
-.dw-job-date{font-variant-numeric:tabular-nums}.dw-date-label{color:var(--muted);font-size:.75rem}
+.dw-job-date{font-variant-numeric:tabular-nums}
+.dw-job-temporary{overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
 .dw-job-choice,.dw-job-dismiss{flex:none;width:36px;height:36px;border:0;border-radius:var(--r-1);background:transparent;color:var(--ink);font-size:1.35rem;line-height:1;cursor:pointer}
 .dw-job-choice:hover{background:var(--surface);color:var(--accent,#127665)}
 .dw-job-dismiss{color:var(--muted)}.dw-job-dismiss[hidden]{display:none}
@@ -272,7 +275,7 @@ form.tp-filters label{display:inline-flex;gap:.35rem;align-items:center;
 .dw-detail>.dw-actions{padding:8px 0 16px;border-bottom:1px solid var(--border);gap:8px}.dw-detail>.dw-actions .bad{margin-left:auto}
 .dw-disclosure{border-top:1px solid var(--border);padding:14px 0}.dw-disclosure summary{cursor:pointer;font-weight:600}.dw-disclosure p{font-size:.85rem;line-height:1.6;color:var(--muted)}
 .dw-disclosure .dw-facts{margin-top:12px}.dw-detail .dw-subpanel{padding:14px 0}.dw-job-code{overflow-wrap:anywhere}
-@media(max-width:520px){.dw-detail{padding:16px}.dw-job-header{gap:4px;padding:4px}.dw-job-fields{gap:12px;grid-template-columns:max(150px,calc(100cqw - 16px)) repeat(2,15rem)}.dw-job-title{max-width:calc(100cqw - 16px)}.dw-job-state{flex-basis:auto}.dw-status-bar button{margin-left:0;width:100%}.dw-progress-table th,.dw-progress-table td{padding:5px 4px}.dw-progress-table thead th:first-child{width:35%}}
+@media(max-width:520px){.dw-detail{padding:16px}.dw-job-header{gap:4px;padding:4px}.dw-job-fields{gap:12px;grid-template-columns:max(150px,calc(100cqw - 16px)) repeat(2,10rem) 10.5rem}.dw-job-title{max-width:calc(100cqw - 16px)}.dw-job-state{flex-basis:10rem}.dw-status-bar button{margin-left:0;width:100%}.dw-progress-table th,.dw-progress-table td{padding:5px 4px}.dw-progress-table thead th:first-child{width:35%}}
 
 /* ---------- MOVIMENTO RIDOTTO -------------------------------------------- */
 @media (prefers-reduced-motion:reduce){
