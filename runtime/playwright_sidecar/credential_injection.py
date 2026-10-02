@@ -360,10 +360,10 @@ _PASSWORD_REJECTED_JS = r"""
 
 # Username-first (identity provider, SSO, portali a due schermate). La
 # selezione resta deterministica e top-level: autocomplete/attributi semantici
-# standard + contesto auth dell'action. Un normale campo newsletter `email`
+# standard + contesto auth dell'action o del modulo. Un normale campo newsletter `email`
 # su una landing page non supera il requisito.
 _LOCATE_USERNAME_STAGE_JS = r"""
-() => {
+(config) => {
   document.querySelectorAll('[data-metnos-user-step],[data-metnos-user-submit]')
     .forEach(el => {
       el.removeAttribute('data-metnos-user-step');
@@ -377,6 +377,27 @@ _LOCATE_USERNAME_STAGE_JS = r"""
       !el.disabled && el.getAttribute('aria-disabled') !== 'true';
   };
   const candidates = [];
+  const normalize = text => String(text || '').normalize('NFKC').toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+  const loginForms = ((config && config.login_forms) || []).map(normalize).filter(Boolean);
+  const hasLoginMeaning = text => {
+    const normalized = ' ' + normalize(text) + ' ';
+    return loginForms.some(phrase => normalized.includes(' ' + phrase + ' '));
+  };
+  const isLoginForm = form => {
+    if (!form) return false;
+    // Scope the evidence to this form. A header login link beside a newsletter
+    // is not evidence that the newsletter's email field is a login identity.
+    const labels = [form.getAttribute('aria-label') || ''];
+    for (const id of (form.getAttribute('aria-labelledby') || '').split(/\s+/)) {
+      const label = document.getElementById(id);
+      if (label && visible(label)) labels.push(label.textContent || '');
+    }
+    for (const heading of form.querySelectorAll('h1,h2,h3,h4,h5,h6,[role=heading],legend')) {
+      if (visible(heading)) labels.push(heading.textContent || '');
+    }
+    return labels.some(hasLoginMeaning);
+  };
   for (const el of Array.from(document.querySelectorAll(
       'input[type=text],input[type=email],input[type=tel],input:not([type])'))) {
     if (!visible(el)) continue;
@@ -396,13 +417,14 @@ _LOCATE_USERNAME_STAGE_JS = r"""
       authAction = /(^|[^a-z])(auth|login|signin|sign-in|session|account|sso)([^a-z]|$)/i
         .test(`${u.hostname} ${u.pathname}`);
     } catch (_) {}
-    if (!strong && !(emailish && authAction)) continue;
+    const authContext = isLoginForm(form);
+    if (!strong && !(emailish && (authAction || authContext))) continue;
     const scope = form || document;
     const textFields = Array.from(scope.querySelectorAll(
       'input[type=text],input[type=email],input[type=tel],input:not([type])'))
       .filter(visible);
     let score = (strong ? 8 : 0) + (emailish ? 2 : 0) +
-      (authAction ? 3 : 0) + (textFields.length === 1 ? 1 : 0);
+      ((authAction || authContext) ? 3 : 0) + (textFields.length === 1 ? 1 : 0);
     if (autocomplete === 'username') score += 4;
     candidates.push({el, form, actionResolved, score});
   }
@@ -423,6 +445,20 @@ _LOCATE_USERNAME_STAGE_JS = r"""
           hasSubmit: !!submitEl};
 }
 """
+
+
+async def _locate_username_stage(page):
+    # External pages can use a language different from the chat. Reuse the
+    # validated native lexicon and reviewed baselines, as navigation does.
+    forms = []
+    if _detlex is not None:
+        try:
+            forms = _detlex.native_ready_forms(
+                "sites.login_direct_target", include_reviewed_baselines=True)
+        except Exception:
+            pass  # Without language evidence, only existing structural hints apply.
+    return await page.evaluate(_LOCATE_USERNAME_STAGE_JS, {"login_forms": forms})
+
 
 _CURRENT_FORM_ACTION_JS = r"""
 () => {
@@ -523,7 +559,7 @@ async def _wait_for_login_surface(page, op_timeout_s: float) -> str:
         if await _has_toplevel_password(page):
             return "password"
         try:
-            info = await page.evaluate(_LOCATE_USERNAME_STAGE_JS)
+            info = await _locate_username_stage(page)
         except Exception:
             info = None
         if info and info.get("found") and not info.get("ambiguous"):
@@ -1208,6 +1244,15 @@ async def _complete_one_time_code_stage(*, page, context,
     return {"ok": True, "logged_in": logged_in, "reason_code": reason}
 
 
+async def _fill_credential(page, selector: str, value: str, *, timeout: int) -> None:
+    # Explicit replacement works even when the browser's fill() appends to an
+    # email field. Keep values inside the broker and never submit a mismatch.
+    await page.fill(selector, "", timeout=timeout)
+    await page.fill(selector, value, timeout=timeout)
+    if await page.input_value(selector, timeout=timeout) != value:
+        raise ValueError("credential_fill_mismatch")
+
+
 async def _advance_username_stage(*, page, vault_domain: str,
                                   origin_ok, username: str,
                                   storage_domain: str, owner: str,
@@ -1217,7 +1262,7 @@ async def _advance_username_stage(*, page, vault_domain: str,
                                   stealth_techniques=()) -> dict:
     """Compila l'identita' e avanza UNA volta verso la password."""
     try:
-        info = await page.evaluate(_LOCATE_USERNAME_STAGE_JS)
+        info = await _locate_username_stage(page)
     except Exception:
         info = None
     if not info or not info.get("found"):
@@ -1242,7 +1287,7 @@ async def _advance_username_stage(*, page, vault_domain: str,
         await _human_pause(
             page, stealth_techniques=stealth_techniques,
             selector='[data-metnos-user-step="1"]')
-        await page.fill('[data-metnos-user-step="1"]', username,
+        await _fill_credential(page, '[data-metnos-user-step="1"]', username,
                         timeout=int(op_timeout_s * 1000))
         await _human_pause(
             page, stealth_techniques=stealth_techniques,
@@ -1389,7 +1434,7 @@ async def fill_credential_ref(*, page, expected_domain: str, value_ref: str,
     try:
         await _human_pause(
             page, stealth_techniques=stealth_techniques, selector=selector)
-        await page.fill(selector, value, timeout=int(op_timeout_s * 1000))
+        await _fill_credential(page, selector, value, timeout=int(op_timeout_s * 1000))
     except Exception:
         return {"ok": False, "error_class": "fill_failed"}
     try:
@@ -1753,8 +1798,7 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
         username_info = None
         if username and not username_advanced:
             try:
-                username_info = await page.evaluate(
-                    _LOCATE_USERNAME_STAGE_JS)
+                username_info = await _locate_username_stage(page)
             except Exception:
                 username_info = None
         if username_info and username_info.get("ambiguous"):
@@ -2003,12 +2047,12 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
             await _human_pause(
                 page, stealth_techniques=stealth_techniques,
                 selector='[data-metnos-user="1"]')
-            await page.fill('[data-metnos-user="1"]', username,
+            await _fill_credential(page, '[data-metnos-user="1"]', username,
                             timeout=int(action_timeout * 1000))
         await _human_pause(
             page, stealth_techniques=stealth_techniques,
             selector='[data-metnos-pw="1"]')
-        await page.fill('[data-metnos-pw="1"]', password,
+        await _fill_credential(page, '[data-metnos-pw="1"]', password,
                         timeout=int(action_timeout * 1000))
         await _human_pause(
             page, stealth_techniques=stealth_techniques,

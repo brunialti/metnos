@@ -167,6 +167,16 @@
  chiude la sua sessione. Le verifiche che richiedono tastiera o audio non
  sono supportate da questo pannello.</p>
 
+ <p>Per i moduli che chiedono prima la mail e poi la password, il broker usa
+ anche il titolo o il nome accessibile del modulo e il lessico multilingue
+ validato. Il riconoscimento funziona quindi anche con URL prive di termini
+ di login. Le scritte esterne al modulo, come un collegamento nella testata,
+ non trasformano una newsletter in un login. Campi ambigui non vengono scelti;
+ le origini autorizzate restano verificate prima dell'inserimento e dell'invio.
+ La compilazione comune svuota il campo, inserisce il valore e ne verifica
+ la corrispondenza prima di proseguire; una discordanza impedisce l'invio.
+ I valori rimangono nel broker e non sono riportati nei risultati o nei log.</p>
+
  <h2>Se non riesce</h2>
  <p>Se nessuna proposta viene ammessa, il ciclo &egrave; <code>inconclusive</code>. Se
  sono terminati i tentativi o il tempo disponibile, &egrave; <code>exhausted</code>.

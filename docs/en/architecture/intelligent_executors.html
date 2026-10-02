@@ -165,6 +165,15 @@
  closes its session. Challenges requiring keyboard or audio input are not
  supported by this panel.</p>
 
+ <p>For forms asking for email before password, the broker also uses the
+ form's heading or accessible name and the validated multilingual lexicon.
+ This works even when the URL contains no login terms. Text outside the form,
+ such as a header link, does not turn a newsletter into a login. Ambiguous
+ fields are not selected; authorized origins remain checked before filling
+ and submitting credentials. Shared credential filling clears each field,
+ enters its value and checks it before continuing; a mismatch prevents
+ submission. Values stay inside the broker and are not returned or logged.</p>
+
  <h2>When it cannot finish</h2>
  <p>If no proposal is admitted, the loop is <code>inconclusive</code>. If its
  attempts or elapsed-time budget runs out, it is <code>exhausted</code>. The
