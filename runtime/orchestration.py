@@ -599,6 +599,11 @@ def _dispatch_completion(sender_id: str, dialog_id: str,
     if (not callback_owner
             or not hmac.compare_digest(state_owner, callback_owner)):
         return _msg("MSG_ORCH_DIALOG_NOT_FOUND", dialog_id=dialog_id)
+    if callback_type in {
+            "resume_executor_values_tail", "resume_executor_gate_tail"}:
+        on_complete = dict(on_complete)
+        on_complete["turn_id"] = (on_complete.get("turn_id")
+                                  or state.get("origin_turn_id") or "")
 
     values = state.get("values_collected") or {}
 
@@ -1716,6 +1721,7 @@ def _process_resume_executor_gate_tail(on_complete: dict, values: dict, *,
     pre-gate viene ripetuta. Se il branch incontra un altro gate, trasferisce la
     coda a quel dialogo e si sospende ancora, per un numero arbitrario di gate.
     """
+    started = time.time()
     approve = on_complete.get("gate_approve_value", "approve")
     # Every step of the resumed pipeline runs where the paused step belonged.
     device = str(on_complete.get("target_device") or "") or None
@@ -1729,14 +1735,76 @@ def _process_resume_executor_gate_tail(on_complete: dict, values: dict, *,
             target_device=device)
         return _shape_result_for_chat(rejected)
 
+    import uuid
+    continuation_id = uuid.uuid4().hex[:16]
     branch_result = _invoke_gate_branch_result(
         on_complete.get("gate_on_approve"), actor=actor, channel=channel,
         owner_user_id=str(on_complete.get("owner_user_id") or ""),
-        turn_id=str(on_complete.get("turn_id") or ""),
+        turn_id=continuation_id,
         source_request_id=str(on_complete.get("source_request_id") or ""),
         target_device=device)
+
+    def complete(text, *, run=None, failure=None):
+        # The HTTP photo resolver and history both read TurnLog. A result
+        # returned only to the dialog iframe has no durable attachment target
+        # and loses every observation made after the pause (turn 7e430871).
+        # Reuse the normal turn writer, including redaction and outcome rules.
+        from agent_runtime import (
+            EXECUTION_RECEIPT_RESULT_KEY, ExecutionReceipt, StepLog, TurnLog,
+            _apply_device_tag,
+        )
+
+        branch = on_complete.get("gate_on_approve") or {}
+        branch_observation = (dict(branch_result) if isinstance(
+            branch_result, dict) else {"ok": False})
+        branch_receipt = branch_observation.pop(EXECUTION_RECEIPT_RESULT_KEY, None)
+        observed = [StepLog(
+            step_num=1,
+            chosen_tool=str(branch.get("tool") or branch.get("executor") or ""),
+            result=branch_observation,
+            execution_receipt=(branch_receipt if isinstance(
+                branch_receipt, ExecutionReceipt) else None),
+        )]
+        for step in (run.steps if run is not None else ()):
+            if step.tool == "@approved_executor_gate":
+                continue
+            result = dict(step.result) if isinstance(step.result, dict) else {}
+            result.pop(EXECUTION_RECEIPT_RESULT_KEY, None)
+            observed.append(StepLog(
+                step_num=len(observed) + 1, chosen_tool=step.tool,
+                resolved_args=dict(step.args), result=result,
+                exec_ms=step.latency_ms,
+                execution_effect=getattr(step, "execution_effect", None),
+                execution_receipt=getattr(step, "execution_receipt", None),
+            ))
+        if failure is not None:
+            observed.append(StepLog(
+                step_num=len(observed) + 1, chosen_tool="final_answer",
+                result=failure,
+            ))
+        last = observed[-1].result or {}
+        kind = ("error" if failure is not None else
+                getattr(run, "final_kind", "") or
+                ("ask" if last.get("decision") in {
+                    "needs_inputs", "input_required", "approval_required"}
+                 else "error" if last.get("ok") is False else "answer"))
+        turn = TurnLog(
+            ts_start=started, ts_end=time.time(), turn_id=continuation_id,
+            parent_turn_id=str(on_complete.get("turn_id") or ""),
+            user_query=str(on_complete.get("original_query") or ""),
+            actor=actor or "host", channel=channel or "",
+            owner_user_id=str(on_complete.get("owner_user_id") or ""),
+            conversation_id=str(on_complete.get("conversation_id") or ""),
+            mode="continuation", steps=observed,
+            final_kind=kind, final_message=str(text or ""),
+            error_class=str(last.get("error_class") or ""),
+        )
+        _apply_device_tag(turn)
+        turn.write()
+        return _completion_from_turnlog(turn)
+
     if not isinstance(branch_result, dict) or not branch_result.get("ok"):
-        return _shape_result_for_chat(branch_result)
+        return complete(_shape_result_for_chat(branch_result))
 
     raw_tail = on_complete.get("tail_steps") or []
     if branch_result.get("decision") == "needs_inputs":
@@ -1753,6 +1821,7 @@ def _process_resume_executor_gate_tail(on_complete: dict, values: dict, *,
                     on_complete.get("tail_final_message") or ""),
                 "original_query": on_complete.get("original_query") or "",
                 "conversation_id": on_complete.get("conversation_id") or "",
+                "turn_id": continuation_id,
                 "source_request_id": on_complete.get("source_request_id") or "",
                 "target_device": device or "",
             })
@@ -1764,43 +1833,28 @@ def _process_resume_executor_gate_tail(on_complete: dict, values: dict, *,
         dialog = orchestrate_needs_inputs(
             branch_result, sender_id=sender,
             actor=actor or "host", channel=channel or "http",
+            origin_turn_id=continuation_id,
             owner_user_id=str(on_complete.get("owner_user_id") or ""))
         if not isinstance(dialog, dict) or not dialog.get("ok"):
-            return _shape_result_for_chat(dialog)
-        return CompletionResult(
-            text=(dialog.get("final_message_hint")
-                  or branch_result.get("final_message_hint")
-                  or _msg("MSG_ORCH_DIALOG_DONE")),
-            attachments=list(branch_result.get("attachments") or ()),
-            n_total_matches=len(branch_result.get("attachments") or ()),
-            path=[{"tool": str((on_complete.get("gate_on_approve") or {}).get(
-                "tool") or ""), "ok": True}],
-        )
+            return complete(_shape_result_for_chat(dialog),
+                            failure=dialog or {"ok": False})
+        return complete(dialog.get("final_message_hint")
+                        or branch_result.get("final_message_hint")
+                        or _msg("MSG_ORCH_DIALOG_DONE"))
     if (branch_result.get("decision") == "input_required"
             and branch_result.get("dialog_id")):
         if not raw_tail:
-            return _shape_result_for_chat(branch_result)
+            return complete(_shape_result_for_chat(branch_result))
         if not _carry_executor_tail_to_nested_gate(
-                branch_result, on_complete, actor=actor, channel=channel):
-            return _msg(
+                branch_result, dict(on_complete, turn_id=continuation_id),
+                actor=actor, channel=channel):
+            return complete(_msg(
                 "MSG_ORCH_CONTINUATION_FAILED",
                 detail="nested approval gate could not inherit executor tail",
-            )
-        attachments = list(branch_result.get("attachments") or [])
-        branch = on_complete.get("gate_on_approve") or {}
-        branch_tool = (
-            (branch.get("tool") or branch.get("executor") or "")
-            if isinstance(branch, dict) else ""
-        )
-        return CompletionResult(
-            text=_shape_result_for_chat(branch_result),
-            attachments=attachments,
-            n_total_matches=len(attachments),
-            path=([{"tool": branch_tool, "ok": True}]
-                  if branch_tool else []),
-        )
+            ), failure={"ok": False, "error_class": "continuation_gate_failed"})
+        return complete(_shape_result_for_chat(branch_result))
     if not isinstance(raw_tail, list) or not raw_tail:
-        return _shape_result_for_chat(branch_result)
+        return complete(_shape_result_for_chat(branch_result))
     try:
         from engine.executor import Executor
         from engine.types import Framework, StepRun, StepSpec
@@ -1819,7 +1873,7 @@ def _process_resume_executor_gate_tail(on_complete: dict, values: dict, *,
             if_prev_entries_nonempty=bool(item.get("if_prev_entries_nonempty")),
         ) for item in raw_tail if isinstance(item, dict) and item.get("tool")]
         if not steps:
-            return _shape_result_for_chat(branch_result)
+            return complete(_shape_result_for_chat(branch_result))
         framework = Framework(
             steps=steps,
             final_message=str(on_complete.get("tail_final_message") or ""))
@@ -1831,6 +1885,7 @@ def _process_resume_executor_gate_tail(on_complete: dict, values: dict, *,
             return agent_runtime.invoke_tool_by_name(
                 tool_name, args, catalog=catalog, actor=actor, channel=channel,
                 owner_user_id=str(on_complete.get("owner_user_id") or ""),
+                turn_id=continuation_id,
                 source_request_id=str(
                     on_complete.get("source_request_id") or ""),
                 target_device=device)
@@ -1842,6 +1897,7 @@ def _process_resume_executor_gate_tail(on_complete: dict, values: dict, *,
             invoke_executor=_invoke, seed_steps=[seed], catalog=catalog).run(
                 framework, query=on_complete.get("original_query") or "",
                 runtime_ctx={
+                    "turn_id": continuation_id,
                     "actor": actor or "host", "channel": channel or "",
                     "owner_user_id": on_complete.get("owner_user_id") or "",
                     "user_query_raw": on_complete.get("original_query") or "",
@@ -1854,7 +1910,8 @@ def _process_resume_executor_gate_tail(on_complete: dict, values: dict, *,
             from engine.dispatch import _inject_gate_resume_if_paused
             _inject_gate_resume_if_paused(
                 run, on_complete.get("original_query") or "",
-                {"actor": actor or "host", "channel": channel or "",
+                {"turn_id": continuation_id,
+                 "actor": actor or "host", "channel": channel or "",
                  "owner_user_id": on_complete.get("owner_user_id") or "",
                  "user_query_raw": on_complete.get("original_query") or "",
                  "conversation_id": on_complete.get("conversation_id") or "",
@@ -1863,15 +1920,6 @@ def _process_resume_executor_gate_tail(on_complete: dict, values: dict, *,
                  "target_device": device or ""},
                 framework=framework)
 
-        attachments = []
-        path = []
-        for step in run.steps:
-            if step.tool == "@approved_executor_gate":
-                continue
-            result = step.result if isinstance(step.result, dict) else {}
-            path.append({"tool": step.tool, "ok": bool(result.get("ok"))})
-            if isinstance(result.get("attachments"), list):
-                attachments.extend(result["attachments"])
         text = run.final_text
         last_result = (run.steps[-1].result
                        if run.steps and isinstance(run.steps[-1].result, dict)
@@ -1882,14 +1930,14 @@ def _process_resume_executor_gate_tail(on_complete: dict, values: dict, *,
             text = last_result["final_message_hint"]
         elif not text and run.steps:
             text = _shape_result_for_chat(last_result)
-        return CompletionResult(
-            text=text or _msg("MSG_ORCH_CONTINUATION_DONE"),
-            attachments=attachments,
-            n_total_matches=len(attachments), path=path)
+        return complete(text or _msg("MSG_ORCH_CONTINUATION_DONE"), run=run)
     except (ImportError, KeyError, RuntimeError, TypeError, ValueError) as ex:
         log.exception("orchestration: resume executor gate tail fallito")
-        return _msg("MSG_ORCH_CONTINUATION_FAILED",
-                    detail=f"{type(ex).__name__}: {ex}")
+        return complete(_msg("MSG_ORCH_CONTINUATION_FAILED",
+                             detail=f"{type(ex).__name__}: {ex}"),
+                        failure={"ok": False,
+                                 "error_class": "continuation_failed",
+                                 "error_type": type(ex).__name__})
 
 
 def _process_resume_engine_gate(on_complete: dict, values: dict, *,

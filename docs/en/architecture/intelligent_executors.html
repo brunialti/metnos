@@ -179,6 +179,13 @@
  loading does not end observation. The time limit, single submission and
  separate handling of CAPTCHA, codes and rejections remain unchanged.</p>
 
+ <p>Continuations after a form or consent use the ordinary turn log. Each
+ resume has a new identifier linked to the paused turn and preserves the
+ owner, conversation, outcomes and attachments. Image links resolve through
+ this persisted record. The resumed branch and remaining steps are observed
+ without replaying previous steps; form inputs are not copied into the
+ logged arguments.</p>
+
  <h2>When it cannot finish</h2>
  <p>If no proposal is admitted, the loop is <code>inconclusive</code>. If its
  attempts or elapsed-time budget runs out, it is <code>exhausted</code>. The

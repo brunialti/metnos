@@ -183,6 +183,13 @@
  invariati il limite di tempo, il singolo invio e la gestione separata
  di CAPTCHA, codici e rifiuti.</p>
 
+ <p>Le continuazioni dopo un modulo o un consenso usano lo stesso registro
+ dei turni ordinari. Ogni ripresa ha un identificativo nuovo, collegato al
+ turno sospeso, e conserva proprietario, conversazione, esiti e allegati.
+ Il collegamento alle immagini usa questo record persistito. Il ramo ripreso
+ e la coda residua sono osservati senza ripetere i passi precedenti;
+ i valori immessi nel modulo non vengono copiati negli argomenti del registro.</p>
+
  <h2>Se non riesce</h2>
  <p>Se nessuna proposta viene ammessa, il ciclo &egrave; <code>inconclusive</code>. Se
  sono terminati i tentativi o il tempo disponibile, &egrave; <code>exhausted</code>.

@@ -4248,6 +4248,9 @@ class TurnLog:
     ts_end: float = 0.0
     user_query: str = ""
     turn_id: str = ""
+    # A resumed executor tail is a new observed turn, linked to its paused
+    # predecessor. Append-only records must not reuse the predecessor's ID.
+    parent_turn_id: str = ""
     mode: str = ""
     candidates: list = field(default_factory=list)
     steps: list = field(default_factory=list)
