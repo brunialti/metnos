@@ -61,9 +61,11 @@ def acquisition(monkeypatch, mutation):
 def test_real_loader_reconstructs_materials_under_existing_exclusive_session(tmp_path, monkeypatch, mutation):
     base, _, _ = historical(tmp_path, monkeypatch, 'target')
     builds, units = acquisition(monkeypatch, mutation)
+    # Include the lock file, but read it outside EX: Windows byte-range locks
+    # reject snapshot's independent handle while the exclusion is held.
+    before = snapshot(base)
     with prepared.open_prepared_root_session_v1() as session:
         with session.global_lock(exclusive=True, create=False):
-            before = snapshot(base)
             deny_new_authority(monkeypatch)
             if mutation:
                 with pytest.raises(native.PreflightError):
@@ -80,4 +82,4 @@ def test_real_loader_reconstructs_materials_under_existing_exclusive_session(tmp
                 assert first == second and first is not second
                 assert first.catalog == second.catalog and first.catalog is not second.catalog
             assert session._holds_global_exclusive()
-            assert snapshot(base) == before
+    assert snapshot(base) == before

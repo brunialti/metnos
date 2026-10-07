@@ -1,6 +1,7 @@
 """Real historical public-set reads, decision signatures and native SQLite rows."""
 import base64
 import json
+import os
 import sqlite3
 from dataclasses import replace
 from types import SimpleNamespace
@@ -17,6 +18,9 @@ from install.birth_retention_review_links import _ReviewApprovalInventory
 from test_birth_retention_reviews import review
 from rm0008_2b import support
 from rm0008_2b.test_group8_public_history import _chain_boundary_fixture
+
+
+pytestmark = pytest.mark.skipif(os.name != 'posix', reason='native POSIX administrative review custody')
 
 
 @pytest.fixture

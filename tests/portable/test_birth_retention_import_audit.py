@@ -9,6 +9,9 @@ from test_birth_retention_artifacts import collection
 from test_birth_retention_llm_cost import selected
 
 
+pytestmark = pytest.mark.skipif(os.name != 'posix', reason='native POSIX journal custody')
+
+
 @pytest.fixture
 def native(tmp_path, monkeypatch):
     import skill_admission as admission

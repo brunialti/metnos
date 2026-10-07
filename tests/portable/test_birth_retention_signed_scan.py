@@ -1,10 +1,14 @@
 """Authenticated physical receipt values for cross-owner joins."""
 import json
+import os
 
 import pytest
 
 from executor_birth_retention import RetentionError
 from test_birth_retention_signed_store import history, store, D
+
+
+pytestmark = pytest.mark.skipif(os.name != 'posix', reason='native POSIX signed-store custody')
 
 
 def test_scan_exposes_each_authenticated_physical_copy(history, monkeypatch):

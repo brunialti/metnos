@@ -1,4 +1,5 @@
 """Physical Producer joins use native signatures and retain interrupted work."""
+import os
 import sqlite3
 from dataclasses import asdict, replace
 from types import SimpleNamespace
@@ -12,6 +13,9 @@ from install.birth_retention_birth_sqlite import _BirthBundleOwner
 from install.birth_retention_producer_links import _ProducerAdmissionInventory
 from install.birth_retention_signed_store import _SignedStoreOwner
 from tests.portable.executor_birth_history_fixtures import _fixture, _v2
+
+
+pytestmark = pytest.mark.skipif(os.name != 'posix', reason='native POSIX signed-store custody')
 
 
 @pytest.fixture
@@ -74,14 +78,6 @@ def test_all_physical_admissions_link_bidirectionally_without_collection(history
     assert all(row.identity in obj.references and obj.identity in row.references for obj in admissions)
     assert row.state is NodeState.OPEN and RootKind.OPEN_AUDIT in row.roots
     assert row.eligible_after is None
-
-
-def test_native_projection_has_no_fabricated_sql_identity(history):
-    row = history.producers.scan()[0]
-    receipt, issuance = producer.producer_history_rows_for_binding_v1(row.values, row.related[0][1][0])
-    assert receipt.row_id is None and issuance.row_id is None
-    with pytest.raises(ValueError):
-        producer.producer_history_rows_for_binding_v1(dict(row.values, row_id=1), row.related[0][1][0])
 
 
 @pytest.mark.parametrize('state', ['available', 'in_progress', 'rejected', 'committed'])

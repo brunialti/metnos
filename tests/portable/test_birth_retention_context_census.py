@@ -110,6 +110,7 @@ def test_context_budget_checked_before_reads(scenario, monkeypatch):
 
 def test_distinct_native_public_sets_are_censused_without_loader_substitution(tmp_path, monkeypatch):
     import shutil
+    from executor_birth_secure_fs import _BirthObjectRole, _ObjectKind
     from tests.portable.rm0008_2b.test_group8_public_history import (
         _prepared, _read_public, _chain_boundary_fixture,
     )
@@ -122,9 +123,21 @@ def test_distinct_native_public_sets_are_censused_without_loader_substitution(tm
     assert initial.set_id != target.set_id
     initial_dir = support.installed_set(initial_base)
     target_dir = support.installed_set(target_base)
-    shutil.copytree(initial_dir, target_dir.parent / initial.set_id)
+    copied_set = target_dir.parent / initial.set_id
+    shutil.copytree(initial_dir, copied_set)
+    # copytree does not preserve native DACLs. Restore each catalogued role,
+    # including confidential stores, and seal containers after their children.
+    catalog = prepared._productive_role_catalog_v1()
+    copied_paths = sorted((copied_set, *copied_set.rglob('*')),
+                          key=lambda path: len(path.parts), reverse=True)
+    for path in copied_paths:
+        binding = catalog._resolve_binding_v1(path.relative_to(target_base / 'birth').parts)
+        support.apply_profile(path, directory=binding.kind is _ObjectKind.directory,
+                              private=binding.role is _BirthObjectRole.birth_confidential)
     for public_key in (support.installed_author_store(initial_base) / 'public').iterdir():
-        shutil.copy2(public_key, support.installed_author_store(target_base) / 'public' / public_key.name)
+        copied_key = support.installed_author_store(target_base) / 'public' / public_key.name
+        shutil.copy2(public_key, copied_key)
+        support.apply_profile(copied_key, directory=False, private=False)
     chain = _chain_boundary_fixture(target_base, monkeypatch,
         previous_set_id=initial.set_id,
         previous_admission_context_id=initial.material.pin.admission_context_id,

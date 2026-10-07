@@ -14,6 +14,9 @@ from rm0008_2b import support
 from rm0008_2b.test_group8_public_history import _chain_boundary_fixture
 
 
+pytestmark = pytest.mark.skipif(os.name != 'posix', reason='native POSIX administrative review custody')
+
+
 @pytest.fixture
 def linked(review, tmp_path, monkeypatch):
     key = Ed25519PrivateKey.generate()

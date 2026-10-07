@@ -16,7 +16,7 @@ from executor_birth_canonical import encode_canonical_ascii_v1 as canonical
 from executor_birth_identity import ExecutorOrigin, RevisionAuthor
 from executor_birth_producer_store import (
     ProducerReceiptBinding, claim_producer_receipt, finalize_producer_receipt,
-    get_or_issue_producer_receipt,
+    get_or_issue_producer_receipt, producer_history_rows_for_binding_v1,
 )
 from executor_birth_receipts import IssuerKey, IssuerRegistry, issue_producer_receipt
 from executor_birth_retention import NodeState, RetentionError, RootKind
@@ -98,6 +98,16 @@ def approval(tmp_path):
                                       now=CREATED, db_path=owner.path, authority=authority)
         return token
     return owner, create
+
+
+def test_native_projection_has_no_fabricated_sql_identity(producer):
+    owner, create = producer
+    create()
+    row = owner.scan()[0]
+    receipt, issuance = producer_history_rows_for_binding_v1(row.values, row.related[0][1][0])
+    assert receipt.row_id is None and issuance.row_id is None
+    with pytest.raises(ValueError):
+        producer_history_rows_for_binding_v1(dict(row.values, row_id=1), row.related[0][1][0])
 
 
 @pytest.mark.parametrize("kind", ["producer", "approval"])

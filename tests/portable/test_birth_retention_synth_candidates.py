@@ -12,6 +12,9 @@ from synth_proposal_store import preserve_candidate, review_document
 from synt import Synt, GeneratedProposal
 
 
+pytestmark = pytest.mark.skipif(os.name != 'posix', reason='native POSIX synthesis file custody')
+
+
 @pytest.fixture(autouse=True)
 def private_writer_umask():
     previous = os.umask(0o077)

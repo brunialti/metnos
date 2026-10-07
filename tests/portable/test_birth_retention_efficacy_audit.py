@@ -10,6 +10,9 @@ from test_birth_retention_llm_cost import selected
 from tests.portable.learning_fixtures import isolated_aging_db, _write_turn_log
 
 
+pytestmark = pytest.mark.skipif(os.name != 'posix', reason='native POSIX journal custody')
+
+
 @pytest.fixture
 def native(isolated_aging_db):
     ea = isolated_aging_db['module']

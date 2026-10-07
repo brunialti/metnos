@@ -473,6 +473,7 @@ def _certificate(**overrides):
     return payload, SimpleNamespace(**{**payload, **overrides})
 
 
+@native
 def test_a_published_certificate_is_the_one_that_was_signed(monkeypatch, published):
     payload, accepted = _certificate()
     monkeypatch.setattr(lifecycle, "load_f5_activation",
@@ -486,6 +487,7 @@ def test_a_published_certificate_is_the_one_that_was_signed(monkeypatch, publish
     "installation_id", "qualification_id", "head_id", "closed_build_id",
     "migration_id", "policy_id", "key_id",
 ])
+@native
 def test_a_reread_that_names_another_binding_is_not_a_published_issue(
         monkeypatch, published, field):
     """A document that parses but binds something else is a failed issue."""
@@ -498,6 +500,7 @@ def test_a_reread_that_names_another_binding_is_not_a_published_issue(
     assert refused.value.detail == field
 
 
+@native
 def test_a_reader_that_refuses_the_document_is_reported_as_such(
         monkeypatch, published):
     payload, _accepted = _certificate()

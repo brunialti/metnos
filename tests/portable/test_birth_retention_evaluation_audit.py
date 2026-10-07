@@ -12,6 +12,9 @@ from test_birth_retention_artifacts import collection
 from test_birth_retention_llm_cost import selected
 
 
+pytestmark = pytest.mark.skipif(os.name != 'posix', reason='native POSIX journal custody')
+
+
 @pytest.fixture(params=['evaluation', 'semantic'])
 def native(request, tmp_path, monkeypatch):
     import proposal_evaluator as evaluator

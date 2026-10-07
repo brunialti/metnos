@@ -1,11 +1,13 @@
 """Retention of jobs created by the actual durable and scheduler owners."""
 from datetime import datetime, timezone
+import os
 import sqlite3
 
 import pytest
 
 from tests.portable import durable_workload_fixtures as fixtures
 
+from durable_workloads.migrations import BUSY_TIMEOUT_MS, migrate
 from durable_workloads.models import WorkloadState
 from durable_workloads.storage import DurableWorkloadStore
 from durable_workloads.temporary_storage import TemporaryStorage, TemporaryWorkspace
@@ -18,16 +20,48 @@ from scheduler_v2.storage import SchedulerStorage
 
 OLD = "2020-01-01T00:00:00Z"
 NOW = datetime(2020, 1, 1, 0, 1, tzinfo=timezone.utc)
+_NATIVE_WORKLOAD = pytest.param("native", marks=pytest.mark.skipif(
+    os.name != "posix", reason="native POSIX workload bootstrap and workspace custody"))
 
 
-@pytest.fixture
-def workload(tmp_path, monkeypatch):
+def _no_fixture_workspaces(plan):
+    # Only this exact synthetic inventory plan has no native workspace owner.
+    assert plan == fixtures.plan()
+    assert [stage["runner"] for stage in plan["stages"]] == [
+        {"kind": "internal", "name": "sealed_inventory"},
+    ]
+    assert plan["required_artifacts"] == []
+    return ()
+
+
+@pytest.fixture(params=["sql", _NATIVE_WORKLOAD])
+def workload(request, tmp_path, monkeypatch):
     monkeypatch.setattr("durable_workloads.storage.utc_now", lambda: OLD)
     monkeypatch.setattr("durable_workloads.temporary_storage.utc_now", lambda: OLD)
     path = tmp_path / "workloads.sqlite"
     owner = _WorkloadOwner(path=path, require_exclusion=lambda: None, owner=None,
-                           resolve_workspaces=temporary_workspaces)
-    store = DurableWorkloadStore.open(path)
+                           resolve_workspaces=(_no_fixture_workspaces if request.param == "sql"
+                                               else temporary_workspaces))
+    if request.param == "sql":
+        # Exercise real SQL owners without claiming the POSIX LRE bootstrap
+        # or image-workspace custody. Keep its connection settings and schema.
+        connection = sqlite3.connect(path, timeout=BUSY_TIMEOUT_MS / 1000,
+                                     isolation_level=None)
+        try:
+            connection.row_factory = sqlite3.Row
+            connection.execute("PRAGMA foreign_keys=ON")
+            connection.execute(f"PRAGMA busy_timeout={BUSY_TIMEOUT_MS}")
+            assert connection.execute("PRAGMA journal_mode=WAL").fetchone()[0] == "wal"
+            connection.execute("PRAGMA synchronous=NORMAL")
+            assert connection.execute("PRAGMA foreign_keys").fetchone()[0] == 1
+            assert connection.execute("PRAGMA busy_timeout").fetchone()[0] == BUSY_TIMEOUT_MS
+            migrate(connection)
+            store = DurableWorkloadStore(connection)
+        except BaseException:
+            connection.close()
+            raise
+    else:
+        store = DurableWorkloadStore.open(path)
     def create(user, *, finish=True):
         draft = store.create_draft(user, "request", redacted_request={"summary": "retention"},
                                    workload_id="same-local-id")
@@ -155,6 +189,7 @@ def test_clean_report_without_resolver_is_not_a_closure_proof(workload):
         owner.scan()
 
 
+@pytest.mark.parametrize("workload", [_NATIVE_WORKLOAD], indirect=True)
 def test_reappeared_scratch_blocks_native_job_deletion_even_with_fresh_clean_report(workload, tmp_path):
     owner, store, create = workload
     workspace = TemporaryWorkspace(tmp_path / "scratch-parent", "generation")
@@ -174,6 +209,7 @@ def test_reappeared_scratch_blocks_native_job_deletion_even_with_fresh_clean_rep
 
 
 @pytest.mark.parametrize("change", ["parent-missing", "parent-symlink", "fence-missing", "fence-reset", "residual"])
+@pytest.mark.parametrize("workload", [_NATIVE_WORKLOAD], indirect=True)
 def test_absence_requires_custodied_parent_and_permanent_native_fence(workload, tmp_path, change):
     owner, store, create = workload
     workspace = TemporaryWorkspace(tmp_path / "scratch-parent", "generation")

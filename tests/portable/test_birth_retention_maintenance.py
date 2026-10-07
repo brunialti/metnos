@@ -24,6 +24,9 @@ from install.birth_retention_maintenance import Maintenance, ObjectIdentity, Own
 NOW = "2026-10-05T12:00:00Z"
 OLD = "2020-01-01T00:00:00Z"
 RUN = "sha256:" + "a" * 64
+native_custody = pytest.mark.skipif(
+    sys.platform != "linux", reason="managed administrative custody is Linux-only",
+)
 
 
 def digest(payload):
@@ -222,6 +225,7 @@ def journal(root):
     return sqlite3.connect(root / (RUN[7:] + ".sqlite"))
 
 
+@native_custody
 @pytest.mark.parametrize("point", ["after_intents", "after_active.json_temp_prefix",
                                    "after_active.json_temp_full_write", "after_marker"])
 def test_prepared_intents_and_atomic_marker_survive_interrupt(context, point):
@@ -239,6 +243,7 @@ def test_prepared_intents_and_atomic_marker_survive_interrupt(context, point):
     assert all(owner.count() == 1 for owner in owners.values())
 
 
+@native_custody
 @pytest.mark.parametrize("point", ["after_journal_create", "before_intents_commit"])
 def test_incomplete_preparation_has_no_effect_and_does_not_block_startup(context, point):
     root, owners, _, _, _, _, begin = context
@@ -251,6 +256,7 @@ def test_incomplete_preparation_has_no_effect_and_does_not_block_startup(context
     assert (root / "active.json").exists()
 
 
+@native_custody
 @pytest.mark.parametrize("point", ["before_effect", "after_effect", "after_outcome"])
 def test_separate_owners_resume_original_receipts_without_repeating_effect(context, point):
     root, owners, _, public, _, factory, begin = context
@@ -339,6 +345,7 @@ def test_sigkill_inside_owner_finishes_cleanup_even_when_payload_is_absent(conte
     assert all(item.count() == 1 for item in owners.values())
 
 
+@native_custody
 @pytest.mark.parametrize("mutation", ["missing-owner", "changed-owner", "receipt",
                                       "dropped-intent", "holds-missing", "holds-changed"])
 def test_uncertain_or_changed_inventory_blocks_before_any_new_effect(context, mutation):
@@ -366,6 +373,7 @@ def test_uncertain_or_changed_inventory_blocks_before_any_new_effect(context, mu
     assert all(owner.count() == 0 for owner in owners.values())
 
 
+@native_custody
 def test_budget_preserves_untouched_objects_and_allows_verified_restart(context):
     root, owners, _, public, _, factory, begin = context
     begin()
@@ -382,6 +390,7 @@ def test_budget_preserves_untouched_objects_and_allows_verified_restart(context)
     assert not (root / "active.json").exists()
 
 
+@native_custody
 @pytest.mark.parametrize("point", ["after_reconciliation", "after_completion"])
 def test_finish_interruption_keeps_barrier_until_readback_succeeds(context, point):
     root, owners, _, public, _, factory, begin = context
@@ -401,6 +410,7 @@ def test_finish_interruption_keeps_barrier_until_readback_succeeds(context, poin
     assert not (root / "active.json").exists()
 
 
+@native_custody
 def test_no_effect_without_exclusion_and_session_cannot_cross_process(context, monkeypatch):
     root, owners, _, public, excluded, factory, begin = context
     begin()
@@ -457,6 +467,7 @@ def test_each_retention_root_preserves_its_physical_dependencies(context, tmp_pa
                 observed_at=NOW) == ()
 
 
+@native_custody
 @pytest.mark.parametrize("cyclic", [False, True])
 def test_reference_group_is_never_split_by_an_object_budget(context, tmp_path, cyclic):
     _, owners, (source, target), public, _, factory, begin = context
@@ -476,6 +487,7 @@ def test_reference_group_is_never_split_by_an_object_budget(context, tmp_path, c
     assert result["preserved"] == 2 and all(owner.count() == 0 for owner in owners.values())
 
 
+@native_custody
 @pytest.mark.parametrize("point", ["after_effect", "after_outcome"])
 def test_partially_deleted_reference_group_requires_recovery_before_restart(context, point):
     root, owners, (source, target), public, _, factory, begin = context
@@ -492,6 +504,7 @@ def test_partially_deleted_reference_group_requires_recovery_before_restart(cont
     assert result["deleted"] == 2 and all(owner.count() == 1 for owner in owners.values())
 
 
+@native_custody
 def test_time_limit_waits_for_current_reference_group_then_stops(context, monkeypatch):
     import install.birth_retention_maintenance as maintenance
 
@@ -504,6 +517,7 @@ def test_time_limit_waits_for_current_reference_group_then_stops(context, monkey
     assert factory().finish(owners, public_keys=public, verify_recovery=lambda: None)["deleted"] == 2
 
 
+@native_custody
 def test_reference_groups_cannot_be_changed_in_a_prepared_journal(context):
     root, owners, (source, target), public, _, factory, begin = context
     begin(candidates=(replace(source, references=(target.identity,)), target))

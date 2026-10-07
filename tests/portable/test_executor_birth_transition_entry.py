@@ -636,6 +636,7 @@ def test_closed_process_rejects_a_state_root_outside_the_signed_home(
 
 @pytest.mark.parametrize("policy_error", [None, FileNotFoundError("polkitd"),
                                          ValueError("conflicting rule")])
+@LINUX_ONLY
 def test_activation_uses_only_target_and_readiness_from_signed_catalog(
     monkeypatch: pytest.MonkeyPatch, policy_error,
 ) -> None:

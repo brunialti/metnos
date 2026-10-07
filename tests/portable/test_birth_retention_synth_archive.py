@@ -14,6 +14,9 @@ from test_birth_retention_synth import selected
 from test_birth_retention_artifacts import collection
 
 
+pytestmark = pytest.mark.skipif(os.name != 'posix', reason='native POSIX archive file custody')
+
+
 @pytest.fixture
 def archive(sample, tmp_path, monkeypatch):
     root = tmp_path / 'synth_archive'

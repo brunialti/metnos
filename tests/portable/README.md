@@ -52,6 +52,9 @@ Keep real crash, concurrent-access, permissions and recovery checks. Run
 privileged service probes only in the workflow's disposable environment,
 never on a production host. Platform or environment skips are not successful
 proofs of those capabilities; the dedicated native jobs must exercise them.
+Declare native platform requirements on the consuming tests: importing a
+fixture does not carry the source module's platform markers. Keep independent
+SQL and logical assertions portable, while preserving the native custody cases.
 
 ## Removing duplicate cases
 

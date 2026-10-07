@@ -1,4 +1,5 @@
 """Native historical decision signatures, SQLite consumption and signed copies."""
+import os
 import sqlite3
 from dataclasses import replace
 from types import SimpleNamespace
@@ -14,6 +15,9 @@ from executor_birth_retention import NodeState, RetentionError, RootKind
 from install.birth_retention_admission_links import _ApprovalAdmissionInventory
 from test_birth_retention_review_links import linked, review
 from test_birth_retention_signed_store import history, D
+
+
+pytestmark = pytest.mark.skipif(os.name != 'posix', reason='native POSIX signed-store and review custody')
 
 
 @pytest.fixture
