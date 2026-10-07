@@ -2477,6 +2477,20 @@ class Executor:
             args = _resolve_from_step(
                 _step_args, result.steps,
                 consumer_schema=self._schema_map.get(step.tool))
+            if step.tool == "filter_entries":
+                source_pos = _step_args.get("from_step")
+                if isinstance(source_pos, str) and source_pos.isdigit():
+                    source_pos = int(source_pos)
+                if (isinstance(source_pos, int)
+                        and 1 <= source_pos <= len(result.steps)
+                        and result.steps[source_pos - 1].tool == "extract_entries"):
+                    from filter_field_resolver import (
+                        resolve_period_filter_field, site_collection_years,
+                    )
+                    years = site_collection_years(framework.steps, source_pos, query)
+                    if years:
+                        args = resolve_period_filter_field(
+                            args, result.steps[source_pos - 1].result, years)
             _context_errors = args.pop(
                 _FROM_STEP_CONTEXT_ERRORS_KEY, None)
             if isinstance(_context_errors, list) and _context_errors:

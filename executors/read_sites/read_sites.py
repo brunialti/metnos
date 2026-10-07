@@ -4,7 +4,9 @@
 web aperte (spec sites F1 §3.4).
 
 Vettoriale (§2.1): `session_ids: array[str]` (o `from_step`) → una entry per
-sessione. Lo screenshot è SEMPRE redatto dal broker (§3.3: overlay nero sui
+pagina distinta raccolta, seguita dalla pagina corrente. Solo quest'ultima
+contiene moduli e screenshot. Lo screenshot è SEMPRE redatto dal broker
+(§3.3: overlay nero sui
 campi segreti prima del capture). Il contenuto post-login è marcato
 `sensitive:true` → resta LOCALE, mai frontier (§3.5 taint `no_frontier`).
 
@@ -89,6 +91,14 @@ def invoke(args: dict) -> dict:
                 "mime": mimetypes.guess_type(shot)[0] or "image/png",
                 "sensitive": sensitive,
             })
+        pages = [page for page in (res.get("pages") or []) if isinstance(page, dict)]
+        if pages:
+            # A collection's pages are distinct sources; the last one is the
+            # current read, which alone carries forms and screenshot.
+            entry["text"] = pages[-1].get("text", "")
+            entries.extend({"session_id": sid, "ok": True, "url": scrub_url(page.get("url")),
+                            "title": page.get("title", ""), "text": page.get("text", ""),
+                            "sensitive": sensitive} for page in pages[:-1])
         entries.append(entry)
 
     ok = any(e.get("ok") for e in entries)

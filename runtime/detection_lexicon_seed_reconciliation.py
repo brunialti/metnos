@@ -37,6 +37,7 @@ GATE_CONCEPTS = {
     "archive": "reconciliation.gate.archive",
     "focused": "reconciliation.gate.focused",
     "date_only_field": "reconciliation.gate.date_only_field",
+    "period_date_field": "reconciliation.gate.period_date_field",
     "datetime_field": "reconciliation.gate.datetime_field",
 }
 
@@ -386,6 +387,12 @@ def register_all() -> None:
             "en": [
                 r"(^|_)(?:date|deadline|due|issue|invoice)($|_)",
             ],
+        },
+        # Binding a filter needs a date name, while the historical
+        # normalisation gate above also accepts document identity labels.
+        "period_date_field": {
+            "it": [r"(^|_)(?:data|scadenza|emiss\w*)($|_)"],
+            "en": [r"(^|_)(?:date|deadline|due|issue)($|_)"],
         },
         "datetime_field": {
             "it": [r"(^|_)(?:inizio|fine|ora)($|_)"],

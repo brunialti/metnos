@@ -356,7 +356,7 @@ def register_all() -> None:
     R("parser.time.absolute_year_prefix", "phrases", match_mode="word",
       it=["dell'anno", "dell anno", "nell'anno", "nell anno", "anno",
           "del", "dal", "nel"],
-      en=["of", "in", "year"])
+      en=["of", "in", "from", "year"])
     R("parser.time.absolute_year_suffix", "phrases", match_mode="word",
       it=["year"], en=["year"])
     R("parser.time.range_connector", "mapping", match_mode="word",

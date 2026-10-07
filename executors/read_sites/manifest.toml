@@ -14,12 +14,12 @@ affinity    = [
 ]
 
 [description]
-it = "SCOPO: legge testo + screenshot REDATTO di una sessione web aperta (post-login se autenticata). PATTERN: login_sites → read_sites(from_step=2). NON: read_urls_html (pagina pubblica senza sessione); sites = sessione con stato. OUT: entries=[{session_id,url,title,text,screenshot_path,sensitive}] + gallery."
-en = "SCOPO: reads text + REDACTED screenshot of an open web session (post-login if authenticated). PATTERN: login_sites → read_sites(from_step=2). NON: read_urls_html (public sessionless page); sites = a stateful session. OUT: entries=[{session_id,url,title,text,screenshot_path,sensitive}] + gallery."
+it = "SCOPO: legge le pagine distinte raccolte e la pagina corrente di una sessione web aperta (post-login se autenticata). Moduli e screenshot REDATTO appartengono solo alla pagina corrente. PATTERN: login_sites → read_sites(from_step=2). NON: read_urls_html (pagina pubblica senza sessione); sites = sessione con stato. OUT: entries=[{session_id,url,title,text,screenshot_path,sensitive}] + gallery."
+en = "SCOPO: reads distinct collected pages and the current page of an open web session (post-login if authenticated). Forms and REDACTED screenshot belong only to the current page. PATTERN: login_sites → read_sites(from_step=2). NON: read_urls_html (public sessionless page); sites = a stateful session. OUT: entries=[{session_id,url,title,text,screenshot_path,sensitive}] + gallery."
 
 [code]
 files  = ["read_sites.py"]
-digest = "sha256:0daf5ecdab19ee0cfecb36e4558602a2eb63032f0eb9fb97491ca33eabdccef5"
+digest = "sha256:d294dc0f07150553e3243ba695450542629cb8f729b96caba80eaaf6ce9fceea"
 
 [args]
 type     = "object"

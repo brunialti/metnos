@@ -1853,16 +1853,20 @@ async def _read_impl(entry, session_id, include_screenshot, include_forms,
             except Exception:  # noqa: BLE001
                 break
     if collected:
-        chunks = []
-        seen_text = set()
-        for item in [*collected, {"text": text}]:
-            value = str(item.get("text") or "")
-            key = hashlib.sha256(value.encode("utf-8")).hexdigest()
-            if value and key not in seen_text:
-                seen_text.add(key)
-                chunks.append(value)
-        text = "\n\n".join(chunks)
-        out["collected_page_count"] = len(chunks)
+        # Captured pages are distinct sources with their own URL; only a page
+        # with the identity of the current one is that page read again. Forms
+        # and screenshot belong to the current read, even when it is empty.
+        current = _page_identity(page.url, _context_key(
+            await _enumerate_candidates(page)), text)
+        pages = [{"url": scrub_url(str(item.get("url") or "")),
+                  "title": str(item.get("title") or ""), "text": str(item["text"])}
+                 for item in collected if _page_identity(
+                     str(item.get("url") or ""), str(item.get("context") or ""),
+                     str(item["text"])) != current]
+        # The current read is the last page; the joined text keeps every page.
+        out["pages"] = [*pages, {"url": out["url"], "title": title, "text": text}]
+        text = "\n\n".join(item["text"] for item in out["pages"] if item["text"])
+        out["collected_page_count"] = sum(bool(item["text"]) for item in out["pages"])
     out["text"] = text
     if goal:
         tratto = text if collected else _goal_text_span(text, goal)
@@ -2577,6 +2581,20 @@ async def _wait_for_goal_content_change(
     return False, current
 
 
+def _context_key(candidates: list[dict]) -> str:
+    """Selected values of account/category selectors; empty without any."""
+    chosen = collection_context.selectors(action_resolver.goal_navigation_candidates(
+        candidates, include_offscreen=True, include_covered=True))
+    return collection_context.value_key(chosen) if chosen else ""
+
+
+def _page_identity(url: str, context: str, text: str) -> str:
+    # Equal text does not prove the same page, nor does the URL alone: the
+    # selected account or category is part of what a page shows.
+    return hashlib.sha256("\0".join(
+        (scrub_url(url or ""), context or "", text or "")).encode("utf-8")).hexdigest()
+
+
 async def _continuation_snapshot(entry: dict) -> dict:
     page = entry["page"]
     try:
@@ -3096,8 +3114,9 @@ async def _discover_collection(entry: dict, session_id: str,
         context_controls = await read_controls(page, observed)
 
         async def read_context():
-            nonlocal context_controls
-            context_controls = await read_controls(entry["page"])
+            nonlocal context_controls, observed
+            observed = await _enumerate_candidates(entry["page"])
+            context_controls = await read_controls(entry["page"], observed)
             return context_controls
 
         context = await collection_context.ensure(
@@ -3151,6 +3170,9 @@ async def _discover_collection(entry: dict, session_id: str,
                 for c in candidates) > 1):
             candidates = _collapse_collection_links(candidates)
         snapshot = await _continuation_snapshot(entry)
+        # Context selection may have changed the controls and page since the
+        # initial enumeration. Key the captured text with its observed context.
+        snapshot_context = _context_key(observed)
         if snapshot.get("truncated"):
             state["observation_limit"] = ("max_text_chars", 100000)
         content_key = hashlib.sha256(snapshot["text"].encode()).hexdigest()
@@ -3168,7 +3190,8 @@ async def _discover_collection(entry: dict, session_id: str,
                 "location_key": hashlib.sha256((page.url + state.get("context", {}).get(
                     "value_key", "")).encode()).hexdigest(),
                 "url": page.url, "page": page, "candidates": candidates,
-                "snapshot": {**snapshot, "key": content_key}}
+                "snapshot": {**snapshot, "context": snapshot_context, "key": _page_identity(
+                    snapshot.get("url") or page.url, snapshot_context, snapshot["text"])}}
 
     async def choose(observation, tried):
         # Pages repeat menus, breadcrumbs and links to themselves. A GET of a
@@ -4607,6 +4630,7 @@ async def _prepare_action(entry: dict, session_id: str, action: str,
         plan["goal_target"] = target_override
     if plan_kind == "goal_continuation":
         plan["content_sig_before"] = await _goal_content_signature(entry)
+        plan["context_key"] = _context_key(candidates)
         if collection_facet_key:
             plan["collection_facet_key"] = collection_facet_key
     elif plan_kind == "goal_navigation":
@@ -5545,7 +5569,8 @@ async def _execute_plan(entry: dict, token: str, plan: dict) -> dict:
             entry["web_content_ingested"] = True
         elif primitive in ("click", "submit"):
             if plan.get("kind") == "goal_continuation":
-                continuation_snapshot = await _continuation_snapshot(entry)
+                continuation_snapshot = {**(await _continuation_snapshot(entry)),
+                                         "context": str(plan.get("context_key") or "")}
             # Batch credenziale: fill broker-owned solo DOPO l'approvazione e
             # immediatamente prima del submit, senza screenshot intermedio.
             if (value_ref or "").startswith("cred:"):
@@ -5718,11 +5743,12 @@ async def _execute_plan(entry: dict, token: str, plan: dict) -> dict:
             entry["web_content_ingested"] = True
             if continuation_snapshot:
                 # Pagination and facets can replace records without changing
-                # the URL. Keep every observed page, deduplicated by content.
+                # the URL. Keep every observed page, deduplicated by identity.
                 collected = entry.setdefault("collected_pages", [])
-                snap_key = hashlib.sha256(str(
-                    continuation_snapshot.get("text") or "").encode(
-                        "utf-8")).hexdigest()
+                snap_key = _page_identity(
+                    str(continuation_snapshot.get("url") or ""),
+                    str(continuation_snapshot.get("context") or ""),
+                    str(continuation_snapshot.get("text") or ""))
                 if (continuation_snapshot.get("text")
                         and all(item.get("key") != snap_key
                                 for item in collected)):

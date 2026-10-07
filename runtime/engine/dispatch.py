@@ -856,55 +856,32 @@ def _ensure_extract_clause(framework: Framework, intent, query: str,
 
 def _ensure_extracted_period_scope(framework: Framework, intent, query: str,
                                    catalog: Optional[list]) -> Framework:
-    """Filtra deterministicamente i record estratti sugli anni espliciti.
+    """Preserve a Sites collection's explicit years until its schema exists.
 
-    L'extract LLM struttura il testo, ma non gli affidiamo il rispetto di un
-    vincolo esatto come «2026». Se il risultato dichiara un campo data/anno e
-    la query contiene uno o piu' anni, inserisce `filter_entries` subito dopo
-    `extract_entries` e ricabla i consumer. Idempotente e domain-agnostic.
+    The ordinary filter predicate is inserted and consumers are rewired now;
+    its field is bound from the actual extraction result before invocation.
+    The scope comes from the connected goal, never from arbitrary
+    four-digit values or a source-message period elsewhere in the request.
     """
     try:
-        years = list(dict.fromkeys(re.findall(
-            r"(?<!\d)((?:19|20)\d{2})(?!\d)", query or "")))
-        if not years:
-            return framework
+        from filter_field_resolver import period_where_regex, site_collection_years
+
         steps = list(getattr(framework, "steps", None) or [])
-        ex_idx = next((i for i, step in enumerate(steps)
-                       if (getattr(step, "tool", "") or "") ==
-                       "extract_entries"), -1)
-        if ex_idx < 0:
+        scoped = [(i, years) for i, step in enumerate(steps)
+                  if getattr(step, "tool", "") == "extract_entries"
+                  and (years := site_collection_years(steps, i + 1, query))]
+        if len(scoped) != 1:
             return framework
-        fields = (getattr(steps[ex_idx], "args", None) or {}).get("fields")
-        if not isinstance(fields, list):
-            return framework
-        year_field = next((field for field in fields
-                           if isinstance(field, str) and re.search(
-                               r"(^|[_\s])(year|anno)([_\s]|$)",
-                               field, re.IGNORECASE)), None)
-        date_field = next((field for field in fields
-                           if isinstance(field, str) and re.search(
-                               r"(^|[_\s])(date|data|scadenza|due|deadline|"
-                               r"emiss(?:ione)?|issue)([_\s]|$)",
-                               field, re.IGNORECASE)), None)
-        scope_field = year_field or date_field
-        if not scope_field:
-            return framework
+        ex_idx, years = scoped[0]
         extract_pos = ex_idx + 1
-        filter_args = ({"from_step": extract_pos,
-                        "where_field": scope_field,
-                        "where_in": years}
-                       if year_field else
-                       {"from_step": extract_pos,
-                        "where_field": scope_field,
-                        "where_regex": "^(?:" + "|".join(years) + ")-"})
+        filter_args = {"from_step": extract_pos,
+                       "where_regex": period_where_regex(years)}
         if any((getattr(step, "tool", "") or "") == "filter_entries"
                and (getattr(step, "args", None) or {}).get("from_step") ==
                extract_pos
-               and (getattr(step, "args", None) or {}).get("where_field") ==
-               scope_field
-               and ((getattr(step, "args", None) or {}).get("where_in") == years
-                    or (getattr(step, "args", None) or {}).get("where_regex") ==
-                    filter_args.get("where_regex"))
+               and (getattr(step, "args", None) or {}).get("where_field") is None
+               and (getattr(step, "args", None) or {}).get("where_regex") ==
+               filter_args["where_regex"]
                for step in steps):
             return framework
 
@@ -924,8 +901,8 @@ def _ensure_extracted_period_scope(framework: Framework, intent, query: str,
         new_steps[ex_idx].args = dict(getattr(steps[ex_idx], "args", {}) or {})
         new_steps.insert(ex_idx + 1, StepSpec(
             tool="filter_entries", args=filter_args))
-        log.info("[period_scope] filter_entries inserito dopo extract: %s=%s",
-                 scope_field, years)
+        log.info("[period_scope] filter_entries inserted after extract: years=%s",
+                 years)
         return Framework(
             steps=new_steps,
             fillers=getattr(framework, "fillers", {}) or {},

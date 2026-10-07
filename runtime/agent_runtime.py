@@ -4615,14 +4615,14 @@ class TurnLog:
             failed = res.get("failed")
             if not (isinstance(failed, list) and failed):
                 continue
-            # Solo PRODUCER (read/find/get/list) con failed[] per-item (es.
+            # Solo letture ed estrazioni con failed[] per-item (es.
             # read_messages account SSL-fail). I fallimenti dei verbi MUTATING
             # (send/write/move/delete) hanno semantica diversa ("non inviato",
             # non "non controllato") e sono resi onesti dal blocco humanize
             # error_class (§2.8) — qui li si skippa per non oscurarlo con un
             # avviso da-producer fuorviante (bug no_verified_channel 8/6).
             _verb = (s.chosen_tool or "").split("_")[0]
-            if _verb not in ("read", "find", "get", "list"):
+            if _verb not in ("read", "find", "get", "list", "extract"):
                 continue
             # Skip i risultati MUTATING (§2.6: hanno `results`): gestiti da
             # _enforce_mutating_honesty → evita doppio-avviso.

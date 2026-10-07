@@ -1134,6 +1134,8 @@ def _declare_truncation(result: dict, *, what: str, cap_field: str,
     })
     if intentional:
         result["truncated_intentional"] = True
+    else:
+        result["partial"] = True
 
 
 def handle_extract_entries(args, *, verbose: bool = False) -> dict:
@@ -1440,6 +1442,8 @@ def handle_extract_entries(args, *, verbose: bool = False) -> dict:
     out_tok = int(schema_meta.get("out_tokens") or 0)
     lat = int(schema_meta.get("latency_ms") or 0)
     failed = 0
+    failed_sources: list[dict] = []
+    text_truncated_sources = 0
     out_truncated = 0  # sorgenti il cui output ha (probabilmente) toccato il cap
     drilled_sources = 0
     drill_unavailable = False
@@ -1680,8 +1684,10 @@ def handle_extract_entries(args, *, verbose: bool = False) -> dict:
                 direct[source_index] = (
                     entry, "", [{field: "" for field in fields}])
                 continue
-            text_value = _pick_model_text(entry)[:_MAX_TEXT_CHARS]
+            full_text = _pick_model_text(entry)
+            text_value = full_text[:_MAX_TEXT_CHARS]
             if text_value.strip():
+                text_truncated_sources += int(len(full_text) > _MAX_TEXT_CHARS)
                 pending.append((source_index, entry, text_value))
 
         records_by_index: dict[int, list[dict]] = {}
@@ -1744,6 +1750,7 @@ def handle_extract_entries(args, *, verbose: bool = False) -> dict:
                             records = _llm_extract(text_value)
                         except Exception as ex:
                             failed += 1
+                            failed_sources.append({"index": source_index})
                             log.warning(
                                 "extract_entries: batch fallback failed: %r",
                                 ex)
@@ -1776,7 +1783,7 @@ def handle_extract_entries(args, *, verbose: bool = False) -> dict:
                 break
 
     else:
-        for entry in sources:
+        for source_index, entry in enumerate(sources):
             if isinstance(entry, dict) and entry.get("readable") is False:
                 # I metadata/path non sono contenuto estraibile: evita che il
                 # fallback testuale li mandi al modello e conserva direttamente
@@ -1788,16 +1795,19 @@ def handle_extract_entries(args, *, verbose: bool = False) -> dict:
                     break
                 continue
             nonlocal_drill = drill_down and bool(_entry_links(entry))
-            text = _pick_model_text(entry)[:_MAX_TEXT_CHARS]
+            full_text = _pick_model_text(entry)
+            text = full_text[:_MAX_TEXT_CHARS]
             if not text.strip() and not nonlocal_drill:
                 # Un documento osservato ma non decodificabile non scompare
                 # dalla pipeline: il ramo unreadable sopra conserva i parse
                 # falliti; input davvero vuoti non generano record inventati.
                 continue
+            text_truncated_sources += int(len(full_text) > _MAX_TEXT_CHARS)
             try:
                 records = _llm_extract(text) if text.strip() else []
             except Exception as ex:
                 failed += 1
+                failed_sources.append({"index": source_index})
                 log.warning("extract_entries: LLM call failed: %r", ex)
                 continue
             # Drill-down §7.3: campi richiesti vuoti + link disponibili →
@@ -1842,6 +1852,8 @@ def handle_extract_entries(args, *, verbose: bool = False) -> dict:
         res["relevance_term_count"] = len(relevance_terms)
     if failed:
         res["failed_sources"] = failed
+        res["failed"] = failed_sources
+        res["partial"] = True
     if audit_fields:
         res["audit_fields"] = audit_fields
     if batch_calls:
@@ -1865,6 +1877,11 @@ def handle_extract_entries(args, *, verbose: bool = False) -> dict:
             res, what=_msg("MSG_OBJECT_ENTRIES"),
             cap_field="max_per_text", cap_value=max_per_text,
             output_truncated_sources=out_truncated)
+    if text_truncated_sources:
+        _declare_truncation(
+            res, what=_msg("MSG_OBJECT_SOURCES"),
+            cap_field="max_text_chars", cap_value=_MAX_TEXT_CHARS,
+            text_truncated_sources=text_truncated_sources)
     if truncated_inputs:
         # §2.7 visibility
         _declare_truncation(

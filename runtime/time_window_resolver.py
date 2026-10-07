@@ -77,35 +77,55 @@ _MONTHS_IMAP = ("Jan", "Feb", "Mar", "Apr", "May", "Jun",
                "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 
 
-def _parse_absolute_year(query: str) -> int | None:
-    """Anno di calendario assoluto esplicito nella query, o None. Vince solo
-    se non c'e' GIA' un match rolling (vedi `resolve_time_window`): «ultimi
-    2 anni» resta rolling, «del 2026» e' un anno di calendario."""
+def absolute_years(query: str) -> tuple[int, ...]:
+    """Distinct explicitly signalled calendar years, in source order.
+
+    Consumers that need an unambiguous period must inspect all candidates;
+    an arbitrary four-digit identifier is not a calendar-year reference.
+    """
     if not query:
-        return None
+        return ()
     lexicon = _parser_lex.load_family("time_resolver")
     if lexicon is None:
-        return None
+        return ()
     candidates: list[tuple[int, int]] = []
     prefix = _phrase_alt(lexicon["parser.time.absolute_year_prefix"])
     suffix = _phrase_alt(lexicon["parser.time.absolute_year_suffix"])
+    year_token = r"(20\d{2})(?!\d)"
+    compound = _parser_lex.load_family("compound")
+    connector = _phrase_alt(compound["parser.compound.list_connector"]) if compound else ""
+    separator = r"\s*,\s*"
+    if connector:
+        separator += rf"|\s+(?:{connector})(?!\w)\s+"
+    continuation = re.compile(
+        rf"(?:{separator}){year_token}",
+        re.IGNORECASE | re.UNICODE,
+    )
+
+    def collect(pattern: str) -> None:
+        for match in re.finditer(pattern, query, re.IGNORECASE | re.UNICODE):
+            candidates.append((match.start(), int(match.group(1))))
+            # A bare year inherits the calendar marker only across a direct
+            # list connector or scalar comma (also used by the decomposer).
+            # Labels such as ID/amount stop this sequence.
+            end = match.end()
+            while following := continuation.match(query, end):
+                candidates.append((following.start(), int(following.group(1))))
+                end = following.end()
+
     if prefix:
-        rx = re.compile(
-            rf"(?<!\w)(?:{prefix})(?!\w)\s+(20\d{{2}})(?!\d)",
-            re.IGNORECASE | re.UNICODE,
-        )
-        candidates.extend((m.start(), int(m.group(1)))
-                          for m in rx.finditer(query))
+        collect(rf"(?<!\w)(?:{prefix})(?!\w)\s+{year_token}")
     if suffix:
-        rx = re.compile(
-            rf"(?<!\d)(20\d{{2}})\s+(?:{suffix})(?!\w)",
-            re.IGNORECASE | re.UNICODE,
-        )
-        candidates.extend((m.start(), int(m.group(1)))
-                          for m in rx.finditer(query))
+        collect(rf"(?<!\d){year_token}\s+(?:{suffix})(?!\w)")
     candidates = [(pos, year) for pos, year in candidates
                   if 2000 <= year <= 2099]
-    return min(candidates)[1] if candidates else None
+    return tuple(dict.fromkeys(year for _pos, year in sorted(candidates)))
+
+
+def _parse_absolute_year(query: str) -> int | None:
+    """Keep the historical first-reference policy for existing consumers."""
+    years = absolute_years(query)
+    return years[0] if years else None
 
 
 def _year_bounds_imap(year: int) -> tuple[str, str]:
