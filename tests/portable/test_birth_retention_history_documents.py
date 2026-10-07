@@ -2,6 +2,7 @@
 import hashlib
 import importlib.util
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -10,13 +11,19 @@ from executor_birth_retention import NodeState, RetentionError, RootKind
 from test_birth_retention_history import history, files
 from test_birth_retention_undo import native
 
-_spec = importlib.util.spec_from_file_location('retention_native_organize',
-    Path(__file__).resolve().parents[2] / 'executors/organize_files/organize_files.py')
-organize = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(organize)
+pytestmark = pytest.mark.skipif(os.name != "posix", reason="native POSIX history backups and undo journal")
 
 
-def documents(history, status='prepared'):
+@pytest.fixture(scope="module")
+def organize():
+    spec = importlib.util.spec_from_file_location('retention_native_organize',
+        Path(__file__).resolve().parents[2] / 'executors/organize_files/organize_files.py')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def documents(history, organize, status='prepared'):
     blob = history.create()
     plan = dict(schema=1, binding={}, policy={}, root_identities={}, actions=[])
     plan['token'] = organize._plan_digest(plan)
@@ -32,8 +39,8 @@ def documents(history, status='prepared'):
 
 @pytest.mark.parametrize('status', ['prepared', 'applying', 'committed', 'rolling_back',
     'rolled_back', 'partial', 'undoing', 'undone'])
-def test_native_documents_retain_entire_turn(history, status):
-    blob, plan, receipt, _ = documents(history, status)
+def test_native_documents_retain_entire_turn(history, organize, status):
+    blob, plan, receipt, _ = documents(history, organize, status)
     other = history.create(turn='unrelated')
     objects = files(history)
     identities = {obj.identity for obj in objects.values() if obj.identity.local_id.startswith('first/')}
@@ -49,8 +56,8 @@ def test_native_documents_retain_entire_turn(history, status):
     assert objects[str(other.relative_to(history.root))].state is NodeState.CLOSED
 
 
-def test_native_journal_references_receipt(history):
-    _, _, receipt, _ = documents(history)
+def test_native_journal_references_receipt(history, organize):
+    _, _, receipt, _ = documents(history, organize)
     history.undo.log.append_pending('op', 'first', 'organize_files', {}, {}, actor='host')
     history.undo.log.append_done('op', {'results': [{'_undo': {'receipt_path': str(receipt),
         'receipt_sha256': hashlib.sha256(receipt.read_bytes()).hexdigest()}}]})
@@ -59,8 +66,8 @@ def test_native_journal_references_receipt(history):
 
 
 @pytest.mark.parametrize('mutation', ['token', 'status', 'schema', 'binding', 'backup', 'duplicate'])
-def test_contradictory_documents_fail_closed(history, mutation):
-    blob, _, receipt_path, receipt = documents(history)
+def test_contradictory_documents_fail_closed(history, organize, mutation):
+    blob, _, receipt_path, receipt = documents(history, organize)
     if mutation == 'token': receipt['token'] = 'f' * 64
     elif mutation == 'status': receipt['status'] = 'unknown'
     elif mutation == 'schema': receipt['schema'] = True
@@ -75,8 +82,8 @@ def test_contradictory_documents_fail_closed(history, mutation):
     assert blob.exists()
 
 
-def test_external_quarantine_never_traversed(history, tmp_path):
-    _, _, path, receipt = documents(history, 'undone')
+def test_external_quarantine_never_traversed(history, organize, tmp_path):
+    _, _, path, receipt = documents(history, organize, 'undone')
     external = tmp_path / '.metnos-organize-delete-private'
     external.write_bytes(b'user retained bytes')
     receipt['actions'] = [{'quarantine_name': str(external), 'path': str(external)}]
@@ -85,8 +92,8 @@ def test_external_quarantine_never_traversed(history, tmp_path):
     assert external.read_bytes() == b'user retained bytes'
 
 
-def test_double_scan_detects_document_drift(history, monkeypatch):
-    _, _, path, receipt = documents(history)
+def test_double_scan_detects_document_drift(history, organize, monkeypatch):
+    _, _, path, receipt = documents(history, organize)
     original = history.owner._files
     calls = []
     def scan():
@@ -101,8 +108,8 @@ def test_double_scan_detects_document_drift(history, monkeypatch):
         history.owner.inventory()
 
 
-def test_document_cross_turn_backup_reference(history):
-    _, _, path, receipt = documents(history)
+def test_document_cross_turn_backup_reference(history, organize):
+    _, _, path, receipt = documents(history, organize)
     blob = history.create(turn='previous')
     receipt['actions'] = [{'backup_ready': True, 'blob_path': str(blob), 'blob_sha256': blob.stem}]
     organize._write_json_atomic(path, receipt)
@@ -111,8 +118,8 @@ def test_document_cross_turn_backup_reference(history):
     assert history.owner.identity(str(blob.relative_to(history.root))) in obj.references
 
 
-def test_plan_content_digest_is_native(history):
-    blob, plan, _, _ = documents(history)
+def test_plan_content_digest_is_native(history, organize):
+    blob, plan, _, _ = documents(history, organize)
     value = json.loads(plan.read_bytes())
     value['policy'] = {'changed': True}
     organize._write_json_atomic(plan, value)
@@ -120,11 +127,11 @@ def test_plan_content_digest_is_native(history):
     assert blob.exists()
 
 
-def test_new_document_blocks_previously_planned_cross_turn_delete(history):
+def test_new_document_blocks_previously_planned_cross_turn_delete(history, organize):
     blob = history.create(turn='previous')
     before = files(history)[str(blob.relative_to(history.root))]
     assert before.state is NodeState.CLOSED
-    _, _, path, receipt = documents(history)
+    _, _, path, receipt = documents(history, organize)
     receipt['actions'] = [{'backup_ready': True, 'blob_path': str(blob), 'blob_sha256': blob.stem}]
     organize._write_json_atomic(path, receipt)
     after = files(history)[str(blob.relative_to(history.root))]
@@ -134,8 +141,8 @@ def test_new_document_blocks_previously_planned_cross_turn_delete(history):
     assert blob.exists()
 
 
-def test_aggregate_document_byte_budget(history, monkeypatch):
-    _, plan, receipt, _ = documents(history)
+def test_aggregate_document_byte_budget(history, organize, monkeypatch):
+    _, plan, receipt, _ = documents(history, organize)
     limit = max(plan.stat().st_size, receipt.stat().st_size)
     monkeypatch.setattr('install.birth_retention_history._MAX_DOCUMENT_BYTES', limit)
     with pytest.raises(RetentionError, match='history document byte budget'):

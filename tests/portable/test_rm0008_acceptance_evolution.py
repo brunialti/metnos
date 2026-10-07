@@ -193,7 +193,7 @@ def test_portable_import_prerequisite_requires_the_exact_reviewed_edge(variant):
     current[_ANCHOR] = ("100644", "f" * 40)
     support = "tests/portable/conftest.py"
     source[support] = ("100644", "255ae1beaceec12cfd9ae81a7484e95a62f07309")
-    current[support] = ("100644", "4451e8a45192011cb72d36a20e6ace51ec7096ed")
+    current[support] = ("100644", "35e241c8b000622eb563721c5cd462d1bb367cc6")
     if variant == "source":
         source[support] = ("100644", "a" * 40)
     elif variant == "target":

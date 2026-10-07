@@ -73,27 +73,28 @@ _REVIEWED_WORKFLOW_GIT_EDGE = (
     ("100644", "ce3bbd7e5097b23e4ad577ffa1b8af40b75618f7"),
     ("100644", "d4d7e8efcfc96f858f33cca52aeda4c9e79bf3e5"),
 )
-# Reviewed importlib-mode fixture lookup (329d51b3). No collection or oracle
-# changes are permitted by this exact prerequisite edge.
+# Reviewed importlib-mode fixture lookup and isolated portable session state
+# (329d51b3, 10aba165). Collection and acceptance oracles stay unchanged.
 _REVIEWED_PORTABLE_SUPPORT_GIT_EDGE = (
     ("100644", "255ae1beaceec12cfd9ae81a7484e95a62f07309"),
-    ("100644", "4451e8a45192011cb72d36a20e6ace51ec7096ed"),
+    ("100644", "35e241c8b000622eb563721c5cd462d1bb367cc6"),
 )
-# Rich is an installer import dependency. Only this exact locked addition is
-# accepted; the historical test dependencies and acceptance cells stay fixed.
+# Reviewed locked import dependencies for the installer, schema validation and
+# native TurnLog (a071c73c, 10aba165). Acceptance cells stay fixed.
 _REVIEWED_PORTABLE_REQUIREMENTS_GIT_EDGE = (
     ("100644", "7f8078e8ce6ae4fa14b952c440efe3fc830c40c1"),
-    ("100644", "ffea1fcc6f2897bb58dd20bef63557113aaf866c"),
+    ("100644", "5c838334d485ea706cb37fb0993abf6594e282c2"),
 )
 _EFFECTIVE_PYTEST_SUPPORT_SHA256 = {
     "conftest.py": "c31a567f781dcbd3e1ce06c67c901a1b3be07c21a5d8c4030cc8bf262a753015",
     "tests/portable/conftest.py": (
-        "553295e23b655086aae942f654bf87d62a2020a350bc0bc680f61cd130549a27"
+        "66b6e0cbc2106c44de296871b37ecc06c7e7c95d3dbcaf6d846ff64526601a5f"
     ),
     "tests/runtime/conftest.py": (
-        # Reviewed isolation of ownership, private signed builtin contracts
-        # and continuation turn logs; no outcome or collection bypass.
-        "a0dc309c66d3442d0bae8dd8af77f42fd5ee416e1dfc9a691cfaf8bbab825d55"
+        # Reviewed isolation of ownership, signed builtin contracts and turn
+        # logs, pytest-owned lifecycle and opt-in Frontier calls (8c35bf77,
+        # 03dd0123). No outcome or collection bypass.
+        "b8d1b109e9fe7441b7c86dd9a27e90dc2ef4cac288c340174d032762856ef686"
     ),
     "tests/windows_identity/conftest.py": (
         "856572740b3f2246296ba064168da30894092e690ab5c65d1b0ea159029768b3"
