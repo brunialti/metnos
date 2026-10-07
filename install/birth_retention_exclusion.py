@@ -75,13 +75,13 @@ def _require_authority_lock_v1(descriptor: int, path: Path, owner: tuple[int, in
 
 @contextmanager
 def _birth_exclusion_v1(account):
-    """Open the existing secure Birth owner as its account; retain its lock.
+    """Open the existing Birth reader as its account; retain its lock.
 
     Root custody is restored before yielding so the root-owned F6 journal is
     never exposed to the service. The identity owner refuses multithreaded use.
     """
     from install.birth_authority_provisioner import _service_owned_birth_identity_v2
-    from install.birth_authority_provisioning import open_birth_provisioning_layout_v1
+    from executor_birth_prepared_root import open_prepared_root_session_v1
 
     identity = SimpleNamespace(service_uid=account.record.uid,
                                service_gid=account.record.gid,
@@ -90,7 +90,7 @@ def _birth_exclusion_v1(account):
     try:
         with _service_owned_birth_identity_v2(identity):
             try:
-                session = resources.enter_context(open_birth_provisioning_layout_v1().birth_session)
+                session = resources.enter_context(open_prepared_root_session_v1())
                 resources.enter_context(session.global_lock(exclusive=True, create=False))
             except BaseException:
                 resources.close()

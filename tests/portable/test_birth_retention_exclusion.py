@@ -4,6 +4,7 @@ Service fixtures do not count as installed maintenance acceptance.
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
 import os
 import sys
 from types import SimpleNamespace
@@ -12,7 +13,7 @@ import pytest
 
 from executor_birth_retention import RetentionError
 from install.birth_retention_exclusion import (
-    _require_authority_lock_v1, _require_empty_units_v1,
+    _birth_exclusion_v1, _require_authority_lock_v1, _require_empty_units_v1,
     administrative_retention_exclusion_v1,
 )
 
@@ -120,3 +121,132 @@ def test_administrative_entry_has_no_caller_selected_root_or_owner(monkeypatch):
             pytest.fail("unprivileged maintenance")
     with pytest.raises(TypeError):
         administrative_retention_exclusion_v1(root="caller-root")
+
+
+@pytest.fixture
+def existing_birth_reader(tmp_path, monkeypatch):
+    """Real native reader/lock; identity switching is a component fixture."""
+    import config
+    import executor_birth_prepared_root as prepared
+    import executor_birth_secure_fs as secure
+    from install import birth_authority_provisioner, birth_authority_provisioning
+
+    if os.geteuid() == 0:
+        pytest.skip("unprivileged fixture; installed root custody is qualified separately")
+    base = tmp_path / "config"
+    root = base / "birth"
+    root.mkdir(parents=True, mode=0o755)
+    root.chmod(0o755)
+    lock = root / "provisioning-v1.lock"
+    lock.write_bytes(b"0")
+    lock.chmod(0o644)
+    monkeypatch.setattr(config, "PATH_USER_CONFIG", base)
+    account = SimpleNamespace(
+        record=SimpleNamespace(uid=os.geteuid(), gid=os.getegid()),
+        supplementary_gids=tuple(sorted(set(os.getgroups()) | {os.getegid()})),
+    )
+    observed = SimpleNamespace(
+        account=account, root=root, lock=lock, identity_active=False,
+        opened=[], closed=[],
+    )
+
+    @contextmanager
+    def service_identity(identity):
+        assert (identity.service_uid, identity.service_gid,
+                identity.service_supplementary_gids) == (
+                    account.record.uid, account.record.gid, account.supplementary_gids)
+        assert not observed.identity_active
+        observed.identity_active = True
+        try:
+            yield
+        finally:
+            observed.identity_active = False
+
+    def forbidden_provisioning():
+        pytest.fail("maintenance must not open the provisioning capability")
+
+    real_open, real_close = prepared.open_prepared_root_session_v1, secure._SecureRootSession.close
+
+    def open_reader():
+        assert observed.identity_active
+        session = real_open()
+        observed.opened.append(session)
+        return session
+
+    def close_reader(session):
+        assert observed.identity_active
+        observed.closed.append(session)
+        real_close(session)
+
+    monkeypatch.setattr(birth_authority_provisioner, "_service_owned_birth_identity_v2", service_identity)
+    monkeypatch.setattr(birth_authority_provisioning, "open_birth_provisioning_layout_v1", forbidden_provisioning)
+    monkeypatch.setattr(prepared, "open_prepared_root_session_v1", open_reader)
+    monkeypatch.setattr(secure._SecureRootSession, "close", close_reader)
+    return observed
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="native Linux administrative exclusion")
+@pytest.mark.parametrize("body_fails", [False, True])
+def test_birth_reader_holds_existing_lock_and_closes_in_service_identity(existing_birth_reader, body_fails):
+    import fcntl
+    from executor_birth_secure_fs import BirthSecureFSError
+
+    observed = existing_birth_reader
+    before = observed.lock.stat()
+    failure = RuntimeError("maintenance fixture failed")
+    try:
+        with _birth_exclusion_v1(observed.account) as session:
+            assert not observed.identity_active
+            session._require_exclusive_global_lock()
+            assert session._root_path == str(observed.root)
+            assert session._expected_uid == observed.account.record.uid
+            assert session.inventory(()) == ("provisioning-v1.lock",)
+            # No operator-input directory or provisioning material is needed.
+            with observed.lock.open("rb") as competing:
+                with pytest.raises(BlockingIOError):
+                    fcntl.flock(competing, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            if body_fails:
+                raise failure
+    except RuntimeError as exc:
+        assert body_fails and exc is failure
+    else:
+        assert not body_fails
+    assert not observed.identity_active
+    assert observed.opened == observed.closed == [session]
+    with pytest.raises(BirthSecureFSError):
+        session.inventory(())
+    with observed.lock.open("rb") as competing:
+        fcntl.flock(competing, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        fcntl.flock(competing, fcntl.LOCK_UN)
+    after = observed.lock.stat()
+    assert (before.st_ino, before.st_mtime_ns, before.st_mode) == (
+        after.st_ino, after.st_mtime_ns, after.st_mode)
+    assert observed.lock.read_bytes() == b"0"
+    assert tuple(observed.root.iterdir()) == (observed.lock,)
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="native Linux administrative exclusion")
+@pytest.mark.parametrize("fault", ["missing", "unsafe-mode"])
+def test_birth_reader_refuses_unavailable_lock_without_provisioning(existing_birth_reader, fault):
+    from executor_birth_secure_fs import BirthSecureFSError
+
+    observed = existing_birth_reader
+    if fault == "missing":
+        observed.lock.unlink()
+    else:
+        observed.lock.chmod(0o666)
+    with pytest.raises(BirthSecureFSError) as failure:
+        with _birth_exclusion_v1(observed.account):
+            pytest.fail("unavailable lock must refuse maintenance")
+    assert failure.value.code == (
+        "birth_provisioning_lock_unavailable" if fault == "missing"
+        else "birth_provisioning_acl_unsafe")
+    assert not observed.identity_active
+    assert len(observed.opened) == 1 and observed.closed == observed.opened
+    with pytest.raises(BirthSecureFSError):
+        observed.opened[0].inventory(())
+    if fault == "missing":
+        assert tuple(observed.root.iterdir()) == ()
+    else:
+        assert observed.lock.stat().st_mode & 0o777 == 0o666
+        assert observed.lock.read_bytes() == b"0"

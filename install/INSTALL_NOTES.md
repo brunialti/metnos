@@ -1110,6 +1110,8 @@ initial-predecessor policy fails closed. Native history documents protect
 cross-turn backups even when introduced after a plan; aggregate document
 bytes are bounded before parsing. The administrative exclusion yields a
 readonly callable capability context whose lifetime matches the held locks.
+It opens the existing prepared-root reader, never the provisioning layout,
+and holds the existing Birth lock with creation disabled.
 These changes do not supply the complete installed census or activate F6.
 
 The internal historical context census covers the initial predecessor and all
