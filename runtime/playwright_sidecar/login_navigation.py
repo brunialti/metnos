@@ -13,7 +13,7 @@ import json
 
 MAX_DEPTH = 4
 MAX_ACTIONS = 32
-COLLECTION_MAX_ACTIONS = 96
+COLLECTION_MAX_ACTIONS = 256
 COLLECTION_TIMEOUT_S = 300
 _IDENTITY_FIELDS = (
     "tag", "role", "type", "name", "href", "form_action", "form_method",
@@ -82,13 +82,17 @@ async def discover(state: dict, *, observe, choose, execute, restore,
         state["actions"] = used + 1
         return True
 
-    def refresh(frame: dict, observation: dict) -> bool:
+    def refresh(frame: dict, observation: dict, *, preserve: bool = False) -> bool:
         previous = frame["observation"]
         if previous["key"] == observation["key"]:
             return True
         if (not previous.get("location_key") or
                 previous["location_key"] != observation.get("location_key")):
             return False
+        if preserve:
+            # A passing replay can omit controls loaded by earlier scrolling.
+            # Keep that fork until it is observed fully for a new decision.
+            return True
         # Changing banners are not new branches or a fresh budget. Preserve
         # attempted semantic controls, then let the broker read the new page.
         tried.setdefault(observation["key"], set()).update(
@@ -119,13 +123,14 @@ async def discover(state: dict, *, observe, choose, execute, restore,
                 replay["index"] = 0
                 result = await restore(frames[0]["observation"])
             else:
-                if not refresh(frames[index], observation):
+                if not refresh(frames[index], observation,
+                               preserve=index < len(frames) - 1):
                     state["rejection"] = {"phase": "replay_page", "index": index}
                     return _failure("target_changed")
                 if index == len(frames) - 1:
                     state.pop("replay", None)
                 else:
-                    choice = dict(frames[index + 1]["via"])
+                    choice = {**frames[index + 1]["via"], "replay": True}
                     matches = [candidate for candidate in observation["candidates"]
                                if candidate_key(candidate) == choice["key"]]
                     if len(matches) != 1:

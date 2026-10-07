@@ -3053,14 +3053,37 @@ async def _discover_collection(entry: dict, session_id: str,
         if _host_of_url(page.url) not in set(entry.get("allowlist") or ()):
             return {"terminal": {"ok": False, "error_class": "mandate_scope_exceeded"}}
         state["pages"].add(page)
-        scrolling = {"collection": True}
-        await _expand_collection_by_scrolling(
-            entry, scrolling, max_scrolls=min(_MAX_COLLECTION_SCROLLS,
-                max(0, login_navigation.COLLECTION_MAX_ACTIONS - int(state.get("actions", 0)))))
-        state["actions"] = int(state.get("actions", 0)) + scrolling.get("collection_scrolls", 0)
-        if scrolling.get("collection_scroll_limited"):
-            state["observation_limit"] = ("max_scrolls", _MAX_COLLECTION_SCROLLS)
-        observed = await _enumerate_candidates(page)
+        observed, passing = None, False
+        replay_index = (state.get("replay") or {}).get("index", -1)
+        replay_frames = state.get("frames", [])
+        if 0 <= replay_index < len(replay_frames) - 1:
+            # A replay passes through pages already read at their first visit:
+            # scroll only to reach a saved control or to read a page to decide.
+            observed = await _enumerate_candidates(page)
+            saved = replay_frames[replay_index + 1]["via"]["key"]
+            passing = any(login_navigation.candidate_key(c) == saved
+                          for c in await read_controls(page, observed))
+        if not passing:
+            remaining = max(0, login_navigation.COLLECTION_MAX_ACTIONS - int(state.get("actions", 0)))
+            scrolling = {"collection": True}
+            await _expand_collection_by_scrolling(
+                entry, scrolling, max_scrolls=min(_MAX_COLLECTION_SCROLLS, remaining))
+            scrolls = scrolling.get("collection_scrolls", 0)
+            state["actions"] = int(state.get("actions", 0)) + scrolls
+            if scrolls or scrolling.get("collection_scroll_limited"):
+                sites_audit.record("collection_scrolls", session_id=session_id,
+                                   scrolls=scrolls, replay=replay_index >= 0,
+                                   limited=bool(scrolling.get("collection_scroll_limited")),
+                                   steps=int(state.get("actions", 0)))
+            if scrolling.get("collection_scroll_limited"):
+                # Name the limit that stopped scrolling: the page cap only
+                # while the shared action budget still exceeded it.
+                state["observation_limit"] = (
+                    ("max_scrolls", _MAX_COLLECTION_SCROLLS)
+                    if remaining > _MAX_COLLECTION_SCROLLS else
+                    ("max_actions", login_navigation.COLLECTION_MAX_ACTIONS))
+            if observed is None or scrolls:
+                observed = await _enumerate_candidates(page)
         if covered_controls(observed):
             # A modal may appear during scrolling. Try its existing safe
             # exit, but keep covered routes for semantic selection: a fixed
@@ -3203,6 +3226,8 @@ async def _discover_collection(entry: dict, session_id: str,
             target_override=target, allow_model=False, collection_choice=choice)
         if prepared.get("ok"):
             prepared["plan"]["collection_search"] = key
+            # The audit separates a replayed saved edge from a new choice.
+            prepared["plan"]["collection_replay"] = bool(choice.get("replay"))
         result = await _handle_prepared_action(entry, session_id, action, prepared)
         if result.get("collection_bind_refused"):
             page, location, selected = state.get("observed_scene") or (None, "", "")
@@ -3270,9 +3295,14 @@ async def _discover_collection(entry: dict, session_id: str,
     limited = state.get("observation_limit") or result.get("depth_limited") or result.get("error_class") in {
         "login_step_limit", "goal_step_limit"}
     if limited:
-        cap_field, cap_value = state.get("observation_limit") or (
-            ("max_depth", 3) if result.get("depth_limited") else
-            ("max_actions", login_navigation.COLLECTION_MAX_ACTIONS))
+        # The exhausted action budget ended the search: a wider page limit
+        # would not have continued it.
+        budget = ("max_actions", login_navigation.COLLECTION_MAX_ACTIONS)
+        if result.get("error_class") in {"login_step_limit", "goal_step_limit"}:
+            cap_field, cap_value = budget
+        else:
+            cap_field, cap_value = state.get("observation_limit") or (
+                ("max_depth", 3) if result.get("depth_limited") else budget)
         result = {"ok": bool(state["found"]), "truncated": True,
                   "truncated_what": "MSG_TRUNCATED_DEFAULT_WHAT",
                   # Action/page counts are not counts of matching records.
@@ -5319,6 +5349,7 @@ def _plan_audit_fields(plan: dict) -> dict:
             action_resolver._safe_navigation_identity(candidate)),
         "confidence": confidence,
         "model_selected": bool(plan.get("model_selected")),
+        "replay": bool(plan.get("collection_replay")),
         "url_before": str(plan.get("page_url") or ""),
     }
 

@@ -171,8 +171,10 @@
  simbolo «$» rosso nel percorso. Senza Frontier configurato decide il modello locale;
  se Frontier configurato non risponde, la raccolta resta incompleta.
  <code>METNOS_SITES_FRONTIER_ROUTES=0</code> disattiva questa scelta.</p>
- <p>Questa raccolta usa 96 azioni e 300 secondi attivi, condivisi fra avanzamenti,
- scorrimenti e ritorni; le attese per l’utente non consumano il tempo né azzerano
+ <p>Questa raccolta usa 256 azioni e 300 secondi attivi, condivisi fra avanzamenti,
+ scorrimenti e ritorni; tornando indietro non riscorre le pagine di passaggio
+ il cui collegamento è già visibile e conserva i rami ancora da esplorare;
+ le attese per l’utente non consumano il tempo né azzerano
  i tentativi. Nella modifica candidata, ogni decisione del modello locale
  dispone di 20 secondi, inclusi nel tempo complessivo; una scadenza lascia
  la ricerca incompleta. Termina

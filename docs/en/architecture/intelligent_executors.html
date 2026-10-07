@@ -168,8 +168,10 @@
  so in a note and the step shows a red “$” in the path. Without a configured
  Frontier the local model decides; if a configured Frontier does not answer, the
  collection stays incomplete. <code>METNOS_SITES_FRONTIER_ROUTES=0</code> disables it.</p>
- <p>This collection uses 96 actions and 300 active seconds, shared by forward
- steps, scrolling and returns; waiting for the user neither consumes active time
+ <p>This collection uses 256 actions and 300 active seconds, shared by forward
+ steps, scrolling and returns; going back it does not scroll again through
+ intermediate pages whose link is already visible and keeps branches still to explore;
+ waiting for the user neither consumes active time
  nor resets attempts. In the candidate change, each local model decision has
  up to 20 seconds within the overall time budget; a timeout leaves the search
  incomplete. It finishes
