@@ -84,8 +84,13 @@ def _epoch_to_iso(epoch: float) -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(epoch))
 
 
+def default_db_path() -> Path:
+    """Resolve the writer default without opening or creating the store."""
+    return Path(os.environ.get("METNOS_APPROVALS_DB") or DEFAULT_DB_PATH)
+
+
 def _open_db(db_path: Path | None = None) -> sqlite3.Connection:
-    p = Path(db_path or os.environ.get("METNOS_APPROVALS_DB") or DEFAULT_DB_PATH)
+    p = Path(db_path) if db_path else default_db_path()
     p.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(p), isolation_level=None)
     conn.row_factory = sqlite3.Row

@@ -89,22 +89,14 @@ async def user_language_middleware(request: web.Request, handler):
 
 
 def _build_catalog_provider():
-    """Carica il catalog una sola volta e ne fornisce un getter pigro.
-
-    Il catalog viene caricato al primo access (non al boot) cosi' i test
-    HTTP che non lo usano restano leggeri.
-    """
-    cache: dict = {}
-
+    """Load lazily through the shared, revision-aware catalog cache."""
     def get():
-        if "catalog" not in cache:
-            try:
-                from loader import load_catalog
-                cache["catalog"] = load_catalog()
-            except Exception as e:
-                log.warning("catalog load failed: %s", e)
-                cache["catalog"] = []
-        return cache["catalog"]
+        try:
+            from loader import load_catalog
+            return load_catalog()
+        except Exception as e:
+            log.warning("catalog load failed: %s", e)
+            return []
     return get
 
 

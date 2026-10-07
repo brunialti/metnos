@@ -11,7 +11,7 @@ Invarianti di sicurezza (spec §10.6, §4.1):
     - MAI un valore di credenziale nel log: si accetta solo il `fingerprint`.
     - Ogni `url` passa da `sites_url_scrub.scrub_url` prima di essere scritto.
     - File 0600, dir 0700. Generazioni append-only: nessuna riscrittura o
-      troncamento; rotazione bounded 16 MB x 12 backup (override via env).
+      troncamento; segmenti da 16 MB (override via env), conservati fino alla raccolta F6.
 
 Deterministico §7.9. Fail-safe §2.8: un errore di scrittura audit NON deve far
 fallire l'operazione utente (best-effort), ma viene loggato su stderr.
@@ -88,9 +88,8 @@ def record(event: str, *, owner: str = "", session_id: str = "",
         os.chmod(AUDIT_PATH.parent, 0o700)
         from audit_jsonl import append_bounded_jsonl
         max_mb = int(os.environ.get("METNOS_SITES_AUDIT_MAX_MB", "16"))
-        backups = int(os.environ.get("METNOS_SITES_AUDIT_BACKUPS", "12"))
         append_bounded_jsonl(
             AUDIT_PATH, entry, max_bytes=max_mb * 1024 * 1024,
-            backup_count=backups, mode=0o600)
+            backup_count=None, mode=0o600)
     except Exception as e:  # noqa: BLE001 — best-effort, non deve mai propagare
         print(f"sites_audit: write failed: {e!r}", file=sys.stderr)

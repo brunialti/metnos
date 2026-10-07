@@ -39,6 +39,7 @@
 .virt-status.configured{border-color:var(--ok-line);background:var(--ok-soft);color:var(--ok-fg)}
 .virt-error{margin-top:.55rem;padding-top:.5rem;border-top:1px solid var(--err-line);
   color:var(--err-fg);overflow-wrap:anywhere}
+.virt-grid[hidden]{display:none}
 .virt-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));
   align-items:start;gap:var(--sp-4)}
 .virt-card{border:1px solid var(--border);border-radius:var(--r-2);background:var(--surface);
@@ -81,6 +82,11 @@
   padding:.65rem .75rem;border:1px solid var(--accent-line);border-radius:var(--r-2);
   background:color-mix(in srgb,var(--surface) 94%,var(--accent-soft));box-shadow:var(--shadow-2)}
 .virt-flash{margin:-.25rem 0 var(--sp-4)}
+.virt-frontier{margin-top:var(--sp-4)}
+.virt-frontier-form{display:grid;gap:var(--sp-3)}
+.virt-frontier-form label{display:block;margin-bottom:.3rem}
+.virt-frontier-form .virt-help{margin:.4rem 0 0;color:var(--muted);font-size:var(--fs-1)}
+.virt-frontier-actions{display:flex;justify-content:flex-end}
 .virt-fields{margin:0;display:grid;grid-template-columns:minmax(110px,.72fr) minmax(0,1.28fr);
   column-gap:.8rem;border-top:1px solid var(--border)}
 .virt-fields dt,.virt-fields dd{margin:0;padding:.45rem 0;border-bottom:1px solid var(--border);
@@ -114,6 +120,10 @@
 <div class="callout ok virt-flash" role="status">{{ msg("UI_VIRT_SAVED") }}</div>
 {% elif notice == 'reset' %}
 <div class="callout ok virt-flash" role="status">{{ msg("UI_VIRT_RESET_DONE") }}</div>
+{% elif notice == 'key_saved' %}
+<div class="callout ok virt-flash" role="status">{{ msg("UI_VIRT_KEY_SAVED") }}</div>
+{% elif notice == 'frontier_saved' %}
+<div class="callout ok virt-flash" role="status">{{ msg("UI_VIRT_FRONTIER_SAVED") }}</div>
 {% elif edit_error_key %}
 <div class="callout err virt-flash" role="alert">{{ msg(edit_error_key) }}</div>
 {% endif %}
@@ -177,7 +187,7 @@
     <input type="hidden" name="revision" value="{{ family.config.revision }}">
   {% endif %}
   <div class="virt-grid">
-    {% for role in family.roles %}
+    {% for role in family.roles if not (family.key == 'llm' and role.name == 'frontier') %}
     <article class="virt-card">
       <div class="virt-card-head">
         <h3>{{ role.name }}</h3>
@@ -307,6 +317,77 @@
   {% else %}
   <p class="virt-empty">{{ msg("UI_VIRT_NO_ROLES") }}</p>
   {% endif %}
+  {% if family.key == 'llm' and frontier %}
+  <article class="virt-card virt-frontier" id="virt-frontier">
+    <div class="virt-card-head">
+      <h3>{{ msg("UI_VIRT_FRONTIER_TITLE") }}</h3>
+      <span class="virt-status {{ frontier.key_status }}">{{ msg("UI_VIRT_KEY_STATUS_" ~ frontier.key_status|upper) }}</span>
+    </div>
+    <p class="virt-role-desc">{{ msg("UI_VIRT_FRONTIER_HELP") }}</p>
+    <div class="virt-card-body">
+      <form class="virt-frontier-form" id="virt-frontier-form" method="post" action="/admin/virt/frontier/save" autocomplete="off">
+        <input type="hidden" name="csrf_token" value="{{ api_keys_token }}">
+        <input type="hidden" name="revision" value="{{ frontier.revision }}">
+        <div class="virt-grid">
+          <div>
+            <label for="frontier-interface">{{ msg("UI_VIRT_FRONTIER_INTERFACE") }}</label>
+            <select class="virt-edit-input" id="frontier-interface" name="interface">
+              <option value="none"{% if frontier.interface == 'none' %} selected{% endif %}>{{ msg("UI_VIRT_FRONTIER_DISABLED") }}</option>
+              <option value="openai" data-endpoint="https://api.openai.com/v1/chat/completions"{% if frontier.interface == 'openai' %} selected{% endif %}>{{ msg("UI_VIRT_FRONTIER_OPENAI") }}</option>
+              <option value="anthropic" data-endpoint="https://api.anthropic.com/v1/messages"{% if frontier.interface == 'anthropic' %} selected{% endif %}>{{ msg("UI_VIRT_FRONTIER_ANTHROPIC") }}</option>
+            </select>
+          </div>
+          <div>
+            <label for="frontier-model">{{ msg("UI_VIRT_FRONTIER_MODEL") }}</label>
+            <input class="virt-edit-input" id="frontier-model" name="model" value="{{ frontier.model }}" maxlength="256" spellcheck="false"{% if frontier.interface != 'none' %} required{% endif %}>
+          </div>
+        </div>
+        <div>
+          <label for="frontier-endpoint">{{ msg("UI_VIRT_FRONTIER_ENDPOINT") }}</label>
+          <input class="virt-edit-input" type="url" id="frontier-endpoint" name="endpoint" value="{{ frontier.endpoint }}" required maxlength="2048" spellcheck="false">
+          <p class="virt-help">{{ msg("UI_VIRT_FRONTIER_ENDPOINT_HELP") }}</p>
+        </div>
+        <div>
+          <label for="frontier-api-key">{{ msg("UI_VIRT_KEY_LABEL") }}</label>
+          <input class="virt-edit-input" id="frontier-api-key" type="password" name="api_key" placeholder="{{ '********' if frontier.key_status == 'configured' else '' }}" maxlength="4096" autocomplete="new-password" spellcheck="false" autocapitalize="none">
+          <p class="virt-help">{{ msg("UI_VIRT_FRONTIER_KEY_HELP") }}</p>
+        </div>
+        <div class="virt-grid">
+          <div>
+            <label for="frontier-temperature">{{ msg("UI_VIRT_FRONTIER_TEMPERATURE") }}</label>
+            <input class="virt-edit-input" id="frontier-temperature" type="number" step="any" min="0" max="2" name="temperature" value="{{ frontier.temperature }}" required>
+          </div>
+          <div>
+            <label for="frontier-think">{{ msg("UI_VIRT_FRONTIER_THINK") }}</label>
+            <select class="virt-edit-input" id="frontier-think" name="think">
+              <option value="false"{% if not frontier.think %} selected{% endif %}>{{ msg("UI_VIRT_FRONTIER_OFF") }}</option>
+              <option value="true"{% if frontier.think %} selected{% endif %}>{{ msg("UI_VIRT_FRONTIER_ON") }}</option>
+            </select>
+          </div>
+        </div>
+        <div class="virt-grid" id="frontier-reasoning"{% if not frontier.think or frontier.interface == 'none' %} hidden{% endif %}>
+          <div>
+            <label for="frontier-reasoning-effort">{{ msg("UI_VIRT_FRONTIER_REASONING_LEVEL") }}</label>
+            <select class="virt-edit-input" id="frontier-reasoning-effort" name="reasoning_effort">
+              {% for effort, interfaces in frontier.reasoning_options.items() %}
+              <option value="{{ effort }}" data-interfaces="{{ interfaces }}"{% if frontier.reasoning_effort == effort %} selected{% endif %}>{{ msg("UI_VIRT_REASONING_" ~ effort|upper) }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div id="frontier-budget"{% if frontier.reasoning_effort != 'budget' %} hidden{% endif %}>
+            <label for="frontier-reasoning-budget">{{ msg("UI_VIRT_FRONTIER_REASONING_BUDGET") }}</label>
+            <input class="virt-edit-input" id="frontier-reasoning-budget" type="number" step="1" min="1024" name="reasoning_budget" value="{{ frontier.reasoning_budget }}">
+            <p class="virt-help">{{ msg("UI_VIRT_FRONTIER_BUDGET_HELP") }}</p>
+          </div>
+        </div>
+        <p class="virt-help">{{ msg("UI_VIRT_FRONTIER_POLICY_HELP") }}</p>
+        <div class="virt-frontier-actions">
+          <button class="btn primary" type="submit"{% if not frontier.available %} disabled{% endif %}>{{ msg("UI_VIRT_FRONTIER_SAVE") }}</button>
+        </div>
+      </form>
+    </div>
+  </article>
+  {% endif %}
 </section>
 {% endfor %}
 <script>
@@ -315,5 +396,41 @@ document.querySelectorAll(".virt-reset-form").forEach((form) => {
     if (!window.confirm(form.dataset.confirm || "")) event.preventDefault();
   });
 });
+const frontierForm = document.getElementById("virt-frontier-form");
+if (frontierForm) {
+  const iface = frontierForm.elements.interface;
+  const endpoint = frontierForm.elements.endpoint;
+  const key = frontierForm.elements.api_key;
+  const think = frontierForm.elements.think;
+  const effort = frontierForm.elements.reasoning_effort;
+  const budget = frontierForm.elements.reasoning_budget;
+  const updateReasoning = () => {
+    const protocol = iface.value === "none" ? "openai" : iface.value;
+    for (const option of effort.options) {
+      option.hidden = option.disabled = !option.dataset.interfaces.split(" ").includes(protocol);
+    }
+    if (!effort.selectedOptions.length || effort.selectedOptions[0].disabled) effort.value = "medium";
+    const enabled = iface.value !== "none" && think.value === "true";
+    document.getElementById("frontier-reasoning").hidden = !enabled;
+    document.getElementById("frontier-budget").hidden = effort.value !== "budget";
+    budget.required = enabled && effort.value === "budget";
+    budget.min = effort.value === "budget" ? "1024" : "";
+    if (effort.value === "budget" && !budget.value) budget.value = "1024";
+  };
+  const clearKey = () => { key.value = ""; key.placeholder = ""; };
+  iface.addEventListener("change", () => {
+    const defaults = [...iface.options].map(option => option.dataset.endpoint).filter(Boolean);
+    if (defaults.includes(endpoint.value) && iface.selectedOptions[0].dataset.endpoint) {
+      endpoint.value = iface.selectedOptions[0].dataset.endpoint;
+    }
+    clearKey();
+    frontierForm.elements.model.required = iface.value !== "none";
+    updateReasoning();
+  });
+  endpoint.addEventListener("input", clearKey);
+  think.addEventListener("change", updateReasoning);
+  effort.addEventListener("change", updateReasoning);
+  updateReasoning();
+}
 </script>
 {% endblock %}

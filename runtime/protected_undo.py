@@ -45,13 +45,13 @@ def _master_key() -> bytes:
         return raw.encode("utf-8")
 
 
-def _fernet(salt: bytes) -> Fernet:
+def _fernet(salt: bytes, *, master_key: bytes | None = None) -> Fernet:
     key = HKDF(
         algorithm=hashes.SHA256(),
         length=32,
         salt=salt,
         info=b"metnos-protected-undo-v1",
-    ).derive(_master_key())
+    ).derive(_master_key() if master_key is None else master_key)
     return Fernet(base64.urlsafe_b64encode(key))
 
 
@@ -122,6 +122,20 @@ def store(data: bytes, *, owner: str, namespace: str) -> str:
     raise OSError("could not allocate protected undo handle")
 
 
+def _decode_payload(blob: bytes, *, master_key: bytes | None = None) -> tuple[dict, bytes]:
+    """Authenticate native bytes; maintenance supplies its custody-checked key."""
+    try:
+        salt_b64, token = blob.split(b"\n", 1)
+        salt = base64.urlsafe_b64decode(salt_b64)
+        if len(salt) != 16:
+            raise ValueError("invalid protected undo salt")
+        envelope = json.loads(_fernet(salt, master_key=master_key).decrypt(token).decode("utf-8"))
+        data = base64.b64decode(envelope["data"], validate=True)
+    except (ValueError, KeyError, TypeError, InvalidToken, json.JSONDecodeError) as exc:
+        raise ValueError("protected undo blob is invalid") from exc
+    return envelope, data
+
+
 def _open(handle: str, *, owner: str, namespace: str,
           allow_expired: bool = False) -> tuple[Path, dict, bytes]:
     _validate_binding(owner, namespace)
@@ -130,15 +144,7 @@ def _open(handle: str, *, owner: str, namespace: str,
     if mode & 0o077:
         raise PermissionError("protected undo blob permissions are too broad")
     blob = path.read_bytes()
-    try:
-        salt_b64, token = blob.split(b"\n", 1)
-        salt = base64.urlsafe_b64decode(salt_b64)
-        if len(salt) != 16:
-            raise ValueError("invalid protected undo salt")
-        envelope = json.loads(_fernet(salt).decrypt(token).decode("utf-8"))
-        data = base64.b64decode(envelope["data"], validate=True)
-    except (ValueError, KeyError, InvalidToken, json.JSONDecodeError) as exc:
-        raise ValueError("protected undo blob is invalid") from exc
+    envelope, data = _decode_payload(blob)
     if (envelope.get("format") != _FORMAT
             or envelope.get("owner") != owner
             or envelope.get("namespace") != namespace):

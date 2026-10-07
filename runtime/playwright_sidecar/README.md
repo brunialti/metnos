@@ -105,6 +105,20 @@ that arrived after the factor request.
 
 ## Health and diagnostics
 
+Since release 122, the broker automatically saves a static page copy when an owned
+action ends with `selector_hidden`; it needs no browser-console action from
+the user. Synthetic module and security-boundary checks cover this capture;
+the website workflow still requires its own end-to-end verification.
+The copy records original control/obstruction geometry alongside sanitized
+HTML. It omits scripts, external links, form contents, marked private fields
+and email addresses. Other visible text may remain personal. There is no new
+session-access endpoint, and no capture during pending consent, secrets or
+human authentication steps. Files use the screenshot owner directory (0700),
+exclusive 0600 writes and the same 30-minute cleanup threshold, swept on the
+next capture. Internal audit records the path or the reason capture was omitted;
+the original action error remains unchanged. Static replay can differ from
+the original layout and cannot certify a complete website workflow.
+
 ```bash
 curl -fsS http://127.0.0.1:8771/health
 systemctl --user status metnos-playwright.service

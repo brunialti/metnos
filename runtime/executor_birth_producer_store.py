@@ -73,7 +73,7 @@ class ProducerReceiptClaim:
 class ProducerReceiptRowV1:
     """Exact, unauthenticated stored values; never a successful admission."""
 
-    row_id: int
+    row_id: int | None
     receipt_id: str
     receipt_hash: str
     encoded: bytes
@@ -99,7 +99,7 @@ class ProducerReceiptRowV1:
 class ProducerIssuanceRowV1:
     """Exact issuance metadata, pending independent signed binding checks."""
 
-    row_id: int
+    row_id: int | None
     request_id: str
     issuer_id: str
     capability_id: str
@@ -108,6 +108,21 @@ class ProducerIssuanceRowV1:
     candidate_source_id: str
     receipt_id: str
     encoded: bytes
+
+
+def producer_history_rows_for_binding_v1(receipt_values, issuance_values):
+    """Project acquired values for pure verification, without SQL row IDs.
+
+    The acquiring owner retains physical identity and custody. These projections
+    must not enter whole-store reconciliation, whose coverage uses real row IDs.
+    """
+    def project(record_type, values):
+        expected = {field.name for field in fields(record_type)} - {"row_id"}
+        if type(values) is not dict or set(values) != expected:
+            raise ReceiptError("producer_receipt_invalid", "history_binding_projection")
+        return record_type(row_id=None, **values)
+    return (project(ProducerReceiptRowV1, receipt_values),
+            project(ProducerIssuanceRowV1, issuance_values))
 
 
 @dataclass(frozen=True, slots=True)

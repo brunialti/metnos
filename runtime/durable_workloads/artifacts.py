@@ -1072,6 +1072,11 @@ class ArtifactRepository:
 class ArtifactStore:
     """Crash-safe private blob store backed by :class:`ArtifactRepository`."""
 
+    @staticmethod
+    def root_path(root: str | Path) -> Path:
+        """Apply the same path selection before observation or construction."""
+        return Path(os.path.abspath(os.path.expanduser(str(root))))
+
     def __init__(
         self,
         root: str | Path,
@@ -1087,7 +1092,7 @@ class ArtifactStore:
             or max_blob_bytes < 1
         ):
             raise ArtifactContractError("artifact_max_blob_bytes_invalid")
-        self._root = Path(os.path.abspath(os.path.expanduser(str(root))))
+        self._root = self.root_path(root)
         self._repository = repository
         self._max_blob_bytes = max_blob_bytes
         self._fsync = fsync
@@ -1243,7 +1248,7 @@ class ArtifactStore:
                     pass
 
     @staticmethod
-    def _open_regular(directory_fd: int, name: str) -> int:
+    def _open_regular(directory_fd: int, name: str, *, allowed_modes=frozenset({0o600})) -> int:
         # Refuse special files after opening without ever waiting for a FIFO
         # writer. Checking the path first would leave a replacement race.
         flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
@@ -1257,7 +1262,7 @@ class ArtifactStore:
         if not stat.S_ISREG(metadata.st_mode):
             os.close(descriptor)
             raise ArtifactSecurityError("artifact_file_unsafe")
-        if stat.S_IMODE(metadata.st_mode) != 0o600:
+        if stat.S_IMODE(metadata.st_mode) not in allowed_modes:
             os.close(descriptor)
             raise ArtifactSecurityError("artifact_file_permissions_unsafe")
         return descriptor

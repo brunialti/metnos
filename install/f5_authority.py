@@ -5,14 +5,14 @@ set, so this module is the only place where the operations exist and the only
 place their inputs are validated. It adds no authority: each subcommand calls
 the owner that already holds it, and every one of them refuses on its own terms.
 
-Evidence is the one operation with a payload, and it arrives on standard input
-as a closed JSON line rather than as arguments. A cycle exchanges start and
+Evidence and proposal operations receive bounded, closed JSON documents on
+standard input rather than as arguments. A cycle exchanges start and
 finish lines in one process, keeping the evidence owner open across the test.
 Artifacts are bytes, and bytes
 do not belong in an argument vector an operator can mistype or a process list
 can leak.
 
-There is deliberately no ``__main__`` guard here or in the two modules this one
+There is deliberately no ``__main__`` guard here or in the owner modules this one
 drives. The launcher imports ``main`` from the verified release; a guard would
 advertise a second, undeclared way to run an administrative operation, and the
 single topology source enumerates every entry point that exists.
@@ -170,6 +170,48 @@ def _rehearse(stage: str) -> dict:
     return issue_rehearsal_v1(apply=stage == "issue")
 
 
+def _proposal(stage: str) -> dict:
+    from install import synth_review
+    from executor_birth_semantic_authority import _pairs
+
+    raw = sys.stdin.buffer.readline(synth_review._MAX_DOCUMENT + 1)
+    if len(raw) > synth_review._MAX_DOCUMENT:
+        raise AuthorityInputError("synth_review_size_invalid")
+    try:
+        document = json.loads(raw.decode("utf-8"), object_pairs_hook=_pairs)
+    except (UnicodeError, ValueError) as exc:
+        raise AuthorityInputError("synth_review_document_invalid") from exc
+    return synth_review.run_delegated(stage, document)
+
+
+def _reuse(stage: str) -> dict:
+    from executor_birth_semantic_authority import _pairs
+    from install.birth_certification_reuse import (
+        observe_destination_v1, export_evidence_v1, import_evidence_v1,
+        register_origin_v1, continue_evidence_v1,
+    )
+
+    if stage == "inspect":
+        return observe_destination_v1()
+    if stage == "export":
+        return export_evidence_v1()
+    if stage == "continue":
+        return continue_evidence_v1()
+    raw = sys.stdin.buffer.readline(_MAX_DOCUMENT_BYTES + 1)
+    if len(raw) > _MAX_DOCUMENT_BYTES:
+        raise AuthorityInputError("reuse_document_invalid", "size")
+    try:
+        document = json.loads(raw.decode("utf-8"), object_pairs_hook=_pairs)
+    except (UnicodeError, ValueError) as exc:
+        raise AuthorityInputError("reuse_document_invalid", "json") from exc
+    if stage == "import":
+        return import_evidence_v1(document)
+    if type(document) is not dict or set(document) != {"installation_id", "public_registry"}:
+        raise AuthorityInputError("reuse_document_invalid", "trust fields")
+    from executor_birth_canonical import encode_canonical_ascii_v1
+    return register_origin_v1(document["installation_id"], encode_canonical_ascii_v1(document["public_registry"]))
+
+
 _COMMANDS = {
     ("provision-key",): _provision_key,
     ("evidence",): _evidence,
@@ -179,6 +221,13 @@ _COMMANDS = {
     ("certify", "issue"): lambda: _certify("issue"),
     ("rehearse", "plan"): lambda: _rehearse("plan"),
     ("rehearse", "issue"): lambda: _rehearse("issue"),
+    ("proposal", "review"): lambda: _proposal("review"),
+    ("proposal", "approve"): lambda: _proposal("approve"),
+    ("reuse", "inspect"): lambda: _reuse("inspect"),
+    ("reuse", "export"): lambda: _reuse("export"),
+    ("reuse", "trust"): lambda: _reuse("trust"),
+    ("reuse", "import"): lambda: _reuse("import"),
+    ("reuse", "continue"): lambda: _reuse("continue"),
 }
 
 
@@ -187,7 +236,8 @@ def main(argv: list[str] | None = None) -> int:
     command = _COMMANDS.get(arguments)
     if command is None:
         print("usage: f5_authority.py provision-key | evidence | "
-              "migrate plan|apply | certify derive|issue | rehearse plan|issue", file=sys.stderr)
+              "migrate plan|apply | certify derive|issue | rehearse plan|issue | "
+              "proposal review|approve | reuse inspect|export|trust|import|continue", file=sys.stderr)
         return 64
     try:
         report = command()

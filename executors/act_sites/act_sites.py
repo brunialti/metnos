@@ -45,6 +45,8 @@ def _attachment(path: str, sensitive: bool) -> dict:
 # rispondere, non tanto da diventare un allegato mascherato (§2.7: oltre,
 # si dichiara il troncamento).
 _MAX_TESTO_ARRIVO = 4000
+_TRUNCATION_FIELDS = ("truncated", "truncated_what", "used", "available_total",
+                      "cap_field", "cap_value")
 
 
 def invoke(args: dict) -> dict:
@@ -103,40 +105,49 @@ def invoke(args: dict) -> dict:
         # broker. Legare la lettura al marcatore lasciava senza contenuto
         # proprio i turni piu' comuni.
         arrivo = {}
+        collection_partial = res.get("collection_partial") is True
+        # A failed collection carries only evidence saved before the failure.
+        # Do not read the current page or turn the failed search into success.
+        letto = res if collection_partial else None
         if (res.get("ok") and not res.get("no_match")
                 and (goal_mode or is_goal_navigation_request(action))):
             try:
                 letto = session_client.session_read(
                     session_id=sid, owner=owner, include_screenshot=False,
                     goal=(done_when or action))
-                if letto.get("ok"):
-                    # I blocchi che riguardano il fine sono la risposta; il
-                    # corpo intero e' il ripiego quando il fine non seleziona
-                    # niente. Riversare la pagina non e' rispondere.
-                    tratto = str(letto.get("goal_span") or "")
-                    testo = tratto or str(letto.get("text") or "")
-                    arrivo = {"url": letto.get("url") or res.get("url"),
-                              "title": letto.get("title") or "",
-                              "text": testo[:_MAX_TESTO_ARRIVO]}
-                    if len(testo) > _MAX_TESTO_ARRIVO:
-                        arrivo["truncated"] = True
-                        arrivo["truncated_what"] = "text"
-                        arrivo["used"] = _MAX_TESTO_ARRIVO
-                        arrivo["available_total"] = len(testo)
             except Exception:
-                arrivo = {}          # la lettura e' un di piu': mai un blocco
+                letto = None         # la lettura e' un di piu': mai un blocco
+        if isinstance(letto, dict) and (letto.get("ok") or collection_partial):
+            # I blocchi che riguardano il fine sono la risposta; il corpo
+            # intero e' il ripiego quando il fine non seleziona niente.
+            tratto = str(letto.get("goal_span") or "")
+            testo = tratto or str(letto.get("text") or "")
+            arrivo = {"url": letto.get("url") or res.get("url"),
+                      "title": letto.get("title") or "",
+                      "text": testo[:_MAX_TESTO_ARRIVO]}
+            if len(testo) > _MAX_TESTO_ARRIVO:
+                arrivo["truncated"] = True
+                arrivo["truncated_what"] = "text"
+                arrivo["used"] = _MAX_TESTO_ARRIVO
+                arrivo["available_total"] = len(testo)
         results.append({
             "session_id": sid, "ok": bool(res.get("ok")),
             "executed": bool(res.get("executed")),
+            **({"collection_partial": True} if collection_partial else {}),
             **({"no_match": True} if res.get("no_match") else {}),
             "primitive": res.get("primitive"),
             "url": arrivo.get("url") or res.get("url"),
             **({k: v for k, v in arrivo.items() if k != "url"} if arrivo else {}),
+            **({k: res[k] for k in _TRUNCATION_FIELDS if k in res}
+               if res.get("truncated") else {}),
             "reason_code": (None if res.get("ok") else
                             res.get("reason_code") or res.get("error_class")),
             **({"reason_detail": res.get("detail")} if res.get("detail") else {}),
             **({"observed_candidates": res.get("observed_candidates")}
                if res.get("observed_candidates") else {}),
+            # Decisions sent to a cloud model: the runtime tells the user.
+            **({"cloud_llm_calls": int(res["cloud_llm_calls"])}
+               if res.get("cloud_llm_calls") else {}),
         })
         shot = res.get("screenshot_path")
         if shot:
@@ -176,6 +187,14 @@ def invoke(args: dict) -> dict:
     out = {"ok": ok, "results": results,
            "metadata": {"executed": sum(1 for r in results if r["executed"]),
                         "total": len(results)}}
+    if any(r.get("collection_partial") for r in results):
+        out["collection_partial"] = True
+    cloud = sum(r.get("cloud_llm_calls", 0) for r in results)
+    if cloud:
+        out["cloud_llm_calls"] = cloud
+    limited = next((r for r in results if r.get("truncated")), None)
+    if limited:
+        out.update({k: limited[k] for k in _TRUNCATION_FIELDS if k in limited})
     if attachments:
         out["attachments"] = attachments
     if ok:
@@ -188,11 +207,6 @@ def invoke(args: dict) -> dict:
         arrivato = next((r for r in results if r.get("text")), None)
         if arrivato:
             out["final_message_hint"] = arrivato["text"]
-            if arrivato.get("truncated"):
-                out["truncated"] = True
-                out["truncated_what"] = arrivato.get("truncated_what")
-                out["used"] = arrivato.get("used")
-                out["available_total"] = arrivato.get("available_total")
         else:
             out["final_message_hint"] = _msg(
                 "MSG_SITES_ACTIONS_COMPLETED",

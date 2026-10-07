@@ -421,6 +421,12 @@ def _iter_source_paths(source: ManifestSource) -> Iterable[Path]:
             relative = path.relative_to(root)
         except ValueError:
             continue
+        # Birth's reserved transaction trees are neither canonical authoring
+        # nor installed contracts. They may coexist with the canonical tree
+        # during publication/recovery, including an incomplete manifest.
+        if any(re.fullmatch(r"\.birth-(?:stage|backup)-[0-9a-f]{64}", part)
+               for part in relative.parts[:-1]):
+            continue
         depth = len(relative.parts) - 1
         if depth < source.min_depth:
             continue

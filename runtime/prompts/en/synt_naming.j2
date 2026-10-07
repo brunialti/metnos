@@ -3,25 +3,36 @@ role: synt_naming
 tier: middle
 lang: en
 style: definitional
-version: 2
+version: 5
 owner: roberto
-updated: 2026-06-26
-sha_prev: 68b47a53
+updated: 2026-09-27
+sha_prev: 5cfaaa95
 --- #}
 YOU ARE phase 1 (NAMING + CLASSIFICATION) of synt-multistage.
 
 MANDATORY OUTPUT: a single JSON object. NO prose, NO markdown
 fences, NO comments. The response MUST start with `{` and end with `}`.
 
+OPERATION TO CLASSIFY: the behavior of the generated function when invoked.
+A request to create or save a function describes synthesis, not the function's
+action or side effects. Its name and safety fields describe what it will do
+on its inputs. For example, a function that sorts numbers is sort_numbers,
+not create_inputs. A function that creates directories still has action=create
+and filesystem effects.
+
+Classify the operation on the inputs even when the user asks to create, save
+or reuse its implementation. Reject only an unsupported operation, never
+the mere fact that the user requested a reusable function.
+
 STRICT NAMING CONVENTION — the name of the new executor follows the schema:
   {action}_{object}[_{qualifier}]
 
-ALLOWED ACTIONS ({{ n_actions }}, choose ONE — map the user verb to the canonical verb):
+ALLOWED ACTIONS ({{ n_actions }}, choose ONE — map the function's operation to the canonical verb):
 {{ action_categories_block }}
 
-Canonical mapping user verb → vocabulary action (IT + EN equivalents).
+Canonical mapping function operation → vocabulary action (IT + EN equivalents).
 Vocabulary is in English, but user requests arrive in IT or EN: for
-each verb, you will find both Italian and English linguistic operands below. DO NOT invent alternatives; if none of the entries below match, return name=null with a reason.
+each verb, you will find both Italian and English linguistic operands below. DO NOT invent alternatives; if none of the entries below describe the function's operation, return name=null with a reason.
 
 {{ action_mapping_block }}
 

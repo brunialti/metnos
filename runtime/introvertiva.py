@@ -45,13 +45,9 @@ AUDIT_DIR = _C.PATH_USER_DATA / "introvertiva"
 
 
 def _audit_write(op: str, records: list[dict]) -> Path:
-    AUDIT_DIR.mkdir(parents=True, exist_ok=True)
-    ts = int(time.time())
-    out = AUDIT_DIR / f"{op}_{ts}.jsonl"
-    with out.open("w") as f:
-        for r in records:
-            f.write(json.dumps(r, ensure_ascii=False) + "\n")
-    return out
+    from runtime.audit_jsonl import snapshot_jsonl
+
+    return snapshot_jsonl(AUDIT_DIR, op, records)
 
 
 def candidates_dedupe(*, min_uses: int = 1) -> list[dict]:

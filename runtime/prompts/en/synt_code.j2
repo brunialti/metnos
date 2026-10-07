@@ -3,10 +3,10 @@ role: synt_code
 tier: wise
 lang: en
 style: definitional
-version: 3
+version: 7
 owner: roberto
-updated: 2026-07-20
-sha_prev: 33b19d50
+updated: 2026-10-04
+sha_prev: 64f70c57
 --- #}
 You are phase 5 (CODE) of synt-multistage.
 Your ONLY task: write the Python file `{{ name }}.py` that implements the executor.
@@ -18,6 +18,11 @@ Skeleton manifest already decided (DO NOT change it):
   capabilities: {{ capabilities }}
   revertible: {{ revertible }}, reverse_pattern: {{ reverse_pattern }}
   description: {{ description }}
+
+STAGE 3 FUNCTIONAL CASES (fixed input/output contract):
+{{ tests_json }}
+Implement the full requested behavior, including these cases. Do not change
+the cases or hardcode their answers. Preserve their argument and result fields.
 
 MANIFEST PRESENTATION CONTRACT:
 The user-facing view is declarative and does not belong in executor code.
@@ -107,15 +112,16 @@ MUST NOT: read `args.get("account", "default")` as the sole
 OK: `for e in entries: by_account.setdefault(e["account"], []).append(e)`.
 ERROR: `account = args.get("account", "metnos_system")`. THIS IS AN ERROR.
 
-BEST-EFFORT PRINCIPLE (for all vector verbs):
-
-MUST: handle each entry independently. A failed entry adds
-  a dict to `failed[]`, it does not block the others.
-MUST NOT: raise an exception that terminates the loop on the entire batch
-  as soon as one entry fails.
-OK: `try: process(e); results.append(...) except Exception as ex: failed.append({"id": e["id"], "error": str(ex)})`.
-ERROR: `for e in entries: process(e)  # senza try/except`. The first
-  exception blocks all others. THIS IS AN ERROR.
+VALIDATION AND ERRORS:
+- Validate the required container first. If invalid, return a dictionary with
+  ok=false and error from invoke; do not raise validation exceptions.
+- If an invalid item requires ok=false, validate ALL items before processing
+  any of them. Return ok=false on the first invalid item: do not use continue
+  or return partial results with ok=true.
+- Only if the contract allows per-item errors, process valid items and record
+  each error in failed. For a valid container return ok=true, ok_count equal
+  to processed items and fail_count equal to rejected items.
+- Every successful response includes ok_count and fail_count, even if zero.
 
 CENTRAL PARALLELISM ENGINE:
 
@@ -125,11 +131,16 @@ OK: `ThreadPoolExecutor(max_workers=assigned_workers())` inside `invoke`, with r
 ERROR: `ThreadPoolExecutor(max_workers=os.cpu_count() * 4)`. THIS IS AN ERROR.
 
 - Vectorized by default: every executor accepts lists, even of a single element or empty.
+- Preserve the requested list shape: when the result is already a list,
+  assign it directly to its field; do not wrap it in another list.
 - Output is ALWAYS a list (entries / results), even degenerate (0 or 1 element).
   No None, no single dict: the planner always receives a list
   and treats it as completed — it must not "explore more" if the list
   is short or empty.
 - Output standard form {ok, ok_count, fail_count, results|entries, failed}.
+- ok_count counts items actually processed without errors, even when their
+  result is false, zero or empty text. fail_count counts processing errors,
+  never false-valued results.
 - INTERNAL EXECUTOR LOOP. When the operation operates on a variable or unknown
   volume (e.g., mail in a time window, files in a recursive directory,
   paginated fetch), implement the iteration loop (batch /
@@ -140,7 +151,6 @@ ERROR: `ThreadPoolExecutor(max_workers=os.cpu_count() * 4)`. THIS IS AN ERROR.
   internally, returning the entire list in a single observation.
   Add an explicit cap (max_total, max_pages, max_bytes) to avoid
   output blow-up.
-- Best-effort: a failed entry does not block the others.
 - If critical (modifying fs/network/external state): use
   `platform_policy.is_protected_path(path)` for hard block +
   `is_system_file(name)` for safety net (override via `allow_system=true`).

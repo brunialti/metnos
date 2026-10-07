@@ -1101,16 +1101,9 @@ def _ui_surface_units() -> list[KnowledgeUnit]:
             if procedure:
                 stops = surface.stop_conditions(lang)
                 if lang == "it":
-                    lead = (
-                        "Chiedi a Metnos con una richiesta come quella di "
-                        f"questo esempio: «Guidami in sicurezza nella pagina "
-                        f"{surface.label(lang)}.»"
-                    )
                     body = [
-                        lead,
-                        "",
-                        f"Percorso nella chat web di Metnos: **{title}** "
-                        f"(`{surface.route}`).",
+                        f"Percorso nella chat web di Metnos: "
+                        f"[{title}]({surface.route}).",
                         "",
                     ]
                     body.extend(
@@ -1129,16 +1122,9 @@ def _ui_surface_units() -> list[KnowledgeUnit]:
                         + " Verifiche e condizioni di arresto."
                     )
                 else:
-                    lead = (
-                        "Ask Metnos with a request like this example: "
-                        f"“Guide me safely through the {surface.label(lang)} "
-                        "page.”"
-                    )
                     body = [
-                        lead,
-                        "",
-                        f"Path in the Metnos web chat: **{title}** "
-                        f"(`{surface.route}`).",
+                        f"Path in the Metnos web chat: "
+                        f"[{title}]({surface.route}).",
                         "",
                     ]
                     body.extend(

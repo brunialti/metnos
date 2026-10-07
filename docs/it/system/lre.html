@@ -59,6 +59,12 @@ dell'executor. Nell'attuale percorso automatico un'azione è considerata
 almeno dieci minuti. La decisione dipende da questo metadato strutturato, non da
 parole come “lungo”, “in background” o “molti file”.</p>
 
+<p>Un contratto firmato che dichiara un effetto <code>interactive</code> resta
+nel turno, anche con un tempo massimo elevato: può richiedere l'intervento
+dell'utente e non promette una ripresa autonoma. Per esempio, aumentare il
+tempo concesso a una ricerca nel browser non la trasforma in un job LRE.
+Un eventuale piano LRE esplicito mantiene tutti i controlli di ammissione.</p>
+
 <table>
  <thead><tr><th>Condizione</th><th>Decisione di Metnos</th></tr></thead>
  <tbody>

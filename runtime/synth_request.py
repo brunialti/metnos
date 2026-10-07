@@ -25,6 +25,7 @@ from executor_birth_synth import (
     SynthTestData, validate_synth_tests,
 )
 from executor_birth_functional import validate_functional_cases
+from synth_proposal_store import PendingSynthProposal, preserve_candidate
 from vocab import render_actions_pipe, render_objects_pipe, render_qualifiers_pipe
 from messages import get as _msg
 from generated_executor_contract import (
@@ -261,10 +262,18 @@ def _install_synthesized(run, intent, user_query):
             contract_id=ContractId(ManifestOrigin.USER, f"{run.name}/manifest.toml"),
             reason=f"synt multistage: {intent}",
         ))
+        if birth.publication is None:
+            from synt import DEFAULT_PROPOSALS_DIR
+            error_code = birth.error_code or "synth_birth_rejected"
+            proposal_id = preserve_candidate(
+                out_dir, proposals_dir=DEFAULT_PROPOSALS_DIR,
+                contract_id=ContractId(ManifestOrigin.USER, f"{run.name}/manifest.toml").value,
+                producer="synt_multistage", reason=f"synt multistage: {intent}",
+                error_code=error_code,
+            )
+            raise PendingSynthProposal(proposal_id, error_code)
     finally:
         shutil.rmtree(staging_root, ignore_errors=True)
-    if birth.publication is None:
-        raise RuntimeError(birth.error_code or "synth_birth_rejected")
     # (Rimosso 21/6 il blocco i18n at-gen-time: leggeva run.description/
     # run.affinity_keywords — attributi INESISTENTI su MultistageRun → sempre
     # no-op, codice morto. Gli executor synth portano description/affinity nel
@@ -580,6 +589,9 @@ def handle_synth_request(args, *, user_query, progress=None, verbose=False, curr
         return _invoke(
             "synt.procedural", system, user, max_tokens, **kwargs)
 
+    _llm_procedural.supports_grammar = bool(
+        getattr(_providers["synt.procedural"], "supports_grammar", False))
+
     def _llm_creative(system, user, max_tokens=2500, **kwargs):
         return _invoke(
             "synt.description", system, user, max_tokens, **kwargs)
@@ -692,8 +704,12 @@ def handle_synth_request(args, *, user_query, progress=None, verbose=False, curr
         # non implica attivazione: il lifecycle synthesized resta fuori dal
         # catalogo del composer.
         install_error = None
+        pending_proposal_id = None
         try:
             _install_synthesized(run, intent, user_query)
+        except PendingSynthProposal as ex:
+            install_error = ex.reason
+            pending_proposal_id = ex.proposal_id
         except Exception as ex:
             install_error = f"{type(ex).__name__}: {ex}"
             if verbose:
@@ -720,9 +736,13 @@ def handle_synth_request(args, *, user_query, progress=None, verbose=False, curr
             "lifecycle": "synthesized" if install_error is None else None,
             "install_error": install_error,
             "proposed_name": run.name,
-            "proposal_id": proposal_id,
+            "proposal_id": pending_proposal_id or proposal_id,
+            "review_pending": pending_proposal_id is not None,
             "elapsed_s": elapsed_s,
             "message": (
+                _msg("MSG_SYNTH_REVIEW_PENDING", name=run.name,
+                     proposal_id=pending_proposal_id, reason=install_error)
+                if pending_proposal_id else
                 _msg("MSG_SYNTH_CANDIDATE_CREATED", name=run.name)
                 if install_error is None
                 else _msg("MSG_SYNTH_FAILED",

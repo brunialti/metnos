@@ -1712,14 +1712,26 @@ def is_query_specific(framework_json: str) -> bool:
     Conseguenze per i due layer con stato:
       - L1 autopath: non promuovibile a skill di cluster (avvelenerebbe le
         query sorelle col piano congelato di UNA query).
-      - L0 fastpath: servibile SOLO via hash 0a (query identica → args giusti
-        per costruzione), MAI via cosine 0b (query simile ma semanticamente
+      - L0 fastpath: servibile SOLO via hash 0a con verifica della query
+        originale integra, MAI via cosine 0b (query simile ma semanticamente
         diversa riuserebbe i literal sbagliati: «foto di X» vs «foto di Y»).
     Deterministico (§7.9): nessun LLM, solo ispezione args."""
     try:
         d = json.loads(framework_json)
     except Exception:
         return False
+
+    def _has_fixed_value(value) -> bool:
+        # Gli ingressi vettoriali possono usare qualsiasi nome di argomento.
+        # Solo riferimenti interamente dinamici sono riusabili su altre query;
+        # numeri, valori vuoti e testo misto restano dati del turno originale.
+        if isinstance(value, str):
+            return re.fullmatch(r"\$\{[^{}]+\}", value) is None
+        if isinstance(value, dict):
+            return not value or any(_has_fixed_value(v) for v in value.values())
+        if isinstance(value, list):
+            return not value or any(_has_fixed_value(v) for v in value)
+        return True
 
     def _content_in(obj) -> bool:
         """Scansione RICORSIVA (1/7/2026): i campi content-bearing possono
@@ -1736,7 +1748,7 @@ def is_query_specific(framework_json: str) -> bool:
                     return True
             return False
         if isinstance(obj, list):
-            return any(_content_in(x) for x in obj)
+            return _has_fixed_value(obj)
         return False
 
     for step in (d.get("steps") or []):

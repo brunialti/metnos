@@ -33,11 +33,13 @@ def feed(monkeypatch, document):
 
 # --- the closed argument set -------------------------------------------------
 
-def test_only_the_eight_exact_forms_exist():
+def test_only_the_closed_forms_exist():
     assert set(authority._COMMANDS) == {
         ("provision-key",), ("evidence",), ("migrate", "plan"),
         ("migrate", "apply"), ("certify", "derive"), ("certify", "issue"),
         ("rehearse", "plan"), ("rehearse", "issue"),
+        ("proposal", "review"), ("proposal", "approve"),
+        *(("reuse", stage) for stage in ("inspect", "export", "trust", "import", "continue")),
     }
 
 
@@ -62,6 +64,15 @@ def test_a_failing_operation_reports_a_closed_code(monkeypatch, capsys):
     reported = json.loads(capsys.readouterr().err)
     assert reported == {"error": "certification_before_migration",
                         "detail": "no marker"}
+
+
+@pytest.mark.parametrize("payload", [b'{"proposal":{},"proposal":{},"human_cases":[]}', b'not json'])
+def test_proposal_input_rejects_ambiguous_json_before_launch(monkeypatch, payload):
+    monkeypatch.setattr(authority.sys, "stdin", type("S", (), {"buffer": io.BytesIO(payload)})())
+    monkeypatch.setattr("install.synth_review.run_delegated",
+                        lambda *_: pytest.fail("ambiguous proposal must not launch"))
+    with pytest.raises(AuthorityInputError, match="synth_review_document_invalid"):
+        authority._proposal("review")
 
 
 # --- the evidence document ---------------------------------------------------

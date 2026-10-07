@@ -76,6 +76,7 @@ debian = [
     "git",
     "curl",
     "ca-certificates",
+    "polkitd",
     "libstdc++6",
     "libgomp1",
     "tesseract-ocr",

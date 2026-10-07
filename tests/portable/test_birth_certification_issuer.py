@@ -268,32 +268,40 @@ def test_issuance_rereads_every_authority_before_signing(
     import install.birth_certification_evidence as evidence
     import install.birth_certification_qualification as qualification
     import executor_birth_certification_authority as authority
+    import install.birth_certification_reuse as reuse
 
     history, frontier = qualification_inputs
+    # This test isolates the issuer's three-read protocol. Native oracle replay
+    # and live conditions are tested by the shared/reuse suites.
+    destination = {"fixture": "issuer-read-protocol"}
+    monkeypatch.setattr(reuse, "audit_local_evidence_v1", lambda _owner: destination)
+    monkeypatch.setattr(reuse, "observe_destination_v1", lambda: destination)
     derived = qualification.derive_qualification_v1(history, frontier)
     if changed == "head":
         derived = replace(derived, required_head_id=digest("other-head"))
     monkeypatch.setattr(issuer, "_require_root_v1", lambda: None)
-    migrations = iter([MIGRATION, digest("other") if changed == "migration" else MIGRATION])
+    migrations = iter([MIGRATION, digest("other") if changed == "migration" else MIGRATION, MIGRATION])
     installations = iter([(INSTALLATION, HEAD, BUILD), (
-        INSTALLATION, HEAD, digest("other") if changed == "installation" else BUILD)])
+        INSTALLATION, HEAD, digest("other") if changed == "installation" else BUILD),
+        (INSTALLATION, HEAD, BUILD)])
     monkeypatch.setattr(issuer, "_completed_migration_id", lambda: next(migrations))
     monkeypatch.setattr(issuer, "_installation_frontier_v1", lambda: next(installations))
     monkeypatch.setattr(issuer, "_service_qualification_v1", lambda *_a: derived)
     frontiers = iter([frontier, replace(frontier, head=digest("other"))
-                      if changed == "evidence" else frontier])
+                      if changed == "evidence" else frontier, frontier])
 
     @contextmanager
     def ledger():
-        yield SimpleNamespace(frontier=next(frontiers))
+        yield SimpleNamespace(frontier=next(frontiers),
+            prepare_certificate=lambda **value: prepared.append(value))
 
     monkeypatch.setattr(evidence, "administrative_evidence_v1", ledger)
-    signed = []
+    signed, prepared = [], []
     monkeypatch.setattr(authority, "load_certification_public_key_v1",
                         lambda: SimpleNamespace(key_id="dedicated-key"))
     monkeypatch.setattr(issuer, "_sign_certificate_v1",
                         lambda payload: signed.append(payload) or b"signed")
-    monkeypatch.setattr(issuer, "_install_certificate_v1", lambda *_a: Path("active.json"))
+    monkeypatch.setattr(issuer, "_install_certificate_v1", lambda *_a, **kw: Path("active.json") if kw == {"locked": True} else pytest.fail("publication unlocked"))
     if changed:
         with pytest.raises(issuer.CertificationIssueError) as refused:
             issuer.issue_certificate_v1(apply=apply)
@@ -302,7 +310,10 @@ def test_issuance_rereads_every_authority_before_signing(
     else:
         result = issuer.issue_certificate_v1(apply=apply)
         assert result["technical_admissions"] == 5
-        assert len(signed) == int(apply)
+        assert len(signed) == len(prepared) == int(apply)
+        if apply:
+            assert prepared[0]["certificate"] == b"signed"
+            assert json.loads(prepared[0]["qualification"])["qualification_id"] == derived.qualification_id
         assert result["certificate"] == ("active.json" if apply else None)
 
 

@@ -30,6 +30,11 @@
  <p>La verifica di un candidato nuovo non crea una voce nel catalogo.
  Un candidato respinto non lascia quindi una funzione incompleta che
  impedisce il successivo aggiornamento.</p>
+ <p>Le pagine HTTP rileggono il catalogo tramite la cache comune, che
+ riconosce i cambiamenti delle versioni firmate e del ciclo di vita.
+ Un'ammissione o un ritiro diventano visibili senza riavviare il server;
+ un errore temporaneo non blocca le letture successive. Le funzioni in
+ prova restano escluse dalla selezione ordinaria.</p>
  <p>I controlli sul comportamento e sul significato del candidato avvengono
  senza occupare il blocco di pubblicazione del catalogo. Il breve passaggio
  finale controlla il candidato e confronta il suo nome con le identità
@@ -130,6 +135,15 @@
  noto servono la correzione, le verifiche e una revisione indipendente.
  Il registro è implementato nello sviluppo, ma non è un certificato F5
  né un interruttore di attivazione.</p>
+ <p>Il candidato in verifica può trasferire il collaudo completo fra
+ installazioni mediante prove firmate. Il destinatario deve riconoscere
+ esplicitamente la chiave d'origine e verificare di nuovo tutte le prove con
+ lo stesso verificatore installato. Codice, prompt e condizioni applicabili
+ devono coincidere; le ammissioni e la qualificazione restano locali.
+ Una nuova versione invariata conserva il certificato precedente come prova
+ storica, ma richiede un nuovo certificato locale. Esportazione e importazione
+ non attivano F5. Le prove automatiche sono riuscite; l'accettazione nativa
+ completa di questo percorso resta da eseguire.</p>
  <p>Le verifiche finali riguardano Birth, generazioni, memorie temporanee,
  riscontri e ripresa, senza ripetere le prove di posta o calendari non modificati.
  Prima si prova l'integrazione in un ambiente isolato; la certificazione deve
@@ -166,6 +180,11 @@
  completare il collegamento ai riscontri reali, l'integrazione di tutte le
  memorie temporanee e la certificazione finale F5; queste prove non attivano
  la produzione.</p>
+ <p><strong>Inventario — candidato in collaudo.</strong> Le copie temporanee
+ riservate alla preparazione e al recupero di una pubblicazione non sono
+ funzioni installate e non devono creare falsi duplicati nel catalogo.
+ L'inventario le conserva e continua a segnalare i duplicati reali; soltanto
+ la pubblicazione verificata rende disponibile una funzione.</p>
  <h2>Le prove restano, le vecchie copie del programma no</h2>
  <p>La procedura di rilascio conserva normalmente la versione attiva e una
  precedente, oltre alle copie ancora utilizzate da processi, servizi o

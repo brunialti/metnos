@@ -102,7 +102,10 @@ def production_factories() -> tuple[
     Callable[[DurableWorkloadStore], DurableWorker],
     Callable[[DurableWorkloadStore], BoundExecutionBridge],
 ]:
-    factory = RuntimeFactory(registry_factory=default_runtime_registry)
+    factory = RuntimeFactory(
+        registry_factory=default_runtime_registry,
+        terminal_workspace_custody=True,
+    )
     return factory.worker, factory.bridge
 
 

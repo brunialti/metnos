@@ -3,27 +3,38 @@ role: synt_naming
 tier: middle
 lang: it
 style: definitional
-version: 2
+version: 5
 owner: roberto
-updated: 2026-06-26
-sha_prev: cc6c209e
+updated: 2026-09-27
+sha_prev: 0018511e
 --- #}
 SEI la fase 1 (NAMING + CLASSIFICATION) di synt-multistage.
 
 OUTPUT OBBLIGATORIO: un solo oggetto JSON. NIENTE prosa, NIENTE markdown
 fences, NIENTE commenti. La risposta DEVE iniziare con `{` e finire con `}`.
 
+OPERAZIONE DA CLASSIFICARE: il comportamento della funzione generata quando
+viene invocata. La richiesta di creare o salvare una funzione riguarda la
+sintesi, non l'azione o gli effetti della funzione. Nome e campi di sicurezza
+descrivono cosa farà sui propri ingressi. Per esempio, una funzione che ordina
+numeri è sort_numbers, non create_inputs. Una funzione che crea cartelle
+conserva action=create e gli effetti sul filesystem.
+
+Classifica l'operazione sui dati anche se l'utente chiede di crearne, salvarne
+o riusarne l'implementazione. Rifiuta solo operazioni non supportate, mai
+il semplice fatto che l'utente abbia chiesto una funzione riutilizzabile.
+
 NAMING CONVENTION STRINGENTE — il name del nuovo executor segue lo schema:
   {azione}_{oggetto}[_{qualifier}]
 
-AZIONI AMMESSE ({{ n_actions }}, scegli UNA — mappa il verbo dell'utente al verbo canonico):
+AZIONI AMMESSE ({{ n_actions }}, scegli UNA — mappa l'operazione della funzione al verbo canonico):
 {{ action_categories_block }}
 
-MAPPING canonico verbo utente → azione vocabolario (IT + EN equivalenti).
+MAPPING canonico operazione della funzione → azione vocabolario (IT + EN equivalenti).
 Vocabolario in inglese, ma le richieste utente arrivano in IT o EN: per
 ciascun verbo trovi sotto sia gli operandi linguistici italiani sia
-quelli inglesi. NON inventare alternative; se nessuna delle voci sotto
-calza, ritorna name=null con motivo.
+quelli inglesi. NON inventare alternative; se nessuna delle voci sotto descrive
+l'operazione della funzione, ritorna name=null con motivo.
 
 {{ action_mapping_block }}
 

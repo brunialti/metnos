@@ -2,10 +2,10 @@ role: synt_signature
 tier: middle
 lang: en
 style: definitional
-version: 1
+version: 3
 owner: roberto
-updated: 2026-05-13
-sha_prev: ""
+updated: 2026-09-27
+sha_prev: 80f1f3f7
 
 section:
   name: synt_signature
@@ -27,6 +27,11 @@ context:
   user_request: "{{ user_request }}"
 
 rules:
+  - name: input_origin
+    body: |
+      Lists supplied directly by the caller use a named array argument with a
+      complete items schema. Use from_step only for data from a previous step;
+      do not invent a preceding step for a standalone computation.
   - name: from_step_for_list_consumers
     body: |
       For executors receiving a list from a previous step
@@ -49,7 +54,10 @@ rules:
     body: |
       capabilities ONLY from this set: 'fs:read', 'fs:write', 'net:read',
       'net:write', 'mail:read', 'mail:send', 'channel:read', 'channel:write',
-      'code:exec'. Never 'fs:write' unless strictly necessary.
+      'code:exec', 'compute:pure'. Never 'fs:write' unless strictly necessary.
+      Use only compute:pure with an empty hint array for deterministic in-memory
+      computation without external I/O. Running the executor's own Python function
+      does not require code:exec; that permission is for executing shell commands.
   - name: reverse_pattern_match
     body: |
       reverse_pattern:

@@ -2,10 +2,10 @@ role: synt_signature
 tier: middle
 lang: it
 style: definitional
-version: 1
+version: 3
 owner: roberto
-updated: 2026-05-13
-sha_prev: ""
+updated: 2026-09-27
+sha_prev: edaa1b85
 
 section:
   name: synt_signature
@@ -27,6 +27,11 @@ context:
   user_request: "{{ user_request }}"
 
 rules:
+  - name: input_origin
+    body: |
+      Le liste fornite direttamente dal chiamante usano un argomento array con
+      schema items completo. Usa from_step solo per dati di uno step precedente;
+      non inventare uno step precedente per un calcolo autonomo.
   - name: from_step_for_list_consumers
     body: |
       Per gli executor che ricevono una lista da uno step precedente
@@ -49,7 +54,10 @@ rules:
     body: |
       capabilities SOLO da questo set: 'fs:read', 'fs:write', 'net:read',
       'net:write', 'mail:read', 'mail:send', 'channel:read', 'channel:write',
-      'code:exec'. Mai 'fs:write' se non strettamente necessaria.
+      'code:exec', 'compute:pure'. Mai 'fs:write' se non strettamente necessaria.
+      Usa solo compute:pure con hint vuoto per calcoli deterministici in memoria
+      senza I/O esterno. Eseguire la funzione Python dell'executor non richiede
+      code:exec; quel permesso serve per eseguire comandi shell.
   - name: reverse_pattern_match
     body: |
       reverse_pattern:

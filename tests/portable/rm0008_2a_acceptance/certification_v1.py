@@ -91,7 +91,9 @@ _EFFECTIVE_PYTEST_SUPPORT_SHA256 = {
         "553295e23b655086aae942f654bf87d62a2020a350bc0bc680f61cd130549a27"
     ),
     "tests/runtime/conftest.py": (
-        "6c3c097efa2cf52334cb4fc40945c1b1d9c91bf7f774a768958809bd8c9086ab"
+        # Reviewed isolation of ownership, private signed builtin contracts
+        # and continuation turn logs; no outcome or collection bypass.
+        "a0dc309c66d3442d0bae8dd8af77f42fd5ee416e1dfc9a691cfaf8bbab825d55"
     ),
     "tests/windows_identity/conftest.py": (
         "856572740b3f2246296ba064168da30894092e690ab5c65d1b0ea159029768b3"
@@ -1916,11 +1918,13 @@ def validate_productive_mutation_graph(
     installer_entry_modules = frozenset({
         "install.phases.phase3_code",
         "install.executor_birth_transition",
+        "install.synth_review",
     })
     provisioner_entry_symbols = frozenset({
         f"{provisioner_module}::prepare_or_defer_until_legacy_author_exists",
         f"{provisioner_module}::ensure_executor_birth_authorities_prepared",
         f"{provisioner_module}::complete_transition_cutover_v2",
+        f"{provisioner_module}::publish_independent_evidence_v1",
     })
     installer_resolver_symbols = {
         "install.birth_authority_provisioning::_resolve_path_user_config_v1",
@@ -2262,14 +2266,18 @@ def validate_productive_mutation_graph(
             if not reached_mutations:
                 continue
         if owner_module in installer_entry_modules:
-            # Phase 3 and the reviewed one-shot transition entry may name only
-            # the closed provisioner entries. Everything else they reach must
+            # Installer and review callers may name only their designated
+            # closed provisioner entries. Everything else they reach must
             # be reached through those entries, never called directly.
             # Every sensitive symbol must be reached through an entry, so it
             # is the direct targets that are checked: an empty set means this
             # owner only calls its own helpers.
             direct = calls.get(owner, set()) & sensitive_targets
-            if direct <= provisioner_entry_symbols:
+            allowed = ({f"{provisioner_module}::publish_independent_evidence_v1"}
+                       if owner_module == "install.synth_review"
+                       else provisioner_entry_symbols - {
+                           f"{provisioner_module}::publish_independent_evidence_v1"})
+            if direct <= allowed:
                 continue
         if owner_module == provisioner_module and (
             owner in provisioner_entry_symbols

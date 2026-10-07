@@ -202,6 +202,9 @@ body.readonly #log .msg-decide-btn{display:none}
                                      border-color:var(--border-strong);
                                      color:var(--muted);opacity:.75}
 .msg .path-badges .arrow.predicted{color:var(--border)}
+/* A step that sent decisions to a cloud model (Frontier). */
+.msg .path-badges .badge .cloud-mark{color:var(--err-fg);font-weight:700;
+                                     font-family:var(--font-sans,inherit)}
 @keyframes pulse-badge{0%,100%{opacity:1}50%{opacity:.55}}
 .msg.thinking .path-badges{margin-top:0;font-size:.82em}
 .msg details summary{cursor:pointer;color:var(--muted);font-size:.85em}
@@ -483,6 +486,7 @@ const CHAT_I18N = {
   serverReload: {{ msg("MSG_CHAT_SERVER_RELOAD_SEPARATOR")|tojson }},
   processing: {{ msg("MSG_CHAT_PROCESSING")|tojson }},
   noResponse: {{ msg("MSG_CHAT_NO_RESPONSE")|tojson }},
+  stepCloud: {{ msg("MSG_CHAT_STEP_CLOUD")|tojson }},
   genericError: {{ msg("MSG_CHAT_GENERIC_ERROR")|tojson }},
   imagesAttached: {{ msg("MSG_CHAT_IMAGES_ATTACHED")|tojson }},
   imageAlt: {{ msg("MSG_CHAT_IMAGE_ALT")|tojson }},
@@ -993,12 +997,23 @@ function add(cls, text, meta, persist, attachments, galleryInfo, htmlMode){
       loading.textContent = {{ msg("MSG_PHASE_PLANNING")|tojson }};
       wrap.appendChild(loading);
       inlineFormWrap = wrap;
+      let dialogPoll = null;
+      let dialogFetchRunning = false;
+      const stopDialogPoll = () => { clearTimeout(dialogPoll); dialogPoll = null; };
+      const pollDialog = () => {
+        stopDialogPoll();
+        dialogPoll = setTimeout(() => {
+          if(d.isConnected) loadDialogForm();
+        }, 2000);
+      };
       const dialogMessage = (state) => {
         if(state === 'completed') return {{ msg("MSG_ORCH_DIALOG_DONE")|tojson }};
         if(state === 'cancelled') return {{ msg("MSG_DIALOG_CANCELLED")|tojson }};
+        if(state === 'interrupted') return {{ msg("MSG_DIALOG_RESUME_UNCERTAIN")|tojson }};
         return {{ msg("MSG_DIALOG_EXPIRED")|tojson }};
       };
       const settleDialog = (state) => {
+        stopDialogPoll();
         const originTurnId = (meta && typeof meta === 'object')
           ? (meta.turn_id || '') : '';
         const alreadySettled = hasSettledTurnHistory(originTurnId, dialogId);
@@ -1021,6 +1036,7 @@ function add(cls, text, meta, persist, attachments, galleryInfo, htmlMode){
           ifr.style.height = (ev.data.height + 8) + 'px';
         }
         if(ev.data && ev.data.type === 'metnos.dialog.done'){
+          stopDialogPoll();
           const rurl = ev.data.redirect_url || '';
           const ctxt = ev.data.completion_text || '';
           if(rurl){
@@ -1040,6 +1056,7 @@ function add(cls, text, meta, persist, attachments, galleryInfo, htmlMode){
             // (b) 6/7: RIMUOVI il contenitore .msg del form (svuotarlo
             // lasciava una bolla vuota col suo padding prima della risposta).
             const tid = ev.data.turn_id || '';
+            const alreadySettled = hasSettledTurnHistory(tid, dialogId);
             const tm = ev.data.turn_meta || null;
             const completionMeta = mergeDialogCompletionMeta(meta, tid, tm);
             const atts = Array.isArray(ev.data.attachments) ? ev.data.attachments : null;
@@ -1048,7 +1065,7 @@ function add(cls, text, meta, persist, attachments, galleryInfo, htmlMode){
               : null;
             removeDialogHistory(dialogId);
             d.remove();
-            add('bot', ctxt, completionMeta, true, atts, gInfo);
+            if(!alreadySettled) add('bot', ctxt, completionMeta, true, atts, gInfo);
           } else {
             settleDialog('completed');
           }
@@ -1058,18 +1075,33 @@ function add(cls, text, meta, persist, attachments, galleryInfo, htmlMode){
           settleDialog('cancelled');
         }
         if(ev.data && ev.data.type === 'metnos.dialog.terminal'){
+          if(ev.data.state === 'processing'){
+            loadDialogForm();
+            return;
+          }
           settleDialog(ev.data.state || 'expired');
         }
+        if(ev.data && ev.data.type === 'metnos.dialog.reconcile') loadDialogForm();
       };
       window.addEventListener('message', onMsg);
       // Il GET del form e' anche la verifica autoritativa dello stato: una sola
       // richiesta, nessuna finestra fra probe e caricamento dell'iframe.
       const loadDialogForm = async () => {
+        if(dialogFetchRunning || !d.isConnected) return;
+        dialogFetchRunning = true;
+        stopDialogPoll();
         try {
           const response = await fetch(formPath, {
             method: 'GET', cache: 'no-store',
             headers: {'Accept': 'text/html'},
           });
+          if(!d.isConnected) return;
+          if(response.status === 202){
+            loading.textContent = {{ msg("MSG_GATE_IN_CORSO")|tojson }};
+            wrap.replaceChildren(loading);
+            pollDialog();
+            return;
+          }
           if(response.status === 404 || response.status === 410){
             const state = response.headers.get('X-Metnos-Dialog-State')
                           || (response.status === 404 ? 'missing' : 'expired');
@@ -1078,6 +1110,7 @@ function add(cls, text, meta, persist, attachments, galleryInfo, htmlMode){
           }
           if(!response.ok) throw new Error('HTTP ' + response.status);
           const formHtml = await response.text();
+          if(!d.isConnected) return;
           wrap.replaceChildren(ifr);
           ifr.srcdoc = formHtml;
         } catch(ex){
@@ -1094,9 +1127,12 @@ function add(cls, text, meta, persist, attachments, galleryInfo, htmlMode){
           retry.addEventListener('click', loadDialogForm, {once:true});
           unavailable.appendChild(retry);
           wrap.replaceChildren(unavailable);
+          pollDialog();
+        } finally {
+          dialogFetchRunning = false;
         }
       };
-      loadDialogForm();
+      queueMicrotask(loadDialogForm);  // add() attaches the bubble below.
     }
   }
   // Snapshot del testo PULITO (prima di meta/azioni/feedback) per la
@@ -1108,6 +1144,7 @@ function add(cls, text, meta, persist, attachments, galleryInfo, htmlMode){
       d.dataset.path = JSON.stringify(meta.path.map((step) => ({
         tool: step && step.tool ? String(step.tool) : '?',
         ok: !(step && step.ok === false),
+        cloud: !!(step && step.cloud),
       })));
     }
   }
@@ -1134,6 +1171,15 @@ function add(cls, text, meta, persist, attachments, galleryInfo, htmlMode){
           const b = document.createElement('span');
           b.className = 'badge' + (step.ok === false ? ' failed' : '');
           fillExecutorBadge(b, step.tool);
+          if(step.cloud){
+            const mark = document.createElement('span');
+            mark.className = 'cloud-mark';
+            mark.textContent = '$';
+            mark.title = CHAT_I18N.stepCloud;
+            mark.setAttribute('aria-label', CHAT_I18N.stepCloud);
+            b.appendChild(mark);
+            b.title = (b.title ? b.title + ' · ' : '') + CHAT_I18N.stepCloud;
+          }
           row.appendChild(b);
         });
         d.appendChild(row);
@@ -1390,7 +1436,7 @@ function renderCompletedTurn(data, options){
   const path = Array.isArray(data.path) ? data.path
     : Array.isArray(data.steps_summary)
       ? data.steps_summary
-          .map(s => ({tool: s.tool, ok: s.ok}))
+          .map(s => ({tool: s.tool, ok: s.ok, cloud: !!s.cloud}))
           .filter(s => !!s.tool)
       : [];
   const where = data.target_device || {{ msg("MSG_CHAT_EXEC_LOCAL")|tojson }};

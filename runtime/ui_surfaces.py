@@ -302,8 +302,8 @@ SURFACES: tuple[UiSurfaceSpec, ...] = (
     ),
     UiSurfaceSpec(
         "virt", "system", "/admin/virt", "Modelli", "Models",
-        "Configurazione effettiva di LLM, embedding e VLM: LLM e VLM sono modificabili; l'embedding è solo consultabile.",
-        "Effective configuration for language, embedding, and vision models: LLM and VLM are editable; embedding is view-only.",
+        "Configurazione effettiva di LLM, embedding e VLM: LLM e VLM sono modificabili; l'embedding è solo consultabile. Salvataggio delle chiavi API OpenAI e Anthropic.",
+        "Effective configuration for language, embedding, and vision models: LLM and VLM are editable; embedding is view-only. Storage of OpenAI and Anthropic API keys.",
         (
             "famiglie LLM, embedding e VLM",
             "fast micro procedural fidelity, middle, wise, creative e frontier e ruoli text, image e default",
@@ -313,6 +313,7 @@ SURFACES: tuple[UiSurfaceSpec, ...] = (
             "errori di lettura o validazione del TOML",
             "valori sensibili oscurati",
             "embedding consultabile ma non modificabile dalla pagina",
+            "stato delle chiavi API OpenAI e Anthropic, senza mostrarne il contenuto",
         ),
         (
             "LLM, embedding, and VLM families",
@@ -323,18 +324,21 @@ SURFACES: tuple[UiSurfaceSpec, ...] = (
             "TOML read or validation errors",
             "redacted sensitive values",
             "embedding shown for inspection but not editable from the page",
+            "OpenAI and Anthropic API-key status, without revealing their contents",
         ),
         (
             "rileggi la configurazione dal file",
             "modifica una famiglia LLM o VLM e salva i valori visibili",
             "annulla le modifiche non salvate",
             "ripristina i valori iniziali di LLM o VLM della versione installata",
+            "salva una nuova chiave API OpenAI o Anthropic",
         ),
         (
             "reload the configuration from its file",
             "edit one LLM or VLM family and save visible values",
             "cancel unsaved changes",
             "restore the installed version's initial LLM or VLM values",
+            "save a new OpenAI or Anthropic API key",
         ),
         (
             "Nella chat web apri Settings > Sistema > Modelli.",
@@ -343,6 +347,7 @@ SURFACES: tuple[UiSurfaceSpec, ...] = (
             "I parametri mostrati sono quelli effettivi del tier. Un override richiesto da una singola operazione non modifica la policy: ogni operazione sceglie solo il proprio workload e la policy di generazione resta del tier.",
             "Le chiamate successive usano la nuova configurazione; Rileggi configurazione mostra nuovamente ciò che il runtime risolve dal file.",
             "Per LLM o VLM, per tornare alla configurazione fornita dalla versione installata scegli Ripristina e conferma: anche in questo caso la configurazione precedente viene conservata come copia di recupero.",
+            "Per inserire una chiave API, nella sezione Chiavi API scegli il fornitore OpenAI o Anthropic, incolla la chiave nel campo Nuova chiave API e premi Salva chiave. Non inviarla nella chat. La chiave viene cifrata e il campo torna vuoto; i nuovi collegamenti al fornitore la useranno. Il salvataggio non verifica il collegamento al fornitore.",
         ),
         (
             "In the web chat, open Settings > System > Models.",
@@ -351,17 +356,21 @@ SURFACES: tuple[UiSurfaceSpec, ...] = (
             "Shown parameters are the tier's effective values. A per-operation override does not change the policy: each operation selects only its workload, while generation policy remains owned by the tier.",
             "Subsequent calls use the new configuration; Reload configuration shows what the runtime resolves from the file again.",
             "For LLM or VLM, to return to the configuration supplied by the installed version, choose Restore defaults and confirm: the previous configuration is retained as a recovery copy in this case too.",
+            "To enter an API key, choose OpenAI or Anthropic in the API keys section, paste the key into New API key, and press Save key. Do not send it in chat. The key is encrypted and the field becomes empty; new connections to the provider will use it. Saving does not check the connection to the provider.",
         ),
         (
-            "password, token, chiavi, credenziali e parti sensibili degli URL non sono modificabili in questa pagina",
+            "i segreti salvati non vengono mostrati; solo le chiavi API OpenAI e Anthropic hanno un modulo dedicato per sostituirle",
             "se il file cambia dopo l'apertura della pagina, Metnos non sovrascrive il cambiamento: rileggi la configurazione e riprova",
             "se la validazione fallisce, nessuna modifica viene salvata",
+            "il backend embedding non si cambia da questa pagina: richiede una migrazione dedicata e verificata e la ricostruzione degli indici",
+            "se una chiave è imposta dalla configurazione o dall'ambiente del servizio, rimuovi prima quella impostazione per usare il modulo",
         ),
         (
-            "passwords, tokens, keys, credentials, and sensitive URL parts cannot be edited on this page",
+            "saved secrets are never displayed; only OpenAI and Anthropic API keys have a dedicated replacement form",
             "if the file changes after the page is opened, Metnos does not overwrite that change: reload the configuration and try again",
             "if validation fails, no change is saved",
             "the embedding backend cannot be changed from this page: it requires a dedicated, verified migration and index reconstruction",
+            "if a key is set in configuration or the service environment, remove that setting before using the form",
         ),
     ),
     UiSurfaceSpec(

@@ -20,6 +20,7 @@ Decisioni post-probe (26/4/2026 ciclo finale POC):
     - think parametrizzato per modelli che lo supportano (Qwen 3, Llama 3.1)
     - LlamaCppProvider striiba i marker <|channel>thought ... <channel|> del modello locale
 """
+import copy
 import json
 import math
 import os
@@ -30,6 +31,22 @@ import urllib.request
 from dataclasses import dataclass, field
 
 import llm_telemetry as _telemetry  # universal pass-through observability hook
+
+
+REASONING_EFFORTS = {
+    "openai": ("minimal", "low", "medium", "high", "xhigh", "max"),
+    "anthropic": ("low", "medium", "high", "xhigh", "max"),
+}
+
+
+class _NoAPIRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        # API credentials belong to the configured destination only.
+        return None
+
+
+def _api_urlopen(request, *, timeout):
+    return urllib.request.build_opener(_NoAPIRedirect()).open(request, timeout=timeout)
 
 # Attiva il metering costi LLM (audit uso frontier → decisione Headroom, 15/6).
 # Guardato + best-effort §2.8: se il file manca (snapshot pubblico) o l'install
@@ -81,6 +98,9 @@ class ToolUseResult:
     provider: str = ""
     latency_ms: int = 0
     thinking: str = ""
+    # Native assistant blocks preserve signed thinking across tool results.
+    # Internal transport state only: never copy them into the user response.
+    content_blocks: list = field(default_factory=list, repr=False)
 
 
 class ProviderError(Exception):
@@ -371,6 +391,7 @@ class LlamaCppProvider:
     """
     mode = "local"
     name = "llamacpp"
+    supports_grammar = True
 
     def __init__(self, model="local",
                  endpoint="http://127.0.0.1:8080", id_slot: int | None = None):
@@ -421,7 +442,7 @@ class LlamaCppProvider:
             payload["chat_template_kwargs"] = {"enable_thinking": False}
         elif think is True:
             payload["chat_template_kwargs"] = {"enable_thinking": True}
-            payload["reasoning_budget"] = reasoning_budget
+            payload["reasoning_budget_tokens"] = reasoning_budget
         if grammar is not None:
             payload["grammar"] = grammar
         return self._call(payload, expect_tools=False,
@@ -492,7 +513,7 @@ class LlamaCppProvider:
                 "temperature": temperature,
                 "max_tokens": max_tokens,
                 "chat_template_kwargs": {"enable_thinking": False},
-                "reasoning_budget": 0,
+                "reasoning_budget_tokens": 0,
                 "grammar": grammar,
             }
             return self._call(payload, expect_tools=True,
@@ -509,7 +530,7 @@ class LlamaCppProvider:
             "chat_template_kwargs": {"enable_thinking": enable_thinking},
         }
         if enable_thinking:
-            payload["reasoning_budget"] = reasoning_budget
+            payload["reasoning_budget_tokens"] = reasoning_budget
         return self._call(
             payload, expect_tools=True,
             request_timeout_s=request_timeout_s)
@@ -626,8 +647,11 @@ def _read_env_var_from_files(var_name, candidate_paths):
 
 
 def _read_api_key_from_store(domain: str) -> str | None:
-    """Layer 1 (ADR 0131 extended, 14/5/2026): legge `value` dallo store
-    cifrato Fernet. Ritorna None se assente o store non disponibile."""
+    """Read canonical `api_key`, or the installer's older `value` field.
+
+    A present but invalid canonical field must not resurrect an older value
+    in the same record. The caller owns precedence between credential sources.
+    """
     try:
         import credentials as _cr
     except ImportError:
@@ -635,8 +659,8 @@ def _read_api_key_from_store(domain: str) -> str | None:
     payload = _cr.load(domain)
     if not isinstance(payload, dict):
         return None
-    v = payload.get("value")
-    return v if isinstance(v, str) and v else None
+    v = payload.get("api_key", payload.get("value"))
+    return v if isinstance(v, str) and v.strip() else None
 
 
 def _read_anthropic_key():
@@ -708,9 +732,13 @@ class AnthropicProvider:
     API_VERSION = "2023-06-01"
     API_URL = "https://api.anthropic.com/v1/messages"
 
-    def __init__(self, model="claude-sonnet-4-6", api_key=None):
+    def __init__(self, model="claude-sonnet-4-6", api_key=None, endpoint=None):
+        from virt.api_keys import api_endpoint, API_ENDPOINTS
+
         self.model = model
-        self.api_key = api_key or _read_anthropic_key()
+        self.API_URL = api_endpoint("anthropic", endpoint)
+        self.api_key = (api_key if api_key is not None else
+                        _read_anthropic_key() if self.API_URL == API_ENDPOINTS["anthropic"] else "")
 
     def _require_key(self):
         if not self.api_key:
@@ -719,19 +747,39 @@ class AnthropicProvider:
                 "~/.config/metnos/anthropic.env (chmod 600)."
             )
 
+    @staticmethod
+    def _reasoning_params(think, reasoning_effort, reasoning_budget, max_tokens):
+        from messages import get as _msg
+        if think is None:
+            return {}
+        if type(think) is not bool:
+            raise ProviderError("Anthropic think must be a boolean or None")
+        if not think:
+            return {"thinking": {"type": "disabled"}}
+        if reasoning_budget:
+            if (type(reasoning_budget) is not int
+                    or not 1024 <= reasoning_budget < max_tokens):
+                raise ProviderError(_msg("ERR_LLM_REASONING_BUDGET"))
+            return {"thinking": {"type": "enabled", "budget_tokens": reasoning_budget}}
+        effort = reasoning_effort or "medium"
+        if effort not in REASONING_EFFORTS["anthropic"]:
+            raise ProviderError(_msg("ERR_LLM_REASONING_LEVEL"))
+        return {"thinking": {"type": "adaptive"}, "output_config": {"effort": effort}}
+
     def chat(self, system, user, *, max_tokens=1024, temperature=0, think=None,
-             request_timeout_s=None):
+             reasoning_effort=None, reasoning_budget=0, request_timeout_s=None):
         self._require_key()
         payload = {
             "model": self.model,
             "max_tokens": max_tokens,
             "system": system,
             "messages": [{"role": "user", "content": user}],
+            **self._reasoning_params(think, reasoning_effort, reasoning_budget, max_tokens),
         }
         # Opus 4.7 ha deprecato il parametro `temperature`: passarlo causa
         # 400 "temperature is deprecated for this model". Omettiamo per i
         # modelli noti incompatibili; resta valido per i modelli precedenti.
-        if not _temperature_deprecated(self.model):
+        if think is not True and not _temperature_deprecated(self.model):
             payload["temperature"] = temperature
         data, latency = self._post(
             payload, request_timeout_s=request_timeout_s)
@@ -747,7 +795,7 @@ class AnthropicProvider:
 
     def chat_with_tools(self, system, user, tools, history=None, *,
                         max_tokens=2048, temperature=0, think=None,
-                        request_timeout_s=None):
+                        reasoning_effort=None, reasoning_budget=0, request_timeout_s=None):
         self._require_key()
         anthropic_tools = self._convert_tools(tools)
         messages = []
@@ -760,8 +808,9 @@ class AnthropicProvider:
             "system": system,
             "messages": messages,
             "tools": anthropic_tools,
+            **self._reasoning_params(think, reasoning_effort, reasoning_budget, max_tokens),
         }
-        if not _temperature_deprecated(self.model):
+        if think is not True and not _temperature_deprecated(self.model):
             payload["temperature"] = temperature
         data, latency = self._post(
             payload, request_timeout_s=request_timeout_s)
@@ -772,6 +821,7 @@ class AnthropicProvider:
             text=text, tool_calls=tcs,
             in_tokens=in_toks, out_tokens=out_toks,
             model=self.model, provider="anthropic", latency_ms=latency,
+            content_blocks=copy.deepcopy(data.get("content", [])),
         )
         _telemetry.record(provider="anthropic", model=self.model,
                           system=system, user=user, result=res, kind="tools")
@@ -867,15 +917,13 @@ class AnthropicProvider:
         )
         t0 = time.time()
         try:
-            with urllib.request.urlopen(
+            with _api_urlopen(
                     req, timeout=_request_timeout(request_timeout_s, 600)) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as e:
-            raise ProviderError(
-                f"anthropic api error {e.code}: {e.read().decode('utf-8')[:500]}"
-            ) from e
-        except urllib.error.URLError as e:
-            raise ProviderError(f"anthropic unreachable: {e}") from e
+            raise ProviderError(f"anthropic api error {e.code}") from None
+        except urllib.error.URLError:
+            raise ProviderError("anthropic unreachable") from None
         return data, int((time.time() - t0) * 1000)
 
     @staticmethod
@@ -934,9 +982,13 @@ class OpenAIProvider:
 
     API_URL = "https://api.openai.com/v1/chat/completions"
 
-    def __init__(self, model="gpt-4.1", api_key=None):
+    def __init__(self, model="gpt-4.1", api_key=None, endpoint=None):
+        from virt.api_keys import api_endpoint, API_ENDPOINTS
+
         self.model = model
-        self.api_key = api_key or _read_openai_key()
+        self.API_URL = api_endpoint("openai", endpoint)
+        self.api_key = (api_key if api_key is not None else
+                        _read_openai_key() if self.API_URL == API_ENDPOINTS["openai"] else "")
 
     def _require_key(self):
         if not self.api_key:
@@ -946,20 +998,125 @@ class OpenAIProvider:
             )
 
     def _max_tokens_param(self):
-        """gpt-5 e modelli reasoning (o1, o3, o4) usano max_completion_tokens."""
+        """GPT-5/6 e modelli reasoning usano max_completion_tokens."""
         m = self.model.lower()
-        if m.startswith(("gpt-5", "o1", "o3", "o4")):
+        if m.startswith(("gpt-5", "gpt-6", "o1", "o3", "o4")):
             return "max_completion_tokens"
         return "max_tokens"
 
     def _temp_supported(self):
-        """gpt-5/reasoning models non accettano temperature != default."""
+        """Non inviare temperature ai modelli reasoning."""
         m = self.model.lower()
-        return not m.startswith(("gpt-5", "o1", "o3", "o4"))
+        return not m.startswith(("gpt-5", "gpt-6", "o1", "o3", "o4"))
+
+    def _reasoning_params(self, think, reasoning_effort=None, *, with_tools=False):
+        sol = self.model.lower() == "gpt-6-sol"
+        if not sol and reasoning_effort is None:
+            return {}
+        if think is not None and type(think) is not bool:
+            raise ProviderError("OpenAI think must be a boolean or None")
+        # Sol defaults to medium. Chat Completions function calling requires
+        # explicit none; do not silently disable requested/default reasoning.
+        effort = "none" if think is False else (reasoning_effort or "medium")
+        if effort != "none" and effort not in REASONING_EFFORTS["openai"]:
+            from messages import get as _msg
+            raise ProviderError(_msg("ERR_LLM_REASONING_LEVEL"))
+        if sol and with_tools and effort != "none":
+            raise ProviderError(
+                "gpt-6-sol Chat Completions tools require think=False "
+                "(reasoning_effort=none); reasoning with tools requires Responses API"
+            )
+        return {"reasoning_effort": effort}
+
+    @staticmethod
+    def _convert_tools(tools):
+        """Accept native function tools and the Anthropic schema of frontier."""
+        if not isinstance(tools, list):
+            raise ProviderError("openai tools must be an array")
+        out = []
+        for tool in tools:
+            if not isinstance(tool, dict):
+                raise ProviderError("openai tool must be an object")
+            if tool.get("type") == "function" and isinstance(tool.get("function"), dict):
+                out.append(copy.deepcopy(tool))
+                continue
+            if (not isinstance(tool.get("name"), str) or not tool["name"]
+                    or not isinstance(tool.get("input_schema"), dict)):
+                raise ProviderError("openai tool requires name and input_schema")
+            function = {"name": tool["name"], "parameters": copy.deepcopy(tool["input_schema"])}
+            for key in ("description", "strict"):
+                if key in tool:
+                    function[key] = tool[key]
+            out.append({"type": "function", "function": function})
+        return out
+
+    @staticmethod
+    def _convert_history(history):
+        """Convert Anthropic tool blocks without changing caller-owned history."""
+        out = []
+        for message in history or []:
+            if not isinstance(message, dict):
+                raise ProviderError("openai history message must be an object")
+            message = copy.deepcopy(message)
+            blocks = message.get("content")
+            if not isinstance(blocks, list) or not any(
+                    isinstance(block, dict) and block.get("type") in ("tool_use", "tool_result")
+                    for block in blocks):
+                out.append(message)
+                continue
+            role = message.get("role")
+            text_parts, calls = [], []
+            if message.get("tool_calls"):
+                raise ProviderError("openai history mixes native and Anthropic tool calls")
+            for block in blocks:
+                kind = block.get("type") if isinstance(block, dict) else None
+                if kind == "text" and isinstance(block.get("text"), str):
+                    text_parts.append({"type": "text", "text": block["text"]})
+                elif role == "assistant" and kind == "tool_use":
+                    if (not isinstance(block.get("id"), str) or not block["id"]
+                            or not isinstance(block.get("name"), str) or not block["name"]
+                            or not isinstance(block.get("input"), dict)):
+                        raise ProviderError("openai history tool_use requires id, name and object input")
+                    try:
+                        arguments = json.dumps(block["input"], ensure_ascii=False, allow_nan=False)
+                    except (TypeError, ValueError) as exc:
+                        raise ProviderError("openai history tool input is not valid JSON") from exc
+                    calls.append({
+                        "id": block["id"], "type": "function",
+                        "function": {"name": block["name"], "arguments": arguments},
+                    })
+                elif role == "user" and kind == "tool_result":
+                    if not isinstance(block.get("tool_use_id"), str) or not block["tool_use_id"]:
+                        raise ProviderError("openai history tool_result requires tool_use_id")
+                    content = block.get("content", "")
+                    if not isinstance(content, str) and not (
+                            isinstance(content, list) and all(
+                                isinstance(part, dict) and part.get("type") == "text"
+                                and isinstance(part.get("text"), str) for part in content)):
+                        raise ProviderError("openai history tool_result requires text content")
+                    if block.get("is_error") is True:
+                        prefix = "Tool error:"
+                        content = (prefix + "\n" + content if isinstance(content, str)
+                                   else [{"type": "text", "text": prefix}] + content)
+                    if text_parts:
+                        out.append({"role": "user", "content": text_parts})
+                        text_parts = []
+                    out.append({"role": "tool", "tool_call_id": block["tool_use_id"],
+                                "content": content})
+                else:
+                    raise ProviderError("openai history contains an unsupported tool block")
+            if role == "assistant":
+                message["content"] = "".join(part["text"] for part in text_parts) or None
+                message["tool_calls"] = calls
+                out.append(message)
+            elif text_parts:
+                out.append({"role": "user", "content": text_parts})
+        return out
 
     def chat(self, system, user, *, max_tokens=1024, temperature=0, think=None,
-             request_timeout_s=None):
+             reasoning_effort=None, request_timeout_s=None):
         self._require_key()
+        reasoning = self._reasoning_params(think, reasoning_effort)
         payload = {
             "model": self.model,
             "messages": [
@@ -967,8 +1124,10 @@ class OpenAIProvider:
                 {"role": "user", "content": user},
             ],
             self._max_tokens_param(): max_tokens,
+            "store": False,
+            **reasoning,
         }
-        if self._temp_supported():
+        if self._temp_supported() and reasoning.get("reasoning_effort", "none") == "none":
             payload["temperature"] = temperature
         res = self._call(
             payload, expect_tools=False,
@@ -979,26 +1138,32 @@ class OpenAIProvider:
 
     def chat_with_tools(self, system, user, tools, history=None, *,
                         max_tokens=2048, temperature=0, think=None,
-                        request_timeout_s=None):
+                        reasoning_effort=None, request_timeout_s=None):
         self._require_key()
+        reasoning = self._reasoning_params(think, reasoning_effort, with_tools=True)
         messages = [{"role": "system", "content": system}]
-        if history:
-            messages.extend(history)
+        messages.extend(self._convert_history(history))
         messages.append({"role": "user", "content": user})
         payload = {
             "model": self.model,
             "messages": messages,
-            "tools": tools,
+            "tools": self._convert_tools(tools),
             "tool_choice": "auto",
             self._max_tokens_param(): max_tokens,
+            "store": False,
+            **reasoning,
         }
-        if self._temp_supported():
+        if self._temp_supported() and reasoning.get("reasoning_effort", "none") == "none":
             payload["temperature"] = temperature
         return self._call(
             payload, expect_tools=True,
             request_timeout_s=request_timeout_s)
 
     def _call(self, payload, expect_tools, *, request_timeout_s=None):
+        if self.API_URL != type(self).API_URL:
+            # `store` is an OpenAI retention option, not required by the
+            # compatible Chat Completions protocol.
+            payload = {key: value for key, value in payload.items() if key != "store"}
         # ADR 0121: sanitize surrogates pre-serialization (OpenAIProvider).
         body = _encode_payload(payload)
         req = urllib.request.Request(
@@ -1012,17 +1177,22 @@ class OpenAIProvider:
         )
         t0 = time.time()
         try:
-            with urllib.request.urlopen(
+            with _api_urlopen(
                     req, timeout=_request_timeout(request_timeout_s, 600)) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as e:
-            raise ProviderError(
-                f"openai api error {e.code}: {e.read().decode('utf-8')[:500]}"
-            ) from e
-        except urllib.error.URLError as e:
-            raise ProviderError(f"openai unreachable: {e}") from e
+            raise ProviderError(f"openai api error {e.code}") from None
+        except urllib.error.URLError:
+            raise ProviderError("openai unreachable") from None
+        except (json.JSONDecodeError, UnicodeDecodeError) as e:
+            raise ProviderError("openai response is not valid JSON") from e
         latency = int((time.time() - t0) * 1000)
 
+        if self.model.lower() == "gpt-6-sol" and (
+                not isinstance(data, dict) or not isinstance(data.get("choices"), list)
+                or not data["choices"] or not isinstance(data["choices"][0], dict)
+                or not isinstance(data["choices"][0].get("message"), dict)):
+            raise ProviderError("openai response is missing a completion message")
         choice = (data.get("choices") or [{}])[0]
         msg = choice.get("message") or {}
         text = msg.get("content") or ""
@@ -1031,18 +1201,42 @@ class OpenAIProvider:
         out_toks = usage.get("completion_tokens", 0)
 
         if expect_tools:
-            tcs_raw = msg.get("tool_calls") or []
+            strict_calls = self.model.lower() == "gpt-6-sol"
+            tcs_raw = msg.get("tool_calls")
+            if tcs_raw is None or (not strict_calls and not tcs_raw):
+                tcs_raw = []
+            if strict_calls and not isinstance(tcs_raw, list):
+                raise ProviderError("openai response tool_calls must be an array")
             tcs = []
+            call_ids = set()
             for tc in tcs_raw:
+                if strict_calls and (not isinstance(tc, dict)
+                        or tc.get("type") != "function"
+                        or not isinstance(tc.get("id"), str) or not tc["id"]
+                        or not isinstance(tc.get("function"), dict)):
+                    raise ProviderError("openai response contains an invalid function call")
+                if strict_calls:
+                    if tc["id"] in call_ids:
+                        raise ProviderError("openai response contains duplicate tool call ids")
+                    call_ids.add(tc["id"])
                 fn = tc.get("function") or {}
-                args_raw = fn.get("arguments") or "{}"
+                if strict_calls and (not isinstance(fn.get("name"), str) or not fn["name"]
+                        or not isinstance(fn.get("arguments"), str)):
+                    raise ProviderError("openai function call requires name and JSON arguments")
+                args_raw = fn["arguments"] if strict_calls else (fn.get("arguments") or "{}")
                 if isinstance(args_raw, str):
                     try:
                         args = json.loads(args_raw)
-                    except json.JSONDecodeError:
+                        if strict_calls:
+                            json.dumps(args, allow_nan=False)
+                    except ValueError as exc:
+                        if strict_calls:
+                            raise ProviderError("openai function arguments are not valid JSON") from exc
                         args = {"_raw": args_raw}
                 else:
                     args = args_raw
+                if strict_calls and not isinstance(args, dict):
+                    raise ProviderError("openai function arguments must be an object")
                 tcs.append(ToolCall(
                     name=fn.get("name", ""),
                     arguments=args,
@@ -1136,6 +1330,8 @@ def make_provider_from_spec(spec):
             id_slot=metnos_llamacpp_slot_id(spec.get("id_slot")),
         )
     elif p == "anthropic":
+        from virt.api_keys import key_from_spec
+
         model = spec.get("model")
         if not model:
             raise ValueError(
@@ -1143,12 +1339,16 @@ def make_provider_from_spec(spec):
                 "through llm_router tier configuration")
         return AnthropicProvider(
             model=model,
-            api_key=spec.get("api_key"),
+            api_key=key_from_spec(spec),
+            endpoint=endpoint,
         )
     elif p == "openai":
+        from virt.api_keys import key_from_spec
+
         return OpenAIProvider(
             model=spec.get("model", "gpt-4.1"),
-            api_key=spec.get("api_key"),
+            api_key=key_from_spec(spec),
+            endpoint=endpoint,
         )
     elif p == "stub":
         return StubProvider(scripted_response=spec.get("response", "OK"))

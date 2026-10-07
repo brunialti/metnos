@@ -54,6 +54,10 @@ _CARRIED_ENVIRONMENT_V1 = frozenset({
     "HOME", "METNOS_USER_DATA", "METNOS_USER_STATE", "METNOS_USER_CONFIG",
     "METNOS_EXECUTOR_STATS_DB", "METNOS_PROMOTER_DB", "METNOS_WORKSPACE",
 })
+_CONDITIONS_ENVIRONMENT_V1 = _CARRIED_ENVIRONMENT_V1 | frozenset({
+    "METNOS_LLM_TIERS_CONFIG", "METNOS_LLM_SEED", "METNOS_LLM_SLOT_ID",
+    "METNOS_ENGINE", "METNOS_LANG",
+})
 # Every legacy store this cutover knows how to read, and the exact table in it.
 _SELECTED_SOURCES_V1 = (
     ("statistics", "METNOS_EXECUTOR_STATS_DB", "state", "executor_stats.db",
@@ -83,7 +87,8 @@ def _service_main_pid() -> int:
         raise LifecycleCutoverError("cutover_service_unavailable") from exc
 
 
-def _service_environment(pid: int, account: PosixAccountSnapshotV1) -> dict[str, str]:
+def _service_environment(pid: int, account: PosixAccountSnapshotV1, *,
+                         conditions: bool = False) -> dict[str, str]:
     """Read only the path overrides the running service actually selected."""
     if pid <= 1:
         raise LifecycleCutoverError("cutover_service_unavailable", "main pid")
@@ -95,9 +100,10 @@ def _service_environment(pid: int, account: PosixAccountSnapshotV1) -> dict[str,
     if len(raw) > 65536:
         raise LifecycleCutoverError("cutover_service_unavailable", "environment size")
     selected = {}
+    allowed = _CONDITIONS_ENVIRONMENT_V1 if conditions else _CARRIED_ENVIRONMENT_V1
     for entry in raw.split(b"\0"):
         key, separator, value = entry.partition(b"=")
-        if separator and key.decode("utf-8", "replace") in _CARRIED_ENVIRONMENT_V1:
+        if separator and key.decode("utf-8", "replace") in allowed:
             selected[key.decode()] = value.decode("utf-8", "replace")
     return selected
 
@@ -151,6 +157,10 @@ def _service_worker() -> int:
             from install.birth_certification_issuer import _derive_as_service_v1
 
             report = _derive_as_service_v1(request)
+        elif request["operation"] == "conditions":
+            from install.birth_certification_reuse import _service_conditions_v1
+
+            report = _service_conditions_v1()
         elif request["operation"] == "apply":
             report = _apply_handoff_v1(request["handoff"])
         elif request["operation"] == "plan":
@@ -362,7 +372,14 @@ def _in_service_child(
     otherwise the child waits on the catalog lock held by its own parent.
     """
     account = resolve_posix_account_snapshot_v1(SERVICE_ACCOUNT_NAME_V1)
-    if operation == "plan":
+    if operation == "conditions":
+        # Current service environment, not the historic migration handoff.
+        pid = _service_main_pid()
+        environment = _service_environment(pid, account, conditions=True)
+        if _service_main_pid() != pid:
+            raise LifecycleCutoverError("cutover_service_unavailable", "service changed")
+        request = {"operation": operation}
+    elif operation == "plan":
         pid = _service_main_pid()
         environment = _service_environment(pid, account)
         sources = selected_sources_v1(environment, account)
@@ -387,7 +404,8 @@ def _in_service_child(
         # Keep a closed OS search path, including administrative commands.
         "PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C.UTF-8",
         **{key: value for key, value in environment.items()
-           if key in _CARRIED_ENVIRONMENT_V1},
+           if key in (_CONDITIONS_ENVIRONMENT_V1 if operation == "conditions"
+                      else _CARRIED_ENVIRONMENT_V1)},
     }
     account.assert_unchanged(resolve_posix_account_snapshot_v1(SERVICE_ACCOUNT_NAME_V1))
     root = Path(__file__).resolve().parents[1]
@@ -424,6 +442,9 @@ def _in_service_child(
             str(report.get("error") or "cutover_child_failed"),
             str(report.get("detail") or ""),
         )
+    if operation == "conditions" and (_service_main_pid() != pid
+            or _service_environment(pid, account, conditions=True) != environment):
+        raise LifecycleCutoverError("cutover_service_unavailable", "service changed")
     return report
 
 

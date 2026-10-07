@@ -3,81 +3,39 @@ role: synt_tests
 tier: middle
 lang: en
 style: definitional
-version: 2
+version: 16
 owner: roberto
-updated: 2026-09-12
-sha_prev: "c2d8648cd0de2a72"
+updated: 2026-10-05
+sha_prev: 64094bab
 --- #}
-YOU are phase 3 (TESTS) of synt-multistage.
+Generate declarative tests for the function below. Return only valid compact JSON, without markdown, comments or explanations.
 
-Return one JSON object only, without prose, markdown or comments.
+1. Produce four uniquely named cases: normal with two or three items, empty list when applicable, invalid input and a domain edge case. Each case checks one property. For the edge case use one item with the fewest necessary characters, preserving the relevant feature such as Unicode or spaces. The invalid case must contain an invalid nested item if the schema constrains items. Add a fifth or sixth case only for a distinct constraint not yet checked. Use small data and exactly calculable results; always respect request constraints.
 
+2. For EVERY input, FIRST check all request constraints, including the type and number of nested items. If the request rejects that input, expect is {"ok":false}: do not mentally perform the operation on invalid data or invent counts or messages. Only a request explicitly allowing per-item errors permits partial processing: discarded items increment fail_count, other items increment ok_count.
+
+3. For valid input, ok=true, ok_count is the number of items processed without errors, fail_count is the number of discarded items. A false, zero or empty result is a successful computation. Check calculated values inside field_eq: results for transformed values, entries for read or enriched records. Do not rename these fields. Compute each valid item’s result separately, then assemble the list in the same order. Do not confuse a result with the number of processed items. Respect case, spaces and Unicode as requested. For character counts use Unicode code points: "x" is 1, "yz" is 2, "è" is 1, "🙂" is 1 and "x🙂" is 2. Check every result against its own input again before emitting JSON.
+
+4. The final object has only tests, a list of objects with exactly name (string), input (object) and expect (nonempty object). The only matchers inside expect are ok (boolean), ok_count_eq (integer), fail_count_eq (integer), field_eq (field:value object) and error_contains (string). Use error_contains only if the request specifies error wording. Close every object and list. Represent all numbers as small integers or decimals without exponent notation. Every input must be representable in the runner’s JSON protocol, even when the function must reject it. A value outside that protocol never reaches the function: DO NOT generate cases for that constraint. For an invalid numeric type use null, "x" or a boolean. Transport representation limits are checked by the runtime separately from function tests.
+
+5. Direct invocation: use the declared argument names. Only when from_step is declared, pass entries containing concrete records instead of the reference; there is no scratchpad in a test. No setup, teardown, env, reference, shell command, network or host data. When files are needed, each case gets a fresh private environment: fixture/input.txt contains "birth fixture\n", fixture/empty.txt is empty, fixture/output is an empty directory. Use relative paths.
+
+Shape-only example for a different function: do not copy its inputs or expectations.
+{"tests":[
+{"name":"one_item","input":{"texts":["Ab"]},"expect":{"ok":true,"ok_count_eq":1,"fail_count_eq":0,"field_eq":{"results":["AB"]}}},
+{"name":"empty_list","input":{"texts":[]},"expect":{"ok":true,"ok_count_eq":0,"fail_count_eq":0,"field_eq":{"results":[]}}},
+{"name":"invalid_type","input":{"texts":42},"expect":{"ok":false}},
+{"name":"empty_text","input":{"texts":[""]},"expect":{"ok":true,"ok_count_eq":1,"fail_count_eq":0,"field_eq":{"results":[""]}}}
+]}
+
+Function contract:
 name: {{ name }}
 args required: {{ args_required }}
 args properties: {{ args_properties_summary }}
 capabilities: {{ capabilities }}
 revertible: {{ revertible }}; reverse_pattern: {{ reverse_pattern }}
-user request: {{ user_request }}
 
-Produce 4-6 tests with a unique name, object input and nonempty expect.
-Available matchers: ok, ok_count_eq, fail_count_eq, error_contains.
-MUST: use only name, input and expect, with at least one expectation.
-MUST NOT: emit setup, teardown, env, reference, shell commands or dependencies on host network, keys or data.
-OK: {"name":"empty_list","input":{"entries":[]},"expect":{"ok":true,"ok_count_eq":0}}.
-ERROR: preparing or cleaning up files through shell, even with an empty string.
+Request to verify (determines input validity and expected behavior):
+{{ user_request }}
 
-Each case gets a fresh private environment without network: fixture/input.txt contains "birth fixture\\n", fixture/empty.txt is empty and fixture/output is an empty directory. Use paths relative to this environment when files are needed; other inputs are concrete data. Host files are unavailable.
-
-Required cases: one item, empty list when applicable, invalid arguments and a domain edge case.
-
-Shape-only example for change_texts; do not copy names, input or expectations literally.
-{
-  "tests": [
-    {
-      "name": "one_item",
-      "input": {
-        "entries": [
-          "Ab"
-        ]
-      },
-      "expect": {
-        "ok": true,
-        "ok_count_eq": 1
-      }
-    },
-    {
-      "name": "empty_list",
-      "input": {
-        "entries": []
-      },
-      "expect": {
-        "ok": true,
-        "ok_count_eq": 0
-      }
-    },
-    {
-      "name": "invalid_type",
-      "input": {
-        "entries": 42
-      },
-      "expect": {
-        "ok": false,
-        "error_contains": "list"
-      }
-    },
-    {
-      "name": "empty_text",
-      "input": {
-        "entries": [
-          ""
-        ]
-      },
-      "expect": {
-        "ok": true,
-        "ok_count_eq": 1
-      }
-    }
-  ]
-}
-
-NOW produce the JSON for {{ name }}.
+Now produce only the JSON object with tests for {{ name }}.

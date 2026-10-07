@@ -666,6 +666,8 @@ def _semantic_check(observed: ObservedCandidate, _decision: RevisionDecision, de
 
 
 def _approval_check(observed: ObservedCandidate, _decision: RevisionDecision, deps: _BirthDependencies) -> CheckResult:
+    if deps.current_continuity is not None:
+        return deps.current_continuity.check(observed, _decision, "approval")
     if deps.approval_subject is None or deps.approval_evidence is None or deps.now is None:
         return CheckResult("approval", "v1", CheckStatus.FAILED, "approval_required",
                            _shadow_evidence("approval", observed.identities.candidate_id), "missing")

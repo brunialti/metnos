@@ -49,10 +49,26 @@ class QualificationV1:
     cycle_ids: tuple[str, ...]
     admission_receipts: tuple[str, ...]
     authenticated_producers: tuple[str, ...]
+    operational_import: str | None = None
+    predecessor_certificate: str | None = None
 
     @property
     def technical_admissions(self) -> int:
         return len(self.admission_receipts)
+
+
+@dataclass(frozen=True, slots=True)
+class OperationalEvidenceV1:
+    """Owner-verified imported cycles; never a source of local admissions."""
+
+    import_id: str
+    export_id: str
+    origin_installation: str
+    destination_installation: str
+    destination_head: str
+    profile_id: str
+    cycle_ids: tuple[str, ...]
+    predecessor_certificate: str | None
 
 
 def evidence_scope_id_v1(issues: Sequence[object]) -> str:
@@ -69,7 +85,8 @@ def evidence_scope_id_v1(issues: Sequence[object]) -> str:
     return "sha256:" + hashlib.sha256(EVIDENCE_SCOPE_DOMAIN_V1 + payload).hexdigest()
 
 
-def derive_qualification_v1(reconciliation: object, frontier: object) -> QualificationV1:
+def derive_qualification_v1(reconciliation: object, frontier: object,
+                            operational: OperationalEvidenceV1 | None = None) -> QualificationV1:
     """Answer the threshold question from the two observations, or refuse."""
     required_head = getattr(reconciliation, "required_head_id", None)
     acts = getattr(reconciliation, "technical_acts", None)
@@ -95,14 +112,23 @@ def derive_qualification_v1(reconciliation: object, frontier: object) -> Qualifi
         raise QualificationRefused("open_defect", ",".join(frontier.open_findings[:8]))
     if frontier.pending_cycle is not None:
         raise QualificationRefused("cycle_interrupted")
-    if frontier.profile is None:
-        raise QualificationRefused("profile_absent")
-    if frontier.profile_bindings is None:
-        raise QualificationRefused("profile_bindings_absent")
-    if frontier.profile_bindings.head_id != required_head:
-        raise QualificationRefused("profile_head_mismatch")
-    cycles = tuple(frontier.consecutive_successes)
-    if len(cycles) < REQUIRED_CONSECUTIVE_CYCLES_V1:
+    if operational is None:
+        if getattr(frontier, "operational_import", None) is not None:
+            raise QualificationRefused("operational_import_unverified")
+        if frontier.profile is None:
+            raise QualificationRefused("profile_absent")
+        if frontier.profile_bindings is None:
+            raise QualificationRefused("profile_bindings_absent")
+        if frontier.profile_bindings.head_id != required_head:
+            raise QualificationRefused("profile_head_mismatch")
+        profile, cycles = frontier.profile, tuple(frontier.consecutive_successes)
+    else:
+        if (type(operational) is not OperationalEvidenceV1
+                or operational.import_id != getattr(frontier, "operational_import", None)
+                or operational.destination_head != required_head):
+            raise QualificationRefused("operational_import_mismatch")
+        profile, cycles = operational.profile_id, tuple(operational.cycle_ids)
+    if len(cycles) != REQUIRED_CONSECUTIVE_CYCLES_V1 or len(set(cycles)) != len(cycles):
         raise QualificationRefused("consecutive_cycles_insufficient", str(len(cycles)))
     if len(acts) < MINIMUM_TECHNICAL_ADMISSIONS_V1:
         raise QualificationRefused("technical_admissions_insufficient", str(len(acts)))
@@ -122,13 +148,17 @@ def derive_qualification_v1(reconciliation: object, frontier: object) -> Qualifi
         "cycle_ids": list(cycles),
         "evidence_head": frontier.head,
         "evidence_scope_id": observed_scope,
-        "profile_id": frontier.profile,
+        "profile_id": profile,
         "required_head_id": required_head,
+        "operational_provenance": None if operational is None else {
+            name: getattr(operational, name) for name in operational.__dataclass_fields__},
     }, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")
     return QualificationV1(
         "sha256:" + hashlib.sha256(QUALIFICATION_DOMAIN_V1 + payload).hexdigest(),
-        required_head, str(frontier.head), observed_scope, str(frontier.profile),
+        required_head, str(frontier.head), observed_scope, str(profile),
         cycles, receipts, producers,
+        None if operational is None else operational.import_id,
+        None if operational is None else operational.predecessor_certificate,
     )
 
 

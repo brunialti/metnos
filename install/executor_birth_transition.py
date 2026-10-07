@@ -354,6 +354,15 @@ def _activate_signed_topology_v1(distribution: object, descriptor: object) -> di
         or len(readiness) != 1 or readiness[0] is None
     ):
         raise _fail("birth_transition_topology_invalid")
+    # Completion has selected this authenticated catalog under the deployment
+    # lock. Prepare its existing least-privilege control rule before consumers
+    # start; otherwise the Services page cannot operate system-level units.
+    from install.service_control_policy import install as install_service_policy
+
+    try:
+        install_service_policy(descriptor.service_user)
+    except (OSError, ValueError) as exc:
+        raise _fail("birth_transition_service_policy_invalid") from exc
     environment = {
         "LANG": "C", "LC_ALL": "C",
         "PATH": "/usr/sbin:/usr/bin:/sbin:/bin",

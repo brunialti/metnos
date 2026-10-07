@@ -50,7 +50,7 @@ responsibilities.</p>
  <li><a href="#cap3">Composing existing executors</a></li>
  <li><a href="#cap4">Generating a candidate</a></li>
  <li><a href="#cap5">Checks and real tests</a></li>
- <li><a href="#cap6">Quarantine and promotion</a></li>
+ <li><a href="#cap6">Proposals, review and consent</a></li>
  <li><a href="#cap7">Language and records</a></li>
  <li><a href="#cap8">Guarantees and current limits</a></li>
 </ol>
@@ -142,8 +142,8 @@ the code cannot silently redefine the name, arguments, or undo semantics.</p>
  <li><strong>Generated contract.</strong> Manifest format, standard, lifecycle,
  and execution policy must match the runtime-owned template.</li>
  <li><strong>Compilation and real tests.</strong> The implementation must first
- be valid Python. After installation, the test runner executes the declared
- cases; any failure removes the quarantined copy.</li>
+ be valid Python. The isolated runner executes declared cases before admission;
+ a failed case or unavailable environment stops the process.</li>
 </ol>
 
 <p>A mismatch, an untyped payload, or unavailability of the semantic judge
@@ -151,37 +151,45 @@ rejects the candidate. Environment variables cannot disable the linter or the
 judge. An infrastructure failure is recorded as unavailability; it is never
 converted into certification of semantic consistency.</p>
 
-<h1 id="cap6">6. Quarantine and promotion</h1>
+<h1 id="cap6">6. Proposals, review and consent</h1>
 
-<p>When all steps and tests succeed, the runtime saves the candidate in the user
-executor store, sets its lifecycle to <code>synthesized</code>, and signs the
-manifest. The loader can inspect it, but the planner and composer still cannot
-select it.</p>
+<p>A synthesis refused by Birth remains an inactive proposal: code, manifest,
+languages and rationale are retained outside the catalog. Its storage identifier
+locates it; it is not consent. An agent signature cannot replace admission
+through Birth.</p>
 
-<p>Each day the promoter examines up to five candidates, oldest first. Its
-evaluator is deterministic: it checks the name, overlap with existing
-capabilities, tests, undo consistency, error classes, result stability, usage
-frequency, and estimated benefit.</p>
+<ol>
+ <li>The operator supplies or confirms three to six independent cases, each
+ with a name, input and expected output. Synt-generated cases are not presented
+ as independent evidence.</li>
+ <li>The administrative authority runs those cases in Birth's isolated runner
+ and records signed evidence only if every case passes. The proof binds the
+ exact candidate, context, cases and observed results.</li>
+ <li>The operator sees the purpose, declared effects and results, then decides
+ separately whether to approve. Consent expires after one hour and is single-use
+ for that candidate.</li>
+ <li>The producer resumes the candidate through all Birth checks. Changes to
+ files or context invalidate review; an uncertain semantic verdict still
+ prevents admission.</li>
+</ol>
 
-<table>
-<thead><tr><th>Verdict</th><th>Effect</th></tr></thead>
-<tbody>
-<tr><td><code>accept</code></td><td>Automatic promotion after a fresh admission check, with a rollback archive and normally a 72-hour grace period.</td></tr>
-<tr><td><code>gray</code></td><td><code>review_needed</code> state; no automatic activation.</td></tr>
-<tr><td><code>reject</code></td><td>Archived with a rationale; the candidate does not enter the active catalog.</td></tr>
-</tbody>
-</table>
+<p><code>synt review</code> prepares the review document;
+<code>metnos-f5-authority proposal review</code> runs the checks and
+<code>proposal approve</code> records exact consent. Private keys remain in
+administrative custody. Signed evidence is stored through the installer's
+existing write authority, without granting new runtime permissions.
+The reviewer uses the same model configuration as the installed services,
+including a configured external service. Caller environment overrides cannot
+select a different reviewer model.
+Before tests and consent, common candidate preparation derives the digest
+from captured source bytes without changing the function code.
+This first integration uses the supported Linux
+installation and does not yet provide a dedicated web page.</p>
 
-<p>A rollback archive is created before promotion. If administrator Telegram
-notifications are configured, a digest offers confirmation and rollback during grace; when the
-period expires, the promotion is finalized. Automatic error monitoring always
-observes signals, but actually performs a rollback only when
-<code>METNOS_PROMOTER_KILLSWITCH_ENFORCE=1</code> is enabled.</p>
-
-<p>This lifecycle belongs to the promoter, not the unified
-<a href="lifecycle.html">change-intent lifecycle</a>. A
-<code>synthesized</code> candidate is not duplicated as a false proposal that
-requires approval in a second store.</p>
+<p>Preexercise admission and activation are separate steps. The promoter and
+<a href="lifecycle.html">lifecycle management</a> remain subject to Birth,
+independent evidence and current permissions. A favorable score does not certify
+F5 or activate a candidate by itself.</p>
 
 <h1 id="cap7">7. Language and records</h1>
 
@@ -208,11 +216,10 @@ and the limits of the Executor Standard.</p>
  reduce risk but do not constitute a formal proof.</li>
  <li>Tests cover only their declared cases. Grace, telemetry, and rollback exist
  for failures that appear in real use.</li>
- <li>An <code>accept</code> verdict currently causes automatic promotion. The
- score is an operating policy, not proof that the new capability is useful in
- the abstract.</li>
- <li>The <code>gray</code> path is recorded as requiring review, but does not yet
- have a complete dedicated web surface.</li>
+ <li>Independent review and consent are separate: their successful outcome
+ does not replace the remaining Birth checks or F5/F6 certification.</li>
+ <li>The first administrative integration is under acceptance testing; F5/F6
+ are not declared certified. Independent cases need operator confirmation.</li>
  <li>Error-based automatic rollback is disabled by default. Without enforcement,
  monitoring only reports that it would have withdrawn the candidate.</li>
  <li>Synt must not duplicate work already handled by a learned sequence, a

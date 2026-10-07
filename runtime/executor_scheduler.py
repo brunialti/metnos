@@ -20,6 +20,7 @@ import threading
 import time
 from collections import deque
 from concurrent.futures import Future, ThreadPoolExecutor
+from contextvars import copy_context
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Callable, TypeVar
@@ -826,7 +827,7 @@ class ExecutorScheduler:
                 self._orchestration_slots.release()
 
         try:
-            return self._thread_pool().submit(run)
+            return self._thread_pool().submit(copy_context().run, run)
         except BaseException:
             self._orchestration_slots.release()
             raise
@@ -844,7 +845,7 @@ class ExecutorScheduler:
         if self.can_parallelize(
                 executor, concurrency_identity=concurrency_identity):
             return self._thread_pool().submit(
-                self.invoke, executor, call,
+                copy_context().run, self.invoke, executor, call,
                 concurrency_identity=concurrency_identity,
                 admission_timeout_s=admission_timeout_s,
                 execution_context=execution_context)

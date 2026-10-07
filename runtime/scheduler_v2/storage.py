@@ -20,7 +20,7 @@ from .models import Run, ScheduleEntry
 import sys as _sys
 _sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import config as _C
-DEFAULT_DB_PATH = _C.PATH_USER_STATE / "scheduler_v2.sqlite"
+DEFAULT_DB_PATH = _C.DB_SCHEDULER_V2
 
 
 _SCHEMA = """

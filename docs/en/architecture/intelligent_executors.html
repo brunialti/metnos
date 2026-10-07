@@ -136,6 +136,55 @@
  return steps share a 32-action cap and a limited search time;
  waiting for consent does not reset the attempts. If the path changes in
  the meantime, Metnos stops.</p>
+ <p>A subsequent search for a complete collection distinguishes target objects,
+ filters and requested fields. The local model interprets content by meaning
+ and chooses only among observed controls. Relevant objects, including those
+ outside the filters, guide navigation; their presence does not certify completion.
+ Search explores up to three levels and returns through the starting page to
+ try other branches. Pagination stays at the same level. After finding initial
+ results it still looks for further pages and details needed for requested fields.
+ Observed controls are examined in page order and in groups, so pages with many
+ links do not hide later controls from the search. Headings are distinguished
+ from actual items, and covered controls are checked again before a click.
+ Indistinguishable controls that cannot be found unambiguously later are not
+ offered as choices; the search tries other observed paths.</p>
+ <p>During a return, if a previously verified control appears late,
+ Metnos waits briefly on the same page without repeating clicks.
+ It proceeds only when the same unambiguous control reappears with its
+ destination and context unchanged; a different, ambiguous or still missing
+ control stops the path. This wait uses the existing search time budget.</p>
+ <p>An address already opened during the search is not opened again from
+ other pages or from itself; links merely shown elsewhere stay available in the
+ new context. When a page already contains requested objects and the model
+ indicates no path, Metnos asks once, at the first decision on that page,
+ whether a control shows other objects of the same list, such as a next page,
+ an archive or other periods; returns do not repeat the question.
+ Visually hidden text stays out of the observation.</p>
+ <p>When Frontier is configured, it chooses the route even on pages that already
+ show requested objects: a summary can still contain unrelated menus.
+ The local model recognises and preserves objects; Frontier receives the request, the sign-in state and
+ control names with their section titles, not the page content, fields or
+ credentials. Names are not redacted and may contain personal data. The answer says
+ so in a note and the step shows a red “$” in the path. Without a configured
+ Frontier the local model decides; if a configured Frontier does not answer, the
+ collection stays incomplete. <code>METNOS_SITES_FRONTIER_ROUTES=0</code> disables it.</p>
+ <p>This collection uses 96 actions and 300 active seconds, shared by forward
+ steps, scrolling and returns; waiting for the user neither consumes active time
+ nor resets attempts. In the candidate change, each local model decision has
+ up to 20 seconds within the overall time budget; a timeout leaves the search
+ incomplete. It finishes
+ after exhausting observed relevant paths.
+ Time, action, depth or reading limits produce a partial result without inventing
+ the total number of objects. Filters apply to collected records, without
+ excluding paths because of dates on an intermediate page.</p>
+ <p>The candidate change includes visible text and observed selector states
+ alongside accessible names. These data can identify the current collection,
+ but do not guarantee a correct model decision: automatic supply switching
+ still needs correction and validation.</p>
+ <p>If a later obstruction interrupts the search, Metnos retains records
+ already observed and reports the collection as incomplete. Overlays can be
+ dismissed through exit controls recognised by the multilingual lexicon,
+ such as “Close modal”; submission and acceptance controls remain excluded.</p>
  <p>The usual site boundaries and consent forms still apply during search.
  Cookies use the separate procedure for rejecting optional choices, checked
  again before submission if a new banner appears. Once a
@@ -185,8 +234,20 @@
  this persisted record. The resumed branch and remaining steps are observed
  without replaying previous steps; form inputs are not copied into the
  logged arguments.</p>
+ <p>After a form is submitted, the page shows progress and retrieves the resumed
+ operation's result without holding the web request open. After a reload or a
+ lost response, it checks the state without submitting the values again. The
+ result preserves the text, attachments and path of the actual turn. If the
+ outcome cannot be confirmed, the page says so and does not automatically
+ repeat the operation.</p>
 
  <h2>When it cannot finish</h2>
+ <p><strong>Since release 122:</strong>
+ when a web control is obstructed, the managed browser automatically saves
+ a static page copy and the obstruction measurements. No console script is
+ required. The copy omits private fields and active code; it stays local,
+ protected like screenshots. Capture is skipped during pending consent or
+ authentication steps and does not certify the website workflow.</p>
  <p>If no proposal is admitted, the loop is <code>inconclusive</code>. If its
  attempts or elapsed-time budget runs out, it is <code>exhausted</code>. The
  adapter then maps that outcome to its executor's public contract: it may keep

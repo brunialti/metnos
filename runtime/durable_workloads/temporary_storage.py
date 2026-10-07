@@ -144,6 +144,38 @@ class TemporaryWorkspace:
         except FileNotFoundError:
             pass
 
+    def detached(self):
+        """Verify the closed fence and return whether detached data exists.
+
+        The cleanup caller holds the exclusive fence while this proof runs.
+        Reading by directory descriptor keeps the proof on the same no-follow
+        path boundary used by detach and purge.
+        """
+        with self.directory() as parent:
+            lock_fd = os.open(
+                ".lre-lock-" + self.name,
+                os.O_RDONLY | os.O_NOFOLLOW,
+                dir_fd=parent,
+            )
+            try:
+                info = os.fstat(lock_fd)
+                if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
+                        or os.pread(lock_fd, 8, 0) != b"closed\n"):
+                    raise OSError("temporary workspace fence is not closed")
+            finally:
+                os.close(lock_fd)
+            try:
+                os.stat(self.name, dir_fd=parent, follow_symlinks=False)
+            except FileNotFoundError:
+                pass
+            else:
+                raise OSError("temporary workspace is not detached")
+            try:
+                os.stat(self.removing, dir_fd=parent, follow_symlinks=False)
+            except FileNotFoundError:
+                return False
+            return True
+
     def purge(self):
         if not shutil.rmtree.avoids_symlink_attacks:
             raise OSError("safe temporary workspace removal is unavailable")
@@ -191,10 +223,21 @@ def reports(store, owner, workload_ids):
 
 
 class TemporaryStorage:
-    def __init__(self, store, resolve_workspaces, *, artifact_workspace=None):
+    """Inspect scratch and close terminal ownership.
+
+    A configured handoff must durably and idempotently accept the exact
+    owner/workload/version and detached capabilities before returning ``None``.
+    It may be called again after a crash or a reported failure.
+    """
+
+    def __init__(self, store, resolve_workspaces, *, artifact_workspace=None,
+                 handoff_detached=None):
+        if handoff_detached is not None and not callable(handoff_detached):
+            raise TypeError("detached workspace handoff must be callable")
         self.store = store
         self.resolve = resolve_workspaces
         self.artifact_workspace = artifact_workspace
+        self.handoff_detached = handoff_detached
 
     def paths(self, owner, workload_id):
         paths = set()
@@ -263,12 +306,29 @@ class TemporaryStorage:
                                 path.retire(held[path])
                                 path.detach()
                     if status != "shared":
-                        for path in paths:
-                            path.purge()
-                        remaining = [path.measure() for path in paths]
-                        size = sum(item[0] for item in remaining)
-                        files = sum(item[1] for item in remaining)
-                        status = "pending" if size or files else "clean"
+                        ordered = tuple(sorted(
+                            paths, key=lambda path: (str(path.parent), path.name),
+                        ))
+                        if self.handoff_detached is not None and (size or files):
+                            try:
+                                accepted = self.handoff_detached(
+                                    owner, workload_id, version, ordered,
+                                )
+                            except Exception as exc:
+                                raise OSError("detached workspace handoff failed") from exc
+                            if accepted is not None:
+                                raise ValueError("detached workspace handoff returned a value")
+                            # The physical owner now accounts for the detached
+                            # trees. LRE no longer reports them as job scratch.
+                            size = files = 0
+                            status = "clean"
+                        else:
+                            for path in paths:
+                                path.purge()
+                            remaining = [path.measure() for path in paths]
+                            size = sum(item[0] for item in remaining)
+                            files = sum(item[1] for item in remaining)
+                            status = "pending" if size or files else "clean"
         except BlockingIOError:
             status = "pending"
         except (OSError, ValueError, TypeError, LookupError):
@@ -311,3 +371,39 @@ class TemporaryStorage:
         """, (*_SETTLED, limit)).fetchall()
         for row in rows:
             self.observe(row)
+
+
+class DetachedWorkspaceCustody:
+    """Accept detached scratch by proving its existing durable F6 identity.
+
+    The workload, admitted revisions and deterministic artifact workspace are
+    already the authoritative inventory.  Acceptance therefore records no
+    parallel state: it re-derives the exact capabilities in the same database
+    snapshot and verifies their physical retired form while cleanup holds the
+    exclusive writer fences.  Repeating the call after a crash is harmless.
+    """
+
+    def __init__(self, store, resolve_workspaces, *, artifact_workspace=None):
+        self._storage = TemporaryStorage(
+            store,
+            resolve_workspaces,
+            artifact_workspace=artifact_workspace,
+        )
+
+    def __call__(self, owner, workload_id, version, paths):
+        storage = self._storage
+        with storage.store._transaction():
+            current = storage.store.get_workload(owner, workload_id)
+            if current.version != version or current.state.value not in _TERMINAL:
+                raise OSError("detached workspace authority changed")
+            if storage.busy(owner, workload_id):
+                raise OSError("detached workspace still has active attempts")
+            expected = tuple(sorted(
+                storage.paths(owner, workload_id),
+                key=lambda path: (str(path.parent), path.name),
+            ))
+            if tuple(paths) != expected:
+                raise ValueError("detached workspace capabilities disagree")
+        detached = tuple(path.detached() for path in expected)
+        if not any(detached):
+            raise OSError("detached workspace custody has no physical data")

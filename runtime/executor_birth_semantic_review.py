@@ -270,6 +270,7 @@ def _request_payload(request: SemanticReviewRequest) -> dict[str, object]:
 
 
 _SYSTEM_PROMPT = template_v1("semantic_review.system")
+_RESPONSE_GRAMMAR = template_v1("semantic_review.grammar")
 
 
 def _invoke_semantic_review(
@@ -277,8 +278,10 @@ def _invoke_semantic_review(
 ) -> str:
     from llm_router import LLMRouter
 
-    response = LLMRouter().provider(tier).chat(
-        system, user, max_tokens=1800, request_timeout_s=timeout_s,
+    provider = LLMRouter().provider(tier)
+    constraints = {"grammar": _RESPONSE_GRAMMAR} if getattr(provider, "supports_grammar", False) else {}
+    response = provider.chat(
+        system, user, max_tokens=1800, request_timeout_s=timeout_s, **constraints,
     )
     return getattr(response, "text", None) or ""
 

@@ -41,6 +41,8 @@ _FIELDS = {
     "cycle_started": {"profile"},
     "cycle_finished": {"start", "results", "turns"},
     "cycle_interrupted": {"start"},
+    "operational_import": {"export", "destination", "predecessor"},
+    "certificate_prepared": {"certificate", "qualification", "operational_import"},
 }
 _DDL = (
     "CREATE TABLE artifacts (digest TEXT PRIMARY KEY, body BLOB NOT NULL)",
@@ -105,6 +107,7 @@ class EvidenceFrontierV1:
     consecutive_successes: tuple[str, ...]
     pending_cycle: str | None
     profile_bindings: ProfileBindingsV1 | None
+    operational_import: str | None = None
 
 
 @dataclass
@@ -119,6 +122,7 @@ class _State:
     pending: str | None = None
     successes: tuple[str, ...] = ()
     turns: set[str] = field(default_factory=set)
+    operational_import: str | None = None
 
 
 def _transaction(method):
@@ -155,7 +159,7 @@ class _Evidence:
         return EvidenceFrontierV1(state.head, state.count, state.scope,
                                   tuple(sorted(key for key, value in state.findings.items() if value is not None)),
                                   state.profile, state.successes, state.pending,
-                                  state.profile_bindings)
+                                  state.profile_bindings, state.operational_import)
 
     def _artifact(self, digest: str) -> bytes:
         _digest(digest)
@@ -192,8 +196,8 @@ class _Evidence:
         if state.pending is not None and kind not in {"cycle_finished", "cycle_interrupted"}:
             raise EvidenceError("cycle still open")
         if kind == "census":
-            if state.count or type(payload["sources"]) is not list or not payload["sources"] or type(payload["findings"]) is not dict:
-                raise EvidenceError("initial census")
+            if type(payload["sources"]) is not list or not payload["sources"] or type(payload["findings"]) is not dict:
+                raise EvidenceError("census documents")
             _digest(payload["scope_id"])
             if len(set(map(_digest, payload["sources"]))) != len(payload["sources"]):
                 raise EvidenceError("duplicate census source")
@@ -201,14 +205,25 @@ class _Evidence:
                 self._artifact(reference)
             for finding in payload["findings"]:
                 _identifier(finding)
+            if state.scope != payload["scope_id"]:
+                # A changed observation needs a new frozen profile. Preserve
+                # the chronology and consumed turns as historical evidence.
+                state.profile, state.profile_bindings = None, None
+                state.cases, state.successes = {}, ()
+                state.operational_import = None
             state.scope = payload["scope_id"]
-            state.findings = dict.fromkeys(payload["findings"], digest)
+            # Omission is never closure; a reported finding needs a closure
+            # bound to this observation, even when its name was seen before.
+            state.findings.update(dict.fromkeys(payload["findings"], digest))
+            if payload["findings"]:
+                state.successes, state.operational_import = (), None
         elif kind == "defect_opened":
             finding = _identifier(payload["finding_id"])
             if state.findings.get(finding) is not None:
                 raise EvidenceError("finding already open")
             self._artifact(payload["evidence"])
             state.findings[finding] = digest
+            state.successes, state.operational_import = (), None
         elif kind == "defect_closed":
             finding = _identifier(payload["finding_id"])
             if state.findings.get(finding) is None or payload["opening"] != state.findings[finding]:
@@ -237,13 +252,39 @@ class _Evidence:
             if manifest.get("case_matrix_sha256") != hashlib.sha256(matrix).hexdigest():
                 raise EvidenceError("profile matrix binding")
             state.profile, state.cases, state.successes = digest, selected, ()
+            state.operational_import = None
             state.profile_bindings = ProfileBindingsV1(**{
                 name: payload[name] for name in _BASE
             })
+        elif kind == "operational_import":
+            # This is provenance, not a local profile or a local successful turn.
+            # The certifier independently authenticates the export on every use.
+            document = _json(self._artifact(payload["export"]))
+            destination = _json(self._artifact(payload["destination"]))
+            if type(document) is not dict or type(destination) is not dict:
+                raise EvidenceError("import documents")
+            inventory = document.get("artifacts")
+            if type(inventory) is not dict or not inventory:
+                raise EvidenceError("import inventory")
+            for reference, size in inventory.items():
+                if type(size) is not int or len(self._artifact(reference)) != size:
+                    raise EvidenceError("import artifact size")
+            if payload["predecessor"] is not None:
+                self._artifact(payload["predecessor"])
+            state.operational_import = digest
+        elif kind == "certificate_prepared":
+            certificate = _json(self._artifact(payload["certificate"]))
+            qualification = _json(self._artifact(payload["qualification"]))
+            if (type(certificate) is not dict or type(qualification) is not dict
+                    or certificate.get("qualification_id") != qualification.get("qualification_id")
+                    or qualification.get("evidence_head") != state.head
+                    or payload["operational_import"] != state.operational_import):
+                raise EvidenceError("certificate qualification binding")
         elif kind == "cycle_started":
             if state.profile is None or payload["profile"] != state.profile:
                 raise EvidenceError("cycle profile")
             state.pending = digest
+            state.operational_import = None
         else:
             if state.pending is None or payload["start"] != state.pending:
                 raise EvidenceError("cycle start binding")
@@ -338,6 +379,34 @@ class _Evidence:
         references = {case: {turn: self._put(raw) for turn, raw in entries.items()} for case, entries in turns.items()}
         return self._append("cycle_finished", dict(start=start, results=self._put(results),
             turns=self._put(encode_canonical_ascii_v1(references))))
+
+    @_transaction
+    def import_operational(self, *, exported: bytes, artifacts: dict[str, bytes],
+                           destination: bytes, predecessor: bytes | None) -> EvidenceFrontierV1:
+        for digest, raw in artifacts.items():
+            if self._put(raw) != digest:
+                raise EvidenceError("import artifact identity")
+        return self._append("operational_import", dict(export=self._put(exported),
+            destination=self._put(destination),
+            predecessor=self._put(predecessor) if predecessor is not None else None))
+
+    def event(self, digest: str) -> dict:
+        row = self._connection.execute("SELECT body FROM events WHERE digest=?", (_digest(digest),)).fetchone()
+        if row is None or _hash(row[0], domain=_DOMAIN) != digest:
+            raise EvidenceError("event missing or changed")
+        return _json(row[0])
+
+    @_transaction
+    def prepare_certificate(self, *, certificate: bytes, qualification: bytes) -> EvidenceFrontierV1:
+        return self._append("certificate_prepared", dict(certificate=self._put(certificate),
+            qualification=self._put(qualification), operational_import=self._state.operational_import))
+
+    def snapshot(self) -> tuple[tuple[bytes, ...], dict[str, bytes]]:
+        """Preserve the whole chronology, including failed and interrupted runs."""
+        events = tuple(row[0] for row in self._connection.execute("SELECT body FROM events ORDER BY sequence"))
+        artifacts = {row[0]: self._artifact(row[0]) for row in
+                     self._connection.execute("SELECT digest FROM artifacts ORDER BY digest")}
+        return events, artifacts
 
 
 def _open_database(path: Path, *, root_owned: bool) -> sqlite3.Connection:

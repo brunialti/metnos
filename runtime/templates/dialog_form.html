@@ -228,6 +228,12 @@
       };
       try {
         const r = await fetch(form.action, {method:'POST', body: fd});
+        if(r.status === 202 || r.status === 409 || r.status >= 500){
+          // The POST may have been accepted even when a proxy lost its reply.
+          // Only the parent reconciles by GET; never automatically resubmit.
+          window.parent.postMessage({type:'metnos.dialog.reconcile'}, parentOrigin);
+          return;
+        }
         if(r.ok){
           // Estrai data-redirect-url se presente: il callback (es. OAuth)
           // chiede una navigation diretta. Altrimenti data-completion-text:
@@ -284,8 +290,7 @@
           err.textContent = dialogText('submitError', {detail, refs});
         }
       } catch(ex) {
-        _reenable();
-        alert(dialogText('networkError', {message: ex}));
+        window.parent.postMessage({type:'metnos.dialog.reconcile'}, parentOrigin);
       }
     });
   }
@@ -296,12 +301,16 @@
       if(!confirm(cancelLink.dataset.confirmMessage || '')) return;
       try {
         const r = await fetch(cancelLink.href, {cache:'no-store'});
-        if(r.ok){
+        if(r.headers.get('X-Metnos-Dialog-State') === 'cancelled'){
           window.parent.postMessage(
             {type:'metnos.dialog.cancelled',
              turn_id:form ? (form.dataset.turnId || '') : '',
              dialog_id:form ? (form.dataset.dialogId || '') : ''},
             parentOrigin);
+          return;
+        }
+        if(r.ok || r.status === 409 || r.status >= 500){
+          window.parent.postMessage({type:'metnos.dialog.reconcile'}, parentOrigin);
           return;
         }
         if(r.status === 404 || r.status === 410){

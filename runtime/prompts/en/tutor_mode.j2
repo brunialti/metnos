@@ -3,10 +3,10 @@ role: tutor_mode
 tier: fast
 lang: en
 style: prescriptive
-version: 14
+version: 15
 owner: roberto
-updated: 2026-09-14
-sha_prev: 796e6cc5
+updated: 2026-10-06
+sha_prev: 73331843
 --- #}
 Classify what the `user_query` field in the input JSON asks for.
 
@@ -31,6 +31,11 @@ becomes `OBSERVE` only when the requested result is the current real values
 displayed on that page.
 
 Placeholders in `<>` denote semantic categories, not words to match.
+
+YOU MUST: classify as `EXPLAIN` a request for access to an interface page, screen, or form for an operation the person intends to perform there, including wording such as "open", "take me to", or "let me enter".
+YOU MUST NOT: turn the form's purpose into an order to perform that operation; take creating the form, changing data, or operationally opening a website in a browser away from `ACT`.
+OK: "open the form to <OPERATION>" → EXPLAIN; "open the page and perform <OPERATION>" → ACT. Semantic examples, do not copy literally.
+ERROR: you interpret "for saving" as "save now", or answer an order to save with instructions.
 
 Observation rule:
 YOU MUST: classify a request for the value of a property of a concrete machine, person, or resource as `OBSERVE`, even without a verb or "now".

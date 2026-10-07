@@ -1678,15 +1678,15 @@ def _executor_name_in_argv(
     """Ritorna il nome dell'executor se argv[0] (saltando sudo/doas/pkexec)
     matcha un executor presente nel catalogo runtime, altrimenti None.
 
-    Lookup deterministico O(N) sul catalogo importato lazy: rispetta i
-    rejected (synth scartati per affinity overlap / signature drift / GC).
-    Caching minimo per evitare reflection ripetuta nello stesso processo.
+    Recognize function-call notation as well as a bare command name, without
+    evaluating its arguments. Nonselectable catalog entries remain executor
+    identities: passing them to admin cannot authorize their execution.
     """
     try:
         command = _validated(argv).command_argv
     except ArgvValidationError:
         return None
-    candidate = Path(command[0]).name
+    candidate = Path(command[0].partition("(")[0]).name
     if not candidate or "/" in candidate:
         return None
     # Lookup catalog via loader (lazy import + cache interna ADR 0099)

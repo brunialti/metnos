@@ -42,6 +42,7 @@ from playwright_sidecar import action_resolver
 from playwright_sidecar import browser_surface
 from playwright_sidecar import cookie_privacy
 from playwright_sidecar import login_navigation
+from playwright_sidecar import collection_context
 import sites_audit
 import sites_observed  # ADR 0191 P4 — codici osservativi navigazione
 import sites_origin  # ADR 0191 P2 — il consenso appartiene a un'ORIGINE
@@ -176,7 +177,7 @@ _ENUMERATE_TIMEOUT_MS = _bounded_int_env(
     "METNOS_SITES_ENUMERATE_TIMEOUT_MS", default=3000, minimum=500, maximum=10000
 )
 _LOCAL_RESOLVER_TIMEOUT_MS = _bounded_int_env(
-    "METNOS_SITES_LOCAL_RESOLVER_TIMEOUT_MS", default=6000,
+    "METNOS_SITES_LOCAL_RESOLVER_TIMEOUT_MS", default=20000,
     minimum=1000, maximum=20000
 )
 _CLICK_TIMEOUT_MS = _bounded_int_env(
@@ -184,6 +185,11 @@ _CLICK_TIMEOUT_MS = _bounded_int_env(
 )
 _MODEL_FALLBACKS_ENABLED = _enabled_env(
     "METNOS_SITES_MODEL_FALLBACKS", default=True)
+# On collection pages without requested items the route is chosen by the
+# Frontier workload when it is configured (decision of 7/10/2026); without
+# Frontier the local decision stands. METNOS_SITES_FRONTIER_ROUTES=0 disables.
+_FRONTIER_COLLECTION_ROUTES = _enabled_env(
+    "METNOS_SITES_FRONTIER_ROUTES", default=True)
 _RESOURCE_DISCOVERY_MS = 1000 # finestra bounded per richieste client-side
 _REVEAL_SETTLE_MS = 2000      # attesa bounded target dopo controllo reveal
 _LOGIN_ENTRY_SETTLE_S = 5.0   # attesa totale per un ingresso ancora vuoto
@@ -262,6 +268,7 @@ _ENUMERATE_ACTION_TARGETS_JS = r"""
   const standard = Array.from(document.querySelectorAll(
     'a,button,input,textarea,select,[role=button],[role=link],'
     + '[role=tab],[role=menuitem],[role=checkbox],[role=radio],'
+    + '[role=combobox],[role=option],[role=menuitemradio],'
     + '[contenteditable=true],summary,'
     + '[tabindex]:not([tabindex="-1"]),[onclick]'));
   // React e altri framework possono rendere cliccabile un div senza ruolo o
@@ -299,7 +306,14 @@ _ENUMERATE_ACTION_TARGETS_JS = r"""
   // retaining a bounded tail for scroll/reveal discovery.
   const visibleEls = [];
   const otherEls = [];
-  for (const el of Array.from(new Set([...standard, ...pointer]))) {
+  const ordered = Array.from(new Set([...standard, ...pointer]));
+  ordered.sort((a, b) => {
+    const relation = a.compareDocumentPosition(b);
+    if (relation & Node.DOCUMENT_POSITION_FOLLOWING) return -1;
+    if (relation & Node.DOCUMENT_POSITION_PRECEDING) return 1;
+    return 0;
+  });
+  for (const [order, el] of ordered.entries()) {
     const r = el.getBoundingClientRect();
     const st = getComputedStyle(el);
     const rendered = r.width >= 2 && r.height >= 2 &&
@@ -309,7 +323,7 @@ _ENUMERATE_ACTION_TARGETS_JS = r"""
     const iy = Math.max(0, Math.min(r.bottom, innerHeight) - Math.max(r.top, 0));
     const visibleRatio = r.width > 0 && r.height > 0
       ? (ix * iy) / (r.width * r.height) : 0;
-    const item = {el, r, st, rendered, visibleRatio};
+    const item = {el, r, st, rendered, visibleRatio, order};
     (rendered && visibleRatio >= 0.2 ? visibleEls : otherEls).push(item);
   }
   const els = [
@@ -340,10 +354,12 @@ _ENUMERATE_ACTION_TARGETS_JS = r"""
     }
     return '';
   };
+  const enumeratedIds = new Set();
   for (const item of els) {
-    const {el, r, st, rendered, visibleRatio} = item;
+    const {el, r, st, rendered, visibleRatio, order} = item;
     const id = `m${++n}`;
     el.setAttribute('data-metnos-action-id', id);
+    enumeratedIds.add(id);
     const form = el.form || el.closest('form');
     const label = el.labels && el.labels.length
       ? Array.from(el.labels).map(x => x.innerText || x.textContent || '').join(' ')
@@ -355,6 +371,12 @@ _ENUMERATE_ACTION_TARGETS_JS = r"""
          p = p.parentElement, depth++) {
       if (p.id) ancestors.push(p.id);
     }
+    const ancestorActionIds = [];
+    for (let p = el.parentElement, depth = 0; p && depth < 12;
+         p = p.parentElement, depth++) {
+      const actionId = p.getAttribute('data-metnos-action-id');
+      if (actionId && enumeratedIds.has(actionId)) ancestorActionIds.push(actionId);
+    }
     const topmost = (() => {
       if (!visible) return false;
       const x = Math.max(0, Math.min(innerWidth - 1, r.left + r.width / 2));
@@ -363,7 +385,8 @@ _ENUMERATE_ACTION_TARGETS_JS = r"""
       return top === el || !!(top && el.contains(top));
     })();
     out.push({
-      id, tag: el.tagName.toLowerCase(), type: (el.type || '').toLowerCase(),
+      id, dom_order: order, tag: el.tagName.toLowerCase(),
+      type: (el.type || '').toLowerCase(),
       role: el.getAttribute('role') || '',
       name: metnosNameOf(el),
       text: metnosTextOf(el),
@@ -371,8 +394,10 @@ _ENUMERATE_ACTION_TARGETS_JS = r"""
       placeholder: el.getAttribute('placeholder') || '',
       href: el.href || '', download: el.hasAttribute('download'),
       dom_id: el.id || '', ancestor_ids: ancestors,
+      ancestor_action_ids: ancestorActionIds,
       control_targets: controlsOf(el),
       aria_expanded: el.getAttribute('aria-expanded') || '',
+      aria_haspopup: el.getAttribute('aria-haspopup') || '',
       aria_selected: el.getAttribute('aria-selected') || '',
       aria_pressed: el.getAttribute('aria-pressed') || '',
       aria_checked: el.getAttribute('aria-checked') || '',
@@ -562,12 +587,17 @@ _LOCATE_SAFE_OVERLAY_DISMISS_JS = r"""
 """
 
 _GOAL_EVIDENCE_JS = r"""
-() => {
+(includeInteractiveContent = false) => {
   const excluded = [
-    'a', 'button', 'input', 'textarea', 'select', 'option', 'summary',
+    'input', 'textarea', 'select', 'option',
     'nav', 'menu', 'header', 'footer', 'aside',
     '[role=navigation]', '[role=menu]', '[role=menuitem]',
-    '[role=button]', '[role=link]', '[role=tab]', '[contenteditable=true]'
+    ...(includeInteractiveContent ? [
+      '[contenteditable]:not([contenteditable="false"])', '[data-metnos-redact="1"]'
+    ] : [
+      'a', 'button', 'summary', '[role=button]', '[role=link]', '[role=tab]',
+      '[contenteditable=true]'
+    ])
   ].join(',');
   const groups = new Map();
   const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
@@ -575,18 +605,47 @@ _GOAL_EVIDENCE_JS = r"""
     const parent = node.parentElement;
     const text = (node.nodeValue || '').trim().replace(/\s+/g, ' ');
     if (!parent || !text || parent.closest(excluded)) continue;
-    const r = parent.getBoundingClientRect();
+    let r = parent.getBoundingClientRect();
     const st = getComputedStyle(parent);
+    if (includeInteractiveContent) {
+      if (st.visibility !== 'visible') continue;
+      // A hidden ancestor can leave its descendants' own rectangles intact.
+      let opacity = 1, hidden = false;
+      for (let el = parent; el; el = el.parentElement) {
+        const style = el === parent ? st : getComputedStyle(el);
+        opacity *= Number.parseFloat(style.opacity || '1');
+        if (style.display === 'none' || style.contentVisibility === 'hidden' || opacity < 0.05) {
+          hidden = true;
+          break;
+        }
+      }
+      if (hidden) continue;
+      // display:contents has no element box, but its record text is visible.
+      // Any other parent keeps its own box: a clipped 1px or zero-size box
+      // hides text whose own layout rectangle is still non-empty.
+      if (st.display === 'contents') {
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        r = range.getBoundingClientRect();
+      }
+    }
     if (r.width < 2 || r.height < 2 || st.display === 'none' ||
         st.visibility === 'hidden' || Number.parseFloat(st.opacity || '1') < 0.05)
       continue;
     const block = parent.closest(
-      'h1,h2,h3,h4,h5,h6,[role=heading],tr,p,li,dt,dd,section,article,main,div')
+      'h1,h2,h3,h4,h5,h6,[role=heading],tr,p,li,dt,dd,' +
+      'a,button,summary,[role=link],[role=button],[role=tab],section,article,main,div')
       || parent;
-    groups.set(block, `${groups.get(block) || ''} ${text}`.trim().slice(0, 4000));
+    const headingSelector = 'h1,h2,h3,h4,h5,h6,[role=heading]';
+    const heading = includeInteractiveContent
+      ? parent.closest(headingSelector) !== null : block.matches(headingSelector);
+    const previous = groups.get(block) || (heading ? '[heading]' : '');
+    groups.set(block, `${previous} ${text}`.trim().slice(0, 4000));
     if (groups.size >= 400) break;
   }
-  return Array.from(new Set(groups.values())).slice(0, 400);
+  // Preserve the cap: deduplicating here can hide that group 400 stopped
+  // the traversal, making a partial observation appear complete.
+  return Array.from(groups.values());
 }
 """
 
@@ -644,7 +703,7 @@ _SCROLL_COLLECTION_JS = r"""
   const step = Math.max(240, Number(target.clientHeight || innerHeight) * 0.85);
   const next = Math.min(maximum, before + step);
   target.scrollTop = next;
-  return {moved: next > before + 2, before, maximum};
+  return {moved: next > before + 2, before, after: next, maximum};
 }
 """
 
@@ -683,6 +742,7 @@ _ELEMENT_STATE_JS = r"""
     disabled: !!el.disabled || el.getAttribute('aria-disabled') === 'true',
     rendered, visible, in_viewport: inViewport,
     aria_expanded: el.getAttribute('aria-expanded') || '',
+      aria_haspopup: el.getAttribute('aria-haspopup') || '',
     aria_selected: el.getAttribute('aria-selected') || '',
     aria_pressed: el.getAttribute('aria-pressed') || '',
     aria_checked: el.getAttribute('aria-checked') || '',
@@ -760,12 +820,12 @@ def _shots_dir(owner: str) -> Path:
 
 
 def _sweep_old_shots(owner: str) -> None:
-    """Rimuove gli screenshot oltre il TTL (§3.3)."""
+    """Rimuove screenshot e copie diagnostiche oltre il TTL (§3.3)."""
     d = _SHOTS_ROOT / _owner_slug(owner)
     if not d.exists():
         return
     now = time.time()
-    for p in d.glob("*.png"):
+    for p in (*d.glob("*.png"), *d.glob("*.page.json")):
         try:
             if now - p.stat().st_mtime > _SHOT_TTL_S:
                 p.unlink()
@@ -1766,16 +1826,6 @@ async def _read_impl(entry, session_id, include_screenshot, include_forms,
         text = ""
     collected = [item for item in (entry.get("collected_pages") or [])
                  if isinstance(item, dict) and item.get("text")]
-    if collected:
-        chunks = []
-        seen_text = set()
-        for item in [*collected, {"url": scrub_url(page.url), "text": text}]:
-            value = str(item.get("text") or "")
-            key = hashlib.sha256(value.encode("utf-8")).hexdigest()
-            if value and key not in seen_text:
-                seen_text.add(key)
-                chunks.append(value)
-        text = "\n\n".join(chunks)
     sensitive = bool(entry.get("authenticated"))
     shot = None
     if include_screenshot:
@@ -1802,12 +1852,22 @@ async def _read_impl(entry, session_id, include_screenshot, include_forms,
                 text = await page.locator("body").inner_text(timeout=3000)
             except Exception:  # noqa: BLE001
                 break
-        out["text"] = text
-        tratto = _goal_text_span(text, goal)
+    if collected:
+        chunks = []
+        seen_text = set()
+        for item in [*collected, {"text": text}]:
+            value = str(item.get("text") or "")
+            key = hashlib.sha256(value.encode("utf-8")).hexdigest()
+            if value and key not in seen_text:
+                seen_text.add(key)
+                chunks.append(value)
+        text = "\n\n".join(chunks)
+        out["collected_page_count"] = len(chunks)
+    out["text"] = text
+    if goal:
+        tratto = text if collected else _goal_text_span(text, goal)
         if tratto:
             out["goal_span"] = tratto
-    if collected:
-        out["collected_page_count"] = len(collected) + 1
     if include_forms:
         try:
             raw_forms = await page.evaluate(_ENUMERATE_FORMS_JS)
@@ -2217,7 +2277,14 @@ async def _scroll_candidate_into_view(entry: dict, candidate: dict) -> bool:
             f'[data-metnos-action-id="{cid}"]').first.element_handle()
         if handle is None:
             return False
-        await handle.scroll_into_view_if_needed(timeout=1500)
+        if (candidate.get("in_viewport") is True
+                and candidate.get("topmost") is False):
+            # A fixed header can cover a fully intersecting element: the
+            # ordinary "if needed" scroll would leave that element in place.
+            await handle.evaluate("node => node.scrollIntoView({block: 'center', "
+                                  "inline: 'center', behavior: 'instant'})")
+        else:
+            await handle.scroll_into_view_if_needed(timeout=1500)
         if hasattr(entry["page"], "wait_for_timeout"):
             await entry["page"].wait_for_timeout(100)
         return True
@@ -2226,7 +2293,7 @@ async def _scroll_candidate_into_view(entry: dict, candidate: dict) -> bool:
 
 
 def _bounded_action_prompt(*, goal: dict, state: dict,
-                           observed: list[str], history: list[str],
+                           observed: list[str] | dict, history: list[str],
                            forbidden: str) -> str:
     """Prompt chiuso per risolvere una sola azione elementare.
 
@@ -2236,7 +2303,7 @@ def _bounded_action_prompt(*, goal: dict, state: dict,
     """
     import i18n
     import prompt_loader
-    dump = lambda value: json.dumps(value, ensure_ascii=True, sort_keys=True)
+    dump = lambda value: json.dumps(value, ensure_ascii=False, sort_keys=True)
     return prompt_loader.get(
         "agentic_sites_action", i18n.current_lang(),
         goal_json=dump(goal), state_json=dump(state),
@@ -2337,18 +2404,24 @@ async def _wait_for_content_settle(entry: dict) -> bool:
     return False
 
 
-async def _expand_collection_by_scrolling(entry: dict, flow: dict) -> bool:
+async def _expand_collection_by_scrolling(entry: dict, flow: dict, *,
+                                           max_scrolls: int | None = None) -> bool:
     """Carica porzioni lazy di una collezione con scroll progressivo bounded."""
     if (not flow.get("collection") or flow.get("collection_scroll_complete")):
         return False
     changed_any = False
-    while int(flow.get("collection_scrolls", 0)) < _MAX_COLLECTION_SCROLLS:
+    limit = _MAX_COLLECTION_SCROLLS if max_scrolls is None else max_scrolls
+    while int(flow.get("collection_scrolls", 0)) < limit:
         before = await _goal_content_signature(entry)
         try:
             scroll = await entry["page"].evaluate(_SCROLL_COLLECTION_JS)
         except Exception:
+            flow["collection_scroll_limited"] = True
             break
-        if not isinstance(scroll, dict) or not scroll.get("moved"):
+        if not isinstance(scroll, dict):
+            flow["collection_scroll_limited"] = True
+            break
+        if not scroll.get("moved"):
             flow["collection_scroll_complete"] = True
             break
         flow["collection_scrolls"] = int(
@@ -2357,7 +2430,9 @@ async def _expand_collection_by_scrolling(entry: dict, flow: dict) -> bool:
             entry, before)
         await _wait_for_content_settle(entry)
         after = await _goal_content_signature(entry)
-        if not progressed and after == before:
+        if (not progressed and after == before
+                and scroll.get("after", scroll.get("maximum", 0))
+                >= scroll.get("maximum", 0) - 2):
             flow["collection_scroll_complete"] = True
             break
         changed_any = changed_any or after != before
@@ -2371,7 +2446,8 @@ async def _expand_collection_by_scrolling(entry: dict, flow: dict) -> bool:
             if record.get("ok") or record.get("error_class") \
                     == "selector_ambiguous":
                 break
-    if int(flow.get("collection_scrolls", 0)) >= _MAX_COLLECTION_SCROLLS:
+    if int(flow.get("collection_scrolls", 0)) >= limit:
+        flow["collection_scroll_limited"] = not flow.get("collection_scroll_complete")
         flow["collection_scroll_complete"] = True
     return changed_any
 
@@ -2512,7 +2588,8 @@ async def _continuation_snapshot(entry: dict) -> dict:
     except Exception:
         title = ""
     return {"url": scrub_url(page.url), "title": title,
-            "text": str(text or "")[:100000]}
+            "text": str(text or "")[:100000],
+            "truncated": len(str(text or "")) > 100000}
 
 
 def _parse_reduced_site_goal(raw: str, query: str) -> str:
@@ -2890,66 +2967,591 @@ def _blocked_login_navigation_hosts(entry: dict, *, popup: bool = False
                   in {"http", "https"})
 
 
-async def _local_llm_choose_goal_candidate(entry: dict, target: str,
-                                           candidates: list[dict],
-                                           history: list[str],
-                                           excluded: set[str], *,
-                                           login: bool = False) -> dict | None:
-    """Fallback testuale locale per un passo di navigazione nel mandato.
+def _link_destination(candidate: dict, base: str) -> str:
+    """Absolute HTTP destination of a plain link, or "" when not comparable.
 
-    Il modello vede solo ID e nomi accessibili enumerati dal broker. Non vede
-    DOM, valori dei campi, screenshot, URL di destinazione o credenziali; la
-    scelta resta un ID esatto e passa comunque dal gate se non deterministica.
+    A fragment may select client-side state, so such links keep no identity.
     """
-    if not _MODEL_FALLBACKS_ENABLED:
-        return None
+    url = urllib.parse.urljoin(base, str(candidate.get("href") or ""))
+    parts = urllib.parse.urlsplit(url)
+    if parts.scheme not in {"http", "https"} or "#" in url or not candidate.get("href"):
+        return ""
+    return url
+
+
+def _collapse_collection_links(candidates: list[dict]) -> list[dict]:
+    """Repeated HTTP links are one edge only with full semantic equality.
+
+    Keep query, fragment, context and non-link ambiguity: a matching label or
+    URL path alone does not establish equivalent destinations.
+    """
+    groups: dict[str, list[dict]] = {}
+    for candidate in candidates:
+        groups.setdefault(login_navigation.candidate_key(candidate), []).append(candidate)
+    out = []
+    for group in groups.values():
+        collapsed = (action_resolver.prefer_verifiable_goal_candidates(group)
+                     if group[0].get("tag") == "a" else group)
+        if len(group) > 1 and len(collapsed) == 1:
+            # Exact equivalent HTTP links may have multiple DOM copies. Use
+            # an already available copy before trying to reveal a covered one;
+            # opaque links and non-link ambiguity remain unchanged.
+            available = [candidate for candidate in group
+                         if all(candidate.get(field) is True for field in (
+                             "visible", "in_viewport", "topmost"))
+                         and not candidate.get("disabled")]
+            if available:
+                collapsed = action_resolver.prefer_verifiable_goal_candidates(available)
+        out.extend(collapsed)
+    return out
+
+
+async def _discover_collection(entry: dict, session_id: str,
+                               action: str, target: str) -> dict:
+    """Collect evidence throughout the existing bounded navigation search.
+
+    Record filters never prune a branch. A leaf ends one path; only exhaustion
+    of the search ends the collection. All effects still use the ordinary gate.
+    """
+    key = hashlib.sha256(action.encode()).hexdigest()
+    state = entry.get("collection_search")
+    if not isinstance(state, dict) or state.get("key") != key:
+        state = {"key": key, "action": action, "target": target,
+                 "remaining_s": login_navigation.COLLECTION_TIMEOUT_S,
+                 "found": False, "pages": set()}
+        entry["collection_search"] = state
+        entry.pop("collected_pages", None)
+        entry.pop("_source_scope_label", None)
+
+    async def read_controls(page, observed=None):
+        candidates = action_resolver.goal_navigation_candidates(
+            observed if observed is not None else await _enumerate_candidates(page),
+            include_offscreen=True, include_covered=True)
+        return _collapse_collection_links([c for c in candidates
+            if str(c.get("form_method") or "").upper() != "POST"
+            and action_resolver.goal_candidate_is_admissible(
+                target, c, scope=str(entry.get("goal_scope") or ""))])
+
+    def covered_controls(observed):
+        return [c for c in observed
+                if c.get("rendered") is True and c.get("visible") is True
+                and c.get("in_viewport") is True and c.get("topmost") is False
+                and action_resolver.goal_navigation_candidates(
+                    [{**c, "topmost": True}])
+                and action_resolver.goal_candidate_is_admissible(
+                    target, c, scope=str(entry.get("goal_scope") or ""))]
+
+    async def observe():
+        privacy = await _dismiss_privacy_obstruction(entry)
+        if isinstance(privacy, cookie_privacy.CookieOutcome) and privacy.status == "blocked":
+            return {"terminal": {"ok": False,
+                    "error_class": "cookie_precondition_unresolved"}}
+        await _dismiss_obstructing_overlay(entry)
+        if not await _wait_for_content_settle(entry):
+            return {"terminal": {"ok": False, "error_class": "target_unstable"}}
+        page = entry["page"]
+        if _host_of_url(page.url) not in set(entry.get("allowlist") or ()):
+            return {"terminal": {"ok": False, "error_class": "mandate_scope_exceeded"}}
+        state["pages"].add(page)
+        scrolling = {"collection": True}
+        await _expand_collection_by_scrolling(
+            entry, scrolling, max_scrolls=min(_MAX_COLLECTION_SCROLLS,
+                max(0, login_navigation.COLLECTION_MAX_ACTIONS - int(state.get("actions", 0)))))
+        state["actions"] = int(state.get("actions", 0)) + scrolling.get("collection_scrolls", 0)
+        if scrolling.get("collection_scroll_limited"):
+            state["observation_limit"] = ("max_scrolls", _MAX_COLLECTION_SCROLLS)
+        observed = await _enumerate_candidates(page)
+        if covered_controls(observed):
+            # A modal may appear during scrolling. Try its existing safe
+            # exit, but keep covered routes for semantic selection: a fixed
+            # header over an unrelated footer link is not a page-wide veto.
+            location = page.url
+            await _dismiss_obstructing_overlay(entry, settle=True)
+            if entry["page"] is not page or page.url != location:
+                return {"terminal": {"ok": False, "error_class": "target_changed"}}
+            observed = await _enumerate_candidates(page)
+        context_controls = await read_controls(page, observed)
+
+        async def read_context():
+            nonlocal context_controls
+            context_controls = await read_controls(entry["page"])
+            return context_controls
+
+        context = await collection_context.ensure(
+            state.setdefault("context", {}), target, context_controls,
+            read=read_context, execute=execute,
+            settle=lambda: _wait_for_content_settle(entry), budget=state,
+            enabled=_MODEL_FALLBACKS_ENABLED, timeout_s=_LOCAL_RESOLVER_TIMEOUT_MS / 1000)
+        if context.get("terminal") is not None:
+            return context
+        candidates = await read_controls(entry["page"], context["candidates"])
+        page = entry["page"]
+        index = (state.get("replay") or {}).get("index", -1)
+        frames = state.get("frames", [])
+        if 0 <= index < len(frames) - 1:
+            expected = frames[index + 1]["via"]["key"]
+            location = frames[index]["observation"]["url"]
+            deadline = _monotonic() + _REVEAL_SETTLE_MS / 1000.0
+            reads = 0
+            read_timeout = False
+            # A loaded document may still be rendering without a spinner.
+            # Read only the exact saved edge at the same full URL. Do not
+            # repeat scrolling, clicks or decisions, or wait out ambiguity.
+            while (entry["page"] is page and page.url == location and _monotonic() < deadline
+                   and not any(login_navigation.candidate_key(c) == expected
+                               for c in candidates)):
+                await asyncio.sleep(_REVEAL_POLL_MS / 1000.0)
+                remaining_read = deadline - _monotonic()
+                if entry["page"] is not page or page.url != location or remaining_read <= 0:
+                    break
+                reads += 1
+                try:
+                    candidates = await asyncio.wait_for(read_controls(page), timeout=remaining_read)
+                    candidates = collection_context.navigation_candidates(candidates)
+                except asyncio.TimeoutError:
+                    read_timeout = True
+                    break
+            if reads:
+                sites_audit.record("collection_replay_observed", session_id=session_id,
+                    index=index, extra_reads=reads, same_location=page.url == location,
+                    read_timeout=read_timeout,
+                    match_count=sum(login_navigation.candidate_key(c) == expected
+                                    for c in candidates))
+            if entry["page"] is not page:
+                state["rejection"] = {"phase": "replay_page", "index": index}
+                return {"terminal": {"ok": False, "error_class": "target_changed"}}
+        # A saved ambiguous edge still fails replay immediately. New choices
+        # must see ambiguous controls to assess relevance; a selected one is
+        # rejected at binding without hiding the other available branches.
+        if not (0 <= index < len(frames) - 1 and sum(
+                login_navigation.candidate_key(c) == expected
+                for c in candidates) > 1):
+            candidates = _collapse_collection_links(candidates)
+        snapshot = await _continuation_snapshot(entry)
+        if snapshot.get("truncated"):
+            state["observation_limit"] = ("max_text_chars", 100000)
+        content_key = hashlib.sha256(snapshot["text"].encode()).hexdigest()
+        # A refused bind is recoverable only against this page, URL and the
+        # selected values of its account/category selectors.
+        state["observed_scene"] = (page, page.url, collection_context.value_key(
+            collection_context.selectors(context_controls)))
+        # Scrolling is not a new node; a changed SPA page at the same URL is.
+        controls = [{**c, "visible": True, "in_viewport": True, "topmost": True}
+                    for c in candidates]
+        return {"key": login_navigation.state_key(page.url, controls) + content_key,
+                # Returning to the same full URL may redraw unrelated cards.
+                # The navigator rechecks each saved edge, including context;
+                # a fresh semantic decision reads any remaining alternatives.
+                "location_key": hashlib.sha256((page.url + state.get("context", {}).get(
+                    "value_key", "")).encode()).hexdigest(),
+                "url": page.url, "page": page, "candidates": candidates,
+                "snapshot": {**snapshot, "key": content_key}}
+
+    async def choose(observation, tried):
+        # Pages repeat menus, breadcrumbs and links to themselves. A GET of a
+        # link already opened in this search, or of the root that backtracking
+        # restores, reaches a document already explored: do not open it again.
+        # Links only offered elsewhere stay available in every context.
+        first_visit = not tried
+        root = state["frames"][0]["observation"]["url"]
+        opened = state.setdefault("opened_links", set()) | {
+            _link_destination({"href": root}, root)}
+        for c in observation["candidates"]:
+            if _link_destination(c, observation["url"]) in opened - {""}:
+                tried.add(login_navigation.candidate_key(c))
+        candidates = [c for c in observation["candidates"]
+                      if login_navigation.candidate_key(c) not in tried]
+        candidate = await _local_llm_choose_goal_candidate(
+            entry, target, candidates, [], set(), collection=True,
+            first_visit=first_visit)
+        if candidate is None:
+            # An unavailable/invalid model answer is not proof of a dead end.
+            raise ValueError("collection_observation_unresolved")
+        if candidate.get("collection_observed"):
+            state["found"] = True
+            snapshot = observation["snapshot"]
+            collected = entry.setdefault("collected_pages", [])
+            if snapshot["text"] and not any(
+                    item.get("key") == snapshot["key"] for item in collected):
+                collected.append(snapshot)
+        sites_audit.record(
+            "collection_observation", owner=entry.get("owner", ""),
+            session_id=session_id, domain=entry.get("domain", ""),
+            collection_observed=bool(candidate.get("collection_observed")),
+            proximity=candidate.get("proximity", "none"),
+            steps=int(state.get("actions", 0)))
+        if _FRONTIER_COLLECTION_ROUTES and _frontier_routes_configured():
+            # Content recognition and route selection are independent: a page
+            # with invoices can still offer unrelated menus. Preserve its
+            # evidence before asking Frontier, including if that request fails.
+            candidate = await _frontier_collection_route(entry, target, candidates)
+            if candidate is None:
+                raise ValueError("collection_observation_unresolved")
+        if not candidate.get("id"):
+            return None
+        # Next/more is pagination, not another level in the site's hierarchy.
+        probe = {**candidate, "visible": True, "in_viewport": True, "topmost": True}
+        continuation = action_resolver.choose_goal_continuation_candidate(
+            target, [probe]).get("ok", False)
+        return {"candidate": candidate, "model_selected": True,
+                "confidence": 0.5, "continuation": continuation}
+
+    async def execute(choice):
+        destination = _link_destination(choice.get("candidate") or {}, entry["page"].url)
+        prepared = await _prepare_action(
+            entry, session_id, action, None, primitive_override="search",
+            target_override=target, allow_model=False, collection_choice=choice)
+        if prepared.get("ok"):
+            prepared["plan"]["collection_search"] = key
+        result = await _handle_prepared_action(entry, session_id, action, prepared)
+        if result.get("collection_bind_refused"):
+            page, location, selected = state.get("observed_scene") or (None, "", "")
+            current = entry["page"]
+            if (prepared.get("ok") or current is not page or current.url != location
+                    or selected != collection_context.value_key(collection_context.selectors(
+                        await read_controls(current)))):
+                # Only a refused preparation on the observed page, URL and
+                # context leaves the branch unresolved; anything else is terminal.
+                result = {k: v for k, v in result.items() if k != "collection_bind_refused"}
+        if result.get("ok") and result.get("executed"):
+            if destination:
+                state.setdefault("opened_links", set()).add(destination)
+            await _wait_for_goal_content_change(
+                entry, (prepared.get("plan") or {}).get("facet_sig_before", ""),
+                _goal_facet_signature)
+        return result
+
+    async def restore(root):
+        url = root["url"]
+        if (urllib.parse.urlsplit(url).scheme not in {"http", "https"}
+                or _host_of_url(url) not in set(entry.get("allowlist") or ())
+                or entry.get("secret_pending")):
+            return {"ok": False, "error_class": "mandate_scope_exceeded"}
+        if root["page"].is_closed():
+            return {"ok": False, "error_class": "session_lost"}
+        entry["page"] = root["page"]
+        prepared = await _prepare_action(
+            entry, session_id, action, None, primitive_override="goto",
+            target_override=url, allow_model=False)
+        if prepared.get("ok"):
+            prepared["plan"].update(kind="goal_navigation", collection_search=key)
+        result = await _handle_prepared_action(entry, session_id, action, prepared)
+        if result.get("ok") and result.get("executed"):
+            for page in state["pages"] - {root["page"]}:
+                await page.close()
+            state["pages"] = {root["page"]}
+            sites_audit.record("collection_backtrack", session_id=session_id,
+                               steps=int(state.get("actions", 0)))
+        return result
+
+    remaining = float(state["remaining_s"])
+    started = _monotonic()
+    try:
+        result = await asyncio.wait_for(login_navigation.discover(
+            state, observe=observe, choose=choose, execute=execute,
+            restore=restore, max_depth=3,
+            max_actions=login_navigation.COLLECTION_MAX_ACTIONS,
+            exhaustive=True), timeout=remaining)
+    except asyncio.TimeoutError:
+        result = {"ok": False, "error_class": "goal_step_limit",
+                  "cap_field": "active_seconds",
+                  "cap_value": login_navigation.COLLECTION_TIMEOUT_S}
+    except ValueError as exc:
+        if str(exc) != "collection_observation_unresolved":
+            raise
+        result = {"ok": False, "error_class": "selector_missing"}
+    finally:
+        state["remaining_s"] = max(0.0, remaining - (_monotonic() - started))
+    if result.get("approval_required"):
+        return result
+    if result.get("error_class") == "target_changed" and state.get("rejection"):
+        sites_audit.record("collection_navigation_rejected", session_id=session_id,
+                           steps=int(state.get("actions", 0)), **state["rejection"])
+    limited = state.get("observation_limit") or result.get("depth_limited") or result.get("error_class") in {
+        "login_step_limit", "goal_step_limit"}
+    if limited:
+        cap_field, cap_value = state.get("observation_limit") or (
+            ("max_depth", 3) if result.get("depth_limited") else
+            ("max_actions", login_navigation.COLLECTION_MAX_ACTIONS))
+        result = {"ok": bool(state["found"]), "truncated": True,
+                  "truncated_what": "MSG_TRUNCATED_DEFAULT_WHAT",
+                  # Action/page counts are not counts of matching records.
+                  "used": 0, "available_total": None,
+                  "cap_field": result.get("cap_field") or cap_field,
+                  "cap_value": result.get("cap_value") or cap_value,
+                  "error_class": "goal_step_limit"}
+        if state.get("unresolved_control"):
+            # A wider limit cannot resolve a refused branch: report its cause
+            # with the limit, as an incomplete result keeping the records.
+            result.update(ok=False, error_class=state["unresolved_control"])
+    elif result.get("exhausted"):
+        # A refused relevant branch keeps its first cause; never empty success.
+        result = ({"ok": False, "error_class": state["unresolved_control"]}
+                  if state.get("unresolved_control") else
+                  {"ok": True, "no_match": not state["found"]})
+    if not result.get("ok") and state["found"]:
+        # A later blocked branch does not erase already observed records.
+        # Return saved evidence only: the current page may be outside scope.
+        chunks = [item["text"] for item in entry.get("collected_pages", [])
+                  if isinstance(item, dict) and item.get("text")]
+        if chunks:
+            result = {**result, "collection_partial": True,
+                      "text": "\n\n".join(chunks)}
+    entry.pop("collection_search", None)
+    cloud = int(state.get("cloud_llm_calls") or 0)
+    return {**result, "executed": bool(state["found"]), "primitive": "observe",
+            "url": scrub_url(entry["page"].url),
+            **({"cloud_llm_calls": cloud} if cloud else {})}
+
+
+def _goal_eligible(entry: dict, target: str, candidates: list[dict],
+                   excluded: set[str], *, collection: bool) -> list[dict]:
     eligible = action_resolver.goal_navigation_candidates(
-        candidates, excluded=excluded)
+        candidates, excluded=excluded, include_offscreen=collection,
+        include_covered=collection)
     eligible = [candidate for candidate in eligible
                 if action_resolver.goal_candidate_is_admissible(
                     target, candidate,
                     scope=str(entry.get("goal_scope") or ""))]
-    eligible = action_resolver.prefer_verifiable_goal_candidates(eligible)
+    if not collection:
+        return action_resolver.prefer_verifiable_goal_candidates(eligible)
+    eligible = _collapse_collection_links(eligible)
+    # Enumeration prioritizes the current viewport for atomic actions.
+    # Collection search must read page routes in document order, otherwise
+    # a visible footer can fill the first model window before main links.
+    eligible.sort(key=lambda item: item.get("dom_order", float("inf")))
+    return eligible
+
+
+def _frontier_routes_configured() -> bool:
+    """True when the Frontier workload resolves; configuration errors only."""
+    from llm_router import LLMRouter, TierConfigError
+    from llm_workloads import tier_for
+    try:
+        LLMRouter().provider(tier_for("sites.collection_route"))
+    except TierConfigError:
+        return False
+    return True
+
+
+async def _frontier_collection_route(entry: dict, target: str,
+                                     candidates: list[dict]) -> dict | None:
+    """Frontier route choice independent of the local content observation.
+
+    The request carries the user's target and the observed control names and
+    contexts only: no page content, field values, URLs or credentials. Any
+    provider, timeout or format failure leaves the decision unresolved; the
+    local model is not used as a silent fallback.
+    """
+    import i18n
+    import prompt_loader
+    from llm_router import LLMRouter
+    from llm_workloads import tier_for
+    eligible = _goal_eligible(entry, target, candidates, set(), collection=True)
+    started, outcome = time.monotonic(), "none"
+    try:
+        provider = LLMRouter().provider(tier_for("sites.collection_route"))
+        system = prompt_loader.get("agentic_sites_action_system",
+                                   i18n.current_lang(), collection=True)
+        for offset in range(0, len(eligible), 64):
+            by_id = {str(c.get("id")): c for c in eligible[offset:offset + 64] if c.get("id")}
+            user = _bounded_action_prompt(
+                goal={"primitive": "navigate_toward_goal", "target": target,
+                      "collection": True, "exhaustive": True,
+                      "expected_content": str(entry.get("goal_done_when") or "")},
+                state={"authenticated": bool(entry.get("authenticated"))},
+                observed={"CURRENT_CONTENT": "", "CONTROLS": [
+                    f"{cid}: {c.get('role') or c.get('tag')} "
+                    f"{c.get('name') or c.get('label') or ''} | "
+                    f"{str(c.get('context_name') or '')[:300]}"
+                    for cid, c in by_id.items()]},
+                history=[], forbidden="collection_navigation")
+            search = entry.get("collection_search")
+            if isinstance(search, dict):
+                # Counted before the call: the request has left the host.
+                search["cloud_llm_calls"] = int(search.get("cloud_llm_calls") or 0) + 1
+            reply = await asyncio.to_thread(
+                provider.chat, system, user, max_tokens=128,
+                request_timeout_s=_LOCAL_RESOLVER_TIMEOUT_MS / 1000.0)
+            text = str(getattr(reply, "text", "") or "")
+            choice = json.loads(text[text.find("{"): text.rfind("}") + 1]).get("next_control")
+            if choice != "NONE" and choice not in by_id:
+                outcome = "invalid_response"
+                return None
+            if choice in by_id:
+                outcome = "route"
+                return dict(by_id[choice])
+        return {}
+    except Exception as exc:
+        outcome = type(exc).__name__
+        return None
+    finally:
+        sites_audit.record(
+            "collection_route_frontier", owner=entry.get("owner", ""),
+            session_id=entry.get("_sid", ""), domain=entry.get("domain", ""),
+            candidate_count=len(eligible), outcome=outcome,
+            elapsed_ms=round((time.monotonic() - started) * 1000))
+
+
+async def _local_llm_choose_goal_candidate(entry: dict, target: str,
+                                           candidates: list[dict],
+                                           history: list[str],
+                                           excluded: set[str], *,
+                                           login: bool = False,
+                                           collection: bool = False,
+                                           first_visit: bool = True) -> dict | None:
+    """Fallback testuale locale per un passo di navigazione nel mandato.
+
+    Il modello vede ID e nomi accessibili enumerati dal broker. Per una
+    collezione vede anche testo visibile delle etichette, senza valori dei
+    campi, DOM, screenshot, URL di destinazione o credenziali; la
+    scelta resta un ID esatto e passa comunque dal gate se non deterministica.
+    """
+    if not _MODEL_FALLBACKS_ENABLED:
+        return None
+    collection = collection and not login
+    eligible = _goal_eligible(entry, target, candidates, excluded,
+                              collection=collection)
+    if not collection:
+        return await _local_llm_choose_goal_window(
+            entry, target, eligible, history, login=login, collection=False)
+    # A window bounds the model input, not the site's navigation. A leaf is
+    # proved only after every window has been considered; a failed decision
+    # cannot stand in for exhaustion. Keep the existing shared search deadline.
+    observed_result = None
+    for offset in range(0, max(1, len(eligible)), 64):
+        result = await _local_llm_choose_goal_window(
+            entry, target, eligible[offset:offset + 64], history,
+            login=False, collection=True)
+        if result is None:
+            return None
+        if result.get("collection_observed"):
+            observed_result = result
+        if result.get("id"):
+            if observed_result and not result.get("collection_observed"):
+                # Windows partition controls, not the page's content. A later
+                # route choice must not erase records observed in this page.
+                result = {**result, "collection_observed": True,
+                          "proximity": observed_result["proximity"]}
+            return result
+    if observed_result and eligible and first_visit:
+        # Items already satisfying the request tend to end the branch, though
+        # an exhaustive collection still needs more items of the same list.
+        # Ask that narrower question on the first decision of a page only: on
+        # a return, the remaining controls are what the page did not offer.
+        for offset in range(0, len(eligible), 64):
+            more = await _local_llm_choose_goal_window(
+                entry, target, eligible[offset:offset + 64], history,
+                login=False, collection=True, continuation=True)
+            if more is None:
+                return None
+            if more.get("id"):
+                return {**more, "collection_observed": True,
+                        "proximity": observed_result["proximity"]}
+    return observed_result or result
+
+
+async def _local_llm_choose_goal_window(entry, target, eligible, history, *,
+                                        login, collection, continuation=False):
     by_id = {}
     observed = []
-    for candidate in eligible[:24]:
+    limit = 64 if collection else 24
+    observation_complete = len(eligible) <= limit
+    for candidate in eligible[:limit]:
         cid = str(candidate.get("id") or "")
         if not cid:
             continue
         by_id[cid] = candidate
         observed.append(
             f"{cid}: {candidate.get('role') or candidate.get('tag')} "
-            f"{candidate.get('name') or candidate.get('label') or ''}")
+            f"{candidate.get('name') or candidate.get('label') or ''}"
+            + (f" | {str(candidate.get('context_name') or '')[:300]}"
+               if collection else ""))
+        if collection:
+            # An accessible name can name every dropdown alternative while
+            # its visible label shows the current choice. Preserve both;
+            # neither the label nor an expanded state is a record by itself.
+            control_state = {key: candidate[key] for key in (
+                "aria_expanded", "aria_selected", "aria_pressed",
+                "aria_checked", "aria_current") if candidate.get(key)}
+            if candidate.get("text") and candidate["text"] != (
+                    candidate.get("name") or candidate.get("label")):
+                control_state["visible_text"] = candidate["text"]
+            if control_state:
+                observed[-1] += " | " + json.dumps(control_state, ensure_ascii=False)
+    content = ""
+    if collection:
+        try:
+            blocks = await entry["page"].evaluate(_GOAL_EVIDENCE_JS, True)
+            observation_complete &= isinstance(blocks, list)
+            if isinstance(blocks, list):
+                observation_complete &= len(blocks) < 400 and all(
+                    len(str(block)) < 4000 for block in blocks)
+                content = "\n".join(str(block) for block in blocks
+                                    if isinstance(block, str))
+                observation_complete &= len(content) <= 12000
+                content = content[:12000]
+        except Exception:
+            observation_complete = False
+        observed = {"CURRENT_CONTENT": content, "CONTROLS": observed}
+        if content.strip():
+            by_id["CURRENT_CONTENT"] = {"goal_observed": True}
+        by_id["NONE"] = {"goal_observed": False}
     if not observed:
         return None
+    observation_complete &= len(json.dumps(observed, ensure_ascii=True)) <= 64000
     from agentic_executor import AgenticContext, AgenticLimits, AgenticProposal, run_bounded
     context = AgenticContext(
-        goal={"primitive": "navigate_toward_goal", "target": target},
+        goal={"primitive": "navigate_toward_goal", "target": target,
+              "collection": collection,
+              "expected_content": str(entry.get("goal_done_when") or "") if collection else "",
+              "exhaustive": action_resolver.goal_is_exhaustive(target)},
         observed=observed,
         constraints={
-            "forbidden": "login_entry" if login else "unrelated_control",
+            "forbidden": ("login_entry" if login else
+                          "collection_navigation" if collection else
+                          "unrelated_control"),
         },
         history=history[-_MAX_GOAL_STEPS:],
     )
 
     def _call_local(prompt: str) -> str:
-        try:
-            from llm_router import LLMRouter
-            from llm_workloads import tier_for
-            provider = LLMRouter().provider(tier_for("sites.action_reduce"))
-            if getattr(provider, "mode", "") != "local":
-                return ""
-            import i18n
-            import prompt_loader
-            system_prompt = prompt_loader.get(
-                "agentic_sites_action_system", i18n.current_lang())
-            result = provider.chat(
-                system_prompt, prompt, max_tokens=64)
-            return str(getattr(result, "text", "") or "")
-        except Exception:
+        from llm_router import LLMRouter
+        from llm_workloads import tier_for
+        provider = LLMRouter().provider(tier_for("sites.action_reduce"))
+        if getattr(provider, "mode", "") != "local":
             return ""
+        import i18n
+        import prompt_loader
+        system_prompt = prompt_loader.get(
+            "agentic_sites_action_system", i18n.current_lang(),
+            collection=collection, continuation=continuation)
+        response_options = {}
+        if continuation:
+            response_options["grammar"] = (
+                'root ::= "{" ws "\\\"next_control\\\"" ws ":" ws choice ws "}"\n'
+                'choice ::= ' + ' | '.join(json.dumps(json.dumps(cid)) for cid in by_id if cid != "CURRENT_CONTENT") + '\n'
+                'ws ::= [ \\t\\n\\r]*\n')
+        elif collection:
+            # Presence and the next route are independent decisions. The
+            # broker derives its internal end-of-branch sentinel below.
+            response_options["grammar"] = (
+                'root ::= "{" ws "\\\"content_status\\\"" ws ":" ws status ws "," ws "\\\"next_control\\\"" ws ":" ws choice ws "}"\n'
+                'status ::= "\\\"no_items\\\"" | "\\\"unmatched_items\\\"" | "\\\"matching_items\\\""\n'
+                'choice ::= ' + ' | '.join(json.dumps(json.dumps(cid)) for cid in by_id if cid != "CURRENT_CONTENT") + '\n'
+                'ws ::= [ \\t\\n\\r]*\n')
+        result = provider.chat(
+            system_prompt, prompt, max_tokens=64,
+            request_timeout_s=_LOCAL_RESOLVER_TIMEOUT_MS / 1000.0,
+            **response_options)
+        return str(getattr(result, "text", "") or "")
+
+    decision_failure = ""
+    started = time.monotonic()
 
     async def propose(ctx):
+        nonlocal decision_failure
+        decision_failure = "invalid_response"
         nonlocal_prompt = _bounded_action_prompt(
             goal=ctx.goal,
             state={"authenticated": bool(entry.get("authenticated")),
@@ -2964,8 +3566,15 @@ async def _local_llm_choose_goal_candidate(entry: dict, target: str,
                 timeout=_LOCAL_RESOLVER_TIMEOUT_MS / 1000.0,
             )
         except asyncio.TimeoutError:
+            decision_failure = "model_timeout"
+            return None
+        except Exception:
+            decision_failure = "provider_error"
             return None
         raw = raw.strip()
+        if not raw:
+            decision_failure = "empty_response"
+            return None
         if raw.startswith("```"):
             raw = "\n".join(raw.splitlines()[1:-1]).strip()
         try:
@@ -2980,7 +3589,39 @@ async def _local_llm_choose_goal_candidate(entry: dict, target: str,
                 return None
         if not isinstance(payload, dict):
             return None
-        return AgenticProposal(str(payload.get("description") or "").strip())
+        description = str(payload.get("description") or "").strip()
+        if continuation:
+            choice = payload.get("next_control")
+            if not isinstance(choice, str) or choice == "CURRENT_CONTENT" or choice not in by_id:
+                return None
+            description = choice
+        elif collection:
+            status = payload.get("content_status")
+            statuses = {"no_items": "none", "unmatched_items": "related",
+                        "matching_items": "matching"}
+            if not isinstance(status, str) or status not in statuses:
+                return None
+            proximity = statuses[status]
+            observed_collection = proximity != "none"
+            if observed_collection and not content.strip():
+                return None
+            choice = payload.get("next_control")
+            if not isinstance(choice, str) or choice == "CURRENT_CONTENT" or choice not in by_id:
+                return None
+            if choice == "NONE":
+                if not observation_complete:
+                    decision_failure = "incomplete_observation"
+                    return None
+                description = "CURRENT_CONTENT" if observed_collection else "NONE"
+            else:
+                description = choice
+            by_id[description] = {
+                **by_id[description],
+                "collection_observed": observed_collection,
+                "proximity": proximity,
+            }
+        decision_failure = ""
+        return AgenticProposal(description)
 
     async def execute(proposal, _ctx):
         return by_id.get(str(proposal.action))
@@ -2988,9 +3629,17 @@ async def _local_llm_choose_goal_candidate(entry: dict, target: str,
     outcome = await run_bounded(
         context=context, propose=propose, execute=execute,
         validate=lambda proposal, _ctx: str(proposal.action) in by_id,
-        limits=AgenticLimits(max_attempts=1),
+        limits=AgenticLimits(max_attempts=1, max_observation_chars=64000),
         postcondition=lambda result, _ctx: result is not None,
     )
+    if collection:
+        sites_audit.record(
+            "collection_decision", owner=entry.get("owner", ""),
+            session_id=entry.get("_sid", ""), domain=entry.get("domain", ""),
+            candidate_count=len(eligible), observation_complete=observation_complete,
+            outcome=outcome.status, reason=outcome.reason,
+            decision_failure=decision_failure,
+            elapsed_ms=round((time.monotonic() - started) * 1000))
     return outcome.result
 
 
@@ -3354,17 +4003,35 @@ async def _clear_login_surface(
     return outcome
 
 
+def _collection_bind_refusal(entry: dict, page, location: str | None,
+                             error_class: str) -> dict:
+    """Refuse a collection bind before its click; the error class is the cause.
+
+    Only a refusal on the page and URL where the bind started is marked as
+    free of effects. The search still checks its own observation and context.
+    """
+    unchanged = entry["page"] is page and page.url == location
+    return {"ok": False, "error_class": error_class,
+            **({"collection_bind_refused": True} if unchanged else {})}
+
+
 async def _prepare_action(entry: dict, session_id: str, action: str,
                           value_ref: str | None, primitive_override: str | None = None,
                           target_override: str | None = None,
                           allow_model: bool = True,
-                          login_choice: dict | None = None) -> dict:
+                          login_choice: dict | None = None,
+                          collection_choice: dict | None = None) -> dict:
+    # A collection refusal is free of effects only against the page and URL
+    # seen before any consent or overlay dismissal of this preparation.
+    page_before, url_before = entry["page"], entry["page"].url
     privacy = await _dismiss_privacy_obstruction(entry)
     if isinstance(privacy, cookie_privacy.CookieOutcome) and privacy.status == "blocked":
         return {"ok": False, "error_class": "cookie_precondition_unresolved",
                 "obstruction_kind": privacy.kind,
                 "obstruction_reason": privacy.reason}
-    await _dismiss_obstructing_overlay(entry)
+    acted = (isinstance(privacy, cookie_privacy.CookieOutcome)
+             and privacy.status == "resolved")
+    acted = bool(await _dismiss_obstructing_overlay(entry)) or acted
     parsed = action_resolver.parse_action(action)
     if primitive_override:
         parsed = {"ok": True, "primitive": primitive_override,
@@ -3383,7 +4050,109 @@ async def _prepare_action(entry: dict, session_id: str, action: str,
     collection_facet_key = ""
     # goto/wait non hanno un elemento DOM; cred:* viene risolto esclusivamente
     # dal broker, quindi anche il fill ignora ogni target suggerito.
-    if login_choice is not None:
+    if collection_choice is not None:
+        if value_ref or primitive != "search" or entry.get("secret_pending"):
+            return {"ok": False, "error_class": "mandate_scope_exceeded"}
+        expected = collection_choice.get("candidate") or {}
+        page, location = page_before, url_before
+        # A framework render or an overlay dismissal can replace nodes while
+        # the model chooses. Broker IDs describe one observation only: bind
+        # the same semantic control in the current DOM before scrolling it.
+        observed = await _enumerate_candidates(entry["page"])
+        fresh = action_resolver.goal_navigation_candidates(
+            observed, include_offscreen=True, include_covered=True)
+        matches = [item for item in fresh
+                   if login_navigation.candidate_key(item)
+                   == login_navigation.candidate_key(expected)
+                   and action_resolver.goal_candidate_is_admissible(
+                       parsed["target"], item,
+                       scope=str(entry.get("goal_scope") or ""))]
+        # Equal semantic keys include the full href and context. Repeated
+        # HTTP links are equivalent destinations, as during model selection;
+        # controls without a verifiable link must remain unambiguous.
+        matches = _collapse_collection_links(matches)
+        if len(matches) != 1:
+            sites_audit.record(
+                "collection_control_rejected", session_id=session_id,
+                phase="before_scroll", match_count=len(matches),
+                candidate_key=login_navigation.candidate_key(expected),
+                same_name_count=sum(item.get("name") == expected.get("name")
+                                    for item in fresh),
+                observed_matches=[
+                    {k: item.get(k) for k in (
+                        "visible", "rendered", "in_viewport", "topmost", "disabled")}
+                    for item in observed if login_navigation.candidate_key(item)
+                    == login_navigation.candidate_key(expected)])
+            return _collection_bind_refusal(
+                entry, page, None if acted else location,
+                "selector_ambiguous" if len(matches) > 1 else "target_changed")
+        if (matches[0].get("in_viewport") is False
+                or matches[0].get("topmost") is False):
+            if not await _scroll_candidate_into_view(entry, matches[0]):
+                return _collection_bind_refusal(
+                    entry, page, None if acted else location, "selector_hidden")
+        if entry["page"] is not page or page.url != location:
+            return {"ok": False, "error_class": "target_changed"}
+        observed = await _enumerate_candidates(entry["page"])
+        fresh = action_resolver.goal_navigation_candidates(observed)
+        matches = [item for item in fresh
+                   if login_navigation.candidate_key(item)
+                   == login_navigation.candidate_key(expected)
+                   and action_resolver.goal_candidate_is_admissible(
+                       parsed["target"], item,
+                       scope=str(entry.get("goal_scope") or ""))]
+        matches = _collapse_collection_links(matches)
+        if not matches:
+            # A transient modal can reappear between the first safe-exit and
+            # this post-scroll read (for example after a SPA backtrack). Only
+            # retry when the exact saved control is still uniquely present
+            # and visibly covered. The existing safe-exit never navigates;
+            # the control itself is rebound from a fresh DOM afterwards.
+            covered = [item for item in observed
+                       if login_navigation.candidate_key(item)
+                       == login_navigation.candidate_key(expected)
+                       and item.get("rendered") is True
+                       and item.get("visible") is True
+                       and item.get("in_viewport") is True
+                       and item.get("topmost") is False
+                       and not item.get("disabled")]
+            if len(covered) == 1:
+                if await _dismiss_obstructing_overlay(entry, settle=True):
+                    # Closing the overlay acted on the page: a later refusal
+                    # is no longer free of effects.
+                    acted = True
+                    if entry["page"] is not page or page.url != location:
+                        return {"ok": False, "error_class": "target_changed"}
+                    observed = await _enumerate_candidates(page)
+                    fresh = action_resolver.goal_navigation_candidates(observed)
+                    matches = _collapse_collection_links([
+                        item for item in fresh
+                        if login_navigation.candidate_key(item)
+                        == login_navigation.candidate_key(expected)
+                        and action_resolver.goal_candidate_is_admissible(
+                            parsed["target"], item,
+                            scope=str(entry.get("goal_scope") or ""))])
+        if len(matches) != 1:
+            sites_audit.record(
+                "collection_control_rejected", session_id=session_id,
+                phase="after_scroll", match_count=len(matches),
+                candidate_key=login_navigation.candidate_key(expected),
+                same_name_count=sum(item.get("name") == expected.get("name")
+                                    for item in fresh),
+                observed_matches=[
+                    {k: item.get(k) for k in (
+                        "visible", "rendered", "in_viewport", "topmost", "disabled")}
+                    for item in observed if login_navigation.candidate_key(item)
+                    == login_navigation.candidate_key(expected)])
+            return _collection_bind_refusal(
+                entry, page, None if acted else location,
+                "selector_ambiguous" if len(matches) > 1 else "target_changed")
+        candidate = matches[0]
+        primitive = "click"
+        plan_kind = "goal_navigation"
+        confidence = float(collection_choice.get("confidence", 0.5))
+        model_selected = bool(collection_choice.get("model_selected"))
+    elif login_choice is not None:
         # Private broker choice, revalidated against a fresh DOM. It never
         # accepts a selector, URL or candidate supplied by the model/client.
         if (primitive != "click" or value_ref
@@ -3677,7 +4446,7 @@ async def _prepare_action(entry: dict, session_id: str, action: str,
                 candidate = (await _local_llm_choose_goal_candidate(
                     entry, parsed.get("target", ""), candidates,
                     list(flow.get("history") or ()), excluded)
-                             if allow_model else None)
+                    if allow_model else None)
                 if candidate is not None:
                     primitive = "click"
                     plan_kind = "goal_navigation"
@@ -4916,9 +5685,9 @@ async def _execute_plan(entry: dict, token: str, plan: dict) -> dict:
                     page, click_url_before)
             entry["secret_pending"] = False
             entry["web_content_ingested"] = True
-            if (continuation_snapshot
-                    and scrub_url(entry["page"].url)
-                        != continuation_snapshot.get("url")):
+            if continuation_snapshot:
+                # Pagination and facets can replace records without changing
+                # the URL. Keep every observed page, deduplicated by content.
                 collected = entry.setdefault("collected_pages", [])
                 snap_key = hashlib.sha256(str(
                     continuation_snapshot.get("text") or "").encode(
@@ -5088,7 +5857,8 @@ async def _execute_plan(entry: dict, token: str, plan: dict) -> dict:
             entry, entry.get("_sid", ""),
             plan.get("original_action") or "", plan.get("value_ref"),
             prepared)
-    if plan.get("kind") in {"goal_navigation", "goal_continuation"}:
+    if (plan.get("kind") in {"goal_navigation", "goal_continuation"}
+            and not plan.get("collection_search")):
         prepared = await _prepare_after_goal_navigation(
             entry, entry.get("_sid", ""),
             plan.get("original_action") or "", plan.get("value_ref"),
@@ -5252,7 +6022,22 @@ async def _with_action_failure_evidence(entry: dict, result: dict) -> dict:
     """Attach a redacted screenshot to terminal action failures."""
     if (result.get("ok") or result.get("approval_required")
             or result.get("error_class") in {"approval_pending", "forbidden"}
-            or result.get("screenshot_path") or entry.get("page") is None):
+            or entry.get("page") is None):
+        return result
+    if (result.get("error_class") == "selector_hidden"
+            and not result.get("page_snapshot")
+            and not any(entry.get(k) for k in (
+                "secret_pending", "factor_pending", "gate_pending", "user_control_pending"))):
+        from . import page_snapshot
+        try:
+            _sweep_old_shots(entry["owner"])
+            evidence = await page_snapshot.save(entry["page"], _shots_dir(entry["owner"]))
+        except OSError as exc:
+            evidence = {"status": "unavailable", "reason": type(exc).__name__}
+        result = {**result, "page_snapshot": evidence}
+        sites_audit.record("action_page_snapshot", owner=entry["owner"],
+                           session_id=entry.get("_sid", ""), **evidence)
+    if result.get("screenshot_path"):
         return result
     shot = await _capture_screenshot(entry)
     if shot:
@@ -5281,6 +6066,23 @@ async def op_act(*, session_id: str, owner: str | None, action: str,
                 return await _with_action_failure_evidence(
                     entry, {"ok": False, "error_class": "approval_invalid"})
             executed = await _execute_plan(entry, approval_token, plan)
+            if plan.get("collection_search"):
+                search = entry.get("collection_search") or {}
+                if search.get("key") != plan["collection_search"]:
+                    executed = {"ok": False, "error_class": "action_expired"}
+                elif executed.get("ok") and executed.get("executed"):
+                    executed = await _discover_collection(
+                        entry, session_id, search["action"], search["target"])
+                # A changed approved target cannot silently become a new
+                # collection action or lose its cursor and spent budget.
+                if not executed.get("ok"):
+                    entry.get("pending_actions", {}).pop(approval_token, None)
+                    entry["gate_pending"] = False
+                    entry.pop("collection_search", None)
+                executed = await _with_action_failure_evidence(entry, executed)
+                entry.setdefault("completed_approvals", {})[approval_token] = {
+                    "ts": time.time(), "result": dict(executed)}
+                return executed
             if executed.get("error_class") not in {
                     "target_changed", "page_changed"}:
                 executed = await _with_action_failure_evidence(entry, executed)
@@ -5366,6 +6168,11 @@ async def op_act(*, session_id: str, owner: str | None, action: str,
         entry["goal_scope"] = (dichiarato
                                if dichiarato in action_resolver.GOAL_SCOPES
                                else "")
+        if (goal_target and not value_ref
+                and action_resolver.goal_is_exhaustive(action)):
+            result = await _discover_collection(
+                entry, session_id, action, goal_target)
+            return await _with_action_failure_evidence(entry, result)
         prepare_kwargs = ({"goal_target": goal_target}
                           if goal_target else {})
         prepared = await _prepare_action_with_resource_fallback(

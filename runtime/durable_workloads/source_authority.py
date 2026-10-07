@@ -58,6 +58,11 @@ def default_authority_path() -> Path:
     return Path(PATH_DURABLE_WORKLOADS) / "source_authority.sqlite3"
 
 
+def authority_file_path(path: str | Path) -> Path:
+    """Resolve the native file path without opening or creating the store."""
+    return Path(os.path.abspath(os.path.expanduser(str(path))))
+
+
 def _identity(value: object, *, name: str) -> str:
     if not isinstance(value, str) or not _IDENTITY_RE.fullmatch(value):
         raise ValueError(f"{name} is invalid")
@@ -99,7 +104,7 @@ def _open_private(path: str | Path) -> tuple[sqlite3.Connection, Path | None]:
     else:
         from config import ensure_private_dir, ensure_private_file
 
-        file_path = Path(os.path.abspath(os.path.expanduser(str(path))))
+        file_path = authority_file_path(path)
         ensure_private_dir(file_path.parent)
         if file_path.is_symlink():
             raise SourceAuthorityError("source authority database cannot be a symlink")

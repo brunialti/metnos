@@ -48,6 +48,17 @@ from logging_setup import get_logger
 log = get_logger(__name__)
 
 
+async def _virt_api_keys_context(request: web.Request) -> dict:
+    from virt import api_keys, frontier
+
+    return {
+        "api_keys": await asyncio.to_thread(api_keys.statuses),
+        "frontier": await asyncio.to_thread(frontier.view),
+        "api_keys_token": api_keys.form_token(
+            app_get(request.app, APP_ADMIN_KEY, "")),
+    }
+
+
 async def admin_virt(request: web.Request) -> web.Response:
     """GET /admin/virt — effective, redacted model configuration."""
 
@@ -58,8 +69,11 @@ async def admin_virt(request: web.Request) -> web.Response:
     if edit_family not in UI_EDITABLE_FAMILIES:
         edit_family = ""
     payload = await asyncio.to_thread(snapshot, edit_family=edit_family)
-    headers = {"Cache-Control": "no-store"}
+    headers = {"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"}
+    key_context = await _virt_api_keys_context(request)
     if not html:
+        payload["api_keys"] = key_context["api_keys"]
+        payload["frontier"] = key_context["frontier"]
         return web.json_response(payload, headers=headers)
     return web.Response(
         text=render_template(
@@ -67,6 +81,7 @@ async def admin_virt(request: web.Request) -> web.Response:
             notice=request.query.get("notice", ""),
             notice_family=request.query.get("family", ""),
             edit_error_key="",
+            **key_context,
         ),
         content_type="text/html",
         headers=headers,
@@ -121,6 +136,7 @@ async def _admin_virt_mutation(
                 notice="", notice_family=family,
                 edit_error_key=_VIRT_EDIT_ERROR_KEYS.get(
                     exc.code, "UI_VIRT_EDIT_ERROR_WRITE"),
+                **await _virt_api_keys_context(request),
             ),
             status=status,
             content_type="text/html",
@@ -136,6 +152,7 @@ async def _admin_virt_mutation(
                 "virt.html", snapshot=payload, edit_family=family,
                 notice="", notice_family=family,
                 edit_error_key="UI_VIRT_EDIT_ERROR_WRITE",
+                **await _virt_api_keys_context(request),
             ),
             status=500,
             content_type="text/html",
@@ -157,6 +174,108 @@ async def admin_virt_save(request: web.Request) -> web.Response:
 
 async def admin_virt_reset(request: web.Request) -> web.Response:
     return await _admin_virt_mutation(request, reset=True)
+
+
+async def admin_virt_api_key_save(request: web.Request) -> web.Response:
+    """Admin-only secret intake; no value is echoed, logged or sent to a model."""
+    from messages import get as _msg
+    from virt import api_keys
+    from virt.configuration import snapshot
+
+    provider = request.match_info["provider"]
+    error_key, status = "", 400
+    if request.content_length is not None and request.content_length > 8192:
+        error_key = "UI_VIRT_KEY_INVALID"
+    else:
+        try:
+            data = await request.post()
+        except Exception:
+            # Malformed multipart content must not reach error logs with a key.
+            data = None
+        if data is None:
+            error_key = "UI_VIRT_KEY_INVALID"
+        elif not api_keys.valid_form_token(
+                data.get("csrf_token", ""), app_get(request.app, APP_ADMIN_KEY, "")):
+            error_key, status = "UI_VIRT_KEY_FORM_EXPIRED", 403
+        elif (set(data) != {"api_key", "csrf_token"}
+              or len(data.getall("api_key")) != 1
+              or len(data.getall("csrf_token")) != 1):
+            error_key = "UI_VIRT_KEY_INVALID"
+        else:
+            try:
+                await asyncio.to_thread(api_keys.save, provider, data["api_key"])
+            except ValueError as exc:
+                error_key = {
+                    "environment_override": "UI_VIRT_KEY_ENV_OVERRIDE",
+                    "configuration_override": "UI_VIRT_KEY_CONFIG_OVERRIDE",
+                    "configuration_unavailable": "UI_VIRT_KEY_WRITE_FAILED",
+                }.get(str(exc), "UI_VIRT_KEY_INVALID")
+            except Exception:
+                # Exception text may contain submitted material. Do not log it.
+                error_key, status = "UI_VIRT_KEY_WRITE_FAILED", 500
+
+    headers = {"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"}
+    if error_key:
+        if not wants_html(request):
+            return web.json_response(
+                {"error": error_key, "message": _msg(error_key)},
+                status=status, headers=headers,
+            )
+        return web.Response(
+            text=render_template(
+                "virt.html", snapshot=await asyncio.to_thread(snapshot),
+                edit_family="", notice="", edit_error_key=error_key,
+                **await _virt_api_keys_context(request),
+            ), status=status, content_type="text/html", headers=headers,
+        )
+    if not wants_html(request):
+        return web.json_response(
+            {"provider": provider, "status": "configured"}, headers=headers)
+    raise web.HTTPSeeOther(
+        "/admin/virt?notice=key_saved#virt-api-keys", headers=headers)
+
+
+async def admin_virt_frontier_save(request: web.Request) -> web.Response:
+    """One admin form for the binding and its write-only credential."""
+    from virt import api_keys, config_editor, frontier
+    from virt.configuration import snapshot
+
+    status, error_key = 400, ""
+    try:
+        if request.content_length is not None and request.content_length > 16384:
+            raise config_editor.ConfigEditError("invalid_field_set")
+        data = await request.post()
+        if not api_keys.valid_form_token(
+                data.get("csrf_token", ""), app_get(request.app, APP_ADMIN_KEY, "")):
+            status, error_key = 403, "UI_VIRT_KEY_FORM_EXPIRED"
+        elif (set(data) != frontier.FORM_FIELDS
+              or any(len(data.getall(key)) != 1 for key in data)):
+            raise config_editor.ConfigEditError("invalid_field_set")
+        else:
+            await asyncio.to_thread(frontier.save, data)
+    except config_editor.ConfigEditError as exc:
+        if exc.code == "destination_key_required":
+            error_key = "UI_VIRT_FRONTIER_NEW_KEY"
+        else:
+            error_key = _VIRT_EDIT_ERROR_KEYS.get(exc.code, "UI_VIRT_EDIT_ERROR_WRITE")
+        status = 409 if exc.code == "revision_conflict" else 400
+    except Exception:
+        # Neither request data nor exception text (which may echo a key) is logged.
+        status, error_key = 500, "UI_VIRT_KEY_WRITE_FAILED"
+
+    headers = {"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"}
+    if error_key:
+        if not wants_html(request):
+            return web.json_response({"error": error_key}, status=status, headers=headers)
+        return web.Response(
+            text=render_template(
+                "virt.html", snapshot=await asyncio.to_thread(snapshot),
+                edit_family="", notice="", edit_error_key=error_key,
+                **await _virt_api_keys_context(request)),
+            status=status, content_type="text/html", headers=headers)
+    if not wants_html(request):
+        return web.json_response({"status": "saved"}, headers=headers)
+    raise web.HTTPSeeOther("/admin/virt?notice=frontier_saved#virt-frontier", headers=headers)
 
 
 async def admin_services(request: web.Request) -> web.Response:
@@ -289,7 +408,8 @@ def _summary_proposals() -> dict:
     conn = sqlite3.connect(str(db))
     try:
         rows = conn.execute(
-            "SELECT state, COUNT(*) c FROM proposals_state GROUP BY state"
+            "SELECT state, COUNT(*) c FROM proposals_state "
+            "WHERE state != 'expired' GROUP BY state"
         ).fetchall()
     finally:
         conn.close()
@@ -2121,6 +2241,8 @@ ROUTES = (
     ("GET",  "/admin/virt",                      admin_virt),
     ("POST", r"/admin/virt/{family:llm|vlm}/save", admin_virt_save),
     ("POST", r"/admin/virt/{family:llm|vlm}/reset", admin_virt_reset),
+    ("POST", r"/admin/virt/credentials/{provider:openai|anthropic}/save", admin_virt_api_key_save),
+    ("POST", "/admin/virt/frontier/save", admin_virt_frontier_save),
     ("GET",  "/admin/services",                  admin_services),
     ("GET",  "/admin/lre",                       admin_lre_console),
     ("POST", r"/admin/services/{name}/{action:start|stop|restart}", admin_service_action),

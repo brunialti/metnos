@@ -311,13 +311,7 @@ def run_nightly(*, catalog_names: Optional[set] = None,
                 det["rejected"].get("pending_generalize", 0) + 1)
             continue
         key = ps._canonical(cand["sig_key"])
-        conn = ps._open()
-        try:
-            existing = conn.execute(
-                "SELECT state FROM proposals_state WHERE sig_key = ?",
-                (key,)).fetchone()
-        finally:
-            conn.close()
+        existing = ps.lookup(key)
         is_new = existing is None
         if is_new and new_budget <= 0:
             # Cap anti-esplosione sulle NUOVE emissioni; i refresh delle

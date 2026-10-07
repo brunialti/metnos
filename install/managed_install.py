@@ -88,7 +88,8 @@ def _prepare_python(source: Path, profile: dict):
         PRODUCT_ENVIRONMENT_STORE_V1, ensure_python_environment_v1,
     )
 
-    required = ["/usr/bin/python3.12", "/usr/bin/openssl", "/usr/bin/systemctl", "/usr/bin/systemd-analyze"]
+    required = ["/usr/bin/python3.12", "/usr/bin/openssl", "/usr/bin/systemctl",
+                "/usr/bin/systemd-analyze", "/usr/lib/polkit-1/polkitd"]
     if "playwright" not in profile:
         required.append("/usr/bin/Xvfb")
     if "searxng" not in profile:

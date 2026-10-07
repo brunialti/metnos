@@ -12,7 +12,10 @@ bash install/bootstrap.sh
 ```
 
 Install the system packages listed in `manifest.toml` first, as shown in the
-complete procedure. The bootstrap prepares `.venv` to launch the installer;
+complete procedure.
+`polkitd` is required even with remote companions: before activation, the
+installer prepares a rule limited to Metnos units for the **Services** controls.
+The bootstrap prepares `.venv` to launch the installer;
 `--check` can therefore create or update that environment. The direct
 `./.venv/bin/python -m install --check` does not run application phases.
 

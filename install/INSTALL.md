@@ -11,6 +11,8 @@ configurazione firmata passano dal coordinatore amministrativo.
 Servono accesso a Internet, Git, almeno 8 GB liberi oltre ai modelli scelti e i
 pacchetti di sistema del manifest. Una GPU non è obbligatoria. Ubuntu 24.04 è
 il riferimento per l’inventario completo dei componenti locali.
+`polkitd` è necessario anche usando servizi remoti: l’installer prepara una
+regola limitata ai servizi Metnos per i comandi della pagina **Servizi**.
 
 ```bash
 git clone https://github.com/brunialti/metnos.git

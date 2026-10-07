@@ -145,7 +145,13 @@ _OBSERVE_JS = r"""() => {
       if (p.matches('dialog,[role=dialog],[role=alertdialog],[aria-modal=true]') && ratio >= .03) {
         root = p; break;
       }
-      if ((s.position === 'fixed' || s.position === 'sticky') && ratio >= .12) root = p;
+      // A persistent side rail can occupy a large page area without
+      // covering the content. Keep smaller consent popups eligible.
+      const sideRail = r.width < innerWidth * .25 &&
+        r.height >= innerHeight * .8 &&
+        (r.left <= 2 || r.right >= innerWidth - 2);
+      if ((s.position === 'fixed' || s.position === 'sticky') &&
+          ratio >= .12 && !sideRail) root = p;
     }
     if (!root || editableInside(root)) continue;
     if (!roots.has(root)) {

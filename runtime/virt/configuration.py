@@ -262,7 +262,8 @@ def _role_payload(
 
     fields = _fields(
         spec, sources=sources, policy_keys=policy_keys,
-        pointer_prefix=pointer_prefix or (name,), include_edit=include_edit,
+        pointer_prefix=pointer_prefix or (name,),
+        include_edit=include_edit and not (family == "llm" and name == "frontier"),
     )
     from model_identity import observation_for
 

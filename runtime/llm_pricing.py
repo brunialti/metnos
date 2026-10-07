@@ -6,7 +6,9 @@ Consolida (15/6/2026) le tabelle prima duplicate e DIVERGENTI in
 $15/$75 — 3× il prezzo reale — e una riga fantasma `gpt-5`). Una sola tabella qui;
 i consumatori importano `cost_usd`/`PRICING`. §7.2 (no duplicazione).
 
-Prezzi: pagine pubbliche Anthropic, aggiornati 15/6/2026. ``cost_usd`` conserva
+Prezzi Anthropic: pagine pubbliche, aggiornati 15/6/2026. OpenAI Sol:
+https://developers.openai.com/api/docs/models/gpt-6-sol (6/10/2026), tariffa
+standard, senza cache e per contesti fino a 272K token. ``cost_usd`` conserva
 il fallback storico a 0.0 per i soli report; il codice di autorizzazione deve
 usare ``cost_policy``, perché una tariffa ignota non equivale a costo zero.
 Aggiornare QUI quando cambiano.
@@ -15,6 +17,7 @@ from __future__ import annotations
 
 # (provider, model) -> (input $/Mtok, output $/Mtok)
 PRICING: dict[tuple[str, str], tuple[float, float]] = {
+    ("openai", "gpt-6-sol"):           (2.0, 10.0),
     ("anthropic", "claude-opus-4-8"):   (5.0, 25.0),
     ("anthropic", "claude-opus-4-7"):   (5.0, 25.0),
     ("anthropic", "claude-opus-4-6"):   (5.0, 25.0),

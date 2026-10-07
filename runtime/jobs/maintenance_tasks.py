@@ -65,11 +65,10 @@ def task_introvertiva_propose() -> dict:
 
 
 def task_proposals_cleanup() -> dict:
-    """Manutenzione lifecycle backlog proposte (ADR 0096): archive aged,
-    keep-latest-N, dedupe, decay orfani. Sempre move, mai delete —
-    ECCETTO proposals_state: prune delle righe pending/dormant con evidenza
-    morta (il generatore non le ri-emette da refresh_days) o oltre TTL;
-    applied/blocked mai toccate (storia + anti-resurrezione).
+    """Maintain proposals and expire inactive native state without deleting rows.
+
+    Physical collection of expired state belongs to exclusive F6 maintenance;
+    human decisions remain durable. File cleanup still needs its own F6 join.
     """
     from proposals_cleanup import run_cleanup
     out = run_cleanup()
@@ -184,22 +183,19 @@ def task_learning_loop_review() -> dict:
 
 
 def task_state_reaper() -> dict:
-    """Reaper unico dello stato persistente che cresceva senza pulizia.
+    """Run functional expirations and independent cache maintenance.
 
-    Wire dei reaper ESISTENTI ma mai schedulati (stesso pattern del bug
-    dialog_pending: funzione scritta, mai chiamata in produzione) + retention
-    inline per gli store privi di funzione (turns/, _history blob). Ogni passo
-    e' isolato in try/except: il fallimento di uno non blocca gli altri.
-    Idempotente, cancella SOLO oltre-retention. Ritorna un report per-reaper.
-    Tutte le retention via env (§7.11/§11), default conservativi.
+    Undo, backup history, turn logs and audit archives are governed by F6.
+    Their physical collection requires the stopped-store inventory and signed
+    intents; elapsed time in this runtime job cannot authorise it. Keep these
+    entries visible as deferred, including before F6 is activated. Functional
+    expiry (for example approval decisions) continues through its native owner.
     """
     import os
-    import time
-    import shutil
-    from pathlib import Path
-    import config as _C
 
-    report: dict = {}
+    report: dict = {name: {"deferred": "exclusive_retention_maintenance"}
+                    for name in ("undo", "protected_undo_blobs", "history_blobs",
+                                 "turn_logs", "periodic_logs")}
 
     def _run(name: str, fn):
         try:
@@ -208,40 +204,7 @@ def task_state_reaper() -> dict:
             report[name] = {"error": repr(ex)}
             log.warning("state_reaper[%s] fallito: %r", name, ex)
 
-    undo_days = int(os.environ.get("METNOS_UNDO_RETENTION_DAYS", "30"))
-    turn_days = int(os.environ.get("METNOS_TURN_LOG_RETENTION_DAYS", "60"))
     skill_days = int(os.environ.get("METNOS_SKILL_CACHE_RETENTION_DAYS", "30"))
-    now = time.time()
-
-    def _undo():
-        from undo import UndoLog
-        return {"purged": UndoLog().purge_older_than(days=undo_days)}
-    _run("undo", _undo)
-
-    def _protected_undo_blobs():
-        from protected_undo import purge_expired
-        return {"removed": purge_expired(), "retention_days": undo_days}
-    _run("protected_undo_blobs", _protected_undo_blobs)
-
-    def _history_blobs():
-        # Backup blob di reversibilita' (undo): una dir per turno. Rimuovi le
-        # dir oltre la retention undo (i blob servono solo finche' l'undo del
-        # turno e' possibile). Era un leak da ~GB (mai ripulito).
-        hist = Path(os.environ.get("METNOS_HISTORY_DIR")
-                    or (_C.PATH_USER_DATA / "_history"))
-        if not hist.exists():
-            return {"removed_dirs": 0, "note": "no _history dir"}
-        cutoff = now - undo_days * 86400
-        removed = 0
-        for d in hist.iterdir():
-            try:
-                if d.is_dir() and d.stat().st_mtime < cutoff:
-                    shutil.rmtree(d, ignore_errors=True)
-                    removed += 1
-            except OSError:
-                pass
-        return {"removed_dirs": removed, "retention_days": undo_days}
-    _run("history_blobs", _history_blobs)
 
     def _http_cache():
         from http_cache import cleanup_weekly
@@ -265,7 +228,7 @@ def task_state_reaper() -> dict:
 
     def _approval():
         from approval_registry import cleanup_expired
-        return {"removed": cleanup_expired()}
+        return {"expired": cleanup_expired()}
     _run("approval_registry", _approval)
 
     def _autopath():
@@ -303,61 +266,6 @@ def task_state_reaper() -> dict:
         return {"removed": devices.purge_join_sessions(older_than_days=days),
                 "retention_days": days}
     _run("device_join_sessions", _join_sessions)
-
-    def _turn_logs():
-        from log_lifecycle import archive_daily_logs
-        tdir = _C.PATH_USER_DATA / "turns"
-        archive = Path(os.environ.get("METNOS_TURN_LOG_ARCHIVE_DIR")
-                       or (_C.PATH_USER_DATA / "turns_archive"))
-        archive_days = int(os.environ.get(
-            "METNOS_TURN_LOG_ARCHIVE_RETENTION_DAYS", "365"))
-        backup_live_days = int(os.environ.get(
-            "METNOS_TURN_LOG_BACKUP_LIVE_DAYS", "7"))
-        archive_max_mb = int(os.environ.get(
-            "METNOS_TURN_LOG_ARCHIVE_MAX_MB", "2048"))
-        return archive_daily_logs(
-            tdir, archive,
-            live_days=turn_days,
-            backup_live_days=backup_live_days,
-            archive_days=archive_days,
-            max_archive_bytes=archive_max_mb * 1024 * 1024,
-            now=now,
-        )
-    _run("turn_logs", _turn_logs)
-
-    def _periodic_logs():
-        # Audit periodici che non sono stato operativo: un anno resta live
-        # per dashboard/analisi, poi passa all'archivio verificato e compresso.
-        # Ogni store ha un cap proprio, così anche l'archivio è finito.
-        from log_lifecycle import archive_daily_logs
-        live_days = int(os.environ.get(
-            "METNOS_PERIODIC_LOG_LIVE_DAYS", "365"))
-        archive_days = int(os.environ.get(
-            "METNOS_PERIODIC_LOG_ARCHIVE_RETENTION_DAYS", "1095"))
-        max_mb = int(os.environ.get(
-            "METNOS_PERIODIC_LOG_ARCHIVE_MAX_MB_PER_STORE", "128"))
-        archive_root = Path(os.environ.get(
-            "METNOS_PERIODIC_LOG_ARCHIVE_DIR")
-            or (_C.PATH_USER_DATA / "logs_archive" / "periodic"))
-        stores = {
-            "vaglio": _C.PATH_USER_DATA / "vaglio",
-            "cost": _C.PATH_USER_DATA / "cost",
-            "skill_audit": _C.PATH_USER_DATA / "skill_audit",
-            "i18n_audit": _C.PATH_USER_DATA / "i18n_audit",
-            "detection_audit": _C.PATH_USER_DATA / "detection_audit",
-            "aging": _C.PATH_USER_DATA / "aging",
-            "lifecycle": _C.PATH_USER_DATA / "lifecycle",
-        }
-        return {
-            name: archive_daily_logs(
-                directory, archive_root / name,
-                live_days=live_days, backup_live_days=7,
-                archive_days=archive_days,
-                max_archive_bytes=max_mb * 1024 * 1024,
-            )
-            for name, directory in stores.items()
-        }
-    _run("periodic_logs", _periodic_logs)
 
     def _invocations():
         # F5 (review 2026-07-04): la tabella `invocations` (executor remoti) era

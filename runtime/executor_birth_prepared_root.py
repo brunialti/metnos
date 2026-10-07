@@ -773,30 +773,42 @@ def _select_historical_context_v1(
     return before, next(iter(matches.values()))
 
 
-def _read_historical_context_set_v1(transition, *, initial_predecessor: bool = False):
+def _read_historical_context_set_in_session_v1(
+    transition, session, *, initial_predecessor: bool = False,
+):
+    """Read inert public history using the caller's existing Birth barrier."""
     from executor_birth_prepared_set import (
         load_historical_marker_public_set_v1, load_historical_public_set_v1,
     )
 
+    if not session._holds_global_lock():
+        raise PreparedRootError("birth_context_lock_required")
+    if initial_predecessor:
+        public = load_historical_marker_public_set_v1(session)
+        if (public.set_id != transition.previous_set_id
+                or public.material.pin.admission_context_id != transition.previous_admission_context_id
+                or public.material.pin.context_epoch != transition.previous_context_epoch):
+            raise PreparedRootError("birth_context_selection_invalid")
+        return public
+    public = load_historical_public_set_v1(
+        session, transition.set_id,
+        expected_set_json_sha256=transition.set_json_sha256,
+        expected_context_material_sha256=transition.context_material_sha256,
+    )
+    if (public.material.pin.admission_context_id != transition.prepared_admission_context_id
+            or public.material.pin.context_epoch != transition.prepared_context_epoch):
+        raise PreparedRootError("birth_context_selection_invalid")
+    return public
+
+
+
+def _read_historical_context_set_v1(transition, *, initial_predecessor: bool = False):
     session = open_prepared_root_session_v1()
     with session:
         with session.global_lock(exclusive=False, create=False):
-            if initial_predecessor:
-                public = load_historical_marker_public_set_v1(session)
-                if (public.set_id != transition.previous_set_id
-                        or public.material.pin.admission_context_id != transition.previous_admission_context_id
-                        or public.material.pin.context_epoch != transition.previous_context_epoch):
-                    raise PreparedRootError("birth_context_selection_invalid")
-                return public
-            public = load_historical_public_set_v1(
-                session, transition.set_id,
-                expected_set_json_sha256=transition.set_json_sha256,
-                expected_context_material_sha256=transition.context_material_sha256,
+            return _read_historical_context_set_in_session_v1(
+                transition, session, initial_predecessor=initial_predecessor,
             )
-            if (public.material.pin.admission_context_id != transition.prepared_admission_context_id
-                    or public.material.pin.context_epoch != transition.prepared_context_epoch):
-                raise PreparedRootError("birth_context_selection_invalid")
-            return public
 
 
 def _require_historical_frontier_unchanged_v1(before):
@@ -826,6 +838,34 @@ def load_historical_context_verifiers_v1(
     initial = admission_context_id != transition.prepared_admission_context_id
     public = _read_historical_context_set_v1(transition, initial_predecessor=initial)
     _require_historical_frontier_unchanged_v1(before)
+    return HistoricalContextVerifiersV1(
+        before.required_head.head_id, transition.transition_id, public,
+        "initial_predecessor" if initial else "transition_target",
+        None if initial else transition.previous_admission_context_id,
+        not initial and transition == before.context_transitions[0],
+    )
+
+
+def load_historical_context_verifiers_in_session_v1(
+    admission_context_id: str, session,
+) -> HistoricalContextVerifiersV1:
+    """Resolve public history without reopening a caller-held Birth lock.
+
+    This read-only path accepts either shared or exclusive custody. It never
+    activates a context or grants signing authority to maintenance callers.
+    """
+    if not session._holds_global_lock():
+        raise PreparedRootError("birth_context_lock_required")
+    before, transition = _select_historical_context_v1(
+        admission_context_id, include_initial_predecessor=True,
+    )
+    initial = admission_context_id != transition.prepared_admission_context_id
+    public = _read_historical_context_set_in_session_v1(
+        transition, session, initial_predecessor=initial,
+    )
+    _require_historical_frontier_unchanged_v1(before)
+    if not session._holds_global_lock():
+        raise PreparedRootError("birth_context_lock_required")
     return HistoricalContextVerifiersV1(
         before.required_head.head_id, transition.transition_id, public,
         "initial_predecessor" if initial else "transition_target",
@@ -978,6 +1018,32 @@ def load_historical_producer_declarations_for_contexts_v1(
     path, role, size and hash must match the historical signed distribution.
     No archive path, Git command or filesystem root enters the product reader.
     """
+    return _load_historical_producer_declarations_for_contexts_v1(
+        admission_context_ids, include_reattestation=include_reattestation,
+        public_sources=public_sources,
+    )
+
+
+def load_historical_producer_declarations_for_contexts_in_session_v1(
+    admission_context_ids: tuple[str, ...], session,
+    *, include_reattestation: bool = False,
+    public_sources: tuple[tuple[str, bytes], ...] = (),
+) -> tuple[HistoricalProducerDeclarationsV1, ...]:
+    """Read historical declarations under the caller's existing Birth barrier."""
+    if not session._holds_global_lock():
+        raise PreparedRootError("birth_context_lock_required")
+    result = _load_historical_producer_declarations_for_contexts_v1(
+        admission_context_ids, include_reattestation=include_reattestation,
+        public_sources=public_sources, session=session,
+    )
+    if not session._holds_global_lock():
+        raise PreparedRootError("birth_context_selection_changed")
+    return result
+
+
+def _load_historical_producer_declarations_for_contexts_v1(
+    admission_context_ids, *, include_reattestation, public_sources, session=None,
+):
     import re
     from executor_birth_ownership_chain import (
         VerifiedOwnershipChain, inspect_ownership_chain_state_v1,
@@ -1006,19 +1072,20 @@ def load_historical_producer_declarations_for_contexts_v1(
             raise PreparedRootError("birth_context_selection_invalid")
         results.append(_historical_producer_declarations_v1(
             before, next(iter(matches.values())), cache,
-            include_reattestation=include_reattestation,
+            include_reattestation=include_reattestation, session=session,
         ))
     _require_historical_frontier_unchanged_v1(before)
     return tuple(results)
 
 
 def _historical_producer_declarations_v1(
-    before, transition, cache, *, include_reattestation=False,
+    before, transition, cache, *, include_reattestation=False, session=None,
 ):
     """Project one authenticated transition; the caller owns final reread."""
     from executor_birth_distribution_manifest import AuthenticatedDistributionRecordV1
 
-    public = _read_historical_context_set_v1(transition)
+    public = (_read_historical_context_set_v1(transition) if session is None else
+              _read_historical_context_set_in_session_v1(transition, session))
     if (before.required_distribution is None
             or len(before.authenticated_records) != len(before.heads)
             or len(before.context_transitions) != len(before.heads)):

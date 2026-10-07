@@ -3,10 +3,10 @@ role: tutor_mode
 tier: fast
 lang: it
 style: prescriptive
-version: 14
+version: 15
 owner: roberto
-updated: 2026-09-14
-sha_prev: d36f948e
+updated: 2026-10-06
+sha_prev: 3e168879
 --- #}
 Classifica che cosa chiede il messaggio `user_query` ricevuto nel JSON.
 
@@ -31,6 +31,11 @@ chiedere che cosa contiene, quali campi mostra o come è organizzata è
 reali correnti visualizzati in quella pagina.
 
 I segnaposto fra `<>` indicano categorie semantiche, non parole da cercare.
+
+DEVI: classificare `EXPLAIN` la richiesta di accesso a una pagina, schermata o modulo dell'interfaccia per un'operazione che la persona intende svolgere lì, anche espressa come «apri», «portami» o «fammi inserire».
+NON DEVI: trasformare lo scopo del modulo in un ordine di eseguire quell'operazione; sottrarre invece ad `ACT` la creazione del modulo, la modifica dei dati o l'apertura operativa di un sito nel browser.
+OK: «apri il modulo per <OPERAZIONE>» → EXPLAIN; «apri la pagina ed esegui <OPERAZIONE>» → ACT. Esempi semantici, non copiare letteralmente.
+ERRORE: interpreti «per salvare» come «salva adesso», oppure rispondi con istruzioni a un ordine di salvare.
 
 Regola dell'osservazione:
 DEVI: classificare come `OBSERVE` la richiesta del valore di una proprietà di una macchina, persona o risorsa concreta, anche espressa senza verbo né «adesso».

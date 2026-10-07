@@ -42,8 +42,11 @@ TOOL = ROOT / "internal" / "tools" / "render_contract_boundary_policy.py"
 # 26/9/2026: explicit temporary isolated rehearsal reuses the F5 owner.
 # 27/9/2026: the managed installer and source preparation delegate to the
 # existing root-only installation transition; no additional runtime authority.
+# 5/10/2026: a071c73c adds only f5_authority._reuse and the five store_write
+# APIs, module and source owner of birth_certification_reuse. Compared with
+# 6979d0ea, no other policy value or existing capability changed.
 GOLDEN_DIGEST_V1 = (
-    "sha256:c5c2a6431f30a570600cce2017e1cfb20581fff29d5772d6518b06dac7829006"
+    "sha256:a4b615ace29f08768a0f02557fd8414de3b5138debbce605d2910ae63191876e"
 )
 
 POLICY_NAMES = (
@@ -247,6 +250,7 @@ def test_projection_is_deterministic_across_hash_seeds() -> None:
 def test_stale_tampered_and_invalid_markers_fail_closed() -> None:
     source = PREFLIGHT.read_bytes()
     tampered = source.replace(GOLDEN_DIGEST_V1.encode(), b"sha256:" + b"0" * 64, 1)
+    assert tampered != source
     assert not projection.check_generated_region_v1(tampered)
     repaired = projection.replace_generated_region_v1(tampered)
     assert projection.check_generated_region_v1(repaired)
@@ -329,9 +333,12 @@ def test_fixed_tool_check_rejects_drift(tmp_path: Path) -> None:
     assert (after_noop.st_ino, after_noop.st_mtime_ns) == (
         before_noop.st_ino, before_noop.st_mtime_ns,
     )
-    target.write_bytes(target.read_bytes().replace(
+    source = target.read_bytes()
+    tampered = source.replace(
         GOLDEN_DIGEST_V1.encode(), b"sha256:" + b"0" * 64, 1,
-    ))
+    )
+    assert tampered != source
+    target.write_bytes(tampered)
     stale = subprocess.run([sys.executable, str(copied_tool), "--check"])
     assert stale.returncode == 1
     written = subprocess.run([sys.executable, str(copied_tool), "--write"])

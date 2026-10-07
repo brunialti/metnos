@@ -2,10 +2,10 @@ role: synt_naming
 tier: middle
 lang: en
 style: definitional
-version: 1
+version: 3
 owner: roberto
-updated: 2026-05-13
-sha_prev: ""
+updated: 2026-09-27
+sha_prev: 37eeb268
 
 section:
   name: synt_naming
@@ -13,6 +13,17 @@ section:
   preamble: |
     MANDATORY OUTPUT: a single JSON object. NO prose, NO markdown
     fences, NO comments. The response MUST start with `{` and end with `}`.
+
+    OPERATION TO CLASSIFY: the behavior of the generated function when invoked.
+    A request to create or save a function describes synthesis, not the function's
+    action or side effects. Its name and safety fields describe what it will do
+    on its inputs. For example, a function that sorts numbers is sort_numbers,
+    not create_inputs. A function that creates directories still has action=create
+    and filesystem effects.
+
+    Classify the operation on the inputs even when the user asks to create, save
+    or reuse its implementation. Reject only an unsupported operation, never
+    the mere fact that the user requested a reusable function.
 
     STRICT NAMING CONVENTION — the name of the new executor follows the schema:
       {action}_{object}[_{qualifier}]

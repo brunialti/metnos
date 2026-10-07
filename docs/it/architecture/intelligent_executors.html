@@ -137,6 +137,57 @@
  Avanzamenti e ritorni condividono un limite di 32 azioni e un
  tempo di ricerca limitato; una pausa per il consenso non azzera i tentativi.
  Se nel frattempo il percorso cambia, Metnos si ferma.</p>
+ <p>La ricerca successiva di una collezione completa distingue gli oggetti
+ cercati, i filtri e i campi richiesti. Il modello locale riconosce il significato
+ del contenuto e sceglie solo fra i controlli osservati. La presenza di oggetti
+ pertinenti, anche fuori filtro, orienta il percorso; non ne certifica la fine.
+ Si esplorano fino a tre livelli, tornando alle diramazioni dalla pagina
+ iniziale. La paginazione resta allo stesso livello. Anche dopo i primi risultati
+ si cercano altre pagine e i dettagli necessari ai campi richiesti.
+ I comandi osservati vengono esaminati a gruppi nell'ordine della pagina:
+ una pagina con molti collegamenti non nasconde quelli successivi alla ricerca.
+ Le intestazioni sono distinte dagli oggetti effettivi; un comando coperto
+ viene ricontrollato prima del clic. I comandi indistinguibili che non si
+ possono ritrovare in modo univoco non vengono proposti come scelte; la
+ ricerca prova gli altri percorsi osservati.</p>
+ <p>Durante un ritorno, se un comando già verificato tarda a comparire,
+ Metnos lo attende brevemente sulla stessa pagina senza ripetere i clic.
+ Prosegue solo ritrovando lo stesso comando univoco, con destinazione e
+ contesto invariati; un comando diverso, ambiguo o ancora assente ferma il percorso.
+ Questa attesa usa il tempo di ricerca già disponibile.</p>
+ <p>Un indirizzo già aperto durante la ricerca non viene riaperto da altre
+ pagine né dalla pagina stessa; i collegamenti soltanto mostrati altrove restano
+ proponibili nel nuovo contesto. Se una pagina contiene già oggetti richiesti e
+ il modello non indica percorsi, alla prima decisione su quella pagina Metnos
+ chiede soltanto se un comando mostra altri oggetti dello stesso elenco, come
+ pagina successiva, archivio o altri periodi; al ritorno la domanda non si ripete.
+ Il testo visivamente nascosto resta fuori dall'osservazione.</p>
+ <p>Se Frontier è configurato, sceglie il percorso anche sulle pagine che mostrano
+ già oggetti richiesti: un riepilogo non esclude la presenza di menu estranei.
+ Il modello locale riconosce e conserva gli oggetti; Frontier riceve la richiesta,
+ lo stato di accesso e i nomi dei comandi con il titolo della loro sezione, non il
+ contenuto della pagina, i campi o le credenziali. I nomi non sono oscurati e possono
+ contenere dati personali. La risposta lo segnala con una nota e il passo mostra un
+ simbolo «$» rosso nel percorso. Senza Frontier configurato decide il modello locale;
+ se Frontier configurato non risponde, la raccolta resta incompleta.
+ <code>METNOS_SITES_FRONTIER_ROUTES=0</code> disattiva questa scelta.</p>
+ <p>Questa raccolta usa 96 azioni e 300 secondi attivi, condivisi fra avanzamenti,
+ scorrimenti e ritorni; le attese per l’utente non consumano il tempo né azzerano
+ i tentativi. Nella modifica candidata, ogni decisione del modello locale
+ dispone di 20 secondi, inclusi nel tempo complessivo; una scadenza lascia
+ la ricerca incompleta. Termina
+ dopo l’esaurimento dei percorsi pertinenti osservati.
+ Limiti di tempo, azioni, profondità o lettura producono un esito parziale,
+ senza inventare il numero totale degli oggetti. I filtri si applicano ai dati
+ raccolti, senza scartare percorsi in base alle date di una pagina intermedia.</p>
+ <p>La modifica candidata include nell’osservazione il testo visibile e gli
+ stati dei selettori, oltre al nome accessibile. Questi dati possono indicare
+ la raccolta corrente, ma non garantiscono che il modello scelga correttamente:
+ il cambio automatico di fornitura resta da correggere e collaudare.</p>
+ <p>Se un ostacolo successivo interrompe la ricerca, Metnos conserva i dati
+ già osservati e segnala che la raccolta è incompleta. I pannelli sovrapposti
+ possono essere chiusi tramite comandi di uscita riconosciuti nel lessico
+ multilingue, come «Chiudi modale»; restano esclusi invii e adesioni.</p>
  <p>I normali confini del sito e i moduli di consenso restano validi anche
  durante la ricerca. I cookie seguono la procedura separata di rifiuto delle
  opzioni facoltative, ricontrollata prima dell'invio se compare un nuovo banner.
@@ -189,8 +240,19 @@
  Il collegamento alle immagini usa questo record persistito. Il ramo ripreso
  e la coda residua sono osservati senza ripetere i passi precedenti;
  i valori immessi nel modulo non vengono copiati negli argomenti del registro.</p>
+ <p>Dopo l'invio di un modulo, la pagina mostra l'attesa e recupera l'esito della
+ ripresa senza tenere aperta la richiesta web. Anche dopo una ricarica o una
+ risposta persa, verifica lo stato senza inviare nuovamente i valori. L'esito
+ conserva testo, allegati e percorso del turno effettivo. Se non è possibile
+ confermarlo, la pagina lo segnala e non ripete automaticamente l'operazione.</p>
 
  <h2>Se non riesce</h2>
+ <p><strong>Dalla release 122:</strong>
+ quando un comando web risulta coperto, il browser gestito conserva da solo
+ una copia statica della pagina e le misure dell'ostacolo. Non serve eseguire
+ script nella console. La copia esclude campi riservati e codice attivo;
+ rimane locale, protetta come gli screenshot. Non viene acquisita durante
+ consensi o verifiche di accesso in attesa e non certifica il flusso sul sito.</p>
  <p>Se nessuna proposta viene ammessa, il ciclo &egrave; <code>inconclusive</code>. Se
  sono terminati i tentativi o il tempo disponibile, &egrave; <code>exhausted</code>.
  L'adattatore traduce poi questo esito nel contratto pubblico del proprio

@@ -531,6 +531,7 @@ class SimpleProposer:
             try:
                 from tool_grammar import filter_pool_by_intent_verb
                 from vocab import SYSTEM_EXECUTOR_NAMES
+                from engine.routing_pool import explicit_catalog_names
                 pool_objs = [next((e for e in catalog if e.name == n), None) for n in pool] \
                             if catalog else []
                 pool_objs = [p for p in pool_objs if p is not None]
@@ -538,7 +539,7 @@ class SimpleProposer:
                     kept, excluded = filter_pool_by_intent_verb(
                         pool_objs,
                         intent.verb,
-                        always_include=SYSTEM_EXECUTOR_NAMES,
+                        always_include=set(SYSTEM_EXECUTOR_NAMES) | explicit_catalog_names(query, pool_objs),
                     )
                     if kept:
                         effective_pool = [e.name for e in kept]

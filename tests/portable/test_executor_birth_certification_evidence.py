@@ -161,6 +161,104 @@ def test_turn_replay_does_not_qualify_as_another_cycle(tmp_path):
 
 
 @native
+def test_refreshed_census_preserves_history_but_requires_a_new_profile(tmp_path):
+    refreshed_scope = "sha256:" + "b" * 64
+    with _open(tmp_path) as owner:
+        _seed(owner)
+        for _ in range(2):
+            owner.start_cycle()
+            _finish(owner)
+        previous = owner.frontier
+        events = owner._connection.execute("SELECT * FROM events ORDER BY sequence").fetchall()
+        owner.census(scope_id=refreshed_scope, sources=(b"current history",),
+                     review=b"current exclusions and findings", findings={})
+        refreshed = owner.frontier
+        assert refreshed.event_count == previous.event_count + 1
+        assert refreshed.census_scope == refreshed_scope
+        assert refreshed.profile is None and refreshed.profile_bindings is None
+        assert refreshed.consecutive_successes == ()
+        assert owner._connection.execute("SELECT * FROM events ORDER BY sequence").fetchall()[:-1] == events
+        with pytest.raises(evidence.EvidenceError, match="cycle profile"):
+            owner.start_cycle()
+    with _open(tmp_path) as owner:
+        assert owner.frontier == refreshed
+        owner.profile(base=BASE, manifest=canonical(MANIFEST), cases=canonical(CASES))
+        owner.start_cycle()
+        assert len(_finish(owner).consecutive_successes) == 1
+
+
+@native
+def test_unchanged_census_keeps_the_applicable_profile_and_cycles(tmp_path):
+    with _open(tmp_path) as owner:
+        _seed(owner)
+        for _ in range(2):
+            owner.start_cycle()
+            _finish(owner)
+        previous = owner.frontier
+        owner.census(scope_id=DIGEST, sources=(b"same observed scope",),
+                     review=b"unchanged obligations reviewed", findings={})
+        assert owner.frontier.profile == previous.profile
+        assert owner.frontier.profile_bindings == previous.profile_bindings
+        assert owner.frontier.consecutive_successes == previous.consecutive_successes
+        assert owner.frontier.open_findings == ()
+
+
+@native
+def test_refreshed_census_cannot_silently_close_or_stale_close_findings(tmp_path):
+    with _open(tmp_path) as owner:
+        _seed(owner)
+        owner.open_defect("omitted", b"still unresolved")
+        omitted_opening = owner.frontier.head
+        owner.open_defect("reobserved", b"previous observation")
+        previous_opening = owner.frontier.head
+        owner.census(scope_id="sha256:" + "b" * 64, sources=(b"current history",),
+                     review=b"review", findings={"reobserved": b"current observation",
+                                                "terminal-binding": b"regression"})
+        refreshed_opening = owner.frontier.head
+        assert owner.frontier.open_findings == ("omitted", "reobserved", "terminal-binding")
+        with pytest.raises(evidence.EvidenceError, match="stale finding"):
+            owner.close_defect("reobserved", opening=previous_opening, repair=b"repair",
+                               verification=b"verification", review=b"review")
+        for finding, opening in (("omitted", omitted_opening), ("reobserved", refreshed_opening),
+                                 ("terminal-binding", refreshed_opening)):
+            owner.close_defect(finding, opening=opening, repair=b"repair",
+                               verification=b"verification", review=b"review")
+        assert owner.frontier.open_findings == ()
+
+
+@native
+def test_refreshed_census_does_not_make_consumed_turns_reusable(tmp_path):
+    turns = {case["case_id"]: {f"same-{case['case_id']}": canonical(case)} for case in CASES}
+    with _open(tmp_path) as owner:
+        _seed(owner)
+        owner.start_cycle()
+        _finish(owner, turns=turns)
+        owner.census(scope_id="sha256:" + "b" * 64, sources=(b"current history",),
+                     review=b"review", findings={})
+        owner.profile(base=BASE, manifest=canonical(MANIFEST), cases=canonical(CASES))
+    with _open(tmp_path) as owner:
+        owner.start_cycle()
+        with pytest.raises(evidence.EvidenceError, match="turn reused"):
+            _finish(owner, turns=turns)
+
+
+@native
+@pytest.mark.parametrize("pending", (False, True))
+def test_invalid_or_midcycle_refresh_is_atomic(tmp_path, pending):
+    with _open(tmp_path) as owner:
+        _seed(owner)
+        if pending:
+            owner.start_cycle()
+        previous = owner.frontier
+        with pytest.raises(evidence.EvidenceError, match="cycle still open" if pending else "digest"):
+            owner.census(scope_id="sha256:" + "b" * 64 if pending else "invalid",
+                         sources=(b"uncommitted observation",), review=b"review", findings={})
+        assert owner.frontier == previous
+        assert owner._connection.execute("SELECT count(*) FROM artifacts WHERE body=?",
+                                         (b"uncommitted observation",)).fetchone()[0] == 0
+
+
+@native
 def test_missing_census_and_changed_artifact_or_schema_are_refused(tmp_path):
     with _open(tmp_path) as owner:
         with pytest.raises(evidence.EvidenceError, match="census required"):

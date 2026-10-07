@@ -193,11 +193,19 @@ BOUNDARY_API_OWNERS_V1 = (
         ('_migrate', ('store_write',)),
         ('_certify', ('store_write',)),
         ('_rehearse', ('store_write',)),
+        ('_reuse', ('store_write',)),
     )),
     BoundaryApiOwnerV1('birth_certification_issuer', (
         ('issue_certificate_v1', ('store_write',)),
         ('issue_rehearsal_v1', ('store_write',)),
         ('main', ('store_write',)),
+    )),
+    BoundaryApiOwnerV1('birth_certification_reuse', (
+        ('_write_trust', ('store_write',)),
+        ('register_origin_v1', ('store_write',)),
+        ('export_evidence_v1', ('store_write',)),
+        ('import_evidence_v1', ('store_write',)),
+        ('continue_evidence_v1', ('store_write',)),
     )),
     BoundaryApiOwnerV1('birth_certification_evidence', (
         ('_evidence_at_v1', ('store_write',)),

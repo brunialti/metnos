@@ -15,6 +15,7 @@ refuses is the failure an operator cannot diagnose.
 from __future__ import annotations
 
 import base64
+from contextlib import nullcontext
 from dataclasses import asdict
 import json
 import os
@@ -136,7 +137,7 @@ def _completed_migration_id() -> str:
 def _derive_as_service_v1(request: dict) -> dict:
     """Derive in the fresh service process; no private authority crosses over."""
     from install.birth_certification_evidence import EvidenceFrontierV1, ProfileBindingsV1
-    from install.birth_certification_qualification import derive_qualification_v1
+    from install.birth_certification_qualification import derive_qualification_v1, OperationalEvidenceV1
 
     supplied = request["qualification"]
     values = dict(supplied["frontier"])
@@ -148,10 +149,15 @@ def _derive_as_service_v1(request: dict) -> dict:
     sources = tuple((path, base64.b64decode(encoded, validate=True))
                     for path, encoded in supplied["public_sources"])
     observed = observe_history_v1(public_sources=sources)
-    return asdict(derive_qualification_v1(observed, frontier))
+    operational = supplied.get("operational")
+    if operational is not None:
+        operational = dict(operational)
+        operational["cycle_ids"] = tuple(operational["cycle_ids"])
+        operational = OperationalEvidenceV1(**operational)
+    return asdict(derive_qualification_v1(observed, frontier, operational))
 
 
-def _service_qualification_v1(frontier: object, public_sources: tuple) -> object:
+def _service_qualification_v1(frontier: object, public_sources: tuple, operational=None) -> object:
     """Use the migration's reviewed service paths, never imported root paths."""
     from install.birth_certification_qualification import QualificationV1
     from install.birth_lifecycle_migration import (
@@ -161,6 +167,7 @@ def _service_qualification_v1(frontier: object, public_sources: tuple) -> object
     try:
         report = _in_service_child("qualify", read_handoff_v1(), qualification={
             "frontier": asdict(frontier),
+            "operational": None if operational is None else asdict(operational),
             "public_sources": [(path, base64.b64encode(raw).decode("ascii"))
                                for path, raw in public_sources],
         })
@@ -212,9 +219,11 @@ def _sign_certificate_v1(payload: dict) -> bytes:
     del raw
     from executor_birth_lifecycle import CERTIFICATION_DOMAIN
     from executor_birth_rehearsal import REHEARSAL_DOMAIN_V1
+    from install.birth_certification_reuse import EXPORT_DOMAIN_V1
 
     domains = {"f5_activation_v1": CERTIFICATION_DOMAIN,
-               "f5_rehearsal_v1": REHEARSAL_DOMAIN_V1}
+               "f5_rehearsal_v1": REHEARSAL_DOMAIN_V1,
+               "f5_evidence_export_v1": EXPORT_DOMAIN_V1}
     if payload.get("purpose") not in domains:
         raise CertificationIssueError("certification_purpose_invalid")
     signature = private.sign(domains[payload["purpose"]] + encode_canonical_ascii_v1(payload))
@@ -248,7 +257,7 @@ def build_certificate_v1(
     }
 
 
-def _install_certificate_v1(encoded: bytes, payload: dict) -> Path:
+def _install_certificate_v1(encoded: bytes, payload: dict, *, locked: bool = False) -> Path:
     """Publish the certificate, then read it back with the runtime's reader.
 
     Success is what the runtime reader accepts, not what this tool wrote. The
@@ -259,20 +268,22 @@ def _install_certificate_v1(encoded: bytes, payload: dict) -> Path:
     from executor_birth_lifecycle import ACTIVATION_MAX_BYTES, load_f5_activation
 
     _root_owned_chain(DEFAULT_OWNERSHIP_ROOT_V1)
-    with _provisioning_lock(DEFAULT_OWNERSHIP_ROOT_V1, root_owned=True):
+    with (nullcontext() if locked else _provisioning_lock(DEFAULT_OWNERSHIP_ROOT_V1, root_owned=True)):
         directory = ACTIVATION_DIRECTORY_V1
         _directory_metadata(directory, root_owned=True)
         path = directory / CERTIFICATE_BASENAME_V1
         staged = directory / (CERTIFICATE_BASENAME_V1 + ".staged")
-        descriptor = os.open(staged, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
+        descriptor = os.open(staged, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o644)
         try:
-            os.write(descriptor, encoded)
-            os.fsync(descriptor)
+            with os.fdopen(descriptor, "wb") as stream:
+                stream.write(encoded)
+                stream.flush()
+                os.fchmod(stream.fileno(), 0o644)
+                os.fsync(stream.fileno())
+            os.replace(staged, path)
+            _sync_directory(directory)
         finally:
-            os.close(descriptor)
-        os.chmod(staged, 0o644)
-        os.replace(staged, path)
-        _sync_directory(directory)
+            staged.unlink(missing_ok=True)
         if _read_regular(path, maximum=ACTIVATION_MAX_BYTES, mode=0o644,
                          root_owned=True) != encoded:
             raise CertificationIssueError("certification_document_unsafe")
@@ -294,24 +305,34 @@ def issue_certificate_v1(
 ) -> dict:
     """Derive, bind and sign, or report exactly what would be signed."""
     from install.birth_certification_evidence import administrative_evidence_v1
+    from install.birth_certification_reuse import (
+        audit_local_evidence_v1, operational_evidence_v1, observe_destination_v1,
+    )
 
     _require_root_v1()
     migration_id = _completed_migration_id()
     installation_id, head_id, closed_build_id = _installation_frontier_v1()
     with administrative_evidence_v1() as evidence:
         frontier = evidence.frontier
-    if frontier.profile is not None:
-        bindings = frontier.profile_bindings
-        if bindings is None:
-            raise CertificationIssueError("profile_bindings_absent")
-        if bindings.installation_id != installation_id or bindings.head_id != head_id:
-            raise CertificationIssueError("certification_profile_mismatch")
-    qualification = _service_qualification_v1(frontier, public_sources)
+        destination = observe_destination_v1() if frontier.operational_import is not None else None
+        operational = operational_evidence_v1(evidence, destination) if destination is not None else None
+        if frontier.profile is not None and operational is None:
+            bindings = frontier.profile_bindings
+            if bindings is None:
+                raise CertificationIssueError("profile_bindings_absent")
+            if bindings.installation_id != installation_id or bindings.head_id != head_id:
+                raise CertificationIssueError("certification_profile_mismatch")
+            destination = audit_local_evidence_v1(evidence)
+    qualification = _service_qualification_v1(frontier, public_sources, operational)
     if qualification.required_head_id != head_id:
         raise CertificationIssueError("certification_frontier_changed", "qualification")
     with administrative_evidence_v1() as evidence:
         if evidence.frontier != frontier:
             raise CertificationIssueError("certification_frontier_changed", "evidence")
+        if destination is not None and (observe_destination_v1() != destination
+                or (operational is not None
+                    and operational_evidence_v1(evidence, destination) != operational)):
+            raise CertificationIssueError("certification_frontier_changed", "operational evidence")
     if (_completed_migration_id() != migration_id
             or _installation_frontier_v1() != (installation_id, head_id, closed_build_id)):
         raise CertificationIssueError("certification_frontier_changed", "installation")
@@ -336,9 +357,19 @@ def issue_certificate_v1(
         closed_build_id=closed_build_id,
         key_id=load_certification_public_key_v1().key_id,
     )
-    report["certificate"] = str(
-        _install_certificate_v1(_sign_certificate_v1(payload), payload)
-    )
+    encoded = _sign_certificate_v1(payload)
+    # Retain the signed certificate and its local qualification before exposing
+    # it. A crash here leaves a prepared act, never a fabricated publication.
+    with administrative_evidence_v1() as evidence:
+        if (evidence.frontier != frontier or _completed_migration_id() != migration_id
+                or _installation_frontier_v1() != (installation_id, head_id, closed_build_id)):
+            raise CertificationIssueError("certification_frontier_changed", "commit")
+        if destination is not None and (observe_destination_v1() != destination
+                or (operational is not None
+                    and operational_evidence_v1(evidence, destination) != operational)):
+            raise CertificationIssueError("certification_frontier_changed", "trust")
+        evidence.prepare_certificate(certificate=encoded, qualification=encode_canonical_ascii_v1(asdict(qualification)))
+        report["certificate"] = str(_install_certificate_v1(encoded, payload, locked=True))
     return report
 
 

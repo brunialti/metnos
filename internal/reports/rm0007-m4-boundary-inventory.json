@@ -1,6 +1,6 @@
 {
   "schema": "metnos.contract-boundary-inventory/2",
-  "source_census": "sha256:1063e21a5366d64f7d8b33fa13e7590363a54f15b166398e64b4de073a1e4bcf",
+  "source_census": "sha256:5053f69f75d6c9eadc2f473bd15b290768aacd03393b0499bc73d3ea2ed8d05e",
   "scan_roots": [
     "runtime",
     "install",
@@ -116,6 +116,16 @@
     },
     {
       "path": "install/birth_certification_authority_provisioner.py",
+      "scope": "_provision_certification_locked_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sealed certification-authority provisioning store",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_certification_authority_provisioner.py",
       "scope": "provision_certification_authority_v1",
       "role": "store_owner",
       "capabilities": [
@@ -202,6 +212,56 @@
         "store_write"
       ],
       "destination": "administrative entry point; derive only reports, issue signs and publishes",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_certification_reuse.py",
+      "scope": "_write_trust",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "fixed administrative origin trust store; explicit public-key registration or revocation under the existing provisioning lock",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_certification_reuse.py",
+      "scope": "continue_evidence_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "retain the locally signed predecessor and qualification, reverify original cycles and current conditions before recording an unchanged successor",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_certification_reuse.py",
+      "scope": "export_evidence_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "replay the complete native F5 chronology and sign a purpose-separated evidence export; no activation or Birth publication",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_certification_reuse.py",
+      "scope": "import_evidence_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "verify explicit trust, complete signed chronology, shared oracle and current native conditions before appending provenance",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_certification_reuse.py",
+      "scope": "register_origin_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "fixed-root administrator-only origin registration through the existing custody owner; no self-trust from imports",
       "phase": "M4"
     },
     {
@@ -346,6 +406,16 @@
     },
     {
       "path": "install/birth_ownership_authority_provisioner.py",
+      "scope": "_provisioning_exclusion_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sealed root-owned ownership-authority provisioning exclusion",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_ownership_authority_provisioner.py",
       "scope": "_provisioning_lock",
       "role": "store_owner",
       "capabilities": [
@@ -392,6 +462,261 @@
         "store_write"
       ],
       "destination": "sealed root-owned ownership cutover coordinator",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_retention_authority_provisioner.py",
+      "scope": "_administrative_retention_authority_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sealed retention-authority provisioning and rotation store",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_retention_authority_provisioner.py",
+      "scope": "_archive_public",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sealed retention-authority provisioning and rotation store",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_retention_authority_provisioner.py",
+      "scope": "_provision_retention_at_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sealed retention-authority provisioning and rotation store",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_retention_authority_provisioner.py",
+      "scope": "_provision_retention_locked_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sealed retention-authority provisioning and rotation store",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_retention_authority_provisioner.py",
+      "scope": "_rotate_retention_at_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sealed retention-authority provisioning and rotation store",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_retention_authority_provisioner.py",
+      "scope": "_rotate_retention_locked_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sealed retention-authority provisioning and rotation store",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_retention_authority_provisioner.py",
+      "scope": "provision_retention_authority_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sealed retention-authority provisioning and rotation store",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_retention_authority_provisioner.py",
+      "scope": "rotate_retention_authority_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sealed retention-authority provisioning and rotation store",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_retention_maintenance.py",
+      "scope": "Maintenance.begin",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sealed retention maintenance journal and hold owner",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_retention_maintenance.py",
+      "scope": "Maintenance.finish",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sealed retention maintenance journal and hold owner",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_retention_maintenance.py",
+      "scope": "_update_holds",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sealed retention maintenance journal and hold owner",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_retention_signed_store.py",
+      "scope": "<module>",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "authenticated retention store inventory and removal owner",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_retention_signed_store.py",
+      "scope": "_SignedStoreOwner._files",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "authenticated retention store inventory and removal owner",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_retention_signed_store.py",
+      "scope": "_SignedStoreOwner._files.walk",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "authenticated retention store inventory and removal owner",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_retention_signed_store.py",
+      "scope": "_SignedStoreOwner._identity",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "authenticated retention store inventory and removal owner",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_retention_signed_store.py",
+      "scope": "_SignedStoreOwner._project",
+      "role": "store_owner",
+      "capabilities": [
+        "authoring_write",
+        "store_write"
+      ],
+      "destination": "authenticated retention store inventory and removal owner",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_retention_signed_store.py",
+      "scope": "_SignedStoreOwner._project.add",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "authenticated retention store inventory and removal owner",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_retention_signed_store.py",
+      "scope": "_SignedStoreOwner.delete",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "authenticated retention store inventory and removal owner",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_retention_signed_store.py",
+      "scope": "_SignedStoreOwner.generation_identity",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "authenticated retention store inventory and removal owner",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_retention_signed_store.py",
+      "scope": "_SignedStoreOwner.identity",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "authenticated retention store inventory and removal owner",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_retention_signed_store.py",
+      "scope": "_SignedStoreOwner.inventory",
+      "role": "store_owner",
+      "capabilities": [
+        "authoring_write",
+        "store_write"
+      ],
+      "destination": "authenticated retention store inventory and removal owner",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_retention_signed_store.py",
+      "scope": "_SignedStoreOwner.scan",
+      "role": "store_owner",
+      "capabilities": [
+        "authoring_write",
+        "store_write"
+      ],
+      "destination": "authenticated retention store inventory and removal owner",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_retention_signed_store.py",
+      "scope": "_SignedStoreOwner.scan_with_evidence",
+      "role": "store_owner",
+      "capabilities": [
+        "authoring_write",
+        "store_write"
+      ],
+      "destination": "authenticated retention store inventory and removal owner",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_retention_signed_store.py",
+      "scope": "_SignedStoreOwner.version",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "authenticated retention store inventory and removal owner",
+      "phase": "M4"
+    },
+    {
+      "path": "install/certification/native_probe.py",
+      "scope": "snapshot",
+      "role": "live_reader",
+      "capabilities": [
+        "live_artifact_read",
+        "verified_store_read"
+      ],
+      "destination": "read-only native observation through authenticated catalog, contract store and existing epoch readers; no mutation",
       "phase": "M4"
     },
     {
@@ -1260,6 +1585,16 @@
       "phase": "M4"
     },
     {
+      "path": "install/f5_authority.py",
+      "scope": "_reuse",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "bounded administrative dispatch to the F5 evidence reuse owner; no authority supplied by caller",
+      "phase": "M4"
+    },
+    {
       "path": "install/managed_install.py",
       "scope": "_run",
       "role": "store_owner",
@@ -1374,6 +1709,16 @@
         "legacy_bootstrap"
       ],
       "destination": "one-time legacy bootstrap under the shared quiescence and cold-load barrier",
+      "phase": "M4"
+    },
+    {
+      "path": "install/synth_review.py",
+      "scope": "review",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "persist exact independent review inputs and native test results before publishing their signed digest through the semantic evidence owner",
       "phase": "M4"
     },
     {
@@ -3608,6 +3953,16 @@
     },
     {
       "path": "runtime/executor_birth_ownership_coordinator.py",
+      "scope": "_deployment_exclusion_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sealed root-owned deployment exclusion",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_ownership_coordinator.py",
       "scope": "_deployment_lock_at_v1",
       "role": "store_owner",
       "capabilities": [
@@ -4316,6 +4671,18 @@
     },
     {
       "path": "runtime/jobs/promoter_promote.py",
+      "scope": "_promote_candidate",
+      "role": "operational_producer",
+      "capabilities": [
+        "authoring_read",
+        "authoring_write",
+        "birth"
+      ],
+      "destination": "shared promotion preparation and readback; exact consent and publication remain owned by sealed Birth",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/jobs/promoter_promote.py",
       "scope": "_restore_rollback_blob",
       "role": "offline_authoring",
       "capabilities": [
@@ -4337,10 +4704,20 @@
     },
     {
       "path": "runtime/jobs/promoter_promote.py",
+      "scope": "promote_reviewed_candidate",
+      "role": "operational_producer",
+      "capabilities": [
+        "authoring_write",
+        "birth"
+      ],
+      "destination": "authenticated promotion review through the existing publisher, rollback blob and grace registry; no new authority",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/jobs/promoter_promote.py",
       "scope": "promote_to_catalog",
       "role": "operational_producer",
       "capabilities": [
-        "authoring_read",
         "authoring_write",
         "birth"
       ],

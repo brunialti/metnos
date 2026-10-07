@@ -108,6 +108,9 @@ WORKLOADS: dict[str, WorkloadContract] = {
 
     # Explicit maximum-capability escalation.
     "frontier.consult": WorkloadContract("frontier", None, "frontier", "caller_owned"),
+    # Opt-in, off by default: route choice on site pages without requested
+    # items; the request carries control names and contexts, no page content.
+    "sites.collection_route": WorkloadContract("frontier", None, "frontier", "json"),
 }
 
 

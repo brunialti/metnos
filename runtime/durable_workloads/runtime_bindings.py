@@ -271,9 +271,17 @@ class RuntimeRegistry:
         return tuple(sorted(self._candidate_plan_json, key=str.encode))
 
     def temporary_workspaces(self, plan):
-        """Only approved package code can identify disposable private paths."""
+        """Resolve every admitted binding before claiming the scratch census complete.
+
+        Historical revisions can outlive a package registration. An unknown
+        binding is missing ownership information, never proof of no workspace.
+        Core runners own no external scratch; ArtifactStore is composed separately.
+        """
         paths = set()
         bindings = {(s["runner"]["kind"], s["runner"]["name"]) for s in plan["stages"]}
+        known = set(_CORE_RUNNER_BINDINGS).union(self.runners.bindings)
+        if not bindings.issubset(known):
+            raise ValueError("temporary workspace census contains an unregistered runner")
         for registration in self._registrations:
             if bindings.intersection(registration.runner_bindings):
                 resolver = registration.temporary_workspaces_resolver
@@ -396,6 +404,8 @@ def _resource_limits() -> dict[str, int]:
 class RuntimeFactory:
     """Lazily compose identical bindings for every service lane."""
 
+    DETACHED_WORKSPACE_CUSTODY = "durable-job-metadata-v1"
+
     def __init__(
         self,
         *,
@@ -403,12 +413,22 @@ class RuntimeFactory:
         source_authority_path: str | Path | None = None,
         remote_attestor: RemoteAttestor | None = None,
         artifact_root: str | Path | None = None,
+        terminal_workspace_handoff: Callable | None = None,
+        terminal_workspace_custody: bool = False,
         lease_duration: timedelta = timedelta(seconds=60),
     ) -> None:
+        if terminal_workspace_handoff is not None and not callable(terminal_workspace_handoff):
+            raise TypeError("terminal workspace handoff must be callable")
+        if type(terminal_workspace_custody) is not bool:
+            raise TypeError("terminal workspace custody must be boolean")
+        if terminal_workspace_handoff is not None and terminal_workspace_custody:
+            raise ValueError("terminal workspace custody has two owners")
         self._registry_factory = registry_factory
         self._source_authority_path = source_authority_path
         self._remote_attestor = remote_attestor
         self._artifact_root = artifact_root
+        self._terminal_workspace_handoff = terminal_workspace_handoff
+        self._terminal_workspace_custody = terminal_workspace_custody
         self._lease_duration = lease_duration
         self._registry: RuntimeRegistry | None = None
         self._guard = threading.Lock()
@@ -429,29 +449,50 @@ class RuntimeFactory:
             lease_duration=self._lease_duration,
         )
 
+    def selected_storage_paths(self) -> tuple[str | Path, str | Path]:
+        """Read the two LRE constructor choices without opening either store."""
+        from config import PATH_DURABLE_ARTIFACTS
+        from .source_authority import default_authority_path
+
+        return (self._artifact_root or PATH_DURABLE_ARTIFACTS,
+                self._source_authority_path or default_authority_path())
+
+    def selected_terminal_workspace_custody(self) -> str | None:
+        """Expose the selected protocol without opening runtime state."""
+        if self._terminal_workspace_custody:
+            return self.DETACHED_WORKSPACE_CUSTODY
+        return None
+
     def bridge(self, store: DurableWorkloadStore) -> BoundExecutionBridge:
         database_path = store.database_path
         if database_path is None:
             raise StoreNotReadyError("runtime bindings require a file-backed store")
-        from config import PATH_DURABLE_ARTIFACTS
-
+        artifact_root, source_authority_path = self.selected_storage_paths()
         repository = ArtifactRepository.open_for_store(store)
         artifacts: ArtifactStore | None = None
         authority: SourceAuthority | None = None
         try:
             artifacts = ArtifactStore(
-                self._artifact_root or PATH_DURABLE_ARTIFACTS,
+                artifact_root,
                 repository,
             )
             authority = SourceAuthority.open(
-                self._source_authority_path,
+                source_authority_path,
                 remote_attestor=self._remote_attestor,
             )
             registry = self.registry()
-            from .temporary_storage import TemporaryStorage
+            from .temporary_storage import DetachedWorkspaceCustody, TemporaryStorage
+            handoff = self._terminal_workspace_handoff
+            if self._terminal_workspace_custody:
+                handoff = DetachedWorkspaceCustody(
+                    store,
+                    registry.temporary_workspaces,
+                    artifact_workspace=artifacts.temporary_workspace,
+                )
             temporary_storage = TemporaryStorage(
                 store, registry.temporary_workspaces,
                 artifact_workspace=artifacts.temporary_workspace,
+                handoff_detached=handoff,
             )
             from .resource_readiness import ensure_model_resource
             from executor_birth_durable_guard import productive_birth_attempt_guard

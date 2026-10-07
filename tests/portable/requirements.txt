@@ -1,6 +1,11 @@
 # Direct dependencies of the portable contract-store certification suite.
 # Keep this list minimal and exact; it is installed independently of Metnos.
 cryptography==47.0.0
+jsonschema==4.10.3
+# Native TurnLog imports the runtime prompt loader and entry comparison.
+minijinja==2.19.0
+numpy==2.4.4
+PyYAML==6.0.3
 pytest==9.1.1
 rich==14.3.4
 tomlkit==0.15.0

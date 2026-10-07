@@ -61,6 +61,33 @@ def _root_owned_chain(path: Path) -> None:
             raise OwnershipAuthorityError("birth_ownership_authority_unsafe", component.name)
 
 
+def _require_no_retention_maintenance_at_v1(root: Path, *, root_owned: bool) -> None:
+    """Normal administrative writers call this while holding their native lock.
+
+    The optional directory is absent before F6 provisioning. Any active entry,
+    including a broken link or malformed record, requires the retention owner
+    to reconcile its original intents before another writer can proceed.
+    """
+    if root_owned:
+        _root_owned_chain(root)
+    _directory_metadata(root, root_owned=root_owned)
+    directory = root / "retention-maintenance-v1"
+    try:
+        directory.lstat()
+    except FileNotFoundError:
+        return
+    except OSError as exc:
+        raise OwnershipAuthorityError("birth_retention_recovery_required", "unreadable") from exc
+    _directory_metadata(directory, root_owned=root_owned)
+    try:
+        (directory / "active.json").lstat()
+    except FileNotFoundError:
+        return
+    except OSError as exc:
+        raise OwnershipAuthorityError("birth_retention_recovery_required", "unreadable") from exc
+    raise OwnershipAuthorityError("birth_retention_recovery_required", "incomplete maintenance")
+
+
 def _read_regular(path: Path, *, maximum: int, mode: int, root_owned: bool) -> bytes:
     flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
     flags |= getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0)

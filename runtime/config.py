@@ -289,7 +289,13 @@ def localization_corpus_version() -> str:
             )
             raise RuntimeError(f"contract inventory is not clean: {detail}")
         for ref in structural.manifests:
-            revision = current_contract(ref, trusted_publics=trusted)
+            revision = current_contract(
+                ref, trusted_publics=trusted, allow_unpublished=True,
+            )
+            if revision is None:
+                # An exact empty publication reservation has no corpus yet.
+                # The store still rejects missing pointers with history.
+                continue
             identifier = (
                 revision.retirement_id
                 if isinstance(revision, ContractRetirement)
@@ -586,6 +592,7 @@ DB_PAIRINGS        = PATH_USER_STATE / "pairings.db"
 DB_RECURRING_TASKS = PATH_USER_STATE / "recurring_tasks.db"
 # Approvals (autonomy_level + grant pending)
 DB_APPROVALS       = PATH_USER_STATE / "approvals.db"
+DB_SCHEDULER_V2    = PATH_USER_STATE / "scheduler_v2.sqlite"
 # Devices (multi-device pairing extensions)
 DB_DEVICES         = PATH_USER_STATE / "devices.db"
 # Policy (autonomy_level matrix)

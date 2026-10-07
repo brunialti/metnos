@@ -77,12 +77,14 @@ def test_initial_catalog_is_birth_published_and_replay_verifiable(
     ref, _historic_key, _historic_ring = support.create_contract_source(
         tmp_path / "contract",
     )
+    # This is a contract shipped in the initial catalog.  USER denotes the
+    # synthesized-executor topology and correctly requires a separate approval.
     ref = replace(
         ref,
-        contract_id=ContractId(ManifestOrigin.USER, ref.manifest_relative),
-        origin=ManifestOrigin.USER,
+        contract_id=ContractId(ManifestOrigin.CORE, ref.manifest_relative),
+        origin=ManifestOrigin.CORE,
     )
-    monkeypatch.setattr(config, "PATH_SYNTH_EXECUTORS", ref.source_root)
+    monkeypatch.setattr(config, "PATH_EXECUTORS", ref.source_root)
     inventory = ManifestInventory((ref,), ())
     monkeypatch.setattr(
         manifest_inventory, "inventory_authoring_manifests",
@@ -113,6 +115,7 @@ def test_initial_catalog_is_birth_published_and_replay_verifiable(
 
     assert installed.generation_id == generation_id
     assert receipt.generation_id == generation_id
+    assert receipt.contract_id == ref.contract_id.value
     assert report["birth_receipts"][ref.contract_id.value] == (
         "sha256:" + hashlib.sha256(encoded).hexdigest()
     )

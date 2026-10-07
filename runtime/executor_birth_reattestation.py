@@ -659,9 +659,13 @@ def _execute(request: ReattestationRequest, core: _ReattestationCore) -> Reattes
                 observed, windows_registry=shadow.windows_sandbox_registry,
                 linux_registry=shadow.linux_sandbox_registry,
             )
+        # A verified unchanged receipt preserves admission, not a new approval
+        # or a lifecycle promotion. The resolver still rejects stray references.
         approval_subject, approval_evidence = birth.approval_resolver(
             request, observed,  # type: ignore[arg-type]
-            approval_scope(observed, ShadowRevisionClass.REATTESTATION, previous_lifecycle),
+            None if continuity is not None else approval_scope(
+                observed, ShadowRevisionClass.REATTESTATION, previous_lifecycle,
+            ),
             instant,
         )
         dependencies = replace(

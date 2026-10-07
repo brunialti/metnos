@@ -534,12 +534,37 @@ def _consume_pending_step_unlocked(sender_id: str, dialog_id: str, var: str,
     if state["step_index"] >= len(dialog):
         state["completed"] = True
         state["completed_at"] = submitted_at
+        if state.get("on_complete") and source in {
+                "http_form_owner", "http_form_capability"}:
+            # Same atomic write as acceptance: a crash before dispatch must
+            # never turn an unfinished callback into a successful empty form.
+            state["http_callback_process"] = _process_claim()
     save_pending(sender_id, dialog_id, state)
     return {"ok": True,
             "completed": bool(state.get("completed")),
             "step_index": state["step_index"],
             "step_total": len(dialog),
             "state": state}
+
+
+def complete_http_callback(sender_id: str, dialog_id: str, receipt: dict, *,
+                           owner_user_id: str) -> bool:
+    """Persist the HTTP result in the existing dialog, without domain claims.
+
+    Only the consumer of the last form step dispatches. Reads and retries
+    merely replay this receipt; they never restart an uncertain operation.
+    """
+    json.dumps(receipt, ensure_ascii=False)
+    with _dialog_lock(sender_id, dialog_id):
+        state = load_pending(sender_id, dialog_id, owner_user_id=owner_user_id)
+        if not state or not state.get("http_callback_process"):
+            return False
+        if isinstance(state.get("http_callback_receipt"), dict):
+            return state["http_callback_receipt"] == receipt
+        state["http_callback_receipt"] = dict(receipt)
+        state["http_callback_finished_at"] = _utc_now_iso()
+        save_pending(sender_id, dialog_id, state)
+        return True
 
 
 def cancel_pending(sender_id: str, dialog_id: str, *,
@@ -656,6 +681,8 @@ def begin_callback_once(sender_id: str, dialog_id: str, nonce: str, *,
             recovered = True
             state["callback_recovered_at"] = _utc_now_iso()
         elif is_expired(state):
+            if on_complete.get("type") != "resume_frozen_plan":
+                return {"status": "invalid"}
             # Il POST aveva gia' completato il form entro il TTL: reclamare la
             # callback e' lecito, ma il consumer applichera' ancora la scadenza
             # del piano e non avviera' una mutazione nuova.
@@ -1103,6 +1130,22 @@ def sweep_expired(now_ts: float | None = None) -> list[dict]:
                     pass
                 continue
             terminal = bool(d.get("completed") or d.get("cancelled"))
+            if d.get("http_callback_process"):
+                # Keep active work and allow a bounded window to retrieve its
+                # result after reload. Reuse the sweep; no extra files/timer.
+                recovery_window = dict(d, started_at=d.get("completed_at"),
+                                       timeout_s=CALLBACK_RECOVERY_RETENTION_S)
+                if (not isinstance(d.get("http_callback_receipt"), dict)
+                        and not isinstance(d.get("callback_receipt"), dict)
+                        and _claim_is_live(d["http_callback_process"])
+                        and not is_expired(recovery_window, now_ts)):
+                    continue
+                anchor = dict(d, started_at=(d.get("http_callback_finished_at")
+                                            or d.get("callback_finished_at")
+                                            or d.get("completed_at")),
+                              timeout_s=FORM_TTL_S)
+                if not is_expired(anchor, now_ts):
+                    continue
             if (d.get("callback_delivery_state") in {"pending", "running"}
                     and int(d.get("callback_delivery_attempts") or 0)
                     < CALLBACK_DELIVERY_MAX_ATTEMPTS):

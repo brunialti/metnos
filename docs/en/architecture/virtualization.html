@@ -230,10 +230,38 @@ maximum response length, available time, and the schema that the output must
 follow.</p>
 
 <p>Passwords, tokens, keys, credentials, and sensitive URL parts are not
-shown. They are also excluded from fields submitted by the form. Secrets
-already present in the document are preserved during a save, but they are
-managed through the protected credential flow or the service environment, not
-from this page.</p>
+shown. The configuration editor preserves existing secrets without including
+them in its fields.</p>
+
+<p>From the chat, open <strong>Settings &gt; System &gt; Models</strong>
+(<code>/admin/virt</code>). The <strong>Frontier</strong> box contains one model:
+select its API interface, enter the full API endpoint, model name and API key;
+adjust temperature and reasoning where supported by the model, then press
+<strong>Save Frontier</strong>. The available interfaces are
+<strong>OpenAI compatible (Chat Completions)</strong> and
+<strong>Anthropic Messages</strong>. The interface defines the request format:
+use a compatible service by changing the endpoint and model.
+The endpoint field takes the complete operation URL, for example
+<code>https://api.openai.com/v1/chat/completions</code>.</p>
+
+<p>The <strong>API key</strong> field shows <code>********</code> when a key is
+already saved. The key stays encrypted outside the repository and is never returned in the
+form. Leave its field blank to keep it; when changing the interface or endpoint,
+enter the new service's key. Saving updates the configuration and key reference
+together, with no hidden fallback model. If the file has changed since the page
+was loaded, reload the page before saving. New provider instances use the
+updated values; calls already in progress retain the previous values.
+<strong>Key saved</strong> reports the presence of a key: saving does not make
+a verification call to the provider.</p>
+
+<p>Enabling reasoning reveals an editable level, initially <strong>Medium</strong>.
+OpenAI uses a reasoning effort level; Anthropic also offers a
+<strong>Token budget</strong>, initially 1,024 tokens. Choose only options supported
+by the model. The budget must be below the request's total token limit: Metnos
+never raises that limit automatically. Disabling reasoning preserves the choice
+for the next activation. Temperature applies when compatible with the model and
+reasoning. For Sol with tools on the Chat Completions interface, leave reasoning
+off.</p>
 
 <p><strong>Configured</strong> and <strong>observed</strong> are not synonyms.
 The first value is what Metnos will request from the provider; the second is what

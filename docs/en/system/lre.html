@@ -56,6 +56,12 @@ contract. In the current automatic path, an action is considered
 least ten minutes. This decision uses structured metadata, not words such as
 “long”, “in the background”, or “many files”.</p>
 
+<p>A signed contract declaring an <code>interactive</code> effect stays in
+the foreground even with a large timeout: it may require user intervention
+and does not promise unattended recovery. For example, increasing a browser
+search budget does not turn it into an LRE job. An explicitly declared LRE
+plan still passes through all admission checks.</p>
+
 <table>
  <thead><tr><th>Condition</th><th>Metnos decision</th></tr></thead>
  <tbody>

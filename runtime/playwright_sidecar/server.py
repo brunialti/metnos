@@ -48,6 +48,7 @@ from aiohttp import web
 
 from playwright_sidecar import contract as _contract
 from playwright_sidecar import browser_engine as _engine
+from playwright_sidecar import login_navigation as _navigation
 
 logger = logging.getLogger("playwright_sidecar")
 
@@ -122,6 +123,7 @@ _DEFAULT_WAIT_MS = 2000
 _MAX_WAIT_MS = 15000
 _BROKER_REQUEST_TIMEOUT_S = 85.0
 _BROKER_LOGIN_TIMEOUT_S = 135.0
+_BROKER_ACTION_TIMEOUT_S = _navigation.COLLECTION_TIMEOUT_S + 15.0
 
 # Viewport di default (desktop FullHD-ish).
 _DEFAULT_VIEWPORT = {"width": 1280, "height": 800}
@@ -613,7 +615,7 @@ async def handle_session_act(request):
             approval_token=b.get("approval_token"),
             goal_query=b.get("goal_query"),
             done_when=b.get("done_when"), scope=b.get("scope"))
-    return await _broker_call(request, _op)
+    return await _broker_call(request, _op, timeout_s=_BROKER_ACTION_TIMEOUT_S)
 
 
 def _primitive_handler(opname, *, value_key=None):

@@ -15,7 +15,7 @@ en = "SCOPO: Runs one shell command, including unprivileged commands, when no de
 
 [code]
 files = ["implementation.py.src"]
-digest = "sha256:da5ec81198e92a1f72283dd147224e084e39f09cecb31a912f6edc9d3f748e16"
+digest = "sha256:d5e134c3291459f54cebd1d76aeb109d9e4a2bb21415c286aa260701f8622af6"
 
 [args]
 type = "object"

@@ -2,40 +2,58 @@ role: synt_tests
 tier: middle
 lang: it
 style: definitional
-version: 2
+version: 16
 owner: roberto
-updated: 2026-09-12
-sha_prev: "fc0423f1c4a5c40f"
-
+updated: 2026-10-05
+sha_prev: 59b057a0
 section:
   name: synt_tests
-  header: "Stage 3 TESTS di synt-multistage"
-  preamble: "Un solo oggetto JSON, senza prosa, markdown o commenti."
-context:
-  decisions_locked:
-    name: "{{ name }}"
-    args_required: "{{ args_required }}"
-    args_properties_summary: "{{ args_properties_summary }}"
-    capabilities: "{{ capabilities }}"
-    revertible: "{{ revertible }}"
-    reverse_pattern: "{{ reverse_pattern }}"
-  user_request: "{{ user_request }}"
+  header: Stage 3 TESTS di synt-multistage
+  preamble: Genera i test dichiarativi della funzione descritta sotto. Restituisci solo JSON valido e
+    compatto, senza markdown, commenti o spiegazioni.
 rules:
-  - name: test_count
-    body: "Produci 4-6 test, con nomi unici."
-  - name: declarative_only
-    body: |
-      DEVI: usare solo name, input ed expect, con almeno un controllo in expect.
-      NON DEVI: produrre setup, teardown, env, reference, comandi shell o dipendenze da rete, chiavi e dati dell'host.
-      OK: {"name":"lista_vuota","input":{"entries":[]},"expect":{"ok":true,"ok_count_eq":0}}.
-      ERRORE: un test che prepara o pulisce file mediante shell, anche con stringa vuota. E' UN ERRORE.
-  - name: private_fixture
-    body: "Ogni prova ha un ambiente privato nuovo, senza rete: fixture/input.txt contiene \"birth fixture\\\\n\", fixture/empty.txt è vuoto e fixture/output è una cartella vuota. Usa percorsi relativi a questo ambiente quando servono file; gli altri input sono dati concreti. Nessun file dell'host è disponibile."
-  - name: mandatory_cases
-    body: "Un elemento, lista vuota se pertinente, argomenti invalidi e un caso limite del dominio."
+- name: coverage
+  body: 'Produci quattro casi con nomi unici: normale con due o tre elementi, lista vuota se pertinente,
+    input invalido e caso limite del dominio. Ogni caso verifica una sola proprietà. Nel caso limite usa
+    un solo elemento con il minimo di caratteri necessario, preservando la caratteristica rilevante come
+    Unicode o spazi. Il caso invalido deve contenere un elemento interno invalido se lo schema vincola
+    gli elementi. Aggiungi un quinto o sesto caso solo per un vincolo distinto non ancora verificato.
+    Usa dati piccoli e risultati calcolabili esattamente; rispetta sempre i vincoli della richiesta.'
+- name: validation_first
+  body: 'Per OGNI input, verifica PRIMA tutti i vincoli della richiesta, inclusi tipo e numero degli elementi
+    interni. Se la richiesta rifiuta tale input, expect è {"ok":false}: non eseguire mentalmente l’operazione
+    su dati invalidi e non inventare conteggi o messaggi. Solo una richiesta che ammette esplicitamente
+    errori per elemento consente elaborazione parziale: gli elementi scartati incrementano fail_count,
+    gli altri ok_count.'
+- name: valid_results
+  body: 'Per input valido, ok=true, ok_count è il numero di elementi elaborati senza errori, fail_count
+    è il numero di elementi scartati. Un risultato false, zero o vuoto è un’elaborazione riuscita. Verifica
+    i valori calcolati in field_eq: results per valori trasformati, entries per record letti o arricchiti.
+    Non rinominare questi campi. Calcola separatamente il risultato di ciascun elemento valido, poi componi
+    la lista nello stesso ordine. Non confondere un risultato con il numero di elementi elaborati. Rispetta
+    maiuscole, spazi e Unicode come richiesto. Per il conteggio dei caratteri usa i punti di codice Unicode:
+    "x" vale 1, "yz" vale 2, "è" vale 1, "🙂" vale 1 e "x🙂" vale 2. Verifica di nuovo ogni risultato contro
+    il proprio input prima di emettere il JSON.'
+- name: shape
+  body: 'L’oggetto finale ha un solo campo tests, lista di oggetti con esattamente name (stringa), input
+    (oggetto) ed expect (oggetto non vuoto). I soli controlli ammessi dentro expect sono ok (booleano),
+    ok_count_eq (intero), fail_count_eq (intero), field_eq (oggetto campo:valore) ed error_contains (stringa).
+    Usa error_contains solo se la richiesta specifica il testo dell’errore. Chiudi ogni oggetto e lista.
+    Rappresenta tutti i numeri come piccoli interi o decimali, senza notazione esponenziale. Tutti gli
+    input devono essere rappresentabili nel protocollo JSON del runner, anche quando la funzione deve
+    rifiutarli. Un valore fuori dal protocollo non arriva alla funzione: NON generare casi per quel vincolo.
+    Per un input numerico di tipo invalido usa null, "x" o un booleano. I limiti di rappresentazione del
+    trasporto sono verificati dal runtime, separatamente dai test della funzione.'
+- name: invocation
+  body: 'Invocazione diretta: usa i nomi di argomento dichiarati. Solo se è dichiarato from_step, passa
+    entries con i record concreti al posto del riferimento; lo scratchpad non esiste nel test. Nessun
+    setup, teardown, env, reference, comando shell, rete o dato dell’host. Se servono file, ogni caso
+    ha un ambiente privato nuovo: fixture/input.txt contiene "birth fixture\n", fixture/empty.txt è vuoto,
+    fixture/output è una cartella vuota. Usa percorsi relativi.'
 output_schema:
   type: object
-  required: [tests]
+  required:
+  - tests
   properties:
     tests:
       type: array
@@ -44,27 +62,80 @@ output_schema:
       items:
         type: object
         additionalProperties: false
-        required: [name, input, expect]
+        required:
+        - name
+        - input
+        - expect
         properties:
-          name: {type: string}
-          input: {type: object}
+          name:
+            type: string
+          input:
+            type: object
           expect:
             type: object
             minProperties: 1
             additionalProperties: false
             properties:
-              ok: {type: boolean}
-              ok_count_eq: {type: integer}
-              fail_count_eq: {type: integer}
-              error_contains: {type: string}
+              ok:
+                type: boolean
+              ok_count_eq:
+                type: integer
+              fail_count_eq:
+                type: integer
+              error_contains:
+                type: string
+              field_eq:
+                type: object
+                minProperties: 1
 examples:
-  - name_for: change_texts
-    note: "Esempio di sola forma: non copiare letteralmente nomi, input o aspettative."
-    output:
-      tests:
-        - {"name":"un_elemento","input":{"entries":["Ab"]},"expect":{"ok":true,"ok_count_eq":1}}
-        - {"name":"lista_vuota","input":{"entries":[]},"expect":{"ok":true,"ok_count_eq":0}}
-        - {"name":"tipo_invalido","input":{"entries":42},"expect":{"ok":false,"error_contains":"list"}}
-        - {"name":"testo_vuoto","input":{"entries":[""]},"expect":{"ok":true,"ok_count_eq":1}}
+- name_for: change_texts
+  note: 'Esempio di sola forma: non copiare letteralmente nomi, input o aspettative.'
+  output:
+    tests:
+    - name: un_elemento
+      input:
+        texts:
+        - Ab
+      expect:
+        ok: true
+        ok_count_eq: 1
+        fail_count_eq: 0
+        field_eq:
+          results:
+          - AB
+    - name: lista_vuota
+      input:
+        texts: []
+      expect:
+        ok: true
+        ok_count_eq: 0
+        fail_count_eq: 0
+        field_eq:
+          results: []
+    - name: tipo_invalido
+      input:
+        texts: 42
+      expect:
+        ok: false
+    - name: testo_vuoto
+      input:
+        texts:
+        - ''
+      expect:
+        ok: true
+        ok_count_eq: 1
+        fail_count_eq: 0
+        field_eq:
+          results:
+          - ''
+context:
+  decisions_locked:
+    name: '{{ name }}'
+    args_required: '{{ args_required }}'
+    args_properties_summary: '{{ args_properties_summary }}'
+    capabilities: '{{ capabilities }}'
+    revertible: '{{ revertible }}'
+    reverse_pattern: '{{ reverse_pattern }}'
+  user_request: '{{ user_request }}'
 footer:
-  instruction: "ORA produci il JSON per {{ name }}. SOLO JSON."
+  instruction: Produci ora il solo oggetto JSON con tests per {{ name }}.

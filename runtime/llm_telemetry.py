@@ -37,6 +37,8 @@ _current_attempt_sink: ContextVar[Callable[[dict], None] | None] = ContextVar(
     "metnos_llm_attempt_sink", default=None)
 _current_transport_sink: ContextVar[Callable[[dict], None] | None] = ContextVar(
     "metnos_llm_transport_sink", default=None)
+_current_call_counter: ContextVar[ModelCallCounter | None] = ContextVar(
+    "metnos_model_call_counter", default=None)
 
 TRANSPORT_USAGE_KEY = "_metnos_model_usage_v2"
 TRANSPORT_USAGE_SCHEMA_VERSION = "metnos.model-usage-transport/2"
@@ -51,6 +53,107 @@ def _bounded_counter(value: object) -> int | None:
     ):
         return None
     return value
+
+
+@dataclass
+class ModelCallCounter:
+    """Count started provider calls, including failed calls and child processes.
+
+    Missing child evidence is unknown, never zero. The scope carries no prompt,
+    model name, credentials or user data, and is shared with copied contexts.
+    """
+
+    _started: int = 0
+    _pending: int = 0
+    _unknown: bool = False
+    _lock: threading.Lock = field(default_factory=threading.Lock)
+
+    def mark_call_started(self) -> None:
+        with self._lock:
+            if self._started >= 10**12:
+                self._unknown = True
+            else:
+                self._started += 1
+
+    def snapshot(self) -> int | None:
+        with self._lock:
+            return None if self._unknown or self._pending else self._started
+
+
+@contextmanager
+def count_model_calls():
+    """Measure one request; unrelated concurrent requests remain separate."""
+    counter = ModelCallCounter()
+    token = _current_call_counter.set(counter)
+    try:
+        yield counter
+    finally:
+        _current_call_counter.reset(token)
+
+
+def current_model_calls() -> int | None:
+    counter = _current_call_counter.get()
+    return counter.snapshot() if counter is not None else None
+
+
+@dataclass
+class ChildModelCalls:
+    counter: ModelCallCounter
+    finished: bool = False
+
+    def finish(self, result: object, *, retain: bool) -> None:
+        envelope = result.get(TRANSPORT_USAGE_KEY) if isinstance(result, dict) else None
+        try:
+            _, _, started = _validate_transport_usage(envelope)
+        except ValueError:
+            started = None
+        with self.counter._lock:
+            if self.finished:
+                self.counter._unknown = True
+                return
+            self.finished = True
+            self.counter._pending -= 1
+            if started is None or self.counter._started > 10**12 - started:
+                self.counter._unknown = True
+            else:
+                self.counter._started += started
+        if not retain and isinstance(result, dict):
+            result.pop(TRANSPORT_USAGE_KEY, None)
+
+
+def prepare_child_model_calls(env: dict) -> ChildModelCalls | None:
+    """Request the existing bounded usage envelope before dispatching a child."""
+    counter = _current_call_counter.get()
+    if counter is None:
+        return None
+    env["METNOS_CAPTURE_MODEL_USAGE"] = "1"
+    with counter._lock:
+        counter._pending += 1
+    return ChildModelCalls(counter)
+
+
+def _validate_transport_usage(value: object) -> tuple[list[dict], int, int]:
+    if not isinstance(value, dict) or set(value) != {
+        "schema_version", "records", "dropped", "calls_started",
+    }:
+        raise ValueError("model usage transport envelope is invalid")
+    records = value.get("records")
+    dropped = _bounded_counter(value.get("dropped"))
+    calls_started = _bounded_counter(value.get("calls_started"))
+    if (
+        value.get("schema_version") != TRANSPORT_USAGE_SCHEMA_VERSION
+        or not isinstance(records, list) or len(records) > 256
+        or dropped is None or calls_started is None
+        or calls_started < len(records) + dropped
+    ):
+        raise ValueError("model usage transport envelope is invalid")
+    expected = {
+        "schema_version", "provider", "model_digest", "tier", "kind",
+        "in_tokens", "out_tokens", "latency_ms", "cost_micros",
+    }
+    if any(not isinstance(raw, dict) or set(raw) != expected for raw in records):
+        raise ValueError("model usage transport record is invalid")
+    return records, dropped, calls_started
 
 
 def _durable_label(
@@ -149,32 +252,7 @@ class BoundedUsageSink(_BoundedUsageBuffer):
             for item in identities.values()
         ):
             raise ValueError("LLM attempt context identities are invalid")
-        if not isinstance(value, dict) or set(value) != {
-            "schema_version", "records", "dropped", "calls_started",
-        }:
-            raise ValueError("model usage transport envelope is invalid")
-        records = value.get("records")
-        dropped = value.get("dropped")
-        calls_started = value.get("calls_started")
-        if (
-            value.get("schema_version") != TRANSPORT_USAGE_SCHEMA_VERSION
-            or not isinstance(records, list)
-            or len(records) > 256
-            or isinstance(dropped, bool)
-            or not isinstance(dropped, int)
-            or not 0 <= dropped <= 10**12
-            or isinstance(calls_started, bool)
-            or not isinstance(calls_started, int)
-            or not 0 <= calls_started <= 10**12
-            or calls_started < len(records) + dropped
-        ):
-            raise ValueError("model usage transport envelope is invalid")
-        expected = {
-            "schema_version", "provider", "model_digest", "tier", "kind",
-            "in_tokens", "out_tokens", "latency_ms", "cost_micros",
-        }
-        if any(not isinstance(raw, dict) or set(raw) != expected for raw in records):
-            raise ValueError("model usage transport record is invalid")
+        records, dropped, calls_started = _validate_transport_usage(value)
         with self._lock:
             if self._calls_started > 10**12 - calls_started:
                 raise ValueError("model usage call counter overflows")
@@ -314,7 +392,8 @@ def transport_usage_context(sink: Callable[[dict], None]):
 def mark_call_started() -> None:
     """Mark a model transport attempt without recording prompt content."""
 
-    for sink in (_current_attempt_sink.get(), _current_transport_sink.get()):
+    for sink in (_current_attempt_sink.get(), _current_transport_sink.get(),
+                 _current_call_counter.get()):
         marker = getattr(sink, "mark_call_started", None)
         if callable(marker):
             try:

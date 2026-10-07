@@ -21,6 +21,7 @@ import json
 import os
 import stat
 import time
+import uuid
 from pathlib import Path
 from typing import Mapping
 
@@ -363,7 +364,7 @@ def _unlink_plain_file(path: Path) -> None:
     _assert_parent_identity(parent, parent_before)
 
 
-def append_jsonl(path, records, *, fsync: bool = True) -> Path:
+def append_jsonl(path, records, *, fsync: bool = True, exclusive: bool = False) -> Path:
     """Appende uno o più record (dict o lista di dict) come righe JSONL a `path`.
 
     Crea la dir se manca. Ritorna il Path scritto. NON cattura le OSError: il
@@ -376,12 +377,13 @@ def append_jsonl(path, records, *, fsync: bool = True) -> Path:
          + "\n").encode("utf-8")
         for rec in records
     )
-    if not payload:
+    if not payload and not exclusive:
         return Path(path)
     p = _absolute(path)
     opened = _open_plain_file(
         p,
-        os.O_CREAT | os.O_APPEND | os.O_WRONLY | getattr(os, "O_BINARY", 0),
+        os.O_CREAT | os.O_APPEND | os.O_WRONLY | getattr(os, "O_BINARY", 0)
+        | (os.O_EXCL if exclusive else 0),
         0o600,
     )
     try:
@@ -394,6 +396,14 @@ def append_jsonl(path, records, *, fsync: bool = True) -> Path:
     finally:
         os.close(opened.descriptor)
     return p
+
+
+def snapshot_jsonl(directory, prefix: str, records) -> Path:
+    """Create a distinct audit snapshot; never replace an existing record."""
+    if not prefix or any(c not in "abcdefghijklmnopqrstuvwxyz0123456789_-" for c in prefix):
+        raise ValueError("invalid audit snapshot prefix")
+    path = Path(directory) / f"{prefix}_{time.time_ns()}_{uuid.uuid4().hex}.jsonl"
+    return append_jsonl(path, records, exclusive=True)
 
 
 def append_unique_jsonl(
@@ -510,7 +520,7 @@ def append_bounded_jsonl(
     records,
     *,
     max_bytes: int,
-    backup_count: int,
+    backup_count: int | None,
     mode: int = 0o600,
     fsync: bool = True,
 ) -> Path:
@@ -519,10 +529,13 @@ def append_bounded_jsonl(
     A stable sidecar lock serializes the size check, rename and append across
     processes.  At most ``backup_count`` complete generations are retained;
     the current file may exceed ``max_bytes`` only by one indivisible record.
-    This is for telemetry/audit history, never for state stores whose readers
+    With ``backup_count=None``, rotate to distinct retained segments instead
+    of removing history. F6 governs their eventual collection; existing numbered
+    backups remain untouched. The size limit applies to each segment, not total
+    disk usage. This is for telemetry/audit history, never for state stores whose readers
     require every historical row in one file.
     """
-    if max_bytes < 1 or backup_count < 1:
+    if max_bytes < 1 or (backup_count is not None and backup_count < 1):
         raise ValueError("max_bytes and backup_count must be positive")
     if isinstance(records, dict):
         records = (records,)
@@ -550,22 +563,33 @@ def append_bounded_jsonl(
         current = _plain_file_status(p, allow_missing=True)
         current_size = current.st_size if current is not None else 0
         if current_size and current_size + len(payload) > max_bytes:
-            # Validate the complete mutable namespace before the first rename.
-            for index in range(1, backup_count + 1):
-                _plain_file_status(
-                    p.with_name(f"{p.name}.{index}"),
-                    allow_missing=True,
-                )
-            oldest = p.with_name(f"{p.name}.{backup_count}")
-            _unlink_plain_file(oldest)
-            for index in range(backup_count - 1, 0, -1):
-                source = p.with_name(f"{p.name}.{index}")
-                if _plain_file_status(source, allow_missing=True) is not None:
-                    _replace_plain_file(
-                        source,
-                        p.with_name(f"{p.name}.{index + 1}"),
+            if backup_count is None:
+                # Reserve a unique plain entry before moving any old evidence.
+                # A collision fails closed; a crash can leave an empty reservation
+                # or a complete old segment, never overwrite an earlier segment.
+                archive = p.with_name(f"{p.name}.{time.time_ns()}_{uuid.uuid4().hex}")
+                reserved = _open_plain_file(
+                    archive, os.O_CREAT | os.O_EXCL | os.O_WRONLY
+                    | getattr(os, "O_BINARY", 0), mode)
+                os.close(reserved.descriptor)
+                _replace_plain_file(p, archive)
+            else:
+                # Validate the complete mutable namespace before the first rename.
+                for index in range(1, backup_count + 1):
+                    _plain_file_status(
+                        p.with_name(f"{p.name}.{index}"),
+                        allow_missing=True,
                     )
-            _replace_plain_file(p, p.with_name(f"{p.name}.1"))
+                oldest = p.with_name(f"{p.name}.{backup_count}")
+                _unlink_plain_file(oldest)
+                for index in range(backup_count - 1, 0, -1):
+                    source = p.with_name(f"{p.name}.{index}")
+                    if _plain_file_status(source, allow_missing=True) is not None:
+                        _replace_plain_file(
+                            source,
+                            p.with_name(f"{p.name}.{index + 1}"),
+                        )
+                _replace_plain_file(p, p.with_name(f"{p.name}.1"))
             _assert_open_identity(lock)
 
         out = _open_plain_file(

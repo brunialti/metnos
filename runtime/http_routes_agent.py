@@ -1311,6 +1311,11 @@ def _decorate_dialog_markers(message: str | None, admin_key: str) -> str:
     return _DIALOG_FORM_MARKER_RE.sub(_replace, text)
 
 
+def _step_cloud(result) -> bool:
+    """A step whose executor reported decisions sent to a cloud model."""
+    return isinstance(result, dict) and bool(result.get("cloud_llm_calls"))
+
+
 def _build_final_event_payload(log_obj, admin_key: str) -> dict:
     """Payload unico dell'evento `final` (SSE inline + event-log resumable).
     Condiviso da `_turn_sse` e `turn_submit`: ogni path espone gli stessi
@@ -1325,7 +1330,8 @@ def _build_final_event_payload(log_obj, admin_key: str) -> dict:
         if getattr(s, "error", None) == "auto_final_on_duplicate":
             continue
         res = s.result if isinstance(s.result, dict) else {}
-        path_summary.append({"tool": tool, "ok": bool(res.get("ok", True))})
+        path_summary.append({"tool": tool, "ok": bool(res.get("ok", True)),
+                             "cloud": _step_cloud(res)})
     final_message = _decorate_dialog_markers(log_obj.final_message, admin_key)
     return {
         "turn_id": log_obj.turn_id,
@@ -1755,6 +1761,22 @@ async def _preprocess_turn(request: web.Request):
 
 
 async def turn(request: web.Request) -> web.Response:
+    from llm_telemetry import count_model_calls
+
+    # Include preprocessing and the copied worker context. The native turn
+    # record also takes a snapshot, including for streamed responses.
+    with count_model_calls() as calls:
+        response = await _turn_with_usage(request)
+        if (isinstance(response, web.Response)
+                and response.content_type == "application/json"):
+            payload = json.loads(response.text)
+            if isinstance(payload, dict):
+                payload["model_calls"] = calls.snapshot()
+                response.text = json.dumps(payload, ensure_ascii=False)
+        return response
+
+
+async def _turn_with_usage(request: web.Request) -> web.Response:
     """POST /agent/turn
 
     Body shapes (alternativi, NON shim retro-compat — the design guide §7.1):
@@ -1891,7 +1913,8 @@ async def _turn_json(request: web.Request, agent_runtime, query: str, actor: str
             {"step": s.step_num, "tool": s.chosen_tool,
              "ok": bool(s.result and s.result.get("ok", True)) if isinstance(s.result, dict) else None,
              "error_class": s.result.get("error_class")
-             if isinstance(s.result, dict) else None}
+             if isinstance(s.result, dict) else None,
+             "cloud": _step_cloud(s.result)}
             for s in log_obj.steps
         ],
         "conversation_id": conv_id,
@@ -2044,7 +2067,18 @@ def _dialog_lifecycle(state: dict | None) -> str:
         callback = state.get("on_complete") or {}
         if (callback.get("type") == "resume_frozen_plan"
                 and not isinstance(state.get("callback_receipt"), dict)):
+            # Its native journal owns recovery; a returned progress message is
+            # not a terminal receipt and the HTTP worker may already be idle.
             return "processing"
+        if state.get("http_callback_process"):
+            if (isinstance(state.get("http_callback_receipt"), dict)
+                    or isinstance(state.get("callback_receipt"), dict)):
+                return "completed"
+            from turn_events import TurnEventLog
+            activity = TurnEventLog.get().snapshot("dialog:" + state["dialog_id"])
+            return "processing" if activity and not activity["closed"] else "interrupted"
+        if callback and not isinstance(state.get("callback_receipt"), dict):
+            return "interrupted"
         return "completed"
     import dialog_pending
     if dialog_pending.is_expired(state):
@@ -2065,6 +2099,8 @@ def _dialog_terminal_response(dialog_id: str, state: str,
         message = message or _msg("MSG_ORCH_DIALOG_DONE")
     elif state == "processing":
         message = _msg("MSG_GATE_IN_CORSO")
+    elif state == "interrupted":
+        message = _msg("MSG_DIALOG_RESUME_UNCERTAIN")
     else:
         message = _msg("MSG_DIALOG_EXPIRED")
     import html as _html
@@ -2077,13 +2113,19 @@ def _dialog_terminal_response(dialog_id: str, state: str,
         "state": state,
         "dialog_id": dialog_id,
     }, ensure_ascii=False)
+    standalone_poll = (
+        "if(parent===window)setTimeout(()=>{const u=new URL(location.href);"
+        "u.pathname=u.pathname.replace(/\\/(submit|cancel)$/, '/form');"
+        "location.replace(u.href);},2000);"
+    ) if state == "processing" else ""
     body = (
         f"<!doctype html><html lang=\"{ui_lang}\"><meta charset=utf-8>"
         f"<div data-dialog-state=\"{state}\">"
         f"<p>{_html.escape(message)}</p>"
         f"<p>{dialog_label} <code>{_html.escape(dialog_id)}</code></p>"
         "</div>"
-        f"<script>parent.postMessage({terminal_event},location.origin);</script></html>"
+        f"<script>parent.postMessage({terminal_event},parent.location.origin);"
+        f"{standalone_poll}</script></html>"
     )
     return web.Response(
         text=body, status=(200 if state == "completed" else (
@@ -2141,7 +2183,9 @@ async def dialog_form(request: web.Request) -> web.Response:
         return access_error
     lifecycle = _dialog_lifecycle(state)
     if lifecycle != "active":
-        if lifecycle in {"completed", "processing"}:
+        if lifecycle == "completed":
+            return _dialog_completion_response(state, app_get(request.app, APP_ADMIN_KEY, ""))
+        if lifecycle in {"processing", "interrupted"}:
             return _dialog_terminal_response(dialog_id, lifecycle, state)
         return web.json_response(
             {"ok": False, "error": "dialog_not_active",
@@ -2218,6 +2262,80 @@ async def dialog_browser(request: web.Request) -> web.Response:
     return web.json_response(result, headers=headers)
 
 
+_DIALOG_CALLBACK_TASKS: set[asyncio.Task] = set()
+
+
+def _start_dialog_callback(request, sender_id, dialog_id, state, reservation):
+    """Detach delivery, preserving bounded admission and actual activity."""
+    import dialog_pending
+    from http_auth import external_request_scheme
+    from turn_events import TurnEventLog
+    activity_id = "dialog:" + dialog_id
+    events = TurnEventLog.get()
+    # Internal activity only: the callback supplies the real user-visible turn.
+    events.create(activity_id, conversation_id=activity_id,
+                  actor="dialog-worker", owner_user_id="dialog-worker")
+    owner = str(state.get("owner_user_id") or "")
+    origin = f"{external_request_scheme(request)}://{request.host}"
+    submitted = False
+    native_recovery = (state.get("on_complete") or {}).get("type") == "resume_frozen_plan"
+
+    def persist_error():
+        if native_recovery:
+            return  # Its existing journal recovers even a crash before claim.
+        dialog_pending.complete_http_callback(sender_id, dialog_id, {
+            "text": _msg("MSG_DIALOG_RESUME_UNCERTAIN"),
+        }, owner_user_id=owner)
+
+    def worker():
+        try:
+            from orchestration import process_completion_callback, _completion_receipt
+            try:
+                result = process_completion_callback(
+                    sender_id, dialog_id, actor=state.get("actor") or "host",
+                    channel=str(state.get("channel") or "http"),
+                    owner_user_id=owner, host_override=origin)
+            except Exception:
+                log.exception("dialog callback failed dialog=%s", dialog_id)
+                persist_error()
+            else:
+                current = dialog_pending.load_pending(
+                    sender_id, dialog_id, owner_user_id=owner) or {}
+                if native_recovery or isinstance(current.get("callback_receipt"), dict):
+                    return  # Replay the native receipt when it is committed.
+                if not dialog_pending.complete_http_callback(
+                        sender_id, dialog_id, _completion_receipt(result),
+                        owner_user_id=owner):
+                    raise RuntimeError("dialog result was not persisted")
+        finally:
+            # Cancellation of an asyncio waiter cannot close a running thread.
+            events.close(activity_id)
+
+    async def run():
+        nonlocal submitted
+        submitted = True
+        try:
+            await _run_turn_reserved(request, reservation, worker)
+        except Exception:
+            log.exception("dialog worker failed dialog=%s", dialog_id)
+            # A closed activity without a receipt remains visibly interrupted.
+            events.close(activity_id)
+
+    def finished(task):
+        _DIALOG_CALLBACK_TASKS.discard(task)
+        if not submitted:
+            try:
+                persist_error()
+            finally:
+                if reservation is not None:
+                    _turn_pool(request).release(reservation)
+                events.close(activity_id)
+
+    task = asyncio.create_task(run())
+    _DIALOG_CALLBACK_TASKS.add(task)
+    task.add_done_callback(finished)
+
+
 async def dialog_submit(request: web.Request) -> web.Response:
     """POST /agent/dialog/<dialog_id>/submit — riceve i form fields.
 
@@ -2235,7 +2353,9 @@ async def dialog_submit(request: web.Request) -> web.Response:
         return access_error
     lifecycle = _dialog_lifecycle(state)
     if lifecycle != "active":
-        if lifecycle in {"completed", "processing"}:
+        if lifecycle == "completed":
+            return _dialog_completion_response(state, app_get(request.app, APP_ADMIN_KEY, ""))
+        if lifecycle in {"processing", "interrupted"}:
             return _dialog_terminal_response(dialog_id, lifecycle, state)
         return web.json_response(
             {"ok": False, "error": "dialog_not_active",
@@ -2312,91 +2432,68 @@ async def dialog_submit(request: web.Request) -> web.Response:
     submission_source = (
         "http_form_owner" if str(request.get("authenticated_user_id") or "")
         == str(state.get("owner_user_id") or "") else "http_form_capability")
-    for step in dialog:
-        var = step.get("var")
-        if var in values and values[var] is not None:
-            consumed = dialog_pending.consume_pending_step(
-                sender_id, dialog_id, var, values[var],
-                owner_user_id=str(state.get("owner_user_id") or ""),
-                source=submission_source,
-            )
-        else:
-            # Optional skipped: avanza con None per coerenza idx.
-            consumed = dialog_pending.consume_pending_step(
-                sender_id, dialog_id, var, None,
-                owner_user_id=str(state.get("owner_user_id") or ""),
-                source=submission_source,
-            )
-        if not consumed.get("ok"):
-            return web.json_response(
-                {"ok": False, "error": consumed.get("error") or "dialog_conflict",
-                 "dialog_id": dialog_id, "state": "conflict"},
-                status=409,
-                headers={"Cache-Control": "no-store",
-                         "X-Metnos-Dialog-State": "conflict"},
-            )
-
-    # ADR 0091: dopo aver consumato tutti gli step, processa il callback
-    # `on_complete` se presente nel state (es. save_credentials_and_resume).
-    # process_completion_callback ritorna sempre un messaggio user-facing.
-    final_state = dialog_pending.load_pending(
-        sender_id, dialog_id,
-        owner_user_id=str(state.get("owner_user_id") or "")) or {}
-    on_complete = final_state.get("on_complete")
-    actor = final_state.get("actor") or "host"
-    # turn_id del turno che ha emesso il dialog → la bolla risultato in chat
-    # riaggancia i badge feedback ✓/✗ (chat.html li mostra solo con turn_id).
-    origin_turn_id = final_state.get("origin_turn_id") or ""
-    completion_message = ""
-    completion_attachments = []
-    completion_meta = {}
-    if on_complete:
+    if not dialog:
+        return _error(400, "invalid_form", _msg("ERR_CHAT_DIALOG_INVALID_FORM"))
+    reservation = None
+    dispatched = False
+    if state.get("on_complete"):
         try:
-            # Usa lo scheme attestato dal collegamento diretto o da un reverse
-            # proxy fidato per costruire l'origine restituita al browser.
-            from http_auth import external_request_scheme
-            xfp = external_request_scheme(request)
-            origin_override = f"{xfp}://{request.host}"
-            from orchestration import process_completion_callback
-            _cr = await asyncio.to_thread(
-                process_completion_callback,
-                sender_id, dialog_id, actor=actor,
-                channel=str(final_state.get("channel") or "http"),
-                owner_user_id=str(final_state.get("owner_user_id") or ""),
-                host_override=origin_override,
-            )
-            completion_message = _cr.text
-            # Bug zip-line (5/7): il resume full-turn porta attachments e meta
-            # del NUOVO turno — la bolla in chat deve avere gallery + status
-            # line + badge sul turno REALE (non solo testo nudo).
-            completion_attachments = []
-            if _cr.attachments:
-                try:
-                    from types import SimpleNamespace as _SN
-                    completion_attachments = _enrich_attachments(
-                        _SN(attachments=_cr.attachments,
-                            turn_id=_cr.turn_id or origin_turn_id or ""),
-                        app_get(request.app, APP_ADMIN_KEY, ""))
-                except Exception as _ea:
-                    log.warning("dialog_submit: enrich attachments noop: %r", _ea)
-            completion_meta = {
-                "turn_id": _cr.turn_id or "",
-                "total_ms": _cr.total_ms or 0,
-                "target_device": _cr.target_device or "",
-                "gallery_url": _cr.gallery_url or "",
-                "n_total_matches": _cr.n_total_matches or 0,
-                "path": _cr.path or [],
-            }
-        except (ImportError, RuntimeError) as ex:
-            log.exception("dialog_submit: process_completion_callback fallito")
-            completion_message = _msg(
-                "ERR_CHAT_DIALOG_CALLBACK_FAILED",
-                error=f"{type(ex).__name__}: {ex}",
-            )
+            reservation = await _reserve_turn(request, str(state.get("owner_user_id") or ""))
+        except TurnPoolBusy:
+            return _turn_busy_response()
+    try:
+        for step in dialog:
+            var = step.get("var")
+            if var in values and values[var] is not None:
+                consumed = dialog_pending.consume_pending_step(
+                    sender_id, dialog_id, var, values[var],
+                    owner_user_id=str(state.get("owner_user_id") or ""),
+                    source=submission_source,
+                )
+            else:
+                # Optional skipped: avanza con None per coerenza idx.
+                consumed = dialog_pending.consume_pending_step(
+                    sender_id, dialog_id, var, None,
+                    owner_user_id=str(state.get("owner_user_id") or ""),
+                    source=submission_source,
+                )
+            if not consumed.get("ok"):
+                return web.json_response(
+                    {"ok": False, "error": consumed.get("error") or "dialog_conflict",
+                     "dialog_id": dialog_id, "state": "conflict"},
+                    status=409,
+                    headers={"Cache-Control": "no-store",
+                             "X-Metnos-Dialog-State": "conflict"},
+                )
 
+        final_state = consumed["state"]
+        if final_state.get("on_complete"):
+            _start_dialog_callback(request, sender_id, dialog_id, final_state, reservation)
+            dispatched = True
+            return _dialog_terminal_response(dialog_id, "processing", final_state)
+        return _dialog_completion_response(final_state, app_get(request.app, APP_ADMIN_KEY, ""))
+    finally:
+        if reservation is not None and not dispatched:
+            _turn_pool(request).release(reservation)
+
+
+def _dialog_completion_response(state: dict, admin_key: str) -> web.Response:
+    """Replay the complete result, rebuilding short-lived media capabilities."""
+    receipt = state.get("callback_receipt") or state.get("http_callback_receipt") or {}
+    completion_message = str(receipt.get("text") or "")
+    origin_turn_id = state.get("origin_turn_id") or ""
+    completion_meta = {key: receipt[key] for key in (
+        "turn_id", "total_ms", "target_device", "gallery_url", "n_total_matches", "path"
+    ) if key in receipt}
+    completion_attachments = []
+    if receipt.get("attachments"):
+        from types import SimpleNamespace
+        completion_attachments = _enrich_attachments(SimpleNamespace(
+            attachments=receipt["attachments"],
+            turn_id=receipt.get("turn_id") or origin_turn_id), admin_key)
     if completion_message:
         completion_message = _decorate_dialog_markers(
-            completion_message, app_get(request.app, APP_ADMIN_KEY, ""))
+            completion_message, admin_key)
         # Marker strutturato `__REDIRECT__:<url>\n<msg>` (core, general):
         # il callback chiede una browser navigation diretta. Estraiamo
         # l'URL, includiamo `data-redirect-url` cosi' che lo script JS
@@ -2474,9 +2571,20 @@ async def dialog_submit(request: web.Request) -> web.Response:
             f"<p>{values_saved} "
             f"<a href=\"/\">{return_label}</a></p>"
         )
+    body_html += (
+        '<script>const el=document.querySelector("[data-redirect-url], [data-completion-text]");'
+        'const decode=(v)=>v?JSON.parse(new TextDecoder().decode('
+        'Uint8Array.from(atob(v),c=>c.charCodeAt(0)))):null;'
+        'parent.postMessage({type:"metnos.dialog.done",'
+        'redirect_url:el?.dataset.redirectUrl||"",'
+        'completion_text:el?.dataset.completionText||"",'
+        'turn_id:el?.dataset.turnId||"",'
+        'attachments:decode(el?.dataset.attachmentsB64),'
+        'turn_meta:decode(el?.dataset.turnMetaB64)},parent.location.origin);</script>'
+    )
     return web.Response(
         text=body_html, content_type="text/html",
-        headers={"Cache-Control": "no-store",
+        headers={"X-Metnos-Dialog-State": "completed", "Cache-Control": "no-store",
                  "Referrer-Policy": "no-referrer",
                  "Content-Security-Policy": "frame-ancestors 'self'"},
     )
@@ -3729,7 +3837,8 @@ async def turn_status(request: web.Request) -> web.Response:
                                  "error_class": (s.get("result") or {}).get(
                                      "error_class")
                                  if isinstance(s.get("result"), dict)
-                                 else None}
+                                 else None,
+                                 "cloud": _step_cloud(s.get("result"))}
                                 for s in d.get("steps", [])
                             ],
                         })
@@ -3822,7 +3931,8 @@ async def turns_recent(request: web.Request) -> web.Response:
                          if isinstance(s.get("result"), dict) else None,
                          "error_class": (s.get("result") or {}).get(
                              "error_class")
-                         if isinstance(s.get("result"), dict) else None}
+                         if isinstance(s.get("result"), dict) else None,
+                         "cloud": _step_cloud(s.get("result"))}
                         for s in (t.get("steps") or [])
                     ]
                     out.append({

@@ -30,6 +30,10 @@
  <p>Checking a new candidate does not create a catalog entry. A rejected
  candidate therefore cannot leave an incomplete function that blocks the
  next update.</p>
+ <p>HTTP pages read the catalog through the shared cache, which tracks
+ signed revisions and lifecycle changes. Admissions and retirements become
+ visible without a server restart; a transient failure cannot freeze later
+ reads. Preexercise functions remain excluded from ordinary selection.</p>
  <p>Property and semantic checks run outside the catalog publication lock.
  The short publication step checks the candidate and reserves its name
  against the signed identities already installed. It does not recheck the
@@ -122,6 +126,14 @@
  a repeated turn cannot count twice. Closing a known defect requires its
  repair, verification and independent review. This record is implemented
  in development, but is not an F5 certificate or an activation switch.</p>
+ <p>The candidate under test can transfer the complete test record between
+ installations as signed evidence. The destination must explicitly trust
+ the origin key and recheck every result with the same installed verifier.
+ Code, prompts and applicable conditions must match; admissions and
+ qualification remain local. An unchanged successor retains its predecessor
+ certificate as historical evidence but requires a new local certificate.
+ Export and import do not activate F5. Automated checks pass; full native
+ acceptance of this path remains pending.</p>
  <p>The final checks focus on Birth, generations, caches, feedback and recovery,
  rather than repeating unchanged mail or calendar tests. Integration is tested
  in isolation first; certification must succeed before production activation.</p>
@@ -161,6 +173,11 @@
  <p>This cleanup removes distribution code only. It does not remove signed
  receipts, personal data, models or information still needed for migration.
  Fewer program copies do not mean fewer safety checks.</p>
+ <p><strong>Inventory — candidate under test.</strong> Reserved temporary
+ copies used to prepare and recover a publication are not installed functions
+ and must not create false catalog duplicates. Inventory preserves these
+ copies and continues to report real duplicates; only verified publication
+ makes a function available.</p>
 </main>
 </body>
 </html>

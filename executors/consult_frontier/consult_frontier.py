@@ -748,6 +748,7 @@ def _tool_loop_once(spec: dict, system: str, user: str,
         # Esegui i tool calls richiesti. Aggiorniamo history nel formato
         # Anthropic: assistant turn con i tool_use blocks, poi user turn
         # con i tool_result blocks.
+        history.append({"role": "user", "content": current_user})
         assistant_blocks = [
             {"type": "text", "text": getattr(res, "text", "") or ""}
         ] if getattr(res, "text", "") else []
@@ -757,7 +758,10 @@ def _tool_loop_once(spec: dict, system: str, user: str,
                 "id": tc.call_id, "name": tc.name,
                 "input": tc.arguments or {},
             })
-        history.append({"role": "assistant", "content": assistant_blocks})
+        # Anthropic thinking contains signed blocks required on the next
+        # tool round. Keep the provider's native content intact in memory.
+        history.append({"role": "assistant", "content":
+                        getattr(res, "content_blocks", None) or assistant_blocks})
 
         user_blocks = []
         for tc in tool_calls:

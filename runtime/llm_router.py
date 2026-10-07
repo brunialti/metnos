@@ -213,15 +213,20 @@ class _TierBoundProvider:
             if key in self._policy:
                 resolved[key] = self._policy[key]
 
-        # ``reasoning_budget`` è un parametro di llama.cpp. Non inviarlo a
-        # provider che non lo supportano e non renderlo un override implicito
-        # quando il thinking è spento.
+        provider_name = getattr(self._provider, "name", "")
+        # Each adapter translates only its own protocol parameters. Disabled
+        # thinking never sends a token budget or an active effort level.
         if (
-                getattr(self._provider, "name", "") == "llamacpp"
+                provider_name == "llamacpp"
                 and resolved.get("think") is True
         ):
             resolved["reasoning_budget"] = max(
                 1, int(self._policy.get("reasoning_budget") or 0))
+        if provider_name in {"openai", "anthropic"} and resolved.get("think") is True:
+            if "reasoning_effort" in self._policy:
+                resolved["reasoning_effort"] = self._policy["reasoning_effort"]
+            if provider_name == "anthropic":
+                resolved["reasoning_budget"] = int(self._policy.get("reasoning_budget") or 0)
         return resolved
 
     def chat(self, system, user, **kwargs):
@@ -342,7 +347,7 @@ def tier_config_document(
 _TIERS_FILE_CACHE: dict = {"key": None, "tiers": None}
 
 INFERENCE_POLICY_KEYS = (
-    "think", "temperature", "reasoning_budget",
+    "think", "temperature", "reasoning_budget", "reasoning_effort",
 )
 
 

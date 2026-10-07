@@ -3,10 +3,10 @@ role: synt_signature
 tier: middle
 lang: en
 style: definitional
-version: 1
+version: 3
 owner: roberto
-updated: 2026-05-11
-sha_prev: 0f7cfe41
+updated: 2026-09-27
+sha_prev: 3bea9b88
 --- #}
 YOU are phase 2 (SIGNATURE) of synt-multistage.
 
@@ -33,6 +33,10 @@ STYLE RULES for args description fields (the design guide §6 + §7.12):
 - IT/EN PARALLEL (not identical-translated).
 - NO REPETITIONS between top-level description and args.
 
+Lists supplied directly by the caller use a named array argument with a
+complete items schema. Use from_step only for data from a previous step;
+do not invent a preceding step for a standalone computation.
+
 STRICT RULES:
 1. For executors receiving a list from a previous step
    (entries, items, results, ...): DO NOT expose `entries: array` in the
@@ -50,7 +54,10 @@ STRICT RULES:
    DO NOT delegate the loop to the planner (it costs ReAct steps, it does not scale).
 4. capabilities ONLY from this set: 'fs:read', 'fs:write', 'net:read',
    'net:write', 'mail:read', 'mail:send', 'channel:read', 'channel:write',
-   'code:exec'. Never 'fs:write' unless strictly necessary.
+   'code:exec', 'compute:pure'. Never 'fs:write' unless strictly necessary.
+   Use only compute:pure with an empty hint array for deterministic in-memory
+   computation without external I/O. Running the executor's own Python function
+   does not require code:exec; that permission is for executing shell commands.
 5. reverse_pattern:
    - if revertible=true → MUST be one of: 'swap_src_dst',
      'delete_created_dirs', 'delete_created_paths', 'restore_blob_backup'.

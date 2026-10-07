@@ -17,11 +17,13 @@ import urllib.error
 import urllib.request
 
 from playwright_sidecar import contract as _contract
+from playwright_sidecar import login_navigation as _navigation
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8771
 DEFAULT_TIMEOUT_S = 90.0
 LOGIN_TIMEOUT_S = 150.0
+ACTION_TIMEOUT_S = _navigation.COLLECTION_TIMEOUT_S + 30.0
 
 
 def _local_contract_failure() -> dict | None:
@@ -167,6 +169,7 @@ def session_act(*, session_id: str, owner: str, action: str,
                 goal_query: str | None = None,
                 done_when: str | None = None,
                 scope: str | None = None, **kw) -> dict:
+    kw.setdefault("timeout_s", ACTION_TIMEOUT_S)
     return _post("/session/act", {
         "session_id": session_id, "owner": owner, "action": action,
         "value_ref": value_ref, "approval_token": approval_token,

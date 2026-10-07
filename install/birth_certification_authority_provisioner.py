@@ -61,46 +61,56 @@ def _provision_certification_at_v1(
             or any(type(key) is not bytes or len(key) != 32 for key in forbidden_public_keys)):
         raise OwnershipAuthorityError("birth_certification_authority_invalid", "key inventory")
     _directory_metadata(root, root_owned=root_owned)
+    with _provisioning_lock(root, root_owned=root_owned):
+        return _provision_certification_locked_v1(
+            root, root_owned=root_owned, forbidden_public_keys=forbidden_public_keys, crash=crash,
+        )
+
+
+def _provision_certification_locked_v1(
+    root: Path, *, root_owned: bool, forbidden_public_keys: frozenset[bytes],
+    crash: Callable[[str], None] | None = None,
+) -> CertificationPublicKeyV1:
+    """Caller holds the administrative lock, including other-key observation."""
     final = root / DIRECTORY_BASENAME_V1
     pending = root / f".{DIRECTORY_BASENAME_V1}.pending"
-    with _provisioning_lock(root, root_owned=root_owned):
-        if _path_present(final):
-            if _path_present(pending):
-                raise OwnershipAuthorityError("birth_certification_authority_recovery_required", "double transaction")
-            _directory_metadata(final, root_owned=root_owned)
-            result = _verify_pair(final, root_owned=root_owned, forbidden_public_keys=forbidden_public_keys)
-            _sync_directory(root)
-            return result
-        if not _path_present(pending):
-            pending.mkdir(mode=0o700)
-            _sync_directory(root)
-        _pending_metadata(pending, root_owned=root_owned)
-        private_path, registry_path = pending / PRIVATE_BASENAME_V1, pending / REGISTRY_BASENAME_V1
-        names = {item.name for item in pending.iterdir()}
-        allowed = {PRIVATE_BASENAME_V1, REGISTRY_BASENAME_V1}
-        allowed.update(_temporary_path(path).name for path in (private_path, registry_path))
-        if (names - allowed
-                or any(_path_present(path) and _path_present(_temporary_path(path))
-                       for path in (private_path, registry_path))
-                or ((_path_present(registry_path) or _path_present(_temporary_path(registry_path)))
-                    and not _path_present(private_path))):
-            raise OwnershipAuthorityError("birth_certification_authority_recovery_required", "pending inventory")
-        private = _load_or_create_private(private_path, root_owned=root_owned, crash=crash)
-        if private.public_key().public_bytes_raw() in forbidden_public_keys:
-            raise OwnershipAuthorityError("birth_certification_authority_key_reused")
-        if not _path_present(registry_path):
-            _write_exclusive(
-                registry_path, encode_certification_registry_v1(private.public_key()),
-                0o644, root_owned=root_owned, crash=crash,
-            )
-        _verify_pair(pending, root_owned=root_owned, forbidden_public_keys=forbidden_public_keys)
-        pending.chmod(0o755)
-        _sync_directory(pending)
-        _publish_no_replace(
-            pending, final, crash=crash, stage="after_certification_directory_rename",
-            expected_identity=_identity(pending.lstat()),
+    if _path_present(final):
+        if _path_present(pending):
+            raise OwnershipAuthorityError("birth_certification_authority_recovery_required", "double transaction")
+        _directory_metadata(final, root_owned=root_owned)
+        result = _verify_pair(final, root_owned=root_owned, forbidden_public_keys=forbidden_public_keys)
+        _sync_directory(root)
+        return result
+    if not _path_present(pending):
+        pending.mkdir(mode=0o700)
+        _sync_directory(root)
+    _pending_metadata(pending, root_owned=root_owned)
+    private_path, registry_path = pending / PRIVATE_BASENAME_V1, pending / REGISTRY_BASENAME_V1
+    names = {item.name for item in pending.iterdir()}
+    allowed = {PRIVATE_BASENAME_V1, REGISTRY_BASENAME_V1}
+    allowed.update(_temporary_path(path).name for path in (private_path, registry_path))
+    if (names - allowed
+            or any(_path_present(path) and _path_present(_temporary_path(path))
+                   for path in (private_path, registry_path))
+            or ((_path_present(registry_path) or _path_present(_temporary_path(registry_path)))
+                and not _path_present(private_path))):
+        raise OwnershipAuthorityError("birth_certification_authority_recovery_required", "pending inventory")
+    private = _load_or_create_private(private_path, root_owned=root_owned, crash=crash)
+    if private.public_key().public_bytes_raw() in forbidden_public_keys:
+        raise OwnershipAuthorityError("birth_certification_authority_key_reused")
+    if not _path_present(registry_path):
+        _write_exclusive(
+            registry_path, encode_certification_registry_v1(private.public_key()),
+            0o644, root_owned=root_owned, crash=crash,
         )
-        return _verify_pair(final, root_owned=root_owned, forbidden_public_keys=forbidden_public_keys)
+    _verify_pair(pending, root_owned=root_owned, forbidden_public_keys=forbidden_public_keys)
+    pending.chmod(0o755)
+    _sync_directory(pending)
+    _publish_no_replace(
+        pending, final, crash=crash, stage="after_certification_directory_rename",
+        expected_identity=_identity(pending.lstat()),
+    )
+    return _verify_pair(final, root_owned=root_owned, forbidden_public_keys=forbidden_public_keys)
 
 
 def provision_certification_authority_v1() -> CertificationPublicKeyV1:
@@ -111,14 +121,23 @@ def provision_certification_authority_v1() -> CertificationPublicKeyV1:
         raise OwnershipAuthorityError("birth_certification_authority_root_required")
     _root_owned_chain(DEFAULT_OWNERSHIP_ROOT_V1)
     _root_owned_chain(DEFAULT_AUTHORITY_DIRECTORY_V1)
-    owners = _load_public_at_v1(DEFAULT_AUTHORITY_DIRECTORY_V1, root_owned=True)
-    forbidden = _birth_public_keys_v1() | frozenset(
-        _registry_public_bytes(registry)
-        for registry in (owners.distribution, owners.cutover, owners.head)
-    )
-    return _provision_certification_at_v1(
-        DEFAULT_OWNERSHIP_ROOT_V1, root_owned=True, forbidden_public_keys=forbidden,
-    )
+    with _provisioning_lock(DEFAULT_OWNERSHIP_ROOT_V1, root_owned=True):
+        owners = _load_public_at_v1(DEFAULT_AUTHORITY_DIRECTORY_V1, root_owned=True)
+        forbidden = _birth_public_keys_v1() | frozenset(
+            _registry_public_bytes(registry)
+            for registry in (owners.distribution, owners.cutover, owners.head)
+        )
+        from executor_birth_retention_authority import (
+            DEFAULT_DIRECTORY_V1 as retention_directory,
+            _load_retention_history_at_v1,
+        )
+        if _path_present(retention_directory):
+            _root_owned_chain(retention_directory)
+            retention = _load_retention_history_at_v1(retention_directory, root_owned=True)
+            forbidden |= frozenset(key.public_key.public_bytes_raw() for key in retention)
+        return _provision_certification_locked_v1(
+            DEFAULT_OWNERSHIP_ROOT_V1, root_owned=True, forbidden_public_keys=forbidden,
+        )
 
 
 __all__ = ["provision_certification_authority_v1"]

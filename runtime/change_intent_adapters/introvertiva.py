@@ -58,6 +58,7 @@ def iter_introvertiva() -> Iterable[ChangeIntent]:
             SELECT sig_key, kind, state, first_seen, last_seen,
                    last_uses, n_seen, last_action
               FROM proposals_state
+             WHERE state != 'expired'
         """).fetchall()
     except sqlite3.Error:
         return

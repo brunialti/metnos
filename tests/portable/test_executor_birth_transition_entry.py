@@ -634,8 +634,10 @@ def test_closed_process_rejects_a_state_root_outside_the_signed_home(
         )
 
 
+@pytest.mark.parametrize("policy_error", [None, FileNotFoundError("polkitd"),
+                                         ValueError("conflicting rule")])
 def test_activation_uses_only_target_and_readiness_from_signed_catalog(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, policy_error,
 ) -> None:
     import executor_birth_service_catalog as catalog
 
@@ -655,18 +657,35 @@ def test_activation_uses_only_target_and_readiness_from_signed_catalog(
         lambda distribution: loaded,
     )
     calls = []
+    from install import service_control_policy
+
+    def prepare_policy(user):
+        calls.append(("policy", user))
+        if policy_error:
+            raise policy_error
+
+    monkeypatch.setattr(service_control_policy, "install", prepare_policy)
 
     def run(command, **kwargs):
         calls.append((command, kwargs))
         return subprocess.CompletedProcess(command, 0, stdout=b"", stderr=b"")
 
     monkeypatch.setattr(transition.subprocess, "run", run)
+    if policy_error:
+        with pytest.raises(transition.TransitionEntryError,
+                           match="birth_transition_service_policy_invalid"):
+            transition._activate_signed_topology_v1(
+                object(), SimpleNamespace(service_user="metnos"))
+        assert calls == [("policy", "metnos")]
+        return
     assert transition._activate_signed_topology_v1(
-        object(), SimpleNamespace(systemctl_executable="/usr/bin/systemctl"),
+        object(), SimpleNamespace(systemctl_executable="/usr/bin/systemctl",
+                                  service_user="metnos"),
     ) == {
         "target_unit": "metnos.target",
         "readiness_unit": "metnos-stack-ready.service",
     }
+    assert calls.pop(0) == ("policy", "metnos")
     assert [item[0] for item in calls] == [
         ["/usr/bin/systemctl", "start", "--", "metnos.target"],
         [

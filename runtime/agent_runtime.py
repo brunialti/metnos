@@ -305,6 +305,20 @@ def _detect_unfulfilled_mutating_intent(log) -> str:
         except Exception:
             pass
 
+    if intent_verb == "run":
+        from engine.routing_pool import explicit_invocations_covered
+
+        completed = [step.chosen_tool for step in getattr(log, "steps", []) or []
+                     if step.chosen_tool and isinstance(step.result, dict)
+                     and step.result.get("ok") is True
+                     and not step.result.get("fail_count")
+                     and not step.result.get("error")]
+        if explicit_invocations_covered(
+                getattr(log, "user_query", "") or "", completed, completed):
+            # "Run <function>" is fulfilled by that function, regardless of
+            # its canonical verb. Continue checking any other attempted effects.
+            intent_is_mutating = False
+
     # Cerca step chiamati con verbo mutating + esito. `ok=True` (qualunque
     # ok_count, anche 0) significa azione TENTATA correttamente — count=0
     # e' un esito LEGITTIMO (es. filter ha selezionato 0 spam, move ha 0
@@ -3554,11 +3568,15 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
                     "execution_context": execution_context,
                 }
                 _remote_env["METNOS_CAPTURE_MODEL_USAGE"] = "1"
+            from llm_telemetry import prepare_child_model_calls
+            _child_calls = prepare_child_model_calls(_remote_env)
             _obs = _remote.invoke_remote(
                 executor, remote_args, _target, timeout_s=timeout_s,
                 turn_id=turn_id,
                 env_injections=_remote_env or None,
                 actor=actor or "", channel=channel or "", **_remote_kwargs)
+            if _child_calls is not None:
+                _child_calls.finish(_obs, retain=execution_context is not None)
             from program_start_consent import bind_prompt
             _obs = bind_prompt(executor, _obs, device_id=str(_target))
             # Marca l'esecuzione REALE sul device: il tag/campo del turno si
@@ -3773,6 +3791,8 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
         env["METNOS_TASK_NAME"] = _scheduled_task
     _t_start = time.perf_counter()
     parsed_result = None
+    from llm_telemetry import prepare_child_model_calls
+    _child_calls = prepare_child_model_calls(env)
     if execution_context is None:
         try:
             result = subprocess.run(
@@ -3866,6 +3886,8 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
                              f"stderr: {result.stderr!r}",
                     "error_class": "non_json",
                 }
+    if _child_calls is not None:
+        _child_calls.finish(parsed_result, retain=execution_context is not None)
     # Audit log per skill imports (mini-version Fase C, ADR 0140).
     # No-op per builtin handcrafted (provenance vuoto). Fail-silent.
     try:
@@ -4265,6 +4287,9 @@ class TurnLog:
     metnos_version: str = ""
     match_source: str = ""
     durable_admission: dict | None = None
+    # Actual request-scoped provider starts; None means capture is unavailable
+    # or a dispatched child did not return its usage envelope.
+    model_calls: int | None = None
     # Lista di proposte di cap expand emerse dal turno: ogni elemento e'
     # {step_num, executor, args, used, available_total, suggested_args}.
     # Popolata in write() per i daemon channel che gestiscono dialog
@@ -5205,6 +5230,16 @@ class TurnLog:
             self.final_message = ""
         self.final_message = (block + "\n\n" + (self.final_message or "")).strip()
 
+    def _collect_cloud_notices(self):
+        """Tell the user when a step sent decisions to a cloud model.
+
+        Executors report `cloud_llm_calls` for requests that left the host;
+        the notice names the count, never the content that was sent.
+        """
+        calls = sum(int(s.result.get("cloud_llm_calls") or 0)
+                    for s in self.steps if isinstance(s.result, dict))
+        return [msg("MSG_CLOUD_MODEL_USED", calls=calls)] if calls else []
+
     def _collect_truncation_notices(self):
         """Scansiona le observation degli step per estrarre cap/truncation
         non dichiarati. Convenzione: un executor che colpisce un cap aggiunge
@@ -5291,7 +5326,8 @@ class TurnLog:
                 used = res.get("cap_value") or res.get("used")
                 what = msg("MSG_TRUNCATED_DEFAULT_WHAT")
             else:
-                used = res.get("used") or res.get("ok_count") or res.get("count")
+                used = (res["used"] if "used" in res else
+                        res.get("ok_count") or res.get("count"))
                 available = res.get("available_total")
             # Se extract_entries tocca il token cap, la cardinalità reale è
             # ignota: available_total e used descrivono entrambi i record già
@@ -5315,9 +5351,15 @@ class TurnLog:
                                    available=available, what=what, used=used))
             elif used:
                 notices.append(msg("MSG_TRUNCATED_NO_TOTAL", used=used, what=what))
+            else:
+                # Search budgets may stop before record cardinality is known.
+                # Never present action counts as records or invent a total.
+                notices.append(msg("MSG_TRUNCATED_UNKNOWN"))
         return notices
 
     def write(self):
+        from llm_telemetry import current_model_calls
+        self.model_calls = current_model_calls()
         if not self.metnos_version:
             try:
                 from __version__ import __version__ as _product_version
@@ -5705,6 +5747,12 @@ class TurnLog:
                     _fallback = ""
             if _fallback:
                 self.final_message = _fallback
+        # Requests may incur cloud usage even when the turn fails. Append
+        # after all final-message replacements, for every terminal outcome.
+        for notice in self._collect_cloud_notices():
+            if notice and notice not in (self.final_message or ""):
+                self.final_message = ((self.final_message or "").rstrip()
+                                     + "\n\n" + notice).strip()
         # Footer "elapsed: Xs · chiuso HH:MM:SS" rimosso 7/5/2026 notte
         # (Roberto: ridondante con il badge meta della UI HTTP, valore
         # gia' presente nel jsonl come ts_end-ts_start per telemetria).
@@ -8202,6 +8250,7 @@ def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, progress=None,
                 _fp_step.resolved_args = dict(_fp_hit["args"])
                 _fp_step.vaglio_approved = True  # short-circuit, no vaglio (read-only)
                 _t_fp = time.perf_counter()
+                _fp_dispatched_at = utc_now_seconds()
                 try:
                     _fp_obs = invoke_executor(
                         _fp_exec, _fp_hit["args"],
@@ -8221,6 +8270,21 @@ def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, progress=None,
                 if hasattr(_fp_step, "__dict__"):
                     _fp_step.__dict__["fast_path"] = True
                 if _fp_obs.get("ok"):
+                    try:
+                        _fp_step.execution_receipt = _execution_receipt_for_dispatch(
+                            _fp_exec,
+                            arguments=_fp_step.resolved_args,
+                            output=_fp_obs,
+                            request_id=source_request_id,
+                            turn_id=turn_id,
+                            reduced_query_ref=reduced_query_reference(_query_for_planning),
+                            dispatched_at=_fp_dispatched_at,
+                            completed_at=utc_now_seconds(),
+                        )
+                    except (FeedbackError, TypeError, ValueError):
+                        # As on the engine path, an unauthenticated binding
+                        # must remain without a receipt; feedback fails closed.
+                        pass
                     log.steps.append(_fp_step)
                     log.final_kind = "answer"
                     _fp_msg = _fp_hit["render"](_fp_obs)

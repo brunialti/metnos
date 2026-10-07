@@ -84,6 +84,16 @@ def _catalog_executors(catalog: object) -> tuple[object, ...]:
 
 
 def is_intrinsically_long(executor: object) -> bool:
+    # An interactive contract stays in the foreground even when its safety
+    # timeout is large. It cannot promise unattended restart/replay. This is
+    # classification before admission, never a fallback after LRE rejects work.
+    policy = getattr(executor, "execution_policy", None)
+    if (
+        getattr(executor, "execution_policy_declared", False) is True
+        and isinstance(policy, Mapping)
+        and policy.get("effect") == "interactive"
+    ):
+        return False
     timeout = getattr(executor, "timeout_s", None)
     return type(timeout) is int and timeout >= AUTO_LRE_MIN_TIMEOUT_S
 

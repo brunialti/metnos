@@ -407,6 +407,13 @@ def register_all() -> None:
           "eseguirli", "eseguirle", "fai", "fammi", "lancia",
           "lanciare", "avvia", "avviare"],
       en=["execute", "run", "launch"], review_policy="manual")
+    R("syntax.executor_reference", "phrases", match_mode="word",
+      it=["la funzione esistente", "la funzione", "funzione", "l'executor", "executor"],
+      en=["the existing function", "the function", "function", "the executor", "executor"],
+      review_policy="manual")
+    R("syntax.direct_actor", "phrases", match_mode="word",
+      it=["tu", "da solo", "da sola"], en=["yourself", "on your own"],
+      review_policy="manual")
     R("syntax.negative_coordination", "phrases", match_mode="word",
       it=["e", "o", "né"], en=["and", "or", "nor"],
       review_policy="manual")
@@ -1068,10 +1075,12 @@ def register_all() -> None:
       it=["continua", "avanti", "prosegui", "successivo"],
       en=["continue", "next", "proceed"])
     R("sites.overlay_dismiss_target", "phrases", match_mode="word",
-      it=["chiudi", "chiudi dialogo", "chiudi finestra", "ignora",
+      it=["chiudi", "chiudi dialogo", "chiudi finestra", "chiudi modale",
+          "chiudi pannello", "ignora",
           "non ora", "non adesso", "forse dopo", "piu tardi", "ho capito",
           "capito", "va bene", "annulla"],
-      en=["close", "close dialog", "close modal", "dismiss",
+      en=["close", "close dialog", "close modal", "close window",
+          "close panel", "dismiss",
           "dismiss dialog", "not now", "maybe later", "later", "got it",
           "understood", "okay", "cancel"])
     # `OK` e' un riconoscimento internazionale, non un'etichetta di sito. Un

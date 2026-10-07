@@ -2,10 +2,10 @@ role: synt_code
 tier: wise
 lang: en
 style: few_shot
-version: 1
+version: 5
 owner: roberto
-updated: 2026-05-13
-sha_prev: ""
+updated: 2026-10-04
+sha_prev: 938b365d
 
 section:
   name: synt_code
@@ -26,6 +26,12 @@ context:
   user_request: "{{ user_request }}"
 
 rules:
+  - name: functional_cases
+    body: |
+      STAGE 3 FUNCTIONAL CASES (fixed input/output contract):
+      {{ tests_json }}
+      Implement the full requested behavior, including these cases. Do not change
+      the cases or hardcode their answers. Preserve their argument and result fields.
   - name: presentation_contract
     body: |
       MANIFEST PRESENTATION CONTRACT: the user view is declarative, not
@@ -111,18 +117,27 @@ rules:
 
   - name: best_effort_loop
     body: |
-      BEST-EFFORT PRINCIPLE (for all vector verbs):
-
-      MUST: handle each entry independently. A failed entry adds a dict to `failed[]`.
-      MUST NOT: raise an exception that terminates the loop on the entire batch.
-      OK: `try: process(e); results.append(...) except Exception as ex: failed.append({"id": e["id"], "error": str(ex)})`.
-      ERROR: `for e in entries: process(e)  # without try/except`. THIS IS AN ERROR.
+      VALIDATION AND ERRORS:
+      - Validate the required container first. If invalid, return a dictionary with
+        ok=false and error from invoke; do not raise validation exceptions.
+      - If an invalid item requires ok=false, validate ALL items before processing
+        any of them. Return ok=false on the first invalid item: do not use continue
+        or return partial results with ok=true.
+      - Only if the contract allows per-item errors, process valid items and record
+        each error in failed. For a valid container return ok=true, ok_count equal
+        to processed items and fail_count equal to rejected items.
+      - Every successful response includes ok_count and fail_count, even if zero.
 
   - name: vectorial_output
     body: |
       - Vectorized by default: every executor accepts lists, even of a single element or empty.
+      - Preserve the requested list shape: when the result is already a list,
+        assign it directly to its field; do not wrap it in another list.
       - Output is ALWAYS a list (entries / results), even degenerate (0 or 1 element).
       - Output standard form {ok, ok_count, fail_count, results|entries, failed}.
+      - ok_count counts items actually processed without errors, even when their
+        result is false, zero or empty text. fail_count counts processing errors,
+        never false-valued results.
 
   - name: internal_loop
     body: |

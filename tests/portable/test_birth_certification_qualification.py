@@ -193,8 +193,10 @@ def test_no_caller_supplied_count_is_accepted():
     import inspect
 
     parameters = inspect.signature(derive_qualification_v1).parameters
-    assert list(parameters) == ["reconciliation", "frontier"]
-    assert all(item.default is inspect.Parameter.empty for item in parameters.values())
+    assert list(parameters) == ["reconciliation", "frontier", "operational"]
+    assert all(parameters[name].default is inspect.Parameter.empty
+               for name in ("reconciliation", "frontier"))
+    assert parameters["operational"].default is None
 
 
 # --- the quarantine exclusion -----------------------------------------------

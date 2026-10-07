@@ -2190,15 +2190,34 @@ def _negated_only_query_verbs(query: str) -> set[str]:
 
 def _prohibited_plan_verbs(framework: Framework, query: str) -> set[str]:
     """Fail closed when a plan tries to run an explicitly negated action."""
-    _, forbidden = _query_verb_polarities(query)
+    import re
+    from detection_lexicon import native_ready_forms, phrase_spans, polarity_state_at
+    from prefilter import canonical_verb_spans
+    from engine.routing_pool import explicit_invocations
+
+    tools = {step.tool for step in framework.steps if step.tool}
+    invoked = {name for name, _, _ in explicit_invocations(query, tools)}
+    direct_actors = (phrase_spans("syntax.direct_actor", query)
+                     if native_ready_forms("syntax.direct_actor", require_manual=True) else [])
+    forbidden: set[str] = set()
     # If the same action is both requested and prohibited, verb-only evidence
     # cannot prove that a proposed step targets the allowed object. Refuse
     # that plan rather than silently widening the negative clause's scope.
-    return {
-        (step.tool or "").split("_", 1)[0]
-        for step in framework.steps
-        if (step.tool or "").split("_", 1)[0] in forbidden
-    }
+    for verb, offset in canonical_verb_spans(query):
+        if polarity_state_at(query, offset) != "negated":
+            continue
+        word = re.match(r"\w+", query[offset:])
+        end = offset + len(word.group()) if word else offset
+        direct_only = any(begin >= end and not query[end:begin].strip()
+                          for begin, _ in direct_actors)
+        for tool in tools:
+            if tool.split("_", 1)[0] == verb:
+                # "Run X; do not calculate yourself" delegates to the named
+                # function. A blanket prohibition, another tool, or missing
+                # native syntax still refuses execution.
+                if not (direct_only and tool in invoked):
+                    forbidden.add(verb)
+    return forbidden
 
 
 def _dropped_required_verbs(framework: Framework, query: str, intent=None,
@@ -2312,10 +2331,23 @@ def _dropped_required_verbs(framework: Framework, query: str, intent=None,
         "verb": primary_verb,
         "object": str(getattr(intent, "object", "") or ""),
     }]
+    explicit_run_covered = False
+    if "run" in qverbs:
+        from engine.routing_pool import explicit_catalog_names, explicit_invocations_covered
+
+        available = explicit_catalog_names(query, list(by_name.values()))
+        run_actions = [action for action in requested_actions if action.get("verb") == "run"]
+        explicit_run_covered = explicit_invocations_covered(
+            query, available, [step.tool for step in framework.steps],
+            required=len(run_actions))
+        if explicit_run_covered:
+            dropped.discard("run")
     if not has_admin:
         for action in requested_actions:
             verb, obj = action.get("verb"), action.get("object")
             if verb in prohibited:
+                continue
+            if verb == "run" and explicit_run_covered:
                 continue
             # entries is an abstract in-memory carrier, not a concrete domain.
             if verb not in required_effects or verb not in fw_verbs or not obj or obj == "entries":
@@ -4337,7 +4369,7 @@ def _ensure_site_session_precursor(framework: Framework, intent, query: str,
             or _dl_match("sites.collection_search_request", text)
             or (_dl_match("sites.search_action_verb", text)
                 and _dl_match("sites.goal_scope_quantifier", text))
-            or (_dl_match("sites.goal_request_verb", text)
+            or (_dl_match("text.request_verb", text)
                 and (_dl_match("sites.goal_scope_quantifier", text)
                      or _dl_match("text.plural_determiner", text))))
 
@@ -4592,6 +4624,22 @@ def _ensure_site_session_precursor(framework: Framework, intent, query: str,
     def _append_acts(source_steps) -> None:
         for original_act in source_steps:
             original_args = dict(getattr(original_act, "args", {}) or {})
+            if structured_record_request:
+                from playwright_sidecar.action_resolver import (
+                    is_goal_navigation_request, preserve_goal_qualifiers,
+                )
+                action = str(original_args.get("action") or "")
+                if is_goal_navigation_request(action):
+                    # A planner summary must not narrow the user's set. The
+                    # qualifiers come from the request, not a model guess;
+                    # explicit click/fill operations retain their own scope.
+                    restored = preserve_goal_qualifiers(
+                        query, action, max_words=len(action.split()) + 8)
+                    if restored:
+                        original_args["action"] = restored
+                    original_args.setdefault("done_when", query)
+                    if want_login:
+                        original_args.setdefault("ambito", "personale")
             # Conserva TUTTO cio' che il planner ha dichiarato, non una lista
             # chiusa di tre: ogni campo aggiunto dopo che questa riga e' stata
             # scritta veniva buttato via qui in silenzio — `done_when` e

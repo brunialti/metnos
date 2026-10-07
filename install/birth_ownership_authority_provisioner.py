@@ -203,6 +203,16 @@ def _discard_temporary(path: Path) -> None:
 
 @contextmanager
 def _provisioning_lock(root: Path, *, root_owned: bool):
+    """Normal administrative exclusion; incomplete retention denies writes."""
+    from executor_birth_authority_files import _require_no_retention_maintenance_at_v1
+
+    with _provisioning_exclusion_v1(root, root_owned=root_owned) as descriptor:
+        _require_no_retention_maintenance_at_v1(root, root_owned=root_owned)
+        yield descriptor
+
+
+@contextmanager
+def _provisioning_exclusion_v1(root: Path, *, root_owned: bool):
     """Authenticate and exclusively hold the transaction namespace."""
     import fcntl
 
@@ -246,14 +256,16 @@ def _provisioning_lock(root: Path, *, root_owned: bool):
             )
         fcntl.flock(fd, fcntl.LOCK_EX)
         after = os.fstat(fd)
+        path_after = path.lstat()
         if (
             (after.st_dev, after.st_ino, after.st_mode, after.st_nlink)
             != (info.st_dev, info.st_ino, info.st_mode, info.st_nlink)
+            or (after.st_dev, after.st_ino) != (path_after.st_dev, path_after.st_ino)
         ):
             raise OwnershipAuthorityError(
                 "birth_ownership_authority_unsafe", "lock changed",
             )
-        yield
+        yield fd
     except OwnershipAuthorityError:
         raise
     except OSError as exc:

@@ -3176,6 +3176,16 @@ def _deployment_lock_at_v1(
 @contextmanager
 def _deployment_lock_v1() -> Iterator[_DeploymentLockSessionV1]:
     """Acquire the fixed outer lock and emit its non-transferable session."""
+    from executor_birth_authority_files import _require_no_retention_maintenance_at_v1
+
+    with _deployment_exclusion_v1() as session:
+        _require_no_retention_maintenance_at_v1(DEFAULT_OWNERSHIP_ROOT_V1, root_owned=True)
+        yield session
+
+
+@contextmanager
+def _deployment_exclusion_v1() -> Iterator[_DeploymentLockSessionV1]:
+    """The same native exclusion, also held by the incomplete-F6 recovery owner."""
     with _deployment_lock_at_v1(
         DEFAULT_OWNERSHIP_ROOT_V1, root_owned=True,
     ) as lease:

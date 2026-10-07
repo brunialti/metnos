@@ -12,6 +12,7 @@ import datetime as dt
 import os
 import shutil
 import tempfile
+import threading
 import urllib.parse
 from dataclasses import dataclass
 from pathlib import Path
@@ -38,6 +39,7 @@ FAMILIES = frozenset({"llm", "embedding", "vlm"})
 _FORM_FIELD_PREFIX = "field_"
 _MAX_FORM_FIELDS = 256
 _MAX_FORM_VALUE_CHARS = 4096
+WRITE_LOCK = threading.RLock()
 
 
 @dataclass(frozen=True, slots=True)
@@ -401,6 +403,11 @@ def _invalidate_runtime(family: str) -> None:
 def save(
         family: str, form: Mapping[str, str], *, expected_revision: str,
 ) -> EditResult:
+    with WRITE_LOCK:
+        return _save(family, form, expected_revision=expected_revision)
+
+
+def _save(family: str, form: Mapping[str, str], *, expected_revision: str) -> EditResult:
     """Apply the editor's allowlisted scalar patch and save atomically."""
 
     if family not in FAMILIES:
@@ -453,6 +460,11 @@ def _factory_defaults(family: str) -> dict[str, Any]:
 
 
 def reset(family: str, *, expected_revision: str) -> EditResult:
+    with WRITE_LOCK:
+        return _reset(family, expected_revision=expected_revision)
+
+
+def _reset(family: str, *, expected_revision: str) -> EditResult:
     """Restore the factory configuration of the installed Metnos version."""
 
     if family not in FAMILIES:

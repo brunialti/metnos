@@ -4,7 +4,10 @@ Problema (Roberto, 7/5/2026): 77 file in `synt_proposals/` + 25 in
 `introvertiva/`. Volume tale da impedire la review umana → si rischia
 di perdere candidati validi nel rumore.
 
-Strategia (ADR 0096):
+Selezione storica (ADR 0096), ora solo anteprima: la manutenzione fisica
+richiede F6. La scadenza funzionale dei mnest resta operativa.
+
+Strategia storica:
 - **synt_proposals/**: log di run synth, non decisioni. Archiviare
   quelli relativi a executor gia' nel catalog OR vecchi >30gg.
 - **introvertiva/**: candidate file per audit periodico. Dedup per
@@ -17,9 +20,7 @@ NIENTE LLM (§7.9). Tutto deterministico.
 from __future__ import annotations
 
 import json
-import shutil
 import time
-from datetime import datetime, timezone
 from pathlib import Path
 
 import config as _C  # §7.11
@@ -46,15 +47,17 @@ def _proposal_age_days(p: Path, now: float | None = None) -> float:
 def archive_aged_synth_proposals(*, max_age_days: int = 30,
                                    archive_synthesized_in_catalog: bool = True,
                                    dry_run: bool = False) -> dict:
-    """Sposta in `synt_proposals/_archived/<YYYY>/<MM>/` le proposal:
+    """Anteprima storica delle proposal selezionate (richiede dry_run=True):
     1. con `final_state="synthesized"` E `name` gia' nel catalog (storia
        superflua); regola attiva solo se `archive_synthesized_in_catalog`.
     2. con eta' > `max_age_days` indipendentemente dallo stato.
 
     Ritorna dict con `{archived, kept, errors, archived_paths}`.
 
-    Niente delete: sempre move. L'archive resta esplorabile.
+    Nessun effetto fisico; la selezione non e' un piano F6 autorizzato.
     """
+    if not dry_run:
+        raise RuntimeError("physical proposal cleanup requires F6 maintenance")
     if not SYNT_PROPOSALS_DIR.exists():
         return {"archived": 0, "kept": 0, "errors": [], "archived_paths": []}
 
@@ -113,22 +116,7 @@ def archive_aged_synth_proposals(*, max_age_days: int = 30,
             kept += 1
             continue
 
-        if dry_run:
-            archived.append(p)
-            continue
-
-        # Determina dest dir per anno/mese da ts_start o mtime
-        ts = doc.get("ts_start") or p.stat().st_mtime
-        dt = datetime.fromtimestamp(float(ts), tz=timezone.utc)
-        dest_dir = SYNT_PROPOSALS_DIR / "_archived" / f"{dt.year:04d}" / f"{dt.month:02d}"
-        dest_dir.mkdir(parents=True, exist_ok=True)
-        dest = dest_dir / p.name
-        try:
-            shutil.move(str(p), str(dest))
-            archived.append(dest)
-        except Exception as ex:
-            errors.append(f"{p.name}: move: {ex}")
-            kept += 1
+        archived.append(p)
     return {
         "archived": len(archived),
         "kept": kept,
@@ -215,12 +203,14 @@ def _kind_from_filename(p: Path) -> str:
 
 def keep_latest_n_per_kind(*, n: int = 3, dry_run: bool = False) -> dict:
     """Per ogni `kind` (dedupe/generalize/specialize) tiene i `n` file
-    `candidates_<kind>_*.jsonl` piu' recenti; archivia gli altri.
+    `candidates_<kind>_*.jsonl` piu' recenti, in sola anteprima (dry_run=True).
 
     Razionale: ogni run di `task_introvertiva_propose` emette uno snapshot
     completo dei candidati attivi. Tre snapshot consecutivi bastano a
     capire stabilita'/trend. Snapshot piu' vecchi → cold storage.
     """
+    if not dry_run:
+        raise RuntimeError("physical proposal cleanup requires F6 maintenance")
     if not INTROVERTIVA_DIR.exists():
         return {"archived": 0, "kept": 0, "errors": []}
     by_kind: dict[str, list[Path]] = {}
@@ -238,14 +228,7 @@ def keep_latest_n_per_kind(*, n: int = 3, dry_run: bool = False) -> dict:
         for p in files[:n]:
             kept += 1
         for p in files[n:]:
-            if dry_run:
-                archived.append(p)
-                continue
-            try:
-                _archive_jsonl(p)
-                archived.append(p)
-            except Exception as ex:
-                errors.append(f"{p.name}: {ex}")
+            archived.append(p)
     return {
         "archived": len(archived),
         "kept": kept,
@@ -258,10 +241,12 @@ def dedupe_introvertiva_candidates(*, retention_days: int = 7,
                                      dry_run: bool = False) -> dict:
     """Per ogni file `candidates_<op>_<ts>.jsonl` in `INTROVERTIVA_DIR`:
     leggi i record, dedup per signature mantenendo il piu' "performante"
-    (uses massimo, ts piu' recente come tiebreak), riscrivi.
+    (uses massimo, weight come tiebreak), in sola anteprima (dry_run=True).
 
-    File vecchi >`retention_days` archiviati come per le proposal.
+    Conta i file vecchi >`retention_days` senza spostarli o riscriverli.
     """
+    if not dry_run:
+        raise RuntimeError("physical proposal cleanup requires F6 maintenance")
     if not INTROVERTIVA_DIR.exists():
         return {"deduped": 0, "removed_records": 0, "archived": 0, "errors": []}
 
@@ -273,8 +258,6 @@ def dedupe_introvertiva_candidates(*, retention_days: int = 7,
     for p in sorted(INTROVERTIVA_DIR.glob("candidates_*.jsonl")):
         age_days = _proposal_age_days(p, now)
         if age_days > retention_days:
-            if not dry_run:
-                _archive_jsonl(p)
             archived += 1
             continue
 
@@ -309,22 +292,12 @@ def dedupe_introvertiva_candidates(*, retention_days: int = 7,
         if removed > 0:
             removed_total += removed
             deduped_files += 1
-            if not dry_run:
-                p.write_text("\n".join(json.dumps(r, ensure_ascii=False)
-                                         for r in winners.values()) + "\n")
     return {
         "deduped_files": deduped_files,
         "removed_records": removed_total,
         "archived": archived,
         "errors": errors,
     }
-
-
-def _archive_jsonl(p: Path) -> None:
-    dt = datetime.fromtimestamp(p.stat().st_mtime, tz=timezone.utc)
-    dest_dir = INTROVERTIVA_DIR / "_archived" / f"{dt.year:04d}" / f"{dt.month:02d}"
-    dest_dir.mkdir(parents=True, exist_ok=True)
-    shutil.move(str(p), str(dest_dir / p.name))
 
 
 # ─── auto-decay legacy_orphan mnests ─────────────────────────────────────
@@ -385,34 +358,34 @@ def auto_decay_legacy_orphan_mnests(*, dry_run: bool = False) -> dict:
 # ─── orchestrator ────────────────────────────────────────────────────────
 
 
-def run_cleanup(*, dry_run: bool = False, keep_n_snapshots: int = 3,
-                  write_audit: bool = True) -> dict:
-    """Esegue tutte le fasi e ritorna un report unico.
+def run_cleanup(*, dry_run: bool = False, write_audit: bool = True) -> dict:
+    """Expire unusable mnests and record deferred physical cleanup.
 
     Da chiamare manualmente o via scheduler builtin
     (`task_proposals_cleanup`, daily@06:00 in `make_default_scheduler`).
+
+    File di proposta e candidati sono storia F6: l'archiviazione e la
+    riscrittura dei JSONL aspettano la manutenzione esclusiva e la sua
+    ricevuta. Gli helper storici consentono soltanto anteprime esplicite;
+    le chiamate dirette con effetti fisici sono rifiutate.
 
     Quando `write_audit=True` (e non dry_run), persiste il report in
     `~/.local/share/metnos/lifecycle/proposals_cleanup_<ts>.jsonl` per
     consumo da `lifecycle_summary` (ADR 0096 §lifecycle).
     """
-    report: dict = {}
-    report["synth_proposals"] = archive_aged_synth_proposals(dry_run=dry_run)
-    report["introvertiva_dedup"] = dedupe_introvertiva_candidates(dry_run=dry_run)
-    report["introvertiva_snapshots"] = keep_latest_n_per_kind(
-        n=keep_n_snapshots, dry_run=dry_run,
-    )
+    report: dict = {
+        "synth_proposals": {"archived": 0, "deferred_to_f6": True},
+        "introvertiva_dedup": {"removed_records": 0, "deferred_to_f6": True},
+        "introvertiva_snapshots": {"archived": 0, "deferred_to_f6": True},
+    }
     report["legacy_orphan_mnests"] = auto_decay_legacy_orphan_mnests(dry_run=dry_run)
     if write_audit and not dry_run:
         try:
-            audit_dir = _C.PATH_USER_DATA / "lifecycle"
-            audit_dir.mkdir(parents=True, exist_ok=True)
-            ts = int(time.time())
-            (audit_dir / f"proposals_cleanup_{ts}.jsonl").write_text(
-                json.dumps(report, ensure_ascii=False) + "\n"
-            )
-        except Exception:  # audit fail = non bloccante
-            pass
+            from runtime.audit_jsonl import snapshot_jsonl
+
+            snapshot_jsonl(_C.PATH_USER_DATA / "lifecycle", "proposals_cleanup", report)
+        except Exception as exc:  # functional expiry has already happened
+            report["audit_error"] = str(exc)
     return report
 
 

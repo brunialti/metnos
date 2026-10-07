@@ -130,11 +130,19 @@ def is_collection_search_request(text: str) -> bool:
     if _detlex is None:
         return False
     try:
-        return any(pattern.search(text or "") for pattern in
-                   _detlex.native_ready_patterns(
-                       "sites.collection_search_request",
-                       include_reviewed_baselines=True,
-                   ))
+        def matches(concept: str) -> bool:
+            return (any(pattern.search(text or "") for pattern in
+                        _detlex.native_ready_patterns(
+                            concept, include_reviewed_baselines=True))
+                    or any(_contains_phrase(normalize(text), form)
+                           for form in _concept_forms(concept)))
+
+        return bool(
+            goal_is_exhaustive(text)
+            or matches("sites.structured_record_request")
+            or matches("sites.collection_search_request")
+            or (matches("text.request_verb")
+                and matches("text.plural_determiner")))
     except Exception:
         return False
 
@@ -832,10 +840,22 @@ def _looks_like_prose(name: str) -> bool:
 
 
 def goal_navigation_candidates(candidates: list[dict], *,
-                               excluded: set[str] | None = None) -> list[dict]:
+                               excluded: set[str] | None = None,
+                               include_offscreen: bool = False,
+                               include_covered: bool = False) -> list[dict]:
     excluded = excluded or set()
     out = []
     for candidate in candidates:
+        original = candidate
+        if include_offscreen:
+            candidate = _offscreen_probe(candidate) or candidate
+        if (include_covered and candidate.get("rendered") is True
+                and candidate.get("visible") is True
+                and candidate.get("in_viewport") is True
+                and candidate.get("topmost") is False):
+            # Semantic selection may inspect an obstructed route. Return the
+            # original facts; execution must reveal and revalidate the node.
+            candidate = {**candidate, "topmost": True}
         tag = str(candidate.get("tag") or "").lower()
         typ = str(candidate.get("type") or "").lower()
         role = str(candidate.get("role") or "").lower()
@@ -859,7 +879,7 @@ def goal_navigation_candidates(candidates: list[dict], *,
             continue
         if _looks_like_prose(nome):
             continue
-        out.append(candidate)
+        out.append(original)
     return out
 
 

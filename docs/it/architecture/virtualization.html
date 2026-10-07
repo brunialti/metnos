@@ -234,10 +234,40 @@ la lunghezza massima della risposta, il tempo disponibile e lo schema che
 l'output deve rispettare.</p>
 
 <p>Password, token, chiavi, credenziali e parti sensibili degli URL non vengono
-mostrati. Restano esclusi anche dai campi inviati dal modulo. I segreti gi&agrave;
-presenti nel documento vengono conservati durante il salvataggio, ma si
-gestiscono attraverso il flusso protetto delle credenziali o l'ambiente del
-servizio, non da questa pagina.</p>
+mostrati. L'editor della configurazione conserva i segreti gi&agrave; presenti senza
+includerli nei suoi campi.</p>
+
+<p>Dalla chat apri <strong>Settings &gt; Sistema &gt; Modelli</strong>
+(<code>/admin/virt</code>). Il box <strong>Frontier</strong> contiene un solo
+modello: scegli l'interfaccia API, inserisci l'indirizzo completo dell'API,
+il nome del modello e la sua chiave; regola temperatura e ragionamento quando
+il modello li supporta, poi premi <strong>Salva Frontier</strong>.
+Le interfacce disponibili sono <strong>OpenAI compatibile (Chat Completions)</strong>
+e <strong>Anthropic Messages</strong>. L'interfaccia indica il formato delle
+richieste: puoi usare un servizio compatibile cambiando indirizzo e modello.
+Il campo indirizzo contiene l'URL completo dell'operazione, per esempio
+<code>https://api.openai.com/v1/chat/completions</code>.</p>
+
+<p>Il campo <strong>API key</strong> mostra <code>********</code> quando una chiave
+&egrave; gi&agrave; salvata. La chiave resta cifrata fuori dal repository e non viene mai riproposta nel
+modulo. Lascia il campo vuoto per conservarla; se cambi interfaccia o indirizzo,
+inserisci la chiave del nuovo servizio. Il salvataggio aggiorna insieme
+configurazione e riferimento alla chiave, senza modelli di riserva nascosti.
+Se il file &egrave; stato modificato nel frattempo, ricarica la pagina prima di
+salvare. I nuovi provider usano i valori aggiornati; le chiamate gi&agrave; avviate
+conservano quelli precedenti. Lo stato <strong>Chiave salvata</strong> indica
+la presenza della chiave: il salvataggio non effettua chiamate di verifica
+al fornitore.</p>
+
+<p>Attivando il ragionamento compare un livello modificabile, inizialmente
+<strong>Medio</strong>. OpenAI usa il livello di ragionamento; Anthropic permette
+anche di scegliere <strong>Budget di token</strong>, inizialmente 1.024 token.
+Scegli solo le opzioni supportate dal modello. Il budget deve essere inferiore
+al limite totale di token della richiesta: Metnos non aumenta quel limite
+automaticamente. Disattivando il ragionamento, la scelta resta salvata per la
+successiva attivazione. La temperatura si applica quando compatibile con il
+modello e il ragionamento. Per Sol con strumenti nell'interfaccia Chat
+Completions, lascia il ragionamento disattivato.</p>
 
 <p><strong>Configurato</strong> e <strong>osservato</strong> non sono sinonimi.
 Il primo valore &egrave; ci&ograve; che Metnos chieder&agrave; al fornitore; il secondo &egrave; ci&ograve;

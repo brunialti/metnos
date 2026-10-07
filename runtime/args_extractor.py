@@ -72,8 +72,12 @@ def _phrase_occurs(query: str, phrase: str) -> bool:
         flags=re.IGNORECASE | re.UNICODE,
     ))
 
-# Pattern file con extension (*.ext, .ext)
-_FILE_EXT_RE = re.compile(r"\*?\.(?P<ext>[a-zA-Z0-9]{1,5})\b")
+# Only an explicit wildcard or a standalone suffix denotes a file filter.
+# Dots inside paths, filenames, addresses and versions carry no such intent.
+_FILE_EXT_RE = re.compile(
+    r"(?:\*|(?<![\w./\\@*\-]))\.(?P<ext>[a-zA-Z0-9]{1,5})\b"
+    r"(?![\w/\\\-]|\.[\w.])"
+)
 
 # Nome-linguaggio/formato → estensione glob. L'utente dice «file python», non
 # «file .py»: il nome del linguaggio (6+ lettere, fuori dal range estensione)
@@ -205,6 +209,14 @@ def _extract_emails(query: str) -> list[str]:
     return _EMAIL_RE.findall(query)
 
 
+def _file_filter_prose(query: str) -> str:
+    """Keep lexical file kinds separate from named paths and references."""
+    from tool_grammar import _strip_fs_paths
+
+    query = _strip_fs_paths(_URL_RE.sub(" ", _EMAIL_RE.sub(" ", query)))
+    return re.sub(r"(?<![\w/\\])[\w-]+\.[\w.-]+", " ", query)
+
+
 def _extract_file_ext_glob(query: str) -> Optional[str]:
     """Da 'trova file PDF' o 'i .tmp' → '*.pdf' / '*.tmp'.
 
@@ -217,6 +229,7 @@ def _extract_file_ext_glob(query: str) -> Optional[str]:
     m = _FILE_EXT_RE.search(query)
     if m:
         return f"*.{m.group('ext').lower()}"
+    query = _file_filter_prose(query)
     # Nome di linguaggio/formato esteso ("python", "javascript", ...) → estensione
     # canonica. Precede il fallback generico "{2,5} lettere" perche' quei nomi
     # sono piu' lunghi e non finirebbero mai per essere catturati come estensione.
@@ -263,6 +276,7 @@ def _extract_file_kind_globs(query: str) -> list[str]:
     ``folder Images`` identifies the search root, while ``image files`` or
     ``duplicate images in folder Images`` identify the requested file kind.
     """
+    query = _file_filter_prose(query)
     if not query:
         return []
     try:

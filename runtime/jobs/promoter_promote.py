@@ -17,12 +17,17 @@ proposal_evaluator). §2.8 fail-loud: ogni admission fail ritorna esplicito
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import sys as _sys
 import tarfile
 import tempfile
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from executor_birth_snapshot import CandidateSnapshot
 
 _sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import config as _C  # §7.11
@@ -307,20 +312,6 @@ def promote_to_catalog(proposal: dict) -> dict:
         return {"ok": False, "error": "proposal_name_empty",
                 "proposal_id": proposal_id}
 
-    # Refuse di toccare la dir handcrafted (mai).
-    target_dir = _synth_exec_dir() / name
-    if str(target_dir).startswith(str(_handcrafted_dir()) + os.sep):
-        return {"ok": False, "error": "target_dir_inside_handcrafted",
-                "proposal_id": proposal_id, "target_dir": str(target_dir)}
-
-    from manifest_inventory import ManifestLayout, resolve_manifest_layout
-    try:
-        layout = resolve_manifest_layout()
-    except Exception as ex:
-        return {"ok": False, "error": "publication_layout_invalid",
-                "reason": str(ex)[:500], "proposal_id": proposal_id,
-                "name": name}
-
     # Admission dry-run prima di toccare il filesystem.
     for layer_name, fn in (
         ("layer_2", _dry_run_admission_layer2),
@@ -338,6 +329,64 @@ def promote_to_catalog(proposal: dict) -> dict:
                 "proposal_id": proposal_id,
                 "name": name,
             }
+
+    return _promote_candidate(
+        name, str(proposal_id), reason=f"promote synthesized proposal={proposal_id}",
+        approval_refs=(), expected_code=_extract_code(proposal),
+    )
+
+
+def promote_reviewed_candidate(contract_id, *, review_id: str, reason: str,
+                               approval_refs: tuple[str, ...],
+                               candidate: CandidateSnapshot) -> dict:
+    """Promote an admitted candidate through the existing publisher/readback.
+
+    The review token binds the exact source, predecessor and promotion scope.
+    Historical generator logs are not the authority for a later admission.
+    """
+    from manifest_inventory import ManifestOrigin
+    if (contract_id.origin is not ManifestOrigin.USER
+            or re.fullmatch(r"sha256:[0-9a-f]{64}", review_id) is None
+            or not approval_refs):
+        raise ValueError("reviewed_promotion_invalid")
+    name = contract_id.relative_manifest.removesuffix("/manifest.toml")
+    if (re.fullmatch(r"[a-z][a-z0-9_-]{0,119}", name) is None
+            or contract_id.relative_manifest != f"{name}/manifest.toml"):
+        raise ValueError("reviewed_promotion_contract_invalid")
+    promotion_id = review_id[7:]
+    result = _promote_candidate(name, promotion_id, reason=reason,
+                                approval_refs=approval_refs,
+                                reviewed_candidate=candidate)
+    if result["ok"]:
+        from .promoter import _grace_hours
+        from .promoter_state import upsert_promoted_grace
+        upsert_promoted_grace(
+            proposal_id=promotion_id, name=name, blob_path=result["blob_path"],
+            verdict={"source": "operator_review", "review_id": review_id},
+            practical_example="", grace_hours=_grace_hours(),
+            prepromotion_generation_id=result["prepromotion_generation_id"],
+            active_generation_id=result["active_generation_id"],
+        )
+    return result
+
+
+def _promote_candidate(name: str, proposal_id: str, *, reason: str,
+                       approval_refs: tuple[str, ...],
+                       expected_code: str | None = None,
+                       reviewed_candidate: CandidateSnapshot | None = None) -> dict:
+    # Refuse di toccare la dir handcrafted (mai).
+    target_dir = _synth_exec_dir() / name
+    if str(target_dir).startswith(str(_handcrafted_dir()) + os.sep):
+        return {"ok": False, "error": "target_dir_inside_handcrafted",
+                "proposal_id": proposal_id, "target_dir": str(target_dir)}
+
+    from manifest_inventory import ManifestLayout, resolve_manifest_layout
+    try:
+        layout = resolve_manifest_layout()
+    except Exception as ex:
+        return {"ok": False, "error": "publication_layout_invalid",
+                "reason": str(ex)[:500], "proposal_id": proposal_id,
+                "name": name}
 
     # Do not transition the authoring lifecycle unless the sealed operational
     # Birth service is available to commit that exact candidate.
@@ -368,9 +417,13 @@ def promote_to_catalog(proposal: dict) -> dict:
                 "name": name}
     already_active = False
     try:
-        active_text, candidate_manifest = transition_generated_manifest_text(
-            candidate_text, expected_lifecycle="synthesized",
-            target_lifecycle="active")
+        if reviewed_candidate is None:
+            active_text, candidate_manifest = transition_generated_manifest_text(
+                candidate_text, expected_lifecycle="synthesized",
+                target_lifecycle="active")
+        else:
+            candidate_manifest = validate_generated_manifest_text(
+                candidate_text, expected_lifecycle="synthesized")
     except GeneratedContractError as transition_error:
         # Store publication can commit before a final registry callback fails.
         # In that case authoring is already reconciled to ``active`` and the
@@ -389,12 +442,26 @@ def promote_to_catalog(proposal: dict) -> dict:
                     "proposal_id": proposal_id, "name": name}
         active_text = candidate_text
         already_active = True
+    if reviewed_candidate is not None:
+        # The authoring tree is the rollback source, not the reviewed target.
+        # Completed descriptions/language state belong to the exact consent.
+        active_text = reviewed_candidate.manifest_bytes.decode("utf-8")
+        try:
+            from executor_standard import validate_for_lifecycle
+            active_manifest = validate_generated_manifest_text(
+                active_text, expected_lifecycle="active")
+            findings = validate_for_lifecycle(active_manifest, require_declaration=True)
+            if findings or active_manifest.get("name") != name:
+                raise GeneratedContractError("reviewed active candidate is not conformant")
+        except GeneratedContractError as ex:
+            return {"ok": False, "error": "candidate_not_conformant",
+                    "reason": str(ex)[:500], "proposal_id": proposal_id,
+                    "name": name}
     if str(candidate_manifest.get("name") or "") != name:
         return {"ok": False, "error": "candidate_identity_mismatch",
                 "proposal_id": proposal_id, "name": name}
     code_files = (candidate_manifest.get("code") or {}).get("files") or []
-    proposal_code = _extract_code(proposal)
-    if (len(code_files) != 1 or not proposal_code
+    if (len(code_files) != 1
             or not (target_dir / str(code_files[0])).is_file()):
         return {"ok": False, "error": "candidate_code_missing",
                 "proposal_id": proposal_id, "name": name}
@@ -403,7 +470,7 @@ def promote_to_catalog(proposal: dict) -> dict:
             encoding="utf-8")
     except OSError:
         installed_code = ""
-    if installed_code != proposal_code:
+    if expected_code is not None and (not expected_code or installed_code != expected_code):
         return {"ok": False, "error": "candidate_proposal_mismatch",
                 "proposal_id": proposal_id, "name": name}
 
@@ -424,7 +491,9 @@ def promote_to_catalog(proposal: dict) -> dict:
         prefix=f".{name}.birth.", dir=str(target_dir.parent),
     ))
     try:
-        for child in target_dir.iterdir():
+        source_root = (reviewed_candidate.private_root
+                       if reviewed_candidate is not None else target_dir)
+        for child in source_root.iterdir():
             destination = birth_staging / child.name
             if child.is_dir():
                 shutil.copytree(child, destination)
@@ -438,8 +507,8 @@ def promote_to_catalog(proposal: dict) -> dict:
             contract_id=ContractId(
                 ManifestOrigin.USER, f"{name}/manifest.toml",
             ),
-            reason=f"promote synthesized proposal={proposal_id}",
-            approval_refs=(str(proposal_id),),
+            reason=reason,
+            approval_refs=approval_refs,
         ))
         if birth.error_code or birth.publication is None:
             raise RuntimeError(birth.error_code or "publication_missing")
@@ -508,4 +577,4 @@ def promote_to_catalog(proposal: dict) -> dict:
     }
 
 
-__all__ = ["promote_to_catalog"]
+__all__ = ["promote_to_catalog", "promote_reviewed_candidate"]

@@ -306,6 +306,14 @@ def run_stage2(user_request: str, stage1: dict, llm_call) -> StageResult:
                        latency_ms=res.get("latency_ms", 0))
 
 
+def test_generation_options(provider) -> dict:
+    """Constrain JSON syntax when supported; semantic checks stay mandatory."""
+    if not getattr(provider, "supports_grammar", False):
+        return {}
+    from tool_grammar import generate_json_grammar
+    return {"grammar": generate_json_grammar(decimal_numbers_only=True)}
+
+
 def run_stage3(user_request: str, stage1: dict, stage2: dict, llm_call) -> StageResult:
     """Stage 3 = TESTS. Procedurale, struttura fissa."""
     args_summary = ", ".join(f"{k}:{v.get('type','?')}" for k, v in stage2.get("args_properties", {}).items())
@@ -320,7 +328,8 @@ def run_stage3(user_request: str, stage1: dict, stage2: dict, llm_call) -> Stage
         reverse_pattern=str(stage2.get("reverse_pattern")),
         user_request=user_request,
     )
-    res = llm_call("", user_prompt, max_tokens=4000)
+    res = llm_call("", user_prompt, max_tokens=4000,
+                   **test_generation_options(llm_call))
     text = res.get("text", "")
     out = _parse_json_strict(text)
     if out is None:
@@ -397,6 +406,7 @@ def run_stage5(user_request: str, stage1: dict, stage2: dict, stage3: dict, stag
         revertible=str(stage1["revertible"]),
         reverse_pattern=str(stage2.get("reverse_pattern")),
         description=stage4["description"],
+        tests_json=json.dumps(stage3["tests"], ensure_ascii=False, indent=2),
         user_request=user_request,
         scope=scope or "",
     )

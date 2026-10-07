@@ -28,6 +28,12 @@ interpreter, missing lock, failed dependency installation or failed core import
 stops installation; `--force` cannot bypass the supported platform. Bootstrap
 does not upgrade pip or install an independent list of unpinned packages.
 
+Source archives retain the same two public boundary-policy inputs as the Git
+clone: `internal/reports/rm0007-m4-boundary-inventory.json` and
+`internal/tools/render_contract_boundary_policy.py`. `.gitattributes` must
+exclude their private neighbours without excluding those installation inputs.
+`tests/portable/test_distribution_archive.py` checks the actual Git archive.
+
 Downloaded models live in `$METNOS_USER_DATA/models`, independently of the
 sealed source release. `METNOS_MODELS_DIR` explicitly selects an existing
 model directory. Installer, runtime, Tutor fingerprints and sandbox projections
@@ -52,6 +58,9 @@ facts with the installation author key and atomically writes
 `$METNOS_USER_STATE/i18n/localization_request.json`. Re-running the installer
 with the same selection and corpus version leaves the signed document byte for
 byte unchanged.
+The corpus includes authenticated published revisions only. An exact empty
+reservation left by a rejected first admission contributes no content. A missing
+current pointer with history, malformed pointer or link still stops verification.
 
 ## Birth authority inputs (RM-0008 group 2)
 
@@ -67,6 +76,41 @@ Private operator/reviewer keys live under
 are copied to the service account. Existing exact authorities are verified on
 re-entry. Links, changed bytes, ownership or permissions fail closed. A phase
 marker or a service-account write cannot authorize activation.
+
+The operator registry grants the named Birth scopes (`active`, `authority`,
+`preexercise`, `promotion`, `reactivation`), never a generic `birth` scope.
+Existing installations retain their exact registry by default. An explicit
+`python -m install.operator_authority --user <service-account> --upgrade-scopes` replaces only that
+legacy scope list in the provisioning input, preserving both private keys.
+It takes effect only in the next authenticated release selection.
+
+The installed F5 authority also accepts `proposal review` and `proposal approve`.
+The first consumes candidate bytes and three to six operator-confirmed cases;
+the second consumes only the exact review identity, subject hash and decision.
+Both run the authenticated installed implementation in a bounded transient
+systemd unit. The existing Birth runner receives that unit's cgroup delegation
+under the service identity; code never runs with the authority's root identity.
+Interruption stops the entire unit. Review records and keys remain root-only;
+only a verified signed proof reaches the service's semantic evidence store.
+The existing Birth provisioner owns that write: it authenticates the proof
+against the selected authority and uses its exclusive installation session.
+The review caller cannot select a storage path or mutate the reader session.
+Before review and approval, retained authoring bytes pass through the existing
+closed-candidate preparation. It computes the code digest from captured source
+bytes before binding tests or consent; source and language state are preserved.
+Review grants no admission: a separate expiring consent resumes the original
+producer through all Birth checks. For `producer: promoter`, the reviewed
+candidate must represent the authenticated preexercise-to-active transition;
+other maintenance operations are refused. Approval resumes the existing
+promoter with the exact captured candidate and operator token, retaining its rollback copy, standard
+catalog readback and promotion registry. Old generation logs remain unchanged:
+a later authenticated admission, not a historical generator status, establishes
+the predecessor. The existing authoring tree supplies only the rollback copy:
+reviewed descriptions and language state must not be replaced by older bytes.
+A changed candidate still fails the ordinary Birth checks.
+This administrative integration currently
+requires the supported Linux distribution; portable runner tests do not prove
+equivalent administrative custody on Windows.
 
 The complete authenticated transition prepares the distribution and initial
 catalog while services remain inactive. Activation happens only after the
@@ -236,9 +280,11 @@ read or reactivate the archive and may prepare the next transaction normally.
 A successor preserves admission for an unchanged current executor only after
 verifying its exact generation and source against the signed receipt and
 authenticated context of the immediate predecessor. The prior lifecycle is
-preserved; property execution and semantic review are explicitly recorded as
-not applicable, with the prior receipt hash, rather than reported as newly
-passed. Historical receipts and producer records remain untouched. New or
+preserved; property execution, semantic review and renewed operator approval
+are explicitly recorded as not applicable, bound to the prior signed receipt,
+rather than reported as newly passed. No new or extended consent is issued:
+a preexercise executor remains preexercise. Historical receipts and producer
+records remain untouched. New or
 changed executors still require the full checks; missing or invalid historical
 evidence never becomes implicit initial adoption.
 
@@ -434,6 +480,172 @@ resets consecutive successes, so completed cycles cannot be rebound by merely
 selecting another installed head. The harness must still record authentic
 observations of its declared source/catalog and implementation; retaining these
 identities is not itself proof that the focused HTTP cycles ran.
+
+The installed `install.certification` package is the single F5 oracle and
+collector implementation used by both the harness and the administrative
+owner. Before signing, the owner replays the full nine-case profile twice,
+including the native action observations. Each cycle uses its frozen subject;
+the subjects, HTTP turns and durable restart jobs must be independent. A
+caller-supplied success flag cannot replace an observation or its replay.
+The optional `queued_subjects` mapping freezes two independent contracts for
+the queued-generation case before registration. This permits genuine durable
+workload capabilities alongside ordinary function samples, without changing
+durable eligibility or accepting another contract's observations. It cannot
+use the unrelated-availability subject. Older manifests retain the original
+cycle-subject binding; their evidence is not rewritten.
+
+F6 preparation uses a separate receipt-only authority and a durable maintenance
+barrier. Startup and administrative writers refuse an unfinished session;
+the owner holds the existing deployment/startup/authority/Birth locks and
+checks that installation-owned writer units and their control groups are
+stopped. External shared model services are not stopped. SQLite owners use
+native schemas and atomic object bundles, and the private recovery journal
+persists and verifies each receipt before deletion. These components have no
+installed collection command yet: their presence does not activate F6 or
+authorize cleanup. The native LRE blob owner preserves artifacts referenced
+by jobs or result rows and refuses incomplete or unreadable stores. Referenced
+blobs remain retained while the metadata bundle is collected; only a subsequent
+inventory can authorize their deletion. Recovery durably confirms absence,
+including interruption between unlink and directory synchronization. Pending
+intents always resume the owner's idempotent deletion, even when the payload
+is already absent: container cleanup and durability must finish before the
+outcome is acknowledged. Native
+publication copies and artifact staging have separate owners that reuse the
+same file validation. Publication references retain their copies; terminal-job
+scratch can close independently of pending delivery records. Collection holds
+and retires the native workspace fence, preserving its inode against stale
+writers. Package-owned scratch outside ArtifactStore is not covered by this
+adapter. Empty directories and fence files are retained. The LRE inventory
+joins blob/publication/staging edges only when all native job versions, states
+and windows agree. Missing jobs, duplicate files and unresolved references
+block the join. A two-pass native test collects closed metadata first, then
+unreferenced files, preserving another active user and an administrative hold.
+This bounded LRE inventory is not a complete installation census.
+The native undo owner compacts whole operations without changing surviving
+records or their versions. Pending work, reversible effects, partial undo,
+ambiguous receipts and the latest completed boundary per actor stay retained.
+Keeping that boundary prevents undo from unexpectedly reaching an older turn.
+Recovery resumes a partial copy or durably observes the atomic replacement
+using the original signed intent. This component does not resolve external
+contract, turn or blob references and has no standalone cleanup entrypoint.
+The protected-undo owner joins actual journal handles to authenticated native
+envelopes. Referenced secrets remain retained until their operation is gone;
+an incomplete or ambiguous operation also retains its actor's unreferenced
+files. Missing native receipt data blocks inventory unless a complete undo
+could already have discarded it. Private-file checks are shared with the LRE
+owners; native decryption is reused with the custody-checked installation key.
+Collection rechecks the exact file/key version, references and both retention
+windows, then durably confirms absence using the original signed receipt.
+No plaintext enters the maintenance journal. Legacy discard/expiry paths and
+other history blobs still need integration with the full maintenance scope.
+Turn journals now share the undo owner's recoverable JSONL compaction, with
+separate native identity and closure rules. Open input, incomplete execution
+evidence and contradictory records stay retained. Exact execution receipts
+are parsed by the native verifier and matched to the turn and executor;
+surviving bytes, versions and feedback readability are preserved. Daily backups
+and native gzip archives have distinct physical identities. The archive owner
+reuses the turn parser and closure rules, retaining a whole compressed segment
+if any turn is open, lacks valid execution evidence or is still within its
+retention window. Compressed and expanded input is bounded; corruption, unsafe
+custody and unknown entries block inventory. Removal and interrupted recovery
+durably confirm absence using the original receipt. External references and
+legacy archive pruning still require the complete inventory and maintenance
+integration; these components provide no independent cleanup command.
+Feedback journals use the same compactor, retaining the native 200-line
+operational window, canonical errors still used by unbounded learning and
+uncertain effects. Exact receipt/job bindings join pending native Birth
+reviews; deletion rechecks the queue. Native counters, rejection decisions,
+change-intent discovery and observation remain unchanged after collection.
+The journal inventory joins feedback, undo and pending reviews to physical
+turn copies and their parents. Bidirectional copy references preserve daily
+logs, backups and whole gzip segments together when any copy is retained;
+closed connected groups remain collectible. Reviews bind the exact verified
+receipt, job, generation, arguments and output. Protected-undo projections
+must agree before merging their blob references. Missing references, duplicate
+objects or changed rereads block inventory. Contract references and the full
+installation census still require integration.
+Native `_history` backup files now share descriptor custody with private LRE
+files, while accepting safe source permissions preserved by native `copy2`.
+ArtifactStore's default remains 0600. Backup expiration uses the later of
+mtime and ctime, so copying an old source cannot create an already-expired
+backup. Actual undo paths and legacy digest fallback retain physical copies;
+unfinished operations retain their turn's files and unscoped backups. The
+journal join also keeps references from retained turns, archives and feedback,
+merging them with protected-undo references only when projections agree.
+Unreferenced expired backups are durably removed through signed maintenance
+intents, including recovery after unlink. Empty native namespaces remain.
+Frozen plans, transaction receipts and unknown history entries currently stop
+this inventory: their native closure owners still need integration, as does
+the autonomous history reaper. This is not a complete history inventory or an
+activated cleanup entrypoint.
+Telos proposal journals use the same recoverable compactor. Physical copies
+are linked, including timestamp collisions in the native microsecond decision
+key. Only expired rejected proposals without a previous acceptance are closed;
+acceptance history still requires operative-marker closure. Native decisions
+remain durable: physical last-write order and rejection suppression must survive
+proposal collection. Pending proposals retain original bytes and file priority.
+Acceptance-marker inventory preserves all pending categories and processed
+results. Only the native pre-dispatch invalid-input branch closes an expired
+marker/result pair; other results still require Birth/job closure. Copies
+sharing a signature and matching physical proposals are linked. Custody and
+interrupted unlink recovery reuse signed maintenance. This partial owner does
+not complete Telos operational closure or activate cleanup.
+Signed-store inventory authenticates every physical generation, retirement and
+V1/V2 admission receipt with native historical verifiers. It preserves exact
+predecessor links and current-pointer roots without loading authoring sources or
+applying today's policy to old admissions. All signed history remains retained:
+there is no native age-based closure or rollback revocation. Unknown staging or
+recovery namespaces stop this partial inventory. This owner grants neither
+publication nor collection authority; cross-store references remain to be joined.
+The epoch join resolves contract/generation pairs to exact physical signed
+objects and preserves native legacy migration copies and attestations. Missing
+generations or changed rereads block inventory. Current pointers and retirement
+predecessors also retain matching epochs; other archived epochs keep their native
+closure and collectibility. A historical generation without an epoch does not
+cause fabricated metadata. This join does not close signed-generation audits.
+The periodic state reaper defers physical undo, protected-undo, backup-history,
+turn-log and periodic-audit collection to exclusive retention maintenance.
+Native approval expiration still records an expired decision without deleting
+the row; independent functional maintenance continues. Other cleanup entrypoints
+still need reconciliation. This candidate change does not activate F6.
+Native proposal expiration preserves the row and an explicit closure timestamp;
+operational readers treat it as absent. A fresh observation reopens it and
+invalidates its F6 version. Human decisions remain retained. The native writer
+migrates the schema; retention inventory never migrates a live store. Physical
+collection requires closure plus 90 days and the existing signed maintenance.
+Administrative holds use an explicit private register. Initialization and
+version-checked replacement reuse the native durable writer under administrative
+exclusion; an interrupted change blocks collection until recovery. Holds cannot
+change during an unfinished collection. The installed command still needs wiring.
+The complete physical inventory, cross-store references,
+existing cleanup entrypoints and installed recovery still require integration.
+
+The same administrative launcher provides `reuse inspect|export|trust|import|continue`.
+`export` signs the complete chronology and artifact inventory for the distinct
+purpose `f5_evidence_export_v1`; it grants no activation. The destination must
+explicitly register the origin installation and public key through `trust`.
+The fixed, root-owned `certification-origins-v1` store rejects unknown keys,
+replacement keys, and revoked origins; bundles cannot register their own trust.
+`import` verifies the signature and all artifacts, then replays both cycles.
+It compares all product files in the authenticated distributions, including
+prompts, contracts, collector and oracle. Only generated deployment files and
+documentation are excluded; the caller cannot narrow the comparison.
+
+The destination observes its own current native preflight, completed migration,
+platform, architecture and effective model/inference policy in a fresh service
+interpreter. Credentials and installation-specific endpoint aliases are not
+exported. Linux and Windows observations remain separate. The imported proof
+retains both installation identities and never counts as local admissions or
+local cycles: census, absence of defects, five technical admissions and two
+producers still come from the destination. Issuance rereads the trust and
+environment before signing a certificate for that installation and head.
+
+For an unchanged successor, `continue` verifies the previous locally signed
+certificate and its archived qualification, preserves the predecessor, and
+rechecks the imported proof against the current sources and conditions. New
+findings, changed obligations, revoked trust or concurrent changes refuse the
+operation. The nine-case profile is indivisible; a new head still requires a
+new local certificate. Export/import alone never activates F5 or F6.
 
 The threshold is the approved one — at least five genuine technical
 admissions, at least two authenticated producers, two complete consecutive
@@ -693,6 +905,15 @@ user state/data roots, including in isolated test installations.
 
 ## Integrated service lifecycle
 
+The supported system-service installation requires `polkitd`, including when
+all optional companions are remote. Before target activation, the authenticated
+transition installs the existing minimal service-control rule for the selected
+service account and exact catalog units. The rule permits start/stop/restart
+only, plus restart of the Metnos target; no wildcards or unit-file changes.
+An identical root-owned rule is reused. Missing policy support, links or a
+conflicting existing rule stop activation rather than silently leaving Services
+controls unusable or replacing an administrator's policy.
+
 On a fresh host, the signed system-service catalog owns the HTTP server and
 selected companion units. The i18n translator timer is a non-optional dependency: phase 5 installs
 it before target activation, the target requires it, and composite readiness
@@ -820,3 +1041,142 @@ integrity, authenticated initial adoption, catalog loading, server readiness, on
 turn, the full isolated test suite, service shutdown and restoration of the
 pre-existing instance. Preserve logs on failure; remove the isolated account's
 artifacts only after the result has been recorded.
+
+Native F6 LLM metering uses the existing recoverable JSONL compactor for the
+current log and both numbered and unique rotated segments. Completed native
+measurements become eligible after 90 days; identical physical copies share
+retention references. Unknown schemas/segments and inconsistent timestamps
+block inventory. Empty compacted files and native rotation locks remain; this
+component does not expose an installed maintenance command or activate F6.
+
+The candidate Sites audit owner keeps native operational topology records
+and session history without a valid closure. Closed history becomes eligible
+90 days after the native close/reap event; closure witnesses remain until a
+later inventory observes all corresponding history gone. Physical copies and
+holds are joined across native rotated segments. Sites and metering share
+bounded segment discovery and the existing recoverable JSONL compactor.
+Unknown input or unresolved references block inventory. This is component
+implementation and Linux validation, not the installed maintenance command,
+complete cross-store inventory, Windows qualification or activation.
+
+Synthesis proposal files now have a physical F6 owner for current JSON and
+historical `_archived` copies. Only native failed-run states close the source;
+synthesis/installation success does not close promotion or revision. Open
+change intents retain their sources; closed intent witnesses remain until
+all source copies are gone, preventing discovery from recreating a collected
+row between bounded windows. The existing file custody, SQLite reader and
+signed maintenance protocol are reused. Marker/Birth/promoter references and
+the complete installed inventory still require integration; no activation.
+
+Introvertiva snapshots use physical identities for current files and historical
+`_archived/year/month` copies. The native lexical last-two window per operation
+stays rooted, including copy references. Older snapshots expire after 90 days
+from the latest filename timestamp, mtime or ctime. Collection rechecks the
+reader window, file version and custody, and resumes parent-directory sync
+after interrupted unlink through the existing signed maintenance protocol.
+Unknown namespaces and incomplete JSON stop inventory. Snapshot records remain
+available for the complete external-reference join; this component does not
+activate collection or claim a complete installation inventory.
+
+Promoter inventory joins reopenable native states, current/moved rollback tar
+files, synthesis sources, administrative review records and exact authenticated
+USER generations. Orphan archives retain their sources; successive archive
+copies may refer to distinct generations. Administrative review records preserve
+root custody and canonical digests without revalidating expired consent or
+claiming independent evidence authentication. These components remain open
+until native closure exists. Full cross-store authentication and the installed
+maintenance command remain unfinished; no collection activation is implied.
+
+The internal inventory composer requires an explicit exclusion guard and exact
+owner scope. Shared owners must be the same instances, enumerate the same
+physical identities, and agree on every field except references. References
+are merged and must resolve. Both aggregate and per-component projections are
+compared across two reads. This is not the installed census or an authorization
+to collect: operational paths and remaining cross-store evidence are pending.
+
+Historical context and producer declaration readers can now reuse the held
+exclusive Birth session, preserving exact source authentication and frontier
+checks. Signed-store scans expose immutable native receipt/evidence maps for
+every physical copy. Review, approval, admission and independent-evidence
+components join exact historical subjects without renewing consent. Consumed
+approvals without admission and reviews persisted before evidence remain
+open; native non-review evidence gains no invented review dependency. The
+explicit context census still requires installed integration. These are
+component tests, not root-custody qualification or collection activation.
+
+Producer/admission joins now use native V1 publication and V2 reattestation
+verification per physical copy. In-progress rows remain open; an unavailable
+initial-predecessor policy fails closed. Native history documents protect
+cross-turn backups even when introduced after a plan; aggregate document
+bytes are bounded before parsing. The administrative exclusion yields a
+readonly callable capability context whose lifetime matches the held locks.
+These changes do not supply the complete installed census or activate F6.
+
+The internal historical context census covers the initial predecessor and all
+chain targets, rejects any extra or missing physical authority set, and returns
+native public bindings under the held exclusion. It does not infer an initial
+producer policy. The administrative guard now also binds the data directory
+to the resolved account. Affinity and efficacy audit owners classify only their
+known completed native observations; unknown schemas fail closed. No installed
+maintenance entrypoint or activation is implied by these component checks.
+
+External durable workspaces now have granular native-fenced physical ownership.
+Job closure requires a current native clean report and physical absence across
+all admitted revisions. Installed composition must supply the total workspace
+resolver and actual ArtifactStore workspace; runtime cleanup integration is
+still pending. Synth archives preserve proposal identity and open obligations.
+Import audits preserve the last physical status row per skill; evaluator and
+Stage6 owners recognize completed observations only. Component checks and
+independent reviews do not constitute installed qualification or activation.
+
+Signed-store inventory now validates native generation/binding/current staging
+through read-only recovery planners and retains it OPEN. It never invokes
+recovery deletion. Receipt temporaries are handled separately as described below.
+Daily promoter audit owns completed observations only, with 90-day retention;
+it does not close promotion state or absorb administrative review journals.
+Workspace resolution rejects unregistered historical runners before callbacks.
+These component changes are tested and reviewed, not installed F6 activation.
+
+Receipt staging from the native atomic writer is now retained as OPEN_AUDIT
+for V1/V2, including empty or truncated writes. Its destination must reference
+an authenticated, non-retired generation; custody and inventory budgets still
+apply. Temporary bytes never confer admission authority or enter receipt maps.
+The three operational SQLite owners now require explicit store paths from the
+installed caller, with no ambient configuration fallback. Selecting and
+authenticating those paths remains the installed coordinator's responsibility.
+Absent native stores remain empty and are not created by inventory. These
+component changes do not provide the installed coordinator or activate F6.
+
+The internal installed-environment reader authenticates current native materials
+and checks every gated service twice under a caller-held stability boundary.
+It resolves the descriptor account and rejects conflicting signed XDG roots.
+It returns immutable per-service inputs, without importing runtime config,
+applying caller environment, opening Birth locks or renewing host certification.
+Absent and differing overrides remain distinct for the future installed resolver;
+this reader alone does not attest equal paths, bootstrap or complete F6 coverage.
+
+Native image workspace discovery now supplements surviving revision bindings
+from an explicit selected image root. It covers interruption before context
+creation and retains unbound scratch as OPEN_AUDIT; names confer no deletion
+authority. The existing owner checks fences and inventories contents once,
+with bounded discovery and a second namespace observation. Unknown namespace,
+writable directories or drift refuse the inventory. This component does not
+select installed roots or replace runtime cleanup and its completion reports.
+
+The internal installed-path observer now reuses the launcher's static signed
+identity/environment construction and executes a fresh installed probe per
+gated Python service. Native trusted Python paths, working directory and
+interpreter are retained; candidate runtime modules are not injected. Package
+origins precede imports; response keys and process output are bounded. Repeated
+paths and authenticated materials must agree under the caller's live exclusion.
+Approvals and scheduler defaults share their native writer authority. The probe
+also obtains the artifact and source-authority choices from the installed LRE
+production factory, verifies that worker and bridge are bound to the same exact
+factory, and resolves those choices with the same pure normalizers used by the
+two writer constructors. It does not construct a bridge or open either store.
+Unsupported writers refuse; these selected paths are not a complete
+writer/constructor census.
+Root avoids config's known directory-initialization effects, but is not a readonly
+sandbox. Component tests simulate host/UID boundaries; access as the service user,
+service namespaces, full maintenance composition and installed qualification
+remain pending. This change does not alter job archival or activate F5/F6.

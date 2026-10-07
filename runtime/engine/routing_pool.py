@@ -21,8 +21,71 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 
 log = logging.getLogger(__name__)
+
+
+def _explicit_tool_spans(query: str, names) -> list[tuple[str, int, int]]:
+    """Exact catalog identifiers, never path components or name prefixes."""
+    from tool_grammar import _strip_fs_paths
+
+    available = set(names)
+    masked = _strip_fs_paths(query or "", preserve_offsets=True)
+    return [(match.group(), match.start(), match.end()) for match in re.finditer(
+        r"(?<![\w.-])[a-z][a-z0-9_]*(?:-[a-z0-9_]+)*(?![\w-]|\.\w)", masked,
+    ) if match.group() in available]
+
+
+def explicit_catalog_names(query: str, catalog: list) -> set[str]:
+    """Preserve named, selectable tools; this grants no execution authority."""
+    def field(entry, key, default=None):
+        return entry.get(key, default) if isinstance(entry, dict) else getattr(entry, key, default)
+
+    available = [field(entry, "name") for entry in catalog
+                 if not field(entry, "dormant", False)
+                 and field(entry, "lifecycle", "active") == "active"]
+    return {name for name, _, _ in _explicit_tool_spans(query, available)}
+
+
+def explicit_invocations(query: str, names) -> list[tuple[str, int, int]]:
+    """Asserted invocation + optional function noun + exact catalog name.
+
+    Merely mentioning a name does not fulfil an execution request. Only the
+    reviewed localized syntax immediately before that name proves the link.
+    """
+    from detection_lexicon import native_ready_forms, phrase_before, polarity_state_at
+
+    if not all(native_ready_forms(concept, require_manual=True) for concept in (
+            "syntax.executor_reference", "syntax.command_invocation")):
+        return []
+    calls = []
+    for name, begin, end in _explicit_tool_spans(query, names):
+        # Backticks are identifier quoting, not part of the localized noun.
+        prefix_end = begin - 1 if begin and query[begin - 1] == "`" else begin
+        noun = phrase_before("syntax.executor_reference", query, prefix_end)
+        command = phrase_before("syntax.command_invocation", query,
+                                noun[0] if noun else prefix_end)
+        if command and polarity_state_at(query, command[0]) == "asserted":
+            calls.append((name, command[0], end))
+    return calls
+
+
+def explicit_invocations_covered(query: str, names, tools, *, required: int = 1) -> bool:
+    """All asserted invocation commands must have matching tool occurrences.
+
+    Callers supply selectable names for planning, or successful steps for
+    finalization. This establishes coverage, never permission to execute.
+    """
+    from collections import Counter
+    from detection_lexicon import phrase_spans, polarity_state_at
+
+    calls = explicit_invocations(query, names)
+    commands = {begin for begin, _ in phrase_spans("syntax.command_invocation", query)
+                if polarity_state_at(query, begin) == "asserted"}
+    return bool(calls) and len(calls) >= required and (
+        commands == {begin for _, begin, _ in calls}
+        and Counter(name for name, _, _ in calls) <= Counter(tools))
 
 
 def _tool_object_of(nm: str) -> str:
@@ -503,6 +566,7 @@ def build_routing_pool(query: str, intent, catalog: list, *,
         pool_for_propose = catalog
     names = [getattr(e, "name", None) for e in pool_for_propose
              if getattr(e, "name", None)]
+    names.extend(sorted(explicit_catalog_names(query, catalog) - set(names)))
     names = _provider_recruit_and_gate(names, query, intent, catalog)
     names = _gate_approval_tool(names, intent)
     names = _gate_store_skill(names)

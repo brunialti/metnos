@@ -2,9 +2,10 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "act_sites"
-version     = "0.2.1"
+version     = "0.2.3"
 intelligence = "agentic"
-timeout_s   = 180
+# Four available sessions, each with a five-minute active search budget.
+timeout_s   = 1800
 platforms   = ["linux"]
 author      = "Roberto Brunialti"
 critical    = true
@@ -22,7 +23,7 @@ en = "SCOPO: reach a goal inside a web session, with consent when sensitive. PAT
 
 [code]
 files = ["act_sites.py"]
-digest = "sha256:a1c198a90c402c8c04a565a16dcbde8d63532cdbdb2038025e50d08ae287062d"
+digest = "sha256:3e53c6a92a5b3dc250ea965198285efb0ee6412d8880a172ccbb77f2191a10ce"
 
 [args]
 type = "object"
@@ -76,7 +77,7 @@ en = "Runtime only: treat action as the semantic goal to reach before reading."
 
 [output]
 schema_inline = """
-{ok: bool, results: Array<{session_id: str, ok: bool, executed: bool, primitive?: str, url?: str, reason_code?: str}>}
+{ok: bool, collection_partial?: bool, results: Array<{session_id: str, ok: bool, executed: bool, primitive?: str, url?: str, text?: str, collection_partial?: bool, reason_code?: str}>}
 """
 
 [[capabilities]]
@@ -100,3 +101,10 @@ expect = { ok = false, field_eq = { error_class = "invalid_args" } }
 [placement]
 scope = "server"
 device_ok = false
+
+[execution]
+effect = "interactive"
+parallelism_class = 0
+resource_class = "browser"
+concurrency_key = "browser_session"
+equivalence_gate = "unverified"

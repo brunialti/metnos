@@ -50,7 +50,7 @@ con controlli e responsabilit&agrave; diverse.</p>
  <li><a href="#cap3">Comporre executor esistenti</a></li>
  <li><a href="#cap4">Generare un candidato</a></li>
  <li><a href="#cap5">Controlli e prove reali</a></li>
- <li><a href="#cap6">Quarantena e promozione</a></li>
+ <li><a href="#cap6">Proposte, revisione e consenso</a></li>
  <li><a href="#cap7">Lingua e registri</a></li>
  <li><a href="#cap8">Garanzie e limiti attuali</a></li>
 </ol>
@@ -143,8 +143,8 @@ il codice non pu&ograve; ridefinire in silenzio nome, argomenti o annullabilit&a
  <li><strong>Contratto generato.</strong> Formato del manifest, standard, ciclo
  di vita e regole di esecuzione devono coincidere con il modello posseduto dal runtime.</li>
  <li><strong>Compilazione e prove reali.</strong> Prima dell'installazione il
- codice deve essere Python valido. Subito dopo, il test runner esegue i casi
- dichiarati; se uno fallisce, la copia in quarantena viene rimossa.</li>
+ codice deve essere Python valido. Il runner isolato esegue i casi dichiarati
+ prima dell'ammissione; un caso fallito o un ambiente indisponibile arrestano il percorso.</li>
 </ol>
 
 <p>Se il giudice semantico segnala una discordanza, restituisce un payload non
@@ -153,38 +153,44 @@ giudice non sono disattivabili tramite variabili d'ambiente. Un errore
 infrastrutturale viene registrato come indisponibilit&agrave;, non trasformato in
 una certificazione di coerenza.</p>
 
-<h1 id="cap6">6. Quarantena e promozione</h1>
+<h1 id="cap6">6. Proposte, revisione e consenso</h1>
 
-<p>Quando i passaggi e le prove terminano con successo, il runtime salva il
-candidato nell'archivio degli executor dell'utente, imposta il ciclo di vita a
-<code>synthesized</code> e firma il manifest. Il caricatore pu&ograve; ispezionarlo,
-ma pianificatore e compositore non possono ancora sceglierlo.</p>
+<p>Una sintesi rifiutata da Birth resta una proposta inattiva: codice, manifest,
+lingue e motivo sono conservati fuori dal catalogo. Il suo identificativo serve
+per ritrovarla e non costituisce un consenso. Nessuna firma dell'agente pu&ograve;
+sostituire l'ammissione attraverso Birth.</p>
 
-<p>Ogni giorno il promotore esamina fino a cinque candidati, partendo dai pi&ugrave;
-vecchi. Il valutatore &egrave; deterministico: controlla nome, sovrapposizione con
-capacit&agrave; esistenti, prove, coerenza dell'annullamento, classi di errore,
-stabilit&agrave; del risultato, frequenza d'uso e vantaggio stimato.</p>
+<ol>
+ <li>L'operatore prepara o conferma da tre a sei casi indipendenti, ciascuno
+ con nome, ingresso e risultato atteso. I casi generati da Synt non vengono
+ presentati come prove indipendenti.</li>
+ <li>L'autorit&agrave; amministrativa esegue quei casi nell'ambiente isolato
+ di Birth e registra una prova firmata solo se tutti riescono. La prova lega
+ il candidato esatto, il contesto, i casi e i risultati osservati.</li>
+ <li>L'operatore vede scopo, effetti dichiarati e risultati e decide separatamente
+ se approvare. Il consenso vale un'ora ed &egrave; monouso per quel candidato.</li>
+ <li>Il produttore riprende il candidato attraverso tutti i controlli Birth.
+ Una modifica dei file o del contesto invalida la revisione; un giudizio
+ semantico incerto continua a impedire l'ammissione.</li>
+</ol>
 
-<table>
-<thead><tr><th>Verdetto</th><th>Effetto</th></tr></thead>
-<tbody>
-<tr><td><code>accept</code></td><td>Promozione automatica dopo una nuova verifica di ammissione, con archivio di ripristino e, di norma, 72 ore di grazia.</td></tr>
-<tr><td><code>gray</code></td><td>Stato <code>review_needed</code>; nessuna attivazione automatica.</td></tr>
-<tr><td><code>reject</code></td><td>Archiviazione con la motivazione; il candidato non entra nel catalogo attivo.</td></tr>
-</tbody>
-</table>
+<p>Il comando <code>synt review</code> prepara il documento di prova;
+<code>metnos-f5-authority proposal review</code> esegue la verifica e
+<code>proposal approve</code> registra il consenso esatto. Le chiavi private
+restano nell'autorit&agrave; amministrativa. La registrazione delle prove firmate
+passa dall'autorit&agrave; di scrittura dell'installer, senza nuovi permessi al runtime.
+Il revisore usa la stessa configurazione del modello dei servizi installati,
+anche quando il modello &egrave; un servizio esterno. Le variabili del chiamante
+non possono scegliere un modello diverso per la revisione.
+Prima delle prove e del consenso, la preparazione comune calcola l’impronta
+dai sorgenti acquisiti, senza modificare il codice della funzione.
+Questa prima integrazione usa
+l'installazione Linux supportata e non dispone ancora di una pagina web dedicata.</p>
 
-<p>Prima della promozione viene creato un archivio di ripristino. Se le
-notifiche Telegram dell'amministratore sono configurate, durante la grazia un
-riepilogo permette di confermare o annullare; scaduto il termine, la promozione viene finalizzata. Il
-controllo automatico degli errori osserva sempre i segnali, ma esegue davvero
-il ripristino soltanto se &egrave; stata abilitata l'opzione
-<code>METNOS_PROMOTER_KILLSWITCH_ENFORCE=1</code>.</p>
-
-<p>Questo ciclo appartiene al promotore, non alla pagina unificata degli
-<a href="lifecycle.html">intenti di modifica</a>. Un candidato
-<code>synthesized</code> non viene duplicato come falsa proposta da approvare in
-un secondo archivio.</p>
+<p>Ammissione in pre-esercizio e attivazione sono passaggi distinti. Il
+promotore e la <a href="lifecycle.html">gestione del ciclo di vita</a>
+restano soggetti a Birth, alle prove indipendenti e ai permessi correnti.
+Un punteggio favorevole non certifica F5 e non attiva da solo il candidato.</p>
 
 <h1 id="cap7">7. Lingua e registri</h1>
 
@@ -211,11 +217,10 @@ e ai limiti dell'Executor Standard.</p>
  controlli riducono il rischio, ma non sono una dimostrazione formale.</li>
  <li>Le prove coprono soltanto i casi dichiarati. Periodo di grazia, telemetria
  e ripristino servono proprio per gli errori che emergono nell'uso reale.</li>
- <li>Un verdetto <code>accept</code> produce oggi una promozione automatica. Il
- punteggio &egrave; una politica operativa configurata, non la prova che la nuova
- capacit&agrave; sia utile in assoluto.</li>
- <li>Il percorso <code>gray</code> viene registrato come richiesta di revisione,
- ma non dispone ancora di una superficie web dedicata e completa.</li>
+ <li>Revisione indipendente e consenso sono distinti: il loro esito positivo
+ non sostituisce i restanti controlli Birth e la certificazione F5/F6.</li>
+ <li>La prima integrazione amministrativa &egrave; in collaudo; F5/F6 non sono
+ dichiarati certificati. I casi indipendenti richiedono conferma dell'operatore.</li>
  <li>Il ripristino automatico basato sugli errori &egrave; disattivato per impostazione
  predefinita; senza l'opzione di enforcement, il controllo si limita a segnalare
  che avrebbe ritirato il candidato.</li>

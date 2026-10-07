@@ -2,10 +2,10 @@ role: synt_code
 tier: wise
 lang: it
 style: few_shot
-version: 1
+version: 5
 owner: roberto
-updated: 2026-05-13
-sha_prev: ""
+updated: 2026-10-04
+sha_prev: 4a7d8104
 
 # Stage 5 CODE: stile `few_shot` (§6.1) — output Python code, non JSON.
 # Niente DEVI/NON DEVI sistematici sul JSON; le rules sono principi guida +
@@ -31,6 +31,12 @@ context:
   user_request: "{{ user_request }}"
 
 rules:
+  - name: functional_cases
+    body: |
+      CASI FUNZIONALI STAGE 3 (contratto input/output fissato):
+      {{ tests_json }}
+      Implementa tutto il comportamento richiesto, inclusi questi casi. Non cambiare
+      i casi né codificarne le risposte. Rispetta i campi di argomenti e risultati.
   - name: presentation_contract
     body: |
       CONTRATTO DI PRESENTAZIONE DEL MANIFEST: la vista utente e' dichiarativa,
@@ -120,19 +126,27 @@ rules:
 
   - name: best_effort_loop
     body: |
-      PRINCIPIO BEST-EFFORT (per tutti i verbi vettoriali):
-
-      DEVI: gestire ogni entry indipendentemente. Una entry fallita aggiunge
-        un dict a `failed[]`, non blocca le altre.
-      NON DEVI: sollevare eccezione che termina il loop sull'intero batch.
-      OK: `try: process(e); results.append(...) except Exception as ex: failed.append({"id": e["id"], "error": str(ex)})`.
-      ERRORE: `for e in entries: process(e)  # senza try/except`. E' UN ERRORE.
+      VALIDAZIONE ED ERRORI:
+      - Valida prima il contenitore richiesto. Se è invalido, restituisci da invoke
+        un dizionario con ok=false ed error; non sollevare eccezioni di validazione.
+      - Se un elemento invalido richiede ok=false, valida TUTTI gli elementi prima
+        di elaborarne uno. Al primo invalido restituisci ok=false: non usare continue
+        e non restituire risultati parziali con ok=true.
+      - Solo se il contratto ammette errori per elemento, elabora gli elementi validi
+        e registra ogni errore in failed. Con un contenitore valido restituisci
+        ok=true, ok_count pari agli elaborati e fail_count pari agli scartati.
+      - Ogni risposta riuscita include ok_count e fail_count, anche se zero.
 
   - name: vectorial_output
     body: |
       - Vettoriale by default: ogni executor accetta liste, anche di un solo elemento o vuota.
+      - Conserva la forma della lista richiesta: se il risultato è già una lista,
+        assegnala direttamente al campo; non avvolgerla in un’altra lista.
       - Output SEMPRE una lista (entries / results), anche degenere (0 o 1 elemento).
       - Output forma standard {ok, ok_count, fail_count, results|entries, failed}.
+      - ok_count conta gli elementi realmente elaborati senza errore, anche quando
+        il risultato è false, zero o testo vuoto. fail_count conta gli errori di
+        elaborazione, mai i valori falsi dei risultati.
 
   - name: internal_loop
     body: |

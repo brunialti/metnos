@@ -45,7 +45,8 @@ def _context(character):
 
 
 @pytest.fixture
-def continuity(monkeypatch, tmp_path):
+def continuity(monkeypatch, tmp_path, request):
+    origin = getattr(request, "param", ExecutorOrigin.CORE)
     transition, prepared, distribution = _evidence()
     old_context, new_context = _context("a"), _context("b")
     old_selection = replace(
@@ -93,12 +94,12 @@ def continuity(monkeypatch, tmp_path):
     ) for item in (old_selection, selection)]
     identities = [compute_candidate_identities(CandidateIdentityInput(
         contract, manifest, snapshot.language_state_bytes, snapshot.code_files,
-        ExecutorOrigin.CORE, author, request.objective_hash,
+        origin, author, request.objective_hash,
     ), context) for request, context in zip(requests, (old_context, new_context))]
     request = reattestation._reattestation_request_for_test(
         requests[1].request_id, current, b"not-consumed-by-read-only-proof",
         "installer", "successor current", ProducerReceiptBinding(
-            requests[1].objective_hash, source_id, ExecutorOrigin.CORE, author,
+            requests[1].objective_hash, source_id, origin, author,
         ), requests[1],
     )
     fields = dict(
@@ -135,7 +136,7 @@ def continuity(monkeypatch, tmp_path):
                              store_root=tmp_path / "store"),
         request=request,
         observed=ObservedCandidate(contract, snapshot, identities[1],
-                                   ExecutorOrigin.CORE, author, requests[1].objective_hash),
+                                   origin, author, requests[1].objective_hash),
         holder=holder, fields=fields, new_context=new_context,
     )
 
@@ -148,7 +149,7 @@ def test_exact_prior_receipt_proves_continuity_without_a_new_test_run(continuity
     assert proof.approved_lifecycle is ApprovedLifecycle.ACTIVE
     deps = shadow._sealed_dependencies_for_test(current_continuity=proof)
     decision = shadow.classify_revision(shadow.RevisionFacts(reattestation=True))
-    for check in (shadow._property_check, shadow._semantic_check):
+    for check in (shadow._property_check, shadow._semantic_check, shadow._approval_check):
         result = check(rig.observed, decision, deps)
         assert result.status is shadow.CheckStatus.NOT_APPLICABLE
         assert "continuity" in result.redacted_detail
@@ -208,21 +209,24 @@ def test_swapped_new_request_cannot_use_old_evidence(continuity, field, value):
 
 
 @pytest.mark.parametrize("field", ["candidate_id", "admission_context_id"])
-def test_proof_cannot_be_replayed_for_other_observation(continuity, field):
+@pytest.mark.parametrize("check", [shadow._property_check, shadow._semantic_check, shadow._approval_check])
+def test_proof_cannot_be_replayed_for_other_observation(continuity, field, check):
     rig = continuity
     proof = reattestation._current_continuity_v1(rig.core, rig.request, rig.observed)
     observed = replace(rig.observed, identities=replace(rig.observed.identities, **{field: D("0")}))
     decision = shadow.classify_revision(shadow.RevisionFacts(reattestation=True))
     with pytest.raises(ValueError, match="continuity_binding_invalid"):
-        proof.check(observed, decision, "properties")
+        check(observed, decision, shadow._sealed_dependencies_for_test(current_continuity=proof))
 
 
-def test_proof_cannot_skip_checks_for_a_new_birth(continuity):
+@pytest.mark.parametrize("revision", ["first_birth", "promotion", "reactivation", "code_changed"])
+@pytest.mark.parametrize("check", [shadow._property_check, shadow._semantic_check, shadow._approval_check])
+def test_proof_cannot_skip_checks_for_a_new_birth(continuity, revision, check):
     rig = continuity
     proof = reattestation._current_continuity_v1(rig.core, rig.request, rig.observed)
-    decision = shadow.classify_revision(shadow.RevisionFacts(first_birth=True))
+    decision = shadow.classify_revision(shadow.RevisionFacts(**{revision: True}))
     with pytest.raises(ValueError, match="continuity_binding_invalid"):
-        proof.check(rig.observed, decision, "properties")
+        check(rig.observed, decision, shadow._sealed_dependencies_for_test(current_continuity=proof))
 
 
 @pytest.mark.parametrize("component", ["manifest", "language", "code"])
@@ -278,9 +282,11 @@ def test_unsealed_dependency_hint_cannot_skip_checks():
         shadow._sealed_dependencies_for_test(current_continuity=True)
 
 
+@pytest.mark.parametrize("continuity", [ExecutorOrigin.CORE, ExecutorOrigin.SYNTHESIZED], indirect=True)
+@pytest.mark.parametrize("receipt_kind", [AdmissionKind.ADMISSION, AdmissionKind.REATTESTATION])
 @pytest.mark.parametrize("lifecycle", [ApprovedLifecycle.ACTIVE, ApprovedLifecycle.PREEXERCISE])
 def test_successor_issues_real_receipt_and_replays_without_retesting(
-    continuity, tmp_path, lifecycle,
+    continuity, tmp_path, lifecycle, receipt_kind,
 ):
     from executor_birth_operational import _sealed_core_for_test
     from executor_birth_predecessor import AdmissionContextPin, predecessor_snapshot
@@ -290,7 +296,9 @@ def test_successor_issues_real_receipt_and_replays_without_retesting(
     )
 
     rig = continuity
-    rig.holder.encoded = issue_admission_receipt(**(rig.fields | {"approved_lifecycle": lifecycle}))
+    fields = (_ordinary_admission_fields(rig) if receipt_kind is AdmissionKind.ADMISSION
+              else rig.fields)
+    rig.holder.encoded = issue_admission_receipt(**(fields | {"approved_lifecycle": lifecycle}))
     original_receipt = rig.holder.encoded
     instant = datetime(2026, 9, 9, 12, 0, tzinfo=timezone.utc)
     issuer, admission = Ed25519PrivateKey.generate(), Ed25519PrivateKey.generate()
@@ -317,7 +325,19 @@ def test_successor_issues_real_receipt_and_replays_without_retesting(
         def inputs_for(self, *_args, **_kwargs):
             raise AssertionError("unchanged current was semantically rereviewed")
 
+    from executor_birth_approval_store import resolve_request_approval
+
+    def resolve_approval(request, observed, scope, instant):
+        return resolve_request_approval(
+            approval_refs=request.approval_refs, request_id=request.request_id,
+            candidate_id=observed.identities.candidate_id,
+            semantic_core_id=observed.identities.semantic_core_id,
+            admission_context_id=observed.identities.admission_context_id,
+            scope=scope, now=instant, db_path=tmp_path / "approvals.sqlite", authority=None,
+        )
+
     birth = _sealed_core_for_test(
+        approval_resolver=resolve_approval,
         producer_registry=registry, producer_db=db,
         context_resolver=lambda _request: (rig.new_context, AdmissionContextPin(
             rig.core.selection.admission_context_id, rig.core.selection.context_epoch,
@@ -358,6 +378,8 @@ def test_successor_issues_real_receipt_and_replays_without_retesting(
     assert continuity_check.evidence_hash == "sha256:" + hashlib.sha256(original_receipt).hexdigest()
     assert "initial_current_generation_adoption_v1" not in receipt.check_results
     assert receipt.semantic_review_hash is None
+    assert receipt.approval_hash is None
+    assert receipt.check_results["approval"].status is AdmittedCheckStatus.NOT_APPLICABLE
     assert reattestation._execute(request, core).repeated
     assert len(written) == 1
     assert rig.holder.encoded == original_receipt
@@ -371,7 +393,11 @@ def _ordinary_admission_fields(rig):
         "approval": AdmissionCheck("v1", AdmittedCheckStatus.NOT_APPLICABLE, D("8")),
         "authoring_install_journal_v1": AdmissionCheck("1", AdmittedCheckStatus.PASSED, D("4")),
     })
+    synthesized = rig.observed.executor_origin is ExecutorOrigin.SYNTHESIZED
+    if synthesized:
+        checks["approval"] = AdmissionCheck("v1", AdmittedCheckStatus.PASSED, D("8"))
     return rig.fields | {
+        "approval_hash": D("8") if synthesized else None,
         "kind": AdmissionKind.ADMISSION, "revision_class": RevisionClass.CODE_REVISION,
         "candidate_id": D("9"), "birth_request_id": D("a"), "predecessor_id": D("b"),
         "check_results": checks,

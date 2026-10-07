@@ -484,6 +484,22 @@ FINAL_ANSWER_TOOL_NAME = "final_answer"
 DISAMBIG_TOOL_NAME = "request_disambiguation_from_user"
 
 
+def generate_json_grammar(*, decimal_numbers_only: bool = False) -> str:
+    """JSON objects, optionally spelling numbers without exponent notation.
+
+    Decimal spelling preserves numeric expressiveness and prevents exponent
+    shortcuts such as 1e999 in generated fixtures. This is a syntax constraint,
+    not a finite-value guarantee: callers must still validate decoded values.
+    """
+    used = _expand_deps({"jsonObject"})
+    definitions = _PRIMITIVE_DEFS
+    if decimal_numbers_only:
+        used.remove("jsonExp")
+        definitions = dict(definitions, jsonNum=r'jsonNum ::= "-"? jsonInt jsonFrac?')
+    return "\n".join([definitions[k] for k in definitions if k in used]
+                     + ["root ::= jsonObject"])
+
+
 def generate_tool_grammar(tools: Sequence[Any], *,
                             allow_final_answer: bool = False,
                             allow_disambiguation: bool = False,
@@ -516,9 +532,7 @@ def generate_tool_grammar(tools: Sequence[Any], *,
     """
     if not tools:
         # Empty pool: grammar permissive (qualsiasi JSON object)
-        used = {"jsonObject"}
-        prims = _emit_primitives(used)
-        return "\n".join(prims + ["root ::= jsonObject"])
+        return generate_json_grammar()
 
     tool_names: list[str] = []
     schema_lines: list[str] = []
@@ -536,9 +550,7 @@ def generate_tool_grammar(tools: Sequence[Any], *,
         used_primitives.update(used)
 
     if not tool_names:
-        used = {"jsonObject"}
-        prims = _emit_primitives(used)
-        return "\n".join(prims + ["root ::= jsonObject"])
+        return generate_json_grammar()
 
     # Root usa sempre `ws`, `sep`, `colon` per struttura. Marcate qui.
     used_primitives.update({"ws", "sep", "colon"})

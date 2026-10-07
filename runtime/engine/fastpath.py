@@ -148,6 +148,7 @@ def _conn() -> sqlite3.Connection:
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         canonical_text TEXT NOT NULL,
         canonical_hash TEXT NOT NULL UNIQUE,
+        exact_query TEXT NOT NULL DEFAULT '',
         embedding BLOB,
         framework_json TEXT NOT NULL,
         origin TEXT NOT NULL DEFAULT 'auto',
@@ -199,6 +200,9 @@ def _migrate_schema(c: sqlite3.Connection) -> None:
             # Vuote su righe pre-migrazione → MISS una volta, poi refresh.
             ("tools_sig", "TEXT NOT NULL DEFAULT ''"),
             ("pool_sig", "TEXT NOT NULL DEFAULT ''"),
+            # La forma normalizzata perde maiuscole/spazi nei valori. Non
+            # ricostruire la query originale per le righe storiche.
+            ("exact_query", "TEXT NOT NULL DEFAULT ''"),
         ):
             if col not in cols:
                 c.execute(f"ALTER TABLE fastpaths ADD COLUMN {col} {decl}")
@@ -229,12 +233,14 @@ def lookup(query: str) -> Optional[FastpathHit]:
     try:
         c = _conn()
         row = c.execute(
-            "SELECT id, canonical_text, framework_json, tools_sig, pool_sig "
+            "SELECT id, canonical_text, framework_json, tools_sig, pool_sig, exact_query "
             "FROM fastpaths WHERE canonical_hash = ?", (h,)).fetchone()
         c.close()
         if row:
             try:
                 fw = Framework.from_dict(json.loads(row[2]))
+                if is_query_specific(row[2]) and row[5] != query:
+                    return None
                 _touch(row[0])
                 return FastpathHit(fp_id=row[0], canonical_text=row[1],
                                     framework=fw, match_kind="hash",
@@ -273,6 +279,10 @@ def lookup(query: str) -> Optional[FastpathHit]:
     best_sim = 0.0
     for fp_id, ctext, fjson, stored_eb, tsig, psig in rows:
         if not stored_eb:
+            continue
+        # Il flag memorizzato è solo un filtro: vecchie righe possono essere
+        # state classificate prima che il predicato riconoscesse questi dati.
+        if is_query_specific(fjson):
             continue
         sim = _cluster.cosine(eb, stored_eb)
         if sim > best_sim:
@@ -351,8 +361,8 @@ def record_success(query: str, framework: Framework, *,
         c.execute(
             "INSERT INTO fastpaths(canonical_text, canonical_hash, embedding, "
             "framework_json, origin, intent_verb, intent_object, "
-            "query_specific, created_at, tools_sig, pool_sig) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "query_specific, created_at, tools_sig, pool_sig, exact_query) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(canonical_hash) DO UPDATE SET "
             "framework_json = excluded.framework_json, "
             "embedding = COALESCE(excluded.embedding, embedding), "
@@ -360,9 +370,10 @@ def record_success(query: str, framework: Framework, *,
             "intent_verb = excluded.intent_verb, "
             "intent_object = excluded.intent_object, "
             "tools_sig = excluded.tools_sig, "
-            "pool_sig = excluded.pool_sig",
+            "pool_sig = excluded.pool_sig, "
+            "exact_query = excluded.exact_query",
             (canonical, h, eb, fjson, origin, iverb, iobj, qspec, _now_iso(),
-             _tsig, _psig))
+             _tsig, _psig, query))
         c.commit()
         # fp_id dal SELECT, non da lastrowid: sull'upsert-UPDATE (refresh)
         # lastrowid NON è la riga aggiornata → telemetria falsa (§2.8).

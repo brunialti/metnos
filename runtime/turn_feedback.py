@@ -36,6 +36,8 @@ FEEDBACK_PATH = _DATA_DIR / "turn_feedback.jsonl"
 TURNS_DIR = _DATA_DIR / "turns"
 
 VALID_ACTIONS = frozenset({"ok", "error", "repeat"})
+# The native readers and maintenance share this physical-line window.
+FEEDBACK_LOOKBACK = 200
 
 
 def _load_turn(turn_id: str) -> Optional[dict]:
@@ -368,7 +370,7 @@ def _append_feedback(record: dict) -> None:
 
 
 def count_consecutive_errors_for_query(user_query: str,
-                                        *, lookback: int = 200) -> int:
+                                        *, lookback: int = FEEDBACK_LOOKBACK) -> int:
     """Conteggio feedback ✗ consecutive (no ✓ in mezzo) per `user_query`.
 
     Usato per escalation strato 2 (E.3): se >=2, il negative example nel
@@ -401,7 +403,7 @@ def count_consecutive_errors_for_query(user_query: str,
 
 
 def count_consecutive_errors_for_tool(tool_name: str,
-                                       *, lookback: int = 200) -> int:
+                                       *, lookback: int = FEEDBACK_LOOKBACK) -> int:
     """Conteggio feedback ✗ consecutive (cross-query) per `tool_name`.
 
     Usato da E12 feedback→demote: dopo N ✗ consecutive sullo stesso tool,
@@ -439,7 +441,7 @@ def count_consecutive_errors_for_tool(tool_name: str,
 
 
 def rejected_pipelines_for_query(user_query: str,
-                                  *, lookback: int = 200) -> list[list[str]]:
+                                  *, lookback: int = FEEDBACK_LOOKBACK) -> list[list[str]]:
     """Pipeline (tool sequence) rifiutate dall'utente per una query.
 
     LWW per (query, pipeline_signature): un feedback `ok` su una pipeline

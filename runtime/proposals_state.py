@@ -54,11 +54,25 @@ CREATE INDEX IF NOT EXISTS idx_proposals_kind  ON proposals_state(kind);
 """
 
 
+def init_schema(conn: sqlite3.Connection) -> None:
+    """Migrate through the native writer, never through retention inventory."""
+    conn.executescript(SCHEMA)
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(proposals_state)")}
+        if "expired_at" not in columns:
+            conn.execute("ALTER TABLE proposals_state ADD COLUMN expired_at TEXT")
+        conn.commit()
+    except BaseException:
+        conn.rollback()
+        raise
+
+
 def _open() -> sqlite3.Connection:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     c = sqlite3.connect(str(DB_PATH))
     c.row_factory = sqlite3.Row
-    c.executescript(SCHEMA)
+    init_schema(c)
     return c
 
 
@@ -83,6 +97,7 @@ class StateRow:
     dormant_uses: int | None
     last_action: str | None
     last_action_at: str | None
+    expired_at: str | None = None
 
 
 def _row(r) -> StateRow:
@@ -91,7 +106,7 @@ def _row(r) -> StateRow:
         first_seen=r["first_seen"], last_seen=r["last_seen"],
         last_uses=int(r["last_uses"] or 0), n_seen=int(r["n_seen"] or 0),
         dormant_since=r["dormant_since"], dormant_uses=r["dormant_uses"],
-        last_action=r["last_action"], last_action_at=r["last_action_at"],
+        last_action=r["last_action"], last_action_at=r["last_action_at"], expired_at=r["expired_at"],
     )
 
 
@@ -100,7 +115,7 @@ def lookup(sig_key) -> StateRow | None:
     conn = _open()
     try:
         r = conn.execute(
-            "SELECT * FROM proposals_state WHERE sig_key = ?", (key,)
+            "SELECT * FROM proposals_state WHERE sig_key = ? AND state != 'expired'", (key,)
         ).fetchone()
         return _row(r) if r else None
     finally:
@@ -116,6 +131,7 @@ def touch_or_insert(sig_key, kind: str, last_uses: int) -> StateRow:
     """Chiamare al fire del task notturno per ogni candidato.
 
     Comportamento per stato corrente:
+    - scaduta: torna pending come una nuova osservazione; invalida il piano F6.
     - assente: INSERT con state='pending', n_seen=1.
     - 'pending': UPDATE n_seen+=1, last_uses, last_seen. Se n_seen ≥
       DORMANCY_NIGHTS e nessuna last_action presa, transition → 'dormant'.
@@ -129,6 +145,7 @@ def touch_or_insert(sig_key, kind: str, last_uses: int) -> StateRow:
     key = _canonical(sig_key)
     conn = _open()
     try:
+        conn.execute("BEGIN IMMEDIATE")
         r = conn.execute(
             "SELECT * FROM proposals_state WHERE sig_key = ?", (key,)
         ).fetchone()
@@ -144,6 +161,23 @@ def touch_or_insert(sig_key, kind: str, last_uses: int) -> StateRow:
                 "SELECT * FROM proposals_state WHERE sig_key = ?", (key,)
             ).fetchone()
             return _row(r)
+
+        if r["state"] == "expired":
+            if r["last_action"]:
+                raise ValueError("expired proposal contains a human decision")
+            # Equivalent to observing an absent candidate, without a runtime
+            # DELETE. The new native observation invalidates every F6 version.
+            conn.execute(
+                "UPDATE proposals_state SET kind=?, state='pending', "
+                "first_seen=strftime('%Y-%m-%dT%H:%M:%SZ','now'), "
+                "last_seen=strftime('%Y-%m-%dT%H:%M:%SZ','now'), "
+                "last_uses=?, n_seen=1, dormant_since=NULL, dormant_uses=NULL, "
+                "last_action=NULL, last_action_at=NULL, expired_at=NULL WHERE sig_key=?",
+                (kind, int(last_uses), key),
+            )
+            conn.commit()
+            return _row(conn.execute(
+                "SELECT * FROM proposals_state WHERE sig_key=?", (key,)).fetchone())
 
         row = _row(r)
         new_state = row.state
@@ -242,12 +276,12 @@ def mark_action(sig_key, action: str) -> StateRow | None:
             "                       ELSE dormant_since END, "
             " dormant_uses  = CASE WHEN ?='reject' THEN last_uses "
             "                       ELSE dormant_uses END "
-            "WHERE sig_key = ?",
+            "WHERE sig_key = ? AND state != 'expired'",
             (target_state, action, action, action, key),
         )
         conn.commit()
         r = conn.execute(
-            "SELECT * FROM proposals_state WHERE sig_key = ?", (key,)
+            "SELECT * FROM proposals_state WHERE sig_key = ? AND state != 'expired'", (key,)
         ).fetchone()
         return _row(r) if r else None
     finally:
@@ -272,7 +306,10 @@ def prune_old(days: int | None = None, *,
     `last_action='reject'` (2/7/2026, review Fable): il reject umano mappa su
     state='dormant' — potarlo cancellava la memoria della decisione e il
     generatore notturno ri-emetteva la proposta come pending FRESCA.
-    Idempotente; ritorna i conteggi rimossi.
+    Registra state=expired e expired_at senza cancellare la riga. La raccolta
+    fisica spetta a F6 dopo la finestra di conservazione. I lettori operativi
+    trattano una proposta scaduta come assente; una nuova osservazione la riattiva.
+    Idempotente; ritorna i conteggi scaduti.
     """
     if days is None:
         try:
@@ -288,28 +325,28 @@ def prune_old(days: int | None = None, *,
     now = datetime.now(timezone.utc)
     conn = _open()
     try:
-        removed_stale = 0
+        expired_stale = 0
         if refresh_days > 0:
             cut = (now - timedelta(days=refresh_days)).strftime(
                 "%Y-%m-%dT%H:%M:%SZ")
-            removed_stale = conn.execute(
-                "DELETE FROM proposals_state "
+            expired_stale = conn.execute(
+                "UPDATE proposals_state SET state='expired', expired_at=? "
                 "WHERE state IN ('pending','dormant') "
-                "AND COALESCE(last_action,'') != 'reject' AND last_seen < ?",
-                (cut,),
+                "AND COALESCE(last_action,'') = '' AND last_seen < ?",
+                (now.strftime("%Y-%m-%dT%H:%M:%SZ"), cut),
             ).rowcount
-        removed_ttl = 0
+        expired_ttl = 0
         if days > 0:
             cut = (now - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
-            removed_ttl = conn.execute(
-                "DELETE FROM proposals_state "
+            expired_ttl = conn.execute(
+                "UPDATE proposals_state SET state='expired', expired_at=? "
                 "WHERE state IN ('pending','dormant') "
-                "AND COALESCE(last_action,'') != 'reject' AND first_seen < ?",
-                (cut,),
+                "AND COALESCE(last_action,'') = '' AND first_seen < ?",
+                (now.strftime("%Y-%m-%dT%H:%M:%SZ"), cut),
             ).rowcount
         conn.commit()
-        return {"removed_stale": max(0, removed_stale),
-                "removed_ttl": max(0, removed_ttl),
+        return {"expired_stale": max(0, expired_stale),
+                "expired_ttl": max(0, expired_ttl),
                 "refresh_days": refresh_days, "ttl_days": days}
     finally:
         conn.close()
