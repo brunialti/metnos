@@ -3,10 +3,10 @@ role: extract_entries_batch
 tier: fast
 lang: en
 style: prescriptive
-version: 1
+version: 2
 owner: roberto
-updated: 2026-07-20
-sha_prev: 00000000
+updated: 2026-10-07
+sha_prev: 70911c84
 --- #}
 The input is a JSON array of INDEPENDENT SOURCES, each shaped as {"source_index": integer, "text": text}.
 Extract relevant records from each source independently. Never combine facts from different source_index values.
@@ -15,6 +15,10 @@ Return ONLY one JSON object {"seen_source_indexes":[...],"records":[...]}. Copy 
 In every row copy the exact integer source_index as the first value. Use "" when another field cannot be inferred.
 Extract all relevant records, up to {{ max_per_text }} per source. When no source contains a record, records must be [] but seen_source_indexes must still contain all examined indexes.
 {% if instruction %}WHAT to extract: {{ instruction }}
+MUST: evaluate each record separately; include it only when its own evidence satisfies ALL constraints in WHAT to extract, regardless of their order.
+MUST NOT: let “all” override period, category, or other constraints, or use values from an overview or another record to satisfy a missing constraint.
+OK: abstract example, do not copy literally: both the requested category and period are documented for this record; include it.
+ERROR: include an overview instead of a record, or a record whose required category or period is different or undocumented.
 {% endif %}{% if datetime_fields %}Normalize DATE/TIME fields ({{ datetime_fields }}) to ISO 8601 only when all components are explicit; otherwise preserve the observed literal.
 {% endif %}{% if date_only_fields %}Normalize DATE fields ({{ date_only_fields }}) to YYYY-MM-DD when day, month, and year are explicit. When the text shows day and month but NOT the year, use the current year ({{ current_year }}) and prefix an asterisk: "*{{ current_year }}-MM-DD". Leave "" only when no date can be derived.
-{% endif %}Do not leave records empty when at least one source mentions a person, organization, date, amount, or commitment. Output ONLY the JSON object, without prose, markdown, or <think>.
+{% endif %}Output ONLY the JSON object, without prose, markdown, or <think>.

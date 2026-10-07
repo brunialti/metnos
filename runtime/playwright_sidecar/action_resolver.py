@@ -693,8 +693,98 @@ def goal_is_exhaustive(target: str) -> bool:
                _concept_forms("sites.goal_scope_quantifier"))
 
 
+def goal_scope_qualifier(clause: str, goal: str) -> str:
+    """Return an asserted quantifier attached to this goal, not another set.
+
+    The quantified phrase runs to the next registered list connector or
+    punctuation. Before the goal, it binds from its first goal word that is
+    not a number: only words written directly before that word, without noise
+    between, may precede it (a modifier, "all 2026 electricity invoices"; not
+    "all offers with the invoices" or "tutto il 2026 ... la fattura"). From
+    there one token set must contain the other: a planner summary may drop or
+    add words, never swap the object. A quantifier closing its phrase
+    ("..., tutte") binds only to the whole preceding phrase, allowing a
+    registered request verb and tabular destination at its margins.
+    This does not infer new filters or borrow 'all' from another object.
+    """
+    target = set(goal_tokens(goal))
+    if not target or _detlex is None:
+        return ""
+    clause = clause or ""
+    forms = "|".join(re.escape(form) for form in
+                     _concept_forms("parser.compound.list_connector"))
+    connector = re.compile(rf"(?<!\w)(?:{forms})(?!\w)", re.IGNORECASE) if forms else None
+
+    def phrase_end(text: str) -> int:
+        # A registered connector or punctuation of any script ends the phrase:
+        # a mark followed by a space or the end, or a full-width mark.
+        found = connector.search(text) if connector else None
+        end = found.start() if found else len(text)
+        for index, char in enumerate(text[:end]):
+            if unicodedata.category(char).startswith("P") and (
+                    index + 1 == len(text) or text[index + 1].isspace()
+                    or unicodedata.east_asian_width(char) in "FW"):
+                return index
+        return end
+
+    matches: set[str] = set()
+    for form in _concept_forms("sites.goal_scope_quantifier"):
+        for match in re.finditer(rf"(?<!\w){re.escape(form)}(?!\w)",
+                                 clause, re.IGNORECASE):
+            if not _detlex.asserted_at(clause, match.start(), target_scope=True):
+                continue
+            rest = clause[match.end():]
+            # Words as goal tokens see them, in any language.
+            words = [goal_tokens(word) for word in
+                     _canonical_goal_text(rest[:phrase_end(rest)]).split()]
+            first = next((i for i, tokens in enumerate(words) if tokens
+                          and tokens[0] in target and not tokens[0].isdigit()), None)
+            if not any(words):
+                prefix = clause[:match.start()].rstrip()
+                while prefix and (prefix[-1].isspace()
+                                  or unicodedata.category(prefix[-1]).startswith("P")):
+                    prefix = prefix[:-1]
+                # Never reach across another clause to find a matching subset.
+                if phrase_end(prefix) < len(prefix):
+                    continue
+                verbs = _detlex.native_ready_mapping(
+                    "prefilter.verb_canonical", include_reviewed_baselines=True)
+                for verb in sorted({v for forms in verbs.values() for v in forms},
+                                   key=len, reverse=True):
+                    leading = re.match(rf"\s*{re.escape(verb)}(?!\w)", prefix,
+                                       re.IGNORECASE)
+                    if leading and not (set(goal_tokens(verb)) & target):
+                        prefix = prefix[leading.end():]
+                        break
+                tokens = goal_tokens(prefix)
+                for form_tokens in sorted(
+                        (goal_tokens(v) for v in _concept_forms("parser.compound.tabular_noun")),
+                        key=len, reverse=True):
+                    if not form_tokens or set(form_tokens) & target:
+                        continue
+                    if tokens[:len(form_tokens)] == form_tokens:
+                        tokens = tokens[len(form_tokens):]
+                        break
+                    if tokens[-len(form_tokens):] == form_tokens:
+                        tokens = tokens[:-len(form_tokens)]
+                        break
+                bound = set(tokens) == target
+            elif first is None:
+                bound = False
+            else:
+                start = first
+                while start and words[start - 1]:
+                    start -= 1
+                core = {token for tokens in words[start:] for token in tokens}
+                bound = not any(words[:start]) and (core <= target or target <= core)
+            if bound:
+                matches.add(form)
+    return next(iter(matches)) if len(matches) == 1 else ""
+
+
 def preserve_goal_qualifiers(query: str, goal: str, *,
-                             max_words: int = 6) -> str:
+                             max_words: int = 6,
+                             scope_query: str | None = None) -> str:
     """Restore navigation semantics that a goal reducer may discard.
 
     Ownership and exhaustive-scope markers do not contribute content tokens,
@@ -711,13 +801,16 @@ def preserve_goal_qualifiers(query: str, goal: str, *,
     matches: list[tuple[int, str]] = []
     for concept in ("sites.goal_scope_quantifier",
                     "sites.personal_goal_marker"):
+        source = (normalize(scope_query)
+                  if concept == "sites.goal_scope_quantifier"
+                  and scope_query is not None else query_n)
         forms = tuple(dict.fromkeys(_concept_forms(concept)))
         if any(_contains_phrase(goal_n, form) for form in forms):
             continue
         found: list[tuple[int, int, str]] = []
         for form in forms:
             match = re.search(
-                rf"(?:^|\s)({re.escape(form)})(?=\s|$)", query_n)
+                rf"(?:^|\s)({re.escape(form)})(?=\s|$)", source)
             if match:
                 found.append((match.start(1), -len(form.split()), form))
         if found:

@@ -4373,7 +4373,28 @@ def _ensure_site_session_precursor(framework: Framework, intent, query: str,
                 and (_dl_match("sites.goal_scope_quantifier", text)
                      or _dl_match("text.plural_determiner", text))))
 
-    structured_record_request = _chiede_una_collezione(query)
+    from playwright_sidecar.action_resolver import (
+        goal_scope_qualifier, is_goal_navigation_request,
+    )
+    try:
+        from compound_decomposer import split_query_chunks
+        scope_clauses = split_query_chunks(query or "")
+    except Exception:  # noqa: BLE001 -- preserve the original request
+        scope_clauses = [query or ""]
+
+    def _scope_for_action(args: dict) -> str:
+        action = str(args.get("action") or "")
+        if args.get("value_ref") or not is_goal_navigation_request(action):
+            return ""
+        sources = {scope for clause in scope_clauses
+                   if (scope := goal_scope_qualifier(clause, action))}
+        return next(iter(sources)) if len(sources) == 1 else ""
+
+    # A destination verb can ask for a whole set too. Bind its quantifier to
+    # an existing navigation goal before treating it as a collection request.
+    structured_record_request = (_chiede_una_collezione(query) or any(
+        _scope_for_action(dict(getattr(step, "args", {}) or {}))
+        for step in consumers if getattr(step, "tool", "") == "act_sites"))
     has_site_context = ("open_sites" in tools_present
                         or root_object == "sites"
                         or "sites" in action_objects)
@@ -4622,22 +4643,30 @@ def _ensure_site_session_precursor(framework: Framework, intent, query: str,
         want_act = True
 
     def _append_acts(source_steps) -> None:
+        from playwright_sidecar.action_resolver import preserve_goal_qualifiers
+
+        goal_count = sum(
+            is_goal_navigation_request(str((getattr(step, "args", {}) or {}).get("action") or ""))
+            and not (getattr(step, "args", {}) or {}).get("value_ref")
+            for step in source_steps)
         for original_act in source_steps:
             original_args = dict(getattr(original_act, "args", {}) or {})
             if structured_record_request:
-                from playwright_sidecar.action_resolver import (
-                    is_goal_navigation_request, preserve_goal_qualifiers,
-                )
                 action = str(original_args.get("action") or "")
-                if is_goal_navigation_request(action):
+                if not original_args.get("value_ref") and is_goal_navigation_request(action):
                     # A planner summary must not narrow the user's set. The
                     # qualifiers come from the request, not a model guess;
                     # explicit click/fill operations retain their own scope.
                     restored = preserve_goal_qualifiers(
-                        query, action, max_words=len(action.split()) + 8)
+                        query, action, max_words=len(action.split()) + 8,
+                        scope_query=_scope_for_action(original_args))
                     if restored:
                         original_args["action"] = restored
-                    original_args.setdefault("done_when", query)
+                    # A compound request is not a completion condition for
+                    # every individual goal. Keep explicit conditions and
+                    # otherwise use each restored goal's own constraints.
+                    original_args.setdefault(
+                        "done_when", query if goal_count == 1 else restored or action)
                     if want_login:
                         original_args.setdefault("ambito", "personale")
             # Conserva TUTTO cio' che il planner ha dichiarato, non una lista
@@ -4775,9 +4804,15 @@ def _ensure_site_session_precursor(framework: Framework, intent, query: str,
         idx_map[old_pos] = final_pos
 
     for _old_pos, step in preserved:
+        original_args = dict(getattr(step, "args", {}) or {})
+        remapped_args = _remap_step_refs(original_args, idx_map)
+        if auto_extract and original_args.get("from_step") in absorbed_describe_positions:
+            # from_step consumes the row payload; describe has only text.
+            # Explicit ${stepN.summary} references retain their text producer.
+            remapped_args["from_step"] = inferred_extract_pos
         new_steps.append(StepSpec(
             tool=step.tool,
-            args=_remap_step_refs(dict(getattr(step, "args", {}) or {}), idx_map),
+            args=remapped_args,
             if_prev_entries_nonempty=step.if_prev_entries_nonempty,
         ))
     if finals:
@@ -4789,9 +4824,10 @@ def _ensure_site_session_precursor(framework: Framework, intent, query: str,
         ))
     final_message = _remap_step_refs(
         getattr(framework, "final_message", ""), idx_map)
-    if auto_extract:
+    if auto_extract and not preserved:
         # Funziona anche con output_policy disabilitata: la risposta terminale
-        # e' sempre la presentazione dei record appena estratti.
+        # presenta i record se non c'e' un consumatore successivo. Un foglio
+        # o un altro risultato a valle conserva invece il proprio riferimento.
         final_message = f"${{step{canonical_describe_pos}.summary}}"
     return Framework(
         steps=new_steps,
