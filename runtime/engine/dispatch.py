@@ -4536,15 +4536,28 @@ def _ensure_site_session_precursor(framework: Framework, intent, query: str,
     search_chunks: list[str] = []
     accepted_search_chunks: list[str] = []
     absorbed_site_search = False
+    try:
+        from compound_decomposer import split_query_chunks
+        search_chunks = [
+            chunk.strip(" ,.;") for chunk in split_query_chunks(query or "")
+            if _dl_match("sites.search_action_verb", chunk)
+        ]
+    except Exception:  # noqa: BLE001 -- nessuna inferenza se split fallisce
+        search_chunks = []
+    try:
+        import urllib.parse as _urlparse
+        session_host = (_urlparse.urlsplit(url).hostname or "").lower()
+    except ValueError:
+        session_host = ""
+
+    def _search_on_other_host(chunk: str) -> bool:
+        domains = _re.findall(
+            r"(?<![@\w])((?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+"
+            r"[a-z]{2,63})(?![\w])", chunk, _re.IGNORECASE)
+        return any(domain.lower() != session_host for domain in domains)
+
+    external_site_search = any(_search_on_other_host(chunk) for chunk in search_chunks)
     if want_login and not _dl_match("sites.external_search_scope", query):
-        try:
-            from compound_decomposer import split_query_chunks
-            search_chunks = [
-                chunk.strip(" ,.;") for chunk in split_query_chunks(query or "")
-                if _dl_match("sites.search_action_verb", chunk)
-            ]
-        except Exception:  # noqa: BLE001 -- nessuna inferenza se split fallisce
-            search_chunks = []
         existing_actions = {
             str((getattr(step, "args", {}) or {}).get("action") or "").strip().lower()
             for step in post_login_acts
@@ -4584,16 +4597,8 @@ def _ensure_site_session_precursor(framework: Framework, intent, query: str,
 
         existing_search_targets = set().union(*(
             _search_target_keys(action) for action in existing_actions))
-        try:
-            import urllib.parse as _urlparse
-            session_host = (_urlparse.urlsplit(url).hostname or "").lower()
-        except ValueError:
-            session_host = ""
         for chunk in search_chunks:
-            domains = _re.findall(
-                r"(?<![@\w])((?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+"
-                r"[a-z]{2,63})(?![\w])", chunk, _re.IGNORECASE)
-            if any(domain.lower() != session_host for domain in domains):
+            if _search_on_other_host(chunk):
                 continue
             accepted_search_chunks.append(chunk)
             chunk_targets = _search_target_keys(chunk)
@@ -4825,9 +4830,15 @@ def _ensure_site_session_precursor(framework: Framework, intent, query: str,
             site_source_positions.add(pos)
             continue
         source = args.get("from_step")
+        # A web tool with no URL, query or source has no input of its own: in
+        # a site collection that does not also ask the open web, it stands
+        # for the authenticated reading (live turn e00904729e2e4f26).
         if ((type(source) is int and source in site_source_positions
              and source < pos)
-                or (source is None and absorbed_site_search)):
+                or (source is None
+                    and (absorbed_site_search or structured_record_request)
+                    and not external_site_search
+                    and not _dl_match("sites.external_search_scope", query))):
             absorbed_web_positions.add(pos)
             site_source_positions.add(pos)
 

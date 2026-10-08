@@ -1036,8 +1036,9 @@ def register_all() -> None:
           "interi", "intere"],
       en=["all", "every", "entire"])
     R("sites.external_search_scope", "phrases", match_mode="word",
-      it=["sul web", "su internet", "nel web", "in internet"],
-      en=["on the web", "on internet", "web search", "internet search"])
+      it=["sul web", "su internet", "nel web", "in internet", "online"],
+      en=["on the web", "on internet", "web search", "internet search",
+          "search the web", "search the internet", "online"])
     # Modalita' dell'executor immagini web. Il router combina questi segnali
     # linguistici con object=images: il lessico non decide mai da solo il tool.
     R("images.web_search_scope", "phrases", match_mode="word",
