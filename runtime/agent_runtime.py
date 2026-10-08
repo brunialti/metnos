@@ -4608,10 +4608,18 @@ class TurnLog:
         (`failed[]`/`fail_count`) di uno step producer. Senza questo, account IMAP
         falliti (es. SSL 'bad record mac') → il conteggio cade a 0 e il final
         dichiara 'Hai 0 mail' mentre in realtà N account NON sono stati controllati
-        (bug 1/6). Generale per qualunque executor con `failed[]`."""
+        (bug 1/6). Include anche `partial_reason` esplicito dei processor."""
         notices, seen = [], set()
         for s in self.steps:
             res = s.result if isinstance(s.result, dict) else {}
+            # An explicit semantic partial result remains visible even when
+            # the step is a processor or the final action creates a file.
+            reason = res.get("partial_reason")
+            if res.get("partial") is True and isinstance(reason, str) and reason.strip():
+                notice = reason.strip()
+                if notice not in seen:
+                    seen.add(notice)
+                    notices.append(notice)
             failed = res.get("failed")
             if not (isinstance(failed, list) and failed):
                 continue

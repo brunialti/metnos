@@ -191,6 +191,14 @@
  available in the response.
  Synthetic IT/EN filter checks pass; completeness and absence of duplicates
  still require validation on the real website.</p>
+ <p>Collected dates retain their source precision: “08/2026” denotes the
+ whole month; “July - August 2026” and “from 01/07/2026 to 31/08/2026” denote
+ inclusive intervals. Named-month dates such as “September 15, 2026” are
+ also recognized. The source must state the year explicitly; numeric dates
+ retain day/month order regardless of the interface language. If a date
+ cannot be read, the result states how many rows were excluded and which
+ field was unreadable, including in the final spreadsheet receipt. The
+ spreadsheet therefore remains explicitly incomplete.</p>
  <p>Observations include visible text and observed selector states
  alongside accessible names. These data can identify the current collection,
  and live GAS/ELECTRICITY switching was verified in release 132.

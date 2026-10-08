@@ -122,6 +122,142 @@ def absolute_years(query: str) -> tuple[int, ...]:
     return tuple(dict.fromkeys(year for _pos, year in sorted(candidates)))
 
 
+def calendar_periods(text: str, today=None, *, observed: bool = False) -> tuple[tuple[str, str], ...]:
+    """The calendar intervals a text names, as inclusive ISO date pairs.
+
+    A filter on a date always uses a period (Roberto, 8/10/2026): a signalled
+    year is the whole year, a month the whole month, a day that single day,
+    and «dal X al Y» / «from X to Y» runs from the start of X to the end of Y.
+    Incomplete dates take the current period: no year means this year, no
+    month this month; in a range a start inherits what its end states. A
+    month alone needs its full name (abbreviations stand only with a day).
+    Coordinated years («del 2024 e del 2025») are one period each; other
+    unjoined mentions are ambiguous. Ambiguity or no mention: no period.
+
+    Observed source values must consist entirely of dates or one interval.
+    They require an explicit four-digit year, possibly shared by the two
+    endpoints, and never take components from the current date.
+    """
+    import datetime as _dt
+    from time_window_parser import calendar_date_bounds
+
+    if not text or not isinstance(text, str):
+        return ()
+    lexicon = _parser_lex.load_family("time_resolver")
+    parsers = _parser_lex.load_family("time_parser")
+    if lexicon is None or parsers is None:
+        return ()
+    today = today or _dt.date.today()
+    month_forms = _surface_to_canonical(lexicon["parser.time.month"])
+    # An abbreviation is a strict prefix of another form of the same month.
+    full_months = {
+        str(form) for forms in lexicon["parser.time.month"].values()
+        for form in forms
+        if not any(str(other).casefold().startswith(str(form).casefold())
+                   and len(str(other)) > len(str(form)) for other in forms)}
+    month_alt = _phrase_alt(month_forms)
+    full_alt = _phrase_alt({f.casefold() for f in full_months})
+    year_number = r"\d{4}" if observed else r"20\d{2}"
+    year_pat = rf"(?P<year>{year_number})" if observed else r"(?P<year>20\d{2}|\d{2})"
+    month_names = month_alt if observed else full_alt
+    patterns = (
+        ("iso", rf"(?<![\w/.-])(?P<year>{year_number})-(?P<month>\d{{1,2}})-(?P<day>\d{{1,2}})(?![\w/-])"),
+        ("numeric", rf"(?<![\w/.-])(?P<day>\d{{1,2}})[/.-](?P<month>\d{{1,2}})(?:[/.-]{year_pat})?(?![\w/-])"),
+        ("named_day", rf"(?<!\w)(?P<day>\d{{1,2}})\s+(?P<mname>{month_alt})(?:\s+(?P<year>{year_number}))?(?!\w)"),
+        ("month", rf"(?<!\w)(?P<mname>{month_names})(?:\s+(?:{_phrase_alt(lexicon['parser.time.absolute_year_prefix'])})?\s*(?P<year>{year_number}))?(?!\w)"),
+    )
+    if observed:
+        patterns += (
+            ("named_month_day", rf"(?P<mname>{month_alt})\s+(?P<day>\d{{1,2}})(?:,?\s+(?P<year>\d{{4}}))?"),
+            ("year", r"(?P<year>\d{4})"),
+        )
+
+    def mentions(segment: str, *, bare_day: bool = False) -> list[dict]:
+        found, taken = [], []
+        for kind, pattern in patterns:
+            matches = ([re.fullmatch(pattern, segment.strip(), re.IGNORECASE)] if observed
+                       else re.finditer(pattern, segment, re.IGNORECASE))
+            for match in matches:
+                if match is None:
+                    continue
+                if any(a < match.end() and match.start() < b for a, b in taken):
+                    continue
+                parts = match.groupdict()
+                month = (int(month_forms[parts["mname"].casefold()])
+                         if parts.get("mname") else
+                         int(parts["month"]) if parts.get("month") else None)
+                year = parts.get("year")
+                year = (2000 + int(year) if year and len(year) == 2
+                        else int(year) if year else None)
+                found.append({"start": match.start(), "year": year, "month": month,
+                              "day": int(parts["day"]) if parts.get("day") else None})
+                taken.append((match.start(), match.end()))
+        for year in (() if observed else absolute_years(segment)):
+            position = segment.find(str(year))
+            if not any(a <= position < b for a, b in taken):
+                found.append({"start": position, "year": year, "month": None, "day": None})
+        if bare_day and not found:
+            match = re.fullmatch(r"\s*(\d{1,2})\s*", segment)
+            if match:
+                found.append({"start": 0, "year": None, "month": None,
+                              "day": int(match.group(1))})
+        return sorted(found, key=lambda item: item["start"])
+
+    def bounds(mention: dict, *, complete_month: bool) -> tuple | None:
+        if observed and (mention["year"] is None
+                         or mention["day"] is not None and mention["month"] is None):
+            return None
+        year = mention["year"] if observed else mention["year"] or today.year
+        month, day = mention["month"], mention["day"]
+        if month is None and day is not None:
+            month = today.month if complete_month else None
+        try:
+            return calendar_date_bounds(year, month, day)
+        except ValueError:
+            return None
+
+    connector = parsers["parser.time.range_connector"]
+    start_alt = _phrase_alt(connector.get("from", ()))
+    end_alt = _phrase_alt(connector.get("to", ()))
+    span = None
+    if start_alt and end_alt:
+        span_pattern = rf"(?<!\w)(?:{start_alt})(?!\w)\s+(?P<a>.+?)\s+(?:{end_alt})(?!\w)\s+(?P<b>.+?)"
+        span = (re.fullmatch(span_pattern, text.strip(), re.IGNORECASE) if observed else
+                re.search(span_pattern + r"(?=[,;.!?]\s|[,;.!?]?$)", text, re.IGNORECASE))
+    endpoints = (span.group("a"), span.group("b")) if span else ()
+    if observed and not endpoints:
+        parts = re.split(r"\s+[-–/]\s+|\s*\.\.\s*", text.strip())
+        if len(parts) == 2:
+            endpoints = parts
+    if endpoints:
+        first = mentions(endpoints[0], bare_day=True)
+        last = mentions(endpoints[1], bare_day=True)
+        if len(first) == 1 and len(last) == 1:
+            start, end = dict(first[0]), last[0]
+            if observed:
+                if start["year"] is None:
+                    start["year"] = end["year"]
+                if end["year"] is None:
+                    end["year"] = start["year"]
+            for key in ("month", "year"):
+                if start[key] is None and start["day"] is not None:
+                    start[key] = end[key]
+            low, high = bounds(start, complete_month=True), bounds(end, complete_month=True)
+            if low and high and low[0] <= high[1]:
+                return ((low[0].isoformat(), high[1].isoformat()),)
+        if observed or len(first) == 1 and len(last) == 1:
+            return ()
+    found = mentions(text)
+    if len(found) > 1 and all(m["month"] is None and m["day"] is None for m in found):
+        years = absolute_years(text)
+        if len(years) == len({m["year"] for m in found}):
+            return tuple((f"{year}-01-01", f"{year}-12-31") for year in years)
+    if len(found) != 1:
+        return ()
+    single = bounds(found[0], complete_month=True)
+    return ((single[0].isoformat(), single[1].isoformat()),) if single else ()
+
+
 def _parse_absolute_year(query: str) -> int | None:
     """Keep the historical first-reference policy for existing consumers."""
     years = absolute_years(query)

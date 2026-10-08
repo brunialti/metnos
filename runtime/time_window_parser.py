@@ -8,8 +8,10 @@ the final microsecond of each calendar period.
 """
 from __future__ import annotations
 
+import calendar
 import re
 from datetime import date, datetime, time, timedelta, timezone
+from email.utils import parsedate_to_datetime
 from zoneinfo import ZoneInfo
 
 from dateutil.relativedelta import relativedelta
@@ -32,6 +34,125 @@ _MONTHS_IMAP = ("Jan", "Feb", "Mar", "Apr", "May", "Jun",
 _DURATION = re.compile(r"(\d+(?:\.\d+)?)(min|s|h|d|w|m|y)")
 _ISO_DAY = re.compile(r"\d{4}-\d{2}-\d{2}\Z")
 _IMAP_DAY = re.compile(r"(\d{1,2})-([A-Za-z]{3})-(\d{4})\Z")
+
+
+def calendar_date_bounds(year: int, month: int | None = None, day: int | None = None) -> tuple[date, date]:
+    """Inclusive dates at the stated year, month or day precision."""
+    if day is not None:
+        value = date(year, month, day)
+        return value, value
+    if month is not None:
+        return date(year, month, 1), date(year, month, calendar.monthrange(year, month)[1])
+    return date(year, 1, 1), date(year, 12, 31)
+
+
+def normalize_observed_date(value):
+    """Canonicalize an observed date without filling in missing components.
+
+    Year/month literals retain month precision. Unknown or invalid values
+    stay readable; an assumed-year mark is preserved, never promoted to fact.
+    Month names come from the active language's existing temporal lexicon.
+    """
+    from executor_helpers import ASSUMED_YEAR_MARK
+
+    if not isinstance(value, str) or not value.strip():
+        return value
+    raw = value.strip()
+    if raw.startswith(ASSUMED_YEAR_MARK):
+        inner = normalize_observed_date(raw[len(ASSUMED_YEAR_MARK):])
+        return ASSUMED_YEAR_MARK + inner.strip() if inner.strip() else ""
+    try:
+        if re.fullmatch(r"\d{4}", raw):
+            date(int(raw), 1, 1)
+            return raw
+        month = re.fullmatch(r"(\d{4})[-/.](\d{1,2})", raw)
+        reverse = re.fullmatch(r"(\d{1,2})[-/.](\d{4})", raw)
+        if month or reverse:
+            year, number = map(int, month.groups() if month else reverse.groups()[::-1])
+            date(year, number, 1)
+            return f"{year:04d}-{number:02d}"
+        candidate = raw[:-1] + "+00:00" if raw.endswith("Z") else raw
+        if "T" in candidate or " " in candidate:
+            return datetime.fromisoformat(candidate).isoformat()
+        return date.fromisoformat(candidate).isoformat()
+    except ValueError:
+        pass
+    for fmt in ("%d/%m/%Y", "%d-%m-%Y", "%d.%m.%Y", "%Y/%m/%d",
+                "%d/%m/%Y %H:%M", "%d-%m-%Y %H:%M",
+                "%d/%m/%Y %H:%M:%S", "%Y/%m/%d %H:%M"):
+        try:
+            parsed = datetime.strptime(raw, fmt)
+            return parsed.isoformat() if "%H" in fmt else parsed.date().isoformat()
+        except ValueError:
+            pass
+    lexicon = _parser_lex.load_family("time_resolver")
+    if lexicon:
+        months = {str(form).casefold(): int(number)
+                  for number, forms in lexicon["parser.time.month"].items() for form in forms}
+        match = re.fullmatch(rf"(?:(\d{{1,2}})\s+)?({_phrase_alt(months)})\s+(\d{{4}})", raw, re.I)
+        month_first = re.fullmatch(rf"({_phrase_alt(months)})\s+(\d{{1,2}}),?\s+(\d{{4}})", raw, re.I)
+        if month_first:
+            name, day, year = month_first.groups()
+            try:
+                return date(int(year), months[name.casefold()], int(day)).isoformat()
+            except ValueError:
+                return raw
+        if match:
+            day, name, year = match.groups()
+            month = months[name.casefold()]
+            try:
+                if day:
+                    return date(int(year), month, int(day)).isoformat()
+                date(int(year), month, 1)
+                return f"{int(year):04d}-{month:02d}"
+            except ValueError:
+                return raw
+    try:
+        parsed = parsedate_to_datetime(raw)
+        return parsed.isoformat() if parsed is not None else raw
+    except (TypeError, ValueError, OverflowError):
+        return raw
+
+
+def observed_date_period(value) -> tuple[date, date] | None:
+    """Inclusive bounds of an observed date or interval; no assumed year."""
+    from executor_helpers import ASSUMED_YEAR_MARK
+
+    if not isinstance(value, str) or not value.strip() or value.strip().startswith(ASSUMED_YEAR_MARK):
+        return None
+
+    def one(part):
+        if part.strip().startswith(ASSUMED_YEAR_MARK):
+            return None
+        canonical = normalize_observed_date(part)
+        try:
+            if re.fullmatch(r"\d{4}(?:-\d{2})?", canonical):
+                return calendar_date_bounds(*map(int, canonical.split("-")))
+            day = (datetime.fromisoformat(canonical).date() if "T" in canonical or " " in canonical
+                   else date.fromisoformat(canonical))
+            return day, day
+        except ValueError:
+            return None
+
+    text = value.strip()
+    single = one(text)
+    if single is not None:
+        return single
+    # Try complete literals before slash-delimited intervals: 08/2026 and
+    # 23/03/2026 each denote one value, not interval endpoints.
+    parts = re.split(r"\s*\.\.\s*|\s+[-–/]\s+", text)
+    if len(parts) == 1:
+        parts = text.split("/")
+    if len(parts) == 2:
+        low, high = one(parts[0]), one(parts[1])
+        if low and high and low[0] <= high[1]:
+            return low[0], high[1]
+    # Share the request grammar, with explicit source components only.
+    from time_window_resolver import calendar_periods
+    periods = calendar_periods(text, observed=True)
+    if len(periods) == 1:
+        return tuple(date.fromisoformat(part) for part in periods[0])
+    return None
 
 
 def temporal_now(now=None, *, tz=None):
@@ -171,8 +292,8 @@ def _calendar_period(spec, now):
             after = date(first.year + 1, 1, 1)
     elif re.fullmatch(r"\d{4}(?:-\d{2})?", spec):
         parts = [int(part) for part in spec.split("-")]
-        first = date(parts[0], parts[1] if len(parts) == 2 else 1, 1)
-        after = first + (relativedelta(months=1) if len(parts) == 2 else relativedelta(years=1))
+        first, last = calendar_date_bounds(*parts)
+        return _full_day(first, now.tzinfo)[0], _full_day(last, now.tzinfo)[1]
     else:
         return None
     return _full_day(first, now.tzinfo)[0], _full_day(after - timedelta(days=1), now.tzinfo)[1]

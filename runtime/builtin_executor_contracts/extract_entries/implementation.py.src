@@ -24,8 +24,7 @@ import json
 import re
 import threading
 import unicodedata
-from datetime import date, datetime
-from email.utils import parsedate_to_datetime
+from datetime import date
 
 from executor_workers import assigned_workers, map_ordered
 from llm_helpers import call_llm
@@ -35,6 +34,7 @@ from agentic_executor import (
     AgenticContext, AgenticLimits, AgenticProposal, run_bounded_sync,
 )
 import detection_lexicon_seed_reconciliation as _reconciliation_lex
+from time_window_parser import normalize_observed_date
 
 log = get_logger(__name__)
 
@@ -107,15 +107,8 @@ def _source_origin(source: dict) -> str:
 
 
 def _source_date(value):
-    """Normalize RFC mail dates while preserving already-ISO literals."""
-    if not isinstance(value, str) or not value.strip():
-        return value
-    raw = value.strip()
-    try:
-        parsed = parsedate_to_datetime(raw)
-    except (TypeError, ValueError, OverflowError):
-        return raw
-    return parsed.isoformat() if parsed is not None else raw
+    """Normalize source dates with the shared observed-date parser."""
+    return normalize_observed_date(value)
 
 
 # One definition of the mark, shared with whoever has to compare these values
@@ -133,39 +126,7 @@ def _normalize_extracted_date(field: str, value, *, lexicon=None):
         lexicon = _reconciliation_lex.load()
     if _field_temporal_kind(field, lexicon=lexicon) is None:
         return value
-    raw = value.strip()
-    # The marker survives normalisation: it is part of what the value claims,
-    # not decoration. Strip it, normalise the date underneath, put it back.
-    if raw.startswith(_ASSUMED_YEAR_MARK):
-        inner = _normalize_extracted_date(
-            field, raw[len(_ASSUMED_YEAR_MARK):], lexicon=lexicon,
-        )
-        inner = inner if isinstance(inner, str) else raw
-        return f"{_ASSUMED_YEAR_MARK}{inner.strip()}" if inner.strip() else ""
-    # ISO già valido: conserva la granularità date-only vs datetime.
-    try:
-        iso_candidate = raw[:-1] + "+00:00" if raw.endswith("Z") else raw
-        if "T" in iso_candidate or " " in iso_candidate:
-            parsed_dt = datetime.fromisoformat(iso_candidate)
-            return parsed_dt.isoformat()
-        parsed_date = date.fromisoformat(iso_candidate)
-        return parsed_date.isoformat()
-    except (TypeError, ValueError):
-        pass
-    for fmt in ("%d/%m/%Y", "%d-%m-%Y", "%d.%m.%Y", "%Y/%m/%d"):
-        try:
-            return datetime.strptime(raw, fmt).date().isoformat()
-        except ValueError:
-            pass
-    for fmt in ("%d/%m/%Y %H:%M", "%d-%m-%Y %H:%M",
-                "%d/%m/%Y %H:%M:%S", "%Y/%m/%d %H:%M"):
-        try:
-            return datetime.strptime(raw, fmt).isoformat()
-        except ValueError:
-            pass
-    # RFC mail dates hanno timezone esplicita o weekday; `_source_date`
-    # preserva il letterale se non è realmente parsabile.
-    return _source_date(raw)
+    return normalize_observed_date(value)
 
 
 _WEB_AUDIT_DERIVED_FIELDS = frozenset({

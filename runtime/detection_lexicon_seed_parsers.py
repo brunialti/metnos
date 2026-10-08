@@ -361,7 +361,7 @@ def register_all() -> None:
       it=["year"], en=["year"])
     R("parser.time.range_connector", "mapping", match_mode="word",
       it={"from": ["dal"], "to": ["al"]},
-      en={"from": ["dal"], "to": ["al"]})
+      en={"from": ["from"], "to": ["to"]})
     R("parser.time.normalizer_past_determiner", "phrases", match_mode="word",
       it=["ultimi", "ultime"], en=["ultimi", "ultime"])
     R("parser.time.future_offset_prefix", "phrases", match_mode="word",

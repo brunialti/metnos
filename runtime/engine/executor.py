@@ -2485,12 +2485,18 @@ class Executor:
                         and 1 <= source_pos <= len(result.steps)
                         and result.steps[source_pos - 1].tool == "extract_entries"):
                     from filter_field_resolver import (
-                        resolve_period_filter_field, site_collection_years,
+                        resolve_period_filter_field, site_collection_periods,
                     )
-                    years = site_collection_years(framework.steps, source_pos, query)
-                    if years:
+                    # Plan references count the seeded steps of a resumed
+                    # tail (the paused executor is position 1): align the
+                    # specs to the same numbering before following them.
+                    plan_steps = [StepSpec(tool=seed.tool,
+                                           args=dict(getattr(seed, "args", None) or {}))
+                                  for seed in self.seed_steps] + list(framework.steps)
+                    periods = site_collection_periods(plan_steps, source_pos, query)
+                    if periods:
                         args = resolve_period_filter_field(
-                            args, result.steps[source_pos - 1].result, years)
+                            args, result.steps[source_pos - 1].result, periods)
             _context_errors = args.pop(
                 _FROM_STEP_CONTEXT_ERRORS_KEY, None)
             if isinstance(_context_errors, list) and _context_errors:

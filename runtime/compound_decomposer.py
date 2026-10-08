@@ -180,6 +180,9 @@ def _clean_field_name(text: str,
                   lexicon["parser.compound.field_stop"]}
     field_cut = {str(item).casefold() for item in
                  lexicon["parser.compound.field_cut"]}
+    # An address names a source, never a column: a site URL appended to the
+    # request on its own line used to become the field "https site com".
+    text = re.sub(r"(?<!\w)[a-z][a-z0-9+.-]*://\S+", " ", text, flags=re.IGNORECASE)
     text = text.replace("'", " ").replace("’", " ").casefold()
     words = re.findall(r"[\w]+", text)
     kept: list[str] = []

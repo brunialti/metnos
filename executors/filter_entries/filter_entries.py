@@ -41,6 +41,7 @@ sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
     if (p / "runtime" / "config.py").is_file()))
 from messages import get as _msg  # noqa: E402
 from executor_helpers import run_stdio, date_text  # noqa: E402
+from time_window_parser import observed_date_period  # noqa: E402
 
 
 def _ensure_list(v):
@@ -253,9 +254,28 @@ def invoke(args):
                 "error_code": "invalid_where_regex",
                 "error": _msg("ERR_ARG_INVALID", arg="where_regex", reason=str(e)),
             }
+    # Calendar periods (Roberto, 8/10/2026): a date filter is always a list
+    # of inclusive [from, to] ISO intervals; an entry is kept when its value
+    # falls in, or overlaps, one of them.
+    where_periods = None
+    if args.get("where_periods") is not None:
+        try:
+            where_periods = [(_dt.date.fromisoformat(str(low)),
+                              _dt.date.fromisoformat(str(high)))
+                             for low, high in args["where_periods"]]
+            if not where_periods or any(low > high for low, high in where_periods):
+                raise ValueError("empty or reversed period")
+        except (TypeError, ValueError) as e:
+            return {
+                "ok": False,
+                "error_class": "invalid_input",
+                "error_code": "invalid_where_periods",
+                "error": _msg("ERR_ARG_INVALID", arg="where_periods", reason=str(e)),
+            }
+    period_unreadable = 0
     _has_where_str_op = any(x is not None for x in (
         where_starts_with, where_contains, where_glob, where_regex_str))
-    if (where_in or where_not_in or _has_where_str_op
+    if (where_in or where_not_in or _has_where_str_op or where_periods
             or where_present is not None) and not where_field:
         return {
             "ok": False,
@@ -265,6 +285,7 @@ def invoke(args):
         }
 
     def keep(e):
+        nonlocal period_unreadable
         if not isinstance(e, dict):
             return False
         if kinds and e.get("kind") not in kinds:
@@ -358,6 +379,14 @@ def invoke(args):
                     return False
             if where_regex_re is not None and not where_regex_re.search(v_str):
                 return False
+            if where_periods is not None:
+                span = observed_date_period(v)
+                if span is None:
+                    period_unreadable += 1
+                    return False
+                if not any(span[0] <= high and low <= span[1]
+                           for low, high in where_periods):
+                    return False
         return True
 
     filtered = [e for e in entries if keep(e)]
@@ -399,7 +428,7 @@ def invoke(args):
             n_temporal_dropped = len(filtered) - len(kept_temporal)
             filtered = kept_temporal
 
-    return {
+    result = {
         "ok": True,
         "entries": filtered,
         "metadata": {
@@ -424,10 +453,20 @@ def invoke(args):
                 "where_contains": where_contains,
                 "where_glob": where_glob,
                 "where_regex": where_regex_str,
+                "where_periods": args.get("where_periods"),
+                "period_unreadable": period_unreadable,
                 "overlap_dropped": n_temporal_dropped,
             },
         },
     }
+    if period_unreadable:
+        result.update(
+            partial=True, truncated=True, truncated_what=_msg("MSG_OBJECT_ENTRIES"),
+            used=len(filtered), available_total=len(entries),
+            partial_reason=_msg("MSG_FILTER_PERIOD_UNREADABLE", n=period_unreadable,
+                                field=where_field),
+        )
+    return result
 
 
 def main():

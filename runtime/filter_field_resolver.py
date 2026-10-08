@@ -16,22 +16,24 @@ from __future__ import annotations
 import re
 
 
-def site_collection_years(steps, extract_pos: int, query: str) -> tuple[int, ...]:
-    """Bind explicit years to the Sites collection actually read.
+def site_collection_periods(steps, extract_pos: int, query: str
+                            ) -> tuple[tuple[str, str], ...]:
+    """Bind the request's calendar periods to the Sites collection read.
 
-    A date of a carrier (for example the year of source messages) must not
+    A date of a carrier (for example the period of source messages) must not
     become a filter on dates of newly extracted entities. This narrow bridge
     requires the concrete extract -> read_sites -> goal chain and the user's
-    clause for that same goal. A quantified phrase or an exact goal-token
-    match binds the clause. It does not reconstruct a period removed from
-    the goal or choose among competing clauses.
+    clause for that same goal (a quantified phrase or an exact goal-token
+    match). The goal must state the same periods, so a word read as a date
+    elsewhere in the clause cannot add one; a year the planner restated
+    without its marker ("invoices 2026") still counts as stated.
     """
     from compound_decomposer import split_query_chunks
     from playwright_sidecar.action_resolver import (
         goal_scope_qualifier, goal_tokens,
         is_goal_navigation_request,
     )
-    from time_window_resolver import absolute_years
+    from time_window_resolver import calendar_periods
 
     def source(position):
         if not isinstance(position, int) or not 1 <= position <= len(steps):
@@ -61,29 +63,30 @@ def site_collection_years(steps, extract_pos: int, query: str) -> tuple[int, ...
                or target and set(goal_tokens(clause)) == target}
     if len(clauses) != 1:
         return ()
-    years = absolute_years(next(iter(clauses)))
-    if not years or not {str(year) for year in years} <= target:
+    periods = calendar_periods(next(iter(clauses)))
+    if not periods:
         return ()
-    return years
-
-
-def period_where_regex(years: tuple[int, ...]) -> str:
-    """One existing predicate for observed ISO dates or a year-only field."""
-    return "^(?:" + "|".join(str(year) for year in years) + ")(?:-|$)"
+    if calendar_periods(action) == periods:
+        return periods
+    whole_years = all(low[5:] == "01-01" and high[5:] == "12-31"
+                      and low[:4] == high[:4] for low, high in periods)
+    if whole_years and {low[:4] for low, _high in periods} <= target:
+        return periods
+    return ()
 
 
 def resolve_period_filter_field(args: dict, source_result: dict,
-                                years: tuple[int, ...]) -> dict:
-    """Bind the deferred predicate against the complete extracted schema.
+                                periods: tuple[tuple[str, str], ...]) -> dict:
+    """Bind the deferred period predicate against the complete extracted schema.
 
-    The caller supplies the actual from_step result and the years bound to its
-    Sites goal. Neither row values nor a container label select the field.
+    The caller supplies the actual from_step result and the periods bound to
+    its Sites goal. Neither row values nor a container label select the field.
     An unresolved predicate retains its missing where_field, so filter_entries
     returns its ordinary hard error instead of guessing or passing all rows.
     """
-    if (not isinstance(args, dict) or not years
+    if (not isinstance(args, dict) or not periods
             or args.get("where_field") is not None
-            or args.get("where_regex") != period_where_regex(years)
+            or [tuple(p) for p in args.get("where_periods") or ()] != list(periods)
             or not isinstance(source_result, dict)):
         return args
     fields = source_result.get("fields")

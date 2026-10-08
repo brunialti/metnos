@@ -856,32 +856,33 @@ def _ensure_extract_clause(framework: Framework, intent, query: str,
 
 def _ensure_extracted_period_scope(framework: Framework, intent, query: str,
                                    catalog: Optional[list]) -> Framework:
-    """Preserve a Sites collection's explicit years until its schema exists.
+    """Preserve a Sites collection's calendar periods until its schema exists.
 
-    The ordinary filter predicate is inserted and consumers are rewired now;
-    its field is bound from the actual extraction result before invocation.
-    The scope comes from the connected goal, never from arbitrary
-    four-digit values or a source-message period elsewhere in the request.
+    The period filter is inserted and consumers are rewired now; its field is
+    bound from the actual extraction result before invocation. A date is
+    always a period (a year, a month, a day or a range, completed with the
+    current period). The scope comes from the connected goal, never from
+    arbitrary numbers or a source-message period elsewhere in the request.
     """
     try:
-        from filter_field_resolver import period_where_regex, site_collection_years
+        from filter_field_resolver import site_collection_periods
 
         steps = list(getattr(framework, "steps", None) or [])
-        scoped = [(i, years) for i, step in enumerate(steps)
+        scoped = [(i, periods) for i, step in enumerate(steps)
                   if getattr(step, "tool", "") == "extract_entries"
-                  and (years := site_collection_years(steps, i + 1, query))]
+                  and (periods := site_collection_periods(steps, i + 1, query))]
         if len(scoped) != 1:
             return framework
-        ex_idx, years = scoped[0]
+        ex_idx, periods = scoped[0]
         extract_pos = ex_idx + 1
         filter_args = {"from_step": extract_pos,
-                       "where_regex": period_where_regex(years)}
+                       "where_periods": [list(period) for period in periods]}
         if any((getattr(step, "tool", "") or "") == "filter_entries"
                and (getattr(step, "args", None) or {}).get("from_step") ==
                extract_pos
                and (getattr(step, "args", None) or {}).get("where_field") is None
-               and (getattr(step, "args", None) or {}).get("where_regex") ==
-               filter_args["where_regex"]
+               and (getattr(step, "args", None) or {}).get("where_periods") ==
+               filter_args["where_periods"]
                for step in steps):
             return framework
 
@@ -901,8 +902,8 @@ def _ensure_extracted_period_scope(framework: Framework, intent, query: str,
         new_steps[ex_idx].args = dict(getattr(steps[ex_idx], "args", {}) or {})
         new_steps.insert(ex_idx + 1, StepSpec(
             tool="filter_entries", args=filter_args))
-        log.info("[period_scope] filter_entries inserted after extract: years=%s",
-                 years)
+        log.info("[period_scope] filter_entries inserted after extract: periods=%s",
+                 periods)
         return Framework(
             steps=new_steps,
             fillers=getattr(framework, "fillers", {}) or {},

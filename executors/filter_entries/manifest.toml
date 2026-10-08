@@ -15,7 +15,7 @@ en = "SCOPO: filter entries by criteria. PATTERN: filter_entries(from_step=1, ki
 
 [code]
 files  = ["filter_entries.py"]
-digest = "sha256:250f2a1f31970fb8c49444aff15f1d9fa1ff995934b11b70e96a4baa39998853"
+digest = "sha256:5203db4f27a3305c31cfc10f319d64add9c67ef7c546ce8aac6b9b197cb643a7"
 
 [args]
 type     = "object"
@@ -160,6 +160,21 @@ type        = "string"
 it = "Regex Python case-insensitive su where_field; esempio summary='^HLT[\\s-]+'. Richiede where_field."
 en = "Case-insensitive Python regex on where_field; example summary='^HLT[\\s-]+'. Requires where_field."
 
+[args.properties.where_periods]
+type        = "array"
+
+[args.properties.where_periods.items]
+type        = "array"
+minItems    = 2
+maxItems    = 2
+
+[args.properties.where_periods.items.items]
+type        = "string"
+
+[args.properties.where_periods.description]
+it = "Periodi inclusivi [da,a] ISO su where_field; interseca date, anni o mesi (08/2026, Settembre 2026) senza aggiungere giorni. Esclude anni presunti (*). Richiede where_field."
+en = "Inclusive ISO [from,to] periods on where_field; overlaps dates, years or months (08/2026, September 2026) without guessing days. Excludes assumed years (*). Requires where_field."
+
 [args.properties.overlap_step]
 type        = "integer"
 minimum     = 1
@@ -187,6 +202,12 @@ schema_inline = """
 {
   ok: bool,
   entries?: Array<object>,
+  partial?: bool,
+  partial_reason?: str,
+  truncated?: bool,
+  truncated_what?: str,
+  used?: int,
+  available_total?: int,
   metadata?: {
     count_in: int,
     count_out: int,
