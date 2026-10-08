@@ -3211,32 +3211,23 @@ async def _discover_collection(entry: dict, session_id: str,
                 tried.add(login_navigation.candidate_key(c))
         candidates = [c for c in observation["candidates"]
                       if login_navigation.candidate_key(c) not in tried]
-        candidate = await _local_llm_choose_goal_candidate(
-            entry, target, candidates, [], set(), collection=True,
-            first_visit=first_visit)
-        if candidate is None:
-            # An unavailable/invalid model answer is not proof of a dead end.
-            raise ValueError("collection_observation_unresolved")
-        if candidate.get("collection_observed"):
-            state["found"] = True
-            snapshot = observation["snapshot"]
-            collected = entry.setdefault("collected_pages", [])
-            if snapshot["text"] and not any(
-                    item.get("key") == snapshot["key"] for item in collected):
-                collected.append(snapshot)
-        sites_audit.record(
-            "collection_observation", owner=entry.get("owner", ""),
-            session_id=session_id, domain=entry.get("domain", ""),
-            collection_observed=bool(candidate.get("collection_observed")),
-            proximity=candidate.get("proximity", "none"),
-            steps=int(state.get("actions", 0)))
-        if _FRONTIER_COLLECTION_ROUTES and _frontier_routes_configured():
-            # Content recognition and route selection are independent: a page
-            # with invoices can still offer unrelated menus. Preserve its
-            # evidence before asking Frontier, including if that request fails.
-            candidate = await _frontier_collection_route(entry, target, candidates)
-            if candidate is None:
-                raise ValueError("collection_observation_unresolved")
+        def preserve(candidate):
+            if candidate.get("collection_observed"):
+                state["found"] = True
+                snapshot = observation["snapshot"]
+                collected = entry.setdefault("collected_pages", [])
+                if snapshot["text"] and not any(
+                        item.get("key") == snapshot["key"] for item in collected):
+                    collected.append(snapshot)
+            sites_audit.record(
+                "collection_observation", owner=entry.get("owner", ""),
+                session_id=session_id, domain=entry.get("domain", ""),
+                collection_observed=bool(candidate.get("collection_observed")),
+                proximity=candidate.get("proximity", "none"),
+                steps=int(state.get("actions", 0)))
+
+        candidate = await _collection_route_decision(
+            entry, target, candidates, first_visit=first_visit, preserve=preserve)
         if not candidate.get("id"):
             return None
         # Next/more is pagination, not another level in the site's hierarchy.
@@ -3391,6 +3382,40 @@ def _frontier_routes_configured() -> bool:
     return True
 
 
+async def _collection_route_decision(entry: dict, target: str,
+                                     candidates: list[dict], *, first_visit: bool,
+                                     preserve) -> dict:
+    """Local content recognition and, when configured, Frontier's route.
+
+    The two answer independent questions (a page with invoices can still offer
+    unrelated menus), so both requests start together. The local evidence is
+    preserved as soon as it exists, even if Frontier then fails. A local
+    failure discards the pending route: an unavailable or invalid model answer
+    is not proof of a dead end, and no late answer may change the state.
+    """
+    route = None
+    if _FRONTIER_COLLECTION_ROUTES and _frontier_routes_configured():
+        route = asyncio.create_task(
+            _frontier_collection_route(entry, target, candidates))
+    try:
+        candidate = await _local_llm_choose_goal_candidate(
+            entry, target, candidates, [], set(), collection=True,
+            first_visit=first_visit)
+        if candidate is None:
+            raise ValueError("collection_observation_unresolved")
+        preserve(candidate)
+        if route is not None:
+            candidate = await route
+            if candidate is None:
+                raise ValueError("collection_observation_unresolved")
+        return candidate
+    finally:
+        if route is not None:
+            if not route.done():
+                route.cancel()
+            await asyncio.gather(route, return_exceptions=True)
+
+
 async def _frontier_collection_route(entry: dict, target: str,
                                      candidates: list[dict]) -> dict | None:
     """Frontier route choice independent of the local content observation.
@@ -3439,6 +3464,9 @@ async def _frontier_collection_route(entry: dict, target: str,
                 outcome = "route"
                 return dict(by_id[choice])
         return {}
+    except asyncio.CancelledError:
+        outcome = "cancelled"
+        raise
     except Exception as exc:
         outcome = type(exc).__name__
         return None

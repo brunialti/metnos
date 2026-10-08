@@ -164,7 +164,10 @@
  Il testo visivamente nascosto resta fuori dall'osservazione.</p>
  <p>Se Frontier è configurato, sceglie il percorso anche sulle pagine che mostrano
  già oggetti richiesti: un riepilogo non esclude la presenza di menu estranei.
- Il modello locale riconosce e conserva gli oggetti; Frontier riceve la richiesta,
+ Il riconoscimento locale e la scelta del percorso partono insieme; gli oggetti
+ riconosciuti vengono conservati subito. Se la decisione fallisce o scade, non
+ vengono inviate altre richieste di percorso. Una chiamata HTTP già partita
+ resta soggetta al proprio timeout e rimane contata. Frontier riceve la richiesta,
  lo stato di accesso e i nomi dei comandi con il titolo della loro sezione, non il
  contenuto della pagina, i campi o le credenziali. I nomi non sono oscurati e possono
  contenere dati personali. La risposta lo segnala con una nota e il passo mostra un

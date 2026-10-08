@@ -162,7 +162,10 @@
  Visually hidden text stays out of the observation.</p>
  <p>When Frontier is configured, it chooses the route even on pages that already
  show requested objects: a summary can still contain unrelated menus.
- The local model recognises and preserves objects; Frontier receives the request, the sign-in state and
+ Local recognition and route choice start together; recognised objects are
+ preserved immediately. If the decision fails or times out, no further route
+ requests are sent. An HTTP call already started remains subject to its own timeout
+ and stays counted. Frontier receives the request, the sign-in state and
  control names with their section titles, not the page content, fields or
  credentials. Names are not redacted and may contain personal data. The answer says
  so in a note and the step shows a red “$” in the path. Without a configured
