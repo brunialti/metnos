@@ -2552,7 +2552,7 @@ def _assert_installer_dependency_requires_exact_reviewed_requirement(variant):
     })
     requirements = "tests/portable/requirements.txt"
     source[requirements] = ("100644", "7f8078e8ce6ae4fa14b952c440efe3fc830c40c1")
-    current[requirements] = ("100644", "5c838334d485ea706cb37fb0993abf6594e282c2")
+    current[requirements] = ("100644", "f7a0082967acc95868c3409f80a17ee5446b2849")
     if variant == "source":
         source[requirements] = ("100644", "d" * 40)
     elif variant == "target":

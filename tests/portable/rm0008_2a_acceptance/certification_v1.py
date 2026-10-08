@@ -80,10 +80,11 @@ _REVIEWED_PORTABLE_SUPPORT_GIT_EDGE = (
     ("100644", "35e241c8b000622eb563721c5cd462d1bb367cc6"),
 )
 # Reviewed locked import dependencies for the installer, schema validation and
-# native TurnLog (a071c73c, 10aba165). Acceptance cells stay fixed.
+# native TurnLog's shared observed-date parser (a071c73c, 10aba165, 8ed8e3df).
+# The parser uses the existing runtime python-dateutil lock; cells stay fixed.
 _REVIEWED_PORTABLE_REQUIREMENTS_GIT_EDGE = (
     ("100644", "7f8078e8ce6ae4fa14b952c440efe3fc830c40c1"),
-    ("100644", "5c838334d485ea706cb37fb0993abf6594e282c2"),
+    ("100644", "f7a0082967acc95868c3409f80a17ee5446b2849"),
 )
 _EFFECTIVE_PYTEST_SUPPORT_SHA256 = {
     "conftest.py": "c31a567f781dcbd3e1ce06c67c901a1b3be07c21a5d8c4030cc8bf262a753015",
