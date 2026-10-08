@@ -4331,6 +4331,44 @@ def _ensure_site_session_precursor(framework: Framework, intent, query: str,
     strong_login_intent = (
         _dl_match("sites.login_intent", query)
         or _dl_match("sites.session_entry_intent", query))
+    from playwright_sidecar.action_resolver import (
+        goal_scope_qualifier, is_goal_navigation_request,
+    )
+
+    def _clausole(text: str) -> list[str]:
+        try:
+            from compound_decomposer import split_query_chunks
+            return split_query_chunks(text or "") or [text or ""]
+        except Exception:  # noqa: BLE001 -- preserve the original request
+            return [text or ""]
+
+    def _frasi(clause: str) -> list[str]:
+        # Phrase boundaries as the scope binding reads them: a registered list
+        # connector, or punctuation of any script followed by a space or the
+        # end (a decimal point is not a boundary).
+        import unicodedata
+        try:
+            import detection_lexicon as _dl
+            forms = [form for form in _dl.native_ready_forms(
+                "parser.compound.list_connector",
+                include_reviewed_baselines=True) if form.strip()]
+        except Exception:  # noqa: BLE001 -- punctuation still separates
+            forms = []
+        connector = "|".join(re.escape(form) for form in
+                             sorted(forms, key=len, reverse=True))
+        text = clause or ""
+        if connector:
+            text = re.sub(rf"(?<!\w)(?:{connector})(?!\w)", "\n", text,
+                          flags=re.IGNORECASE)
+        chars = list(text)
+        for index, char in enumerate(chars):
+            if unicodedata.category(char).startswith("P") and (
+                    index + 1 == len(chars) or chars[index + 1].isspace()
+                    or unicodedata.east_asian_width(char) in "FW"):
+                chars[index] = "\n"
+        return [phrase.strip() for phrase in "".join(chars).split("\n")
+                if phrase.strip()]
+
     def _chiede_una_collezione(text: str) -> bool:
         """Does this text ask for a SET of records rather than one thing?
 
@@ -4340,6 +4378,11 @@ def _ensure_site_session_precursor(framework: Framework, intent, query: str,
         composing registered concepts covers the word order without adding a
         single surface form. Italian marks the plural on the determiner,
         English on the noun, and the concept reads each accordingly.
+        A destination verb ("put ... in a sheet") asks for the set when the
+        quantifier is bound to the phrase naming a tabular destination, as a
+        planner goal would be: negations and quantifiers on another phrase do
+        not count, and without a destination "accept all cookies" stays an
+        action.
         """
         return bool(
             _dl_match("sites.structured_record_request", text)
@@ -4348,16 +4391,12 @@ def _ensure_site_session_precursor(framework: Framework, intent, query: str,
                 and _dl_match("sites.goal_scope_quantifier", text))
             or (_dl_match("text.request_verb", text)
                 and (_dl_match("sites.goal_scope_quantifier", text)
-                     or _dl_match("text.plural_determiner", text))))
+                     or _dl_match("text.plural_determiner", text)))
+            or any(goal_scope_qualifier(clause, phrase)
+                   for clause in _clausole(text) for phrase in _frasi(clause)
+                   if _dl_match("parser.compound.tabular_noun", phrase)))
 
-    from playwright_sidecar.action_resolver import (
-        goal_scope_qualifier, is_goal_navigation_request,
-    )
-    try:
-        from compound_decomposer import split_query_chunks
-        scope_clauses = split_query_chunks(query or "")
-    except Exception:  # noqa: BLE001 -- preserve the original request
-        scope_clauses = [query or ""]
+    scope_clauses = _clausole(query)
 
     def _scope_for_action(args: dict) -> str:
         action = str(args.get("action") or "")
@@ -4495,6 +4534,7 @@ def _ensure_site_session_precursor(framework: Framework, intent, query: str,
     # non al crawler pubblico find_urls. Conserva la frase naturale come fine di
     # act_sites; l'executor la scompone internamente in navigazioni bounded.
     search_chunks: list[str] = []
+    accepted_search_chunks: list[str] = []
     absorbed_site_search = False
     if want_login and not _dl_match("sites.external_search_scope", query):
         try:
@@ -4555,6 +4595,7 @@ def _ensure_site_session_precursor(framework: Framework, intent, query: str,
                 r"[a-z]{2,63})(?![\w])", chunk, _re.IGNORECASE)
             if any(domain.lower() != session_host for domain in domains):
                 continue
+            accepted_search_chunks.append(chunk)
             chunk_targets = _search_target_keys(chunk)
             if (chunk.lower() in existing_actions
                     or bool(chunk_targets & existing_search_targets)):
@@ -4563,7 +4604,7 @@ def _ensure_site_session_precursor(framework: Framework, intent, query: str,
                 tool="act_sites", args={"action": chunk}))
             existing_actions.add(chunk.lower())
             existing_search_targets.update(chunk_targets)
-        if search_chunks:
+        if accepted_search_chunks:
             want_read = True
             absorbed_site_search = True
 
@@ -4755,8 +4796,41 @@ def _ensure_site_session_precursor(framework: Framework, intent, query: str,
     # quindi con la sola sintesi della pagina.
     canonical_pos = len(new_steps)
     site_tools = {"open_sites", "login_sites", "act_sites", "read_sites"}
-    absorbed_web_tools = ({"find_urls", "read_urls_html", "read_urls_pdf",
-                           "get_urls"} if absorbed_site_search else set())
+    web_tools = {"find_urls", "read_urls_html", "read_urls_pdf", "get_urls"}
+    site_source_positions = {pos for pos, step in enumerate(steps, start=1)
+                             if getattr(step, "tool", "") in site_tools}
+    absorbed_web_positions: set[int] = set()
+    # Follow the original dependency graph once in execution order. An
+    # autonomous URL/query starts a separate source and its consumers stay.
+    for pos, step in enumerate(steps, start=1):
+        if getattr(step, "tool", "") not in web_tools:
+            continue
+        args = dict(getattr(step, "args", {}) or {})
+        if any(args.get(key) for key in ("seed_urls", "urls", "url")):
+            continue
+        own_query = args.get("search_query") or args.get("query")
+        if own_query:
+            # A planner can restate the same authenticated search in a
+            # crawler's argument. Absorb only that exact canonical goal;
+            # different categories/years and independent queries stay.
+            if getattr(step, "tool", "") != "find_urls" or not absorbed_site_search:
+                continue
+            from playwright_sidecar.action_resolver import goal_tokens
+            wanted = frozenset(goal_tokens(str(own_query)))
+            if not wanted or not any(
+                    wanted == frozenset(goal_tokens(chunk))
+                    for chunk in accepted_search_chunks):
+                continue
+            absorbed_web_positions.add(pos)
+            site_source_positions.add(pos)
+            continue
+        source = args.get("from_step")
+        if ((type(source) is int and source in site_source_positions
+             and source < pos)
+                or (source is None and absorbed_site_search)):
+            absorbed_web_positions.add(pos)
+            site_source_positions.add(pos)
+
     preserved: list[tuple[int, object]] = []
     finals: list[tuple[int, object]] = []
     idx_map: dict[int, int] = {}
@@ -4766,7 +4840,7 @@ def _ensure_site_session_precursor(framework: Framework, intent, query: str,
             finals.append((old_pos, step))
         elif old_pos in absorbed_describe_positions:
             idx_map[old_pos] = canonical_describe_pos
-        elif tool in site_tools or tool in absorbed_web_tools:
+        elif tool in site_tools or old_pos in absorbed_web_positions:
             # Nell'inserzione automatica i consumer a valle devono vedere i
             # record, non il blob di read_sites. L'extract stesso e' gia' stato
             # costruito manualmente sul producer raw e non passa da idx_map.

@@ -463,7 +463,10 @@ def _completion_from_turnlog(new_log) -> CompletionResult:
         if not tool or getattr(st, "error", None) == "auto_final_on_duplicate":
             continue
         res = st.result if isinstance(getattr(st, "result", None), dict) else {}
-        path_summary.append({"tool": tool, "ok": bool(res.get("ok", True))})
+        # Same badge contract as a live turn's final event: a resumed turn
+        # must still mark the steps that sent requests to a cloud model.
+        path_summary.append({"tool": tool, "ok": bool(res.get("ok", True)),
+                             "cloud": bool(res.get("cloud_llm_calls"))})
     return CompletionResult(
         text=getattr(new_log, "final_message", "") or "",
         attachments=atts,
