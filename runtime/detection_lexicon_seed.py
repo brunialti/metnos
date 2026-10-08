@@ -1035,10 +1035,14 @@ def register_all() -> None:
       it=["tutto", "tutta", "tutti", "tutte", "ogni", "intero", "intera",
           "interi", "intere"],
       en=["all", "every", "entire"])
+    # "online" can qualify a document; a search verb makes it a scope.
     R("sites.external_search_scope", "phrases", match_mode="word",
-      it=["sul web", "su internet", "nel web", "in internet", "online"],
+      it=["sul web", "su internet", "nel web", "in internet",
+          "cerca online", "cercare online", "ricerca online",
+          "cerca anche online"],
       en=["on the web", "on internet", "web search", "internet search",
-          "search the web", "search the internet", "online"])
+          "search the web", "search the internet", "search online",
+          "look online", "look up online", "find online"])
     # Modalita' dell'executor immagini web. Il router combina questi segnali
     # linguistici con object=images: il lessico non decide mai da solo il tool.
     R("images.web_search_scope", "phrases", match_mode="word",

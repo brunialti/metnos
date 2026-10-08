@@ -130,11 +130,15 @@ async def ensure(state, target, candidates, *, read, execute, settle, budget, en
     State survives an approval pause. A ready value is reusable only while the
     observed selector state is identical. A closed menu alone proves nothing.
     """
+    def changed(phase):
+        return {"terminal": {"ok": False, "error_class": "target_changed"},
+                "rejection": {"phase": phase}}
+
     while True:
         controls = selectors(candidates)
         if not controls:
             if state.get("pending"):
-                return {"terminal": {"ok": False, "error_class": "target_changed"}}
+                return changed("context_selector_missing")
             return {"candidates": navigation_candidates(candidates)}
         current = fingerprint(controls)
         choices = options(candidates, controls, state.get("opened"))
@@ -142,8 +146,11 @@ async def ensure(state, target, candidates, *, read, execute, settle, budget, en
         if pending:
             if current == pending["fingerprint"] or (
                     pending["option"] and value_key(controls) == pending["value_key"]):
-                return {"terminal": {"ok": False, "error_class": "target_changed"}}
+                return changed("context_action_unchanged")
         if state.get("ready") == current:
+            if not any(c.get("aria_expanded") == "true" for c in controls):
+                state.pop("opened", None)
+            state.pop("attempted", None)
             excluded = {c["id"] for c in choices}
             return {"candidates": [c for c in navigation_candidates(candidates)
                                     if c["id"] not in excluded]}
@@ -154,7 +161,8 @@ async def ensure(state, target, candidates, *, read, execute, settle, budget, en
         state.setdefault("requested", {}).update(decision.pop("requested", {}))
         if decision.get("ready"):
             state.update(ready=current, value_key=value_key(controls))
-            state.pop("opened", None)
+            if not any(c.get("aria_expanded") == "true" for c in controls):
+                state.pop("opened", None)
             state.pop("attempted", None)
             excluded = {c["id"] for c in choices}
             return {"candidates": [c for c in navigation_candidates(candidates)
@@ -165,7 +173,7 @@ async def ensure(state, target, candidates, *, read, execute, settle, budget, en
         attempt = (current, login_navigation.candidate_key(candidate))
         attempted = state.setdefault("attempted", set())
         if attempt in attempted:
-            return {"terminal": {"ok": False, "error_class": "target_changed"}}
+            return changed("context_attempt_repeated")
         if budget.get("actions", 0) >= login_navigation.COLLECTION_MAX_ACTIONS:
             return {"terminal": {"ok": False, "error_class": "goal_step_limit"}}
         attempted.add(attempt)

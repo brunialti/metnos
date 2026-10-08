@@ -3125,6 +3125,10 @@ async def _discover_collection(entry: dict, session_id: str,
             settle=lambda: _wait_for_content_settle(entry), budget=state,
             enabled=_MODEL_FALLBACKS_ENABLED, timeout_s=_LOCAL_RESOLVER_TIMEOUT_MS / 1000)
         if context.get("terminal") is not None:
+            if context.get("rejection"):
+                sites_audit.record("collection_context_rejected", session_id=session_id,
+                                   steps=int(state.get("actions", 0)),
+                                   **context["rejection"])
             return context
         candidates = await read_controls(entry["page"], context["candidates"])
         page = entry["page"]
