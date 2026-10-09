@@ -40,6 +40,7 @@ API:
 from __future__ import annotations
 
 import os
+import json
 import re
 from typing import Any, Sequence
 
@@ -498,6 +499,48 @@ def generate_json_grammar(*, decimal_numbers_only: bool = False) -> str:
         definitions = dict(definitions, jsonNum=r'jsonNum ::= "-"? jsonInt jsonFrac?')
     return "\n".join([definitions[k] for k in definitions if k in used]
                      + ["root ::= jsonObject"])
+
+
+def generate_intent_grammar(verbs, objects, kinds, *, scaffold: bool = False) -> str:
+    """GBNF for the intent extractor's reply, over the closed vocabulary.
+
+    Mono path: a single action ``{"kind":"action","verb":…,"object":…}`` (kind
+    optional), a closed non-operational kind (``{"kind":"conversation"}`` …)
+    or an ordered array of actions. Scaffold path: ``{"kind":"action",
+    "clauses":[{"n":…,"ref":…,"verb":…,"object":…}, …]}``. Values come from
+    the caller's vocabulary (the SoT), never from a list kept here.
+    """
+    def alt(values):
+        return " | ".join(json.dumps(json.dumps(v)) for v in sorted(values))
+
+    def key(name):
+        return json.dumps(json.dumps(name))
+
+    others = sorted(k for k in kinds if k != "action")
+    lines = [
+        f"intentVerb ::= {alt(verbs)}",
+        f"intentObject ::= {alt(objects)}",
+        f'intentKind ::= {key("kind")} colon {json.dumps(json.dumps("action"))} sep',
+        f'intentPair ::= {key("verb")} colon intentVerb sep {key("object")} colon intentObject',
+    ]
+    if scaffold:
+        lines += [
+            f'intentClause ::= "{{" ws {key("n")} colon jsonInt sep {key("ref")} colon jsonStr sep intentPair ws "}}"',
+            f'root ::= ws "{{" ws intentKind? {key("clauses")} colon "[" ws intentClause (sep intentClause)* ws "]" ws "}}" ws',
+        ]
+        used = {"ws", "sep", "colon", "jsonInt", "jsonStr"}
+    else:
+        lines += [
+            'intentAction ::= "{" ws intentKind? intentPair ws "}"',
+            'intentList ::= "[" ws intentAction (sep intentAction)* ws "]"',
+        ]
+        if others:
+            lines.append(f'intentOther ::= "{{" ws {key("kind")} colon ({alt(others)}) ws "}}"')
+        lines.append("root ::= ws (intentAction | intentList"
+                     + (" | intentOther" if others else "") + ") ws")
+        used = {"ws", "sep", "colon"}
+    used = _expand_deps(used)
+    return "\n".join([_PRIMITIVE_DEFS[k] for k in _PRIMITIVE_DEFS if k in used] + lines)
 
 
 def generate_tool_grammar(tools: Sequence[Any], *,

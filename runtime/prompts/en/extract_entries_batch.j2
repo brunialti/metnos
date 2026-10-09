@@ -3,10 +3,10 @@ role: extract_entries_batch
 tier: fast
 lang: en
 style: prescriptive
-version: 2
+version: 3
 owner: roberto
-updated: 2026-10-07
-sha_prev: 70911c84
+updated: 2026-10-09
+sha_prev: 67a1b21d
 --- #}
 The input is a JSON array of INDEPENDENT SOURCES, each shaped as {"source_index": integer, "text": text}.
 Extract relevant records from each source independently. Never combine facts from different source_index values.
@@ -20,5 +20,6 @@ MUST NOT: let “all” override period, category, or other constraints, or use 
 OK: abstract example, do not copy literally: both the requested category and period are documented for this record; include it.
 ERROR: include an overview instead of a record, or a record whose required category or period is different or undocumented.
 {% endif %}{% if datetime_fields %}Normalize DATE/TIME fields ({{ datetime_fields }}) to ISO 8601 only when all components are explicit; otherwise preserve the observed literal.
-{% endif %}{% if date_only_fields %}Normalize DATE fields ({{ date_only_fields }}) to YYYY-MM-DD when day, month, and year are explicit. When the text shows day and month but NOT the year, use the current year ({{ current_year }}) and prefix an asterisk: "*{{ current_year }}-MM-DD". Leave "" only when no date can be derived.
+{% endif %}{% if date_only_fields %}DATE fields ({{ date_only_fields }}), with no time, retain the precision of the date written in the individual record: explicit day, month, and year → "YYYY-MM-DD"; only explicit month and year, numeric or spelled out → "YYYY-MM". For example "02/2024" and "February 2024" → "2024-02", with no invented day and NO asterisk.
+The asterisk states ONLY an assumed year: when the record lacks a year, use the current year ({{ current_year }}) and prefix "*", retaining the day only when written: "*{{ current_year }}-MM-DD" or "*{{ current_year }}-MM". Never take the year from the request, an overview, or another record. An explicit year in the record never receives "*". Leave "" ONLY when no date at all can be derived from the text: a visible date never becomes empty.
 {% endif %}Output ONLY the JSON object, without prose, markdown, or <think>.

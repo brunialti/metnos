@@ -183,6 +183,22 @@ def _lazy_start_vlm(*, deadline_at: float | None = None) -> bool:
         return False
 
 
+def _monitor_vlm_read(req, timeout, *, provider, model):
+    from monitor_capture import call_scope, observe_response
+    with call_scope(provider=provider, model=model, level="vlm:default", kind="vision") as call:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            raw = resp.read().decode("utf-8")
+        try:
+            data = json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            if call is not None:
+                call["status"] = "error"
+                call["error_code"] = "invalid_response"
+        else:
+            observe_response(data)
+        return raw
+
+
 def describe_image(img_path, *, lang: str | None = None,
                    prompt: str | None = None,
                    url: str | None = None, model: str | None = None,
@@ -291,8 +307,8 @@ def describe_image(img_path, *, lang: str | None = None,
             llm_telemetry.mark_call_started()
         except Exception:
             pass
-        with urllib.request.urlopen(req, timeout=request_timeout) as resp:
-            raw = resp.read().decode("utf-8")
+        raw = _monitor_vlm_read(req, request_timeout,
+            provider=str(_VLM.get("provider") or "llamacpp"), model=str(model))
     except urllib.error.URLError as e:
         if (allow_lazy_start and _looks_like_connection_refused(e)
                 and _lazy_start_vlm(deadline_at=deadline_at)):
@@ -300,9 +316,8 @@ def describe_image(img_path, *, lang: str | None = None,
                 request_timeout = _remaining_timeout()
                 if request_timeout <= 0:
                     return _vlm_fail("deadline_exhausted")
-                with urllib.request.urlopen(
-                        req, timeout=request_timeout) as resp:
-                    raw = resp.read().decode("utf-8")
+                raw = _monitor_vlm_read(req, request_timeout,
+                    provider=str(_VLM.get("provider") or "llamacpp"), model=str(model))
             except (urllib.error.URLError, urllib.error.HTTPError,
                     TimeoutError, OSError) as e2:
                 return _vlm_fail(f"http_failed_after_lazy_start: {e2!r}")

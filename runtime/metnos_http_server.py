@@ -184,6 +184,16 @@ def make_app(*, admin_key: str | None = None) -> web.Application:
         turn_pool.close()
         log.info("http turn pool stopped: %s", turn_pool.stats())
 
+    async def _start_monitor(_app):
+        from monitor_capture import start_collector
+        start_collector()
+
+    async def _stop_monitor(_app):
+        from monitor_capture import stop_collector
+        await asyncio.to_thread(stop_collector)
+
+    app.on_startup.append(_start_monitor)
+    app.on_cleanup.append(_stop_monitor)
     app.on_cleanup.append(_close_turn_pool)
     log.info("http turn pool ready: %s", turn_pool.stats())
 

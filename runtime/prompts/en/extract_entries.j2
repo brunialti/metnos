@@ -3,10 +3,10 @@ role: extract_entries
 tier: fast
 lang: en
 style: prescriptive
-version: 2
+version: 3
 owner: roberto
-updated: 2026-10-07
-sha_prev: 928e6456
+updated: 2026-10-09
+sha_prev: 2a1ea0b7
 --- #}
 You extract structured data. Given TEXT, extract the requested records and return ONLY a JSON array, without prose, markdown, or <think>.
 Every record must be an object with EXACTLY these fields: {{ fields_json }}.
@@ -18,5 +18,6 @@ MUST NOT: let “all” override period, category, or other constraints, or use 
 OK: abstract example, do not copy literally: both the requested category and period are documented for this record; include it.
 ERROR: include an overview instead of a record, or a record whose required category or period is different or undocumented.
 {% endif %}{% if datetime_fields %}Normalize DATE/TIME fields ({{ datetime_fields }}) to ISO 8601 ONLY when year, date, time, and timezone are explicit in the text. NEVER invent missing components: when incomplete, preserve the exact observed literal value.
-{% endif %}{% if date_only_fields %}Normalize DATE fields ({{ date_only_fields }}) to date-only ISO "YYYY-MM-DD", with no time, when day, month, and year are explicit. When the text shows day and month but NOT the year, use the current year ({{ current_year }}) and prefix an asterisk: "*{{ current_year }}-MM-DD". The asterisk states that the year is not written in the text. Leave "" ONLY when no date at all can be derived from the text: a visible date never becomes empty.
+{% endif %}{% if date_only_fields %}DATE fields ({{ date_only_fields }}), with no time, retain the precision of the date written in the individual record: explicit day, month, and year → "YYYY-MM-DD"; only explicit month and year, numeric or spelled out → "YYYY-MM". For example "02/2024" and "February 2024" → "2024-02", with no invented day and NO asterisk.
+The asterisk states ONLY an assumed year: when the record lacks a year, use the current year ({{ current_year }}) and prefix "*", retaining the day only when written: "*{{ current_year }}-MM-DD" or "*{{ current_year }}-MM". Never take the year from the request, an overview, or another record. An explicit year in the record never receives "*". Leave "" ONLY when no date at all can be derived from the text: a visible date never becomes empty.
 {% endif %}Output ONLY the JSON array. Minimal shape: [{"{{ example_field }}":"..."}].

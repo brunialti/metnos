@@ -1,0 +1,60 @@
+{% import '_monitor_macros.html' as m with context %}
+{% set request = monitor.request %}
+<section class="section" aria-labelledby="monitor-request-title">
+  <h2 id="monitor-request-title">{{ msg('UI_MONITOR_REQUEST') }} {{ request.request_id }}</h2>
+  <dl class="monitor-detail-list">
+    <div><dt>{{ msg('UI_MONITOR_STATUS') }}</dt><dd>{{ m.status(request.status) }}</dd></div>
+    <div><dt>{{ msg('UI_MONITOR_OUTCOME') }}</dt><dd>{{ m.outcome(request.outcome, show_label=false) if request.outcome else msg('UI_MONITOR_UNAVAILABLE') }}</dd></div>
+    <div><dt>{{ msg('UI_MONITOR_CHANNEL') }}</dt><dd>{{ request.channel or msg('UI_MONITOR_UNKNOWN') }}</dd></div>
+    <div><dt>{{ msg('UI_MONITOR_STARTED_AT') }}</dt><dd>{{ m.timestamp(request.started_at) }}</dd></div>
+    <div><dt>{{ msg('UI_MONITOR_ACTIVE_SECONDS') }}</dt><dd>{{ m.duration(request.active_ms) }} {{ msg('UI_MONITOR_SECONDS') }}</dd></div>
+    <div><dt>{{ msg('UI_MONITOR_WALL_SECONDS') }}</dt><dd>{{ m.duration(request.e2e_wall_ms) }} {{ msg('UI_MONITOR_SECONDS') }}</dd></div>
+    <div><dt>{{ msg('UI_MONITOR_USER_WAIT_SECONDS') }}</dt><dd>{{ m.duration(request.user_wait_ms|default(none)) }} {{ msg('UI_MONITOR_SECONDS') }}</dd></div>
+    <div><dt>{{ msg('UI_MONITOR_INPUT_OUTPUT') }}</dt><dd>{{ m.tokens(request.input_tokens) }} / {{ m.tokens(request.output_tokens) }}</dd></div>
+    <div><dt>{{ msg('UI_MONITOR_COVERAGE') }}</dt><dd>{{ m.coverage(request.calls_complete, request.calls_expected) }}</dd></div>
+  </dl>
+  <p class="monitor-note">{{ msg('UI_MONITOR_REQUEST_OUTPUT_TPS') }}: {{ m.number(request.request_output_tps, 1) }} {{ msg('UI_MONITOR_TPS') }} · {{ msg('UI_MONITOR_PREFILL') }}: {{ m.number(request.prefill_tps, 1) }} {{ msg('UI_MONITOR_TPS') }} · {{ msg('UI_MONITOR_GENERATION') }}: {{ m.number(request.generation_tps, 1) }} {{ msg('UI_MONITOR_TPS') }}</p>
+</section>
+<section class="section" aria-labelledby="monitor-timeline-title">
+  <h2 id="monitor-timeline-title">{{ msg('UI_MONITOR_OBSERVED_TIMELINE') }}</h2>
+  {% if monitor.timeline|default({}) and monitor.timeline['items'] %}
+  <p class="monitor-note">{{ msg('UI_MONITOR_TIMELINE_HELP') }} {{ msg('UI_MONITOR_TIMELINE_SPAN') }}: {{ m.duration(monitor.timeline.duration_ms) }} {{ msg('UI_MONITOR_SECONDS') }}</p>
+  {% for interval in monitor.timeline['items'] %}
+  <div class="monitor-timeline-row"><div><a href="#monitor-call-{{ interval.call_id|urlencode }}">{{ interval.level or msg('UI_MONITOR_UNKNOWN_MODEL') }} → {{ interval.physical_model or msg('UI_MONITOR_UNKNOWN_MODEL') }} · {{ interval.provider or msg('UI_MONITOR_UNKNOWN_PROVIDER') }}</a>{% if interval.duration_ms|default(none) is not none %}<small class="monitor-time">{{ msg('UI_MONITOR_OBSERVED_INTERVAL') }}: {{ m.duration(interval.duration_ms) }} {{ msg('UI_MONITOR_SECONDS') }}</small>{% endif %}</div><div class="monitor-timeline-track" aria-hidden="true"><span class="monitor-timeline-bar" style="left:{{ interval.start_pct }}%;width:{{ interval.width_pct }}%"></span></div></div>
+  {% endfor %}
+  {% else %}<p class="muted">{{ msg('UI_MONITOR_NO_TIMELINE') }}</p>{% endif %}
+  {% if monitor.timeline.omitted_calls|default(0) %}<p class="monitor-note">{{ msg('UI_MONITOR_TIMELINE_OMITTED', count=monitor.timeline.omitted_calls) }}</p>{% endif %}
+</section>
+<section class="section" aria-labelledby="monitor-turns-title">
+  <h2 id="monitor-turns-title">{{ msg('UI_MONITOR_LINKED_TURNS') }}</h2>
+  {% for segment in monitor.segments %}<p>{% if segment.turn_url|default('') %}<a href="{{ segment.turn_url }}">{{ msg('UI_MONITOR_TURN') }} {{ segment.turn_id }}</a>{% else %}{{ msg('UI_MONITOR_TURN') }} {{ segment.turn_id or msg('UI_MONITOR_UNAVAILABLE') }}{% endif %} · {{ m.timestamp(segment.started_at) }} · {{ m.status(segment.status) }}</p>{% else %}<p class="muted">{{ msg('UI_MONITOR_NO_TURNS') }}</p>{% endfor %}
+</section>
+<div class="table-wrap monitor-table" tabindex="0" role="region" aria-label="{{ msg('UI_MONITOR_CALL_TABLE') }}">
+<table>
+  <caption>{{ msg('UI_MONITOR_CALL_TABLE') }}</caption>
+  <thead><tr>
+    <th scope="col">{{ msg('UI_MONITOR_CALL') }}</th><th scope="col">{{ msg('UI_MONITOR_MODEL_IDENTITY') }}</th>
+    <th scope="col" class="monitor-numeric monitor-speed">{{ m.speed_header('UI_MONITOR_CALL_OUTPUT_SPEED') }}</th>
+    <th scope="col" class="monitor-numeric monitor-speed">{{ m.speed_header('UI_MONITOR_PREFILL', 'PP') }}</th>
+    <th scope="col" class="monitor-numeric monitor-speed">{{ m.speed_header('UI_MONITOR_GENERATION', 'TG') }}</th>
+    <th scope="col">{{ msg('UI_MONITOR_ROLE_ATTEMPT') }}</th><th scope="col">{{ msg('UI_MONITOR_STATUS') }}</th><th scope="col" class="monitor-numeric">{{ msg('UI_MONITOR_INPUT_OUTPUT') }}</th><th scope="col" class="monitor-numeric">{{ msg('UI_MONITOR_CACHE_TOKENS') }}</th><th scope="col">{{ msg('UI_MONITOR_PROVENANCE') }}</th>
+  </tr></thead>
+  <tbody>
+  {% for call in monitor.calls %}
+  <tr id="monitor-call-{{ call.call_id|urlencode }}">
+    <td>{{ call.call_id }}{{ m.timestamp(call.started_at) }}{% if call.parent_call_id %}<small class="muted">{{ msg('UI_MONITOR_PARENT_CALL') }}: {{ call.parent_call_id }}</small>{% endif %}</td>
+    <td>{{ m.identity(call) }}{% if call.binding_revision %}<small class="muted">{{ msg('UI_MONITOR_BINDING_REVISION') }}: {{ call.binding_revision }}</small>{% endif %}</td>
+    <td class="monitor-numeric">{{ m.number(call.call_output_tps, 1) }}<small class="monitor-time">{{ m.duration(call.call_wall_ms) }} {{ msg('UI_MONITOR_SECONDS') }}</small></td>
+    <td class="monitor-numeric">{{ m.number(call.prefill_tps, 1) }}<small class="monitor-time">{{ m.duration(call.prefill_ms) }} {{ msg('UI_MONITOR_SECONDS') }} · {{ m.number(call.prefill_tokens) }} {{ msg('UI_MONITOR_TOKEN_UNIT') }}</small></td>
+    <td class="monitor-numeric">{{ m.number(call.generation_tps, 1) }}<small class="monitor-time">{{ m.duration(call.generation_ms) }} {{ msg('UI_MONITOR_SECONDS') }} · {{ m.number(call.generation_tokens) }} {{ msg('UI_MONITOR_TOKEN_UNIT') }}</small></td>
+    <td>{{ call.workload or msg('UI_MONITOR_UNKNOWN') }}<small class="monitor-time">{{ msg('UI_MONITOR_ATTEMPT') }} {{ call.attempt_no }}</small></td>
+    <td>{{ m.status(call.status) }}{% if call.error_code %}<small class="monitor-time">{{ call.error_code }}</small>{% endif %}</td>
+    <td class="monitor-numeric">{{ m.number(call.input_tokens) }} / {{ m.number(call.output_tokens) }}{% if call.reasoning_tokens|default(none) is not none %}<small class="monitor-time">{{ msg('UI_MONITOR_REASONING_TOKENS') }}: {{ m.number(call.reasoning_tokens) }}</small>{% endif %}</td>
+    <td class="monitor-numeric">{{ m.number(call.cached_input_tokens) }}</td>
+    <td>{% if call.metric_sources or call.missing_reasons %}<details><summary>{{ msg('UI_MONITOR_SOURCES_AND_GAPS') }}</summary>{% for metric,source in (call.metric_sources or {}).items() %}<small class="monitor-time">{{ m.metric_label(metric) }}: {{ m.provenance(source) }}</small>{% endfor %}{% for metric,reason in (call.missing_reasons or {}).items() %}<small class="monitor-time">{{ m.metric_label(metric) }}: {{ m.provenance(reason) }}</small>{% endfor %}</details>{% else %}<span class="muted">{{ msg('UI_MONITOR_UNAVAILABLE') }}</span>{% endif %}</td>
+  </tr>
+  {% else %}<tr><td colspan="10" class="empty">{{ msg('UI_MONITOR_NO_CALLS') }}</td></tr>{% endfor %}
+  </tbody>
+</table>
+</div>
+<p class="monitor-note">{{ msg('UI_MONITOR_PHASE_POSITION_HELP') }}</p>

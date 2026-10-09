@@ -30,6 +30,7 @@ import subprocess
 import sys
 import time
 from dataclasses import asdict, dataclass, field
+from copy import deepcopy
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -566,6 +567,41 @@ def _scrub_args_recursive(node, total: list[int]) -> object:
     if isinstance(node, list):
         return [_scrub_args_recursive(x, total) for x in node]
     return node
+
+
+def _intent_reply_diagnostic(reply: str) -> dict:
+    """Bounded parser input, redacted before truncation; never fail a turn.
+
+    The text scrubber handles prose and opaque tokens. JSON string pairs also
+    go through the existing argument scrubber, including incomplete replies:
+    quoted credential keys must not evade the prose label syntax.
+    """
+    try:
+        cleaned, count = _scrub_credentials(reply)
+        total = [count]
+
+        def scrub_pair(match):
+            key = json.loads(match.group(1))
+            value_text = match.group(3)
+            try:
+                value = json.loads(value_text)
+            except ValueError:
+                # An unterminated value still has a complete, typed key.
+                value = value_text[1:]
+            safe = _scrub_args_recursive({key: value}, total)[key]
+            if safe != value:
+                return match.group(1) + match.group(2) + json.dumps(safe)
+            return match.group(0)
+
+        cleaned = re.sub(
+            r'("(?:[^"\\]|\\.)*")(\s*:\s*)("(?:[^"\\]|\\.)*(?:"|$))',
+            scrub_pair, cleaned,
+        )
+        return {"reply": cleaned[:4096], "chars": len(reply),
+                "truncated": len(cleaned) > 4096,
+                "redacted_fields": total[0]}
+    except Exception:
+        return {"unavailable": "redaction_failed"}
 
 
 # ── Estrazione credenziali dalla query (Strato 1 — ADR 0089, 4/5/2026) ──
@@ -3570,6 +3606,8 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
                 _remote_env["METNOS_CAPTURE_MODEL_USAGE"] = "1"
             from llm_telemetry import prepare_child_model_calls
             _child_calls = prepare_child_model_calls(_remote_env)
+            from monitor_capture import prepare_child
+            _monitor_child = prepare_child(_remote_env)
             _obs = _remote.invoke_remote(
                 executor, remote_args, _target, timeout_s=timeout_s,
                 turn_id=turn_id,
@@ -3577,6 +3615,8 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
                 actor=actor or "", channel=channel or "", **_remote_kwargs)
             if _child_calls is not None:
                 _child_calls.finish(_obs, retain=execution_context is not None)
+            if _monitor_child:
+                _monitor_child.finish(_obs)
             from program_start_consent import bind_prompt
             _obs = bind_prompt(executor, _obs, device_id=str(_target))
             # Marca l'esecuzione REALE sul device: il tag/campo del turno si
@@ -3793,6 +3833,8 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
     parsed_result = None
     from llm_telemetry import prepare_child_model_calls
     _child_calls = prepare_child_model_calls(env)
+    from monitor_capture import prepare_child
+    _monitor_child = prepare_child(env)
     if execution_context is None:
         try:
             result = subprocess.run(
@@ -3817,6 +3859,7 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
             MAX_ERROR_JSON_BYTES,
             MAX_RESULT_JSON_BYTES,
         )
+        from monitor_capture import MAX_TRANSPORT_JSON_BYTES
         try:
             result = run_bounded_subprocess(
                 cmd,
@@ -3824,9 +3867,10 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
                 timeout_s=timeout_s,
                 env=env,
                 # The result cap covers canonical payload bytes; the small
-                # allowance carries the bounded model-usage side envelope.
+                # allowances carry the two independently bounded envelopes.
                 stdout_limit_bytes=(
                     MAX_RESULT_JSON_BYTES + MAX_ERROR_JSON_BYTES
+                    + (MAX_TRANSPORT_JSON_BYTES + 128 if _monitor_child is not None else 0)
                 ),
                 stderr_limit_bytes=MAX_ERROR_JSON_BYTES,
             )
@@ -3888,6 +3932,8 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
                 }
     if _child_calls is not None:
         _child_calls.finish(parsed_result, retain=execution_context is not None)
+    if _monitor_child:
+        _monitor_child.finish(parsed_result)
     # Audit log per skill imports (mini-version Fase C, ADR 0140).
     # No-op per builtin handcrafted (provenance vuoto). Fail-silent.
     try:
@@ -5368,6 +5414,8 @@ class TurnLog:
     def write(self):
         from llm_telemetry import current_model_calls
         self.model_calls = current_model_calls()
+        from monitor_capture import bind_turn
+        bind_turn(self)
         if not self.metnos_version:
             try:
                 from __version__ import __version__ as _product_version
@@ -5884,6 +5932,13 @@ class TurnLog:
                 s["resolved_args"] = _scrub_args_recursive(s["resolved_args"], n_redacted_total)
             steps_clean.append(s)
         record["steps"] = steps_clean
+        diagnostics = getattr(self, "_engine_diagnostics", None)
+        if diagnostics is not None:
+            try:
+                record["engine_diagnostics"] = _scrub_args_recursive(
+                    diagnostics, n_redacted_total)
+            except Exception:
+                record["engine_diagnostics"] = {"unavailable": "redaction_failed"}
         if n_redacted_total[0] > 0:
             record["redacted"] = True
             record["n_redacted_fields"] = n_redacted_total[0]
@@ -6739,10 +6794,14 @@ def _run_engine(
                     "max_tokens": max_tokens,
                     "request_timeout_s": ENGINE_FAST_LLM_TIMEOUT_S,
                 }
-                if kw.get("grammar") is not None:
+                provider = LLMRouter().provider(tier_for("intent.extract"))
+                # Only an adapter that declares it receives a grammar: the
+                # others have no such parameter, and passing it would fail
+                # before the request and spend the retry on a sure error.
+                if (kw.get("grammar") is not None
+                        and getattr(provider, "supports_grammar", False)):
                     ck["grammar"] = kw["grammar"]
-                res = LLMRouter().provider(
-                    tier_for("intent.extract")).chat(sys_msg, user_msg, **ck)
+                res = provider.chat(sys_msg, user_msg, **ck)
                 return (getattr(res, "text", res) or "").strip()
             except Exception as _e:  # noqa: BLE001
                 log.warning("engine v2 _llm_call_fast tentativo %d fallito: %r",
@@ -6755,6 +6814,9 @@ def _run_engine(
                     _report_llm_failure(failure_kind)
                     break
         return ""
+
+    # Accepts a grammar and forwards it when the resolved provider can.
+    _llm_call_fast.supports_grammar = True
 
     # Provider LLM wise (per Proposer)
     def _llm_call_wise(sys_msg, user_msg, *, max_tokens=2048, **kw):
@@ -6785,10 +6847,26 @@ def _run_engine(
                 _report_llm_failure(failure_kind)
             return ""
 
+    # Capture only extraction calls, including a possible source probe. The
+    # wrapper preserves adapter capabilities and makes no additional request.
+    _intent_replies = []
+
+    def _extract_llm_call(sys_msg, user_msg, *, max_tokens=80, **kw):
+        reply = _llm_call_fast(sys_msg, user_msg, max_tokens=max_tokens, **kw)
+        _intent_replies.append({
+            "max_tokens": max_tokens, "grammar_requested": kw.get("grammar") is not None,
+            **_intent_reply_diagnostic(reply),
+        })
+        return reply
+
+    _extract_llm_call.supports_grammar = _llm_call_fast.supports_grammar
+
     # Intent extraction
-    intent_raw = extract_intent(query, _llm_call_fast)
+    intent_raw = extract_intent(query, _extract_llm_call)
+    _diagnostics = {"intent_replies": _intent_replies,
+                    "normalized_intent": deepcopy(intent_raw)}
     if _llm_state["failure_kind"]:
-        return _dependency_failure_result()
+        return {**_dependency_failure_result(), "diagnostics": _diagnostics}
     if not intent_raw:
         # ROBUSTEZZA (ADR 0181-ext, causa-radice del declino intermittente):
         # intent VUOTO NON è fatale. `extract_intent`→None sia su query davvero
@@ -7390,6 +7468,7 @@ def _run_engine(
             "gate_obs": None,
         }
 
+    _diagnostics["dispatch_intent"] = asdict(intent)
     try:
         result = _dispatch.run_turn(
             query=_site_query, intent=intent, catalog=catalog_v2,
@@ -7475,6 +7554,9 @@ def _run_engine(
         if _failure_kind == "provider_timeout"
         else "llm_unavailable"
     )
+    if result.error_class == "capability_missing" and result.framework is not None:
+        _diagnostics["rejected_framework"] = result.framework.to_dict()
+        _diagnostics["framework_hash"] = result.framework_hash
     return {
         "steps": steps_out,
         "final_text": (msg(_failure_message_key)
@@ -7496,6 +7578,7 @@ def _run_engine(
         "frozen_plan_resume": frozen_plan_resume,
         "gate_obs": gate_obs,
         "durable_admission": getattr(result, "durable_admission", None),
+        "diagnostics": _diagnostics,
     }
 
 
@@ -7507,6 +7590,8 @@ def _finalize_engine_result(log, _engine_v2_res, *, actor, channel,
 
     Estratto (ADR 0177 M1) per riuso fra il path principale (run_turn, non-upload)
     e il branch foto-allegate (engine-uploads). Comportamento byte-invariato."""
+    # Runtime-only: private persistence below, absent from public asdict(log).
+    log._engine_diagnostics = _engine_v2_res.get("diagnostics")
     log.steps.extend(_engine_v2_res.get("steps") or [])
     log.match_source = str(_engine_v2_res.get("match_source") or "")
     log.durable_admission = _engine_v2_res.get("durable_admission")
@@ -7872,8 +7957,12 @@ def _owner_scoped_turn(function):
         owner = str(
             kwargs.get("owner_user_id") or kwargs.get("actor") or "host")
         from user_lifecycle import owner_session
-        with owner_session(owner):
-            return function(user_query, *args, **kwargs)
+        from monitor_capture import segment_scope, finish_turn
+        with owner_session(owner), segment_scope(
+                owner_id=owner, channel=kwargs.get("channel")):
+            result = function(user_query, *args, **kwargs)
+            finish_turn(result)
+            return result
     return guarded
 
 

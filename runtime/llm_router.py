@@ -263,6 +263,8 @@ def provider_from_tier_spec(
         if key not in INFERENCE_POLICY_KEYS
     }
     provider = make_provider_from_spec(provider_spec)
+    from monitor_metrics import binding_revision
+    provider._monitor_binding_revision = binding_revision(completed)
     return _TierBoundProvider(provider, completed, tier)
 
 

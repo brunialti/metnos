@@ -261,6 +261,8 @@ def save_pending(sender_id: str, dialog_id: str, payload: dict) -> Path:
         os.fsync(dir_fd)
     finally:
         os.close(dir_fd)
+    from monitor_capture import observe_wait
+    observe_wait(payload)
     return p
 
 

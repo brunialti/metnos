@@ -1,0 +1,50 @@
+{% macro number(value, digits=0) -%}
+  {% if value is none or value is undefined %}<span class="muted" title="{{ msg('UI_MONITOR_UNKNOWN') }}">{{ msg('UI_MONITOR_UNAVAILABLE') }}</span>{% else %}{% set formatted = ('%.' ~ digits ~ 'f')|format(value) %}{{ formatted|replace('.', ',') if ui_lang == 'it' else formatted }}{% endif %}
+{%- endmacro %}
+
+{% macro tokens(counter) -%}
+  {% if not counter or counter.value is none or (counter.known == 0 and counter.expected > 0) %}
+    <span class="muted" title="{{ msg('UI_MONITOR_TOKENS_MISSING') }}">{{ msg('UI_MONITOR_UNAVAILABLE') }}</span>
+  {% else %}
+    {% if not counter.complete %}<span title="{{ msg('UI_MONITOR_PARTIAL_TOTAL') }}">≥</span>{% endif %}{{ number(counter.value) }}
+  {% endif %}
+{%- endmacro %}
+
+{% macro duration(value) -%}
+  {{ number(value / 1000 if value is not none and value is not undefined else none, 2) }}
+{%- endmacro %}
+
+{% macro timestamp(value) -%}
+  {% if value %}<time class="monitor-time" datetime="{{ value }}" title="{{ value }}">{{ value[8:10] }}/{{ value[5:7] }} <span>{{ value[11:19] }} UTC</span></time>{% else %}{{ msg('UI_MONITOR_UNAVAILABLE') }}{% endif %}
+{%- endmacro %}
+
+{% macro speed_header(key, short=none) -%}
+  {% if short %}<abbr title="{{ msg(key) }}">{{ short }}</abbr>{% else %}{{ msg(key) }}{% endif %} <small class="monitor-header-unit">{{ msg('UI_MONITOR_TPS') }}</small>
+{%- endmacro %}
+
+{% macro coverage(known, expected) -%}
+  {% if known is none or expected is none or known is undefined or expected is undefined %}{{ msg('UI_MONITOR_UNAVAILABLE') }}{% else %}{{ known }}/{{ expected }}{% endif %}
+{%- endmacro %}
+
+{% macro status(value) -%}
+  {% set labels = {'completed':'UI_MONITOR_STATUS_COMPLETED', 'in_progress':'UI_MONITOR_STATUS_IN_PROGRESS', 'awaiting_input':'UI_MONITOR_STATUS_AWAITING_INPUT', 'interrupted':'UI_MONITOR_STATUS_INTERRUPTED', 'expired':'UI_MONITOR_STATUS_EXPIRED', 'error':'UI_MONITOR_STATUS_ERROR', 'ok':'UI_MONITOR_STATUS_COMPLETED', 'cancelled':'UI_MONITOR_STATUS_CANCELLED', 'timeout':'UI_MONITOR_STATUS_EXPIRED'} %}
+  <span class="chip {% if value in ['completed','ok'] %}ok{% elif value in ['interrupted','error','expired','timeout'] %}bad{% else %}warn{% endif %}">{{ msg(labels.get(value, 'UI_MONITOR_STATUS_UNKNOWN')) }}</span>
+{%- endmacro %}
+
+{% macro identity(model) -%}
+  <span class="monitor-model"><strong>{% if model.get('model_grouping') == 'physical' %}{% for level in model.levels %}{{ level or msg('UI_MONITOR_UNKNOWN_MODEL') }}{% if not loop.last %}, {% endif %}{% endfor %}{% else %}{{ model.level or msg('UI_MONITOR_UNKNOWN_MODEL') }}{% endif %}</strong> <span aria-hidden="true">→</span> <span>{{ model.physical_model_reported or model.physical_model_requested or model.physical_model|default('') or msg('UI_MONITOR_UNKNOWN_MODEL') }}</span><small>{{ model.provider or msg('UI_MONITOR_UNKNOWN_PROVIDER') }}{% if model.physical_model_requested and not model.physical_model_attested %} · {{ msg('UI_MONITOR_CONFIGURED') }}{% endif %}</small></span>
+  {% if model.physical_model_reported and model.physical_model_requested and model.physical_model_reported != model.physical_model_requested %}<small class="muted monitor-requested">{{ msg('UI_MONITOR_REQUESTED_MODEL') }}: {{ model.physical_model_requested }}</small>{% endif %}
+{%- endmacro %}
+
+{% macro metric_label(value) -%}
+  {% set labels = {'input_tokens':'UI_MONITOR_INPUT_TOKENS','output_tokens':'UI_MONITOR_OUTPUT_TOKENS','cached_input_tokens':'UI_MONITOR_CACHE_TOKENS','reasoning_tokens':'UI_MONITOR_REASONING_TOKENS','prefill_tokens':'UI_MONITOR_PREFILL_TOKENS','generation_tokens':'UI_MONITOR_GENERATION_TOKENS','call_wall_ms':'UI_MONITOR_CALL_SECONDS','prefill_ms':'UI_MONITOR_PREFILL','generation_ms':'UI_MONITOR_GENERATION'} %}{{ msg(labels.get(value, 'UI_MONITOR_UNKNOWN')) }}
+{%- endmacro %}
+
+{% macro outcome(value, show_label=true) -%}
+  {% set labels = {'ok':'UI_MONITOR_OUTCOME_OK','success':'UI_MONITOR_OUTCOME_OK','completed':'UI_MONITOR_OUTCOME_OK','error':'UI_MONITOR_STATUS_ERROR','failed':'UI_MONITOR_STATUS_ERROR','cancelled':'UI_MONITOR_STATUS_CANCELLED','aborted':'UI_MONITOR_STATUS_CANCELLED','timeout':'UI_MONITOR_STATUS_EXPIRED','expired':'UI_MONITOR_STATUS_EXPIRED','abandoned':'UI_MONITOR_STATUS_EXPIRED','awaiting_input':'UI_MONITOR_STATUS_AWAITING_INPUT','interrupted':'UI_MONITOR_STATUS_INTERRUPTED'} %}
+  {% if value %}<small class="monitor-time">{% if show_label %}{{ msg('UI_MONITOR_OUTCOME') }}: {% endif %}{{ msg(labels.get(value, 'UI_MONITOR_UNKNOWN')) }}</small>{% endif %}
+{%- endmacro %}
+
+{% macro provenance(value) -%}
+  {% set labels = {'provider':'UI_MONITOR_SOURCE_PROVIDER','observer':'UI_MONITOR_SOURCE_OBSERVER','unavailable':'UI_MONITOR_UNKNOWN','missing':'UI_MONITOR_MISSING','invalid_number':'UI_MONITOR_INVALID_NUMBER','not_reported':'UI_MONITOR_NOT_REPORTED','transport_error':'UI_MONITOR_TRANSPORT_ERROR','unsupported_provider':'UI_MONITOR_UNSUPPORTED_PROVIDER','incomplete_cache_usage':'UI_MONITOR_INCOMPLETE_CACHE'} %}{{ msg(labels.get(value, 'UI_MONITOR_UNKNOWN')) }}
+{%- endmacro %}

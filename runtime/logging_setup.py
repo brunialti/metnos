@@ -48,7 +48,7 @@ def setup_logging(level: str | None = None,
     fmt = logging.Formatter(_C.LOG_FORMAT, datefmt=_C.LOG_DATE_FORMAT)
     # Stderr handler (catturato da systemd journal automaticamente).
     # Bug 8/5/2026: i logger scrivevano su stdout, contaminando il JSON
-    # output degli executor invocati come subprocess (build_orchestrator
+    # output degli executor invocati come subprocess (log di errore
     # ERROR mescolato con find_images_indices JSON → parse fail nel
     # dispatcher). Stderr e' il canale corretto per i log: systemd cattura
     # entrambi i canali, ma il subprocess capture stdout resta pulito.

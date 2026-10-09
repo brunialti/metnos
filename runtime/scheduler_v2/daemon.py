@@ -12,9 +12,11 @@ import logging
 import os
 import re
 import time
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
+import monitor_capture as _monitor
 
 from .callbacks import CallbackRegistry
 from .models import CallbackOutcome, ScheduleEntry
@@ -498,10 +500,23 @@ class SchedulerDaemon:
                     self._running[entry.id] = cur - 1
 
     async def _invoke(self, fn, entry: ScheduleEntry, *, is_async: bool):
+        metadata = {"origin": "background", "channel": "scheduler",
+                    "job_ref": f"schedule:{entry.id}:{uuid.uuid4().hex}"}
+        def observed_result(segment, result):
+            if segment is not None and (
+                    isinstance(result, CallbackOutcome) and result.status not in {"success", "partial"}
+                    or isinstance(result, dict) and result.get("ok") is False):
+                segment.outcome = "timeout" if isinstance(result, CallbackOutcome) and result.status == "timeout" else "error"
+            return result
         if is_async:
-            return await fn(entry.payload)
+            with _monitor.segment_scope(independent=True, **metadata) as segment:
+                return observed_result(segment, await fn(entry.payload))
+        def invoke():
+            # Le chiamate sincrone appartengono al thread che le esegue.
+            with _monitor.segment_scope(independent=True, **metadata) as segment:
+                return observed_result(segment, fn(entry.payload))
         loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(self._pool, fn, entry.payload)
+        return await loop.run_in_executor(self._pool, invoke)
 
     # --- convenience -------------------------------------------------
 

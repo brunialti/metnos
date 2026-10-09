@@ -141,6 +141,7 @@ Le pagine di dettaglio separano le diverse domande operative:</p>
 <tr><th>Percorso nella chat</th><th>Informazioni principali</th></tr>
 <tr><td>Settings &gt; Attivit&agrave; &gt; Turni</td><td>Identificativo, orario, canale, attore, passi, esito, durata e richiesta.</td></tr>
 <tr><td>Settings &gt; Attivit&agrave; &gt; Scheduler</td><td>Esecuzioni delle attivit&agrave;, esito e durata.</td></tr>
+<tr><td>Settings &gt; Monitor</td><td>Grafici dei token in/out, tempi e prestazioni delle richieste; confronto per nome logico, modello fisico e fornitore.</td></tr>
 <tr><td>Settings &gt; Sistema &gt; Servizi</td><td>Servizi presenti nel registro canonico, stato e controlli ammessi.</td></tr>
 <tr><td>Settings &gt; Sistema &gt; Modelli</td><td>Configurazione effettiva e oscurata di LLM, embedding e VLM: LLM e VLM sono modificabili e ripristinabili; l&rsquo;embedding è consultabile.</td></tr>
 <tr><td>Settings &gt; Sistema &gt; Dispositivi</td><td>Dispositivi associati, presenza e revoca.</td></tr>
@@ -151,6 +152,37 @@ Le pagine di dettaglio separano le diverse domande operative:</p>
 le pagine visibili e il percorso per raggiungerle. Il Tutor usa lo stesso
 registro; per questo una modifica strutturale dell'interfaccia richiede di
 aggiornare anche la guida di navigazione e l'indice del Tutor.</p>
+
+<h2>Monitor: richieste e prestazioni dei modelli</h2>
+
+<p>Le sezioni della barra laterale sono richiudibili; quella della pagina
+corrente si apre automaticamente. <strong>Monitor &gt; Panoramica</strong>
+mostra velocit&agrave; e durata complessiva delle richieste nel tempo;
+<strong>Richieste</strong> permette di aprire una singola query e le sue
+chiamate; <strong>Prestazioni modelli</strong> confronta le identit&agrave;
+logiche e fisiche, con velocit&agrave; della chiamata completa, prefill (PP)
+e generazione (TG) per primi. Sono disponibili filtri per periodo, canale e origine,
+e l'esportazione JSON della vista selezionata. Le attivit&agrave; interattive
+sono il filtro iniziale; le altre origini possono essere incluse.</p>
+
+<p>La velocit&agrave; della chiamata LLM divide i token di uscita per il tempo
+dall'inizio alla fine della chiamata, comprendendo prefill, generazione,
+coda e trasporto. La media &egrave; ponderata per la durata: somma dei token
+divisa per somma dei tempi delle chiamate valide. La velocit&agrave; e2e
+della richiesta divide i token di uscita per il tempo della
+richiesta. Il tempo attivo esclude l'attesa della persona; il tempo
+complessivo la include. Prefill e generazione usano esclusivamente i tempi
+comunicati dal fornitore. Token o tempi mancanti restano sconosciuti e le
+medie delle velocit&agrave; usano somme di token e tempi validi.</p>
+
+<p>I grafici si aggiornano ogni cinque secondi mentre la pagina &egrave;
+visibile. Colori e tratti distinti identificano le stesse serie in tutti i
+grafici. Date e ore usano giorno/mese e orario UTC; il valore completo &egrave;
+disponibile passando sul dato. Un buffer di 128 eventi per processo consegna le misure a un
+thread di scrittura senza attendere il disco. Eventi persi, dati incompleti
+e raccolta non aggiornata sono indicati nella pagina. La raccolta conserva
+identificativi e misure, senza domande, risposte o credenziali; l'accesso
+richiede il ruolo amministrativo.</p>
 
 <h1 id="cap4">4. Il rendiconto HTML statico</h1>
 

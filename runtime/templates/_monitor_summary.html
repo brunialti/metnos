@@ -1,0 +1,37 @@
+{% import '_monitor_macros.html' as m with context %}
+{% set summary = monitor.summary %}
+{% if monitor.health.truncated|default(false) %}<p class="callout warn" role="status">{{ msg('UI_MONITOR_READ_TRUNCATED', limit=monitor.health.read_limit) }}</p>{% endif %}
+{% if monitor.health.available is defined and not monitor.health.available %}<p class="callout warn" role="status">{{ msg('UI_MONITOR_COLLECTOR_UNAVAILABLE') }}</p>{% endif %}
+<div class="kpi-grid" aria-label="{{ msg('UI_MONITOR_SUMMARY') }}">
+  {% if view == 'models' %}
+  {% for metric,key in [('call_output_tps','UI_MONITOR_CALL_OUTPUT_SPEED'),('prefill_tps','UI_MONITOR_PREFILL'),('generation_tps','UI_MONITOR_GENERATION')] %}
+  <div class="kpi"><div class="kpi-label">{{ msg(key) }}</div><div class="kpi-value">{{ m.number(summary[metric], 1) }} <small>{{ msg('UI_MONITOR_TPS') }}</small></div><p class="monitor-kpi-note">{{ msg('UI_MONITOR_KNOWN_CALLS') }}: {{ m.coverage(monitor.coverage[metric].known, monitor.coverage[metric].total) }}</p></div>
+  {% endfor %}
+  <div class="kpi"><div class="kpi-label">{{ msg('UI_MONITOR_CALLS') }}</div><div class="kpi-value">{{ m.number(summary.call_count) }}</div><p class="monitor-kpi-note">{{ msg('UI_MONITOR_REQUEST_COUNT') }}: {{ m.number(summary.request_count) }}</p></div>
+  {% elif view == 'overview' %}
+  <div class="kpi"><div class="kpi-label">{{ msg('UI_MONITOR_REQUEST_OUTPUT_SPEED') }}</div><div class="kpi-value">{{ m.number(summary.request_output_tps, 1) }} <small>{{ msg('UI_MONITOR_TPS') }}</small></div><p class="monitor-kpi-note">{{ msg('UI_MONITOR_REQUEST_SPEED_HELP') }}</p></div>
+  <div class="kpi"><div class="kpi-label">{{ msg('UI_MONITOR_COMPLETED_REQUESTS') }}</div><div class="kpi-value">{{ m.number(summary.completed_requests) }}</div><p class="monitor-kpi-note">{{ msg('UI_MONITOR_REQUEST_COUNT') }}: {{ m.number(summary.request_count) }}</p></div>
+  <div class="kpi"><div class="kpi-label">{{ msg('UI_MONITOR_INPUT_OUTPUT') }}</div><div class="kpi-value monitor-token-kpi">{{ m.tokens(summary.input_tokens) }} / {{ m.tokens(summary.output_tokens) }}</div></div>
+  <div class="kpi"><div class="kpi-label">{{ msg('UI_MONITOR_WALL_MEDIAN') }}</div><div class="kpi-value">{{ m.duration(summary.wall_p50_ms) }} <small>{{ msg('UI_MONITOR_SECONDS') }}</small></div><p class="monitor-kpi-note">{{ msg('UI_MONITOR_P95') }}: {{ m.duration(summary.wall_p95_ms) }} {{ msg('UI_MONITOR_SECONDS') }}</p><p class="monitor-kpi-note">{{ msg('UI_MONITOR_TOTAL_TIME_HELP') }}</p></div>
+  {% else %}
+  <div class="kpi"><div class="kpi-label">{{ msg('UI_MONITOR_COMPLETED_REQUESTS') }}</div><div class="kpi-value">{{ m.number(summary.completed_requests) }}</div><p class="monitor-kpi-note">{{ msg('UI_MONITOR_REQUEST_COUNT') }}: {{ m.number(summary.request_count) }}</p></div>
+  <div class="kpi"><div class="kpi-label">{{ msg('UI_MONITOR_INPUT_TOKENS') }}</div><div class="kpi-value">{{ m.tokens(summary.input_tokens) }}</div><p class="monitor-kpi-note">{{ msg('UI_MONITOR_KNOWN_CALLS') }}: {{ m.coverage(summary.input_tokens.known, summary.input_tokens.expected) }}</p></div>
+  <div class="kpi"><div class="kpi-label">{{ msg('UI_MONITOR_OUTPUT_TOKENS') }}</div><div class="kpi-value">{{ m.tokens(summary.output_tokens) }}</div><p class="monitor-kpi-note">{{ msg('UI_MONITOR_KNOWN_CALLS') }}: {{ m.coverage(summary.output_tokens.known, summary.output_tokens.expected) }}</p></div>
+  <div class="kpi"><div class="kpi-label">{{ msg('UI_MONITOR_ACTIVE_MEDIAN') }}</div><div class="kpi-value">{{ m.duration(summary.active_p50_ms) }} <small>{{ msg('UI_MONITOR_SECONDS') }}</small></div><p class="monitor-kpi-note">{{ msg('UI_MONITOR_P95') }}: {{ m.duration(summary.active_p95_ms) }} {{ msg('UI_MONITOR_SECONDS') }}{% if view != 'models' %} · {{ msg('UI_MONITOR_WALL_MEDIAN') }}: {{ m.duration(summary.wall_p50_ms) }} {{ msg('UI_MONITOR_SECONDS') }}{% endif %}</p></div>
+  {% endif %}
+</div>
+{% if view == 'models' %}<p class="monitor-note">{{ msg('UI_MONITOR_CALL_SPEED_HELP') }}</p>{% else %}
+<div class="monitor-quality" aria-label="{{ msg('UI_MONITOR_DATA_QUALITY') }}">
+  <span{% if summary.incomplete_requests %} class="warning"{% endif %}>{{ msg('UI_MONITOR_INCOMPLETE') }}: <strong>{{ m.number(summary.incomplete_requests) }}</strong></span>
+  <span{% if summary.dropped_events %} class="warning"{% endif %}>{{ msg('UI_MONITOR_DROPPED_EVENTS') }}: <strong>{{ m.number(summary.dropped_events) }}</strong></span>
+  <span{% if summary.unattributed_calls %} class="warning"{% endif %}>{{ msg('UI_MONITOR_UNATTRIBUTED_CALLS') }}: <strong>{{ m.number(summary.unattributed_calls) }}</strong></span>
+</div>
+<p class="monitor-note">{{ msg('UI_MONITOR_PARTIAL_HELP') }}</p>
+{% if monitor.health.dropped_events is defined or monitor.health.write_errors is defined %}
+<div class="monitor-quality" aria-label="{{ msg('UI_MONITOR_COLLECTION_HEALTH') }}">
+  <span{% if monitor.health.dropped_events|default(0) %} class="warning"{% endif %}>{{ msg('UI_MONITOR_COLLECTOR_DROPPED_EVENTS') }}: <strong>{{ m.number(monitor.health.dropped_events) }}</strong></span>
+  <span{% if monitor.health.write_errors|default(0) %} class="warning"{% endif %}>{{ msg('UI_MONITOR_COLLECTOR_WRITE_ERRORS') }}: <strong>{{ m.number(monitor.health.write_errors) }}</strong></span>
+</div>
+<p class="monitor-note">{{ msg('UI_MONITOR_COLLECTOR_COUNTERS_HELP') }}</p>
+{% endif %}
+{% endif %}

@@ -267,7 +267,7 @@ def run_stdio(invoke, *, default=None, error_extra=None,
             out.update(error_extra)
         return out
 
-    def _invoke(args):
+    def _invoke_with_usage(args):
         if os.environ.get("METNOS_CAPTURE_MODEL_USAGE") != "1":
             return invoke(args)
         from llm_telemetry import (
@@ -288,6 +288,15 @@ def run_stdio(invoke, *, default=None, error_extra=None,
         if isinstance(result, dict):
             result = dict(result)
             result[TRANSPORT_USAGE_KEY] = sink.export()
+        return result
+
+    def _invoke(args):
+        from monitor_capture import transport_capture, TRANSPORT_KEY
+        with transport_capture() as monitor_sink:
+            result = _invoke_with_usage(args)
+        if monitor_sink is not None and isinstance(result, dict):
+            result = dict(result)
+            result[TRANSPORT_KEY] = monitor_sink.export()
         return result
 
     def _dispatch(args):

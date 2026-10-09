@@ -96,6 +96,10 @@ def current_model_calls() -> int | None:
     return counter.snapshot() if counter is not None else None
 
 
+def current_tier() -> str | None:
+    return _current_tier.get()
+
+
 @dataclass
 class ChildModelCalls:
     counter: ModelCallCounter

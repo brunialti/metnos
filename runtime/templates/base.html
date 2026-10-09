@@ -34,13 +34,19 @@ main{flex:1;min-width:0;padding:var(--sp-5) var(--sp-6) var(--sp-7)}
 .chat-link:hover{text-decoration:underline}
 
 .nav{flex:1;padding:0 var(--sp-2) var(--sp-3)}
-.nav-h{font-size:var(--fs-0);font-weight:600;letter-spacing:.08em;
-  text-transform:uppercase;color:var(--muted);
-  padding:var(--sp-4) var(--sp-2) var(--sp-1)}
+.nav-h{font-size:var(--fs-0);font-weight:700;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--accent);
+  padding:var(--sp-3) var(--sp-2);cursor:pointer;list-style:none}
+.nav-h::-webkit-details-marker{display:none}
+.nav-h::after{content:"›";float:right;font-size:1rem;line-height:1;transition:transform var(--t-1)}
+.nav-group[open]>.nav-h::after{transform:rotate(90deg)}
+.nav-h:hover{color:var(--ink)}
+.nav-h:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;border-radius:var(--r-1)}
 .nav a{display:flex;align-items:center;gap:.5rem;min-height:30px;
   padding:.3rem var(--sp-2);margin:1px 0;border-radius:var(--r-1);
   color:var(--ink-2);font-weight:500;text-decoration:none;
   transition:background var(--t-1) var(--ease),color var(--t-1) var(--ease)}
+.nav-group>a{padding-left:calc(var(--sp-2) + 20px)}
 .nav a:hover{background:var(--surface-2);color:var(--ink);text-decoration:none}
 .nav a.current{background:var(--accent-soft);color:var(--accent);font-weight:600}
 .nav a.current::before{content:"";width:3px;height:14px;border-radius:2px;
@@ -112,8 +118,9 @@ body.nav-open #navToggle span:nth-child(3){transform:translateY(-6px) rotate(-45
     </div>
     <nav class="nav" aria-label="{{ msg('UI_SETTINGS_NAV_ARIA') }}">
       {% for group in settings_navigation(ui_lang) %}
-      {% if group['label'] %}<div class="nav-h" id="nav-h-{{ group['key'] }}">{{ group['label'] }}</div>{% endif %}
+      {% if group['label'] %}<details class="nav-group"><summary class="nav-h" id="nav-h-{{ group['key'] }}">{{ group['label'] }}</summary>{% endif %}
       {% for surface in group['items'] %}<a href="{{ surface.route }}">{{ surface.label(ui_lang) }}</a>{% endfor %}
+      {% if group['label'] %}</details>{% endif %}
       {% endfor %}
     </nav>
     <div class="sidebar-foot">
@@ -141,7 +148,11 @@ body.nav-open #navToggle span:nth-child(3){transform:translateY(-6px) rotate(-45
     const match = (path === href) || path.startsWith(href + "/");
     if (match && href.length > bestLen) { best = a; bestLen = href.length; }
   });
-  if (best) { best.classList.add("current"); best.setAttribute("aria-current", "page"); }
+  if (best) {
+    best.classList.add("current"); best.setAttribute("aria-current", "page");
+    const group = best.closest(".nav-group");
+    if (group) group.open = true;
+  }
 })();
 
 // Menu mobile: hamburger -> off-canvas con backdrop; Escape chiude.

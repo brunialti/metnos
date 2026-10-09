@@ -31,6 +31,7 @@ import urllib.request
 from dataclasses import dataclass, field
 
 import llm_telemetry as _telemetry  # universal pass-through observability hook
+import monitor_capture as _monitor
 
 
 REASONING_EFFORTS = {
@@ -213,6 +214,7 @@ class OllamaProvider:
                           system=system, user=user, result=res, kind="tools")
         return res
 
+    @_monitor.provider_call("ollama")
     def _call_chat(self, payload, expect_tools, *, request_timeout_s=None):
         # ADR 0121: sanitize surrogates pre-serialization (vedi LlamaCppProvider).
         body = _encode_payload(payload)
@@ -225,6 +227,7 @@ class OllamaProvider:
             with urllib.request.urlopen(
                     req, timeout=_request_timeout(request_timeout_s, 300)) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
+                _monitor.observe_response(data)
         except urllib.error.URLError as e:
             raise ProviderError(f"ollama unreachable: {e}") from e
         latency = int((time.time() - t0) * 1000)
@@ -535,6 +538,7 @@ class LlamaCppProvider:
             payload, expect_tools=True,
             request_timeout_s=request_timeout_s)
 
+    @_monitor.provider_call("llamacpp")
     def _call(self, payload, expect_tools, *, grammar_mode: bool = False,
               request_timeout_s=None):
         # ADR 0120: inject id_slot per slot affinity. llama-server passa
@@ -559,6 +563,7 @@ class LlamaCppProvider:
             with urllib.request.urlopen(
                     req, timeout=_request_timeout(request_timeout_s, 600)) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
+                _monitor.observe_response(data)
         except urllib.error.URLError as e:
             raise ProviderError(f"llama-server unreachable at {self.endpoint}: {e}") from e
         latency = int((time.time() - t0) * 1000)
@@ -900,6 +905,7 @@ class AnthropicProvider:
         _flush_tool_results()
         return out
 
+    @_monitor.provider_call("anthropic")
     def _post(self, payload, *, request_timeout_s=None):
         # ADR 0121: sanitize surrogates pre-serialization. Critico per
         # AnthropicProvider perche' l'API Claude rifiuta esplicitamente
@@ -920,6 +926,7 @@ class AnthropicProvider:
             with _api_urlopen(
                     req, timeout=_request_timeout(request_timeout_s, 600)) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
+                _monitor.observe_response(data)
         except urllib.error.HTTPError as e:
             raise ProviderError(f"anthropic api error {e.code}") from None
         except urllib.error.URLError:
@@ -1159,6 +1166,7 @@ class OpenAIProvider:
             payload, expect_tools=True,
             request_timeout_s=request_timeout_s)
 
+    @_monitor.provider_call("openai")
     def _call(self, payload, expect_tools, *, request_timeout_s=None):
         if self.API_URL != type(self).API_URL:
             # `store` is an OpenAI retention option, not required by the
@@ -1180,6 +1188,7 @@ class OpenAIProvider:
             with _api_urlopen(
                     req, timeout=_request_timeout(request_timeout_s, 600)) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
+                _monitor.observe_response(data)
         except urllib.error.HTTPError as e:
             raise ProviderError(f"openai api error {e.code}") from None
         except urllib.error.URLError:

@@ -968,7 +968,10 @@ def goal_navigation_candidates(candidates: list[dict], *,
                 or goal_place_key(candidate) in excluded):
             continue
         nome = str(candidate.get("name") or candidate.get("label") or "")
-        if not normalize(nome):
+        # An observed icon can be a meaningful control (pagination commonly
+        # uses only an arrow). Leave its meaning to the semantic resolver;
+        # non-semantic wrappers and empty labels remain ineligible.
+        if not nome.strip() or (not normalize(nome) and not _is_semantic_control(candidate)):
             continue
         if _looks_like_prose(nome):
             continue

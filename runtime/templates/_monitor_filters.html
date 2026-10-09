@@ -1,0 +1,43 @@
+{% set filters = monitor.filters %}
+{% macro select_filter(name, label_key, options, current) %}
+<div class="monitor-field">
+  <label for="monitor-{{ name }}">{{ msg(label_key) }}</label>
+  <select name="{{ name }}" id="monitor-{{ name }}">
+    <option value="">{{ msg('UI_MONITOR_ALL') }}</option>
+    {% for option in options %}<option value="{{ option.value }}"{% if option.value == current %} selected{% endif %}>{{ option.label }}</option>{% endfor %}
+  </select>
+</div>
+{% endmacro %}
+<form id="monitor-filters" class="section monitor-filters" action="{% if view == 'models' %}/admin/monitor/models{% elif view == 'requests' %}/admin/monitor/requests{% else %}/admin/monitor{% endif %}" method="get" aria-label="{{ msg('UI_MONITOR_FILTERS') }}">
+  <div class="monitor-field monitor-period">
+    <label for="monitor-period">{{ msg('UI_MONITOR_PERIOD') }}</label>
+    <select id="monitor-period" name="period">
+      {% for value,key in [('today','UI_MONITOR_PERIOD_TODAY'),('24h','UI_MONITOR_PERIOD_24H'),('7d','UI_MONITOR_PERIOD_7D'),('custom','UI_MONITOR_PERIOD_CUSTOM')] %}<option value="{{ value }}"{% if filters.period|default('24h', true) == value %} selected{% endif %}>{{ msg(key) }}</option>{% endfor %}
+    </select>
+  </div>
+  {{ select_filter('channel', 'UI_MONITOR_CHANNEL', filter_options.channels, filters.channel) }}
+  {{ select_filter('status', 'UI_MONITOR_STATUS', filter_options.statuses, filters.status) }}
+  {{ select_filter('level', 'UI_MONITOR_LOGICAL_MODEL', filter_options.levels, filters.level) }}
+  {% if view == 'models' %}
+  <div class="monitor-field">
+    <label for="monitor-model-grouping">{{ msg('UI_MONITOR_MODEL_GROUPING') }}</label>
+    <select name="model_grouping" id="monitor-model-grouping">
+      {% for value,key in [('identity','UI_MONITOR_GROUP_LOGICAL_PHYSICAL'),('physical','UI_MONITOR_GROUP_PHYSICAL')] %}<option value="{{ value }}"{% if filters.model_grouping|default('identity', true) == value %} selected{% endif %}>{{ msg(key) }}</option>{% endfor %}
+    </select>
+  </div>
+  {% endif %}
+  <button type="submit" class="btn primary">{{ msg('UI_MONITOR_APPLY') }}</button>
+  <details{% if filters.period == 'custom' or filters.provider or filters.physical_model_key or filters.origin not in ['', 'interactive'] %} open{% endif %}>
+    <summary>{{ msg('UI_MONITOR_MORE_FILTERS') }}</summary>
+    <div class="monitor-filter-extra">
+      <div class="monitor-field monitor-range"><label for="monitor-from">{{ msg('UI_MONITOR_FROM_UTC') }}</label><input type="text" id="monitor-from" name="from" value="{{ filters.from|default('', true) }}" placeholder="{{ msg('UI_MONITOR_DATE_PLACEHOLDER') }}" aria-describedby="monitor-range-help"></div>
+      <div class="monitor-field monitor-range"><label for="monitor-to">{{ msg('UI_MONITOR_TO_UTC') }}</label><input type="text" id="monitor-to" name="to" value="{{ filters.to|default('', true) }}" placeholder="{{ msg('UI_MONITOR_DATE_PLACEHOLDER') }}" aria-describedby="monitor-range-help"></div>
+      {{ select_filter('origin', 'UI_MONITOR_ORIGIN', filter_options.origins, filters.origin) }}
+      {{ select_filter('provider', 'UI_MONITOR_PROVIDER', filter_options.providers, filters.provider) }}
+      {{ select_filter('physical_model_key', 'UI_MONITOR_PHYSICAL_MODEL', filter_options.physical_models, filters.physical_model_key) }}
+    </div>
+    <p id="monitor-range-help" class="monitor-note">{{ msg('UI_MONITOR_RANGE_HELP') }}</p>
+  </details>
+  <p class="monitor-note">{% if view == 'models' %}{{ msg('UI_MONITOR_MODEL_FILTER_SCOPE') }}{% else %}{{ msg('UI_MONITOR_REQUEST_FILTER_SCOPE') }}{% endif %} {{ msg('UI_MONITOR_BACKGROUND_EXCLUDED') }}</p>
+  {% if view == 'models' %}<p class="monitor-note">{{ msg('UI_MONITOR_MODEL_GROUPING_HELP') }}</p>{% endif %}
+</form>

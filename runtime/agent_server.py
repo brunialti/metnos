@@ -250,12 +250,16 @@ def _run_deferred_for_device(device_id: str) -> None:
                         _dt.mark(
                             rid, "running", owner_user_id=owner_user_id)
                         import agent_runtime as _ar
-                        nl = _ar.run_turn(
-                            rec.get("query") or "",
-                            actor=rec.get("actor") or "host",
-                            channel=rec.get("channel") or "",
-                            conversation_id=rec.get("conversation_id") or "",
-                            owner_user_id=owner_user_id)
+                        from monitor_capture import segment_scope
+                        with segment_scope(independent=True, owner_id=owner_user_id,
+                                           channel=rec.get("channel"), origin="background",
+                                           job_ref=str(rid)):
+                            nl = _ar.run_turn(
+                                rec.get("query") or "",
+                                actor=rec.get("actor") or "host",
+                                channel=rec.get("channel") or "",
+                                conversation_id=rec.get("conversation_id") or "",
+                                owner_user_id=owner_user_id)
                         ok = bool(nl is not None
                                   and getattr(nl, "final_kind", "") == "answer")
                         _dt.mark(

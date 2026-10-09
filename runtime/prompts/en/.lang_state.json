@@ -15,9 +15,9 @@
     "version_hash": "sha256:3490820eff19893192c3b88fa1e1fa4251a0ec260fa50442a0603cb8bd71bf4a"
   },
   "agentic_sites_action_system": {
-    "source_hash": "sha256:25640d5949db57e6a6c14e888a1efd8b0ac6fb101367a47bf2e66aeabce1f70b",
-    "source_lang": "it",
-    "version_hash": "sha256:8ff5b02e8addf28619d6524b6ba15b4b92d52c530b9656462113d3c7400c7f73"
+    "source_hash": null,
+    "source_lang": null,
+    "version_hash": "sha256:0dab8ab6f183daa94e3b4ba704c7bb01036524951f3c8d1f03638b7e0dd167a0"
   },
   "classify_entries": {
     "source_hash": "sha256:e9d3ceaeb8c1a9f3bc299781cb801bfb1dc4ca3954f12804071c24a59ba54ae2",
@@ -90,14 +90,14 @@
     "version_hash": "sha256:a7c7badc6472229fff27f05e1ff4141bc6d19e18855760cbc9371933357f9b63"
   },
   "extract_entries": {
-    "source_hash": "sha256:ea2bcab5289919419f23a0dc566577660ef5f4e694cf66a1d377595cee102e86",
-    "source_lang": "it",
-    "version_hash": "sha256:928e64564521885031d2d88b0ec1abc814c718d205274460d4c2238d7b46971e"
+    "source_hash": null,
+    "source_lang": null,
+    "version_hash": "sha256:f6fabe3be10614949f09cc3a1347a425b076db38bf1cfa9c5738be69f3c7bf8b"
   },
   "extract_entries_batch": {
-    "source_hash": "sha256:7a444928299b12a8e31130a7255f8240e4f986448de1f8a91afc3385a3e2d257",
-    "source_lang": "it",
-    "version_hash": "sha256:70911c844c0bbd066c617820ccf3b3958fe512cd5cc63f1acea3cd41ffe72912"
+    "source_hash": null,
+    "source_lang": null,
+    "version_hash": "sha256:62d7991c4def8e90c23dc78e495b5e7c9343d1f2a06635121cad9fc4a8c62a22"
   },
   "extract_entries_schema": {
     "source_hash": null,

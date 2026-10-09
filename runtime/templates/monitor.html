@@ -1,0 +1,44 @@
+{% extends 'base.html' %}
+{% import '_monitor_macros.html' as m with context %}
+{% set view_keys = {'overview':'UI_MONITOR_OVERVIEW','requests':'UI_MONITOR_REQUESTS','models':'UI_MONITOR_MODELS','detail':'UI_MONITOR_REQUEST_DETAIL'} %}
+{% set subtitle_keys = {'overview':'UI_MONITOR_OVERVIEW_HELP','models':'UI_MONITOR_MODELS_HELP'} %}
+{% block title %}{{ msg(view_keys.get(view, 'UI_MONITOR_OVERVIEW')) }} · {{ msg('UI_MONITOR_TITLE') }} · Metnos{% endblock %}
+{% block head %}
+{% if view in ['overview','models'] %}<script src="/static/uplot-1.6.30.min.js"></script>
+<link rel="stylesheet" href="/static/uplot-1.6.30.min.css">{% endif %}
+{% include '_monitor_styles.html' %}
+<script src="/static/monitor.js?v=20261009-points" defer></script>
+{% endblock %}
+{% block body %}
+<div id="monitor-root" data-endpoint="/admin/monitor/data" data-view="{{ view }}"{% if view == 'detail' %} data-request-id="{{ monitor.request.request_id }}"{% endif %}>
+  <header class="monitor-header"><div><h1>{{ msg('UI_MONITOR_TITLE') }} · {{ msg(view_keys.get(view, 'UI_MONITOR_OVERVIEW')) }}</h1><p class="page-sub">{{ msg(subtitle_keys.get(view, 'UI_MONITOR_SUBTITLE')) }}</p></div><div class="monitor-actions">{% if monitor.export_url|default('') %}<a id="monitor-export" class="btn secondary" href="{{ monitor.export_url }}">{{ msg('UI_MONITOR_EXPORT') }}</a>{% endif %}<button id="monitor-pause" class="btn secondary" type="button" aria-pressed="false">{{ msg('UI_MONITOR_PAUSE') }}</button></div></header>
+  {% if view != 'detail' %}{% include '_monitor_filters.html' %}{% else %}<p><a href="/admin/monitor/requests">{{ msg('UI_MONITOR_BACK_REQUESTS') }}</a></p>{% endif %}
+  <div class="monitor-live"><span id="monitor-freshness" role="status" aria-live="polite">{{ msg('UI_MONITOR_LAST_ACQUISITION') }}: {{ m.timestamp(monitor.latest_event_at) }}</span><span class="monitor-note">{{ msg('UI_MONITOR_REFRESH_HELP') }}</span></div>
+  <div id="monitor-error" role="status" aria-live="polite">{{ monitor.error|default('', true) }}</div>
+  {% if view != 'detail' %}<div id="monitor-summary">{% include '_monitor_summary.html' %}</div>{% else %}<div id="monitor-summary"></div>{% endif %}
+  {% if view in ['overview','models'] %}
+  <section aria-labelledby="monitor-chart-title"><h2 id="monitor-chart-title">{{ msg('UI_MONITOR_CHARTS') }}</h2>{% if view == 'models' %}<p class="monitor-note">{{ msg('UI_MONITOR_SERIES_HELP') }}</p><div id="monitor-series" aria-label="{{ msg('UI_MONITOR_MODEL_SERIES') }}"></div>{% endif %}<p class="monitor-note">{{ msg('UI_MONITOR_CALL_COVERAGE_HELP' if view == 'models' else 'UI_MONITOR_REQUEST_COVERAGE_HELP') }}</p><div id="monitor-charts"></div><noscript><p class="callout warn">{{ msg('UI_MONITOR_CHARTS_REQUIRE_JS') }}</p></noscript></section>
+  {% else %}<div id="monitor-series"></div><div id="monitor-charts"></div>{% endif %}
+  <div id="monitor-table">{% include '_monitor_table.html' %}</div>
+  <details class="section monitor-formulas"><summary>{{ msg('UI_MONITOR_FORMULAS') }}</summary><dl><dt>{{ msg('UI_MONITOR_PREFILL_TPS') }}</dt><dd>{{ msg('UI_MONITOR_PREFILL_FORMULA') }}</dd><dt>{{ msg('UI_MONITOR_GENERATION_TPS') }}</dt><dd>{{ msg('UI_MONITOR_GENERATION_FORMULA') }}</dd><dt>{{ msg('UI_MONITOR_REQUEST_OUTPUT_TPS') }}</dt><dd>{{ msg('UI_MONITOR_REQUEST_FORMULA') }}</dd><dt>{{ msg('UI_MONITOR_CALL_OUTPUT_TPS') }}</dt><dd>{{ msg('UI_MONITOR_CALL_FORMULA') }}</dd><dt>{{ msg('UI_MONITOR_ACTIVE_SECONDS') }}</dt><dd>{{ msg('UI_MONITOR_ACTIVE_FORMULA') }}</dd></dl></details>
+</div>
+{% set chart_panels = [] %}
+{% if view == 'models' %}
+  {% set chart_panels = [
+    {'id':'call-output-speed','label':msg('UI_MONITOR_CALL_OUTPUT_SPEED'),'unit':msg('UI_MONITOR_TPS'),'source':'models','factor':1,'metrics':[{'key':'call_output_tps','label':msg('UI_MONITOR_CALL_OUTPUT_SPEED')}]},
+    {'id':'prefill-speed','label':msg('UI_MONITOR_PREFILL'),'unit':msg('UI_MONITOR_TPS'),'source':'models','factor':1,'metrics':[{'key':'prefill_tps','label':msg('UI_MONITOR_PREFILL')}]},
+    {'id':'generation-speed','label':msg('UI_MONITOR_GENERATION'),'unit':msg('UI_MONITOR_TPS'),'source':'models','factor':1,'metrics':[{'key':'generation_tps','label':msg('UI_MONITOR_GENERATION')}]},
+    {'id':'input-tokens','label':msg('UI_MONITOR_INPUT_TOKENS'),'unit':msg('UI_MONITOR_TOKEN_UNIT'),'source':'models','factor':1,'metrics':[{'key':'input_tokens','label':msg('UI_MONITOR_INPUT_TOKENS')}]},
+    {'id':'output-tokens','label':msg('UI_MONITOR_OUTPUT_TOKENS'),'unit':msg('UI_MONITOR_TOKEN_UNIT'),'source':'models','factor':1,'metrics':[{'key':'output_tokens','label':msg('UI_MONITOR_OUTPUT_TOKENS')}]},
+    {'id':'call-duration-median','label':msg('UI_MONITOR_CALL_LATENCY') ~ ' · ' ~ msg('UI_MONITOR_MEDIAN'),'unit':msg('UI_MONITOR_SECONDS'),'source':'models','factor':0.001,'metrics':[{'key':'call_p50_ms','label':msg('UI_MONITOR_MEDIAN')}]},
+    {'id':'call-duration-p95','label':msg('UI_MONITOR_CALL_LATENCY') ~ ' · ' ~ msg('UI_MONITOR_P95'),'unit':msg('UI_MONITOR_SECONDS'),'source':'models','factor':0.001,'metrics':[{'key':'call_p95_ms','label':msg('UI_MONITOR_P95')}]}] %}
+{% elif view == 'overview' %}
+  {% set chart_panels = [
+    {'id':'request-output-speed','label':msg('UI_MONITOR_REQUEST_OUTPUT_SPEED'),'unit':msg('UI_MONITOR_TPS'),'source':'requests','factor':1,'metrics':[{'key':'request_output_tps','label':msg('UI_MONITOR_REQUEST_OUTPUT_SPEED')}]},
+    {'id':'request-duration','label':msg('UI_MONITOR_TOTAL_TIME'),'unit':msg('UI_MONITOR_SECONDS'),'source':'requests','factor':0.001,'metrics':[{'key':'e2e_p50_ms','label':msg('UI_MONITOR_MEDIAN')},{'key':'e2e_p95_ms','label':msg('UI_MONITOR_P95')}]}] %}
+{% endif %}
+{% set monitor_config = {'view':view,'locale':ui_lang,'requestId':monitor.request.request_id if view == 'detail' else none,'panels':chart_panels,'labels':{
+  'interval':msg('UI_MONITOR_BUCKET_INTERVAL'),'formula':msg('UI_MONITOR_OBSERVED_FORMULA'),'tokenUnit':msg('UI_MONITOR_TOKEN_UNIT'),'seconds':msg('UI_MONITOR_SECONDS'),
+  'updated':msg('UI_MONITOR_LAST_ACQUISITION'),'stale':msg('UI_MONITOR_STALE'),'error':msg('UI_MONITOR_READ_ERROR'),'noData':msg('UI_MONITOR_NO_CHART_DATA'),'unknownModel':msg('UI_MONITOR_UNKNOWN_MODEL'),'unknownProvider':msg('UI_MONITOR_UNKNOWN_PROVIDER'),'configured':msg('UI_MONITOR_CONFIGURED'),'unavailable':msg('UI_MONITOR_UNAVAILABLE'),'seriesLimit':msg('UI_MONITOR_SERIES_LIMIT'),'samples':msg('UI_MONITOR_SAMPLES'),'coverage':msg('UI_MONITOR_COVERAGE'),'pause':msg('UI_MONITOR_PAUSE'),'resume':msg('UI_MONITOR_RESUME')}} %}
+<script id="monitor-config" type="application/json">{{ monitor_config|tojson }}</script>
+{% endblock %}

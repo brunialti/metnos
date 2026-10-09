@@ -20,6 +20,7 @@ import time
 import urllib.parse
 from pathlib import Path
 
+import monitor_capture as _monitor
 from aiohttp import web
 
 import devices
@@ -1760,6 +1761,7 @@ async def _preprocess_turn(request: web.Request):
     )
 
 
+@_monitor.request_capture
 async def turn(request: web.Request) -> web.Response:
     from llm_telemetry import count_model_calls
 
@@ -3490,6 +3492,7 @@ async def session_events(request: web.Request) -> web.StreamResponse:
     return resp
 
 
+@_monitor.request_capture
 async def turn_submit(request: web.Request) -> web.Response:
     """POST /agent/turn/submit (ADR pending — turn esecuzione async).
 
@@ -3664,6 +3667,7 @@ async def turn_submit(request: web.Request) -> web.Response:
             event_log.append(turn_id, "final",
                              _build_final_event_payload(log_obj, admin_key))
         except Exception as ex:
+            _monitor.set_outcome("error")
             log.exception("turn_submit run failed: %s", turn_id)
             event_log.append(turn_id, "error", {
                 "message": str(ex),
@@ -3675,14 +3679,20 @@ async def turn_submit(request: web.Request) -> web.Response:
                 if pool is not None:
                     pool.release(reservation, completed=True)
             event_log.close(turn_id)
+            from monitor_capture import finish_current
+            finish_current()
 
     try:
+        from monitor_capture import defer_current
+        defer_current()
         asyncio.create_task(_run_async(), name=f"turn-{turn_id}")
     except BaseException:
         pool = _turn_pool(request)
         if pool is not None:
             pool.release(reservation)
         event_log.close(turn_id)
+        _monitor.set_outcome("error")
+        _monitor.finish_current()
         raise
 
     return web.json_response({

@@ -3109,6 +3109,8 @@ async def _discover_collection(entry: dict, session_id: str,
             location = page.url
             await _dismiss_obstructing_overlay(entry, settle=True)
             if entry["page"] is not page or page.url != location:
+                state["rejection"] = {"phase": "overlay_changed_page",
+                                      "same_page": entry["page"] is page}
                 return {"terminal": {"ok": False, "error_class": "target_changed"}}
             observed = await _enumerate_candidates(page)
         context_controls = await read_controls(page, observed)
@@ -3232,12 +3234,27 @@ async def _discover_collection(entry: dict, session_id: str,
             return None
         # Next/more is pagination, not another level in the site's hierarchy.
         probe = {**candidate, "visible": True, "in_viewport": True, "topmost": True}
-        continuation = action_resolver.choose_goal_continuation_candidate(
-            target, [probe]).get("ok", False)
+        continuation = candidate.get("collection_continuation")
+        if not isinstance(continuation, bool):
+            continuation = action_resolver.choose_goal_continuation_candidate(
+                target, [probe]).get("ok", False)
         return {"candidate": candidate, "model_selected": True,
                 "confidence": 0.5, "continuation": continuation}
 
+    def audit_failed_action(result, primitive, replay, started):
+        # Every refused effect names itself: a terminal `target_changed`
+        # without a recorded phase cannot be attributed afterwards (live turn
+        # 51b9870051144541: 30 s of silence between the last event and it).
+        if not result.get("ok") and not result.get("approval_required"):
+            sites_audit.record(
+                "collection_action_failed", session_id=session_id,
+                error_class=str(result.get("error_class") or ""),
+                primitive=primitive, replay=replay,
+                elapsed_ms=round((_monotonic() - started) * 1000),
+                steps=int(state.get("actions", 0)))
+
     async def execute(choice):
+        started = _monotonic()
         destination = _link_destination(choice.get("candidate") or {}, entry["page"].url)
         prepared = await _prepare_action(
             entry, session_id, action, None, primitive_override="search",
@@ -3247,6 +3264,8 @@ async def _discover_collection(entry: dict, session_id: str,
             # The audit separates a replayed saved edge from a new choice.
             prepared["plan"]["collection_replay"] = bool(choice.get("replay"))
         result = await _handle_prepared_action(entry, session_id, action, prepared)
+        audit_failed_action(result, str((prepared.get("plan") or {}).get("primitive")
+                                        or "click"), bool(choice.get("replay")), started)
         if result.get("collection_bind_refused"):
             page, location, selected = state.get("observed_scene") or (None, "", "")
             current = entry["page"]
@@ -3273,12 +3292,14 @@ async def _discover_collection(entry: dict, session_id: str,
         if root["page"].is_closed():
             return {"ok": False, "error_class": "session_lost"}
         entry["page"] = root["page"]
+        started = _monotonic()
         prepared = await _prepare_action(
             entry, session_id, action, None, primitive_override="goto",
             target_override=url, allow_model=False)
         if prepared.get("ok"):
             prepared["plan"].update(kind="goal_navigation", collection_search=key)
         result = await _handle_prepared_action(entry, session_id, action, prepared)
+        audit_failed_action(result, "goto", False, started)
         if result.get("ok") and result.get("executed"):
             for page in state["pages"] - {root["page"]}:
                 await page.close()
@@ -3434,20 +3455,27 @@ async def _frontier_collection_route(entry: dict, target: str,
     try:
         provider = LLMRouter().provider(tier_for("sites.collection_route"))
         system = prompt_loader.get("agentic_sites_action_system",
-                                   i18n.current_lang(), collection=True)
+                                   i18n.current_lang(), route=True)
+        search = entry.get("collection_search") or {}
+        # Previously selected observed labels help avoid leaving an archive
+        # for the site's global navigation. No URLs or page content are sent.
+        history = [str((f.get("via") or {}).get("candidate", {}).get("name") or "")
+                   for f in search.get("frames", [])]
+        history = [label[:300] for label in history if label][-8:]
         for offset in range(0, len(eligible), 64):
             by_id = {str(c.get("id")): c for c in eligible[offset:offset + 64] if c.get("id")}
             user = _bounded_action_prompt(
                 goal={"primitive": "navigate_toward_goal", "target": target,
                       "collection": True, "exhaustive": True,
                       "expected_content": str(entry.get("goal_done_when") or "")},
-                state={"authenticated": bool(entry.get("authenticated"))},
+                state={"authenticated": bool(entry.get("authenticated")),
+                       "collection_seen": bool(search.get("found"))},
                 observed={"CURRENT_CONTENT": "", "CONTROLS": [
                     f"{cid}: {c.get('role') or c.get('tag')} "
                     f"{c.get('name') or c.get('label') or ''} | "
                     f"{str(c.get('context_name') or '')[:300]}"
                     for cid, c in by_id.items()]},
-                history=[], forbidden="collection_navigation")
+                history=history, forbidden="collection_navigation")
             search = entry.get("collection_search")
             if isinstance(search, dict):
                 # Counted before the call: the request has left the host.
@@ -3456,13 +3484,18 @@ async def _frontier_collection_route(entry: dict, target: str,
                 provider.chat, system, user, max_tokens=128,
                 request_timeout_s=_LOCAL_RESOLVER_TIMEOUT_MS / 1000.0)
             text = str(getattr(reply, "text", "") or "")
-            choice = json.loads(text[text.find("{"): text.rfind("}") + 1]).get("next_control")
-            if choice != "NONE" and choice not in by_id:
+            decision = json.loads(text[text.find("{"): text.rfind("}") + 1])
+            choice, purpose = decision.get("next_control"), decision.get("purpose")
+            if (not isinstance(choice, str)
+                    or (choice == "NONE" and purpose != "done")
+                    or (choice != "NONE" and (choice not in by_id or purpose not in
+                        {"navigate", "expand_collection", "detail"}))):
                 outcome = "invalid_response"
                 return None
             if choice in by_id:
                 outcome = "route"
-                return dict(by_id[choice])
+                return {**by_id[choice],
+                        "collection_continuation": purpose == "expand_collection"}
         return {}
     except asyncio.CancelledError:
         outcome = "cancelled"
@@ -3532,6 +3565,7 @@ async def _local_llm_choose_goal_candidate(entry: dict, target: str,
                 return None
             if more.get("id"):
                 return {**more, "collection_observed": True,
+                        "collection_continuation": True,
                         "proximity": observed_result["proximity"]}
     return observed_result or result
 

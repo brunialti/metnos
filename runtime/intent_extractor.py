@@ -237,8 +237,17 @@ def extract_intent(query: str, llm_call) -> Optional[dict]:
             objects_inline=_vocab_objects_inline(),
             boundaries_block=_vocab_boundaries(lang),
         )
+    # The reply's shape is constrained when the caller's provider can honour
+    # a grammar (live turn bc9778a2bdb94721: an unconstrained reply was
+    # malformed JSON). Callers advertise it; without it nothing changes.
+    call_options = {"max_tokens": _INTENT_MAX_TOKENS}
+    if getattr(llm_call, "supports_grammar", False):
+        from tool_grammar import generate_intent_grammar
+        call_options["grammar"] = generate_intent_grammar(
+            VOCAB_VERBS, VOCAB_OBJECTS, INTENT_KINDS,
+            scaffold=bool(_scaffold and len(_segments) >= 2))
     try:
-        res = llm_call(prompt, query, max_tokens=_INTENT_MAX_TOKENS)
+        res = llm_call(prompt, query, **call_options)
     except Exception:
         return None
     # Duck-type: accetta dict {"text": ...} (legacy) o ChatResult dataclass
@@ -257,10 +266,28 @@ def extract_intent(query: str, llm_call) -> Optional[dict]:
     # risoluzione anafora in GENERAZIONE, n è l'ancora di conteggio). Da qui il
     # flusso `actions` resta identico (back-compat consumer).
     if isinstance(parsed, dict) and isinstance(parsed.get("clauses"), list):
-        parsed = [
-            {"verb": c.get("verb"), "object": c.get("object")}
-            for c in parsed["clauses"] if isinstance(c, dict)
-        ]
+        clauses = parsed["clauses"]
+        if _scaffold and len(_segments) >= 2:
+            # Place every clause at its segment BEFORE normalising: a null or
+            # unreadable clause keeps its slot, and the `n` anchor says which
+            # slot a clause fills. Only an unambiguous placement is kept.
+            slots: list = [None] * len(_segments)
+            anchors = [c.get("n") if isinstance(c, dict) else None for c in clauses]
+            numbered = [n for n in anchors
+                        if isinstance(n, int) and not isinstance(n, bool)]
+            if (len(numbered) == len(clauses)
+                    and len(set(numbered)) == len(numbered)
+                    and all(1 <= n <= len(_segments) for n in numbered)):
+                for clause, n in zip(clauses, numbered):
+                    slots[n - 1] = clause
+            elif len(clauses) == len(_segments) and all(
+                    n is None or n == index + 1 for index, n in enumerate(anchors)):
+                slots = list(clauses)
+            else:
+                return None
+            parsed = [c if isinstance(c, dict) else None for c in slots]
+        else:
+            parsed = [c if isinstance(c, dict) else None for c in clauses]
     # Compound: per una query multi-azione l'LLM ritorna una LISTA ordinata di
     # sotto-intenti (un dict {verb,object} per clausola). Normalizziamo OGNI
     # clausola al vocabolario chiuso e la conserviamo in `actions`: dispatch
@@ -298,14 +325,21 @@ def extract_intent(query: str, llm_call) -> Optional[dict]:
 
     actions: list[dict] = []
     if isinstance(parsed, list):
+        # Positions are kept: a clause that cannot be read leaves its slot
+        # instead of shifting the following ones into it.
+        slots: list = []
         for _i, _d in enumerate(parsed):
             # ctx_text: `ref` (anafora risolta) del clause, o il segmento i-esimo
             _ctx = (_d.get("ref") if isinstance(_d, dict) else None)
             if not _ctx and _scaffold and _i < len(_segments):
                 _ctx = _segments[_i]
-            _a = _norm_action(_d, _ctx)
-            if _a is not None:
-                actions.append(_a)
+            slots.append(_norm_action(_d, _ctx))
+        if any(slot is None for slot in slots) and not (
+                _scaffold and len(_segments) >= 2):
+            # An action list with an unreadable clause is not a complete
+            # decomposition; presenting the survivors as one would be.
+            return None
+        actions = slots
         parsed = next((p for p in parsed if isinstance(p, dict)), None) or {}
     else:
         _a = _norm_action(parsed, query)
@@ -316,23 +350,28 @@ def extract_intent(query: str, llm_call) -> Optional[dict]:
     # (detect_chunk_action) — garantisce che nessuna clausola sia silenziosamente
     # persa (fallimento FASE-3 publish 18/6). Se ne ha emesse di PIÙ, tronca ai
     # segmenti. Allineamento posizionale (l'ordine segmenti = ordine esecuzione).
-    if _scaffold and len(_segments) >= 2 and len(actions) != len(_segments):
+    if _scaffold and len(_segments) >= 2 and (
+            len(actions) != len(_segments) or None in actions):
+        # Fill each unreadable slot from its own segment; a slot that stays
+        # empty means the decomposition is incomplete. A list without anchors
+        # and of another length gives no way to tell which clause is missing.
+        if len(actions) != len(_segments):
+            return None
         try:
             from compound_decomposer import detect_chunk_action
-            fixed: list[dict] = []
+            fixed: list = []
             for i, seg in enumerate(_segments):
-                if i < len(actions):
-                    fixed.append(actions[i])
-                else:
+                _a = actions[i] if i < len(actions) else None
+                if _a is None:
                     det = detect_chunk_action(seg)
-                    if det:
-                        _a = _norm_action({"verb": det[0], "object": det[1]})
-                        if _a:
-                            fixed.append(_a)
-            if fixed:
-                actions = fixed
+                    _a = _norm_action({"verb": det[0], "object": det[1]}) if det else None
+                fixed.append(_a)
         except Exception:
-            pass
+            fixed = [None]
+        if None in fixed:
+            return None
+        actions = fixed
+    actions = [a for a in actions if a is not None]
 
     kind = (parsed.get("kind") or "").strip().lower()
     verb = (parsed.get("verb") or "").strip().lower()
@@ -401,6 +440,14 @@ def _parse_json(text: str) -> Optional[dict]:
         return json.loads(t)
     except Exception as _e:  # silent swallow (auto-fixed)
         log.warning("silent exception in %s: %s", __name__, _e)
+    # A reply that is a list of clauses (an array, even after a prefix such
+    # as «Risposta:», a scaffold, or several verb keys) and is not valid JSON
+    # has lost its structure: recovering one flat object would present a
+    # single clause as the whole request. A lone object keeps its recovery.
+    first_object, first_array = t.find("{"), t.find("[")
+    if ((first_array != -1 and (first_object == -1 or first_array < first_object))
+            or '"clauses"' in t or len(re.findall(r'"verb"\s*:', t)) > 1):
+        return None
     # 3. Estrai oggetto JSON con regex
     m = re.search(r"\{[^{}]*\}", t)
     if m:

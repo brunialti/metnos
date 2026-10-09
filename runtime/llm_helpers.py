@@ -170,7 +170,8 @@ def _render_chat_prompt(endpoint: str, system: str, user: str, *,
 def _call_llm_proc(system: str, user: str, *, max_tokens: int,
                    seed: int, endpoint: str | None = None,
                    meta_out: dict | None = None,
-                   deadline_at: float | None = None) -> str | None:
+                   deadline_at: float | None = None,
+                   monitor_level: str | None = None) -> str | None:
     """Generazione byte-deterministica via processo llama-completion
     monouso. Ritorna il testo, o None se il path non e' disponibile
     (il chiamante ricade sul provider HTTP). `endpoint` = llama-server
@@ -210,9 +211,14 @@ def _call_llm_proc(system: str, user: str, *, max_tokens: int,
             "-no-cnv", "-f", tmp_path, "-n", str(max_tokens),
             "--no-display-prompt", "--simple-io",
         ]
-        proc = subprocess.run(
-            cmd, capture_output=True, text=True,
-            timeout=_remaining_budget(deadline_at, _PROC_TIMEOUT_S), env=env)
+        from monitor_capture import call_scope
+        with call_scope(provider="llamacpp", model=model, level=monitor_level) as observation:
+            proc = subprocess.run(
+                cmd, capture_output=True, text=True,
+                timeout=_remaining_budget(deadline_at, _PROC_TIMEOUT_S), env=env)
+            if proc.returncode != 0 and observation is not None:
+                observation["status"] = "error"
+                observation["error_code"] = "process_failed"
         if proc.returncode != 0:
             return None
         text = _END_OF_TEXT_RE.sub("", proc.stdout or "").strip()
@@ -283,7 +289,7 @@ def call_llm(
             text = _call_llm_proc(prompt, user_payload,
                                   max_tokens=max_tokens, seed=_seed,
                                   endpoint=endpoint, meta_out=_proc_meta,
-                                  deadline_at=deadline_at)
+                                  deadline_at=deadline_at, monitor_level=tier)
             if text is not None:
                 # Il contratto d'uscita vale per QUALUNQUE trasporto: senza
                 # questa normalizzazione un consumer che chiede insieme

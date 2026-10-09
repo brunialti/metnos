@@ -56,6 +56,26 @@ def _post(endpoint: str, payload: dict, *, host: str = DEFAULT_HOST,
             "Content-Type": "application/json",
             _contract.HEADER_NAME: _contract.LOADED_FINGERPRINT,
         })
+    import monitor_capture as monitor
+    transport_env = {}
+    child = monitor.prepare_child(transport_env)
+    if child is not None:
+        req.add_header(monitor.TRANSPORT_HEADER, "1")
+        if monitor.UPSTREAM_ID_ENV in transport_env:
+            req.add_header(monitor.UPSTREAM_HEADER, json.dumps({
+                "segment_id": transport_env[monitor.UPSTREAM_ID_ENV],
+                "started_at": transport_env[monitor.UPSTREAM_STARTED_ENV]}, separators=(",", ":")))
+    result = None
+    try:
+        result = _post_response(req, timeout_s=timeout_s)
+        return result
+    finally:
+        if child is not None:
+            child.finish(result)
+
+
+def _post_response(req, *, timeout_s: float) -> dict:
+    """Read one broker response, preserving the existing failure contract."""
     try:
         with urllib.request.urlopen(req, timeout=timeout_s) as resp:
             contract_failure = _response_contract_failure(resp.headers)

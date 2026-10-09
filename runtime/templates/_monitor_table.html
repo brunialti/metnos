@@ -1,0 +1,74 @@
+{% import '_monitor_macros.html' as m with context %}
+{% if view == 'detail' %}
+  {% include '_monitor_detail.html' %}
+{% elif view == 'models' %}
+<div class="table-wrap monitor-table" tabindex="0" role="region" aria-label="{{ msg('UI_MONITOR_MODEL_TABLE') }}">
+<table>
+  <caption>{{ msg('UI_MONITOR_MODEL_TABLE') }}</caption>
+  <thead><tr>
+    <th scope="col">{{ msg('UI_MONITOR_MODEL_IDENTITY') }}</th>
+    <th scope="col" class="monitor-numeric monitor-speed">{{ m.speed_header('UI_MONITOR_CALL_OUTPUT_SPEED') }}</th>
+    <th scope="col" class="monitor-numeric monitor-speed">{{ m.speed_header('UI_MONITOR_PREFILL', 'PP') }}</th>
+    <th scope="col" class="monitor-numeric monitor-speed">{{ m.speed_header('UI_MONITOR_GENERATION', 'TG') }}</th>
+    <th scope="col" class="monitor-wide monitor-numeric">{{ msg('UI_MONITOR_INPUT_OUTPUT') }}</th>
+    <th scope="col" class="monitor-wide monitor-numeric">{{ msg('UI_MONITOR_CALLS') }}</th>
+    <th scope="col" class="monitor-wide monitor-numeric">{{ msg('UI_MONITOR_ERRORS') }}</th>
+    <th scope="col" class="monitor-wide monitor-numeric">{{ msg('UI_MONITOR_CALL_MEDIAN_SECONDS') }}</th>
+    <th scope="col" class="monitor-wide monitor-numeric">{{ msg('UI_MONITOR_COVERAGE') }}</th>
+  </tr></thead>
+  <tbody>
+  {% for item in monitor['items'] %}
+  <tr>
+    <td>{{ m.identity(item) }}<details class="monitor-mobile-details"><summary>{{ msg('UI_MONITOR_MORE_METRICS') }}</summary><dl><dt>{{ msg('UI_MONITOR_INPUT_OUTPUT') }}</dt><dd>{{ m.tokens(item.input_tokens) }} / {{ m.tokens(item.output_tokens) }}</dd><dt>{{ msg('UI_MONITOR_CALLS') }}</dt><dd>{{ m.number(item.calls) }}</dd><dt>{{ msg('UI_MONITOR_ERRORS') }}</dt><dd>{{ m.number(item.errors) }}</dd><dt>{{ msg('UI_MONITOR_CALL_MEDIAN_SECONDS') }}</dt><dd>{{ m.duration(item.call_p50_ms) }}</dd><dt>{{ msg('UI_MONITOR_COVERAGE') }}</dt><dd>{{ m.coverage(item.coverage.known, item.coverage.expected) }}</dd></dl></details></td>
+    <td class="monitor-numeric">{{ m.number(item.call_output_tps, 1) }}</td>
+    <td class="monitor-numeric">{{ m.number(item.prefill_tps, 1) }}</td>
+    <td class="monitor-numeric">{{ m.number(item.generation_tps, 1) }}</td>
+    <td class="monitor-wide monitor-numeric">{{ m.tokens(item.input_tokens) }} / {{ m.tokens(item.output_tokens) }}</td>
+    <td class="monitor-wide monitor-numeric">{{ m.number(item.calls) }}</td>
+    <td class="monitor-wide monitor-numeric">{{ m.number(item.errors) }}</td>
+    <td class="monitor-wide monitor-numeric">{{ m.duration(item.call_p50_ms) }}</td>
+    <td class="monitor-wide monitor-numeric">{{ m.coverage(item.coverage.known, item.coverage.expected) }}</td>
+  </tr>
+  {% else %}<tr><td colspan="9" class="empty">{{ msg('UI_MONITOR_NO_MODELS') }}</td></tr>{% endfor %}
+  </tbody>
+</table>
+</div>
+<p class="monitor-note">{{ msg('UI_MONITOR_MODEL_TOKEN_HELP') }}</p>
+{% elif view == 'requests' %}
+<div class="table-wrap monitor-table" tabindex="0" role="region" aria-label="{{ msg('UI_MONITOR_REQUEST_TABLE') }}">
+<table>
+  <caption>{{ msg('UI_MONITOR_REQUEST_TABLE') }}</caption>
+  <thead><tr>
+    <th scope="col">{{ msg('UI_MONITOR_REQUEST') }}</th>
+    <th scope="col" class="monitor-numeric monitor-speed">{{ m.speed_header('UI_MONITOR_REQUEST_OUTPUT_SPEED') }}</th>
+    <th scope="col" class="monitor-numeric monitor-speed">{{ m.speed_header('UI_MONITOR_PREFILL', 'PP') }}</th>
+    <th scope="col" class="monitor-numeric monitor-speed">{{ m.speed_header('UI_MONITOR_GENERATION', 'TG') }}</th>
+    <th scope="col" class="monitor-wide">{{ msg('UI_MONITOR_STATUS') }}</th>
+    <th scope="col" class="monitor-wide">{{ msg('UI_MONITOR_CHANNEL') }}</th>
+    <th scope="col" class="monitor-wide monitor-numeric">{{ msg('UI_MONITOR_INPUT_OUTPUT') }}</th>
+    <th scope="col" class="monitor-wide monitor-numeric">{{ msg('UI_MONITOR_CALLS') }}</th>
+    <th scope="col" class="monitor-wide monitor-numeric">{{ msg('UI_MONITOR_ACTIVE_SECONDS') }}</th>
+    <th scope="col" class="monitor-wide monitor-numeric">{{ msg('UI_MONITOR_WALL_SECONDS') }}</th>
+    <th scope="col" class="monitor-wide monitor-numeric">{{ msg('UI_MONITOR_COVERAGE') }}</th>
+  </tr></thead>
+  <tbody>
+  {% for item in monitor['items'] %}
+  <tr>
+    <td><a href="/admin/monitor/requests/{{ item.request_id|urlencode }}">{{ item.request_id }}</a>{{ m.timestamp(item.started_at) }}<details class="monitor-mobile-details"><summary>{{ msg('UI_MONITOR_MORE_METRICS') }}</summary><dl><dt>{{ msg('UI_MONITOR_CHANNEL') }}</dt><dd>{{ item.channel or msg('UI_MONITOR_UNKNOWN') }}</dd><dt>{{ msg('UI_MONITOR_CALLS') }}</dt><dd>{{ m.number(item.calls_complete) }}</dd><dt>{{ msg('UI_MONITOR_WALL_SECONDS') }}</dt><dd>{{ m.duration(item.e2e_wall_ms) }}</dd><dt>{{ msg('UI_MONITOR_STATUS') }}</dt><dd>{{ m.status(item.status) }}{{ m.outcome(item.outcome) }}</dd><dt>{{ msg('UI_MONITOR_INPUT_OUTPUT') }}</dt><dd>{{ m.tokens(item.input_tokens) }} / {{ m.tokens(item.output_tokens) }}</dd><dt>{{ msg('UI_MONITOR_ACTIVE_SECONDS') }}</dt><dd>{{ m.duration(item.active_ms) }}</dd><dt>{{ msg('UI_MONITOR_COVERAGE') }}</dt><dd>{{ m.coverage(item.calls_complete, item.calls_expected) }}</dd></dl></details></td>
+    <td class="monitor-numeric">{{ m.number(item.request_output_tps, 1) }}</td>
+    <td class="monitor-numeric">{{ m.number(item.prefill_tps, 1) }}</td>
+    <td class="monitor-numeric">{{ m.number(item.generation_tps, 1) }}</td>
+    <td class="monitor-wide">{{ m.status(item.status) }}{{ m.outcome(item.outcome) }}</td>
+    <td class="monitor-wide">{{ item.channel or msg('UI_MONITOR_UNKNOWN') }}</td>
+    <td class="monitor-wide monitor-numeric">{{ m.tokens(item.input_tokens) }} / {{ m.tokens(item.output_tokens) }}</td>
+    <td class="monitor-wide monitor-numeric">{{ m.number(item.calls_complete) }}</td>
+    <td class="monitor-wide monitor-numeric">{{ m.duration(item.active_ms) }}</td>
+    <td class="monitor-wide monitor-numeric">{{ m.duration(item.e2e_wall_ms) }}</td>
+    <td class="monitor-wide monitor-numeric">{{ m.coverage(item.calls_complete, item.calls_expected) }}</td>
+  </tr>
+  {% else %}<tr><td colspan="11" class="empty">{{ msg('UI_MONITOR_NO_REQUESTS') }}</td></tr>{% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+{% if view in ['requests','models'] %}<div class="monitor-pagination"><span class="muted">{{ msg('UI_MONITOR_TABLE_PAGE_HELP') }}</span>{% if monitor.next_url|default('') %}<a class="btn secondary" href="{{ monitor.next_url }}">{{ msg('UI_MONITOR_NEXT_PAGE') }}</a>{% endif %}</div>{% endif %}

@@ -1113,53 +1113,6 @@ async def admin_runs(request: web.Request) -> web.Response:
     )
 
 
-# --- /admin/builds -----------------------------------------------------------
-
-async def admin_builds(request: web.Request) -> web.Response:
-    """GET /admin/builds — lista delle build asincrone (ADR 0093).
-
-    Una riga per (base_path, idx) noto: stato (running/done/aborted/error/
-    interrupted), n_done/n_total, eta_s, age dell'ultimo update, unit_active.
-    """
-    try:
-        import build_orchestrator as _bo
-        rows_raw = _bo.list_active_builds()
-    except Exception as e:
-        log.exception("list_active_builds failed")
-        return _error(500, "internal_error", str(e))
-
-    rows = []
-    for r in rows_raw:
-        n_done = int(r.get("n_done") or 0)
-        n_total = int(r.get("n_total") or 0)
-        pct = (n_done / n_total * 100.0) if n_total > 0 else 0.0
-        rows.append({
-            "digest": r.get("digest", ""),
-            "base_path": r.get("base_path", ""),
-            "idx": r.get("idx", ""),
-            "state": r.get("state", "?"),
-            "n_done": n_done,
-            "n_total": n_total,
-            "pct": round(pct, 1),
-            "eta_s": r.get("eta_s"),
-            "errors": r.get("errors") or 0,
-            "started_at": r.get("started_at"),
-            "last_update": r.get("last_update"),
-            "last_update_age_s": r.get("last_update_age_s"),
-            "unit_active": bool(r.get("unit_active", False)),
-            "unit_name": r.get("unit_name", ""),
-            "duration_s": r.get("duration_s"),
-            "n_entries": r.get("n_entries"),
-            "model": r.get("model", ""),
-        })
-    return negotiate_collection(
-        request,
-        json_payload={"rows": rows, "total": len(rows)},
-        template="builds.html",
-        template_ctx={"rows": rows},
-    )
-
-
 # --- /admin/safety -----------------------------------------------------------
 
 async def admin_safety(request: web.Request) -> web.Response:
@@ -2277,7 +2230,6 @@ ROUTES = (
     ("GET",  r"/admin/jobs/{key}",                admin_job_info),
     ("POST", r"/admin/jobs/{key}/fire",           admin_job_fire),
     ("GET",  "/admin/runs",                       admin_runs),
-    ("GET",  "/admin/builds",                     admin_builds),
     ("GET",  "/admin/safety",                     admin_safety),
     ("GET",  "/admin/turns",                      admin_turns),
     ("GET",  "/admin/users",                      admin_users),
@@ -2298,3 +2250,7 @@ ROUTES = (
     ("POST", r"/admin/devices/{id}/revoke",       admin_device_revoke),
     ("POST", r"/admin/devices/{id}/test-invoke",  admin_device_test_invoke),
 )
+
+
+from http_routes_monitor import ROUTES as _MONITOR_ROUTES
+ROUTES += _MONITOR_ROUTES

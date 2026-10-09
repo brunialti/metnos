@@ -499,47 +499,68 @@ async def handle_render(request: web.Request) -> web.Response:
 
 async def _broker_call(request, opname, *,
                        timeout_s: float = _BROKER_REQUEST_TIMEOUT_S):
+    import monitor_capture as monitor
+    enabled = request.headers.get(monitor.TRANSPORT_HEADER) == "1"
+    upstream = {}
+    if enabled:
+        raw = request.headers.get(monitor.UPSTREAM_HEADER, "")
+        if len(raw) <= 512:
+            try:
+                candidate = json.loads(raw)
+                if isinstance(candidate, dict):
+                    upstream = candidate
+            except (TypeError, ValueError):
+                pass
+    with monitor.transport_capture(enabled=enabled, upstream=upstream) as sink:
+        try:
+            payload, status = await _broker_result(request, opname, timeout_s=timeout_s)
+            if sink is not None:
+                payload = dict(payload)
+                payload[monitor.TRANSPORT_KEY] = sink.export()
+        except BaseException:
+            if sink is not None:
+                sink.cancel_delivery()
+            raise
+    return web.json_response(payload, status=status)
+
+
+async def _broker_result(request, opname, *, timeout_s: float):
+    """Execute the broker operation without serializing its result."""
     if not _browser_connected():
-        return web.json_response(
-            {"ok": False, "error": "browser not initialized",
-             "error_class": "unknown"}, status=503)
+        return {"ok": False, "error": "browser not initialized",
+                "error_class": "unknown"}, 503
     try:
         body = await request.json()
     except json.JSONDecodeError as e:
-        return web.json_response(
-            {"ok": False, "error": f"invalid json body: {e}",
-             "error_class": "invalid_args"}, status=400)
+        return {"ok": False, "error": f"invalid json body: {e}",
+                "error_class": "invalid_args"}, 400
     try:
         from playwright_sidecar import session_broker
     except Exception as e:  # noqa: BLE001
-        return web.json_response(
-            {"ok": False, "error": f"session_broker unavailable: {e}",
-             "error_class": "unknown"}, status=503)
+        return {"ok": False, "error": f"session_broker unavailable: {e}",
+                "error_class": "unknown"}, 503
     try:
         res = await asyncio.wait_for(
             opname(session_broker, body), timeout=timeout_s)
     except asyncio.TimeoutError:
         logger.error("broker operation timed out after %.0fs",
                      timeout_s)
-        return web.json_response(
-            {"ok": False, "error": "broker operation timeout",
-             "error_class": "timeout"}, status=504)
+        return {"ok": False, "error": "broker operation timeout",
+                "error_class": "timeout"}, 504
     except asyncio.CancelledError:
         raise
     except Exception:  # noqa: BLE001
         # Do not expose exception text: a browser/DOM exception can contain a
         # URL or page-provided text. The traceback remains in local journald.
         logger.exception("unhandled session broker operation failure")
-        return web.json_response(
-            {"ok": False, "error": "session broker internal failure",
-             "error_class": "sidecar_internal"}, status=500)
+        return {"ok": False, "error": "session broker internal failure",
+                "error_class": "sidecar_internal"}, 500
     if not isinstance(res, dict):
         logger.error("session broker returned %s instead of dict",
                      type(res).__name__)
-        return web.json_response(
-            {"ok": False, "error": "invalid broker response",
-             "error_class": "sidecar_internal"}, status=500)
-    return web.json_response(res)
+        return {"ok": False, "error": "invalid broker response",
+                "error_class": "sidecar_internal"}, 500
+    return res, 200
 
 
 async def handle_session_open(request):
@@ -708,6 +729,11 @@ async def _on_startup(app: web.Application) -> None:
             await _playwright.stop()
             _playwright = None
             raise SystemExit(1)
+        try:
+            import monitor_capture as monitor
+            monitor.start_collector().origin_process = "playwright_sidecar"
+        except Exception:
+            logger.exception("Monitor collector unavailable; browser continues")
         _sd_notify(f"READY=1\nSTATUS={_engine.selected()} ready")
         _watchdog_task = asyncio.create_task(_watchdog_loop())
         logger.info("playwright %s %s ready", _engine.selected(), _browser_version)
@@ -767,6 +793,8 @@ async def _on_shutdown(app: web.Application) -> None:
         except Exception:
             pass
         _playwright = None
+    import monitor_capture as monitor
+    monitor.stop_collector()
 
 
 def make_app() -> web.Application:

@@ -14,6 +14,7 @@ from datetime import datetime, timedelta, timezone
 from threading import Event, Thread
 from time import monotonic
 from typing import Protocol
+import monitor_capture as _monitor
 
 from .coordinator import (
     CommitOutcome,
@@ -437,7 +438,10 @@ class DurableWorker:
         adapter_attempt_state = AttemptState.FAILED
         self._checkpoint("attempt_before_execution")
         try:
-            adapter_result = adapter(lease)
+            with _monitor.segment_scope(independent=True, owner_id=lease.owner_user_id,
+                                        channel="worker", origin="background",
+                                        job_ref=f"attempt:{lease.attempt_id}"):
+                adapter_result = adapter(lease)
         except ExecutionFailure as exc:
             adapter_error = exc.error
             adapter_attempt_state = exc.attempt_state

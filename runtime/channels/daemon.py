@@ -1877,8 +1877,13 @@ class ChannelDaemon:
                 if msg.extra is None:
                     msg.extra = {}
                 msg.extra["_principal"] = principal
-            with _i18n.instance_language_context():
-                return self._handle_message_scoped(msg)
+            from monitor_capture import segment_scope, set_outcome
+            with _i18n.instance_language_context(), segment_scope(
+                    owner_id=(principal or {}).get("user_id"), channel=self.channel.name):
+                result = self._handle_message_scoped(msg)
+                if isinstance(result, dict) and result.get("ok") is False:
+                    set_outcome("error")
+                return result
 
         owner_user_id = str((principal or {}).get("user_id") or "")
         if not owner_user_id:
@@ -2847,6 +2852,8 @@ def main(argv: list[str] | None = None) -> int:
     # Single-instance gate per il processo combinato Telegram+HTTP.
     lock = agent_server.ProcessLock(DAEMON_LOCKFILE, owner="metnos-daemon")
     lock.acquire()
+    from monitor_capture import start_collector
+    start_collector()
 
     # Server HTTP per executor remoti, in thread daemon, auto-resume su crash.
     if not args.no_agent_server:

@@ -26,7 +26,7 @@ INDEX_SCHEMA_VERSION_V3 = 2  # alias storico per migration
 def canonical_corpus_path(base_path, user_data_root=None) -> str:
     """Path canonico STABILE per il digest dell'indice immagini (§7.11).
 
-    Sorgente UNICA per find/create/get/delete_images_indices + build_runner:
+    Sorgente UNICA per find/create/get/delete_images_indices + image_index_build:
     build e lookup DEVONO concordare sulla stessa dir-indice. Il symlink-corpus
     del workspace (`~/.local/share/metnos/Immagini`) e il suo target reale
     devono mappare sulla STESSA chiave. MA la chiave non deve dipendere dal

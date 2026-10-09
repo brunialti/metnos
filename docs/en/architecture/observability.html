@@ -140,6 +140,7 @@ and users. Detail pages keep different operational questions separate:</p>
 <tr><th>Route in the chat</th><th>Main information</th></tr>
 <tr><td>Settings &gt; Activity &gt; Turns</td><td>Identifier, time, channel, actor, steps, outcome, duration, and request.</td></tr>
 <tr><td>Settings &gt; Activity &gt; Scheduler</td><td>Task runs, outcome, and duration.</td></tr>
+<tr><td>Settings &gt; Monitor</td><td>Charts of input/output tokens, request timing and throughput; comparisons by logical name, physical model and provider.</td></tr>
 <tr><td>Settings &gt; System &gt; Services</td><td>Services in the canonical registry, status, and admitted controls.</td></tr>
 <tr><td>Settings &gt; System &gt; Models</td><td>Effective redacted LLM, embedding, and VLM configuration: LLM and VLM can be edited and restored; embedding is view-only.</td></tr>
 <tr><td>Settings &gt; System &gt; Devices</td><td>Paired devices, presence, and revocation.</td></tr>
@@ -150,6 +151,34 @@ and users. Detail pages keep different operational questions separate:</p>
 pages and their navigation routes. Tutor uses the same registry, so a
 structural interface change also requires an updated navigation guide and a
 rebuilt Tutor index.</p>
+
+<h2>Monitor: requests and model performance</h2>
+
+<p>Sidebar sections collapse; the current page's section opens automatically.
+<strong>Monitor &gt; Overview</strong> plots complete request throughput and duration;
+<strong>Requests</strong> opens an individual query and its calls;
+<strong>Model performance</strong> compares logical and physical identities,
+with full call throughput, prefill (PP) and generation (TG) shown first.
+Filters cover period, channel and origin, with JSON export of the selected
+view. Interactive activity is the initial filter; other origins can be
+included.</p>
+
+<p>LLM call throughput divides output tokens by full call duration,
+including prefill, generation, queueing and transport. The average is
+duration-weighted: total tokens divided by total duration of valid calls.
+Request end-to-end throughput divides output tokens by request duration.
+Active time excludes waiting for the person; total time includes it.
+Prefill and generation use only timings reported by the provider.
+Missing tokens or timings remain unknown. Aggregate rates use sums of valid
+token counts and durations.</p>
+
+<p>Charts refresh every five seconds while the page is visible.
+Distinct colors and line patterns identify the same series across charts.
+Dates show day/month and UTC time; the complete timestamp is available on hover.
+A buffer of 128 events per process hands measurements to a writer thread
+without waiting for disk. Lost events, incomplete data and stale collection
+are shown on the page. Collection retains identifiers and measurements,
+without questions, answers or credentials. Access requires the admin role.</p>
 
 <h1 id="cap4">4. The static HTML snapshot</h1>
 

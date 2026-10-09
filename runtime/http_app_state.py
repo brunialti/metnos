@@ -19,9 +19,6 @@ ADMIN_KEY = web.AppKey("admin_key", str)
 CATALOG_PROVIDER = web.AppKey("catalog_provider", Callable)
 SSE_RESPONSES = web.AppKey("sse_responses", set)
 SCHEDULER_V2 = web.AppKey("scheduler_v2", object)
-BUILD_HEALTHCHECK_TASK = web.AppKey("build_healthcheck_task", asyncio.Task)
-BUILD_DISPATCHER_TASK = web.AppKey("build_dispatcher_task", asyncio.Task)
-BUILD_SWEEPER_TASK = web.AppKey("build_sweeper_task", asyncio.Task)
 DIALOG_SWEEPER_TASK = web.AppKey("dialog_sweeper_task", asyncio.Task)
 MODEL_IDENTITY_TASK = web.AppKey("model_identity_task", asyncio.Task)
 TUTOR_BOOTSTRAP_TASK = web.AppKey("tutor_bootstrap_task", asyncio.Task)
@@ -39,9 +36,6 @@ _LEGACY_NAMES = {
     CATALOG_PROVIDER: "catalog_provider",
     SSE_RESPONSES: "sse_responses",
     SCHEDULER_V2: "scheduler_v2",
-    BUILD_HEALTHCHECK_TASK: "build_healthcheck_task",
-    BUILD_DISPATCHER_TASK: "build_dispatcher_task",
-    BUILD_SWEEPER_TASK: "build_sweeper_task",
     DIALOG_SWEEPER_TASK: "dialog_sweeper_task",
     MODEL_IDENTITY_TASK: "model_identity_task",
     TUTOR_BOOTSTRAP_TASK: "tutor_bootstrap_task",

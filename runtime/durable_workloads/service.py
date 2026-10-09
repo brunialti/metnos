@@ -1006,13 +1006,18 @@ def main() -> int:
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
     )
     service = default_service()
+    import monitor_capture
+    monitor_capture.start_collector()
 
     def _stop(_signum: int, _frame: object) -> None:
         service.request_stop()
 
     signal.signal(signal.SIGTERM, _stop)
     signal.signal(signal.SIGINT, _stop)
-    return service.run_forever()
+    try:
+        return service.run_forever()
+    finally:
+        monitor_capture.stop_collector()
 
 
 if __name__ == "__main__":
