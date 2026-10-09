@@ -17,13 +17,14 @@ COLLECTION_MAX_ACTIONS = 256
 COLLECTION_TIMEOUT_S = 300
 _IDENTITY_FIELDS = (
     "tag", "role", "type", "name", "href", "form_action", "form_method",
-    "download", "secret_input", "context_name")
+    "download", "secret_input", "context_name", "_record_context_key")
 
 
 def candidate_key(candidate: dict) -> str:
     # Broker IDs and geometry change across a reload; destinations and browser
     # semantics identify the control. Values of inputs are never observations.
-    stable = {key: candidate.get(key) for key in _IDENTITY_FIELDS}
+    stable = {key: candidate.get(key) for key in _IDENTITY_FIELDS
+              if key != "_record_context_key" or candidate.get(key)}
     return hashlib.sha256(json.dumps(
         stable, sort_keys=True, ensure_ascii=True).encode()).hexdigest()
 

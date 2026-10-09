@@ -177,6 +177,11 @@
  toward the list. Expansion does not consume a depth level; a detail enriches
  an existing item. Previously selected control names help keep the route
  within the list. An invalid choice leaves the search incomplete.</p>
+ <p>When several rows have the same button, the control is recognised together
+ with its own row's visible text, even if the order changes. Hidden text and
+ editable fields do not distinguish rows; two visually identical rows remain
+ ambiguous. This binding to a control does not, by itself, establish that
+ items from different pages represent the same record.</p>
  <p>This collection uses 256 actions and 300 active seconds, shared by forward
  steps, scrolling and returns; going back it does not scroll again through
  intermediate pages whose link is already visible and keeps branches still to explore;

@@ -842,6 +842,8 @@ def goal_tokens(target: str, *, navigation: bool = False) -> tuple[str, ...]:
 def goal_candidate_key(candidate: dict) -> str:
     stable = "\0".join(str(candidate.get(k) or "") for k in (
         "tag", "role", "name", "label", "href", "form_action"))
+    if candidate.get("_record_context_key"):
+        stable += "\0" + str(candidate["_record_context_key"])
     return hashlib.sha256(stable.encode("utf-8")).hexdigest()
 
 

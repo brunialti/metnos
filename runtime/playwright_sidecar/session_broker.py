@@ -355,6 +355,81 @@ _ENUMERATE_ACTION_TARGETS_JS = r"""
     return '';
   };
   const enumeratedIds = new Set();
+  // Keep record context local: only its digest leaves enumeration. Repeated
+  // actions follow visible rows, never their position or editable values.
+  const recordExcluded = 'nav,menu,header,footer,aside,[role=navigation],'
+    + '[role=menu],[role=menuitem],input,textarea,select,option,'
+    + '[contenteditable]:not([contenteditable="false"]),[data-metnos-redact="1"]';
+  const recordFamilies = new Map();
+  const actionFamilies = new Map();
+  for (const {el, rendered} of els) {
+    if (!rendered || !el.matches('a,button,[role=button],[role=link]')
+        || el.closest(recordExcluded)) continue;
+    const family = JSON.stringify([el.tagName, el.getAttribute('role') || '',
+      el.getAttribute('type') || '', metnosNameOf(el).trim().replace(/\s+/g, ' ')]);
+    actionFamilies.set(el, family);
+    for (let child = el, depth = 0; child.parentElement && depth < 8;
+         child = child.parentElement, depth++) {
+      const parent = child.parentElement;
+      if (!recordFamilies.has(parent)) recordFamilies.set(parent, new Map());
+      const families = recordFamilies.get(parent);
+      if (!families.has(family)) families.set(family, new Map());
+      const children = families.get(family);
+      children.set(child, (children.get(child) || 0) + 1);
+    }
+  }
+  const recordTexts = new Map();
+  const recordTextOf = scope => {
+    if (recordTexts.has(scope)) return recordTexts.get(scope);
+    const walker = document.createTreeWalker(scope, NodeFilter.SHOW_TEXT);
+    const parts = [];
+    let inspected = 0, size = 0;
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      if (++inspected > 512) { recordTexts.set(scope, ''); return ''; }
+      const parent = node.parentElement;
+      const text = (node.nodeValue || '').trim().replace(/\s+/g, ' ');
+      if (!parent || !text || parent.closest(recordExcluded)) continue;
+      let hidden = false;
+      for (let p = parent, depth = 0; p; p = p.parentElement, depth++) {
+        const style = getComputedStyle(p);
+        if (depth >= 64 || p.hidden || style.display === 'none' || style.visibility !== 'visible'
+            || style.contentVisibility === 'hidden'
+            || Number.parseFloat(style.opacity || '1') < 0.05) {
+          hidden = true; break;
+        }
+      }
+      if (hidden) continue;
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      const rect = range.getBoundingClientRect();
+      if (rect.width < 1 || rect.height < 1) continue;
+      size += text.length;
+      if (size > 4000) { recordTexts.set(scope, ''); return ''; }
+      parts.push(text);
+    }
+    const text = parts.join(' ');
+    recordTexts.set(scope, text);
+    return text;
+  };
+  const recordContextOf = el => {
+    const family = actionFamilies.get(el);
+    if (!family) return '';
+    for (let scope = el.parentElement, depth = 0;
+         scope && scope.parentElement && depth < 8;
+         scope = scope.parentElement, depth++) {
+      if (scope.matches('body,main,nav,header,footer,aside,form')) break;
+      const children = recordFamilies.get(scope.parentElement)?.get(family);
+      if (!children || children.get(scope) !== 1) continue;
+      const semantic = scope.matches('tr,li,article,[role=row],[role=listitem]');
+      const repeated = children.size > 1 && Array.from(children.values()).filter(
+        count => count === 1).length > 1;
+      if (!semantic && !repeated) continue;
+      const text = recordTextOf(scope);
+      if (text && text !== metnosNameOf(el).trim().replace(/\s+/g, ' '))
+        return JSON.stringify([scope.tagName, scope.getAttribute('role') || '', text]);
+    }
+    return '';
+  };
   for (const item of els) {
     const {el, r, st, rendered, visibleRatio, order} = item;
     const id = `m${++n}`;
@@ -391,6 +466,7 @@ _ENUMERATE_ACTION_TARGETS_JS = r"""
       name: metnosNameOf(el),
       text: metnosTextOf(el),
       label, context_name: contextOf(el),
+      _record_context: recordContextOf(el),
       placeholder: el.getAttribute('placeholder') || '',
       href: el.href || '', download: el.hasAttribute('download'),
       dom_id: el.id || '', ancestor_ids: ancestors,
@@ -2267,7 +2343,14 @@ async def _enumerate_candidates(page) -> list[dict]:
             page.evaluate(_ENUMERATE_ACTION_TARGETS_JS),
             timeout=_ENUMERATE_TIMEOUT_MS / 1000.0,
         )
-        return out if isinstance(out, list) else []
+        if not isinstance(out, list):
+            return []
+        for candidate in out:
+            context = candidate.pop("_record_context", "")
+            if isinstance(context, str) and context:
+                candidate["_record_context_key"] = hashlib.sha256(
+                    context.encode("utf-8")).hexdigest()
+        return out
     except Exception:
         return []
 
