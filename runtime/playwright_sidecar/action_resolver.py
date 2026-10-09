@@ -693,8 +693,59 @@ def goal_is_exhaustive(target: str) -> bool:
                _concept_forms("sites.goal_scope_quantifier"))
 
 
-def goal_scope_qualifier(clause: str, goal: str) -> str:
-    """Return an asserted quantifier attached to this goal, not another set.
+def _scope_grammar() -> set[str]:
+    return (set(_concept_forms("sites.goal_noise"))
+            | set(_concept_forms("sites.goal_noise_articulated_preposition"))
+            | set(_concept_forms("parser.compound.article")))
+
+
+def _scope_target_tokens(goal: str) -> tuple[str, ...]:
+    """Ignore a container only in an explicit navigation prefix."""
+    normalized = normalize(_primary_action_clause(goal))
+    verbs = (*_verbs().get("goto", ()),
+             *_concept_forms("sites.search_action_verb"))
+    for verb in sorted(verbs, key=len, reverse=True):
+        leading = re.match(rf"{re.escape(normalize(verb))}(?!\w)", normalized)
+        if not leading:
+            continue
+        rest = normalized[leading.end():].strip()
+        for form in _concept_forms("sites.goal_navigation_container"):
+            container = re.search(rf"(?<!\w){re.escape(form)}(?!\w)", rest)
+            if (container and set(rest[:container.start()].split()) <= _scope_grammar()
+                    and (tokens := goal_tokens(rest[container.end():]))):
+                return tokens
+    return goal_tokens(goal)
+
+
+def _scope_without_destination(text: str, target: set[str]) -> str:
+    """Remove only a tabular destination at a phrase margin, keeping raw dates."""
+    grammar = _scope_grammar()
+    destinations = _concept_forms("sites.goal_tabular_destination_preposition")
+    for form in sorted(_concept_forms("parser.compound.tabular_noun"),
+                       key=len, reverse=True):
+        if set(goal_tokens(form)) & target:
+            continue
+        for match in re.finditer(rf"(?<!\w){re.escape(form)}(?!\w)", text,
+                                 re.IGNORECASE):
+            before, after = text[:match.start()], text[match.end():]
+            if set(normalize(before).split()) <= grammar:
+                if any(_contains_phrase(normalize(before), prep) for prep in destinations):
+                    return after.strip()
+            if set(normalize(after).split()) <= grammar:
+                words = list(re.finditer(r"\w+", before))
+                boundary = len(before)
+                for word in reversed(words):
+                    if normalize(word.group()) not in grammar:
+                        break
+                    boundary = word.start()
+                margin = normalize(before[boundary:])
+                if any(_contains_phrase(margin, prep) for prep in destinations):
+                    return before[:boundary].strip()
+    return text.strip()
+
+
+def goal_scope_sources(clause: str, goal: str) -> set[str]:
+    """Return every asserted object phrase attached to this goal.
 
     The quantified phrase runs to the next registered list connector or
     punctuation. Before the goal, it binds from its first goal word that is
@@ -705,23 +756,25 @@ def goal_scope_qualifier(clause: str, goal: str) -> str:
     add words, never swap the object. A quantifier closing its phrase
     ("..., tutte") binds only to the whole preceding phrase, allowing a
     registered request verb and tabular destination at its margins.
-    This does not infer new filters or borrow 'all' from another object.
+    Keep its original wording, including dates; a tabular destination at the
+    margin is separate. Distinct phrases stay ambiguous even when both use
+    the same quantifier. This never borrows 'all' from another object.
     """
-    target = set(goal_tokens(goal))
+    target = set(_scope_target_tokens(goal))
     if not target or _detlex is None:
-        return ""
+        return set()
     clause = clause or ""
     forms = "|".join(re.escape(form) for form in
                      _concept_forms("parser.compound.list_connector"))
     connector = re.compile(rf"(?<!\w)(?:{forms})(?!\w)", re.IGNORECASE) if forms else None
 
     def phrase_end(text: str) -> int:
-        # A registered connector or punctuation of any script ends the phrase:
-        # a mark followed by a space or the end, or a full-width mark.
+        # Parentheses group content, including a calendar period. Other marks
+        # end the phrase when followed by a space/end, or when full-width.
         found = connector.search(text) if connector else None
         end = found.start() if found else len(text)
         for index, char in enumerate(text[:end]):
-            if unicodedata.category(char).startswith("P") and (
+            if char not in "()" and unicodedata.category(char).startswith("P") and (
                     index + 1 == len(text) or text[index + 1].isspace()
                     or unicodedata.east_asian_width(char) in "FW"):
                 return index
@@ -735,8 +788,9 @@ def goal_scope_qualifier(clause: str, goal: str) -> str:
                 continue
             rest = clause[match.end():]
             # Words as goal tokens see them, in any language.
+            phrase = _scope_without_destination(rest[:phrase_end(rest)], target)
             words = [goal_tokens(word) for word in
-                     _canonical_goal_text(rest[:phrase_end(rest)]).split()]
+                     _canonical_goal_text(phrase).split()]
             first = next((i for i, tokens in enumerate(words) if tokens
                           and tokens[0] in target and not tokens[0].isdigit()), None)
             if not any(words):
@@ -756,19 +810,8 @@ def goal_scope_qualifier(clause: str, goal: str) -> str:
                     if leading and not (set(goal_tokens(verb)) & target):
                         prefix = prefix[leading.end():]
                         break
-                tokens = goal_tokens(prefix)
-                for form_tokens in sorted(
-                        (goal_tokens(v) for v in _concept_forms("parser.compound.tabular_noun")),
-                        key=len, reverse=True):
-                    if not form_tokens or set(form_tokens) & target:
-                        continue
-                    if tokens[:len(form_tokens)] == form_tokens:
-                        tokens = tokens[len(form_tokens):]
-                        break
-                    if tokens[-len(form_tokens):] == form_tokens:
-                        tokens = tokens[:-len(form_tokens)]
-                        break
-                bound = set(tokens) == target
+                phrase = _scope_without_destination(prefix, target)
+                bound = set(goal_tokens(phrase)) == target
             elif first is None:
                 bound = False
             else:
@@ -778,8 +821,21 @@ def goal_scope_qualifier(clause: str, goal: str) -> str:
                 core = {token for tokens in words[start:] for token in tokens}
                 bound = not any(words[:start]) and (core <= target or target <= core)
             if bound:
-                matches.add(form)
-    return next(iter(matches)) if len(matches) == 1 else ""
+                matches.add(" ".join((match.group(), phrase)).strip())
+    return matches
+
+
+def goal_scope_source(clause: str, goal: str) -> str:
+    """Return the source only when exactly one asserted phrase is attached."""
+    sources = goal_scope_sources(clause, goal)
+    return next(iter(sources)) if len(sources) == 1 else ""
+
+
+def goal_scope_qualifier(clause: str, goal: str) -> str:
+    """The quantifier of the unique source phrase, if its association is proved."""
+    source = normalize(goal_scope_source(clause, goal))
+    return next((form for form in _concept_forms("sites.goal_scope_quantifier")
+                 if re.match(rf"{re.escape(form)}(?!\w)", source)), "")
 
 
 def preserve_goal_qualifiers(query: str, goal: str, *,
@@ -789,12 +845,20 @@ def preserve_goal_qualifiers(query: str, goal: str, *,
 
     Ownership and exhaustive-scope markers do not contribute content tokens,
     but they alter how the resolver reaches that content (for example through
-    a personal-area reveal or through continuation controls).  Every restored
-    phrase is copied from a translated detection concept that is actually
-    present in the original query; the model cannot invent it.
+    a personal-area reveal or through continuation controls). Markers come from
+    translated concepts present in the query; a uniquely associated object
+    phrase restores its own wording and calendar period together.
     """
     query_n = normalize(query)
-    goal_n = normalize(goal)
+    goal_text = normalize(goal)
+    # A uniquely associated source restores its content and period together.
+    # Keep additional planner constraints and preserve literal date separators.
+    if (scope_query and goal_is_exhaustive(scope_query)
+            and set(_scope_target_tokens(goal)) <= set(goal_tokens(scope_query))):
+        source = " ".join(scope_query.replace("(", " ").replace(")", " ").split())
+        if is_goal_navigation_request(source):
+            goal_text = source
+    goal_n = normalize(goal_text)
     if not query_n or not goal_n:
         return ""
 
@@ -818,7 +882,7 @@ def preserve_goal_qualifiers(query: str, goal: str, *,
             matches.append((start, form))
 
     qualifiers = [form for _start, form in sorted(matches)]
-    restored = " ".join((*qualifiers, goal_n)).strip()
+    restored = " ".join((*qualifiers, goal_text)).strip()
     if not restored or len(restored.split()) > max(1, int(max_words)):
         return ""
     return restored

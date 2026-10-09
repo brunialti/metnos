@@ -1003,6 +1003,16 @@ def register_all() -> None:
           "nel", "nello", "nella", "nei", "negli", "nelle",
           "sul", "sullo", "sulla", "sui", "sugli", "sulle"],
       en=[])
+    # Only an explicit navigation prefix can wrap an object in this container;
+    # it is never global goal noise or a word to drop inside a record's name.
+    R("sites.goal_navigation_container", "phrases", match_mode="word",
+      it=["sezione"], en=["section"])
+    # A tabular destination is distinct from a source ("from/da a sheet").
+    # Used only next to a registered tabular noun at a phrase margin.
+    R("sites.goal_tabular_destination_preposition", "phrases", match_mode="word",
+      it=["in", "nel", "nella", "nello", "nei", "negli", "nelle", "su",
+          "sul", "sulla", "sullo", "sui", "sugli", "sulle"],
+      en=["in", "into", "to"])
     # Connettivi che introducono l'oggetto di una relazione: descrivono il
     # legame grammaticale, non un termine che debba comparire nella pagina.
     # Tenerli separati dalle preposizioni rende l'estensione i18n additiva.

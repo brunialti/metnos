@@ -20,7 +20,7 @@
   <section aria-labelledby="monitor-chart-title"><h2 id="monitor-chart-title">{{ msg('UI_MONITOR_CHARTS') }}</h2>{% if view == 'models' %}<p class="monitor-note">{{ msg('UI_MONITOR_SERIES_HELP') }}</p><div id="monitor-series" aria-label="{{ msg('UI_MONITOR_MODEL_SERIES') }}"></div>{% endif %}<p class="monitor-note">{{ msg('UI_MONITOR_CALL_COVERAGE_HELP' if view == 'models' else 'UI_MONITOR_REQUEST_COVERAGE_HELP') }}</p><div id="monitor-charts"></div><noscript><p class="callout warn">{{ msg('UI_MONITOR_CHARTS_REQUIRE_JS') }}</p></noscript></section>
   {% else %}<div id="monitor-series"></div><div id="monitor-charts"></div>{% endif %}
   <div id="monitor-table">{% include '_monitor_table.html' %}</div>
-  <details class="section monitor-formulas"><summary>{{ msg('UI_MONITOR_FORMULAS') }}</summary><dl><dt>{{ msg('UI_MONITOR_PREFILL_TPS') }}</dt><dd>{{ msg('UI_MONITOR_PREFILL_FORMULA') }}</dd><dt>{{ msg('UI_MONITOR_GENERATION_TPS') }}</dt><dd>{{ msg('UI_MONITOR_GENERATION_FORMULA') }}</dd><dt>{{ msg('UI_MONITOR_REQUEST_OUTPUT_TPS') }}</dt><dd>{{ msg('UI_MONITOR_REQUEST_FORMULA') }}</dd><dt>{{ msg('UI_MONITOR_CALL_OUTPUT_TPS') }}</dt><dd>{{ msg('UI_MONITOR_CALL_FORMULA') }}</dd><dt>{{ msg('UI_MONITOR_ACTIVE_SECONDS') }}</dt><dd>{{ msg('UI_MONITOR_ACTIVE_FORMULA') }}</dd></dl></details>
+  {% include '_monitor_help.html' %}
 </div>
 {% set chart_panels = [] %}
 {% if view == 'models' %}

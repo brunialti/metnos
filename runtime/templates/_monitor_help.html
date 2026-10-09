@@ -1,0 +1,36 @@
+<details class="section monitor-formulas">
+  <summary>{{ msg('UI_MONITOR_FORMULAS') }}</summary>
+  <dl>
+    <dt>{{ msg('UI_MONITOR_COVERAGE') }}</dt>
+    {% for view_key, definition_key in [
+      ('MODELS', 'MODEL_COVERAGE_DEFINITION'),
+      ('REQUESTS', 'REQUEST_COVERAGE_DEFINITION'),
+      ('OVERVIEW', 'OVERVIEW_COVERAGE_DEFINITION')
+    ] %}
+    <dd><strong>{{ msg('UI_MONITOR_' ~ view_key) }}:</strong> {{ msg('UI_MONITOR_' ~ definition_key) }}</dd>
+    {% endfor %}
+    {% for term_key, definition_key in [
+      ('SAMPLES', 'SAMPLES_DEFINITION'),
+      ('REQUEST', 'REQUEST_DEFINITION'),
+      ('CALLS', 'CALLS_DEFINITION'),
+      ('MODEL_IDENTITY', 'MODEL_DEFINITION'),
+      ('ORIGIN', 'ORIGIN_DEFINITION'),
+      ('INPUT_OUTPUT', 'TOKENS_DEFINITION'),
+      ('PREFILL', 'PREFILL_DEFINITION'),
+      ('GENERATION', 'GENERATION_DEFINITION'),
+      ('MEAN', 'MEAN_DEFINITION'),
+      ('MEDIAN', 'MEDIAN_DEFINITION'),
+      ('P95', 'P95_DEFINITION'),
+      ('TOTAL_TIME', 'TOTAL_TIME_HELP'),
+      ('DATA_QUALITY', 'QUALITY_DEFINITION'),
+      ('PREFILL_TPS', 'PREFILL_FORMULA'),
+      ('GENERATION_TPS', 'GENERATION_FORMULA'),
+      ('REQUEST_OUTPUT_TPS', 'REQUEST_FORMULA'),
+      ('CALL_OUTPUT_TPS', 'CALL_FORMULA'),
+      ('ACTIVE_SECONDS', 'ACTIVE_FORMULA')
+    ] %}
+    <dt>{{ msg('UI_MONITOR_' ~ term_key) }}</dt>
+    <dd>{{ msg('UI_MONITOR_' ~ definition_key) }}</dd>
+    {% endfor %}
+  </dl>
+</details>

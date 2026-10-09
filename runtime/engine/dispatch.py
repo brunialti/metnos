@@ -4333,7 +4333,7 @@ def _ensure_site_session_precursor(framework: Framework, intent, query: str,
         _dl_match("sites.login_intent", query)
         or _dl_match("sites.session_entry_intent", query))
     from playwright_sidecar.action_resolver import (
-        goal_scope_qualifier, is_goal_navigation_request,
+        goal_scope_qualifier, goal_scope_sources, is_goal_navigation_request,
     )
 
     def _clausole(text: str) -> list[str]:
@@ -4404,7 +4404,7 @@ def _ensure_site_session_precursor(framework: Framework, intent, query: str,
         if args.get("value_ref") or not is_goal_navigation_request(action):
             return ""
         sources = {scope for clause in scope_clauses
-                   if (scope := goal_scope_qualifier(clause, action))}
+                   for scope in goal_scope_sources(clause, action)}
         return next(iter(sources)) if len(sources) == 1 else ""
 
     # A destination verb can ask for a whole set too. Bind its quantifier to
@@ -4679,11 +4679,13 @@ def _ensure_site_session_precursor(framework: Framework, intent, query: str,
                 action = str(original_args.get("action") or "")
                 if not original_args.get("value_ref") and is_goal_navigation_request(action):
                     # A planner summary must not narrow the user's set. The
-                    # qualifiers come from the request, not a model guess;
+                    # scope and period come from one associated object phrase;
                     # explicit click/fill operations retain their own scope.
+                    scope_source = _scope_for_action(original_args)
                     restored = preserve_goal_qualifiers(
-                        query, action, max_words=len(action.split()) + 8,
-                        scope_query=_scope_for_action(original_args))
+                        query, action,
+                        max_words=max(len(action.split()), len(scope_source.split())) + 8,
+                        scope_query=scope_source)
                     if restored:
                         original_args["action"] = restored
                     # A compound request is not a completion condition for
