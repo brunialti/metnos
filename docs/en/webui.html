@@ -15,7 +15,7 @@
 </style><script defer src="/assets/wiki-shell.js?v=20260822-2"></script>
 </head><body>
 <div class="shell">
-<nav><a href="index.html">← Metnos</a><a href="interface.html">Interface map</a><a href="domains.html">Domain reference</a><a href="architecture/http_api.html">Web chat and HTTP API</a><a href="/it/webui.html" hreflang="it">IT</a></nav>
+<nav><a href="index.html">← Metnos</a><a href="interface.html">Interface map</a><a href="domains.html">Capability guide</a><a href="architecture/http_api.html">Web chat and HTTP API</a><a href="/it/webui.html" hreflang="it">IT</a></nav>
 
 <header class="hero">
   <div>
@@ -26,7 +26,7 @@
   <div class="hero-note"><strong>8770</strong><span>the web chat port</span><strong>/admin/users</strong><span>where users are created</span></div>
 </header>
 
-<p class="contract">Metnos runs on a computer of yours, at home or in the office. There is no public website to sign in to: the address is the address of the machine you installed it on. Everything below applies on that machine and on the local network it sits in.</p>
+<p class="contract">Metnos runs on the computer where it is installed, at home or in the office. The chat address depends on your installation. The addresses below provide direct access from the local network; if your administrator has supplied a protected HTTPS address, use that instead. The metnos.com website hosts documentation, not your conversation.</p>
 
 <div class="jump"><a href="#address">Which address opens it</a><a href="#first">Getting in the first time</a><a href="#chat">What you do in the chat</a><a href="#settings">Where the settings are</a><a href="#user">Creating a new user</a><a href="#ask">If you cannot find something</a></div>
 
@@ -52,32 +52,40 @@
 </section>
 
 <section id="chat">
-  <div class="section-title"><span>03</span><h2>What you do in the chat</h2></div>
-  <p class="prose">The main page contains a conversation: describe the outcome you want in your own words, without learning a list of commands. When a request requires confirmation under the applicable permissions, autonomy level, and policies, Metnos presents the proposed operation and waits for consent before proceeding.</p>
-  <p class="prose">You can also talk to it from Telegram. It is the same system, with the same identity and the same permissions, but each channel keeps its own conversation and its own history. The administration pages exist in the web chat only: if Telegram points you to a Settings path, that path opens in the browser.</p>
-  <p class="prose">To know what you can ask, the <a href="domains.html">domain reference</a> lists the subjects Metnos can handle, with example requests written the way you would say them.</p>
-  <p class="prose">A red <strong>$</strong> on a step means that step used a cloud model. It remains visible after resuming from a form such as a CAPTCHA; the response also reports the number of requests sent to the cloud model.</p>
+<div class="section-title"><span>03</span><h2>Using the chat</h2></div>
+  <p class="prose">Describe the outcome you want in your own words, without learning a list of commands. When your permissions and instance rules require confirmation, Metnos presents the proposed operation and waits for your consent.</p>
+  <p class="prose">The header shows Metnos and your role. The <strong>Settings</strong> link opens the administration area after sign-in; administrators also have a <strong>Sign out</strong> control. Chat and administration pages share the same header. On Settings pages, the <strong>Chat</strong> link returns to the conversation.</p>
+  <p class="prose">To keep a copy of the conversation, choose <strong>Export</strong> in the top menu: the chat text is copied to the clipboard, ready to paste into a document. To attach a file to a message, use the paperclip icon beside the message field.</p>
+  <p class="prose">You can also use Metnos through Telegram. Your identity and permissions stay the same, while each channel keeps its own conversation and history. A Settings path mentioned on Telegram must be opened in a browser.</p>
+  <p class="prose">The <a href="domains.html">capability guide</a> offers request examples for each area. Ask the Tutor which functions you can use on your installation.</p>
+  <p class="prose">A red <strong>$</strong> on a step indicates use of a cloud model. It remains visible after resuming from a form such as a CAPTCHA; the response also reports the number of requests sent to the cloud model.</p>
 </section>
 
 <section id="settings">
   <div class="section-title"><span>04</span><h2>Where the settings are</h2></div>
-  <p class="prose">From the web chat you can open <strong>Settings</strong>, the administration area. Its first page gives an overview of system state and leads to four sections; administration-page addresses begin with <code>/admin</code>. The <a href="interface.html">complete interface map</a> is generated from the system registry and therefore remains aligned with the components actually installed.</p>
+  <p class="prose">Open <strong>Settings</strong> from the chat header. Its first page gives a system overview; the sidebar groups <strong>Activity, Monitor, Lifecycle, Memory, and System</strong>. These page addresses begin with <code>/admin</code>. Use the header to return to chat. The <a href="interface.html">interface map</a> lists every page and path, generated from the Metnos code.</p>
   <p class="prose">Pages under <code>/admin</code> are reserved for the instance administrator. An invited guest may use the chat but cannot open Settings.</p>
   <div class="note"><strong>Administrator sign-in comes first.</strong> If you open a protected page such as <code>/admin/users</code> without a valid administrator session, Metnos takes you to the sign-in page and preserves the destination. After you enter the administration key, the browser returns to the requested page automatically. For example, if Metnos is available at <code>192.0.2.0</code>, you can open <code>http://192.0.2.0:8770/admin/users</code>; when necessary, the visit to <code>/admin/login</code> happens in the same browser. An authenticated user without the administrator role receives an explicit denial instead and gains no new permissions.</div>
+
+  <h3>Reading Turns and Monitor</h3>
+  <p class="prose"><strong>Activity &gt; Turns</strong> lists completed turns, most recent first. Choose 50, 100, or 200 rows. Dates and times follow the instance language and time zone, including seconds and the zone name; durations use seconds, minutes, or hours. A request still in progress does not appear in this list.</p>
+  <p class="prose"><strong>Monitor</strong> brings together observations about LLM requests, model performance, and executors. Its glossary explains the measurement terms. Total request time includes waiting and other steps, so it differs from the model’s generation speed. An unavailable measurement should not be read as zero.</p>
+  <h3>Checking executor counts against the list</h3>
+  <p class="prose">The <strong>Executor catalog</strong> card in Settings counts the executors in the current catalog. Select <strong>View all</strong> to check them in the list: the <strong>origin</strong> column distinguishes Handcrafted, Built-in, Synthesized, and Imported. The four origins add up to the total; deprecated executors are already included. Under <strong>Statistics</strong>, counts by origin and state use the same catalog. The events chart preserves the history of the last 30 days, using the origin recorded at the time: an old event does not prove that an executor is still available.</p>
 </section>
 
 <section id="user">
   <div class="section-title"><span>05</span><h2>Creating a new user</h2></div>
   <p class="prose">You need this when you want another user — a family member or guest — to use your Metnos with their own identity, history and permissions. There are two distinct steps: first you create the user's profile, then you give them a way in.</p>
 
-  <h3>First moment: creating the record</h3>
+  <h3>Step one: create the profile</h3>
   <ol>
     <li>In the browser where you signed in as an administrator, open <strong>Settings &gt; System &gt; Users</strong>, that is <code>/admin/users</code>.</li>
     <li>At the top of the page there is the box for creating a new guest. Fill in the fields:
       <div class="wrap"><table>
         <tr><th>Field</th><th>What to put in it</th></tr>
-        <tr><td>name</td><td>A short identifier, lowercase letters, digits and underscore only: <code>lucia</code>, <code>marco_r</code>. It is required.</td></tr>
-        <tr><td>display name</td><td>The name as you read it: <code>Lucia Rossi</code>.</td></tr>
+        <tr><td>name</td><td>A short identifier, lowercase letters, digits and underscore only: <code>guest</code> or <code>guest_2</code>. It is required.</td></tr>
+        <tr><td>display name</td><td>The name as you read it: <code>Invited guest</code>.</td></tr>
         <tr><td>email</td><td>The person's address, if they have one.</td></tr>
         <tr><td>role</td><td><code>guest</code> for a guest, <code>host</code> for a second owner. When in doubt leave <code>guest</code>.</td></tr>
         <tr><td>autonomy</td><td>How much they may do on their own: <code>read_only</code> only looks, <code>restricted</code> asks for confirmation on operations that change something, <code>full</code> goes ahead alone. When in doubt leave <code>restricted</code>.</td></tr>
@@ -86,7 +94,7 @@
     <li>Press <strong>create</strong>. The user appears in the list below, still with no channel connected: the profile exists, but its owner cannot get in yet.</li>
   </ol>
 
-  <h3>Second moment: giving them access</h3>
+  <h3>Step two: connect an access channel</h3>
   <p class="prose">Open the user's name in the list to reach their detail page, and from there issue a connection code for the channel they will use. The code is valid for <strong>one hour</strong> and is <strong>single-use</strong>.</p>
   <ul>
     <li><strong>Web chat.</strong> Metnos generates a complete address. You send it to the user, they open it on their own phone or computer, and the association completes without asking them to enter any other data.</li>

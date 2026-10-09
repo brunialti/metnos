@@ -46,16 +46,19 @@ ciclo di vita degli executor, sicurezza e accessi.</p>
   </div>
 
   <div class="ov-card">
-    <h2>Catalogo executor</h2>
+    <h2>{{ msg("UI_EXECUTOR_CATALOG_TITLE") }}</h2>
+    <p class="muted">{{ msg("UI_EXECUTOR_CATALOG_HELP") }}</p>
     <div class="ov-nums">
-      <div class="ov-num"><b>{{ executors_summary.total }}</b><span>executor</span></div>
-      <div class="ov-num"><b>{{ executors_summary.handcrafted }}</b><span>handcrafted</span></div>
-      <div class="ov-num"><b>{{ executors_summary.synth }}</b><span>synth</span></div>
-      <div class="ov-num"><b>{{ executors_summary.deprecated }}</b><span>deprecated</span></div>
+      <div class="ov-num"><b>{{ executors_summary.total }}</b><span>{{ msg("UI_EXECUTOR_TOTAL") }}</span></div>
+      <div class="ov-num"><b>{{ executors_summary.handcrafted }}</b><span>{{ msg("UI_EXECUTOR_ORIGIN_HANDCRAFTED") }}</span></div>
+      <div class="ov-num"><b>{{ executors_summary.builtin }}</b><span>{{ msg("UI_EXECUTOR_ORIGIN_BUILTIN") }}</span></div>
+      <div class="ov-num"><b>{{ executors_summary.synth }}</b><span>{{ msg("UI_EXECUTOR_ORIGIN_SYNTHESIZED") }}</span></div>
+      <div class="ov-num"><b>{{ executors_summary.imported }}</b><span>{{ msg("UI_EXECUTOR_ORIGIN_IMPORTED") }}</span></div>
+      <div class="ov-num"><b>{{ executors_summary.deprecated }}</b><span>{{ msg("UI_EXECUTOR_DEPRECATED") }}</span></div>
     </div>
     <div class="ov-actions">
-      <a class="btn" href="/admin/executors">vedi tutti</a>
-      <a class="btn" href="/admin/executors/stats">statistiche</a>
+      <a class="btn" href="/admin/executors">{{ msg("UI_EXECUTOR_VIEW_ALL") }}</a>
+      <a class="btn" href="/admin/executors/stats">{{ msg("UI_EXECUTOR_STATISTICS") }}</a>
     </div>
   </div>
 

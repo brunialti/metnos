@@ -41,10 +41,10 @@ TEXT = {
         "nav_home": "Metnos",
         "nav_start": "Aprire e usare Metnos",
         "nav_manual": "Guida all'architettura",
-        "nav_domains": "Reference dei domini",
+        "nav_domains": "Guida alle funzioni",
         "nav_tutor": "Come funziona il Tutor",
-        "eyebrow": "Guida introduttiva · mappa derivata dal registro delle superfici",
-        "lead": "Due canali, un'unica istanza e le pagine da cui governarla",
+        "eyebrow": "Guida introduttiva · chat e impostazioni",
+        "lead": "Due canali per parlare con Metnos, un'area per amministrarlo",
         "intro": (
             "Il modo principale di usare Metnos è la conversazione. "
             "L'interfaccia rende visibile ciò che il dialogo non rappresenta "
@@ -54,11 +54,11 @@ TEXT = {
         "count_pages": "pagine di amministrazione",
         "count_sections": "sezioni di Settings",
         "contract": (
-            "L'elenco delle pagine, i percorsi di navigazione e gli indirizzi "
-            "derivano dal registro delle superfici del runtime e restano così "
-            "allineati al prodotto. Questa è una mappa, non un inventario dei "
-            "controlli: campi, comandi e procedure sono definiti una sola volta "
-            "nel registro e il Tutor li descrive su richiesta."),
+            "Questa mappa viene generata dall'elenco di pagine definito nel "
+            "codice di Metnos. Nomi, percorsi e indirizzi seguono quindi "
+            "l'interfaccia. Per conoscere i campi, i comandi e i passi da "
+            "seguire in una pagina, chiedi al Tutor: usa le informazioni "
+            "dell'installazione in uso."),
         "jump_channels": "Due canali, una stessa identità",
         "jump_settings": "Struttura di Settings",
         "jump_access": "Accesso e visibilità",
@@ -84,8 +84,9 @@ TEXT = {
         "settings_title": "Struttura di Settings",
         "settings_body": (
             "Settings è l'area amministrativa dell'interfaccia web. La pagina "
-            "iniziale presenta una panoramica dello stato del sistema e conduce "
-            "a quattro sezioni. Ogni pagina è raggiungibile seguendo il percorso "
+            "iniziale presenta una panoramica dello stato del sistema. Le "
+            "sezioni elencate qui sotto raccolgono le pagine per argomento. "
+            "Ogni pagina è raggiungibile seguendo il percorso "
             "«Settings &gt; Sezione &gt; Pagina» e ha un indirizzo che comincia "
             "con <code>/admin</code>. Le etichette sono disponibili in italiano "
             "e in inglese; se la lingua scelta non è ancora tradotta, "
@@ -95,7 +96,7 @@ TEXT = {
         "map_title": "Mappa dell'interfaccia di Metnos",
         "map_desc": (
             "La mappa collega i due canali di conversazione a Settings e alle "
-            "quattro sezioni amministrative, indicando l'indirizzo di ciascuna "
+            "sezioni amministrative, indicando l'indirizzo di ciascuna "
             "pagina."),
         "map_conversation": "stessa identità · cronologie separate",
         "map_chip_web": "chat web",
@@ -103,17 +104,16 @@ TEXT = {
         "map_only_web": "Settings si apre solo qui",
         "map_root_note": "panoramica dello stato",
         "map_caption": (
-            "Percorsi e indirizzi provengono dal registro delle superfici. Il "
+            "Percorsi e indirizzi seguono le pagine definite nel codice. Il "
             "Tutor descrive i contenuti e i controlli di ciascuna pagina in base "
             "all'installazione effettivamente in uso."),
         "access_title": "Accesso e visibilità",
         "access_body": (
             "Le pagine sotto <code>/admin</code> richiedono il ruolo di "
             "amministratore dell'istanza e non sono accessibili agli ospiti. Il "
-            "diritto di conoscere l'esistenza e il contenuto di una pagina è "
-            "distinto dal diritto di aprirla: il Tutor fornisce spiegazioni "
-            "soltanto a chi è autorizzato a riceverle, anche quando l'accesso "
-            "operativo rimane riservato all'amministratore."),
+            "Tutor può spiegare una pagina a chi è autorizzato a conoscerla. "
+            "Ricevere una spiegazione non concede però il permesso di aprire "
+            "quella pagina o di modificarne i dati."),
         "ask_title": "Chiedere al Tutor",
         "ask_body": (
             "Non è necessario memorizzare la mappa. Puoi chiedere, per esempio: "
@@ -122,13 +122,13 @@ TEXT = {
             "Il Tutor risponde sia dalla chat web sia da Telegram, ma i percorsi "
             "amministrativi si aprono sempre nel browser. Quando chiedi dove si "
             "trovi una funzione o che cosa contenga una pagina, la risposta usa "
-            "il percorso, l'indirizzo e i contenuti attestati dall'istanza in "
+            "il percorso, l'indirizzo e i contenuti verificati nell'istanza in "
             "uso, non una descrizione generica. Se la pagina non è disponibile "
             "nell'installazione, il Tutor lo dichiara senza suggerire un percorso "
             "inesistente."),
         "footer": (
             "Pagina generata da <code>scripts/generate_ui_reference.py</code> "
-            "a partire dal registro delle superfici del runtime. Per conoscere "
+            "a partire dall'elenco delle pagine definito nel codice. Per conoscere "
             "i dati e i controlli effettivamente disponibili in una specifica "
             "installazione, consulta il Tutor."),
     },
@@ -140,10 +140,10 @@ TEXT = {
         "nav_home": "Metnos",
         "nav_start": "Opening and using Metnos",
         "nav_manual": "Architecture guide",
-        "nav_domains": "Domain reference",
+        "nav_domains": "Capability guide",
         "nav_tutor": "How the Tutor works",
-        "eyebrow": "Introductory guide · map derived from the surfaces registry",
-        "lead": "Two channels, one instance, and the pages from which to govern it",
+        "eyebrow": "Getting started · chat and settings",
+        "lead": "Two ways to talk to Metnos, one place to manage it",
         "intro": (
             "Conversation is the primary way to use Metnos. The interface "
             "makes visible what dialogue represents less effectively: system "
@@ -152,11 +152,10 @@ TEXT = {
         "count_pages": "administration pages",
         "count_sections": "Settings sections",
         "contract": (
-            "The list of pages, navigation paths, and addresses comes from the "
-            "runtime's surfaces registry and therefore remains aligned with "
-            "the product. This is a map, not an inventory of controls: fields, "
-            "commands, and procedures are defined once in the registry, and "
-            "the Tutor describes them on request."),
+            "This map is generated from the list of pages defined in the "
+            "Metnos code. Names, paths, and addresses therefore follow the "
+            "interface. Ask the Tutor about a page's fields, controls, or "
+            "instructions: it uses information from your installation."),
         "jump_channels": "Two channels, one identity",
         "jump_settings": "Settings structure",
         "jump_access": "Access and visibility",
@@ -180,8 +179,9 @@ TEXT = {
         "settings_title": "Settings structure",
         "settings_body": (
             "Settings is the administration area of the web interface. Its "
-            "first page provides an overview of system state and leads to four "
-            "sections. Each page is reached through “Settings &gt; Section &gt; "
+            "first page provides an overview of system state. The sections "
+            "listed below group pages by subject. Each page is reached through "
+            "“Settings &gt; Section &gt; "
             "Page” and has an address beginning with <code>/admin</code>. Labels "
             "are available in Italian and English; if the selected language is "
             "not translated yet, the interface uses English. The Tutor reports "
@@ -190,24 +190,22 @@ TEXT = {
         "map_title": "Map of the Metnos interface",
         "map_desc": (
             "The map connects the two conversation channels to Settings and "
-            "its four administration sections, showing each page's address."),
+            "its administration sections, showing each page's address."),
         "map_conversation": "same identity · separate histories",
         "map_chip_web": "web chat",
         "map_chip_telegram": "Telegram",
         "map_only_web": "Settings opens here only",
         "map_root_note": "status overview",
         "map_caption": (
-            "Paths and addresses come from the surfaces registry. The Tutor "
+            "Paths and addresses follow the pages defined in the code. The Tutor "
             "describes each page's content and controls according to the "
             "installation currently in use."),
         "access_title": "Access and visibility",
         "access_body": (
             "Pages under <code>/admin</code> require the instance administrator "
-            "role and are not available to guests. Authority to know that a "
-            "page exists and what it contains is distinct from authority to "
-            "open it: the Tutor provides explanations only to people allowed "
-            "to receive them, even when operational access remains reserved "
-            "for an administrator."),
+            "role and are not available to guests. The Tutor can explain a "
+            "page to someone allowed to know about it. An explanation does "
+            "not grant permission to open the page or change its data."),
         "ask_title": "Ask the Tutor",
         "ask_body": (
             "You do not need to memorise the map. For example, ask: “Show me "
@@ -216,12 +214,12 @@ TEXT = {
             "answers in both the web chat and Telegram, but administration "
             "paths always open in a browser. When you ask where a function is "
             "or what a page contains, the answer uses the path, address, and "
-            "contents attested by the current installation, not a generic "
+            "contents verified in the current installation, not a generic "
             "description. If the page is unavailable, the Tutor says so rather "
             "than suggesting a path that does not exist."),
         "footer": (
             "Page generated by <code>scripts/generate_ui_reference.py</code> "
-            "from the runtime's surfaces registry. Ask the Tutor which data and "
+            "from the list of pages defined in the code. Ask the Tutor which data and "
             "controls are actually available on a specific installation."),
     },
 }

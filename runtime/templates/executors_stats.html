@@ -6,24 +6,24 @@
 {% endblock %}
 {% block body %}
 <h1>Statistiche executor</h1>
-<p class="page-sub">Distribuzione del catalogo per origine e ciclo di vita,
-più gli eventi giornalieri degli ultimi 30 giorni.</p>
+<p class="page-sub">{{ msg("UI_EXECUTOR_STATS_HELP") }}</p>
 <p class="muted"><a href="/admin/executors">← catalogo executor</a> ·
    <a href="/admin/executors/stats" hx-headers='{"Accept":"application/json"}'>JSON</a></p>
 
 <div class="section">
-  <h2>Conteggi per origine × ciclo di vita</h2>
+  <h2>{{ msg("UI_EXECUTOR_COUNTS_TITLE") }}</h2>
   {% if not bar_rows %}
     <p class="muted">nessun dato</p>
   {% else %}
-    <table style="max-width:680px">
+    <div class="table-wrap" style="max-width:680px">
+    <table>
       <thead>
         <tr><th>origine</th><th>ciclo di vita</th><th style="text-align:right">n</th><th>distribuzione</th></tr>
       </thead>
       <tbody>
         {% for r in bar_rows %}
         <tr>
-          <td><span class="chip">{{ r.source }}</span></td>
+          <td><span class="chip" data-source="{{ r.source }}">{{ msg("UI_EXECUTOR_ORIGIN_" ~ r.source|upper) }}</span></td>
           <td>
             {% if r.lifecycle == "active" %}<span class="chip ok">{{ r.lifecycle }}</span>
             {% elif r.lifecycle == "deprecated" %}<span class="chip warn">{{ r.lifecycle }}</span>
@@ -39,12 +39,13 @@ più gli eventi giornalieri degli ultimi 30 giorni.</p>
         {% endfor %}
       </tbody>
     </table>
+    </div>
   {% endif %}
 </div>
 
 <div class="section">
-  <h2>Eventi giornalieri (ultimi 30 g)</h2>
-  <p class="muted">una linea per coppia (origine, tipo evento). Hover per dettaglio.</p>
+  <h2>{{ msg("UI_EXECUTOR_EVENTS_TITLE") }}</h2>
+  <p class="muted">{{ msg("UI_EXECUTOR_EVENTS_HELP") }}</p>
   <div id="chart_daily" style="width:100%;height:280px"></div>
   {% if not daily %}<p class="muted">nessun evento</p>{% endif %}
 </div>

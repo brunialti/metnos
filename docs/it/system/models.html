@@ -64,10 +64,15 @@ dal proprio contratto. Un modello mancante non viene scaricato automaticamente
 e impedisce il completamento dell'analisi che lo richiede.</p>
 
 <p>La pagina consente di modificare le configurazioni LLM e VLM e di ripristinare
-la versione precedente. Prima del salvataggio, Metnos convalida la struttura e
-i valori e conserva una copia di recupero. Password, token, credenziali e
-segmenti sensibili degli URL non vengono esposti né trasmessi attraverso i campi
-del modulo: l'interfaccia interviene soltanto sui valori visibili.</p>
+la versione precedente. Prima del salvataggio, Metnos controlla struttura e
+valori e conserva una copia di recupero. I campi di configurazione non mostrano
+password, token, chiavi o parti sensibili degli indirizzi.</p>
+
+<p>Un modulo separato permette all’amministratore di inserire o sostituire le
+chiavi API di OpenAI e Anthropic. Metnos le conserva cifrate e mostra soltanto
+se sono presenti: non restituisce il valore salvato. Un campo lasciato vuoto
+non cancella una chiave. Se la chiave è gestita dalla configurazione o dall’ambiente del servizio,
+la pagina lo segnala e non la sostituisce.</p>
 
 <p>Modificare un modello non accresce l'autorità di Metnos. Gli executor, la
 policy, l'identità dell'utente e gli eventuali budget continuano a decidere se

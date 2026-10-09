@@ -15,7 +15,7 @@
 </style><script defer src="/assets/wiki-shell.js?v=20260822-2"></script>
 </head><body>
 <div class="shell">
-<nav><a href="index.html">← Metnos</a><a href="interface.html">Mappa dell'interfaccia</a><a href="domains.html">Reference dei domini</a><a href="architecture/http_api.html">Chat web e API HTTP</a><a href="/en/webui.html" hreflang="en">EN</a></nav>
+<nav><a href="index.html">← Metnos</a><a href="interface.html">Mappa dell'interfaccia</a><a href="domains.html">Guida alle funzioni</a><a href="architecture/http_api.html">Chat web e API HTTP</a><a href="/en/webui.html" hreflang="en">EN</a></nav>
 
 <header class="hero">
   <div>
@@ -26,7 +26,7 @@
   <div class="hero-note"><strong>8770</strong><span>porta della chat web</span><strong>/admin/users</strong><span>gestione degli utenti</span></div>
 </header>
 
-<p class="contract">Metnos viene eseguito su un computer locale, a casa o in ufficio. Non si accede attraverso un sito pubblico: l'indirizzo dipende dalla macchina su cui è installato. Le indicazioni che seguono riguardano quella macchina e la rete locale a cui è collegata.</p>
+<p class="contract">Metnos viene eseguito sul computer su cui è installato, a casa o in ufficio. L’indirizzo della chat dipende dalla tua installazione. Quelli qui sotto sono gli indirizzi di accesso diretto dalla rete locale; se l’amministratore ti ha fornito un indirizzo HTTPS protetto, usa quello. Il sito metnos.com ospita la documentazione, non la tua conversazione.</p>
 
 <div class="jump"><a href="#indirizzo">Indirizzo della chat</a><a href="#entrare">Primo accesso</a><a href="#chat">Usare la chat</a><a href="#settings">Impostazioni</a><a href="#utente">Creare un utente</a><a href="#chiedi">Chiedere al Tutor</a></div>
 
@@ -52,18 +52,26 @@
 </section>
 
 <section id="chat">
-  <div class="section-title"><span>03</span><h2>Usare la chat</h2></div>
-  <p class="prose">La pagina principale ospita una conversazione: puoi formulare in italiano ciò che desideri ottenere, senza imparare un elenco di comandi. Quando una richiesta richiede una conferma in base ai permessi, al livello di autonomia e alle policy applicabili, Metnos presenta l'operazione prevista e attende il consenso prima di procedere.</p>
-  <p class="prose">È possibile usare Metnos anche da Telegram. Il sistema, l'identità e i permessi restano gli stessi, mentre ciascun canale conserva una conversazione e una cronologia proprie. Le pagine di amministrazione sono disponibili soltanto nell'interfaccia web: un percorso di <strong>Settings</strong> indicato su Telegram deve quindi essere aperto nel browser.</p>
-  <p class="prose">La <a href="domains.html">Reference dei domini</a> descrive gli ambiti in cui l'installazione può operare e propone esempi di richieste formulate in linguaggio naturale.</p>
-  <p class="prose">Il simbolo rosso <strong>$</strong> su un passo indica che quel passo ha usato un modello cloud. Rimane visibile anche dopo la ripresa da un modulo, come un CAPTCHA; la risposta riporta inoltre il numero di richieste inviate al modello cloud.</p>
+<div class="section-title"><span>03</span><h2>Usare la chat</h2></div>
+  <p class="prose">Scrivi ciò che desideri ottenere, senza imparare un elenco di comandi. Quando i permessi e le regole dell’istanza richiedono una conferma, Metnos presenta l’operazione prevista e attende il tuo consenso.</p>
+  <p class="prose">La testata in alto mostra Metnos e il tuo ruolo. Il collegamento <strong>Settings</strong> apre l’area amministrativa dopo l’accesso; l’amministratore trova anche il comando <strong>Esci</strong>. Chat e pagine amministrative condividono la stessa testata. Nelle pagine di Settings, il comando <strong>Chat</strong> riporta alla conversazione.</p>
+  <p class="prose">Per conservare una copia della conversazione, scegli <strong>Esporta</strong> nel menu superiore: il testo della chat viene copiato negli appunti, pronto da incollare in un documento. Per aggiungere un file al messaggio, usa l’icona della graffetta accanto al campo di scrittura.</p>
+  <p class="prose">Puoi usare Metnos anche da Telegram. Identità e permessi restano gli stessi, mentre ciascun canale conserva una conversazione e una cronologia proprie. Un percorso di Settings indicato su Telegram deve essere aperto nel browser.</p>
+  <p class="prose">La <a href="domains.html">guida alle funzioni</a> propone esempi di richieste per i diversi ambiti. Per sapere quali funzioni puoi usare nella tua installazione, chiedi al Tutor.</p>
+  <p class="prose">Il simbolo rosso <strong>$</strong> su un passo indica l’uso di un modello cloud. Rimane visibile dopo la ripresa da un modulo, come un CAPTCHA; la risposta riporta anche il numero di richieste inviate al modello cloud.</p>
 </section>
 
 <section id="settings">
   <div class="section-title"><span>04</span><h2>Accedere alle impostazioni</h2></div>
-  <p class="prose">Dalla chat web si accede a <strong>Settings</strong>, l'area amministrativa. La pagina iniziale offre una panoramica dello stato del sistema e conduce a quattro sezioni; gli indirizzi delle pagine amministrative cominciano con <code>/admin</code>. La <a href="interface.html">mappa completa dell'interfaccia</a> è generata dal registro del sistema e rimane quindi allineata ai componenti effettivamente installati.</p>
+  <p class="prose">Apri <strong>Settings</strong> dalla testata della chat. La pagina iniziale offre una panoramica del sistema; il menu laterale raccoglie <strong>Attività, Monitor, Ciclo di vita, Memoria e Sistema</strong>. Gli indirizzi di queste pagine cominciano con <code>/admin</code>. Dalla testata puoi tornare alla chat. La <a href="interface.html">mappa dell’interfaccia</a> riporta tutte le pagine e i percorsi, generati dal codice di Metnos.</p>
   <p class="prose">Le pagine sotto <code>/admin</code> sono riservate all'amministratore dell'istanza. Un ospite invitato può usare la chat, ma non accedere alle impostazioni.</p>
   <div class="note"><strong>Prima occorre l'accesso amministrativo.</strong> Se apri direttamente una pagina protetta, per esempio <code>/admin/users</code>, senza una sessione amministrativa valida, Metnos ti porta alla pagina di accesso e conserva la destinazione. Dopo aver inserito la chiave di amministrazione, il browser torna automaticamente alla pagina richiesta. Per esempio, se Metnos risponde all'indirizzo <code>192.0.2.0</code>, puoi aprire <code>http://192.0.2.0:8770/admin/users</code>: quando necessario, il passaggio da <code>/admin/login</code> avviene nello stesso browser. Un utente autenticato ma privo del ruolo amministrativo riceve invece un rifiuto esplicito e non acquisisce nuovi permessi.</div>
+
+  <h3>Consultare Turni e Monitor</h3>
+  <p class="prose"><strong>Attività &gt; Turni</strong> elenca i turni conclusi, dal più recente. Puoi mostrare 50, 100 o 200 righe. Data e ora seguono la lingua e il fuso dell’istanza, con secondi e indicazione del fuso; la durata è espressa in secondi, minuti o ore. Una richiesta ancora in corso non compare in questo elenco.</p>
+  <p class="prose"><strong>Monitor</strong> raccoglie invece le osservazioni su richieste LLM, prestazioni dei modelli ed executor. Il glossario spiega i termini delle misure. Il tempo complessivo di una richiesta comprende anche attese e altri passaggi: non coincide con la sola velocità di generazione del modello. Una misura non disponibile non va letta come zero.</p>
+  <h3>Riscontrare i conteggi degli executor</h3>
+  <p class="prose">Il riquadro <strong>Catalogo executor</strong> di Settings conta gli executor presenti nel catalogo attuale. Premi <strong>Vedi tutti</strong> per riscontrarli nell’elenco: la colonna <strong>origine</strong> distingue Manuali, Integrati, Generati e Importati. La somma delle quattro origini coincide con il totale; i deprecati sono già compresi. In <strong>Statistiche</strong>, i conteggi per origine e stato usano lo stesso catalogo. Il grafico degli eventi conserva invece la storia degli ultimi 30 giorni, con l’origine registrata all’epoca: un vecchio evento non prova che quell’executor sia ancora disponibile.</p>
 </section>
 
 <section id="utente">
@@ -76,8 +84,8 @@
     <li>Nella parte superiore della pagina trovi il riquadro per creare un nuovo ospite. Compila i campi richiesti:
       <div class="wrap"><table>
         <tr><th>Campo</th><th>Valore</th></tr>
-        <tr><td>nome</td><td>Un identificativo breve composto soltanto da lettere minuscole, cifre e trattino basso, per esempio <code>lucia</code> o <code>marco_r</code>. Il campo è obbligatorio.</td></tr>
-        <tr><td>nome visualizzato</td><td>Il nome mostrato nell'interfaccia, per esempio <code>Lucia Rossi</code>.</td></tr>
+        <tr><td>nome</td><td>Un identificativo breve composto soltanto da lettere minuscole, cifre e trattino basso, per esempio <code>ospite</code> o <code>ospite_2</code>. Il campo è obbligatorio.</td></tr>
+        <tr><td>nome visualizzato</td><td>Il nome mostrato nell'interfaccia, per esempio <code>Ospite invitato</code>.</td></tr>
         <tr><td>email</td><td>L'indirizzo dell'utente, se disponibile.</td></tr>
         <tr><td>ruolo</td><td><code>guest</code> per un ospite; <code>host</code> per un secondo proprietario. Se non occorre attribuire il ruolo di proprietario, scegli <code>guest</code>.</td></tr>
         <tr><td>autonomia</td><td>Il livello entro cui l'utente può operare: <code>read_only</code> consente soltanto la consultazione, <code>restricted</code> richiede conferma per le operazioni che modificano lo stato, <code>full</code> consente di procedere senza conferma. Se non hai esigenze diverse, scegli <code>restricted</code>.</td></tr>

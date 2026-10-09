@@ -24,7 +24,7 @@ reversibilità.</p>
         {% else %}<span class="chip">{{ r.lifecycle }}</span>{% endif %}
       </td>
       <td><span class="chip">{{ r.membership }}</span></td>
-      <td><span class="chip">{{ r.source }}</span></td>
+      <td><span class="chip" data-source="{{ r.source }}">{{ msg("UI_EXECUTOR_ORIGIN_" ~ r.source|upper) }}</span></td>
       <td><span class="chip">{{ r.transport }}</span></td>
       <td>
         {% if r.standard_state == "declared" %}<span class="chip ok">{{ r.standard_state }}</span>

@@ -61,11 +61,16 @@ These settings select model data, not executable programs. An executor can
 read only the model files allowed by its contract. A missing model is not
 downloaded silently and prevents the affected analysis from completing.</p>
 
-<p>The page can edit LLM and VLM configuration and restore the previous
-version. Before saving, Metnos validates the structure and values and retains a
-recovery copy. Passwords, tokens, credentials, and sensitive URL components
-are neither exposed nor transmitted through form fields; the interface changes
-visible values only.</p>
+<p>The page lets you edit LLM and VLM configuration and restore its previous
+version. Before saving, Metnos checks the structure and values and keeps a
+recovery copy. Configuration fields do not display passwords, tokens, keys,
+or sensitive parts of addresses.</p>
+
+<p>A separate form lets administrators enter or replace OpenAI and Anthropic
+API keys. Metnos stores them encrypted and shows only whether they are
+present: it never returns the saved value. Leaving a field blank does not
+delete a key. If a key is managed through configuration or the service environment, the page
+indicates this and does not replace it.</p>
 
 <p>Changing a model does not increase Metnos's authority. Executors, policy,
 user identity, and budgets still determine whether an action is admissible.

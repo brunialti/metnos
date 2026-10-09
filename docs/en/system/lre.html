@@ -212,6 +212,8 @@ reused within the same generation; a new workload does not guarantee reuse of
 private checkpoints from a failed generation. Originals and history are not
 deleted.</p>
 
+<h3 id="photo-indexing-scheduled-recovery">Recovery of scheduled tasks</h3>
+
 <p>A scheduled LRE job that needs attention remains available for diagnosis
 and manual recovery. It does not block every later occurrence: a later
 occurrence may create a new job, while redelivery of the same occurrence

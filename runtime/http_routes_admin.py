@@ -419,17 +419,31 @@ def _summary_proposals() -> dict:
     return out
 
 
+def _executor_catalog_counts(catalog) -> dict[str, dict[str, int]]:
+    """Count the same admitted catalog and metadata shown by the detail page.
+
+    The aging database preserves historical registrations, including old
+    origin labels and executors no longer admitted. It is not an inventory.
+    """
+    counts: dict[str, dict[str, int]] = {}
+    for executor in catalog:
+        source = getattr(executor, "source", "handcrafted")
+        by_lifecycle = counts.setdefault(source, {})
+        lifecycle = executor.lifecycle
+        by_lifecycle[lifecycle] = by_lifecycle.get(lifecycle, 0) + 1
+    return counts
+
+
 def _summary_executors(catalog) -> dict:
-    total = len(catalog)
-    deprecated = sum(1 for e in catalog if e.lifecycle == "deprecated")
-    counts = executor_aging.counts_by_source_lifecycle()
-    handcrafted = sum(v.get("active", 0) for k, v in counts.items()
-                      if k.startswith("handcrafted"))
-    synth = sum(v.get("active", 0) for k, v in counts.items()
-                if k.startswith("synth"))
+    counts = _executor_catalog_counts(catalog)
     return {
-        "total": total, "handcrafted": handcrafted,
-        "synth": synth, "deprecated": deprecated,
+        "total": sum(sum(values.values()) for values in counts.values()),
+        "handcrafted": sum(counts.get("handcrafted", {}).values()),
+        "synth": sum(counts.get("synthesized", {}).values()),
+        "builtin": sum(counts.get("builtin", {}).values()),
+        "imported": sum(counts.get("imported", {}).values()),
+        "deprecated": sum(values.get("deprecated", 0)
+                          for values in counts.values()),
     }
 
 
@@ -967,7 +981,8 @@ async def admin_executors_stats(request: web.Request) -> web.Response:
 
     Negotiation Accept: html → grafici uPlot/CSS bar; json → payload raw.
     """
-    counts = executor_aging.counts_by_source_lifecycle()
+    catalog = app_get(request.app, CATALOG_PROVIDER, lambda: [])()
+    counts = _executor_catalog_counts(catalog)
     daily = executor_aging.daily_event_counts(days=30)
     accept = request.headers.get("Accept", "")
     want_html = "text/html" in accept and "application/json" not in accept
@@ -977,7 +992,7 @@ async def admin_executors_stats(request: web.Request) -> web.Response:
         bar_rows = []
         for source, by_lc in counts.items():
             tot = sum(by_lc.values()) or 1
-            for lc in ("active", "deprecated", "archived"):
+            for lc in sorted(by_lc):
                 bar_rows.append({
                     "source": source,
                     "lifecycle": lc,
