@@ -212,7 +212,6 @@ def _choose(candidates: list[tuple[str, int]], ordinal: int | None,
 def _legacy_projection(entries: list[dict], columns: list[str],
                        fields: list[str], field_roles: Iterable[dict] | None
                        ) -> list[ColumnProjection]:
-    normalized_fields = {_normalize(field): field for field in fields}
     populated = {field: bool(_sample_values(entries, field)) for field in fields}
     declared_roles = _declared_field_roles(field_roles)
     strengths = {field: _field_concept_strength(
@@ -222,8 +221,19 @@ def _legacy_projection(entries: list[dict], columns: list[str],
     used: set[str] = set()
 
     for header in columns:
-        normalized = _normalize(header)
-        exact = normalized_fields.get(normalized)
+        exact = header if header in fields else None
+        if exact is None:
+            # Resolve identity before consulting values. Broader normalization
+            # must not override a unique spelling match or hide collisions.
+            matches = [field for field in fields
+                       if field.strip().casefold() == header.strip().casefold()]
+            if not matches:
+                matches = [field for field in fields
+                           if _normalize(field) == _normalize(header)]
+            if len(matches) > 1:
+                unresolved.append(header)
+                continue
+            exact = matches[0] if matches else None
         # Planner-created placeholder aliases can coexist with the populated
         # canonical field.  An empty exact key must not mask real data under a
         # semantic sibling (for example ``domini=""`` and ``dominio="files"``).

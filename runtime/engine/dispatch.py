@@ -6173,7 +6173,15 @@ def _propagate_sink_schema_to_extract(framework: Framework) -> Framework:
             continue
         args = dict(extract.args or {})
         fields = list(args.get("fields") or [])
-        merged = fields + [field for field in required if field not in fields]
+        merged = list(fields)
+        for column in required:
+            # A header names an existing field when only surrounding spaces or
+            # case differ. Several such fields are an ambiguity of the plan:
+            # keep them all, choose none and add no further variant.
+            if not any(isinstance(field, str)
+                       and field.strip().casefold() == column.strip().casefold()
+                       for field in merged):
+                merged.append(column)
         if merged != fields:
             args["fields"] = merged
             extract.args = args

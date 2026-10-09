@@ -186,7 +186,9 @@
  <p>When several rows have the same button, the control is recognised together
  with its own row's visible text, even if the order changes. Hidden text and
  editable fields do not distinguish rows; two visually identical rows remain
- ambiguous. This binding to a control does not, by itself, establish that
+ ambiguous. If observation limits prevent matching all observed identical
+ controls in the same area to their rows, Metnos preserves the ambiguity.
+ This binding to a control does not, by itself, establish that
  items from different pages represent the same record.</p>
  <p>A component and the text inside its button can expose the same action.
  Metnos retains the standard control when name and text match and the target
@@ -230,6 +232,12 @@
  cannot be read, the result states how many rows were excluded and which
  field was unreadable, including in the final spreadsheet receipt. The
  spreadsheet therefore remains explicitly incomplete.</p>
+ <p>A spreadsheet header that differs only in case or surrounding spaces
+ reuses the extracted field without creating a second date. The spreadsheet
+ prefers the exact name, then a unique match allowing those differences,
+ then a unique match with normalized punctuation and accents.
+ If the name remains ambiguous, it does not choose by order or populated values.
+ Distinct fields such as issue date and due date remain distinct.</p>
  <p>Observations include visible text and observed selector states
  alongside accessible names. These data can identify the current collection,
  and live GAS/ELECTRICITY switching was verified in release 132.

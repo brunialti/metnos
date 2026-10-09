@@ -190,7 +190,9 @@
  <p>Quando più righe hanno lo stesso pulsante, il comando viene riconosciuto
  insieme al testo visibile della propria riga, anche se l'ordine cambia.
  Testi nascosti e campi modificabili non distinguono le righe; due righe
- visivamente identiche restano ambigue. Questo collegamento al comando non
+ visivamente identiche restano ambigue. Se i limiti dell'osservazione impediscono
+ di collegare tutti i comandi uguali osservati nella stessa area alle rispettive
+ righe, Metnos mantiene l'ambiguità. Questo collegamento al comando non
  basta, da solo, a unire voci provenienti da pagine diverse.</p>
  <p>Un componente e il testo interno di un pulsante possono esporre lo stesso
  comando. Metnos conserva il controllo standard quando nome e testo coincidono
@@ -234,6 +236,12 @@
  lingua dell’interfaccia. Se una data non è leggibile, il risultato dichiara
  quante righe sono state escluse e da quale campo, anche nella ricevuta
  finale del foglio. Il foglio rimane quindi dichiarato incompleto.</p>
+ <p>Un'intestazione del foglio che cambia soltanto per maiuscole o spazi
+ esterni riusa il campo estratto, senza creare una seconda data. Il foglio
+ preferisce il nome esatto, poi una corrispondenza univoca con queste differenze,
+ poi una corrispondenza univoca con punteggiatura e accenti normalizzati.
+ Se il nome resta ambiguo, non sceglie in base all'ordine o ai valori presenti.
+ Campi distinti come emissione e scadenza restano distinti.</p>
  <p>L’osservazione include il testo visibile e gli
  stati dei selettori, oltre al nome accessibile. Questi dati possono indicare
  la raccolta corrente. Il cambio di fornitura GAS/LUCE è stato verificato

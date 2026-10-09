@@ -415,13 +415,19 @@ _ENUMERATE_ACTION_TARGETS_JS = r"""
     + '[contenteditable]:not([contenteditable="false"]),[data-metnos-redact="1"]';
   const recordFamilies = new Map();
   const actionFamilies = new Map();
+  const familyMembers = new Map();
   for (const {el, rendered} of els) {
     if (!rendered || !el.matches('a,button,[role=button],[role=link]')
         || el.closest(recordExcluded)) continue;
     const family = JSON.stringify([el.tagName, el.getAttribute('role') || '',
       el.getAttribute('type') || '', metnosNameOf(el).trim().replace(/\s+/g, ' ')]);
     actionFamilies.set(el, family);
-    for (let child = el, depth = 0; child.parentElement && depth < 8;
+    if (!familyMembers.has(family)) familyMembers.set(family, []);
+    familyMembers.get(family).push(el);
+    // Match the consumer's eight ancestor scopes: it starts at el.parentElement
+    // and looks up each scope in its parent, including the eighth scope.
+    for (let child = el.parentElement, depth = 0;
+         child && child.parentElement && depth < 8;
          child = child.parentElement, depth++) {
       const parent = child.parentElement;
       if (!recordFamilies.has(parent)) recordFamilies.set(parent, new Map());
@@ -431,6 +437,21 @@ _ENUMERATE_ACTION_TARGETS_JS = r"""
       children.set(child, (children.get(child) || 0) + 1);
     }
   }
+  const completeRecordFamilies = new Map();
+  const recordFamilyComplete = (parent, family, children) => {
+    if (!completeRecordFamilies.has(parent)) completeRecordFamilies.set(parent, new Map());
+    const cached = completeRecordFamilies.get(parent);
+    if (!cached.has(family)) {
+      // The depth-bounded index can omit a deeper action, or an action that
+      // is itself another action's scope. Check only the already observed
+      // family members before trusting both row and sibling counts.
+      const indexed = Array.from(children.values()).reduce((sum, count) => sum + count, 0);
+      const observed = familyMembers.get(family).filter(
+        member => member !== parent && parent.contains(member)).length;
+      cached.set(family, indexed === observed);
+    }
+    return cached.get(family);
+  };
   const recordTexts = new Map();
   const recordTextDiagnostics = new Map();
   const recordDiagnostics = new Map();
@@ -514,6 +535,9 @@ _ENUMERATE_ACTION_TARGETS_JS = r"""
       const repeated = children.size > 1 && level.unique_siblings > 1;
       level.semantic = semantic; level.repeated = repeated;
       if (!semantic && !repeated) { level.outcome = 'not_record'; continue; }
+      if (!recordFamilyComplete(scope.parentElement, family, children)) {
+        level.outcome = 'family_incomplete'; continue;
+      }
       const text = recordTextOf(scope);
       level.text = recordTextDiagnostics.get(scope);
       if (text && text !== metnosNameOf(el).trim().replace(/\s+/g, ' ')) {
@@ -2443,7 +2467,7 @@ def _safe_record_diagnostics(value) -> dict:
     if not isinstance(value, dict) or value.get("family") not in (
             "eligible", "not_action", "not_rendered", "excluded"):
         return {}
-    outcomes = {"boundary", "family_missing", "scope_missing", "multiple_actions",
+    outcomes = {"boundary", "family_missing", "family_incomplete", "scope_missing", "multiple_actions",
                 "not_record", "no_text", "action_only", "bound"}
     counters = {"nodes", "excluded", "hidden", "depth_limit", "hidden_attribute",
                 "display_none", "visibility", "content_visibility", "opacity",
