@@ -7,7 +7,7 @@
 {% if view in ['overview','models'] %}<script src="/static/uplot-1.6.30.min.js"></script>
 <link rel="stylesheet" href="/static/uplot-1.6.30.min.css">{% endif %}
 {% include '_monitor_styles.html' %}
-<script src="/static/monitor.js?v=20261009-points" defer></script>
+<script src="/static/monitor.js?v=20261009-legend-points" defer></script>
 {% endblock %}
 {% block body %}
 <div id="monitor-root" data-endpoint="/admin/monitor/data" data-view="{{ view }}"{% if view == 'detail' %} data-request-id="{{ monitor.request.request_id }}"{% endif %}>
@@ -26,12 +26,11 @@
 {% if view == 'models' %}
   {% set chart_panels = [
     {'id':'call-output-speed','label':msg('UI_MONITOR_CALL_OUTPUT_SPEED'),'unit':msg('UI_MONITOR_TPS'),'source':'models','factor':1,'metrics':[{'key':'call_output_tps','label':msg('UI_MONITOR_CALL_OUTPUT_SPEED')}]},
+    {'id':'call-duration-mean','label':msg('UI_MONITOR_CALL_LATENCY') ~ ' · ' ~ msg('UI_MONITOR_MEAN'),'unit':msg('UI_MONITOR_SECONDS'),'source':'models','factor':0.001,'metrics':[{'key':'call_mean_ms','label':msg('UI_MONITOR_MEAN')}]},
     {'id':'prefill-speed','label':msg('UI_MONITOR_PREFILL'),'unit':msg('UI_MONITOR_TPS'),'source':'models','factor':1,'metrics':[{'key':'prefill_tps','label':msg('UI_MONITOR_PREFILL')}]},
     {'id':'generation-speed','label':msg('UI_MONITOR_GENERATION'),'unit':msg('UI_MONITOR_TPS'),'source':'models','factor':1,'metrics':[{'key':'generation_tps','label':msg('UI_MONITOR_GENERATION')}]},
     {'id':'input-tokens','label':msg('UI_MONITOR_INPUT_TOKENS'),'unit':msg('UI_MONITOR_TOKEN_UNIT'),'source':'models','factor':1,'metrics':[{'key':'input_tokens','label':msg('UI_MONITOR_INPUT_TOKENS')}]},
-    {'id':'output-tokens','label':msg('UI_MONITOR_OUTPUT_TOKENS'),'unit':msg('UI_MONITOR_TOKEN_UNIT'),'source':'models','factor':1,'metrics':[{'key':'output_tokens','label':msg('UI_MONITOR_OUTPUT_TOKENS')}]},
-    {'id':'call-duration-median','label':msg('UI_MONITOR_CALL_LATENCY') ~ ' · ' ~ msg('UI_MONITOR_MEDIAN'),'unit':msg('UI_MONITOR_SECONDS'),'source':'models','factor':0.001,'metrics':[{'key':'call_p50_ms','label':msg('UI_MONITOR_MEDIAN')}]},
-    {'id':'call-duration-p95','label':msg('UI_MONITOR_CALL_LATENCY') ~ ' · ' ~ msg('UI_MONITOR_P95'),'unit':msg('UI_MONITOR_SECONDS'),'source':'models','factor':0.001,'metrics':[{'key':'call_p95_ms','label':msg('UI_MONITOR_P95')}]}] %}
+    {'id':'output-tokens','label':msg('UI_MONITOR_OUTPUT_TOKENS'),'unit':msg('UI_MONITOR_TOKEN_UNIT'),'source':'models','factor':1,'metrics':[{'key':'output_tokens','label':msg('UI_MONITOR_OUTPUT_TOKENS')}]}] %}
 {% elif view == 'overview' %}
   {% set chart_panels = [
     {'id':'request-output-speed','label':msg('UI_MONITOR_REQUEST_OUTPUT_SPEED'),'unit':msg('UI_MONITOR_TPS'),'source':'requests','factor':1,'metrics':[{'key':'request_output_tps','label':msg('UI_MONITOR_REQUEST_OUTPUT_SPEED')}]},

@@ -1145,6 +1145,7 @@ async def admin_turns(request: web.Request) -> web.Response:
         limit = int(request.query.get("limit", "50"))
     except ValueError:
         limit = 50
+    limit = max(1, min(limit, 200))
     raw = _load_recent_turns(limit=limit)
     rows = []
     for t in raw:
@@ -1167,7 +1168,7 @@ async def admin_turns(request: web.Request) -> web.Response:
         request,
         json_payload={"rows": rows, "total": len(rows)},
         template="turns.html",
-        template_ctx={"rows": rows},
+        template_ctx={"rows": rows, "limit": limit, "turn_timezone": _C.DEFAULT_TIMEZONE},
     )
 
 

@@ -4,8 +4,9 @@
 web aperte (spec sites F1 §3.4).
 
 Vettoriale (§2.1): `session_ids: array[str]` (o `from_step`) → una entry per
-pagina distinta raccolta, seguita dalla pagina corrente. Solo quest'ultima
-contiene moduli e screenshot. Lo screenshot è SEMPRE redatto dal broker
+fonte distinta raccolta. Moduli e screenshot appartengono alla pagina corrente;
+se non coincide con una fonte, sono restituiti in `current_pages`.
+Lo screenshot è SEMPRE redatto dal broker
 (§3.3: overlay nero sui
 campi segreti prima del capture). Il contenuto post-login è marcato
 `sensitive:true` → resta LOCALE, mai frontier (§3.5 taint `no_frontier`).
@@ -57,6 +58,7 @@ def invoke(args: dict) -> dict:
 
     entries = []
     attachments = []
+    current_pages = []
     any_sensitive = False
     for sid in session_ids:
         res = session_client.session_read(
@@ -93,18 +95,34 @@ def invoke(args: dict) -> dict:
             })
         pages = [page for page in (res.get("pages") or []) if isinstance(page, dict)]
         if pages:
-            # A collection's pages are distinct sources; the last one is the
-            # current read, which alone carries forms and screenshot.
-            entry["text"] = pages[-1].get("text", "")
-            entries.extend({"session_id": sid, "ok": True, "url": scrub_url(page.get("url")),
-                            "title": page.get("title", ""), "text": page.get("text", ""),
-                            "sensitive": sensitive} for page in pages[:-1])
-        entries.append(entry)
+            # Each captured page owns its provenance. Current-page forms and
+            # picture cannot describe the last source merely by position.
+            for page in pages:
+                source = {"session_id": sid, "ok": True,
+                          "url": scrub_url(page.get("url")),
+                          "title": page.get("title", ""),
+                          "text": page.get("text", ""), "sensitive": sensitive}
+                if entry.get("_source_scope_label"):
+                    source["_source_scope_label"] = entry["_source_scope_label"]
+                if isinstance(page.get("_source_record_view"), dict):
+                    source["_source_record_view"] = dict(page["_source_record_view"])
+                if page.get("current") is True:
+                    for key in ("forms", "screenshot_path"):
+                        if key in entry:
+                            source[key] = entry[key]
+                entries.append(source)
+            if not any(page.get("current") is True for page in pages):
+                if include_forms or shot:
+                    current_pages.append({k: v for k, v in entry.items() if k != "text"})
+        else:
+            entries.append(entry)
 
     ok = any(e.get("ok") for e in entries)
     out = {"ok": ok, "entries": entries}
     if attachments:
         out["attachments"] = attachments
+    if current_pages:
+        out["current_pages"] = current_pages
     if any_sensitive:
         # §3.5: contenuto autenticato → describe/sintesi restano LOCALI.
         out["no_frontier"] = True

@@ -2,7 +2,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "act_sites"
-version     = "0.2.3"
+version     = "0.2.4"
 intelligence = "agentic"
 # Four available sessions, each with a five-minute active search budget.
 timeout_s   = 1800
@@ -18,12 +18,12 @@ affinity    = [
 ]
 
 [description]
-it = "SCOPO: naviga a un fine dentro una sessione web, con conferma se sensibile. PATTERN: act_sites(from_step=2, action=\"fatture 2026\", ambito=\"personale\"). NON: pagina senza stato -> read_urls_html; niente CSS/XPath. OUT: results=[{session_id,ok,url}]."
-en = "SCOPO: reach a goal inside a web session, with consent when sensitive. PATTERN: act_sites(from_step=2, action=\"invoices 2026\", ambito=\"personale\"). NON: stateless page -> read_urls_html; no CSS/XPath. OUT: results=[{session_id,ok,url}]."
+it = "SCOPO: naviga a un fine dentro una sessione web, con conferma se sensibile. PATTERN: act_sites(from_step=2, action=\"fatture 2026\", ambito=\"personale\"). NON: pagina senza stato -> read_urls_html; niente CSS/XPath. OUT: results=[{session_id,ok,url}]; dati incompleti: partial=true e partial_reason, lettura consentita."
+en = "SCOPO: reach a goal inside a web session, with consent when sensitive. PATTERN: act_sites(from_step=2, action=\"invoices 2026\", ambito=\"personale\"). NON: stateless page -> read_urls_html; no CSS/XPath. OUT: results=[{session_id,ok,url}]; incomplete data: partial=true and partial_reason, reading may continue."
 
 [code]
 files = ["act_sites.py"]
-digest = "sha256:3e53c6a92a5b3dc250ea965198285efb0ee6412d8880a172ccbb77f2191a10ce"
+digest = "sha256:03004b04d5d26564842f2fa560e66e141c5ac52e0ac230e4b0bdcecf596111ea"
 
 [args]
 type = "object"
@@ -77,7 +77,7 @@ en = "Runtime only: treat action as the semantic goal to reach before reading."
 
 [output]
 schema_inline = """
-{ok: bool, collection_partial?: bool, results: Array<{session_id: str, ok: bool, executed: bool, primitive?: str, url?: str, text?: str, collection_partial?: bool, reason_code?: str}>}
+{ok: bool, partial?: bool, partial_reason?: str, collection_partial?: bool, results: Array<{session_id: str, ok: bool, executed: bool, primitive?: str, url?: str, text?: str, collection_partial?: bool, reason_code?: str}>}
 """
 
 [[capabilities]]

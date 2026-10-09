@@ -37,11 +37,8 @@ def _filters(query, *, now=None):
         end = _iso(now)
     else:
         raise ValueError("invalid_period")
-    filters = {"from": start, "to": end, "origin": query.get("origin") or "interactive"}
+    filters = {"from": start, "to": end}
     filters.update({name: query[name] for name in FILTERS if query.get(name)})
-    # Campo vuoto esplicito = tutti; default esclude le attività in background.
-    if "origin" in query and not query["origin"]:
-        filters.pop("origin", None)
     return filters, period
 
 

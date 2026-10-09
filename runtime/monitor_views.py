@@ -23,7 +23,8 @@ MAX_TIMELINE_CALLS = 1024
 _BUCKET_SECONDS = (1, 5, 10, 30, 60, 120, 300, 600, 900, 1800,
                    3600, 7200, 21600, 86400)
 _CALL_METRICS = ("input_tokens", "output_tokens", "prefill_tps",
-                 "generation_tps", "call_output_tps", "call_p50_ms", "call_p95_ms", "coverage_pct")
+                 "generation_tps", "call_output_tps", "call_mean_ms",
+                 "call_p50_ms", "call_p95_ms", "coverage_pct")
 
 
 def _instant(value: Any) -> datetime | None:
@@ -123,6 +124,8 @@ def _call_metrics(calls: list[Mapping[str, Any]]) -> dict[str, dict[str, Any]]:
         ((row.get("output_tokens"), row.get("call_wall_ms")) for row in calls), total)
     durations = [duration for row in calls
                  if (duration := _number(row.get("call_wall_ms"))) is not None]
+    result["call_mean_ms"] = _cell(
+        sum(durations) / len(durations) if durations else None, len(durations), total)
     for name, fraction in (("call_p50_ms", .5), ("call_p95_ms", .95)):
         result[name] = _cell(percentile(durations, fraction), len(durations), total)
     known = _complete_calls(calls)
@@ -281,7 +284,8 @@ def build_view(
         summary[f"call_{name}"] = {"value": cell["value"] if cell["known"] or calls else 0,
                                   "known": cell["known"], "expected": cell["total"],
                                   "complete": cell["known"] == cell["total"]}
-    for name in ("prefill_tps", "generation_tps", "call_output_tps", "call_p50_ms", "call_p95_ms"):
+    for name in ("prefill_tps", "generation_tps", "call_output_tps", "call_mean_ms",
+                 "call_p50_ms", "call_p95_ms"):
         summary[name] = call_metrics[name]["value"]
     for prefix, field in (("active", "e2e_active_ms"), ("wall", "e2e_wall_ms")):
         for suffix, fraction in (("p50_ms", .5), ("p95_ms", .95)):

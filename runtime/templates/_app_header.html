@@ -1,0 +1,24 @@
+<header class="app-header">
+  {% if not header_chat %}
+  <button class="nav-toggle" id="navToggle" type="button" aria-expanded="false" aria-controls="sidebar"
+          aria-label="{{ msg('UI_SETTINGS_MENU_TOGGLE') }}">
+    <span></span><span></span><span></span>
+  </button>
+  {% endif %}
+  <a class="brand" href="/">Metnos</a>
+  <span class="role">{{ msg("MSG_CHAT_ROLE_ADMIN") if header_role == "admin" else msg("MSG_CHAT_ROLE_USER") }}</span>
+  <span class="grow"></span>
+  {% if header_chat %}
+  <a href="#" id="copyChatBtn" title="{{ msg('MSG_CHAT_COPY_ALL_HINT') }}">{{ msg("MSG_CHAT_COPY_ALL") }}</a>
+  {% else %}
+  <a href="/">{{ msg("UI_SETTINGS_CHAT") }}</a>
+  {% endif %}
+  {% if header_role == "admin" %}
+  <a href="/admin"{% if not header_chat %} aria-current="page"{% endif %}>{{ msg("MSG_CHAT_SETTINGS") }}</a>
+  <form method="post" action="/admin/logout">
+    <button type="submit">{{ msg("MSG_CHAT_LOGOUT") }}</button>
+  </form>
+  {% else %}
+  <a href="/admin/login">{{ msg("MSG_CHAT_SETTINGS") }}</a>
+  {% endif %}
+</header>

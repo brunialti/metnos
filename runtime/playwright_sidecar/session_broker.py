@@ -265,12 +265,13 @@ _ENUMERATE_ACTION_TARGETS_JS = r"""
   };
   document.querySelectorAll('[data-metnos-action-id]').forEach(
     el => el.removeAttribute('data-metnos-action-id'));
-  const standard = Array.from(document.querySelectorAll(
+  const standardSelector =
     'a,button,input,textarea,select,[role=button],[role=link],'
     + '[role=tab],[role=menuitem],[role=checkbox],[role=radio],'
     + '[role=combobox],[role=option],[role=menuitemradio],'
     + '[contenteditable=true],summary,'
-    + '[tabindex]:not([tabindex="-1"]),[onclick]'));
+    + '[tabindex]:not([tabindex="-1"]),[onclick]';
+  const standard = Array.from(document.querySelectorAll(standardSelector));
   // React e altri framework possono rendere cliccabile un div senza ruolo o
   // onclick DOM. Accetta solo un insieme bounded di nodi VISIBILI con
   // cursor:pointer e testo breve: restano poi soggetti a topmost, firma e gate
@@ -300,13 +301,52 @@ _ENUMERATE_ACTION_TARGETS_JS = r"""
     if (!text || text.length > 160) continue;
     pointer.push(el);
   }
+  // cursor:pointer is inherited: a custom component, its native control and
+  // the control's label can describe one action. Keep the semantic control
+  // only when the pointer node has the same observed label and a single
+  // standard target. Explicit independent actions and distinct labels stay.
+  // querySelectorAll is already in document order. Binary search locates the
+  // first possible descendant without rescanning every wrapper's subtree.
+  const duplicateOfStandard = el => {
+    if (typeof el.onclick === 'function' || el.matches(
+        '[aria-controls],[aria-expanded],[aria-haspopup],[popovertarget],[commandfor]'))
+      return false;
+    const sameLabel = target => {
+      const name = metnosNameOf(el).trim().replace(/\s+/g, ' ');
+      const text = metnosTextOf(el);
+      if (!name || !text || name !== metnosNameOf(target).trim().replace(/\s+/g, ' ')
+          || text !== metnosTextOf(target)) return false;
+      const rect = target.getBoundingClientRect();
+      if (rect.width < 2 || rect.height < 2) return false;
+      for (let p = target, depth = 0; p; p = p.parentElement, depth++) {
+        const style = getComputedStyle(p);
+        if (depth >= 64 || p.hidden || style.display === 'none' || style.visibility !== 'visible'
+            || style.contentVisibility === 'hidden'
+            || Number.parseFloat(style.opacity || '1') < 0.05) return false;
+      }
+      return true;
+    };
+    const ancestor = el.parentElement?.closest(standardSelector);
+    if (ancestor) return sameLabel(ancestor);
+    let lo = 0, hi = standard.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      if (standard[mid].compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING)
+        lo = mid + 1;
+      else hi = mid;
+    }
+    const target = standard[lo];
+    return !!target && el.contains(target)
+      && !(standard[lo + 1] && el.contains(standard[lo + 1])) && sameLabel(target);
+  };
+  const canonicalPointer = pointer.filter(el => !duplicateOfStandard(el));
   // Expensive accessible-name/context/topmost extraction is bounded. Preserve
   // every visible semantic control ahead of off-viewport/hidden controls so a
   // portal menu appended late in a very large DOM is still observable, while
   // retaining a bounded tail for scroll/reveal discovery.
   const visibleEls = [];
   const otherEls = [];
-  const ordered = Array.from(new Set([...standard, ...pointer]));
+  const ordered = Array.from(new Set([...standard, ...canonicalPointer]));
   ordered.sort((a, b) => {
     const relation = a.compareDocumentPosition(b);
     if (relation & Node.DOCUMENT_POSITION_FOLLOWING) return -1;
@@ -342,20 +382,33 @@ _ENUMERATE_ACTION_TARGETS_JS = r"""
     return Array.from(new Set(out));
   };
   const contextOf = el => {
+    const levels = [];
     for (let p = el.parentElement, depth = 0; p && depth < 8;
          p = p.parentElement, depth++) {
       const labelled = p.getAttribute('aria-label') || '';
-      if (labelled.trim()) return labelled.trim().slice(0, 200);
-      const heading = p.querySelector(
+      const parts = labelled.trim() ? [labelled.trim().slice(0, 200)] : [];
+      const headings = Array.from(p.querySelectorAll(
         ':scope > h1,:scope > h2,:scope > h3,:scope > h4,' +
-        ':scope > [role=heading]');
-      const text = heading ? (heading.innerText || heading.textContent || '') : '';
-      if (text.trim()) return text.trim().replace(/\s+/g, ' ').slice(0, 200);
+        ':scope > [role=heading]')).slice(0, 4);
+      for (const heading of headings) {
+        const r = heading.getBoundingClientRect();
+        const st = getComputedStyle(heading);
+        if (r.width < 2 || r.height < 2 || st.display === 'none' ||
+            st.visibility === 'hidden' ||
+            Number.parseFloat(st.opacity || '1') < 0.05) continue;
+        const text = (heading.innerText || '').trim().replace(/\s+/g, ' ');
+        if (text) parts.push(text.slice(0, 200));
+      }
+      if (parts.length) levels.push(parts);
+      if (p.matches('main,[role=main],body')) break;
     }
-    return '';
+    // A field heading must not hide the collection containing its row. Keep
+    // only observed labels/headings, never the row's private record text.
+    return Array.from(new Set(levels.reverse().flat())).join(' | ').slice(0, 300);
   };
   const enumeratedIds = new Set();
-  // Keep record context local: only its digest leaves enumeration. Repeated
+  // Keep record context local: candidates expose its digest; the collector
+  // retains row text privately for extraction-source association. Repeated
   // actions follow visible rows, never their position or editable values.
   const recordExcluded = 'nav,menu,header,footer,aside,[role=navigation],'
     + '[role=menu],[role=menuitem],input,textarea,select,option,'
@@ -1929,20 +1982,24 @@ async def _read_impl(entry, session_id, include_screenshot, include_forms,
             except Exception:  # noqa: BLE001
                 break
     if collected:
-        # Captured pages are distinct sources with their own URL; only a page
-        # with the identity of the current one is that page read again. Forms
-        # and screenshot belong to the current read, even when it is empty.
+        # Collection membership comes from an observation, not from the page
+        # where traversal happened to return. Keep each captured snapshot;
+        # an unobserved SPA change must not replace it at the same URL.
         current = _page_identity(page.url, _context_key(
             await _enumerate_candidates(page)), text)
+        from sites_collection_sources import record_views
+        sources = record_views(collected, entry.get("collection_record_views") or [], session_id)
         pages = [{"url": scrub_url(str(item.get("url") or "")),
-                  "title": str(item.get("title") or ""), "text": str(item["text"])}
-                 for item in collected if _page_identity(
-                     str(item.get("url") or ""), str(item.get("context") or ""),
-                     str(item["text"])) != current]
-        # The current read is the last page; the joined text keeps every page.
-        out["pages"] = [*pages, {"url": out["url"], "title": title, "text": text}]
-        text = "\n\n".join(item["text"] for item in out["pages"] if item["text"])
-        out["collected_page_count"] = sum(bool(item["text"]) for item in out["pages"])
+                  "title": str(item.get("title") or ""), "text": str(item["text"]),
+                  **({"_source_record_view": item["_source_record_view"]}
+                     if item.get("_source_record_view") else {}),
+                  "current": _page_identity(
+                      str(item.get("url") or ""), str(item.get("context") or ""),
+                      str(item["text"])) == current}
+                 for item in sources]
+        out["pages"] = pages
+        text = "\n\n".join(item["text"] for item in pages if item["text"])
+        out["collected_page_count"] = len(pages)
     out["text"] = text
     if goal:
         tratto = text if collected else _goal_text_span(text, goal)
@@ -2337,7 +2394,7 @@ def _action_destination(primitive: str, target: str,
     return scrub_url(raw), _canonical_host(split.hostname or "")
 
 
-async def _enumerate_candidates(page) -> list[dict]:
+async def _enumerate_candidates(page, *, record_contexts: dict | None = None) -> list[dict]:
     try:
         out = await asyncio.wait_for(
             page.evaluate(_ENUMERATE_ACTION_TARGETS_JS),
@@ -2350,6 +2407,13 @@ async def _enumerate_candidates(page) -> list[dict]:
             if isinstance(context, str) and context:
                 candidate["_record_context_key"] = hashlib.sha256(
                     context.encode("utf-8")).hexdigest()
+                if record_contexts is not None:
+                    try:
+                        parts = json.loads(context)
+                        if isinstance(parts, list) and len(parts) == 3 and isinstance(parts[2], str):
+                            record_contexts[candidate["_record_context_key"]] = parts[2]
+                    except (ValueError, TypeError):
+                        pass
         return out
     except Exception:
         return []
@@ -3122,11 +3186,15 @@ async def _discover_collection(entry: dict, session_id: str,
                  "found": False, "pages": set()}
         entry["collection_search"] = state
         entry.pop("collected_pages", None)
+        entry.pop("collection_record_views", None)
         entry.pop("_source_scope_label", None)
+
+    record_contexts = {}
 
     async def read_controls(page, observed=None):
         candidates = action_resolver.goal_navigation_candidates(
-            observed if observed is not None else await _enumerate_candidates(page),
+            observed if observed is not None else await _enumerate_candidates(
+                page, record_contexts=record_contexts),
             include_offscreen=True, include_covered=True)
         return _collapse_collection_links([c for c in candidates
             if str(c.get("form_method") or "").upper() != "POST"
@@ -3160,7 +3228,7 @@ async def _discover_collection(entry: dict, session_id: str,
         if 0 <= replay_index < len(replay_frames) - 1:
             # A replay passes through pages already read at their first visit:
             # scroll only to reach a saved control or to read a page to decide.
-            observed = await _enumerate_candidates(page)
+            observed = await _enumerate_candidates(page, record_contexts=record_contexts)
             saved = replay_frames[replay_index + 1]["via"]["key"]
             passing = any(login_navigation.candidate_key(c) == saved
                           for c in await read_controls(page, observed))
@@ -3184,7 +3252,7 @@ async def _discover_collection(entry: dict, session_id: str,
                     if remaining > _MAX_COLLECTION_SCROLLS else
                     ("max_actions", login_navigation.COLLECTION_MAX_ACTIONS))
             if observed is None or scrolls:
-                observed = await _enumerate_candidates(page)
+                observed = await _enumerate_candidates(page, record_contexts=record_contexts)
         if covered_controls(observed):
             # A modal may appear during scrolling. Try its existing safe
             # exit, but keep covered routes for semantic selection: a fixed
@@ -3195,12 +3263,12 @@ async def _discover_collection(entry: dict, session_id: str,
                 state["rejection"] = {"phase": "overlay_changed_page",
                                       "same_page": entry["page"] is page}
                 return {"terminal": {"ok": False, "error_class": "target_changed"}}
-            observed = await _enumerate_candidates(page)
+            observed = await _enumerate_candidates(page, record_contexts=record_contexts)
         context_controls = await read_controls(page, observed)
 
         async def read_context():
             nonlocal context_controls, observed
-            observed = await _enumerate_candidates(entry["page"])
+            observed = await _enumerate_candidates(entry["page"], record_contexts=record_contexts)
             context_controls = await read_controls(entry["page"], observed)
             return context_controls
 
@@ -3272,6 +3340,18 @@ async def _discover_collection(entry: dict, session_id: str,
         # Scrolling is not a new node; a changed SPA page at the same URL is.
         controls = [{**c, "visible": True, "in_viewport": True, "topmost": True}
                     for c in candidates]
+        pending_view = state.pop("pending_record_view", None)
+        snapshot_key = _page_identity(
+            snapshot.get("url") or page.url, snapshot_context, snapshot["text"])
+        if (pending_view and pending_view["parent"] != snapshot_key and any(
+                p.get("key") == snapshot_key for p in entry.get("collected_pages", []))):
+            # A successful button can return to a detail already observed
+            # through the archive. The navigator need not decide that cycle
+            # again; its unchanged captured snapshot proves the new edge.
+            edge = {**pending_view, "detail": snapshot_key}
+            edges = entry.setdefault("collection_record_views", [])
+            if edge not in edges:
+                edges.append(edge)
         return {"key": login_navigation.state_key(page.url, controls) + content_key,
                 # Returning to the same full URL may redraw unrelated cards.
                 # The navigator rechecks each saved edge, including context;
@@ -3279,8 +3359,11 @@ async def _discover_collection(entry: dict, session_id: str,
                 "location_key": hashlib.sha256((page.url + state.get("context", {}).get(
                     "value_key", "")).encode()).hexdigest(),
                 "url": page.url, "page": page, "candidates": candidates,
-                "snapshot": {**snapshot, "context": snapshot_context, "key": _page_identity(
-                    snapshot.get("url") or page.url, snapshot_context, snapshot["text"])}}
+                "record_parent": pending_view,
+                "snapshot": {**snapshot, "context": snapshot_context,
+                    "records": {c["_record_context_key"]: record_contexts[c["_record_context_key"]]
+                        for c in candidates if c.get("_record_context_key") in record_contexts},
+                    "key": snapshot_key}}
 
     async def choose(observation, tried):
         # Pages repeat menus, breadcrumbs and links to themselves. A GET of a
@@ -3292,7 +3375,24 @@ async def _discover_collection(entry: dict, session_id: str,
         opened = state.setdefault("opened_links", set()) | {
             _link_destination({"href": root}, root)}
         for c in observation["candidates"]:
-            if _link_destination(c, observation["url"]) in opened - {""}:
+            destination = _link_destination(c, observation["url"])
+            if destination in opened - {""}:
+                # The same bound row may occur in a preview and its archive.
+                # A previously observed detail link establishes their shared
+                # resource without clicking it again. Text alone never does.
+                record = c.get("_record_context_key")
+                known = {e["detail"] for e in entry.get("collection_record_views", [])
+                         if record and e.get("record") == record}
+                matches = [p for p in entry.get("collected_pages", [])
+                           if p.get("key") in known
+                           and _link_destination({"href": p.get("url")},
+                                                 observation["url"]) == destination]
+                if len(matches) == 1:
+                    edge = {"parent": observation["snapshot"]["key"],
+                            "record": record, "detail": matches[0]["key"]}
+                    edges = entry.setdefault("collection_record_views", [])
+                    if edge not in edges:
+                        edges.append(edge)
                 tried.add(login_navigation.candidate_key(c))
         candidates = [c for c in observation["candidates"]
                       if login_navigation.candidate_key(c) not in tried]
@@ -3304,6 +3404,12 @@ async def _discover_collection(entry: dict, session_id: str,
                 if snapshot["text"] and not any(
                         item.get("key") == snapshot["key"] for item in collected):
                     collected.append(snapshot)
+                parent = observation.get("record_parent")
+                if parent and snapshot["text"] and parent["parent"] != snapshot["key"]:
+                    edge = {**parent, "detail": snapshot["key"]}
+                    edges = entry.setdefault("collection_record_views", [])
+                    if edge not in edges:
+                        edges.append(edge)
             sites_audit.record(
                 "collection_observation", owner=entry.get("owner", ""),
                 session_id=session_id, domain=entry.get("domain", ""),
@@ -3322,7 +3428,12 @@ async def _discover_collection(entry: dict, session_id: str,
             continuation = action_resolver.choose_goal_continuation_candidate(
                 target, [probe]).get("ok", False)
         return {"candidate": candidate, "model_selected": True,
-                "confidence": 0.5, "continuation": continuation}
+                "confidence": 0.5, "continuation": continuation,
+                "record_parent": {"parent": observation["snapshot"]["key"],
+                    "record": candidate["_record_context_key"]}
+                    if candidate.get("collection_purpose") == "detail"
+                    and candidate.get("_record_context_key") in observation["snapshot"]["records"]
+                    else None}
 
     def audit_failed_action(result, primitive, replay, started):
         # Every refused effect names itself: a terminal `target_changed`
@@ -3364,6 +3475,8 @@ async def _discover_collection(entry: dict, session_id: str,
             await _wait_for_goal_content_change(
                 entry, (prepared.get("plan") or {}).get("facet_sig_before", ""),
                 _goal_facet_signature)
+            if not choice.get("replay") and choice.get("record_parent"):
+                state["pending_record_view"] = choice["record_parent"]
         return result
 
     async def restore(root):
@@ -3547,6 +3660,15 @@ async def _frontier_collection_route(entry: dict, target: str,
         history = [label[:300] for label in history if label][-8:]
         for offset in range(0, len(eligible), 64):
             by_id = {str(c.get("id")): c for c in eligible[offset:offset + 64] if c.get("id")}
+            sites_audit.record(
+                "collection_route_window", owner=entry.get("owner", ""),
+                session_id=entry.get("_sid", ""), domain=entry.get("domain", ""),
+                offset=offset, controls=[{
+                    "id": cid, "kind": c.get("role") or c.get("tag") or "",
+                    "name": str(c.get("name") or c.get("label") or "")[:300],
+                    "context": str(c.get("context_name") or "")[:300],
+                    "record_bound": bool(c.get("_record_context_key")),
+                } for cid, c in by_id.items()])
             user = _bounded_action_prompt(
                 goal={"primitive": "navigate_toward_goal", "target": target,
                       "collection": True, "exhaustive": True,
@@ -3557,6 +3679,7 @@ async def _frontier_collection_route(entry: dict, target: str,
                     f"{cid}: {c.get('role') or c.get('tag')} "
                     f"{c.get('name') or c.get('label') or ''} | "
                     f"{str(c.get('context_name') or '')[:300]}"
+                    + (" | record_action=true" if c.get("_record_context_key") else "")
                     for cid, c in by_id.items()]},
                 history=history, forbidden="collection_navigation")
             search = entry.get("collection_search")
@@ -3575,9 +3698,14 @@ async def _frontier_collection_route(entry: dict, target: str,
                         {"navigate", "expand_collection", "detail"}))):
                 outcome = "invalid_response"
                 return None
+            sites_audit.record(
+                "collection_route_selection", owner=entry.get("owner", ""),
+                session_id=entry.get("_sid", ""), domain=entry.get("domain", ""),
+                offset=offset, selected_control=choice, purpose=purpose)
             if choice in by_id:
                 outcome = "route"
                 return {**by_id[choice],
+                        "collection_purpose": purpose,
                         "collection_continuation": purpose == "expand_collection"}
         return {}
     except asyncio.CancelledError:
@@ -3841,6 +3969,9 @@ async def _local_llm_choose_goal_window(entry, target, eligible, history, *,
             candidate_count=len(eligible), observation_complete=observation_complete,
             outcome=outcome.status, reason=outcome.reason,
             decision_failure=decision_failure,
+            selected_control=str((outcome.result or {}).get("id") or ""),
+            collection_observed=bool((outcome.result or {}).get("collection_observed")),
+            proximity=str((outcome.result or {}).get("proximity") or "none"),
             elapsed_ms=round((time.monotonic() - started) * 1000))
     return outcome.result
 

@@ -21,10 +21,12 @@ p.monitor-note{width:100%}
 .monitor-quality .warning{color:var(--warn-fg)}
 #monitor-series{display:flex;gap:var(--sp-2);flex-wrap:wrap;margin:var(--sp-3) 0}
 .monitor-series-item{display:inline-flex;gap:var(--sp-2);align-items:center;padding:.4rem .55rem;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-1);font-size:var(--fs-0)}
-.monitor-series-swatch{display:inline-block;width:1.5rem;flex:none}
 #monitor-charts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--sp-4);margin:var(--sp-4) 0}
 .monitor-chart-card{min-width:0;overflow:hidden;border:1px solid var(--border);border-radius:var(--r-2);background:var(--surface);padding:var(--sp-4)}
 .monitor-chart-card h3{margin:0 0 var(--sp-2)}
+.monitor-chart-legend{display:flex;flex-wrap:wrap;gap:var(--sp-2) var(--sp-4);list-style:none;padding:0;margin:0 0 var(--sp-3);font-size:var(--fs-1)}
+.monitor-chart-legend li{display:inline-flex;align-items:center;gap:var(--sp-2)}
+.monitor-chart-marker{width:10px;height:10px;border-radius:50%;flex:none}
 .monitor-chart-card .uplot{max-width:100%}
 .monitor-chart-area{min-width:0;width:100%}
 .monitor-chart-detail{display:block;overflow-wrap:anywhere;font-size:var(--fs-0);color:var(--muted);margin-top:var(--sp-2)}

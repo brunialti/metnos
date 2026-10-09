@@ -1,0 +1,7 @@
+{
+  "UI_GOOGLE_RENEW_TITLE": {"it": "Collegamento Google", "en": "Google connection"},
+  "UI_GOOGLE_RENEW_COMPLETE": {"it": "Autorizzazione rinnovata. Puoi chiudere questa pagina e tornare a Shibot.", "en": "Authorization renewed. You can close this page and return to Shibot."},
+  "UI_GOOGLE_RENEW_EXPIRED": {"it": "Questo collegamento è scaduto o è già stato utilizzato. Richiedi un nuovo collegamento a Shibot.", "en": "This link has expired or has already been used. Request a new link from Shibot."},
+  "UI_GOOGLE_RENEW_DENIED": {"it": "Autorizzazione non completata. Le credenziali precedenti sono conservate. Puoi riprovare da Shibot.", "en": "Authorization was not completed. Previous credentials are preserved. You can retry from Shibot."},
+  "UI_GOOGLE_RENEW_FAILED": {"it": "Il rinnovo non è riuscito. Le credenziali precedenti sono conservate. Richiedi un nuovo collegamento a Shibot.", "en": "Renewal failed. Previous credentials are preserved. Request a new link from Shibot."}
+}

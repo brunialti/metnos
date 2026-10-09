@@ -16,7 +16,7 @@
   const exportLink = document.getElementById("monitor-export");
   const plots = new Map();
   const listeners = [];
-  const palette = ["#0050d5", "#d43b00", "#00803a", "#aa0098", "#20252d", "#007b91", "#6740c8", "#987100", "#687583", "#79341d", "#617c00", "#ce1760"];
+  const palette = ["#0057d9", "#df2a00", "#008f28", "#d000c8", "#1b1b1b", "#b88700", "#008f9e", "#60209c", "#e45c98", "#795000", "#666d00", "#5d7f98"];
   const modelColors = new Map();
   let selected = null;
   let snapshot = null;
@@ -63,9 +63,9 @@
     target.addEventListener(type, handler);
     listeners.push(() => target.removeEventListener(type, handler));
   }
-  function style(key) {
+  function color(key) {
     const index = modelColors.get(key) ?? (key.endsWith("p95_ms") ? 1 : 0);
-    return { stroke: palette[index], dash: [undefined, [8, 3], [2, 3]][index % 3] };
+    return palette[index];
   }
   function identity(series) {
     const physical = series.physical_model_reported || series.physical_model_requested || labels.unknownModel;
@@ -100,9 +100,7 @@
       modelColors.set(key, index); used.add(index);
     }
     const paint = (swatch, key) => {
-      const line = style(key);
-      swatch.style.borderTop = selected.has(key)
-        ? `3px ${line.dash ? "dashed" : "solid"} ${line.stroke}` : "3px solid #737373";
+      swatch.style.backgroundColor = selected.has(key) ? color(key) : "#737373";
     };
     const signature = series.map(item => `${item.key}\u0000${identity(item)}`).join("\n");
     if (signature === selectionSignature) {
@@ -120,7 +118,7 @@
       input.type = "checkbox";
       input.value = item.key;
       input.checked = selected.has(item.key);
-      const swatch = node("span", "monitor-series-swatch");
+      const swatch = node("span", "monitor-chart-marker");
       swatch.setAttribute("aria-hidden", "true");
       paint(swatch, item.key);
       label.append(input, swatch, node("span", "", identity(item)));
@@ -158,6 +156,18 @@
         const card = node("section", "monitor-chart-card");
         card.dataset.metric = panel.id;
         card.append(node("h3", "", `${panel.label} · ${panel.unit}`));
+        if (panel.source === "requests") {
+          const legend = node("ul", "monitor-chart-legend");
+          for (const row of rows) {
+            const entry = node("li");
+            const marker = node("span", "monitor-chart-marker");
+            marker.style.backgroundColor = color(row.styleKey);
+            marker.setAttribute("aria-hidden", "true");
+            entry.append(marker, node("span", "", row.label));
+            legend.append(entry);
+          }
+          card.append(legend);
+        }
         const area = node("div", "monitor-chart-area");
         area.setAttribute("role", "img");
         area.setAttribute("aria-label", `${panel.label} · ${panel.unit}`);
@@ -168,8 +178,11 @@
         const options = {
           width: Math.max(240, area.clientWidth || chartRoot.clientWidth), height: 240,
           scales: { x: { time: true }, y: { range: (u, min, max) => [0, Math.max(1, max || 0) * 1.1] } },
-          series: [{}, ...rows.map(row => ({ label: row.label, ...style(row.styleKey), width: 3,
-            paths: () => null, spanGaps: false, points: { show: true, size: 7 } }))],
+          series: [{}, ...rows.map(row => {
+            const stroke = color(row.styleKey);
+            return { label: row.label, stroke, paths: () => null, spanGaps: false,
+              points: { show: true, size: 7, width: 1, fill: stroke } };
+          })],
           axes: [{ values: timeTicks }, { size: 62, values: (u, ticks) => ticks.map(value => number.format(value)) }],
           legend: { show: false }, cursor: { drag: { x: false, y: false } },
           hooks: { setCursor: [plot => showSample(item, plot.cursor.idx, panel)] },

@@ -158,10 +158,15 @@ rebuilt Tutor index.</p>
 <strong>Monitor &gt; Overview</strong> plots complete request throughput and duration;
 <strong>Requests</strong> opens an individual query and its calls;
 <strong>Model performance</strong> compares logical and physical identities,
-with full call throughput, prefill (PP) and generation (TG) shown first.
+with six charts in this order: full call throughput, mean call duration,
+prefill (PP), generation (TG), input tokens and output tokens. Mean duration
+in seconds is the arithmetic mean of observed full call durations per model
+and time bucket; missing timings are excluded, observed zeros are retained,
+and intervals without measurements remain empty.
 Filters cover period, channel and origin, with JSON export of the selected
-view. Interactive activity is the initial filter; other origins can be
-included.</p>
+view. Origin defaults to All: interactive, background and test activity are
+included, along with unattributed calls in model statistics. Selecting an
+origin restricts the view to that origin.</p>
 
 <p>LLM call throughput divides output tokens by full call duration,
 including prefill, generation, queueing and transport. The average is
@@ -173,7 +178,8 @@ Missing tokens or timings remain unknown. Aggregate rates use sums of valid
 token counts and durations.</p>
 
 <p>Charts refresh every five seconds while the page is visible.
-Distinct colors and line patterns identify the same series across charts.
+Charts show separate points; distinct colors identify the same series across charts.
+Legends use matching filled dots, without solid or dashed line samples.
 Dates show day/month and UTC time; the complete timestamp is available on hover.
 A buffer of 128 events per process hands measurements to a writer thread
 without waiting for disk. Lost events, incomplete data and stale collection

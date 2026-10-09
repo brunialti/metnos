@@ -3,7 +3,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "read_sites"
-version     = "0.2.0"
+version     = "0.2.1"
 timeout_s   = 120
 platforms   = ["linux"]
 author      = "Roberto Brunialti"
@@ -14,12 +14,12 @@ affinity    = [
 ]
 
 [description]
-it = "SCOPO: legge le pagine distinte raccolte e la pagina corrente di una sessione web aperta (post-login se autenticata). Moduli e screenshot REDATTO appartengono solo alla pagina corrente. PATTERN: login_sites → read_sites(from_step=2). NON: read_urls_html (pagina pubblica senza sessione); sites = sessione con stato. OUT: entries=[{session_id,url,title,text,screenshot_path,sensitive}] + gallery."
-en = "SCOPO: reads distinct collected pages and the current page of an open web session (post-login if authenticated). Forms and REDACTED screenshot belong only to the current page. PATTERN: login_sites → read_sites(from_step=2). NON: read_urls_html (public sessionless page); sites = a stateful session. OUT: entries=[{session_id,url,title,text,screenshot_path,sensitive}] + gallery."
+it = "SCOPO: legge le pagine distinte osservate durante la raccolta; senza raccolta legge la pagina corrente della sessione (post-login se autenticata). Ogni fonte conserva URL e titolo propri. Moduli e screenshot REDATTO descrivono solo la pagina corrente, separata in current_pages se esterna alla raccolta. PATTERN: login_sites → read_sites(from_step=2). NON: read_urls_html (pagina pubblica senza sessione); sites = sessione con stato. OUT: entries=[{session_id,url,title,text,screenshot_path,sensitive}] + gallery."
+en = "SCOPO: reads distinct pages observed during collection; without a collection reads the session's current page (post-login if authenticated). Each source retains its own URL and title. Forms and REDACTED screenshot describe only the current page, separate in current_pages when outside the collection. PATTERN: login_sites → read_sites(from_step=2). NON: read_urls_html (public sessionless page); sites = a stateful session. OUT: entries=[{session_id,url,title,text,screenshot_path,sensitive}] + gallery."
 
 [code]
 files  = ["read_sites.py"]
-digest = "sha256:d294dc0f07150553e3243ba695450542629cb8f729b96caba80eaaf6ce9fceea"
+digest = "sha256:464345bb27d77bc5f9bc3d4f87dad38e767e4333b4d0e9ea9894cf1a2b3d133d"
 
 [args]
 type     = "object"
@@ -56,6 +56,8 @@ schema_inline = """
   entries: Array<{session_id: str, ok: bool, url?: str, title?: str, text?: str,
                   forms?: Array, screenshot_path?: str, sensitive?: bool,
                   reason_code?: str}>,
+  current_pages?: Array<{session_id: str, ok: bool, url: str, title: str,
+                        forms?: Array, screenshot_path?: str, sensitive: bool}>,
   attachments?: Array<{kind: str, path: str, basename: str, mime: str, sensitive: bool}>,
   no_frontier?: bool,
   error?: str, error_class?: str

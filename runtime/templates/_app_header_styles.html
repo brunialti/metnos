@@ -1,0 +1,27 @@
+<style>
+.app-header{display:flex;flex-wrap:wrap;align-items:center;gap:.9rem;padding:.55rem 1rem;
+       background:var(--surface);border-bottom:1px solid var(--border);
+       position:sticky;top:0;z-index:210}
+.app-header .brand{font-weight:650;font-size:var(--fs-3);letter-spacing:-.01em;
+              display:inline-flex;align-items:center;gap:.5rem}
+.app-header .brand::before{content:"";width:10px;height:10px;border-radius:3px;
+              background:var(--accent);flex:none}
+.app-header .grow{flex:1}
+.app-header a{color:var(--muted);text-decoration:none;font-size:var(--fs-1);
+         font-weight:500;transition:color var(--t-1) var(--ease)}
+.app-header a:hover{color:var(--accent);text-decoration:none}
+.app-header .role{font-family:var(--font-mono);font-size:var(--fs-0);
+             color:var(--muted);background:var(--surface-2);
+             border:1px solid var(--border);
+             padding:.05rem .55rem;border-radius:var(--r-pill)}
+.app-header form{display:inline;padding:0;margin:0;background:none;border:none}
+.app-header form button{background:transparent;border:none;color:var(--muted);
+             padding:0;font:500 var(--fs-1) var(--font-ui);cursor:pointer;
+             transition:color var(--t-1) var(--ease)}
+.app-header form button:hover{color:var(--accent)}
+
+
+.app-header .brand{color:var(--ink);text-decoration:none}
+.app-header .nav-toggle{display:none}
+@media(max-width:920px){.app-header .nav-toggle{display:inline-flex}.app-header{gap:.6rem;padding:.45rem var(--sp-3)}.app-header .role{max-width:38vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
+</style>

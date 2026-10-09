@@ -1,0 +1,22 @@
+[Unit]
+Description=Metnos Google credential renewal
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=@PYTHON@ %h/.local/lib/metnos-google-oauth-renew/google_oauth_renew.py serve
+Environment=METNOS_OAUTH_PUBLIC_ORIGIN=@ORIGIN@
+Environment=METNOS_RUNTIME=@RUNTIME@
+UMask=0077
+Restart=on-failure
+RestartSec=5s
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=default.target

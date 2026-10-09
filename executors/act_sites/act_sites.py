@@ -49,6 +49,37 @@ _TRUNCATION_FIELDS = ("truncated", "truncated_what", "used", "available_total",
                       "cap_field", "cap_value")
 
 
+def _failure_message(results: list[dict]) -> str:
+    reason = next((r["reason_code"] for r in results if r.get("reason_code")),
+                  "action_failed")
+    if reason == "mandate_scope_exceeded":
+        message = _msg("MSG_SITES_RC_MANDATE_SCOPE_EXCEEDED")
+    elif reason == "navigation_failed":
+        message = _msg("MSG_SITES_RC_UNAVAILABLE")
+    elif reason == "side_browser_unavailable":
+        message = _msg("MSG_SITES_RC_SIDE_BROWSER_UNAVAILABLE")
+    elif reason == "selector_ambiguous":
+        # Il broker rifiuta di INDOVINARE fra piu' elementi equivalenti, ed
+        # e' giusto cosi'. Ma i candidati li ha gia' in mano
+        # (`observed_candidates`: nome, ruolo, punteggio): tacerli lascia
+        # l'utente davanti a «operazione fallita» senza sapere che la
+        # scelta e' sua e quale sia. Qui si nominano, bounded.
+        nomi = []
+        for riga in results:
+            for candidato in (riga.get("observed_candidates") or [])[:5]:
+                nome = str(candidato.get("name") or "").strip()
+                if nome and nome not in nomi:
+                    nomi.append(nome)
+        message = (_msg("MSG_SITES_RC_SELECTOR_AMBIGUOUS_LIST",
+                             candidates=", ".join(f"«{n}»" for n in nomi[:5]))
+                        if nomi else _msg("MSG_SITES_RC_SELECTOR_AMBIGUOUS"))
+    else:
+        message = _msg("ERR_OP_FAILED", reason="act_sites")
+    if str(message).startswith("<missing:"):
+        message = _msg("ERR_OP_FAILED", reason="act_sites")
+    return message
+
+
 def invoke(args: dict) -> dict:
     owner = os.environ.get("METNOS_ACTOR") or "host"
     channel = os.environ.get("METNOS_CHANNEL") or ""
@@ -105,11 +136,12 @@ def invoke(args: dict) -> dict:
         # broker. Legare la lettura al marcatore lasciava senza contenuto
         # proprio i turni piu' comuni.
         arrivo = {}
-        collection_partial = res.get("collection_partial") is True
+        collection_partial = (res.get("collection_partial") is True
+                              and bool(str(res.get("text") or "").strip()))
         # A failed collection carries only evidence saved before the failure.
-        # Do not read the current page or turn the failed search into success.
+        # Do not read the current page or certify the search as complete.
         letto = res if collection_partial else None
-        if (res.get("ok") and not res.get("no_match")
+        if (res.get("ok") and not collection_partial and not res.get("no_match")
                 and (goal_mode or is_goal_navigation_request(action))):
             try:
                 letto = session_client.session_read(
@@ -183,12 +215,18 @@ def invoke(args: dict) -> dict:
         gate["pending_sessions"] = list(tokens)
         return gate
 
-    ok = bool(results) and all(r["ok"] for r in results)
+    # The step delivers usable evidence from every session. Per-session ok
+    # still describes the search; partial explicitly forbids complete success.
+    ok = bool(results) and all(r["ok"] or r.get("collection_partial") for r in results)
     out = {"ok": ok, "results": results,
            "metadata": {"executed": sum(1 for r in results if r["executed"]),
                         "total": len(results)}}
-    if any(r.get("collection_partial") for r in results):
-        out["collection_partial"] = True
+    partials = [r for r in results if r.get("collection_partial")]
+    if partials:
+        out.update(collection_partial=True, partial=True,
+                   partial_reason=_msg("MSG_SITES_COLLECTION_PARTIAL",
+                                       reason=_failure_message(partials)),
+                   cap_expandable=False)
     cloud = sum(r.get("cloud_llm_calls", 0) for r in results)
     if cloud:
         out["cloud_llm_calls"] = cloud
@@ -198,13 +236,13 @@ def invoke(args: dict) -> dict:
     if attachments:
         out["attachments"] = attachments
     if ok:
-        if any(r.get("no_match") for r in results):
+        arrivato = next((r for r in results if r.get("text")), None)
+        if any(r.get("no_match") for r in results) and not arrivato:
             out["final_message_hint"] = _msg("MSG_NO_RESULTS")
             return out
         # Se la navigazione ha portato del contenuto, il contenuto E' la
         # risposta: «azioni completate: 1» sarebbe una ricevuta al posto di
         # cio' che l'utente aveva chiesto di vedere.
-        arrivato = next((r for r in results if r.get("text")), None)
         if arrivato:
             out["final_message_hint"] = arrivato["text"]
         else:
@@ -212,33 +250,10 @@ def invoke(args: dict) -> dict:
                 "MSG_SITES_ACTIONS_COMPLETED",
                 n=out["metadata"]["executed"])
     else:
-        out["error_class"] = next((r["reason_code"] for r in results
+        failures = [r for r in results if not r["ok"] and not r.get("collection_partial")]
+        out["error_class"] = next((r["reason_code"] for r in failures
                                    if r["reason_code"]), "action_failed")
-        if out["error_class"] == "mandate_scope_exceeded":
-            out["error"] = _msg("MSG_SITES_RC_MANDATE_SCOPE_EXCEEDED")
-        elif out["error_class"] == "navigation_failed":
-            out["error"] = _msg("MSG_SITES_RC_UNAVAILABLE")
-        elif out["error_class"] == "side_browser_unavailable":
-            out["error"] = _msg("MSG_SITES_RC_SIDE_BROWSER_UNAVAILABLE")
-        elif out["error_class"] == "selector_ambiguous":
-            # Il broker rifiuta di INDOVINARE fra piu' elementi equivalenti, ed
-            # e' giusto cosi'. Ma i candidati li ha gia' in mano
-            # (`observed_candidates`: nome, ruolo, punteggio): tacerli lascia
-            # l'utente davanti a «operazione fallita» senza sapere che la
-            # scelta e' sua e quale sia. Qui si nominano, bounded.
-            nomi = []
-            for riga in results:
-                for candidato in (riga.get("observed_candidates") or [])[:5]:
-                    nome = str(candidato.get("name") or "").strip()
-                    if nome and nome not in nomi:
-                        nomi.append(nome)
-            out["error"] = (_msg("MSG_SITES_RC_SELECTOR_AMBIGUOUS_LIST",
-                                 candidates=", ".join(f"«{n}»" for n in nomi[:5]))
-                            if nomi else _msg("MSG_SITES_RC_SELECTOR_AMBIGUOUS"))
-        else:
-            out["error"] = _msg("ERR_OP_FAILED", reason="act_sites")
-        if str(out["error"]).startswith("<missing:"):
-            out["error"] = _msg("ERR_OP_FAILED", reason="act_sites")
+        out["error"] = _failure_message(failures)
     return out
 
 

@@ -1618,6 +1618,13 @@ def handle_extract_entries(args, *, verbose: bool = False) -> dict:
             norm = _attach_runtime_evidence(
                 norm, entry if isinstance(entry, dict) else None, text,
                 len(records), relevance_terms, state_markers)
+            if isinstance(entry, dict) and isinstance(entry.get("_source_record_view"), dict):
+                norm["_source_record_view"] = {
+                    **entry["_source_record_view"],
+                    "single": (len(records) == 1 and max_per_text > 1
+                               and len(text) >= len(_pick_model_text(entry))
+                               and not out_truncated),
+                }
             # Provenienza privata riservata al runtime. Nelle estrazioni
             # confinate conserva il link osservato senza aprirlo.
             if drill_down is False and isinstance(entry, dict):
@@ -1795,6 +1802,8 @@ def handle_extract_entries(args, *, verbose: bool = False) -> dict:
             if total_capped:
                 break
 
+    from sites_collection_sources import merge_extracted_views
+    out, merged_views = merge_extracted_views(out)
     res = {
         "ok": True,
         "entries": out,
@@ -1808,6 +1817,8 @@ def handle_extract_entries(args, *, verbose: bool = False) -> dict:
         "selected_source_total": len(sources),
         "filtered_source_total": filtered_source_total,
     }
+    if merged_views:
+        res["merged_record_views"] = merged_views
     if relevance_terms:
         res["relevance_filter"] = True
         res["relevance_term_count"] = len(relevance_terms)

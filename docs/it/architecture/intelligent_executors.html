@@ -175,7 +175,9 @@
  se Frontier configurato non risponde, la raccolta resta incompleta.
  <code>METNOS_SITES_FRONTIER_ROUTES=0</code> disattiva questa scelta.</p>
  <p>I comandi visibili composti solo da simboli, come «&gt;», restano disponibili
- alla scelta. Frontier distingue l'espansione dello stesso elenco (archivio,
+ alla scelta. Per una raccolta completa, aver trovato un elenco non conclude
+ la ricerca: si percorrono le sue espansioni e i dettagli pertinenti disponibili.
+ Frontier distingue l'espansione dello stesso elenco (archivio,
  altri periodi o pagina successiva) dall'apertura di un dettaglio e dal percorso
  verso l'elenco. L'espansione non consuma un livello di profondità; il dettaglio
  arricchisce una voce già trovata. I nomi dei passaggi precedenti aiutano a
@@ -185,6 +187,16 @@
  Testi nascosti e campi modificabili non distinguono le righe; due righe
  visivamente identiche restano ambigue. Questo collegamento al comando non
  basta, da solo, a unire voci provenienti da pagine diverse.</p>
+ <p>Un componente e il testo interno di un pulsante possono esporre lo stesso
+ comando. Metnos conserva il controllo standard quando nome e testo coincidono
+ e il bersaglio è unico; controlli autonomi riconoscibili dai segnali osservati e scelte distinte restano disponibili.</p>
+ <p>Una navigazione riuscita collega la riga al dettaglio osservato. Se più
+ viste conducono allo stesso dettaglio e ciascuna estrae una sola voce,
+ Metnos le unisce: prevalgono i campi del dettaglio e restano le informazioni
+ presenti soltanto nell'elenco. Date e importi uguali non provano l'identità.
+ Viste mancanti, ambigue o limitate nel testo, nei record o nell'output restano
+ separate. Le osservazioni originali sono
+ conservate; la pagina corrente non aggiunge una fonte estranea alla raccolta.</p>
  <p>Questa raccolta usa 256 azioni e 300 secondi attivi, condivisi fra avanzamenti,
  scorrimenti e ritorni; tornando indietro non riscorre le pagine di passaggio
  il cui collegamento è già visibile e conserva i rami ancora da esplorare;
@@ -222,7 +234,10 @@
  escluse dai percorsi anche se il menu rimane aperto. «Fatture online» non indica
  una ricerca esterna; espressioni come «cerca online» la richiedono esplicitamente.</p>
  <p>Se un ostacolo successivo interrompe la ricerca, Metnos conserva i dati
- già osservati e segnala che la raccolta è incompleta. I pannelli sovrapposti
+ già osservati e consente di consegnarli anche in un foglio, dichiarando la
+ raccolta incompleta e la causa. Un rifiuto senza dati, un login fallito o un
+ consenso pendente fermano la sequenza; un comando ambiguo non propone di
+ aumentare il limite. I pannelli sovrapposti
  possono essere chiusi tramite comandi di uscita riconosciuti nel lessico
  multilingue, come «Chiudi modale»; restano esclusi invii e adesioni.</p>
  <p>I normali confini del sito e i moduli di consenso restano validi anche

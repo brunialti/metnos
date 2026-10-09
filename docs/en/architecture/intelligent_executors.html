@@ -172,7 +172,9 @@
  Frontier the local model decides; if a configured Frontier does not answer, the
  collection stays incomplete. <code>METNOS_SITES_FRONTIER_ROUTES=0</code> disables it.</p>
  <p>Visible controls made only of symbols, such as “&gt;”, remain available
- for selection. Frontier distinguishes expansion of the same list (an archive,
+ for selection. Finding a list does not complete an exhaustive request:
+ its available expansions and relevant record details are still explored.
+ Frontier distinguishes expansion of the same list (an archive,
  other periods or a next page) from opening an item's detail and navigating
  toward the list. Expansion does not consume a depth level; a detail enriches
  an existing item. Previously selected control names help keep the route
@@ -182,6 +184,16 @@
  editable fields do not distinguish rows; two visually identical rows remain
  ambiguous. This binding to a control does not, by itself, establish that
  items from different pages represent the same record.</p>
+ <p>A component and the text inside its button can expose the same action.
+ Metnos retains the standard control when name and text match and the target
+ is unique; independent controls identifiable from observed signals and distinct choices remain available.</p>
+ <p>Successful navigation connects a row to its observed detail. When several
+ views lead to that same detail and each extracts a single item, Metnos merges
+ them: detail fields take precedence and information found only in the list
+ survives. Equal dates and amounts do not establish identity. Missing or
+ ambiguous views, or views capped in text, records or output, remain separate.
+ Original observations are retained; the
+ current page does not add an unrelated source to the collection.</p>
  <p>This collection uses 256 actions and 300 active seconds, shared by forward
  steps, scrolling and returns; going back it does not scroll again through
  intermediate pages whose link is already visible and keeps branches still to explore;
@@ -219,7 +231,10 @@
  routes even when the menu remains open. “Online invoices” does not request
  an external search; phrases such as “search online” explicitly do.</p>
  <p>If a later obstruction interrupts the search, Metnos retains records
- already observed and reports the collection as incomplete. Overlays can be
+ already observed and allows their delivery in a spreadsheet, explicitly
+ reporting an incomplete collection and its cause. Refusal without data,
+ failed login or pending consent stops the sequence; an ambiguous action
+ does not offer a higher limit. Overlays can be
  dismissed through exit controls recognised by the multilingual lexicon,
  such as “Close modal”; submission and acceptance controls remain excluded.</p>
  <p>The usual site boundaries and consent forms still apply during search.
