@@ -153,6 +153,10 @@
  It proceeds only when the same unambiguous control reappears with its
  destination and context unchanged; a different, ambiguous or still missing
  control stops the path. This wait uses the existing search time budget.</p>
+ <p>Internal diagnostics distinguish a changed tab from a changed observation
+ during a return. For control-to-record binding they record each level's outcome
+ and bounded visibility and text counters; these data contain no page text,
+ addresses or values and do not change search decisions or limits.</p>
  <p>An address already opened during the search is not opened again from
  other pages or from itself; links merely shown elsewhere stay available in the
  new context. When a page already contains requested objects and the model

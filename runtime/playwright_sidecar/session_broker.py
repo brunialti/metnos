@@ -432,22 +432,40 @@ _ENUMERATE_ACTION_TARGETS_JS = r"""
     }
   }
   const recordTexts = new Map();
+  const recordTextDiagnostics = new Map();
+  const recordDiagnostics = new Map();
   const recordTextOf = scope => {
     if (recordTexts.has(scope)) return recordTexts.get(scope);
+    const diagnostic = {nodes: 0, excluded: 0, hidden: 0, depth_limit: 0,
+      hidden_attribute: 0, display_none: 0, visibility: 0,
+      content_visibility: 0, opacity: 0, geometry: 0, visible: 0, chars: 0,
+      node_limit: false, char_limit: false};
+    recordTextDiagnostics.set(scope, diagnostic);
     const walker = document.createTreeWalker(scope, NodeFilter.SHOW_TEXT);
     const parts = [];
     let inspected = 0, size = 0;
     for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-      if (++inspected > 512) { recordTexts.set(scope, ''); return ''; }
+      diagnostic.nodes = ++inspected;
+      if (inspected > 512) {
+        diagnostic.node_limit = true; recordTexts.set(scope, ''); return '';
+      }
       const parent = node.parentElement;
       const text = (node.nodeValue || '').trim().replace(/\s+/g, ' ');
-      if (!parent || !text || parent.closest(recordExcluded)) continue;
+      if (!parent || !text) continue;
+      if (parent.closest(recordExcluded)) { diagnostic.excluded++; continue; }
       let hidden = false;
       for (let p = parent, depth = 0; p; p = p.parentElement, depth++) {
         const style = getComputedStyle(p);
         if (depth >= 64 || p.hidden || style.display === 'none' || style.visibility !== 'visible'
             || style.contentVisibility === 'hidden'
             || Number.parseFloat(style.opacity || '1') < 0.05) {
+          diagnostic.hidden++;
+          diagnostic.depth_limit += Number(depth >= 64);
+          diagnostic.hidden_attribute += Number(p.hidden);
+          diagnostic.display_none += Number(style.display === 'none');
+          diagnostic.visibility += Number(style.visibility !== 'visible');
+          diagnostic.content_visibility += Number(style.contentVisibility === 'hidden');
+          diagnostic.opacity += Number(Number.parseFloat(style.opacity || '1') < 0.05);
           hidden = true; break;
         }
       }
@@ -455,9 +473,13 @@ _ENUMERATE_ACTION_TARGETS_JS = r"""
       const range = document.createRange();
       range.selectNodeContents(node);
       const rect = range.getBoundingClientRect();
-      if (rect.width < 1 || rect.height < 1) continue;
+      if (rect.width < 1 || rect.height < 1) { diagnostic.geometry++; continue; }
       size += text.length;
-      if (size > 4000) { recordTexts.set(scope, ''); return ''; }
+      diagnostic.chars = size;
+      if (size > 4000) {
+        diagnostic.char_limit = true; recordTexts.set(scope, ''); return '';
+      }
+      diagnostic.visible++;
       parts.push(text);
     }
     const text = parts.join(' ');
@@ -466,21 +488,42 @@ _ENUMERATE_ACTION_TARGETS_JS = r"""
   };
   const recordContextOf = el => {
     const family = actionFamilies.get(el);
+    const diagnostic = {family: family ? 'eligible' :
+      !el.matches('a,button,[role=button],[role=link]') ? 'not_action' :
+      el.closest(recordExcluded) ? 'excluded' : 'not_rendered',
+      levels: [], depth_limit: false,
+      pool_truncated: visibleEls.length > 480 || otherEls.length > 160};
+    recordDiagnostics.set(el, diagnostic);
     if (!family) return '';
     for (let scope = el.parentElement, depth = 0;
          scope && scope.parentElement && depth < 8;
          scope = scope.parentElement, depth++) {
-      if (scope.matches('body,main,nav,header,footer,aside,form')) break;
+      const level = {depth, outcome: ''};
+      diagnostic.levels.push(level);
+      if (scope.matches('body,main,nav,header,footer,aside,form')) {
+        level.outcome = 'boundary'; level.boundary = scope.tagName.toLowerCase(); break;
+      }
       const children = recordFamilies.get(scope.parentElement)?.get(family);
-      if (!children || children.get(scope) !== 1) continue;
+      if (!children) { level.outcome = 'family_missing'; continue; }
+      level.actions = children.get(scope) || 0;
+      level.siblings = children.size;
+      level.unique_siblings = Array.from(children.values()).filter(count => count === 1).length;
+      if (!children.has(scope)) { level.outcome = 'scope_missing'; continue; }
+      if (children.get(scope) !== 1) { level.outcome = 'multiple_actions'; continue; }
       const semantic = scope.matches('tr,li,article,[role=row],[role=listitem]');
-      const repeated = children.size > 1 && Array.from(children.values()).filter(
-        count => count === 1).length > 1;
-      if (!semantic && !repeated) continue;
+      const repeated = children.size > 1 && level.unique_siblings > 1;
+      level.semantic = semantic; level.repeated = repeated;
+      if (!semantic && !repeated) { level.outcome = 'not_record'; continue; }
       const text = recordTextOf(scope);
-      if (text && text !== metnosNameOf(el).trim().replace(/\s+/g, ' '))
+      level.text = recordTextDiagnostics.get(scope);
+      if (text && text !== metnosNameOf(el).trim().replace(/\s+/g, ' ')) {
+        level.outcome = 'bound';
         return JSON.stringify([scope.tagName, scope.getAttribute('role') || '', text]);
+      }
+      level.outcome = text ? 'action_only' : 'no_text';
     }
+    diagnostic.depth_limit = diagnostic.levels.length === 8
+      && diagnostic.levels[7].outcome !== 'boundary';
     return '';
   };
   for (const item of els) {
@@ -520,6 +563,7 @@ _ENUMERATE_ACTION_TARGETS_JS = r"""
       text: metnosTextOf(el),
       label, context_name: contextOf(el),
       _record_context: recordContextOf(el),
+      _record_diagnostics: recordDiagnostics.get(el),
       placeholder: el.getAttribute('placeholder') || '',
       href: el.href || '', download: el.hasAttribute('download'),
       dom_id: el.id || '', ancestor_ids: ancestors,
@@ -2394,6 +2438,44 @@ def _action_destination(primitive: str, target: str,
     return scrub_url(raw), _canonical_host(split.hostname or "")
 
 
+def _safe_record_diagnostics(value) -> dict:
+    """Keep only bounded counters and fixed outcomes, never DOM strings."""
+    if not isinstance(value, dict) or value.get("family") not in (
+            "eligible", "not_action", "not_rendered", "excluded"):
+        return {}
+    outcomes = {"boundary", "family_missing", "scope_missing", "multiple_actions",
+                "not_record", "no_text", "action_only", "bound"}
+    counters = {"nodes", "excluded", "hidden", "depth_limit", "hidden_attribute",
+                "display_none", "visibility", "content_visibility", "opacity",
+                "geometry", "visible", "chars"}
+    result = {"family": value["family"], "levels": [],
+              "depth_limit": value.get("depth_limit") is True,
+              "pool_truncated": value.get("pool_truncated") is True}
+    levels = value.get("levels")
+    for level in (levels[:8] if isinstance(levels, list) else []):
+        if (not isinstance(level, dict) or type(level.get("depth")) is not int
+                or not 0 <= level["depth"] < 8
+                or not isinstance(level.get("outcome"), str)
+                or level["outcome"] not in outcomes):
+            continue
+        safe = {"depth": level["depth"], "outcome": level["outcome"]}
+        if level.get("boundary") in ("body", "main", "nav", "header", "footer", "aside", "form"):
+            safe["boundary"] = level["boundary"]
+        safe.update({key: min(level[key], 1_000_000)
+                     for key in ("actions", "siblings", "unique_siblings")
+                     if type(level.get(key)) is int and level[key] >= 0})
+        safe.update({key: level[key] for key in ("semantic", "repeated")
+                     if type(level.get(key)) is bool})
+        stats = level.get("text")
+        if isinstance(stats, dict):
+            safe["text"] = {key: min(stats[key], 1_000_000) for key in counters
+                            if type(stats.get(key)) is int and stats[key] >= 0}
+            safe["text"].update({key: stats[key] for key in ("node_limit", "char_limit")
+                                 if type(stats.get(key)) is bool})
+        result["levels"].append(safe)
+    return result
+
+
 async def _enumerate_candidates(page, *, record_contexts: dict | None = None) -> list[dict]:
     try:
         out = await asyncio.wait_for(
@@ -2403,6 +2485,9 @@ async def _enumerate_candidates(page, *, record_contexts: dict | None = None) ->
         if not isinstance(out, list):
             return []
         for candidate in out:
+            diagnostic = _safe_record_diagnostics(candidate.pop("_record_diagnostics", None))
+            if diagnostic:
+                candidate["_record_diagnostics"] = diagnostic
             context = candidate.pop("_record_context", "")
             if isinstance(context, str) and context:
                 candidate["_record_context_key"] = hashlib.sha256(
@@ -3317,7 +3402,16 @@ async def _discover_collection(entry: dict, session_id: str,
                     match_count=sum(login_navigation.candidate_key(c) == expected
                                     for c in candidates))
             if entry["page"] is not page:
-                state["rejection"] = {"phase": "replay_page", "index": index}
+                current_url = entry["page"].url
+                current_context = state.get("context", {}).get("value_key", "")
+                state["rejection"] = {"phase": "replay_page", "index": index,
+                    **login_navigation.replay_page_diagnostics(
+                        frames[index]["observation"],
+                        {"page": entry["page"], "url": current_url,
+                         "context_key": hashlib.sha256(current_context.encode()).hexdigest(),
+                         "location_key": hashlib.sha256(
+                             (current_url + current_context).encode()).hexdigest()},
+                        producer="broker_page")}
                 return {"terminal": {"ok": False, "error_class": "target_changed"}}
         # A saved ambiguous edge still fails replay immediately. New choices
         # must see ambiguous controls to assess relevance; a selected one is
@@ -3358,6 +3452,8 @@ async def _discover_collection(entry: dict, session_id: str,
                 # a fresh semantic decision reads any remaining alternatives.
                 "location_key": hashlib.sha256((page.url + state.get("context", {}).get(
                     "value_key", "")).encode()).hexdigest(),
+                "context_key": hashlib.sha256(state.get("context", {}).get(
+                    "value_key", "").encode()).hexdigest(),
                 "url": page.url, "page": page, "candidates": candidates,
                 "record_parent": pending_view,
                 "snapshot": {**snapshot, "context": snapshot_context,
@@ -3668,6 +3764,8 @@ async def _frontier_collection_route(entry: dict, target: str,
                     "name": str(c.get("name") or c.get("label") or "")[:300],
                     "context": str(c.get("context_name") or "")[:300],
                     "record_bound": bool(c.get("_record_context_key")),
+                    **({"record_diagnostics": diagnostic} if (diagnostic :=
+                        _safe_record_diagnostics(c.get("_record_diagnostics"))) else {}),
                 } for cid, c in by_id.items()])
             user = _bounded_action_prompt(
                 goal={"primitive": "navigate_toward_goal", "target": target,

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from urllib.parse import urlsplit
 
 MAX_DEPTH = 4
 MAX_ACTIONS = 32
@@ -54,6 +55,36 @@ def state_key(url: str, candidates: list[dict]) -> str:
     # Full URL distinguishes hash/query SPA routes; only its digest is kept in
     # search identities. Raw bookmarks stay private to the broker's memory.
     return hashlib.sha256(json.dumps([url, controls]).encode()).hexdigest()
+
+
+def replay_page_diagnostics(previous: dict, current: dict, *, producer: str) -> dict:
+    """Explain the existing refusal using equality only; keep values private."""
+    result = {"producer": producer if producer in ("broker_page", "nav_refresh") else "unknown"}
+    for field, label in (("key", "observation"), ("location_key", "location_key"),
+                         ("context_key", "context_key")):
+        saved, observed = bool(previous.get(field)), bool(current.get(field))
+        result[f"saved_{label}_present"] = saved
+        result[f"current_{label}_present"] = observed
+        result[f"same_{label}"] = previous[field] == current[field] if saved and observed else None
+    result["same_page"] = (previous["page"] is current["page"]
+                           if previous.get("page") is not None
+                           and current.get("page") is not None else None)
+    before_url, after_url = previous.get("url"), current.get("url")
+    try:
+        before = urlsplit(before_url if isinstance(before_url, str) else "")
+        after = urlsplit(after_url if isinstance(after_url, str) else "")
+        available = bool(before.scheme and before.netloc and after.scheme and after.netloc)
+    except ValueError:
+        available = False
+    result["urls_present"] = available
+    for component in ("origin", "path", "query", "fragment"):
+        equal = None
+        if available:
+            equal = ((before.scheme, before.netloc) == (after.scheme, after.netloc)
+                     if component == "origin" else
+                     getattr(before, component) == getattr(after, component))
+        result[f"same_{component}"] = equal
+    return result
 
 
 def _failure(code: str) -> dict:
@@ -126,7 +157,9 @@ async def discover(state: dict, *, observe, choose, execute, restore,
             else:
                 if not refresh(frames[index], observation,
                                preserve=index < len(frames) - 1):
-                    state["rejection"] = {"phase": "replay_page", "index": index}
+                    state["rejection"] = {"phase": "replay_page", "index": index,
+                        **replay_page_diagnostics(frames[index]["observation"], observation,
+                                                  producer="nav_refresh")}
                     return _failure("target_changed")
                 if index == len(frames) - 1:
                     state.pop("replay", None)
