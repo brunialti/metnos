@@ -43,6 +43,7 @@ from playwright_sidecar import browser_surface
 from playwright_sidecar import cookie_privacy
 from playwright_sidecar import login_navigation
 from playwright_sidecar import collection_context
+from playwright_sidecar import action_errors
 import sites_audit
 import sites_observed  # ADR 0191 P4 — codici osservativi navigazione
 import sites_origin  # ADR 0191 P2 — il consenso appartiene a un'ORIGINE
@@ -5919,8 +5920,11 @@ async def _execute_plan(entry: dict, token: str, plan: dict) -> dict:
                 session_id=entry.get("_sid", ""),
                 domain=entry.get("domain", ""), added_host=destination_host,
                 source="approved_action_target")
+    # The failed operation, for diagnostics only: never a retry decision.
+    phase = "prepare"
     try:
         if primitive == "wait":
+            phase = "dispatch"
             await asyncio.sleep(min(20, max(1, int(plan.get("seconds") or 2))))
         elif primitive == "observe":
             pass
@@ -5928,8 +5932,10 @@ async def _execute_plan(entry: dict, token: str, plan: dict) -> dict:
             target_url = plan.get("target") or ""
             if not re.match(r"^https?://", target_url):
                 return {"ok": False, "error_class": "invalid_url"}
+            phase = "dispatch"
             _resp = await page.goto(target_url, wait_until="load",
                                     timeout=int(_OP_TIMEOUT_S * 1000))
+            phase = "after_dispatch"
             # ADR 0191 P4: codice osservativo (side-channel su entry).
             _sig = sites_observed.response_signals(_resp)
             entry["observed_reason"] = sites_observed.observational_reason(
@@ -5937,6 +5943,7 @@ async def _execute_plan(entry: dict, token: str, plan: dict) -> dict:
             entry["web_content_ingested"] = True
         elif primitive == "fill":
             if (value_ref or "").startswith("cred:"):
+                phase = "dispatch"
                 cred = await credential_injection.fill_credential_ref(
                     page=page, expected_domain=entry.get("domain", ""),
                     value_ref=value_ref, owner=entry.get("owner", ""),
@@ -5954,16 +5961,21 @@ async def _execute_plan(entry: dict, token: str, plan: dict) -> dict:
                         "el => el.setAttribute('data-metnos-redact', '1')")
                     entry["secret_pending"] = True
                 await _apply_interaction_behavior(entry, locator)
+                phase = "dispatch"
                 await locator.fill(str(value_ref or ""),
                                    timeout=int(_OP_TIMEOUT_S * 1000))
         elif primitive == "search":
             if locator is None:
                 return {"ok": False, "error_class": "selector_missing"}
             await _apply_interaction_behavior(entry, locator)
+            phase = "dispatch"
             await locator.fill(str(plan.get("target") or ""),
                                timeout=int(_OP_TIMEOUT_S * 1000))
+            phase = "prepare"
             await _apply_interaction_behavior(entry, locator)
+            phase = "dispatch"
             await locator.press("Enter", timeout=int(_OP_TIMEOUT_S * 1000))
+            phase = "after_dispatch"
             try:
                 await page.wait_for_load_state("load", timeout=3000)
             except Exception:
@@ -6003,6 +6015,7 @@ async def _execute_plan(entry: dict, token: str, plan: dict) -> dict:
                     # Do not let Playwright spend the whole operation waiting
                     # for a navigation implicitly. Navigation is observed by
                     # the bounded load-state wait immediately below.
+                    phase = "dispatch"
                     await locator.click(timeout=_CLICK_TIMEOUT_MS,
                                         no_wait_after=True)
                 except Exception as exc:
@@ -6028,6 +6041,7 @@ async def _execute_plan(entry: dict, token: str, plan: dict) -> dict:
                                 "error_class": "target_changed",
                                 "detail": "click_actionability_timeout"}
                     raise
+                phase = "after_dispatch"
                 # Un anchor di navigazione goal usa `no_wait_after=True`: non
                 # creare subito un waiter DOM mentre il vecchio execution
                 # context viene distrutto. Su Chromium questo puo' lasciare un
@@ -6052,8 +6066,11 @@ async def _execute_plan(entry: dict, token: str, plan: dict) -> dict:
                         else:
                             await asyncio.sleep(0.05)
             finally:
+                # A successful cleanup keeps the phase of a pending error.
+                interrupted_phase, phase = phase, "cleanup"
                 if hasattr(context, "remove_listener"):
                     context.remove_listener("page", _record_page)
+                phase = interrupted_phase
             # Un click puo' aprire una nuova scheda senza cambiare page.url.
             # Il context route-guard copre anche il popup; qui lo si adotta solo
             # se e' unico e il suo host e' gia' consentito. Altrimenti chiude e
@@ -6141,6 +6158,7 @@ async def _execute_plan(entry: dict, token: str, plan: dict) -> dict:
                       click_url_before)):
                 await _wait_for_goal_navigation_commit(
                     page, click_url_before)
+            phase = "commit"
             entry["secret_pending"] = False
             entry["web_content_ingested"] = True
             if continuation_snapshot:
@@ -6163,6 +6181,7 @@ async def _execute_plan(entry: dict, token: str, plan: dict) -> dict:
             r"\b(?:net::)?ERR_[A-Z0-9_]+\b", str(exc).upper())
         error_detail = (error_match.group(0) if error_match
                         else type(exc).__name__)
+        error_diagnostic = action_errors.diagnose(exc, phase)
         blocked_navigation_hosts = sorted(
             host for host, observation in (
                 entry.get("blocked_requests") or {}).items()
@@ -6176,14 +6195,14 @@ async def _execute_plan(entry: dict, token: str, plan: dict) -> dict:
             target=plan.get("target", ""),
             sensitivity=plan.get("sensitivity_reasons", []),
             outcome=False, reason="action_exception",
-            detail=error_detail,
+            detail=error_detail, error_diagnostic=error_diagnostic,
             url_after=scrub_url(getattr(entry.get("page"), "url", "")),
             destination_url=str(plan.get("destination_url") or ""),
             blocked_navigation_hosts=blocked_navigation_hosts[:16],
             navigation_trace=list(plan.get("navigation_trace") or ())[:12],
             **_plan_audit_fields(plan))
         return {"ok": False, "error_class": "action_failed",
-                "detail": error_detail}
+                "detail": error_detail, "error_diagnostic": error_diagnostic}
     navigation_failure = (
         _browser_navigation_failure(getattr(entry.get("page"), "url", ""))
         if plan.get("kind") == "goal_navigation" else ""
