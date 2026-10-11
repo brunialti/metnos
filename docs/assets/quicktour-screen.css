@@ -120,18 +120,27 @@ body.qt-tour {
   background: var(--qt-coral); color: #fff;
   font: 700 12px/1 var(--qt-sans);
 }
+.qt-note--request { --qt-accent: var(--qt-navy); --qt-tint: var(--qt-blue-tint); }
+.qt-note--result { --qt-accent: var(--qt-teal); --qt-tint: var(--qt-teal-tint); }
+.qt-note--steps { --qt-accent: var(--qt-coral); --qt-tint: #fcf1ef; }
+.qt-annotations { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.qt-annotations path { fill: none; stroke: var(--qt-accent); stroke-width: 2; vector-effect: non-scaling-stroke; }
+.qt-annotations polygon { fill: var(--qt-accent); }
 .qt-marker {
   position: absolute; left: var(--x, 50%); top: var(--y, 50%);
   transform: translate(-50%, -50%); width: 34px; height: 34px;
-  border: 3px solid #fff; box-shadow: 0 0 0 1px var(--qt-coral);
+  border: 3px solid #fff; background: var(--qt-accent);
+  box-shadow: 0 0 0 1px var(--qt-accent); pointer-events: none;
 }
-.qt-marker::after { position: absolute; top: 50%; left: calc(100% + 3px); width: 21px; border-top: 1px solid var(--qt-coral); content: ""; }
-.qt-marker:not(:first-of-type)::after { left: auto; right: calc(100% + 3px); }
 .qt-figure figcaption { max-width: 900px; margin-top: 11px; color: var(--qt-muted); font-size: 14px; line-height: 1.4; }
 .qt-callouts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 25px; margin: 27px 0 0; padding: 0; list-style: none; }
 .qt-callouts > li { display: flex; align-items: flex-start; gap: 10px; padding-top: 15px; border-top: 1px solid var(--qt-line); font-size: 15px; line-height: 1.4; }
 .qt-callouts strong { display: block; margin: 2px 0 6px; color: var(--qt-navy); font-size: 17px; }
 .qt-callouts p { color: var(--qt-muted); }
+.qt-callouts--annotated { gap: 16px; margin-top: 20px; }
+.qt-callouts--annotated > li { padding: 17px 14px; border-top: 3px solid var(--qt-accent); border-radius: 0 0 6px 6px; background: var(--qt-tint); }
+.qt-callouts--annotated .qt-num { background: var(--qt-accent); }
+.qt-callouts--annotated strong { color: var(--qt-accent); font-size: 18px; }
 .qt-callouts--two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .qt-legend { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 36px; margin-top: 20px !important; }
 .qt-legend > div { padding: 17px 0; border-bottom: 1px solid var(--qt-line); }
@@ -259,6 +268,9 @@ body.qt-tour {
   .print-cover__credit { position: static; order: 2; padding: 20px 22px; font-size: 11px; }
   .qt-callouts { grid-template-columns: 1fr; gap: 0; }
   .qt-callouts > li { padding: 16px 0; font-size: 15px; }
+  .qt-callouts--annotated { gap: 12px; }
+  .qt-callouts--annotated > li { padding: 16px; }
+  .qt-marker { left: clamp(14px, var(--x), calc(100% - 14px)); top: clamp(14px, var(--y), calc(100% - 14px)); width: 24px; height: 24px; border-width: 2px; font-size: 11px; }
   .qt-legend { grid-template-columns: 1fr; }
   .qt-origins { grid-template-columns: 1fr; }
   .qt-legend dt { font-size: 18px; }

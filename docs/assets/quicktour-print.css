@@ -54,12 +54,13 @@ body.qt-tour { text-rendering: optimizeLegibility; font-kerning: normal; }
 .qt-shot--trace img { max-height: 76mm; object-fit: contain; object-position: top; }
 .qt-figure figcaption { max-width: 178mm; margin-top: 2.5mm; font-size: 8.5pt; line-height: 1.35; }
 .qt-marker, .qt-num { width: 6.5mm; height: 6.5mm; font-size: 8.5pt; }
-.qt-marker { width: 8mm; height: 8mm; border: .65mm solid #fff; box-shadow: 0 0 0 .25mm #b74738; }
-.qt-marker::after { left: calc(100% + .65mm); width: 4mm; border-top-width: .25mm; }
-.qt-marker:not(:first-of-type)::after { left: auto; right: calc(100% + .65mm); }
+.qt-marker { width: 6.5mm; height: 6.5mm; border: .5mm solid #fff; box-shadow: 0 0 0 .25mm var(--qt-accent); }
 .qt-callouts { gap: 6mm; margin-top: 5mm; }
 .qt-callouts > li { gap: 2.5mm; padding-top: 3mm; border-top-width: .25mm; font-size: 9pt; line-height: 1.38; break-inside: avoid; }
 .qt-callouts strong { margin: .5mm 0 1.5mm; font-size: 10pt; line-height: 1.2; }
+.qt-callouts--annotated { gap: 3.5mm; margin-top: 4mm; }
+.qt-callouts--annotated > li { gap: 2mm; padding: 3.5mm 3mm; border-top-width: .7mm; border-radius: 0 0 1.5mm 1.5mm; }
+.qt-callouts--annotated strong { font-size: 11pt; }
 .qt-legend { column-gap: 8mm; margin-top: 4mm !important; }
 .qt-legend > div { padding: 3.5mm 0; border-bottom-width: .25mm; break-inside: avoid; }
 .qt-legend dt { gap: 2mm; font-size: 11pt; line-height: 1.2; }
