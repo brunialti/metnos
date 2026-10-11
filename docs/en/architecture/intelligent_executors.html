@@ -126,8 +126,14 @@
  It does not invent links or use routes written for individual websites.</p>
  <p>The search explores up to four steps per route, with a shared limit of
  32 actions. At a dead end, it returns to a verified branch and tries an
- alternative. A changed route or an ambiguous control stops that route.
- Pausing for consent does not reset the attempts.</p>
+ alternative. If the page has changed during that return, it discards the
+ branch and returns to the original entry for a fresh observation, keeping
+ attempted controls and limits. This restart is available only before
+ credential use and does not repeat the discarded branch. An ambiguous
+ control still stops the search. Pausing for consent does not reset attempts.</p>
+ <p>After a click, it also waits for a delayed form or new tab within the
+ search time budget. An entry already tried is not treated as a new
+ alternative. New tabs pass through the same authorized website checks.</p>
  <p>Once a form is found, the browser component enters credentials without
  giving them to the model. It checks the authorized website and field values
  before submission. An ambiguous form or an unexpected value prevents
@@ -155,6 +161,15 @@
  by the visible text of their own row. Indistinguishable rows remain
  ambiguous; hidden text and editable values do not distinguish them. A
  control that cannot be identified reliably is not chosen by its position.</p>
+ <p>Before clicking, Metnos checks again that the control is the one
+ observed, on the same page and in the same context. If it has changed,
+ a previously visited route may be prepared again once, keeping consent
+ requirements and limits. This recovery does not repeat a click already
+ dispatched or preparation that has already closed overlays or handled consent.</p>
+ <p>The final check observes the control without rewriting identifiers in
+ the page. Approval is consumed when the click is invoked: an error or timeout
+ does not establish the absence of effects and does not authorize another
+ click. A fresh observation can clarify the state without resending the command.</p>
  <p>Observed navigation can link a row to its detail view. Only an
  unambiguous link lets Metnos merge the two views, preferring detail fields
  while retaining information found only in the list. Matching dates or
@@ -193,11 +208,32 @@
  then a unique match allowing those differences, then a unique match ignoring
  punctuation and accents. It does not resolve ambiguity by choosing the
  first field. Issue dates and due dates remain distinct.</p>
+ <p>Spreadsheet headings are labels, separate from extracted keys. They do
+ not add fields to an already declared schema; an explicit heading-to-source
+ binding can request another field. Without a schema, headings can define it.
+ A temporal filter already declaring its field and period does not receive
+ a second automatic filter without a field.</p>
+ <p>Field discovery covers every row. A unique field that is present but
+ empty can produce an empty column; a collision remains ambiguous even
+ when it first appears in the last rows.</p>
+ <p>Values supplied as data never become formulas. In XLSX files, new text
+ is stored as text, preserving existing formulas when rows are appended.
+ In CSV files and Google Sheets writes, active text receives a protective
+ leading apostrophe: in CSV this is part of the value and may be visible.
+ Receipts report the number of cells protected this way. Devices need the
+ updated package: an old package does not gain this protection without
+ an update.</p>
  <p>For a failed browser action, internal diagnostics distinguish preparation,
  command dispatch, subsequent work, cleanup, and recording. They retain the
  exception type and signals from a closed set, without returning messages,
  selectors, or page data. Signals may also match quoted text: they do not
  establish a cause and do not change outcomes, retries, or limits.</p>
+ <p>When the sign-in procedure returns, including before any credential use,
+ the audit retains its outcome, reason and internal class, the last phase,
+ and the number of search actions. A navigation refusal contributes only
+ counters and comparisons from a closed set, without page data, destinations,
+ or secrets. This trace supports diagnosis without adding attempts or
+ establishing the cause of an error.</p>
  <div class="note"><strong>Complete collection is still being tested.</strong>
  Isolated IT/EN filter tests pass; completeness and absence of duplicates
  still need confirmation on the real website. Reaching a time, action,
@@ -212,9 +248,18 @@
  <h2 id="human-intervention">CAPTCHAs, codes, and resuming</h2>
  <p>Website boundaries and consent requirements remain in force throughout
  navigation. Cookies follow a separate procedure that rejects optional
- choices and rechecks new notices before submission. OTP codes are requested
+ choices and rechecks new notices before submission. After rejection, it
+ briefly waits for the panel to close, observing it without repeating the
+ click or asking the model for another decision. OTP codes are requested
  from the user unless automation has been explicitly authorized; they are
  not treated as CAPTCHAs.</p>
+ <p>A field named “code” or “token” does not by itself require an OTP.
+ Metnos looks for a visible, editable field identified as a one-time code
+ or accompanied by verification evidence within the same form or field
+ group. It recognizes numeric and alphanumeric codes, including codes split
+ across single-character boxes. If several fields prevent an unambiguous
+ choice, it does not enter the code. Sensitive fields remain obscured and
+ submission respects the authorized website boundaries.</p>
  <p>For supported Cloudflare CAPTCHAs, Metnos tries the local
  <code>playwright-captcha</code> library once, in the same session and for
  no more than ten seconds. The attempt stays within sign-in limits, is

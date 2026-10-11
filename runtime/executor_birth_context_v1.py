@@ -62,9 +62,49 @@ CONTEXT_CATALOG_V1: tuple[tuple[str, str, tuple[str, ...], str], ...] = (
         "productive",
     ),
     (
-        "property_catalog", "2",
-        ("executor_birth_properties.py", "executor_birth_property_runner.py",
-         "executor_birth_preexercise.py"),
+        "property_catalog", "3",
+        (
+            'executor_birth_properties.py',
+            'executor_birth_property_runner.py',
+            'executor_birth_preexercise.py',
+            'executor_birth_functional.py',
+            'executor_support.py',
+            'executor_helpers.py',
+            'config.py',
+            'worker_policy.py',
+            'executor_workers.py',
+            'parallel_walk.py',
+            'platform_policy.py',
+            'tabular_projection.py',
+            'spreadsheet_cells.py',
+            'path_alias.py',
+            'observed_dates.py',
+            'tabular_records.py',
+            'sites_observed.py',
+            'tabular/__init__.py',
+            'tabular/model.py',
+            'tabular/compile.py',
+            'tabular/api.py',
+            'backends/__init__.py',
+            'backends/files/__init__.py',
+            'backends/files/local.py',
+            'backends/files/tabular_local.py',
+            'backends/files/tabular_xlsx.py',
+            'monitor_capture.py',
+            'monitor_events.py',
+            'monitor_metrics.py',
+            'messages.py',
+            'i18n.py',
+            'logging_setup.py',
+            'hashutil.py',
+            'backend_resolver.py',
+            'vocab.py',
+            'skill_registry.py',
+            'skills_paths.py',
+            'detection_lexicon.py',
+            'detection_lexicon_seed_resolvers.py',
+            'install/data/i18n_seed.sqlite',
+        ),
         "productive",
     ),
     (
@@ -319,7 +359,10 @@ def rebuild_previous_context_material_v1(
             if (type(component) is not str or type(version) is not str or not version
                     or type(files) is not tuple or state not in {"productive", "prepared_only"}
                     or any(type(label) is not str or not label
-                           or label in {".", ".."} or any(c in label for c in "/\\\0")
+                           or label in {".", ".."} or any(c in label for c in "\\\0")
+                           or PurePosixPath(label).is_absolute()
+                           or ".." in PurePosixPath(label).parts
+                           or PurePosixPath(label).as_posix() != label
                            for label in files)
                     or len(files) != len(set(files))
                     or component == "authority_registry" and files):
@@ -355,7 +398,7 @@ def _prepare_context_material_v1(sources, authority_registry, catalog):
         for label in files:
             try:
                 raw = sources.read_file(
-                    (label,),
+                    PurePosixPath(label).parts,
                     maximum=MAXIMUM_CONTEXT_SOURCE_BYTES_V1,
                     exact_private=False,
                 )

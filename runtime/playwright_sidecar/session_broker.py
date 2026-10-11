@@ -252,7 +252,7 @@ _ACCESSIBLE_ACTION_NAME_JS = r"""
 
 
 _ENUMERATE_ACTION_TARGETS_JS = r"""
-() => {
+(held) => {
 """ + _ACCESSIBLE_ACTION_NAME_JS + r"""
   // An accessible name is authored by hand and can be wrong: a page may ship
   // an unresolved translation key as its aria-label, which then hides the
@@ -264,8 +264,13 @@ _ENUMERATE_ACTION_TARGETS_JS = r"""
       .replace(/\s+/g, ' ');
     return text.length <= 160 ? text : '';
   };
-  document.querySelectorAll('[data-metnos-action-id]').forEach(
-    el => el.removeAttribute('data-metnos-action-id'));
+  // The final held-node check must only observe: rewriting these markers
+  // can trigger a page MutationObserver and detach the node before click.
+  const bindActionIds = held == null;
+  if (bindActionIds) {
+    document.querySelectorAll('[data-metnos-action-id]').forEach(
+      el => el.removeAttribute('data-metnos-action-id'));
+  }
   const standardSelector =
     'a,button,input,textarea,select,[role=button],[role=link],'
     + '[role=tab],[role=menuitem],[role=checkbox],[role=radio],'
@@ -407,7 +412,7 @@ _ENUMERATE_ACTION_TARGETS_JS = r"""
     // only observed labels/headings, never the row's private record text.
     return Array.from(new Set(levels.reverse().flat())).join(' | ').slice(0, 300);
   };
-  const enumeratedIds = new Set();
+  const enumeratedActionIds = new Map();
   // Keep record context local: candidates expose its digest; the collector
   // retains row text privately for extraction-source association. Repeated
   // actions follow visible rows, never their position or editable values.
@@ -554,8 +559,10 @@ _ENUMERATE_ACTION_TARGETS_JS = r"""
   for (const item of els) {
     const {el, r, st, rendered, visibleRatio, order} = item;
     const id = `m${++n}`;
-    el.setAttribute('data-metnos-action-id', id);
-    enumeratedIds.add(id);
+    if (bindActionIds) el.setAttribute('data-metnos-action-id', id);
+    // Populate in this loop, not ahead of it: a visible child can precede
+    // its off-viewport parent, whose ID was not previously an ancestor.
+    enumeratedActionIds.set(el, id);
     const form = el.form || el.closest('form');
     const label = el.labels && el.labels.length
       ? Array.from(el.labels).map(x => x.innerText || x.textContent || '').join(' ')
@@ -570,8 +577,8 @@ _ENUMERATE_ACTION_TARGETS_JS = r"""
     const ancestorActionIds = [];
     for (let p = el.parentElement, depth = 0; p && depth < 12;
          p = p.parentElement, depth++) {
-      const actionId = p.getAttribute('data-metnos-action-id');
-      if (actionId && enumeratedIds.has(actionId)) ancestorActionIds.push(actionId);
+      const actionId = enumeratedActionIds.get(p);
+      if (actionId) ancestorActionIds.push(actionId);
     }
     const topmost = (() => {
       if (!visible) return false;
@@ -612,7 +619,10 @@ _ENUMERATE_ACTION_TARGETS_JS = r"""
       rendered, visible, in_viewport: inViewport, visible_ratio: visibleRatio,
       topmost,
       rect: {x: Math.round(r.x), y: Math.round(r.y),
-             width: Math.round(r.width), height: Math.round(r.height)}
+             width: Math.round(r.width), height: Math.round(r.height)},
+      // The broker-owned handle, compared as the same physical node: never
+      // through an attribute the page could copy onto another element.
+      ...(held != null && el === held ? {_held: true} : {})
     });
   }
   return out;
@@ -2034,6 +2044,9 @@ async def _read_impl(entry, session_id, include_screenshot, include_forms,
     }
     if entry.get("_source_scope_label"):
         out["_source_scope_label"] = str(entry["_source_scope_label"])
+    if entry.get("collection_source_metadata"):
+        from tabular_records import validate_source_metadata
+        out["source_metadata"] = validate_source_metadata(entry["collection_source_metadata"])
     if goal:
         # Leggere mentre la pagina carica restituisce «Caricamento…» al posto
         # del dato: il marcatore e' nel lessico (concetto `sites.loading_marker`)
@@ -2112,6 +2125,36 @@ async def op_screenshot(*, session_id: str, owner: str | None = None) -> dict:
                 "sensitive": bool(entry.get("authenticated"))}
 
 
+def _safe_login_rejection(value) -> dict:
+    """Project navigation refusals to fixed predicates and bounded counts."""
+    if not isinstance(value, dict) or value.get("phase") not in (
+            "replay_page", "replay_control", "current_page"):
+        return {}
+    result = {"phase": value["phase"]}
+    for key in ("index", "match_count", "candidate_count", "same_name_count",
+                "same_href_count"):
+        if type(value.get(key)) is int and value[key] >= 0:
+            result[key] = min(value[key], 1_000_000)
+    if value.get("producer") in ("broker_page", "nav_refresh", "unknown"):
+        result["producer"] = value["producer"]
+    predicates = ["same_page", "urls_present", "same_origin", "same_path",
+                  "same_query", "same_fragment"]
+    for label in ("observation", "location_key", "context_key"):
+        predicates.extend((f"saved_{label}_present",
+                           f"current_{label}_present", f"same_{label}"))
+    result.update({key: value[key] for key in predicates
+                   if key in value and (type(value[key]) is bool
+                                        or value[key] is None)})
+    changes = value.get("single_field_changes")
+    if isinstance(changes, dict):
+        # Attribute names identify counters, never observed attribute values.
+        result["single_field_changes"] = {
+            key: min(changes[key], 1_000_000)
+            for key in login_navigation._IDENTITY_FIELDS
+            if type(changes.get(key)) is int and changes[key] >= 0}
+    return result
+
+
 async def op_login(*, session_id: str, owner: str | None = None,
                    domain: str | None = None,
                    form_hint: str | None = None,
@@ -2180,7 +2223,8 @@ async def op_login(*, session_id: str, owner: str | None = None,
                         "reason_code": "approval_invalid",
                         "session_id": session_id}
             executed = await _execute_plan(entry, approval_token, plan)
-            if executed.get("error_class") in {"target_changed", "page_changed"}:
+            if (executed.get("error_class") in {"target_changed", "page_changed"}
+                    and entry.get("pending_actions", {}).get(approval_token) is plan):
                 entry.get("pending_actions", {}).pop(approval_token, None)
                 entry["gate_pending"] = False
                 if plan.get("kind") == "credential_origin" or plan.get("login_choice"):
@@ -2341,6 +2385,19 @@ async def op_login(*, session_id: str, owner: str | None = None,
             entry["gate_pending"] = bool(
                 isinstance(res, dict) and res.get("approval_required"))
             await _touch(entry)
+        search = flow.get("entry_search")
+        search = search if isinstance(search, dict) else {}
+        actions = search.get("actions")
+        sites_audit.record(
+            "login_result", owner=entry.get("owner", ""),
+            session_id=session_id, domain=dom,
+            logged_in=bool(res.get("logged_in")),
+            approval_required=bool(res.get("approval_required")),
+            reason_code=res.get("reason_code"),
+            error_class=res.get("error_class"), phase=flow.get("phase"),
+            actions=(min(actions, 1_000_000)
+                     if type(actions) is int and actions >= 0 else 0),
+            rejection=_safe_login_rejection(search.get("rejection")))
         if res.get("logged_in"):
             entry["authenticated"] = True
         factor_reason = res.get("reason_code") in {
@@ -2501,15 +2558,25 @@ def _safe_record_diagnostics(value) -> dict:
     return result
 
 
-async def _enumerate_candidates(page, *, record_contexts: dict | None = None) -> list[dict]:
+class _CandidateObservationError(ValueError):
+    def __init__(self, reason: str):
+        super().__init__("candidate_observation_failed")
+        self.reason = reason
+
+
+async def _enumerate_candidates(page, *, record_contexts: dict | None = None,
+                                held=None) -> list[dict]:
     try:
         out = await asyncio.wait_for(
-            page.evaluate(_ENUMERATE_ACTION_TARGETS_JS),
+            (page.evaluate(_ENUMERATE_ACTION_TARGETS_JS, held) if held is not None
+             else page.evaluate(_ENUMERATE_ACTION_TARGETS_JS)),
             timeout=_ENUMERATE_TIMEOUT_MS / 1000.0,
         )
-        if not isinstance(out, list):
-            return []
+        if not isinstance(out, list) or any(not isinstance(candidate, dict) for candidate in out):
+            raise _CandidateObservationError("invalid_observation")
         for candidate in out:
+            if candidate.pop("_held", False) is True and held is not None:
+                candidate["_held"] = True
             diagnostic = _safe_record_diagnostics(candidate.pop("_record_diagnostics", None))
             if diagnostic:
                 candidate["_record_diagnostics"] = diagnostic
@@ -2525,8 +2592,12 @@ async def _enumerate_candidates(page, *, record_contexts: dict | None = None) ->
                     except (ValueError, TypeError):
                         pass
         return out
-    except Exception:
-        return []
+    except _CandidateObservationError:
+        raise
+    except asyncio.TimeoutError as exc:
+        raise _CandidateObservationError("timeout") from exc
+    except Exception as exc:
+        raise _CandidateObservationError("evaluation_failed") from exc
 
 
 async def _scroll_candidate_into_view(entry: dict, candidate: dict) -> bool:
@@ -3047,11 +3118,16 @@ async def _discover_login_entry(entry: dict, session_id: str, flow: dict) -> dic
         # The document may be loaded while its login UI is still rendering.
         # Spend a little more of the same search budget only after a click
         # that left neither a form nor a usable next entry on screen.
+        tried = state.get("tried", {}).get(
+            login_navigation.state_key(page.url, candidates), ())
+        pending = state.get("pending") or {}
+        available = login_navigation.untried_candidates(
+            candidates, tried, pending_key=pending.get("key"))
         if (state.get("pending")
                 and not action_resolver.choose_candidate(
-                    "login", candidates, "click").get("ok")
+                    "login", available, "click").get("ok")
                 and not action_resolver.choose_reveal_candidate(
-                    "login", candidates, "click").get("ok")):
+                    "login", available, "click").get("ok")):
             extra_s = max(0.0, _LOGIN_ENTRY_SETTLE_S
                           - _REVEAL_SETTLE_MS / 1000.0)
             if extra_s and await credential_injection._wait_for_login_surface(
@@ -3075,8 +3151,7 @@ async def _discover_login_entry(entry: dict, session_id: str, flow: dict) -> dic
                 "all_candidates": candidates}
 
     async def choose(observation: dict, tried: set[str]) -> dict | None:
-        candidates = [candidate for candidate in observation["candidates"]
-                      if login_navigation.candidate_key(candidate) not in tried]
+        candidates = login_navigation.untried_candidates(observation["candidates"], tried)
         chosen = action_resolver.choose_candidate("login", candidates, "click")
         if chosen.get("ok") and not chosen.get("ambiguous"):
             return {"candidate": chosen["candidate"],
@@ -3084,8 +3159,8 @@ async def _discover_login_entry(entry: dict, session_id: str, flow: dict) -> dic
         # Reuse the multilingual resolver and DOM relations. A sole menu is
         # also useful on pages that expose no login words yet.
         reveal = action_resolver.choose_reveal_candidate(
-            "login", [item for item in observation["all_candidates"]
-                      if login_navigation.candidate_key(item) not in tried], "click")
+            "login", login_navigation.untried_candidates(
+                observation["all_candidates"], tried), "click")
         reveals = [candidate for candidate in candidates
                    if action_resolver.is_reveal_control(candidate)
                    and str(candidate.get("aria_expanded") or "").lower() != "true"]
@@ -3154,7 +3229,8 @@ async def _discover_login_entry(entry: dict, session_id: str, flow: dict) -> dic
     started = _monotonic()
     try:
         result = await asyncio.wait_for(login_navigation.discover(
-            state, observe=observe, choose=choose, execute=execute, restore=restore),
+            state, observe=observe, choose=choose, execute=execute, restore=restore,
+            restart_on_replay_change=True),
             timeout=remaining)
         if (result.get("error_class") == "selector_missing"
                 and not state.get("resource_attempted")
@@ -3281,6 +3357,30 @@ def _collapse_collection_links(candidates: list[dict]) -> list[dict]:
     return out
 
 
+def _collection_metadata(entry: dict, state: dict, result: dict) -> list[dict]:
+    """Declare collection completeness independently of presentation limits.
+
+    The scope names this traversal, never an invoice or an extraction group.
+    Only broker-owned state enters this envelope; page text cannot declare it.
+    """
+    from tabular_records import validate_source_metadata
+    item = {"producer": "act_sites", "scope": state["source_scope"],
+            "partial": bool(not result.get("ok") or result.get("approval_required")
+                            or result.get("collection_partial") or result.get("truncated")),
+            "collection_partial": bool(result.get("collection_partial")),
+            "truncated": bool(result.get("truncated"))}
+    for key in ("truncated_what", "used", "available_total", "cap_field", "cap_value"):
+        if key in result:
+            item[key] = result[key]
+    if result.get("error_class"):
+        item["reason_code"] = result["error_class"]
+    observed = next((p for p in entry.get("collected_pages", [])
+                     if isinstance(p, dict) and p.get("url")), None)
+    if observed:
+        item["provenance"] = {"url": observed["url"]}
+    return validate_source_metadata([item])
+
+
 async def _discover_collection(entry: dict, session_id: str,
                                action: str, target: str) -> dict:
     """Collect evidence throughout the existing bounded navigation search.
@@ -3293,12 +3393,16 @@ async def _discover_collection(entry: dict, session_id: str,
     if not isinstance(state, dict) or state.get("key") != key:
         state = {"key": key, "action": action, "target": target,
                  "remaining_s": login_navigation.COLLECTION_TIMEOUT_S,
-                 "found": False, "pages": set()}
+                 "found": False, "pages": set(), "source_scope": secrets.token_hex(16)}
         entry["collection_search"] = state
         entry.pop("collected_pages", None)
         entry.pop("collection_record_views", None)
+        entry.pop("collection_source_metadata", None)
         entry.pop("_source_scope_label", None)
 
+    # An approval resume created by the previous runtime keeps its traversal
+    # and remaining budget; only its missing transport scope is initialized.
+    state.setdefault("source_scope", secrets.token_hex(16))
     record_contexts = {}
 
     async def read_controls(page, observed=None):
@@ -3445,6 +3549,9 @@ async def _discover_collection(entry: dict, session_id: str,
                 login_navigation.candidate_key(c) == expected
                 for c in candidates) > 1):
             candidates = _collapse_collection_links(candidates)
+        sites_audit.record("collection_controls", session_id=session_id,
+                           observed_count=len(observed), navigation_count=len(candidates),
+                           steps=int(state.get("actions", 0)))
         snapshot = await _continuation_snapshot(entry)
         # Context selection may have changed the controls and page since the
         # initial enumeration. Key the captured text with its observed context.
@@ -3489,21 +3596,27 @@ async def _discover_collection(entry: dict, session_id: str,
     async def choose(observation, tried):
         # Pages repeat menus, breadcrumbs and links to themselves. A GET of a
         # link already opened in this search, or of the root that backtracking
-        # restores, reaches a document already explored: do not open it again.
-        # Links only offered elsewhere stay available in every context.
+        # restores, must not create a navigation cycle. A new bound row still
+        # needs its own observed detail edge when its local presentation differs.
         first_visit = not tried
         root = state["frames"][0]["observation"]["url"]
         opened = state.setdefault("opened_links", set()) | {
             _link_destination({"href": root}, root)}
+        pages = {p.get("key"): p for p in entry.get("collected_pages", [])}
+        unlinked_details = set()
         for c in observation["candidates"]:
             destination = _link_destination(c, observation["url"])
             if destination in opened - {""}:
                 # The same bound row may occur in a preview and its archive.
                 # A previously observed detail link establishes their shared
-                # resource without clicking it again. Text alone never does.
+                # resource in the same context without clicking it again.
+                # A different local row key is not proof of the same record.
                 record = c.get("_record_context_key")
                 known = {e["detail"] for e in entry.get("collection_record_views", [])
-                         if record and e.get("record") == record}
+                         if record and e.get("record") == record
+                         and e.get("parent") in pages
+                         and pages[e["parent"]].get("context")
+                             == observation["snapshot"].get("context")}
                 matches = [p for p in entry.get("collected_pages", [])
                            if p.get("key") in known
                            and _link_destination({"href": p.get("url")},
@@ -3514,9 +3627,13 @@ async def _discover_collection(entry: dict, session_id: str,
                     edges = entry.setdefault("collection_record_views", [])
                     if edge not in edges:
                         edges.append(edge)
+                elif record in observation["snapshot"]["records"]:
+                    # Only a fresh semantic detail choice may revisit this
+                    # destination; its successful navigation supplies the edge.
+                    unlinked_details.add(login_navigation.candidate_key(c))
+                    continue
                 tried.add(login_navigation.candidate_key(c))
-        candidates = [c for c in observation["candidates"]
-                      if login_navigation.candidate_key(c) not in tried]
+        candidates = login_navigation.untried_candidates(observation["candidates"], tried)
         def preserve(candidate):
             if candidate.get("collection_observed"):
                 state["found"] = True
@@ -3538,10 +3655,22 @@ async def _discover_collection(entry: dict, session_id: str,
                 proximity=candidate.get("proximity", "none"),
                 steps=int(state.get("actions", 0)))
 
-        candidate = await _collection_route_decision(
-            entry, target, candidates, first_visit=first_visit, preserve=preserve)
-        if not candidate.get("id"):
-            return None
+        while True:
+            candidate = await _collection_route_decision(
+                entry, target, candidates, first_visit=first_visit, preserve=preserve)
+            if not candidate.get("id"):
+                return None
+            identity = login_navigation.candidate_key(candidate)
+            if identity not in unlinked_details or (
+                    candidate.get("collection_purpose") == "detail"
+                    and candidate.get("_record_context_key")
+                        in observation["snapshot"]["records"]):
+                break
+            # A repeated navigation link cannot use the detail exception.
+            # Exclude this choice before preparation, leaving other rows usable.
+            tried.add(identity)
+            candidates = [c for c in candidates
+                          if login_navigation.candidate_key(c) != identity]
         # Next/more is pagination, not another level in the site's hierarchy.
         probe = {**candidate, "visible": True, "in_viewport": True, "topmost": True}
         continuation = candidate.get("collection_continuation")
@@ -3571,25 +3700,46 @@ async def _discover_collection(entry: dict, session_id: str,
     async def execute(choice):
         started = _monotonic()
         destination = _link_destination(choice.get("candidate") or {}, entry["page"].url)
-        prepared = await _prepare_action(
-            entry, session_id, action, None, primitive_override="search",
-            target_override=target, allow_model=False, collection_choice=choice)
-        if prepared.get("ok"):
-            prepared["plan"]["collection_search"] = key
-            # The audit separates a replayed saved edge from a new choice.
-            prepared["plan"]["collection_replay"] = bool(choice.get("replay"))
-        result = await _handle_prepared_action(entry, session_id, action, prepared)
-        audit_failed_action(result, str((prepared.get("plan") or {}).get("primitive")
-                                        or "click"), bool(choice.get("replay")), started)
-        if result.get("collection_bind_refused"):
-            page, location, selected = state.get("observed_scene") or (None, "", "")
-            current = entry["page"]
-            if (prepared.get("ok") or current is not page or current.url != location
-                    or selected != collection_context.value_key(collection_context.selectors(
-                        await read_controls(current)))):
-                # Only a refused preparation on the observed page, URL and
-                # context leaves the branch unresolved; anything else is terminal.
-                result = {k: v for k, v in result.items() if k != "collection_bind_refused"}
+        recovered = False
+        while True:
+            prepared = await _prepare_action(
+                entry, session_id, action, None, primitive_override="search",
+                target_override=target, allow_model=False, collection_choice=choice)
+            if prepared.get("ok"):
+                prepared["plan"]["collection_search"] = key
+                # The audit separates a replayed saved edge from a new choice.
+                prepared["plan"]["collection_replay"] = bool(choice.get("replay"))
+            result = await _handle_prepared_action(entry, session_id, action, prepared)
+            audit_failed_action(result, str((prepared.get("plan") or {}).get("primitive")
+                                            or "click"), bool(choice.get("replay")), started)
+            if result.get("pre_dispatch_refused") and prepared.get("token"):
+                # The refused plan never clicked: retire its token so that no
+                # old plan stays executable. Other consents are untouched.
+                entry.get("pending_actions", {}).pop(prepared["token"], None)
+            if result.get("collection_bind_refused"):
+                page, location, selected = state.get("observed_scene") or (None, "", "")
+                current = entry["page"]
+                if ((prepared.get("ok") and not result.get("pre_dispatch_refused"))
+                        or current is not page or current.url != location
+                        or selected != collection_context.value_key(collection_context.selectors(
+                            await read_controls(current)))):
+                    # Only a refusal before any effect on the observed page,
+                    # URL and context leaves the branch unresolved; anything
+                    # else is terminal.
+                    result = {k: v for k, v in result.items() if k != "collection_bind_refused"}
+            if (choice.get("replay") and not recovered
+                    and result.get("pre_dispatch_refused")
+                    and result.get("collection_bind_refused")):
+                # A replayed edge has already spent its action and advanced
+                # the cursor: prepare the same saved choice once more, model
+                # off, through the ordinary gate. A second refusal is final.
+                recovered = True
+                sites_audit.record("collection_pre_dispatch_recovery",
+                                   session_id=session_id,
+                                   steps=int(state.get("actions", 0)),
+                                   detail=str(result.get("detail") or ""))
+                continue
+            break
         if result.get("ok") and result.get("executed"):
             if destination:
                 state.setdefault("opened_links", set()).add(destination)
@@ -3633,6 +3783,10 @@ async def _discover_collection(entry: dict, session_id: str,
             restore=restore, max_depth=3,
             max_actions=login_navigation.COLLECTION_MAX_ACTIONS,
             exhaustive=True), timeout=remaining)
+    except _CandidateObservationError as exc:
+        sites_audit.record("collection_observation_failed", session_id=session_id,
+                           reason=exc.reason)
+        result = {"ok": False, "error_class": "target_unstable"}
     except asyncio.TimeoutError:
         result = {"ok": False, "error_class": "goal_step_limit",
                   "cap_field": "active_seconds",
@@ -3644,7 +3798,9 @@ async def _discover_collection(entry: dict, session_id: str,
     finally:
         state["remaining_s"] = max(0.0, remaining - (_monotonic() - started))
     if result.get("approval_required"):
-        return result
+        metadata = _collection_metadata(entry, state, result)
+        entry["collection_source_metadata"] = metadata
+        return {**result, "source_metadata": metadata}
     if result.get("error_class") == "target_changed" and state.get("rejection"):
         sites_audit.record("collection_navigation_rejected", session_id=session_id,
                            steps=int(state.get("actions", 0)), **state["rejection"])
@@ -3671,10 +3827,13 @@ async def _discover_collection(entry: dict, session_id: str,
             # with the limit, as an incomplete result keeping the records.
             result.update(ok=False, error_class=state["unresolved_control"])
     elif result.get("exhausted"):
-        # A refused relevant branch keeps its first cause; never empty success.
+        # Exhausting routes on an unrelated page does not attest an empty
+        # collection. Preserve the first refused branch, or report that the
+        # requested collection was never observed.
         result = ({"ok": False, "error_class": state["unresolved_control"]}
                   if state.get("unresolved_control") else
-                  {"ok": True, "no_match": not state["found"]})
+                  {"ok": True, "no_match": False} if state["found"] else
+                  {"ok": False, "error_class": "selector_missing"})
     if not result.get("ok") and state["found"]:
         # A later blocked branch does not erase already observed records.
         # Return saved evidence only: the current page may be outside scope.
@@ -3683,9 +3842,12 @@ async def _discover_collection(entry: dict, session_id: str,
         if chunks:
             result = {**result, "collection_partial": True,
                       "text": "\n\n".join(chunks)}
+    metadata = _collection_metadata(entry, state, result)
+    entry["collection_source_metadata"] = metadata
     entry.pop("collection_search", None)
     cloud = int(state.get("cloud_llm_calls") or 0)
-    return {**result, "executed": bool(state["found"]), "primitive": "observe",
+    return {**result, "source_metadata": metadata,
+            "executed": bool(state["found"]), "primitive": "observe",
             "url": scrub_url(entry["page"].url),
             **({"cloud_llm_calls": cloud} if cloud else {})}
 
@@ -3754,6 +3916,17 @@ async def _collection_route_decision(entry: dict, target: str,
             await asyncio.gather(route, return_exceptions=True)
 
 
+def _valid_collection_route(choice, purpose, by_id, *, continuation=False):
+    """Local and Frontier choices use the same typed, observed route contract."""
+    if not isinstance(choice, str) or not isinstance(purpose, str):
+        return False
+    if choice == "NONE":
+        return purpose == "done"
+    purposes = {"expand_collection"} if continuation else {
+        "navigate", "expand_collection", "detail"}
+    return choice != "CURRENT_CONTENT" and choice in by_id and purpose in purposes
+
+
 async def _frontier_collection_route(entry: dict, target: str,
                                      candidates: list[dict]) -> dict | None:
     """Frontier route choice independent of the local content observation.
@@ -3815,10 +3988,7 @@ async def _frontier_collection_route(entry: dict, target: str,
             text = str(getattr(reply, "text", "") or "")
             decision = json.loads(text[text.find("{"): text.rfind("}") + 1])
             choice, purpose = decision.get("next_control"), decision.get("purpose")
-            if (not isinstance(choice, str)
-                    or (choice == "NONE" and purpose != "done")
-                    or (choice != "NONE" and (choice not in by_id or purpose not in
-                        {"navigate", "expand_collection", "detail"}))):
+            if not _valid_collection_route(choice, purpose, by_id):
                 outcome = "invalid_response"
                 return None
             sites_audit.record(
@@ -3982,15 +4152,17 @@ async def _local_llm_choose_goal_window(entry, target, eligible, history, *,
         response_options = {}
         if continuation:
             response_options["grammar"] = (
-                'root ::= "{" ws "\\\"next_control\\\"" ws ":" ws choice ws "}"\n'
+                'root ::= "{" ws "\\\"next_control\\\"" ws ":" ws choice ws "," ws "\\\"purpose\\\"" ws ":" ws purpose ws "}"\n'
+                'purpose ::= "\\\"expand_collection\\\"" | "\\\"done\\\""\n'
                 'choice ::= ' + ' | '.join(json.dumps(json.dumps(cid)) for cid in by_id if cid != "CURRENT_CONTENT") + '\n'
                 'ws ::= [ \\t\\n\\r]*\n')
         elif collection:
             # Presence and the next route are independent decisions. The
             # broker derives its internal end-of-branch sentinel below.
             response_options["grammar"] = (
-                'root ::= "{" ws "\\\"content_status\\\"" ws ":" ws status ws "," ws "\\\"next_control\\\"" ws ":" ws choice ws "}"\n'
+                'root ::= "{" ws "\\\"content_status\\\"" ws ":" ws status ws "," ws "\\\"next_control\\\"" ws ":" ws choice ws "," ws "\\\"purpose\\\"" ws ":" ws purpose ws "}"\n'
                 'status ::= "\\\"no_items\\\"" | "\\\"unmatched_items\\\"" | "\\\"matching_items\\\""\n'
+                'purpose ::= "\\\"navigate\\\"" | "\\\"expand_collection\\\"" | "\\\"detail\\\"" | "\\\"done\\\""\n'
                 'choice ::= ' + ' | '.join(json.dumps(json.dumps(cid)) for cid in by_id if cid != "CURRENT_CONTENT") + '\n'
                 'ws ::= [ \\t\\n\\r]*\n')
         result = provider.chat(
@@ -4044,10 +4216,13 @@ async def _local_llm_choose_goal_window(entry, target, eligible, history, *,
             return None
         description = str(payload.get("description") or "").strip()
         if continuation:
-            choice = payload.get("next_control")
-            if not isinstance(choice, str) or choice == "CURRENT_CONTENT" or choice not in by_id:
+            choice, purpose = payload.get("next_control"), payload.get("purpose")
+            if not _valid_collection_route(choice, purpose, by_id, continuation=True):
                 return None
             description = choice
+            by_id[description] = {**by_id[description],
+                "collection_purpose": purpose,
+                "collection_continuation": purpose == "expand_collection"}
         elif collection:
             status = payload.get("content_status")
             statuses = {"no_items": "none", "unmatched_items": "related",
@@ -4058,8 +4233,8 @@ async def _local_llm_choose_goal_window(entry, target, eligible, history, *,
             observed_collection = proximity != "none"
             if observed_collection and not content.strip():
                 return None
-            choice = payload.get("next_control")
-            if not isinstance(choice, str) or choice == "CURRENT_CONTENT" or choice not in by_id:
+            choice, purpose = payload.get("next_control"), payload.get("purpose")
+            if not _valid_collection_route(choice, purpose, by_id):
                 return None
             if choice == "NONE":
                 if not observation_complete:
@@ -4072,6 +4247,8 @@ async def _local_llm_choose_goal_window(entry, target, eligible, history, *,
                 **by_id[description],
                 "collection_observed": observed_collection,
                 "proximity": proximity,
+                "collection_purpose": purpose,
+                "collection_continuation": purpose == "expand_collection",
             }
         decision_failure = ""
         return AgenticProposal(description)
@@ -5027,6 +5204,10 @@ async def _prepare_action(entry: dict, session_id: str, action: str,
     if plan_kind:
         plan.update({"kind": plan_kind, "original_action": action,
                      "reveal_key": reveal_key})
+    if collection_choice is not None:
+        # Consent or a closed overlay during preparation is an effect: a later
+        # refusal of this plan can no longer be recovered as effect-free.
+        plan["preparation_acted"] = bool(acted)
     if goal_flow_key:
         plan["goal_flow_key"] = goal_flow_key
     if primitive_override == "search" and target_override:
@@ -5832,6 +6013,76 @@ def _browser_navigation_failure(url: str) -> str:
     return ""
 
 
+async def _collection_pre_dispatch_refusal(entry: dict, plan: dict, page,
+                                           handle) -> str | None:
+    """Closed reason when the held node is no longer the planned control.
+
+    Runs after the interaction preparation and immediately before the click
+    of a collection plan. Identity is the shared derivation of the
+    enumeration (role, context and row context included): the held node must
+    be physically one of the controls with the planned key, never matched by
+    a page-writable attribute or by geometry. Equivalent HTTP copies stay one
+    admissible edge, as at preparation, and the handle is never swapped for
+    another copy. A residual race until the click itself remains possible.
+    """
+    def same_page() -> bool:
+        return entry.get("page") is page and _page_signature(page.url) == plan.get("page_sig")
+
+    if not same_page():
+        return "page_changed"
+    observed = await _enumerate_candidates(page, held=handle)
+    if not same_page():
+        return "page_changed"
+    expected = login_navigation.candidate_key(plan.get("candidate") or {})
+    held = next((item for item in observed if item.get("_held") is True), None)
+    if held is None:
+        try:
+            connected = await handle.evaluate("node => node.isConnected")
+        except Exception:
+            connected = False
+        # The label only: a connected node absent from the enumeration is
+        # refused as well.
+        return "identity_changed" if connected is True else "detached"
+    if login_navigation.candidate_key(held) != expected:
+        return "identity_changed"
+    # Competitors are admitted exactly as at preparation; the held node is
+    # never excluded for geometry that hover or scrolling may have changed.
+    competitors = [item for item in action_resolver.goal_navigation_candidates(observed)
+                   if item is not held
+                   and login_navigation.candidate_key(item) == expected
+                   and action_resolver.goal_candidate_is_admissible(
+                       plan.get("target", ""), item,
+                       scope=str(entry.get("goal_scope") or ""))]
+    if len(_collapse_collection_links([held, *competitors])) != 1:
+        return "identity_changed"
+    return None
+
+
+def _pre_dispatch_refusal(entry: dict, plan: dict, page, reason: str) -> dict:
+    """The planned click was not invoked; recovery admissibility is explicit.
+
+    ``click_invoked`` concerns the planned click only: preparation, hover or
+    focus may already have had effects. Only the same page object at the
+    same URL, after a preparation that did not act, leaves the refusal
+    recoverable by the collection. The token stays as every pre-click refusal
+    leaves it; the collection retires it before any replacement.
+    """
+    recoverable = (entry.get("page") is page
+                   and _page_signature(page.url) == plan.get("page_sig")
+                   and plan.get("preparation_acted") is False)
+    sites_audit.record(
+        "site_action", owner=entry.get("owner", ""),
+        session_id=entry.get("_sid", ""), domain=entry.get("domain", ""),
+        primitive=plan.get("primitive", ""), target=plan.get("target", ""),
+        sensitivity=plan.get("sensitivity_reasons", []),
+        outcome=False, reason="pre_dispatch_refused", detail=reason,
+        click_invoked=False, pre_dispatch_blocked=True, recoverable=recoverable,
+        **_plan_audit_fields(plan))
+    return {"ok": False, "error_class": "target_changed", "detail": reason,
+            "pre_dispatch_refused": True,
+            **({"collection_bind_refused": True} if recoverable else {})}
+
+
 async def _execute_plan(entry: dict, token: str, plan: dict) -> dict:
     # Un consenso appena dato vale per QUESTA sessione e per QUEL posto: se il
     # flusso ci ripassa (una riosservazione, un secondo passo che rientra),
@@ -6000,6 +6251,11 @@ async def _execute_plan(entry: dict, token: str, plan: dict) -> dict:
             if locator is None:
                 return {"ok": False, "error_class": "selector_missing"}
             await _apply_interaction_behavior(entry, locator)
+            if plan.get("collection_search"):
+                refused = await _collection_pre_dispatch_refusal(
+                    entry, plan, page, locator)
+                if refused is not None:
+                    return _pre_dispatch_refusal(entry, plan, page, refused)
             click_url_before = page.url
             context = entry.get("context")
             context_pages = getattr(context, "pages", ()) or ()
@@ -6011,36 +6267,20 @@ async def _execute_plan(entry: dict, token: str, plan: dict) -> dict:
             if hasattr(context, "on"):
                 context.on("page", _record_page)
             try:
-                try:
-                    # Do not let Playwright spend the whole operation waiting
-                    # for a navigation implicitly. Navigation is observed by
-                    # the bounded load-state wait immediately below.
-                    phase = "dispatch"
-                    await locator.click(timeout=_CLICK_TIMEOUT_MS,
-                                        no_wait_after=True)
-                except Exception as exc:
-                    # With no_wait_after, a click timeout occurs during the
-                    # pre-dispatch actionability checks. No click was emitted,
-                    # so a fresh DOM observation is safe and cannot duplicate
-                    # a user-visible effect.
-                    detail = f"{type(exc).__name__}: {exc}".lower()
-                    if "timeout" in detail or "timed out" in detail:
-                        sites_audit.record(
-                            "site_action", owner=entry.get("owner", ""),
-                            session_id=entry.get("_sid", ""),
-                            domain=entry.get("domain", ""),
-                            primitive=primitive,
-                            target=plan.get("target", ""),
-                            sensitivity=plan.get(
-                                "sensitivity_reasons", []),
-                            outcome=False,
-                            reason="click_actionability_timeout",
-                            pre_dispatch_blocked=True,
-                            **_plan_audit_fields(plan))
-                        return {"ok": False,
-                                "error_class": "target_changed",
-                                "detail": "click_actionability_timeout"}
-                    raise
+                # Do not let Playwright spend the whole operation waiting
+                # for a navigation implicitly. Navigation is observed by
+                # the bounded load-state wait immediately below.
+                # Once click is invoked its effects may be unknown, including
+                # on timeout. Consume only this plan before dispatch so that
+                # neither recovery nor repeated approval can click it again.
+                # Approval pauses the idle TTL. Resume it from this dispatch,
+                # keeping the context and terminal result readable on failure.
+                await _touch(entry)
+                entry.get("pending_actions", {}).pop(token, None)
+                entry["gate_pending"] = False
+                phase = "dispatch"
+                await locator.click(timeout=_CLICK_TIMEOUT_MS,
+                                    no_wait_after=True)
                 phase = "after_dispatch"
                 # Un anchor di navigazione goal usa `no_wait_after=True`: non
                 # creare subito un waiter DOM mentre il vecchio execution
@@ -6058,8 +6298,11 @@ async def _execute_plan(entry: dict, token: str, plan: dict) -> dict:
                 # L'evento popup puo' seguire il ritorno del click; attesa
                 # bounded, interrotta appena il listener osserva una pagina.
                 if hasattr(context, "on"):
-                    for _ in range(10):
-                        if observed_pages:
+                    popup_wait_ms = (int(_LOGIN_ENTRY_SETTLE_S * 1000)
+                                     if plan.get("login_flow") and candidate
+                                     and candidate.get("href") else 500)
+                    for _ in range(0, popup_wait_ms, 50):
+                        if observed_pages or page.url != click_url_before:
                             break
                         if hasattr(page, "wait_for_timeout"):
                             await page.wait_for_timeout(50)
@@ -6452,10 +6695,10 @@ async def _handle_prepared_action_with_replans(
         value_ref: str | None, prepared: dict) -> dict:
     """Riosserva il DOM se cambia prima che l'azione venga eseguita.
 
-    `_execute_plan` lascia il token pending quando rifiuta un piano per
-    `target_changed`/`page_changed`: questa e' la prova che nessun effetto e'
-    stato applicato e che il retry non puo' duplicare un click. Se il token e'
-    gia' stato consumato, invece, restituiamo l'errore senza ripetere l'azione.
+    `_execute_plan` lascia il token pending quando rifiuta un piano prima
+    del dispatch per `target_changed`/`page_changed`. Un click lo consuma prima
+    della chiamata Playwright: se il token e' gia' stato consumato, restituiamo
+    l'errore senza ripetere l'azione, anche se proviene da un piano successivo.
     """
     replans = 0
     while True:
@@ -6469,9 +6712,6 @@ async def _handle_prepared_action_with_replans(
         if (not token or not isinstance(plan, dict)
                 or entry.get("pending_actions", {}).get(token) is not plan):
             return handled
-
-        if handled.get("detail") == "click_actionability_timeout":
-            await _dismiss_obstructing_overlay(entry, settle=True)
 
         entry.get("pending_actions", {}).pop(token, None)
         entry["gate_pending"] = False
@@ -6561,14 +6801,13 @@ async def op_act(*, session_id: str, owner: str | None, action: str,
                 entry.setdefault("completed_approvals", {})[approval_token] = {
                     "ts": time.time(), "result": dict(executed)}
                 return executed
-            if executed.get("error_class") not in {
-                    "target_changed", "page_changed"}:
+            if (executed.get("error_class") not in {
+                    "target_changed", "page_changed"}
+                    or entry.get("pending_actions", {}).get(approval_token) is not plan):
                 executed = await _with_action_failure_evidence(entry, executed)
                 entry.setdefault("completed_approvals", {})[approval_token] = {
                     "ts": time.time(), "result": dict(executed)}
                 return executed
-            if executed.get("detail") == "click_actionability_timeout":
-                await _dismiss_obstructing_overlay(entry, settle=True)
             entry["pending_actions"].pop(approval_token, None)
             entry["gate_pending"] = False
             key = str(plan.get("replan_key") or "")

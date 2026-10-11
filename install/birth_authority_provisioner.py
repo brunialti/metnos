@@ -3222,13 +3222,18 @@ from executor_birth_sandbox_registry_v1 import (
 
 
 def _resolve_context_sources_v1():
-    """Open the installed runtime directory as a read-only source."""
+    """Open this distribution's context sources with the shared read grammar."""
     import config as runtime_config
+    from executor_birth_prepared_root import _DistributionSources
     from executor_birth_secure_fs import BirthSecureFSError, _open_legacy_root_session
 
     path = Path(runtime_config.PATH_RUNTIME)
+    if not os.path.lexists(path):
+        raise _reject("birth_context_catalog_incomplete") from None
     try:
-        return _open_legacy_root_session(path, exact_private=False)
+        return _DistributionSources(_open_legacy_root_session(
+            path.parent, exact_private=False,
+        ))
     except BirthSecureFSError as exc:
         # An absent distribution is an incomplete catalogue; one that exists
         # but cannot be opened safely keeps the refusal of the capability,

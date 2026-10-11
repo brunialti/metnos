@@ -43,20 +43,6 @@ model_pattern = "*"
 use_case      = "code_gen"
 text          = "\n\nVincoli: compila python_code per intero (def invoke + def main), mai vuoto. raw string r'...' con UN backslash. Niente triple-quote docstring."
 
-# --- Qwen 3 via Ollama: tendenza a omettere il campo python_code.
-[[hint]]
-provider      = "ollama"
-model_pattern = "qwen3:*"
-use_case      = "code_gen"
-text          = "\n\nVincoli: compila python_code per intero (def invoke + def main). Mai vuoto."
-
-# --- Qwen 2.5 via Ollama
-[[hint]]
-provider      = "ollama"
-model_pattern = "qwen2.5:*"
-use_case      = "code_gen"
-text          = "\n\nVincoli: compila python_code per intero. Solo stdlib."
-
 # --- OpenAI GPT-5: piu' letterale, predilige istruzioni brevi (cookbook GPT-5).
 [[hint]]
 provider      = "openai"

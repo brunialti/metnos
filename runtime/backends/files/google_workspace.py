@@ -38,6 +38,7 @@ from backends._google_auth_common import (  # noqa: E402
     auth_needs_inputs as _auth_needs_inputs,
 )
 from messages import get as _msg  # noqa: E402
+from spreadsheet_cells import active_cell_count, neutralized_rows  # noqa: E402
 
 
 _DRIVE_ID_RE = re.compile(r"[A-Za-z0-9_-]{12,}")
@@ -1230,8 +1231,10 @@ def write_spreadsheet(args: dict) -> dict:
                 "results": [], "used": 0, "n_written": 0}
 
     sub_cmd = "append" if mode == "append" else "update"
+    # USER_ENTERED evaluates text that starts like a formula; the text prefix
+    # keeps data as data and Sheets does not display it.
     argv = ["sheets", sub_cmd, sid, rng,
-            "--values", json.dumps(values, ensure_ascii=False)]
+            "--values", json.dumps(neutralized_rows(values), ensure_ascii=False)]
     data, err = _run_drive(argv, executor="write_files_spreadsheet",
                              args_base=dict(args), result_kind="results")
     if err is not None:
@@ -1249,7 +1252,7 @@ def write_spreadsheet(args: dict) -> dict:
         "updated_cells": updated_cells,
         "mode": mode,
     }
-    return {
+    out = {
         "ok": True,
         "n_written": 1,
         "updated_cells": updated_cells,
@@ -1261,6 +1264,11 @@ def write_spreadsheet(args: dict) -> dict:
         "used": 1,
         "files_source": "google_workspace",
     }
+    prefixed_cells = active_cell_count(values)
+    if prefixed_cells:
+        # Sent behind the text prefix, which Sheets does not display.
+        result_row["text_prefixed_cells"] = out["text_prefixed_cells"] = prefixed_cells
+    return out
 
 
 def append_spreadsheet(args: dict) -> dict:

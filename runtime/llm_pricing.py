@@ -26,7 +26,7 @@ PRICING: dict[tuple[str, str], tuple[float, float]] = {
     ("anthropic", "claude-fable-5"):    (10.0, 50.0),
 }
 
-ZERO_COST_PROVIDERS = frozenset({"llamacpp", "ollama"})
+ZERO_COST_PROVIDERS = frozenset({"llamacpp"})
 
 
 def cost_policy(provider: str | None, model: str | None = None) -> str:

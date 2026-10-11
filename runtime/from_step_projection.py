@@ -22,6 +22,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from tabular_records import SOURCE_METADATA_FIELDS, has_explicit_column_sources
+
 
 _SCALAR_TYPES = frozenset({"string", "integer", "number", "boolean"})
 CONTEXT_ERRORS_KEY = "_from_step_context_errors"
@@ -443,7 +445,11 @@ def project_from_entries(args: dict, entries: list,
                 out[arg_name] = value
 
     context_errors: list[dict[str, str]] = []
-    vector_arg = consumer_match_arg(consumer_schema, entries)
+    explicit_record_sources = has_explicit_column_sources(out)
+    # A declared column source owns record identity. In particular a public
+    # field named "value" must not route the payload to positional "values".
+    vector_arg = (None if explicit_record_sources
+                  else consumer_match_arg(consumer_schema, entries))
     used_vector_arg = None
     if vector_arg and vector_arg not in out:
         spec = properties.get(vector_arg) or {}
@@ -478,6 +484,14 @@ def project_from_entries(args: dict, entries: list,
         used_vector_arg = vector_arg
     else:
         out["entries"] = entries
+
+    if explicit_record_sources and isinstance(source_result, dict):
+        # Keep declared producer limits with these records, without importing
+        # writer/compiler infrastructure or unrelated result metadata. An
+        # explicit consumer argument remains authoritative, including None.
+        for key in SOURCE_METADATA_FIELDS:
+            if key in source_result:
+                out.setdefault(key, source_result[key])
 
     # Scalar context is strictly manifest-driven. A consumer opts in by
     # declaring from_entries_key on a primitive property. Explicit arguments

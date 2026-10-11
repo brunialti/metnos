@@ -87,7 +87,7 @@ CAPABILITY_REGISTRY: dict[str, CapabilitySpec] = {
     "llm:local": CapabilitySpec(
         "llm:local", critical=False, grants_mutation=False, default_approval="none",
         target_kind="none",
-        description="Chiamata LLM locale (Ollama/llama.cpp), costo zero",
+        description="Chiamata LLM locale (llama.cpp), costo zero",
     ),
     "llm:online": CapabilitySpec(
         "llm:online", critical=False, grants_mutation=False, default_approval="per_target",

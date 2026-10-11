@@ -184,7 +184,7 @@ def _lazy_start_vlm(*, deadline_at: float | None = None) -> bool:
 
 
 def _monitor_vlm_read(req, timeout, *, provider, model):
-    from monitor_capture import call_scope, observe_response
+    from llm_invocation import call_scope, observe_response
     with call_scope(provider=provider, model=model, level="vlm:default", kind="vision") as call:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             raw = resp.read().decode("utf-8")
@@ -302,11 +302,6 @@ def describe_image(img_path, *, lang: str | None = None,
         if request_timeout <= 0:
             return _vlm_fail("deadline_exhausted")
         started_at = time.perf_counter()
-        try:
-            import llm_telemetry
-            llm_telemetry.mark_call_started()
-        except Exception:
-            pass
         raw = _monitor_vlm_read(req, request_timeout,
             provider=str(_VLM.get("provider") or "llamacpp"), model=str(model))
     except urllib.error.URLError as e:

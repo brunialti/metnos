@@ -24,6 +24,7 @@ import json
 import re
 import threading
 import unicodedata
+from uuid import uuid4
 from datetime import date
 
 from executor_workers import assigned_workers, map_ordered
@@ -35,6 +36,7 @@ from agentic_executor import (
 )
 import detection_lexicon_seed_reconciliation as _reconciliation_lex
 from time_window_parser import normalize_observed_date
+from tabular_records import merge_source_metadata
 
 log = get_logger(__name__)
 
@@ -1099,7 +1101,7 @@ def _declare_truncation(result: dict, *, what: str, cap_field: str,
         result["partial"] = True
 
 
-def handle_extract_entries(args, *, verbose: bool = False) -> dict:
+def _handle_extract_entries(args, *, verbose: bool = False) -> dict:
     a = args or {}
     entries = a.get("entries")
     if entries is None and isinstance(a.get("texts"), list):
@@ -1870,6 +1872,43 @@ def handle_extract_entries(args, *, verbose: bool = False) -> dict:
     return res
 
 
+def handle_extract_entries(args, *, verbose: bool = False) -> dict:
+    """Keep collection evidence outside records and per-view merge gates."""
+    a = args or {}
+    try:
+        inherited = merge_source_metadata(a.get("source_metadata"))
+    except ValueError:
+        return {"ok": False, "entries": [], "error_class": "invalid_args",
+                "error_code": "ERR_ARG_INVALID",
+                "error": _msg("ERR_ARG_INVALID", arg="source_metadata",
+                              reason="invalid_source_metadata")}
+    result = _handle_extract_entries(a, verbose=verbose)
+    local = []
+    scope = uuid4().hex
+    for index, truncation in enumerate(result.get("truncations") or []):
+        # These declarations are made by this runtime implementation, never
+        # read from extracted records or the model's response envelope.
+        item = {"producer": "extract_entries", "scope": scope,
+                "source_ref": str(index), "truncated": True,
+                "partial": truncation.get("truncated_intentional") is not True,
+                "reason_code": "extraction_limit"}
+        for key in ("cap_field", "cap_value"):
+            if key in truncation:
+                item[key] = truncation[key]
+        local.append(item)
+    if result.get("partial") is True and not local:
+        local.append({"producer": "extract_entries", "scope": scope,
+                      "partial": True, "reason_code": "extraction_incomplete"})
+    try:
+        result["source_metadata"] = merge_source_metadata(inherited, local)
+    except ValueError:
+        return {"ok": False, "entries": [], "source_metadata": inherited,
+                "error_class": "invalid_source_metadata", "error_code": "ERR_ARG_INVALID",
+                "error": _msg("ERR_ARG_INVALID", arg="source_metadata",
+                              reason="invalid_source_metadata")}
+    return result
+
+
 EXTRACT_ENTRIES_TOOL = {
     "type": "function",
     "function": {
@@ -1893,6 +1932,11 @@ EXTRACT_ENTRIES_TOOL = {
             "type": "object",
             "required": ["from_step"],
             "properties": {
+                "source_metadata": {
+                    "type": "array", "items": {"type": "object"},
+                    "runtime_resolved": True,
+                    "from_result_key": "source_metadata",
+                },
                 "from_step": {
                     "type": "integer",
                     "description": "Numero dello step (in questo turno) che ha "

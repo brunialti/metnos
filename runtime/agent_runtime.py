@@ -1292,7 +1292,7 @@ def _render_now_vars() -> dict:
 def planner_facing_schema(schema):
     """Trasforma lo `args_schema` di un executor nello schema esposto al
     pianificatore LLM. Fix strutturale (30/4/2026) per il disallineamento
-    prompt↔schema sotto schema-guided decoding (Ollama/modello locale).
+    prompt↔schema sotto schema-guided decoding del modello locale.
 
     Regola unica: se l'executor consuma una lista prodotta da uno step
     upstream (rilevato dalla presenza di `entries` in `properties` o in
@@ -1364,7 +1364,7 @@ def planner_facing_schema(schema):
 
 
 def render_tools_for_provider(executors):
-    """Converte la lista di Executor in tools format Ollama/OpenAI.
+    """Converte la lista di Executor in tools format OpenAI.
 
     Applica `planner_facing_schema` per garantire che lo schema esposto
     al modello sia coerente con la convenzione `from_step` (vedi
@@ -5719,21 +5719,25 @@ class TurnLog:
             res = s_step.result if isinstance(s_step.result, dict) else {}
             atts = res.get("attachments")
             if isinstance(atts, list) and atts:
-                self.attachments = atts
+                self.attachments = list(atts)
                 break
-        # Fallback §7.3: nessun executor ha dichiarato attachments ma uno step
-        # file-producer (spreadsheet/doc/zip/...) ha scritto un file su disco →
-        # sintetizza gli attachments cosi' il deliverable arriva all'utente su
-        # OGNI canale (HTTP download + Telegram documento). Bug live 5303699e.
-        if not self.attachments:
-            for s_step in reversed(self.steps):
-                res = s_step.result if isinstance(s_step.result, dict) else {}
-                if not res.get("ok"):
-                    continue
-                derived = _derive_file_attachments(s_step.chosen_tool, res)
-                if derived:
-                    self.attachments = derived
-                    break
+        # §7.3: aggiunge i file dell'ultimo produttore riuscito anche quando
+        # un altro step ha già dichiarato allegati (es. screenshot browser).
+        # Conserva ordine e metadati espliciti, senza modificare i risultati
+        # degli step. Il confronto riguarda solo il percorso testuale esatto.
+        attached_paths = {att.get("path") for att in self.attachments
+                          if isinstance(att, dict) and isinstance(att.get("path"), str)}
+        for s_step in reversed(self.steps):
+            res = s_step.result if isinstance(s_step.result, dict) else {}
+            if not res.get("ok"):
+                continue
+            derived = _derive_file_attachments(s_step.chosen_tool, res)
+            if derived:
+                for att in derived:
+                    if att["path"] not in attached_paths:
+                        self.attachments.append(att)
+                        attached_paths.add(att["path"])
+                break
 
         # Universal §7.3: se reference_images allegate via drag&drop,
         # PREPEND le foto input agli attachments cosi' la chat mostra

@@ -293,7 +293,14 @@ def build_view(
 
     groups: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
     identities = {}
+    summary["calls_without_attested_model_on_error"] = 0
     for call in calls:
+        # A failed attempt cannot attest a physical model from its configured
+        # alias. Keep it in request/call totals, not in model performance series.
+        if call.get("status") in {"error", "timeout", "cancelled"} and not call.get(
+                "physical_model_reported"):
+            summary["calls_without_attested_model_on_error"] += 1
+            continue
         identity = _identity(call)
         identity["model_grouping"] = model_grouping
         if model_grouping == "physical":

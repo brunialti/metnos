@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-llm_provider.py — astrazione mode-aware del provider LLM (Metnos v1.1 POC).
+llm_provider.py — astrazione dei provider LLM di Metnos.
 
 Decisione M1+D1: ogni call site dell'LLM passa per un'istanza di LLMProvider.
-In v1.1 POC esistono:
-    OllamaProvider     mode="local"   chiama localhost:11434
+Provider disponibili:
     LlamaCppProvider   mode="local"   OpenAI-compat su llama-server (es. :8080)
     AnthropicProvider  mode="online"  Anthropic Messages API
+    OpenAIProvider     mode="online"  OpenAI API
     StubProvider       mode="local"   per testing senza LLM
 
 API:
@@ -31,7 +31,7 @@ import urllib.request
 from dataclasses import dataclass, field
 
 import llm_telemetry as _telemetry  # universal pass-through observability hook
-import monitor_capture as _monitor
+import llm_invocation as _monitor
 
 
 REASONING_EFFORTS = {
@@ -140,124 +140,6 @@ def _request_timeout(value, default: float) -> float:
     if not math.isfinite(timeout) or timeout <= 0:
         raise ProviderError("request timeout budget exhausted")
     return timeout
-
-
-class OllamaProvider:
-    """Provider Ollama HTTP API (deprecato post-ADR 0146).
-
-    Mantenuto per back-compat e per chi serve esplicitamente modelli via
-    `ollama serve`. Il modello DEVE essere specificato esplicitamente:
-    il vecchio default `qwen3:8b` e' stato rimosso il 18/5/2026 perche'
-    era latent-broken (ADR 0148) — ollama.service e' disabilitato su .33
-    e i caller hardcoded a qwen3:8b cadevano silenziosamente.
-
-    Per il pianificatore default usa `LlamaCppProvider` o `LLMRouter`
-    (vedi ADR 0146).
-    """
-    mode = "local"
-    name = "ollama"
-
-    def __init__(self, model: str, endpoint: str = "http://localhost:11434",
-                 think: bool = False):
-        if not model:
-            raise ValueError(
-                "OllamaProvider richiede `model=` esplicito post-ADR 0148 "
-                "(no default qwen3:8b). Es. OllamaProvider(model='qwen3:8b')."
-            )
-        self.model = model
-        self.endpoint = endpoint
-        self.think = think
-
-    def chat(self, system, user, *, max_tokens=512, temperature=0, think=None,
-             request_timeout_s=None):
-        payload = {
-            "model": self.model,
-            "stream": False,
-            "think": self.think if think is None else think,
-            "messages": [
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ],
-            "options": {"num_predict": max_tokens, "temperature": temperature},
-        }
-        res = self._call_chat(
-            payload, expect_tools=False,
-            request_timeout_s=request_timeout_s)
-        _telemetry.record(provider="ollama", model=self.model,
-                          system=system, user=user, result=res, kind="chat")
-        return res
-
-    def chat_with_tools(self, system, user, tools, history=None, *,
-                        max_tokens=512, temperature=0, think=None,
-                        request_timeout_s=None):
-        """
-        tools: list[dict] in formato OpenAI/Ollama function-calling
-            {"type": "function", "function": {"name", "description", "parameters"}}
-        history: list di {"role", "content", "tool_calls"?, "tool_call_id"?, "name"?}
-        """
-        messages = [{"role": "system", "content": system}]
-        if history:
-            messages.extend(history)
-        messages.append({"role": "user", "content": user})
-        payload = {
-            "model": self.model,
-            "stream": False,
-            "think": self.think if think is None else think,
-            "messages": messages,
-            "tools": tools,
-            "options": {"num_predict": max_tokens, "temperature": temperature},
-        }
-        res = self._call_chat(
-            payload, expect_tools=True,
-            request_timeout_s=request_timeout_s)
-        _telemetry.record(provider="ollama", model=self.model,
-                          system=system, user=user, result=res, kind="tools")
-        return res
-
-    @_monitor.provider_call("ollama")
-    def _call_chat(self, payload, expect_tools, *, request_timeout_s=None):
-        # ADR 0121: sanitize surrogates pre-serialization (vedi LlamaCppProvider).
-        body = _encode_payload(payload)
-        req = urllib.request.Request(
-            f"{self.endpoint}/api/chat",
-            data=body, headers={"Content-Type": "application/json"}, method="POST",
-        )
-        t0 = time.time()
-        try:
-            with urllib.request.urlopen(
-                    req, timeout=_request_timeout(request_timeout_s, 300)) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-                _monitor.observe_response(data)
-        except urllib.error.URLError as e:
-            raise ProviderError(f"ollama unreachable: {e}") from e
-        latency = int((time.time() - t0) * 1000)
-        msg = data.get("message", {})
-        text = msg.get("content", "")
-        thinking = msg.get("thinking", "")
-        in_toks = data.get("prompt_eval_count", 0)
-        out_toks = data.get("eval_count", 0)
-
-        if expect_tools:
-            tool_calls_raw = msg.get("tool_calls", []) or []
-            tcs = [
-                ToolCall(
-                    name=tc.get("function", {}).get("name", ""),
-                    arguments=tc.get("function", {}).get("arguments", {}),
-                    call_id=tc.get("id", ""),
-                )
-                for tc in tool_calls_raw
-            ]
-            return ToolUseResult(
-                text=text, tool_calls=tcs,
-                in_tokens=in_toks, out_tokens=out_toks,
-                model=self.model, provider="ollama",
-                latency_ms=latency, thinking=thinking,
-            )
-        return ChatResult(
-            text=text, in_tokens=in_toks, out_tokens=out_toks,
-            model=self.model, provider="ollama",
-            latency_ms=latency, thinking=thinking,
-        )
 
 
 # --- LlamaCppProvider (llama-server OpenAI-compatible) -------------------
@@ -726,7 +608,7 @@ def _temperature_deprecated(model: str) -> bool:
 class AnthropicProvider:
     """Client per Anthropic Messages API. Tool-use nativo via schema Anthropic.
 
-    Differenze schema rispetto a Ollama/OpenAI:
+    Differenze schema rispetto a OpenAI:
       - tools: [{name, description, input_schema}]  (no "type":"function" wrapper)
       - response.content: lista di blocchi con type in {"text","tool_use"}
       - system come campo top-level, non come messaggio role=system
@@ -935,7 +817,7 @@ class AnthropicProvider:
 
     @staticmethod
     def _convert_tools(tools):
-        """OpenAI/Ollama format -> Anthropic format."""
+        """OpenAI format -> Anthropic format."""
         out = []
         for t in tools:
             if "function" in t:
@@ -981,7 +863,7 @@ class AnthropicProvider:
 class OpenAIProvider:
     """Client per OpenAI Chat Completions API.
 
-    Schema identico a Ollama/llama-server (OpenAI-compat): tools come
+    Schema compatibile con llama-server (OpenAI): tools come
     [{"type":"function","function":{...}}], response.choices[0].message.tool_calls.
     """
     mode = "online"
@@ -1314,23 +1196,13 @@ def make_provider_from_spec(spec):
     Usato dal tier resolver per istanziare un provider concreto. Esempi:
         {"provider": "llamacpp",  "model": "local", "endpoint": "http://127.0.0.1:8080"}
         {"provider": "anthropic", "model": "claude-sonnet-4-6"}
-        {"provider": "ollama",    "model": "<modello-esplicito>"}  (deprecated)
     """
-    # ADR 0146: default provider = llamacpp (era ollama pre-18/5/2026).
+    # ADR 0146: il provider locale predefinito è llama.cpp.
     p = spec.get("provider", "llamacpp")
     # `endpoint` and `base_url` are aliases — tiers are abstract bindings and a
     # user config may use either name for the local server URL.
     endpoint = spec.get("endpoint") or spec.get("base_url")
-    if p == "ollama":
-        # Post-ADR 0148: niente fallback silenzioso a qwen3:8b. Caller
-        # deve specificare model. OllamaProvider stesso ora raise se model
-        # mancante.
-        return OllamaProvider(
-            model=spec.get("model"),
-            endpoint=endpoint or "http://localhost:11434",
-            think=spec.get("think", False),
-        )
-    elif p == "llamacpp":
+    if p == "llamacpp":
         # model is optional: a llama-server serves whatever GGUF it loaded, so
         # an unset/placeholder name is fine (no specific model required).
         return LlamaCppProvider(
@@ -1362,24 +1234,3 @@ def make_provider_from_spec(spec):
     elif p == "stub":
         return StubProvider(scripted_response=spec.get("response", "OK"))
     raise ValueError(f"unknown provider: {p}")
-
-
-if __name__ == "__main__":
-    import sys
-    model = sys.argv[1] if len(sys.argv) > 1 else "qwen3:8b"
-    p = OllamaProvider(model=model, think=False)
-    print(f"--- chat() su {model} (think=false) ---")
-    r = p.chat("Sei un assistente conciso.", "Dimmi solo OK.")
-    print(f"text={r.text!r}  toks {r.in_tokens}->{r.out_tokens}  {r.latency_ms}ms")
-
-    print(f"\n--- chat_with_tools() su {model} (think=false) ---")
-    tools = [{
-        "type": "function",
-        "function": {
-            "name": "get_now",
-            "description": "Restituisce l'ora corrente in un fuso IANA.",
-            "parameters": {"type": "object", "properties": {"timezone": {"type": "string"}}, "required": []},
-        },
-    }]
-    r = p.chat_with_tools("Sei un assistente che usa tool.", "Che ora è a Tokyo?", tools)
-    print(f"text={r.text!r}  tool_calls={r.tool_calls}  toks {r.in_tokens}->{r.out_tokens}  {r.latency_ms}ms")

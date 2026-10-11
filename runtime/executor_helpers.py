@@ -33,7 +33,7 @@ from worker_policy import bounded_worker_count
 # date, not part of it, so whoever interprets the value AS a date must look
 # underneath. Without this, a filter on a period silently dropped exactly the
 # rows the mark existed to save (sites omit the year on recent rows).
-ASSUMED_YEAR_MARK = "*"
+from observed_dates import ASSUMED_YEAR_MARK
 
 
 def approval_digest(arguments: dict) -> str:

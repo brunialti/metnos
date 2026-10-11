@@ -448,6 +448,8 @@ def _completion_from_receipt(receipt: dict) -> CompletionResult:
 
 def _completion_from_turnlog(new_log) -> CompletionResult:
     """CompletionResult da un TurnLog di run_turn (resume full-turn)."""
+    from monitor_capture import finish_turn
+    finish_turn(new_log)
     try:
         total_ms = int((getattr(new_log, "ts_end", 0)
                         - getattr(new_log, "ts_start", 0)) * 1000)
@@ -521,10 +523,18 @@ def process_completion_callback(sender_id: str, dialog_id: str,
         if gated:
             from program_start_consent import remember_verified_dialog
             remember_verified_dialog(state, actor=actor, owner=owner_user_id)
-        out = _dispatch_completion(
-            sender_id, dialog_id, actor=actor, channel=channel,
-            owner_user_id=owner_user_id,
-            host_override=host_override)
+        from user_lifecycle import owner_session
+        from monitor_capture import segment_scope
+        from llm_telemetry import count_model_calls
+        # A callback may inherit the finished HTTP request's context. Its
+        # dispatch owns the resumed work, including executor-tail continuations.
+        with owner_session(owner_user_id), segment_scope(
+                independent=True, owner_id=owner_user_id,
+                channel=channel), count_model_calls():
+            out = _dispatch_completion(
+                sender_id, dialog_id, actor=actor, channel=channel,
+                owner_user_id=owner_user_id,
+                host_override=host_override)
         result = (out if isinstance(out, CompletionResult) else
                   CompletionResult(text=str(out) if out is not None else ""))
     except Exception:

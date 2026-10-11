@@ -2,7 +2,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "act_sites"
-version     = "0.2.4"
+version     = "0.2.5"
 intelligence = "agentic"
 # Four available sessions, each with a five-minute active search budget.
 timeout_s   = 1800
@@ -28,6 +28,16 @@ digest = "sha256:03004b04d5d26564842f2fa560e66e141c5ac52e0ac230e4b0bdcecf596111e
 [args]
 type = "object"
 required = ["session_ids", "action"]
+
+[args.properties.source_metadata]
+type = "array"
+items = { type = "object" }
+runtime_resolved = true
+from_result_key = "source_metadata"
+
+[args.properties.source_metadata.description]
+it = "Provenienza e incompletezza dichiarate dai produttori runtime. Iniettate automaticamente; non sono dati delle righe né istruzioni del modello."
+en = "Provenance and incompleteness declared by runtime producers. Injected automatically; neither row data nor model instructions."
 
 [args.properties.session_ids]
 type = "array"

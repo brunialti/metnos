@@ -805,6 +805,14 @@ never count toward F5 technical-admission thresholds. Ordinary new, modified or
 imported components still require full Birth. Catalog activation remains atomic.
 This candidate requires complete isolated installation acceptance before release.
 
+The functional runner receives its explicit support inventory from the signed
+distribution, including Monitor and `install/data/i18n_seed.sqlite`; it never
+falls back to the host runtime or a live translation database. These bytes are
+bound to the property context, so a changed dependency invalidates reuse of the
+corresponding proof. The release controller exercises the same isolated stdio
+runner before stopping services. This operational check does not replace Birth
+admission or waive isolation, undo, authorization or fresh quiescence checks.
+
 ## Credentials
 
 Phase 4 writes only canonical dictionary payloads through

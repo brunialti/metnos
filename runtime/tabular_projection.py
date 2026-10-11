@@ -183,11 +183,19 @@ def _field_concept_strength(entries: list[dict], field: str,
 
 
 def _fields(entries: list[dict]) -> list[str]:
+    """Every public key of every record, in order of first appearance.
+
+    Identity is decided over the whole list: a key seen only late can collide
+    with an early spelling or be the populated sibling of an empty alias.
+    Values are sampled separately (``_sample_values``).
+    """
     out: list[str] = []
-    for entry in entries[:50]:
+    seen: set[str] = set()
+    for entry in entries:
         for raw in entry.keys():
             field = str(raw)
-            if not field.startswith("_") and field not in out:
+            if not field.startswith("_") and field not in seen:
+                seen.add(field)
                 out.append(field)
     return out
 
@@ -249,6 +257,10 @@ def _legacy_projection(entries: list[dict], columns: list[str],
         ordinal = _ordinal(header)
         chosen: str | None = None
         transform = "identity"
+        # Any populated field offered as a semantic candidate, even one that
+        # cannot be chosen, competes with an empty identity: ambiguity is not
+        # absence.
+        populated_candidates = False
 
         # A requested filename can be materialized from the corresponding
         # path when the producer exposes only paths.  This is a derivation,
@@ -259,6 +271,7 @@ def _legacy_projection(entries: list[dict], columns: list[str],
                 for field, evidence in strengths.items()
                 if evidence.get("name") and populated.get(field)
             ]
+            populated_candidates = bool(name_candidates)
             chosen = _choose(name_candidates, ordinal, used)
             if chosen is None and not name_candidates:
                 path_candidates = [
@@ -266,6 +279,7 @@ def _legacy_projection(entries: list[dict], columns: list[str],
                     for field, evidence in strengths.items()
                     if evidence.get("path") and populated.get(field)
                 ]
+                populated_candidates = populated_candidates or bool(path_candidates)
                 chosen = _choose(path_candidates, ordinal, set())
                 transform = "basename" if chosen is not None else "identity"
 
@@ -279,6 +293,7 @@ def _legacy_projection(entries: list[dict], columns: list[str],
                     for field, evidence in strengths.items()
                     if evidence.get(concept) and populated.get(field)
                 ]
+                populated_candidates = populated_candidates or bool(candidates)
                 candidate = _choose(candidates, ordinal, used)
                 if candidate is not None:
                     selections.append(
@@ -292,6 +307,12 @@ def _legacy_projection(entries: list[dict], columns: list[str],
                 if len(top) == 1:
                     chosen = next(iter(top))
 
+        if chosen is None and exact is not None and not populated_candidates:
+            # The header names exactly one record field, present and empty,
+            # and no populated field competes for it: the column is empty.
+            projections.append(ColumnProjection(header, exact))
+            used.add(exact)
+            continue
         if chosen is None:
             unresolved.append(header)
             continue

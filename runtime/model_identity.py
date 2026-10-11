@@ -121,20 +121,6 @@ def _discover_openai(endpoint: str, timeout_s: float) -> list[str]:
         row.get("id") for row in rows if isinstance(row, Mapping))
 
 
-@register_discovery_adapter(("ollama",), source="ollama_tags")
-def _discover_ollama(endpoint: str, timeout_s: float) -> list[str]:
-    parsed = urllib.parse.urlsplit(endpoint)
-    path = f"{parsed.path.rstrip('/')}/api/tags"
-    url = urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, path, "", ""))
-    data = _read_json(url, timeout_s)
-    rows = data.get("models") if isinstance(data, Mapping) else None
-    if not isinstance(rows, list):
-        return []
-    return _bounded_identities(
-        row.get("model") or row.get("name")
-        for row in rows if isinstance(row, Mapping))
-
-
 def _public_observation(row: Mapping[str, Any] | None, *, now: float | None = None) -> dict[str, Any]:
     if not row:
         return {

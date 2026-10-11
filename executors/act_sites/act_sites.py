@@ -19,6 +19,8 @@ from messages import get as _msg  # noqa: E402
 from playwright_sidecar import session_client  # noqa: E402
 from playwright_sidecar.action_resolver import (  # noqa: E402
     is_goal_navigation_request)
+from sites_observed import REASON_MSG  # noqa: E402
+from tabular_records import merge_source_metadata  # noqa: E402
 
 
 def _collect_session_ids(args: dict) -> list[str]:
@@ -41,9 +43,8 @@ def _attachment(path: str, sensitive: bool) -> dict:
             "sensitive": sensitive}
 
 
-# Quanto testo della pagina d'arrivo entra nella risposta: abbastanza per
-# rispondere, non tanto da diventare un allegato mascherato (§2.7: oltre,
-# si dichiara il troncamento).
+# Il limite riguarda la presentazione, non i dati conservati nella sessione
+# che read_sites puo' rileggere. I veri cap della raccolta restano separati.
 _MAX_TESTO_ARRIVO = 4000
 _TRUNCATION_FIELDS = ("truncated", "truncated_what", "used", "available_total",
                       "cap_field", "cap_value")
@@ -73,6 +74,8 @@ def _failure_message(results: list[dict]) -> str:
         message = (_msg("MSG_SITES_RC_SELECTOR_AMBIGUOUS_LIST",
                              candidates=", ".join(f"«{n}»" for n in nomi[:5]))
                         if nomi else _msg("MSG_SITES_RC_SELECTOR_AMBIGUOUS"))
+    elif reason in REASON_MSG:
+        message = _msg(REASON_MSG[reason])
     else:
         message = _msg("ERR_OP_FAILED", reason="act_sites")
     if str(message).startswith("<missing:"):
@@ -110,12 +113,15 @@ def invoke(args: dict) -> dict:
     results = []
     pending = []
     attachments = []
+    source_metadata = []
     for sid in session_ids:
         res = session_client.session_act(
             session_id=sid, owner=owner, action=action, value_ref=value_ref,
             approval_token=approval_tokens.get(sid),
             goal_query=(action if goal_mode else None),
             done_when=done_when or None, scope=ambito or None)
+        session_metadata = merge_source_metadata(res.get("source_metadata"))
+        source_metadata = merge_source_metadata(source_metadata, session_metadata)
         if res.get("approval_required"):
             token = res.get("approval_token")
             if token:
@@ -150,6 +156,9 @@ def invoke(args: dict) -> dict:
             except Exception:
                 letto = None         # la lettura e' un di piu': mai un blocco
         if isinstance(letto, dict) and (letto.get("ok") or collection_partial):
+            session_metadata = merge_source_metadata(
+                session_metadata, letto.get("source_metadata"))
+            source_metadata = merge_source_metadata(source_metadata, session_metadata)
             # I blocchi che riguardano il fine sono la risposta; il corpo
             # intero e' il ripiego quando il fine non seleziona niente.
             tratto = str(letto.get("goal_span") or "")
@@ -158,10 +167,9 @@ def invoke(args: dict) -> dict:
                       "title": letto.get("title") or "",
                       "text": testo[:_MAX_TESTO_ARRIVO]}
             if len(testo) > _MAX_TESTO_ARRIVO:
-                arrivo["truncated"] = True
-                arrivo["truncated_what"] = "text"
-                arrivo["used"] = _MAX_TESTO_ARRIVO
-                arrivo["available_total"] = len(testo)
+                arrivo["presentation_truncated"] = True
+                arrivo["preview_used"] = _MAX_TESTO_ARRIVO
+                arrivo["preview_available_total"] = len(testo)
         results.append({
             "session_id": sid, "ok": bool(res.get("ok")),
             "executed": bool(res.get("executed")),
@@ -172,6 +180,7 @@ def invoke(args: dict) -> dict:
             **({k: v for k, v in arrivo.items() if k != "url"} if arrivo else {}),
             **({k: res[k] for k in _TRUNCATION_FIELDS if k in res}
                if res.get("truncated") else {}),
+            **({"source_metadata": session_metadata} if session_metadata else {}),
             "reason_code": (None if res.get("ok") else
                             res.get("reason_code") or res.get("error_class")),
             **({"reason_detail": res.get("detail")} if res.get("detail") else {}),
@@ -213,6 +222,8 @@ def invoke(args: dict) -> dict:
         if attachments:
             gate["attachments"] = attachments
         gate["pending_sessions"] = list(tokens)
+        if source_metadata:
+            gate["source_metadata"] = source_metadata
         return gate
 
     # The step delivers usable evidence from every session. Per-session ok
@@ -221,6 +232,8 @@ def invoke(args: dict) -> dict:
     out = {"ok": ok, "results": results,
            "metadata": {"executed": sum(1 for r in results if r["executed"]),
                         "total": len(results)}}
+    if source_metadata:
+        out["source_metadata"] = source_metadata
     partials = [r for r in results if r.get("collection_partial")]
     if partials:
         out.update(collection_partial=True, partial=True,

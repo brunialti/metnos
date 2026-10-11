@@ -11,13 +11,13 @@ from __future__ import annotations
 import calendar
 import re
 from datetime import date, datetime, time, timedelta, timezone
-from email.utils import parsedate_to_datetime
 from zoneinfo import ZoneInfo
 
 from dateutil.relativedelta import relativedelta
 
 import config as _C
 import detection_lexicon_seed_parsers as _parser_lex
+from observed_dates import _phrase_alt, normalize_observed_date as _normalize_observed_date
 
 
 class TemporalError(ValueError):
@@ -46,72 +46,18 @@ def calendar_date_bounds(year: int, month: int | None = None, day: int | None = 
     return date(year, 1, 1), date(year, 12, 31)
 
 
-def normalize_observed_date(value):
-    """Canonicalize an observed date without filling in missing components.
+def normalize_observed_date(value, *, month_names: dict[str, int] | None = None):
+    """Normalize an observed date using the active catalog unless supplied.
 
-    Year/month literals retain month precision. Unknown or invalid values
-    stay readable; an assumed-year mark is preserved, never promoted to fact.
-    Month names come from the active language's existing temporal lexicon.
+    Explicit mappings, including {}, keep normalization independent of a
+    runtime lookup. The shared helper preserves precision and assumed years.
     """
-    from executor_helpers import ASSUMED_YEAR_MARK
-
-    if not isinstance(value, str) or not value.strip():
-        return value
-    raw = value.strip()
-    if raw.startswith(ASSUMED_YEAR_MARK):
-        inner = normalize_observed_date(raw[len(ASSUMED_YEAR_MARK):])
-        return ASSUMED_YEAR_MARK + inner.strip() if inner.strip() else ""
-    try:
-        if re.fullmatch(r"\d{4}", raw):
-            date(int(raw), 1, 1)
-            return raw
-        month = re.fullmatch(r"(\d{4})[-/.](\d{1,2})", raw)
-        reverse = re.fullmatch(r"(\d{1,2})[-/.](\d{4})", raw)
-        if month or reverse:
-            year, number = map(int, month.groups() if month else reverse.groups()[::-1])
-            date(year, number, 1)
-            return f"{year:04d}-{number:02d}"
-        candidate = raw[:-1] + "+00:00" if raw.endswith("Z") else raw
-        if "T" in candidate or " " in candidate:
-            return datetime.fromisoformat(candidate).isoformat()
-        return date.fromisoformat(candidate).isoformat()
-    except ValueError:
-        pass
-    for fmt in ("%d/%m/%Y", "%d-%m-%Y", "%d.%m.%Y", "%Y/%m/%d",
-                "%d/%m/%Y %H:%M", "%d-%m-%Y %H:%M",
-                "%d/%m/%Y %H:%M:%S", "%Y/%m/%d %H:%M"):
-        try:
-            parsed = datetime.strptime(raw, fmt)
-            return parsed.isoformat() if "%H" in fmt else parsed.date().isoformat()
-        except ValueError:
-            pass
-    lexicon = _parser_lex.load_family("time_resolver")
-    if lexicon:
-        months = {str(form).casefold(): int(number)
-                  for number, forms in lexicon["parser.time.month"].items() for form in forms}
-        match = re.fullmatch(rf"(?:(\d{{1,2}})\s+)?({_phrase_alt(months)})\s+(\d{{4}})", raw, re.I)
-        month_first = re.fullmatch(rf"({_phrase_alt(months)})\s+(\d{{1,2}}),?\s+(\d{{4}})", raw, re.I)
-        if month_first:
-            name, day, year = month_first.groups()
-            try:
-                return date(int(year), months[name.casefold()], int(day)).isoformat()
-            except ValueError:
-                return raw
-        if match:
-            day, name, year = match.groups()
-            month = months[name.casefold()]
-            try:
-                if day:
-                    return date(int(year), month, int(day)).isoformat()
-                date(int(year), month, 1)
-                return f"{int(year):04d}-{month:02d}"
-            except ValueError:
-                return raw
-    try:
-        parsed = parsedate_to_datetime(raw)
-        return parsed.isoformat() if parsed is not None else raw
-    except (TypeError, ValueError, OverflowError):
-        return raw
+    if month_names is None:
+        lexicon = _parser_lex.load_family("time_resolver")
+        month_names = ({str(form).casefold(): int(number)
+                        for number, forms in lexicon["parser.time.month"].items()
+                        for form in forms} if lexicon else {})
+    return _normalize_observed_date(value, month_names=month_names)
 
 
 def observed_date_period(value) -> tuple[date, date] | None:
@@ -297,12 +243,6 @@ def _calendar_period(spec, now):
     else:
         return None
     return _full_day(first, now.tzinfo)[0], _full_day(after - timedelta(days=1), now.tzinfo)[1]
-
-
-def _phrase_alt(forms):
-    return "|".join(re.escape(str(form)).replace(r"\ ", r"\s+")
-                    for form in sorted(set(forms or ()), key=lambda item: (-len(item), item))
-                    if str(form).strip())
 
 
 def _localized_numeric(spec, now):

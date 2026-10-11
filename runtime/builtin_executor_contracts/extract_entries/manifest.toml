@@ -16,11 +16,23 @@ en = "SCOPO: Extracts structured records from already observed entries. PATTERN:
 
 [code]
 files = ["implementation.py.src"]
-digest = "sha256:cb304ec82ba632cc9e386a29602b2e497c5f064efd59299205f3039ff289171c"
+digest = "sha256:4f6f22ceb8ee80ad6bb0a4d223ee7e22b4b26d40f7e4dcd48741d81c2da79c7b"
 
 [args]
 type = "object"
 required = ["from_step"]
+
+[args.properties.source_metadata]
+type = "array"
+runtime_resolved = true
+from_result_key = "source_metadata"
+
+[args.properties.source_metadata.description]
+it = "Argomento source_metadata."
+en = "Runtime-owned provenance and incomplete-source evidence, injected automatically; not row data or model instructions."
+
+[args.properties.source_metadata.items]
+type = "object"
 
 [args.properties.from_step]
 type = "integer"
@@ -141,7 +153,7 @@ it = "Se true può leggere i link presenti nelle sorgenti per completare campi m
 en = "Allow bounded follow-up extraction on nested content."
 
 [output]
-schema_inline = "{ok: bool, entries: Array<object>, partial?: bool, truncated?: bool, error?: str, error_class?: str, error_code?: str}"
+schema_inline = "{ok: bool, entries: Array<object>, source_metadata?: Array<object>, partial?: bool, truncated?: bool, error?: str, error_class?: str, error_code?: str}"
 
 [[capabilities]]
 name = "llm:local"

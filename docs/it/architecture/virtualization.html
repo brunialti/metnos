@@ -490,6 +490,12 @@ senza modifiche confermata da tutte le fasi finali. Un lavoro bloccato ritrovato
 dalla manutenzione notturna produce un esito parziale. Vedi gli
 <a href="../system/lre.html#no-action-required">esiti delle attivit&agrave;</a>.</p>
 
+<p>I trasporti generativi attraversano un confine comune per ogni tentativo:
+provider testuali, visione e processo di completamento condividono il conteggio
+e la sonda Monitor, anche nei tentativi ripetuti. Una chiamata fallita senza
+modello riportato resta nei totali e nella copertura, senza creare una serie
+di modello fisico. Le misure mancanti restano sconosciute.</p>
+
 <h1 id="cap9">9. Riferimenti tecnici</h1>
 
 <ul>
@@ -497,6 +503,8 @@ dalla manutenzione notturna produce un esito parziale. Vedi gli
  embedding e VLM;</li>
  <li><code>runtime/llm_router.py</code> &mdash; tier LLM, associazioni, alias e
  politica di inferenza;</li>
+ <li><code>runtime/llm_invocation.py</code> &mdash; confine comune di conteggio
+ e osservazione dei tentativi generativi;</li>
  <li><code>runtime/llm_workloads.py</code> &mdash; registro dichiarativo che
  associa ogni workload di produzione a un solo tier logico;</li>
  <li><code>runtime/virt/configuration.py</code> &mdash; proiezione effettiva,

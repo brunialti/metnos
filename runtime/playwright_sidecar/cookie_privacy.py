@@ -378,7 +378,13 @@ async def reject_cookies(page, state: dict, *, redact=None,
                                      frames, panels_seen)
             state["clicks"] = state.get("clicks", 0) + 1
             previous_click = key
-            await page.wait_for_timeout(150)
+            # Consent UIs can dismiss asynchronously. Observe the exact saved
+            # panel for at most two seconds; never reclassify or click again
+            # merely because its first render after dispatch is unchanged.
+            for _ in range(20):
+                await page.wait_for_timeout(100)
+                if await handle.evaluate(_COMMIT_JS, {"check_only": True}) != "unchanged":
+                    break
             if await handle.evaluate('(saved) => saved.url !== location.href'):
                 return CookieOutcome("blocked", "cookie", "page_changed",
                                      frames, panels_seen)

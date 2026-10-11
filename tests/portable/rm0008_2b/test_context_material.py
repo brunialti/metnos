@@ -196,7 +196,10 @@ def test_every_catalogued_file_exists_in_the_distribution():
     runtime_config = importlib.import_module("config")
     for _, _, files, _ in catalog.CONTEXT_CATALOG_V1:
         for name in files:
-            assert (Path(runtime_config.PATH_RUNTIME) / name).is_file(), name
+            root = Path(runtime_config.PATH_RUNTIME)
+            if name == "install/data/i18n_seed.sqlite":
+                root = root.parent
+            assert (root / name).is_file(), name
 
 
 def test_the_material_document_has_the_closed_schema(tmp_path: Path, monkeypatch):
@@ -219,7 +222,7 @@ def test_the_material_document_has_the_closed_schema(tmp_path: Path, monkeypatch
         }
         for record in component["files"]:
             assert set(record) == {"label", "size", "sha256"}
-            assert "/" not in record["label"] and record["size"] > 0
+            assert not Path(record["label"]).is_absolute() and record["size"] > 0
     assert document["prepared_admission_context_id"] == (
         prepared.prepared_admission_context_id
     )
@@ -327,3 +330,24 @@ def test_a_writable_distribution_is_refused(tmp_path: Path, monkeypatch):
     with pytest.raises(BirthProvisioningError) as error:
         provisioning._prepare_installed_admission_context_v1(REGISTRY)
     assert error.value.code == "birth_provisioning_acl_unsafe"
+
+
+@pytest.mark.parametrize("label", ["monitor_capture.py", "executor_support.py",
+                                 "tabular/api.py", "install/data/i18n_seed.sqlite"])
+def test_property_evidence_changes_with_each_packaged_dependency(tmp_path, monkeypatch, label):
+    from executor_support import FUNCTIONAL_SUPPORT_FILES
+    version, files = next((item[1], item[2]) for item in catalog.CONTEXT_CATALOG_V1
+                          if item[0] == "property_catalog")
+    assert version == "3"
+    assert set(FUNCTIONAL_SUPPORT_FILES) <= set(files)
+    first = _prepare(tmp_path, monkeypatch)
+    stage = support.stage_runtime_sources(tmp_path, monkeypatch)
+    target = (stage.parent if label.startswith("install/") else stage) / label
+    target.write_bytes(target.read_bytes() + b"\nsynthetic dependency mutation\n")
+    os.chmod(target, 0o644)
+    changed = provisioning._prepare_installed_admission_context_v1(REGISTRY)
+    assert first.prepared_admission_context_id != changed.prepared_admission_context_id
+    before = json.loads(first.document)["components"]
+    after = json.loads(changed.document)["components"]
+    assert before["property_catalog"] != after["property_catalog"]
+    assert before["runner"] == after["runner"]

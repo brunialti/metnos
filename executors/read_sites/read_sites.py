@@ -30,6 +30,7 @@ from messages import get as _msg  # noqa: E402
 from executor_helpers import run_stdio  # noqa: E402
 from playwright_sidecar import session_client  # noqa: E402
 from sites_url_scrub import scrub_url  # noqa: E402
+from tabular_records import merge_source_metadata  # noqa: E402
 
 
 def _collect_session_ids(args: dict) -> list[str]:
@@ -47,11 +48,19 @@ def _collect_session_ids(args: dict) -> list[str]:
 
 
 def invoke(args: dict) -> dict:
+    try:
+        source_metadata = merge_source_metadata(args.get("source_metadata"))
+    except ValueError:
+        return {"ok": False, "error_class": "invalid_args",
+                "error_code": "ERR_ARG_INVALID", "entries": [],
+                "error": _msg("ERR_ARG_INVALID", arg="source_metadata",
+                              reason="invalid_source_metadata")}
     owner = os.environ.get("METNOS_ACTOR") or "host"
     session_ids = _collect_session_ids(args)
     if not session_ids:
         return {"ok": False, "error": _msg("ERR_ARG_MISSING", arg="session_ids"),
-                "error_class": "invalid_args", "entries": []}
+                "error_class": "invalid_args", "entries": [],
+                "source_metadata": source_metadata}
 
     include_screenshot = bool(args.get("include_screenshot", True))
     include_forms = bool(args.get("include_forms", False))
@@ -64,6 +73,14 @@ def invoke(args: dict) -> dict:
         res = session_client.session_read(
             session_id=sid, owner=owner, include_screenshot=include_screenshot,
             include_forms=include_forms)
+        try:
+            source_metadata = merge_source_metadata(source_metadata, res.get("source_metadata"))
+        except ValueError:
+            return {"ok": False, "error_class": "invalid_source_metadata",
+                    "error_code": "ERR_ARG_INVALID", "entries": [],
+                    "source_metadata": source_metadata,
+                    "error": _msg("ERR_ARG_INVALID", arg="source_metadata",
+                                  reason="invalid_source_metadata")}
         if not res.get("ok"):
             entries.append({"session_id": sid, "ok": False,
                             "reason_code": res.get("error_class") or "read_failed"})
@@ -118,7 +135,7 @@ def invoke(args: dict) -> dict:
             entries.append(entry)
 
     ok = any(e.get("ok") for e in entries)
-    out = {"ok": ok, "entries": entries}
+    out = {"ok": ok, "entries": entries, "source_metadata": source_metadata}
     if attachments:
         out["attachments"] = attachments
     if current_pages:

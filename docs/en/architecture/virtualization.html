@@ -471,6 +471,12 @@ every final stage. An existing blocked job found by nightly maintenance produces
 a partial outcome. See
 <a href="../system/lre.html#no-action-required">activity outcomes</a>.</p>
 
+<p>Generative transports enter a common boundary for each attempt: text
+providers, vision and completion processes share counting and the Monitor
+probe, including retries. A failed call without a reported model remains in
+totals and coverage without creating a physical-model series. Missing
+measurements remain unknown.</p>
+
 <h1 id="cap9">9. Technical references</h1>
 
 <ul>
@@ -478,6 +484,8 @@ a partial outcome. See
  and VLM values;</li>
  <li><code>runtime/llm_router.py</code> &mdash; LLM tiers, bindings, aliases, and
  inference policy;</li>
+ <li><code>runtime/llm_invocation.py</code> &mdash; common counting and
+ observation boundary for generative attempts;</li>
  <li><code>runtime/llm_workloads.py</code> &mdash; declarative registry mapping
  each production workload to one logical tier;</li>
  <li><code>runtime/virt/configuration.py</code> &mdash; effective projection,

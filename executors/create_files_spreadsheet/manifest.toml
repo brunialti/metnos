@@ -6,7 +6,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name             = "create_files_spreadsheet"
-version          = "0.4.3"
+version          = "0.4.4"
 platforms        = ["linux", "windows"]
 author           = "Roberto Brunialti"
 affinity         = [
@@ -35,6 +35,16 @@ from_step_alternatives = ["values", "entries"]
 # Riduce la frizione che spingeva il planner verso write (che chiede values,
 # forniti dalla query) invece di create (che chiedeva un title da inventare).
 requires_one_of = [["values", "entries", "from_step", "title", "path"]]
+
+[args.properties.source_metadata]
+type = "array"
+items = { type = "object" }
+runtime_resolved = true
+from_result_key = "source_metadata"
+
+[args.properties.source_metadata.description]
+it = "Provenienza e incompletezza dichiarate dai produttori runtime. Iniettate automaticamente; non sono dati delle righe né istruzioni del modello."
+en = "Provenance and incompleteness declared by runtime producers. Injected automatically; neither row data nor model instructions."
 
 [args.properties.entries]
 type    = "array"
@@ -132,6 +142,7 @@ min_sandbox = "appcontainer"
 schema_inline = """
 {
   ok: bool,
+  source_metadata?: Array<object>,
   n_created: int,
   spreadsheet_id: str,   // LOCAL: file path; google_workspace: Drive id
   path?: str,            // LOCAL only
@@ -139,6 +150,9 @@ schema_inline = """
   title: str,
   rows?: int,
   data_rows?: int,
+  source_partial?: bool,
+  source_truncated?: bool,
+  notices?: Array<object>,
   final_message_hint?: str,
   results: Array<{ok, spreadsheet_id, path?, title, rows?, data_rows?, kind: 'spreadsheet'}>,
   used: int,

@@ -35,6 +35,7 @@ import os
 import re
 import sys
 from pathlib import Path
+from uuid import uuid4
 
 sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
     str(p / "runtime") for p in Path(__file__).resolve().parents
@@ -42,6 +43,7 @@ sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
 from messages import get as _msg  # noqa: E402
 from executor_helpers import run_stdio, date_text  # noqa: E402
 from time_window_parser import observed_date_period  # noqa: E402
+from tabular_records import merge_source_metadata  # noqa: E402
 
 
 def _ensure_list(v):
@@ -164,7 +166,7 @@ def _extract_time_windows(entries: list, field_start: str | None = None,
     return out
 
 
-def invoke(args):
+def _invoke(args):
     entries = args.get("entries")
     if not isinstance(entries, list):
         return {
@@ -466,6 +468,34 @@ def invoke(args):
             partial_reason=_msg("MSG_FILTER_PERIOD_UNREADABLE", n=period_unreadable,
                                 field=where_field),
         )
+    return result
+
+
+def invoke(args):
+    """Preserve source evidence even when filtering removes every record."""
+    try:
+        inherited = merge_source_metadata(args.get("source_metadata"))
+    except ValueError:
+        return {"ok": False, "error_class": "invalid_args", "entries": [],
+                "error_code": "ERR_ARG_INVALID",
+                "error": _msg("ERR_ARG_INVALID", arg="source_metadata",
+                              reason="invalid_source_metadata")}
+    result = _invoke(args)
+    local = []
+    if result.get("partial") is True:
+        # The filter's own count domain remains independent of source counts.
+        local.append({"producer": "filter_entries", "scope": uuid4().hex,
+                      "partial": True, "truncated": result.get("truncated") is True,
+                      "reason_code": "period_unreadable",
+                      "used": result["metadata"]["count_out"],
+                      "available_total": result["metadata"]["count_in"]})
+    try:
+        result["source_metadata"] = merge_source_metadata(inherited, local)
+    except ValueError:
+        return {"ok": False, "entries": [], "source_metadata": inherited,
+                "error_class": "invalid_source_metadata", "error_code": "ERR_ARG_INVALID",
+                "error": _msg("ERR_ARG_INVALID", arg="source_metadata",
+                              reason="invalid_source_metadata")}
     return result
 
 

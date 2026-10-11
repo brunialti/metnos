@@ -24,6 +24,9 @@ REASON_MSG = {
     "page_unavailable": "MSG_SITES_RC_UNAVAILABLE",
     "challenge_observed": "MSG_SITES_RC_CHALLENGE",
     "empty_surface": "MSG_SITES_RC_EMPTY_SURFACE",
+    "target_changed": "MSG_SITES_RC_TARGET_CHANGED",
+    "page_changed": "MSG_SITES_RC_PAGE_CHANGED",
+    "selector_hidden": "MSG_SITES_RC_SELECTOR_HIDDEN",
 }
 
 

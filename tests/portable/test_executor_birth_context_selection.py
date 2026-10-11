@@ -440,7 +440,7 @@ def test_recovered_initial_transition_cannot_reuse_v2_producer_requests():
     }) == 3
 
 
-def test_verified_distribution_context_opens_only_its_runtime_tree(monkeypatch):
+def test_verified_distribution_context_opens_only_its_distribution_tree(monkeypatch):
     import executor_birth_prepared_root as prepared_root
     import executor_birth_secure_fs as secure_fs
 
@@ -454,13 +454,48 @@ def test_verified_distribution_context_opens_only_its_runtime_tree(monkeypatch):
         return sentinel
 
     monkeypatch.setattr(secure_fs, "_open_legacy_root_session", open_root)
-    assert prepared_root._open_distribution_sources_for_verified_v1(
+    result = prepared_root._open_distribution_sources_for_verified_v1(
         distribution,
-    ) is sentinel
+    )
+    assert result._session is sentinel
     assert observed == {
-        "path": Path(distribution.installation_root) / "runtime",
+        "path": Path(distribution.installation_root),
         "exact_private": False,
     }
+
+
+
+@pytest.mark.parametrize("parts, expected", [
+    (("monitor_capture.py",), ("runtime", "monitor_capture.py")),
+    (("tabular", "api.py"), ("runtime", "tabular", "api.py")),
+    (("install", "data", "i18n_seed.sqlite"), ("install", "data", "i18n_seed.sqlite")),
+])
+def test_distribution_context_sources_preserve_closed_relative_grammar(parts, expected):
+    from executor_birth_prepared_root import _DistributionSources
+    seen = []
+    class Session:
+        def read_file(self, selected, **kwargs):
+            seen.append((selected, kwargs))
+            return b"synthetic"
+        def close(self):
+            seen.append("closed")
+    source = _DistributionSources(Session())
+    assert source.read_file(parts, maximum=99, exact_private=False) == b"synthetic"
+    source.close()
+    assert seen == [(expected, {"maximum": 99, "exact_private": False}), "closed"]
+
+
+@pytest.mark.parametrize("parts", [(), ("..", "secret"), ("/etc",),
+    ("a/b",), ("install", "keys", "private.bin"), ("runtime", "config.py"),
+    (".",), ("x\\y",), ("x\x00y",)])
+def test_distribution_context_sources_refuse_other_roots_and_traversal(parts):
+    from executor_birth_prepared_root import _DistributionSources
+    from executor_birth_secure_fs import BirthSecureFSError
+    class Session:
+        def read_file(self, *_args, **_kwargs):
+            pytest.fail("rejected source reached the filesystem")
+    with pytest.raises(BirthSecureFSError, match="birth_distribution_source_invalid"):
+        _DistributionSources(Session()).read_file(parts)
 
 
 def test_staged_runtime_reverifies_inventory_and_cannot_become_required(

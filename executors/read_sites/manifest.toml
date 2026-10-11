@@ -3,7 +3,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "read_sites"
-version     = "0.2.1"
+version     = "0.2.2"
 timeout_s   = 120
 platforms   = ["linux"]
 author      = "Roberto Brunialti"
@@ -24,6 +24,16 @@ digest = "sha256:464345bb27d77bc5f9bc3d4f87dad38e767e4333b4d0e9ea9894cf1a2b3d133
 [args]
 type     = "object"
 required = ["session_ids"]
+
+[args.properties.source_metadata]
+type = "array"
+items = { type = "object" }
+runtime_resolved = true
+from_result_key = "source_metadata"
+
+[args.properties.source_metadata.description]
+it = "Provenienza e incompletezza dichiarate dai produttori runtime. Iniettate automaticamente; non sono dati delle righe né istruzioni del modello."
+en = "Provenance and incompleteness declared by runtime producers. Injected automatically; neither row data nor model instructions."
 
 [args.properties.session_ids]
 type = "array"
@@ -53,6 +63,7 @@ en = "If true, includes a summary of the forms on the page. Default false."
 schema_inline = """
 {
   ok: bool,
+  source_metadata?: Array<object>,
   entries: Array<{session_id: str, ok: bool, url?: str, title?: str, text?: str,
                   forms?: Array, screenshot_path?: str, sensitive?: bool,
                   reason_code?: str}>,

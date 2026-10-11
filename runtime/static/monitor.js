@@ -30,6 +30,12 @@
   let revision = 0;
   let selectionSignature = null;
   const initialParams = new URL(window.location.href).searchParams;
+  const preferenceKey = form && config.storageScope
+    ? `metnos-monitor:v1:${config.storageScope}:${config.view}` : null;
+  const preferenceFields = new Set(form ? [...new FormData(form).keys(), "limit",
+    ...(hasModelSeries ? ["series_keys"] : [])] : []);
+  let preferencesDirty = initialParams.size > 0;
+  let preferencesError = false;
   let cursor = initialParams.get("cursor");
   const limit = initialParams.get("limit");
   const ownerId = initialParams.get("owner_id");
@@ -40,6 +46,67 @@
       initialSelection = keys;
     }
   } catch (_) { /* Invalid URL selections are rejected by the server. */ }
+  let rememberSelection = initialSelection !== null;
+
+  function restorePreferences() {
+    if (!preferenceKey || initialParams.size) return false;
+    try {
+      const raw = localStorage.getItem(preferenceKey);
+      if (!raw) return false;
+      if (raw.length > 32768) throw new Error("invalid_preferences");
+      const saved = JSON.parse(raw);
+      if (!saved || typeof saved !== "object" || Array.isArray(saved)) throw new Error("invalid_preferences");
+      const target = new URL(window.location.href);
+      for (const [key, value] of Object.entries(saved)) {
+        if (preferenceFields.has(key) && typeof value === "string") target.searchParams.set(key, value);
+      }
+      const params = target.searchParams;
+      if (params.has("period") && !["today", "24h", "7d", "custom"].includes(params.get("period"))) throw new Error("invalid_period");
+      if (params.has("model_grouping") && !["identity", "physical"].includes(params.get("model_grouping"))) throw new Error("invalid_grouping");
+      if (params.has("limit") && !/^(?:[1-9]\d?|1\d\d|200)$/.test(params.get("limit"))) throw new Error("invalid_limit");
+      if (params.has("series_keys")) {
+        const keys = JSON.parse(params.get("series_keys"));
+        if (!Array.isArray(keys) || keys.length > 12 || !keys.every(key => typeof key === "string" && key.length <= 1024)) throw new Error("invalid_selection");
+      }
+      if (params.get("period") === "custom") {
+        const dates = ["from", "to"].map(key => params.get(key) || "");
+        const [start, end] = dates.map(Date.parse);
+        if (dates.some(value => !/(?:Z|[+-]\d{2}:\d{2})$/.test(value)) ||
+            !Number.isFinite(start) || !Number.isFinite(end) || end <= start ||
+            end - start > 90 * 86400000) throw new Error("invalid_range");
+      } else { params.delete("from"); params.delete("to"); }
+      if (!params.size) return false;
+      // Reload the rendered form too: option lists depend on the saved range.
+      window.location.replace(target);
+      return true;
+    } catch (_) {
+      preferencesError = true;
+      return false;
+    }
+  }
+  function savePreferences(params) {
+    if (!preferenceKey || !preferencesDirty) return;
+    preferencesDirty = false;
+    const saved = {};
+    for (const [key, value] of params) {
+      if (preferenceFields.has(key) && (key !== "series_keys" || rememberSelection) &&
+          (!["from", "to"].includes(key) || params.get("period") === "custom")) saved[key] = value;
+    }
+    // Keep reloads and bookmarks consistent with the last applied settings.
+    const current = new URL(window.location.href);
+    for (const key of preferenceFields) current.searchParams.delete(key);
+    for (const [key, value] of Object.entries(saved)) current.searchParams.set(key, value);
+    if (!params.has("cursor")) current.searchParams.delete("cursor");
+    window.history.replaceState(window.history.state, "", current);
+    try {
+      localStorage.setItem(preferenceKey, JSON.stringify(saved));
+      preferencesError = false;
+    } catch (_) {
+      preferencesError = true;
+    }
+    if (error) error.textContent = preferencesError ? labels.preferencesError : "";
+  }
+  if (restorePreferences()) return;
   const number = new Intl.NumberFormat(config.locale, { maximumFractionDigits: 2 });
   const precise = new Intl.NumberFormat(config.locale, { maximumSignificantDigits: 6 });
   const date = new Intl.DateTimeFormat(config.locale, { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23", timeZone: "UTC" });
@@ -252,7 +319,7 @@
       freshness.textContent = `${labels.updated}: ${acquired}${stale ? ` · ${labels.stale}` : ""}`;
       freshness.classList.toggle("monitor-stale", stale);
     }
-    if (error) error.textContent = "";
+    if (error) error.textContent = preferencesError ? labels.preferencesError : "";
   }
   function url() {
     const target = new URL(root.dataset.endpoint, window.location.href);
@@ -286,10 +353,14 @@
     let timedOut = false;
     const timeout = window.setTimeout(() => { timedOut = true; controller?.abort(); }, 10000);
     try {
-      const response = await fetch(url(), { credentials: "same-origin", cache: "no-store", headers: { Accept: "application/json" }, signal: controller.signal });
+      const target = url();
+      const response = await fetch(target, { credentials: "same-origin", cache: "no-store", headers: { Accept: "application/json" }, signal: controller.signal });
       if (!response.ok) throw new Error("request_failed");
       const payload = await response.json();
-      if (active && !disposed && !paused && !document.hidden && requestRevision === revision) render(payload);
+      if (active && !disposed && !paused && !document.hidden && requestRevision === revision) {
+        render(payload);
+        savePreferences(target.searchParams);
+      }
     } catch (problem) {
       if (active && !disposed && (problem.name !== "AbortError" || timedOut)) {
         if (error) error.textContent = labels.error;
@@ -330,6 +401,8 @@
       return;
     }
     if (input.checked) selected.add(input.value); else selected.delete(input.value);
+    rememberSelection = true;
+    preferencesDirty = true;
     if (error) error.textContent = "";
     if (snapshot) renderCharts(snapshot.charts);
     revision += 1;
@@ -340,6 +413,8 @@
     revision += 1;
     selected = null;
     initialSelection = null;
+    rememberSelection = false;
+    preferencesDirty = true;
     cursor = null;
     controller?.abort();
     refresh();

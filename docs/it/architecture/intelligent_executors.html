@@ -127,8 +127,16 @@
  osservati. Non inventa collegamenti né contiene percorsi dedicati a singoli siti.</p>
  <p>La ricerca esplora fino a quattro passaggi per percorso, con un limite
  complessivo di 32 azioni. In un vicolo cieco torna a una diramazione già
- verificata e prova un’alternativa. Se il percorso cambia o un comando resta
- ambiguo, si ferma. Una pausa per il consenso non azzera i tentativi.</p>
+ verificata e prova un’alternativa. Se durante il ritorno la pagina è cambiata,
+ abbandona quel ramo e torna all’ingresso iniziale per una nuova lettura,
+ conservando i comandi già provati e i limiti. Questa ripresa è disponibile
+ soltanto prima dell’uso delle credenziali e non ripete il ramo abbandonato.
+ Un comando ambiguo resta un motivo di arresto. Una pausa per il consenso
+ non azzera i tentativi.</p>
+ <p>Dopo un clic attende anche la comparsa ritardata del modulo o della nuova
+ scheda, entro il tempo della ricerca. Un ingresso già provato non viene
+ scambiato per una nuova alternativa. Le nuove schede passano dagli stessi
+ controlli sul sito autorizzato.</p>
  <p>Trovato il modulo, il componente che gestisce il browser inserisce le
  credenziali senza affidarle al modello. Controlla il sito autorizzato e il
  contenuto dei campi prima dell’invio. Un modulo ambiguo o un valore diverso
@@ -157,6 +165,15 @@
  testo visibile della propria riga. Due righe indistinguibili restano ambigue;
  testo nascosto e valori modificabili non vengono usati per distinguerle.
  Un comando non riconoscibile con certezza non viene scelto per posizione.</p>
+ <p>Prima di cliccare, Metnos controlla ancora che il comando sia quello
+ osservato, nella stessa pagina e nello stesso contesto. Se è cambiato,
+ un percorso già visitato può essere preparato di nuovo una sola volta,
+ rispettando consensi e limiti. Questo recupero non ripete un clic già
+ inviato né una preparazione che ha già chiuso finestre o gestito consensi.</p>
+ <p>Il controllo finale osserva il comando senza riscrivere gli identificatori
+ nella pagina. Appena viene invocato il clic, l’approvazione è consumata:
+ un errore o un timeout non dimostrano l’assenza di effetti e non autorizzano
+ a ripeterlo. Una nuova lettura può chiarire lo stato, senza reinviare il comando.</p>
  <p>Una navigazione osservata può collegare una riga al suo dettaglio.
  Soltanto se il legame è univoco Metnos può unire i dati delle due viste,
  privilegiando il dettaglio e conservando i campi presenti solo nell’elenco.
@@ -195,12 +212,33 @@
  corrispondenza univoca con queste differenze e infine una corrispondenza
  univoca senza differenze di punteggiatura e accenti. Non risolve un’ambiguità
  scegliendo il primo campo. Emissione e scadenza restano date distinte.</p>
+ <p>Le intestazioni del foglio sono etichette, separate dalle chiavi estratte.
+ Con uno schema già dichiarato non aggiungono campi; un collegamento esplicito
+ tra intestazione e chiave può richiedere un nuovo campo. In assenza di schema,
+ le intestazioni possono definirlo. Un filtro temporale già dichiarato con
+ campo e periodo non riceve un secondo filtro automatico privo di campo.</p>
+ <p>Il censimento dei campi comprende tutte le righe. Un campo univoco
+ presente ma vuoto può produrre una colonna vuota; una collisione resta
+ ambigua anche se compare nelle ultime righe.</p>
+ <p>I valori forniti come dati non diventano formule. Nei file XLSX il
+ nuovo testo viene salvato come testo, conservando le formule già presenti
+ quando si aggiungono righe. Nei CSV e nelle scritture Google Sheets i testi
+ attivi ricevono un apostrofo iniziale di protezione: nel CSV è parte del
+ dato e può essere visibile. Le ricevute indicano il numero di celle così
+ protette. Sul dispositivo serve il pacchetto aggiornato: un vecchio
+ pacchetto non acquisisce questa protezione senza aggiornamento.</p>
  <p>Per un errore durante un’azione del browser, la diagnostica interna
  distingue preparazione, invio del comando, operazioni successive, pulizia
  e registrazione. Conserva il tipo dell’eccezione e indizi da un insieme
  chiuso, senza riportare messaggi, selettori o dati della pagina. Gli indizi
  possono derivare anche da testo citato: non certificano la causa e non
  cambiano esiti, tentativi o limiti.</p>
+ <p>Al termine della procedura di login, anche prima dell’uso delle credenziali,
+ l’audit conserva l’esito, il motivo e la classe interna, la fase raggiunta e
+ il numero di azioni di ricerca. Un eventuale rifiuto della navigazione lascia
+ soltanto contatori e confronti da un insieme chiuso, senza dati della pagina,
+ destinazioni o segreti. Questa traccia serve alla diagnosi e non introduce
+ nuovi tentativi né certifica la causa di un errore.</p>
  <div class="note"><strong>La raccolta completa è ancora in collaudo.</strong>
  Le prove isolate IT/EN dei filtri sono superate; completezza e assenza di
  duplicati devono ancora essere confermate sul sito reale. Raggiungere un
@@ -215,8 +253,17 @@
  <p>I confini del sito e le richieste di consenso restano validi durante
  tutta la navigazione. I cookie seguono una procedura separata che rifiuta
  le opzioni facoltative e ricontrolla eventuali nuovi avvisi prima dell’invio.
+ Dopo il rifiuto attende brevemente la chiusura del pannello, osservandolo
+ senza ripetere il clic o richiedere una nuova decisione al modello.
  I codici OTP vengono chiesti all’utente, salvo automatismi autorizzati
  esplicitamente; non sono trattati come CAPTCHA.</p>
+ <p>Un campo chiamato «codice» o «token» non basta a richiedere un OTP.
+ Metnos cerca un campo visibile e modificabile, identificato come codice
+ monouso oppure accompagnato da indicazioni di verifica nello stesso modulo
+ o gruppo di campi. Riconosce codici numerici e alfanumerici, anche suddivisi
+ in caselle da un carattere. Se più campi non permettono una scelta univoca,
+ non inserisce il codice. I campi sensibili restano oscurati e l’invio
+ rispetta i confini del sito autorizzato.</p>
  <p>Per i CAPTCHA Cloudflare supportati, Metnos prova una sola volta la
  libreria locale <code>playwright-captcha</code>, nella stessa sessione e per
  non più di dieci secondi. Il tentativo rientra nei limiti del login, viene

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import json
 from datetime import datetime, timedelta, timezone
@@ -149,7 +150,10 @@ async def _serve(request, *, data=False, export=False):
     payload["export_url"] = "/admin/monitor/export?" + urlencode({**parameters, "view": view,
         **({"cursor": request.query["cursor"]} if request.query.get("cursor") else {}),
         **({"request_id": request_id} if request_id else {})})
-    context = {"view": view, "monitor": payload, "filter_options": payload.pop("filter_options")}
+    user_id = request.get("authenticated_user_id")
+    storage_scope = hashlib.sha256(f"metnos-monitor:{user_id}".encode()).hexdigest()[:24] if user_id else None
+    context = {"view": view, "monitor": payload, "filter_options": payload.pop("filter_options"),
+               "monitor_storage_scope": storage_scope}
     if export:
         # Dettaglio e pagina esportano esattamente la vista consultata.
         exported = ({name: payload[name] for name in ("request", "calls", "segments", "timeline")}

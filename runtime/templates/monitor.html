@@ -7,7 +7,7 @@
 {% if view in ['overview','models'] %}<script src="/static/uplot-1.6.30.min.js"></script>
 <link rel="stylesheet" href="/static/uplot-1.6.30.min.css">{% endif %}
 {% include '_monitor_styles.html' %}
-<script src="/static/monitor.js?v=20261009-legend-points" defer></script>
+<script src="/static/monitor.js?v=20261011-preferences" defer></script>
 {% endblock %}
 {% block body %}
 <div id="monitor-root" data-endpoint="/admin/monitor/data" data-view="{{ view }}"{% if view == 'detail' %} data-request-id="{{ monitor.request.request_id }}"{% endif %}>
@@ -36,8 +36,8 @@
     {'id':'request-output-speed','label':msg('UI_MONITOR_REQUEST_OUTPUT_SPEED'),'unit':msg('UI_MONITOR_TPS'),'source':'requests','factor':1,'metrics':[{'key':'request_output_tps','label':msg('UI_MONITOR_REQUEST_OUTPUT_SPEED')}]},
     {'id':'request-duration','label':msg('UI_MONITOR_TOTAL_TIME'),'unit':msg('UI_MONITOR_SECONDS'),'source':'requests','factor':0.001,'metrics':[{'key':'e2e_p50_ms','label':msg('UI_MONITOR_MEDIAN')},{'key':'e2e_p95_ms','label':msg('UI_MONITOR_P95')}]}] %}
 {% endif %}
-{% set monitor_config = {'view':view,'locale':ui_lang,'requestId':monitor.request.request_id if view == 'detail' else none,'panels':chart_panels,'labels':{
-  'interval':msg('UI_MONITOR_BUCKET_INTERVAL'),'formula':msg('UI_MONITOR_OBSERVED_FORMULA'),'tokenUnit':msg('UI_MONITOR_TOKEN_UNIT'),'seconds':msg('UI_MONITOR_SECONDS'),
+{% set monitor_config = {'view':view,'locale':ui_lang,'storageScope':monitor_storage_scope|default(none),'requestId':monitor.request.request_id if view == 'detail' else none,'panels':chart_panels,'labels':{
+  'interval':msg('UI_MONITOR_BUCKET_INTERVAL'),'formula':msg('UI_MONITOR_OBSERVED_FORMULA'),'tokenUnit':msg('UI_MONITOR_TOKEN_UNIT'),'seconds':msg('UI_MONITOR_SECONDS'),'preferencesError':msg('UI_MONITOR_PREFERENCES_ERROR'),
   'updated':msg('UI_MONITOR_LAST_ACQUISITION'),'stale':msg('UI_MONITOR_STALE'),'error':msg('UI_MONITOR_READ_ERROR'),'noData':msg('UI_MONITOR_NO_CHART_DATA'),'unknownModel':msg('UI_MONITOR_UNKNOWN_MODEL'),'unknownProvider':msg('UI_MONITOR_UNKNOWN_PROVIDER'),'configured':msg('UI_MONITOR_CONFIGURED'),'unavailable':msg('UI_MONITOR_UNAVAILABLE'),'seriesLimit':msg('UI_MONITOR_SERIES_LIMIT'),'samples':msg('UI_MONITOR_SAMPLES'),'coverage':msg('UI_MONITOR_COVERAGE'),'pause':msg('UI_MONITOR_PAUSE'),'resume':msg('UI_MONITOR_RESUME')}} %}
 <script id="monitor-config" type="application/json">{{ monitor_config|tojson }}</script>
 {% endblock %}

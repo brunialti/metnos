@@ -3,9 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Metnos — A quick tour through examples</title>
-  <meta name="description" content="Six natural-language requests show installation, Tutor, complete results, workflows, consent, remote devices, and undo in Metnos.">
-  <meta name="keywords" content="Metnos, quick tour, self-hosted assistant, Tutor, installation, security, undo, OpenClaw, Hermes Agent">
+  <title>Metnos — Quick Tour, see how the work gets done</title>
+  <meta name="description" content="A real conversation, six executors and a visual guide to symbols, costs, results and paired devices.">
   <meta name="author" content="the owner">
   <meta name="robots" content="index, follow">
   <link rel="canonical" href="https://metnos.com/en/Metnos_QuickTour">
@@ -14,239 +13,105 @@
   <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/Metnos_QuickTour">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://metnos.com/en/Metnos_QuickTour">
-  <meta property="og:title" content="Metnos — A quick tour through examples">
-  <meta property="og:description" content="See Metnos at work in six requests, from installation to undo.">
-  <meta property="og:locale" content="en_US">
-  <meta name="twitter:card" content="summary">
-  <meta name="twitter:title" content="Metnos — A quick tour through examples">
-  <meta name="twitter:description" content="Six representative requests show how Metnos is used and governed.">
-  <link rel="stylesheet" href="/assets/metnos.css?v=20260822-2">
-  <style>
-    :root{--ink:#282521;--muted:#6e685f;--paper:#fbf9f4;--white:#fff;--line:#ddd3c4;--navy:#173f6b;--blue:#2f6ea7;--bronze:#9b4f2f;--green:#496f45;--green-bg:#edf5ea;--amber:#a56a14;--amber-bg:#fff7e8}
-    *{box-sizing:border-box}
-    html{scroll-behavior:smooth}
-    body{max-width:1080px;margin:0 auto;padding:0 42px 70px;background:var(--paper);color:var(--ink);font:16px/1.65 Inter,"Segoe UI",system-ui,sans-serif}
-    a{color:var(--navy)}
-    .lang-switch{position:fixed;top:18px;right:24px;z-index:4;background:rgba(251,249,244,.94);border:1px solid var(--line);border-radius:999px;padding:6px 11px;font-size:.78rem;font-weight:800;letter-spacing:.08em}
-    .lang-switch a{text-decoration:none}.lang-switch .active{color:var(--bronze)}.lang-switch .sep{padding:0 5px;color:var(--muted)}
-    .back{padding:22px 0;border-bottom:1px solid var(--line);font-size:.9rem}.back a{text-decoration:none;font-weight:650}
-    .print-cover{display:none}
-    .hero{padding:86px 0 44px}
-    .eyebrow,.group-title{color:var(--bronze);font-size:.74rem;font-weight:850;letter-spacing:.14em;text-transform:uppercase}
-    .hero h1{margin:.12em 0;color:var(--navy);font:clamp(3.4rem,9vw,7.2rem)/.93 Georgia,serif;letter-spacing:-.045em}
-    .subtitle{max-width:850px;color:#384b5e;font:clamp(1.25rem,2.5vw,1.72rem)/1.45 Georgia,serif}
-    .kleos{margin-top:18px;color:var(--bronze);font:italic 1rem Georgia,serif}
-    .facts{display:grid;grid-template-columns:repeat(5,1fr);margin:42px 0 20px;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
-    .facts .f{padding:18px 12px;border-right:1px solid var(--line);text-align:center}.facts .f:last-child{border-right:0}
-    .facts .v{display:block;color:var(--navy);font:1.35rem Georgia,serif}.facts .k{display:block;margin-top:5px;color:var(--muted);font-size:.69rem;font-weight:750;letter-spacing:.06em;text-transform:uppercase}
-    .meta{color:var(--muted);font-size:.82rem}.meta b{color:var(--ink)}
-    .toc{margin:18px 0 76px;padding:27px 30px;background:var(--white);border:1px solid var(--line)}
-    .toc ol{margin:14px 0 0;padding:0;list-style:none;columns:2;column-gap:50px}.toc li{break-inside:avoid;border-top:1px solid var(--line);padding:10px 0}.toc a{text-decoration:none}.toc .tn{display:inline-block;width:32px;color:var(--bronze);font-weight:800}
-    section.cap{margin:0 0 86px;scroll-margin-top:25px}
-    section h2{margin:0 0 24px;padding-bottom:13px;border-bottom:2px solid var(--navy);color:var(--navy);font:2.1rem/1.15 Georgia,serif}
-    p.lead{max-width:850px;color:#4c4740;font:1.23rem/1.6 Georgia,serif}
-    .scene{counter-increment:scene;position:relative;margin:30px 0;padding:30px 34px 32px 58px;background:var(--white);border:1px solid var(--line);border-left:5px solid var(--navy);box-shadow:0 10px 28px rgba(47,40,31,.05)}
-    main{counter-reset:scene}
-    .scene::before{content:counter(scene);position:absolute;left:-24px;top:27px;width:42px;height:42px;border-radius:50%;background:var(--navy);color:#fff;font:700 1rem/42px Georgia,serif;text-align:center}
-    .scene h3{margin:7px 0 15px;color:var(--navy);font:1.65rem/1.25 Georgia,serif}
-    .q{margin:19px 0;padding:17px 20px;background:#eef4fa;border-left:4px solid var(--blue);color:#213c59;font:italic 1.08rem/1.55 Georgia,serif}
-    .q::before{content:"Ask Metnos with a request like this example:";display:block;margin-bottom:8px;color:var(--blue);font:800 .68rem/1.3 Inter,"Segoe UI",sans-serif;letter-spacing:.08em;text-transform:uppercase}
-    .reply,.truth{margin:18px 0;padding:17px 20px;background:var(--green-bg);border-left:4px solid var(--green)}
-    .reply::before{content:"Answer";display:block;margin-bottom:7px;color:var(--green);font-size:.68rem;font-weight:850;letter-spacing:.1em;text-transform:uppercase}
-    .truth{background:#f6f1e9;border-left-color:var(--bronze)}.truth::before{content:"Why this result is trustworthy";display:block;margin-bottom:7px;color:var(--bronze);font-size:.68rem;font-weight:850;letter-spacing:.1em;text-transform:uppercase}
-    .pipe{margin:18px 0;padding:13px 16px;background:#f5f2ec;border:1px solid var(--line);color:#4b4741;font:13px/1.65 ui-monospace,"Cascadia Code",Consolas,monospace}.pipe .a{color:var(--bronze);font-weight:900}
-    pre{overflow:auto;margin:18px 0;padding:18px 20px;background:#172433;color:#eef4fa;border-radius:4px;font:13px/1.65 ui-monospace,"Cascadia Code",Consolas,monospace}
-    .approval-card{margin:18px 0;padding:18px 20px;background:var(--amber-bg);border:1px solid #ead0a4;border-left:5px solid var(--amber)}
-    .approval-card .line1{color:#68420b;font-weight:850}.approval-card .line2{margin:6px 0;color:#544b3e}.approval-card .line3{color:var(--muted);font-size:.8rem}
-    .btns{display:flex;gap:9px;margin-top:14px}.btn{padding:7px 13px;border-radius:5px;background:#fff;border:1px solid var(--line);font-weight:750}.btn.ok{border-color:#94b08f;color:#385f34}.btn.no{border-color:#d6aaa2;color:#8d3c32}
-    .table-scroll{overflow-x:auto;margin:24px 0;border:1px solid var(--line);background:var(--white)}
-    table{width:100%;border-collapse:collapse;min-width:880px;font-size:.88rem}th,td{padding:14px 15px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);vertical-align:top;text-align:left}th{background:#eef3f8;color:var(--navy)}th:last-child,td:last-child{border-right:0}tr:last-child td{border-bottom:0}td:first-child{color:var(--navy);font-weight:800}
-    .source-note{padding:17px 20px;background:#f3efe7;border-left:4px solid var(--bronze);color:var(--muted);font-size:.86rem}
-    .next{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.next a{display:block;padding:18px;background:var(--white);border:1px solid var(--line);text-decoration:none;font-weight:750}.next span{display:block;margin-top:5px;color:var(--muted);font-size:.82rem;font-weight:400}
-    footer{margin-top:70px;padding:28px 0;border-top:1px solid var(--line);color:var(--muted);font-size:.84rem}
-    @media(max-width:760px){body{padding:0 18px 45px}.lang-switch{position:static;float:right;margin-top:14px}.back{clear:both}.hero{padding-top:58px}.facts{grid-template-columns:repeat(2,1fr)}.facts .f{border-bottom:1px solid var(--line)}.toc ol{columns:1}.scene{padding:25px 20px 27px 35px;margin-left:10px}.scene::before{left:-20px}.next{grid-template-columns:1fr}}
-    @media print{.pdf-dl{display:none}}
-  </style>
+  <meta property="og:title" content="Metnos — Quick Tour, see how the work gets done">
+  <meta property="og:description" content="A real conversation, six executors and a visual guide to symbols, costs, results and paired devices.">
+  <meta property="og:image" content="https://metnos.com/assets/metnos-quicktour-cover.png">
+  <meta property="og:locale" content="en_GB">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="stylesheet" href="../assets/quicktour-screen.css">
   <link rel="stylesheet" href="../assets/quicktour-print.css" media="print">
-  <style media="print">@page{@top-right{content:"QUICK TOUR · EXAMPLES"}}.pipe::before{content:"EXECUTOR CHAIN"}</style>
-<script defer src="/assets/wiki-shell.js?v=20260822-2"></script>
 </head>
-<body>
-<nav class="lang-switch" aria-label="Language">
-  <a href="/it/Metnos_QuickTour.html" hreflang="it" lang="it">IT</a><span class="sep">·</span><a class="active" href="/en/Metnos_QuickTour.html" hreflang="en" lang="en">EN</a>
-</nav>
-<nav class="back"><a href="index.html">← Documentation index</a></nav>
-
-<div class="print-cover" aria-hidden="true">
-  <img class="print-cover__art" src="../assets/metnos-quicktour-cover.png" alt="">
-  <div class="print-cover__title">
-    <div class="print-cover__eyebrow">Quick tour · Six requests</div>
-    <h1>Metnos</h1>
-    <p class="print-cover__deck">The clearest way to understand an assistant is to watch it work.</p>
-  </div>
-  <div class="print-cover__credit">Introductory booklet · the owner · 2026</div>
-</div>
-
-<header class="hero">
-  <div class="eyebrow">A quick tour through examples</div>
-  <h1>Metnos at work</h1>
-  <div class="subtitle">There is no catalog of functions to memorize before you begin. These six conversations follow the whole path: install, ask, understand, act — and, when the operation truly supports it, undo.</div>
-  <div class="kleos">mētis (μῆτις), practical intelligence · noûs (νοῦς), mind</div>
-  <div class="facts">
-    <div class="f"><span class="v">4 commands</span><span class="k">to begin</span></div>
-    <div class="f"><span class="v">6 phases</span><span class="k">resumable</span></div>
-    <div class="f"><span class="v">Settings</span><span class="k">controls and preferences</span></div>
-    <div class="f"><span class="v">Tutor</span><span class="k">inside Metnos</span></div>
-    <div class="f"><span class="v">undo</span><span class="k">only when real</span></div>
-  </div>
-  <div class="meta"><b>License:</b> MIT · <b>Code:</b> <a href="https://github.com/brunialti/metnos">GitHub</a> · <b>Installation:</b> <a href="https://github.com/brunialti/metnos/blob/main/install/README.md">guide</a><span class="pdf-dl"> · <b>PDF:</b> <a href="Metnos_QuickTour.pdf" type="application/pdf">A4 edition</a></span></div>
-</header>
-
-<nav class="toc" aria-label="Contents">
-  <div class="group-title">Six requests and one comparison</div>
-  <ol>
-    <li><a href="#cap1"><span class="tn">01</span>From installation to the first answer</a></li>
-    <li><a href="#cap2"><span class="tn">02</span>Ask the Tutor for help</a></li>
-    <li><a href="#cap3"><span class="tn">03</span>Find files that are exactly identical</a></li>
-    <li><a href="#cap4"><span class="tn">04</span>From mail to a sheet, then consent</a></li>
-    <li><a href="#cap5"><span class="tn">05</span>Work on Windows and undo</a></li>
-    <li><a href="#cap6"><span class="tn">06</span>Follow a portal every morning</a></li>
-    <li><a href="#cap7"><span class="tn">07</span>Metnos, OpenClaw, and Hermes</a></li>
-  </ol>
-</nav>
-
-<main>
-<section class="cap" id="cap1">
-  <h2>1 · From installation to the first answer</h2>
-  <p class="lead">Installation manages the whole instance, not just a Python package: an isolated environment, models, optional services, encrypted secrets, service units, the interface, and the Tutor catalog.</p>
-  <div class="scene">
-    <div class="group-title">Starting out</div>
-    <h3>Four commands, then conversation</h3>
-    <pre>git clone https://github.com/brunialti/metnos.git
+<body class="qt-tour">
+  <nav class="qt-rail" aria-label="Quick Tour navigation">
+    <a class="qt-brand" href="index.html">METNOS</a>
+    <a href="index.html">Documentation</a><a href="#cap1">The case</a><a href="#cap2">Read the details</a><a href="#cap4">Devices</a>
+    <span class="qt-languages"><a href="../it/Metnos_QuickTour.html" lang="it" hreflang="it">IT</a><span aria-hidden="true"> / </span><a href="../en/Metnos_QuickTour.html" lang="en" hreflang="en" aria-current="page">EN</a></span>
+    <a class="qt-download" href="Metnos_QuickTour.pdf" type="application/pdf">↓ A4 PDF</a>
+  </nav>
+  <header class="print-cover">
+    <img class="print-cover__art" src="../assets/metnos-quicktour-cover.png" alt="Original drawing: two figures exchange a structure of connections.">
+    <div class="print-cover__title">
+      <div class="print-cover__eyebrow">QUICK TOUR · SEE THE WORK CLEARLY</div>
+      <h1>Metnos</h1>
+      <p class="print-cover__deck">Ask. Follow the steps.<br>Understand the result.</p>
+      <p class="print-cover__intro">A visual introduction, built around a real conversation.</p>
+      <a class="qt-cover-link" href="#cap1">Start the tour ↗</a>
+    </div>
+    <div class="print-cover__credit">the owner · October 2026 edition · IT / EN</div>
+  </header>
+  <main><section class="qt-page qt-page--case" id="cap1" aria-labelledby="title-cap1">
+      <div class="qt-running"><span>METNOS</span><span>QUICK TOUR · UNDERSTAND THE WORK</span></div>
+      <div class="qt-kicker"><span class="qt-index">01</span> A REAL CASE</div>
+      <h2 id="title-cap1">One request.<br>Six executors at work.</h2>
+      <p class="qt-lead">From logging into the portal to listing the invoices: one request coordinates six functions and shows the result.</p>
+      <div class="scene"><figure class="qt-figure"><div class="qt-shot qt-shot--case"><a href="../assets/quicktour-case-invoices.png" target="_blank" rel="noopener" aria-label="Real Italian chat: successful invoice lookup, three documents, six executors and the final turn row."><img src="../assets/quicktour-case-invoices.png" alt="Real Italian chat: successful invoice lookup, three documents, six executors and the final turn row." loading="eager"></a><span class="qt-marker" style="--x:4%;--y:8%" aria-hidden="true">1</span><span class="qt-marker" style="--x:96%;--y:38%" aria-hidden="true">2</span><span class="qt-marker" style="--x:96%;--y:84%" aria-hidden="true">3</span></div><figcaption>Original chat in Italian · 1 October 2026 · turn <code>ededefbc</code>. Supplier, document numbers and amounts are masked. Open the image to zoom in.</figcaption></figure><p class="qt-small"><strong>Request, translated:</strong> “Go to the supplier’s website, log in and show me all invoices for 2026.” <strong>Response, translated:</strong> Three invoices are listed, dated 30 September, 30 June and 31 March, with document numbers, amounts and a link to the portal.</p><div class="qt-assurance"><p><strong>Request completed successfully.</strong> Access to the portal, three invoices for 2026 listed with their details, and a link to the original section.</p></div><ol class="qt-callouts"><li><span class="qt-num">1</span><div><strong>The request defines the outcome</strong><p>Enter the portal and show the 2026 invoices available at the time of the request, on 1 October.</p></div></li><li><span class="qt-num">2</span><div><strong>The response makes the data readable</strong><p>Three documents, each with its number, date and amount. The link takes you back to the source.</p></div></li><li><span class="qt-num">3</span><div><strong>The trace shows the steps</strong><p>Six executors work together: opening the site, logging in, navigating, reading, extracting data and presenting it.</p></div></li></ol></div>
+      <div class="qt-folio"><span>METNOS · QUICK TOUR</span><span>02 / 08</span></div>
+    </section><section class="qt-page qt-page--details" id="cap2" aria-labelledby="title-cap2">
+      <div class="qt-running"><span>METNOS</span><span>QUICK TOUR · UNDERSTAND THE WORK</span></div>
+      <div class="qt-kicker"><span class="qt-index">02</span> READ THE SCREEN</div>
+      <h2 id="title-cap2">Every mark<br>has a meaning.</h2>
+      <p class="qt-lead">The trace shows what was invoked. The final row identifies the turn so you can find it again in Activity → Turns.</p>
+      <div class="scene"><dl class="qt-legend qt-legend--compact"><div><dt><p>Number, date, amount</p></dt><dd><p>Each invoice keeps its details. The date 2026-09-30 means 30 September 2026. Document numbers and amounts are masked for privacy.</p></dd></div><div><dt><p>Total: 3</p></dt><dd><p>This is the number of invoices listed, not the sum of their amounts: one from March, one from June and one from September.</p></dd></div><div><dt><p>Direct links</p></dt><dd><p>The “Movimenti e fatture” link (“Transactions and invoices”) opens the original portal section, where you can check the documents.</p></dd></div></dl><figure class="qt-figure"><div class="qt-shot qt-shot--trace"><a href="../assets/quicktour-case-trace.png" target="_blank" rel="noopener" aria-label="Actual trace of the six executors, with all three brain icons and arrows between the steps."><img src="../assets/quicktour-case-trace.png" alt="Actual trace of the six executors, with all three brain icons and arrows between the steps." loading="eager"></a></div><figcaption>Crop of the original trace: the technical names identify the invoked functions, not six different models.</figcaption></figure><dl class="qt-legend"><div><dt><p><span class="qt-num">1</span>Names, arrows and colours</p></dt><dd><p><code>open_sites → login_sites → act_sites → read_sites → extract_entries → describe_entries</code>: the order of steps. Each name identifies a function; arrows and colours help you follow the sequence.</p></dd></div><div><dt><p><span class="qt-num">2</span>Brain and $ symbols</p></dt><dd><p><strong>DET</strong>: opening and reading. <strong>AGENT</strong>: logging in, navigating and extracting. <strong>LLM</strong>: presenting the data. No <strong>$</strong> appears here: the steps shown report no cloud model calls.</p></dd></div></dl><figure class="qt-figure"><div class="qt-shot qt-shot--footer"><a href="../assets/quicktour-case-footer.png" target="_blank" rel="noopener" aria-label="Actual final row: execution location, turn identifier, duration, time and feedback buttons."><img src="../assets/quicktour-case-footer.png" alt="Actual final row: execution location, turn identifier, duration, time and feedback buttons." loading="eager"></a></div><figcaption>Crop of the original final row. Duration and time of day are different measures.</figcaption></figure><dl class="qt-legend"><div><dt><p><span class="qt-num">3</span>Execution location</p></dt><dd><p><strong>server Metnos</strong> is the destination shown for this turn. A paired device is shown by its name.</p></dd></div><div><dt><p><span class="qt-num">4</span>Turn and duration</p></dt><dd><p><code>ededefbc</code> is the first eight characters of the turn identifier. <strong>61.3 s</strong> is the total turn duration, not just model time.</p></dd></div><div><dt><p><span class="qt-num">5</span>Time and feedback</p></dt><dd><p><strong>13:20:53</strong> is the completion time shown in the chat. <strong>✗ / ✓</strong> let you rate the response; they are not certificates of success.</p></dd></div></dl><div class="qt-strip"><p><strong>A result you can check.</strong> The three invoices presented match the three documents read from the portal page. This case concerns looking up invoices, not downloading their files.</p></div></div>
+      <div class="qt-folio"><span>METNOS · QUICK TOUR</span><span>03 / 08</span></div>
+    </section><section class="qt-page qt-page--legend" id="cap3" aria-labelledby="title-cap3">
+      <div class="qt-running"><span>METNOS</span><span>QUICK TOUR · UNDERSTAND THE WORK</span></div>
+      <div class="qt-kicker"><span class="qt-index">03</span> TYPES, ORIGINS AND COSTS</div>
+      <h2 id="title-cap3">How it works.<br>Where it comes from.</h2>
+      <p class="qt-lead">The brain identifies <strong>the executor type</strong>, not the number of model calls. A step may take a path that uses no model. All three icons appear in the real case.</p>
+      <div class="scene"><div class="qt-split qt-split--three"><div class="qt-intelligence"><svg class="qt-brain" viewBox="1 0 21 15" width="42" height="30" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7.9 3.2A2 2 0 0 0 4.2 4.3 2.2 2.2 0 0 0 3 8.1 2.3 2.3 0 0 0 4.4 11.8 2 2 0 0 0 7.9 12.7Z"/><path d="M8.1 3.2a2 2 0 0 1 3.7 1.1A2.2 2.2 0 0 1 13 8.1a2.3 2.3 0 0 1-1.4 3.7 2 2 0 0 1-3.5.9Z"/><path d="M4.2 6.1c.8-.2 1.5.2 1.7.9M4 9.3c.7-.4 1.5-.2 1.9.4M11.8 6.1c-.8-.2-1.5.2-1.7.9M12 9.3c-.7-.4-1.5-.2-1.9.4"/><path d="M2.1 2.1 13.9 13.9" stroke-width="1.75"/></svg><h3>DET · Deterministic</h3><p>Runs rules and code. That step does not use a model; preparing the plan may still use one.</p></div><div class="qt-intelligence"><svg class="qt-brain" viewBox="1 0 21 15" width="42" height="30" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7.9 3.2A2 2 0 0 0 4.2 4.3 2.2 2.2 0 0 0 3 8.1 2.3 2.3 0 0 0 4.4 11.8 2 2 0 0 0 7.9 12.7Z"/><path d="M8.1 3.2a2 2 0 0 1 3.7 1.1A2.2 2.2 0 0 1 13 8.1a2.3 2.3 0 0 1-1.4 3.7 2 2 0 0 1-3.5.9Z"/><path d="M4.2 6.1c.8-.2 1.5.2 1.7.9M4 9.3c.7-.4 1.5-.2 1.9.4M11.8 6.1c-.8-.2-1.5.2-1.7.9M12 9.3c-.7-.4-1.5-.2-1.9.4"/></svg><h3>LLM · Model assisted</h3><p>Can use a language model for part of the work, such as presenting or transforming data.</p></div><div class="qt-intelligence"><svg class="qt-brain" viewBox="1 0 21 15" width="42" height="30" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7.9 3.2A2 2 0 0 0 4.2 4.3 2.2 2.2 0 0 0 3 8.1 2.3 2.3 0 0 0 4.4 11.8 2 2 0 0 0 7.9 12.7Z"/><path d="M8.1 3.2a2 2 0 0 1 3.7 1.1A2.2 2.2 0 0 1 13 8.1a2.3 2.3 0 0 1-1.4 3.7 2 2 0 0 1-3.5.9Z"/><path d="M4.2 6.1c.8-.2 1.5.2 1.7.9M4 9.3c.7-.4 1.5-.2 1.9.4M11.8 6.1c-.8-.2-1.5.2-1.7.9M12 9.3c-.7-.4-1.5-.2-1.9.4"/><path d="m16.9 1 .7 2.1 2.1.7-2.1.7-.7 2.1-.7-2.1-2.1-.7 2.1-.7Z M19.2 8.5l.5 1.4 1.4.5-1.4.5-.5 1.4-.5-1.4-1.4-.5 1.4-.5Z"/></svg><h3>AGENT · Internal decisions</h3><p>Observes, chooses and acts through multiple steps within an assigned mandate and limits. It may stop before reaching the outcome.</p></div></div><h3>Origin answers a different question</h3><p>The executor list also shows where a component comes from. Origin, model use and execution location are separate properties.</p><dl class="qt-origins"><div><dt><p><code class="qt-origin">handcrafted</code></p></dt><dd><p>Written and maintained in the project.</p></dd></div><div><dt><p><code class="qt-origin">synthesized</code></p></dt><dd><p>Generated with a model and admitted into the system. This does not imply a model call on every run.</p></dd></div><div><dt><p><code class="qt-origin">imported</code></p></dt><dd><p>Derived from an external skill, with recorded provenance and admission into the system.</p></dd></div><div><dt><p><code class="qt-origin">builtin</code></p></dt><dd><p>A service built into the runtime. Some are available to the planner; others are restricted.</p></dd></div></dl><div class="qt-strip"><p class="qt-strip-title"><strong>$ means cloud, not a price</strong></p><p>The <strong>$</strong> symbol, when present, indicates cloud model calls reported by an executor. It does not appear in this case. It is not a price, and its absence does not make the entire turn free: the planner may also use a model. Consult Monitor for recorded call measurements.</p></div></div>
+      <div class="qt-folio"><span>METNOS · QUICK TOUR</span><span>04 / 08</span></div>
+    </section><section class="qt-page qt-page--devices" id="cap4" aria-labelledby="title-cap4">
+      <div class="qt-running"><span>METNOS</span><span>QUICK TOUR · UNDERSTAND THE WORK</span></div>
+      <div class="qt-kicker"><span class="qt-index">04</span> USERS AND DEVICES</div>
+      <h2 id="title-cap4">Your user account.<br>On your devices, too.</h2>
+      <p class="qt-lead">Metnos can pair one or more computers with a user and run executors on those devices. The target computer needs the Metnos client.</p>
+      <div class="scene"><figure class="qt-device-figure"><svg viewBox="0 0 720 252" role="img" aria-labelledby="device-title-en">
+      <title id="device-title-en">You · user → Metnos server → Paired computer. Signed request; Result.</title>
+      <defs><marker id="arrow-en" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M1 1 6 4 1 7" fill="none" stroke="#173f6b" stroke-width="1.5"/></marker></defs>
+      <rect x="2" y="2" width="716" height="248" rx="20" fill="#f5f0e8"/>
+      <circle cx="79" cy="96" r="21" fill="none" stroke="#a1513e" stroke-width="3"/><path d="M42 151c0-43 74-43 74 0" fill="none" stroke="#a1513e" stroke-width="3"/>
+      <path d="M138 115h62" stroke="#173f6b" stroke-width="2" marker-end="url(#arrow-en)"/>
+      <rect x="220" y="58" width="190" height="116" rx="14" fill="white" stroke="#173f6b" stroke-width="2"/>
+      <rect x="244" y="78" width="142" height="22" rx="5" fill="#e9eef4"/><circle cx="369" cy="89" r="3" fill="#336654"/>
+      <rect x="244" y="108" width="142" height="22" rx="5" fill="#e9eef4"/><circle cx="369" cy="119" r="3" fill="#336654"/>
+      <text x="315" y="155" text-anchor="middle" fill="#173f6b" font-size="14" font-family="sans-serif">Metnos server</text>
+      <path d="M431 98h67" stroke="#173f6b" stroke-width="2" marker-end="url(#arrow-en)"/>
+      <path d="M500 146h-67" stroke="#336654" stroke-width="2" marker-end="url(#arrow-en)"/>
+      <text x="468" y="79" text-anchor="middle" fill="#173f6b" font-size="11" font-family="sans-serif">Signed request</text>
+      <text x="468" y="171" text-anchor="middle" fill="#336654" font-size="11" font-family="sans-serif">Result</text>
+      <rect x="527" y="66" width="164" height="104" rx="8" fill="white" stroke="#173f6b" stroke-width="2"/>
+      <rect x="540" y="79" width="138" height="66" rx="3" fill="#edf4f0"/><path d="M545 179h128" stroke="#173f6b" stroke-width="4" stroke-linecap="round"/>
+      <text x="609" y="117" text-anchor="middle" fill="#336654" font-size="14" font-family="sans-serif">Metnos client</text>
+      <text x="79" y="203" text-anchor="middle" fill="#a1513e" font-size="15" font-family="sans-serif">You · user</text>
+      <text x="315" y="203" text-anchor="middle" fill="#173f6b" font-size="13" font-family="sans-serif">Authorises and coordinates</text>
+      <text x="609" y="203" text-anchor="middle" fill="#173f6b" font-size="15" font-family="sans-serif">Paired computer</text>
+      <text x="609" y="225" text-anchor="middle" fill="#6a625a" font-size="11" font-family="sans-serif">Runs the compatible executor</text>
+    </svg></figure><ol class="qt-callouts"><li><span class="qt-num">1</span><div><strong>Pair the device with a user</strong><p>In Settings → System → Devices, the administrator selects the owner and gives the computer a name.</p></div></li><li><span class="qt-num">2</span><div><strong>Open the link on that computer</strong><p>The guided process installs the Metnos client and establishes a verifiable identity. The initial link expires after a limited time.</p></div></li><li><span class="qt-num">3</span><div><strong>Run compatible executors there</strong><p>The server sends authorised, signed requests. The client verifies the component, runs it and returns the result.</p></div></li></ol><div class="qt-assurance"><p><strong>Close to your files, within granted permissions.</strong> Reachability alone is not enough: compatibility, resources and authorisation also matter. An administrator can revoke the device.</p></div><p class="qt-small">Explanatory diagram. The invoice case on the preceding pages ran on the server and does not demonstrate execution on a paired computer. <a href="system/devices.html">Device guide →</a></p></div>
+      <div class="qt-folio"><span>METNOS · QUICK TOUR</span><span>05 / 08</span></div>
+    </section><section class="qt-page qt-page--control" id="cap5" aria-labelledby="title-cap5">
+      <div class="qt-running"><span>METNOS</span><span>QUICK TOUR · UNDERSTAND THE WORK</span></div>
+      <div class="qt-kicker"><span class="qt-index">05</span> AUTHORISE AND VERIFY</div>
+      <h2 id="title-cap5">Actions matter.<br>So do their boundaries.</h2>
+      <p class="qt-lead">The convenience of a single request should come with clear permissions, verifiable results and explicit limits.</p>
+      <div class="scene"><div class="qt-flow"><div class="qt-step"><span class="qt-num">1</span><strong>Request</strong><p>An outcome to achieve</p></div><span class="qt-arrow" aria-hidden="true">→</span><div class="qt-step"><span class="qt-num">2</span><strong>Review</strong><p>Permissions and required approvals</p></div><span class="qt-arrow" aria-hidden="true">→</span><div class="qt-step"><span class="qt-num">3</span><strong>Execution</strong><p>Steps within limits</p></div><span class="qt-arrow" aria-hidden="true">→</span><div class="qt-step"><span class="qt-num">4</span><strong>Verification</strong><p>Outcome and trace</p></div></div><div class="qt-split"><div><h3>Protected credentials</h3><p>When credentials are needed, use the dedicated form with its protected password field. Do not put them in the chat’s free text.</p><h3>Approvals follow the policy</h3><p>Actions go through the instance’s checks. When confirmation is required, you can read the proposed operation before authorising it.</p></div><div><h3>Visible limits</h3><p>The response keeps a reference to the source. When errors, missing access or partial results occur, those limits must remain visible.</p><h3>Undo where supported</h3><p>Undo depends on the operation and the available records. Not every external effect is reversible.</p></div></div><blockquote class="qt-request"><p><span class="qt-kicker">EXAMPLE FOLLOW-UP REQUEST</span>“Before sending these invoices, show me who will receive them and what will be sent.”</p></blockquote><div class="qt-strip"><p><strong>Convincing because you can check it.</strong> Read the outcome, open the result and compare it with the source before treating a sensitive task as complete.</p></div></div>
+      <div class="qt-folio"><span>METNOS · QUICK TOUR</span><span>06 / 08</span></div>
+    </section><section class="qt-page qt-page--start" id="cap6" aria-labelledby="title-cap6">
+      <div class="qt-running"><span>METNOS</span><span>QUICK TOUR · UNDERSTAND THE WORK</span></div>
+      <div class="qt-kicker"><span class="qt-index">06</span> GET STARTED AND GET GUIDANCE</div>
+      <h2 id="title-cap6">From your first question<br>to your own data.</h2>
+      <p class="qt-lead">Use the guided installation. Then ask the Tutor how to connect a source or use a function without having to guess technical names.</p>
+      <div class="scene"><div class="qt-split"><div><h3>Install and resume</h3><p>The <a href="https://github.com/brunialti/metnos/blob/main/install/README.md">installation guide</a> walks you through setup. The preliminary check applies no changes; an interrupted procedure resumes from valid steps.</p></div><div><h3>Ask the Tutor</h3><p>The Tutor explains Metnos using public documentation. A “how do I?” question provides guidance; asking to perform an action is a separate step.</p></div></div><pre class="qt-commands"><code>git clone https://github.com/brunialti/metnos.git
 cd metnos
 bash install/bootstrap.sh --check
-bash install/bootstrap.sh</pre>
-    <p>The preflight is read-only. The installer leads you through six phases, verifies each outcome, and records completed work. If a download or the Tutor build is interrupted, the same command resumes from the last valid point.</p>
-    <p class="q">What time is it, and which time zone are you using?</p>
-    <div class="reply">It is 09:42 in Europe/Rome (UTC+02:00).</div>
-    <div class="truth">An open HTTP port proves only that a process responds. This first request crosses classification, planning, an executor, and final presentation: it is a minimal proof of the complete chain.</div>
-    <div class="meta"><b>Installation:</b> guided, idempotent, and resumable · <b>Environment:</b> owned by the installation root, separate from user data · <b>First access:</b> one-use administrative link</div>
-  </div>
-</section>
-
-<section class="cap" id="cap2">
-  <h2>2 · Ask the Tutor for help</h2>
-  <p class="lead">You do not need to know the shape of Settings or guess a capability's technical name. Tutor answers questions about Metnos before the operational planner can mistake the question for an action.</p>
-  <div class="scene">
-    <div class="group-title">Orientation</div>
-    <h3>How do I mount a NAS folder in Metnos?</h3>
-    <p class="q">How do I connect a NAS folder so I can use it in Metnos?</p>
-    <p class="reply">A <strong>mount</strong> makes a shared NAS folder accessible as a local folder on the Metnos server; it does not copy the files. On a Linux server, Metnos can prepare an SMB/CIFS mount through its administrative operation, when available and authorized. You need the NAS address, share name and desired local folder.</p>
-    <p><strong>Example action request:</strong> “Mount the NAS share <code>//storage.example.org/Photos</code> in the Metnos Pictures folder, read-only.” Replace the address and share with your actual ones. Check the proposed local path: the Metnos service account must be able to access it, not just your desktop session.</p>
-    <p>If credentials are missing, Metnos collects them in a dedicated form with a protected password field: do not include them in the request text. Before execution, it presents the review required by the instance policy. If the NAS is already mounted and accessible, use its existing path. Persistence after a reboot is a separate configuration: a successful mount does not guarantee it.</p>
-    <p>To check the connection, you can ask: “List the files in the Pictures folder.” Mounting a folder does not index it. The first photo-content search can automatically start background preparation: <a href="system/lre.html#photo-indexing" data-url="metnos.com/en/system/lre#photo-indexing">read how indexing works</a>. Asking Tutor “how do I do this?” provides these instructions but does not mount anything.</p>
-    <div class="truth">Tutor is compiled locally from published documentation, admitted executor manifests, and permitted runtime registries. Changes to those sources rebuild and sign the catalog; internal notes and personal files are never Tutor sources.</div>
-    <div class="meta"><b>Data:</b> stays on the NAS · <b>Access:</b> share, credentials and service permissions · <b>Boundary:</b> Tutor explains; it never acts quietly</div>
-  </div>
-</section>
-
-<section class="cap" id="cap3">
-  <h2>3 · Find files that are exactly identical</h2>
-  <p class="lead">A broad request should not yield a convenient but incomplete answer. Metnos keeps the limit on what fits in chat separate from the limit on the work that must be completed.</p>
-  <p>The path identifies where to search: dots and folder names are not file-type filters. To narrow the search, name a file type or an explicit extension, for example “PDF files” or “*.pdf”.</p>
-  <div class="scene">
-    <div class="group-title">Completeness</div>
-    <h3>Count everything, compare content, create the sheet</h3>
-    <p class="q">Inspect the Pictures directory on the Metnos server: count every file and directory, then find every image that is certainly duplicated. Create a sheet with both paths and filenames for each pair.</p>
-    <div class="pipe">complete scan <span class="a">→</span> counts <span class="a">→</span> group by size <span class="a">→</span> full SHA-256 <span class="a">→</span> sheet containing every relation</div>
-    <div class="reply">In the illustrated run, the complete count found 34,060 files, 928 directories, and no symbolic links: 34,988 items in all. The duplicate search then examined the 32,239 image-type files, finding 2,809 exact-duplicate groups and 3,084 redundant copies. I created “Duplicate images” with 3,084 data rows.</div>
-    <div class="truth">“Certainly duplicated” means identical content verified by the full digest — not a similar size or a visual probability. A row limit may keep the chat readable; it cannot silently reduce the data handed to the spreadsheet.</div>
-    <div class="meta"><b>Search:</b> recursive and parallel within the instance budget · <b>Outcome:</b> complete counts and declared truncation · <b>Sheet:</b> headings map semantically to fields, never by position</div>
-  </div>
-</section>
-
-<section class="cap" id="cap4">
-  <h2>4 · From mail to a sheet, then consent</h2>
-  <p class="lead">One sentence can join several domains. Typed results pass between steps; the model does not need to copy the data and cannot freely pick an account or provider.</p>
-  <div class="scene">
-    <div class="group-title">Composition</div>
-    <h3>Search, extract, and deliver</h3>
-    <p class="q">Find June's invoice emails, extract date, supplier, invoice number, and amount, then create a sheet sorted by date.</p>
-    <div class="pipe">message search <span class="a">→</span> structured extraction <span class="a">→</span> sort <span class="a">→</span> create sheet</div>
-    <div class="reply">I created “June invoices” with 27 data rows. Three messages had no recognizable amount and are marked incomplete.</div>
-    <p class="q">Send the sheet to my accountant.</p>
-    <div class="approval-card">
-      <div class="line1">May I send a message with an attachment?</div>
-      <div class="line2">Recipient: accountant@example.com · attachment: June invoices.xlsx</div>
-      <div class="line3">External effect · cannot be undone after sending</div>
-      <div class="btns"><span class="btn ok">Approve</span><span class="btn no">Reject</span></div>
-    </div>
-    <div class="truth">Reading and creating a local document do not require the same decision as sending it outside. Consent is bound to the user, recipient, attachment, and this proposal. A sent email is never described as undoable.</div>
-    <div class="meta"><b>Account:</b> selected by configuration and explicit context · <b>Secrets:</b> resolved only at execution time · <b>Errors:</b> incomplete rows are declared, never filled by plausibility</div>
-  </div>
-</section>
-
-<section class="cap" id="cap5">
-  <h2>5 · Work on Windows and undo</h2>
-  <p class="lead">The server retains the plan, policy, consent, and audit trail. A paired client carries only compatible execution to the device where the data lives.</p>
-  <div class="scene">
-    <div class="group-title">Remote device</div>
-    <h3>The photos remain on the PC</h3>
-    <p class="q">On OFFICE-PC, organize the photos in Pictures into subfolders by year without changing their names.</p>
-    <div class="reply">Completed on OFFICE-PC: 486 photos moved, 12 subfolders created, 0 errors. Undo is available.</div>
-    <p class="q">Undo the last operation.</p>
-    <div class="reply">I restored 486 photos to their original paths on OFFICE-PC and removed the 12 folders that remained empty.</div>
-    <div class="truth">Undo is not a model-generated repair. The runtime retains the source/destination pairs and device identity, then executes the inverse on the same PC. If the PC is off, Metnos never falls back silently to the server: it waits or reports that the device is unavailable.</div>
-    <div class="meta"><b>Connection:</b> outbound client, signed invocations · <b>Authority:</b> paths granted for this call · <b>Undo:</b> idempotent and limited to recorded effects</div>
-  </div>
-</section>
-
-<section class="cap" id="cap6">
-  <h2>6 · Follow a portal every morning</h2>
-  <p class="lead">When the route may change but the purpose remains narrow, an executor may observe a page and choose among enumerated actions. That does not turn it into an unbounded agent.</p>
-  <div class="scene">
-    <div class="group-title">Website and schedule</div>
-    <h3>From the school portal to Telegram</h3>
-    <p class="q">Every morning at 7, sign in to the school portal, collect homework, marks, and notices, read attached PDFs too, and send the five most important updates to my daughter on Telegram.</p>
-    <div class="pipe">07:00 schedule <span class="a">→</span> site session <span class="a">→</span> encrypted credential login <span class="a">→</span> pages and PDFs <span class="a">→</span> summary <span class="a">→</span> authorized user delivery</div>
-    <div class="reply"><strong>School — today's summary</strong><br>1. Notice about Friday's strike<br>2. Mathematics test postponed<br>3. New weekend homework<br>4. Parent meetings open for booking<br>5. Latin mark published</div>
-    <div class="truth">The mandate, allowed site, recipient identity, maximum item count, and output format remain fixed. If login expires, a second factor appears, or the site changes beyond what the executor can interpret, the task reports the block; it never invents a summary.</div>
-    <div class="meta"><b>Credentials:</b> encrypted and outside the prompt · <b>Schedule:</b> visible under Settings → Activity → Scheduler · <b>Users:</b> authorization and delivery remain independent for each identity</div>
-  </div>
-</section>
-
-<section class="cap" id="cap7">
-  <h2>7 · Metnos, OpenClaw, and Hermes Agent</h2>
-  <p class="lead">All three can be installed locally and accept natural-language requests. The decisive difference is where each one places management, guidance, authority, and recovery. This table compares behavior described by the projects' official sources; it is not an absolute score.</p>
-  <p>OpenClaw and Hermes both offer guided setup and capable operating surfaces. Metnos is distinguished by the depth of the integrated whole: one installer provisions and verifies the stack, one Settings area administers the instance, and Tutor answers from the capabilities and configuration that instance actually admits.</p>
-  <div class="table-scroll" role="region" aria-label="Comparison of Metnos, OpenClaw, and Hermes Agent" tabindex="0">
-    <table>
-      <thead><tr><th>Area</th><th>OpenClaw</th><th>Hermes Agent</th><th>Metnos</th></tr></thead>
-      <tbody>
-        <tr><td>Everyday use</td><td>A personal assistant across WebChat and many messaging channels.</td><td>CLI, desktop, and several channels, with automation and delegation.</td><td>Web chat and Telegram turn an ordinary-language outcome into a typed workflow across server, providers, and devices.</td></tr>
-        <tr><td>Installation</td><td>One-line installers and guided onboarding on several operating systems.</td><td>Desktop packages or a one-line installer, a setup wizard, and native Windows support.</td><td>A read-only preflight and six resumable phases configure environment, models, sidecars, secrets, services, and Tutor, then verify the complete instance.</td></tr>
-        <tr><td>Management</td><td>Control UI and CLI for gateway, channels, agents, and configuration.</td><td>Desktop, TUI, CLI, and dashboard provide operational surfaces.</td><td>Settings groups administrator pages into five sections: Activity, Monitor, Lifecycle, Memory, and System. The shared header lets you move between chat and settings and return to the conversation.</td></tr>
-        <tr><td>Built-in guidance</td><td>Documentation, setup flows, and configuration commands are available from chat and the UI.</td><td><code>/help</code>, setup, doctor, and extensive documentation guide the operator.</td><td>The semantic Tutor is compiled from installed sources and manifests: it answers in the instance language, observes permitted registries, and provides exact paths and official links.</td></tr>
-        <tr><td>Security boundary</td><td>The main personal session runs on the host by default; sandbox modes, tool policies, pairing, and security audits are configurable.</td><td>Dangerous-command approval, protected paths, pairing, and optional multi-layer isolation provide defense in depth.</td><td>The planner does not receive a general shell: it sees admitted, signed executors. Schema, per-call authority, isolation, policy, consent, and postconditions govern every path.</td></tr>
-        <tr><td>Undo and recovery</td><td>Recovery is session- or tool-specific; the core documentation does not define a uniform cross-domain inverse-operation contract.</td><td><code>/undo</code> manages conversation state; opt-in checkpoints restore project files changed by file tools and destructive commands.</td><td>Supporting executors declare the inverse and the runtime records resources, account, and device. Irreversible effects are stated explicitly.</td></tr>
-        <tr><td>Extension</td><td>Skills and plugins teach new procedures and add tools.</td><td>Installed or learned skills, MCP, and toolsets extend the agent.</td><td>Code becomes routable only after its name, schema, authority, signature, tests, and admission state satisfy the shared contract.</td></tr>
-      </tbody>
-    </table>
-  </div>
-  <p class="source-note"><strong>The recovery models are not equivalent.</strong> Hermes checkpoints can restore everything below a tracked project root, even when no individual tool declared an inverse; inside that tree, Metnos has no equivalent snapshot. Metnos inverse operations instead reach effects a project copy cannot touch — for example a message moved on an IMAP server or files moved on a paired PC — but only when the responsible executor declares and records the reverse. Neither system can recall an email that has already been sent.</p>
-  <p class="source-note">Comparison checked on 31 July 2026 against the official sources: <a href="https://github.com/openclaw/openclaw" data-url="github.com/openclaw/openclaw">OpenClaw</a>, <a href="https://docs.openclaw.ai/cli/security" data-url="docs.openclaw.ai/cli/security">OpenClaw security</a>, <a href="https://github.com/NousResearch/hermes-agent" data-url="github.com/NousResearch/hermes-agent">Hermes Agent</a>, and <a href="https://hermes-agent.nousresearch.com/docs/user-guide/checkpoints-and-rollback/" data-url="hermes-agent.nousresearch.com/docs/user-guide/checkpoints-and-rollback/">Hermes checkpoints</a>. These projects evolve; this is a dated view of documented behavior, not an eternal ranking.</p>
-</section>
-
-<section class="cap" id="continue">
-  <h2>Continue from here</h2>
-  <div class="next">
-    <a href="domains.html" data-url="metnos.com/en/domains">Try more requests<span>Operational domains with examples ready to use.</span></a>
-    <a href="interface.html" data-url="metnos.com/en/interface">Explore the interface<span>The current Settings map and page paths.</span></a>
-    <a href="architecture/index.html" data-url="metnos.com/en/architecture/">Understand the architecture<span>Contracts, authority, Tutor, memory, and devices.</span></a>
-  </div>
-</section>
-</main>
-
-<footer>Metnos · a quick tour through examples · <a href="https://github.com/brunialti/metnos">MIT code</a> · <a href="mailto:metnos@metnos.com">metnos@metnos.com</a></footer>
+bash install/bootstrap.sh</code></pre><h3>How do I mount a NAS folder in Metnos?</h3><p>A <strong>mount</strong> makes a NAS share accessible as a local folder without copying its files. On Linux, Metnos can prepare an <strong>SMB/CIFS</strong> mount when the administrative operation is available and authorised.</p><p class="qt-request">“Mount <code>//storage.example.org/Photos</code> in Metnos’s Pictures folder, read-only.”</p><p>The address and share are examples. The folder must be accessible to the <strong>service account</strong>. If credentials are needed, use the <strong>protected password field</strong>. If the NAS is already accessible, reuse the <strong>existing path</strong>.</p><p>Persistence after a restart requires separate configuration: a successful mount <strong>does not guarantee</strong> it. Check by listing the files. Connecting a folder <strong>does not index</strong> it: the first photo search may start preparation in the background. The Tutor explains the procedure but <strong>does not mount anything</strong>.</p><p class="qt-small"><a href="architecture/tutor.html">The Tutor →</a> · <a href="system/lre.html#photo-indexing">Preparing photo search →</a></p></div>
+      <div class="qt-folio"><span>METNOS · QUICK TOUR</span><span>07 / 08</span></div>
+    </section><section class="qt-page qt-page--close" id="continua" aria-labelledby="title-continua">
+      <div class="qt-running"><span>METNOS</span><span>QUICK TOUR · UNDERSTAND THE WORK</span></div>
+      <div class="qt-kicker"><span class="qt-index">07</span> YOUR NEXT STEP</div>
+      <h2 id="title-continua">A request of your own.<br>A result to understand.</h2>
+      <p class="qt-lead">Start with a simple question. When a task becomes complex, follow the trace and use the sources to verify the result.</p>
+      <div class="qt-split qt-split--three"><blockquote class="qt-request"><p><span class="qt-kicker">GET ORIENTED</span>“How do I pair a computer with my user account?”</p></blockquote><blockquote class="qt-request"><p><span class="qt-kicker">READ</span>“List the files in the Pictures folder.”</p></blockquote><blockquote class="qt-request"><p><span class="qt-kicker">VERIFY</span>“What is missing before this result can be considered complete?”</p></blockquote></div><div class="qt-links"><a href="interface.html"><strong>Explore the interface</strong><span>Chat, Activity, Monitor and Settings.</span></a><a href="domains.html"><strong>Find a use case</strong><span>Available functions and example requests.</span></a><a href="system/devices.html"><strong>Connect a device</strong><span>Pairing, identity and revocation.</span></a><a href="architecture/intelligent_executors.html"><strong>Understand executors</strong><span>Code, models and mandates.</span></a></div><div class="qt-assurance"><p><strong>A concrete promise.</strong> Describe a task in natural language, follow its execution and understand what succeeded. The trace and source references help you assess the result.</p></div><div class="qt-colophon"><p><strong>11 October 2026 edition · Italiano / English</strong><br>Screenshot from a persisted conversation: turn <code>ededefbc</code>, 1 October 2026. No new model requests were made to produce this tour. Diagrams and keys are explanations; the chat and its crops are real captures with identifying details masked.</p><p><a href="architecture/executor_catalog.html">Executor catalogue</a> · <a href="system/devices.html">Devices</a> · <a href="index.html">Full documentation</a><br>Metnos · the owner · <a href="https://github.com/brunialti/metnos">open source, MIT licence</a> · <a href="mailto:metnos@metnos.com">metnos@metnos.com</a></p></div>
+      <div class="qt-folio"><span>METNOS · QUICK TOUR</span><span>08 / 08</span></div>
+    </section></main>
 </body>
 </html>

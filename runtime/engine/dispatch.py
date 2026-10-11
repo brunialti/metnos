@@ -880,7 +880,6 @@ def _ensure_extracted_period_scope(framework: Framework, intent, query: str,
         if any((getattr(step, "tool", "") or "") == "filter_entries"
                and (getattr(step, "args", None) or {}).get("from_step") ==
                extract_pos
-               and (getattr(step, "args", None) or {}).get("where_field") is None
                and (getattr(step, "args", None) or {}).get("where_periods") ==
                filter_args["where_periods"]
                for step in steps):
@@ -6133,23 +6132,23 @@ _TABULAR_SINKS = frozenset({
 
 
 def _propagate_sink_schema_to_extract(framework: Framework) -> Framework:
-    """Backward-propagate spreadsheet columns to their extract producer.
+    """Propagate declared column sources, keeping display headers separate.
 
-    A pipeline is one typed dataflow: columns required by a durable sink are
-    part of the upstream extraction contract.  Letting each step invent its
-    own field list caused silent gaps (the live sheet requested origin/final
-    URL/confidence while extract emitted none).  This pass follows explicit or
-    adjacent entry carriers and unions sink columns into ``extract.fields``.
-    It is independent of domain and never removes planner fields.
+    Explicit extract fields are record keys, while legacy ``columns`` are
+    presentation labels.  Only ``column_specs.source`` can extend an explicit
+    schema.  Legacy headers may bootstrap a missing or empty schema.  Follow
+    the existing entry lineage; never merge different keys by meaning.
     """
     steps = list(getattr(framework, "steps", None) or [])
     changed = False
     for extract_index, extract in enumerate(steps):
         if (extract.tool or "") != "extract_entries":
             continue
+        extract_args = dict(extract.args or {})
+        fields = list(extract_args.get("fields") or [])
         lineage = {extract_index + 1}
         last_carrier = extract_index + 1
-        required: list[str] = []
+        required: list[tuple[str, bool]] = []
         for index in range(extract_index + 1, len(steps)):
             step = steps[index]
             tool = step.tool or ""
@@ -6163,31 +6162,46 @@ def _propagate_sink_schema_to_extract(framework: Framework) -> Framework:
                 last_carrier = index + 1
                 continue
             if tool in _TABULAR_SINKS and consumes_lineage:
-                columns = args.get("columns")
-                if isinstance(columns, list):
-                    for column in columns:
-                        if isinstance(column, str) and column.strip() \
-                                and column not in required:
-                            required.append(column)
+                specs = args.get("column_specs")
+                if specs:
+                    # Specs take precedence at the sink too. Malformed specs
+                    # must not silently fall back to legacy display labels;
+                    # ordinary sink validation remains authoritative.
+                    if isinstance(specs, list):
+                        for spec in specs:
+                            if not isinstance(spec, dict):
+                                continue
+                            key = spec.get("source")
+                            if isinstance(key, str) and key.strip():
+                                item = (key.strip(), True)
+                                if item not in required:
+                                    required.append(item)
+                elif not fields:
+                    columns = args.get("columns")
+                    if isinstance(columns, list):
+                        for column in columns:
+                            if isinstance(column, str) and column.strip():
+                                item = (column, False)
+                                if item not in required:
+                                    required.append(item)
         if not required:
             continue
-        args = dict(extract.args or {})
-        fields = list(args.get("fields") or [])
         merged = list(fields)
-        for column in required:
-            # A header names an existing field when only surrounding spaces or
-            # case differ. Several such fields are an ambiguity of the plan:
-            # keep them all, choose none and add no further variant.
-            if not any(isinstance(field, str)
-                       and field.strip().casefold() == column.strip().casefold()
+        for key, exact in required:
+            # Explicit source identity is case-sensitive. Strip whitespace as
+            # extract_entries and compile_projection already do. Legacy
+            # bootstrap preserves its historical case-insensitive spelling.
+            if not any(isinstance(field, str) and (
+                    field.strip() == key if exact else
+                    field.strip().casefold() == key.strip().casefold())
                        for field in merged):
-                merged.append(column)
+                merged.append(key)
         if merged != fields:
-            args["fields"] = merged
-            extract.args = args
+            extract_args["fields"] = merged
+            extract.args = extract_args
             changed = True
     if changed:
-        log.info("[sink-schema] propagated tabular columns to extract_entries")
+        log.info("[sink-schema] propagated declared tabular sources to extract_entries")
     return framework
 
 
@@ -6554,8 +6568,9 @@ GUARD_PIPELINE: tuple = (
     Guard("propagate_sink_schema_to_extract",
           lambda fw, i, q, c: _propagate_sink_schema_to_extract(fw),
           scope="cross-clause", writes=frozenset({"args.fields"}),
-          reads=frozenset({"step.tool", "args.from_step", "args.columns"}),
-          rationale="schema dataflow: le colonne richieste dal sink tabellare fanno parte del contratto extract a monte, attraverso trasformazioni entries pure",
+          reads=frozenset({"step.tool", "args.from_step", "args.fields",
+                           "args.columns", "args.column_specs"}),
+          rationale="schema dataflow: le sorgenti esplicite delle colonne estendono extract; le intestazioni legacy inizializzano solo uno schema assente",
           adr="0177"),
     Guard("enforce_complete_sink_cardinality",
           lambda fw, i, q, c: _enforce_complete_sink_cardinality(fw, c),

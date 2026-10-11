@@ -129,15 +129,45 @@ def open_prepared_root_session_v1():
         raise PreparedRootError(exc.code, exc) from None
 
 
+class _DistributionSources:
+    """Read context sources from one closed distribution, never the host.
+
+    Runtime labels remain relative to runtime for historical catalogues. The
+    sole external dependency is the public message seed shipped in that same
+    distribution. The underlying session retains secure descriptor checks.
+    """
+
+    def __init__(self, session):
+        self._session = session
+
+    def read_file(self, parts, **kwargs):
+        from executor_birth_secure_fs import BirthSecureFSError
+
+        if (type(parts) is not tuple or not parts
+                or any(type(part) is not str or not part or part in {".", ".."}
+                       or any(c in part for c in "/\\\0") for part in parts)):
+            raise BirthSecureFSError("birth_distribution_source_invalid")
+        if parts == ("install", "data", "i18n_seed.sqlite"):
+            selected = parts
+        elif parts[0] in {"install", "runtime"}:
+            raise BirthSecureFSError("birth_distribution_source_invalid")
+        else:
+            selected = ("runtime",) + parts
+        return self._session.read_file(selected, **kwargs)
+
+    def close(self):
+        self._session.close()
+
+
 def open_distribution_sources_v1():
     """Open the installed distribution read-only, to rebuild the material."""
     import config as runtime_config
     from executor_birth_secure_fs import BirthSecureFSError, _open_legacy_root_session
 
     try:
-        return _open_legacy_root_session(
-            Path(runtime_config.PATH_RUNTIME), exact_private=False,
-        )
+        return _DistributionSources(_open_legacy_root_session(
+            Path(runtime_config.PATH_RUNTIME).parent, exact_private=False,
+        ))
     except BirthSecureFSError as exc:
         raise PreparedRootError(exc.code, exc) from None
 
@@ -150,10 +180,10 @@ def _open_distribution_sources_for_verified_v1(distribution):
     if not is_verified_distribution(distribution):
         raise PreparedRootError("birth_context_selection_invalid")
     try:
-        return _open_legacy_root_session(
-            Path(distribution.installation_root) / "runtime",
+        return _DistributionSources(_open_legacy_root_session(
+            Path(distribution.installation_root),
             exact_private=False,
-        )
+        ))
     except BirthSecureFSError as exc:
         raise PreparedRootError(exc.code, exc) from None
 

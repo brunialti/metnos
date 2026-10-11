@@ -211,17 +211,25 @@ def _call_llm_proc(system: str, user: str, *, max_tokens: int,
             "-no-cnv", "-f", tmp_path, "-n", str(max_tokens),
             "--no-display-prompt", "--simple-io",
         ]
-        from monitor_capture import call_scope
+        from llm_invocation import call_scope
+        started = time.monotonic()
         with call_scope(provider="llamacpp", model=model, level=monitor_level) as observation:
             proc = subprocess.run(
                 cmd, capture_output=True, text=True,
                 timeout=_remaining_budget(deadline_at, _PROC_TIMEOUT_S), env=env)
-            if proc.returncode != 0 and observation is not None:
+            text = _END_OF_TEXT_RE.sub("", proc.stdout or "").strip()
+            if (proc.returncode != 0 or not text) and observation is not None:
                 observation["status"] = "error"
-                observation["error_code"] = "process_failed"
-        if proc.returncode != 0:
+                observation["error_code"] = (
+                    "process_failed" if proc.returncode != 0 else "empty_response")
+        if proc.returncode != 0 or not text:
             return None
-        text = _END_OF_TEXT_RE.sub("", proc.stdout or "").strip()
+        from types import SimpleNamespace
+        from llm_telemetry import record
+        record(provider="llamacpp", model=model, system=system, user=user,
+               tier=monitor_level, result=SimpleNamespace(
+                   text=text, in_tokens=None, out_tokens=None,
+                   latency_ms=int((time.monotonic() - started) * 1000)))
         return text or None
     except Exception:
         return None
@@ -300,8 +308,8 @@ def call_llm(
                     "tier": tier,
                     "provider": provider_name,
                     "model": spec.get("model") or "local",
-                    "in_tokens": 0,
-                    "out_tokens": 0,
+                    "in_tokens": None,
+                    "out_tokens": None,
                     "latency_ms": int((time.time() - t0) * 1000),
                     "deterministic": True,
                     **_proc_meta,  # prompt_sha (audit determinismo)

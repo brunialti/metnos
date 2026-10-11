@@ -604,6 +604,10 @@ from from_step_projection import (  # noqa: E402
     has_explicit_from_step_alternative as _has_explicit_from_step_alternative,
     project_from_entries as _project_from_entries,
 )
+from tabular_records import (  # noqa: E402
+    has_explicit_column_sources as _has_explicit_column_sources,
+    preserve_explicit_record_source as _preserve_explicit_record_source,
+)
 
 
 def _resolve_implicit_reverse_target(
@@ -899,6 +903,18 @@ def _entries_to_2d_matrix(entries: list) -> list[list]:
             row.append(str(v) if v is not None else "")
         matrix.append(row)
     return matrix
+
+
+def _normalize_values_carrier(args: dict) -> dict:
+    """Materialize legacy values only when no record-source map owns them."""
+    out = _preserve_explicit_record_source(args)
+    values = out.get("values")
+    if (not _has_explicit_column_sources(out)
+            and isinstance(values, list) and values
+            and isinstance(values[0], dict)):
+        out = dict(out)
+        out["values"] = _entries_to_2d_matrix(values)
+    return out
 
 
 from field_synonyms import resolve_dotted_with_synonyms as _resolve_dotted_with_synonyms_base
@@ -1853,7 +1869,8 @@ def _presentation_tokens(presentation: dict | None, *, wide: bool) -> int:
 
 
 def _finalize_answer_text(framework, steps: list, query: str,
-                          llm_fast, presentation: dict | None = None) -> str:
+                          llm_fast, presentation: dict | None = None, *,
+                          empty_mutation_skipped: bool = False) -> str:
     """FINALIZER unico (ADR 0177 T5, CP2·M2): l'UNICA fonte del testo di un
     turno `answer`. Strategia dichiarata, in ordine:
 
@@ -1891,6 +1908,10 @@ def _finalize_answer_text(framework, steps: list, query: str,
     receipt = _last_self_presentation(steps, effect_receipt_only=True)
     if receipt:
         return receipt
+    if empty_mutation_skipped:
+        # The actual skip guard, rather than the wording of a proposed
+        # template, establishes that the requested effect did not take place.
+        return _deterministic_zero_result(steps) or _msg("MSG_NO_RESULTS")
     rendered = _render_final_message(framework.final_message, steps)
     # 2. count-only → bullets (universal §7.9)
     if steps:
@@ -2254,9 +2275,7 @@ class Executor:
                 actor=args.get("_actor") or "host", query=query)
         except Exception as exc:
             log.debug("args_resolver parallel-prep noop: %r", exc)
-        if isinstance(args.get("values"), list) and args["values"]:
-            if isinstance(args["values"][0], dict):
-                args["values"] = _entries_to_2d_matrix(args["values"])
+        args = _normalize_values_carrier(args)
         if step.tool in {"find_images_indices", "find_persons_indices"}:
             top_k = args.get("top_k")
             if isinstance(top_k, int) and top_k < 100 \
@@ -2368,6 +2387,7 @@ class Executor:
         result.framework_hash = compute_framework_hash(framework)
         t_start = time.time()
         _parallel_pending: dict[int, _ParallelCall] = {}
+        empty_mutation_skipped = False
 
         # Il cap storico resta il confine dei piani LLM.  Solo framework
         # canonici costruiti nel runtime possono chiedere un budget maggiore;
@@ -2400,6 +2420,7 @@ class Executor:
 
             # Branching: skip se condizione step non passa
             if not _step_condition_passes(step, result.steps):
+                empty_mutation_skipped |= _mutating_input_is_empty(step, result.steps)
                 continue
 
             # Dedup «semina» (ADR 0177 M1, §7.9 backstop deterministico): se
@@ -2424,7 +2445,8 @@ class Executor:
             if step.tool == "final_answer":
                 result.final_text = _finalize_answer_text(
                     framework, result.steps, query, self.llm_fast,
-                    presentation=(runtime_ctx or {}).get("presentation"))
+                    presentation=(runtime_ctx or {}).get("presentation"),
+                    empty_mutation_skipped=empty_mutation_skipped)
                 result.final_kind = "answer"
                 break
 
@@ -2639,13 +2661,9 @@ class Executor:
                     actor=args.get("_actor") or "host", query=query)
             except Exception as _are:
                 log.debug("args_resolver noop: %r", _are)
-            # Universal §7.9: convert list[dict] entries to 2D matrix
-            # quando arg name è "values" (write_files_spreadsheet pattern).
-            if isinstance(args.get("values"), list) and args["values"]:
-                v0 = args["values"][0]
-                if isinstance(v0, dict):
-                    # È list[dict] → convert a 2D matrix
-                    args["values"] = _entries_to_2d_matrix(args["values"])
+            # Explicit record sources must reach projection before any
+            # positional matrix is materialized; legacy values stay as before.
+            args = _normalize_values_carrier(args)
 
             # Universal §7.3: image-search executor → top_k default 100 per
             # consentire pattern «20 preview + 100 gallery» standard UI.
@@ -3095,5 +3113,6 @@ class Executor:
             # gemello divergente (niente arricchimento count-only→bullets).
             result.final_text = _finalize_answer_text(
                 framework, result.steps, query, self.llm_fast,
-                presentation=(runtime_ctx or {}).get("presentation"))
+                presentation=(runtime_ctx or {}).get("presentation"),
+                empty_mutation_skipped=empty_mutation_skipped)
         return result

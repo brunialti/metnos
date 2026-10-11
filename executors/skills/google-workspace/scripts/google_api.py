@@ -1182,6 +1182,91 @@ def sheets_create(args):
     }, indent=2, ensure_ascii=False))
 
 
+def _verify_table_readback(expected: dict, actual: dict) -> tuple[bool, int]:
+    """Compare typed values and declared number formats, never formatted text."""
+    actual_sheets = {sheet.get("properties", {}).get("sheetId"): sheet
+                     for sheet in actual.get("sheets", [])}
+    count = 0
+    for sheet in expected["sheets"]:
+        observed = actual_sheets.get(sheet["properties"]["sheetId"])
+        if observed is None or observed.get("properties", {}).get("title") != sheet["properties"]["title"]:
+            return False, count
+        blocks = observed.get("data", [])
+        if len(blocks) > 1:
+            return False, count
+        if blocks and (blocks[0].get("startRow", 0) != 0 or blocks[0].get("startColumn", 0) != 0):
+            return False, count
+        rows = blocks[0].get("rowData", []) if blocks else []
+        for row_index, row in enumerate(sheet["data"][0]["rowData"]):
+            cells = rows[row_index].get("values", []) if row_index < len(rows) else []
+            for col_index, wanted in enumerate(row["values"]):
+                found = cells[col_index] if col_index < len(cells) else {}
+                wanted_value = wanted.get("userEnteredValue", {})
+                found_value = found.get("userEnteredValue", {})
+                # Empty string and blank have the same visible text; neither
+                # may be promoted to a formula or an inferred typed value.
+                if wanted_value == {"stringValue": ""} and not found_value:
+                    wanted_value = {}
+                if found_value != wanted_value:
+                    return False, count
+                wanted_format = wanted.get("userEnteredFormat", {}).get("numberFormat")
+                if wanted_format and found.get("userEnteredFormat", {}).get("numberFormat") != wanted_format:
+                    return False, count
+                count += 1
+    return True, count
+
+
+def sheets_create_table(args):
+    """Create with typed cells in one request, then verify the resulting grid.
+
+    Uses the existing Python OAuth client. Source cells never travel in argv
+    (the gws bridge currently passes JSON through argv); no mutating retry.
+    A known created ID is preserved even when readback fails.
+    """
+    import math
+    body = json.loads(Path(args.body_file).read_text(encoding="utf-8"))
+    if not isinstance(body, dict) or not isinstance(body.get("sheets"), list) or not body["sheets"]:
+        raise ValueError("invalid table body")
+    for sheet in body["sheets"]:
+        for block in sheet.get("data", []):
+            for row in block.get("rowData", []):
+                for cell in row.get("values", []):
+                    value = cell.get("userEnteredValue", {})
+                    if len(value) > 1 or set(value) - {"stringValue", "numberValue", "boolValue"}:
+                        raise ValueError("unsupported table value")
+                    if "numberValue" in value and (isinstance(value["numberValue"], bool)
+                            or not isinstance(value["numberValue"], (int, float))
+                            or not math.isfinite(value["numberValue"])):
+                        raise ValueError("invalid table number")
+                    if "stringValue" in value and not isinstance(value["stringValue"], str):
+                        raise ValueError("invalid table string")
+                    if "boolValue" in value and not isinstance(value["boolValue"], bool):
+                        raise ValueError("invalid table boolean")
+    service = build_service("sheets", "v4")
+    created = service.spreadsheets().create(
+        body=body, fields="spreadsheetId,spreadsheetUrl",
+    ).execute(num_retries=0)
+    sid = created.get("spreadsheetId", "")
+    out = {"spreadsheetId": sid, "spreadsheetUrl": created.get("spreadsheetUrl", ""),
+           "verified": False, "verified_cells": 0}
+    if sid:
+        try:
+            actual = service.spreadsheets().get(
+                spreadsheetId=sid, includeGridData=True,
+                fields=("sheets(properties(sheetId,title),data(startRow,startColumn,rowData(values("
+                        "userEnteredValue,userEnteredFormat/numberFormat))))"),
+            ).execute(num_retries=0)
+            out["verified"], out["verified_cells"] = _verify_table_readback(body, actual)
+            if not out["verified"]:
+                out["verification_reason"] = "typed_readback_mismatch"
+        except Exception:
+            # No source values or raw API error are returned to chat/logs.
+            out["verification_reason"] = "typed_readback_failed"
+    else:
+        out["verification_reason"] = "create_missing_id"
+    print(json.dumps(out, ensure_ascii=False))
+
+
 # =========================================================================
 # Docs
 # =========================================================================
@@ -1963,6 +2048,10 @@ def main():
     p.add_argument("--title", required=True, help="Spreadsheet title")
     p.add_argument("--sheet-name", default="", help="Name of the first tab (defaults to 'Sheet1')")
     p.set_defaults(func=sheets_create)
+
+    p = sh_sub.add_parser("create-table")
+    p.add_argument("--body-file", required=True, help="Private JSON typed grid payload")
+    p.set_defaults(func=sheets_create_table)
 
     # --- Docs ---
     docs = sub.add_parser("docs")

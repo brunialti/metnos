@@ -29,6 +29,8 @@ TRANSLATIONS = {
     "TOTAL_TIME_HELP": ("Dall'avvio della richiesta alla conclusione, comprese le attese.", "From request start to completion, including waits."),
     "NAVIGATION": ("Viste del Monitor", "Monitor views"),
     "FILTERS": ("Filtri del Monitor", "Monitor filters"),
+    "PREFERENCES_HELP": ("Le impostazioni applicate e le serie selezionate vengono ricordate per questa schermata, in questo browser, anche dopo un riavvio.", "Applied settings and selected series are remembered for this screen, in this browser, including after a restart."),
+    "PREFERENCES_ERROR": ("Impossibile salvare o ripristinare le preferenze in questo browser.", "Unable to save or restore preferences in this browser."),
     "PERIOD": ("Periodo", "Period"),
     "PERIOD_TODAY": ("Oggi", "Today"),
     "PERIOD_24H": ("Ultime 24 ore", "Last 24 hours"),

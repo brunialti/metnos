@@ -61,6 +61,7 @@ from executor_helpers import (  # noqa: E402
 from tabular_projection import (  # noqa: E402
     TabularProjectionError, project_entries,
 )
+from spreadsheet_cells import active_cell_count, neutralized_rows  # noqa: E402
 import config as _C  # noqa: E402 §7.11
 # path_alias modulo riusabile (D.1, D.3). Re-export degli alias come moduli
 # locali per back-compat con test esistenti che mockano backends.files.local.
@@ -2469,6 +2470,25 @@ def _write_xlsx_stdlib(path: Path, rows: list, sheet_name: str) -> None:
         raise
 
 
+def _xlsx_text_cells(ws, row) -> list:
+    """Values of one appended row; text openpyxl would parse as a formula stays text.
+
+    Data never becomes a formula. Only the cells of this row are built and
+    typed here: nothing already in the workbook is read or changed.
+    """
+    from openpyxl.cell.cell import Cell
+    out = []
+    for value in row:
+        if isinstance(value, str):
+            cell = Cell(ws, value=value)
+            if cell.data_type == "f":
+                cell.data_type = "s"
+            out.append(cell)
+        else:
+            out.append(value)
+    return out
+
+
 def _entries_to_values(entries, columns, column_specs=None,
                        field_roles=None) -> list:
     """Costruisce la matrice [header + righe] da una LISTA di entries (dict) e
@@ -2543,6 +2563,10 @@ def _resolve_values(args: dict):
     (pipe §2.10/§4.1). Ritorna list[list] o None se nessuna fonte valida."""
     values = args.get("values")
     if isinstance(values, list) and values:
+        if any(isinstance(value, dict) for value in values):
+            return _maybe_deduplicate_rows(_entries_to_values(
+                values, args.get("columns"), args.get("column_specs"),
+                args.get("field_roles")), args)
         return _maybe_deduplicate_rows(
             _rows_to_values(values, args.get("columns")), args)
     entries = args.get("entries")
@@ -2577,6 +2601,103 @@ def _data_row_count(args: dict, rows: list) -> int:
         if head == [column.casefold() for column in columns]:
             return max(0, len(rows) - 1)
     return len(rows)
+
+
+def _clean_create_table_args(args: dict) -> dict:
+    """Apply the shared privacy boundary before legacy JSON serialization."""
+    from tabular.compile import SOURCE_METADATA_FIELDS, _clean, _sensitive_fields
+    from tabular.model import TableError
+    from tabular_records import has_explicit_column_sources, merge_source_metadata
+
+    sensitive = _sensitive_fields(args)
+    declarations = args.get("column_specs") or []
+    if not isinstance(declarations, list) or any(not isinstance(item, dict) for item in declarations):
+        raise TableError("invalid_column_specs")
+    if has_explicit_column_sources(args):
+        carriers = [args.get(key) for key in ("values", "entries")]
+        if all(isinstance(rows, list) and rows for rows in carriers):
+            raise TableError("ambiguous_record_carriers")
+        if any(isinstance(rows, list)
+               and any(isinstance(row, dict) for row in rows)
+               and not all(isinstance(row, dict) for row in rows)
+               for rows in carriers):
+            raise TableError("mixed_record_and_matrix_rows")
+    sensitive.update(item.get("source") for item in declarations if item.get("sensitive") is True)
+    if any(item.get("source") in sensitive or
+           isinstance(item.get("source"), str) and item["source"].startswith("_")
+           for item in declarations):
+        raise TableError("sensitive_column_requested")
+    sanitized = dict(args)
+    for key in ("entries", "values"):
+        rows = args.get(key)
+        if isinstance(rows, list):
+            cleaned = [_clean(row, sensitive) for row in rows]
+            if any(isinstance(row, dict) and not isinstance(clean, dict)
+                   for row, clean in zip(rows, cleaned)):
+                raise TableError("sensitive_record_requested")
+            sanitized[key] = cleaned
+    metadata_keys = ("provenance", *SOURCE_METADATA_FIELDS)
+    metadata = _clean({key: args[key] for key in metadata_keys if key in args}, sensitive)
+    for key in metadata_keys:
+        sanitized.pop(key, None)
+    sanitized.update(metadata)
+    try:
+        sanitized["source_metadata"] = merge_source_metadata(args.get("source_metadata"))
+    except ValueError:
+        raise TableError("invalid_source_metadata") from None
+    return sanitized
+
+
+def _create_table_input(args: dict, rows: list, title: str, sheet_name: str) -> tuple[dict, dict]:
+    """Adapt the already projected matrix without resolving source fields twice.
+
+    A record projection owns its materialized header. Direct matrices only
+    have a header when ``columns`` explicitly declared it; an otherwise
+    identical first data row never becomes header authority here.
+    """
+    from tabular.compile import SOURCE_METADATA_FIELDS
+    from tabular.model import TableError
+
+    columns = [column for column in (args.get("columns") or [])
+               if isinstance(column, str) and column.strip()]
+    values = args.get("values")
+    entries = args.get("entries")
+    effective_rows = values if isinstance(values, list) and values else entries
+    projected_records = (isinstance(effective_rows, list) and bool(effective_rows)
+                         and any(isinstance(row, dict) for row in effective_rows))
+    has_header = bool(rows) and (projected_records or bool(columns))
+    if columns and rows and len(rows[0]) != len(columns):
+        raise TableError("invalid_row_width")
+    declarations = args.get("column_specs") or []
+    headers = list(rows[0]) if has_header else columns
+    if not headers and not rows and declarations:
+        headers = [item.get("header") for item in declarations]
+    data = rows[1:] if has_header else rows
+    if not headers and data:
+        headers = [str(position + 1) for position in range(len(data[0]))]
+    if any(len(row) != len(headers) for row in data):
+        raise TableError("invalid_row_width")
+    spec = {"title": title, "name": sheet_name, "columns": headers,
+            "has_header": has_header}
+    if declarations:
+        if (not isinstance(declarations, list) or len(declarations) != len(headers)
+                or any(not isinstance(item, dict) for item in declarations)):
+            raise TableError("invalid_column_specs")
+        # Sources/transforms were consumed by _resolve_values; only explicit
+        # physical types remain relevant to these positional matrix cells.
+        spec["column_specs"] = [
+            {"header": header, "source": str(position),
+             **{key: declaration[key] for key in ("type", "currency") if key in declaration}}
+            for position, (header, declaration) in enumerate(zip(headers, declarations))
+        ]
+    if "locale" in args:
+        spec["locale"] = args["locale"]
+    # Named source fields have already been removed, including Note metadata.
+    # Carrying those names onto positional sources could reinterpret "0" as
+    # the first public column instead of the removed record key named "0".
+    source = {"values": data, **{key: args[key] for key in
+              ("provenance", "source_metadata", *SOURCE_METADATA_FIELDS) if key in args}}
+    return source, spec
 
 
 def create_spreadsheet(args: dict) -> dict:
@@ -2618,8 +2739,18 @@ def create_spreadsheet(args: dict) -> dict:
                 "error": _msg("ERR_DST_EXISTS", path=str(path)),
                 "error_class": "conflict",
                 "results": [], "used": 0, "n_created": 0}
+    sheet_name = (args.get("sheet_name") or "Sheet1").strip() or "Sheet1"
+    display_title = title or path.stem
     try:
-        rows = _resolve_values(args) or []
+        # Devices need the delivered table-writer package/capability. Lazy
+        # import keeps unrelated local operations usable on an older package;
+        # a missing writer is an honest failed create, never a verified file.
+        from tabular.api import write_table
+        table_args = _clean_create_table_args(args)
+        rows = _resolve_values(table_args) or []
+        source, spec = _create_table_input(table_args, rows, display_title, sheet_name)
+        out = write_table(source, spec, {"backend": "csv" if _is_csv(path) else "local_xlsx",
+                                       "path": str(path)}, "create")
     except TabularProjectionError as exc:
         return {
             "ok": False,
@@ -2632,49 +2763,37 @@ def create_spreadsheet(args: dict) -> dict:
             "error_class": "invalid_args",
             "results": [], "used": 0, "n_created": 0,
         }
-    path.parent.mkdir(parents=True, exist_ok=True)
-    sheet_name = (args.get("sheet_name") or "Sheet1").strip() or "Sheet1"
-    try:
-        if _is_csv(path):
-            import csv
-            with path.open("x", newline="", encoding="utf-8") as fh:
-                csv.writer(fh).writerows(rows)
-        else:
-            _write_xlsx_stdlib(path, rows, sheet_name)
-    except FileExistsError:
-        return {"ok": False, "error_code": "ERR_DST_EXISTS",
-                "error": _msg("ERR_DST_EXISTS", path=str(path)),
-                "error_class": "conflict",
-                "results": [], "used": 0, "n_created": 0}
-    except Exception as e:  # noqa: BLE001
-        return {"ok": False, "error_code": "ERR_IO",
-                "error": _msg("ERR_IO", detail=str(e)),
-                "error_class": "io_error", "results": [], "used": 0, "n_created": 0}
+    except (ImportError, ValueError, TypeError) as exc:
+        reason = getattr(exc, "reason", "table_writer_unavailable" if isinstance(exc, ImportError) else "invalid_input")
+        return {"ok": False, "error_code": "ERR_TABLE_WRITE",
+                "error": _msg("ERR_TABLE_WRITE", reason=reason), "error_reason": reason,
+                "error_class": "io_error" if isinstance(exc, ImportError) else "invalid_args",
+                "results": [], "used": 0, "n_created": 0, "verified": False}
+    if out.get("error_reason") == "destination_exists" and not out.get("results"):
+        # Preserve the executor's bounded autonomous-name retry. A collision
+        # after another artifact committed stays partial and must not retry.
+        out.update(error_code="ERR_DST_EXISTS", error_class="conflict",
+                   error=_msg("ERR_DST_EXISTS", path=str(path)))
     sid = str(path)
-    data_rows = _data_row_count(args, rows)
-    display_title = title or path.stem
-    final_message_hint = _msg(
-        "MSG_SPREADSHEET_CREATED_RECEIPT",
-        title=display_title,
-        rows=format_exact_integer(data_rows),
-    )
-    # `created: True` + `path`: contratto richiesto da reverse_patterns.
-    # _delete_created_paths (undo: il file appena creato viene rimosso, §2.8).
-    result_row = {"ok": True, "created": True, "spreadsheet_id": sid, "path": sid,
-                  "title": display_title, "rows": len(rows),
-                  "data_rows": data_rows, "kind": "spreadsheet"}
-    return {
-        "ok": True, "n_created": 1, "spreadsheet_id": sid, "path": sid,
-        "title": display_title, "rows": len(rows), "data_rows": data_rows,
-        "final_message_hint": final_message_hint,
-        "results": [result_row], "used": 1,
-        "files_source": "local",
-        "_undo": {
-            "reverse_pattern": "delete_created_paths",
-            "paths": [sid],
-            "scope": {"client": "local"},
-        },
-    }
+    results = out.get("results", [])
+    main = next((row for row in results if row.get("path") == sid), None)
+    written_rows = out.get("compiled_rows", 0) + int(spec["has_header"]) if main else 0
+    out.update(title=display_title, rows=written_rows)
+    if main:
+        out.update(spreadsheet_id=sid, path=sid)
+        main.update(title=display_title, rows=written_rows)
+    for row in results:
+        row.setdefault("title", display_title)
+    if results:
+        # Include every published CSV Note sidecar in the ordinary create undo.
+        out["_undo"] = {"reverse_pattern": "delete_created_paths",
+                        "paths": [row["path"] for row in results if row.get("created")],
+                        "scope": {"client": "local"}}
+    out.setdefault("n_created", 0)
+    prefixed_cells = sum(row.get("text_prefixed_cells", 0) for row in results)
+    if prefixed_cells:
+        out["text_prefixed_cells"] = prefixed_cells
+    return out
 
 
 def write_spreadsheet(args: dict) -> dict:
@@ -2767,14 +2886,16 @@ def write_spreadsheet(args: dict) -> dict:
             prev_blob_path = None
     sheet_name = (args.get("sheet_name") or "").strip()
     written_rows = rows
+    prefixed_cells = 0
     try:
         if _is_csv(path):
             import csv
             file_mode = "a" if (mode == "append" and existed) else "w"
             if file_mode == "a" and path.stat().st_size > 0:
                 written_rows = _drop_declared_header(rows, args.get("columns"))
+            prefixed_cells = active_cell_count(written_rows)
             with path.open(file_mode, newline="", encoding="utf-8") as fh:
-                csv.writer(fh).writerows(written_rows)
+                csv.writer(fh).writerows(neutralized_rows(written_rows))
         else:
             import openpyxl
             if existed:
@@ -2796,7 +2917,7 @@ def write_spreadsheet(args: dict) -> dict:
                 if sheet_name:
                     ws.title = sheet_name[:31]
             for r in written_rows:
-                ws.append(r)
+                ws.append(_xlsx_text_cells(ws, r))
             wb.save(str(path))
     except ImportError:
         return {"ok": False, "error_code": "ERR_DEPENDENCY_MISSING",
@@ -2821,12 +2942,16 @@ def write_spreadsheet(args: dict) -> dict:
         result_row["created"] = True
     elif prev_blob_path:
         result_row["prev_blob_path"] = prev_blob_path
+    if prefixed_cells:
+        result_row["text_prefixed_cells"] = prefixed_cells
     out = {
         "ok": True, "n_written": 1, "updated_cells": updated_cells,
         "updated_rows": len(written_rows), "spreadsheet_id": sid, "path": sid,
         "data_rows": data_rows, "mode": mode, "created": created,
         "results": [result_row], "used": 1, "files_source": "local",
     }
+    if prefixed_cells:
+        out["text_prefixed_cells"] = prefixed_cells
     out["final_message_hint"] = _msg(
         "MSG_SPREADSHEET_CREATED_RECEIPT" if created
         else "MSG_SPREADSHEET_UPDATED_RECEIPT",

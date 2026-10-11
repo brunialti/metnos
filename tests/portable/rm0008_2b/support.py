@@ -267,10 +267,19 @@ def stage_runtime_sources(tmp_path: Path, monkeypatch) -> Path:
         stage.mkdir(mode=0o755, parents=True)
         for _, _, files, _ in catalog.CONTEXT_CATALOG_V1:
             for name in files:
+                external = name == "install/data/i18n_seed.sqlite"
+                source = (Path(runtime_config.PATH_RUNTIME).parent if external
+                          else Path(runtime_config.PATH_RUNTIME)) / name
+                destination = (release if external else stage) / name
+                destination.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
+                for parent in destination.parents:
+                    if parent == release:
+                        break
+                    apply_profile(parent, directory=True, private=False)
                 shutil.copy(
-                    Path(runtime_config.PATH_RUNTIME) / name, stage / name,
+                    source, destination,
                 )
-                apply_profile(stage / name, directory=False, private=False)
+                apply_profile(destination, directory=False, private=False)
         # The container is sealed last: a protected descriptor applied first
         # would deny the very copies that have to go inside it.
         apply_profile(stage, directory=True, private=False)

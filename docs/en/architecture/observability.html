@@ -194,6 +194,15 @@ without waiting for disk. Lost events, incomplete data and stale collection
 are shown on the page. Collection retains identifiers and measurements,
 without questions, answers or credentials. Access requires the admin role.</p>
 
+<p>Each Monitor screen remembers applied filters, the time period, model
+grouping and selected series in the browser. Preferences are separated by
+authenticated user and screen, and survive restarts when using the same
+browser. Relative periods, such as the last 24 hours, are recalculated on
+opening; a custom range retains its dates. A link with explicit parameters
+takes precedence over saved preferences. Settings are saved after a
+successful load, without writes during regular automatic refreshes. If the
+browser prevents saving, the page reports this and remains usable.</p>
+
 <h1 id="cap4">4. The static HTML snapshot</h1>
 
 <p>The generator reads local sources and composes one document with embedded

@@ -153,31 +153,72 @@ _LOCATE_LOGIN_FORM_JS = r"""
 }
 """
 
-# JS: rileva un campo OTP/2FA nel main frame (D-E: F1 non lo auto-risolve).
-_DETECT_OTP_JS = r"""
+# Main-frame OTP selection shared by observation and secret injection. Generic
+# code/token fields need factor evidence in their own group, never in the page.
+_SELECT_OTP_FIELDS_JS = r"""
 () => {
-  const RE = /otp|2fa|totp|one[-_ ]?time|verification|verify|codice|token|auth[-_ ]?code/i;
+  const normalize = value => String(value || '')
+    .replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[_-]+/g, ' ')
+    .toLowerCase().replace(/\s+/g, ' ').trim();
+  const factor = /\b(?:otp|totp|2fa)\d*\b|\bone\s*time\s*(?:code|password)\b|\b(?:verification|authentication|auth)\s*code\b|\bcodice\s+(?:di\s+)?(?:verifica|autenticazione)\b/;
+  const generic = /^(?:code|codice|token)\s*\d*$/;
+  const references = (el, attr) => (el.getAttribute(attr) || '').trim()
+    .split(/\s+/).map(id => document.getElementById(id))
+    .filter(Boolean).map(node => node.textContent || '').join(' ');
+  const hints = el => [el.name, el.id, el.getAttribute('aria-label'),
+    el.placeholder, references(el, 'aria-labelledby'),
+    ...Array.from(el.labels || []).map(label => label.textContent || '')]
+    .filter(Boolean).map(normalize);
+  const groupSelector = 'fieldset,[role="group"],form';
+  const scope = el => el.closest(groupSelector) ||
+    (el.parentElement && !['BODY', 'HTML'].includes(el.parentElement.tagName)
+      ? el.parentElement : null);
+  const factorContext = el => {
+    const group = scope(el);
+    const text = [references(el, 'aria-describedby')];
+    if (group) {
+      const owner = group.matches(groupSelector) ? group : null;
+      const messages = Array.from(group.querySelectorAll(
+        'legend,h1,h2,h3,h4,h5,h6,[role="heading"],p'))
+        .filter(node => node.closest(groupSelector) === owner)
+        .map(node => node.innerText || '').join(' ').slice(0, 4000);
+      text.push(group.id, group.getAttribute('name'), group.getAttribute('aria-label'),
+        references(group, 'aria-labelledby'), references(group, 'aria-describedby'), messages);
+    }
+    return factor.test(normalize(text.filter(Boolean).join(' ')));
+  };
   const visible = el => {
     const r = el.getBoundingClientRect();
     const st = getComputedStyle(el);
     return r.width >= 2 && r.height >= 2 && st.display !== 'none' &&
       st.visibility !== 'hidden' && Number.parseFloat(st.opacity || '1') >= 0.05 &&
-      !el.disabled && el.getAttribute('aria-disabled') !== 'true';
+      !el.disabled && !el.readOnly && el.getAttribute('aria-disabled') !== 'true';
   };
-  const inputs = Array.from(document.querySelectorAll('input'));
-  for (const el of inputs) {
-    if (!visible(el)) continue;
+  const eligible = Array.from(document.querySelectorAll('input')).filter(el =>
+    ['text', 'tel', 'number'].includes(el.type) && visible(el));
+  const explicit = el => {
     // Firefox can expose an empty DOM property for a valid HTML token.
-    const autocomplete = (el.getAttribute('autocomplete') || '').toLowerCase().trim().split(/\s+/);
-    if (autocomplete.includes('one-time-code')) return true;
-    if (el.type === 'password') continue;  // la password è gestita a parte
-    if (RE.test(el.name || '') || RE.test(el.id || '') ||
-        RE.test(el.getAttribute('aria-label') || '') ||
-        RE.test(el.placeholder || '')) return true;
-  }
-  return false;
+    const autocomplete = (el.getAttribute('autocomplete') || '')
+      .toLowerCase().trim().split(/\s+/);
+    return autocomplete.includes('one-time-code') || hints(el).some(text => factor.test(text));
+  };
+  const explicitFields = new Set(eligible.filter(explicit));
+  const factorGroups = new Set(Array.from(explicitFields).map(scope).filter(Boolean));
+  const candidates = eligible.filter(el => {
+    if (explicitFields.has(el)) return true;
+    const context = factorContext(el);
+    return (hints(el).some(text => generic.test(text)) && context) ||
+      (Number(el.maxLength) === 1 && (context || factorGroups.has(scope(el))));
+  });
+  const segmented = candidates.length > 1 && candidates.length <= 8 && !!scope(candidates[0]) &&
+    candidates.every(el => Number(el.maxLength) === 1 && scope(el) === scope(candidates[0]));
+  return {candidates, segmented, ambiguous: candidates.length > 1 && !segmented};
 }
 """
+
+# A genuine but ambiguous factor still stops login exploration; injection then
+# refuses to choose between its fields. Both paths use the same candidates.
+_DETECT_OTP_JS = "() => (" + _SELECT_OTP_FIELDS_JS + ")().candidates.length > 0"
 
 _LOCATE_OTP_FORM_JS = r"""
 () => {
@@ -186,37 +227,10 @@ _LOCATE_OTP_FORM_JS = r"""
       el.removeAttribute('data-metnos-otp');
       el.removeAttribute('data-metnos-otp-submit');
     });
-  const RE = /otp|2fa|totp|one[-_ ]?time|verification|verify|codice|token|auth[-_ ]?code/i;
-  const visible = el => {
-    const r = el.getBoundingClientRect();
-    const st = getComputedStyle(el);
-    return r.width >= 2 && r.height >= 2 && st.display !== 'none' &&
-      st.visibility !== 'hidden' && Number.parseFloat(st.opacity || '1') >= 0.05 &&
-      !el.disabled && el.getAttribute('aria-disabled') !== 'true';
-  };
-  const candidates = Array.from(document.querySelectorAll('input')).filter(el => {
-    if (!visible(el) || el.type === 'password') return false;
-    const attrs = [el.name, el.id, el.getAttribute('aria-label'), el.placeholder]
-      .filter(Boolean).join(' ');
-    const autocomplete = (el.getAttribute('autocomplete') || '').toLowerCase().trim().split(/\s+/);
-    return autocomplete.includes('one-time-code') || RE.test(attrs);
-  });
-  if (!candidates.length) return {found: false};
-  let segmented = false;
-  let fields = candidates;
-  if (candidates.length > 1) {
-    const form = candidates[0].closest('form');
-    const sameForm = candidates.every(el => el.closest('form') === form);
-    const oneChar = candidates.every(el =>
-      Number(el.maxLength || 0) === 1 ||
-      (el.inputMode || '').toLowerCase() === 'numeric');
-    const homogeneous = candidates.length <= 8 && candidates.every(el =>
-      ['text', 'tel', 'number'].includes((el.type || 'text').toLowerCase()));
-    if (!sameForm || (!oneChar && !homogeneous))
-      return {found: false, ambiguous: true};
-    segmented = true;
-  }
-  const otp = candidates[0];
+  const {candidates: fields, segmented, ambiguous} = (""" + _SELECT_OTP_FIELDS_JS + r""")();
+  if (!fields.length) return {found: false};
+  if (ambiguous) return {found: false, ambiguous: true};
+  const otp = fields[0];
   const form = otp.closest('form');
   const actionResolved = (form && form.action) ? form.action : location.href;
   let submitEl = null;

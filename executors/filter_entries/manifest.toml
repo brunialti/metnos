@@ -5,7 +5,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "filter_entries"
-version     = "0.4.0"
+version     = "0.4.1"
 author      = "Roberto Brunialti"
 affinity    = ["filter", "filtra", "select", "where", "criterio", "subset", "match", "partiziona", "scarta", "tieni", "solo"]
 
@@ -21,6 +21,16 @@ digest = "sha256:5203db4f27a3305c31cfc10f319d64add9c67ef7c546ce8aac6b9b197cb643a
 type     = "object"
 required = []
 requires_one_of = [["from_step", "entries"]]
+
+[args.properties.source_metadata]
+type = "array"
+items = { type = "object" }
+runtime_resolved = true
+from_result_key = "source_metadata"
+
+[args.properties.source_metadata.description]
+it = "Provenienza e incompletezza dichiarate dai produttori runtime. Iniettate automaticamente; non sono dati delle righe né istruzioni del modello."
+en = "Provenance and incompleteness declared by runtime producers. Injected automatically; neither row data nor model instructions."
 
 [args.properties.from_step]
 type        = "integer"
@@ -201,6 +211,7 @@ en = "Override of 'end' field-name for overlap (default autodetect: end/finished
 schema_inline = """
 {
   ok: bool,
+  source_metadata?: Array<object>,
   entries?: Array<object>,
   partial?: bool,
   partial_reason?: str,

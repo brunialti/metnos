@@ -344,6 +344,27 @@ def set_outcome(value):
         segment.outcome = value
 
 
+def _failure_status(exc):
+    # Provider adapters wrap transport errors. Inspect types only, including
+    # URLError.reason; never copy exception messages into Monitor events.
+    pending, seen = [exc], set()
+    for _ in range(16):
+        if not pending:
+            break
+        current = pending.pop()
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        if isinstance(current, (TimeoutError, subprocess.TimeoutExpired)):
+            return "timeout"
+        if type(current).__name__ == "CancelledError":
+            return "cancelled"
+        pending.extend(item for item in (
+            current.__cause__, current.__context__, getattr(current, "reason", None),
+        ) if isinstance(item, BaseException))
+    return "error"
+
+
 @contextmanager
 def call_scope(*, provider, model=None, level=None, kind="chat", binding_revision=None):
     segment, transport = _segment.get(), _transport.get()
@@ -365,8 +386,7 @@ def call_scope(*, provider, model=None, level=None, kind="chat", binding_revisio
     try:
         yield record
     except BaseException as exc:
-        record["status"] = "timeout" if isinstance(exc, (TimeoutError, subprocess.TimeoutExpired)) else (
-            "cancelled" if type(exc).__name__ == "CancelledError" else "error")
+        record["status"] = _failure_status(exc)
         record["error_code"] = record["status"]
         raise
     finally:
@@ -407,21 +427,6 @@ def observe_response(data):
     } if isinstance(timings, dict) else {}}
     if isinstance(data.get("model"), str):
         record["physical_model_reported"] = data["model"][:256]
-
-
-def provider_call(provider):
-    def decorate(function):
-        @functools.wraps(function)
-        def wrapped(self, *args, **kwargs):
-            from llm_telemetry import current_tier
-            tools = (len(args) > 1 and args[1] is True) or (
-                args and isinstance(args[0], dict) and bool(args[0].get("tools")))
-            with call_scope(provider=provider, model=self.model, level=current_tier(),
-                            kind="tools" if tools else "chat",
-                            binding_revision=getattr(self, "_monitor_binding_revision", None)):
-                return function(self, *args, **kwargs)
-        return wrapped
-    return decorate
 
 
 def upstream_metadata(value):

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Collection
 from urllib.parse import urlsplit
 
 MAX_DEPTH = 4
@@ -28,6 +29,14 @@ def candidate_key(candidate: dict) -> str:
               if key != "_record_context_key" or candidate.get(key)}
     return hashlib.sha256(json.dumps(
         stable, sort_keys=True, ensure_ascii=True).encode()).hexdigest()
+
+
+def untried_candidates(candidates: list[dict], tried: Collection[str], *,
+                       pending_key: str | None = None) -> list[dict]:
+    """Preserve observed controls and order, excluding attempted identities."""
+    return [candidate for candidate in candidates
+            if (identity := candidate_key(candidate)) not in tried
+            and identity != pending_key]
 
 
 def _replay_mismatch(expected: dict, candidates: list[dict]) -> dict:
@@ -93,7 +102,8 @@ def _failure(code: str) -> dict:
 
 async def discover(state: dict, *, observe, choose, execute, restore,
                    max_depth: int = MAX_DEPTH, max_actions: int = MAX_ACTIONS,
-                   exhaustive: bool = False) -> dict:
+                   exhaustive: bool = False,
+                   restart_on_replay_change: bool = False) -> dict:
     """Depth-first exploration, bounded independently of approval round trips.
 
     observe -> {key, candidates, ...} or a terminal result;
@@ -102,6 +112,8 @@ async def discover(state: dict, *, observe, choose, execute, restore,
     A replay must match each saved observation before the next click. A
     collection may supply a location_key to refresh changing page content;
     replay still requires the exact saved control at that location.
+    An opted-in search may discard a changed replay branch and restore the
+    entry page for a fresh decision, retaining attempts and all budgets.
     """
     frames = state.setdefault("frames", [])
     tried = state.setdefault("tried", {})
@@ -153,14 +165,37 @@ async def discover(state: dict, *, observe, choose, execute, restore,
                     return _failure("login_step_limit")
                 # Advance before awaiting: a pause must not repeat an effect.
                 replay["index"] = 0
-                result = await restore(frames[0]["observation"])
+                restart = replay.pop("restart", False)
+                root = frames[0]
+                result = await restore(root.get("restore_observation", root["observation"]))
+                if restart:
+                    if result.get("approval_required") or (
+                            result.get("ok") and result.get("executed")):
+                        replay["fresh_root"] = True
+                    elif result.get("ok"):
+                        return _failure("target_changed")
             else:
+                if replay.pop("fresh_root", False):
+                    # This is a new root observation after an authorised GET,
+                    # not proof that the discarded observations are equal.
+                    previous = frames[0]["observation"]
+                    tried.setdefault(key, set()).update(tried.get(previous["key"], ()))
+                    frames[0]["observation"] = observation
+                    seen.add(key)
                 if not refresh(frames[index], observation,
                                preserve=index < len(frames) - 1):
                     state["rejection"] = {"phase": "replay_page", "index": index,
                         **replay_page_diagnostics(frames[index]["observation"], observation,
                                                   producer="nav_refresh")}
-                    return _failure("target_changed")
+                    if not restart_on_replay_change:
+                        return _failure("target_changed")
+                    root = frames[0]
+                    # Keep the original entry bookmark even when its freshly
+                    # restored page has a different URL or observation key.
+                    root.setdefault("restore_observation", root["observation"])
+                    del frames[1:]
+                    state["replay"] = {"index": -1, "restart": True}
+                    continue
                 if index == len(frames) - 1:
                     state.pop("replay", None)
                 else:
@@ -248,14 +283,12 @@ async def discover(state: dict, *, observe, choose, execute, restore,
         # chain spends time without offering an alternative.
         while len(frames) > 1:
             parent = frames[-1]["observation"]
-            if any(candidate_key(candidate) not in tried.get(parent["key"], set())
-                   for candidate in parent["candidates"]):
+            if untried_candidates(parent["candidates"], tried.get(parent["key"], ())):
                 break
             frames.pop()
         root = frames[0]["observation"]
-        if exhaustive and len(frames) == 1 and not any(
-                candidate_key(candidate) not in tried.get(root["key"], set())
-                for candidate in root["candidates"]):
+        if exhaustive and len(frames) == 1 and not untried_candidates(
+                root["candidates"], tried.get(root["key"], ())):
             return {"ok": True, "exhausted": True,
                     "depth_limited": bool(state.get("depth_limited"))}
         state["replay"] = {"index": -1}

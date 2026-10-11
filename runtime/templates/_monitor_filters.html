@@ -4,6 +4,7 @@
   <label for="monitor-{{ name }}">{{ msg(label_key) }}</label>
   <select name="{{ name }}" id="monitor-{{ name }}">
     <option value="">{{ msg('UI_MONITOR_ALL') }}</option>
+    {% if current and current not in options|map(attribute='value')|list %}<option value="{{ current }}" selected>{{ current }}</option>{% endif %}
     {% for option in options %}<option value="{{ option.value }}"{% if option.value == current %} selected{% endif %}>{{ option.label }}</option>{% endfor %}
   </select>
 </div>
@@ -40,4 +41,5 @@
   </details>
   <p class="monitor-note">{% if view == 'models' %}{{ msg('UI_MONITOR_MODEL_FILTER_SCOPE') }}{% else %}{{ msg('UI_MONITOR_REQUEST_FILTER_SCOPE') }}{% endif %}</p>
   {% if view == 'models' %}<p class="monitor-note">{{ msg('UI_MONITOR_MODEL_GROUPING_HELP') }}</p>{% endif %}
+  <p class="monitor-note">{{ msg('UI_MONITOR_PREFERENCES_HELP') }}</p>
 </form>
