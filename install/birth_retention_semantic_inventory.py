@@ -4,6 +4,7 @@ File timestamps describe custody observations, not an evidence issuance date.
 The caller supplies the census of contexts; this component does not attest that
 all historical contexts of the installation have been included.
 """
+from collections.abc import Mapping
 from dataclasses import replace
 from pathlib import Path
 import re
@@ -70,8 +71,11 @@ class _SemanticEvidenceOwner(_PrivateFiles):
 
 
 class _SemanticEvidenceInventory:
-    def __init__(self, *, reviews, birth_root, contexts, session, owner, require_exclusion):
-        from executor_birth_prepared_root import load_historical_context_verifiers_in_session_v1
+    def __init__(self, *, reviews, birth_root, contexts, session, owner, require_exclusion,
+                 context_bindings=None):
+        from executor_birth_prepared_root import (
+            HistoricalContextVerifiersV1, load_historical_context_verifiers_for_contexts_in_session_v1,
+        )
         self.reviews, self.session = reviews, session
         self.require_exclusion = require_exclusion
         require_exclusion()
@@ -81,8 +85,36 @@ class _SemanticEvidenceInventory:
         if Path(birth_root) != Path(session._root_path):
             raise RetentionError('retention_owner_invalid', 'semantic evidence root binding')
         self.contexts = tuple(sorted(set(contexts)))
-        self.bindings = MappingProxyType({context: load_historical_context_verifiers_in_session_v1(context, session)
-                                         for context in self.contexts})
+        self._shared_context_bindings = context_bindings is not None
+        if self._shared_context_bindings:
+            # The private assembler may lend its native census only during the
+            # same held exclusion. Every scan still checks that phase's guard.
+            try:
+                if not isinstance(context_bindings, Mapping):
+                    raise ValueError('context bindings mapping')
+                bindings = dict(context_bindings)
+                if set(bindings) != set(self.contexts):
+                    raise ValueError('context bindings census')
+                heads = set()
+                for context, binding in bindings.items():
+                    if (type(context) is not str or re.fullmatch(r'sha256:[0-9a-f]{64}', context) is None
+                            or type(binding) is not HistoricalContextVerifiersV1
+                            or binding.public_set.material.pin.admission_context_id != context
+                            or type(binding.public_set.set_id) is not str
+                            or re.fullmatch(r'[0-9a-f]{64}', binding.public_set.set_id) is None
+                            or type(binding.required_head_id) is not str
+                            or re.fullmatch(r'sha256:[0-9a-f]{64}', binding.required_head_id) is None):
+                        raise ValueError('context bindings identity')
+                    heads.add(binding.required_head_id)
+                if len(heads) > 1:
+                    raise ValueError('context bindings frontier')
+            except (AttributeError, TypeError, ValueError) as exc:
+                raise RetentionError('retention_owner_invalid', 'semantic evidence context bindings') from exc
+        else:
+            authenticated = (load_historical_context_verifiers_for_contexts_in_session_v1(
+                self.contexts, session) if self.contexts else ())
+            bindings = dict(zip(self.contexts, authenticated))
+        self.bindings = MappingProxyType(bindings)
         evidence = {}
         for binding in self.bindings.values():
             set_id = binding.public_set.set_id
@@ -93,7 +125,7 @@ class _SemanticEvidenceInventory:
         self.owners = MappingProxyType({item.name: item for item in (reviews, *evidence.values())})
 
     def scan(self):
-        from executor_birth_prepared_root import load_historical_context_verifiers_in_session_v1, PreparedRootError
+        from executor_birth_prepared_root import load_historical_context_verifiers_for_contexts_in_session_v1, PreparedRootError
         from executor_birth_prepared_set import PreparedSetError
         from executor_birth_ownership_chain import OwnershipChainError
         from executor_birth_secure_fs import BirthSecureFSError
@@ -106,56 +138,62 @@ class _SemanticEvidenceInventory:
         try:
             if any(entry[1]['subject']['admission_context_id'] not in self.bindings for entry in reviews.values()):
                 raise ValueError('review context absent from supplied census')
-            for context, binding in self.bindings.items():
-                current = load_historical_context_verifiers_in_session_v1(context, self.session)
-                if (current.required_head_id != binding.required_head_id
-                        or current.transition_id != binding.transition_id
-                        or current.public_set.set_id != binding.public_set.set_id):
-                    raise ValueError('historical context changed')
+            if not self._shared_context_bindings:
+                authenticated = (load_historical_context_verifiers_for_contexts_in_session_v1(
+                    self.contexts, self.session) if self.contexts else ())
+                for context, current in zip(self.contexts, authenticated):
+                    binding = self.bindings[context]
+                    if (current.required_head_id != binding.required_head_id
+                            or current.transition_id != binding.transition_id
+                            or current.public_set.set_id != binding.public_set.set_id):
+                        raise ValueError('historical context changed')
             for set_id, owner in self.evidence.items():
-                base = ('authority-sets', set_id, 'semantic')
-                authority = _load_semantic_authority_in_session(base + ('authority.json',),
-                    base + ('public',), base + ('evidence',), self.session)
-                entries = physical[set_id] = owner.scan()
-                names = authority.evidence_dir.inventory()
-                if set(names) != {identity.local_id for identity in entries}:
-                    raise ValueError('physical evidence namespace mismatch')
-                for identity, (obj, raw) in entries.items():
-                    total += len(raw)
-                    if total > 128 << 20 or len(verified) >= 100_000 or time.monotonic() > deadline:
-                        raise ValueError('aggregate historical evidence budget')
-                    native = authority.evidence_dir.read_file(identity.local_id,
-                        maximum=_MAX_EVIDENCE_BYTES, role=_BirthObjectRole.birth_integrity_only)
-                    if native != raw:
-                        raise ValueError('physical evidence bytes mismatch')
-                    item = authority._decode_record(raw, identity.local_id)
-                    binding = self.bindings.get(item.admission_context_id)
-                    if binding is None or binding.public_set.set_id != set_id:
-                        raise ValueError('evidence context does not select physical set')
-                    objects[identity] = obj
-                    # The administrative producer emits this exact source shape;
-                    # other native evidence remains authenticated and open.
-                    matching_review = reviews.get(self.reviews.identity(item.evidence_id[7:] + '.json'))
-                    if matching_review is not None and item.evidence_hash != item.evidence_id:
-                        raise ValueError('administrative evidence hash mismatch')
-                    administrative = (item.kind is IndependentEvidenceKind.HUMAN_CASE
-                        and item.owner_id == 'independent-owner' and item.status is EvidenceStatus.PASSED
-                        and item.evidence_hash == item.evidence_id)
-                    if administrative:
-                        if item.evidence_id != 'sha256:' + identity.local_id[:-5]:
-                            raise ValueError('administrative evidence filename mismatch')
-                        review_id = self.reviews.identity(identity.local_id)
-                        record = reviews.get(review_id)
-                        if record is None or any(record[1]['subject'][field] != getattr(item, field)
-                                                 for field in ('candidate_id', 'admission_context_id')):
-                            raise ValueError('independent evidence review absent or mismatched')
-                        objects[identity] = replace(obj, references=(review_id,))
-                        review_obj = objects[review_id]
-                        objects[review_id] = replace(review_obj, references=tuple(sorted(
-                            set(review_obj.references) | {identity}, key=repr)))
-                    verified[identity] = item
-                if set(names) != set(authority.evidence_dir.inventory()):
-                    raise ValueError('native evidence namespace changed')
+                try:
+                    base = ('authority-sets', set_id, 'semantic')
+                    authority = _load_semantic_authority_in_session(base + ('authority.json',),
+                        base + ('public',), base + ('evidence',), self.session)
+                    entries = physical[set_id] = owner.scan()
+                    names = authority.evidence_dir.inventory()
+                    if set(names) != {identity.local_id for identity in entries}:
+                        raise ValueError('physical evidence namespace mismatch')
+                    for identity, (obj, raw) in entries.items():
+                        total += len(raw)
+                        if total > 128 << 20 or len(verified) >= 100_000 or time.monotonic() > deadline:
+                            raise ValueError('aggregate historical evidence budget')
+                        native = authority.evidence_dir.read_file(identity.local_id,
+                            maximum=_MAX_EVIDENCE_BYTES, role=_BirthObjectRole.birth_integrity_only)
+                        if native != raw:
+                            raise ValueError('physical evidence bytes mismatch')
+                        item = authority._decode_record(raw, identity.local_id)
+                        binding = self.bindings.get(item.admission_context_id)
+                        if binding is None or binding.public_set.set_id != set_id:
+                            raise ValueError('evidence context does not select physical set')
+                        objects[identity] = obj
+                        # The administrative producer emits this exact source shape;
+                        # other native evidence remains authenticated and open.
+                        matching_review = reviews.get(self.reviews.identity(item.evidence_id[7:] + '.json'))
+                        if matching_review is not None and item.evidence_hash != item.evidence_id:
+                            raise ValueError('administrative evidence hash mismatch')
+                        administrative = (item.kind is IndependentEvidenceKind.HUMAN_CASE
+                            and item.owner_id == 'independent-owner' and item.status is EvidenceStatus.PASSED
+                            and item.evidence_hash == item.evidence_id)
+                        if administrative:
+                            if item.evidence_id != 'sha256:' + identity.local_id[:-5]:
+                                raise ValueError('administrative evidence filename mismatch')
+                            review_id = self.reviews.identity(identity.local_id)
+                            record = reviews.get(review_id)
+                            if record is None or any(record[1]['subject'][field] != getattr(item, field)
+                                                     for field in ('candidate_id', 'admission_context_id')):
+                                raise ValueError('independent evidence review absent or mismatched')
+                            objects[identity] = replace(obj, references=(review_id,))
+                            review_obj = objects[review_id]
+                            objects[review_id] = replace(review_obj, references=tuple(sorted(
+                                set(review_obj.references) | {identity}, key=repr)))
+                        verified[identity] = item
+                    if set(names) != set(authority.evidence_dir.inventory()):
+                        raise ValueError('native evidence namespace changed')
+                finally:
+                    self.session._forget_cached_directory_v1(('authority-sets', set_id))
             # review() persists its administrative record before publishing
             # evidence: interruption in between is legitimate open audit work.
             if reviews != self.reviews.scan() or any(physical[key] != owner.scan() for key, owner in self.evidence.items()):

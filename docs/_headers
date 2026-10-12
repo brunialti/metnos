@@ -17,14 +17,6 @@
 /assets/metnos.css
   Cache-Control: public, max-age=0, must-revalidate
 
-# Revalidate the tour's changing assets even with a domain Browser Cache TTL.
-/assets/quicktour-*
-  Cache-Control: public, no-cache, max-age=0, must-revalidate
-/it/Metnos_QuickTour.pdf
-  Cache-Control: no-cache
-/en/Metnos_QuickTour.pdf
-  Cache-Control: no-cache
-
 /it/Metnos_QuickTour_v1.pdf
   Cache-Control: public, max-age=300, must-revalidate
 

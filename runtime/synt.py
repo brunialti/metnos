@@ -68,15 +68,9 @@ STRATEGY_COST_BONUS = {
 # ADR 0148 rename-resilient: synt working dirs default under PATH_WORKSPACE.
 import config as _C  # noqa: E402
 _DEFAULT_WORKSPACE = _C.PATH_WORKSPACE
-DEFAULT_AUDIT_DIR = Path(
-    os.environ.get("SYNT_AUDIT_DIR", str(_DEFAULT_WORKSPACE / ".audit" / "synt"))
-)
-DEFAULT_LOCK_PATH = Path(
-    os.environ.get("SYNT_LOCK_PATH", str(_DEFAULT_WORKSPACE / ".synt" / "locks.json"))
-)
-DEFAULT_PROPOSALS_DIR = Path(
-    os.environ.get("SYNT_PROPOSALS_DIR", str(_DEFAULT_WORKSPACE / ".synt" / "proposals"))
-)
+DEFAULT_AUDIT_DIR = _C.PATH_SYNT_AUDIT
+DEFAULT_LOCK_PATH = _C.PATH_SYNT_LOCK
+DEFAULT_PROPOSALS_DIR = _C.PATH_SYNT_PROPOSALS
 # Stdlib whitelist conservativa per validazione import (cap. 4 scaffolding):
 # se la generate produce import fuori da questo set, il proposal va in
 # birth_failed con motivazione "non-stdlib import requires explicit profile".

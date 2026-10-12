@@ -1,5 +1,7 @@
 """Native historical Producer/admission joins; incomplete requests remain open."""
+from collections.abc import Mapping
 from dataclasses import replace
+from pathlib import Path
 from types import MappingProxyType
 
 from cryptography.exceptions import InvalidSignature
@@ -10,7 +12,8 @@ from install.birth_retention_maintenance import OwnerObject
 
 
 class _ProducerAdmissionInventory:
-    def __init__(self, *, producers, signed_store, session, require_exclusion, public_sources=()):
+    def __init__(self, *, producers, signed_store, session, require_exclusion, public_sources=(),
+                 context_bindings=None):
         self.producers, self.signed_store = producers, signed_store
         self.session, self.require_exclusion = session, require_exclusion
         if type(public_sources) is not tuple:
@@ -19,10 +22,21 @@ class _ProducerAdmissionInventory:
         if producers.name == signed_store.name:
             raise RetentionError('retention_owner_invalid', 'duplicate producer admission owner')
         self.owners = MappingProxyType({owner.name: owner for owner in (producers, signed_store)})
+        self._context_bindings = None
+        if context_bindings is not None:
+            require_exclusion()
+            session._require_exclusive_global_lock()
+            if not isinstance(context_bindings, Mapping) or len(context_bindings) > 4096:
+                raise RetentionError('retention_owner_invalid', 'producer context bindings')
+            self._context_bindings = MappingProxyType(dict(context_bindings))
+            self._context_binding_root = Path(session._root_path)
 
     def _snapshot(self):
         self.require_exclusion()
         self.session._require_exclusive_global_lock()
+        if (self._context_bindings is not None
+                and Path(self.session._root_path) != self._context_binding_root):
+            raise RetentionError('retention_owner_invalid', 'producer root binding')
         if any(self.owners.get(owner.name) is not owner for owner in (self.producers, self.signed_store)):
             raise RetentionError('retention_owner_changed', 'producer owner mapping')
         return self.producers.scan(), self.signed_store.scan_with_evidence()
@@ -55,9 +69,11 @@ class _ProducerAdmissionInventory:
             raise RetentionError('retention_inventory_incomplete', 'admission physical evidence')
         contexts = tuple(sorted({admission.admission_context_id for admission in admissions.values()}))
         try:
+            options = dict(include_reattestation=True, public_sources=self.public_sources)
+            if self._context_bindings is not None:
+                options['_context_bindings'] = self._context_bindings
             selected = load_historical_producer_declarations_for_contexts_in_session_v1(
-                contexts, self.session, include_reattestation=True,
-                public_sources=self.public_sources) if contexts else ()
+                contexts, self.session, **options) if contexts else ()
             if type(selected) is not tuple or len(selected) != len(contexts):
                 raise ValueError('historical producer declaration coverage')
             declarations = dict(zip(contexts, selected))

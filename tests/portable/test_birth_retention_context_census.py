@@ -2,6 +2,7 @@
 
 Native public authentication is exercised unchanged in the registered cluster.
 """
+import sys
 from dataclasses import replace
 from types import SimpleNamespace
 
@@ -30,7 +31,8 @@ def scenario(tmp_path, monkeypatch):
         return SimpleNamespace(required_head_id=chain.required_head.head_id,
             public_set=SimpleNamespace(set_id=transition.set_id,
                 material=SimpleNamespace(pin=SimpleNamespace(admission_context_id=context))))
-    monkeypatch.setattr(prepared, 'load_historical_context_verifiers_in_session_v1', load)
+    monkeypatch.setattr(prepared, 'load_historical_context_verifiers_for_contexts_in_session_v1',
+                        lambda contexts, session: tuple(load(context, session) for context in contexts))
     with prepared.open_prepared_root_session_v1() as session:
         with session.global_lock(exclusive=True, create=False):
             yield session, chain, observed
@@ -72,14 +74,15 @@ def test_namespace_change_after_authentication_is_rejected(scenario, monkeypatch
 @pytest.mark.parametrize('field', ['head', 'set', 'context'])
 def test_wrong_public_binding_is_rejected(scenario, monkeypatch, field):
     session, _, _ = scenario
-    original = prepared.load_historical_context_verifiers_in_session_v1
+    original = prepared.load_historical_context_verifiers_for_contexts_in_session_v1
     def changed(*args):
-        binding = original(*args)
+        bindings = original(*args)
+        binding = bindings[0]
         if field == 'head': binding.required_head_id = 'sha256:'+'f'*64
         elif field == 'set': binding.public_set.set_id = 'f'*64
         else: binding.public_set.material.pin.admission_context_id = 'sha256:'+'f'*64
-        return binding
-    monkeypatch.setattr(prepared, 'load_historical_context_verifiers_in_session_v1', changed)
+        return bindings
+    monkeypatch.setattr(prepared, 'load_historical_context_verifiers_for_contexts_in_session_v1', changed)
     with pytest.raises(RetentionError, match='historical context binding'):
         census(session)
 
@@ -108,7 +111,9 @@ def test_context_budget_checked_before_reads(scenario, monkeypatch):
     assert not observed
 
 
-def test_distinct_native_public_sets_are_censused_without_loader_substitution(tmp_path, monkeypatch):
+@pytest.mark.parametrize('descriptor_budget', [None, pytest.param(48,
+    marks=pytest.mark.skipif(sys.platform != 'linux', reason='Linux process descriptor budget'))])
+def test_distinct_native_public_sets_are_censused_without_loader_substitution(tmp_path, monkeypatch, descriptor_budget):
     import shutil
     from executor_birth_secure_fs import _BirthObjectRole, _ObjectKind
     from tests.portable.rm0008_2b.test_group8_public_history import (
@@ -147,7 +152,17 @@ def test_distinct_native_public_sets_are_censused_without_loader_substitution(tm
     shutil.copyfile(support.installed_marker(initial_base), support.installed_marker(target_base))
     with prepared.open_prepared_root_session_v1() as session:
         with session.global_lock(exclusive=True, create=False):
-            result = census(session)
+            if descriptor_budget is None:
+                result = census(session)
+            else:
+                import os, resource
+                old_limit = resource.getrlimit(resource.RLIMIT_NOFILE)
+                used = len(os.listdir('/proc/self/fd'))
+                try:
+                    resource.setrlimit(resource.RLIMIT_NOFILE, (used + descriptor_budget, old_limit[1]))
+                    result = census(session)
+                finally:
+                    resource.setrlimit(resource.RLIMIT_NOFILE, old_limit)
             assert {b.public_set.set_id for b in result.values()} == {initial.set_id, target.set_id}
             assert result[initial.material.pin.admission_context_id].binding_kind == 'initial_predecessor'
             assert result[target.material.pin.admission_context_id].binding_kind == 'transition_target'

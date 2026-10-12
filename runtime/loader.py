@@ -1567,7 +1567,7 @@ AFFINITY_OVERLAP_THRESHOLD: float = 0.5
 # attese. 0.85 = quasi identita' richiesta per parlare di squatting.
 AFFINITY_OVERLAP_THRESHOLD_BINDING: float = 0.85
 
-_AFFINITY_AUDIT_DIR = _C.PATH_USER_DATA / "synth_audit"
+_AFFINITY_AUDIT_DIR = _C.PATH_SYNTH_AUDIT
 
 
 def _affinity_audit_path() -> Path:

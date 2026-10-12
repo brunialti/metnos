@@ -147,3 +147,53 @@ def test_composition_resource_bound_is_explicit(monkeypatch, budget):
     monkeypatch.setattr(module, budget, -1)
     with pytest.raises(RetentionError, match='composition budget'):
         compose(component([owner('a')], [obj('a')])).inventory()
+
+
+@pytest.mark.skipif(os.name != 'posix', reason='native held authority descriptor')
+def test_native_exclusive_phase_composes_lre_once_and_attests_at_boundaries(native, tmp_path):
+    from install.birth_retention_exclusion import _RetentionExclusionContextV1, _require_authority_lock_v1
+    from install.birth_ownership_authority_provisioner import _provisioning_exclusion_v1, _LOCK_BASENAME_V1
+    native.create('owner-a')
+    root = tmp_path / 'held'
+    root.mkdir(mode=0o755)
+    observations = []
+    with _provisioning_exclusion_v1(root, root_owned=False) as descriptor:
+        def held():
+            _require_authority_lock_v1(descriptor, root / _LOCK_BASENAME_V1,
+                                      (os.geteuid(), os.getegid()))
+        def full():
+            held()
+            observations.append(True)
+        context = _RetentionExclusionContextV1(object(), object(), object(),
+            ('head', 'build'), full, held)
+        lre = _WorkloadInventory(workloads=native.jobs, artifact_root=native.root)
+        inventory = compose(lre, require_exclusion=context.require_held_exclusion)
+        result = inventory._inventory_in_exclusion_v1(context)
+        assert result == inventory.inventory()
+        assert len(observations) == 2
+        assert any(obj.references for obj in result)
+
+
+def test_exclusive_phase_requires_native_context_and_its_held_checker():
+    from install.birth_retention_exclusion import _RetentionExclusionContextV1
+    inventory = compose(component([owner('a')], [obj('a')]))
+    for context in (object(), _RetentionExclusionContextV1(object(), object(), object(),
+                     ('head', 'build'), lambda: None, lambda: None)):
+        with pytest.raises(RetentionError, match='native inventory phase'):
+            inventory._inventory_in_exclusion_v1(context)
+
+
+def test_exclusive_phase_checks_drift_after_components_before_return():
+    from install.birth_retention_exclusion import _RetentionExclusionContextV1
+    calls = []
+    def full():
+        calls.append(True)
+        if len(calls) == 2:
+            raise RetentionError('retention_exclusion_lost', 'writer changed')
+    context = _RetentionExclusionContextV1(object(), object(), object(),
+        ('head', 'build'), full, lambda: None)
+    inventory = compose(component([owner('a')], [obj('a')]),
+                        require_exclusion=context.require_held_exclusion)
+    with pytest.raises(RetentionError, match='writer changed'):
+        inventory._inventory_in_exclusion_v1(context)
+    assert len(calls) == 2

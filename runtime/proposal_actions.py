@@ -38,9 +38,9 @@ log = get_logger(__name__)
 
 
 _DATA_DIR = _C.PATH_USER_DATA
-SYNT_PENDING_DIR = _DATA_DIR / "proposal_accepts" / "synt_pending"
-CHANGE_PENDING_DIR = _DATA_DIR / "proposal_accepts" / "change_pending"
-PIPELINE_PENDING_DIR = _DATA_DIR / "proposal_accepts" / "pipeline_pending"
+SYNT_PENDING_DIR = _C.PATH_PROPOSAL_ACCEPTS / "synt_pending"
+CHANGE_PENDING_DIR = _C.PATH_PROPOSAL_ACCEPTS / "change_pending"
+PIPELINE_PENDING_DIR = _C.PATH_PROPOSAL_ACCEPTS / "pipeline_pending"
 TELOS_FILTERED_LOG = _DATA_DIR / "telos_filtered.jsonl"
 
 

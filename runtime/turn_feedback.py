@@ -32,8 +32,8 @@ log = get_logger(__name__)
 
 
 _DATA_DIR = _C.PATH_USER_DATA
-FEEDBACK_PATH = _DATA_DIR / "turn_feedback.jsonl"
-TURNS_DIR = _DATA_DIR / "turns"
+FEEDBACK_PATH = _C.PATH_TURN_FEEDBACK
+TURNS_DIR = _C.PATH_TURNS
 
 VALID_ACTIONS = frozenset({"ok", "error", "repeat"})
 # The native readers and maintenance share this physical-line window.

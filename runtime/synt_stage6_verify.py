@@ -29,7 +29,7 @@ from typing import Callable
 import config as _C  # §7.11
 from llm_workloads import tier_for
 
-VERIFY_AUDIT_DIR = _C.PATH_USER_DATA / "synth_audit"
+VERIFY_AUDIT_DIR = _C.PATH_SYNTH_AUDIT
 _VERDICT_KEYS = frozenset({"aligned", "mismatch"})
 _VERDICT_ENVELOPE_KEYS = _VERDICT_KEYS | {"model", "raw"}
 

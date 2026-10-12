@@ -2009,8 +2009,8 @@ def delete_files(args: dict) -> dict:
         )
 
     # Storage blob: tracciamento turn per reverse pattern §2.3.
-    history_dir = os.environ.get("METNOS_HISTORY_DIR") or str(
-        _C.PATH_USER_DATA / "_history")
+    from history_paths import backup_directory
+    history_dir = backup_directory()
     turn_id = os.environ.get("METNOS_TURN_ID") or "no_turn"
     blob_dir = Path(history_dir) / turn_id / "blob"
 
@@ -2867,8 +2867,8 @@ def write_spreadsheet(args: dict) -> dict:
         try:
             import shutil as _shutil
             import hashlib as _hashlib
-            history_dir = os.environ.get("METNOS_HISTORY_DIR") or str(
-                _C.PATH_USER_DATA / "_history")
+            from history_paths import backup_directory
+            history_dir = backup_directory()
             turn_id = os.environ.get("METNOS_TURN_ID") or "no_turn"
             blob_dir = Path(history_dir) / turn_id / "blob"
             h = _hashlib.sha256()

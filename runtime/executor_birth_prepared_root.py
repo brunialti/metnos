@@ -904,6 +904,67 @@ def load_historical_context_verifiers_in_session_v1(
     )
 
 
+def load_historical_context_verifiers_for_contexts_in_session_v1(
+    admission_context_ids: tuple[str, ...], session,
+) -> tuple[HistoricalContextVerifiersV1, ...]:
+    """Read a bounded public batch under one authenticated chain frontier.
+
+    Uses the same native per-set verifier as the single-context reader. No
+    cache survives the call; the complete frontier is authenticated again
+    before any result is returned.
+    """
+    import re
+    from executor_birth_ownership_chain import (
+        VerifiedOwnershipChain, inspect_ownership_chain_state_v1,
+    )
+    if not session._holds_global_lock():
+        raise PreparedRootError("birth_context_lock_required")
+    if (type(admission_context_ids) is not tuple or not admission_context_ids
+            or len(admission_context_ids) > 4096
+            or any(type(value) is not str or re.fullmatch(r"sha256:[0-9a-f]{64}", value) is None
+                   for value in admission_context_ids)
+            or len(set(admission_context_ids)) != len(admission_context_ids)):
+        raise PreparedRootError("birth_context_selection_invalid")
+    before = inspect_ownership_chain_state_v1()
+    if type(before) is not VerifiedOwnershipChain or not before.context_transitions:
+        raise PreparedRootError("birth_context_transition_required")
+    first = before.context_transitions[0]
+    selections = {}
+    for transition in before.context_transitions:
+        selections.setdefault(transition.prepared_admission_context_id, {})[
+            ("target", transition.encoded)] = (transition, False)
+    selections.setdefault(first.previous_admission_context_id, {})[
+        ("initial", first.encoded)] = (first, True)
+    selected = []
+    for identifier in admission_context_ids:
+        matches = selections.get(identifier, {})
+        if len(matches) != 1:
+            raise PreparedRootError("birth_context_selection_invalid")
+        selected.append(next(iter(matches.values())))
+    results = []
+    for transition, initial in selected:
+        try:
+            public = _read_historical_context_set_in_session_v1(
+                transition, session, initial_predecessor=initial,
+            )
+        finally:
+            # Public bindings contain bytes, never borrowed directory handles.
+            # Keep the common root and lock pinned; release only this set's
+            # directory cache so a full historical census stays bounded.
+            set_id = transition.previous_set_id if initial else transition.set_id
+            session._forget_cached_directory_v1(("authority-sets", set_id))
+        results.append(HistoricalContextVerifiersV1(
+            before.required_head.head_id, transition.transition_id, public,
+            "initial_predecessor" if initial else "transition_target",
+            None if initial else transition.previous_admission_context_id,
+            not initial and transition == first,
+        ))
+    _require_historical_frontier_unchanged_v1(before)
+    if not session._holds_global_lock():
+        raise PreparedRootError("birth_context_lock_required")
+    return tuple(results)
+
+
 @dataclass(frozen=True, slots=True)
 class HistoricalReattestationScopeV2:
     """Public source binding for the known non-publishing V2 protocol."""
@@ -1039,7 +1100,7 @@ def load_historical_producer_declarations_for_contexts_v1(
     *, include_reattestation: bool = False,
     public_sources: tuple[tuple[str, bytes], ...] = (),
 ) -> tuple[HistoricalProducerDeclarationsV1, ...]:
-    """Acquire all requested target contexts under one observed chain.
+    """Acquire target contexts or an explicitly reconciled initial predecessor.
 
     Cache only within this call and only after exact signed-file comparison.
     The final chain reread is shared, not omitted. Initial predecessor policy
@@ -1058,21 +1119,35 @@ def load_historical_producer_declarations_for_contexts_in_session_v1(
     admission_context_ids: tuple[str, ...], session,
     *, include_reattestation: bool = False,
     public_sources: tuple[tuple[str, bytes], ...] = (),
+    _context_bindings=None,
 ) -> tuple[HistoricalProducerDeclarationsV1, ...]:
-    """Read historical declarations under the caller's existing Birth barrier."""
+    """Read historical declarations under the caller's existing Birth barrier.
+
+    The private census may come only from this phase's native context reader
+    under the same exclusive session. It replaces public-set acquisition;
+    signed policy acquisition and both chain observations remain native.
+    """
     if not session._holds_global_lock():
         raise PreparedRootError("birth_context_lock_required")
+    if _context_bindings is not None:
+        session._require_exclusive_global_lock()
+        binding_root = session._root_path
     result = _load_historical_producer_declarations_for_contexts_v1(
         admission_context_ids, include_reattestation=include_reattestation,
-        public_sources=public_sources, session=session,
+        public_sources=public_sources, session=session, context_bindings=_context_bindings,
     )
     if not session._holds_global_lock():
         raise PreparedRootError("birth_context_selection_changed")
+    if _context_bindings is not None:
+        session._require_exclusive_global_lock()
+        if session._root_path != binding_root:
+            raise PreparedRootError("birth_context_selection_changed")
     return result
 
 
 def _load_historical_producer_declarations_for_contexts_v1(
     admission_context_ids, *, include_reattestation, public_sources, session=None,
+    context_bindings=None,
 ):
     import re
     from executor_birth_ownership_chain import (
@@ -1091,31 +1166,81 @@ def _load_historical_producer_declarations_for_contexts_v1(
     before = inspect_ownership_chain_state_v1()
     if type(before) is not VerifiedOwnershipChain or not before.context_transitions:
         raise PreparedRootError("birth_context_transition_required")
+    if context_bindings is not None:
+        try:
+            if (session is None or not isinstance(context_bindings, Mapping)
+                    or len(context_bindings) > 4096):
+                raise ValueError("context census")
+            context_bindings = dict(context_bindings)
+            if (not set(admission_context_ids).issubset(context_bindings)
+                    or any(type(key) is not str or re.fullmatch(r"sha256:[0-9a-f]{64}", key) is None
+                           or type(binding) is not HistoricalContextVerifiersV1
+                           or binding.public_set.material.pin.admission_context_id != key
+                           or binding.required_head_id != before.required_head.head_id
+                           for key, binding in context_bindings.items())):
+                raise ValueError("context census binding")
+        except (AttributeError, TypeError, ValueError) as exc:
+            raise PreparedRootError("birth_context_selection_invalid", exc) from None
     by_context = {}
     for transition in before.context_transitions:
         matches = by_context.setdefault(transition.prepared_admission_context_id, {})
         matches[transition.encoded] = transition
+    first = before.context_transitions[0]
     results = []
     for identifier in admission_context_ids:
         matches = by_context.get(identifier, {})
-        if len(matches) != 1:
+        initial = identifier == first.previous_admission_context_id
+        if initial and matches:
             raise PreparedRootError("birth_context_selection_invalid")
-        results.append(_historical_producer_declarations_v1(
-            before, next(iter(matches.values())), cache,
-            include_reattestation=include_reattestation, session=session,
-        ))
+        if not initial and len(matches) != 1:
+            raise PreparedRootError("birth_context_selection_invalid")
+        selected = first if initial else next(iter(matches.values()))
+        try:
+            results.append(_historical_producer_declarations_v1(
+                before, selected, cache,
+                include_reattestation=include_reattestation, session=session,
+                initial_predecessor=initial,
+                context_binding=(None if context_bindings is None else context_bindings[identifier]),
+            ))
+        finally:
+            if session is not None:
+                set_id = selected.previous_set_id if initial else selected.set_id
+                session._forget_cached_directory_v1(("authority-sets", set_id))
     _require_historical_frontier_unchanged_v1(before)
     return tuple(results)
 
 
 def _historical_producer_declarations_v1(
     before, transition, cache, *, include_reattestation=False, session=None,
+    initial_predecessor=False, context_binding=None,
 ):
     """Project one authenticated transition; the caller owns final reread."""
     from executor_birth_distribution_manifest import AuthenticatedDistributionRecordV1
 
-    public = (_read_historical_context_set_v1(transition) if session is None else
-              _read_historical_context_set_in_session_v1(transition, session))
+    if context_binding is None:
+        public = (_read_historical_context_set_v1(
+            transition, initial_predecessor=initial_predecessor,
+        ) if session is None else _read_historical_context_set_in_session_v1(
+            transition, session, initial_predecessor=initial_predecessor,
+        ))
+    else:
+        from executor_birth_prepared_set import HistoricalPublicSetV1
+        try:
+            public = context_binding.public_set
+            initial = initial_predecessor
+            if (type(public) is not HistoricalPublicSetV1
+                    or context_binding.transition_id != transition.transition_id
+                    or context_binding.binding_kind != ("initial_predecessor" if initial else "transition_target")
+                    or context_binding.previous_admission_context_id != (None if initial else transition.previous_admission_context_id)
+                    or public.set_id != (transition.previous_set_id if initial else transition.set_id)
+                    or public.material.pin.admission_context_id != (transition.previous_admission_context_id
+                                                                   if initial else transition.prepared_admission_context_id)
+                    or public.material.pin.context_epoch != (transition.previous_context_epoch
+                                                             if initial else transition.prepared_context_epoch)
+                    or (not initial and public.set_json_sha256 != transition.set_json_sha256)):
+                raise ValueError("context census binding")
+        except (AttributeError, TypeError, ValueError) as exc:
+            raise PreparedRootError("birth_context_selection_invalid", exc) from None
     if (before.required_distribution is None
             or len(before.authenticated_records) != len(before.heads)
             or len(before.context_transitions) != len(before.heads)):
@@ -1136,6 +1261,8 @@ def _historical_producer_declarations_v1(
             or before.required_distribution.identity.closed_build_id != before.required_head.closed_build_id):
         raise PreparedRootError("birth_context_producer_policy_invalid")
     path = "runtime/executor_birth_producer_table_v1.py"
+    if initial_predecessor:
+        _require_initial_producer_policy_reconciliation_v1(before, public, record, cache)
     source, source_hash = _historical_public_source_v1(before, record, path, cache)
     cached = cache.get(("declarations", source_hash))
     if cached is None:
@@ -1149,7 +1276,9 @@ def _historical_producer_declarations_v1(
         raise PreparedRootError("birth_context_producer_policy_invalid")
     authors = {namespace: declared[namespace] for namespace in public.producers}
     scope, scope_error = None, None
-    if include_reattestation:
+    if include_reattestation and initial_predecessor:
+        scope_error = "birth_initial_reattestation_scope_unavailable"
+    elif include_reattestation:
         try:
             scope = _historical_reattestation_scope_v2(before, record, cache)
         except PreparedRootError as exc:
@@ -1159,12 +1288,55 @@ def _historical_producer_declarations_v1(
     return HistoricalProducerDeclarationsV1(
         HistoricalContextVerifiersV1(
             before.required_head.head_id, transition.transition_id, public,
-            previous_admission_context_id=transition.previous_admission_context_id,
-            initial_transition=(record.release_sequence == 1),
+            binding_kind="initial_predecessor" if initial_predecessor else "transition_target",
+            previous_admission_context_id=(None if initial_predecessor else transition.previous_admission_context_id),
+            initial_transition=(not initial_predecessor and record.release_sequence == 1),
         ),
         record.closed_build_id, path, source_hash, authors, executor_origins,
         scope, scope_error,
     )
+
+
+def _require_initial_producer_policy_reconciliation_v1(before, public, record, cache):
+    """Read explicit administrative adoption, never infer original provenance.
+
+    The current signed distribution binds this inert declaration. The first
+    signed distribution independently binds the adopted Producer source bytes.
+    Original admission/Producer signatures and durable joins remain mandatory.
+    """
+    import ast
+    import re
+
+    first = before.context_transitions[0]
+    if (record.release_sequence != 1 or record.previous_closed_build_id is not None
+            or record != before.authenticated_records[0]
+            or public.set_id != first.previous_set_id
+            or public.material.pin.admission_context_id != first.previous_admission_context_id):
+        raise PreparedRootError("birth_context_producer_policy_invalid")
+    source, _digest = _historical_public_source_v1(
+        before, before.authenticated_records[-1],
+        "runtime/executor_birth_initial_policy_v1.py", cache,
+    )
+    table = _historical_literal_table_v1(source, "INITIAL_PRODUCER_POLICY_V1")
+    try:
+        declarations = ast.literal_eval(table)
+        if (type(declarations) is not dict or len(declarations) != len(table.keys)
+                or len(declarations) > 16):
+            raise ValueError("reconciliation table")
+        for context, binding in declarations.items():
+            if (type(context) is not str or re.fullmatch(r"sha256:[0-9a-f]{64}", context) is None
+                    or type(binding) is not tuple or len(binding) != 4
+                    or type(binding[0]) is not str or re.fullmatch(r"[0-9a-f]{64}", binding[0]) is None
+                    or any(type(value) is not str or re.fullmatch(r"sha256:[0-9a-f]{64}", value) is None
+                           for value in binding[1:])):
+                raise ValueError("reconciliation binding")
+        policies = [item for item in record.files
+                    if item.path == "runtime/executor_birth_producer_table_v1.py"]
+        if (len(policies) != 1 or declarations.get(first.previous_admission_context_id)
+                != (public.set_id, first.transition_id, record.closed_build_id, policies[0].content_hash)):
+            raise ValueError("reconciliation absent or changed")
+    except (ValueError, TypeError, RecursionError, MemoryError) as exc:
+        raise PreparedRootError("birth_context_producer_policy_invalid", exc) from None
 
 
 def _historical_public_source_v1(before, record, path, cache):

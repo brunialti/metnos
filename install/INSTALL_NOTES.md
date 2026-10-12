@@ -494,15 +494,100 @@ durable eligibility or accepting another contract's observations. It cannot
 use the unrelated-availability subject. Older manifests retain the original
 cycle-subject binding; their evidence is not rewritten.
 
-F6 preparation uses a separate receipt-only authority and a durable maintenance
-barrier. Startup and administrative writers refuse an unfinished session;
-the owner holds the existing deployment/startup/authority/Birth locks and
-checks that installation-owned writer units and their control groups are
-stopped. External shared model services are not stopped. SQLite owners use
-native schemas and atomic object bundles, and the private recovery journal
-persists and verifies each receipt before deletion. These components have no
-installed collection command yet: their presence does not activate F6 or
-authorize cleanup. The native LRE blob owner preserves artifacts referenced
+### F6 retention maintenance (candidate)
+
+The candidate adds `retention` commands to `install.f5_authority` and the
+separately installed administrative launcher. This is prepared code: installed
+qualification, Windows administrative custody and F6 activation remain pending.
+There is no new timer or automatic startup cleanup. These commands do not issue
+an F5 certificate or change the existing admission conditions.
+
+After deploying the candidate and its matching launcher, the fixed command
+surface is:
+
+```sh
+sudo -n /usr/local/lib/metnos-admin/metnos-f5-authority retention provision-key
+sudo -n /usr/local/lib/metnos-admin/metnos-f5-authority retention holds < holds.json
+sudo -n /usr/local/lib/metnos-admin/metnos-f5-authority retention plan < sources.json
+sudo -n /usr/local/lib/metnos-admin/metnos-f5-authority retention collect < collect.json
+sudo -n /usr/local/lib/metnos-admin/metnos-f5-authority retention resume < resume.json
+```
+
+The launcher authenticates the selected installed release. Callers cannot select
+an installation root, account, store or key path. `provision-key` takes no JSON
+input and prepares or verifies the distinct receipt-only authority under
+`/var/lib/metnos/executor-birth/retention-authority-v1`. Its key cannot admit a
+Birth or authorize cleanup outside the signed maintenance journal.
+
+The other commands read one UTF-8 JSON line from standard input, bounded to
+48 MiB. Each document must contain exactly the listed fields, without duplicate
+keys. Successful commands return a JSON report on standard output; errors return
+a JSON error on standard error and a nonzero exit status.
+
+| Command | Input document | Result |
+| --- | --- | --- |
+| `holds` | `{"holds":[],"expected_version":null}` | Initializes an explicitly empty hold set and returns its `holds_version`. |
+| `plan` | `{"public_sources":[]}` | Returns `inventory_digest`, object and candidate counts by owner, `observed_at` and `run_id`; it deletes nothing. |
+| `collect` | `{"public_sources":[],"expected_inventory":"sha256:<64 lowercase hex digits>","max_objects":100,"max_seconds":30}` | Rebuilds and compares the reviewed inventory, then records signed intents and performs bounded collection and recovery. |
+| `resume` | `{"public_sources":[],"max_objects":100,"max_seconds":30}` | Resumes the original signed journal, without a new plan or signing key. |
+
+For `collect`, replace the digest placeholder with the exact `inventory_digest`
+returned by `plan`. The comparison covers physical identities, owner versions,
+native states, retention dates, references, roots, administrative holds and the
+eligible candidates; observation time and the random run identifier do not
+change it. A stale digest fails before loading the private signing key or
+opening a collection journal. Each subsequent bounded window needs a fresh plan.
+`max_objects` is an integer from 1 to 10000; `max_seconds` must be finite, greater
+than zero and at most 300. Limits are checked between connected reference groups:
+a group is not split to meet a time limit, and a partially deleted group must
+finish recovery before startup can resume. Reports distinguish deleted objects
+from objects preserved for a later window.
+
+To replace holds, send the complete desired `holds` list and the last returned
+`holds_version` as `expected_version`. Entries are native object
+`identity.key.node_id` values in `sha256:` form; duplicates are rejected. `null`
+is for initialization. Repeating an already completed identical update is
+idempotent; other stale versions fail the compare-and-swap. A missing register
+or interrupted hold update is never interpreted as an empty set. Holds cannot
+change during an unfinished collection.
+
+`public_sources` contains at most 256 pairs of
+`[repository_relative_path, base64_encoded_bytes]`. Supply the historical public
+sources required by the native Producer reader for `plan`, `collect` and
+`resume`; use an empty list only when no unavailable historical source is needed.
+The native reader bounds the bytes, validates paths and matches historical
+signed hashes. It never imports or executes these supplied bytes. Unknown
+namespaces, unresolved references, inconsistent rereads or unsupported native
+state refuse the inventory. Records without native closure, including promoter
+review, filtered Telos audit and source-authority grants/snapshots, remain open
+and cannot be deleted merely because they are old.
+
+Before maintenance, the operator stops installation-owned writer units and
+waits for their control groups to empty. The command verifies these conditions;
+it does not stop or restart services. External shared model services are not
+stopped. The existing deployment/startup/authority/Birth locks are acquired once
+per command and held across its phases. Complete operational observations remain
+at phase boundaries and before effects. Per-object checks use the held-lock
+capability and the native owner version comparison, without repeating service
+queries or authenticating the entire installation chain for each object. The
+historical context census is authenticated once per inventory phase and reused
+only within that held exclusion; there is no cache across commands.
+
+The fixed maintenance root is
+`/var/lib/metnos/executor-birth/retention-maintenance-v1`. The hold register and
+private `<run-digest>.sqlite` recovery journals remain there; public verification
+keys stay in the separate receipt authority's native history. Temporary
+`.projection-*/graph.sqlite` files are disposable projections, not an authority
+or a persistent inventory. Each receipt is persisted and verified before its
+physical effect. A crash leaves `active.json` or a pending native write, which
+blocks ordinary startup and administrative writers. `resume` uses the required
+historical sources and original signed intents, including idempotent native
+recovery when payload bytes are already absent. The barrier is removed only
+after native reconciliation and a fresh catalog and complete physical inventory
+readback. A failed readback preserves the marker; completed journals remain as
+receipts.
+
+The native LRE blob owner preserves artifacts referenced
 by jobs or result rows and refuses incomplete or unreadable stores. Referenced
 blobs remain retained while the metadata bundle is collected; only a subsequent
 inventory can authorize their deletion. Recovery durably confirms absence,
@@ -616,9 +701,10 @@ collection requires closure plus 90 days and the existing signed maintenance.
 Administrative holds use an explicit private register. Initialization and
 version-checked replacement reuse the native durable writer under administrative
 exclusion; an interrupted change blocks collection until recovery. Holds cannot
-change during an unfinished collection. The installed command still needs wiring.
-The complete physical inventory, cross-store references,
-existing cleanup entrypoints and installed recovery still require integration.
+change during an unfinished collection. The candidate command and recovery
+surface are described above. Actual installed paths, complete physical coverage
+and the remaining legacy cleanup entrypoints still require installed qualification
+before collection can be activated.
 
 The same administrative launcher provides `reuse inspect|export|trust|import|continue`.
 `export` signs the complete chronology and artifact inventory for the distinct
@@ -1055,7 +1141,8 @@ current log and both numbered and unique rotated segments. Completed native
 measurements become eligible after 90 days; identical physical copies share
 retention references. Unknown schemas/segments and inconsistent timestamps
 block inventory. Empty compacted files and native rotation locks remain; this
-component does not expose an installed maintenance command or activate F6.
+owner joins the prepared maintenance coordinator without independently
+authorizing cleanup or activating F6.
 
 The candidate Sites audit owner keeps native operational topology records
 and session history without a valid closure. Closed history becomes eligible
@@ -1092,8 +1179,8 @@ USER generations. Orphan archives retain their sources; successive archive
 copies may refer to distinct generations. Administrative review records preserve
 root custody and canonical digests without revalidating expired consent or
 claiming independent evidence authentication. These components remain open
-until native closure exists. Full cross-store authentication and the installed
-maintenance command remain unfinished; no collection activation is implied.
+until native closure exists. The prepared coordinator joins these owners;
+installed qualification and collection activation remain pending.
 
 The internal inventory composer requires an explicit exclusion guard and exact
 owner scope. Shared owners must be the same instances, enumerate the same
@@ -1109,8 +1196,9 @@ every physical copy. Review, approval, admission and independent-evidence
 components join exact historical subjects without renewing consent. Consumed
 approvals without admission and reviews persisted before evidence remain
 open; native non-review evidence gains no invented review dependency. The
-explicit context census still requires installed integration. These are
-component tests, not root-custody qualification or collection activation.
+prepared coordinator supplies one authenticated context census per inventory
+phase. These component tests do not establish root-custody qualification or
+collection activation.
 
 Producer/admission joins now use native V1 publication and V2 reattestation
 verification per physical copy. In-progress rows remain open; an unavailable
@@ -1120,15 +1208,25 @@ bytes are bounded before parsing. The administrative exclusion yields a
 readonly callable capability context whose lifetime matches the held locks.
 It opens the existing prepared-root reader, never the provisioning layout,
 and holds the existing Birth lock with creation disabled.
-These changes do not supply the complete installed census or activate F6.
+These component checks do not qualify the prepared coordinator's installed
+census or activate F6.
+
+The administrative exclusion distinguishes held capability checks from full
+operational observations. Inventory walks can use `require_held_exclusion()`
+to check process, account and all existing locks without querying services or
+authenticating the installation chain again. Full observations remain mandatory
+at phase entry, phase exit while locks are held, and before collection effects.
+Ordinary callers of `require_exclusion()` retain the complete observations.
+During that same phase, semantic evidence can borrow the native authenticated
+context census; it still reads and verifies each physical evidence file.
 
 The internal historical context census covers the initial predecessor and all
 chain targets, rejects any extra or missing physical authority set, and returns
 native public bindings under the held exclusion. It does not infer an initial
 producer policy. The administrative guard now also binds the data directory
 to the resolved account. Affinity and efficacy audit owners classify only their
-known completed native observations; unknown schemas fail closed. No installed
-maintenance entrypoint or activation is implied by these component checks.
+known completed native observations; unknown schemas fail closed. These
+component checks do not establish installed qualification or activation.
 
 External durable workspaces now have granular native-fenced physical ownership.
 Job closure requires a current native clean report and physical absence across
@@ -1155,7 +1253,8 @@ The three operational SQLite owners now require explicit store paths from the
 installed caller, with no ambient configuration fallback. Selecting and
 authenticating those paths remains the installed coordinator's responsibility.
 Absent native stores remain empty and are not created by inventory. These
-component changes do not provide the installed coordinator or activate F6.
+components join the prepared coordinator; installed qualification and F6
+activation remain pending.
 
 The internal installed-environment reader authenticates current native materials
 and checks every gated service twice under a caller-held stability boundary.
@@ -1188,5 +1287,5 @@ Unsupported writers refuse; these selected paths are not a complete
 writer/constructor census.
 Root avoids config's known directory-initialization effects, but is not a readonly
 sandbox. Component tests simulate host/UID boundaries; access as the service user,
-service namespaces, full maintenance composition and installed qualification
+service namespaces, complete installed coverage and installed qualification
 remain pending. This change does not alter job archival or activate F5/F6.

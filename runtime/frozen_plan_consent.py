@@ -385,8 +385,8 @@ def recovery_evidence(record: dict, *, turn_id: str) -> bool:
         import os
         from pathlib import Path
         import config as _C
-        history = Path(os.environ.get("METNOS_HISTORY_DIR") or (
-            Path(_C.PATH_USER_DATA) / "_history"))
+        from history_paths import backup_directory
+        history = backup_directory()
         blob = history / str(turn_id) / "blob"
         if blob.is_symlink() or not blob.is_dir():
             return False

@@ -416,8 +416,8 @@ def undo_history_extras(executor, *, turn_id=None) -> list[Path]:
         return []
     try:
         import config as _C
-        history_root = Path(os.environ.get("METNOS_HISTORY_DIR") or (
-            Path(_C.PATH_USER_DATA) / "_history"))
+        from history_paths import backup_directory
+        history_root = backup_directory()
         blob_dir = history_root.expanduser() / key / "blob"
         current = Path(blob_dir.absolute().anchor)
         for part in blob_dir.absolute().parts[1:]:

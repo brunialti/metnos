@@ -303,10 +303,8 @@ def _restore_blob_backup(plan, results):
     import config as _C  # §7.11
     entries = (results or {}).get("results") or []
     out, failed = [], []
-    history_root = _Path(_os.environ.get(
-        "METNOS_HISTORY_DIR",
-        _C.PATH_USER_DATA / "_history",
-    ))
+    from history_paths import legacy_blob_directory
+    history_root = legacy_blob_directory()
     imap_conns = {}  # account -> open IMAP connection (lazy)
 
     def _find_blob_path(entry):

@@ -54,6 +54,17 @@ def test_per_service_inputs_preserve_absent_overrides_without_ambient_inheritanc
         result.target_environments = ()
 
 
+def test_single_native_capture_keeps_the_same_identity_and_unit_checks(scenario):
+    checks = []
+    result = reader._capture_installed_environment_once_v1(require_stability=lambda: checks.append(True))
+    assert scenario.calls == ['service-probe', 'service-other']
+    assert len(checks) == 2
+    assert result.selected == 'selected-head'
+    assert result.account == scenario.account
+    assert result.materials == scenario.materials
+    assert tuple(row[0] for row in result.launch_environments) == ('service-probe', 'service-other')
+
+
 @pytest.mark.parametrize('fault', ['account', 'xdg', 'cache', 'workspace', 'empty', 'drift', 'unit', 'boundary'])
 def test_native_refusal_or_changed_capture_stops_selection(scenario, monkeypatch, fault):
     materials = scenario.materials

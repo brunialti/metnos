@@ -90,6 +90,10 @@ PATH_ROOT          = _env_path(
 PATH_RUNTIME       = PATH_ROOT / "runtime"
 PATH_EXECUTORS     = PATH_ROOT / "executors"
 PATH_WORKSPACE     = _env_path("METNOS_WORKSPACE", PATH_ROOT / "workspace")
+# Native Synth locations are readable without initializing Synth or logging.
+PATH_SYNT_AUDIT = Path(os.environ.get("SYNT_AUDIT_DIR", str(PATH_WORKSPACE / ".audit" / "synt")))
+PATH_SYNT_LOCK = Path(os.environ.get("SYNT_LOCK_PATH", str(PATH_WORKSPACE / ".synt" / "locks.json")))
+PATH_SYNT_PROPOSALS = Path(os.environ.get("SYNT_PROPOSALS_DIR", str(PATH_WORKSPACE / ".synt" / "proposals")))
 PATH_DECISIONS     = PATH_ROOT / "decisions"
 PATH_DOCS          = PATH_ROOT / "docs"
 
@@ -559,6 +563,9 @@ PATH_SKILLS_BUILTIN      = PATH_EXECUTORS / "skills"
 PATH_AUDIT         = PATH_USER_DATA / "introvertiva"
 # History turns (TurnLog jsonl daily files)
 PATH_TURNS         = PATH_USER_DATA / "turns"
+PATH_TURN_FEEDBACK = PATH_USER_DATA / "turn_feedback.jsonl"
+PATH_SYNTH_AUDIT = PATH_USER_DATA / "synth_audit"
+PATH_PROPOSAL_ACCEPTS = PATH_USER_DATA / "proposal_accepts"
 # Cost tracking (LLM provider costs)
 PATH_COST          = PATH_USER_DATA / "cost"
 # Index root (indici di dominio: image/scene, image/persons, image/gps, ...).

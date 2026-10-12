@@ -14,9 +14,19 @@ from durable_workloads import artifacts
 from durable_workloads import migrations
 from durable_workloads import runtime_bindings
 from durable_workloads import source_authority
+import history_paths
 import llm_cost_sink
 import proposals_cleanup
 import proposals_state
+import protected_undo
+import sites_audit
+import skill_admission
+import cli
+from cli import skills_cli
+import telos_proposals_store
+import undo
+import jobs
+from jobs import promoter_promote, promoter_state
 
 _MODULES = ('config', 'approval_registry', 'proposals_state',
             'proposals_cleanup', 'durable_workloads.migrations',
@@ -30,7 +40,15 @@ _CONFIG_PATHS = (
     'PATH_DURABLE_ARTIFACTS', 'DB_CHANGE_INTENTS')
 PATH_KEYS = frozenset((*_CONFIG_PATHS, 'approvals', 'proposals_state', 'scheduler',
                        'workloads', 'synth_history', 'introvertiva', 'llm_cost',
-                       'lre_artifact_store', 'lre_source_authority'))
+                       'lre_artifact_store', 'lre_source_authority',
+                       'undo', 'protected_undo_blobs', 'protected_undo_key',
+                       'turn_feedback', 'turn_feedback_turns', 'turn_archives', 'sites_audit',
+                       'persistent_synth', 'promoter_proposals', 'promoter_archive',
+                       'promoter_state', 'promoter_blobs', 'promoter_audit',
+                       'telos_decisions', 'telos_recomposed', 'telos_rescored',
+                       'telos_proposals', 'history_backups', 'history_legacy',
+                       'history_expanded_backups', 'synth_audit', 'skill_admission_audit',
+                       'skills_cli_audit', 'telos_acceptance_markers'))
 CUSTODY_PROTOCOL = 'durable-job-metadata-v1'
 
 
@@ -39,7 +57,7 @@ def _resolve_composition(installation_root):
     if os.geteuid() != 0:
         raise RuntimeError('administrative path probe requires root')
     root = Path(installation_root).resolve(strict=True)
-    parents = ('durable_workloads',)
+    parents = ('durable_workloads', 'jobs', 'cli')
     # The administrative child receives an authenticated, installation-bound
     # sys.path before this probe is loaded.  Static imports keep the closed
     # build free of a reflective loader boundary; exact origins are checked
@@ -56,6 +74,17 @@ def _resolve_composition(installation_root):
         'durable_workloads.runtime_bindings': runtime_bindings,
         'durable_runtime_registry': registry,
         'llm_cost_sink': llm_cost_sink,
+        'history_paths': history_paths,
+        'protected_undo': protected_undo,
+        'sites_audit': sites_audit,
+        'skill_admission': skill_admission,
+        'cli': cli,
+        'cli.skills_cli': skills_cli,
+        'telos_proposals_store': telos_proposals_store,
+        'undo': undo,
+        'jobs': jobs,
+        'jobs.promoter_promote': promoter_promote,
+        'jobs.promoter_state': promoter_state,
     }
     for name, module in modules.items():
         relative = name.replace('.', '/')
@@ -93,6 +122,35 @@ def _resolve_composition(installation_root):
         synth_history=proposals_cleanup.SYNT_PROPOSALS_DIR,
         introvertiva=proposals_cleanup.INTROVERTIVA_DIR,
         llm_cost=llm_cost_sink._default_path(),
+        history_backups=history_paths.backup_directory(),
+        history_legacy=history_paths.legacy_blob_directory(),
+        history_expanded_backups=history_paths.backup_directory().expanduser(),
+        undo=undo.DEFAULT_LOG,
+        protected_undo_blobs=protected_undo.BLOB_DIR,
+        protected_undo_key=protected_undo.ADMIN_KEY_PATH,
+        turn_feedback=c.PATH_TURN_FEEDBACK,
+        turn_feedback_turns=c.PATH_TURNS,
+        # The former state_reaper writer selected this sibling namespace (or
+        # its explicit override), then archive_daily_logs expanded and resolved
+        # it. The current reaper defers archiving to F6; observe legacy custody
+        # without inventing a new location or constructing an archive.
+        turn_archives=Path(os.environ.get('METNOS_TURN_LOG_ARCHIVE_DIR')
+                           or (c.PATH_USER_DATA / 'turns_archive')).expanduser(),
+        synth_audit=c.PATH_SYNTH_AUDIT,
+        skill_admission_audit=skill_admission._audit_log_directory() / "imports.jsonl",
+        skills_cli_audit=skills_cli._audit_log_directory() / "imports.jsonl",
+        telos_acceptance_markers=c.PATH_PROPOSAL_ACCEPTS,
+        sites_audit=sites_audit.AUDIT_PATH,
+        persistent_synth=c.PATH_SYNT_PROPOSALS,
+        promoter_proposals=promoter_state._proposals_dir(),
+        promoter_archive=promoter_state._archive_dir(),
+        promoter_state=promoter_state._db_path(),
+        promoter_blobs=promoter_promote._blob_dir(),
+        promoter_audit=promoter_state._audit_dir(),
+        telos_decisions=telos_proposals_store.DECISIONS_PATH,
+        telos_recomposed=telos_proposals_store._PROPOSALS_CANDIDATES[0],
+        telos_rescored=telos_proposals_store._PROPOSALS_CANDIDATES[1],
+        telos_proposals=telos_proposals_store._PROPOSALS_CANDIDATES[2],
         lre_artifact_store=artifacts.ArtifactStore.root_path(artifact_root),
         lre_source_authority=source_authority.authority_file_path(source_path))
     return ({name: str(Path(value).resolve()) for name, value in sorted(paths.items())},

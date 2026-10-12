@@ -47,6 +47,18 @@ import config as _C  # §7.11
 
 _DEFAULT_DB = _C.PATH_USER_DATA / "promoter.sqlite"
 _DEFAULT_AUDIT_DIR = _C.PATH_USER_DATA / "synth_audit"
+_DEFAULT_PROPOSALS_DIR = _C.PATH_USER_DATA / "synt_proposals"
+_DEFAULT_ARCHIVE_DIR = _C.PATH_USER_DATA / "synth_archive"
+
+
+def _proposals_dir() -> Path:
+    env = os.environ.get("METNOS_SYNT_PROPOSALS_DIR")
+    return Path(env) if env else _DEFAULT_PROPOSALS_DIR
+
+
+def _archive_dir() -> Path:
+    env = os.environ.get("METNOS_SYNTH_ARCHIVE_DIR")
+    return Path(env) if env else _DEFAULT_ARCHIVE_DIR
 
 
 def _db_path() -> Path:

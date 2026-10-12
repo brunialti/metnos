@@ -937,6 +937,27 @@ async def _observe_post_submit(*, page, context, cookies_before: dict,
     return state
 
 
+def _expected_session_cookie_changed(observed: dict,
+                                     session_cookie_names: list[str]) -> bool:
+    return any(c.get("name") in session_cookie_names
+               for c in observed.get("changed") or ())
+
+
+def _post_submit_audit_fields(observed: dict,
+                              session_cookie_names: list[str]) -> dict:
+    """Proietta soli predicati: nomi, valori dei cookie e URL restano privati."""
+    return {
+        name: bool(observed.get(name)) for name in (
+            "surface_checked", "login_surface", "navigation_confirmed",
+            "auth_entry_route", "stable_positive",
+        )
+    } | {
+        "session_cookie_required": bool(session_cookie_names),
+        "expected_session_cookie_changed": _expected_session_cookie_changed(
+            observed, session_cookie_names),
+    }
+
+
 def _authed_success(observed: dict,
                     session_cookie_names: list[str]) -> bool:
     """Segnale POSITIVO di sessione (password, TOTP e OTP esterno). True solo se
@@ -955,9 +976,8 @@ def _authed_success(observed: dict,
             or observed.get("captcha") or observed.get("push")
             or observed.get("password_rejected")):
         return False
-    changed = list(observed.get("changed") or ())
     if session_cookie_names:
-        return any(c.get("name") in session_cookie_names for c in changed)
+        return _expected_session_cookie_changed(observed, session_cookie_names)
     if (not observed.get("stable_positive")
             or observed.get("auth_entry_route")):
         return False
@@ -966,7 +986,7 @@ def _authed_success(observed: dict,
                   str(c.get("name") or ""), re.IGNORECASE)
         and not re.search(r"csrf|xsrf", str(c.get("name") or ""),
                           re.IGNORECASE)
-        for c in changed
+        for c in observed.get("changed") or ()
     )
     # Una navigazione di rotta confermata verso una superficie non-login (form
     # password sparito, nessun rifiuto/sfida — gia' esclusi sopra) e' di per se'
@@ -1261,9 +1281,7 @@ async def _complete_one_time_code_stage(*, page, context,
     sites_audit.record("login_attempt", owner=owner, session_id=session_id,
                        domain=vault_domain, outcome=logged_in, reason=reason,
                        post_submit_outcome=outcome,
-                       surface_checked=observed["surface_checked"],
-                       login_surface=observed["login_surface"],
-                       navigation_confirmed=observed["navigation_confirmed"])
+                       **_post_submit_audit_fields(observed, session_cookie_names))
     _apply_cooldown_outcome(owner, storage_domain, outcome, payload=payload)
     return {"ok": True, "logged_in": logged_in, "reason_code": reason}
 
@@ -1744,9 +1762,7 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
         sites_audit.record("login_attempt", owner=owner, session_id=session_id,
                            domain=domain, outcome=logged_in, reason=reason,
                            post_submit_outcome=outcome,
-                           surface_checked=observed["surface_checked"],
-                           login_surface=observed["login_surface"],
-                           navigation_confirmed=observed["navigation_confirmed"])
+                           **_post_submit_audit_fields(observed, session_cookie_names))
         await _checkpoint(
             checkpoint,
             "complete" if logged_in else

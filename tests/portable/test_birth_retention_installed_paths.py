@@ -20,6 +20,25 @@ native_posix = pytest.mark.skipif(
     os.name != 'posix', reason='native administrative POSIX path probe and resource limits')
 
 
+def _display_entry():
+    entry = _entry(execution_kind='native_executable')
+    policies = (
+        ('ProtectSystem', 'scalar', 'strict'),
+        ('PrivateTmp', 'boolean', 'yes'),
+        ('NoNewPrivileges', 'boolean', 'yes'),
+        ('StandardOutput', 'scalar', 'journal'),
+        ('StandardError', 'scalar', 'journal'),
+    )
+    spec = entry.unit_spec._replace(directives=entry.unit_spec.directives + tuple(
+        native._ServiceDirectiveV1('Service', name, kind, (value,))
+        for name, kind, value in policies))
+    return entry._replace(entry_id='service-side-display',
+        unit_name='metnos-side-display.service', target_executable='/usr/bin/Xvfb',
+        target_args=(':99', '-screen', '0', '1920x1080x24', '-ac',
+                     '-nolisten', 'tcp', '-dpi', '96'),
+        target_working_directory='/release', target_environment=(), unit_spec=spec)
+
+
 def test_static_environment_is_native_and_has_no_ambient_defaults(monkeypatch):
     monkeypatch.setenv('HOME', '/hostile')
     monkeypatch.setenv('METNOS_USER_DATA', '/hostile')
@@ -33,12 +52,14 @@ def test_static_environment_is_native_and_has_no_ambient_defaults(monkeypatch):
         native._static_launch_environment_v1(_materials(collision), collision)
 
 
-@pytest.mark.parametrize('fault', [None, 'disagreement', 'path_drift', 'environment_drift', 'boundary', 'nonroot', 'native'])
+@pytest.mark.parametrize('fault', [None, 'disagreement', 'path_drift', 'environment_drift', 'boundary', 'nonroot', 'native', 'display'])
 def test_capture_checks_paths_and_final_materials(monkeypatch, fault):
     entry = _entry()
     other = entry._replace(entry_id='other')
     if fault == 'native':
         other = _entry(execution_kind='native_executable')._replace(entry_id='native')
+    elif fault == 'display':
+        other = _display_entry()
     materials = _materials(entry)._replace(catalog=SimpleNamespace(entries=(entry, other)))
     environment = SimpleNamespace(materials=materials)
     calls = []
@@ -60,7 +81,7 @@ def test_capture_checks_paths_and_final_materials(monkeypatch, fault):
     def boundary():
         if fault == 'boundary':
             raise RetentionError('retention_exclusion_lost')
-    if fault and fault != 'native':
+    if fault not in (None, 'native', 'display'):
         with pytest.raises(RetentionError):
             paths._capture_installed_paths_v1(require_stability=boundary)
     else:
@@ -69,11 +90,81 @@ def test_capture_checks_paths_and_final_materials(monkeypatch, fault):
             (('approvals', '/a'),), CUSTODY_PROTOCOL,
         )
         expected = ((('service-probe', composition),)
-                    if fault == 'native' else
+                    if fault in ('native', 'display') else
                     (('service-probe', composition), ('other', composition)))
         assert result.observations == expected
         assert result.non_python_services == (('native',) if fault == 'native' else ())
-        assert len(count) == (2 if fault == 'native' else 4) and len(calls) == 3
+        assert result.non_writing_services == (('service-side-display',) if fault == 'display' else ())
+        assert len(count) == (2 if fault in ('native', 'display') else 4) and len(calls) == 3
+
+
+@pytest.mark.parametrize('fault', [None, 'id', 'basename', 'arguments', 'working_directory',
+    'environment', 'ProtectSystem', 'PrivateTmp', 'StandardOutput', 'StandardError',
+    'ReadWritePaths', 'duplicate'])
+def test_native_display_classification_requires_exact_target_and_readonly_unit(fault):
+    entry = _display_entry()
+    replacements = {
+        'id': {'entry_id': 'another-native'},
+        'basename': {'target_executable': '/untrusted/Xvfb'},
+        'arguments': {'target_args': entry.target_args + ('-fbdir', '/release/data')},
+        'working_directory': {'target_working_directory': '/other'},
+        'environment': {'target_environment': (native._ServiceEnvironmentV1('OUTPUT', '/release/data'),)},
+    }
+    if fault in replacements:
+        entry = entry._replace(**replacements[fault])
+    elif fault:
+        directives = entry.unit_spec.directives
+        if fault == 'ReadWritePaths':
+            directives += (native._ServiceDirectiveV1('Service', fault, 'path_list', ('/release/data',)),)
+        elif fault == 'duplicate':
+            directives += (directives[-1],)
+        else:
+            directives = tuple(item._replace(values=('unsafe',)) if item.name == fault else item
+                               for item in directives)
+        entry = entry._replace(unit_spec=entry.unit_spec._replace(directives=directives))
+    assert paths._is_non_writing_native_service_v1(_materials(entry), entry) is (fault is None)
+
+
+@pytest.mark.parametrize('fault', [None, 'disagreement', 'environment_drift', 'held', 'full'])
+def test_held_capture_compares_native_boundaries_and_probes_each_writer_once(monkeypatch, fault):
+    entry = _entry()
+    other = entry._replace(entry_id='other')
+    materials = _materials(entry)._replace(catalog=SimpleNamespace(entries=(entry, other)))
+    environment = SimpleNamespace(materials=materials)
+    captures, probes, full_checks, held_checks = [], [], [], []
+    def full():
+        full_checks.append(True)
+        if fault == 'full' and len(full_checks) == 2:
+            raise RetentionError('retention_exclusion_lost')
+    def held():
+        held_checks.append(True)
+        if fault == 'held' and probes:
+            raise RetentionError('retention_exclusion_lost')
+    def capture(*, require_stability):
+        require_stability()
+        captures.append(True)
+        require_stability()
+        return object() if fault == 'environment_drift' and len(captures) == 2 else environment
+    def probe(m, e):
+        probes.append(e.entry_id)
+        value = '/other' if fault == 'disagreement' and e.entry_id == 'other' else '/a'
+        return paths._InstalledRuntimeCompositionV1((('approvals', value),), CUSTODY_PROTOCOL)
+    monkeypatch.setattr(paths.os, 'geteuid', lambda: 0, raising=False)
+    monkeypatch.setattr(paths, '_capture_installed_environment_once_v1', capture)
+    monkeypatch.setattr(paths, '_capture_installed_environment_v1',
+                        lambda **kw: pytest.fail('duplicate native capture'))
+    monkeypatch.setattr(paths, '_probe_service_v1', probe)
+    if fault:
+        with pytest.raises(RetentionError):
+            paths._capture_installed_paths_v1(require_stability=full, require_held_stability=held)
+    else:
+        observed = paths._capture_installed_paths_v1(require_stability=full, require_held_stability=held)
+        assert tuple(row[0] for row in observed.observations) == ('service-probe', 'other')
+        assert len(full_checks) == 2 and len(captures) == 2
+        assert probes == ['service-probe', 'other']
+        assert held_checks
+    if fault == 'held':
+        assert probes == ['service-probe'] and len(captures) == 1
 
 
 @pytest.mark.parametrize('fault', [None, 'missing', 'relative', 'nul', 'custody', 'oversize', 'timeout', 'exit', 'native'])
@@ -151,6 +242,25 @@ def test_fresh_probe_reports_production_custody_with_native_paths(tmp_path):
     observed = json.loads(result.stdout)
     assert set(observed['paths']) == PATH_KEYS
     assert observed['terminal_workspace_custody'] == CUSTODY_PROTOCOL
+    assert list(tmp_path.iterdir()) == [tmp_path / 'home']
+    assert list((tmp_path / 'home').iterdir()) == []
+
+
+@native_posix
+@pytest.mark.parametrize('override', [None, '', 'relative/turns', '~/archived-turns'])
+def test_legacy_turn_archive_namespace_matches_the_former_writer(tmp_path, override):
+    environment = {} if override is None else {'METNOS_TURN_LOG_ARCHIVE_DIR': override}
+    result = fresh_probe(tmp_path, env_extra=environment)
+    assert result.returncode == 0, result.stderr
+    observed = json.loads(result.stdout)
+    if not override:
+        expected = Path(observed['PATH_USER_DATA']) / 'turns_archive'
+    elif override.startswith('~/'):
+        expected = tmp_path / 'home' / override[2:]
+    else:
+        expected = tmp_path / override
+    assert observed['turn_archives'] == str(expected)
+    assert observed['turn_archives'] != str(Path(observed['PATH_TURNS']) / 'archive')
     assert list(tmp_path.iterdir()) == [tmp_path / 'home']
     assert list((tmp_path / 'home').iterdir()) == []
 
@@ -261,3 +371,151 @@ def test_scheduler_writer_uses_the_same_native_default():
     from scheduler_v2.storage import DEFAULT_DB_PATH
     assert DEFAULT_DB_PATH == config.DB_SCHEDULER_V2
     assert DEFAULT_DB_PATH == config.PATH_USER_STATE / 'scheduler_v2.sqlite'
+
+
+@native_posix
+def test_native_birth_adjacent_overrides_are_observed_without_writes(tmp_path):
+    overrides = {'SYNT_PROPOSALS_DIR': 'persistent/candidates',
+                 'METNOS_SYNT_PROPOSALS_DIR': 'promoter/proposals',
+                 'METNOS_SYNTH_ARCHIVE_DIR': 'promoter/archive',
+                 'METNOS_PROMOTER_DB': 'promoter/state.sqlite',
+                 'METNOS_PROMOTER_BLOB_DIR': 'promoter/blobs',
+                 'METNOS_PROMOTER_AUDIT_DIR': 'promoter/audit'}
+    result = fresh_probe(tmp_path, env_extra=overrides)
+    assert result.returncode == 0, result.stderr
+    observed = json.loads(result.stdout)
+    for name, relative in (
+            ('persistent_synth', 'persistent/candidates'),
+            ('promoter_proposals', 'promoter/proposals'),
+            ('promoter_archive', 'promoter/archive'),
+            ('promoter_state', 'promoter/state.sqlite'),
+            ('promoter_blobs', 'promoter/blobs'),
+            ('promoter_audit', 'promoter/audit')):
+        assert observed[name] == str(tmp_path / relative)
+    data = tmp_path / 'home/.local/share/metnos'
+    assert observed['undo'] == str(data / 'undo.jsonl')
+    assert observed['protected_undo_blobs'] == str(data / 'undo_blobs')
+    assert observed['turn_feedback'] == str(data / 'turn_feedback.jsonl')
+    assert observed['telos_decisions'] == str(data / 'telos_decisions.jsonl')
+    assert list(tmp_path.iterdir()) == [tmp_path / 'home']
+    assert list((tmp_path / 'home').iterdir()) == []
+
+
+@native_posix
+def test_new_native_path_module_origin_is_checked_before_resolution(tmp_path):
+    result = fresh_probe(tmp_path, extra="p['promoter_state'].__file__='/foreign/promoter_state.py'; ")
+    assert result.returncode != 0
+    assert 'path module outside selected installation: jobs.promoter_state' in result.stderr
+
+
+@native_posix
+@pytest.mark.parametrize('value', ['', 'relative', '/absolute'])
+def test_writer_aliases_preserve_native_synth_and_feedback_paths(tmp_path, value):
+    result = fresh_probe(tmp_path, env_extra={'SYNT_PROPOSALS_DIR': value}, extra="""
+import synt, turn_feedback
+from jobs import promoter
+assert synt.DEFAULT_PROPOSALS_DIR == p['c'].PATH_SYNT_PROPOSALS
+assert synt.DEFAULT_PROPOSALS_DIR == __import__('pathlib').Path(os.environ['SYNT_PROPOSALS_DIR'])
+assert turn_feedback.FEEDBACK_PATH == p['c'].PATH_TURN_FEEDBACK
+assert turn_feedback.TURNS_DIR == p['c'].PATH_TURNS
+assert promoter._proposals_dir is p['promoter_state']._proposals_dir
+assert promoter._archive_dir is p['promoter_state']._archive_dir
+""")
+    assert result.returncode == 0, result.stderr
+
+
+@native_posix
+@pytest.mark.parametrize('override', [None, '', 'relative/history', '/absolute/history', '~/history'])
+def test_history_census_preserves_writer_legacy_and_expanded_paths(tmp_path, override):
+    from pathlib import Path
+    extra = {} if override is None else {'METNOS_HISTORY_DIR': override}
+    result = fresh_probe(tmp_path, env_extra=extra)
+    assert result.returncode == 0, result.stderr
+    observed = json.loads(result.stdout)
+    default = Path(observed['PATH_USER_DATA']) / '_history'
+    writer = Path(override) if override else default
+    legacy = Path(override) if override is not None else default
+    def resolved(value):
+        return str(value if value.is_absolute() else tmp_path / value)
+    assert observed['history_backups'] == resolved(writer)
+    assert observed['history_legacy'] == resolved(legacy)
+    expanded = (tmp_path / 'home/history') if override == '~/history' else writer
+    assert observed['history_expanded_backups'] == resolved(expanded)
+    assert list((tmp_path / 'home').iterdir()) == []
+
+
+@pytest.mark.parametrize('override', [None, '', 'relative/history'])
+def test_actual_undo_backup_and_restore_use_censused_native_path(tmp_path, monkeypatch, override):
+    import config
+    from executor_helpers import backup_file_for_undo, restore_file_from_undo_backup
+    from history_paths import backup_directory, legacy_blob_directory
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(config, 'PATH_USER_DATA', tmp_path / 'data')
+    monkeypatch.setenv('METNOS_TURN_ID', 'retention-path-test')
+    monkeypatch.delenv('METNOS_HISTORY_DIR', raising=False)
+    if override is not None:
+        monkeypatch.setenv('METNOS_HISTORY_DIR', override)
+    original = b'original undo bytes'
+    source = tmp_path / 'source'
+    source.write_bytes(original)
+    blob = Path(backup_file_for_undo(source))
+    assert blob.parent == backup_directory() / 'retention-path-test/blob'
+    assert blob.read_bytes() == original
+    source.write_bytes(b'changed')
+    assert restore_file_from_undo_backup(source, str(blob))
+    assert source.read_bytes() == original
+    if override == '':
+        assert legacy_blob_directory() == Path('.')
+        assert backup_directory() == tmp_path / 'data/_history'
+
+
+@native_posix
+@pytest.mark.parametrize('override', [None, '', 'relative/audit', '/absolute/audit'])
+def test_native_audit_paths_are_censused_without_creating_directories(tmp_path, override):
+    extra = {} if override is None else {'METNOS_AUDIT_DIR': override}
+    result = fresh_probe(tmp_path, env_extra=extra)
+    assert result.returncode == 0, result.stderr
+    observed = json.loads(result.stdout)
+    default = Path(observed['PATH_USER_DATA']) / 'synth_audit'
+    directory = Path(override) if override else default
+    if not directory.is_absolute():
+        directory = tmp_path / directory
+    assert observed['synth_audit'] == str(default)
+    assert observed['skill_admission_audit'] == str(directory / 'imports.jsonl')
+    assert observed['skills_cli_audit'] == str(directory / 'imports.jsonl')
+    assert observed['telos_acceptance_markers'] == str(
+        Path(observed['PATH_USER_DATA']) / 'proposal_accepts')
+    assert list((tmp_path / 'home').iterdir()) == []
+
+
+def test_import_writers_preserve_distinct_runtime_user_data_fallbacks(tmp_path, monkeypatch):
+    import config
+    import skill_admission
+    from cli import skills_cli
+    monkeypatch.setattr(config, 'PATH_USER_DATA', tmp_path / 'configured')
+    monkeypatch.setenv('METNOS_USER_DATA', str(tmp_path / 'dynamic'))
+    monkeypatch.delenv('METNOS_AUDIT_DIR', raising=False)
+    assert skill_admission._audit_log_directory() == tmp_path / 'dynamic/synth_audit'
+    assert skills_cli._audit_log_directory() == tmp_path / 'configured/synth_audit'
+    assert not (tmp_path / 'dynamic').exists()
+    assert not (tmp_path / 'configured').exists()
+    assert skill_admission._audit_log_path() == tmp_path / 'dynamic/synth_audit/imports.jsonl'
+    assert skills_cli._audit_log_path() == tmp_path / 'configured/synth_audit/imports.jsonl'
+    assert (tmp_path / 'dynamic/synth_audit').is_dir()
+    assert (tmp_path / 'configured/synth_audit').is_dir()
+
+
+def test_native_audit_and_proposal_marker_constants_share_censused_source():
+    import config
+    import loader
+    import executor_aging
+    import proposal_evaluator
+    import synt_stage6_verify
+    import proposal_actions
+    assert loader._AFFINITY_AUDIT_DIR == config.PATH_SYNTH_AUDIT
+    assert executor_aging.EFFICACY_AUDIT_DIR == config.PATH_SYNTH_AUDIT
+    assert proposal_evaluator._AUDIT_DIR == config.PATH_SYNTH_AUDIT
+    assert synt_stage6_verify.VERIFY_AUDIT_DIR == config.PATH_SYNTH_AUDIT
+    assert proposal_actions.SYNT_PENDING_DIR == config.PATH_PROPOSAL_ACCEPTS / 'synt_pending'
+    assert proposal_actions.CHANGE_PENDING_DIR == config.PATH_PROPOSAL_ACCEPTS / 'change_pending'
+    assert proposal_actions.PIPELINE_PENDING_DIR == config.PATH_PROPOSAL_ACCEPTS / 'pipeline_pending'

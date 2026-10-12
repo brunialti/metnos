@@ -82,7 +82,7 @@ DECIDABILITY_MIN_PASS = 1
 
 
 # Audit log JSONL.
-_AUDIT_DIR = _C.PATH_USER_DATA / "synth_audit"
+_AUDIT_DIR = _C.PATH_SYNTH_AUDIT
 
 
 def _audit_path() -> Path:

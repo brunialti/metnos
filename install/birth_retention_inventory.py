@@ -97,3 +97,22 @@ class _InventoryComposition:
             raise RetentionError('retention_owner_changed', 'composition changed during inventory')
         self._check_owners()
         return tuple(sorted(objects.values(), key=lambda obj: obj.identity.key.node_id))
+
+    def _inventory_in_exclusion_v1(self, context):
+        """Compose once while native writer locks protect component reads.
+
+        Components retain their own physical version/readback checks. The
+        complete installed attestation brackets this phase instead of running
+        again for every owner and historical context.
+        """
+        from install.birth_retention_exclusion import _RetentionExclusionContextV1
+        if (type(context) is not _RetentionExclusionContextV1
+                or self.require_exclusion != context.require_held_exclusion):
+            raise RetentionError('retention_exclusion_lost', 'native inventory phase')
+        context.require_exclusion()
+        try:
+            objects, _ = self._snapshot(time.monotonic() + _SECONDS)
+            self._check_owners()
+            return tuple(sorted(objects.values(), key=lambda obj: obj.identity.key.node_id))
+        finally:
+            context.require_exclusion()

@@ -282,31 +282,32 @@ def _rotate_retention_at_v1(root: Path, *, expected_key_id: str, root_owned: boo
         )
 
 
+def _forbidden_retention_public_keys_v1() -> frozenset[bytes]:
+    """The existing native key-separation check, also used by stopped signing."""
+    _root_owned_chain(DEFAULT_AUTHORITY_DIRECTORY_V1)
+    owners = _load_public_at_v1(DEFAULT_AUTHORITY_DIRECTORY_V1, root_owned=True)
+    forbidden = _birth_public_keys_v1() | frozenset(
+        _registry_public_bytes(registry)
+        for registry in (owners.distribution, owners.cutover, owners.head))
+    from executor_birth_certification_authority import (
+        DEFAULT_DIRECTORY_V1 as certification_directory,
+        _load_certification_public_at_v1,
+    )
+    if _path_present(certification_directory):
+        _root_owned_chain(certification_directory)
+        certification = _load_certification_public_at_v1(certification_directory, root_owned=True)
+        forbidden |= frozenset({certification.public_key.public_bytes_raw()})
+    return forbidden
+
+
 def _administrative_retention_authority_v1(expected_key_id: str | None) -> RetentionPublicKeyV1:
     if not _managed_authority_platform_supported_v1():
         raise OwnershipAuthorityError("birth_retention_authority_platform_unsupported")
     if not hasattr(os, "geteuid") or os.geteuid() != 0:
         raise OwnershipAuthorityError("birth_retention_authority_root_required")
     _root_owned_chain(DEFAULT_OWNERSHIP_ROOT_V1)
-    _root_owned_chain(DEFAULT_AUTHORITY_DIRECTORY_V1)
     with _provisioning_lock(DEFAULT_OWNERSHIP_ROOT_V1, root_owned=True):
-        owners = _load_public_at_v1(DEFAULT_AUTHORITY_DIRECTORY_V1, root_owned=True)
-        forbidden = _birth_public_keys_v1() | frozenset(
-            _registry_public_bytes(registry)
-            for registry in (owners.distribution, owners.cutover, owners.head)
-        )
-        # An optional F5 key may already exist. Absence is allowed during joint
-        # preparation; any present registry must be authentic, including revocation.
-        from executor_birth_certification_authority import (
-            DEFAULT_DIRECTORY_V1 as certification_directory,
-            _load_certification_public_at_v1,
-        )
-        if _path_present(certification_directory):
-            _root_owned_chain(certification_directory)
-            certification = _load_certification_public_at_v1(
-                certification_directory, root_owned=True,
-            )
-            forbidden |= frozenset({certification.public_key.public_bytes_raw()})
+        forbidden = _forbidden_retention_public_keys_v1()
         if expected_key_id is None:
             return _provision_retention_locked_v1(
                 DEFAULT_OWNERSHIP_ROOT_V1, root_owned=True, forbidden_public_keys=forbidden,

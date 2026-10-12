@@ -53,6 +53,24 @@ _DEFAULT_MAX_BLOB_BYTES = 1024 * 1024 * 1024
 _BLOB_REF_PREFIX = "metnos-owner-blob/"
 
 
+@dataclass(frozen=True, slots=True)
+class ArtifactWorkspacePaths:
+    """Native scratch resolver that neither opens nor creates an artifact store."""
+
+    root: Path
+
+    def __post_init__(self):
+        object.__setattr__(self, "root", ArtifactStore.root_path(self.root))
+
+    def temporary_workspace(self, owner_user_id, workload_id):
+        from .temporary_storage import TemporaryWorkspace
+
+        owner = _require_owner(owner_user_id)
+        _require_id(workload_id)
+        return TemporaryWorkspace(
+            self.root / "owners" / _owner_key(owner) / "temporary", workload_id)
+
+
 class ArtifactError(RuntimeError):
     """Base error with a stable internal code, never user-facing prose."""
 
@@ -1353,11 +1371,7 @@ class ArtifactStore:
                 self._fsync(source_fd)
 
     def temporary_workspace(self, owner_user_id, workload_id):
-        from .temporary_storage import TemporaryWorkspace
-
-        owner = _require_owner(owner_user_id)
-        _require_id(workload_id)
-        return TemporaryWorkspace(self._root / "owners" / _owner_key(owner) / "temporary", workload_id)
+        return ArtifactWorkspacePaths(self._root).temporary_workspace(owner_user_id, workload_id)
 
     def _blob_directory(self, owner_user_id: str, *, create: bool):
         return self._directory(

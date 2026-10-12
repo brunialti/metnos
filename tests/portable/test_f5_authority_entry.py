@@ -40,6 +40,7 @@ def test_only_the_closed_forms_exist():
         ("rehearse", "plan"), ("rehearse", "issue"),
         ("proposal", "review"), ("proposal", "approve"),
         *(("reuse", stage) for stage in ("inspect", "export", "trust", "import", "continue")),
+        *(("retention", stage) for stage in ("provision-key", "holds", "plan", "collect", "resume")),
     }
 
 

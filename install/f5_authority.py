@@ -212,6 +212,11 @@ def _reuse(stage: str) -> dict:
     return register_origin_v1(document["installation_id"], encode_canonical_ascii_v1(document["public_registry"]))
 
 
+def _retention(stage: str) -> dict:
+    from install.birth_retention_administration import run_retention
+    return run_retention(stage)
+
+
 _COMMANDS = {
     ("provision-key",): _provision_key,
     ("evidence",): _evidence,
@@ -228,6 +233,8 @@ _COMMANDS = {
     ("reuse", "trust"): lambda: _reuse("trust"),
     ("reuse", "import"): lambda: _reuse("import"),
     ("reuse", "continue"): lambda: _reuse("continue"),
+    **{("retention", stage): (lambda stage=stage: _retention(stage))
+       for stage in ("provision-key", "holds", "plan", "collect", "resume")},
 }
 
 
@@ -237,7 +244,8 @@ def main(argv: list[str] | None = None) -> int:
     if command is None:
         print("usage: f5_authority.py provision-key | evidence | "
               "migrate plan|apply | certify derive|issue | rehearse plan|issue | "
-              "proposal review|approve | reuse inspect|export|trust|import|continue", file=sys.stderr)
+              "proposal review|approve | reuse inspect|export|trust|import|continue | "
+              "retention provision-key|holds|plan|collect|resume", file=sys.stderr)
         return 64
     try:
         report = command()

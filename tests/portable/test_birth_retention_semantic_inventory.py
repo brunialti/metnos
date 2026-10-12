@@ -1,4 +1,5 @@
 """Native historical-set/capability reads authenticate original review evidence."""
+from dataclasses import replace
 import json
 import os
 from types import SimpleNamespace
@@ -101,10 +102,12 @@ def test_second_physical_read_detects_drift(linked, monkeypatch):
         linked.inventory.scan()
 
 
-def test_physical_copy_cannot_replace_session_root(linked, tmp_path):
+@pytest.mark.parametrize('shared', [False, True])
+def test_physical_copy_cannot_replace_session_root(linked, tmp_path, shared):
     with pytest.raises(RetentionError, match='root binding'):
         _SemanticEvidenceInventory(reviews=linked.review.owner, birth_root=tmp_path, contexts=(linked.context,),
-            session=linked.session, owner=None, require_exclusion=lambda: None)
+            session=linked.session, owner=None, require_exclusion=lambda: None,
+            context_bindings=linked.inventory.bindings if shared else None)
 
 
 def test_crash_after_review_before_proof_keeps_open_audit(linked):
@@ -139,4 +142,85 @@ def test_review_context_cannot_be_silently_omitted(linked):
     inventory = _SemanticEvidenceInventory(reviews=linked.review.owner, birth_root=linked.base / 'birth', contexts=(),
         session=linked.session, owner=None, require_exclusion=lambda: None)
     with pytest.raises(RetentionError):
+        inventory.scan()
+
+
+def test_shared_native_census_matches_default_without_reauthentication(linked, monkeypatch):
+    expected = linked.inventory.scan()
+    bindings = dict(linked.inventory.bindings)
+    guards = []
+    def no_batch(*args, **kwargs):
+        pytest.fail('shared native census must not repeat historical authentication')
+    monkeypatch.setattr(prepared, 'load_historical_context_verifiers_for_contexts_in_session_v1', no_batch)
+    inventory = _SemanticEvidenceInventory(reviews=linked.review.owner, birth_root=linked.base / 'birth',
+        contexts=(linked.context,), session=linked.session, owner=None,
+        require_exclusion=lambda: guards.append(True), context_bindings=bindings)
+    # The caller's mapping is only borrowed during construction, then frozen.
+    bindings.clear()
+    for _ in range(2):
+        guards.clear()
+        assert inventory.scan() == expected
+        assert guards
+
+
+@pytest.mark.parametrize('fault', ['mapping', 'missing', 'extra', 'type', 'context', 'head', 'set', 'mixed_head'])
+def test_shared_native_census_rejects_inconsistent_bindings(linked, fault):
+    binding = linked.inventory.bindings[linked.context]
+    contexts, bindings = (linked.context,), {linked.context: binding}
+    other_context = 'sha256:' + ('d' * 64 if linked.context != 'sha256:' + 'd' * 64 else 'e' * 64)
+    if fault == 'mapping':
+        bindings = tuple(bindings.items())
+    elif fault == 'missing':
+        bindings = {}
+    elif fault == 'extra':
+        bindings[other_context] = binding
+    elif fault == 'type':
+        bindings[linked.context] = SimpleNamespace(required_head_id=binding.required_head_id,
+            transition_id=binding.transition_id, public_set=binding.public_set)
+    elif fault == 'context':
+        pin = replace(binding.public_set.material.pin, admission_context_id=other_context)
+        public = replace(binding.public_set, material=replace(binding.public_set.material, pin=pin))
+        bindings[linked.context] = replace(binding, public_set=public)
+    elif fault == 'head':
+        bindings[linked.context] = replace(binding, required_head_id='sha256:invalid')
+    elif fault == 'set':
+        bindings[linked.context] = replace(binding, public_set=replace(binding.public_set, set_id='../foreign'))
+    else:
+        contexts = (linked.context, other_context)
+        pin = replace(binding.public_set.material.pin, admission_context_id=other_context)
+        public = replace(binding.public_set, material=replace(binding.public_set.material, pin=pin))
+        other_head = 'sha256:' + ('a' * 64 if binding.required_head_id != 'sha256:' + 'a' * 64 else 'b' * 64)
+        bindings[other_context] = replace(binding, public_set=public, required_head_id=other_head)
+    with pytest.raises(RetentionError, match='context bindings'):
+        _SemanticEvidenceInventory(reviews=linked.review.owner, birth_root=linked.base / 'birth',
+            contexts=contexts, session=linked.session, owner=None, require_exclusion=lambda: None,
+            context_bindings=bindings)
+
+
+def test_shared_native_census_still_authenticates_evidence_signature(linked, monkeypatch):
+    def no_batch(*args, **kwargs):
+        pytest.fail('shared native census must not repeat historical authentication')
+    monkeypatch.setattr(prepared, 'load_historical_context_verifiers_for_contexts_in_session_v1', no_batch)
+    inventory = _SemanticEvidenceInventory(reviews=linked.review.owner, birth_root=linked.base / 'birth',
+        contexts=(linked.context,), session=linked.session, owner=None, require_exclusion=lambda: None,
+        context_bindings=linked.inventory.bindings)
+    linked.evidence.write_bytes(_record_evidence(linked.review.record, Ed25519PrivateKey.generate()))
+    with pytest.raises(RetentionError, match='historical independent evidence'):
+        inventory.scan()
+
+
+def test_shared_native_census_cannot_outlive_held_exclusion(linked, monkeypatch):
+    active = True
+    def require_exclusion():
+        if not active:
+            raise RetentionError('retention_owner_changed', 'held exclusion ended')
+    inventory = _SemanticEvidenceInventory(reviews=linked.review.owner, birth_root=linked.base / 'birth',
+        contexts=(linked.context,), session=linked.session, owner=None, require_exclusion=require_exclusion,
+        context_bindings=linked.inventory.bindings)
+    def no_read(*args, **kwargs):
+        pytest.fail('ended exclusion must prevent further native or physical reads')
+    monkeypatch.setattr(prepared, 'load_historical_context_verifiers_for_contexts_in_session_v1', no_read)
+    monkeypatch.setattr(linked.review.owner, 'scan', no_read)
+    active = False
+    with pytest.raises(RetentionError, match='held exclusion ended'):
         inventory.scan()

@@ -12,6 +12,10 @@ from .test_group8_public_history import (
 )
 from . import support
 
+def read_batch_one(selector, session):
+    return root.load_historical_context_verifiers_for_contexts_in_session_v1((selector,), session)[0]
+
+
 pytestmark = pytest.mark.skipif(os.name == 'nt', reason=support.POSIX_SCENARIO_ONLY_V1)
 
 
@@ -47,8 +51,9 @@ def deny_new_authority(monkeypatch):
     monkeypatch.setattr(_SecureRootSession, 'read_file', public_only)
 
 
+@pytest.mark.parametrize('reader', [root.load_historical_context_verifiers_in_session_v1, read_batch_one])
 @pytest.mark.parametrize('kind', ['target', 'initial'])
-def test_held_exclusive_session_reads_exact_public_history_without_effects(tmp_path, monkeypatch, kind):
+def test_held_exclusive_session_reads_exact_public_history_without_effects(tmp_path, monkeypatch, kind, reader):
     base, chain, selector = historical(tmp_path, monkeypatch, kind)
     expected = root.load_historical_context_verifiers_v1(selector)
     with root.open_prepared_root_session_v1() as session:
@@ -56,17 +61,21 @@ def test_held_exclusive_session_reads_exact_public_history_without_effects(tmp_p
             assert session._holds_global_exclusive()
             before = snapshot(base)
             deny_new_authority(monkeypatch)
-            result = root.load_historical_context_verifiers_in_session_v1(selector, session)
+            result = reader(selector, session)
             assert result == expected
+            if reader is read_batch_one:
+                assert not any(path[:2] == ('authority-sets', result.public_set.set_id)
+                               for path in session._directories)
             assert result.required_head_id == chain.required_head.head_id
             assert result.binding_kind == ('transition_target' if kind == 'target' else 'initial_predecessor')
             assert session._holds_global_exclusive()
             assert snapshot(base) == before
 
 
+@pytest.mark.parametrize('reader', [root.load_historical_context_verifiers_in_session_v1, read_batch_one])
 @pytest.mark.parametrize('kind', ['target', 'initial'])
 @pytest.mark.parametrize('change', ['head', 'transitions', 'records'])
-def test_held_session_rejects_historical_frontier_drift(tmp_path, monkeypatch, kind, change):
+def test_held_session_rejects_historical_frontier_drift(tmp_path, monkeypatch, kind, change, reader):
     _base, chain, selector = historical(tmp_path, monkeypatch, kind)
     after = {'head': replace(chain, heads=(replace(chain.required_head, head_id='sha256:'+'f'*64),)),
              'transitions': replace(chain, context_transitions=()),
@@ -77,11 +86,12 @@ def test_held_session_rejects_historical_frontier_drift(tmp_path, monkeypatch, k
         with session.global_lock(exclusive=True, create=False):
             deny_new_authority(monkeypatch)
             with pytest.raises(root.PreparedRootError, match='birth_context_selection_changed'):
-                root.load_historical_context_verifiers_in_session_v1(selector, session)
+                reader(selector, session)
 
 
+@pytest.mark.parametrize('reader', [root.load_historical_context_verifiers_in_session_v1, read_batch_one])
 @pytest.mark.parametrize('kind', ['target', 'initial'])
-def test_held_session_rejects_tampered_historical_set(tmp_path, monkeypatch, kind):
+def test_held_session_rejects_tampered_historical_set(tmp_path, monkeypatch, kind, reader):
     base, _chain, selector = historical(tmp_path, monkeypatch, kind)
     path = support.installed_set(base) / 'set.json'
     _rewrite(path, lambda document: document.update(prepared_context_epoch='sha256:'+'e'*64))
@@ -90,14 +100,27 @@ def test_held_session_rejects_tampered_historical_set(tmp_path, monkeypatch, kin
         with session.global_lock(exclusive=True, create=False):
             deny_new_authority(monkeypatch)
             with pytest.raises((PreparedSetError, root.PreparedRootError)):
-                root.load_historical_context_verifiers_in_session_v1(selector, session)
+                reader(selector, session)
 
 
-def test_session_without_lock_rejected_before_context_observation(tmp_path, monkeypatch):
+@pytest.mark.parametrize('reader', [root.load_historical_context_verifiers_in_session_v1, read_batch_one])
+def test_session_without_lock_rejected_before_context_observation(tmp_path, monkeypatch, reader):
     _base, _chain, selector = historical(tmp_path, monkeypatch, 'target')
     with root.open_prepared_root_session_v1() as session:
         deny_new_authority(monkeypatch)
         monkeypatch.setattr(chain_module, 'inspect_ownership_chain_state_v1',
                             lambda: pytest.fail('unlocked context observed'))
         with pytest.raises(root.PreparedRootError, match='birth_context_lock_required'):
-            root.load_historical_context_verifiers_in_session_v1(selector, session)
+            reader(selector, session)
+
+
+@pytest.mark.parametrize('selectors', [(), [], ('bad',), ('sha256:'+'f'*64,), ('sha256:'+'f'*64,)*2])
+def test_batch_rejects_invalid_selection_without_public_reads(tmp_path, monkeypatch, selectors):
+    historical(tmp_path, monkeypatch, 'target')
+    with root.open_prepared_root_session_v1() as session:
+        with session.global_lock(exclusive=True, create=False):
+            deny_new_authority(monkeypatch)
+            monkeypatch.setattr(root, '_read_historical_context_set_in_session_v1',
+                                lambda *a, **k: pytest.fail('invalid batch read a public set'))
+            with pytest.raises(root.PreparedRootError, match='birth_context_selection_invalid'):
+                root.load_historical_context_verifiers_for_contexts_in_session_v1(selectors, session)

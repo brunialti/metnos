@@ -154,3 +154,68 @@ class _JournalInventory:
         return tuple(replace(objects[identity], references=tuple(sorted(
             references[identity] - {identity}, key=lambda target: target.key.node_id)))
             for identity in sorted(objects, key=lambda identity: identity.key.node_id))
+
+
+class _JournalAdmissionInventory:
+    """Bind native dispatch receipts to authenticated historical admissions.
+
+    A retained turn keeps its exact generation. The reverse edge is deliberately
+    absent: a current generation does not require every old execution log.
+    Missing receipt evidence remains OPEN in the native journal projection;
+    a valid receipt naming absent or contradictory signed history refuses the
+    whole inventory. This remains a bounded component, not a complete census.
+    """
+    def __init__(self, *, journals, signed_store, require_exclusion):
+        self.journals, self.signed_store = journals, signed_store
+        self.require_exclusion = require_exclusion
+        owners = dict(journals.owners)
+        if signed_store.name in owners:
+            raise RetentionError('retention_owner_invalid', 'duplicate journal admission owner')
+        owners[signed_store.name] = signed_store
+        self.owners = MappingProxyType(owners)
+
+    def _snapshot(self):
+        self.require_exclusion()
+        if (dict(self.journals.owners) != {name: owner for name, owner in self.owners.items()
+                                          if name != self.signed_store.name}
+                or self.owners.get(self.signed_store.name) is not self.signed_store
+                or any(owner.name != name for name, owner in self.owners.items())):
+            raise RetentionError('retention_owner_changed', 'journal admission owner map')
+        return (self.journals.inventory(), self.signed_store.scan(),
+                self.journals.turns.scan(), self.journals.archives.scan())
+
+    def inventory(self):
+        before = self._snapshot()
+        journals, (signed, admissions), turns, archives = before
+        objects = {}
+        for obj in (*journals, *signed):
+            if obj.identity in objects or obj.identity.owner not in self.owners:
+                raise RetentionError('retention_inventory_incomplete', 'duplicate or foreign journal admission object')
+            objects[obj.identity] = obj
+        admitted = set()
+        for identity, admission in admissions.items():
+            if identity not in objects:
+                raise RetentionError('retention_inventory_incomplete', 'journal admission physical evidence')
+            admitted.add((admission.contract_id, admission.generation_id, admission.candidate_id))
+        for entry in (*turns, *archives):
+            observed = objects.get(entry.object.identity)
+            if (observed is None or replace(observed, references=()) !=
+                    replace(entry.object, references=())):
+                raise RetentionError('retention_owner_changed', 'journal receipt projection changed')
+            references = set(observed.references)
+            for record in entry.records:
+                for receipt in _receipts(record)[0]:
+                    generation = self.signed_store.generation_identity(
+                        receipt.contract_id, receipt.generation_id)
+                    if (generation not in objects or (receipt.contract_id.value,
+                            receipt.generation_id, receipt.candidate_id) not in admitted):
+                        raise RetentionError('retention_inventory_incomplete', 'dispatch historical admission absent')
+                    references.add(generation)
+            objects[observed.identity] = replace(observed, references=tuple(sorted(
+                references, key=lambda identity: identity.key.node_id)))
+        if any(target not in objects for obj in objects.values() for target in obj.references):
+            raise RetentionError('retention_inventory_incomplete', 'unresolved journal admission reference')
+        if before != self._snapshot():
+            raise RetentionError('retention_owner_changed', 'journal admission inventory changed')
+        self.require_exclusion()
+        return tuple(sorted(objects.values(), key=lambda obj: obj.identity.key.node_id))

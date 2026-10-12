@@ -194,6 +194,10 @@ BOUNDARY_API_OWNERS_V1 = (
         ('_certify', ('store_write',)),
         ('_rehearse', ('store_write',)),
         ('_reuse', ('store_write',)),
+        ('_retention', ('store_write',)),
+    )),
+    BoundaryApiOwnerV1('birth_retention_administration', (
+        ('run_retention', ('store_write',)),
     )),
     BoundaryApiOwnerV1('birth_certification_issuer', (
         ('issue_certificate_v1', ('store_write',)),

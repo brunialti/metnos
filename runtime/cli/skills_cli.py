@@ -66,10 +66,15 @@ def _skills_dir() -> Path:
     return _user_data() / "skills"
 
 
-def _audit_log_path() -> Path:
+def _audit_log_directory() -> Path:
     """`<USER_DATA>/synth_audit/imports.jsonl`."""
     override = os.environ.get("METNOS_AUDIT_DIR")
     base = Path(override) if override else _user_data() / "synth_audit"
+    return base
+
+
+def _audit_log_path() -> Path:
+    base = _audit_log_directory()
     base.mkdir(parents=True, exist_ok=True)
     return base / "imports.jsonl"
 

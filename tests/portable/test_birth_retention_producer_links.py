@@ -175,3 +175,63 @@ def test_archived_public_sources_are_forwarded_and_coverage_is_exact(history, mo
             history.inventory.inventory()
     else:
         assert history.inventory.inventory()
+
+
+def test_shared_context_census_is_call_scoped_and_keeps_both_physical_snapshots(history, monkeypatch):
+    expected = history.inventory.inventory()
+    declaration = history.data['declarations']
+    identifier = declaration.context.public_set.material.pin.admission_context_id
+    bindings = {identifier: declaration.context}
+    history.session._root_path = str(history.tmp_path / 'birth')
+    inventory = _ProducerAdmissionInventory(producers=history.producers, signed_store=history.signed,
+        session=history.session, require_exclusion=lambda: None, context_bindings=bindings)
+    bindings.clear()
+    scans, batches = [], []
+    original_producers, original_signed = history.producers.scan, history.signed.scan_with_evidence
+    def producers():
+        scans.append('producers')
+        return original_producers()
+    def signed():
+        scans.append('signed')
+        return original_signed()
+    def load(contexts, session, *, include_reattestation, public_sources, _context_bindings):
+        assert contexts == (identifier,) and session is history.session and include_reattestation
+        assert public_sources == () and dict(_context_bindings) == {identifier: declaration.context}
+        batches.append(None)
+        return (declaration,)
+    monkeypatch.setattr(history.producers, 'scan', producers)
+    monkeypatch.setattr(history.signed, 'scan_with_evidence', signed)
+    monkeypatch.setattr(prepared, 'load_historical_producer_declarations_for_contexts_in_session_v1', load)
+    for count in (1, 2):
+        assert inventory.inventory() == expected
+        assert len(batches) == count and scans.count('producers') == scans.count('signed') == 2 * count
+
+
+def test_shared_context_census_does_not_bypass_terminal_authentication(history):
+    declaration = history.data['declarations']
+    identifier = declaration.context.public_set.material.pin.admission_context_id
+    history.session._root_path = str(history.tmp_path / 'birth')
+    inventory = _ProducerAdmissionInventory(producers=history.producers, signed_store=history.signed,
+        session=history.session, require_exclusion=lambda: None,
+        context_bindings={identifier: declaration.context})
+    with sqlite3.connect(history.db) as connection:
+        connection.execute("UPDATE birth_producer_receipts SET terminal_auth=?", (b'x' * 64,))
+    with pytest.raises(RetentionError, match='historical producer authentication'):
+        inventory.inventory()
+
+
+def test_shared_context_census_requires_mapping_and_stable_session_root(history, monkeypatch):
+    for invalid in ([], 1):
+        with pytest.raises(RetentionError, match='producer context bindings'):
+            _ProducerAdmissionInventory(producers=history.producers, signed_store=history.signed,
+                session=history.session, require_exclusion=lambda: None, context_bindings=invalid)
+    declaration = history.data['declarations']
+    identifier = declaration.context.public_set.material.pin.admission_context_id
+    history.session._root_path = str(history.tmp_path / 'birth')
+    inventory = _ProducerAdmissionInventory(producers=history.producers, signed_store=history.signed,
+        session=history.session, require_exclusion=lambda: None,
+        context_bindings={identifier: declaration.context})
+    history.session._root_path += '-changed'
+    monkeypatch.setattr(history.producers, 'scan', lambda: pytest.fail('scan after root drift'))
+    with pytest.raises(RetentionError, match='producer root binding'):
+        inventory.inventory()

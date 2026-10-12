@@ -771,7 +771,8 @@ def test_multiple_historical_contexts_share_only_call_local_verified_source(tmp_
     monkeypatch.setattr(chain_module, "inspect_ownership_chain_state_v1", inspect)
     public = root._read_historical_context_set_v1(first)
 
-    def public_for(transition):
+    def public_for(transition, *, initial_predecessor=False):
+        assert not initial_predecessor
         from types import SimpleNamespace
         return replace(public, material=SimpleNamespace(pin=SimpleNamespace(
             admission_context_id=transition.prepared_admission_context_id,

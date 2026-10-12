@@ -1,6 +1,6 @@
 {
   "schema": "metnos.contract-boundary-inventory/2",
-  "source_census": "sha256:88f5d098742eff55fd31362d6a34cf4f4db7291f3c85a75bc16b0cc530478c32",
+  "source_census": "sha256:f8e298e15944861736b22b4569d0326c323dc76f7b5f17f88ee8534ec18b6d9c",
   "scan_roots": [
     "runtime",
     "install",
@@ -462,6 +462,36 @@
         "store_write"
       ],
       "destination": "sealed root-owned ownership cutover coordinator",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_retention_administration.py",
+      "scope": "_load_inventory.catalog_readback",
+      "role": "live_reader",
+      "capabilities": [
+        "live_artifact_read"
+      ],
+      "destination": "read the selected catalog through the native cutover audit reader under full exclusion guards at the read boundaries",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_retention_administration.py",
+      "scope": "_maintenance_root",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "create and verify the fixed root-owned F6 maintenance directory through the native filesystem owner",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_retention_administration.py",
+      "scope": "run_retention",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "closed administrative F6 dispatch to the native retention owners under native exclusion; no authority supplied by caller",
       "phase": "M4"
     },
     {
@@ -1582,6 +1612,16 @@
         "store_write"
       ],
       "destination": "plan or issue isolated rehearsal through the existing certification issuer owner",
+      "phase": "M4"
+    },
+    {
+      "path": "install/f5_authority.py",
+      "scope": "_retention",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "bounded administrative dispatch to the reviewed F6 retention coordinator; no authority supplied by caller",
       "phase": "M4"
     },
     {

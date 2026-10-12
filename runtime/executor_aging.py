@@ -567,7 +567,7 @@ EFFICACY_MIN_INVOCATIONS     = int(os.environ.get(
 EFFICACY_RE_EVAL_INVOCATIONS = int(os.environ.get(
     "METNOS_EFFICACY_RE_EVAL_INVOCATIONS", "30"))
 
-EFFICACY_AUDIT_DIR = _C.PATH_USER_DATA / "synth_audit"
+EFFICACY_AUDIT_DIR = _C.PATH_SYNTH_AUDIT
 
 
 def _is_synth(name: str, source: str | None) -> bool:

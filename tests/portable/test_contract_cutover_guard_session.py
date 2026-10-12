@@ -279,9 +279,63 @@ def test_maintenance_session_is_live_only_inside_the_held_guard(monkeypatch):
     assert inactive.value.code == "cutover_session_invalid"
 
 
-def test_maintenance_session_rejects_a_look_alike() -> None:
+def test_held_session_check_does_not_repeat_operational_observations(monkeypatch):
+    import stack_reconcile
+
+    observed = []
+    state = {"LoadState": "loaded", "ActiveState": "inactive", "MainPID": 0}
+
+    class Systemctl:
+        @staticmethod
+        def show(unit: str, scope: str) -> dict[str, object]:
+            observed.append((scope, unit))
+            return dict(state)
+
+    reconciler = SimpleNamespace(
+        systemctl=Systemctl(),
+        require_quiescent=lambda: {"source": "inactive_http_and_inactive_sidecar"},
+    )
+
+    @contextmanager
+    def exclusion():
+        yield
+
+    monkeypatch.setattr(stack_reconcile, "StackReconciler",
+                        lambda default_write_report=False: reconciler)
+    monkeypatch.setattr(stack_reconcile, "catalog_reconcile_lock",
+                        lambda wait_s: exclusion())
+
+    with guard.contract_cutover_guard() as (session, _evidence):
+        baseline = tuple(observed)
+        assert baseline
+        for _ in range(100):
+            guard._require_held_maintenance_session_v1(session)
+        assert tuple(observed) == baseline
+
+        with monkeypatch.context() as other_process:
+            process = os.getpid()
+            other_process.setattr(os, "getpid", lambda: process + 1)
+            with pytest.raises(guard.ContractCutoverGuardError, match="cutover_session_invalid"):
+                guard._require_held_maintenance_session_v1(session)
+
+        state.update(ActiveState="active", MainPID=7)
+        guard._require_held_maintenance_session_v1(session)
+        with pytest.raises(guard.ContractCutoverGuardError, match="cutover_blocked"):
+            guard._require_maintenance_session_v1(session)
+
+    for checker in (guard._require_held_maintenance_session_v1,
+                    guard._require_maintenance_session_v1):
+        with pytest.raises(guard.ContractCutoverGuardError, match="cutover_session_invalid"):
+            checker(session)
+
+
+@pytest.mark.parametrize("checker", [
+    guard._require_held_maintenance_session_v1,
+    guard._require_maintenance_session_v1,
+])
+def test_maintenance_session_rejects_a_look_alike(checker) -> None:
     with pytest.raises(guard.ContractCutoverGuardError) as denied:
-        guard._require_maintenance_session_v1(SimpleNamespace())
+        checker(SimpleNamespace())
     assert denied.value.code == "cutover_session_invalid"
 
 

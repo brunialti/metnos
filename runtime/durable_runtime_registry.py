@@ -76,6 +76,16 @@ def _verified_catalog_snapshot():
 @lru_cache(maxsize=1)
 def default_runtime_registry() -> RuntimeRegistry:
     """Build the closed registry from approved package contributions."""
+    return runtime_registry_for_catalog(_verified_catalog_snapshot())
+
+
+def runtime_registry_for_catalog(catalog) -> RuntimeRegistry:
+    """Compose the same native runners from an already authenticated catalog.
+
+    The administrative reader supplies its catalog under the existing native
+    exclusion instead of reopening a reader with the service account's locks.
+    This function confers no catalog or execution authority.
+    """
 
     schemas = output_schemas()
     image_questions = RuntimeRegistration(
@@ -88,7 +98,6 @@ def default_runtime_registry() -> RuntimeRegistry:
         candidate_plan_factory=image_questions_plan,
     )
     registrations = [image_questions]
-    catalog = _verified_catalog_snapshot()
     indexer = catalog.get(image_indexing.EXECUTOR)
     if indexer is not None and getattr(indexer, "lre_plan", "") == image_indexing.PLAN_ID:
         registrations.append(image_indexing.registration(catalog_loader=lambda **_kw: catalog))
@@ -109,4 +118,4 @@ def production_factories() -> tuple[
     return factory.worker, factory.bridge
 
 
-__all__ = ["ADMISSION_NAMES", "default_runtime_registry", "production_factories", "invocation_plan_adapter", "describe_plan"]
+__all__ = ["ADMISSION_NAMES", "default_runtime_registry", "runtime_registry_for_catalog", "production_factories", "invocation_plan_adapter", "describe_plan"]

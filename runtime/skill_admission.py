@@ -480,7 +480,7 @@ def _stage6_check(plan, manifest_path, code_path, verifier) -> tuple[bool, str]:
 # ---------------------------------------------------------------------------
 
 
-def _audit_log_path() -> Path:
+def _audit_log_directory() -> Path:
     """Audit log dir. Rispetta METNOS_USER_DATA (§7.11) per isolamento test/e2e.
     Override esplicito via METNOS_AUDIT_DIR."""
     override = os.environ.get("METNOS_AUDIT_DIR")
@@ -492,6 +492,11 @@ def _audit_log_path() -> Path:
             str(_C.PATH_USER_DATA),
         )
         base = Path(user_data) / "synth_audit"
+    return base
+
+
+def _audit_log_path() -> Path:
+    base = _audit_log_directory()
     base.mkdir(parents=True, exist_ok=True)
     return base / "imports.jsonl"
 

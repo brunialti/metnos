@@ -45,8 +45,11 @@ TOOL = ROOT / "internal" / "tools" / "render_contract_boundary_policy.py"
 # 5/10/2026: a071c73c adds only f5_authority._reuse and the five store_write
 # APIs, module and source owner of birth_certification_reuse. Compared with
 # 6979d0ea, no other policy value or existing capability changed.
+# 12/10/2026: the approved F6 completion adds f5_authority._retention and
+# birth_retention_administration.run_retention, both store_write, plus the
+# latter's exact module/source owner. Existing grants are unchanged.
 GOLDEN_DIGEST_V1 = (
-    "sha256:a4b615ace29f08768a0f02557fd8414de3b5138debbce605d2910ae63191876e"
+    "sha256:ec67756f94b4cc636c26eec3f3f00c383b084918a2fbfd2ac8a73a2f4142211a"
 )
 
 POLICY_NAMES = (

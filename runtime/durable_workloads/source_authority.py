@@ -42,6 +42,50 @@ _SESSION_RE = re.compile(r"\.session-[A-Za-z0-9_-]{6,64}")
 _SUFFIX_RE = re.compile(r"\.[A-Za-z0-9]{1,16}")
 _MAX_STALE_SESSION_SCAN = 256
 
+# Shared with the stopped, read-only inventory. Keep the check index separate:
+# version 1/2 stores acquire its columns in the migrations below.
+_SCHEMA_SQL_V3 = """
+                BEGIN IMMEDIATE;
+                CREATE TABLE IF NOT EXISTS source_authority_schema (
+                    singleton INTEGER PRIMARY KEY CHECK (singleton=1),
+                    version INTEGER NOT NULL CHECK (version>=1)
+                );
+                CREATE TABLE IF NOT EXISTS source_grants (
+                    owner_user_id TEXT NOT NULL,
+                    workload_id TEXT NOT NULL,
+                    source_id TEXT NOT NULL,
+                    device_id TEXT NOT NULL,
+                    locator_bytes BLOB NOT NULL,
+                    content_digest TEXT NOT NULL,
+                    size_bytes INTEGER NOT NULL CHECK (size_bytes>=0),
+                    mtime_ns INTEGER NOT NULL CHECK (mtime_ns>=0),
+                    granted_at TEXT NOT NULL,
+                    expires_at TEXT NOT NULL,
+                    checked_at TEXT NOT NULL,
+                    check_generation INTEGER NOT NULL DEFAULT 0
+                        CHECK (check_generation>=0),
+                    revoked_at TEXT,
+                    PRIMARY KEY (owner_user_id, workload_id, source_id),
+                    CHECK (length(owner_user_id) BETWEEN 1 AND 128),
+                    CHECK (length(workload_id) BETWEEN 1 AND 128),
+                    CHECK (length(source_id) BETWEEN 1 AND 128),
+                    CHECK (length(device_id) BETWEEN 1 AND 128),
+                    CHECK (length(locator_bytes) BETWEEN 1 AND 32768)
+                ) WITHOUT ROWID;
+                CREATE INDEX IF NOT EXISTS source_grants_expiry
+                    ON source_grants(expires_at, owner_user_id, workload_id);
+                INSERT INTO source_authority_schema(singleton, version)
+                VALUES (1, 3) ON CONFLICT(singleton) DO NOTHING;
+                COMMIT;
+                """
+_CHECK_INDEX_SQL = """
+                CREATE INDEX IF NOT EXISTS source_grants_check
+                ON source_grants(
+                    check_generation, checked_at, owner_user_id, workload_id
+                )
+                WHERE revoked_at IS NULL
+                """
+
 
 class SourceAuthorityError(RuntimeError):
     """The requested source has no current, matching execution authority."""
@@ -252,42 +296,7 @@ class SourceAuthority:
             )
         )
         try:
-            connection.executescript(
-                """
-                BEGIN IMMEDIATE;
-                CREATE TABLE IF NOT EXISTS source_authority_schema (
-                    singleton INTEGER PRIMARY KEY CHECK (singleton=1),
-                    version INTEGER NOT NULL CHECK (version>=1)
-                );
-                CREATE TABLE IF NOT EXISTS source_grants (
-                    owner_user_id TEXT NOT NULL,
-                    workload_id TEXT NOT NULL,
-                    source_id TEXT NOT NULL,
-                    device_id TEXT NOT NULL,
-                    locator_bytes BLOB NOT NULL,
-                    content_digest TEXT NOT NULL,
-                    size_bytes INTEGER NOT NULL CHECK (size_bytes>=0),
-                    mtime_ns INTEGER NOT NULL CHECK (mtime_ns>=0),
-                    granted_at TEXT NOT NULL,
-                    expires_at TEXT NOT NULL,
-                    checked_at TEXT NOT NULL,
-                    check_generation INTEGER NOT NULL DEFAULT 0
-                        CHECK (check_generation>=0),
-                    revoked_at TEXT,
-                    PRIMARY KEY (owner_user_id, workload_id, source_id),
-                    CHECK (length(owner_user_id) BETWEEN 1 AND 128),
-                    CHECK (length(workload_id) BETWEEN 1 AND 128),
-                    CHECK (length(source_id) BETWEEN 1 AND 128),
-                    CHECK (length(device_id) BETWEEN 1 AND 128),
-                    CHECK (length(locator_bytes) BETWEEN 1 AND 32768)
-                ) WITHOUT ROWID;
-                CREATE INDEX IF NOT EXISTS source_grants_expiry
-                    ON source_grants(expires_at, owner_user_id, workload_id);
-                INSERT INTO source_authority_schema(singleton, version)
-                VALUES (1, 3) ON CONFLICT(singleton) DO NOTHING;
-                COMMIT;
-                """
-            )
+            connection.executescript(_SCHEMA_SQL_V3)
             version_row = connection.execute(
                 "SELECT version FROM source_authority_schema WHERE singleton=1"
             ).fetchone()
@@ -324,15 +333,7 @@ class SourceAuthority:
                 SOURCE_AUTHORITY_SCHEMA_VERSION,
             ):
                 raise SourceAuthorityError("source authority schema is incompatible")
-            connection.execute(
-                """
-                CREATE INDEX IF NOT EXISTS source_grants_check
-                ON source_grants(
-                    check_generation, checked_at, owner_user_id, workload_id
-                )
-                WHERE revoked_at IS NULL
-                """
-            )
+            connection.execute(_CHECK_INDEX_SQL)
             return cls(
                 connection,
                 snapshot_root=selected_snapshot_root,

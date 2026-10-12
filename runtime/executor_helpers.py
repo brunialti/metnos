@@ -146,8 +146,8 @@ def backup_file_for_undo(path) -> str:
     turn_id = os.environ.get("METNOS_TURN_ID") or "no_turn"
     if not re.fullmatch(r"[A-Za-z0-9_.:-]{1,128}", turn_id):
         turn_id = "no_turn"
-    history = Path(os.environ.get("METNOS_HISTORY_DIR") or (
-        _C.PATH_USER_DATA / "_history"))
+    from history_paths import backup_directory
+    history = backup_directory()
     digest = hashlib.sha256()
     with source.open("rb") as stream:
         for chunk in iter(lambda: stream.read(65536), b""):

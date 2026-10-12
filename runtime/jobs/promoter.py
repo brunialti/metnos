@@ -40,6 +40,8 @@ import config as _C  # §7.11
 from .promoter_example import render_practical_example
 from .promoter_promote import promote_to_catalog
 from .promoter_state import (
+    _proposals_dir,
+    _archive_dir,
     audit_append,
     ensure_schema,
     expire_grace,
@@ -58,20 +60,6 @@ log = logging.getLogger("metnos.jobs.promoter")
 CAP_PER_FIRE_DEFAULT = 5
 # Default grace window in ore.
 GRACE_HOURS_DEFAULT = 72
-
-
-_DEFAULT_PROPOSALS_DIR = _C.PATH_USER_DATA / "synt_proposals"
-_DEFAULT_ARCHIVE_DIR = _C.PATH_USER_DATA / "synth_archive"
-
-
-def _proposals_dir() -> Path:
-    env = os.environ.get("METNOS_SYNT_PROPOSALS_DIR")
-    return Path(env) if env else _DEFAULT_PROPOSALS_DIR
-
-
-def _archive_dir() -> Path:
-    env = os.environ.get("METNOS_SYNTH_ARCHIVE_DIR")
-    return Path(env) if env else _DEFAULT_ARCHIVE_DIR
 
 
 def _cap_per_fire() -> int:

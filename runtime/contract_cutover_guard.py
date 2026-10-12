@@ -256,8 +256,8 @@ class _MaintenanceProofV1:
         return True
 
 
-def _require_maintenance_session_v1(session: object) -> None:
-    """Require the exact live proof yielded while lifecycle exclusion is held."""
+def _require_held_maintenance_session_v1(session: object) -> None:
+    """Require the native live session without reobserving operational state."""
     if type(session) is not _MaintenanceProofV1:
         raise ContractCutoverGuardError("cutover_session_invalid")
     with _MAINTENANCE_SESSION_GUARD_V1:
@@ -269,6 +269,11 @@ def _require_maintenance_session_v1(session: object) -> None:
         or session._owner_process != os.getpid()
     ):
         raise ContractCutoverGuardError("cutover_session_invalid")
+
+
+def _require_maintenance_session_v1(session: object) -> None:
+    """Require the exact live proof and observe current operational state."""
+    _require_held_maintenance_session_v1(session)
     session.observe()
 
 

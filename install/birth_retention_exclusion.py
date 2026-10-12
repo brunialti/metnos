@@ -26,16 +26,22 @@ class _RetentionExclusionContextV1:
 
     Readonly fields expose the already held session and resolved installation,
     never an instruction to reopen locks or resolve a caller-selected account.
-    Calling this object preserves the previous callback contract.
+    Calling this object preserves the full observation callback contract.
+    Inventory walks may explicitly check the held capabilities between full
+    observations at their boundaries and before any retention effect.
     """
     session: object
     account: object
     layout: object
     frontier: tuple[str, str]
     _checker: Callable[[], None] = field(repr=False, compare=False)
+    _held_checker: Callable[[], None] = field(repr=False, compare=False)
 
     def require_exclusion(self):
         self._checker()
+
+    def require_held_exclusion(self):
+        self._held_checker()
 
     def __call__(self):
         self.require_exclusion()
@@ -108,7 +114,8 @@ def administrative_retention_exclusion_v1():
         raise RetentionError("retention_administrator_required")
     from config import PATH_ROOT, PATH_USER_CONFIG, PATH_USER_STATE, PATH_USER_DATA
     from contract_cutover_guard import (
-        _contract_cutover_guard_for_service_user_v1, _require_maintenance_session_v1,
+        _contract_cutover_guard_for_service_user_v1,
+        _require_held_maintenance_session_v1, _require_maintenance_session_v1,
     )
     from executor_birth_account_identity import (
         metnos_xdg_layout_v1, resolve_posix_account_snapshot_v1,
@@ -152,7 +159,7 @@ def administrative_retention_exclusion_v1():
 
             frontier = installation_frontier()
 
-            def require_exclusion():
+            def require_held_exclusion():
                 if not active or process != os.getpid() or os.geteuid() != 0 or os.getegid() != 0:
                     raise RetentionError("retention_exclusion_lost")
                 account.assert_unchanged(resolve_posix_account_snapshot_v1(account.record.name))
@@ -160,14 +167,21 @@ def administrative_retention_exclusion_v1():
                 _require_exclusive_startup_gate_session_v1(startup)
                 _require_authority_lock_v1(authority, DEFAULT_OWNERSHIP_ROOT_V1 / _LOCK_BASENAME_V1, (0, 0))
                 birth._require_exclusive_global_lock()
+                _require_held_maintenance_session_v1(maintenance)
+
+            def require_exclusion():
+                require_held_exclusion()
                 _require_maintenance_session_v1(maintenance)
                 if installation_frontier() != frontier:
                     raise RetentionError("retention_installation_changed")
                 _require_empty_units_v1(account.record.name)
 
             require_exclusion()
-            yield _RetentionExclusionContextV1(
-                session=birth, account=account, layout=layout, frontier=frontier,
-                _checker=require_exclusion)
+            try:
+                yield _RetentionExclusionContextV1(
+                    session=birth, account=account, layout=layout, frontier=frontier,
+                    _checker=require_exclusion, _held_checker=require_held_exclusion)
+            finally:
+                require_exclusion()
     finally:
         active = False
