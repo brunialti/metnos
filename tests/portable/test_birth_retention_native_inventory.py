@@ -8,6 +8,9 @@ from pathlib import Path
 
 import pytest
 
+if os.name != 'posix':
+    pytest.skip('native Linux/POSIX F6 owner composition', allow_module_level=True)
+
 import executor_birth_prepared_root as prepared
 from executor_birth_retention import RetentionError
 from install.birth_retention_native_inventory import _compose_native_inventory_v1, _observed_paths_v1

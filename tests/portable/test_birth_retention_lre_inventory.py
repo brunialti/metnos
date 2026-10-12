@@ -4,6 +4,9 @@ import os
 
 import pytest
 
+if os.name != 'posix':
+    pytest.skip('native Linux/POSIX F6 LRE composition', allow_module_level=True)
+
 from executor_birth_retention import NodeState, RetentionError, RootKind
 from durable_workloads.artifacts import ArtifactWorkspacePaths
 from install.birth_retention_lre_inventory import _LreInventory

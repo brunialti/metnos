@@ -9,6 +9,9 @@ from types import SimpleNamespace
 
 import pytest
 
+if os.name != 'posix':
+    pytest.skip('native Linux/POSIX F6 administrative paths', allow_module_level=True)
+
 import executor_birth_admin_preflight as native
 from executor_birth_retention import RetentionError
 from install import birth_retention_installed_paths as paths

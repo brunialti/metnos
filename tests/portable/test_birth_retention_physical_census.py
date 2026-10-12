@@ -5,6 +5,9 @@ from types import SimpleNamespace
 
 import pytest
 
+if os.name != 'posix':
+    pytest.skip('native Linux/POSIX F6 physical namespace custody', allow_module_level=True)
+
 from executor_birth_retention import NodeState, RetentionError, RootKind
 from install.birth_retention_inventory import _InventoryComposition
 from install.birth_retention_open_audit import _TelosFilteredOwner
