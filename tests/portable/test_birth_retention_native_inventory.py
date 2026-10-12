@@ -16,6 +16,7 @@ from executor_birth_retention import RetentionError
 from install.birth_retention_native_inventory import _compose_native_inventory_v1, _observed_paths_v1
 from install.birth_retention_path_probe import PATH_KEYS
 from loader import Catalog
+from tests.portable.native_catalog_fixtures import authenticated_catalog
 from tests.portable.rm0008_2b.test_historical_context_session import historical, snapshot
 
 
@@ -33,6 +34,7 @@ def observed(tmp_path):
 
 @pytest.mark.skipif(os.name != 'posix', reason='native held Birth session')
 def test_native_owner_assembly_is_readonly_and_shares_exact_join_owners(tmp_path, monkeypatch):
+    catalog = authenticated_catalog(tmp_path, monkeypatch)
     base, _, selector = historical(tmp_path, monkeypatch, 'target')
     paths = observed(tmp_path)
     with prepared.open_prepared_root_session_v1() as session:
@@ -41,7 +43,7 @@ def test_native_owner_assembly_is_readonly_and_shares_exact_join_owners(tmp_path
             before = snapshot(base)
             composition = _compose_native_inventory_v1(paths=paths, account_owner=(os.geteuid(), os.getegid()),
                 birth_root=base / 'birth', session=session, context_bindings={selector: binding},
-                catalog=Catalog(), reviews_root=tmp_path / 'reviews', require_exclusion=lambda: None)
+                catalog=catalog, reviews_root=tmp_path / 'reviews', require_exclusion=lambda: None)
             assert snapshot(base) == before
             assert not (tmp_path / 'stopped').exists()
             assert len(composition.owners) >= 30
@@ -53,6 +55,19 @@ def test_native_owner_assembly_is_readonly_and_shares_exact_join_owners(tmp_path
                            if name in component.owners)
             archive = composition.owners['turn_archives']
             assert archive.root == Path(paths['turn_archives'])
+
+
+def test_empty_catalog_still_rejects_the_native_ocr_runner(monkeypatch):
+    import loader
+    from durable_runtime_registry import runtime_registry_for_catalog
+    from durable_workloads.compiler import CompilationError
+
+    monkeypatch.setattr(loader, 'load_catalog',
+                        lambda **_kw: pytest.fail('empty supplied catalog reopened'))
+    with pytest.raises(ValueError, match='runtime runner declaration cannot be resolved') as failure:
+        runtime_registry_for_catalog(Catalog())
+    assert isinstance(failure.value.__cause__, CompilationError)
+    assert 'read_files_ocr' in str(failure.value.__cause__)
 
 
 @pytest.mark.parametrize('fault', ['missing', 'foreign', 'relative', 'alias'])

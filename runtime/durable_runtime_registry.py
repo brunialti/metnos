@@ -91,7 +91,7 @@ def runtime_registry_for_catalog(catalog) -> RuntimeRegistry:
     image_questions = RuntimeRegistration(
         name=PRESET_ID,
         runner_bindings=registered_runner_bindings(),
-        runners=runner_resolver(),
+        runners=runner_resolver(catalog_loader=lambda **_kw: catalog),
         output_schemas=schemas,
         output_schema_names=registered_output_schema_names(schemas),
         workload_invoker=ImagePresetWorkloadInvoker(),

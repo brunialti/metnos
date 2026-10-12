@@ -243,10 +243,11 @@ def complete_census(tmp_path, monkeypatch):
     from contract_store import STORE_RELATIVE
     from executor_birth_canonical import encode_canonical_ascii_v1
     from install.birth_retention_native_inventory import _compose_native_inventory_v1
-    from loader import Catalog
+    from tests.portable.native_catalog_fixtures import authenticated_catalog
     from tests.portable.rm0008_2b.test_historical_context_session import historical
     from test_birth_retention_native_inventory import observed
 
+    catalog = authenticated_catalog(tmp_path, monkeypatch)
     base, _, selector = historical(tmp_path, monkeypatch, 'target')
     paths = observed(tmp_path)
     # Unlike the constructor-only assembly fixture, a physical inventory must
@@ -270,7 +271,7 @@ def complete_census(tmp_path, monkeypatch):
                 (selector,), session)
             native = _compose_native_inventory_v1(paths=paths, account_owner=(os.geteuid(), os.getegid()),
                 birth_root=base / 'birth', session=session, context_bindings={selector: binding},
-                catalog=Catalog(), reviews_root=reviews_root, require_exclusion=guard)
+                catalog=catalog, reviews_root=reviews_root, require_exclusion=guard)
             wrapper = _PhysicalCensusV1(native_inventory=native, paths=paths,
                 account_owner=(os.geteuid(), os.getegid()), birth_root=base / 'birth',
                 session=session, require_exclusion=guard)
