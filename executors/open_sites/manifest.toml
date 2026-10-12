@@ -3,7 +3,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "open_sites"
-version     = "0.4.1"
+version     = "0.4.2"
 # Apertura context + navigazione: il broker ha timeout interno 20s/op; qui il
 # tetto client è ampio per il fan-out su più url.
 timeout_s   = 120
@@ -23,7 +23,6 @@ en = "SCOPO: opens a persistent browser session and records only newly created s
 
 [code]
 files  = ["open_sites.py"]
-dependencies = ["get_approval"]
 digest = "sha256:c63e58a07045ad7f2563a6f03e1fdccce98ff0ac384f47fece1c7ae8350f6877"
 
 [args]

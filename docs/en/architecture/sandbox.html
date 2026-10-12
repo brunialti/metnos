@@ -255,7 +255,7 @@ from an administrator's shell.</p>
 
 <ul>
 <li><strong>Visible does not mean authorised.</strong> A mount lets the process reach a resource; identity, consent, and purpose must already have been checked.</li>
-<li><strong>Some base mounts are broad.</strong> The server exposes <code>/etc</code> and <code>/sys</code> read-only when they exist. The shared <code>/opt</code> mount was removed so an executor cannot replay a signed but undeclared sibling dependency. An executor that asks for consent from inside therefore declares <code>get_approval</code> among its code dependencies and loads it through the shared verified door; a missing dependency is a closed error and the pending session is kept.</li>
+<li><strong>Some base mounts are broad.</strong> The server exposes <code>/etc</code> and <code>/sys</code> read-only when they exist. The shared <code>/opt</code> mount was removed so an executor cannot replay a signed but undeclared sibling dependency. An executor that asks for consent from inside therefore does not import <code>get_approval</code>: it returns a consent request and the runtime creates the form, with the same verified human submission.</li>
 <li><strong>Network access is binary.</strong> When required, the process inherits the host network; bubblewrap does not enforce an allowlist of hosts.</li>
 <li><strong>The profile uses neither Landlock nor custom seccomp</strong> and does not separate the server's PID namespace.</li>
 <li><strong><code>system:undo</code> is an explicit byte-pinned exception.</strong> Undo must reconstruct resources known only from the runtime journal at execution time. The direct path requires the reviewed digest and exact code-file list; any later revision fails closed.</li>

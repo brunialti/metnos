@@ -85,7 +85,6 @@ def _attachment(path: str, sensitive: bool) -> dict:
 
 def invoke(args: dict) -> dict:
     owner = os.environ.get("METNOS_ACTOR") or "host"
-    channel = os.environ.get("METNOS_CHANNEL") or ""
     session_ids = _collect_session_ids(args)
     if not session_ids:
         return {"ok": False, "error": _msg("ERR_ARG_MISSING", arg="session_ids"),
@@ -175,7 +174,7 @@ def invoke(args: dict) -> dict:
         entries.append(entry)
 
     if pending:
-        from admitted_module_v1 import invoke_admitted_dependency_v1
+        from approval_request import approval_request
         tokens = {sid: token for sid, token, _ in pending}
         origin_gate = all(res.get("approval_kind") == "credential_origin"
                           for _, _, res in pending)
@@ -201,14 +200,13 @@ def invoke(args: dict) -> dict:
             resume_args["domain"] = domain
         if form_hint is not None:
             resume_args["form_hint"] = form_hint
-        gate = invoke_admitted_dependency_v1("get_approval", {
-            "prompt": prompt, "title": title,
-            "actor": owner, "channel": channel, "timeout_s": 3600,
-            "on_approve": {"tool": "login_sites", "args": resume_args},
-            "on_reject": {"tool": "delete_sites", "args": {
+        gate = approval_request(
+            prompt=prompt, title=title, timeout_s=3600,
+            on_approve={"tool": "login_sites", "args": resume_args},
+            on_reject={"tool": "delete_sites", "args": {
                 "session_ids": list(tokens),
             }},
-        })
+        )
         if attachments:
             gate["attachments"] = attachments
         gate["pending_sessions"] = list(tokens)

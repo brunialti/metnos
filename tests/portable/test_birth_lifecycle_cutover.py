@@ -170,9 +170,22 @@ def test_the_marker_is_readable_by_the_runtime_that_will_trust_it(marker_root, m
 
 
 @native
-def test_writing_the_same_marker_twice_is_accepted(marker_root):
+def test_writing_the_same_marker_twice_is_accepted(marker_root, monkeypatch):
+    clock = {"now": "2026-10-12T11:00:00Z"}
+    clock_reads = []
+
+    def now():
+        clock_reads.append(clock["now"])
+        return clock["now"]
+
+    monkeypatch.setattr(cutover, "_utc_now", now)
     first = cutover._install_marker(INSTALLATION, MIGRATION)
+    original = first.read_bytes()
+    clock["now"] = "2026-10-12T12:00:00Z"
     assert cutover._install_marker(INSTALLATION, MIGRATION) == first
+    assert first.read_bytes() == original
+    assert json.loads(original)["completed_at"] == "2026-10-12T11:00:00Z"
+    assert clock_reads == ["2026-10-12T11:00:00Z"]
 
 
 @native
@@ -192,6 +205,17 @@ def test_a_damaged_marker_is_not_silently_rewritten(marker_root):
     path.chmod(0o666)
     with pytest.raises((cutover.LifecycleCutoverError, files.OwnershipAuthorityError)):
         cutover._install_marker(INSTALLATION, MIGRATION)
+
+
+@native
+def test_a_corrupt_marker_is_not_silently_rewritten(marker_root):
+    path = cutover._install_marker(INSTALLATION, MIGRATION)
+    corrupt = b'{"schema_version":1}'
+    path.write_bytes(corrupt)
+    with pytest.raises(cutover.LifecycleCutoverError) as raised:
+        cutover._install_marker(INSTALLATION, MIGRATION)
+    assert raised.value.code == "cutover_marker_present"
+    assert path.read_bytes() == corrupt
 
 
 # --- the two commands --------------------------------------------------------

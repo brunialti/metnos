@@ -84,7 +84,6 @@ def _failure_message(results: list[dict]) -> str:
 
 def invoke(args: dict) -> dict:
     owner = os.environ.get("METNOS_ACTOR") or "host"
-    channel = os.environ.get("METNOS_CHANNEL") or ""
     session_ids = _collect_session_ids(args)
     action = args.get("action")
     if not session_ids:
@@ -196,17 +195,16 @@ def invoke(args: dict) -> dict:
 
     if pending:
         # Un solo gate BATCH per l'intento multi-sessione (§12-bis).
-        from admitted_module_v1 import invoke_admitted_dependency_v1
+        from approval_request import approval_request
         tokens = {sid: token for sid, token, _ in pending}
         descriptions = "; ".join(
             str(res.get("description") or action) for _, _, res in pending)
         prompt = _msg("MSG_SITES_APPROVAL_PROMPT", action=descriptions)
-        gate = invoke_admitted_dependency_v1("get_approval", {
-            "prompt": prompt,
-            "title": _msg("MSG_SITES_APPROVAL_TITLE"),
-            "actor": owner, "channel": channel,
-            "timeout_s": 3600,
-            "on_approve": {"tool": "act_sites", "args": {
+        gate = approval_request(
+            prompt=prompt,
+            title=_msg("MSG_SITES_APPROVAL_TITLE"),
+            timeout_s=3600,
+            on_approve={"tool": "act_sites", "args": {
                 "session_ids": list(tokens), "action": action,
                 "approval_tokens": tokens,
                 **({"done_when": done_when} if done_when else {}),
@@ -214,10 +212,10 @@ def invoke(args: dict) -> dict:
                 **({"_goal_mode": True} if goal_mode else {}),
                 **({"value_ref": value_ref} if value_ref is not None else {}),
             }},
-            "on_reject": {"tool": "delete_sites", "args": {
+            on_reject={"tool": "delete_sites", "args": {
                 "session_ids": list(tokens),
             }},
-        })
+        )
         if attachments:
             gate["attachments"] = attachments
         gate["pending_sessions"] = list(tokens)

@@ -2,7 +2,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "act_sites"
-version     = "0.2.6"
+version     = "0.2.7"
 intelligence = "agentic"
 # Four available sessions, each with a five-minute active search budget.
 timeout_s   = 1800
@@ -23,7 +23,6 @@ en = "SCOPO: reach a goal inside a web session, with consent when sensitive. PAT
 
 [code]
 files = ["act_sites.py"]
-dependencies = ["get_approval"]
 digest = "sha256:03004b04d5d26564842f2fa560e66e141c5ac52e0ac230e4b0bdcecf596111ea"
 
 [args]

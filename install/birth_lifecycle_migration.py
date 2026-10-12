@@ -304,11 +304,8 @@ def _utc_now() -> str:
 
 def _install_marker(installation_id: str, migration_id: str) -> Path:
     """Record the marker last, so an earlier interruption changes nothing."""
-    from executor_birth_activation_mode import encode_migration_marker_v1
-
-    encoded = encode_migration_marker_v1(
-        installation_id=installation_id, migration_id=migration_id,
-        completed_at=_utc_now(),
+    from executor_birth_activation_mode import (
+        LifecycleError, decode_migration_marker_v1, encode_migration_marker_v1,
     )
     _root_owned_chain(DEFAULT_OWNERSHIP_ROOT_V1)
     with _provisioning_lock(DEFAULT_OWNERSHIP_ROOT_V1, root_owned=True):
@@ -324,12 +321,20 @@ def _install_marker(installation_id: str, migration_id: str) -> Path:
 
             existing = _read_regular(path, maximum=MIGRATION_MAX_BYTES_V1,
                                      mode=0o644, root_owned=True)
-            if existing != encoded:
+            try:
+                identities = decode_migration_marker_v1(existing)
+            except LifecycleError as exc:
+                raise LifecycleCutoverError("cutover_marker_present") from exc
+            if identities != (installation_id, migration_id):
                 # A second cutover would change which decisions are
                 # authoritative. Replacing the marker is a recovery operation
                 # with its own evidence, not a retry.
                 raise LifecycleCutoverError("cutover_marker_present")
             return path
+        encoded = encode_migration_marker_v1(
+            installation_id=installation_id, migration_id=migration_id,
+            completed_at=_utc_now(),
+        )
         staged = directory / (MARKER_BASENAME_V1 + ".staged")
         descriptor = os.open(staged, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
         try:
