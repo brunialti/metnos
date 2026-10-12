@@ -125,6 +125,11 @@
  ingressi all’area personale e i menu pertinenti. Usa i segnali della pagina;
  quando non bastano, il modello locale sceglie fra i comandi effettivamente
  osservati. Non inventa collegamenti né contiene percorsi dedicati a singoli siti.</p>
+ <p>Una preferenza fra i segnali vale solo se distingue un comando. Alcune
+ pagine usano la parola dell’accesso come verbo generico, ad esempio
+ «Accedi a» seguito da molte sezioni diverse: quella parola non indica
+ l’ingresso e non nasconde il solo comando che l’insieme dei segnali
+ designa senza ambiguità, come «Area clienti».</p>
  <p>La ricerca esplora fino a quattro passaggi per percorso, con un limite
  complessivo di 32 azioni. In un vicolo cieco torna a una diramazione già
  verificata e prova un’alternativa. Se durante il ritorno la pagina è cambiata,
@@ -143,6 +148,10 @@
  da quello previsto impedisce l’invio. Nei moduli a due passaggi distingue
  l’indirizzo email dalla password; un collegamento di accesso fuori dal modulo
  non basta a scambiare una newsletter per una pagina di login.</p>
+ <p>Dopo l’invio osserva la pagina per un intervallo limitato. Un segnale di
+ accesso comparso entro quell’intervallo completa la propria verifica di
+ stabilità, al massimo per le letture che questa richiede; un segnale
+ successivo, interrotto o non osservabile resta non verificato.</p>
  <p>Salvataggio, elenco, uso e cancellazione delle credenziali condividono
  un unico deposito cifrato. L’elenco mostra soltanto metadati. I valori non
  compaiono nei risultati o nei registri e cambiare la cartella dei dati

@@ -17,7 +17,6 @@ from pathlib import Path
 
 _RT = os.environ.get("METNOS_RUNTIME") or str(
     Path(__file__).resolve().parents[2] / "runtime")
-_ROOT = Path(__file__).resolve().parents[2]
 if _RT not in sys.path:
     sys.path.insert(0, _RT)
 
@@ -132,11 +131,8 @@ def _invoke(args: dict) -> dict:
                                         or "approval_invalid"), "entries": []}
             pending_tokens.append(token)
         if extras:
-            approval_dir = _ROOT / "executors" / "get_approval"
-            if str(approval_dir) not in sys.path:
-                sys.path.insert(0, str(approval_dir))
-            from get_approval import invoke as approval_invoke
-            return approval_invoke({
+            from admitted_module_v1 import invoke_admitted_dependency_v1
+            return invoke_admitted_dependency_v1("get_approval", {
                 "prompt": _msg("MSG_SITES_ALLOWLIST_APPROVAL_PROMPT",
                                hosts=", ".join(sorted(extras))),
                 "title": _msg("MSG_SITES_ALLOWLIST_APPROVAL_TITLE"),
@@ -229,11 +225,8 @@ def _invoke(args: dict) -> dict:
                     and not entry.get("reused")):
                 session_client.session_close(
                     session_id=entry["session_id"], owner=owner)
-        approval_dir = _ROOT / "executors" / "get_approval"
-        if str(approval_dir) not in sys.path:
-            sys.path.insert(0, str(approval_dir))
-        from get_approval import invoke as approval_invoke
-        return approval_invoke({
+        from admitted_module_v1 import invoke_admitted_dependency_v1
+        return invoke_admitted_dependency_v1("get_approval", {
             "prompt": _msg("MSG_SITES_ALLOWLIST_APPROVAL_PROMPT",
                            hosts=", ".join(sorted(pending_hosts))),
             "title": _msg("MSG_SITES_ALLOWLIST_APPROVAL_TITLE"),

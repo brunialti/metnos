@@ -3,7 +3,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "login_sites"
-version     = "0.2.2"
+version     = "0.2.3"
 intelligence = "agentic"
 timeout_s   = 180
 platforms   = ["linux"]
@@ -21,6 +21,7 @@ en = "SCOPO: reaches sign-in and uses encrypted credentials never exposed to the
 
 [code]
 files  = ["login_sites.py"]
+dependencies = ["get_approval"]
 digest = "sha256:34e5ad36200304046da0b30d628f89ac11def9ba1186c3443b5abab8195106d4"
 
 [args]

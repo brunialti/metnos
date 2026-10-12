@@ -3028,20 +3028,94 @@ async def _reduce_site_goal(query: str) -> str:
     return str(outcome.result or "")
 
 
+def _login_entry_exclusion(candidate: dict, current_place: str) -> str:
+    """Closed reason why a navigation control is not a login entry, or ""."""
+    if (current_place
+            and action_resolver.goal_place_key(candidate) == current_place
+            and str(candidate.get("aria_current") or "").lower() in {
+                "true", "page", "step", "location"}):
+        return "current_place"
+    if str(candidate.get("form_method") or "").upper() == "POST":
+        return "form_post"
+    if (str(candidate.get("type") or "").lower() in {"reset", "checkbox", "radio"}
+            or str(candidate.get("role") or "").lower() in {
+                "checkbox", "radio", "switch", "combobox"}):
+        return "toggle"
+    return ""
+
+
 def _login_entry_candidates(candidates: list[dict], current_url: str = "") -> list[dict]:
     """Navigation only: no fields, form submissions or preference toggles."""
     current_place = action_resolver.url_place_key(current_url)
     return [candidate for candidate in
             action_resolver.goal_navigation_candidates(candidates)
-            if not (current_place
-                    and action_resolver.goal_place_key(candidate) == current_place
-                    and str(candidate.get("aria_current") or "").lower() in {
-                        "true", "page", "step", "location"})
-            if str(candidate.get("form_method") or "").upper() != "POST"
-            and str(candidate.get("type") or "").lower() not in {
-                "reset", "checkbox", "radio"}
-            and str(candidate.get("role") or "").lower() not in {
-                "checkbox", "radio", "switch", "combobox"}]
+            if not _login_entry_exclusion(candidate, current_place)]
+
+
+_LOGIN_CHOICE_SAMPLE = 8
+_LOGIN_LIKENESS_PRESENTATION = {"rendered": True, "visible": True,
+                                "in_viewport": True, "topmost": True,
+                                "disabled": False}
+
+
+def _login_choice_audit(observation: dict, tried, *, mechanism: str,
+                        lexicon: dict, chosen: dict | None,
+                        model_offered: int) -> dict:
+    """Closed metadata of one login entry decision, for the audit only.
+
+    Counts, closed reasons and truncated identity hashes: never names,
+    values, destinations or page text. For every observed control that the
+    shared resolver would accept as a login entry on its own, it says whether
+    it was available, already tried, or excluded and why.
+    """
+    current_place = action_resolver.url_place_key(str(observation.get("url") or ""))
+    entry_keys = {login_navigation.candidate_key(candidate)
+                  for candidate in observation["candidates"]}
+    excluded: dict[str, int] = {}
+    matches = []
+    for candidate in observation["all_candidates"]:
+        key = login_navigation.candidate_key(candidate)
+        if key in entry_keys:
+            status = "tried" if key in tried else "available"
+        else:
+            status = (action_resolver.navigation_exclusion(candidate)
+                      or _login_entry_exclusion(candidate, current_place)
+                      or "other")
+            excluded[status] = excluded.get(status, 0) + 1
+        # Login-likeness ignores presentation: a covered, hidden or scrolled
+        # entry is still reported as one, with its real exclusion reason.
+        alone = action_resolver.choose_candidate(
+            "login", [{**candidate, **_LOGIN_LIKENESS_PRESENTATION}], "click")
+        if alone.get("ok"):
+            matches.append((float(alone.get("confidence") or 0.0), key, status,
+                            candidate))
+    matches.sort(key=lambda item: item[0], reverse=True)
+    match_status: dict[str, int] = {}
+    for _score, _key, status, _candidate in matches:
+        match_status[status] = match_status.get(status, 0) + 1
+    available = len(login_navigation.untried_candidates(
+        observation["candidates"], tried))
+    return {
+        "observed": len(observation["all_candidates"]),
+        "entry_candidates": len(observation["candidates"]),
+        "available": available,
+        "tried": len(observation["candidates"]) - available,
+        "excluded": excluded,
+        "login_matches": len(matches),
+        "login_match_status": match_status,
+        "login_match_sample": [
+            {"key": key[:12], "status": status, "score": round(score, 2),
+             "reveal": bool(action_resolver.is_reveal_control(candidate)),
+             "verifiable": bool(
+                 action_resolver._safe_navigation_identity(candidate))}
+            for score, key, status, candidate in matches[:_LOGIN_CHOICE_SAMPLE]],
+        "mechanism": mechanism,
+        "lexicon_ok": bool(lexicon.get("ok")),
+        "lexicon_ambiguous": bool(lexicon.get("ambiguous")),
+        "model_offered": int(model_offered),
+        "chosen_key": (login_navigation.candidate_key(chosen)[:12]
+                       if chosen else ""),
+    }
 
 
 async def _resolve_login_captcha(entry: dict, session_id: str, flow: dict, page) -> bool:
@@ -3150,12 +3224,11 @@ async def _discover_login_entry(entry: dict, session_id: str, flow: dict) -> dic
                 "candidates": _login_entry_candidates(candidates, page.url),
                 "all_candidates": candidates}
 
-    async def choose(observation: dict, tried: set[str]) -> dict | None:
-        candidates = login_navigation.untried_candidates(observation["candidates"], tried)
-        chosen = action_resolver.choose_candidate("login", candidates, "click")
+    async def decide(observation: dict, tried: set[str],
+                     candidates: list[dict], chosen: dict) -> tuple:
         if chosen.get("ok") and not chosen.get("ambiguous"):
-            return {"candidate": chosen["candidate"],
-                    "confidence": chosen.get("confidence", 1.0)}
+            return ({"candidate": chosen["candidate"],
+                     "confidence": chosen.get("confidence", 1.0)}, "lexicon", 0)
         # Reuse the multilingual resolver and DOM relations. A sole menu is
         # also useful on pages that expose no login words yet.
         reveal = action_resolver.choose_reveal_candidate(
@@ -3165,21 +3238,41 @@ async def _discover_login_entry(entry: dict, session_id: str, flow: dict) -> dic
                    if action_resolver.is_reveal_control(candidate)
                    and str(candidate.get("aria_expanded") or "").lower() != "true"]
         candidate = reveal.get("candidate") if reveal.get("ok") else None
+        mechanism = "reveal"
         if candidate is None and len(reveals) == 1:
-            candidate = reveals[0]
+            candidate, mechanism = reveals[0], "sole_reveal"
         if candidate is not None and candidate in candidates:
-            return {"candidate": candidate, "confidence": 0.5}
+            return {"candidate": candidate, "confidence": 0.5}, mechanism, 0
         hint = action_resolver.choose_login_area_hint(
             candidates, observation["url"])
         if hint.get("ok"):
-            return {"candidate": hint["candidate"],
-                    "confidence": hint["confidence"]}
+            return ({"candidate": hint["candidate"],
+                     "confidence": hint["confidence"]}, "area_hint", 0)
         candidate = await _local_llm_choose_goal_candidate(
             entry, "login", candidates, [], set(), login=True)
         if candidate is not None:
-            return {"candidate": candidate, "confidence": 0.5,
-                    "model_selected": True}
-        return None
+            return ({"candidate": candidate, "confidence": 0.5,
+                     "model_selected": True}, "model", len(candidates))
+        return None, "none", len(candidates)
+
+    async def choose(observation: dict, tried: set[str]) -> dict | None:
+        candidates = login_navigation.untried_candidates(observation["candidates"], tried)
+        chosen = action_resolver.choose_candidate("login", candidates, "click")
+        decision, mechanism, offered = await decide(
+            observation, tried, candidates, chosen)
+        # Diagnostics only: a failure to describe the decision never changes it.
+        try:
+            fields = _login_choice_audit(
+                observation, tried, mechanism=mechanism, lexicon=chosen,
+                chosen=(decision or {}).get("candidate"), model_offered=offered)
+        except Exception as exc:  # noqa: BLE001
+            fields = {"mechanism": mechanism, "diagnostic_failed": type(exc).__name__}
+        sites_audit.record(
+            "login_entry_choice", owner=entry.get("owner", ""),
+            session_id=session_id, domain=entry.get("domain", ""),
+            depth=len(state.get("frames") or ()) - 1,
+            actions=int(state.get("actions", 0)), **fields)
+        return decision
 
     async def execute(choice: dict) -> dict:
         prepared = await _prepare_action(
@@ -5957,7 +6050,10 @@ def _plan_audit_fields(plan: dict) -> dict:
             action_resolver._safe_navigation_identity(candidate)),
         "confidence": confidence,
         "model_selected": bool(plan.get("model_selected")),
-        "replay": bool(plan.get("collection_replay")),
+        # Collection and login keep the replay flag in different places; the
+        # audit reports one flag so a replayed click is never read as a choice.
+        "replay": bool(plan.get("collection_replay")
+                       or (plan.get("login_choice") or {}).get("replay")),
         "url_before": str(plan.get("page_url") or ""),
     }
 

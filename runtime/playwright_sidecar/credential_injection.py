@@ -858,11 +858,15 @@ async def _observe_post_submit(*, page, context, cookies_before: dict,
         "login_surface": False, "surface_checked": False,
         "auth_entry_route": False,
         "stable_positive": False,
+        "confirmed_after_window": False,
     }
     positive_streak = 0
     required_stable_polls = min(
         _AUTH_SUCCESS_STABLE_POLLS, max(2, attempts - 1))
-    for attempt in range(attempts):
+    # The window bounds when positive evidence may first appear. Evidence that
+    # appeared inside it completes its stability check, at most the polls the
+    # check itself needs; a negative or missing observation ends it at once.
+    for attempt in range(attempts + required_stable_polls - 1):
         try:
             cookies = await context.cookies()
         except Exception:
@@ -900,6 +904,7 @@ async def _observe_post_submit(*, page, context, cookies_before: dict,
             "surface_checked": surface_checked,
             "auth_entry_route": auth_entry_route,
             "stable_positive": False,
+            "confirmed_after_window": False,
             # Fix adversarial #5: status HTTP top-level catturato dal listener di
             # navigazione (perform_login), riletto FRESCO a ogni poll (la Response
             # puo' arrivare durante l'osservazione). Alimenta `rate_limited`.
@@ -912,6 +917,8 @@ async def _observe_post_submit(*, page, context, cookies_before: dict,
         positive_streak = positive_streak + 1 if positive else 0
         state["stable_positive"] = (
             positive_streak >= required_stable_polls)
+        state["confirmed_after_window"] = bool(
+            state["stable_positive"] and attempt >= attempts)
         # Challenge e rifiuti sono terminali. La superficie login puo' essere
         # ancora visibile nel primo frame dopo il click: azzera la sequenza ma
         # deve essere riosservata fino al budget. Se persiste o ricompare, lo
@@ -925,7 +932,8 @@ async def _observe_post_submit(*, page, context, cookies_before: dict,
             # loading. Stop only on the same evidence accepted by the caller,
             # including its configured session-cookie requirement.
             break
-        if attempt + 1 >= attempts:
+        if attempt + 1 >= attempts and not (
+                positive and positive_streak < required_stable_polls):
             break
         try:
             if hasattr(page, "wait_for_timeout"):
@@ -949,7 +957,7 @@ def _post_submit_audit_fields(observed: dict,
     return {
         name: bool(observed.get(name)) for name in (
             "surface_checked", "login_surface", "navigation_confirmed",
-            "auth_entry_route", "stable_positive",
+            "auth_entry_route", "stable_positive", "confirmed_after_window",
         )
     } | {
         "session_cookie_required": bool(session_cookie_names),

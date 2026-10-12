@@ -1,7 +1,7 @@
 /*
  * Metnos Quick Tour — A4 typesetting for the shared HTML component contract.
  * Content and language stay in docs/{it,en}/Metnos_QuickTour.html.
- * Eight explicit sheets: supplied cover, six sections, closing references.
+ * Ten explicit sheets: supplied cover, eight sections, closing references.
  */
 @page { size: A4 portrait; margin: 0; }
 @page cover { size: A4 portrait; margin: 0; }
@@ -54,12 +54,13 @@ body.qt-tour { text-rendering: optimizeLegibility; font-kerning: normal; }
 .qt-shot--trace img { max-height: 76mm; object-fit: contain; object-position: top; }
 .qt-figure figcaption { max-width: 178mm; margin-top: 2.5mm; font-size: 8.5pt; line-height: 1.35; }
 .qt-marker, .qt-num { width: 6.5mm; height: 6.5mm; font-size: 8.5pt; }
-.qt-marker { width: 8mm; height: 8mm; border: .65mm solid #fff; box-shadow: 0 0 0 .25mm #b74738; }
-.qt-marker::after { left: calc(100% + .65mm); width: 4mm; border-top-width: .25mm; }
-.qt-marker:not(:first-of-type)::after { left: auto; right: calc(100% + .65mm); }
+.qt-marker { width: 6.5mm; height: 6.5mm; border: .5mm solid #fff; box-shadow: 0 0 0 .25mm var(--qt-accent); }
 .qt-callouts { gap: 6mm; margin-top: 5mm; }
 .qt-callouts > li { gap: 2.5mm; padding-top: 3mm; border-top-width: .25mm; font-size: 9pt; line-height: 1.38; break-inside: avoid; }
 .qt-callouts strong { margin: .5mm 0 1.5mm; font-size: 10pt; line-height: 1.2; }
+.qt-callouts--annotated { gap: 3.5mm; margin-top: 4mm; }
+.qt-callouts--annotated > li { gap: 2mm; padding: 3.5mm 3mm; border-top-width: .7mm; border-radius: 0 0 1.5mm 1.5mm; }
+.qt-callouts--annotated strong { font-size: 11pt; }
 .qt-legend { column-gap: 8mm; margin-top: 4mm !important; }
 .qt-legend > div { padding: 3.5mm 0; border-bottom-width: .25mm; break-inside: avoid; }
 .qt-legend dt { gap: 2mm; font-size: 11pt; line-height: 1.2; }
@@ -116,3 +117,19 @@ body.qt-tour { text-rendering: optimizeLegibility; font-kerning: normal; }
 .qt-page--details .qt-strip { margin-top: 3mm; }
 a, a:visited { color: inherit; }
 .qt-links a, .qt-colophon a { text-decoration: none; }
+.qt-examples { gap: 4mm; }
+.qt-example { grid-template-columns: 9mm minmax(0, 1fr); gap: 4mm; padding: 4.5mm; border-left-width: 1mm; break-inside: avoid; }
+.qt-example-mark { gap: 4mm; }
+.qt-example-mark > span { width: 7mm; height: 7mm; font-size: 9pt; border-width: .25mm; }
+.qt-example-mark svg { width: 7mm; height: 7mm; }
+.qt-example h3 { font-size: 12pt; }
+.qt-example-request { margin-top: 2.5mm !important; font-size: 13pt; line-height: 1.25; }
+.qt-example-follow { margin-top: 1.5mm !important; font-size: 10pt; }
+.qt-example-result { margin-top: 2.5mm !important; font-size: 10.5pt; line-height: 1.35; }
+.qt-example-boundary { margin-top: 1.5mm !important; font-size: 8.5pt; line-height: 1.3; }
+.qt-examples-link { margin-top: 4mm !important; }
+.qt-monitor-figure { margin-top: 5mm !important; break-inside: avoid; }
+.qt-monitor-notes { gap: 5mm; margin-top: 7mm; break-inside: avoid; }
+.qt-monitor-notes > div { padding-top: 3mm; border-top-width: .75mm; }
+.qt-monitor-notes h3 { margin-bottom: 2mm; font-size: 12pt; }
+.qt-monitor-notes p { font-size: 10.5pt; line-height: 1.35; }

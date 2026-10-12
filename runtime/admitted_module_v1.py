@@ -729,3 +729,21 @@ def load_admitted_module_v1(executor) -> ModuleType:
             "admitted_module_unloadable", type(exc).__name__,
         ) from exc
     return module
+
+
+def invoke_admitted_dependency_v1(name: str, args: dict) -> dict:
+    """Invoke one executor named in the caller's signed `[code].dependencies`.
+
+    The OS sandbox mounts only declared, verified dependency roots, so a
+    sibling executor imported by path is absent there. A missing or invalid
+    record returns the closed dependency failure, never an exception.
+    """
+    try:
+        module = load_admitted_module_v1(runtime_admitted_executor_v1(name))
+    except AdmittedModuleError:
+        from messages import get as _msg
+        return {"ok": False,
+                "error": _msg("ERR_DURABLE_DEPENDENCIES_UNAVAILABLE"),
+                "error_class": "dependency_unavailable",
+                "error_code": "executor_dependency_unavailable"}
+    return module.invoke(args)

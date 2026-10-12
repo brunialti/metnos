@@ -20,9 +20,8 @@ from pathlib import Path
 _ROOT = Path(__file__).resolve().parents[2]
 _RT = os.environ.get("METNOS_RUNTIME") or str(
     _ROOT / "runtime")
-for path in (_RT, str(_ROOT / "executors" / "get_approval")):
-    if path not in sys.path:
-        sys.path.insert(0, path)
+if _RT not in sys.path:
+    sys.path.insert(0, _RT)
 
 from messages import get as _msg  # noqa: E402
 from executor_helpers import run_stdio  # noqa: E402
@@ -176,7 +175,7 @@ def invoke(args: dict) -> dict:
         entries.append(entry)
 
     if pending:
-        from get_approval import invoke as approval_invoke
+        from admitted_module_v1 import invoke_admitted_dependency_v1
         tokens = {sid: token for sid, token, _ in pending}
         origin_gate = all(res.get("approval_kind") == "credential_origin"
                           for _, _, res in pending)
@@ -202,7 +201,7 @@ def invoke(args: dict) -> dict:
             resume_args["domain"] = domain
         if form_hint is not None:
             resume_args["form_hint"] = form_hint
-        gate = approval_invoke({
+        gate = invoke_admitted_dependency_v1("get_approval", {
             "prompt": prompt, "title": title,
             "actor": owner, "channel": channel, "timeout_s": 3600,
             "on_approve": {"tool": "login_sites", "args": resume_args},

@@ -536,24 +536,38 @@ def choose_candidate(target: str, candidates: list[dict], primitive: str) -> dic
         return {"ok": False, "error_class": "selector_missing",
                 "ranked": model_ranked[:24]}
     if primitive == "click" and _is_login_target(target):
+        narrowed = ranked
         # Un controllo diretto di autenticazione (es. "Accedi"/"Sign in")
         # e' semanticamente piu' specifico di un reveal generico come
         # "Account". Le forme arrivano dal detection_lexicon: nessun label o
         # sito e' codificato nel resolver. Se non esiste un diretto, conserva
         # integralmente il fallback precedente sui reveal.
         direct = [
-            (score, candidate) for score, candidate in ranked
+            (score, candidate) for score, candidate in narrowed
             if _candidate_matches_concept(
                 candidate, "sites.login_direct_target")]
         if direct and direct[0][0] >= 0.55:
-            ranked = direct
+            narrowed = direct
         # Un href HTTP(S) e' verificabile dal broker prima del click; un
         # controllo JavaScript opaco no. Se esistono link login validi, limita
         # l'ambiguita' a questi senza inventare destinazioni o selettori.
-        navigable = [(score, candidate) for score, candidate in ranked
+        navigable = [(score, candidate) for score, candidate in narrowed
                      if _safe_navigation_identity(candidate) is not None]
         if navigable and navigable[0][0] >= 0.55:
-            ranked = navigable
+            narrowed = navigable
+        decision = _ranked_decision(target, narrowed, primitive)
+        if not decision["ambiguous"] or narrowed is ranked:
+            return decision
+        # A preference only helps when it singles a control out. A page can
+        # use a direct login word as its generic "go to" verb on many links to
+        # different places; that shared word then names no entry, and it must
+        # not hide the one control the whole evidence designates unambiguously.
+        wider = _ranked_decision(target, ranked, primitive)
+        return decision if wider["ambiguous"] else wider
+    return _ranked_decision(target, ranked, primitive)
+
+
+def _ranked_decision(target: str, ranked: list, primitive: str) -> dict:
     top_score, top = ranked[0]
     margin = top_score - (ranked[1][0] if len(ranked) > 1 else 0.0)
     ambiguous = margin < 0.12
@@ -998,6 +1012,42 @@ def _looks_like_prose(name: str) -> bool:
     return bool(_FRASE.search(grezzo))
 
 
+def navigation_exclusion(candidate: dict) -> str:
+    """Closed reason why a control is not a navigation candidate, or "".
+
+    The single definition used by `goal_navigation_candidates`; diagnostics
+    report the same reason without reading names, values or destinations.
+    """
+    tag = str(candidate.get("tag") or "").lower()
+    typ = str(candidate.get("type") or "").lower()
+    role = str(candidate.get("role") or "").lower()
+    if candidate.get("disabled"):
+        return "disabled"
+    if candidate.get("visible") is False:
+        return "hidden"
+    if candidate.get("in_viewport") is False:
+        return "offscreen"
+    if candidate.get("topmost") is False:
+        return "covered"
+    if (candidate.get("secret_input") or typ == "password"
+            or tag in ("input", "textarea", "select")
+            or role in ("textbox", "searchbox")):
+        return "field"
+    if candidate.get("download"):
+        return "download"
+    if typ == "submit" and candidate.get("form_action"):
+        return "form_submit"
+    nome = str(candidate.get("name") or candidate.get("label") or "")
+    # An observed icon can be a meaningful control (pagination commonly
+    # uses only an arrow). Leave its meaning to the semantic resolver;
+    # non-semantic wrappers and empty labels remain ineligible.
+    if not nome.strip() or (not normalize(nome) and not _is_semantic_control(candidate)):
+        return "unnamed"
+    if _looks_like_prose(nome):
+        return "prose"
+    return ""
+
+
 def goal_navigation_candidates(candidates: list[dict], *,
                                excluded: set[str] | None = None,
                                include_offscreen: bool = False,
@@ -1015,31 +1065,13 @@ def goal_navigation_candidates(candidates: list[dict], *,
             # Semantic selection may inspect an obstructed route. Return the
             # original facts; execution must reveal and revalidate the node.
             candidate = {**candidate, "topmost": True}
-        tag = str(candidate.get("tag") or "").lower()
-        typ = str(candidate.get("type") or "").lower()
-        role = str(candidate.get("role") or "").lower()
-        if (candidate.get("disabled") or candidate.get("visible") is False
-                or candidate.get("in_viewport") is False
-                or candidate.get("topmost") is False
-                or candidate.get("secret_input") or candidate.get("download")
-                or typ == "password"
-                or (typ == "submit" and candidate.get("form_action"))
-                or tag in ("input", "textarea", "select")
-                or role in ("textbox", "searchbox")):
+        if navigation_exclusion(candidate):
             continue
         # `excluded` is a set of OPAQUE identities: navigation puts places in
         # it, pagination puts exhausted controls in it. A candidate is excluded
         # when either of its two identities is in there.
         if (goal_candidate_key(candidate) in excluded
                 or goal_place_key(candidate) in excluded):
-            continue
-        nome = str(candidate.get("name") or candidate.get("label") or "")
-        # An observed icon can be a meaningful control (pagination commonly
-        # uses only an arrow). Leave its meaning to the semantic resolver;
-        # non-semantic wrappers and empty labels remain ineligible.
-        if not nome.strip() or (not normalize(nome) and not _is_semantic_control(candidate)):
-            continue
-        if _looks_like_prose(nome):
             continue
         out.append(original)
     return out

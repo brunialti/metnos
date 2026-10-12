@@ -10,9 +10,8 @@ from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parents[2]
 _RT = os.environ.get("METNOS_RUNTIME") or str(_ROOT / "runtime")
-for p in (_RT, str(_ROOT / "executors" / "get_approval")):
-    if p not in sys.path:
-        sys.path.insert(0, p)
+if _RT not in sys.path:
+    sys.path.insert(0, _RT)
 
 from executor_helpers import run_stdio  # noqa: E402
 from messages import get as _msg  # noqa: E402
@@ -197,12 +196,12 @@ def invoke(args: dict) -> dict:
 
     if pending:
         # Un solo gate BATCH per l'intento multi-sessione (§12-bis).
-        from get_approval import invoke as approval_invoke
+        from admitted_module_v1 import invoke_admitted_dependency_v1
         tokens = {sid: token for sid, token, _ in pending}
         descriptions = "; ".join(
             str(res.get("description") or action) for _, _, res in pending)
         prompt = _msg("MSG_SITES_APPROVAL_PROMPT", action=descriptions)
-        gate = approval_invoke({
+        gate = invoke_admitted_dependency_v1("get_approval", {
             "prompt": prompt,
             "title": _msg("MSG_SITES_APPROVAL_TITLE"),
             "actor": owner, "channel": channel,

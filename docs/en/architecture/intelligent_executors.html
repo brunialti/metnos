@@ -124,6 +124,11 @@
  relevant account links and menus. It uses signals from the page; when these
  are insufficient, the local model chooses among controls actually observed.
  It does not invent links or use routes written for individual websites.</p>
+ <p>A preference between signals counts only when it singles out a control.
+ Some pages use the sign-in word as a generic verb, such as “Access” followed
+ by many different sections: that word does not identify the entry and does
+ not hide the one control the whole evidence designates unambiguously, such
+ as “Customer area”.</p>
  <p>The search explores up to four steps per route, with a shared limit of
  32 actions. At a dead end, it returns to a verified branch and tries an
  alternative. If the page has changed during that return, it discards the
@@ -140,6 +145,10 @@
  submission. In two-step forms, it distinguishes the email address from the
  password; a sign-in link elsewhere on the page does not turn a newsletter
  form into a login form.</p>
+ <p>After submission it observes the page for a bounded interval. Sign-in
+ evidence that appears within that interval completes its own stability
+ check, for at most the observations the check requires; later, interrupted
+ or unobservable evidence remains unverified.</p>
  <p>Saving, listing, using, and deleting credentials share one encrypted
  store. Listings show metadata only. Values do not appear in results or logs,
  and changing the instance data directory does not select a different store.</p>
