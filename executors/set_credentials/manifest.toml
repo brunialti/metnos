@@ -7,7 +7,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "set_credentials"
-version     = "0.4.0"
+version     = "0.4.1"
 revertible  = false
 author      = "Roberto Brunialti"
 affinity    = ["salva credenziale", "configura account", "registra token",

@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import unicodedata
+import dataclasses
 from dataclasses import dataclass
 from typing import Literal
 
@@ -19,6 +21,13 @@ class CookieOutcome:
     # none was actable", and from "a panel existed and was dismissed".
     frames: int = 0
     panels: int = 0
+    # Controls of the observed panels: all, safe, safe with a native rejection
+    # label, and a native rejection label on a control that is not safe (a
+    # link, a submit). Counts only (real run Telepass 21/10/2026).
+    controls: int = 0
+    safe_controls: int = 0
+    rejections: int = 0
+    unsafe_rejections: int = 0
 
 
 # A consent panel is frequently rendered inside a nested browsing context. A
@@ -26,6 +35,7 @@ class CookieOutcome:
 # instead of an obstruction and the caller proceeds against a covered page.
 MAX_OBSERVED_FRAMES = 8
 MAX_OBSERVED_PANELS = 3
+_MAX_PURPOSE_CHARS = 32
 # The same blindness a second time, one level down: a consent platform that
 # renders its banner into an open shadow root is invisible to a light-DOM
 # query, and the observation reports a clear page while the page is covered.
@@ -44,12 +54,6 @@ MAX_SESSION_DISMISSALS = 6
 # inherit a model decision. Text is bounded and excludes editable/secret areas.
 _OBSERVE_JS = r"""() => {
   const SHADOW_ROOT_BUDGET = %d;
-  const visible = el => {
-    const r = el.getBoundingClientRect(), s = getComputedStyle(el);
-    return r.width >= 2 && r.height >= 2 && s.display !== 'none' &&
-      s.visibility !== 'hidden' && Number(s.opacity) >= .05 &&
-      r.bottom > 0 && r.right > 0 && r.top < innerHeight && r.left < innerWidth;
-  };
   // Upwards through the composed tree: a shadow root has no parent element,
   // its host does. Plain `parentElement` stops at the boundary and would make
   // every control inside a shadow root look like a top-level one.
@@ -59,6 +63,27 @@ _OBSERVE_JS = r"""() => {
     const root = el.getRootNode();
     return (root && root.host) ? root.host : null;
   };
+  // These caches belong only to this synchronous observation. A transparent
+  // ancestor can leave a child's own rectangle and opacity unchanged.
+  const styles = new Map();
+  const styleOf = el => {
+    if (!styles.has(el)) styles.set(el, getComputedStyle(el));
+    return styles.get(el);
+  };
+  const painted = el => {
+    if (styleOf(el).visibility !== 'visible') return false;
+    let opacity = 1;
+    for (let node = el; node; node = up(node)) {
+      const style = styleOf(node);
+      opacity *= Number(style.opacity);
+      if (style.display === 'none' || style.contentVisibility === 'hidden' ||
+          opacity < .05) return false;
+    }
+    return true;
+  };
+  const visibleBox = r => r.width >= 2 && r.height >= 2 &&
+    r.bottom > 0 && r.right > 0 && r.top < innerHeight && r.left < innerWidth;
+  const visible = el => painted(el) && visibleBox(el.getBoundingClientRect());
   const within = (outer, inner) => {
     for (let n = inner; n; n = up(n)) if (n === outer) return true;
     return false;
@@ -83,24 +108,66 @@ _OBSERVE_JS = r"""() => {
     return top === el || !!(top && within(el, top));
   };
   const excluded = 'input:not([type=button]):not([type=submit]),textarea,select,' +
-    '[contenteditable=true],[data-metnos-redact],script,style,form';
-  const text = root => {
-    const parts = [];
-    let seen = 0;
+    '[contenteditable]:not([contenteditable=false]),[data-metnos-redact],script,style';
+  const publicArea = el => {
+    for (let node = el; node; node = up(node))
+      if (node.matches(excluded) || node.isContentEditable) return false;
+    return true;
+  };
+  const text = (root, panelEvidence = false) => {
+    const parts = [], visited = new Set();
+    let seen = 0, characters = 0;
+    const add = value => {
+      if (seen >= 400 || characters >= 4000) return;
+      const cleaned = String(value || '').replace(/\s+/g, ' ').trim();
+      if (!cleaned) return;
+      const part = cleaned.slice(0, 4000 - characters - (parts.length ? 1 : 0));
+      if (!part) return;
+      characters += part.length + (parts.length ? 1 : 0);
+      parts.push(part);
+      seen++;
+    };
     const walk = node => {
-      if (seen >= 400 || !node) return;
+      if (seen >= 400 || characters >= 4000 || !node || visited.has(node)) return;
+      visited.add(node);
       if (node.nodeType === 3) {
         const parent = node.parentElement;
-        if (parent && !parent.closest(excluded) && visible(parent)) {
-          parts.push(node.textContent);
-          seen++;
+        if (parent && publicArea(parent) && painted(parent)) {
+          let box = parent.getBoundingClientRect();
+          // display:contents has visible text but no element box. Other
+          // parents retain their box, so clipped/zero-size text stays out.
+          if (styleOf(parent).display === 'contents') {
+            const range = document.createRange();
+            range.selectNodeContents(node);
+            box = range.getBoundingClientRect();
+          }
+          if (visibleBox(box)) add(node.textContent);
         }
         return;
       }
       if (node.nodeType !== 1 && node.nodeType !== 11) return;
+      if (node.nodeType === 1) {
+        if (!publicArea(node)) return;
+        // Only visible images in this panel supply alternatives. Arbitrary
+        // descendant ARIA labels and input values are not panel prose.
+        if (panelEvidence && node.tagName === 'IMG' && visible(node))
+          add(node.getAttribute('alt'));
+      }
       if (node.nodeType === 1 && node.shadowRoot) walk(node.shadowRoot);
       for (const child of node.childNodes) walk(child);
     };
+    if (panelEvidence && publicArea(root) && visible(root)) {
+      const ownName = (root.getAttribute('aria-label') || '').trim();
+      if (ownName) add(ownName);
+      else {
+        const scope = root.getRootNode();
+        const ids = (root.getAttribute('aria-labelledby') || '').split(/\s+/).slice(0, 400);
+        for (const id of ids) {
+          const label = scope && scope.getElementById ? scope.getElementById(id) : null;
+          if (label && within(root, label)) walk(label);
+        }
+      }
+    }
     walk(root);
     return parts.join(' ').replace(/\s+/g, ' ').trim().slice(0, 4000);
   };
@@ -183,7 +250,7 @@ _OBSERVE_JS = r"""() => {
     });
     nodes.push({root, controls, signatures: controls.map(el =>
       [el.outerHTML, String(el.onclick || '')])});
-    panels.push({id: panel_id, text: text(root), controls: items});
+    panels.push({id: panel_id, text: text(root, true), controls: items});
   }
   return {nodes, public: panels, url: location.href};
 }""" % (MAX_OBSERVED_SHADOW_ROOTS,)
@@ -203,7 +270,202 @@ _COMMIT_JS = r"""(saved, choice) => {
 }"""
 
 
+def _normalize_privacy_label(value: str) -> str:
+    if not isinstance(value, str):
+        return ""
+    value = unicodedata.normalize("NFKC", value).casefold()
+    # Preserve every writing system; invisible non-whitespace cannot supply
+    # a word boundary or silently join two different labels.
+    if any(unicodedata.category(char).startswith("C") and not char.isspace()
+           for char in value):
+        return ""
+    return " ".join(value.split())
+
+
+def _privacy_rejection_forms() -> tuple[tuple[str, ...], tuple[str, ...]]:
+    try:
+        import detection_lexicon
+
+        forms = [tuple(normalized for value in detection_lexicon.native_ready_forms(
+                     concept, include_reviewed_baselines=True)
+                     if (normalized := _normalize_privacy_label(value)))
+                 for concept in ("sites.privacy_reject_target",
+                                 "sites.privacy_reject_noun_target")]
+        return forms[0], forms[1]
+    except Exception:
+        # Missing or unreadable native language resources grant no click.
+        return (), ()
+
+
+def _has_explicit_rejection(
+    control: dict,
+    forms: tuple[tuple[str, ...], tuple[str, ...]] | None = None,
+) -> bool:
+    """Require a native rejection on this safe control's own visible label."""
+    if control.get("safe") is not True:
+        return False
+    label = _normalize_privacy_label(control.get("name", ""))
+    if not label:
+        return False
+    targets, nouns = forms if forms is not None else _privacy_rejection_forms()
+    if label in nouns:
+        return True
+    for target in targets:
+        if not label.startswith(target):
+            continue
+        suffix = label[len(target):]
+        if (not suffix or not (
+                suffix[0].isalnum() or suffix[0] == "_"
+                or unicodedata.category(suffix[0]).startswith("M"))):
+            return True
+    return False
+
+
+def _decision_options(panels: list[dict]) -> list[dict]:
+    """Finite outcomes; clicks require one observed safe, positive rejection."""
+    forms = _privacy_rejection_forms()
+    # Uninformative observed panels cannot become clear through the cache,
+    # grammar, or a provider response that bypasses constrained generation.
+    if (panels and not any(_normalize_privacy_label(panel.get("text", ""))
+                           for panel in panels)
+            and not any(_has_explicit_rejection(control, forms)
+                        for panel in panels for control in panel.get("controls", []))):
+        return [{"kind": "unknown", "panel_id": "", "control_id": "", "effect": "none"}]
+    options = [{"kind": kind, "panel_id": "", "control_id": "", "effect": "none"}
+               for kind in ("cookie", "other", "unknown")]
+    for panel in panels:
+        panel_id = panel.get("id", "")
+        if not isinstance(panel_id, str) or not panel_id:
+            continue
+        options.append({"kind": "cookie", "panel_id": panel_id,
+                        "control_id": "", "effect": "none"})
+        for control in panel.get("controls", []):
+            control_id = control.get("id", "")
+            if (_has_explicit_rejection(control, forms) and isinstance(control_id, str)
+                    and control_id):
+                options.append({"kind": "cookie", "panel_id": panel_id,
+                                "control_id": control_id, "effect": "reject_optional"})
+    return options
+
+
+def _purpose_grammar(panel_count: int) -> str:
+    """One ordered, bounded assessment per panel; no action fields exist."""
+    if not 1 <= panel_count <= MAX_OBSERVED_PANELS:
+        raise ValueError("invalid_decision")
+    entries = ' ws "," ws '.join(["assessment"] * panel_count)
+    # A nested optional chain bounds text without ambiguous placements of
+    # independent optionals or requiring an additional GBNF dialect.
+    characters = "purpose-char"
+    for _ in range(_MAX_PURPOSE_CHARS - 1):
+        characters = "purpose-char (" + characters + ")?"
+    return (
+        "root ::= ws decision ws\n"
+        'decision ::= "{" ws "\\\"assessments\\\"" ws ":" ws "[" ws '
+        + entries + ' ws "]" ws "}"\n'
+        'assessment ::= "{" ws "\\\"purpose\\\"" ws ":" ws '
+        '(purpose-string ws "," ws "\\\"type\\\"" ws ":" ws purpose-type '
+        '| "null" ws "," ws "\\\"type\\\"" ws ":" ws "\\\"unresolved\\\"") ws "}"\n'
+        'purpose-type ::= "\\\"consent\\\"" | "\\\"alternative\\\"" | "\\\"unresolved\\\""\n'
+        'purpose-string ::= "\\\"" ' + characters + ' "\\\""\n'
+        r'purpose-char ::= [^"\\\x00-\x1f\x7f-\x9f]' + "\n"
+        r'ws ::= [ \t\n\r]?' + "\n")
+
+
+def _unique_purpose_fields(pairs) -> dict:
+    """Do not let JSON duplicate keys overwrite earlier model output."""
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("invalid_decision")
+        result[key] = value
+    return result
+
+
+def _purpose_decision(panels: list[dict], response) -> dict:
+    """Validate coverage and aggregate types; a paraphrase is not proof."""
+    if (not 1 <= len(panels) <= MAX_OBSERVED_PANELS
+            or not isinstance(response, dict) or set(response) != {"assessments"}
+            or not isinstance(response["assessments"], list)
+            or len(response["assessments"]) != len(panels)):
+        # Preserve the existing diagnostic for attempted unsafe actions;
+        # valid previous wire formats still fail the new internal schema.
+        raise ValueError(_decision_error(panels, response) or "invalid_decision")
+    types = []
+    for assessment in response["assessments"]:
+        if (not isinstance(assessment, dict)
+                or list(assessment) != ["purpose", "type"]):
+            raise ValueError("invalid_decision")
+        purpose, category = assessment["purpose"], assessment["type"]
+        if (not isinstance(category, str)
+                or category not in {"consent", "alternative", "unresolved"}):
+            raise ValueError("invalid_decision")
+        if purpose is None:
+            if category != "unresolved":
+                raise ValueError("invalid_decision")
+        elif (not isinstance(purpose, str) or not purpose.strip()
+                or len(purpose) > _MAX_PURPOSE_CHARS
+                or any(char in {'"', "\\"} or ord(char) < 0x20
+                       or 0x7F <= ord(char) <= 0x9F
+                       or 0xD800 <= ord(char) <= 0xDFFF for char in purpose)):
+            raise ValueError("invalid_decision")
+        types.append(category)
+    kind = ("cookie" if "consent" in types else
+            "unknown" if "unresolved" in types else "other")
+    return {"kind": kind, "panel_id": "", "control_id": "", "effect": "none"}
+
+
+def _decision_grammar(panels: list[dict], *, purpose_only: bool = False) -> str:
+    if purpose_only:
+        return _purpose_grammar(len(panels))
+    # Each terminal is a complete JSON decision: independent ID enums would
+    # still permit a control from a different panel or browsing context.
+    options = _decision_options(panels)
+    alternatives = [json.dumps(json.dumps(option, ensure_ascii=False,
+                                         separators=(",", ":")), ensure_ascii=False)
+                    for option in options]
+    return ("root ::= ws decision ws\n"
+            "decision ::= " + " | ".join(alternatives) + "\n"
+            r"ws ::= [ \t\n\r]*" + "\n")
+
+
+def _decision_error(panels: list[dict], decision) -> str:
+    if (not isinstance(decision, dict) or set(decision) != {
+            "kind", "panel_id", "control_id", "effect"}
+            or not all(isinstance(value, str) for value in decision.values())
+            or decision["kind"] not in {"cookie", "other", "unknown"}
+            or decision["effect"] not in {"reject_optional", "none"}):
+        return "invalid_decision"
+    if decision in _decision_options(panels):
+        return ""
+    if decision["kind"] == "cookie" and decision["effect"] == "reject_optional":
+        panel = next((panel for panel in panels
+                      if panel.get("id") == decision["panel_id"]), None)
+        if panel is None:
+            return "unknown_panel"
+        control = next((control for control in panel.get("controls", [])
+                        if control.get("id") == decision["control_id"]), None)
+        if control is None:
+            return "unknown_control"
+        if control.get("safe") is not True:
+            return "unsafe_control"
+        if not _has_explicit_rejection(control):
+            return "no_safe_rejection"
+    return "invalid_decision"
+
+
 def _classify(panels: list[dict], timeout_s: float) -> dict:
+    # The broker does not classify an empty observation. Preserve that API's
+    # provider validation; share the sole unknown outcome with the validator.
+    purpose_only = False
+    if panels:
+        options = _decision_options(panels)
+        if len(options) == 1:
+            return options[0]
+        # Informative panels without positive rejection need a purpose, not
+        # a control selection. Cookie and uncertain purposes remain blocking.
+        purpose_only = not any(option["effect"] == "reject_optional"
+                               for option in options)
+
     import i18n
     import prompt_loader
     from llm_router import LLMRouter
@@ -213,16 +475,23 @@ def _classify(panels: list[dict], timeout_s: float) -> dict:
     if getattr(provider, "mode", "") != "local":
         raise RuntimeError("local_model_required")
     result = provider.chat(
-        prompt_loader.get("sites_cookie_resolution", i18n.current_lang()),
+        prompt_loader.get("sites_cookie_purpose" if purpose_only else
+                          "sites_cookie_resolution", i18n.current_lang()),
         json.dumps(panels, ensure_ascii=False), max_tokens=160,
-        request_timeout_s=timeout_s)
-    decision = json.loads(str(getattr(result, "text", "") or ""))
-    if (not isinstance(decision, dict) or set(decision) != {
-            "kind", "panel_id", "control_id", "effect"}
-            or decision["kind"] not in {"cookie", "other", "unknown"}
-            or decision["effect"] not in {"reject_optional", "none"}
-            or not all(isinstance(value, str) for value in decision.values())):
-        raise ValueError("invalid_decision")
+        request_timeout_s=timeout_s,
+        grammar=_decision_grammar(panels, purpose_only=purpose_only))
+    if purpose_only:
+        raw = str(getattr(result, "text", "") or "")
+        # The bounded grammar has no escape branch, including in fixed keys.
+        if "\\" in raw:
+            raise ValueError("invalid_decision")
+        decision = _purpose_decision(panels, json.loads(
+            raw, object_pairs_hook=_unique_purpose_fields))
+    else:
+        decision = json.loads(str(getattr(result, "text", "") or ""))
+    error = _decision_error(panels, decision)
+    if error:
+        raise ValueError(error)
     return decision
 
 
@@ -274,17 +543,47 @@ def _global_id(index: int, identifier: str) -> str:
 
 
 def _local_id(index: int, identifier: str) -> str:
-    return identifier[len(f"f{index}"):]
+    prefix = f"f{index}"
+    if not isinstance(identifier, str) or not identifier.startswith(prefix):
+        raise ValueError("invalid_context_id")
+    local = identifier[len(prefix):]
+    if not local:
+        raise ValueError("invalid_context_id")
+    return local
 
 
-async def reject_cookies(page, state: dict, *, redact=None,
-                         timeout_s: float = 6.0, enabled: bool = True) -> CookieOutcome:
-    """Resolve at most two cookie panels, with four local calls per login flow.
+async def reject_cookies(page, state: dict, **options) -> CookieOutcome:
+    """The rejection flow below, with the largest control counts it observed."""
+    counts = {}
+    outcome = await _reject_cookies(page, state, counts=counts, **options)
+    return dataclasses.replace(outcome, **counts)
+
+
+def _count_controls(panels: list[dict], counts: dict) -> None:
+    forms = _privacy_rejection_forms()
+    controls = [c for panel in panels for c in panel.get("controls", ())]
+    observed = {"controls": len(controls),
+                "safe_controls": sum(c.get("safe") is True for c in controls),
+                "rejections": sum(_has_explicit_rejection(c, forms) for c in controls),
+                "unsafe_rejections": sum(c.get("safe") is not True
+                                         and _has_explicit_rejection({**c, "safe": True}, forms)
+                                         for c in controls)}
+    for key, value in observed.items():
+        counts[key] = max(counts.get(key, 0), value)
+
+
+async def _reject_cookies(page, state: dict, *, counts: dict, redact=None,
+                          timeout_s: float = 6.0, enabled: bool = True,
+                          classification_budget: dict | None = None) -> CookieOutcome:
+    """Resolve at most two cookie panels, with four local calls per attempt.
 
     Cache stores only hashes and typed decisions; every click rechecks live
     node identity, text, visibility and HTML navigation/submit constraints.
     ``redact`` is an additional local defence supplied by credential injection.
+    Share ``classification_budget`` across retries of the same attempt;
+    ``state["calls"]`` records cumulative calls independently of that budget.
     """
+    budget = classification_budget if classification_budget is not None else {"calls": 0}
     resolved = False
     previous_click = ""
     frames = panels_seen = 0
@@ -320,6 +619,7 @@ async def reject_cookies(page, state: dict, *, redact=None,
                              "name": clean(control["name"])}
                             for control in panel["controls"]],
                     })
+            _count_controls(safe_panels, counts)
             serialized = json.dumps(safe_panels, ensure_ascii=False)
             key = hashlib.sha256(serialized.encode()).hexdigest()
             if key == previous_click:
@@ -331,9 +631,10 @@ async def reject_cookies(page, state: dict, *, redact=None,
                 if not enabled:
                     return CookieOutcome("blocked", "unknown", "model_disabled",
                                          frames, panels_seen)
-                if state.get("calls", 0) >= 4:
+                if budget.get("calls", 0) >= 4:
                     return CookieOutcome("blocked", "unknown", "decision_limit",
                                          frames, panels_seen)
+                budget["calls"] = budget.get("calls", 0) + 1
                 state["calls"] = state.get("calls", 0) + 1
                 try:
                     decision = await asyncio.wait_for(
@@ -344,7 +645,15 @@ async def reject_cookies(page, state: dict, *, redact=None,
                 except Exception:
                     return CookieOutcome("blocked", "unknown", "model_failed",
                                          frames, panels_seen)
-                cache[key] = decision
+            # Revalidate cached and fresh decisions against this observation.
+            # No inferred prefix or ID repair can acquire click authority.
+            error = _decision_error(safe_panels, decision)
+            if error:
+                cache.pop(key, None)
+                return CookieOutcome(
+                    "blocked", "unknown" if error == "invalid_decision" else "cookie",
+                    error, frames, panels_seen)
+            cache[key] = decision
             if decision["kind"] == "other" and decision["effect"] == "none":
                 for _index, handle, _items in observed:
                     if await handle.evaluate(

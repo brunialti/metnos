@@ -1,6 +1,6 @@
 {% import '_monitor_macros.html' as m with context %}
 {% set summary = monitor.summary %}
-{% if monitor.health.truncated|default(false) %}<p class="callout warn" role="status">{{ msg('UI_MONITOR_READ_TRUNCATED', limit=monitor.health.read_limit) }}</p>{% endif %}
+{% if monitor.health.get('ingest', {}).get('pending_bytes', 0) > 0 %}<p class="callout warn" role="status">{{ msg('UI_MONITOR_IMPORT_PENDING') }}</p>{% endif %}
 {% if monitor.health.available is defined and not monitor.health.available %}<p class="callout warn" role="status">{{ msg('UI_MONITOR_COLLECTOR_UNAVAILABLE') }}</p>{% endif %}
 <div class="kpi-grid" aria-label="{{ msg('UI_MONITOR_SUMMARY') }}">
   {% if view == 'models' %}

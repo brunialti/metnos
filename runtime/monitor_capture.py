@@ -30,6 +30,8 @@ TRANSPORT_HEADER = "X-Metnos-Monitor"
 UPSTREAM_HEADER = "X-Metnos-Monitor-Upstream"
 UPSTREAM_ID_ENV = "METNOS_MONITOR_SEGMENT_ID"
 UPSTREAM_STARTED_ENV = "METNOS_MONITOR_SEGMENT_STARTED_AT"
+UPSTREAM_ORIGIN_ENV = "METNOS_MONITOR_ORIGIN_PROCESS"
+MAX_UPSTREAM_HEADER_BYTES = 1024
 TRANSPORT_SCHEMA = "metnos.monitor-transport/1"
 MAX_TRANSPORT_JSON_BYTES = 2 * 1024 * 1024
 MAX_BUFFERED_CALLS = 8192
@@ -72,11 +74,11 @@ class Collector:
     """Una coda per processo; ritardi/errori del disco non bloccano il chiamante."""
 
     def __init__(self, directory=None, *, capacity=128, interval=0.25, writer=None):
-        from monitor_store import append_normalized_events, monitor_directory
+        from monitor_store import persist_normalized_events, monitor_directory
         self.directory = Path(directory) if directory is not None else monitor_directory()
         self.queue = queue.Queue(maxsize=capacity)
         self.interval = interval
-        self.writer = writer or append_normalized_events
+        self.writer = writer or persist_normalized_events
         self.epoch = process_epoch()
         self.counter_lock = threading.Lock()
         self.dropped = self.write_errors = self.persisted = 0
@@ -164,7 +166,7 @@ class Collector:
                         # Cede il GIL fra piccoli gruppi; mai nel chiamante.
                         time.sleep(0)
                 if valid:
-                    self.writer(self.directory / f"events-{os.getpid()}.jsonl", valid)
+                    self.writer(self.directory / "index.sqlite3", valid)
                     unwritten = 0
                     self.persisted += len(valid)
                     self.persisted_at = utc_now()
@@ -366,7 +368,8 @@ def _failure_status(exc):
 
 
 @contextmanager
-def call_scope(*, provider, model=None, level=None, kind="chat", binding_revision=None):
+def call_scope(*, provider, model=None, level=None, kind="chat", binding_revision=None,
+               workload=None):
     segment, transport = _segment.get(), _transport.get()
     if segment is None and transport is None and _collector is None:
         yield None
@@ -374,8 +377,9 @@ def call_scope(*, provider, model=None, level=None, kind="chat", binding_revisio
     parent = _call.get()
     record = {"call_id": uuid.uuid4().hex, "parent_call_id": parent.get("call_id") if parent else None,
               "provider": provider, "physical_model_requested": model,
-              "level": level, "kind": kind, "binding_revision": binding_revision,
-              "origin_process": getattr(_collector, "origin_process", None),
+              "level": str(level) if level is not None else None,
+              "kind": kind, "binding_revision": binding_revision,
+              "workload": workload, "origin_process": current_origin_process(),
               "started_at": utc_now(), "status": "ok"}
     start = time.perf_counter_ns()
     token = _call.set(record)
@@ -430,15 +434,42 @@ def observe_response(data):
 
 
 def upstream_metadata(value):
-    """Validate the two content-free fields allowed across process boundaries."""
+    """Closed, bounded transport context; old two-field metadata stays valid."""
     from monitor_events import identifier, timestamp
-    if not isinstance(value, dict) or set(value) != {"segment_id", "started_at"}:
+    required = {"segment_id", "started_at"}
+    if (not isinstance(value, dict) or not required <= set(value)
+            or set(value) - required - {"origin_process"}):
         return None
     try:
-        return {"segment_id": identifier(value["segment_id"], required=True),
-                "started_at": timestamp(value["started_at"], required=True)}
+        result = {"segment_id": identifier(value["segment_id"], required=True),
+                  "started_at": timestamp(value["started_at"], required=True)}
+        if "origin_process" in value:
+            if not isinstance(value["origin_process"], str):
+                return None
+            result["origin_process"] = identifier(value["origin_process"], required=True)
+        return result
     except ValueError:
         return None
+
+
+def upstream_from_env(env):
+    value = {"segment_id": env.get(UPSTREAM_ID_ENV),
+             "started_at": env.get(UPSTREAM_STARTED_ENV)}
+    if UPSTREAM_ORIGIN_ENV in env:
+        value["origin_process"] = env[UPSTREAM_ORIGIN_ENV]
+    return upstream_metadata(value)
+
+
+def current_origin_process():
+    """The observing process owns origin; a collector-less worker inherits it."""
+    from monitor_events import identifier
+    if _collector is not None:
+        try:
+            return identifier(getattr(_collector, "origin_process", None))
+        except ValueError:
+            return None
+    transport = _transport.get()
+    return (transport.upstream or {}).get("origin_process") if transport else None
 
 
 class TransportBuffer:
@@ -449,9 +480,8 @@ class TransportBuffer:
         self.calls = []
         self.wait_expires_at = None
         self.lock = threading.Lock()
-        self.upstream = upstream_metadata(upstream if upstream is not None else {
-            "segment_id": os.environ.get(UPSTREAM_ID_ENV),
-            "started_at": os.environ.get(UPSTREAM_STARTED_ENV)})
+        self.upstream = (upstream_metadata(upstream) if upstream is not None
+                         else upstream_from_env(os.environ))
         self.collector = _collector
         self.delivered = False
 
@@ -459,7 +489,8 @@ class TransportBuffer:
         if calls and self.upstream and self.collector:
             # Counts belong to the enclosing segment, not to this child.
             self.collector.emit({"schema_version": SCHEMA_VERSION, "event": "call_late",
-                                 **self.upstream, "calls": calls})
+                                 **{key: self.upstream[key] for key in ("segment_id", "started_at")},
+                                 "calls": calls})
 
     def add(self, call):
         with self.lock:
@@ -559,13 +590,25 @@ class ChildCapture:
 
 
 def prepare_child(env):
+    # A copied environment may carry another parent's context. Export only
+    # context from the active lexical segment, including when capture is off.
+    for name in ("METNOS_CAPTURE_MONITOR", UPSTREAM_ID_ENV, UPSTREAM_STARTED_ENV,
+                 UPSTREAM_ORIGIN_ENV):
+        env.pop(name, None)
     segment = _transport.get() or _segment.get()
     if segment is None:
         return None
     env["METNOS_CAPTURE_MONITOR"] = "1"
-    upstream = segment.upstream if isinstance(segment, TransportBuffer) else {
+    upstream = dict(segment.upstream or {}) if isinstance(segment, TransportBuffer) else {
         name: segment.metadata[name] for name in ("segment_id", "started_at")}
+    origin = current_origin_process()
+    upstream.pop("origin_process", None)
+    if origin:
+        upstream["origin_process"] = origin
+    upstream = upstream_metadata(upstream)
     if upstream:
         env[UPSTREAM_ID_ENV] = upstream["segment_id"]
         env[UPSTREAM_STARTED_ENV] = upstream["started_at"]
+        if "origin_process" in upstream:
+            env[UPSTREAM_ORIGIN_ENV] = upstream["origin_process"]
     return ChildCapture(segment)

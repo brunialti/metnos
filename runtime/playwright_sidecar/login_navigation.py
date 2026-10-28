@@ -16,7 +16,9 @@ from urllib.parse import urlsplit
 MAX_DEPTH = 4
 MAX_ACTIONS = 32
 COLLECTION_MAX_ACTIONS = 256
-COLLECTION_TIMEOUT_S = 300
+# Roberto, 12 October 2026: eight levels for collections (was three).
+COLLECTION_MAX_DEPTH = 8
+COLLECTION_TIMEOUT_S = 600
 _IDENTITY_FIELDS = (
     "tag", "role", "type", "name", "href", "form_action", "form_method",
     "download", "secret_input", "context_name", "_record_context_key")
@@ -96,6 +98,35 @@ def replay_page_diagnostics(previous: dict, current: dict, *, producer: str) -> 
     return result
 
 
+# A decision taken on a scene that changed before it could act is read again,
+# this many times in a row at most.
+MAX_REOBSERVE = 2
+
+
+# The navigation cursor: where a search is and what it tried there. A new
+# record partition starts a new cursor; the budget (`actions`) and the
+# evidence (`rejection`, `depth_limited`, `no_effect` keyed by place) stay.
+CURSOR_FIELDS = ("frames", "tried", "seen", "limited", "deferred", "pending", "replay")
+
+
+def reset_cursor(state: dict) -> None:
+    for field in CURSOR_FIELDS:
+        state.pop(field, None)
+
+
+def spend(state: dict, max_actions: int) -> bool:
+    """One action of the shared budget; False once it is used up."""
+    used = int(state.get("actions", 0))
+    if used >= max_actions:
+        return False
+    state["actions"] = used + 1
+    return True
+
+
+class Reobserve(Exception):
+    """choose(): the scene changed after the decision; observe it again."""
+
+
 def _failure(code: str) -> dict:
     return {"ok": False, "error_class": code}
 
@@ -103,7 +134,8 @@ def _failure(code: str) -> dict:
 async def discover(state: dict, *, observe, choose, execute, restore,
                    max_depth: int = MAX_DEPTH, max_actions: int = MAX_ACTIONS,
                    exhaustive: bool = False,
-                   restart_on_replay_change: bool = False) -> dict:
+                   restart_on_replay_change: bool = False,
+                   guard=None, aside_return=None) -> dict:
     """Depth-first exploration, bounded independently of approval round trips.
 
     observe -> {key, candidates, ...} or a terminal result;
@@ -114,17 +146,53 @@ async def discover(state: dict, *, observe, choose, execute, restore,
     replay still requires the exact saved control at that location.
     An opted-in search may discard a changed replay branch and restore the
     entry page for a fresh decision, retaining attempts and all budgets.
+    choose may raise Reobserve: the page changed after its decision, with no
+    effect; it is observed and decided again, MAX_REOBSERVE times in a row.
+    guard() -> terminal result or None: the current-page checks of observe,
+    without reading or deciding. When supplied, a return already decided
+    runs only these checks before restoring; the restored page is observed
+    fully. Without it every return is preceded by a full observation.
+    aside_return(popped, frame, ending) -> bool: closes a page opened aside
+    for a popped leaf, or goes back to the frame by other means; True when
+    the current page is again the one of the frame returned to, which is then
+    observed instead of restored. If it no longer matches, the return is
+    restored as usual and state["aside_disabled"] set. `ending`: the search
+    ends here, nothing is returned to.
     """
     frames = state.setdefault("frames", [])
     tried = state.setdefault("tried", {})
     seen = state.setdefault("seen", set())
+    # Controls set aside at the depth limit, or left to the parent of a state
+    # changed in place, were never followed there.
+    limited = state.setdefault("limited", {})
+    deferred = state.setdefault("deferred", {})
 
-    def spend() -> bool:
-        used = int(state.get("actions", 0))
-        if used >= max_actions:
-            return False
-        state["actions"] = used + 1
-        return True
+    def in_place(child: dict, parent: dict) -> bool:
+        location = child["observation"].get("location_key")
+        return bool(location) and location == parent["observation"].get("location_key")
+
+    def share_attempts(source: dict, target: dict, via: dict | None) -> None:
+        # What was tried in one state of a page changed in place is tried in
+        # the other. A persistent non-continuation was already tried; next/more
+        # stays available. Legacy choosers without the flag keep their behavior.
+        # Controls set aside at the depth limit were never followed.
+        key = source["observation"]["key"]
+        repeatable = ({(via or {}).get("key")}
+                      if (via or {}).get("continuation") is not False else set())
+        moved = (tried.get(key, set()) - limited.get(key, set())
+                 - deferred.get(key, set()) - repeatable)
+        tried.setdefault(target["observation"]["key"], set()).update(moved)
+
+    def defer_to_parent(child: dict, parent: dict) -> None:
+        # A state changed in place explores what the change revealed; the
+        # controls it shares with its parent are the parent's alternatives,
+        # explored from there instead of from every menu opened on the way.
+        via = (child.get("via") or {}).get("key")
+        key = child["observation"]["key"]
+        left = {candidate_key(c) for c in parent["observation"]["candidates"]} - {via}
+        left -= tried.get(key, set())
+        deferred.setdefault(key, set()).update(left)
+        tried.setdefault(key, set()).update(left)
 
     def refresh(frame: dict, observation: dict, *, preserve: bool = False) -> bool:
         previous = frame["observation"]
@@ -146,11 +214,21 @@ async def discover(state: dict, *, observe, choose, execute, restore,
         return True
 
     while True:
-        observation = await observe()
-        if observation.get("terminal") is not None:
-            return observation["terminal"]
-        key = observation["key"]
-        if state.pop("refreshed", False) and frames:
+        if guard is not None and (state.get("replay") or {}).get("index") == -1:
+            # The decision to return was taken on an already observed page;
+            # reading and classifying it again cannot change the restore.
+            terminal = await guard()
+            if terminal is not None:
+                return terminal
+            if state.pop("refreshed", False) and frames:
+                return _failure("target_changed")
+            observation, key = None, None
+        else:
+            observation = await observe()
+            if observation.get("terminal") is not None:
+                return observation["terminal"]
+            key = observation["key"]
+        if observation is not None and state.pop("refreshed", False) and frames:
             # An explicitly authorised resource reload may finish rendering
             # this same node. It does not reset depth, time or attempts.
             if state.get("pending") or state.get("replay") is not None:
@@ -161,12 +239,14 @@ async def discover(state: dict, *, observe, choose, execute, restore,
         if replay is not None:
             index = replay["index"]
             if index == -1:
-                if not spend():
+                if not spend(state, max_actions):
                     return _failure("login_step_limit")
                 # Advance before awaiting: a pause must not repeat an effect.
                 replay["index"] = 0
                 restart = replay.pop("restart", False)
-                root = frames[0]
+                restore_index = replay.get("restore_index", 0)
+                replay["index"] = restore_index
+                root = frames[restore_index]
                 result = await restore(root.get("restore_observation", root["observation"]))
                 if restart:
                     if result.get("approval_required") or (
@@ -175,6 +255,23 @@ async def discover(state: dict, *, observe, choose, execute, restore,
                     elif result.get("ok"):
                         return _failure("target_changed")
             else:
+                if replay.pop("verify_get", False):
+                    saved = frames[index]["observation"]
+                    # An observer that separates the page's controls from its
+                    # text lets the text change (a banner, a date): the same
+                    # controls in the same state are the same view (real run
+                    # R37). Without that separation the whole key must match.
+                    identity = ("controls_key" if saved.get("controls_key")
+                                and observation.get("controls_key") else "key")
+                    if (observation.get("page") is not saved.get("page")
+                            or any(observation.get(field) != saved.get(field)
+                                   for field in ("url", identity, "context_key", "location_key"))
+                            or not observation.get("get_restore_context")):
+                        frames[index]["get_disabled"] = True
+                        state["rejection"] = {"phase": "restore_page", "index": index,
+                            **replay_page_diagnostics(saved, observation, producer="nav_refresh")}
+                        state["replay"] = {"index": -1}
+                        continue
                 if replay.pop("fresh_root", False):
                     # This is a new root observation after an authorised GET,
                     # not proof that the discarded observations are equal.
@@ -207,7 +304,7 @@ async def discover(state: dict, *, observe, choose, execute, restore,
                             "index": index, "match_count": len(matches),
                             **_replay_mismatch(choice["candidate"], observation["candidates"])}
                         return _failure("target_changed")
-                    if not spend():
+                    if not spend(state, max_actions):
                         return _failure("login_step_limit")
                     choice["candidate"] = matches[0]
                     replay["index"] = index + 1
@@ -220,24 +317,57 @@ async def discover(state: dict, *, observe, choose, execute, restore,
         pending = state.pop("pending", None)
         if not frames or pending is not None:
             if not frames or key != frames[-1]["observation"]["key"]:
+                # Pagination and a button that changes the page in place (a
+                # menu, all items of the same list) are not a deeper level.
+                revealed = bool(frames and pending
+                                and not (pending.get("candidate") or {}).get("href")
+                                and observation.get("location_key")
+                                and observation.get("location_key")
+                                == frames[-1]["observation"].get("location_key"))
                 depth = (frames[-1]["depth"] +
-                         (0 if pending.get("continuation") else 1)
+                         (0 if pending.get("continuation") or revealed else 1)
                          if frames and pending else 0)
                 frames.append({"observation": observation, "via": pending,
                                "depth": depth,
                                "cycle": key in seen})
                 seen.add(key)
+                if len(frames) > 1 and in_place(frames[-1], frames[-2]):
+                    share_attempts(frames[-2], frames[-1], pending)
+                    defer_to_parent(frames[-1], frames[-2])
+            elif pending is not None and pending.get("key"):
+                # The click left this exact observation unchanged. At this
+                # location the same control is not tried again on a later visit.
+                place = observation.get("location_key") or key
+                state.setdefault("no_effect", {}).setdefault(place, set()).add(pending["key"])
         elif not refresh(frames[-1], observation):
+            if state.pop("aside_returned", False):
+                # The page changed while its leaf was open aside: return as
+                # usual, and follow later leaves in place.
+                state["aside_disabled"] = True
+                state["replay"] = {"index": -1}
+                continue
             # An external change is not a new authorisation or a fresh budget.
             state["rejection"] = {"phase": "current_page"}
             return _failure("target_changed")
+        state.pop("aside_returned", None)
 
         at_limit = frames[-1]["depth"] >= max_depth
         if at_limit and not exhaustive:
             state["depth_limited"] = True
         attempted = tried.setdefault(key, set())
-        choice = (None if (at_limit and not exhaustive) or frames[-1]["cycle"]
-                  else await choose(observation, attempted))
+        attempted.update((state.get("no_effect") or {}).get(
+            observation.get("location_key") or key, ()))
+        try:
+            choice = (None if (at_limit and not exhaustive) or frames[-1]["cycle"]
+                      else await choose(observation, attempted))
+        except Reobserve:
+            state["reobserved"] = int(state.get("reobserved", 0)) + 1
+            if state["reobserved"] > MAX_REOBSERVE:
+                state["rejection"] = {"phase": "collection_snapshot_fence",
+                                      "reason": "scene_changed_repeatedly"}
+                return _failure("target_changed")
+            continue
+        state.pop("reobserved", None)
         if at_limit and choice is not None and not choice.get("continuation"):
             # Pagination stays at the same depth. A deeper relevant branch
             # is left unexplored, so exhaustion cannot certify completeness.
@@ -246,12 +376,13 @@ async def discover(state: dict, *, observe, choose, execute, restore,
             if identity in attempted:
                 return _failure("login_entry_stalled")
             attempted.add(identity)
+            limited.setdefault(key, set()).add(identity)
             continue
         if choice is not None:
             identity = candidate_key(choice["candidate"])
             if identity in attempted:
                 return _failure("login_entry_stalled")
-            if not spend():
+            if not spend(state, max_actions):
                 return _failure("login_step_limit")
             attempted.add(identity)
             choice = {**choice, "key": identity}
@@ -271,6 +402,11 @@ async def discover(state: dict, *, observe, choose, execute, restore,
                 return result
             continue
 
+        if exhaustive and state.get("search_complete"):
+            # The collection proved the requested set complete on this page:
+            # no return to other branches.
+            return {"ok": True, "exhausted": True,
+                    "depth_limited": bool(state.get("depth_limited"))}
         if len(frames) == 1:
             if exhaustive:
                 return {"ok": True, "exhausted": True,
@@ -278,17 +414,42 @@ async def discover(state: dict, *, observe, choose, execute, restore,
             return _failure("login_step_limit" if state.get("depth_limited")
                             else "login_entry_stalled" if state.get("actions")
                             else "selector_missing")
-        frames.pop()
+        popped = []
+
+        def pop() -> None:
+            child = frames.pop()
+            popped.append(child)
+            if frames and in_place(child, frames[-1]):
+                share_attempts(child, frames[-1], child.get("via"))
+
+        pop()
         # Only revisit an actual fork. Replaying an exhausted single-child
         # chain spends time without offering an alternative.
         while len(frames) > 1:
             parent = frames[-1]["observation"]
             if untried_candidates(parent["candidates"], tried.get(parent["key"], ())):
                 break
-            frames.pop()
+            pop()
         root = frames[0]["observation"]
-        if exhaustive and len(frames) == 1 and not untried_candidates(
-                root["candidates"], tried.get(root["key"], ())):
+        ending = exhaustive and len(frames) == 1 and not untried_candidates(
+            root["candidates"], tried.get(root["key"], ()))
+        returned = aside_return is not None and await aside_return(popped, frames[-1], ending)
+        if ending:
             return {"ok": True, "exhausted": True,
                     "depth_limited": bool(state.get("depth_limited"))}
+        if returned:
+            state["aside_returned"] = True
+            continue
         state["replay"] = {"index": -1}
+        for index in range(len(frames) - 1, 0, -1):
+            frame = frames[index]
+            saved = frame["observation"]
+            witness = (frame.get("via") or {}).get("observed_get")
+            if (not frame.get("get_disabled") and witness
+                    and witness[0] is saved.get("page") and witness[0] is root.get("page")
+                    and witness[1] == saved.get("url")
+                    and saved.get("get_restore_context")
+                    and saved.get("url") != frames[index - 1]["observation"].get("url")
+                    and not witness[0].is_closed()):
+                state["replay"].update(restore_index=index, verify_get=True)
+                break

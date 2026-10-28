@@ -32,6 +32,7 @@ from dataclasses import dataclass, field
 
 import llm_telemetry as _telemetry  # universal pass-through observability hook
 import llm_invocation as _monitor
+from llm_content import provider_content
 
 
 REASONING_EFFORTS = {
@@ -605,6 +606,23 @@ def _temperature_deprecated(model: str) -> bool:
     return any(d in model for d in deprecated)
 
 
+def _http_error_code(error) -> str:
+    """The closed reason a provider writes in its error body, never its
+    message: OpenAI `error.code` (else `error.type`), Anthropic `error.type`.
+    One HTTP status hides different causes (429: `insufficient_quota` or
+    `rate_limit_exceeded`, Sites runs 21/10/2026)."""
+    try:
+        payload = json.loads(error.read(4096).decode("utf-8"))
+    except Exception:  # noqa: BLE001 -- an unreadable body has no reason
+        return ""
+    detail = payload.get("error") if isinstance(payload, dict) else None
+    for key in ("code", "type"):
+        value = detail.get(key) if isinstance(detail, dict) else None
+        if isinstance(value, str) and re.fullmatch(r"[a-z][a-z0-9_]{0,63}", value):
+            return value
+    return ""
+
+
 class AnthropicProvider:
     """Client per Anthropic Messages API. Tool-use nativo via schema Anthropic.
 
@@ -660,7 +678,7 @@ class AnthropicProvider:
             "model": self.model,
             "max_tokens": max_tokens,
             "system": system,
-            "messages": [{"role": "user", "content": user}],
+            "messages": [{"role": "user", "content": provider_content(user, "anthropic")}],
             **self._reasoning_params(think, reasoning_effort, reasoning_budget, max_tokens),
         }
         # Opus 4.7 ha deprecato il parametro `temperature`: passarlo causa
@@ -810,7 +828,8 @@ class AnthropicProvider:
                 data = json.loads(resp.read().decode("utf-8"))
                 _monitor.observe_response(data)
         except urllib.error.HTTPError as e:
-            raise ProviderError(f"anthropic api error {e.code}") from None
+            reason = _http_error_code(e)
+            raise ProviderError(f"anthropic api error {e.code}" + (f" {reason}" if reason else "")) from None
         except urllib.error.URLError:
             raise ProviderError("anthropic unreachable") from None
         return data, int((time.time() - t0) * 1000)
@@ -1010,7 +1029,7 @@ class OpenAIProvider:
             "model": self.model,
             "messages": [
                 {"role": "system", "content": system},
-                {"role": "user", "content": user},
+                {"role": "user", "content": provider_content(user, "openai")},
             ],
             self._max_tokens_param(): max_tokens,
             "store": False,
@@ -1072,7 +1091,8 @@ class OpenAIProvider:
                 data = json.loads(resp.read().decode("utf-8"))
                 _monitor.observe_response(data)
         except urllib.error.HTTPError as e:
-            raise ProviderError(f"openai api error {e.code}") from None
+            reason = _http_error_code(e)
+            raise ProviderError(f"openai api error {e.code}" + (f" {reason}" if reason else "")) from None
         except urllib.error.URLError:
             raise ProviderError("openai unreachable") from None
         except (json.JSONDecodeError, UnicodeDecodeError) as e:

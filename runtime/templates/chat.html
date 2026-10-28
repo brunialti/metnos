@@ -860,7 +860,7 @@ function mergeDialogCompletionMeta(originMeta, eventTurnId, turnMeta){
   };
 }
 
-function add(cls, text, meta, persist, attachments, galleryInfo, htmlMode){
+function add(cls, text, meta, persist, attachments, galleryInfo, htmlMode, historySink){
   const stick = (cls === 'me') || nearBottom();
   const d = document.createElement('div');
   d.className = 'msg ' + cls;
@@ -1211,11 +1211,22 @@ function add(cls, text, meta, persist, attachments, galleryInfo, htmlMode){
     if(files.length) addFileChips(files);
   }
   if(stick) scrollToEnd();
+  const historyId = historyRecordTurnId({cls, meta});
+  if(historyId){
+    // Keep the bubble and its attachment nodes together without recreating them.
+    for(let node = d; node; node = node.nextSibling){
+      if(node.nodeType === Node.ELEMENT_NODE) node.dataset.historyTurnId = historyId;
+    }
+  }
   if(persist !== false && (cls === 'me' || cls === 'bot' || cls === 'err')){
-    pushHistory({ cls, text, meta: meta || '', ts: Date.now(),
-                  attachments: attachments || null,
-                  gallery: galleryInfo || null,
-                  htmlMode: htmlMode === true });
+    const record = { cls, text, meta: meta || '', ts: Date.now(),
+                     attachments: attachments || null,
+                     gallery: galleryInfo || null,
+                     htmlMode: htmlMode === true };
+    // During recovery sort before HISTORY_MAX is applied: older recovered
+    // records must not evict a newer cached answer merely by arriving later.
+    if(Array.isArray(historySink)) historySink.push(record);
+    else pushHistory(record);
   }
   return d;
 }
@@ -1449,7 +1460,7 @@ function renderCompletedTurn(data, options){
   const bubbleClass = data.outcome === 'failed' ? 'err' : 'bot';
   const bubble = renderAtPlaceholder(options.placeholder || null, () => add(
     bubbleClass, body, meta, options.persist !== false,
-    data.attachments || null, galleryInfo, bodyAsHtml));
+    data.attachments || null, galleryInfo, bodyAsHtml, options.historySink));
   attachDecisionButtons(bubble, data.pending_decision);
   return bubble;
 }
@@ -1494,6 +1505,36 @@ function attachDecisionButtons(bubble, decision){
   scrollToEnd();
 }
 
+// Server turn identity and event order are authoritative within the recent
+// window. Unidentified/out-of-window records stay attached to their preceding
+// local turn; a live input or placeholder therefore remains after that turn.
+function historyRecordTurnId(item){
+  if(!item || !item.meta || typeof item.meta !== 'object') return '';
+  if(item.cls === 'me') return item.meta.query_turn_id || item.meta.turn_id || '';
+  return (item.cls === 'bot' || item.cls === 'err') ? item.meta.turn_id || '' : '';
+}
+
+function orderRecentHistory(entries, turns, getId, isLive = () => false){
+  const ids = [...new Set(turns.map(t => t.turn_id).filter(Boolean))];
+  const bodies = new Map(ids.map(id => [id, []]));
+  const tails = new Map(ids.map(id => [id, []]));
+  const prefix = [];
+  const live = [];
+  let anchor = '';
+  for(const entry of entries){
+    const id = getId(entry);
+    if(bodies.has(id)){
+      anchor = id;
+      bodies.get(id).push(entry);
+    } else if(isLive(entry, id)){
+      live.push(entry);
+    } else {
+      (anchor ? tails.get(anchor) : prefix).push(entry);
+    }
+  }
+  return prefix.concat(...ids.map(id => bodies.get(id).concat(tails.get(id))), live);
+}
+
 // Ricostruisce la chat dai messaggi salvati (su page load).
 function restoreHistory(){
   const items = loadHistory();
@@ -1513,37 +1554,65 @@ function restoreHistory(){
 // Server-side turn fetch (8/5/2026): dopo restore localStorage, fetcha
 // /agent/turns/recent per la conversation_id corrente. Catch tutti i turn
 // che il server ha eseguito mentre la tab era chiusa (compresi quelli
-// in-flight quando l'utente ha chiuso). Idempotent grazie a since_ts:
-// passiamo il ts dell'ultimo item localStorage cosi' non duplichiamo.
+// in-flight quando l'utente ha chiuso). Il timestamp locale non e' un cursore
+// server: un messaggio recuperato oggi puo' appartenere a un turno iniziato prima.
+// Recuperiamo una finestra limitata e distinguiamo identita' di domanda e risposta.
+let historyFetchGeneration = 0;
 async function fetchServerHistory(){
-  const items = loadHistory();
-  const lastTs = items.length ? Math.max(...items.map(i => i.ts || 0)) : 0;
-  // Il timestamp locale del messaggio puo' essere leggermente successivo a
-  // ts_start persistito dal server. Manteniamo una piccola finestra di
-  // sovrapposizione e deduplichiamo per turn_id piu' sotto.
-  const sinceSec = lastTs ? Math.max(0, (lastTs / 1000) - 10) : 0;
-  const knownTurnIds = new Set(items
-    .map(i => i && i.meta && typeof i.meta === 'object' ? i.meta.turn_id : '')
-    .filter(Boolean));
   try {
-    const url = '/agent/turns/recent?conversation_id=' + encodeURIComponent(conversationId)
-              + '&limit=50&since_ts=' + sinceSec;
+    const requestedGeneration = ++historyFetchGeneration;
+    const requestedConversation = conversationId;
+    const requestedNodes = new Set(log.childNodes);
+    const requestedRecords = new Map();
+    for(const item of loadHistory()){
+      const key = JSON.stringify(item);
+      requestedRecords.set(key, (requestedRecords.get(key) || 0) + 1);
+    }
+    const url = '/agent/turns/recent?conversation_id=' + encodeURIComponent(requestedConversation)
+              + '&limit=50';
     const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
     if(!r.ok) return;
     const data = await r.json();
+    // A delayed response belongs only to the conversation that requested it.
+    if(conversationId !== requestedConversation || requestedGeneration !== historyFetchGeneration) return;
     const turns = (data.turns || []).slice().reverse(); // server desc → render asc
     if(!turns.length) return;
-    const sep = document.createElement('div');
-    sep.className = 'log-sep';
-    sep.textContent = CHAT_I18N.serverReload;
-    log.appendChild(sep);
+    const items = loadHistory();
+    // Preserve interactions added while the snapshot was travelling. An absent
+    // server ID can mean a newer local turn, not just an older cached turn.
+    // Match records by their saved value/count, never by hydration timestamps.
+    const liveRecords = new Set(items.filter(item => {
+      const key = JSON.stringify(item);
+      const count = requestedRecords.get(key) || 0;
+      if(count){ requestedRecords.set(key, count - 1); return false; }
+      return true;
+    }));
+    const nodeTurnId = node => node.dataset ? node.dataset.historyTurnId || '' : '';
+    const liveNodes = new Set([...log.childNodes].filter(node => !requestedNodes.has(node)));
+    const liveIds = new Set([...liveRecords].map(historyRecordTurnId)
+      .concat([...liveNodes].map(nodeTurnId)).filter(Boolean));
+    const recoveredHistory = items.slice();
+    const queryId = i => i && i.cls === 'me' && i.meta && typeof i.meta === 'object'
+      ? (i.meta.query_turn_id || i.meta.turn_id || '') : '';
+    const knownQueryIds = new Set(items.map(queryId).filter(Boolean));
+    const knownTurnIds = new Set(items
+      .filter(i => i && (i.cls === 'bot' || i.cls === 'err'))
+      .map(i => i.meta && typeof i.meta === 'object' ? i.meta.turn_id : '')
+      .filter(Boolean));
+    // Senza ID persistito una domanda legacy resta distinta: il testo non prova identita'.
+    // Cache and server turns are merged chronologically; provenance no longer
+    // describes a contiguous block. Keep the cache boundary only without a merge.
+    log.querySelectorAll('.log-sep').forEach(node => node.remove());
     for(const t of turns){
-      // La finestra di sovrapposizione puo' riportare turni gia' presenti in
-      // localStorage: non renderizzarli una seconda volta.
+      // La sola domanda persistita non dimostra che la risposta sia gia' visibile.
       if(t.turn_id && knownTurnIds.has(t.turn_id)) continue;
       if(t.turn_id) knownTurnIds.add(t.turn_id);
       // User input come messaggio "me"
-      if(t.query) add('me', t.query, '', true);
+      if(t.query && (!t.turn_id || !knownQueryIds.has(t.turn_id))){
+        add('me', t.query, t.turn_id ? {query_turn_id: t.turn_id} : '', true,
+            null, null, false, recoveredHistory);
+        if(t.turn_id) knownQueryIds.add(t.turn_id);
+      }
       if(t.in_flight){
         // Turn ancora in esecuzione server-side: riaggancia lo stream
         // resumable (il `final` arriva dall'event log, robusto al reload e
@@ -1552,10 +1621,21 @@ async function fetchServerHistory(){
                        {{ msg("MSG_CHAT_TURN_LABEL")|tojson }} + (t.turn_id || '').slice(0,8), false);
         if(ph) ph.dataset.turnId = t.turn_id;
         if(ph) ph.dataset.inFlight = '1';
+        if(ph) ph.dataset.historyTurnId = t.turn_id;
         reattachTurnStream(t.turn_id, ph);
       } else if(t.final_message){
-        renderCompletedTurn(t);
+        renderCompletedTurn(t, {historySink: recoveredHistory});
       }
+    }
+    saveHistory(orderRecentHistory(recoveredHistory, turns, historyRecordTurnId,
+      (item, id) => liveRecords.has(item) || liveIds.has(id)));
+    const orderedNodes = orderRecentHistory([...log.childNodes], turns,
+      nodeTurnId, (node, id) => liveNodes.has(node) || liveIds.has(id));
+    let nextNode = log.firstChild;
+    for(const node of orderedNodes){
+      if(node === nextNode) nextNode = nextNode.nextSibling;
+      else if(typeof log.moveBefore === 'function') log.moveBefore(node, nextNode);
+      else log.insertBefore(node, nextNode);
     }
     scrollToEnd();
     // Avvia polling per gli in_flight turns
@@ -2173,7 +2253,8 @@ form.addEventListener('submit', async (e) => {
   if(attachedFiles.length){
     displayMe += '  📎' + attachedFiles.length;
   }
-  add('me', displayMe);
+  const submittedQueryBubble = add('me', displayMe);
+  const submittedQuery = loadHistory().slice(-1)[0];
   if(query) pushCmdBuf(query);
   cmdIdx = -1; cmdDraft = '';
   q.value = '';
@@ -2295,6 +2376,23 @@ form.addEventListener('submit', async (e) => {
       const submitBody = await submitResp.json();
       const turnId = submitBody.turn_id;
       const streamUrl = submitBody.stream_url;
+      if(turnId){
+        if(submittedQueryBubble) submittedQueryBubble.dataset.historyTurnId = turnId;
+        if(pending) pending.dataset.historyTurnId = turnId;
+      }
+      // Lega la domanda gia' mostrata al submit riconosciuto, prima dello stream.
+      // Se la storia e' cambiata nel frattempo, non indovinare quale record legare.
+      if(turnId && submittedQuery){
+        const items = loadHistory();
+        const matches = items.filter(i => i && i.cls === 'me' && i.text === displayMe
+          && i.ts === submittedQuery.ts);
+        if(matches.length === 1){
+          const item = matches[0];
+          item.meta = Object.assign({}, typeof item.meta === 'object' ? item.meta : {},
+                                    {query_turn_id: turnId});
+          saveHistory(items);
+        }
+      }
       // Apri EventSource. Auto-reconnect con Last-Event-ID se la
       // connessione cade. Quando il server emette `final` o `error`,
       // chiudiamo esplicitamente.

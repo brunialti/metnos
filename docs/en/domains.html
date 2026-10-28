@@ -151,6 +151,8 @@
 <article class="domain-card" id="domain-sites">
   <div class="domain-head"><div><span class="domain-key">sites</span><h3>Stateful sites</h3></div><span class="count">5 documented operations</span></div>
   <p>Opens a persistent browser session, reaches login using protected credentials, reads page state, and performs narrow-mandate web actions.</p>
+  <p>During collection, it can return directly to a previously reached page and verify its content and context before continuing. If verification fails, it follows the previous path again within the session limits.</p>
+  <p>For invoices from one specific year, reaching an earlier year can stop the search within the same list when its dates and order can be verified. Details of the requested invoices still need to be read. Views of the same document can be merged using the observed link to its detail; equal dates and amounts alone do not prove a duplicate. Verifying written rows does not certify archive completeness.</p>
   <p class="boundary"><strong>Limits.</strong> Credentials are injected by the broker and never shown to the model. Sensitive actions require confirmation.</p>
   <div class="examples"><p class="example"><span>For example, write in chat:</span>“Sign in to the courier portal and tell me where shipment 12345 is.”</p><p class="example"><span>For example, write in chat:</span>“Open the bank website, download June&#x27;s statement, and stop before making any transaction.”</p></div>
   <details><summary>Included operations (5)</summary><div class="operations"><code>act_sites</code><code>delete_sites</code><code>login_sites</code><code>open_sites</code><code>read_sites</code></div></details>

@@ -54,8 +54,8 @@ minimum     = 0
 default     = 20000000
 
 [args.properties.max_bytes.description]
-it = "Tetto sui byte scaricati per documento. Default 20000000 (20 MB)."
-en = "Ceiling on downloaded bytes per document. Default 20000000 (20 MB)."
+it = "Tetto sui byte ricevuti e, separatamente, sul PDF dopo la decompressione HTTP. Default 20000000 (20 MB). Il superamento produce un risultato incompleto con il limite osservato."
+en = "Ceiling on received bytes and, separately, on the PDF after HTTP decompression. Default 20000000 (20 MB). Exceeding either ceiling returns an incomplete result with the observed limit."
 
 [args.properties.timeout_s]
 type        = "number"
@@ -72,8 +72,8 @@ type        = "boolean"
 default     = false
 
 [args.properties.ocr_fallback.description]
-it = "Se true e l'estrazione testo nativa restituisce 0 char, marca l'entry con `needs_ocr: true` per orchestrazione successiva (read_files_ocr). Default false."
-en = "If true and the native text extraction returns 0 chars, mark the entry with `needs_ocr: true` for subsequent orchestration (read_files_ocr). Default false."
+it = "Se true e l'estrazione testo nativa restituisce 0 caratteri, espone ocr_requested=true e ocr_available=false. Il lettore non esegue OCR; l'assenza di testo non prova che il documento sia una scansione. Default false."
+en = "If true and native text extraction returns 0 characters, expose ocr_requested=true and ocr_available=false. This reader does not perform OCR; absent text does not establish that the document is scanned. Default false."
 
 [args.properties.client]
 type        = "string"

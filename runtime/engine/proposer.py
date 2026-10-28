@@ -21,6 +21,7 @@ import logging
 import re
 from typing import Optional, Callable, Protocol, Sequence
 from config import env_int
+from from_step_projection import input_conditions
 
 from .types import Intent, Framework
 
@@ -147,6 +148,10 @@ def _render_tool_pool(pool: list[str], catalog: Optional[list]) -> str:
             bits.append(f" [required: {','.join(required)}]")
         if roo:
             bits.append(f" [requires_one_of: {roo}]")
+        conditions = input_conditions(schema)
+        if conditions:
+            bits.append(" [input_when: " + json.dumps(
+                conditions, ensure_ascii=False, separators=(",", ":")) + "]")
         if props:
             bits.append(f" args=[{','.join(props)}]")
         # §8.3 anti-invenzione: esponi gli enum degli arg così il Proposer

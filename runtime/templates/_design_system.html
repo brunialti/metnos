@@ -242,6 +242,11 @@ form.tp-filters label{display:inline-flex;gap:.35rem;align-items:center;
 .dw-status-bar #dwFreshness{color:var(--muted);font-size:.8rem}
 .dw-job-row{border-bottom:1px solid var(--border)}.dw-job-row:last-child{border-bottom:0}
 .dw-job-header{display:flex;align-items:center;gap:8px;padding:4px 8px;background:var(--surface-2)}
+.dw-selection-actions{display:flex;align-items:center;flex-wrap:wrap;gap:8px 16px;padding:8px;font-size:.85rem}.dw-selection-actions[hidden]{display:none}
+.dw-selection-actions #dwSelectionHelp{flex-basis:100%}
+.dw-job-select{display:flex;align-items:center;justify-content:center;flex:0 0 28px;min-height:36px;cursor:pointer;margin:0}
+.dw-job-select input{width:18px;height:18px;margin:0;accent-color:var(--accent,#127665);cursor:pointer}
+.dw-job-select input:focus-visible{outline:2px solid var(--accent,#127665);outline-offset:3px}
 .dw-job-row[data-expanded="true"]>.dw-job-header{background:var(--accent-soft,#e1efec);box-shadow:inset 3px 0 var(--accent,#127665)}
 .dw-job-summary{flex:1;min-width:0;overflow-x:auto;scrollbar-width:thin;container-type:inline-size}
 .dw-job-fields{display:grid;grid-template-columns:minmax(150px,1fr) repeat(2,10rem) minmax(10.5rem,11rem);align-items:center;gap:16px;width:100%;min-width:max-content;padding:4px 8px;font-size:.85rem;white-space:nowrap}
@@ -254,6 +259,7 @@ form.tp-filters label{display:inline-flex;gap:.35rem;align-items:center;
 .dw-job-temporary{overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
 .dw-job-choice,.dw-job-dismiss{flex:none;width:36px;height:36px;border:0;border-radius:var(--r-1);background:transparent;color:var(--ink);font-size:1.35rem;line-height:1;cursor:pointer}
 .dw-job-choice:hover{background:var(--surface);color:var(--accent,#127665)}
+.dw-job-choice{display:grid;place-items:center}
 .dw-job-dismiss{color:var(--muted)}.dw-job-dismiss[hidden]{display:none}
 .dw-job-dismiss:hover{color:var(--bad,#ad2929);background:var(--bad-soft,#fff0f0)}
 .dw-job-choice:focus-visible,.dw-job-dismiss:focus-visible,.dw-job-summary:focus-visible{outline:2px solid var(--accent,#127665);outline-offset:-2px}

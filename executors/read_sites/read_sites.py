@@ -65,6 +65,7 @@ def invoke(args: dict) -> dict:
     include_screenshot = bool(args.get("include_screenshot", True))
     include_forms = bool(args.get("include_forms", False))
 
+    captcha_pending = []
     entries = []
     attachments = []
     current_pages = []
@@ -81,6 +82,8 @@ def invoke(args: dict) -> dict:
                     "source_metadata": source_metadata,
                     "error": _msg("ERR_ARG_INVALID", arg="source_metadata",
                                   reason="invalid_source_metadata")}
+        if res.get("user_control_required"):
+            captcha_pending.append(sid)
         if not res.get("ok"):
             entries.append({"session_id": sid, "ok": False,
                             "reason_code": res.get("error_class") or "read_failed"})
@@ -123,6 +126,18 @@ def invoke(args: dict) -> dict:
                     source["_source_scope_label"] = entry["_source_scope_label"]
                 if isinstance(page.get("_source_record_view"), dict):
                     source["_source_record_view"] = dict(page["_source_record_view"])
+                if isinstance(page.get("_source_snapshot_ref"), str):
+                    source["_source_snapshot_ref"] = page["_source_snapshot_ref"]
+                if isinstance(page.get("_source_identity_scope"), dict):
+                    source["_source_identity_scope"] = dict(page["_source_identity_scope"])
+                # Private: the rows the collector bound on this page, with their fields.
+                if isinstance(page.get("_source_list"), dict):
+                    source["_source_list"] = page["_source_list"]
+                # The record partition (contract, account...) the page was read in.
+                if (isinstance(page.get("_source_context_label"), str)
+                        and isinstance(page.get("_source_partition"), str)):
+                    source["_source_context_label"] = page["_source_context_label"][:160]
+                    source["_source_partition"] = page["_source_partition"][:64]
                 if page.get("current") is True:
                     for key in ("forms", "screenshot_path"):
                         if key in entry:
@@ -133,6 +148,15 @@ def invoke(args: dict) -> dict:
                     current_pages.append({k: v for k, v in entry.items() if k != "text"})
         else:
             entries.append(entry)
+
+    if captcha_pending:
+        from playwright_sidecar.challenge_handoff import request
+        handoff = request(executor="read_sites", sessions=captcha_pending, args={
+            "session_ids": session_ids, "include_screenshot": include_screenshot,
+            "include_forms": include_forms, "source_metadata": source_metadata,
+        })
+        handoff.update(entries=entries, source_metadata=source_metadata, no_frontier=True)
+        return handoff
 
     ok = any(e.get("ok") for e in entries)
     out = {"ok": ok, "entries": entries, "source_metadata": source_metadata}

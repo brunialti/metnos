@@ -12,7 +12,6 @@ OUT: entries=[{session_id, logged_in: bool, reason_code?}]  (§3.4).
 """
 from __future__ import annotations
 
-import mimetypes
 import os
 import sys
 from pathlib import Path
@@ -20,9 +19,8 @@ from pathlib import Path
 _ROOT = Path(__file__).resolve().parents[2]
 _RT = os.environ.get("METNOS_RUNTIME") or str(
     _ROOT / "runtime")
-for path in (_RT, str(_ROOT / "executors" / "get_approval")):
-    if path not in sys.path:
-        sys.path.insert(0, path)
+if _RT not in sys.path:
+    sys.path.insert(0, _RT)
 
 from messages import get as _msg  # noqa: E402
 from executor_helpers import run_stdio  # noqa: E402
@@ -78,15 +76,8 @@ def _reason_message(reason_code: str | None) -> str | None:
     return msg
 
 
-def _attachment(path: str, sensitive: bool) -> dict:
-    return {"kind": "image", "path": path, "basename": Path(path).name,
-            "mime": mimetypes.guess_type(path)[0] or "image/png",
-            "sensitive": sensitive}
-
-
 def invoke(args: dict) -> dict:
     owner = os.environ.get("METNOS_ACTOR") or "host"
-    channel = os.environ.get("METNOS_CHANNEL") or ""
     session_ids = _collect_session_ids(args)
     if not session_ids:
         return {"ok": False, "error": _msg("ERR_ARG_MISSING", arg="session_ids"),
@@ -118,17 +109,14 @@ def invoke(args: dict) -> dict:
     pending = []
     otp_pending = []
     captcha_pending = []
-    attachments = []
+    # Page captures stay inside the broker: the chat never shows them, neither
+    # on consent forms nor on results (Roberto, 13/10/2026).
     for sid in session_ids:
         res = session_client.session_login(
             session_id=sid, owner=owner, domain=domain, form_hint=form_hint,
             approval_token=approval_tokens.get(sid),
             one_time_code=_one_time_code_for(sid),
             credential_mode=credential_mode)
-        shot = res.get("screenshot_path")
-        if shot:
-            attachments.append(_attachment(
-                shot, bool(res.get("sensitive"))))
         if res.get("approval_required"):
             token = res.get("approval_token")
             if token:
@@ -176,7 +164,7 @@ def invoke(args: dict) -> dict:
         entries.append(entry)
 
     if pending:
-        from get_approval import invoke as approval_invoke
+        from approval_request import approval_request
         tokens = {sid: token for sid, token, _ in pending}
         origin_gate = all(res.get("approval_kind") == "credential_origin"
                           for _, _, res in pending)
@@ -202,16 +190,13 @@ def invoke(args: dict) -> dict:
             resume_args["domain"] = domain
         if form_hint is not None:
             resume_args["form_hint"] = form_hint
-        gate = approval_invoke({
-            "prompt": prompt, "title": title,
-            "actor": owner, "channel": channel, "timeout_s": 3600,
-            "on_approve": {"tool": "login_sites", "args": resume_args},
-            "on_reject": {"tool": "delete_sites", "args": {
+        gate = approval_request(
+            prompt=prompt, title=title, timeout_s=3600,
+            on_approve={"tool": "login_sites", "args": resume_args},
+            on_reject={"tool": "delete_sites", "args": {
                 "session_ids": list(tokens),
             }},
-        })
-        if attachments:
-            gate["attachments"] = attachments
+        )
         gate["pending_sessions"] = list(tokens)
         return gate
 
@@ -272,8 +257,6 @@ def invoke(args: dict) -> dict:
     out = {"ok": ok, "entries": entries,
            "metadata": {"logged_in": sum(1 for e in entries if e["logged_in"]),
                         "total": len(entries)}}
-    if attachments:
-        out["attachments"] = attachments
     if not ok:
         first_reason = next((e.get("reason_code") for e in entries
                              if e.get("reason_code")), "login_failed")

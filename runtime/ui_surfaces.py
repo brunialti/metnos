@@ -563,6 +563,59 @@ SURFACES: tuple[UiSurfaceSpec, ...] = (
         structure_sha="453642d23605",
     ),
     UiSurfaceSpec(
+        "credentials", "system", "/admin/credentials", "Credenziali", "Credentials",
+        "Credenziali salvate, senza mai mostrare password o altri segreti.",
+        "Stored credentials, never showing passwords or other secrets.",
+        ("elenco con nome, tipo, dati non segreti come l'utente, indirizzi di "
+         "accesso, indirizzi approvati e data di aggiornamento",),
+        ("list with name, kind, non-secret data such as the user, sign-in "
+         "addresses, approved addresses, and update date",),
+        ("togli un indirizzo approvato", "cancella una credenziale"),
+        ("remove an approved address", "delete a credential"),
+        procedure_it=(
+            "Nella chat web apri Settings > Sistema > Credenziali.",
+            "Ogni riga è una credenziale salvata: password, codici e altri "
+            "valori segreti non compaiono mai, si vedono solo i dati non "
+            "segreti come il nome utente.",
+            "Indirizzi di accesso dice dove la credenziale può essere usata: "
+            "lo stesso sito del nome, oppure gli indirizzi indicati quando è "
+            "stata salvata.",
+            "Indirizzi approvati elenca le pagine di accesso di un altro sito "
+            "che hai approvato una volta: Metnos non chiede più il consenso "
+            "per quelle. Togli un indirizzo per farti chiedere di nuovo il "
+            "consenso al prossimo accesso.",
+            "Cancella elimina la credenziale dopo una conferma; non si può "
+            "annullare. Per aggiungerne o aggiornarne una scrivi in chat, per "
+            "esempio: salva le credenziali di enel.",
+        ),
+        procedure_en=(
+            "In the web chat open Settings > System > Credentials.",
+            "Each row is a stored credential: passwords, codes and other "
+            "secret values never appear, only non-secret data such as the "
+            "user name.",
+            "Sign-in addresses tells where the credential may be used: the "
+            "same site as its name, or the addresses given when it was saved.",
+            "Approved addresses lists sign-in pages of another site that you "
+            "approved once: Metnos no longer asks for consent there. Remove "
+            "an address to be asked for consent again at the next sign-in.",
+            "Delete removes the credential after a confirmation; it cannot be "
+            "undone. To add or update one, write in the chat, for example: "
+            "save the credentials for enel.",
+        ),
+        stop_it=(
+            "se l'elenco è vuoto, nessuna credenziale è salvata in questa istanza",
+            "se una riga dice Non leggibile, il record non si può decifrare: "
+            "cancellalo e salva di nuovo le credenziali",
+        ),
+        stop_en=(
+            "an empty list means that no credential is stored on this instance",
+            "if a row says Unreadable, the record cannot be decrypted: delete "
+            "it and save the credentials again",
+        ),
+        template="credentials.html",
+        structure_sha="8cc0bf5b682b",
+    ),
+    UiSurfaceSpec(
         "devices", "system", "/admin/devices", "Dispositivi", "Devices",
         "Dispositivi remoti associati che eseguono executor.",
         "Paired remote devices that run executors.",

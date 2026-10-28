@@ -26,6 +26,7 @@ _BOUNDARY_RUNTIME_MODULES = (
     "credential_mandates.py",
     "credentials.py",
     "sites_audit.py",
+    "sites_downloads.py",
     "sites_observed.py",
     "sites_origin.py",
     "sites_url_scrub.py",

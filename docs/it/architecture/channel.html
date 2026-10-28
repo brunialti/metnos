@@ -93,6 +93,13 @@ Vaglio, executor e separazione fra utenti rimangono gli stessi.</p>
 <p>Le rotte e i metodi disponibili sono documentati in
 <a href="http_api.html">API HTTP</a>.</p>
 
+<p>Quando recupera lo storico, la chat mantiene i turni nell'ordine degli
+eventi del server. Le interazioni aggiunte durante l'attesa restano dopo i
+messaggi precedenti anche nella cronologia salvata: una risposta recuperata
+in ritardo non diventa l'ultima risposta. Un recupero superato da una richiesta
+più recente viene ignorato. Il recupero non invia di nuovo le richieste dell'utente
+e conserva bozze, allegati e moduli ancora aperti.</p>
+
 <h2 id="telegram">Il canale Telegram</h2>
 
 <p>Telegram usa un piccolo processo di servizio e la Bot API ufficiale. È

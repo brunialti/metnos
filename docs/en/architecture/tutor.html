@@ -149,6 +149,13 @@ only ranks sections within that same source. The model composes the final prose,
 but it cannot introduce capabilities, permissions, or facts that the sources do
 not attest.</p>
 
+<p>For an explicitly named public document, shared retrieval can also retain
+one support section with the strongest positive lexical match. It stays within
+the same visible source, preserves the canonical citation and does not replace
+the semantic primary section. The total section budget does not increase: when
+full, support replaces only a secondary section; a single slot keeps the primary.
+Selection reuses existing signals without new model calls or new embeddings.</p>
+
 <p>Manifests also have structure. The complete executor contract describes the
 operation, while individual argument entries refine its parameters and limits.
 When both are relevant, the complete contract comes first and argument entries

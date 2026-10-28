@@ -21,6 +21,9 @@ from __future__ import annotations
 import os
 import sys
 import time
+import re
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 
 from sites_url_scrub import scrub_url
@@ -32,6 +35,66 @@ except Exception:  # pragma: no cover — fallback se config non importabile
     _STATE_DIR = Path.home() / ".local" / "state" / "metnos"
 
 AUDIT_PATH = _STATE_DIR / "sites_audit.jsonl"
+
+# This describes the command path, never the physical person at a browser.
+# ContextVars isolate concurrent sessions and propagate to asyncio.to_thread.
+_ACTION_ORIGIN = ContextVar("sites_action_origin", default=None)
+_ACTOR_FIELDS = frozenset({
+    "executor", "source", "role", "provider", "model", "principal_id",
+    "device_id", "authorization", "dialog_id", "request_id",
+})
+
+
+def actor_metadata(value) -> dict:
+    """Closed, bounded attribution. No arbitrary client/model prose or secrets."""
+    if not isinstance(value, dict):
+        return {"actor_type": "unknown"}
+    kind = value.get("actor_type")
+    if not isinstance(kind, str) or kind not in {"executor", "model", "browser_control", "unknown"}:
+        return {"actor_type": "unknown"}
+    result = {"actor_type": kind}
+    for key in _ACTOR_FIELDS:
+        item = value.get(key)
+        if isinstance(item, str) and re.fullmatch(r"[A-Za-z0-9_.:/@+-]{1,160}", item):
+            result[key] = item
+    if kind == "browser_control":
+        result["human_identity"] = "unverified"
+    return result
+
+
+@contextmanager
+def action_context(origin: dict):
+    token = _ACTION_ORIGIN.set(actor_metadata(origin))
+    try:
+        yield
+    finally:
+        _ACTION_ORIGIN.reset(token)
+
+
+def model_actor(role: str, response=None) -> dict:
+    """Use the actual response's transport identity; do not guess from tier."""
+    return actor_metadata({
+        "actor_type": "model", "role": role,
+        "provider": getattr(response, "provider", "") or "unknown",
+        "model": getattr(response, "model", "") or "unknown",
+    })
+
+
+def browser_control_origin(request, *, dialog_id: str, owner_user_id: str) -> dict:
+    """Called after authorization by HTTP, before signing the exact command.
+
+    An authenticated account and a dialog capability identify authorization,
+    not whether a human or an API client initiated a click. Body fields and
+    User-Agent/Sec-Fetch headers cannot establish that fact.
+    """
+    principal = str(request.get("authenticated_user_id") or "")
+    return actor_metadata({
+        "actor_type": "browser_control", "executor": "playwright_sidecar",
+        "source": "http.dialog_browser", "dialog_id": dialog_id,
+        "principal_id": principal, "device_id": request.get("device_id") or "",
+        "authorization": "owner_identity" if principal and principal == owner_user_id
+                         else "dialog_capability",
+    })
 
 # Nomi di campo il cui valore non deve MAI finire nell'audit (difesa in
 # profondità: se un chiamante passa per sbaglio una credenziale, la droppiamo).
@@ -83,7 +146,12 @@ def record(event: str, *, owner: str = "", session_id: str = "",
             "session_id": str(session_id or ""),
             "domain": str(domain or ""),
         }
-        entry.update(_sanitize(fields))
+        clean = _sanitize(fields)
+        origin = clean.pop("action_origin", _ACTION_ORIGIN.get())
+        if "decision_actor" in clean:
+            clean["decision_actor"] = actor_metadata(clean["decision_actor"])
+        entry.update(clean)
+        entry["action_origin"] = actor_metadata(origin)
         AUDIT_PATH.parent.mkdir(parents=True, exist_ok=True)
         os.chmod(AUDIT_PATH.parent, 0o700)
         from audit_jsonl import append_bounded_jsonl

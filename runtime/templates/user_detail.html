@@ -51,6 +51,24 @@
   .user-form input,.user-form select,.user-form textarea{width:100%;}
   .user-form textarea{resize:vertical;min-height:2.6em;}
   .user-form button{grid-column:2;justify-self:end;}
+  .credentials-table{table-layout:fixed;width:100%;min-width:40rem;}
+  .credentials-table th:first-child{width:8.5rem;}
+  .credentials-table th:nth-child(2){width:40%;}
+  .credentials-table th,.credentials-table td{white-space:normal;overflow-wrap:anywhere;
+                                              vertical-align:top;}
+  .credential-details{display:grid;grid-template-columns:minmax(0,6.5rem) minmax(0,1fr);
+                      gap:.25rem .6rem;margin:0 0 .65rem;}
+  .credential-details dt{color:var(--muted);font-weight:500;}
+  .credential-details dd{margin:0;min-width:0;}
+  .credentials-table .names-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
+                                 gap:.55rem .7rem;}
+  .credentials-table .names-form label{display:grid;gap:.3rem;min-width:0;}
+  .credentials-table .names-form input{width:100%;min-width:0;}
+  .credential-name-note{grid-column:1/-1;margin:0;font-size:var(--fs-0);}
+  .credential-name-actions{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:.45rem;}
+  @media(max-width:900px){
+    .credentials-table .names-form{grid-template-columns:minmax(0,1fr);}
+  }
   .prefs-form{max-width:860px;}
   .prefs-intro{max-width:720px;margin:.35rem 0 1.1rem;line-height:1.5;}
   .prefs-block{padding:1rem 1.1rem;border:1px solid var(--line);border-radius:14px;
@@ -257,30 +275,162 @@
 
   </div>
 
-<div class="section">
-  <h2>{{ msg("MSG_SITE_INVOCATIONS_TITLE") }}</h2>
-  <p id="site-invocation-help" class="muted">{{ msg("MSG_SITE_INVOCATIONS_HELP") }}</p>
-  <p id="site-invocation-optional" class="muted">{{ msg("MSG_SITE_INVOCATIONS_OPTIONAL") }}</p>
-  {% if site_error %}<p role="alert">{{ msg("MSG_SITE_INVOCATIONS_INVALID") }}</p>{% endif %}
-  <form id="site-invocation-form" method="post" action="/admin/users/{{ user.id }}/sites" class="user-form">
-    <label for="site_invocation_name">{{ msg("MSG_SITE_INVOCATIONS_NAME") }}</label>
-    <input id="site_invocation_name" name="name" maxlength="80"
-           aria-describedby="site-invocation-help site-invocation-optional site-invocation-feedback">
-    <label for="site_invocation_url">{{ msg("MSG_SITE_INVOCATIONS_URL") }}</label>
-    <input id="site_invocation_url" name="url" required maxlength="2048"
+<div class="section" id="credentials">
+  <h2>{{ msg("MSG_CREDENTIALS_PAGE_TITLE") }}</h2>
+  <p id="credential-names-help" class="muted">{{ msg("MSG_USER_CREDENTIALS_HELP") }}</p>
+  <p class="muted"><a href="/admin/credentials">{{ msg("MSG_USER_CREDENTIALS_MANAGE") }}</a></p>
+  {% if names_error %}<p role="alert">{{ names_error }}</p>{% endif %}
+  {% if credential_rows %}
+  <div class="table-wrap" style="box-shadow:none;margin-top:1rem">
+    <table class="credentials-table">
+      <thead><tr><th>{{ msg("MSG_CREDENTIALS_COL_KIND") }}</th>
+                 <th>{{ msg("MSG_USER_CREDENTIALS_COL_CREDENTIAL") }}</th>
+                 <th>{{ msg("MSG_USER_CREDENTIALS_COL_NAMES") }}</th></tr></thead>
+      <tbody>{% for row in credential_rows %}
+      <tr>
+        <td>{{ msg(row.kind_label_key) if row.kind_label_key else row.kind }}</td>
+        <td><dl class="credential-details">
+          {% if row.binding %}<dt>{{ msg("MSG_USER_CREDENTIALS_IDENTIFIER") }}</dt><dd><code>{{ row.binding }}</code></dd>{% endif %}
+          {% if row.public_fields %}{% for field in row.public_fields %}
+          <dt>{{ msg(field.label_key) if field.label_key else field.name }}</dt><dd>{{ field.text }}</dd>
+          {% endfor %}{% elif row.user_text %}
+          <dt>{{ msg("MSG_USER_CREDENTIALS_EMAIL") if row.kind == "mail" else msg("MSG_CREDENTIAL_FIELD_USERNAME") }}</dt><dd>{{ row.user_text }}</dd>
+          {% endif %}
+          {% if row.kind == "site" %}<dt>{{ msg("MSG_USER_CREDENTIALS_ADDRESS") }}</dt><dd>{{ row.target }}</dd>{% endif %}
+          </dl>
+          {% if not row.has_credential %}<p class="muted">{{ msg("MSG_USER_CREDENTIALS_NO_SECRET") }}</p>{% endif %}
+          {% if row.kind in ("site", "mail") %}
+          <form method="post" action="/admin/users/{{ user.id }}/credential-form" class="credential-open">
+            <input type="hidden" name="kind" value="{{ row.kind }}">
+            <input type="hidden" name="target" value="{{ row.binding if row.has_credential else row.target }}">
+            <button class="btn" type="submit">{{ msg("MSG_USER_CREDENTIALS_UPDATE") if row.has_credential else msg("MSG_USER_CREDENTIALS_ADD") }}</button>
+          </form>{% endif %}</td>
+        <td>{% if row.nameable %}
+          <form method="post" action="/admin/users/{{ user.id }}/credential-names" class="names-form">
+            <input type="hidden" name="kind" value="{{ row.kind }}">
+            <input type="hidden" name="target" value="{{ row.target }}">
+            <label>{{ msg("MSG_USER_CREDENTIALS_NAME") }}
+              <input name="name" maxlength="80" value="{{ row.name }}"></label>
+            <label>{{ msg("MSG_USER_CREDENTIALS_SYNONYMS") }}
+              <input name="synonyms" maxlength="800" value="{{ row.synonyms }}"
+                     placeholder="{{ msg('MSG_USER_CREDENTIALS_SYNONYMS_HINT') }}"></label>
+            {% if not row.names_saved %}<p class="muted credential-name-note">{{ msg("MSG_USER_CREDENTIALS_PROPOSED_NAME") }}</p>{% endif %}
+            <div class="credential-name-actions">
+            <button class="btn primary" type="submit" name="action" value="save">{{ msg("MSG_USER_CREDENTIALS_SAVE") }}</button>
+            {% if row.names_saved %}<button class="btn" type="submit" name="action" value="delete">{{ msg("MSG_USER_CREDENTIALS_CLEAR") }}</button>{% endif %}
+            </div>
+          </form>
+        {% else %}<span class="muted">{{ msg("MSG_USER_CREDENTIALS_NOT_NAMEABLE") }}</span>{% endif %}</td>
+      </tr>{% endfor %}</tbody>
+    </table>
+  </div>
+  {% else %}<p class="muted">{{ msg("MSG_CREDENTIALS_EMPTY") }}</p>{% endif %}
+
+  <h3>{{ msg("MSG_USER_CREDENTIALS_NEW_TITLE") }}</h3>
+  <p class="muted">{{ msg("MSG_USER_CREDENTIALS_NEW_HELP") }}</p>
+  <form method="post" action="/admin/users/{{ user.id }}/credential-form" class="user-form credential-open">
+    <input type="hidden" name="kind" value="site">
+    <label for="new_site_target">{{ msg("MSG_SITE_INVOCATIONS_URL") }}</label>
+    <input id="new_site_target" name="target" required maxlength="2048"
            placeholder="https://www.example.org/">
+    <span></span>
+    <button class="btn primary" type="submit">{{ msg("MSG_USER_CREDENTIALS_NEW_SITE") }}</button>
+  </form>
+  <form method="post" action="/admin/users/{{ user.id }}/credential-form" class="user-form credential-open">
+    <input type="hidden" name="kind" value="mail">
+    <label for="new_mail_target">{{ msg("MSG_USER_CREDENTIALS_MAILBOX_NAME") }}</label>
+    <input id="new_mail_target" name="target" required maxlength="64"
+           placeholder="office">
+    <span></span>
+    <button class="btn primary" type="submit">{{ msg("MSG_USER_CREDENTIALS_NEW_MAIL") }}</button>
+  </form>
+  <div id="credential-form-box" hidden>
+    <iframe id="credential-form-frame" title="{{ msg('MSG_USER_CREDENTIALS_NEW_TITLE') }}"
+            style="width:100%;min-height:22rem;border:1px solid var(--border, #ccc);border-radius:6px"></iframe>
+    <p id="credential-form-status" role="status" data-failed="{{ msg('MSG_CREDENTIAL_FORM_NOT_OPENED', detail='') }}"></p>
+    <button id="credential-form-close" class="btn" type="button" hidden>{{ msg("MSG_USER_CREDENTIALS_CLOSE") }}</button>
+  </div>
+  <script>
+  (() => {
+    const box = document.getElementById('credential-form-box');
+    const frame = document.getElementById('credential-form-frame');
+    const status = document.getElementById('credential-form-status');
+    const close = document.getElementById('credential-form-close');
+    const marker = /INLINE_FORM:(\/agent\/dialog\/[A-Za-z0-9._-]+\/form(?:\?cap=[0-9]+\.[a-f0-9]{64})?)/;
+    const show = url => {
+      status.textContent = '';
+      close.hidden = true;
+      frame.hidden = false;
+      frame.src = url;
+      box.hidden = false;
+      box.scrollIntoView({block: 'nearest'});
+    };
+    document.querySelectorAll('form.credential-open').forEach(form => {
+      form.addEventListener('submit', async event => {
+        event.preventDefault();
+        let data = {};
+        try {
+          const response = await fetch(form.getAttribute('action'), {
+            method: 'POST', body: new FormData(form), credentials: 'same-origin',
+            headers: {Accept: 'application/json'},
+          });
+          data = await response.json();
+        } catch (_) { data = {}; }
+        if (data.ok && data.form_url) return show(data.form_url);
+        box.hidden = false;
+        frame.hidden = true;
+        status.textContent = data.error || status.dataset.failed;
+      });
+    });
+    window.addEventListener('message', event => {
+      if (event.origin !== location.origin || event.source !== frame.contentWindow) return;
+      const data = event.data || {};
+      if (data.type === 'metnos.dialog.height' && data.height) {
+        frame.style.height = Math.min(data.height + 16, 900) + 'px';
+      } else if (data.type === 'metnos.dialog.reconcile') {
+        frame.src = frame.src;
+      } else if (data.type === 'metnos.dialog.done') {
+        const text = String(data.completion_text || '');
+        const next = marker.exec(text);
+        if (next) return show(next[1]);
+        frame.hidden = true;
+        status.textContent = text;
+        close.hidden = false;
+      } else if (data.type === 'metnos.dialog.cancelled' || data.type === 'metnos.dialog.terminal') {
+        box.hidden = true;
+        frame.removeAttribute('src');
+      }
+    });
+    close.addEventListener('click', () => location.reload());
+  })();
+  </script>
+
+  <h3>{{ msg("MSG_USER_CREDENTIALS_ADD_SITE") }}</h3>
+  <p id="site-invocation-optional" class="muted">{{ msg("MSG_SITE_INVOCATIONS_OPTIONAL") }}</p>
+  <form id="site-invocation-form" method="post" action="/admin/users/{{ user.id }}/credential-names" class="user-form">
+    <input type="hidden" name="kind" value="site">
+    <label for="site_invocation_url">{{ msg("MSG_SITE_INVOCATIONS_URL") }}</label>
+    <input id="site_invocation_url" name="target" required maxlength="2048"
+           placeholder="https://www.example.org/">
+    <label for="site_invocation_name">{{ msg("MSG_USER_CREDENTIALS_NAME") }}</label>
+    <input id="site_invocation_name" name="name" maxlength="80"
+           aria-describedby="credential-names-help site-invocation-optional site-invocation-feedback">
+    <label for="site_invocation_synonyms">{{ msg("MSG_USER_CREDENTIALS_SYNONYMS") }}</label>
+    <input id="site_invocation_synonyms" name="synonyms" maxlength="800"
+           placeholder="{{ msg('MSG_USER_CREDENTIALS_SYNONYMS_HINT') }}">
     <span></span>
     <p id="site-invocation-feedback" class="muted" role="status" hidden
        data-proposed="{{ msg('MSG_SITE_INVOCATIONS_PROPOSED') }}"
-       data-invalid="{{ msg('MSG_SITE_INVOCATIONS_INVALID') }}"></p>
+       data-invalid="{{ msg('MSG_INVOCATION_TARGET_INVALID') }}"></p>
     <span></span>
-    <button class="btn primary" type="submit" name="action" value="save">{{ msg("MSG_SITE_INVOCATIONS_SAVE") }}</button>
+    <button class="btn primary" type="submit" name="action" value="save">{{ msg("MSG_USER_CREDENTIALS_SAVE") }}</button>
   </form>
   <script>
   (() => {
     const form = document.getElementById('site-invocation-form');
     const name = document.getElementById('site_invocation_name');
     const url = document.getElementById('site_invocation_url');
+    const synonyms = document.getElementById('site_invocation_synonyms');
     const feedback = document.getElementById('site-invocation-feedback');
     let proposedName = '';
     url.addEventListener('input', () => {
@@ -293,7 +443,8 @@
       const enteredUrl = url.value;
       const data = new FormData();
       data.set('action', 'suggest');
-      data.set('url', enteredUrl);
+      data.set('kind', 'site');
+      data.set('target', enteredUrl);
       try {
         const response = await fetch(form.getAttribute('action'), {
           method: 'POST', body: data, credentials: 'same-origin',
@@ -304,6 +455,8 @@
         if (url.value !== enteredUrl || name.value.trim()) return false;
         name.value = proposal.name;
         proposedName = proposal.name;
+        if (!synonyms.value.trim() && proposal.synonyms.length)
+          synonyms.value = proposal.synonyms.join(', ');
         feedback.textContent = feedback.dataset.proposed;
         feedback.hidden = false;
         return true;
@@ -321,21 +474,6 @@
     });
   })();
   </script>
-  {% if site_invocations %}
-  <div class="table-wrap" style="box-shadow:none;margin-top:1rem">
-    <table>
-      <thead><tr><th>{{ msg("MSG_SITE_INVOCATIONS_NAME") }}</th>
-                 <th>{{ msg("MSG_SITE_INVOCATIONS_URL") }}</th><th></th></tr></thead>
-      <tbody>{% for entry in site_invocations %}
-      <tr><td>{{ entry.name }}</td><td><code>{{ entry.url }}</code></td>
-          <td><form method="post" action="/admin/users/{{ user.id }}/sites">
-            <input type="hidden" name="name" value="{{ entry.name }}">
-            <button class="btn" type="submit" name="action" value="delete">{{ msg("MSG_SITE_INVOCATIONS_DELETE") }}</button>
-          </form></td></tr>
-      {% endfor %}</tbody>
-    </table>
-  </div>
-  {% endif %}
 </div>
 
 <div class="section">

@@ -57,24 +57,58 @@ autonomia, associare o rimuovere canali e consultare i dispositivi posseduti.
 Le preferenze disponibili appartengono a un vocabolario chiuso: l'interfaccia non
 accetta chiavi arbitrarie.</p>
 
-<p>Nel dettaglio utente, <strong>Nomi dei siti</strong> associa il nome usato
-nelle richieste a un URL. Per esempio, puoi registrare «telepas» con
-<code>https://www.telepass.com/</code>: quando chiedi di aprire o usare quel sito,
-Metnos parte dall'indirizzo registrato invece di ricavarlo dal nome. Le
-associazioni sono separate per utente; un URL scritto esplicitamente nella
-richiesta ha la precedenza. Se la richiesta nomina più siti registrati,
-Metnos chiede quale usare.</p>
+<p>Nel dettaglio utente, la sezione <strong>Credenziali</strong> elenca tutte
+le credenziali passate a Metnos: siti, caselle email e servizi. Password e
+codici non sono mai mostrati; per cancellare una credenziale o un indirizzo
+approvato si usa <strong>Impostazioni → Credenziali</strong>.</p>
 
-<p>Se conosci l'URL ma non hai ancora scelto un nome, lascia vuoto il campo
-<strong>Nome di invocazione</strong> e inserisci l'indirizzo. Metnos propone un
-nome ricavato dal dominio, senza salvare nulla: controllalo o cambialo, poi
-premi <strong>Salva associazione</strong>. Se il sito è già registrato,
-viene proposto il nome esistente; i nomi restano modificabili e indipendenti
-dall'URL.</p>
+<p>A un sito o a una casella email puoi dare un <strong>nome</strong> e dei
+<strong>sinonimi</strong>, separati da virgola. Per esempio, puoi chiamare
+<code>https://www.telepass.com/</code> «telepas», con sinonimi «telepass» e
+«pedaggi»; oppure chiamare una casella «lavoro», con sinonimo «ufficio». I nomi
+sono separati per utente.</p>
 
-<p>L'associazione non contiene password e non dà permessi aggiuntivi: la
-gestione delle credenziali, i consensi e i controlli sul sito effettivo restano
-separati.</p>
+<p>La colonna del tipo è compatta; i dettagli distinguono identificativo,
+nome utente o email di accesso e indirizzo del sito. Se non hai ancora dato un
+nome, trovi una proposta modificabile: il dominio completo senza
+<code>www.</code> per un sito (per esempio <code>example.org</code>), il nome
+della casella per la posta. La nota «Nome proposto» indica che devi premere
+<strong>Salva</strong> per registrarlo. Nomi e sinonimi già salvati restano
+quelli scelti da te; il pulsante <strong>Togli i nomi</strong> compare solo
+per questi.</p>
+
+<p>Un nome serve solo a scegliere <em>quale</em> sito o <em>quale</em> casella
+usare: Metnos capisce prima la richiesta come sempre, e solo se riguarda un sito
+o la posta usa i nomi per scegliere. Un URL scritto nella richiesta ha la
+precedenza. Se una richiesta su siti nomina due siti diversi, Metnos chiede
+quale usare. Per la posta, «leggi la posta di lavoro» usa la casella chiamata
+«lavoro»; se invece la parola è il testo da cercare, come in «cerca le mail
+che parlano di lavoro», la casella resta quella scelta dalla richiesta. Se un
+nome è contenuto in un altro più lungo, vale il più lungo.</p>
+
+<p>Metnos rifiuta i nomi che potrebbero catturare parole comuni: quelli più
+corti di tre caratteri o senza lettere (salvo indirizzi IP), e le parole che usa già per capire le
+richieste, come «posta» o «leggi». Un nome indica una cosa sola: se è già usato
+per un altro sito o un'altra casella, non viene spostato e Metnos lo segnala.</p>
+
+<p>I nomi si possono dare anche quando inserisci le credenziali di un sito o di
+una casella: il modulo chiede, come campo facoltativo, con quali nomi lo
+chiamerai (il primo è il nome, gli altri sinonimi). Per un sito senza
+credenziali usa <strong>Aggiungi un sito per nome</strong>: se lasci vuoto il
+nome, Metnos ne propone uno ricavato dal dominio, senza salvare nulla.</p>
+
+<p>Dalla stessa sezione si aggiungono e si aggiornano le credenziali. Nella
+riga di un sito o di una casella, <strong>Aggiorna credenziali</strong> apre lo
+stesso modulo protetto della chat, già compilato con i dati non segreti
+salvati: password e codici lasciati vuoti restano quelli salvati, mentre
+regola d'uso e indirizzi già approvati non cambiano. Per credenziali nuove
+usa <strong>Credenziali di un sito</strong>, con l'indirizzo del sito, oppure
+<strong>Credenziali di una casella email</strong>, con il nome della casella.
+Il modulo compare nella pagina; password e codici si scrivono solo lì.</p>
+
+<p>Nomi e sinonimi non contengono password e non danno permessi aggiuntivi:
+la gestione delle credenziali, i consensi e i controlli sul sito effettivo
+restano separati.</p>
 
 <p>La cancellazione è un'operazione di ciclo di vita, non la semplice rimozione
 di una riga. Metnos impedisce all'amministratore attivo di cancellare se stesso

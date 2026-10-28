@@ -28,7 +28,7 @@ def selectors(candidates):
 def describe(candidate):
     return {k: candidate[k] for k in (
         "id", "role", "name", "text", "context_name", "aria_expanded",
-        "aria_selected", "aria_checked") if candidate.get(k)}
+        "aria_selected", "aria_checked", "aria_pressed", "aria_current") if candidate.get(k)}
 
 
 def fingerprint(controls):
@@ -82,14 +82,32 @@ def collapse_nested_options(candidates):
     return [c for c in candidates if not redundant(c)]
 
 
-def navigation_candidates(candidates):
-    excluded = {c["id"] for c in selectors(candidates)}
+def navigation_candidates(candidates, *, controls=None):
+    excluded = {c["id"] for c in (selectors(candidates) if controls is None else controls)}
     return [c for c in candidates if c["id"] not in excluded and
             c.get("role") not in {"option", "menuitemradio"}]
 
 
+def rebind_controls(controls, candidates):
+    """Rebind scene-local semantic controls by observed identity, never IDs."""
+    rebound = []
+    for control in controls:
+        identity = login_navigation.candidate_key(control)
+        matches = [c for c in candidates if login_navigation.candidate_key(c) == identity]
+        if len(matches) != 1:
+            return None
+        rebound.append(matches[0])
+    # A newly visible DOM context is mandatory for the next semantic scene.
+    # Read-only replay cannot silently omit it or classify it from stale data.
+    if any(c not in rebound for c in selectors(candidates)):
+        return None
+    return rebound
+
+
 def value_key(controls):
-    values = sorted((c.get("name", ""), c.get("text", "")) for c in controls)
+    values = sorted((c.get("name", ""), c.get("text", ""),
+                     c.get("aria_selected", ""), c.get("aria_checked", ""),
+                     c.get("aria_pressed", ""), c.get("aria_current", "")) for c in controls)
     return hashlib.sha256(json.dumps(values).encode()).hexdigest()
 
 
@@ -123,31 +141,117 @@ def explicit_alternatives(request, label):
     return found
 
 
+def adopt_verified(state, candidates, controls):
+    """Record a context verified against a saved page as ensure() would.
+
+    The caller has rebound the saved controls with their same values; no
+    decision or effect happens here. A pending context change is never
+    adopted: the full path must settle it.
+    """
+    if state.get("pending"):
+        return None
+    if not controls:
+        state.pop("ready", None)
+        state.pop("value_key", None)
+        return {"candidates": navigation_candidates(candidates, controls=controls)}
+    choices = options(candidates, controls, state.get("opened"))
+    state.update(ready=fingerprint(controls), value_key=value_key(controls))
+    if not any(c.get("aria_expanded") == "true" for c in controls):
+        state.pop("opened", None)
+    state.pop("attempted", None)
+    excluded = {c["id"] for c in choices}
+    return {"candidates": [c for c in navigation_candidates(candidates, controls=controls)
+                           if c["id"] not in excluded]}
+
+
 async def ensure(state, target, candidates, *, read, execute, settle, budget, enabled,
-                 timeout_s=20):
+                 timeout_s=20, decide=None, restore=None):
     """Establish context before navigation frames; every effect spends their budget.
 
     State survives an approval pause. A ready value is reusable only while the
     observed selector state is identical. A closed menu alone proves nothing.
+
+    A requested context whose effect cannot be verified (the selector is
+    gone, unchanged, or the same action is asked again) stops the search,
+    unless every record carries that constraint itself (a date): then only
+    the attempt ends. Nothing is adopted, the control and what its click
+    revealed never become routes, the last verified value keeps naming the
+    page, and the caller declares the context unverified.
+
+    A date attempt that ends so first closes what its click opened
+    (`restore`: Esc, then a fresh read). When the context controls show again
+    what they showed before the click, the page is the one before it and no
+    selection of the site changed (real run bq4, ENI 24/10: a calendar left
+    open was saved as the list, and a second tab was refused for nothing).
     """
-    def changed(phase):
-        return {"terminal": {"ok": False, "error_class": "target_changed"},
-                "rejection": {"phase": phase}}
+    async def abandoned(phase, controls, choices=(), role=None, key=None, pending=None):
+        nonlocal candidates
+        if role == "temporal" and pending is not None and restore is not None:
+            # Enumeration numbers change with the fresh read: only its
+            # controls are used from here on.
+            candidates = await restore()
+            controls = selectors(candidates)
+            choices = options(candidates, controls, None)
+            if fingerprint(controls) == pending["fingerprint"]:
+                state.pop("opened", None)
+                if not pending.get("changed_before"):
+                    state.pop("changed", None)
+        return unverified(phase, controls, choices, role=role, key=key)
+
+    def unverified(phase, controls, choices=(), role=None, key=None):
+        if role != "temporal":
+            # Records do not carry an account, category or entity: a later
+            # filter on the records cannot enforce what the page did not apply.
+            return {"terminal": {"ok": False, "error_class": "target_changed"},
+                    "rejection": {"phase": phase}}
+        blocked = state.setdefault("unverifiable", set())
+        if key is not None:
+            blocked.add(key)
+        if state.get("opened"):
+            before = set(state["opened"].get("before", ()))
+            blocked = blocked | {login_navigation.candidate_key(c) for c in candidates
+                                 if login_navigation.candidate_key(c) not in before}
+        for name in ("pending", "opened", "ready"):
+            state.pop(name, None)
+        excluded = {c["id"] for c in choices}
+        return {"candidates": [c for c in navigation_candidates(candidates, controls=controls)
+                               if c["id"] not in excluded
+                               and login_navigation.candidate_key(c) not in blocked],
+                "unverified": phase}
 
     while True:
         controls = selectors(candidates)
+        choices = options(candidates, controls, state.get("opened"))
+        # The shared observer has already verified the whole fresh scene.
+        # Consume its classification even with no DOM hints or an unchanged
+        # ready fingerprint; semantic kind/request can change independently.
+        decision = None
+        if decide is not None:
+            decision = await decide(controls, choices, candidates)
+            controls = decision.pop("controls", controls)
+            choices = options(candidates, controls, state.get("opened"))
+            if decision.get("error_class"):
+                return {"terminal": {"ok": False, **decision},
+                        "rejection": {"phase": decision.get("phase", "context_decision"),
+                                      "reason": decision.get("reason", "invalid_response"),
+                                      "decision_actor": decision.get("_decision_actor", {"actor_type": "unknown"})}}
         if not controls:
             if state.get("pending"):
-                return changed("context_selector_missing")
-            return {"candidates": navigation_candidates(candidates)}
+                return await abandoned("context_selector_missing", controls,
+                                       role=state["pending"].get("role"),
+                                       key=state["pending"].get("key"), pending=state["pending"])
+            state.pop("ready", None)
+            state.pop("value_key", None)
+            return {"candidates": navigation_candidates(candidates, controls=controls)}
         current = fingerprint(controls)
-        choices = options(candidates, controls, state.get("opened"))
         pending = state.pop("pending", None)
         if pending:
             if current == pending["fingerprint"] or (
                     pending["option"] and value_key(controls) == pending["value_key"]):
-                return changed("context_action_unchanged")
-        if state.get("ready") == current:
+                return await abandoned("context_action_unchanged", controls, choices,
+                                       role=pending.get("role"), key=pending.get("key"),
+                                       pending=pending)
+        if decide is None and state.get("ready") == current:
             if not any(c.get("aria_expanded") == "true" for c in controls):
                 state.pop("opened", None)
             state.pop("attempted", None)
@@ -156,8 +260,11 @@ async def ensure(state, target, candidates, *, read, execute, settle, budget, en
                                     if c["id"] not in excluded]}
         if not enabled:
             return {"terminal": {"ok": False, "error_class": "selector_missing"}}
-        decision = await choose(target, controls, choices, timeout_s=timeout_s,
-                                requested=state.get("requested", {}))
+        # Collection callers inject their shared content/context observer.
+        # The legacy local helper remains for compatibility outside that path.
+        if decision is None:
+            decision = await choose(target, controls, choices, timeout_s=timeout_s,
+                                    requested=state.get("requested", {}))
         state.setdefault("requested", {}).update(decision.pop("requested", {}))
         if decision.get("ready"):
             state.update(ready=current, value_key=value_key(controls))
@@ -165,15 +272,20 @@ async def ensure(state, target, candidates, *, read, execute, settle, budget, en
                 state.pop("opened", None)
             state.pop("attempted", None)
             excluded = {c["id"] for c in choices}
-            return {"candidates": [c for c in navigation_candidates(candidates)
+            return {"candidates": [c for c in navigation_candidates(candidates, controls=controls)
                                     if c["id"] not in excluded]}
         if decision.get("error_class"):
-            return {"terminal": {"ok": False, **decision}}
+            return {"terminal": {"ok": False, **decision},
+                    "rejection": {"phase": decision.get("phase", "context_decision"),
+                                  "reason": decision.get("reason", "invalid_response"),
+                                  "decision_actor": decision.get("_decision_actor", {"actor_type": "unknown"})}}
         candidate = decision["candidate"]
         attempt = (current, login_navigation.candidate_key(candidate))
         attempted = state.setdefault("attempted", set())
-        if attempt in attempted:
-            return changed("context_attempt_repeated")
+        key = login_navigation.candidate_key(candidate)
+        if attempt in attempted or key in state.get("unverifiable", ()):
+            return unverified("context_attempt_repeated", controls, choices,
+                              role=decision.get("role"), key=key)
         if budget.get("actions", 0) >= login_navigation.COLLECTION_MAX_ACTIONS:
             return {"terminal": {"ok": False, "error_class": "goal_step_limit"}}
         attempted.add(attempt)
@@ -182,7 +294,11 @@ async def ensure(state, target, candidates, *, read, execute, settle, budget, en
             state["opened"] = {"before": [login_navigation.candidate_key(c)
                                           for c in candidates]}
         state["pending"] = {"fingerprint": current, "value_key": value_key(controls),
-                            "option": candidate in choices}
+                            "option": candidate in choices, "role": decision.get("role"),
+                            "key": key, "changed_before": bool(state.get("changed"))}
+        # Durable: the search changed a selection of the site (never cleared
+        # with the attempt bookkeeping once the new value is verified).
+        state["changed"] = True
         result = await execute(decision)
         if result.get("approval_required") or not result.get("ok"):
             return {"terminal": result}

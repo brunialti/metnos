@@ -15,7 +15,15 @@
       <h2 id="dw-list-title">{{ msg("UI_DURABLE_JOB_LIST") }}</h2>
       <span class="dw-live" id="dwLive" aria-live="polite"></span>
     </div>
+    <div class="dw-selection-actions" id="dwSelectionActions" hidden>
+      <span id="dwSelectionCount" role="status"></span>
+      <button type="button" class="btn bad" id="dwDismissSelected" disabled>{{ msg("UI_DURABLE_DISMISS_SELECTED") }}</button>
+      <span class="muted" id="dwSelectionHelp" hidden>{{ msg("UI_DURABLE_SELECTION_HELP") }}</span>
+    </div>
     <div class="dw-job-header dw-list-columns">
+      <label class="dw-job-select" title="{{ msg('UI_DURABLE_SELECT_ALL') }}">
+        <input type="checkbox" id="dwSelectAll" aria-label="{{ msg('UI_DURABLE_SELECT_ALL') }}" disabled>
+      </label>
       <div class="dw-job-summary" tabindex="0" role="group" aria-label="{{ msg('UI_DURABLE_JOB_LIST') }}">
         <div class="dw-job-fields">
           <span id="dw-column-operation">{{ msg("UI_DURABLE_OPERATION") }}</span>
@@ -44,9 +52,16 @@
   const detail = document.getElementById("dwDetail");
   const placeholder = document.getElementById("dwPlaceholder");
   const live = document.getElementById("dwLive");
+  const selectAll = document.getElementById("dwSelectAll");
+  const selectionActions = document.getElementById("dwSelectionActions");
+  const selectionCount = document.getElementById("dwSelectionCount");
+  const selectionHelp = document.getElementById("dwSelectionHelp");
+  const dismissSelected = document.getElementById("dwDismissSelected");
   const api = root.dataset.api;
   const jobRows = new Map();
   const dismissedIds = new Set();
+  const checkedIds = new Set();
+  let dismissing = false;
   let listCursor = null;
   let selected = null;
   let stream = null;
@@ -123,12 +138,15 @@
   const stateName = (state) => translated(copy.states, state);
   const terminalStates = new Set(["cancelled", "completed", "completed_with_errors", "failed"]);
   const isTerminalState = (state) => terminalStates.has(state);
+  const canDismiss = (workload) => isTerminalState(workload?.state) && workload.temporary_storage?.can_dismiss === true;
   const jobStateName = (state) => ["completed", "completed_with_errors"].includes(state)
     ? copy.finishedState : stateName(state);
   const uiLocale = document.documentElement?.lang || undefined;
   // Domain codes are identifiers, not translation keys. Keep unknown approved
   // codes distinguishable without teaching the general console each domain.
-  const errorName = (code) => copy.errorLabels[code] || (
+  const errorName = (code, resource) => code === "execution.model_resource_unavailable"
+    ? copy.errorLabels[code].replace("{resource}", () => resource || copy.modelResource)
+    : copy.errorLabels[code] || (
     typeof code === "string" && /^[a-z][a-z0-9_.-]{2,95}$/.test(code)
       ? `${copy.errorUnknown} (${code})` : copy.errorUnknown);
   const dateText = (value) => value ? new Date(value).toLocaleString(uiLocale) : "—";
@@ -324,8 +342,38 @@
       const label = selectedNow ? copy.collapseDetails : copy.expandDetails;
       row.choice.setAttribute("aria-label", `${label}: ${jobTitle(row.workload)}`);
       row.choice.title = label;
-      row.choice.textContent = selectedNow ? "−" : "□";
+      row.detailIcon.setAttribute("d", selectedNow
+        ? "M4 14h6v6M20 10h-6V4M10 14l-7 7M14 10l7-7"
+        : "M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7");
     }
+  }
+
+  function updateCheckedSelection() {
+    for (const [id, row] of jobRows) {
+      row.check.checked = checkedIds.has(id);
+      row.check.disabled = dismissing;
+      row.remove.disabled = dismissing || !canDismiss(row.workload);
+    }
+    const count = checkedIds.size;
+    const blocked = [...checkedIds].some(id => !canDismiss(jobRows.get(id)?.workload));
+    selectAll.checked = count > 0 && count === jobRows.size;
+    selectAll.indeterminate = count > 0 && count < jobRows.size;
+    selectAll.disabled = dismissing || !jobRows.size;
+    selectionActions.hidden = !jobRows.size;
+    selectionCount.textContent = copy.selectionCount.replace("{count}", countText(count));
+    selectionHelp.hidden = !blocked;
+    dismissSelected.disabled = dismissing || !count || blocked;
+    dismissSelected.textContent = dismissing ? copy.dismissSelectedPending : copy.dismissSelected;
+    dismissSelected.title = blocked ? copy.selectionHelp : copy.dismissSelected;
+    selectionActions.setAttribute("aria-busy", String(dismissing));
+  }
+
+  function selectShownLogs() {
+    if (dismissing) return;
+    for (const id of jobRows.keys()) {
+      if (selectAll.checked) checkedIds.add(id); else checkedIds.delete(id);
+    }
+    updateCheckedSelection();
   }
   function clearRemovedSelection() {
     if (stream) stream.close();
@@ -366,11 +414,12 @@
     }
     row.state.replaceChildren(stateBadge(workload.state, workload.progress?.completion_outcome));
     row.remove.hidden = !isTerminalState(workload.state);
-    row.remove.disabled = workload.temporary_storage?.can_dismiss !== true;
+    row.remove.disabled = dismissing || !canDismiss(workload);
     row.remove.title = row.remove.disabled ? temporarySummary(workload) : copy.dismiss;
     row.temporary.textContent = temporaryCell(workload);
     row.temporary.title = temporarySummary(workload);
     row.temporary.setAttribute("aria-label", temporarySummary(workload));
+    row.check.setAttribute("aria-label", copy.selectLog.replace("{name}", () => jobTitle(workload)));
   }
 
   function temporarySize(bytes) {
@@ -400,6 +449,15 @@
     const element = node("div", "", "dw-job-row");
     element.dataset.workloadId = id;
     const header = node("div", "", "dw-job-header");
+    const selection = node("label", "", "dw-job-select");
+    const check = node("input");
+    check.type = "checkbox";
+    check.addEventListener("change", () => {
+      if (dismissing) return;
+      if (check.checked) checkedIds.add(id); else checkedIds.delete(id);
+      updateCheckedSelection();
+    });
+    selection.append(check);
     const summary = node("div", "", "dw-job-summary");
     summary.tabIndex = 0; // Allow keyboard scrolling of the single line on small screens.
     summary.setAttribute("role", "group");
@@ -423,15 +481,19 @@
     choice.className = "dw-job-choice";
     choice.dataset.workloadId = id;
     choice.setAttribute("aria-controls", "dwDetail");
-    const remove = button("×", () => dismissListedWorkload(jobRows.get(id).workload, remove), {danger: true});
+    const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    for (const [key, value] of Object.entries({viewBox: "0 0 24 24", width: "20", height: "20", fill: "none", stroke: "currentColor", "stroke-width": "1.8", "stroke-linecap": "round", "stroke-linejoin": "round", "aria-hidden": "true", focusable: "false"})) icon.setAttribute(key, value);
+    const detailIcon = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    icon.append(detailIcon); choice.append(icon);
+    const remove = button("×", () => dismissListedWorkload(jobRows.get(id).workload), {danger: true});
     remove.className = "dw-job-dismiss";
     remove.setAttribute("aria-label", copy.dismiss);
     remove.title = copy.dismiss;
     const controls = node("div", "", "dw-job-controls");
     controls.append(choice, remove);
-    header.append(summary, state, controls);
+    header.append(selection, summary, state, controls);
     element.append(header);
-    const row = {element, title, started: started.value, finished: finished.value, state, choice, remove, temporary};
+    const row = {element, check, title, started: started.value, finished: finished.value, state, choice, detailIcon, remove, temporary};
     jobRows.set(id, row);
     return row;
   }
@@ -459,8 +521,8 @@
         for (const [id, row] of jobRows) {
           // A selected job may have moved to a later page; only its own 404
           // proves it disappeared. Keep its open detail until then.
-          if (!incoming.has(id) && id !== selectedId) {
-            row.element.remove(); jobRows.delete(id);
+          if (!incoming.has(id) && id !== selectedId && !checkedIds.has(id)) {
+            row.element.remove(); jobRows.delete(id); checkedIds.delete(id);
           }
         }
       }
@@ -475,6 +537,7 @@
       if (!jobRows.size) list.textContent = copy.empty;
       if (focused && list.contains(focused) && document.activeElement !== focused) focused.focus({preventScroll: true});
       highlightSelection();
+      updateCheckedSelection();
       listCursor = payload.next_cursor || null;
       clear(listPager);
       if (listCursor) listPager.append(button(copy.loadMore, () => loadList(false)));
@@ -599,26 +662,50 @@
     } catch (_) { live.textContent = copy.actionFailed; }
   }
 
-  async function dismissListedWorkload(workload, control) {
-    if (!isTerminalState(workload?.state) || !window.confirm(copy.dismissConfirm)) return;
-    control.disabled = true;
+  async function dismissLog(workload) {
+    await request(`${api}/${encodeURIComponent(workload.workload_id)}/dismiss`, {
+      method: "POST",
+      body: JSON.stringify({expected_version: workload.version, idempotency_key: idempotencyKey()})
+    });
+    if (selectedId === workload.workload_id) clearRemovedSelection();
+    // Older list responses must not reinsert a confirmed removal.
+    dismissedIds.add(workload.workload_id);
+    checkedIds.delete(workload.workload_id);
+    jobRows.get(workload.workload_id)?.element.remove();
+    jobRows.delete(workload.workload_id);
+    if (!jobRows.size) { list.classList.add("empty"); list.textContent = copy.empty; }
+    updateCheckedSelection();
+  }
+
+  async function dismissListedWorkload(workload) {
+    if (dismissing || !canDismiss(workload) || !window.confirm(copy.dismissConfirm)) return;
+    dismissing = true;
+    updateCheckedSelection();
     try {
-      await request(`${api}/${encodeURIComponent(workload.workload_id)}/dismiss`, {
-        method: "POST",
-        body: JSON.stringify({expected_version: workload.version, idempotency_key: idempotencyKey()})
-      });
-      if (selectedId === workload.workload_id) clearRemovedSelection();
-      // An older list request may still be in flight. Its response must not
-      // reinsert a record whose removal the server has already confirmed.
-      dismissedIds.add(workload.workload_id);
-      jobRows.get(workload.workload_id)?.element.remove();
-      jobRows.delete(workload.workload_id);
-      if (!jobRows.size) { list.classList.add("empty"); list.textContent = copy.empty; }
+      await dismissLog(workload);
       await loadList(true);
-    } catch (_) {
-      control.disabled = false;
-      live.textContent = copy.actionFailed;
+    } catch (_) { live.textContent = copy.actionFailed; }
+    finally { dismissing = false; updateCheckedSelection(); }
+  }
+
+  async function dismissCheckedLogs() {
+    const ids = [...checkedIds];
+    if (dismissing || !ids.length || ids.some(id => !canDismiss(jobRows.get(id)?.workload))) return;
+    if (!window.confirm(copy.dismissSelectedConfirm.replace("{count}", countText(ids.length)))) return;
+    dismissing = true;
+    updateCheckedSelection();
+    let failed = 0;
+    for (const id of ids) {
+      // Polling can update a version or cleanup state while this batch runs.
+      const workload = jobRows.get(id)?.workload;
+      if (!canDismiss(workload)) { failed += 1; continue; }
+      try { await dismissLog(workload); }
+      catch (_) { failed += 1; }
     }
+    dismissing = false;
+    updateCheckedSelection();
+    live.textContent = (failed ? copy.dismissSelectedFailed : copy.dismissSelectedDone)
+      .replace("{count}", countText(failed || ids.length));
   }
 
   async function loadArtifacts(workloadId, target, generation) {
@@ -817,7 +904,7 @@
   function appendErrorCategories(target, errors) {
     for (const category of errors.categories || []) {
       const cause = category.cause_code ? ` — ${errorName(category.cause_code)}` : "";
-      target.append(node("p", `${errorName(category.error_code)}${cause} · ${category.count}`));
+      target.append(node("p", `${errorName(category.error_code, category.resource_name)}${cause} · ${category.count}`));
     }
     if (errors.truncated) target.append(node("p", copy.moreErrorCategories));
   }
@@ -844,7 +931,7 @@
       const code = error.error_code === "budget_exhausted" && summary.blocking_reason === "budget_accounting_incomplete"
         ? summary.blocking_reason : error.error_code;
       displayedCodes.add(code);
-      errors.append(node("p", `${errorName(code)} · ${error.count}`));
+      errors.append(node("p", `${errorName(code, error.resource_name)} · ${error.count}`));
     }
     if (summary.blocking_reason && !displayedCodes.has(summary.blocking_reason)) {
       errors.prepend(node("p", errorName(summary.blocking_reason)));
@@ -906,6 +993,8 @@
   }
 
   document.getElementById("dwRefresh").addEventListener("click", () => { listPages = 1; refresh(); });
+  selectAll.addEventListener("change", selectShownLogs);
+  dismissSelected.addEventListener("click", dismissCheckedLogs);
   // Keep the common headings aligned when a narrow screen scrolls a row.
   root.addEventListener("scroll", event => {
     if (!event.target.classList.contains("dw-job-summary")) return;

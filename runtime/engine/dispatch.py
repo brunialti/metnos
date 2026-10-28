@@ -2220,22 +2220,29 @@ def _dropped_required_verbs(framework: Framework, query: str, intent=None,
     # token as an action made ``find contacts and filter those with an email``
     # look like a three-action request with a missing send step.
     lexical_qverbs = set()
+    lexical_writer_chunks = []
     try:
         from compound_decomposer import split_query_chunks, detect_chunk_action
         for _chunk in split_query_chunks(query or ""):
             _action = detect_chunk_action(_chunk)
             if _action:
                 lexical_qverbs.add(_action[0])
+                if _action[0] in {"create", "write"}:
+                    lexical_writer_chunks.append((_action[0], _chunk))
             else:
                 # Unknown objects (for example a conference topic) prevent
                 # structured detection, but the clause's explicit verb still
                 # belongs to the request.  Keep the fallback scoped to this
                 # clause so nouns in a successfully parsed transform cannot
                 # leak in as unrelated actions.
-                lexical_qverbs.update(
-                    detect_canonical_verbs_all(tokenize(_chunk)))
+                _chunk_verbs = detect_canonical_verbs_all(tokenize(_chunk))
+                lexical_qverbs.update(_chunk_verbs)
+                lexical_writer_chunks.extend(
+                    (verb, _chunk) for verb in _chunk_verbs
+                    if verb in {"create", "write"})
     except Exception:
         lexical_qverbs = set()
+        lexical_writer_chunks = []
     if not lexical_qverbs:
         lexical_qverbs = set(detect_canonical_verbs_all(tokenize(query or "")))
     qverbs = set(lexical_qverbs)
@@ -2456,6 +2463,36 @@ def _dropped_required_verbs(framework: Framework, query: str, intent=None,
                     populated_creates[obj] >= count
                     for obj, count in _create_need.items()):
                 dropped.discard("write")
+
+        # An earlier primary action can omit every canonical writer. A single
+        # lexical write can share a populated create only if the native object
+        # and format resources agree on one domain. Retain unresolved list
+        # fragments, repeated targets and conflicting domains as obligations.
+        if ("write" in dropped
+                and not _action_writer_verbs
+                and "create" not in lexical_qverbs
+                and len(lexical_writer_chunks) == 1):
+            try:
+                from compound_decomposer import _format_hint_mapping, _raw_query_chunks
+                from prefilter import object_hint_mapping
+                _writer_verb, _writer_chunk = lexical_writer_chunks[0]
+                if (_writer_verb == "write"
+                        and len(_raw_query_chunks(_writer_chunk)) == 1):
+                    _writer_tokens = tokenize(_writer_chunk)
+                    _writer_objects = set()
+                    _object_hints = object_hint_mapping()
+                    for _surface, (_obj, _qualifier) in _format_hint_mapping().items():
+                        _object_hints.setdefault(_obj, []).append(_surface)
+                    for _obj, _hints in _object_hints.items():
+                        if any(_hint_tokens and _hint_tokens <= _writer_tokens
+                               for _hint_tokens in (tokenize(hint) for hint in _hints)):
+                            _writer_objects.add(_obj)
+                    if len(_writer_objects) == 1 and populated_creates[
+                            next(iter(_writer_objects))] > 0:
+                        dropped.discard("write")
+            except Exception:
+                # Missing native evidence never supplies coverage.
+                pass
 
         # Mirror case for filesystem sinks: the lexical request says create,
         # while the object-aware primary intent and actual sink correctly use
@@ -4568,7 +4605,69 @@ def _ensure_site_session_precursor(framework: Framework, intent, query: str,
         # Il solo match sul verbo aggiungeva quindi un secondo act_sites dopo
         # che lo stesso risultato era gia' visibile. Riusa il resolver canonico
         # e confronta l'obiettivo: due ricerche diverse restano due azioni.
-        def _search_target_keys(action: str) -> frozenset[tuple]:
+        def _session_search_suffix(action: str) -> str | None:
+            """Strip only a fully attested session preamble, never goal scope."""
+            try:
+                import detection_lexicon as _dl
+
+                def _alternatives(forms) -> str:
+                    return "(?:" + "|".join(
+                        _re.escape(form.strip()) for form in
+                        sorted(set(forms), key=len, reverse=True)
+                        if isinstance(form, str) and form.strip()) + ")"
+
+                def _forms(concept):
+                    return _dl.native_ready_forms(
+                        concept, include_reviewed_baselines=True)
+
+                search_forms = _forms("sites.search_action_verb")
+                if not search_forms:
+                    return None
+                searches = list(_re.finditer(
+                    rf"(?<!\w){_alternatives(search_forms)}(?!\w)",
+                    action, _re.IGNORECASE))
+                if len(searches) != 1 or searches[0].start() == 0:
+                    return None
+                prefix = action[:searches[0].start()].strip()
+                login_forms = (_forms("sites.login_intent")
+                               + _forms("sites.login_direct_target")
+                               + _forms("sites.session_entry_intent"))
+                if not login_forms:
+                    return None
+                login = _alternatives(login_forms)
+                if _re.fullmatch(login, prefix, _re.IGNORECASE):
+                    return action[searches[0].start():]
+                from detection_lexicon_seed_codegen import ensure_registered
+                ensure_registered()
+                opens = _dl.mapping("codegen.affinity.action").get("open", [])
+                sites = _dl.mapping("codegen.affinity.object").get("sites", [])
+                if not opens or not sites or not session_host:
+                    return None
+                # Articles/prepositions can precede the site noun, but a
+                # personal or exhaustive qualifier must remain goal scope.
+                qualifiers = {form.casefold() for form in
+                              (_forms("sites.personal_goal_marker")
+                               + _forms("sites.goal_scope_quantifier"))}
+                noise_forms = [form for form in _forms("sites.goal_noise")
+                               if form.casefold() not in qualifiers]
+                noise = (rf"(?:{_alternatives(noise_forms)}\s+)*"
+                         if noise_forms else "")
+                # A bare alias is accepted only directly after the site
+                # noun. Extra words, dates, filters or another goal reject
+                # the suffix comparison rather than silently losing scope.
+                alias = r"[^\W\d_]+(?:[-'][^\W\d_]+)*"
+                address = _alternatives([session_host, url.rstrip("/")])
+                site = (rf"(?:{_alternatives(sites)}\s+{noise}"
+                        rf"(?:{address}|{alias})|{address})")
+                preamble = (rf"{_alternatives(opens)}\s+{noise}{site}"
+                            rf"(?:\s+{login})?")
+                if _re.fullmatch(preamble, prefix, _re.IGNORECASE):
+                    return action[searches[0].start():]
+            except Exception:  # noqa: BLE001 -- ambiguity preserves the goal
+                pass
+            return None
+
+        def _search_target_keys(action: str, *, session_prefix: bool = False) -> frozenset[tuple]:
             try:
                 import unicodedata as _unicode
                 from playwright_sidecar.action_resolver import (
@@ -4591,6 +4690,10 @@ def _ensure_site_session_precursor(framework: Framework, intent, query: str,
                     keys.add(("semantic", semantic,
                               goal_is_exhaustive(target),
                               goal_is_personal(target)))
+                if session_prefix:
+                    suffix = _session_search_suffix(action)
+                    if suffix:
+                        keys.update(_search_target_keys(suffix))
                 return frozenset(keys)
             except Exception:  # noqa: BLE001 -- deduplica solo se attestabile
                 return frozenset()
@@ -4601,7 +4704,7 @@ def _ensure_site_session_precursor(framework: Framework, intent, query: str,
             if _search_on_other_host(chunk):
                 continue
             accepted_search_chunks.append(chunk)
-            chunk_targets = _search_target_keys(chunk)
+            chunk_targets = _search_target_keys(chunk, session_prefix=True)
             if (chunk.lower() in existing_actions
                     or bool(chunk_targets & existing_search_targets)):
                 continue
@@ -6373,6 +6476,116 @@ class Guard:
     adr: str = ""
 
 
+def _bind_site_record_navigation(framework: Framework) -> Framework:
+    """Bind record observation to its explicit read/extract lineage.
+
+    A record consumer is evidence for content observation, never evidence of
+    completeness. Preserve the action and its quantifiers. Ambiguous, cyclic
+    and unbound sources cannot lend their intent to another browser action.
+    """
+    from playwright_sidecar.action_resolver import is_goal_navigation_request
+
+    steps = framework.steps
+    for step in steps:
+        if step.tool == "act_sites":
+            step.args.pop("_record_mode", None)
+
+    def source(position: int, fields: tuple[str, ...]) -> int | None:
+        args = steps[position - 1].args
+        origins = set()
+        invalid = False
+
+        def add(value):
+            nonlocal invalid
+            if type(value) is not int or not 0 < value < position:
+                invalid = True
+            else:
+                origins.add(value)
+
+        def refs(value):
+            if isinstance(value, str):
+                for match in re.finditer(r"\$\{step(\d+)(?:\.|\})", value):
+                    add(int(match.group(1)))
+            elif isinstance(value, dict):
+                for item in value.values():
+                    refs(item)
+            elif isinstance(value, list):
+                for item in value:
+                    refs(item)
+
+        if "from_step" in args:
+            add(args["from_step"])
+        if "from_steps" in args:
+            if not isinstance(args["from_steps"], list):
+                invalid = True
+            else:
+                for item in args["from_steps"]:
+                    add(item)
+        for field in fields:
+            refs(args.get(field))
+        return next(iter(origins)) if not invalid and len(origins) == 1 else None
+
+    for position, step in enumerate(steps, 1):
+        if step.tool != "extract_entries":
+            continue
+        parent = source(position, ("entries", "text", "texts", "data"))
+        if parent is None or steps[parent - 1].tool != "read_sites":
+            continue
+        parent = source(parent, ("session_ids",))
+        while parent is not None:
+            ancestor = steps[parent - 1]
+            if ancestor.tool not in {"act_sites", "login_sites"}:
+                break
+            action = ancestor.args.get("action")
+            if (ancestor.tool == "act_sites" and isinstance(action, str)
+                    and not ancestor.args.get("value_ref")
+                    and is_goal_navigation_request(action)):
+                ancestor.args["_record_mode"] = True
+                break
+            parent = source(parent, ("session_ids",))
+    return framework
+
+
+def _record_kind_form(framework: Framework, query: str,
+                      llm_call_fast: Optional[Callable],
+                      runtime_ctx: Optional[dict]) -> Optional[dict]:
+    """A site collection names the kind of the items it gathers: their rows
+    are classed against it by the heading they are listed under (Roberto
+    21/10/2026: «la query dell'utente deve esprimere il tipo di oggetto; se
+    non lo fa, Metnos chiede una precisazione con un modulo»). The local model
+    labels the request; a failed call or another reply asks nothing."""
+    if llm_call_fast is None or not any(
+            step.tool == "act_sites" and step.args.get("_record_mode") is True
+            for step in framework.steps):
+        return None
+    import json
+    import i18n
+    import prompt_loader
+    try:
+        raw = llm_call_fast(prompt_loader.get("sites_record_kind", i18n.current_lang()),
+                            json.dumps({"request": query}, ensure_ascii=False),
+                            max_tokens=16)
+        found = re.search(r"\{.*\}", str(raw or ""), re.S)
+        kind = json.loads(found.group()).get("kind") if found else None
+    except Exception as exc:  # noqa: BLE001 -- a failed label asks nothing
+        log.debug("record kind label unavailable: %r", exc)
+        return None
+    if kind != "missing":
+        return None
+    from messages import get as _msg_get
+    return {"decision": "needs_inputs", "needs_inputs": {
+        "title": _msg_get("MSG_RECORD_KIND_TITLE"),
+        "dialog": [{"var": "record_kind", "prompt": _msg_get("MSG_RECORD_KIND_PROMPT"),
+                    "schema": {"kind": "text"}, "optional": False}],
+        "fmt": "auto",
+        # The redacted request, whole: the answer is added to it and the
+        # request is planned again.
+        "on_complete": {"type": "rerun_query_with_record_kind",
+                        "query": str((runtime_ctx or {}).get("user_query_raw") or query)},
+        "timeout_s": 3600,
+    }}
+
+
 GUARD_PIPELINE: tuple = (
     Guard("coerce_args_to_schema",
           lambda fw, i, q, c: _coerce_args_to_schema(fw, c),
@@ -6595,6 +6808,12 @@ GUARD_PIPELINE: tuple = (
           reads=frozenset({"query", "catalog", "step.tool"}),
           rationale="vincolo no-overwrite uniforme: cartella per-turno, collision refusal e sink spreadsheet create-only per ogni dominio",
           adr="0177"),
+    Guard("bind_site_record_navigation",
+          lambda fw, i, q, c: _bind_site_record_navigation(fw),
+          scope="cross-clause", writes=frozenset({"args._record_mode"}),
+          reads=frozenset({"step.tool", "step.args"}),
+          rationale="dopo le riscritture del grafo, read→extract lega l'osservazione dei record alla sola navigazione sorgente; nessuna esaustività o modifica del goal",
+          adr="sites-record-observation"),
     Guard("strip_unknown_args",
           lambda fw, i, q, c: _strip_unknown_args(fw, c),
           v3_only=True, scope="structure", writes=frozenset({"args.*"}),
@@ -6688,10 +6907,13 @@ def _finalize_framework_for_run(framework: Framework, intent, query: str,
     _site_url = (runtime_ctx or {}).get("site_invocation_url")
     if _site_url:
         framework = _bind_site_invocation(framework, _site_url)
+    _mail_names = (runtime_ctx or {}).get("mail_invocations")
     framework = _apply_deterministic_structure_guards(
         framework, intent, query, catalog)
     if _site_url:
         framework = _bind_site_invocation(framework, _site_url)
+    if _mail_names:
+        framework = _bind_mail_invocation(framework, _mail_names, catalog)
     # Output-policy deterministica (matrice intent×data_kind → modo, §7.9):
     # il runtime — non il proposer — sceglie il TERMINALE di presentazione.
     if is_output_policy_enabled():
@@ -6737,6 +6959,77 @@ def _bind_site_invocation(framework: Framework, url: str) -> Framework:
             tool=step.tool, args=args,
             if_prev_entries_nonempty=step.if_prev_entries_nonempty,
         ))
+    return Framework(
+        steps=steps, fillers=dict(framework.fillers),
+        final_message=framework.final_message,
+        runtime_step_cap=framework.runtime_step_cap,
+    )
+
+
+def _bind_mail_invocation(framework: Framework, mail: dict,
+                          catalog: Optional[list]) -> Framework:
+    """Choose the mailbox a request names, as the site entry above does.
+
+    Only steps on messages taking an `account` change. A name the planner
+    wrote as the account becomes its mailbox. A name found in the request
+    becomes the account unless the planner asked for all or several
+    mailboxes, or used that name as text in another argument (a subject or a
+    search word, not a mailbox). Several mailboxes named stay the planner's
+    choice: reading two mailboxes is a valid request.
+    """
+    names = mail.get("names") if isinstance(mail, dict) else None
+    if not isinstance(names, dict) or not names:
+        return framework
+    matched = [m for m in (mail.get("matched") or []) if isinstance(m, dict)]
+    targets = {m.get("target") for m in matched}
+    single = next(iter(targets)) if len(targets) == 1 else ""
+    matched_keys = [str(m.get("name_key") or "") for m in matched]
+    # The default mail provider only: a provider-qualified tool would read
+    # `account` with that provider's meaning, not as a mailbox name.
+    accounts = {
+        _entry_name(entry) for entry in (catalog or [])
+        if _entry_name(entry).split("_")[1:] == ["messages"]
+        and "account" in ((_entry_schema(entry).get("properties") or {}))
+    }
+
+    def _folded(value) -> str:
+        return " ".join(str(value).casefold().split())
+
+    def _mapped(value):
+        if isinstance(value, str):
+            return names.get(_folded(value), value)
+        if isinstance(value, list):
+            return [names.get(_folded(v), v) if isinstance(v, str) else v
+                    for v in value]
+        return value
+
+    steps = []
+    changed = False
+    for step in framework.steps:
+        args = dict(step.args or {})
+        if step.tool in accounts:
+            current = args.get("account")
+            account = _mapped(current)
+            several = (isinstance(account, list)
+                       or (isinstance(account, str)
+                           and account.strip().casefold() == "all"))
+            as_text = any(
+                key in _folded(value)
+                for name, value in args.items()
+                if name != "account" and isinstance(value, str)
+                for key in matched_keys if key)
+            if single and not several and not as_text:
+                account = single
+            if account != current and account is not None:
+                args["account"] = account
+                changed = True
+        steps.append(StepSpec(
+            tool=step.tool, args=args,
+            if_prev_entries_nonempty=step.if_prev_entries_nonempty,
+        ))
+    if not changed:
+        return framework
+    log.info("[mail_invocation] mailbox chosen by the user's names")
     return Framework(
         steps=steps, fillers=dict(framework.fillers),
         final_message=framework.final_message,
@@ -7123,9 +7416,19 @@ def _inject_gate_resume_if_paused(run, query: str, runtime_ctx,
                 # paused it, with or without a tail.
                 callback.setdefault("conversation_id", str(
                     (runtime_ctx or {}).get("conversation_id") or ""))
-            if (isinstance(callback, dict)
-                    and callback.get("type") == "resume_executor_with_values"
-                    and callback.get("executor") == paused_tool):
+            # A consent requested by the executor itself (`gate_dispatch`
+            # whose approved branch re-runs the paused executor) resumes the
+            # same tail as values do, through the executor-gate contract.
+            approve = (callback.get("on_approve")
+                       if isinstance(callback, dict) else None)
+            self_gate = (isinstance(callback, dict)
+                         and callback.get("type") == "gate_dispatch"
+                         and isinstance(approve, dict)
+                         and (approve.get("tool") or approve.get("executor"))
+                         == paused_tool)
+            if isinstance(callback, dict) and (self_gate or (
+                    callback.get("type") == "resume_executor_with_values"
+                    and callback.get("executor") == paused_tool)):
                 paused_idx = int(getattr(paused_input, "step_idx", 0) or 0)
                 history_pos = next(
                     (pos for pos, item in enumerate(run.steps, start=1)
@@ -7142,8 +7445,7 @@ def _inject_gate_resume_if_paused(run, query: str, runtime_ctx,
                        if step.if_prev_entries_nonempty else {}),
                 } for step in framework.steps[paused_idx:]]
                 if tail_steps:
-                    callback.update({
-                        "type": "resume_executor_values_tail",
+                    tail = {
                         "tail_steps": tail_steps,
                         "tail_final_message": _remap_step_refs(
                             framework.final_message or "", idx_map),
@@ -7153,7 +7455,22 @@ def _inject_gate_resume_if_paused(run, query: str, runtime_ctx,
                             (runtime_ctx or {}).get("conversation_id") or ""),
                         "source_request_id": (
                             (runtime_ctx or {}).get("source_request_id") or ""),
-                    })
+                    }
+                    if self_gate:
+                        callback = {
+                            "type": "resume_executor_gate_tail",
+                            "gate_approve_value": callback.get(
+                                "approve_value", "approve"),
+                            "gate_on_approve": approve,
+                            "gate_on_reject": callback.get("on_reject"),
+                            "turn_id": (runtime_ctx or {}).get("turn_id") or "",
+                            **({"target_device": callback["target_device"]}
+                               if callback.get("target_device") else {}),
+                            **tail,
+                        }
+                    else:
+                        callback.update({
+                            "type": "resume_executor_values_tail", **tail})
                     payload["on_complete"] = callback
                     log.info("[input_resume] coda preservata per %s (%d step)",
                              paused_tool, len(tail_steps))
@@ -7504,6 +7821,16 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                 elapsed_ms=int((time.time() - t_start) * 1000),
                 framework=framework_to_run,
                 error_class="capability_missing"), None
+
+        record_kind = _record_kind_form(framework_to_run, query, llm_call_fast, runtime_ctx)
+        if record_kind is not None:
+            return DispatchResult(
+                final_text="", final_kind="needs_inputs",
+                match_source="record_kind",
+                framework_hash=compute_framework_hash(framework_to_run),
+                elapsed_ms=int((time.time() - t_start) * 1000),
+                framework=framework_to_run, error_class="missing_input",
+                needs_inputs_obs=record_kind), None
 
         durable = _admit_finalized_long_work(
             framework_to_run, admit_long_work_cb, started_at=t_start,

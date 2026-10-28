@@ -169,17 +169,19 @@ def _browser_environment() -> dict[str, str]:
 
 async def _launch_browser(*, headless: bool, launch_stealth: bool = False):
     environment = _browser_environment()
+    from playwright_sidecar.downloads import verified_scratch
+    downloads_path = str(verified_scratch())
     if _engine.selected() == "camoufox":
         if launch_stealth:
             raise RuntimeError("browser_technique_unsupported")
         return await _engine.launch(_playwright, headless=headless,
-                                    environment=environment)
+                                    environment=environment, downloads_path=downloads_path)
     from playwright_sidecar import stealth
     args = list(_HONEST_LAUNCH_ARGS)
     if launch_stealth:
         stealth.apply_launch_args(args, techniques=("webdriver_launch_arg",))
     return await _playwright.chromium.launch(
-        headless=headless, args=args, env=environment)
+        headless=headless, args=args, env=environment, downloads_path=downloads_path)
 
 
 async def _get_browser(browser_mode: str, launch_stealth: bool):
@@ -500,18 +502,22 @@ async def handle_render(request: web.Request) -> web.Response:
 async def _broker_call(request, opname, *,
                        timeout_s: float = _BROKER_REQUEST_TIMEOUT_S):
     import monitor_capture as monitor
+    import sites_audit
     enabled = request.headers.get(monitor.TRANSPORT_HEADER) == "1"
     upstream = {}
     if enabled:
         raw = request.headers.get(monitor.UPSTREAM_HEADER, "")
-        if len(raw) <= 512:
+        if len(raw.encode("utf-8")) <= monitor.MAX_UPSTREAM_HEADER_BYTES:
             try:
                 candidate = json.loads(raw)
                 if isinstance(candidate, dict):
                     upstream = candidate
             except (TypeError, ValueError):
                 pass
-    with monitor.transport_capture(enabled=enabled, upstream=upstream) as sink:
+    with sites_audit.action_context({
+            "actor_type": "executor", "executor": "playwright_sidecar",
+            "source": "sidecar" + request.path}), monitor.transport_capture(
+                enabled=enabled, upstream=upstream) as sink:
         try:
             payload, status = await _broker_result(request, opname, timeout_s=timeout_s)
             if sink is not None:
@@ -549,12 +555,16 @@ async def _broker_result(request, opname, *, timeout_s: float):
                 "error_class": "timeout"}, 504
     except asyncio.CancelledError:
         raise
-    except Exception:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
         # Do not expose exception text: a browser/DOM exception can contain a
         # URL or page-provided text. The traceback remains in local journald.
+        # Only the closed kind of the failure describes it (real run bm1,
+        # ENI 23/10/2026: a page closed during the login, reported as an
+        # internal failure with no cause); the outcome stays the same.
         logger.exception("unhandled session broker operation failure")
         return {"ok": False, "error": "session broker internal failure",
-                "error_class": "sidecar_internal"}, 500
+                "error_class": "sidecar_internal",
+                "failure_kind": session_broker._evaluation_failure_kind(exc)}, 500
     if not isinstance(res, dict):
         logger.error("session broker returned %s instead of dict",
                      type(res).__name__)
@@ -635,8 +645,61 @@ async def handle_session_act(request):
             action=b.get("action", ""), value_ref=b.get("value_ref"),
             approval_token=b.get("approval_token"),
             goal_query=b.get("goal_query"),
-            done_when=b.get("done_when"), scope=b.get("scope"))
+            record_mode=b.get("record_mode", False),
+            done_when=b.get("done_when"), scope=b.get("scope"),
+            continuation_id=b.get("continuation_id"),
+            download_request=b.get("download_request"))
     return await _broker_call(request, _op, timeout_s=_BROKER_ACTION_TIMEOUT_S)
+
+
+async def handle_session_download_stream(request):
+    """A captured file only: no destination paths or new remote requests."""
+    from playwright_sidecar import session_broker as sb
+    from sites_downloads import DownloadError
+    try:
+        body = await request.json()
+        entry, error = sb._validate_owned(body.get('session_id', ''), body.get('owner'))
+        if entry is None:
+            return web.json_response({'ok': False, 'error_class': error}, status=403)
+        capture = entry.get('downloads')
+        if capture is None:
+            raise DownloadError('download_transfer_invalid')
+        record, stream = capture.begin_stream(body.get('handle'))
+    except (ValueError, TypeError, AttributeError):
+        return web.json_response({'ok': False, 'error_class': 'download_transfer_invalid'}, status=400)
+    # The middleware runs after the handler: streaming headers must already
+    # contain the fingerprint when prepare() sends them to the client.
+    response = web.StreamResponse(headers={
+        'Content-Type': 'application/octet-stream',
+        'Content-Length': str(record.metadata['bytes']),
+        'X-Metnos-Content-SHA256': record.metadata['sha256'],
+        _contract.HEADER_NAME: _contract.LOADED_FINGERPRINT,
+    })
+    complete = False
+    try:
+        async with asyncio.timeout_at(record.metadata['deadline_monotonic']):
+            await response.prepare(request)
+            while data := stream.read(64 * 1024):
+                await response.write(data)
+            await response.write_eof()
+            complete = True
+    finally:
+        stream.close()
+        capture.end_stream(record, complete=complete)
+    return response
+
+
+async def handle_session_download_ack(request):
+    async def _op(sb, body):
+        from sites_downloads import DownloadError
+        entry, error = sb._validate_owned(body.get('session_id', ''), body.get('owner'))
+        if entry is None:
+            return {'ok': False, 'error_class': error}
+        try:
+            return entry['downloads'].acknowledge(body.get('handle'), body.get('sha256'))
+        except (KeyError, TypeError, DownloadError):
+            return {'ok': False, 'error_class': 'download_ack_invalid'}
+    return await _broker_call(request, _op)
 
 
 def _primitive_handler(opname, *, value_key=None):
@@ -811,6 +874,8 @@ def make_app() -> web.Application:
     app.router.add_post("/session/user-control", handle_session_user_control)
     app.router.add_post("/session/close", handle_session_close)
     app.router.add_post("/session/act", handle_session_act)
+    app.router.add_post("/session/download/stream", handle_session_download_stream)
+    app.router.add_post("/session/download/ack", handle_session_download_ack)
     app.router.add_post("/session/goto", handle_session_goto)
     app.router.add_post("/session/click", handle_session_click)
     app.router.add_post("/session/fill", handle_session_fill)

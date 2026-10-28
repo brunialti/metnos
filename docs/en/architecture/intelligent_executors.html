@@ -119,18 +119,29 @@
  cross-domain strategy, or a task without a crisp completion criterion inside
  an executor. Those decisions belong to the planner.</p>
 
+ <p>Placeholders are allowed only in generative examples. Website observations
+ and results retain the data actually observed or state its absence; a
+ placeholder does not establish that an item was found.</p>
+
  <h2 id="login-entry">Signing in to a website</h2>
  <p>Metnos first looks for a sign-in form. If it cannot find one, it follows
  relevant account links and menus. It uses signals from the page; when these
  are insufficient, the local model chooses among controls actually observed.
  It does not invent links or use routes written for individual websites.</p>
+ <p>A preference between signals counts only when it singles out a control.
+ Some pages use the sign-in word as a generic verb, such as “Access” followed
+ by many different sections: that word does not identify the entry and does
+ not hide the one control the whole evidence designates unambiguously, such
+ as “Customer area”.</p>
  <p>The search explores up to four steps per route, with a shared limit of
  32 actions. At a dead end, it returns to a verified branch and tries an
  alternative. If the page has changed during that return, it discards the
  branch and returns to the original entry for a fresh observation, keeping
  attempted controls and limits. This restart is available only before
  credential use and does not repeat the discarded branch. An ambiguous
- control still stops the search. Pausing for consent does not reset attempts.</p>
+ control still stops the search. A temporary panel covering the page, even
+ one drawn inside an iframe, is closed only through a safe exit that neither
+ navigates nor submits data. Pausing for consent does not reset attempts.</p>
  <p>After a click, it also waits for a delayed form or new tab within the
  search time budget. An entry already tried is not treated as a new
  alternative. New tabs pass through the same authorized website checks.</p>
@@ -140,6 +151,14 @@
  submission. In two-step forms, it distinguishes the email address from the
  password; a sign-in link elsewhere on the page does not turn a newsletter
  form into a login form.</p>
+ <p>After submission it observes the page for a bounded interval. Sign-in
+ evidence that appears within that interval completes its own stability
+ check, for at most the observations the check requires; later, interrupted
+ or unobservable evidence remains unverified. When the form submits by script
+ and its own request has not answered yet, observation extends once by one
+ more interval. A page already loading the next document, as in single
+ sign-on redirects, is not an outcome yet: observation and collection wait for
+ that document.</p>
  <p>Saving, listing, using, and deleting credentials share one encrypted
  store. Listings show metadata only. Values do not appear in results or logs,
  and changing the instance data directory does not select a different store.</p>
@@ -150,10 +169,12 @@
  Finding the first list does not finish the job: Metnos also looks for next
  pages, archives, other periods, and details needed for the requested fields.
  Visible controls are examined in groups, so a long page does not hide later ones.</p>
- <p>The search explores up to three levels. Expansions of the same list,
- such as the next page, remain at the same level; a detail view enriches an
+ <p>The search explores up to eight levels. Expansions of the same list,
+ such as the next page, remain at the same level, as do buttons that change
+ the page in place (a menu, the full list); that state explores only what the
+ change revealed. A detail view enriches an
  item already found. Forward navigation, scrolling, and returns share
- <strong>256 actions and five minutes of active work</strong>. Waiting for
+ <strong>256 actions and ten minutes of active work</strong>. Waiting for
  the user does not consume that time or reset the attempts. Each local model
  decision has 20 seconds, included in the overall time limit.</p>
  <p>On returning to a page, Metnos finds previously verified controls
@@ -161,6 +182,31 @@
  by the visible text of their own row. Indistinguishable rows remain
  ambiguous; hidden text and editable values do not distinguish them. A
  control that cannot be identified reliably is not chosen by its position.</p>
+ <p>After clicking a link to another page, Metnos waits for the navigation to
+ complete. If the page instead answers in place, requesting only data without
+ loading a new document, and then stays idle, the wait ends at once; without
+ that evidence the normal wait applies.</p>
+ <p>A textless layer covering the whole window, while no visible control
+ can be reached, is treated as loading: Metnos waits for it to disappear,
+ within the usual bound, before reading the page or closing a dialog
+ underneath. Dialogs, panels and written messages that offer something to
+ press are not treated as veils.</p>
+ <p><strong>Loading checks:</strong> an error, timeout or
+ invalid result from the loading check does not establish that the page is
+ ready. Metnos observes again within the same deadline, including the time
+ spent on checks. A page immediately observed as stable needs no extra pause.</p>
+ <p>Likewise Metnos waits for data the page is still downloading, such as a
+ list of bills that appears after the page opens. A request that stays open
+ beyond the bound, such as a permanent connection, does not block reading:
+ the page is read as it is.</p>
+ <p>After every click Metnos reads the page once it has stopped changing: some
+ links change the address and draw the new page after the click. If a read
+ fails because the page changes at that very moment, Metnos reads it again
+ once, instead of stopping the collection.</p>
+ <p>An item's detail opened on another page completes that item: Metnos reads
+ it, keeps it and goes back, without exploring other sections from there. For
+ a complete collection the full list (for example «all bills») is opened
+ first, then the details.</p>
  <p>Before clicking, Metnos checks again that the control is the one
  observed, on the same page and in the same context. If it has changed,
  a previously visited route may be prepared again once, keeping consent
@@ -175,24 +221,147 @@
  while retaining information found only in the list. Matching dates or
  amounts do not prove that two items are the same. Ambiguous or truncated
  views remain separate, and the original observations are retained.</p>
+ <p>Identity requires evidence tied to the item and its source. A contract,
+ customer or supply number does not automatically identify an invoice. The
+ model must distinguish the item's identifier from references to other
+ entities, name the complete field and quote the original source text.
+ The reader assigns the scope of the evidence; the model cannot invent it.
+ Quote validation tolerates only whitespace and line-break differences;
+ it does not reconstruct numbers, dates or amounts.</p>
+ <p>An observed, unambiguous row-to-detail relation allows enrichment even
+ without an identifier: the individual view takes priority and observed
+ alternatives remain in Notes. The same native link can cover an earlier
+ view only within the same actually observed context. An identifier alone
+ permits merging only when complete, owned by the item, in the same scope
+ and free of collisions or incompatible fields. Dates, amounts, position
+ and generic URLs are insufficient. Without adequate evidence, rows remain
+ separate and ambiguities are reported. Correct interpretation of entity
+ roles by the model and the final spreadsheet still require real-site checks.</p>
+
+ <h3>Downloaded documents and invoice identity</h3>
+ <p>When the approved action includes saving documents, files are saved in
+ the selected folder within the declared limits and returned for subsequent
+ reading. An error or a lost response does not authorise another submission
+ to the website. HTML and PDF reads preserve the outcome of every address,
+ including errors; a PDF without text reports the need for optical character
+ recognition without claiming that recognition has already run.</p>
+ <p>Invoices with different codes remain separate even when they share a
+ supply identifier. Code separators preserve the observed groups:
+ <code>INV-20-005</code> and <code>INV-200-05</code> are distinct.
+ Equivalent copies merge only within their own group; a row without a code
+ cannot bridge different invoices. These changes have local verification;
+ the complete workflow still requires acceptance testing.</p>
+
+ <h3 id="invoice-sheet">One row per invoice, classes by heading</h3>
+ <p>In the sheet one identifier is one row. When two pages give different
+ values for the same field, the row shows all of them separated by « / » and
+ is declared invalid data; rows read in different contracts or accounts stay
+ apart, with a Context column when there are two or more. A code found in
+ three or more different invoices is not their number.</p>
+ <p>Rows listed under a heading of another class are other items: the local
+ model labels the page headings against the request, and a page of another
+ class, beside one of the requested class, is not read and is reported in the
+ Notes. A title naming only the contract or the account does not decide the
+ class; a detail opened from a row inherits it. No word list decides what an
+ invoice is.</p>
+ <p>When the request does not say which items to collect, Metnos asks with a
+ form ("Which items?", for example invoices or bills) and then resumes the
+ request with the answer. After a verified login the session is saved encrypted
+ and reused while the private page opens without signing in; a restored session
+ that reaches no item is not used again.</p>
+ <p><strong>The model indicates, the code copies.</strong> On list pages the code
+ splits rows into numbered fields; the model chooses, once per list shape, which
+ column is number, date, amount and status, and the code copies the values as
+ the page writes them. A code repeated across rows belongs to their container
+ (a customer, a contract), not to a row. A choice that fails the checks leaves
+ the page to the ordinary extraction path.</p>
+ <p><strong>End of a collection.</strong> When the model is done with a list and
+ no next page is left, the search does not go back to other routes of the same
+ contract if the rows already cover the requested year: rows of the year and an
+ older one, rows down to January, or only rows of the year with the site's own
+ filter already set to that year. Dates are read with the shared helpers for
+ observed dates, in any order. Otherwise the search checks the other routes:
+ that is what guarantees no archive is missed.</p>
+ <p><strong>Speed without dropping checks.</strong> A page seen again unchanged,
+ whose scrolling revealed nothing, is not scrolled again; every new page,
+ details included, is still scrolled, since scrolling also lets late data
+ arrive. A return from a detail uses «back» only when the list shows exactly its
+ saved text, in the same contract. A list seen again is recognized by the set
+ of its controls, whatever order the scroll position gives them. Details of one
+ kind (same address without parameters, same controls) are read by the model
+ once: later ones take that reading when their row is of the requested year and
+ the page shows that row's date; otherwise the model decides.</p>
+ <p><strong>Robustness.</strong> When an attempt to set a date filter cannot be
+ verified (for example the click only opens a calendar), Metnos presses Esc and
+ continues on the page as it was, without counting the site's selection as
+ changed. A detail empty in a second tab, where other details of its kind show
+ data, is opened once more in the same tab before its row counts as having no
+ detail.</p>
+ <p><strong>Measured limits</strong> (real runs of 23–25 October): ENI 12 invoices
+ out of 12 in about five and a half minutes (three contracts, one detail per
+ invoice: the number is only on the detail), Enel about two and a half minutes,
+ Fastweb about two minutes. On ENI the collection may declare itself partial at
+ the end, when the contract selector is not recognized again after the last
+ contract: the data are complete, the coverage of contracts is not proven. ENI
+ shows at most five invoices per contract: a contract with more invoices in the
+ year would not be proven complete. After frequent sign-ins sites may ask for a
+ CAPTCHA that needs a person.</p>
 
  <h3>When a cloud model is used</h3>
  <p>If configured, the cloud model in the Frontier tier chooses routes to
- explore; data recognition remains local. It receives the request, sign-in
- state, and control names with their section titles. It does not receive
- the full page content, extracted fields, or credentials. <strong>Control
- names can still contain personal data.</strong> The response states this
- and the step displays a red <strong>$</strong>; a request already sent
+ explore and recognizes visible records during collection.
+ The semantic fallback for navigation recognized as a collection also
+ receives observed content without requiring an exhaustive quantifier.
+ Ordinary actions retain the local model; observing records does not
+ authorize a click without a control or establish collection completeness. Recognition
+ also receives the observed page text within the reading limit; the separate
+ route decision receives control names with their section titles.
+ <strong>These observations can contain personal data.</strong> Sign-in
+ field values remain excluded. Login, planning, row extraction and other
+ operations keep their respective configured models. The response counts
+ cloud requests and the step displays a red <strong>$</strong>; a request already sent
  remains counted even if the available time expires.</p>
+ <p><strong>Updated behavior; real ENI/CAPTCHA acceptance remains open:</strong>
+ when a page read supplies rows for extraction, the linked navigation uses
+ collection traversal and retains observations after page changes or a
+ later error. Without a stated quantity, the goal is to collect all requested
+ records; the original request retains the year and other filters. This
+ rule alone does not establish completeness: evidence that the search has
+ ended is still required.</p>
  <p>Without Frontier configured, the local model makes the choice. If
  Frontier is configured but its decision fails or times out, the collection
  remains incomplete: it does not automatically switch to another model.
- Administrators can disable this route selection with
+ Administrators can disable both cloud decisions with
  <code>METNOS_SITES_FRONTIER_ROUTES=0</code>.</p>
 
+ <p><strong>Delivered with the 28 October release:</strong>
+ the same collection observation classifies content and context, including
+ a filter rendered as a button without ARIA attributes. Each control must
+ be observed, and requested values quote the original request. An already
+ satisfied filter allows traversal without changing it. Every control window
+ is checked before the first effect; conflicting classifications or a changed
+ scene stop the action. Sources retain the qualified context, and a detail
+ relationship is admitted only after the scene is verified.</p>
+ <p>A filter selects the requested population; an expandable group reveals
+ rows of the same population and is a collection route. A year in the name
+ does not distinguish these functions. A control classified as context cannot
+ also be a route, even when the filter is already satisfied.</p>
+ <p>A relevant partition with observed alternatives retains the existing
+ bounded traversal. Unclassified options, ambiguous ownership, or controls
+ that cannot be verified leave collection incomplete; the system does not
+ invent a menu state. Synthetic tests verify two details and the resulting
+ spreadsheet; the actual ENI file still requires acceptance.</p>
+
  <h3>Filters, dates, and spreadsheets</h3>
- <p>“All” keeps its meaning of a complete collection even when the plan
- shortens the request. Period, category, and other constraints must refer
+ <div class="note"><strong>Real-workflow acceptance testing remains open.</strong>
+ The collection phrases, cookie-panel observations and textual robot challenges
+ described here still require testing and acceptance of the real workflow.</div>
+ <p>“All” and “complete list” retain their meaning of a complete collection
+ even when the plan shortens the request, only when asserted for the requested
+ object. Negation and prohibitions do not activate that collection; the
+ adjective “complete” alone does not define its scope. Recognizing the request
+ does not establish that every item was found. Period, category, and other
+ constraints must refer
  unambiguously to the same action and apply together to every item. Filters
  apply to collected data: an intermediate page’s date is not enough to
  exclude a route. A summary or another invoice does not establish that an
@@ -208,6 +377,10 @@
  then a unique match allowing those differences, then a unique match ignoring
  punctuation and accents. It does not resolve ambiguity by choosing the
  first field. Issue dates and due dates remain distinct.</p>
+ <p>The shared vocabulary also recognizes identifier number, amount, and
+ status across Italian labels and English keys. Identifier numbers remain
+ distinct from counts. These matches do not depend on field order or require
+ a model call; competing fields still need an explicit source binding.</p>
  <p>Spreadsheet headings are labels, separate from extracted keys. They do
  not add fields to an already declared schema; an explicit heading-to-source
  binding can request another field. Without a schema, headings can define it.
@@ -234,16 +407,41 @@
  counters and comparisons from a closed set, without page data, destinations,
  or secrets. This trace supports diagnosis without adding attempts or
  establishing the cause of an error.</p>
+ <h3 id="recovery-candidate">Candidate recovery corrections, 15 October 2026</h3>
+ <p>After verified sign-in, the candidate keeps the actual destination as its
+ return anchor, instead of the public opening page. The existing single recovery
+ does not resubmit credentials or forms. It requires the same page, exact address
+ and authorized origin; a change or pending request for user intervention stops
+ recovery. Reaching that address is not a fresh authentication check.</p>
+ <p>During collection, after navigation has already executed, a document change
+ during the check may allow one fresh read on the same page and origin, within
+ four seconds in total and the caller’s remaining time. The earlier result is
+ discarded even if it was clear. No click is repeated; a challenge or pending
+ approval remains blocking.</p>
+ <p>The new records distinguish the recovery reason and the outcome of local
+ selection among observed controls. They retain counts, elapsed time and closed
+ categories, without page text, addresses, field values or model responses.
+ Reported completeness concerns only the input window supplied to selection,
+ not the website inventory. Diagnostics do not change decisions or attempts.</p>
+ <p>Isolated qualification of these changes remains separate from delivery and
+ real-site testing. It does not establish that the initial missing control is
+ resolved, that all invoices were collected, or that a general automatic CAPTCHA
+ solver or a new supervisor exists.</p>
  <div class="note"><strong>Complete collection is still being tested.</strong>
  Isolated IT/EN filter tests pass; completeness and absence of duplicates
  still need confirmation on the real website. Reaching a time, action,
  depth, or reading limit produces a partial result without inventing the
  total number of objects.</div>
  <p>If an obstacle interrupts the search, data already observed can still
- be delivered, including in a spreadsheet, with an incomplete-collection
- warning and its cause. Failed sign-in, a refusal with no data, or pending
+ be delivered, including in a spreadsheet. If the expected total is unknown,
+ the notice says completeness is unverified and names the observed limit;
+ verifying the written rows does not prove that all bills were collected.
+ Failed sign-in, a refusal with no data, or pending
  consent stops the sequence. An ambiguous control does not justify raising
  the limits.</p>
+ <p>The service allows up to eight concurrent browser sessions, including
+ sessions owned by the same user. “Close the web sessions” ends the user's
+ sessions; it does not change browser preferences or delete website data.</p>
 
  <h2 id="human-intervention">CAPTCHAs, codes, and resuming</h2>
  <p>Website boundaries and consent requirements remain in force throughout
@@ -253,6 +451,20 @@
  click or asking the model for another decision. OTP codes are requested
  from the user unless automation has been explicitly authorized; they are
  not treated as CAPTCHAs.</p>
+ <p>Metnos observes the panel’s static, non-editable public text,
+ including text inside forms or elements without their own box
+ (<code>display:contents</code>). It includes the panel’s own accessible name
+ and the alternative text of visible images within it. Hidden or unrelated
+ content, field values, editable text and active code remain excluded, with
+ the same bounds and redaction. This evidence can also identify a promotional
+ notice: classifying it as other does not authorize clicking
+ <strong>Close</strong>.</p>
+ <p>Rejecting cookies requires explicit meaning in the control label and
+ an observed pair of identifiers from the same panel. A generic close control
+ or a navigation menu does not constitute rejection. Cached decisions are
+ checked again; when evidence is insufficient, Metnos pauses the action.
+ Rejection expressions come from the updatable native lexicon, without
+ rules specific to each portal.</p>
  <p>A field named “code” or “token” does not by itself require an OTP.
  Metnos looks for a visible, editable field identified as a one-time code
  or accompanied by verification evidence within the same form or field
@@ -260,15 +472,84 @@
  across single-character boxes. If several fields prevent an unambiguous
  choice, it does not enter the code. Sensitive fields remain obscured and
  submission respects the authorized website boundaries.</p>
- <p>For supported Cloudflare CAPTCHAs, Metnos tries the local
+ <p>Metnos also recognizes an explicit textual request to verify
+ humanity within its own sign-in form. It reads the complete prose, retaining
+ FAQ context, quotations and negation around the message, even with nearby
+ links, buttons or fields. Quoted examples, FAQ statements and negated
+ requests do not activate verification. Visible credential fields can be temporarily
+ disabled: this does not clear the challenge or permit filling or submission.
+ A textual request goes to manual control when no widget can be identified.</p>
+ <p><strong>Updated behavior; real ENI/CAPTCHA acceptance remains open:</strong>
+ verification text alongside one supported widget, identified on the current
+ page, does not prevent an automatic attempt within the existing limits.
+ With text alone or ambiguous widgets, Metnos asks for help. The attempt
+ still requires verification on the page; this does not qualify general
+ CAPTCHA solving or image-grid solving.</p>
+ <p>Before the visual attempt, Metnos may activate one unchecked native or
+ ARIA checkbox inside one recognized provider iframe. It checks the actual
+ origin, frame and control identity, visibility, obstructions and session
+ authority again; uncertainty causes abstention. Navigation of the main document
+ or the provider invalidates the attempt. A provider descendant may navigate
+ only when its observed frame chain remains attached to the same page and the
+ provider remains a direct child of the main document at the same source URL;
+ uncertain ancestry still invalidates the attempt. Descendant and unrelated
+ frame navigation retain control identity checks and native actionability.
+ The audit counts qualified descendant navigation separately and distinguishes resource contention
+ from revoked authority. This attempt captures no
+ images and calls no models. When the checkbox is absent, it may wait up to
+ one second for rendering within the same budget, rechecking frame and authority.
+ Multiple checkboxes still cause immediate refusal. The audit distinguishes
+ counts observed during preparation and verification; an optional DOM census
+ after refusal does not certify the earlier state. A fresh page observation checks that the challenge
+ has disappeared, within the remaining sign-in budget. This does not verify
+ the provider's backend; a checked state or completed click does not prove
+ sign-in. After an issued command without confirmation, it asks for help
+ without a second automatic click. The log attributes execution and decision
+ to the executor. Grids, generic controls and unqualified geometry remain
+ excluded; DOM checks and native input retain a non-atomic change window.
+ An unfinished browser command or cleanup keeps the session reserved until
+ completion is established, before browser control can take over.</p>
+ <p>When no semantic command has been issued, for supported Cloudflare
+ CAPTCHAs Metnos tries the local
  <code>playwright-captcha</code> library once, in the same session and for
  no more than ten seconds. The attempt stays within sign-in limits, is
- checked on the page, and uses no paid services. If the check remains open
- or is unsupported, such as reCAPTCHA, Metnos asks for your help.</p>
+ checked on the page, and uses no paid services. After the local attempt,
+ the visual integration described below may evaluate a supported challenge
+ with one Frontier request. If it cannot verify acceptance, Metnos asks
+ for your help.</p>
+ <p>The single/swarm supervisor has been present since release199; sign-in
+ uses one visual proposal. Comparing multiple alternatives has been verified
+ on isolated cases but is not active in the current sign-in integration.
+ General automatic solving remains unqualified. Observing or loading a
+ challenge alone does not authorize a checkbox click.</p>
+ <p>The local audit distinguishes resolver stop reasons and human handoff,
+ including cases where the resolver was not called. It records closed reason
+ codes and observed consumption from the current attempt, without adding
+ page text or images. A stage outcome does not certify successful sign-in;
+ auditing does not change decisions or limits.</p>
+ <p>The action log separates the command executor from its decision source:
+ executor, browser control or model. Browser control records the authenticated
+ account and device when available, with origin included in the signed command.
+ This does not establish who physically pressed a control: human identity
+ remains unverified. Provider and model come from the actual response and
+ remain unknown when unavailable. Older traces without attribution are not
+ reinterpreted.</p>
+ <p>Browser-control and CAPTCHA click events distinguish requested commands,
+ completed commands and unconfirmed outcomes. A completed click does not
+ certify CAPTCHA acceptance or successful sign-in. Crop refusals use closed
+ reason codes; visible generated content on hidden elements causes abstention.
+ Geometric verification retains its documented limitations.</p>
+ <p>Navigation bounds the final control lookup by the short observation
+ interval: an ordinary node replacement permits a fresh observation within
+ the existing budget. A genuinely changed target or control is still refused
+ before clicking.</p>
  <p>The panel displays the already open session page with sensitive fields
  obscured. You can click, scroll, refresh the image, and select
- <strong>Resume</strong>. Metnos checks the individual CAPTCHA and continues
- the original request. If credentials were already submitted, it checks that
+ <strong>Resume</strong>. The broker preserves manual handoff in the same
+ session and continues the original request only after verifying the outcome
+ through a fresh website observation. A click or model response does not
+ establish success; an unavailable observation does not clear the check.
+ If credentials were already submitted, it checks that
  attempt without submitting them again. The panel expires after ten minutes;
  cancelling it closes the session. Checks requiring keyboard or audio input
  are not supported by this panel.</p>
@@ -294,6 +575,47 @@
  <div class="note"><strong>Transport and intelligence are independent.</strong>
  A local or remote executor may be direct or intelligent. Transport determines
  how it is reached; the manifest, policy, and code determine what it may do.</div>
+
+ <section id="spin-supervisor">
+ <h2>Supervisor: one proposal or several alternatives</h2>
+ <div class="note"><strong>Limited capability, 17 October 2026.</strong>
+ The supervisor and visual adapter have passed isolated and composition
+ checks. Real-site acceptance remains open: the tests do not establish
+ general CAPTCHA solving or faster operation.</div>
+ <p>An executor may encounter an obstacle during an already authorised
+ operation. In <code>single</code> mode it evaluates one proposal;
+ in <code>swarm</code> mode it compares independent alternatives.
+ Only the resource owner applies the selected proposal. Analyses share the
+ remaining time and limits; another attempt does not reset them. Parallel
+ analysis will be used where measurements confirm a benefit.</p>
+ <p>Proposal selection and operation success are separate outcomes.
+ An independent check verifies the change in the current session.
+ Late responses are discarded. All owned activities must actually end before
+ work resumes or control returns to the user; incomplete shutdown remains
+ an explicit obstacle.</p>
+ <h3>First adapter: visual challenges</h3>
+ <p>The design retains the existing local attempt and human panel.
+ For a supported challenge, an adapter may ask Frontier for a proposal using
+ only the widget crop, after the local attempt. The candidate login
+ integration permits at most one visual request. The general contract allows
+ a second request only for a new observed challenge within the shared budget;
+ that second round is not active in the current login integration. Animated
+ frames or an error do not grant extra attempts.</p>
+ <p>The first candidate schema proposes one click inside the widget or
+ abstains. It does not cover every grid or multi-step challenge.
+ A click, token or disappearing panel does not prove site acceptance or
+ successful login. Without verified acceptance, human control uses the same
+ session after automated activities have stopped. OTP, consent and
+ maintenance retain their own paths.</p>
+ <p>One complete test on a synthetic widget verified image delivery to
+ Frontier, one correct click, site acceptance and completion of all owned
+ activities. Offline login integration tests also verify timeout,
+ cancellation and abstention on observable overlays. Work has a 20-second
+ deadline, followed by bounded cleanup waits. The complete path on real sites
+ and the CAPTCHAs actually encountered still require verification. The grid adapter is a
+ separate laboratory candidate and is excluded from delivery. Other roles
+ retain their configured model.</p>
+ </section>
 
  <p class="related">Read next: <a href="executor.html">executor contract</a> &middot; <a href="sandbox.html">sandbox</a> &middot; <a href="skills_backends.html">skills and backends</a> &middot; <a href="agent_runtime.html">agent runtime</a></p>
 </main>

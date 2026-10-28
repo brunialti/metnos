@@ -46,6 +46,39 @@ def calendar_date_bounds(year: int, month: int | None = None, day: int | None = 
     return date(year, 1, 1), date(year, 12, 31)
 
 
+def observed_month_names() -> dict[str, int]:
+    """Month names of the active catalog, for many normalizations at once."""
+    lexicon = _parser_lex.load_family("time_resolver")
+    return ({str(form).casefold(): int(number)
+             for number, forms in lexicon["parser.time.month"].items()
+             for form in forms} if lexicon else {})
+
+
+def first_observed_date(text, *, month_names: dict[str, int] | None = None) -> str | None:
+    """The first date a text writes, as the shared normalization gives it
+    (YYYY-MM or YYYY-MM-DD, its precision kept), or None. A date may span up
+    to three words («12 marzo 2030»); a bare number is never a date. One
+    helper for every reader of dates inside observed text (rows of a list,
+    text beside copied rows), never a pattern of its own."""
+    if not isinstance(text, str) or not any(ch.isdigit() for ch in text):
+        return None
+    if month_names is None:
+        month_names = observed_month_names()
+    words = [word.strip(",;:()[]") for word in text.split()]
+    for start in range(len(words)):
+        for size in (3, 2, 1):
+            window = words[start:start + size]
+            if len(window) < size or not any(ch.isdigit() for ch in window[-1] + window[0]):
+                continue
+            candidate = " ".join(window)
+            if candidate.isdigit():
+                continue
+            value = normalize_observed_date(candidate, month_names=month_names)
+            if isinstance(value, str) and re.fullmatch(r"\d{4}-\d{2}(?:-\d{2})?", value):
+                return value
+    return None
+
+
 def normalize_observed_date(value, *, month_names: dict[str, int] | None = None):
     """Normalize an observed date using the active catalog unless supplied.
 
@@ -53,10 +86,7 @@ def normalize_observed_date(value, *, month_names: dict[str, int] | None = None)
     runtime lookup. The shared helper preserves precision and assumed years.
     """
     if month_names is None:
-        lexicon = _parser_lex.load_family("time_resolver")
-        month_names = ({str(form).casefold(): int(number)
-                        for number, forms in lexicon["parser.time.month"].items()
-                        for form in forms} if lexicon else {})
+        month_names = observed_month_names()
     return _normalize_observed_date(value, month_names=month_names)
 
 

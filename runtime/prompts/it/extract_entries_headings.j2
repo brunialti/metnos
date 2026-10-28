@@ -1,0 +1,18 @@
+{# ---
+role: extract_entries_headings
+tier: fast
+lang: it
+style: prescriptive
+version: 3
+owner: roberto
+updated: 2026-10-23
+sha_prev: 7e4a9735
+--- #}
+Ricevi una RICHIESTA e un elenco numerato di INTESTAZIONI.
+Ogni intestazione è il titolo della pagina o della sezione che elenca delle righe: righe uguali sotto intestazioni di classi diverse sono elementi diversi.
+DEVI: dare "same" a un'intestazione che dichiara che le sue righe sono elementi della classe chiesta dalla RICHIESTA o di un suo sinonimo.
+DEVI: dare "other" a un'intestazione che dichiara che le sue righe sono elementi di un'altra classe, "unclear" a un'intestazione che non dichiara la classe delle sue righe.
+NON DEVI: dare "other" a un'intestazione che nomina soltanto il contenitore delle righe, un menu o un saluto: quell'intestazione è "unclear".
+OK: esempio astratto, non copiare letteralmente: richiesta di <ELEMENTI_A>; «<TITOLO_DI_ELEMENTI_A>» → same; «<TITOLO_DI_ELEMENTI_B>» → other; «<TITOLO_DEL_CONTENITORE>» → unclear.
+E' UN ERRORE: richiesta di <ELEMENTI_A>; «<TITOLO_DEL_CONTENITORE>» → other.
+Restituisci SOLO un oggetto JSON {"labels":[...]} con un'etichetta per intestazione, nello stesso ordine, senza prosa e senza segnaposto.

@@ -2,7 +2,7 @@
 
 Builtin backend per il `client="local"` dei verbi files/dirs. Riusa
 primitive `pathlib`+`os`+`shutil`+`fnmatch`+`mimetypes` di stdlib.
-Nessuna dipendenza esterna.
+Le letture PDF automatiche usano il parser nativo condiviso, importato lazy.
 
 Verbi esposti:
 - `read(args)`: legge contenuto di UN file (testo o binary base64).
@@ -39,7 +39,6 @@ import stat
 import sys
 import tempfile
 import zipfile
-import zlib
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -63,6 +62,7 @@ from tabular_projection import (  # noqa: E402
 )
 from spreadsheet_cells import active_cell_count, neutralized_rows  # noqa: E402
 import config as _C  # noqa: E402 §7.11
+import pdf_extract  # noqa: E402
 # path_alias modulo riusabile (D.1, D.3). Re-export degli alias come moduli
 # locali per back-compat con test esistenti che mockano backends.files.local.
 from path_alias import (  # noqa: E402
@@ -164,57 +164,28 @@ def _parse_xlsx_text(raw: bytes) -> str:
     return "\n\n".join(rendered)
 
 
-_PDF_LITERAL_RE = re.compile(rb"\((?:\\.|[^\\)])*\)")
-
-
-def _decode_pdf_literal(token: bytes) -> str:
-    value = token[1:-1]
-    value = re.sub(rb"\\([0-7]{1,3})",
-                   lambda m: bytes([int(m.group(1), 8) & 0xFF]), value)
-    replacements = {
-        rb"\\n": b"\n", rb"\\r": b"\r", rb"\\t": b"\t",
-        rb"\\b": b"\b", rb"\\f": b"\f", rb"\\(": b"(",
-        rb"\\)": b")", rb"\\\\": b"\\",
-    }
-    for old, new in replacements.items():
-        value = value.replace(old, new)
-    return _decode_document_text(value).strip()
-
-
-def _parse_pdf_text(raw: bytes) -> str:
-    if not raw.startswith(b"%PDF-") or b"%%EOF" not in raw[-2048:]:
-        raise ValueError("invalid_or_truncated_pdf")
-    sources = [raw]
-    for match in re.finditer(rb"stream\r?\n(.*?)\r?\nendstream", raw, re.S):
-        stream = match.group(1)
-        prefix = raw[max(0, match.start() - 256):match.start()]
-        if b"FlateDecode" in prefix:
-            try:
-                stream = zlib.decompress(stream)
-            except zlib.error:
-                continue
-        sources.append(stream)
-    chunks: list[str] = []
-    for source in sources:
-        for token in _PDF_LITERAL_RE.findall(source):
-            text = _decode_pdf_literal(token)
-            if text and any(ch.isalnum() for ch in text):
-                chunks.append(text)
-    # Deduplica i token ripetuti perche' il raw include anche gli stream gia'
-    # aggiunti sopra; preserva l'ordine di apparizione.
-    return "\n".join(dict.fromkeys(chunks))
-
-
 def _auto_parse_file(path: str, source: dict | None = None) -> dict:
-    """Legge e normalizza un documento locale con sola stdlib.
+    """Legge un documento; i PDF hanno un unico parser e ingresso limitato.
 
     Un contenitore corrotto e' un'osservazione valida (`readable=false`), non
     un fallimento I/O: la pipeline puo' segnalarlo e proseguire sugli altri.
     """
     # Keep relative reads aligned with the user workspace convention.
     abs_path = str(_normalize_input_path(path))
+    suffix = Path(abs_path).suffix.casefold()
+    input_complete = True
+    pdf_state = {}
     try:
-        raw = Path(abs_path).read_bytes()
+        if suffix == ".pdf":
+            with Path(abs_path).open("rb") as handle:
+                size_before = os.fstat(handle.fileno()).st_size
+                raw = handle.read(pdf_extract.DEFAULT_MAX_BYTES + 1)
+                size_after = os.fstat(handle.fileno()).st_size
+            input_complete = len(raw) <= pdf_extract.DEFAULT_MAX_BYTES
+            pdf_state = {"parse_complete": False, "input_complete": input_complete,
+                         "truncated": False, "limits": [], "pdf_metadata": {}}
+        else:
+            raw = Path(abs_path).read_bytes()
     except FileNotFoundError:
         return {"ok": False, "path": abs_path,
                 "error_code": "ERR_PATH_NOT_FOUND",
@@ -227,8 +198,7 @@ def _auto_parse_file(path: str, source: dict | None = None) -> dict:
         return {"ok": False, "path": abs_path, "error_code": "ERR_OP_FAILED",
                 "error": _msg("ERR_OP_FAILED", reason=str(exc))}
 
-    suffix = Path(abs_path).suffix.casefold()
-    raw_sha = hashlib.sha256(raw).hexdigest()
+    raw_sha = hashlib.sha256(raw).hexdigest() if input_complete else ""
     readable = True
     diagnostic = ""
     try:
@@ -239,9 +209,21 @@ def _auto_parse_file(path: str, source: dict | None = None) -> dict:
             content = _parse_xlsx_text(raw)
             file_type = "xlsx"
         elif suffix == ".pdf":
-            content = _parse_pdf_text(raw)
             file_type = "pdf"
-            if not content.strip():
+            if not input_complete:
+                total = size_after if size_before == size_after and size_after >= len(raw) else None
+                pdf_state.update(pdf_extract.pdf_input_limit(pdf_extract.DEFAULT_MAX_BYTES,
+                                                            available_total=total))
+                content = ""
+                readable = False
+                diagnostic = "pdf_input_bytes_limit"
+            else:
+                info = pdf_extract.extract_pdf_text(raw, max_bytes=pdf_extract.DEFAULT_MAX_BYTES)
+                content = info["body_text"]
+                pdf_state.update(pdf_extract.pdf_extraction_state(info))
+                pdf_state["pdf_metadata"] = {key: info[key] for key in
+                                             ("title", "author", "n_pages", "n_pages_read", "used_lib")}
+            if input_complete and not content.strip():
                 readable = False
                 diagnostic = "pdf_text_unavailable"
         elif suffix == ".xls":
@@ -252,6 +234,13 @@ def _auto_parse_file(path: str, source: dict | None = None) -> dict:
         else:
             content = _decode_document_text(raw)
             file_type = suffix.lstrip(".") or "text"
+    except ImportError:
+        if suffix != ".pdf":
+            raise
+        content = ""
+        file_type = "pdf"
+        readable = False
+        diagnostic = "pdf_parser_unavailable"
     except (ValueError, KeyError, zipfile.BadZipFile, ET.ParseError,
             UnicodeError, OSError) as exc:
         content = ""
@@ -272,8 +261,13 @@ def _auto_parse_file(path: str, source: dict | None = None) -> dict:
         "sha256": raw_sha,
         "content_sha256": (hashlib.sha256(normalized.encode("utf-8")).hexdigest()
                            if normalized else ""),
-        "file_size": len(raw),
+        "file_size": len(raw) if input_complete else size_after,
     })
+    if suffix == ".pdf":
+        for key in ("parse_diagnostic", "cap_field", "cap_value", "used",
+                    "available_total", "truncated_what", "error", "error_class"):
+            entry.pop(key, None)
+        entry.update(pdf_state)
     if diagnostic:
         entry["parse_diagnostic"] = diagnostic
     return entry
@@ -420,6 +414,7 @@ def read(args: dict) -> dict:
                 "unreadable_count": sum(1 for e in out_entries
                                         if e.get("ok") and not e.get("readable")),
             })
+            pdf_extract.aggregate_pdf_limits(out, out_entries)
         if fail_count:
             _ff = next((e for e in out_entries if not e.get("ok")), None)
             if _ff:
@@ -429,6 +424,8 @@ def read(args: dict) -> dict:
             out.update({"truncated": True, "truncated_what": "files",
                         "used": len(_vec), "available_total": _avail,
                         "cap_field": "max_files", "cap_value": _maxf})
+            out.setdefault("limits", []).append({"cap_field": "max_files", "cap_value": _maxf,
+                                                  "used": len(_vec), "available_total": _avail})
         return out
 
     path = args.get("path")
@@ -2311,8 +2308,12 @@ def _spreadsheet_out_dir() -> Path:
 
 
 def _sanitize_filename(title: str) -> str:
-    """title → filename safe (no separatori di path, no caratteri riservati)."""
-    name = re.sub(r"[^\w\-. ]", "_", (title or "").strip()) or "spreadsheet"
+    """title → filename safe (no path separators, no reserved characters).
+
+    Parentheses are kept: they are valid on every supported filesystem and
+    name a copy as a person would, «report (2)».
+    """
+    name = re.sub(r"[^\w\-. ()]", "_", (title or "").strip()) or "spreadsheet"
     return name[:120]
 
 
@@ -2587,6 +2588,95 @@ def _resolve_values(args: dict):
     return None
 
 
+def _split_record_actions(args: dict, *, add_context: bool = True) -> tuple[dict, list[dict]]:
+    """Rows a producer rejected leave the data; merged, rejected and
+    conflicting rows are described as the sheet shows them, for the Notes.
+
+    The matrix projection drops record annotations, so they are read here,
+    from the same records and through the same projection as the data rows.
+    """
+    # Only record lists: mixed or ambiguous carriers stay for the shared checks.
+    carriers = [key for key in ("values", "entries") if isinstance(args.get(key), list) and args[key]]
+    carrier = (carriers[0] if len(carriers) == 1
+               and all(isinstance(row, dict) for row in args[carriers[0]]) else None)
+    if carrier is None:
+        return args, []
+    from tabular.compile import _clean, _sensitive_fields
+
+    sensitive = _sensitive_fields(args)
+    records = args[carrier]
+    kept = [row for row in records if not (isinstance(row, dict) and row.get("_record_rejected") is True)]
+    rejected = [row for row in records if isinstance(row, dict) and row.get("_record_rejected") is True]
+    args = {**args, carrier: kept}
+    # Rows read in different partitions (contracts, accounts...) show it in
+    # a first column, header localized now; never in append mode.
+    from tabular_records import record_context_header
+    header = record_context_header()
+    specs, columns = list(args.get("column_specs") or []), list(args.get("columns") or [])
+    taken = ({str(spec.get("header")) for spec in specs if isinstance(spec, dict)}
+             | {str(spec.get("source")) for spec in specs if isinstance(spec, dict)} | set(columns))
+    with_context = (add_context and len({row.get("_record_partition") for row in kept
+                                         if row.get("_record_partition")}) > 1
+                    and header not in taken and not any(header in row for row in kept))
+    if with_context:
+        # First in each row, so columns inferred from the records keep it first.
+        kept = [{header: row.get("_record_partition_label") or "", **row} for row in kept]
+        args[carrier] = kept
+        if specs:
+            args["column_specs"] = [{"header": header, "source": header}] + specs
+        elif columns:
+            args["columns"] = [header] + columns
+
+    from tabular.compile import (ROW_ACTION_DETAIL_MAX, ROW_ACTIONS_MAX, _conflict_details,
+                                 _row_actions)
+    from tabular_projection import ColumnProjection, compile_projection
+
+    # The rows are described with the sheet's own column mapping, by the same
+    # builder the other writers use; a description never blocks the writing.
+    basis = [row for row in (_clean(row, sensitive) for row in kept + rejected)
+             if isinstance(row, dict)]
+    try:
+        projection = compile_projection(basis, args.get("columns") or [],
+                                        args.get("column_specs") or [],
+                                        args.get("field_roles") or [])
+    except (TabularProjectionError, ValueError, TypeError):
+        projection = []
+    if not projection:
+        projection = [ColumnProjection(key, key) for key in dict.fromkeys(
+            key for row in basis for key in row if not str(key).startswith("_"))]
+    if add_context:
+        # A new sheet names a column as the site does, when its rows agree.
+        from tabular_records import site_column_headers
+        named = site_column_headers(kept)
+        others = {p.header.casefold() for p in projection if p.source not in named}
+        named = {field: header for field, header in named.items() if header.casefold() not in others}
+        if any(p.source in named for p in projection):
+            projection = [ColumnProjection(named.get(p.source, p.header), p.source, p.transform)
+                          for p in projection]
+            args["column_specs"] = [{"header": p.header, "source": p.source,
+                                     **({"transform": p.transform} if p.transform != "identity" else {})}
+                                    for p in projection]
+            args.pop("columns", None)
+    described = kept
+    if with_context:
+        # A witness shows the partition of the row it was merged into.
+        described = [{**row, "_record_provenance": [
+            {header: row[header], **witness} if isinstance(witness, dict) else witness
+            for witness in row.get("_record_provenance") or ()]} for row in kept]
+    notes = _row_actions(described if args.get("unique_rows") is not True else [],
+                         rejected, projection, sensitive, "")
+    # Rejected and contradicted rows first: they change what the data say.
+    actions = ([note for note in notes if note["code"] == "MSG_TABLE_ROW_REJECTED"]
+               + (_conflict_details(kept, sensitive, "") if args.get("unique_rows") is not True else [])
+               + [note for note in notes if note["code"] == "MSG_TABLE_ROW_MERGED"])
+    # The Notes accept bounded descriptions only; a long row is shortened,
+    # never allowed to stop the writing.
+    actions = [{**action, "detail": action["detail"] if len(action["detail"]) <= ROW_ACTION_DETAIL_MAX
+                else action["detail"][:ROW_ACTION_DETAIL_MAX - 1] + "\u2026"}
+               for action in actions if action.get("detail")]
+    return args, actions[:ROW_ACTIONS_MAX]
+
+
 def _data_row_count(args: dict, rows: list) -> int:
     """Conteggia i record, non l'eventuale riga d'intestazione."""
     entries = args.get("entries")
@@ -2746,9 +2836,13 @@ def create_spreadsheet(args: dict) -> dict:
         # import keeps unrelated local operations usable on an older package;
         # a missing writer is an honest failed create, never a verified file.
         from tabular.api import write_table
+        # Before the privacy cleanup removes the record annotations.
+        args, row_actions = _split_record_actions(args)
         table_args = _clean_create_table_args(args)
         rows = _resolve_values(table_args) or []
         source, spec = _create_table_input(table_args, rows, display_title, sheet_name)
+        if row_actions:
+            source["row_actions"] = row_actions
         out = write_table(source, spec, {"backend": "csv" if _is_csv(path) else "local_xlsx",
                                        "path": str(path)}, "create")
     except TabularProjectionError as exc:
@@ -2814,6 +2908,10 @@ def write_spreadsheet(args: dict) -> dict:
     # `rows` da `values` (matrice diretta) o da `entries`+`columns` (pipe §2.10):
     # il planner non sa comporre una matrice con placeholder su una LISTA, quindi
     # accettiamo le entries (from_step) + le colonne e costruiamo la matrice qui.
+    # Rows a producer rejected never enter the data; without Notes here, the
+    # receipt declares them (no silent drop, §2.8).
+    args, row_actions = _split_record_actions(args, add_context=False)
+    rejected_rows = sum(1 for action in row_actions if action["code"] == "MSG_TABLE_ROW_REJECTED")
     try:
         rows = _resolve_values(args)
     except TabularProjectionError as exc:
@@ -2958,6 +3056,10 @@ def write_spreadsheet(args: dict) -> dict:
         title=path.stem,
         rows=format_exact_integer(data_rows),
     )
+    if rejected_rows:
+        out["rejected_unidentified_records"] = rejected_rows
+        out["final_message_hint"] += " " + _msg(
+            "WARN_TABLE_UNIDENTIFIED_REJECTED_ONE_SHEET", count=format_exact_integer(rejected_rows))
     # Undo onesto (§2.8): reverse_pattern multistage nel manifest
     # (`restore_blob_backup` + `delete_created_paths`); ogni stadio agisce sul
     # campo che lo riguarda (prev_blob_path vs created), saltando gli altri.

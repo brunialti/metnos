@@ -781,6 +781,38 @@ def retrieve_sources(
         _reserve_authorities(
             selected, visible, adjusted, threshold, top, band,
             per_document, per_kind, maximum, pinned=protected)
+
+    # Naming an admitted public document fixes the source, while dense ranks
+    # still choose the primary section. Reserve one support slot for the best
+    # lexical match in that document: a specific paragraph may be outside the
+    # dense band or behind another chunk under the same heading. Reuse the
+    # existing query signals, visible sources and total context budget.
+    if source_ref and maximum > 1:
+        lexical_scores = {
+            hit.source_id: max(
+                bonus((hit.source_type, hit.source_id)) for bonus in bonuses)
+            for hit in visible
+            if hit.unit is not None
+            and hit.unit.authority == "published_documentation"
+        }
+        support = max(
+            (hit for hit in visible if hit.source_id in lexical_scores),
+            key=lambda hit: (
+                lexical_scores[hit.source_id], adjusted(hit), hit.source_id),
+            default=None,
+        )
+        if support is not None and lexical_scores[support.source_id] > 0:
+            if support not in selected:
+                if len(selected) >= maximum:
+                    selected.remove(min(
+                        (hit for hit in selected if hit is not primary),
+                        key=adjusted,
+                    ))
+                selected.append(support)
+            if explain is not None:
+                explain["identity_lexical_support"] = support.source_id
+                explain["identity_lexical_score"] = lexical_scores[
+                    support.source_id]
     if primary not in selected:
         raise RuntimeError("Tutor selection lost its semantic primary")
     selected = [primary, *sorted(

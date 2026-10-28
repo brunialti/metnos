@@ -35,7 +35,7 @@ except ImportError:  # pragma: no cover - exercised by the Windows CI lane
     fcntl = None  # type: ignore[assignment]
 
 
-SUPPORTED_SYSTEMD_VERSIONS = ("255.4-1ubuntu8.17",)
+SUPPORTED_SYSTEMD_VERSIONS = ("255.4-1ubuntu8.17", "255.4-1ubuntu8.18")
 OWNERSHIP_ROOT = Path("/var/lib/metnos/executor-birth")
 AUTHORITY_ROOT = OWNERSHIP_ROOT / "authorities-v1"
 CHAIN_ROOT = OWNERSHIP_ROOT / "chain-v1"
@@ -247,35 +247,35 @@ _SERVICE_BOUNDING_STATUS_V1 = {
 # 27/9/2026: managed_install joins the existing installer entry. Only the
 # repository entrypoint coverage changes; service commands and privileges do not.
 _EXPECTED_SERVICE_SOURCE_IDENTITY_V1 = (
-    "sha256:6b217282f4ae159a095ae8353d681e54fff4cd24eb52da725724114deb624b39"
+    "sha256:ce24c1ed5a1e1473ad5985cc4e33b607fe462cf2274612cb1dbe489e7b3be12c"
 )
 # Reviewed fixed recipes for optional remote companions. These pins are never
 # computed from a candidate in the administrative process.
 _EXPECTED_REMOTE_SERVICE_SOURCE_IDENTITIES_V1 = {
     ('llm',):
-        'sha256:3becb2321f7c763b4b8457a14d168a64bdc62baafced503283a11f1c1b66c7a6',
+        'sha256:65f18125a8bf036d2f8c7ec6a4139f7af7a4b3668e35005435dd4530dcb875c3',
     ('photon',):
-        'sha256:f76ef6d8ee8edbfd226293d0e6e36e2a97e145d3db800ed30a5549e6a24a6223',
+        'sha256:39232390d4ec370ab89b46975ac8f54217c141381447d27241c8cf9045e73b42',
     ('playwright',):
         'sha256:4eafb91de2f346043bc9c308c152deffda1b128b895594003ed10c41808bd8c4',
     ('searxng',):
-        'sha256:d6c2a52da4a4ad31fdc721c477f4546550b83a6d0aa387ce8ad8b3db69aab1a9',
+        'sha256:30dad9e8d76616825ba876d02664a3d852934c29b8f6f7305d0cd3f3b4204687',
     ('llm', 'photon'):
-        'sha256:963b1a593e2a25b83a3d385374de42801707e7c3ca42bbc2e1b2f17416b2e8fb',
+        'sha256:93a2f9e1fc034e86a644243ced8104b48c25d0f9d0103594ff84482b40881ba1',
     ('llm', 'playwright'):
         'sha256:250faf33ac1776c170648af44842a9b2577e6964156434b5baafbd0972942762',
     ('llm', 'searxng'):
-        'sha256:9273cb6590ed515c81c17d5df81ac3922ce229aa811a71457c088b355c303ab6',
+        'sha256:3151d0b6952f7604323dbe0e70d2381e2da3f91b128708975d7a5546355bc5f7',
     ('photon', 'playwright'):
         'sha256:40d608b7658d3a49784a00a3706596ff8d3c696346be2771e9ee2476d43bd41a',
     ('photon', 'searxng'):
-        'sha256:83929b5aaaa9f1a1fa773b677e825c602449978a3bf555ec22e62094565e72c7',
+        'sha256:a3c0c017f0a2776cb5b1d6a42f541a9a7ead0d1acfe558778629675df19b3df1',
     ('playwright', 'searxng'):
         'sha256:305af3207fe1cab8964f91758878369b4e6e113505591a48888a6df8b1c0e8f4',
     ('llm', 'photon', 'playwright'):
         'sha256:5dd281e8f3f975b0d65f0166b054c76fa90f6ac6ce8c2cbd42cf0f94099797d2',
     ('llm', 'photon', 'searxng'):
-        'sha256:4589785b6745e640bcf68328db020e95376adbe2be58ffe5c1342364ca7ee0e8',
+        'sha256:c03c59bc41b5f0f0924f5b6b1f717fc2031f81d5c59bcb1f2e34774f5e9dcf7a',
     ('llm', 'playwright', 'searxng'):
         'sha256:e063e4a00c04a246b54200389735a0a33500fb7f76716267828f66a92312a365',
     ('photon', 'playwright', 'searxng'):
@@ -671,6 +671,7 @@ _SERVICE_CATALOG_DIRECTIVE_TYPES_V1 = {
     ("Service", "Environment"): "environment",
     ("Service", "NoNewPrivileges"): "boolean",
     ("Service", "PrivateTmp"): "boolean",
+    ("Service", "TemporaryFileSystem"): "scalar",
     ("Service", "ProtectSystem"): "scalar",
     ("Service", "ProtectHome"): "scalar",
     ("Service", "ReadWritePaths"): "path_list",
@@ -909,7 +910,7 @@ _REQUIRED_MANIFEST_PATHS = {
 _BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:88f5d098742eff55fd31362d6a34cf4f4db7291f3c85a75bc16b0cc530478c32"
+_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:48427c15fd007241fb129cc1793e4546026b066ef35cc11f693bc915637f0911"
 _SOURCE_REVIEW_PIN_VALUE_V1 = (
     rb'(?:(?:"sha256:" \+ "0" \* 64)|(?:"sha256:[0-9a-f]{64}"))'
 )

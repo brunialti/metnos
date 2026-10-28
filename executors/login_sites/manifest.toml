@@ -3,7 +3,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "login_sites"
-version     = "0.2.2"
+version     = "0.2.4"
 intelligence = "agentic"
 timeout_s   = 180
 platforms   = ["linux"]
@@ -80,7 +80,6 @@ schema_inline = """
   ok: bool,
   entries: Array<{session_id: str, logged_in: bool, reason_code?: str, message?: str, session_closed?: bool}>,
   metadata: {logged_in: int, total: int},
-  attachments?: Array<{kind: str, path: str, basename: str, mime: str, sensitive: bool}>,
   error?: str, error_class?: str
 }
 """

@@ -122,13 +122,13 @@ def test_runtime_handoff_keeps_dismissed_job_metadata_for_physical_owner(native,
 
     assert native.store.list_workloads('owner-a') == ()
     assert accepted == [('owner-a', current.workload_id, current.version, (workspace,))]
-    detached = workspace.parent / workspace.removing / 'parts' / 'checkpoint'
-    assert not path.exists() and detached.read_bytes() == b'checkpoint native content'
+    # The runtime purges after acceptance; the physical owner finds no leaf.
+    assert not path.exists() and not (workspace.parent / workspace.removing).exists()
     inventory = owner.inventory()
     physical = [obj for obj in inventory if obj.identity.owner == owner.name
                 and json.loads(obj.identity.local_id)[-1] == 'file']
     retained_job = next(obj for obj in inventory if obj.identity.owner == native.jobs.name)
-    assert len(physical) == 1 and physical[0].state is NodeState.CLOSED
+    assert physical == []
     assert retained_job.state is NodeState.OPEN
 
 

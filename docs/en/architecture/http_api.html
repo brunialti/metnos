@@ -194,6 +194,12 @@ it saw, or poll persisted status.</p>
 Guessing a <code>turn_id</code> does not allow somebody to read or repeat another
 user's turn.</p>
 
+<p>When recovering missing answers, the chat orders the recent window by
+server chronology and saves that order before applying the local history
+limit. Questions, answers, and attachments stay with their turn, while the
+running turn keeps its place. A recovery response that arrives after a
+conversation change is discarded.</p>
+
 <h2 id="sessions">One chat across several devices</h2>
 
 <p>Only one browser may write for each user-and-web-channel pair at a time. If a

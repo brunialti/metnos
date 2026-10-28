@@ -28,6 +28,13 @@ MAX_ENTRIES = 1_000_000
 MAX_DEPTH = 32
 MAX_DIMENSION = 16384
 GROUP_SIZE = 32
+FOLDER_CLASSIFICATION_GRAMMAR = r'''root ::= category "|" place
+category ::= "VIAGGIO" | "EVENTO" | "PERSONE" | "DOCUMENTI" | "ALTRO"
+place ::= [^|\r\n]{0,4096}
+'''
+FOLDER_CLASSIFICATION_REASONS = frozenset({
+    "response_not_text", "separator_missing", "category_invalid", "place_invalid",
+})
 MAX_SOURCE_BYTES = 1_099_511_627_776
 MAX_SOURCE_DEPTH = 64
 IMAGE_EXTENSIONS = frozenset({".jpg", ".jpeg", ".png", ".heic", ".webp", ".tiff", ".bmp"})
@@ -53,6 +60,10 @@ _GENERATION = re.compile(r"[A-Za-z0-9_-]{1,128}")
 
 class ImageIndexBuildError(ValueError):
     """A source, artifact or publication does not satisfy the build contract."""
+
+    def __init__(self, code: str, *, reason_code: str | None = None):
+        super().__init__(code)
+        self.reason_code = reason_code
 
 
 def _json_bytes(value) -> bytes:
@@ -247,12 +258,17 @@ def classify_folder_context(label: str, lang: str) -> str:
     system = prompt_loader.get("image_index_folder", lang)
     result = LLMRouter().chat(system, json.dumps(label, ensure_ascii=False),
                              tier=tier_for("images.folder_classify"),
-                             max_tokens=512, request_timeout_s=60)
+                             max_tokens=512, request_timeout_s=60,
+                             grammar=FOLDER_CLASSIFICATION_GRAMMAR)
+    if not isinstance(result.text, str):
+        raise ImageIndexBuildError("folder_classification_invalid", reason_code="response_not_text")
     category, separator, place = result.text.strip().partition("|")
-    if not separator or category not in {"VIAGGIO", "EVENTO", "PERSONE", "DOCUMENTI", "ALTRO"}:
-        raise ImageIndexBuildError("folder_classification_invalid")
-    if len(place) > 4096 or "\n" in place:
-        raise ImageIndexBuildError("folder_classification_invalid")
+    if not separator:
+        raise ImageIndexBuildError("folder_classification_invalid", reason_code="separator_missing")
+    if category not in {"VIAGGIO", "EVENTO", "PERSONE", "DOCUMENTI", "ALTRO"}:
+        raise ImageIndexBuildError("folder_classification_invalid", reason_code="category_invalid")
+    if len(place) > 4096 or any(character in place for character in "|\r\n"):
+        raise ImageIndexBuildError("folder_classification_invalid", reason_code="place_invalid")
     return prompt_loader.get("image_index_context", lang, category=category,
                              place=place.strip(), label=label).strip()
 

@@ -196,6 +196,12 @@ dall'ultimo evento visto oppure interrogare lo stato persistito.</p>
 sempre il proprietario. Indovinare un <code>turn_id</code> non consente di
 leggere o ripetere il turno di un altro utente.</p>
 
+<p>Quando recupera risposte mancanti, la chat riordina la finestra recente
+secondo il server e salva questo ordine prima di applicare il limite della
+memoria locale. Domande, risposte e allegati restano legati al proprio turno;
+il turno in corso conserva il suo posto. Una risposta di recupero arrivata
+dopo un cambio di conversazione viene scartata.</p>
+
 <h2 id="sessioni">Una chat su più dispositivi</h2>
 
 <p>Per ogni coppia utente-canale web può scrivere un solo browser alla volta.

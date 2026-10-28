@@ -10,6 +10,7 @@
     <th scope="col" class="monitor-numeric monitor-speed">{{ m.speed_header('UI_MONITOR_CALL_OUTPUT_SPEED') }}</th>
     <th scope="col" class="monitor-numeric monitor-speed">{{ m.speed_header('UI_MONITOR_PREFILL', 'PP') }}</th>
     <th scope="col" class="monitor-numeric monitor-speed">{{ m.speed_header('UI_MONITOR_GENERATION', 'TG') }}</th>
+    <th scope="col" class="monitor-wide monitor-numeric"><span class="monitor-header-label">{{ msg('UI_MONITOR_PROMPT_MEAN') }}<small class="monitor-header-unit">{{ msg('UI_MONITOR_TOKEN_UNIT') }}</small></span></th>
     <th scope="col" class="monitor-wide monitor-numeric">{{ msg('UI_MONITOR_INPUT_OUTPUT') }}</th>
     <th scope="col" class="monitor-wide monitor-numeric">{{ msg('UI_MONITOR_CALLS') }}</th>
     <th scope="col" class="monitor-wide monitor-numeric">{{ msg('UI_MONITOR_ERRORS') }}</th>
@@ -19,17 +20,18 @@
   <tbody>
   {% for item in monitor['items'] %}
   <tr>
-    <td>{{ m.identity(item) }}<details class="monitor-mobile-details"><summary>{{ msg('UI_MONITOR_MORE_METRICS') }}</summary><dl><dt>{{ msg('UI_MONITOR_INPUT_OUTPUT') }}</dt><dd>{{ m.tokens(item.input_tokens) }} / {{ m.tokens(item.output_tokens) }}</dd><dt>{{ msg('UI_MONITOR_CALLS') }}</dt><dd>{{ m.number(item.calls) }}</dd><dt>{{ msg('UI_MONITOR_ERRORS') }}</dt><dd>{{ m.number(item.errors) }}</dd><dt>{{ msg('UI_MONITOR_CALL_MEDIAN_SECONDS') }}</dt><dd>{{ m.duration(item.call_p50_ms) }}</dd><dt>{{ msg('UI_MONITOR_COVERAGE') }}</dt><dd>{{ m.coverage(item.coverage.known, item.coverage.expected) }}</dd></dl></details></td>
+    <td>{{ m.identity(item) }}<details class="monitor-mobile-details"><summary>{{ msg('UI_MONITOR_MORE_METRICS') }}</summary><dl><dt>{{ msg('UI_MONITOR_PROMPT_MEAN') }} · {{ msg('UI_MONITOR_TOKEN_UNIT') }}</dt><dd>{{ m.prompt_mean(item) }}</dd><dt>{{ msg('UI_MONITOR_INPUT_OUTPUT') }}</dt><dd>{{ m.tokens(item.input_tokens) }} / {{ m.tokens(item.output_tokens) }}</dd><dt>{{ msg('UI_MONITOR_CALLS') }}</dt><dd>{{ m.number(item.calls) }}</dd><dt>{{ msg('UI_MONITOR_ERRORS') }}</dt><dd>{{ m.number(item.errors) }}</dd><dt>{{ msg('UI_MONITOR_CALL_MEDIAN_SECONDS') }}</dt><dd>{{ m.duration(item.call_p50_ms) }}</dd><dt>{{ msg('UI_MONITOR_COVERAGE') }}</dt><dd>{{ m.coverage(item.coverage.known, item.coverage.expected) }}</dd></dl></details></td>
     <td class="monitor-numeric">{{ m.number(item.call_output_tps, 1) }}</td>
     <td class="monitor-numeric">{{ m.number(item.prefill_tps, 1) }}</td>
     <td class="monitor-numeric">{{ m.number(item.generation_tps, 1) }}</td>
+    <td class="monitor-wide monitor-numeric">{{ m.prompt_mean(item) }}</td>
     <td class="monitor-wide monitor-numeric">{{ m.tokens(item.input_tokens) }} / {{ m.tokens(item.output_tokens) }}</td>
     <td class="monitor-wide monitor-numeric">{{ m.number(item.calls) }}</td>
     <td class="monitor-wide monitor-numeric">{{ m.number(item.errors) }}</td>
     <td class="monitor-wide monitor-numeric">{{ m.duration(item.call_p50_ms) }}</td>
     <td class="monitor-wide monitor-numeric">{{ m.coverage(item.coverage.known, item.coverage.expected) }}</td>
   </tr>
-  {% else %}<tr><td colspan="9" class="empty">{{ msg('UI_MONITOR_NO_MODELS') }}</td></tr>{% endfor %}
+  {% else %}<tr><td colspan="10" class="empty">{{ msg('UI_MONITOR_NO_MODELS') }}</td></tr>{% endfor %}
   </tbody>
 </table>
 </div>

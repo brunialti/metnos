@@ -161,6 +161,24 @@ signed service catalog identity. Both observations retain their own checks:
 the receipt proof is reread under the transition locks and the service catalog
 is recaptured before certification. These checks do not advance publication.
 
+The manager interface is qualified for exactly `255.4-1ubuntu8.17` and
+`255.4-1ubuntu8.18`. After authenticating the deployment descriptor, a bounded
+read through its fixed product systemctl verifies this support before source
+loading, edge reservation or service quiescence. This early check grants no
+attestation: the later native double observation and exact signed manager
+version/topology binding remain mandatory. An existing prerequisite for another
+manager version is not reinterpreted or rewritten.
+
+Before installing the startup gate or entering service quiescence, a successor
+reads the entire unit set against its authenticated candidate and predecessor
+catalogs. The writing core repeats the same validation under all three locks.
+A rollback that left both the exact predecessor fragment and its exact
+transition-specific historical backup, with no staged candidate, is resumable:
+only the restored current copy is removed, then the normal pending replacement
+is completed. The backup inode and bytes remain unchanged. Foreign fragments,
+unsafe metadata and conflicting staging still fail before any unit is changed;
+interruption around removal or publication resumes from the same native states.
+
 The effective systemd snapshot is signed before timer activation. The inverse
 `TriggeredBy` and implicit ordering `After` links of an exact catalog timer are
 already bound by its signed `Timer.Unit`. They are normalized consistently in
@@ -879,6 +897,26 @@ Persistent units are system units running as the dedicated service account.
 The administrative coordinator prepares them; no user linger is required. The
 VLM remains lazy. For locally installed vision the coordinator writes the
 following restricted startup profile from the verified asset paths.
+
+The browser unit has a dedicated `TemporaryFileSystem` at
+`/run/metnos-browser-downloads` with an aggregate physical quota of 128 MiB
+(`size=134217728,mode=1777,nodev,nosuid,noexec`). Both the closed-build service
+catalog recipe and the ordinary unit template declare the same mount; native
+manager preflight compares its exact configuration. All browser engines and
+sessions share the quota. Startup verifies the actual tmpfs mount and quota,
+then creates a private service-owned directory; an absent or oversized mount
+fails closed. The separate admission limit is 32 MiB per completed file;
+Chromium reception can fill the shared quota before size admission rejects it.
+This change does not extend the supported systemd version set.
+
+For ordinary `act_sites` downloads, an existing absolute `dst_dir` activates
+native `fs:write` with the typed destination bind. The broker captures before
+the approved click/submit and transfers authenticated bytes under `/session/`;
+the executor publishes atomically in its filesystem sandbox after hash and
+current path-policy checks. A site-provided filename never chooses the output
+path. Vector `entries` carry paths and SHA-256 digests for a later `read_files`
+invocation. A lost acknowledgement reuses the same verified local file;
+timeouts and uncertain website effects do not authorize another click or POST.
 
 For a closed-build system service, optional native vision assets are separate
 installation prerequisites, not changes to a signed unit. An administrator can

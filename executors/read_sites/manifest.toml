@@ -19,7 +19,7 @@ en = "SCOPO: reads distinct pages observed during collection; without a collecti
 
 [code]
 files  = ["read_sites.py"]
-digest = "sha256:464345bb27d77bc5f9bc3d4f87dad38e767e4333b4d0e9ea9894cf1a2b3d133d"
+digest = "sha256:fba2fb0ece6677bd9eefb6087ff5074e557c214600c090ef7ad13698be7c4bbe"
 
 [args]
 type     = "object"

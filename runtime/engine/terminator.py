@@ -217,11 +217,16 @@ class SimpleTerminator:
             action = _msg(_ERROR_CLASS_ACTION_KEYS[step_error_class])
         elif step_error_class in OPERATIONAL_ERROR_CLASSES:
             action = _msg("MSG_CHAT_FB_RETRY")
+        # A concrete user-action failure already carries the executor instruction.
+        # Recovery out_of_scope must not invent a physical/capability remedy.
+        concrete_user_action = step_error_class == "needs_user_action" and bool(step_err)
+        if concrete_user_action:
+            action = ""
         cause = step_err if step_err else _msg(ck)
         # I frammenti i18n possono essere gia' frasi concluse mentre il wrapper
         # aggiunge il punto. Togli soltanto il punto duplicabile; conserva
         # domanda/esclamazione e i valori originali nei campi diagnostici.
-        text = _msg(
+        text = step_err if concrete_user_action else _msg(
             "MSG_TERM_WRAPPER",
             cause=cause.rstrip().rstrip("."),
             action=action.rstrip().rstrip("."),

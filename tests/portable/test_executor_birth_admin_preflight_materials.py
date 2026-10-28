@@ -1627,7 +1627,8 @@ def test_product_candidate_preparation_authenticates_before_archive(monkeypatch,
     assert events == ["authenticate", "capture", "capture", "bind"]
 
 
-def test_cutover_prerequisite_is_derived_from_captured_facts(monkeypatch) -> None:
+@pytest.mark.parametrize("manager_version", ("255.4-1ubuntu8.17", "255.4-1ubuntu8.18"))
+def test_cutover_prerequisite_is_derived_from_captured_facts(monkeypatch, manager_version) -> None:
     graph = _bound_graph()
     transaction = _receipts_complete_transaction(graph)
     candidate = preflight._bind_candidate_cutover_materials_core_v1(
@@ -1647,7 +1648,7 @@ def test_cutover_prerequisite_is_derived_from_captured_facts(monkeypatch) -> Non
         candidate, tcb, preflight._PREPARED_CUTOVER_CANDIDATE_SEAL_V2,
     )
     effective = preflight._CapturedEffectiveSystemdUnitsV1(
-        "255.4-1ubuntu8.17",
+        manager_version,
         preflight._EffectiveSystemdUnitsSnapshotV1((), b"effective", D("6")),
         (), (),
     )
@@ -1665,6 +1666,7 @@ def test_cutover_prerequisite_is_derived_from_captured_facts(monkeypatch) -> Non
         prepared, effective,
     )
 
+    assert prerequisite.systemd_manager_version == manager_version
     assert prerequisite.request_id == transaction.request_id
     assert prerequisite.predecessor_id == graph["predecessor"].predecessor_id
     assert prerequisite.candidate_units_hash == (

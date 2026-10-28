@@ -1,0 +1,23 @@
+{# ---
+role: extract_entries_list_columns
+tier: fast
+lang: it
+style: prescriptive
+version: 4
+owner: roberto
+updated: 2026-10-23
+sha_prev: 7cb3adc0
+--- #}
+Ricevi una RICHIESTA, i CAMPI richiesti e le COLONNE numerate delle righe di un elenco.
+Ogni colonna ha un'etichetta (il testo che il sito scrive accanto al valore; può mancare), un tipo (date, amount, code, text) e alcuni valori presi dalle righe.
+DEVI: rispondere "items":"yes" se le righe sono elementi della classe chiesta dalla RICHIESTA, "no" se sono altri oggetti.
+DEVI: per ogni campo dare il numero della colonna che lo contiene, 0 se nessuna.
+DEVI: in "identifier" dare la colonna del codice proprio di ogni riga (il suo numero), 0 se manca.
+NON DEVI: dare la stessa colonna a due campi, né scegliere una colonna solo per il tipo quando etichetta o valori dicono un'altra cosa.
+OK: esempio astratto, non copiare letteralmente: campi [<C1>, <C2>]; colonne 1 «<ETICHETTA_CODICE>» code, 2 «<ETICHETTA_DATA>» date, 3 «<ETICHETTA_ALTRO>» text → {"items":"yes","fields":{"<C1>":1,"<C2>":2},"identifier":1}.
+E' UN ERRORE: le stesse colonne → "fields":{"<C1>":1,"<C2>":1}.
+DEVI: per un campo data generico con più colonne di tipo date, scegliere la data propria dell'elemento, cioè quella in cui è stato emesso o creato; con una sola colonna date, scegliere quella.
+NON DEVI: scegliere la data di un altro evento dell'elemento quando c'è la sua data propria.
+OK: esempio astratto, non copiare letteralmente: colonne 2 «<ETICHETTA_EMISSIONE>» date, 4 «<ETICHETTA_ALTRO_EVENTO>» date → "<C2>":2.
+E' UN ERRORE: le stesse colonne → "<C2>":4.
+Restituisci SOLO un oggetto JSON {"items":"yes" o "no","fields":{campo: numero},"identifier":numero}, senza prosa e senza segnaposto.

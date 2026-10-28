@@ -6,7 +6,8 @@ Point 1 of the group 7 wrapper: install and re-read the dominant topology. This
 module owns the writing and the re-reading, and nothing else. It does not
 decide which units belong to the topology, does not reload a manager, does not
 start or stop anything, and does not hold a lock — the wrapper already holds
-all three when it calls in.
+all three when it calls the writing core. The same readonly replacement
+preflight is also called under the deployment lock before service quiescence.
 
 The receipt is the RE-READ, never the write. A write that returned success is a
 claim about a system call; a file read back from the directory it was written
@@ -279,11 +280,46 @@ def _replacement_state_v1(
         if current == previous and backup is None and temporary is None:
             return "previous"
         if backup == previous:
+            if current == previous and temporary is None:
+                return "restored"
             if current is None and (temporary is None or candidate.startswith(temporary)):
                 return "pending"
             if current == candidate and temporary is None:
                 return "current"
     raise _invalid("topology_replacement_conflict", name)
+
+
+def _preflight_replacement_v1(
+    root: Path, fragments: Mapping[str, bytes], previous_fragments: Mapping[str, bytes],
+) -> tuple[dict[str, bytes], dict[str, bytes], list[str]]:
+    """Read and validate the entire authenticated set without writing any file."""
+    _require_supported_platform_v1()
+    if not isinstance(root, Path) or not root.is_absolute() or not root.is_dir():
+        raise _invalid("topology_root_invalid", str(root))
+    if not isinstance(fragments, Mapping) or not fragments:
+        raise _invalid("topology_fragments_invalid", "shape")
+    if len(fragments) > MAX_TOPOLOGY_UNITS_V1:
+        raise _invalid("topology_too_many_units", str(len(fragments)))
+    # The caller authenticates these bytes; this core never infers an
+    # authority from whatever happens to occupy the destination directory.
+    if not isinstance(previous_fragments, Mapping) or set(previous_fragments) != set(fragments):
+        raise _invalid("topology_previous_fragments_invalid", "unit_set")
+    root_status = root.lstat()
+    if (
+        not stat.S_ISDIR(root_status.st_mode)
+        or (root_status.st_uid, root_status.st_gid) != (os.geteuid(), os.getegid())
+        or stat.S_IMODE(root_status.st_mode) & 0o7022
+    ):
+        raise _invalid("topology_root_invalid", str(root))
+    fragments, previous_fragments = dict(fragments), dict(previous_fragments)
+    names = sorted(fragments, key=lambda item: str(item).encode("utf-8"))
+    # Preflight the WHOLE set before preserving even the first predecessor.
+    for name in names:
+        _require_unit_name_v1(name)
+        _require_fragment_v1(name, fragments[name])
+        _require_fragment_v1(name, previous_fragments[name])
+        _replacement_state_v1(root, name, previous_fragments[name], fragments[name])
+    return fragments, previous_fragments, names
 
 
 def _install_core_v1(
@@ -302,25 +338,9 @@ def _install_core_v1(
     if len(fragments) > MAX_TOPOLOGY_UNITS_V1:
         raise _invalid("topology_too_many_units", str(len(fragments)))
     if previous_fragments is not None:
-        # The caller authenticates these bytes; this core never infers an
-        # authority from whatever happens to occupy the destination directory.
-        if not isinstance(previous_fragments, Mapping) or set(previous_fragments) != set(fragments):
-            raise _invalid("topology_previous_fragments_invalid", "unit_set")
-        root_status = root.lstat()
-        if (
-            not stat.S_ISDIR(root_status.st_mode)
-            or (root_status.st_uid, root_status.st_gid) != (os.geteuid(), os.getegid())
-            or stat.S_IMODE(root_status.st_mode) & 0o7022
-        ):
-            raise _invalid("topology_root_invalid", str(root))
-        fragments, previous_fragments = dict(fragments), dict(previous_fragments)
-        names = sorted(fragments, key=lambda item: str(item).encode("utf-8"))
-        # Preflight the WHOLE set before preserving even the first predecessor.
-        for name in names:
-            _require_unit_name_v1(name)
-            _require_fragment_v1(name, fragments[name])
-            _require_fragment_v1(name, previous_fragments[name])
-            _replacement_state_v1(root, name, previous_fragments[name], fragments[name])
+        fragments, previous_fragments, names = _preflight_replacement_v1(
+            root, fragments, previous_fragments,
+        )
         installed = []
         for name in names:
             previous, candidate = previous_fragments[name], fragments[name]
@@ -330,7 +350,25 @@ def _install_core_v1(
                     _crash_seam(stage)
                 _replacement_state_v1(root, name, previous, candidate)
 
-            if _replacement_state_v1(root, name, previous, candidate) == "previous":
+            state = _replacement_state_v1(root, name, previous, candidate)
+            if state == "restored":
+                # A native rollback may restore a copy while retaining this
+                # exact transition's historical backup. Remove only the copy;
+                # its authenticated backup inode is never renamed or unlinked.
+                directory_fd = os.open(
+                    root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                )
+                try:
+                    checked_seam("dominant_fragment_restored_before")
+                    opened, named = os.fstat(directory_fd), root.lstat()
+                    if (opened.st_dev, opened.st_ino) != (named.st_dev, named.st_ino):
+                        raise _invalid("topology_root_invalid", str(root))
+                    os.unlink(name, dir_fd=directory_fd)
+                    os.fsync(directory_fd)
+                finally:
+                    os.close(directory_fd)
+                checked_seam("dominant_fragment_restored_removed")
+            elif state == "previous":
                 checked_seam("dominant_fragment_preserve_before")
                 _publish_staged_v1(
                     root / name,

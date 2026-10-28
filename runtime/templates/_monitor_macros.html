@@ -26,6 +26,11 @@
   {% if known is none or expected is none or known is undefined or expected is undefined %}{{ msg('UI_MONITOR_UNAVAILABLE') }}{% else %}{{ known }}/{{ expected }}{% endif %}
 {%- endmacro %}
 
+{% macro prompt_mean(item) -%}
+  {{ number(item.input_tokens_mean, 1) }}
+  <small class="monitor-time" title="{{ msg('UI_MONITOR_SAMPLES') }}">{{ msg('UI_MONITOR_CALLS') }}: {{ coverage(item.input_tokens.known, item.input_tokens.expected) }}</small>
+{%- endmacro %}
+
 {% macro status(value) -%}
   {% set labels = {'completed':'UI_MONITOR_STATUS_COMPLETED', 'in_progress':'UI_MONITOR_STATUS_IN_PROGRESS', 'awaiting_input':'UI_MONITOR_STATUS_AWAITING_INPUT', 'interrupted':'UI_MONITOR_STATUS_INTERRUPTED', 'expired':'UI_MONITOR_STATUS_EXPIRED', 'error':'UI_MONITOR_STATUS_ERROR', 'ok':'UI_MONITOR_STATUS_COMPLETED', 'cancelled':'UI_MONITOR_STATUS_CANCELLED', 'timeout':'UI_MONITOR_STATUS_EXPIRED'} %}
   <span class="chip {% if value in ['completed','ok'] %}ok{% elif value in ['interrupted','error','expired','timeout'] %}bad{% else %}warn{% endif %}">{{ msg(labels.get(value, 'UI_MONITOR_STATUS_UNKNOWN')) }}</span>

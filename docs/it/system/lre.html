@@ -108,6 +108,17 @@ somma a <code>nitems</code> e non indica necessariamente un problema ancora
 presente. Un lavoro completamente riuscito può quindi avere una storia di
 errori recuperati senza essere dichiarato fallito.</p>
 
+<h3 id="model-unavailable">Modello momentaneamente non disponibile</h3>
+
+<p>Se il servizio di un modello non riesce a diventare disponibile prima
+dell'esecuzione, il log indica la risorsa configurata, per esempio
+<code>vlm:default</code>, e suggerisce di far ripartire il job appena torna
+disponibile. Questo messaggio distingue l'indisponibilità del modello
+dall'assenza o dal ritiro di una capacità di esecuzione. La risorsa compare
+anche nello storico dei tentativi; una voce storica può essere già stata
+superata da un tentativo riuscito. Il messaggio identifica l'errore osservato,
+non certifica che il servizio sia già tornato disponibile.</p>
+
 <h2 id="photo-indexing">Indicizzazione delle foto: primo utilizzo e ricerche successive</h2>
 
 <p>La ricerca nel <strong>contenuto delle fotografie</strong> usa un indice
@@ -196,6 +207,12 @@ indicizzata. Se un executor gestito termina con un'eccezione applicativa,
 conserva i consumi delle chiamate al modello già registrate e segnala il
 fallimento. Le chiamate iniziate senza un resoconto restano consumi incerti;
 la correzione non ricostruisce automaticamente contatori persi in passato.</p>
+
+<p>La classificazione delle cartelle richiede al modello una risposta nel formato
+previsto. Se la risposta resta non valida, il lavoro si ferma in attenzione e
+conserva un motivo preciso, senza registrare il nome della cartella o il testo
+del modello nella diagnostica. Dopo la correzione, la ripresa mantiene i blocchi
+già confermati, purché i contratti siano ancora compatibili.</p>
 
 <p>Un recupero amministrativo può ammettere una continuazione con riferimenti
 espliciti a risultati già confermati: proprietario, schema e impronta vengono
@@ -434,8 +451,9 @@ essere aggiunto senza perdere tracciabilità o sicurezza.</p>
 <p>La console è il registro operativo dei lavori, non il comando che li avvia.
 Si apre nella chat web da <code>Settings → Sistema → LRE</code>. Ogni lavoro
 visibile al proprietario occupa una riga con titolo, data e ora di inizio,
-data e ora di fine e stato. Il pulsante □ espande i dettagli subito sotto
-la stessa riga; il pulsante − li richiude. Testata e dettagli hanno sfondi
+data e ora di fine e stato. Il pulsante con le frecce verso l'esterno espande
+i dettagli subito sotto la stessa riga; le frecce verso l'interno li richiudono.
+Le caselle a sinistra servono invece a selezionare i log. Testata e dettagli hanno sfondi
 distinti. Nei dettagli trovi revisione, avanzamento, limiti, fasi, eventi,
 unità e artefatti. Solo una lettura riuscita con elenco vuoto indica
 che non esistono lavori LRE per quell'identità. Un errore di lettura indica stato
@@ -469,7 +487,7 @@ preparate altre fasi. Un dato assente è <strong>n.a.</strong>, non zero.</p>
  <li><strong>Quadro del lavoro.</strong> Separa lo stato del motore da quello del lavoro: un motore disponibile non prova che il lavoro avanzi. Nei dettagli tecnici i batch completati restano distinti da quelli non conclusi, da verificare, falliti o annullati e saltati. Durante la preparazione il totale può crescere.</li>
  <li><strong>Conclusione e riepilogo.</strong> Un lavoro concluso conserva nel dettaglio ora di avvio, ora di fine, durata, batch elaborati e conteggi per fase. Gli errori parziali non sostituiscono lo stato <strong>Terminato</strong>: lo evidenziano con un badge arancione e restano elencati nel dettaglio. Un vero fallimento mantiene invece lo stato <strong>Fallito</strong>.</li>
  <li><strong>File temporanei.</strong> L'elenco mostra numero di file e spazio occupato in una colonna per ogni lavoro; il dettaglio e il suggerimento sulla colonna mostrano lo stato della pulizia. I lavori sospesi o da verificare conservano i dati necessari alla ripresa. Per liberarli definitivamente, annulla il lavoro: non sarà più riprendibile. Anche la conclusione, con o senza errori, avvia la pulizia. LRE attende che le scritture finiscano; dati ancora usati da un altro lavoro restano conservati e segnalati. Se la pulizia fallisce, il lavoro resta visibile e LRE riprova. Durante la verifica lo spazio può essere ancora sconosciuto.</li>
- <li><strong>Rimozione dall'elenco.</strong> I pulsanti □ e − aprono e chiudono il dettaglio della riga; la × rimuove il log dopo conferma soltanto quando il lavoro è concluso e la pulizia dei suoi temporanei è verificata. Originali, risultati pubblicati, cronologia tecnica e riferimenti necessari al recupero restano conservati secondo le rispettive regole. Un lavoro ancora eseguibile deve prima essere annullato. I controlli hanno etichette e suggerimenti localizzati e si usano anche da tastiera.</li>
+ <li><strong>Selezione e cancellazione dei log.</strong> Le frecce aprono e chiudono il dettaglio della riga; la casella a sinistra seleziona il log. La casella nella testata seleziona tutti i log mostrati, anche quelli aggiunti con «Carica altri», senza includere pagine non caricate. Il contatore indica quanti ne hai selezionati. «Cancella selezionati» chiede una sola conferma ed è disponibile quando tutti i log scelti appartengono a lavori conclusi con i temporanei ripuliti. La selezione resta durante gli aggiornamenti dell'elenco; se una cancellazione fallisce, quel log rimane visibile e selezionato, mentre quelli cancellati scompaiono. La × conserva la cancellazione singola. Originali, risultati pubblicati, cronologia tecnica e riferimenti necessari al recupero restano conservati secondo le rispettive regole. Un lavoro ancora eseguibile deve prima essere annullato. I controlli hanno etichette e suggerimenti localizzati e si usano anche da tastiera.</li>
  <li><strong>Richiesta di verifica.</strong> Sospende l'avvio di nuovi batch; quelli già avviati possono ancora terminare e salvare risultati. Leggi la causa registrata prima di riprovare: questo stato non significa necessariamente che i consumi siano sconosciuti. Un riavvio non corregge la causa e può interrompere lavoro ancora utile.</li>
  <li><strong>Recupero delle foto.</strong> Le analisi complete e gli esiti negativi espliciti sono salvati anche all'interno di un batch non ancora concluso e possono essere riusati in un tentativo autorizzato della stessa generazione. Il riuso verifica sorgente e contesto; non rende ricercabile un indice incompleto. Sono supportate anche le foto HEIC. Le foto non decodificabili sono registrate separatamente: il numero di batch completati non equivale al numero di foto indicizzate con successo.</li>
  <li><strong>Freschezza e problemi.</strong> La pagina ricontrolla periodicamente lo stato e segnala quando i dati non sono aggiornati. Una disconnessione non mantiene una falsa indicazione di avanzamento. Le cause disponibili sono in evidenza; un aggiornamento generico dello stato non è presentato come nuovo risultato. Dopo aver caricato altre pagine dell'elenco, usa <strong>Aggiorna elenco e stato</strong> per tornare alla prima pagina aggiornata.</li>

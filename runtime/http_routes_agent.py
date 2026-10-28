@@ -2251,10 +2251,14 @@ async def dialog_browser(request: web.Request) -> web.Response:
             raise ValueError()
     except (ValueError, TypeError, KeyError, IndexError):
         return web.json_response({"ok": False}, status=400, headers=headers)
+    import sites_audit
     action = {"dialog_id": did, "session_id": schema["session_id"],
               "owner": state.get("actor") or "host", "operation": operation,
               "revision": body.get("revision"), "x": body.get("x"),
-              "y": body.get("y"), "direction": body.get("direction")}
+              "y": body.get("y"), "direction": body.get("direction"),
+              "audit_origin": sites_audit.browser_control_origin(
+                  request, dialog_id=did,
+                  owner_user_id=str(state.get("owner_user_id") or ""))}
     try:
         proof = user_control.sign(action, app_get(request.app, APP_ADMIN_KEY, ""))
     except (ValueError, TypeError):
@@ -3874,6 +3878,8 @@ async def turns_recent(request: web.Request) -> web.Response:
     `in_flight: true` per turn senza ts_end o final_kind (la query e' ancora
     in elaborazione server-side). Il client puo' polling questo endpoint.
     """
+    from types import SimpleNamespace
+
     conv_id = request.query.get("conversation_id", "").strip()
     if not conv_id:
         return _error(400, "conversation_id_required",
@@ -3959,7 +3965,12 @@ async def turns_recent(request: web.Request) -> web.Response:
                         "in_flight": in_flight,
                         "steps_summary": steps_summary,
                         "expandable_caps": t.get("expandable_caps") or [],
-                        "attachments": t.get("attachments") or [],
+                        # Keep canonical order/indices; history has no inline cap.
+                        "attachments": _enrich_attachments(
+                            SimpleNamespace(turn_id=t.get("turn_id", ""),
+                                            attachments=t.get("attachments") or []),
+                            app_get(request.app, APP_ADMIN_KEY, ""), cap=0,
+                        ),
                     })
                     if len(out) >= limit * 2:  # cap scan, sort below
                         break

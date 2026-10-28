@@ -5256,6 +5256,30 @@ def _observe_successor_retirement_v2(
     return plan_digest_v1(plan.steps)
 
 
+def _preflight_bound_topology_v2(
+    distribution: object, descriptor: object, previous_catalog: object,
+) -> None:
+    """Refuse an existing whole-set conflict before gating or stopping services.
+
+    Candidate and predecessor bytes come from their authenticated catalogs.
+    This early read grants no receipt; the identical validation is repeated by
+    the writing core under the startup and maintenance locks.
+    """
+    from executor_birth_dominant_topology import _preflight_replacement_v1
+    from executor_birth_service_catalog import capture_current_service_catalog_v1
+
+    loaded = capture_current_service_catalog_v1(distribution)
+    fragments: dict[str, bytes] = {}
+    for name, content in loaded.unit_fragments:
+        if name in fragments:
+            raise _reject("birth_transition_service_catalog_changed")
+        fragments[name] = content
+    root = _require_transition_directory_v2(
+        Path(descriptor.system_unit_root), owner=(0, 0),
+    )
+    _preflight_replacement_v1(root, fragments, dict(previous_catalog.unit_fragments))
+
+
 def _install_bound_topology_v2(
     distribution: object, prepared: object, *, previous_fragments=None,
 ):
@@ -5670,6 +5694,28 @@ def _require_administrative_python_bound_to_tcb_v1(descriptor: object) -> None:
         raise _reject("birth_transition_administrative_python_mismatch")
 
 
+def _require_supported_systemd_manager_before_cutover_v1(descriptor: object) -> None:
+    """Refuse an unsupported manager before reservation or service quiescence.
+
+    This read grants no attestation. The later native double observation still
+    binds the exact manager version and effective units to the signed record.
+    """
+    from executor_birth_admin_preflight import (
+        SYSTEMCTL_LINK, _invalid, _run_systemctl_bounded_v1,
+        parse_systemd_manager_version_v1, systemctl_show_argv_v1,
+    )
+
+    executable = getattr(descriptor, "systemctl_executable", None)
+    if not isinstance(executable, str) or executable != os.path.realpath(SYSTEMCTL_LINK):
+        raise _invalid("cutover systemctl executable")
+    result, stdout, stderr = _run_systemctl_bounded_v1(
+        systemctl_show_argv_v1(executable, None, ("Version",)),
+    )
+    if result != 0 or stderr:
+        raise _invalid("systemctl show command")
+    parse_systemd_manager_version_v1(stdout)
+
+
 @contextmanager
 def _held_or_new_deployment_lock_v2(deployment_session: object | None):
     """Yield the caller's live deployment session, or hold one for the call."""
@@ -5777,6 +5823,7 @@ def complete_transition_cutover_v2(
         if new_instance and legacy_identity.name != signed_descriptor.service_user:
             raise _reject("birth_transition_service_identity_changed")
         _require_administrative_python_bound_to_tcb_v1(signed_descriptor)
+        _require_supported_systemd_manager_before_cutover_v1(signed_descriptor)
         from config import PATH_USER_STATE
 
         signed_state_root = Path(os.path.abspath(
@@ -5834,6 +5881,7 @@ def complete_transition_cutover_v2(
                 current_record, previous_record,
             )
             previous_catalog = load_previous_service_catalog_v1(previous_artifacts)
+            _preflight_bound_topology_v2(verified, descriptor, previous_catalog)
         install_startup_gate_v1(deployment_session)
         with _exclusive_startup_gate_v1() as startup_session:
             legacy_preparation = None

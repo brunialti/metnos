@@ -20,11 +20,36 @@ SOURCE_METADATA_FIELDS = ("partial", "collection_partial", "truncated", "used",
                           "available_total", "truncated_what", "cap_field",
                           "cap_value", "truncations", "partial_reason")
 
+_COLLECTION_LIMIT_MESSAGES = {
+    "active_seconds": "MSG_COLLECTION_LIMIT_SECONDS",
+    "max_actions": "MSG_COLLECTION_LIMIT_ACTIONS",
+    "max_pages": "MSG_COLLECTION_LIMIT_PAGES",
+    "max_depth": "MSG_COLLECTION_LIMIT_DEPTH",
+}
+
+
+def collection_limit_message(cap_field: object, cap_value: object) -> tuple[str, dict] | None:
+    """Describe a known reached limit, without inferring record cardinality.
+
+    Only closed field names select a catalog key. The numeric parameter is
+    validated separately, so page/model prose cannot become a message or key.
+    Zero denotes no positive limit and is never presented as one reached.
+    """
+    if (not isinstance(cap_field, str) or cap_field not in _COLLECTION_LIMIT_MESSAGES
+            or isinstance(cap_value, bool) or not isinstance(cap_value, (int, float))
+            or not 0 < cap_value <= 2**63 - 1 or not math.isfinite(cap_value)):
+        return None
+    value = int(cap_value) if isinstance(cap_value, float) and cap_value.is_integer() else cap_value
+    return _COLLECTION_LIMIT_MESSAGES[cap_field], {"cap_value": value}
+
+
 _SOURCE_KEYS = frozenset({"producer", "scope", "source_ref", "partial",
     "collection_partial", "truncated", "truncated_what", "used",
-    "available_total", "cap_field", "cap_value", "reason_code", "provenance"})
+    "available_total", "cap_field", "cap_value", "reason_code", "provenance",
+    "merged", "suspected", "conflicted", "absorbed", "excluded"})
 _SOURCE_FLAGS = frozenset({"partial", "collection_partial", "truncated"})
-_SOURCE_COUNTS = frozenset({"used", "available_total"})
+_SOURCE_COUNTS = frozenset({"used", "available_total", "merged", "suspected", "conflicted",
+                            "absorbed", "excluded"})
 _SOURCE_NAMES = frozenset({"producer", "scope", "source_ref", "truncated_what",
                            "cap_field", "reason_code"})
 _SOURCE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:/-]{0,255}\Z")
@@ -138,3 +163,32 @@ def preserve_explicit_record_source(args: dict) -> dict:
     out["entries"] = values
     out.pop("values", None)
     return out
+
+
+def record_context_header() -> str:
+    """Header of the column naming a row's record partition, localized at
+    write time; data stay keyed by language-neutral private fields."""
+    from messages import get as message
+    name = message("MSG_TABLE_CONTEXT_COLUMN")
+    # No literal fallback (§7.13): a missing translation shows its code.
+    return name if name and not name.startswith("<missing:") else "MSG_TABLE_CONTEXT_COLUMN"
+
+
+def site_column_headers(records: list[dict]) -> dict[str, str]:
+    """Field -> the label the site writes beside its values (list_columns),
+    when every labelled witness of every row agrees (Roberto, 22/10/2026:
+    the column takes the name the site uses). A field without one, or two
+    fields with the same label, keep the requested header."""
+    seen: dict[str, dict[str, str]] = {}
+    for row in records:
+        if not isinstance(row, dict):
+            continue
+        for witness in [row, *(row.get("_record_provenance") or ())]:
+            labels = witness.get("_record_field_labels") if isinstance(witness, dict) else None
+            for field, label in (labels.items() if isinstance(labels, dict) else ()):
+                if isinstance(field, str) and isinstance(label, str) and label.strip():
+                    text = " ".join(label.split())
+                    seen.setdefault(field, {}).setdefault(text.casefold(), text)
+    headers = {field: next(iter(labels.values())) for field, labels in seen.items() if len(labels) == 1}
+    folded = [header.casefold() for header in headers.values()]
+    return {field: header for field, header in headers.items() if folded.count(header.casefold()) == 1}

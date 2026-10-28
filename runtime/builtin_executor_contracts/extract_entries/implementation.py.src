@@ -35,6 +35,7 @@ from agentic_executor import (
     AgenticContext, AgenticLimits, AgenticProposal, run_bounded_sync,
 )
 import detection_lexicon_seed_reconciliation as _reconciliation_lex
+from urllib.parse import urldefrag, urlsplit
 from time_window_parser import normalize_observed_date
 from tabular_records import merge_source_metadata
 
@@ -760,11 +761,11 @@ def _build_batch_prompt(fields, instruction, max_per_text,
     import prompt_loader
     return prompt_loader.get(
         "extract_entries_batch", i18n.current_lang(),
-        fields_json=json.dumps(["source_index", *fields],
+        fields_json=json.dumps(["source_index", *fields, "_identity_facts"],
                                ensure_ascii=False),
-        example_row=json.dumps([0, *(["..."] * len(fields))],
+        example_row=json.dumps([0, *(["..."] * len(fields)), []],
                                ensure_ascii=False),
-        field_count=len(fields) + 1,
+        field_count=len(fields) + 2,
         instruction=instruction,
         max_per_text=max_per_text,
         datetime_fields=", ".join(date_time),
@@ -884,15 +885,21 @@ def _coerce_records(data, fields) -> list:
     array diretto, wrapper `{"records":[...]}`/`{"events":[...]}`, o singolo
     oggetto. Recall §2.8: non perdere record per una forma inattesa."""
     if isinstance(data, list):
-        return [r for r in data if isinstance(r, dict)]
+        return [r for r in data if isinstance(r, dict)
+                and any(field in r for field in fields)]
     if isinstance(data, dict):
-        # wrapper {"<chiave>": [ {...}, ... ]}: prendi la prima lista di dict.
-        for v in data.values():
-            if isinstance(v, list) and any(isinstance(x, dict) for x in v):
-                return [r for r in v if isinstance(r, dict)]
-        # singolo record: tienilo se ha almeno un field richiesto.
+        # Public field presence admits a record, including 0/False. Its
+        # private annotation lists must not be mistaken for wrapper rows.
         if any(f in data for f in fields):
             return [data]
+        nested = [value for key, value in data.items()
+                  if not key.startswith("_") and isinstance(value, (dict, list))]
+        # A list of records comes before a nested object: a summary or a
+        # metadata block that carries a requested field is not the result.
+        for value in sorted(nested, key=lambda value: not isinstance(value, list)):
+            records = _coerce_records(value, fields)
+            if records:
+                return records
     return []
 
 
@@ -946,31 +953,225 @@ def _parse_records(raw: str, fields: list) -> list:
     s = re.sub(r"```$", "", s).strip()
     # 1) JSON intero ben formato (lista, wrapper, o singolo record).
     try:
-        recs = _coerce_records(json.loads(s), fields)
-        if recs:
-            return recs
+        # A readable empty/metadata-only result is final. Re-parsing its
+        # nested arrays could turn private fact annotations into public rows.
+        return _coerce_records(json.loads(s), fields)
     except json.JSONDecodeError:
         pass
-    # 2) Array embedded in prosa.
+    # 2) Recover complete outer objects before considering their arrays, so
+    # private annotation lists keep their enclosing record's meaning.
+    objects = _salvage_objects(s)
+    if objects:
+        return [record for obj in objects
+                for record in _coerce_records(obj, fields)]
+    # 3) An unfinished wrapper may still contain a complete public array.
     m = re.search(r"\[[\s\S]*\]", s)
     if m:
+        # Keep its enclosing objects, including escaped/private keys. A
+        # detached array loses whether its items were records or annotations.
+        # The wrapper is the outermost brace still open before the array;
+        # braces of earlier text that closed again do not enclose it.
+        prefix = re.sub(r'"(?:[^"\\]|\\.)*"', lambda q: " " * len(q.group()), s[:m.start()])
+        opened = []
+        for index, char in enumerate(prefix):
+            if char == "{":
+                opened.append(index)
+            elif char == "}" and opened:
+                opened.pop()
+        start = opened[0] if opened else -1
+        candidate = s[start:m.end()] if start >= 0 else m.group(0)
+        structure = re.sub(r'"(?:[^"\\]|\\.)*"', '""', candidate)
+        candidate += "}" * (structure.count("{") - structure.count("}"))
         try:
-            recs = _coerce_records(json.loads(m.group(0)), fields)
-            if recs:
-                return recs
+            return _coerce_records(json.loads(candidate), fields)
         except json.JSONDecodeError:
             pass
-    # 3) Recupero tollerante (troncamento/JSON malformato): oggetti top-level
-    #    che parsano e contengono ≥1 field richiesto (esclude wrapper spuri).
-    return [o for o in _salvage_objects(s) if any(f in o for f in fields)]
+    return []
+
+
+# Output tokens of one record with its identity annotation and literal quote
+# (21/10/2026: about 290 measured on a ten-invoice list; the former 120, set
+# before the annotations, cut the tenth invoice at the limit).
+_TOKENS_PER_RECORD = 320
+
+
+# Headings labelled in one request; more distinct ones are read as before.
+_MAX_HEADINGS = 64
+_HEADING_LABELS = frozenset({"same", "other", "unclear"})
+
+
+def _section_heading(entry) -> str:
+    """The title a page lists its rows under: the last segment of its address
+    and the page's own title (its first line when it has none). It declares
+    the class of those rows. A detail opened from a row of a list inherits
+    that row's class: it has no heading of its own here."""
+    if not isinstance(entry, dict) or isinstance(entry.get("_source_record_view"), dict):
+        return ""
+    url = entry.get("url") if isinstance(entry.get("url"), str) else ""
+    if not url.startswith(("http://", "https://")):
+        # Only a web page lists its rows under a title; a message or a file
+        # has no heading class.
+        return ""
+    slug = urlsplit(url).path.rstrip("/").rsplit("/", 1)[-1]
+    title = entry.get("title").strip() if isinstance(entry.get("title"), str) else ""
+    if not title:
+        title = next((line.strip() for line in _pick_text(entry).splitlines() if line.strip()), "")
+    return " | ".join(part for part in (re.sub(r"[-_]+", " ", slug).strip(), title[:160]) if part)
+
+
+def _heading_labels(headings: list[str], instruction: str, tier: str) -> dict[str, str]:
+    """Headings declaring another class of items than the requested one
+    (Telepass 21/10/2026: «Riepiloghi annuali», rows shaped like invoices).
+    The model labels numbered headings; a heading is excluded only beside one
+    of the requested class. Any doubt or failure excludes none."""
+    import i18n
+    import prompt_loader
+    distinct = list(dict.fromkeys(h for h in headings if h))[:_MAX_HEADINGS]
+    if len(distinct) < 2 or not instruction:
+        return {}
+    try:
+        raw, _meta = call_llm(
+            json.dumps({"request": instruction,
+                        "headings": [{"n": n, "text": h} for n, h in enumerate(distinct, 1)]},
+                       ensure_ascii=False),
+            prompt_loader.get("extract_entries_headings", i18n.current_lang()),
+            tier=tier, max_tokens=64 + 8 * len(distinct))
+        found = re.search(r"\{.*\}", str(raw or ""), re.S)
+        labels = json.loads(found.group()).get("labels") if found else None
+    except Exception:  # noqa: BLE001 -- a failed labelling reads every page
+        return {}
+    if (not isinstance(labels, list) or len(labels) != len(distinct)
+            or any(label not in _HEADING_LABELS for label in labels)):
+        return {}
+    return dict(zip(distinct, labels))
+
+
+def _row_sources(row: dict, page_of: dict) -> set:
+    """The pages a row was read from: a snapshot's page, or the snapshot."""
+    return {page_of.get(ref) or ref for ref in [row.get("_record_source")] + [
+        w.get("_record_source") for w in row.get("_record_provenance") or () if isinstance(w, dict)]
+        if ref is not None}
+
+
+def _resolve_list_conflicts(rows: list[dict], outcomes: dict | None = None,
+                            page_of: dict | None = None) -> int:
+    """A field whose values disagree takes the value the list shows: the
+    value of the only source that also gives this field to other rows
+    (Roberto, 22/10/2026: «data come nell'elenco»; real runs en25c and enel8,
+    Enel: the list shows the due date, a detail another date 17–20 days
+    earlier). The row stays valid; every other value stays a witness, shown in
+    the Notes. Values that agree form one group, supported by its best
+    witness; snapshots of one page are one source (`page_of`: snapshot to page;
+    real run a7, ENI: the list read again after each detail). Without one such
+    source the contradiction stays declared. Returns fields resolved;
+    `outcomes` counts each closed outcome (diagnostics)."""
+    from record_identity import _comparison, _most_informative
+
+    outcomes = outcomes if outcomes is not None else {}
+    page_of = page_of or {}
+
+    def note(outcome):
+        outcomes[outcome] = outcomes.get(outcome, 0) + 1
+
+    resolved = 0
+    for row in rows:
+        conflicts = row.get("_record_conflicts")
+        witnesses = [w for w in row.get("_record_provenance") or () if isinstance(w, dict)]
+        if not isinstance(conflicts, list) or len(witnesses) < 2:
+            continue
+        for field in list(conflicts):
+            seen = [w for w in witnesses if w.get(field) not in (None, "")]
+            if len(seen) < 2:
+                note("no_values")
+                continue
+            support = [sum(1 for other in rows if other is not row
+                           and other.get(field) not in (None, "")
+                           and (page_of.get(w.get("_record_source")) or w.get("_record_source"))
+                           in _row_sources(other, page_of)) for w in seen]
+            groups: list[list[int]] = []
+            for n, w in enumerate(seen):
+                group = next((g for g in groups
+                              if _comparison(seen[g[0]][field], w[field])[0] != "conflict"), None)
+                if group is None:
+                    groups.append([n])
+                else:
+                    group.append(n)
+            group_support = [max(support[n] for n in group) for group in groups]
+            best = max(group_support)
+            if not best or group_support.count(best) != 1:
+                note("no_list_source")
+                continue
+            row[field] = _most_informative([seen[n][field] for n in groups[group_support.index(best)]])
+            conflicts.remove(field)
+            resolved += 1
+            note("resolved")
+        if not conflicts:
+            row.pop("_record_conflicts", None)
+    return resolved
+
+
+def _text_lines(text: str) -> list[str]:
+    return [" ".join(line.split()) for line in text.splitlines() if line.strip()]
+
+
+def _shown_within(inner: list[str], outer: list[str]) -> bool:
+    """Every line of `inner`, in its order, is in `outer` with at most one
+    contiguous run of lines added: the same page before «show more» or a
+    scroll added rows, or before a row was expanded."""
+    if len(inner) > len(outer):
+        return False
+    prefix = 0
+    while prefix < len(inner) and inner[prefix] == outer[prefix]:
+        prefix += 1
+    rest = len(inner) - prefix
+    return not rest or inner[prefix:] == outer[-rest:]
+
+
+def _page_key(entry) -> tuple | None:
+    """One web page in one context, whatever snapshot of it: address without
+    fragment, title, context, partition and identity scope. None for detail
+    views and other sources, each its own."""
+    url = entry.get("url") if isinstance(entry, dict) else None
+    if (not isinstance(url, str) or not url.startswith(("http://", "https://"))
+            or isinstance(entry.get("_source_record_view"), dict)):
+        return None
+    return (urldefrag(url)[0], *(json.dumps(entry.get(name), sort_keys=True, default=str)
+                                 for name in ("title", "_source_context_label",
+                                              "_source_partition", "_source_identity_scope")))
+
+
+def _redundant_snapshots(sources: list) -> set[int]:
+    """Indexes of web page snapshots that another snapshot of the same page,
+    title and context shows whole (Fastweb 21/10/2026: six snapshots of one
+    list growing after each «show more», every invoice extracted four or
+    five times). Of two identical snapshots the later one is kept. Detail
+    views, unreadable sources and sources other than web pages are always
+    read."""
+    keyed = []
+    for index, entry in enumerate(sources):
+        key = _page_key(entry)
+        if key is None or entry.get("readable") is False:
+            continue
+        lines = _text_lines(_pick_model_text(entry)[:_MAX_TEXT_CHARS])
+        if lines:
+            keyed.append((index, key, lines))
+    shown_in = {index: {other for other, other_key, other_lines in keyed
+                        if other != index and other_key == key
+                        and (len(other_lines) > len(lines)
+                             or (other_lines == lines and other > index))
+                        and _shown_within(lines, other_lines)}
+                for index, key, lines in keyed}
+    # Only a snapshot that no other one shows whole stands in for others.
+    kept = {index for index, containers in shown_in.items() if not containers}
+    return {index for index, containers in shown_in.items() if containers & kept}
 
 
 def _extract_max_tokens(max_per_text: int) -> int:
-    """Budget output scalato col numero di record attesi (~120 tok/record +
-    margine). Cap a 8192 per evitare runaway. Evita il troncamento a monte
-    (causa #1 di recall=0: array tagliato a meta'), il parser tollerante e' la
-    rete di sicurezza a valle."""
-    return max(1200, min(8192, 512 + int(max_per_text) * 120))
+    """Output budget scaled with the expected records, plus a margin; capped
+    at 8192 against runaway output. It prevents truncation upstream (cause #1
+    of lost records: an array cut in the middle); the tolerant parser remains
+    the safety net downstream."""
+    return max(1200, min(8192, 512 + int(max_per_text) * _TOKENS_PER_RECORD))
 
 
 def _source_batches(items: list[tuple[int, dict, str]], batch_size: int):
@@ -1101,7 +1302,8 @@ def _declare_truncation(result: dict, *, what: str, cap_field: str,
         result["partial"] = True
 
 
-def _handle_extract_entries(args, *, verbose: bool = False) -> dict:
+def _handle_extract_entries(args, *, verbose: bool = False,
+                            collection_complete: bool = True) -> dict:
     a = args or {}
     entries = a.get("entries")
     if entries is None and isinstance(a.get("texts"), list):
@@ -1294,6 +1496,22 @@ def _handle_extract_entries(args, *, verbose: bool = False) -> dict:
         sources = [source for source in sources
                    if any(_matches_relevance(_pick_text(source), term)
                           for term in relevance_terms)]
+    # The heading a page lists its rows under is their class: rows under a
+    # heading of another class than the requested one are other items, not
+    # read and declared in the sheet's Notes (Roberto 21/10/2026: «righe
+    # classificate da intestazioni diverse non sono uguali»).
+    foreign_sections = 0
+    heading_labels: list = []
+    if instruction and len(sources) > 0:
+        headings = [_section_heading(source) for source in sources]
+        labels = _heading_labels(headings, instruction, tier)
+        heading_labels = [labels.get(heading) for heading in headings]
+        # Excluded only beside a heading of the requested class.
+        if "same" in labels.values():
+            kept_sources = [source for source, label, heading in zip(sources, heading_labels, headings)
+                            if not heading or label != "other"]
+            foreign_sections = len(sources) - len(kept_sources)
+            sources = kept_sources
     filtered_source_total = input_source_total - len(sources)
     # Provenance/confidence/domain and other producer-owned facts are attached
     # deterministically below.  Asking the model to repeat them in every row
@@ -1425,12 +1643,29 @@ def _handle_extract_entries(args, *, verbose: bool = False) -> dict:
             if emitted >= token_cap - 16:
                 out_truncated += 1
 
+    class _ObservedRecords(list):
+        # Runtime-owned parser cardinality, before any truncation.
+        def __init__(self, values, *, total, complete):
+            super().__init__(values)
+            self.total = total
+            self.complete = complete
+
+    def _complete_output(raw, meta, cap):
+        try:
+            json.loads(raw.strip())
+        except (ValueError, AttributeError):
+            return False
+        return (int(meta.get("out_tokens") or 0) < cap - 16
+                and meta.get("finish_reason") not in ("length", "max_tokens"))
+
     def _llm_extract(src_text):
         raw, meta = call_llm(src_text, prompt, tier=tier, max_tokens=mt)
         _record_llm_meta(meta, mt)
-        parsed = [{f: rec.get(f, "") for f in model_fields}
-                  for rec in _parse_records(
-                      raw, model_fields)[:max_per_text]]
+        observed = _parse_records(raw, model_fields)
+        parsed = _ObservedRecords([{**{f: rec.get(f, "") for f in model_fields},
+                   "_identity_facts": rec.get("_identity_facts", [])}
+                  for rec in observed[:max_per_text]], total=len(observed),
+                  complete=_complete_output(raw, meta, mt))
         context = AgenticContext(
             goal={"operation": "extract_records", "fields": model_fields},
             observed={"source_char_count": len(src_text)},
@@ -1444,7 +1679,7 @@ def _handle_extract_entries(args, *, verbose: bool = False) -> dict:
                 isinstance(proposal.action, list)
                 and len(proposal.action) <= max_per_text
                 and all(isinstance(record, dict)
-                        and set(record) == set(model_fields)
+                        and set(record) == {*model_fields, "_identity_facts"}
                         for record in proposal.action)),
             limits=AgenticLimits(max_attempts=1),
             postcondition=lambda result, _ctx: (
@@ -1461,7 +1696,6 @@ def _handle_extract_entries(args, *, verbose: bool = False) -> dict:
         """
         nonlocal batch_calls
         internal_field = "source_index"
-        batch_fields = [internal_field, *model_fields]
         payload = [
             {internal_field: source_index, "text": text}
             for source_index, _entry, text in batch
@@ -1486,9 +1720,9 @@ def _handle_extract_entries(args, *, verbose: bool = False) -> dict:
             decoded = json.loads(raw.strip())
         except (json.JSONDecodeError, AttributeError):
             decoded = None
-        # Compact positional protocol: [source_index, field1, field2, ...].
-        # It avoids regenerating the same JSON keys for every entity.  Object
-        # rows remain accepted for compatibility and safe model drift.
+        # Compact positional protocol ends in private fact annotations.
+        # Malformed/missing facts cannot authorize identity; keep public data
+        # from otherwise readable records, including object output drift.
         decoded_rows = decoded
         if isinstance(decoded, dict):
             seen_indexes = decoded.get("seen_source_indexes")
@@ -1504,19 +1738,22 @@ def _handle_extract_entries(args, *, verbose: bool = False) -> dict:
         if isinstance(decoded_rows, list):
             for row in decoded_rows:
                 if (isinstance(row, list)
-                        and len(row) == len(model_fields) + 1):
+                        and len(row) in (len(model_fields) + 1, len(model_fields) + 2)):
                     parsed_records.append((
-                        row[0], dict(zip(model_fields, row[1:]))))
-                elif isinstance(row, dict):
+                        row[0], {**dict(zip(model_fields, row[1:1 + len(model_fields)])),
+                                 "_identity_facts": (row[-1] if len(row) == len(model_fields) + 2 else [])}))
+                elif (isinstance(row, dict)
+                      and any(field in row for field in model_fields)):
                     parsed_records.append((
                         row.get(internal_field),
-                        {field: row.get(field, "")
-                         for field in model_fields}))
+                        {**{field: row.get(field, "") for field in model_fields},
+                         "_identity_facts": row.get("_identity_facts", [])}))
         if not parsed_records:
             parsed_records = [
                 (record.get(internal_field),
-                 {field: record.get(field, "") for field in model_fields})
-                for record in _parse_records(raw, batch_fields)
+                 {**{field: record.get(field, "") for field in model_fields},
+                  "_identity_facts": record.get("_identity_facts", [])})
+                for record in _parse_records(raw, model_fields)
             ]
         for raw_index, normalized in parsed_records:
             try:
@@ -1526,9 +1763,11 @@ def _handle_extract_entries(args, *, verbose: bool = False) -> dict:
             if source_index not in valid_indexes:
                 continue
             bucket = grouped.setdefault(source_index, [])
-            if len(bucket) < max_per_text:
-                bucket.append(normalized)
-        return grouped
+            bucket.append(normalized)
+        complete = (_complete_output(raw, meta, _extract_max_tokens(record_cap))
+                    and len(parsed_records) < record_cap)
+        return {index: _ObservedRecords(values[:max_per_text], total=len(values), complete=complete)
+                for index, values in grouped.items()}
 
     # §2.2/§7.3/§7.9 — proiezione deterministica su entries GIA' strutturate:
     # se OGNI sorgente e' un dict che contiene GIA' i `fields` richiesti come
@@ -1596,13 +1835,47 @@ def _handle_extract_entries(args, *, verbose: bool = False) -> dict:
 
     total_capped = False
 
-    def _append_records(entry, text, records) -> None:
+    # A snapshot another one of the same page shows whole adds no record:
+    # reading it again costs one more extraction of the same rows.
+    redundant = _redundant_snapshots(sources)
+    if redundant:
+        sources = [source for index, source in enumerate(sources) if index not in redundant]
+
+    observations = {id(source): index for index, source in enumerate(sources)}
+    observation_scope = uuid4().hex
+
+    # Listed records are copied from their rows: the model only indicates the
+    # columns, once per list shape (list_columns). Copied rows leave the text
+    # the model reads; a source with nothing else dated or priced is not read.
+    from list_columns import copy_listed_rows
+    listed = copy_listed_rows(
+        sources, model_fields, instruction, tier, call_llm=call_llm,
+        date_field=lambda name: _field_temporal_kind(
+            name, lexicon=reconciliation_lexicon) is not None)
+
+    def _copied_records(source_index):
+        records = listed.records[source_index]
+        return _ObservedRecords(records, total=len(records), complete=True)
+
+    source_texts: dict = {}
+    source_pages: dict = {}
+
+    def _append_records(entry, text, records, *, copied: bool = False) -> None:
         nonlocal total_capped
         audit_values = (_extract_labeled_audit_values(
                             text, audit_fields,
                             lexicon=reconciliation_lexicon,
                         )
                         if audit_fields and records and text.strip() else {})
+        from record_identity import (admit_identity_facts, complete_identifier_facts,
+                                     valid_reference)
+        source_ref = entry.get("_source_snapshot_ref") if isinstance(entry, dict) else None
+        if not valid_reference(source_ref):
+            source_ref = f"{observation_scope}:{observations.get(id(entry), -1)}"
+        source_texts[source_ref] = text
+        if _page_key(entry) is not None:
+            source_pages[source_ref] = _page_key(entry)
+        admitted = []
         for extracted in records:
             norm = {
                 field: _normalize_extracted_date(
@@ -1613,10 +1886,28 @@ def _handle_extract_entries(args, *, verbose: bool = False) -> dict:
             }
             if audit_values:
                 norm.update(audit_values)
+            admitted.append(admit_identity_facts(
+                norm, extracted.get("_identity_facts"), source_text=text,
+                source_ref=source_ref,
+                scope=(entry.get("_source_identity_scope") if isinstance(entry, dict) else None),
+            ))
+            # Private: values copied from a listed row, and the labels the
+            # site writes beside them (list_columns).
+            for key in ("_record_extraction", "_record_field_labels"):
+                if extracted.get(key):
+                    admitted[-1][key] = (dict(extracted[key]) if isinstance(extracted[key], dict)
+                                         else extracted[key])
+        for norm in complete_identifier_facts(admitted, text):
             if isinstance(entry, dict):
                 norm = _attach_source_provenance(
                     norm, entry, fields, lexicon=reconciliation_lexicon,
                 )
+                # Private: the record partition (contract, account...) the page
+                # was read in; it keeps rows of different partitions apart.
+                label, partition = entry.get("_source_context_label"), entry.get("_source_partition")
+                if isinstance(label, str) and label.strip() and isinstance(partition, str) and partition:
+                    norm["_record_partition"] = partition
+                    norm["_record_partition_label"] = " ".join(label.split())
             norm = _attach_runtime_evidence(
                 norm, entry if isinstance(entry, dict) else None, text,
                 len(records), relevance_terms, state_markers)
@@ -1624,8 +1915,9 @@ def _handle_extract_entries(args, *, verbose: bool = False) -> dict:
                 norm["_source_record_view"] = {
                     **entry["_source_record_view"],
                     "single": (len(records) == 1 and max_per_text > 1
-                               and len(text) >= len(_pick_model_text(entry))
-                               and not out_truncated),
+                               and getattr(records, "total", None) == 1
+                               and getattr(records, "complete", False)
+                               and len(text) >= len(_pick_model_text(entry))),
                 }
             # Provenienza privata riservata al runtime. Nelle estrazioni
             # confinate conserva il link osservato senza aprirlo.
@@ -1636,6 +1928,13 @@ def _handle_extract_entries(args, *, verbose: bool = False) -> dict:
                     norm["_source_url"] = source_url
                     if isinstance(entry.get("title"), str):
                         norm["_source_title"] = entry["title"]
+            # Private: which read of a source produced the row (identity merge).
+            norm["_observation"] = observations.get(id(entry), -1)
+            # Private: the model returned every record of this whole source.
+            norm["_source_complete"] = copied or bool(
+                getattr(records, "complete", True)
+                and getattr(records, "total", len(records)) < max_per_text
+                and (not isinstance(entry, dict) or len(text) >= len(_pick_model_text(entry))))
             out.append(norm)
             if max_total and len(out) >= max_total:
                 total_capped = True
@@ -1654,7 +1953,7 @@ def _handle_extract_entries(args, *, verbose: bool = False) -> dict:
                 direct[source_index] = (
                     entry, "", [{field: "" for field in fields}])
                 continue
-            full_text = _pick_model_text(entry)
+            full_text = listed.residual.get(source_index, _pick_model_text(entry))
             text_value = full_text[:_MAX_TEXT_CHARS]
             if text_value.strip():
                 text_truncated_sources += int(len(full_text) > _MAX_TEXT_CHARS)
@@ -1744,10 +2043,19 @@ def _handle_extract_entries(args, *, verbose: bool = False) -> dict:
             if source_index in direct:
                 direct_entry, text_value, records = direct[source_index]
                 _append_records(direct_entry, text_value, records)
-            elif source_index in pending_map:
+                if total_capped:
+                    break
+                continue
+            if source_index in listed.records:
+                _append_records(entry, _pick_model_text(entry),
+                                _copied_records(source_index), copied=True)
+                if total_capped:
+                    break
+            if source_index in pending_map:
                 pending_entry, text_value = pending_map[source_index]
                 _append_records(
-                    pending_entry, text_value,
+                    pending_entry,
+                    _pick_model_text(pending_entry) if source_index in listed.records else text_value,
                     records_by_index.get(source_index, []))
             if total_capped:
                 break
@@ -1766,6 +2074,13 @@ def _handle_extract_entries(args, *, verbose: bool = False) -> dict:
                 continue
             nonlocal_drill = drill_down and bool(_entry_links(entry))
             full_text = _pick_model_text(entry)
+            if source_index in listed.records:
+                # Copied rows first; the model reads only what is left beside them.
+                _append_records(entry, full_text, _copied_records(source_index), copied=True)
+                if total_capped:
+                    break
+                nonlocal_drill = False
+                full_text = listed.residual[source_index]
             text = full_text[:_MAX_TEXT_CHARS]
             if not text.strip() and not nonlocal_drill:
                 # Un documento osservato ma non decodificabile non scompare
@@ -1799,13 +2114,42 @@ def _handle_extract_entries(args, *, verbose: bool = False) -> dict:
                     if records2 and (_empty_fields(records2, fields)
                                      < _empty_fields(records, fields)):
                         records = records2
+                        # A combined fetched text is not the original bound
+                        # snapshot; it cannot certify that source's cardinality.
+                        records.complete = False
                         drilled_sources += 1
-            _append_records(entry, text, records)
+            # A listed source keeps its whole text: quotes of either part are there.
+            _append_records(entry, _pick_model_text(entry) if source_index in listed.records else text,
+                            records)
             if total_capped:
                 break
 
+    from record_identity import complete_identifier_facts_across
+    out = complete_identifier_facts_across(out, source_texts)
     from sites_collection_sources import merge_extracted_views
     out, merged_views = merge_extracted_views(out)
+    from record_identity import claims_identity, merge_observed_identifiers, unidentified_absorbed
+    complete = collection_complete and all(record.get("_source_complete", True) for record in out)
+    out, merged_identifiers, suspected_duplicates = merge_observed_identifiers(
+        out, source_key="_record_source", complete=complete)
+    list_outcomes: dict = {}
+    list_resolved = _resolve_list_conflicts(out, list_outcomes, source_pages)
+    # Where the requested records carry a unique identifier, a row still
+    # without one after the merges is rejected; the writer declares it with
+    # its values. Without identifiers, equal rows coexist (Roberto, 20/10/2026).
+    absorbed_rows = rejected_rows = 0
+    if any(claims_identity(record) for record in out):
+        absorbed_rows = unidentified_absorbed(out)
+        for record in out:
+            if not claims_identity(record) and not record.get("_record_shared_code"):
+                record["_record_rejected"] = True
+                rejected_rows += 1
+    for record in out:
+        record.pop("_observation", None)
+        record.pop("_source_complete", None)
+        for witness in record.get("_record_provenance") or ():
+            if isinstance(witness, dict):
+                witness.pop("_source_complete", None)
     res = {
         "ok": True,
         "entries": out,
@@ -1821,6 +2165,32 @@ def _handle_extract_entries(args, *, verbose: bool = False) -> dict:
     }
     if merged_views:
         res["merged_record_views"] = merged_views
+    if merged_identifiers:
+        res["merged_identifier_records"] = merged_identifiers
+    if suspected_duplicates:
+        res["suspected_duplicate_records"] = suspected_duplicates
+    if absorbed_rows:
+        res["absorbed_unidentified_records"] = absorbed_rows
+    if rejected_rows:
+        res["rejected_unidentified_records"] = rejected_rows
+    if foreign_sections:
+        res["foreign_section_sources"] = foreign_sections
+    if redundant:
+        # Diagnostics: snapshots not read again, their rows shown in another.
+        res["redundant_snapshot_sources"] = len(redundant)
+    if listed.meta:
+        # Diagnostics: listed rows copied, choices asked and their outcomes.
+        res["list_columns"] = dict(listed.meta)
+    if heading_labels:
+        # Private diagnostics: the label of each input page, in input order.
+        res["source_heading_labels"] = heading_labels
+    if list_outcomes:
+        # Diagnostics: closed outcome of each disagreeing field.
+        res["list_checks"] = list_outcomes
+        res["list_resolved_fields"] = list_resolved
+    conflicting_rows = sum(bool(row.get("_record_conflicts")) for row in out)
+    if conflicting_rows:
+        res["conflicting_record_rows"] = conflicting_rows
     if relevance_terms:
         res["relevance_filter"] = True
         res["relevance_term_count"] = len(relevance_terms)
@@ -1882,7 +2252,12 @@ def handle_extract_entries(args, *, verbose: bool = False) -> dict:
                 "error_code": "ERR_ARG_INVALID",
                 "error": _msg("ERR_ARG_INVALID", arg="source_metadata",
                               reason="invalid_source_metadata")}
-    result = _handle_extract_entries(a, verbose=verbose)
+    # Runtime-owned upstream evidence: a partial collection may hold the
+    # unobserved referent of a mention.
+    collection_complete = not any(
+        any(item.get(key) is True for key in ("partial", "collection_partial", "truncated"))
+        for item in inherited)
+    result = _handle_extract_entries(a, verbose=verbose, collection_complete=collection_complete)
     local = []
     scope = uuid4().hex
     for index, truncation in enumerate(result.get("truncations") or []):
@@ -1899,6 +2274,21 @@ def handle_extract_entries(args, *, verbose: bool = False) -> dict:
     if result.get("partial") is True and not local:
         local.append({"producer": "extract_entries", "scope": scope,
                       "partial": True, "reason_code": "extraction_incomplete"})
+    if any(result.get(key) for key in ("merged_record_views", "merged_identifier_records",
+                                      "suspected_duplicate_records", "conflicting_record_rows",
+                                      "absorbed_unidentified_records")):
+        # Runtime relationship/identity evidence, never model-supplied counts.
+        local.append({"producer": "extract_entries", "scope": scope,
+                      "reason_code": "record_enrichment",
+                      "merged": (int(result.get("merged_record_views") or 0)
+                                 + int(result.get("merged_identifier_records") or 0)),
+                      "conflicted": int(result.get("conflicting_record_rows") or 0),
+                      "suspected": int(result.get("suspected_duplicate_records") or 0),
+                      "absorbed": int(result.get("absorbed_unidentified_records") or 0)})
+    if result.get("foreign_section_sources"):
+        local.append({"producer": "extract_entries", "scope": scope,
+                      "reason_code": "foreign_section",
+                      "excluded": int(result["foreign_section_sources"])})
     try:
         result["source_metadata"] = merge_source_metadata(inherited, local)
     except ValueError:

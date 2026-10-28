@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import socket
+import time
 import urllib.error
 import urllib.request
 
@@ -61,10 +62,10 @@ def _post(endpoint: str, payload: dict, *, host: str = DEFAULT_HOST,
     child = monitor.prepare_child(transport_env)
     if child is not None:
         req.add_header(monitor.TRANSPORT_HEADER, "1")
-        if monitor.UPSTREAM_ID_ENV in transport_env:
-            req.add_header(monitor.UPSTREAM_HEADER, json.dumps({
-                "segment_id": transport_env[monitor.UPSTREAM_ID_ENV],
-                "started_at": transport_env[monitor.UPSTREAM_STARTED_ENV]}, separators=(",", ":")))
+        upstream = monitor.upstream_from_env(transport_env)
+        if upstream:
+            req.add_header(monitor.UPSTREAM_HEADER,
+                           json.dumps(upstream, separators=(",", ":")))
     result = None
     try:
         result = _post_response(req, timeout_s=timeout_s)
@@ -187,15 +188,65 @@ def session_act(*, session_id: str, owner: str, action: str,
                 value_ref: str | None = None,
                 approval_token: str | None = None,
                 goal_query: str | None = None,
+                record_mode: bool = False,
                 done_when: str | None = None,
-                scope: str | None = None, **kw) -> dict:
+                scope: str | None = None, continuation_id: str | None = None,
+                download_request: dict | None = None, **kw) -> dict:
     kw.setdefault("timeout_s", ACTION_TIMEOUT_S)
     return _post("/session/act", {
         "session_id": session_id, "owner": owner, "action": action,
         "value_ref": value_ref, "approval_token": approval_token,
         "goal_query": goal_query, "done_when": done_when,
-        "scope": scope,
+        "record_mode": record_mode,
+        "scope": scope, "continuation_id": continuation_id,
+        **({"download_request": download_request} if download_request is not None else {}),
     }, **kw)
+
+
+def session_download_transfer(*, session_id: str, owner: str, captured: dict,
+                              target, timeout_s: float = 120.0,
+                              host: str = DEFAULT_HOST, port: int = DEFAULT_PORT):
+    """Consume one captured handle; never reopen the website or retry a POST."""
+    from sites_downloads import DownloadError
+    failure = _local_contract_failure()
+    if failure:
+        raise DownloadError(failure['error_class'])
+    body = json.dumps({'session_id': session_id, 'owner': owner,
+                       'handle': captured['handle']}).encode()
+    req = urllib.request.Request(f'http://{host}:{port}/session/download/stream',
+        data=body, method='POST', headers={'Content-Type': 'application/json',
+                                         _contract.HEADER_NAME: _contract.LOADED_FINGERPRINT})
+    deadline = min(time.monotonic() + timeout_s, captured.get('deadline_monotonic', float('inf')))
+    timeout_s = deadline-time.monotonic()
+    if timeout_s <= 0:
+        raise DownloadError('download_transfer_timeout')
+    try:
+        with urllib.request.urlopen(req, timeout=timeout_s) as response:
+            failure = _response_contract_failure(response.headers)
+            if failure:
+                raise DownloadError(failure['error_class'])
+            if (response.headers.get('Content-Length') != str(captured['bytes'])
+                    or response.headers.get('X-Metnos-Content-SHA256') != captured['sha256']):
+                raise DownloadError('download_integrity_failed')
+            remaining = captured['bytes']
+            while remaining:
+                if time.monotonic() >= deadline:
+                    raise DownloadError('download_transfer_timeout')
+                data = response.read(min(64 * 1024, remaining))
+                if not data:
+                    raise DownloadError('download_integrity_failed')
+                target.write(data)
+                remaining -= len(data)
+    except DownloadError:
+        raise
+    except Exception as exc:
+        raise DownloadError('download_transfer_failed') from exc
+
+
+def session_download_ack(*, session_id: str, owner: str, captured: dict, **kw) -> dict:
+    kw.setdefault('timeout_s',5)
+    return _post('/session/download/ack', {'session_id': session_id, 'owner': owner,
+                 'handle': captured['handle'], 'sha256': captured['sha256']}, **kw)
 
 
 def _primitive(endpoint: str, *, session_id: str, owner: str,

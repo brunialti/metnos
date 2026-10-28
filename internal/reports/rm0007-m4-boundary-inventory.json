@@ -1,6 +1,6 @@
 {
   "schema": "metnos.contract-boundary-inventory/2",
-  "source_census": "sha256:88f5d098742eff55fd31362d6a34cf4f4db7291f3c85a75bc16b0cc530478c32",
+  "source_census": "sha256:48427c15fd007241fb129cc1793e4546026b066ef35cc11f693bc915637f0911",
   "scan_roots": [
     "runtime",
     "install",
@@ -5086,6 +5086,16 @@
         "live_artifact_read"
       ],
       "destination": "verified live catalog, immutable store, or live artifact boundary only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/playwright_sidecar/session_broker.py",
+      "scope": "op_act",
+      "role": "live_reader",
+      "capabilities": [
+        "live_artifact_read"
+      ],
+      "destination": "verified live catalog lookup of the admitted act_sites contract for fs:write/dst_dir download-scope validation; no publication or authority mutation",
       "phase": "M4"
     },
     {

@@ -48,8 +48,8 @@ equals = "preview"
 effect = "read_only"
 
 [description]
-it = "SCOPO: organizza file con una politica chiusa, SHA-256 e piano congelato. PATTERN: usa mode='preview'; il runtime presenta il form e riserva mode='apply' alla ripresa autenticata. NON: spostamenti già risolti, ricerca duplicati, sort/group/classify/order, sovrascrittura, regex o codice. OUT: anteprima completa consultabile oppure ricevuta reversibile con effetti reali."
-en = "SCOPO: organizes files with a closed policy, SHA-256, and a frozen plan. PATTERN: use mode='preview'; the runtime shows the form and reserves mode='apply' for authenticated resume. NON: resolved moves, duplicate search, sort/group/classify/order, overwrite, regex, or code. OUT: a complete inspectable preview or a reversible receipt of actual effects."
+it = "SCOPO: organizza file: politica chiusa, SHA-256, piano congelato. PATTERN: mode='preview'; form runtime; mode='apply' solo a ripresa autenticata. NON: move risolti, ricerca duplicati, sort/group/classify/order, sovrascrittura, regex/codice. OUT: anteprima completa consultabile o ricevuta reversibile con effetti reali."
+en = "SCOPO: organize files: closed policy, SHA-256, frozen plan. PATTERN: mode='preview'; runtime form; mode='apply' only on authenticated resume. NON: resolved moves, duplicate search, sort/group/classify/order, overwrite, regex/code. OUT: a complete inspectable preview or a reversible receipt of actual effects."
 
 [code]
 files  = ["organize_files.py"]

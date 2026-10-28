@@ -30,6 +30,16 @@ repeating server details and credentials.</p>
 record can contain both SMTP and IMAP settings. Executors receive only
 <code>account="work"</code>. For reading, <code>account="all"</code> covers
 every configured account; a specific list of account names is also valid.</p>
+<p>In <a href="/en/system/users">Administration → Users → Credentials</a>
+you can give sites and mailboxes a personal name and several synonyms, including
+when first entering credentials. A name selects only the target of the operation
+already requested: it does not turn a mail request into web navigation. An explicit
+selection of several mailboxes or all mailboxes remains valid; ambiguous names
+are rejected.</p>
+<p>When no personal name exists, the profile suggests the mailbox account name,
+or the full domain for a site. You can edit the suggestion; it becomes available
+in requests only after <strong>Save</strong>. Existing names and synonyms take
+precedence. Viewing the profile does not register new names.</p>
 
 <h2>How to configure an account</h2>
 <p>During guided installation, the <em>Sensitive data</em> phase can add one

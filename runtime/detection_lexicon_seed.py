@@ -973,6 +973,16 @@ def register_all() -> None:
           "cancelled": ["cancelled", "canceled"],
           "archived": ["archived"],
       })
+    # Typed invoice dates and exact-year intent for conservative stream cutoff.
+    R('sites.invoice_date_field', "regex",
+      it=['^(data (?:della )?fattura|invoice date)$'],
+      en=['^(data (?:della )?fattura|invoice date)$'])
+    R('sites.invoice_year_range', "regex",
+      it=['\\b(?:prima|dopo|fino|entro|sino|oltre|tra|fra|dal|dall|precedenti|antecedenti|tranne|eccetto|esclus\\w*|non|before|after|until|through|between|since|except|excluding|not|older|newer|prior|earlier|later)(?=\\b|20\\d{2})', '\\b(?:up\\s+to|at\\s+most|no\\s+later\\s+than)(?=\\b|20\\d{2})'],
+      en=['\\b(?:prima|dopo|fino|entro|sino|oltre|tra|fra|dal|dall|precedenti|antecedenti|tranne|eccetto|esclus\\w*|non|before|after|until|through|between|since|except|excluding|not|older|newer|prior|earlier|later)(?=\\b|20\\d{2})', '\\b(?:up\\s+to|at\\s+most|no\\s+later\\s+than)(?=\\b|20\\d{2})'])
+    R('sites.invoice_object', "regex",
+      it=['\\b(?:fattur\\w*|bollett\\w*|invoices?|bills?)\\b'],
+      en=['\\b(?:fattur\\w*|bollett\\w*|invoices?|bills?)\\b'])
     R("sites.continuation_target", "phrases", match_mode="word",
       it=["mostra altro", "mostra altri", "mostra altre", "carica altro",
           "carica altri", "carica altre", "vedi altro", "vedi altri",
@@ -1043,8 +1053,8 @@ def register_all() -> None:
           r"(?:[\w'-]+\s+){0,2}[\w'-]+s\b"])
     R("sites.goal_scope_quantifier", "phrases", match_mode="word",
       it=["tutto", "tutta", "tutti", "tutte", "ogni", "intero", "intera",
-          "interi", "intere"],
-      en=["all", "every", "entire"])
+          "interi", "intere", "elenco completo", "lista completa"],
+      en=["all", "every", "entire", "complete list"])
     # "online" can qualify a document; a search verb makes it a scope.
     R("sites.external_search_scope", "phrases", match_mode="word",
       it=["sul web", "su internet", "nel web", "in internet",
@@ -1074,7 +1084,11 @@ def register_all() -> None:
       it=["rifiuta", "rifiuta tutti", "rifiuta tutto", "solo necessari",
           "continua senza accettare"],
       en=["reject", "reject all", "decline", "decline all",
-          "necessary only", "continue without accepting"])
+          "necessary only", "only necessary", "continue without accepting"],
+      translations={
+          "zh": ["拒绝", "拒绝全部", "仅限必要"],
+          "ar": ["رفض", "رفض الكل", "الضرورية فقط"],
+      })
     # Concetto additivo: `register` non sovrascrive payload seed gia' installati.
     # La forma nominale e' comune nelle UI italiane e resta consumata soltanto
     # dal locator privacy strutturale, mai come click testuale libero.
@@ -1108,6 +1122,11 @@ def register_all() -> None:
           "notifica sul telefono", "controlla il telefono"],
       en=["approve the request", "confirm on your device",
           "notification on your phone", "check your phone"])
+    # Richieste complete del modulo: il non/not interno riguarda il robot,
+    # non nega la verifica. Il consumer richiede un messaggio proprio visibile.
+    R("sites.human_verification_marker", "phrases", match_mode="word",
+      it=["verifica che non sei un robot", "verifica di essere umano"],
+      en=["verify that you are not a robot", "verify you are human"])
     # Parole funzionali e nomi del tipo di controllo non fanno parte del nome
     # accessibile cercato. Esempio naturale: "clicca sul pulsante Accedi" ->
     # target "accedi". Lessico traducibile, non sintassi obbligatoria.

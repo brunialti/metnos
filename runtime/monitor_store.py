@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: MIT
-"""Archivio Monitor: JSONL del raccoglitore e indice derivato del lettore HTTP.
+"""Archivio analitico Monitor in SQLite, conservazione ciclica di 90 giorni.
 
 Nessuna funzione di questo modulo va chiamata nel percorso di una query LLM.
-Il raccoglitore del pacchetto 3 consegnerà qui gli eventi già fuori dal turno.
+Il raccoglitore consegna qui gli eventi già fuori dal turno.
 """
 from __future__ import annotations
 
@@ -21,7 +21,8 @@ from monitor_events import count, identifier, normalize_event, timestamp
 from monitor_metrics import METRIC_FIELDS
 from monitor_requests import derive_request, process_alive
 
-INDEX_VERSION = 1
+INDEX_VERSION = 2
+RETENTION_DAYS = 90
 MAX_LINE_BYTES = 4 * 1024 * 1024
 MAX_SCAN_BYTES = 16 * 1024 * 1024
 _SCHEMA = """
@@ -37,6 +38,7 @@ CREATE TABLE calls (call_id TEXT PRIMARY KEY, segment_id TEXT NOT NULL,
   provider TEXT, level TEXT, physical_model_key TEXT, started_at TEXT, payload TEXT NOT NULL);
 CREATE INDEX call_segment ON calls(segment_id, started_at, call_id);
 CREATE INDEX call_model ON calls(provider, physical_model_key, started_at);
+CREATE INDEX call_time ON calls(started_at);
 CREATE TABLE requests (request_id TEXT NOT NULL, revision INTEGER NOT NULL,
   started_at TEXT, owner_id TEXT, channel TEXT, origin TEXT, status TEXT,
   payload TEXT, PRIMARY KEY(request_id, revision));
@@ -47,7 +49,10 @@ CREATE TABLE processes (epoch_key TEXT PRIMARY KEY, payload TEXT NOT NULL);
 CREATE TABLE ingest (device INTEGER NOT NULL, inode INTEGER NOT NULL,
   position INTEGER NOT NULL, invalid_lines INTEGER NOT NULL,
   truncations INTEGER NOT NULL, skipping INTEGER NOT NULL, PRIMARY KEY(device, inode));
-PRAGMA user_version = 1;
+CREATE TABLE retention (singleton INTEGER PRIMARY KEY CHECK(singleton=1),
+  cutoff TEXT NOT NULL, pruned_at TEXT NOT NULL);
+INSERT INTO retention VALUES (1,'','');
+PRAGMA user_version = 2;
 """
 
 
@@ -64,7 +69,7 @@ def _json(value: Any) -> str:
 
 def append_events(path: Path, events: Iterable[Mapping[str, Any]], *,
                   max_bytes: int = 8 * 1024 * 1024) -> Path:
-    """Solo raccoglitore: valida e ruota senza cancellare lo storico."""
+    """Compatibilità per importazioni JSONL storiche e fixture offline."""
     return append_normalized_events(path, [normalize_event(row) for row in events], max_bytes=max_bytes)
 
 
@@ -73,6 +78,12 @@ def append_normalized_events(path: Path, events: Iterable[Mapping[str, Any]], *,
     """Solo dopo normalize_event: evita di ripetere la normalizzazione nel writer."""
     return append_bounded_jsonl(path, events,
                                 max_bytes=max_bytes, backup_count=None)
+
+
+def persist_normalized_events(path: Path, events: Iterable[Mapping[str, Any]]) -> None:
+    """Solo thread raccoglitore: commit analitico, senza duplicare un giornale JSONL."""
+    with MonitorIndex(path.parent) as index:
+        index.record_events(events)
 
 
 class MonitorIndex:
@@ -91,9 +102,18 @@ class MonitorIndex:
             version = self.connection.execute("PRAGMA user_version").fetchone()[0]
             if version == 0:
                 self.connection.executescript("BEGIN;" + _SCHEMA + "COMMIT;")
+            elif version == 1:
+                self.connection.executescript(
+                    "BEGIN IMMEDIATE; CREATE INDEX IF NOT EXISTS call_time ON calls(started_at); "
+                    "CREATE TABLE IF NOT EXISTS retention (singleton INTEGER PRIMARY KEY CHECK(singleton=1), "
+                    "cutoff TEXT NOT NULL, pruned_at TEXT NOT NULL); "
+                    "INSERT OR IGNORE INTO retention VALUES (1,'',''); PRAGMA user_version=2; COMMIT;")
             elif version != INDEX_VERSION:
                 raise ValueError("unsupported_monitor_index_version")
             self.connection.execute("PRAGMA journal_mode=WAL")
+            # Ordinamenti dei percentili su disco, cache per connessione 4 MiB.
+            self.connection.execute("PRAGMA temp_store=FILE")
+            self.connection.execute("PRAGMA cache_size=-4096")
         except Exception:
             self.connection.close()
             raise
@@ -113,6 +133,14 @@ class MonitorIndex:
         return json.loads(row[0]) if row else None
 
     def _apply(self, event: dict[str, Any]) -> str | None:
+        cutoff = self.connection.execute("SELECT cutoff FROM retention").fetchone()[0]
+        activity = max((value for row in (event, *event["calls"])
+                        for name in ("started_at", "finished_at", "recorded_at")
+                        if (value := row.get(name))), default="")
+        # Un vecchio file importato o una consegna ritardata non resuscita dati
+        # già scaduti. Una catena ancora presente può ricevere completamenti.
+        if cutoff and activity < cutoff and not self._segment(event["segment_id"]):
+            return None
         if event["event"] == "process_started":
             self.connection.execute("INSERT OR IGNORE INTO processes VALUES (?,?)",
                                     (_json(event["process_epoch"]), _json(event)))
@@ -272,10 +300,59 @@ class MonitorIndex:
             if any(changed):
                 self.connection.execute("UPDATE meta SET revision=?", (revision,))
 
+    def record_events(self, events: Iterable[Mapping[str, Any]], *, now=None) -> None:
+        """Persistenza di un piccolo gruppo già normalizzato, fuori dal turno LLM."""
+        with self.connection:
+            self.connection.execute("BEGIN IMMEDIATE")
+            self._prune(now=now)
+            changed = {segment for event in events if (segment := self._apply(event))}
+            if changed:
+                revision = self.connection.execute("SELECT revision FROM meta").fetchone()[0] + 1
+                self._refresh(changed, revision)
+                self.connection.execute("UPDATE meta SET revision=?", (revision,))
+
+    def prune(self, *, now=None) -> int:
+        """Manutenzione esplicita; DELETE libera pagine riutilizzate da SQLite."""
+        with self.connection:
+            self.connection.execute("BEGIN IMMEDIATE")
+            return self._prune(now=now, force=True)
+
+    def _prune(self, *, now=None, force=False) -> int:
+        now = now or datetime.now(timezone.utc)
+        state = self.connection.execute("SELECT cutoff,pruned_at FROM retention").fetchone()
+        if not force and state[1] and now - datetime.fromisoformat(state[1]) < timedelta(hours=1):
+            return 0
+        cutoff = max(state[0], timestamp((now - timedelta(days=RETENTION_DAYS)).isoformat(), required=True))
+        self.connection.execute("CREATE TEMP TABLE IF NOT EXISTS expired_requests (request_id TEXT PRIMARY KEY)")
+        self.connection.execute("DELETE FROM expired_requests")
+        self.connection.execute(
+            "INSERT INTO expired_requests SELECT s.request_id FROM segments s "
+            "LEFT JOIN calls c ON c.segment_id=s.segment_id "
+            "LEFT JOIN requests r ON r.request_id=s.request_id AND r.revision="
+            "(SELECT MAX(v.revision) FROM requests v WHERE v.request_id=s.request_id) "
+            "GROUP BY s.request_id HAVING MAX(max(COALESCE(json_extract(s.payload,'$.started_at'),''),"
+            "COALESCE(json_extract(s.payload,'$.finished_at'),''),"
+            "COALESCE(json_extract(s.payload,'$.recorded_at'),''),COALESCE(c.started_at,'')))<? "
+            "AND MAX(json_extract(s.payload,'$.finished_at') IS NULL)=0 "
+            "AND MAX(COALESCE(r.status IN ('in_progress','awaiting_input'),0))=0", (cutoff,))
+        removed = self.connection.execute("SELECT COUNT(*) FROM expired_requests").fetchone()[0]
+        self.connection.execute("DELETE FROM calls WHERE segment_id IN (SELECT segment_id FROM segments "
+                                "WHERE request_id IN (SELECT request_id FROM expired_requests))")
+        self.connection.execute("DELETE FROM segments WHERE request_id IN (SELECT request_id FROM expired_requests)")
+        self.connection.execute("DELETE FROM requests WHERE request_id IN (SELECT request_id FROM expired_requests)")
+        self.connection.execute("DELETE FROM processes WHERE COALESCE(json_extract(payload,'$.started_at'),'')<?",
+                                (cutoff,))
+        self.connection.execute("UPDATE retention SET cutoff=?,pruned_at=?",
+                                (cutoff, timestamp(now.isoformat(), required=True)))
+        if removed:
+            self.connection.execute("UPDATE meta SET revision=revision+1,epoch=lower(hex(randomblob(16)))")
+        return removed
+
     def ingest(self, paths: Iterable[Path], *, max_events: int = 1000) -> dict[str, int]:
         """Legge solo righe complete. Posizione per inode: rinomina ≠ nuova acquisizione."""
         if type(max_events) is not int or not 1 <= max_events <= 10000:
             raise ValueError("invalid_ingest_limit")
+        paths = tuple(paths)
         changed: set[str] = set()
         read = invalid = scanned_bytes = 0
         with self.connection:
@@ -285,6 +362,7 @@ class MonitorIndex:
                 # Prenota la scrittura prima di leggere il cursore: due pagine
                 # concorrenti non devono aggiornare uno snapshot WAL superato.
                 self.connection.execute("BEGIN IMMEDIATE")
+            self._prune()
             for path in paths:
                 if read >= max_events or scanned_bytes >= MAX_SCAN_BYTES:
                     break
@@ -333,7 +411,14 @@ class MonitorIndex:
                 revision = self.connection.execute("SELECT revision FROM meta").fetchone()[0] + 1
                 self._refresh(changed, revision)
                 self.connection.execute("UPDATE meta SET revision=?", (revision,))
-        return {"lines_read": read, "invalid_lines": invalid, "segments_changed": len(changed)}
+        pending_bytes = 0
+        for path in paths:
+            stat = path.stat()
+            cursor = self.connection.execute("SELECT position FROM ingest WHERE device=? AND inode=?",
+                                             (stat.st_dev, stat.st_ino)).fetchone()
+            pending_bytes += max(0, stat.st_size - (cursor[0] if cursor else 0))
+        return {"lines_read": read, "invalid_lines": invalid, "segments_changed": len(changed),
+                "pending_bytes": pending_bytes}
 
     def get_request(self, request_id: str) -> dict[str, Any] | None:
         request_id = identifier(request_id, required=True)

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections import OrderedDict
 from collections.abc import Callable, Mapping
+from datetime import datetime, timezone
 from pathlib import Path
 import re
 import threading
@@ -204,7 +205,10 @@ class FolderContextInvoker:
         self._lock = threading.Lock()
 
     def __call__(self, name: str, args: Mapping, context: object) -> dict:
-        from image_index_build import GROUP_SIZE, classify_folder_context
+        from image_index_build import (
+            FOLDER_CLASSIFICATION_REASONS, GROUP_SIZE, ImageIndexBuildError,
+            classify_folder_context,
+        )
 
         if name != FOLDER_WORKLOAD or not isinstance(context, ExecutionContext):
             raise ValueError("image indexing workload identity is invalid")
@@ -232,7 +236,26 @@ class FolderContextInvoker:
                 if value is not None:
                     self._cache.move_to_end(key)
             if value is None:
-                value = (self.classifier or classify_folder_context)(label, self.language)
+                try:
+                    value = (self.classifier or classify_folder_context)(label, self.language)
+                except ImageIndexBuildError as error:
+                    if str(error) != "folder_classification_invalid":
+                        raise
+                    # This registered in-process workload owns the diagnostic.
+                    # Preserve frozen result schemas and never persist model text
+                    # or folder labels as exception details.
+                    from .coordinator import StructuredAttemptError
+                    from .worker import ExecutionFailure
+
+                    details = {"reported_error_code": "folder_classification_invalid"}
+                    if (isinstance(error.reason_code, str)
+                            and error.reason_code in FOLDER_CLASSIFICATION_REASONS):
+                        details["reason_code"] = error.reason_code
+                    raise ExecutionFailure(StructuredAttemptError.create(
+                        "executor_unknown", code="execution.runner_failed",
+                        message_key="ERR_DURABLE_EXECUTION_FAILED", retry="manual",
+                        occurred_at=datetime.now(timezone.utc), details_redacted=details,
+                    )) from error
                 if not isinstance(value, str) or len(value) > 8192:
                     raise ValueError("folder classification result is malformed")
                 with self._lock:

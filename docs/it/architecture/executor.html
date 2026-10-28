@@ -401,6 +401,18 @@ manca, il punto unico di invocazione la rifiuta prima di qualunque effetto.
 </p>
 
 <p>
+Un'alternativa di <code>requires_one_of</code> può dichiarare
+<code>input_when = { arg = "client", values = ["google_workspace"] }</code>
+per valere come sorgente soltanto con il selettore indicato. Il proposer vede
+la stessa condizione del manifest. La validazione del piano rinvia il controllo
+se il selettore deve ancora essere risolto; il punto unico di invocazione lo
+applica al valore effettivo, o al default dichiarato, prima degli effetti.
+Un'altra sorgente valida può soddisfare il gruppo senza vietare argomenti
+accessori. Questa dichiarazione non sceglie il backend e non trasforma nomi
+in percorsi; i gruppi senza condizioni conservano il comportamento esistente.
+</p>
+
+<p>
 <strong>I permessi</strong> (<code>capabilities</code>): non &egrave; il manifesto a stabilire
 cosa l'executor pu&ograve; fare. Il manifesto <em>dichiara</em> di cosa avrebbe bisogno per
 funzionare; poi il sistema decide se concedere quei permessi e con che vincoli.

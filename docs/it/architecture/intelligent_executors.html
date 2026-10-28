@@ -120,18 +120,29 @@
  una ricerca aperta, una strategia fra domini o un compito senza un criterio
  netto di completamento: quelle decisioni appartengono al pianificatore.</p>
 
+ <p>I segnaposto sono ammessi soltanto negli esempi generativi. Le osservazioni
+ del sito e i risultati conservano i dati effettivamente rilevati o ne dichiarano
+ l’assenza; un segnaposto non dimostra che una voce sia stata trovata.</p>
+
  <h2 id="login-entry">Accedere a un sito</h2>
  <p>Metnos cerca prima un modulo di accesso. Se non lo trova, segue gli
  ingressi all’area personale e i menu pertinenti. Usa i segnali della pagina;
  quando non bastano, il modello locale sceglie fra i comandi effettivamente
  osservati. Non inventa collegamenti né contiene percorsi dedicati a singoli siti.</p>
+ <p>Una preferenza fra i segnali vale solo se distingue un comando. Alcune
+ pagine usano la parola dell’accesso come verbo generico, ad esempio
+ «Accedi a» seguito da molte sezioni diverse: quella parola non indica
+ l’ingresso e non nasconde il solo comando che l’insieme dei segnali
+ designa senza ambiguità, come «Area clienti».</p>
  <p>La ricerca esplora fino a quattro passaggi per percorso, con un limite
  complessivo di 32 azioni. In un vicolo cieco torna a una diramazione già
  verificata e prova un’alternativa. Se durante il ritorno la pagina è cambiata,
  abbandona quel ramo e torna all’ingresso iniziale per una nuova lettura,
  conservando i comandi già provati e i limiti. Questa ripresa è disponibile
  soltanto prima dell’uso delle credenziali e non ripete il ramo abbandonato.
- Un comando ambiguo resta un motivo di arresto. Una pausa per il consenso
+ Un comando ambiguo resta un motivo di arresto. Un pannello temporaneo che
+ copre la pagina, anche se disegnato dentro un iframe, si chiude soltanto da
+ un’uscita sicura che non naviga e non invia dati. Una pausa per il consenso
  non azzera i tentativi.</p>
  <p>Dopo un clic attende anche la comparsa ritardata del modulo o della nuova
  scheda, entro il tempo della ricerca. Un ingresso già provato non viene
@@ -143,6 +154,14 @@
  da quello previsto impedisce l’invio. Nei moduli a due passaggi distingue
  l’indirizzo email dalla password; un collegamento di accesso fuori dal modulo
  non basta a scambiare una newsletter per una pagina di login.</p>
+ <p>Dopo l’invio osserva la pagina per un intervallo limitato. Un segnale di
+ accesso comparso entro quell’intervallo completa la propria verifica di
+ stabilità, al massimo per le letture che questa richiede; un segnale
+ successivo, interrotto o non osservabile resta non verificato. Se il modulo
+ invia via script e la sua richiesta non ha ancora risposto, l’osservazione
+ si estende una sola volta di un altro intervallo. Una pagina che sta già
+ caricando il documento successivo, come nei rimbalzi dell’accesso unico, non
+ è ancora un esito: l’osservazione e la raccolta attendono quel documento.</p>
  <p>Salvataggio, elenco, uso e cancellazione delle credenziali condividono
  un unico deposito cifrato. L’elenco mostra soltanto metadati. I valori non
  compaiono nei risultati o nei registri e cambiare la cartella dei dati
@@ -154,10 +173,12 @@
  primo elenco non conclude il lavoro: Metnos cerca anche pagine successive,
  archivi, altri periodi e dettagli necessari. I comandi visibili vengono
  esaminati a gruppi, così una pagina molto lunga non nasconde quelli successivi.</p>
- <p>La ricerca esplora fino a tre livelli. Le espansioni dello stesso elenco,
- come la pagina successiva, restano allo stesso livello; un dettaglio completa
+ <p>La ricerca esplora fino a otto livelli. Le espansioni dello stesso elenco,
+ come la pagina successiva, restano allo stesso livello, come i pulsanti che
+ cambiano la pagina sul posto (un menu, l’elenco completo); in quello stato si
+ esplora solo ciò che il cambiamento ha rivelato. Un dettaglio completa
  una voce già trovata. Avanzamenti, scorrimenti e ritorni condividono
- <strong>256 azioni e cinque minuti di lavoro attivo</strong>. Le attese per
+ <strong>256 azioni e dieci minuti di lavoro attivo</strong>. Le attese per
  l’utente non consumano questo tempo e non azzerano i tentativi. Ogni decisione
  del modello locale dispone di 20 secondi, compresi nel tempo complessivo.</p>
  <p>Quando torna su una pagina, Metnos ritrova i comandi già verificati
@@ -165,6 +186,32 @@
  testo visibile della propria riga. Due righe indistinguibili restano ambigue;
  testo nascosto e valori modificabili non vengono usati per distinguerle.
  Un comando non riconoscibile con certezza non viene scelto per posizione.</p>
+ <p>Dopo il clic su un collegamento verso un’altra pagina, Metnos attende che
+ la navigazione si completi. Se invece la pagina risponde sul posto, chiedendo
+ soltanto dati senza caricare un nuovo documento, e poi resta ferma, l’attesa
+ termina subito; senza questa prova vale l’attesa normale.</p>
+ <p>Uno strato senza testo che copre tutta la finestra, mentre nessun comando
+ visibile è raggiungibile, viene trattato come caricamento in corso: Metnos
+ attende che sparisca, entro il limite consueto, prima di leggere la pagina o
+ di chiudere una finestra sottostante. Finestre, pannelli e messaggi scritti
+ che offrono qualcosa da premere non sono considerati veli.</p>
+ <p><strong>Controlli di caricamento:</strong>
+ un errore, un timeout o un risultato non valido del controllo di caricamento
+ non dimostra che la pagina sia pronta. Metnos ripete l’osservazione entro
+ la stessa scadenza, che comprende anche il tempo dei controlli. Una pagina
+ osservata subito come stabile non richiede pause aggiuntive.</p>
+ <p>Allo stesso modo Metnos attende i dati che la pagina sta ancora scaricando,
+ per esempio un elenco di fatture che compare dopo l’apertura. Se una richiesta
+ resta aperta oltre il limite, come un collegamento permanente, la pagina viene
+ letta così com’è.</p>
+ <p>Dopo ogni clic Metnos legge la pagina quando ha smesso di cambiare: alcuni
+ collegamenti cambiano indirizzo e disegnano la nuova pagina dopo il clic. Se
+ una lettura fallisce perché la pagina cambia proprio in quel momento, la
+ ripete una volta, invece di interrompere la raccolta.</p>
+ <p>Il dettaglio di una voce aperto su un’altra pagina serve a completare quella
+ voce: Metnos lo legge, lo conserva e torna indietro, senza esplorare da lì altre
+ sezioni. Per una raccolta completa si apre prima l’elenco intero (per esempio
+ «tutte le bollette»), poi i dettagli.</p>
  <p>Prima di cliccare, Metnos controlla ancora che il comando sia quello
  osservato, nella stessa pagina e nello stesso contesto. Se è cambiato,
  un percorso già visitato può essere preparato di nuovo una sola volta,
@@ -179,24 +226,153 @@
  privilegiando il dettaglio e conservando i campi presenti solo nell’elenco.
  Date o importi uguali non dimostrano che due voci siano la stessa. Viste
  ambigue o troncate restano separate e le osservazioni originali sono conservate.</p>
+ <p>L'identit&agrave; richiede una prova riferita all'elemento e alla fonte.
+ Un numero di contratto, cliente o fornitura non identifica automaticamente
+ una fattura. Il modello deve distinguere il codice dell'elemento dai riferimenti
+ ad altre entit&agrave;, indicare il campo completo e citarne il testo originale.
+ Il lettore assegna l'ambito della prova: il modello non pu&ograve; inventarlo.
+ La verifica della citazione tollera soltanto differenze negli spazi e negli
+ a capo; non ricostruisce numeri, date o importi.</p>
+ <p>Un legame osservato e univoco fra riga e dettaglio consente l'arricchimento
+ anche senza codice: prevale la vista individuale e le alternative osservate
+ restano nelle Note. Lo stesso collegamento nativo pu&ograve; coprire una
+ precedente vista solo nello stesso contesto effettivamente osservato.
+ L'identificativo da solo consente l'unione soltanto quando &egrave; completo,
+ appartiene all'elemento, ha lo stesso ambito e non presenta collisioni o campi
+ incompatibili. Date, importi, posizione e URL generici non bastano.
+ Senza prova sufficiente le righe restano separate, con le ambiguit&agrave;
+ dichiarate. La corretta interpretazione dei ruoli da parte del modello e il
+ foglio finale richiedono ancora verifica sui siti reali.</p>
+
+ <h3>Documenti scaricati e identità delle fatture</h3>
+ <p>Quando l'azione approvata include il salvataggio, i documenti vengono
+ conservati nella cartella indicata, entro i limiti dichiarati, e restituiti
+ come file leggibili nei passi successivi. Un errore o una risposta persa
+ non autorizzano un secondo invio al sito. Le letture HTML e PDF conservano
+ l'esito di ciascun indirizzo, compresi gli errori; un PDF senza testo segnala
+ la necessità del riconoscimento ottico senza dichiararlo già eseguito.</p>
+ <p>Due fatture con codici differenti restano separate anche quando hanno
+ lo stesso numero di fornitura. I separatori nei codici conservano i gruppi
+ osservati: <code>INV-20-005</code> e <code>INV-200-05</code> sono distinti.
+ Le copie equivalenti si uniscono soltanto nel proprio gruppo, senza usare
+ una riga priva del codice per collegare fatture differenti. Queste modifiche
+ sono verificate localmente; il collaudo del flusso completo è ancora richiesto.</p>
+
+ <h3 id="invoice-sheet">Una riga per fattura, classi per intestazione</h3>
+ <p>Nel foglio un identificativo è una riga. Se due pagine riportano valori
+ diversi per lo stesso campo, la riga li mostra tutti separati da « / » ed è
+ dichiarata dati non validi; righe lette in contratti o conti diversi restano
+ separate, con una colonna Contesto quando sono due o più. Un codice presente
+ in tre o più fatture diverse non è il loro numero.</p>
+ <p>Le righe elencate sotto un'intestazione di un'altra classe sono altri
+ elementi: il modello locale etichetta le intestazioni delle pagine rispetto
+ alla richiesta e una pagina di un'altra classe, accanto a una della classe
+ richiesta, non viene letta ed è segnalata nelle Note. Un titolo che nomina solo
+ il contratto o il conto non decide la classe; un dettaglio aperto da una riga
+ la eredita. Nessun elenco di parole decide che cosa è una fattura.</p>
+ <p>Se la richiesta non dice quali elementi raccogliere, Metnos lo chiede con un
+ modulo («Quali elementi?», per esempio fatture o bollette) e poi riprende la
+ richiesta con la risposta. Dopo un login verificato la sessione è salvata
+ cifrata e riusata finché la pagina privata si apre senza accesso; una sessione
+ ripristinata che non porta a nessun elemento non viene più usata.</p>
+ <p><strong>Il modello indica, il codice copia.</strong> Nelle pagine-elenco il
+ codice divide le righe in campi numerati; il modello sceglie, una volta per
+ forma di elenco, quale colonna è numero, data, importo e stato, e il codice
+ copia i valori così come sono scritti nella pagina. Un codice ripetuto in più
+ righe appartiene al loro contenitore (un cliente, un contratto), non a una
+ riga. Una scelta che non supera i controlli lascia la pagina al percorso
+ ordinario di estrazione.</p>
+ <p><strong>Fine della raccolta.</strong> Quando il modello ha finito una lista e
+ non c'è una pagina successiva, la ricerca non torna sulle altre strade dello
+ stesso contratto se le righe coprono già l'anno chiesto: righe dell'anno e una
+ più vecchia, righe fino a gennaio, oppure soltanto righe dell'anno con il filtro
+ del sito già impostato su quell'anno. Le date sono lette con le funzioni
+ condivise delle date osservate, in qualsiasi ordine. Altrimenti la ricerca
+ controlla le altre strade: è la garanzia di non perdere un archivio.</p>
+ <p><strong>Velocità senza perdere controlli.</strong> Una pagina rivista identica,
+ il cui scorrimento non aveva rivelato nulla, non viene scorsa di nuovo; ogni
+ pagina nuova, dettagli compresi, si scorre ancora, perché lo scorrimento lascia
+ anche arrivare i dati tardivi. Dal dettaglio si torna con «indietro» solo se la
+ lista mostra esattamente il testo salvato, nello stesso contratto. Una lista
+ rivista è riconosciuta dall'insieme dei suoi controlli, qualunque sia l'ordine
+ dovuto alla posizione di scorrimento. I dettagli dello stesso tipo (stesso
+ indirizzo senza parametri, stessi controlli) sono letti dal modello una volta:
+ i successivi prendono quella lettura se la loro riga è dell'anno chiesto e la
+ pagina ne mostra la data; altrimenti decide il modello.</p>
+ <p><strong>Robustezza.</strong> Se il tentativo di impostare un filtro delle date
+ non si verifica (per esempio il clic apre solo un calendario), Metnos preme Esc
+ e prosegue sulla pagina com'era prima, senza contare come cambiata la scelta
+ del sito. Un dettaglio vuoto in una seconda scheda, dove altri dettagli dello
+ stesso tipo mostrano dati, viene riaperto una volta nella stessa scheda prima
+ di considerare la riga senza dettaglio.</p>
+ <p><strong>Limiti misurati</strong> (giri reali del 23–25 ottobre): ENI 12 fatture
+ su 12 in circa 5 minuti e mezzo (tre contratti, un dettaglio per fattura: il
+ numero è solo nel dettaglio), Enel circa 2 minuti e mezzo, Fastweb circa 2
+ minuti. Su ENI la raccolta può dichiararsi parziale alla fine, quando dopo
+ l'ultimo contratto il selettore non viene riconosciuto di nuovo: i dati sono
+ completi, la completezza dei contratti non è dimostrata. ENI mostra al più
+ cinque fatture per contratto: un contratto con più fatture nell'anno non
+ sarebbe provato completo. Dopo accessi frequenti i siti possono chiedere una
+ verifica CAPTCHA che richiede una persona.</p>
 
  <h3>Quando interviene un modello cloud</h3>
  <p>Se è configurato, il modello cloud del livello Frontier sceglie i
- percorsi da esplorare; il riconoscimento dei dati rimane locale. Riceve la
- richiesta, lo stato di accesso e i nomi dei comandi con il titolo della loro
- sezione. Non riceve il contenuto completo della pagina, i campi estratti o
- le credenziali. <strong>I nomi dei comandi possono però contenere dati
- personali.</strong> La risposta lo segnala e il passo mostra un simbolo
+ percorsi da esplorare e riconosce i dati visibili durante la raccolta.
+ Anche il ripiego semantico della navigazione riconosciuta come raccolta
+ riceve il contenuto osservato, senza richiedere un quantificatore esaustivo.
+ Una semplice azione ordinaria mantiene il modello locale; osservare dati
+ non autorizza un clic senza comando né dimostra la completezza della raccolta.
+ Per riconoscerli riceve anche il testo osservato della pagina, entro il
+ limite di lettura; la scelta separata del percorso riceve i nomi dei comandi
+ con il titolo della sezione. <strong>Queste osservazioni possono contenere
+ dati personali.</strong> I valori dei campi di accesso restano esclusi.
+ Login, pianificazione, estrazione delle righe e altre operazioni mantengono
+ i rispettivi modelli configurati. La risposta conta le richieste cloud
+ e il passo mostra un simbolo
  <strong>$</strong> rosso; una richiesta già inviata rimane conteggiata anche
  se scade il tempo disponibile.</p>
+ <p><strong>Comportamento aggiornato; collaudo reale ENI/CAPTCHA ancora aperto:</strong>
+ quando la lettura di una pagina alimenta l'estrazione di righe, la
+ navigazione collegata usa la raccolta e conserva le osservazioni anche
+ dopo un cambio di pagina o un errore successivo. Senza quantità indicata,
+ l'obiettivo è raccogliere tutte le voci richieste; anno e altri filtri
+ restano nella richiesta originale. Questa regola non dimostra da sola
+ che la raccolta sia completa: servono le prove di fine ricerca.</p>
  <p>Senza Frontier configurato decide il modello locale. Se Frontier è
  configurato ma la decisione fallisce o scade, la raccolta resta incompleta:
  non passa automaticamente a un altro modello. L’amministratore può disattivare
- questa scelta con <code>METNOS_SITES_FRONTIER_ROUTES=0</code>.</p>
+ entrambe le decisioni cloud con <code>METNOS_SITES_FRONTIER_ROUTES=0</code>.</p>
+
+ <p><strong>Consegnato con la release del 28 ottobre:</strong>
+ la stessa osservazione della raccolta classifica contenuto e contesto,
+ anche quando un filtro è un pulsante senza attributi ARIA. Ogni comando
+ deve essere realmente osservato; il valore richiesto cita la richiesta
+ originale. Un filtro già soddisfatto consente di proseguire senza cambiarlo.
+ Le finestre dei comandi sono verificate tutte prima del primo effetto;
+ classificazioni discordanti o una scena cambiata fermano l'azione.
+ Le fonti conservano il contesto qualificato e il collegamento a un dettaglio
+ viene ammesso soltanto dopo la verifica della scena.</p>
+ <p>Un filtro seleziona la popolazione cercata; un gruppo espandibile rivela
+ righe della stessa popolazione ed è un percorso di raccolta. Un anno nel
+ nome non distingue le due funzioni. Un comando classificato come contesto
+ non può essere contemporaneamente un percorso, anche se il filtro è già
+ soddisfatto.</p>
+ <p>Una partizione pertinente con alternative osservate conserva la ricerca
+ limitata già prevista. Opzioni non classificate, appartenenza ambigua o
+ controlli non verificabili lasciano la raccolta incompleta: il sistema non
+ inventa uno stato del menu. Le prove sintetiche verificano due dettagli e
+ il foglio risultante; la correttezza del file ENI reale resta da verificare.</p>
 
  <h3>Filtri, date e fogli</h3>
- <p>«Tutte» mantiene il significato di raccolta completa anche quando il
- piano abbrevia la richiesta. Periodo, categoria e altri vincoli devono
+ <div class="note"><strong>Collaudo del flusso reale ancora aperto.</strong>
+ Le locuzioni di raccolta, l’osservazione dei pannelli cookie e le sfide robot
+ testuali descritte qui richiedono ancora collaudo e accettazione del flusso reale.</div>
+ <p>«Tutte», «elenco completo» e «lista completa» mantengono il significato
+ di raccolta completa anche quando il piano abbrevia la richiesta, soltanto
+ se affermate per l’oggetto richiesto. Negazioni e divieti non attivano quella
+ raccolta; l’aggettivo «completo» da solo non ne definisce l’estensione.
+ Riconoscere la richiesta non certifica che tutte le voci siano state trovate.
+ Periodo, categoria e altri vincoli devono
  riferirsi senza ambiguità alla stessa azione e valere insieme per ogni voce.
  I filtri si applicano ai dati raccolti: la data di una pagina intermedia
  non basta a escludere un percorso. Un riepilogo o una fattura diversa non
@@ -212,6 +388,11 @@
  corrispondenza univoca con queste differenze e infine una corrispondenza
  univoca senza differenze di punteggiatura e accenti. Non risolve un’ambiguità
  scegliendo il primo campo. Emissione e scadenza restano date distinte.</p>
+ <p>Il lessico comune riconosce anche le equivalenze fra numero identificativo,
+ importo e stato nelle etichette italiane e nelle chiavi inglesi. Il numero
+ identificativo resta distinto dal conteggio. Queste corrispondenze non
+ dipendono dall’ordine dei campi e non richiedono una chiamata al modello;
+ se più campi competono, serve un collegamento esplicito alla chiave.</p>
  <p>Le intestazioni del foglio sono etichette, separate dalle chiavi estratte.
  Con uno schema già dichiarato non aggiungono campi; un collegamento esplicito
  tra intestazione e chiave può richiedere un nuovo campo. In assenza di schema,
@@ -239,15 +420,41 @@
  soltanto contatori e confronti da un insieme chiuso, senza dati della pagina,
  destinazioni o segreti. Questa traccia serve alla diagnosi e non introduce
  nuovi tentativi né certifica la causa di un errore.</p>
+ <h3 id="recovery-candidate">Correzioni candidate del recupero, 15 ottobre 2026</h3>
+ <p>Dopo un accesso verificato, il candidato conserva come punto di ritorno
+ l’indirizzo effettivamente raggiunto, invece della pagina pubblica di apertura.
+ L’unico recupero già previsto non reinvia credenziali o moduli. Richiede la
+ stessa pagina, l’indirizzo esatto e l’origine autorizzata; un cambio o una
+ richiesta di intervento pendente fermano il recupero. Tornare all’indirizzo
+ non costituisce una nuova verifica dell’autenticazione.</p>
+ <p>Nella raccolta, dopo una navigazione già eseguita, un cambio del documento
+ durante il controllo può consentire una sola nuova lettura sulla stessa pagina
+ e origine, entro quattro secondi complessivi e il tempo residuo del chiamante.
+ Il risultato della lettura precedente viene scartato anche se era favorevole.
+ Nessun clic viene ripetuto; una sfida o un consenso pendente restano bloccanti.</p>
+ <p>I nuovi registri distinguono il motivo del recupero e l’esito della scelta
+ locale fra comandi osservati: conservano contatori, durata e categorie chiuse,
+ senza testo della pagina, indirizzi, valori dei campi o risposta del modello.
+ La completezza dichiarata riguarda soltanto la finestra consegnata alla scelta,
+ non l’inventario del sito. La diagnostica non cambia decisioni o tentativi.</p>
+ <p>La qualifica isolata di questi delta resta distinta dalla consegna e dal
+ collaudo sul sito. Non dimostra che il primo comando non trovato sia risolto,
+ che siano state raccolte tutte le fatture o che esista un risolutore CAPTCHA
+ automatico generale o un nuovo supervisore.</p>
  <div class="note"><strong>La raccolta completa è ancora in collaudo.</strong>
  Le prove isolate IT/EN dei filtri sono superate; completezza e assenza di
  duplicati devono ancora essere confermate sul sito reale. Raggiungere un
  limite di tempo, azioni, profondità o lettura produce un risultato parziale,
  senza inventare il numero totale degli oggetti.</div>
  <p>Se un ostacolo interrompe la ricerca, i dati già osservati possono essere
- consegnati anche in un foglio, con l’avviso di raccolta incompleta e la causa.
+ consegnati anche in un foglio. Se il totale atteso non è noto, l’avviso dice
+ che la completezza non è verificata e indica il limite osservato; la verifica
+ delle righe scritte non dimostra che siano state raccolte tutte le fatture.
  Un login fallito, un rifiuto senza dati o un consenso pendente fermano invece
  la sequenza. Un comando ambiguo non giustifica l’aumento dei limiti.</p>
+ <p>Il servizio consente fino a otto sessioni browser contemporanee, anche
+ dello stesso utente. «Chiudi le sessioni web» termina le proprie sessioni;
+ non cambia le preferenze del browser né cancella dati del sito.</p>
 
  <h2 id="human-intervention">CAPTCHA, codici e ripresa</h2>
  <p>I confini del sito e le richieste di consenso restano validi durante
@@ -257,6 +464,20 @@
  senza ripetere il clic o richiedere una nuova decisione al modello.
  I codici OTP vengono chiesti all’utente, salvo automatismi autorizzati
  esplicitamente; non sono trattati come CAPTCHA.</p>
+ <p>Metnos osserva il testo pubblico statico e non modificabile del
+ pannello, anche dentro un modulo o in elementi senza un riquadro proprio
+ (<code>display:contents</code>). Include il nome accessibile del solo pannello
+ e il testo alternativo delle immagini visibili al suo interno. Restano esclusi
+ contenuti nascosti o estranei, valori dei campi, testo modificabile e codice
+ attivo, con gli stessi limiti e oscuramenti. Questi indizi permettono di
+ distinguere anche un avviso promozionale: classificarlo come altro non
+ autorizza a premere <strong>Chiudi</strong>.</p>
+ <p>Il rifiuto dei cookie richiede un significato esplicito nell’etichetta
+ del controllo e una coppia di identificatori osservata nello stesso pannello.
+ Una semplice chiusura o un menu di navigazione non costituiscono un rifiuto.
+ Anche le decisioni conservate vengono ricontrollate; se le evidenze non
+ bastano, Metnos sospende l’azione. Le espressioni di rifiuto provengono dal
+ lessico nativo aggiornabile, senza regole specifiche per ciascun portale.</p>
  <p>Un campo chiamato «codice» o «token» non basta a richiedere un OTP.
  Metnos cerca un campo visibile e modificabile, identificato come codice
  monouso oppure accompagnato da indicazioni di verifica nello stesso modulo
@@ -264,15 +485,88 @@
  in caselle da un carattere. Se più campi non permettono una scelta univoca,
  non inserisce il codice. I campi sensibili restano oscurati e l’invio
  rispetta i confini del sito autorizzato.</p>
- <p>Per i CAPTCHA Cloudflare supportati, Metnos prova una sola volta la
+ <p>Metnos riconosce anche una richiesta testuale esplicita di
+ verificare che l’utente sia umano nel proprio modulo di accesso. Legge la
+ prosa completa, conservando FAQ, citazioni e negazioni intorno al messaggio,
+ anche in presenza di collegamenti, pulsanti o campi vicini. Citazioni
+ illustrative, FAQ e richieste negate non attivano la verifica. I campi delle
+ credenziali visibili possono essere temporaneamente disabilitati: questo
+ non elimina la sfida e non permette di compilarli o inviarli. La richiesta
+ testuale passa al controllo manuale quando non è riconoscibile un widget.</p>
+ <p><strong>Comportamento aggiornato; collaudo reale ENI/CAPTCHA ancora aperto:</strong>
+ il testo di verifica insieme a un solo widget supportato, riconosciuto
+ sulla pagina corrente, non impedisce il tentativo automatico entro i
+ limiti già previsti. Con il solo testo o con widget ambigui, Metnos chiede
+ assistenza. Il tentativo deve comunque essere verificato sulla pagina;
+ non qualifica la risoluzione generale dei CAPTCHA o delle griglie di immagini.</p>
+ <p>Prima del tentativo visuale, Metnos pu&ograve; attivare una sola checkbox
+ nativa o ARIA non selezionata, dentro un unico iframe di un provider
+ riconosciuto. Ricontrolla origine reale, identit&agrave; di frame e controllo,
+ visibilit&agrave;, ostacoli e autorit&agrave; della sessione; nel dubbio non clicca.
+ La navigazione del documento principale o del provider invalida il tentativo.
+ Un discendente del provider pu&ograve; navigare solo se la catena dei frame
+ osservati resta collegata alla stessa pagina e il provider resta figlio diretto
+ del documento principale, con lo stesso URL sorgente; un'ascendenza incerta
+ invalida comunque il tentativo. Navigazioni discendenti o estranee conservano
+ i ricontrolli dell'identit&agrave; del controllo e dell'azionabilit&agrave; nativa.
+ L'audit conta separatamente le navigazioni discendenti qualificate e distingue
+ conflitto di risorsa e revoca dell'autorit&agrave;.
+ Questo tentativo non cattura immagini e non chiama modelli. Se la checkbox
+ &egrave; assente, pu&ograve; attendere il suo caricamento per un massimo di
+ un secondo, entro lo stesso budget e ricontrollando frame e autorit&agrave;.
+ Pi&ugrave; checkbox restano un rifiuto immediato. L'audit distingue i conteggi
+ osservati durante preparazione e verifica; un eventuale censimento DOM dopo
+ il rifiuto non certifica lo stato precedente. Una nuova lettura
+ della pagina controlla che la sfida sia scomparsa, entro il tempo residuo
+ del login. Non verifica il backend del provider; il segno di spunta e il
+ completamento del clic non provano il login. Dopo un comando
+ emesso senza conferma chiede assistenza, senza un secondo clic automatico.
+ Il registro attribuisce esecuzione e decisione all'executor. Griglie,
+ controlli generici e geometrie non qualificate restano esclusi; il controllo
+ DOM e l'input nativo conservano una finestra di cambiamento non atomica.
+ Un comando browser o una chiusura ancora in corso mantiene riservata la
+ sessione fino al completamento verificato, prima del controllo manuale.</p>
+ <p>Quando nessun comando semantico &egrave; stato emesso, per i CAPTCHA
+ Cloudflare supportati Metnos prova una sola volta la
  libreria locale <code>playwright-captcha</code>, nella stessa sessione e per
  non più di dieci secondi. Il tentativo rientra nei limiti del login, viene
- ricontrollato sulla pagina e non usa servizi a pagamento. Se la verifica
- resta aperta o non è supportata, come reCAPTCHA, Metnos chiede il tuo intervento.</p>
+ ricontrollato sulla pagina e non usa servizi a pagamento. Dopo il tentativo
+ locale, il collegamento visuale descritto sotto pu&ograve; valutare una sfida
+ supportata con una sola richiesta Frontier. Se non verifica il superamento,
+ Metnos chiede il tuo intervento.</p>
+ <p>Il supervisore single/swarm &egrave; presente dalla release199; il login
+ usa una sola proposta visuale. Il confronto tra pi&ugrave; alternative &egrave;
+ verificato su casi isolati, ma non &egrave; attivo nel login corrente.
+ La risoluzione automatica generale resta non qualificata. Il solo rilevamento
+ o caricamento di una sfida non autorizza un clic sulla checkbox.</p>
+ <p>L'audit locale distingue il motivo di arresto del risolutore e il passaggio
+ al controllo umano, compreso il caso in cui il risolutore non sia stato
+ chiamato. Registra motivi chiusi e consumi osservati del tentativo corrente,
+ senza aggiungere testo della pagina o immagini. Un esito del sottostadio
+ non certifica il login; l'audit non modifica decisioni o limiti.</p>
+ <p>Il registro delle azioni distingue chi esegue il comando e chi lo sceglie:
+ executor, controllo browser oppure modello. Il controllo browser conserva
+ account e dispositivo autenticati quando disponibili, con origine inclusa
+ nella firma del comando. Questi dati non dimostrano chi abbia premuto
+ fisicamente: l'identit&agrave; umana resta non verificata. Provider e modello
+ sono riportati dalla risposta effettiva; se mancano restano sconosciuti.
+ Le tracce precedenti prive di attribuzione non vengono reinterpretate.</p>
+ <p>Gli eventi di controllo browser e clic CAPTCHA distinguono richiesta,
+ completamento del comando e risultato non confermato. Il completamento del
+ clic non certifica il superamento CAPTCHA o il login. I rifiuti del ritaglio
+ riportano motivi chiusi; contenuti generati visibili su elementi nascosti
+ causano astensione. La verifica geometrica conserva i limiti documentati.</p>
+ <p>La navigazione limita l'attesa finale del controllo alla breve finestra
+ di rilettura: un normale rimpiazzo del nodo permette una nuova osservazione
+ entro il budget esistente. Una destinazione o un controllo realmente cambiati
+ vengono ancora rifiutati prima del clic.</p>
  <p>Il pannello mostra la pagina della sessione già aperta, con i campi
  sensibili oscurati. Puoi cliccare, scorrere, aggiornare l’immagine e premere
- <strong>Riprendi</strong>. Metnos verifica il singolo CAPTCHA e continua
- la richiesta originale. Se le credenziali erano già state inviate, controlla
+ <strong>Riprendi</strong>. Il broker conserva il passaggio manuale nella
+ stessa sessione e continua la richiesta originale soltanto dopo un esito
+ verificato con una nuova osservazione del sito. Un clic o una risposta del
+ modello non provano il superamento; un’osservazione non disponibile non chiude
+ la verifica. Se le credenziali erano già state inviate, controlla
  quel tentativo senza inviarle di nuovo. Il pannello scade dopo dieci minuti;
  annullarlo chiude la sessione. Verifiche che richiedono tastiera o audio
  non sono supportate da questo pannello.</p>
@@ -299,6 +593,49 @@
  Un executor locale o remoto pu&ograve; essere diretto oppure intelligente. Il
  trasporto stabilisce come raggiungerlo; manifest, policy e codice stabiliscono
  che cosa pu&ograve; fare.</div>
+
+ <section id="spin-supervisor">
+ <h2>Supervisore: una proposta o pi&ugrave; alternative</h2>
+ <div class="note"><strong>Capacit&agrave; circoscritta, 17 ottobre 2026.</strong>
+ Il supervisore e l'adattatore visuale hanno superato i controlli isolati
+ e della composizione. L'accettazione sui siti reali resta aperta: le prove
+ non dimostrano una risoluzione generale dei CAPTCHA o tempi migliori.</div>
+ <p>Un executor pu&ograve; incontrare un ostacolo durante un'operazione gi&agrave;
+ autorizzata. In modalit&agrave; <code>single</code> valuta una proposta;
+ in modalit&agrave; <code>swarm</code> confronta alternative indipendenti.
+ Solo il proprietario della risorsa applica la proposta scelta. Le analisi
+ condividono tempo e limiti; un nuovo tentativo non li azzera. Il parallelismo
+ sar&agrave; usato quando le misure ne confermeranno il beneficio.</p>
+ <p>La scelta della proposta e la riuscita dell'operazione sono esiti distinti.
+ Un controllo indipendente verifica il cambiamento sulla sessione corrente.
+ Le risposte tardive vengono scartate. Prima di riprendere il lavoro o
+ restituire il controllo all'utente, tutte le attivit&agrave; possedute devono
+ essere terminate; un arresto incompleto rimane un impedimento esplicito.</p>
+ <h3>Primo adattatore: verifiche visuali</h3>
+ <p>Il progetto mantiene il tentativo locale e il pannello umano esistenti.
+ Per una sfida supportata, un adattatore pu&ograve; richiedere a Frontier una
+ proposta sul solo ritaglio del widget, dopo il tentativo locale. Il
+ collegamento candidato al login consente al massimo una richiesta visuale.
+ Il contratto generale ammette un secondo tentativo soltanto per una nuova
+ sfida osservata, entro il budget comune; questo secondo round non &egrave;
+ attivo nel collegamento corrente. Fotogrammi animati o un errore non concedono
+ altri tentativi.</p>
+ <p>Il primo schema candidato propone un solo clic interno al widget oppure
+ si astiene. Non copre tutte le griglie o le verifiche a pi&ugrave; passi.
+ Un clic, un token o la scomparsa del pannello non provano l'accettazione del
+ sito o il login. Se la verifica manca, il controllo umano usa la stessa
+ sessione dopo l'arresto delle attivit&agrave; automatiche. OTP, consensi e
+ manutenzione conservano i propri percorsi.</p>
+ <p>Una prova completa su un widget sintetico ha verificato il passaggio
+ dell'immagine a Frontier, un solo clic corretto, l'accettazione del sito
+ e l'arresto delle attivit&agrave;. Le prove offline del collegamento al
+ login verificano anche timeout, cancellazione e astensione sulle
+ sovrapposizioni osservabili. Il tempo di lavoro &egrave; 20 secondi, seguito
+ da attese di arresto limitate. Restano da verificare il percorso completo sui siti reali
+ e i CAPTCHA effettivamente incontrati. La griglia &egrave; un candidato
+ separato nel laboratorio e non rientra nella consegna. Gli altri ruoli
+ conservano il modello gi&agrave; configurato.</p>
+ </section>
 
  <p class="related">Approfondimenti: <a href="executor.html">contratto executor</a> &middot; <a href="sandbox.html">sandbox</a> &middot; <a href="skills_backends.html">skill e backend</a> &middot; <a href="agent_runtime.html">runtime agentico</a></p>
 </main>

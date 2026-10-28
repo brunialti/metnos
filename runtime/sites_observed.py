@@ -19,6 +19,7 @@ EMPTY_SURFACE_MAX_CHARS = 32
 
 # Slug STABILE interno -> chiave i18n user-facing (seed IT+EN nel DB, dominio Fable).
 REASON_MSG = {
+    "action_outcome_unknown": "MSG_SITES_RC_ACTION_OUTCOME_UNKNOWN",
     "rate_limited": "MSG_SITES_RC_RATE_LIMITED",
     "http_forbidden": "MSG_SITES_RC_FORBIDDEN",
     "page_unavailable": "MSG_SITES_RC_UNAVAILABLE",

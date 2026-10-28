@@ -3,7 +3,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "open_sites"
-version     = "0.4.0"
+version     = "0.4.2"
 # Apertura context + navigazione: il broker ha timeout interno 20s/op; qui il
 # tetto client è ampio per il fan-out su più url.
 timeout_s   = 120

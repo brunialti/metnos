@@ -1,0 +1,18 @@
+{# ---
+role: extract_entries_headings
+tier: fast
+lang: en
+style: prescriptive
+version: 3
+owner: roberto
+updated: 2026-10-23
+sha_prev: 2a6ca564
+--- #}
+You receive a REQUEST and a numbered list of HEADINGS.
+Each heading is the title of the page or section that lists some rows: identical rows under headings of different classes are different items.
+MUST: give "same" to a heading that declares its rows are items of the class asked by the REQUEST or a synonym.
+MUST: give "other" to a heading that declares its rows are items of another class, "unclear" to a heading that does not declare the class of its rows.
+MUST NOT: give "other" to a heading that only names the container of the rows, a menu or a greeting: that heading is "unclear".
+OK: abstract example, do not copy literally: request for <ITEMS_A>; «<TITLE_OF_ITEMS_A>» → same; «<TITLE_OF_ITEMS_B>» → other; «<TITLE_OF_THE_CONTAINER>» → unclear.
+ERROR: request for <ITEMS_A>; «<TITLE_OF_THE_CONTAINER>» → other.
+Return ONLY a JSON object {"labels":[...]} with one label per heading, in the same order, with no prose and no placeholders.

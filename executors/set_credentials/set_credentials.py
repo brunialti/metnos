@@ -259,15 +259,36 @@ def _build_kind_dialog(declared: dict, binding: str, scopes,
     }
 
 
+def _stored_field_values(payload: dict | None, names) -> dict:
+    """Stored values of the declared fields, top level or legacy `form_data`."""
+    if not isinstance(payload, dict):
+        return {}
+    form = payload.get("form_data") if isinstance(payload.get("form_data"), dict) else {}
+    out = {}
+    for name in names:
+        value = payload.get(name, form.get(name))
+        if not _is_empty_value(value):
+            out[name] = value
+    return out
+
+
 def _build_fields_dialog(declared: dict, kind: str, binding: str, scopes,
-                         expires_at) -> dict:
+                         expires_at, stored: dict | None = None) -> dict:
     """Form dei campi dallo schema dichiarativo del dominio (ADR 0199).
     I valori tornano annidati in `fields` (merge_into) direttamente
-    all'executor: nessun segreto transita dal planner."""
+    all'executor: nessun segreto transita dal planner.
+
+    With `stored` (update of an existing credential, ADR 0232 addendum) the
+    non-secret fields show their stored value and a secret field may be left
+    empty to keep the stored one; secret values never enter the dialog."""
     steps = []
+    kept = _stored_field_values(stored, [
+        str(field["name"]) for field in declared[kind]["fields"]])
     for field in declared[kind]["fields"]:
+        name = str(field["name"])
+        secret = field.get("secret") is not False
         step = {
-            "var": str(field["name"]),
+            "var": name,
             "prompt": _msg(str(field["prompt_key"])),
             "schema": {"kind": str(field["input"])},
         }
@@ -275,10 +296,18 @@ def _build_fields_dialog(declared: dict, kind: str, binding: str, scopes,
             step["optional"] = True
         if field.get("default"):
             step["default"] = str(field["default"])
+        if stored is not None and name in kept:
+            if secret:
+                step["optional"] = True
+                step["prompt"] += " " + _msg("MSG_CREDENTIAL_KEEP_IF_EMPTY")
+            else:
+                step["default"] = str(kept[name])
         steps.append(step)
     args_base = _carryover_args(binding, scopes, expires_at)
     args_base["credential_kind"] = kind
     args_base["_fields_form"] = True
+    if stored is not None:
+        args_base["_update_form"] = True
     return {
         "title": _msg("MSG_CREDENTIAL_FIELDS_TITLE", binding=binding),
         "dialog": steps,
@@ -354,6 +383,33 @@ def invoke(args):
     # the persisted profile. The marker is internal and absent from manifest.
     if credential_mandate is not None and not mandate_form:
         credential_mandate = None
+    # Update of an existing credential from the administration page: the same
+    # fields form as a new one, filled with the stored non-secret values. The
+    # marker is internal and absent from the manifest, like `_mandate_form`.
+    update_form = args.get("_update_form") is True and exists
+    declared = args.get("credential_forms")
+    if (update_form and fields is None and pending_id is None
+            and credential_mandate is None):
+        if not isinstance(declared, dict) or not declared:
+            return {"ok": False, "error": _msg(
+                "ERR_ARG_MISSING", arg="credential_forms")}
+        kind = (args.get("credential_kind")
+                or _cred.kind_for_binding(binding, declared)
+                or ("site" if _is_site_payload(binding, existing_payload) else None))
+        if kind not in declared:
+            return {"ok": False, "error": _msg(
+                "ERR_ARG_INVALID", arg="credential_kind",
+                reason=", ".join(sorted(declared)))}
+        payload = _build_fields_dialog(
+            declared, kind, binding, scopes, expires_at,
+            stored=existing_payload or {})
+        result = {
+            "ok": True, "decision": "needs_inputs",
+            "needs_inputs": payload, "results": [],
+            "final_message_hint": payload["title"],
+        }
+        _assert_no_secrets_in_return(result)
+        return result
     if (fields is None and credential_mandate is None
             and _is_site_payload(binding, existing_payload)):
         payload = _build_policy_update_dialog(binding)
@@ -468,6 +524,20 @@ def invoke(args):
     if args.get("_fields_form") is True and isinstance(fields, dict):
         fields = {k: v for k, v in fields.items()
                   if not _is_empty_value(v)}
+    # An update keeps what the form left empty, the chosen usage policy and
+    # the origins the user already approved: the user asked to change these
+    # credentials, so no overwrite question and no new policy form.
+    if update_form and isinstance(fields, dict) and pending_id is None:
+        kind_spec = (declared or {}).get(args.get("credential_kind")) or {}
+        names = [str(f.get("name")) for f in kind_spec.get("fields") or ()
+                 if isinstance(f, dict)]
+        fields = {**_stored_field_values(existing_payload, names), **fields}
+        stored = existing_payload if isinstance(existing_payload, dict) else {}
+        if scopes is None and stored.get("scopes") is not None:
+            scopes = stored["scopes"]
+        if expires_at is None and stored.get("expires_at"):
+            expires_at = stored["expires_at"]
+        replace = True
 
     err = _validate_fields(fields)
     if err is not None:
@@ -482,14 +552,18 @@ def invoke(args):
         isinstance(fields, dict)
         and any(key in fields for key in _cred_fields)
         and (fields.get("binding") == "web" or "." in binding))
-    if is_site_binding and pending_id is None:
+    if is_site_binding and pending_id is None and not (
+            update_form and scopes is not None):
         pid = _stash_pending({
             "fields": fields, "scopes": scopes, "expires_at": expires_at,
             "credential_origins": credential_origins,
         })
         payload = _build_save_policy_dialog(
             binding, sorted(str(k) for k in fields), pid,
-            overwrite=exists)
+            overwrite=exists and not update_form)
+        if update_form:
+            payload["on_complete"]["args_base"].update(
+                {"_update_form": True, "replace": True})
         result = {
             "ok": True, "decision": "needs_inputs",
             "needs_inputs": payload, "results": [],
@@ -535,6 +609,10 @@ def invoke(args):
     # (sottodomini first-party inclusi), risolta a runtime da `origin_authorized`.
     if is_site_binding and origins_norm is not None:
         payload_to_store["credential_origins"] = origins_norm
+    if update_form and isinstance(existing_payload, dict):
+        for key in ("credential_origins", "approved_origins"):
+            if key not in payload_to_store and key in existing_payload:
+                payload_to_store[key] = existing_payload[key]
 
     replaced = bool(exists)
     if replaced:
@@ -551,7 +629,7 @@ def invoke(args):
     fp = _fingerprint_payload(payload_to_store)
     fields_count = len([k for k in payload_to_store.keys()
                         if k not in ("scopes", "expires_at",
-                                     "credential_origins")])
+                                     "credential_origins", "approved_origins")])
     out_scopes = list(scopes) if scopes is not None else []
     result = {
         "ok": True,

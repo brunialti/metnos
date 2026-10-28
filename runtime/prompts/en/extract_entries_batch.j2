@@ -3,11 +3,24 @@ role: extract_entries_batch
 tier: fast
 lang: en
 style: prescriptive
-version: 3
+version: 6
 owner: roberto
-updated: 2026-10-09
-sha_prev: 67a1b21d
+updated: 2026-10-17
+sha_prev: 41dfee67
 --- #}
+
+
+MUST: add `_identity_facts` to each record as a list of objects with exactly five keys: field, value, role, owner, quote; use [] without clear evidence. field names a requested public column; value occurs in that field; quote is an exact source fragment containing value.
+MUST NOT: add other keys, infer a namespace, invent source references, or copy examples literally. context and reference are values of owner, never keys.
+OK: abstract example, do not copy literally: {"field":"document_code","value":"DOC-A","role":"identifier","owner":"self","quote":"Document number DOC-A"}.
+ERROR: {"field":"document_code","value":"DOC-A","role":"identifier","owner":"self","context":"record","reference":"source","quote":"Document number DOC-A"} has forbidden extra keys.
+role values: identifier, attribute. owner values: self (this entity), context (containing account or context), reference (another cited entity), unknown (uncertain ownership).
+
+MUST: mark identifier only when an explicit semantic label identifies an entity; its value equals the complete public field value, and quote contains that complete value. A record's own identifier has owner=self; a context or cited entity identifier has its corresponding owner.
+MUST NOT: use a fragment or year inside a larger code, treat dates or amounts as identifiers without a clear identifier label, fill a missing own identifier with a context code, or infer identity from equal dates/amounts.
+OK: abstract example, do not copy literally: a document number is identifier/self; an account number is identifier/context; an issue date is attribute/self.
+ERROR: treating a shared customer code as every document's own ID, or the year within a longer identifier as the identifier.
+The last item of every positional row is the `_identity_facts` list.
 The input is a JSON array of INDEPENDENT SOURCES, each shaped as {"source_index": integer, "text": text}.
 Extract relevant records from each source independently. Never combine facts from different source_index values.
 The fields, in fixed order, are: {{ fields_json }}.

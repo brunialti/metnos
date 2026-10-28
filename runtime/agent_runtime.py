@@ -1437,6 +1437,10 @@ def validate_args(args, schema):
     # tipo «paths OR urls OR from_step» senza prompt teaching ad-hoc nella
     # description. Un arg e' considerato "fornito" se: presente nel dict
     # E non-vuoto (string non-blank, list non-empty, dict non-empty).
+    from from_step_projection import missing_applicable_input_groups
+    for group in missing_applicable_input_groups(
+            args, schema, allow_deferred=True):
+        failures.append(msg("ERR_ARG_MISSING", arg=" | ".join(group)))
     for group in (schema.get("requires_one_of") or []):
         if not isinstance(group, list) or not group:
             continue
@@ -3480,12 +3484,26 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
     if turn_id is not None or "_turn_id" in args:
         args["_turn_id"] = turn_id or ""
 
+    # Conditional source alternatives must apply to the resolved selector.
     # Source-scoped identifiers (for example IMAP UIDs) are meaningless and
     # potentially dangerous without the scalar context declared by the
     # manifest.  Enforce that contract at the invocation choke-point so it
     # also covers fast paths, resumes, async submission and validator-off
     # deployments.  No executor name or provider is hardcoded here.
-    from from_step_projection import required_source_context_fields
+    from from_step_projection import (
+        missing_applicable_input_groups, required_source_context_fields,
+    )
+    _missing_inputs = missing_applicable_input_groups(
+        args, getattr(executor, "args_schema", None),
+    )
+    if _missing_inputs:
+        return {
+            "ok": False,
+            "error_class": "invalid_args",
+            "error_code": "ERR_ARG_MISSING",
+            "error": msg("ERR_ARG_MISSING", arg=" | ".join(_missing_inputs[0])),
+            "input_groups": _missing_inputs,
+        }
     _missing_source_context = required_source_context_fields(
         args, getattr(executor, "args_schema", None),
         allow_deferred_from_step=False,
@@ -4226,6 +4244,7 @@ def _mutation_receipt_context(steps: list) -> list[str]:
         for item in candidates:
             if not isinstance(item, str):
                 continue
+            item = _receipt_identity(item)
             clean = " ".join(item.strip().split())
             if not clean or len(clean) > 240:
                 continue
@@ -4257,6 +4276,30 @@ def _mutation_receipt_context(steps: list) -> list[str]:
     return values
 
 
+def _receipt_identity(value: str) -> str:
+    """The human identity of a target: a file inside Metnos's own data is its
+    name (the chat delivers the file itself), any other value stays whole."""
+    try:
+        path = Path(value)
+        if path.is_absolute() and path.resolve().is_relative_to(
+                Path(_C.PATH_USER_DATA).resolve()):
+            return path.name
+    except (OSError, ValueError, TypeError):
+        pass
+    return value
+
+
+def _identity_visible(value: str, folded_message: str) -> bool:
+    """A file name counts as named when its stem appears in the answer."""
+    if value.casefold() in folded_message:
+        return True
+    path = Path(value)
+    # Only a bare file name may be named by its stem. Other
+    # paths and URLs retain the full target identity.
+    stem = path.stem if path.name == value and path.suffix else ""
+    return bool(stem) and stem.casefold() in folded_message
+
+
 def _ensure_mutation_receipt_context(
         final_message: str, steps: list, effect_counts: dict | None) -> str:
     """Append missing committed-target identities to a mutation answer.
@@ -4272,7 +4315,7 @@ def _ensure_mutation_receipt_context(
     anchors = _mutation_receipt_context(steps)
     folded_message = (final_message or "").casefold()
     missing = [value for value in anchors
-               if value.casefold() not in folded_message]
+               if not _identity_visible(value, folded_message)]
     if not missing:
         return final_message
     receipt = msg(
@@ -4280,6 +4323,29 @@ def _ensure_mutation_receipt_context(
     if not isinstance(receipt, str) or receipt.startswith("<missing:"):
         return final_message
     return ((final_message or "").rstrip() + "\n\n" + receipt).strip()
+
+
+def _ensure_verified_table_rows(final_message: str, steps: list) -> str:
+    """A verified table receipt counts data rows, never the whole source archive."""
+    seen = set()
+    tables = []
+    for step in steps:
+        result = step.result if isinstance(step.result, dict) else {}
+        rows = result.get("data_rows")
+        if (result.get("ok") is not True or result.get("verified") is not True
+                or not result.get("contract_version") or not result.get("sheets")
+                or type(rows) is not int or rows < 0):
+            continue
+        title = str(result.get("title") or Path(str(result.get("path") or "")).stem)
+        if not title or (title, rows) in seen:
+            continue
+        seen.add((title, rows))
+        tables.append((title, rows))
+    for title, rows in tables:
+        notice = msg("MSG_TABLE_VERIFIED_ROWS_SINGLE" if len(tables) == 1 else "MSG_TABLE_VERIFIED_ROWS", title=title, rows=rows)
+        if notice and not notice.startswith("<missing:") and notice not in (final_message or ""):
+            final_message = ((final_message or "").rstrip() + "\n\n" + notice).strip()
+    return final_message
 
 
 _I18N_PAYLOAD_KEY_RE = re.compile(r"(?:MSG|ERR|WARN)_[A-Z0-9_]+")
@@ -4649,7 +4715,7 @@ class TurnLog:
                 self.final_message = ((self.final_message or "").rstrip()
                                       + "\n\n" + _prot_note).strip()
 
-    def _collect_failure_notices(self):
+    def _collect_failure_notices(self, *, upstream_notices: tuple[str, ...] = ()):
         """§2.8 (mai silent failure): rende VISIBILI i fallimenti per-item/account
         (`failed[]`/`fail_count`) di uno step producer. Senza questo, account IMAP
         falliti (es. SSL 'bad record mac') → il conteggio cade a 0 e il final
@@ -4661,6 +4727,12 @@ class TurnLog:
             # An explicit semantic partial result remains visible even when
             # the step is a processor or the final action creates a file.
             reason = res.get("partial_reason")
+            if res.get("partial_source_only") is True and isinstance(reason, str):
+                # Only the same localized source notice is already
+                # covered. Other sources and writer failures stay visible.
+                reason = "\n".join(line for line in reason.splitlines()
+                                   if line.strip() not in upstream_notices
+                                   and line.strip() not in seen)
             if res.get("partial") is True and isinstance(reason, str) and reason.strip():
                 notice = reason.strip()
                 if notice not in seen:
@@ -5306,6 +5378,8 @@ class TurnLog:
         presentazione strutturata copre l'intero turno, compreso il rapporto
         fra lavoro completo e limite di visualizzazione.
         """
+        from tabular_records import collection_limit_message
+
         notices = []
         seen = set()
         _turn_authoritative = _turn_has_authoritative_presentation(self)
@@ -5320,6 +5394,11 @@ class TurnLog:
         for s in self.steps:
             res = s.result if isinstance(s.result, dict) else {}
             if not res.get("truncated"):
+                continue
+            # A truncation inherited from the source was announced by its
+            # producer. Repeating it here named this step's tool and mixed its
+            # counts (real turn 92f548a3: «Hai 3 create_files_spreadsheet…»).
+            if res.get("source_truncated") is True and res.get("writer_truncated") is not True:
                 continue
             _presentation = res.get("authoritative_presentation")
             if (_turn_authoritative
@@ -5395,6 +5474,15 @@ class TurnLog:
                     seen.add(key)
                     notices.append(msg(
                         "MSG_TRUNCATED_NO_TOTAL", used=used, what=what))
+                continue
+            limit = collection_limit_message(res.get("cap_field"), res.get("cap_value"))
+            if available is None and limit:
+                limit_key, limit_parameters = limit
+                key = ("collection_limit", limit_key, limit_parameters["cap_value"])
+                if key not in seen:
+                    seen.add(key)
+                    notices.append(msg("MSG_COLLECTION_COMPLETENESS_UNVERIFIED",
+                                       detail=msg(limit_key, **limit_parameters)))
                 continue
             key = (what, used, available)
             if key in seen:
@@ -5530,12 +5618,15 @@ class TurnLog:
             # executor, provider o fixture e nessun ID opaco hard-coded.
             self.final_message = _ensure_mutation_receipt_context(
                 self.final_message, self.steps, self.effect_counts)
+            self.final_message = _ensure_verified_table_rows(self.final_message, self.steps)
             # §2.8: rendi visibili i fallimenti per-item/account (no silent "Hai 0").
-            for _fn in self._collect_failure_notices():
+            _truncations = self._collect_truncation_notices()
+            for _fn in self._collect_failure_notices(
+                    upstream_notices=tuple(_truncations)):
                 if _fn and _fn not in (self.final_message or ""):
                     self.final_message = ((self.final_message or "").rstrip()
                                           + "\n\n" + _fn).strip()
-            for notice in self._collect_truncation_notices():
+            for notice in _truncations:
                 if notice and notice not in (self.final_message or ""):
                     self.final_message = (
                         notice + "\n\n" + (self.final_message or "")
@@ -7068,10 +7159,35 @@ def _run_engine(
         )
         if site_intent and _site_owner:
             import users as _users
-            _site_invocation_url = _users.resolve_site_invocation(
-                _site_owner, query)
+            _site_invocation_url = _users.resolve_invocation(
+                _site_owner, query, "site")
     except Exception as exc:  # An absent address book cannot break other turns.
         log.warning("site invocation lookup failed: %r", exc)
+    # Mailbox names follow the same rule: only once the request is about
+    # messages, and only to choose the mailbox. The plan guard decides whether
+    # the planner used the name as the mailbox or as text to search.
+    _mail_invocations: dict = {}
+    try:
+        mail_intent = (
+            str(getattr(intent, "object", "") or "").lower() == "messages"
+            or any(isinstance(a, dict)
+                   and str(a.get("object") or "").lower() == "messages"
+                   for a in (getattr(intent, "actions", None) or []))
+        )
+        if mail_intent and _site_owner:
+            import users as _users
+            _mail_invocations = {
+                "names": {
+                    _users._invocation_fold(name): entry["target"]
+                    for entry in _users.list_invocation_names(_site_owner)
+                    if entry["kind"] == "mail"
+                    for name in (entry["name"], *entry["synonyms"])
+                },
+                "matched": [m for m in _users.match_invocation_names(
+                    _site_owner, query) if m["kind"] == "mail"],
+            }
+    except Exception as exc:  # An absent address book cannot break other turns.
+        log.warning("mail invocation lookup failed: %r", exc)
     if _site_invocation_url is None:
         return {
             "steps": [], "final_text": msg("MSG_SITE_INVOCATIONS_AMBIGUOUS"),
@@ -7340,6 +7456,7 @@ def _run_engine(
     runtime_ctx = {
         "actor": actor or "",
         "site_invocation_url": _site_invocation_url,
+        "mail_invocations": _mail_invocations,
         # The dispatch layer rewrites pending dialog callbacks after executor
         # execution.  Keep the authenticated immutable owner in that context:
         # actor/channel alone identify the conversation endpoint, not the

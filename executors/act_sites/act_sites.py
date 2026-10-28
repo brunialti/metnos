@@ -10,9 +10,8 @@ from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parents[2]
 _RT = os.environ.get("METNOS_RUNTIME") or str(_ROOT / "runtime")
-for p in (_RT, str(_ROOT / "executors" / "get_approval")):
-    if p not in sys.path:
-        sys.path.insert(0, p)
+if _RT not in sys.path:
+    sys.path.insert(0, _RT)
 
 from executor_helpers import run_stdio  # noqa: E402
 from messages import get as _msg  # noqa: E402
@@ -21,6 +20,7 @@ from playwright_sidecar.action_resolver import (  # noqa: E402
     is_goal_navigation_request)
 from sites_observed import REASON_MSG  # noqa: E402
 from tabular_records import merge_source_metadata  # noqa: E402
+import sites_downloads  # noqa: E402
 
 
 def _collect_session_ids(args: dict) -> list[str]:
@@ -59,6 +59,8 @@ def _failure_message(results: list[dict]) -> str:
         message = _msg("MSG_SITES_RC_UNAVAILABLE")
     elif reason == "side_browser_unavailable":
         message = _msg("MSG_SITES_RC_SIDE_BROWSER_UNAVAILABLE")
+    elif reason.startswith("download_"):
+        message = _msg("MSG_SITES_DOWNLOAD_FAILED")
     elif reason == "selector_ambiguous":
         # Il broker rifiuta di INDOVINARE fra piu' elementi equivalenti, ed
         # e' giusto cosi'. Ma i candidati li ha gia' in mano
@@ -85,7 +87,6 @@ def _failure_message(results: list[dict]) -> str:
 
 def invoke(args: dict) -> dict:
     owner = os.environ.get("METNOS_ACTOR") or "host"
-    channel = os.environ.get("METNOS_CHANNEL") or ""
     session_ids = _collect_session_ids(args)
     action = args.get("action")
     if not session_ids:
@@ -110,16 +111,49 @@ def invoke(args: dict) -> dict:
     if not isinstance(approval_tokens, dict):
         approval_tokens = {}
 
+    continuation_ids = args.get("continuation_ids") or {}
+    if not isinstance(continuation_ids, dict):
+        continuation_ids = {}
+    continuation_ids = {sid: token for sid, token in continuation_ids.items()
+                        if isinstance(token, str) and token}
+    download_request = None
+    if args.get("dst_dir"):
+        try:
+            destination = sites_downloads.destination_binding(args["dst_dir"], actor=owner)
+            cap = sites_downloads.limits(args.get("download_limits"))
+            download_request = {"destination": destination, "limits": cap}
+        except sites_downloads.DownloadError as exc:
+            return {"ok": False, "error_class": str(exc), "results": [], "entries": []}
+    elif args.get("download_limits"):
+        return {"ok": False, "error_class": "download_destination_invalid", "results": [], "entries": []}
+    download_args = ({"dst_dir": args["dst_dir"], "download_limits": download_request["limits"]}
+                     if download_request else {})
+    captcha_pending = []
     results = []
     pending = []
     attachments = []
     source_metadata = []
+    file_entries = []
     for sid in session_ids:
+        if (download_request and
+                (len(file_entries) >= download_request["limits"]["max_files"]
+                 or sum(item["bytes"] for item in file_entries)
+                    >= download_request["limits"]["max_total_bytes"])):
+            results.append({"session_id":sid,"ok":False,"executed":False,
+                            "primitive":"download","reason_code":"download_budget_exceeded"})
+            continue
         res = session_client.session_act(
             session_id=sid, owner=owner, action=action, value_ref=value_ref,
             approval_token=approval_tokens.get(sid),
             goal_query=(action if goal_mode else None),
-            done_when=done_when or None, scope=ambito or None)
+            record_mode=(args.get("_record_mode") is True),
+            done_when=done_when or None, scope=ambito or None,
+            **({"download_request": download_request} if download_request else {}),
+            **({"continuation_id": continuation_ids[sid]} if sid in continuation_ids else {}))
+        if isinstance(res.get("continuation_id"), str) and res["continuation_id"]:
+            continuation_ids[sid] = res["continuation_id"]
+        if res.get("user_control_required"):
+            captcha_pending.append(sid)
         session_metadata = merge_source_metadata(res.get("source_metadata"))
         source_metadata = merge_source_metadata(source_metadata, session_metadata)
         if res.get("approval_required"):
@@ -130,6 +164,26 @@ def invoke(args: dict) -> dict:
             if shot:
                 attachments.append(_attachment(shot, bool(res.get("sensitive"))))
             continue
+        if res.get("ok") and isinstance(res.get("download"), dict):
+            captured = res["download"]
+            try:
+                if not download_request:
+                    raise sites_downloads.DownloadError("download_scope_missing")
+                if (len(file_entries) >= download_request["limits"]["max_files"]
+                        or sum(item["bytes"] for item in file_entries) + captured["bytes"]
+                        > download_request["limits"]["max_total_bytes"]):
+                    raise sites_downloads.DownloadError("download_budget_exceeded")
+                published = sites_downloads.publish(download_request["destination"], captured,
+                    lambda target: session_client.session_download_transfer(
+                        session_id=sid, owner=owner, captured=captured, target=target,
+                        timeout_s=download_request["limits"]["timeout_s"]), actor=owner)
+                ack = session_client.session_download_ack(session_id=sid, owner=owner, captured=captured)
+                file_entries.append({**published, "session_id": sid,
+                    "source_url": captured.get("url"), "action_id": captured.get("action_id"),
+                    "state": "acknowledged" if ack.get("ok") else "published_ack_pending"})
+            except sites_downloads.DownloadError as exc:
+                res = {**res, "ok": False, "error_class": str(exc),
+                       "automatic_resume_blocked": True}
         # ARRIVARE NON E' MOSTRARE. Una navigazione a obiettivo che riesce ha
         # portato la sessione DOVE l'utente voleva guardare: fermarsi a
         # «azione completata» significa rispondere «fatto» a chi aveva chiesto
@@ -147,7 +201,7 @@ def invoke(args: dict) -> dict:
         # A failed collection carries only evidence saved before the failure.
         # Do not read the current page or certify the search as complete.
         letto = res if collection_partial else None
-        if (res.get("ok") and not collection_partial and not res.get("no_match")
+        if (res.get("ok") and not download_request and not collection_partial and not res.get("no_match")
                 and (goal_mode or is_goal_navigation_request(action))):
             try:
                 letto = session_client.session_read(
@@ -155,6 +209,8 @@ def invoke(args: dict) -> dict:
                     goal=(done_when or action))
             except Exception:
                 letto = None         # la lettura e' un di piu': mai un blocco
+        if isinstance(letto, dict) and letto.get("user_control_required"):
+            captcha_pending.append(sid)
         if isinstance(letto, dict) and (letto.get("ok") or collection_partial):
             session_metadata = merge_source_metadata(
                 session_metadata, letto.get("source_metadata"))
@@ -183,6 +239,7 @@ def invoke(args: dict) -> dict:
             **({"source_metadata": session_metadata} if session_metadata else {}),
             "reason_code": (None if res.get("ok") else
                             res.get("reason_code") or res.get("error_class")),
+            **({"automatic_resume_blocked":True} if res.get("automatic_resume_blocked") else {}),
             **({"reason_detail": res.get("detail")} if res.get("detail") else {}),
             **({"observed_candidates": res.get("observed_candidates")}
                if res.get("observed_candidates") else {}),
@@ -195,36 +252,77 @@ def invoke(args: dict) -> dict:
             attachments.append(_attachment(
                 shot, bool(res.get("sensitive"))))
 
+    if captcha_pending or (pending and continuation_ids):
+        # A lost response can hide an effect even when its result is false.
+        # Reinvoking the vector requires a receipt for every session; retain
+        # the unfinished sessions without creating a repeating callback.
+        uncertain = [sid for sid in session_ids if sid not in continuation_ids]
+        if uncertain:
+            out = {"ok": False, "error_class": "action_outcome_unknown",
+                   "automatic_resume_blocked": True,
+                   "uncertain_sessions": uncertain,
+                   "pending_sessions": list(dict.fromkeys(
+                       [sid for sid, _, _ in pending] + captcha_pending)),
+                   "continuation_ids": continuation_ids,
+                   "approval_tokens": {**approval_tokens,
+                                       **{sid: token for sid, token, _ in pending}},
+                   "results": results, "entries": file_entries}
+            if source_metadata:
+                out["source_metadata"] = source_metadata
+            if attachments:
+                out["attachments"] = attachments
+            return out
+
     if pending:
         # Un solo gate BATCH per l'intento multi-sessione (§12-bis).
-        from get_approval import invoke as approval_invoke
+        from approval_request import approval_request
         tokens = {sid: token for sid, token, _ in pending}
         descriptions = "; ".join(
             str(res.get("description") or action) for _, _, res in pending)
         prompt = _msg("MSG_SITES_APPROVAL_PROMPT", action=descriptions)
-        gate = approval_invoke({
-            "prompt": prompt,
-            "title": _msg("MSG_SITES_APPROVAL_TITLE"),
-            "actor": owner, "channel": channel,
-            "timeout_s": 3600,
-            "on_approve": {"tool": "act_sites", "args": {
-                "session_ids": list(tokens), "action": action,
-                "approval_tokens": tokens,
+        gate = approval_request(
+            prompt=prompt,
+            title=_msg("MSG_SITES_APPROVAL_TITLE"),
+            timeout_s=3600,
+            on_approve={"tool": "act_sites", "args": {
+                "session_ids": session_ids if continuation_ids else list(tokens), "action": action,
+                "approval_tokens": {**approval_tokens, **tokens},
+                **({"continuation_ids": continuation_ids} if continuation_ids else {}),
                 **({"done_when": done_when} if done_when else {}),
                 **({"ambito": ambito} if ambito else {}),
                 **({"_goal_mode": True} if goal_mode else {}),
+                **({"_record_mode": True} if args.get("_record_mode") is True else {}),
                 **({"value_ref": value_ref} if value_ref is not None else {}),
+                **download_args,
             }},
-            "on_reject": {"tool": "delete_sites", "args": {
+            on_reject={"tool": "delete_sites", "args": {
                 "session_ids": list(tokens),
             }},
-        })
+        )
         if attachments:
             gate["attachments"] = attachments
         gate["pending_sessions"] = list(tokens)
+        if file_entries:
+            gate["entries"] = file_entries
         if source_metadata:
             gate["source_metadata"] = source_metadata
         return gate
+
+    if captcha_pending:
+        from playwright_sidecar.challenge_handoff import request
+        handoff = request(executor="act_sites", sessions=captcha_pending, args={
+            "session_ids": session_ids, "action": action,
+            "continuation_ids": continuation_ids, "approval_tokens": approval_tokens,
+            **({"done_when": done_when} if done_when else {}),
+            **({"ambito": ambito} if ambito else {}),
+            **({"_goal_mode": True} if goal_mode else {}),
+            **({"_record_mode": True} if args.get("_record_mode") is True else {}),
+            **({"value_ref": value_ref} if value_ref is not None else {}),
+            **download_args,
+        })
+        handoff.update(results=results, source_metadata=source_metadata,
+                       no_frontier=True, entries=file_entries)
+        return handoff
 
     # The step delivers usable evidence from every session. Per-session ok
     # still describes the search; partial explicitly forbids complete success.
@@ -232,6 +330,13 @@ def invoke(args: dict) -> dict:
     out = {"ok": ok, "results": results,
            "metadata": {"executed": sum(1 for r in results if r["executed"]),
                         "total": len(results)}}
+    if download_request:
+        out["entries"] = file_entries
+        # Published files are a subset of the original session scope. Keep
+        # unfinished sessions available for manifest-driven continuation.
+        out["session_ids"] = session_ids
+        if continuation_ids:
+            out["continuation_ids"] = continuation_ids
     if source_metadata:
         out["source_metadata"] = source_metadata
     partials = [r for r in results if r.get("collection_partial")]
@@ -249,6 +354,9 @@ def invoke(args: dict) -> dict:
     if attachments:
         out["attachments"] = attachments
     if ok:
+        if download_request:
+            out["final_message_hint"] = _msg("MSG_SITES_DOCUMENTS_SAVED", n=len(file_entries))
+            return out
         arrivato = next((r for r in results if r.get("text")), None)
         if any(r.get("no_match") for r in results) and not arrivato:
             out["final_message_hint"] = _msg("MSG_NO_RESULTS")

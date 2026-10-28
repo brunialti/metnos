@@ -227,7 +227,8 @@ class TemporaryStorage:
 
     A configured handoff must durably and idempotently accept the exact
     owner/workload/version and detached capabilities before returning ``None``.
-    It may be called again after a crash or a reported failure.
+    It may be called again after a crash or a reported failure. The detached
+    trees are purged right after acceptance, with or without a handoff.
     """
 
     def __init__(self, store, resolve_workspaces, *, artifact_workspace=None,
@@ -318,17 +319,15 @@ class TemporaryStorage:
                                 raise OSError("detached workspace handoff failed") from exc
                             if accepted is not None:
                                 raise ValueError("detached workspace handoff returned a value")
-                            # The physical owner now accounts for the detached
-                            # trees. LRE no longer reports them as job scratch.
-                            size = files = 0
-                            status = "clean"
-                        else:
-                            for path in paths:
-                                path.purge()
-                            remaining = [path.measure() for path in paths]
-                            size = sum(item[0] for item in remaining)
-                            files = sum(item[1] for item in remaining)
-                            status = "pending" if size or files else "clean"
+                        # Acceptance is a proof, not a deferred removal: no
+                        # collector is guaranteed to run, so LRE always purges
+                        # and reports only what is really left on disk.
+                        for path in paths:
+                            path.purge()
+                        remaining = [path.measure() for path in paths]
+                        size = sum(item[0] for item in remaining)
+                        files = sum(item[1] for item in remaining)
+                        status = "pending" if size or files else "clean"
         except BlockingIOError:
             status = "pending"
         except (OSError, ValueError, TypeError, LookupError):

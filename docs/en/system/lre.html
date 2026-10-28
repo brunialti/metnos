@@ -104,6 +104,16 @@ attempt succeeds. It counts attempts, not photos or items: it is not added to
 successful job may therefore have a history of recovered errors without being
 declared failed.</p>
 
+<h3 id="model-unavailable">Model temporarily unavailable</h3>
+
+<p>If a model service cannot become ready before execution, the log names
+the configured resource, for example <code>vlm:default</code>, and suggests
+restarting the job when it becomes available again. This message distinguishes
+model unavailability from a missing or retired execution capability. The
+resource also appears in attempt history; a historical entry may already
+have been recovered by a successful attempt. The message identifies the
+observed error and does not certify that the service is available again.</p>
+
 <h2 id="photo-indexing">Photo indexing: first use and subsequent searches</h2>
 
 <p>Searching the <strong>content of photographs</strong> uses a persistent
@@ -188,6 +198,12 @@ executor ends with an application exception, it preserves already recorded model
 call usage and reports the failure. Calls started without a usage report remain
 uncertain; the correction does not automatically reconstruct counters lost in
 earlier attempts.</p>
+
+<p>Folder classification requests a model response in the required format. If
+the response is still invalid, the workload stops for attention and retains a
+specific reason, without recording the folder name or model text in diagnostics.
+After a correction, retry preserves committed batches as long as their contracts
+remain compatible.</p>
 
 <p>Administrative recovery can admit a continuation with explicit references to
 committed results: ownership, schema and digest are checked before reading their
@@ -417,8 +433,9 @@ can be added without losing traceability or safety.</p>
 <p>The console is the operational record of workloads, not the command that
 starts them. Open it in web chat under <code>Settings → System → LRE</code>. The
 list shows each workload visible to the owner on one line with its title,
-start date and time, finish date and time, and state. The □ button expands
-details immediately below that row; the − button collapses them. The header
+start date and time, finish date and time, and state. Outward arrows expand
+details immediately below that row; inward arrows collapse them. Checkboxes on
+the left select logs. The header
 and details have distinct backgrounds. Details include the revision, progress,
 limits, stages, events, units, and artifacts. Only a successful read returning an empty list
 means that the current identity has no LRE workloads. A read error means status
@@ -452,7 +469,7 @@ prepared. Missing data is <strong>n.a.</strong>, not zero.</p>
  <li><strong>Workload facts.</strong> Engine state is separate from job state: an available engine does not prove a job is progressing. In technical details, completed batches remain distinct from unfinished batches, those needing attention, failed or cancelled batches, and skipped batches. The total may grow during preparation.</li>
  <li><strong>Completion summary.</strong> A finished workload keeps its start, finish, duration, processed batches, and per-stage counts in the detail. Partial errors do not replace the <strong>Finished</strong> state: an orange badge highlights them and the detail lists them. A true failure keeps the <strong>Failed</strong> state.</li>
  <li><strong>Temporary files.</strong> The list shows file count and occupied space in a single column for each job; the detail and column tooltip show cleanup status. Paused jobs and jobs needing attention keep the data needed to resume. To release that space permanently, cancel the job: it can no longer resume. Completion, with or without errors, also starts cleanup. LRE waits for writers to finish; data still used by another job stays available and is reported. If cleanup fails, the job remains visible and LRE retries. Space may remain unknown while verification is pending.</li>
- <li><strong>Removal from the list.</strong> The □ and − buttons expand and collapse the row's detail; the × removes the log after confirmation only when the job has ended and cleanup of its temporary files has been verified. Originals, published results, technical history, and references needed for recovery remain subject to their retention rules. A workload that can still execute must be cancelled first. Controls have localized labels and tooltips and work with the keyboard too.</li>
+ <li><strong>Selecting and deleting logs.</strong> Arrows expand and collapse a row's detail; the checkbox on the left selects its log. The header checkbox selects all shown logs, including those added with “Load more”, without including unloaded pages. The counter shows how many you selected. “Delete selected” asks for one confirmation and is available when all selected logs belong to finished jobs whose temporary files have been cleaned up. Selection survives list refreshes; if deletion fails, that log remains visible and selected, while deleted logs disappear. The × still deletes one log. Originals, published results, technical history, and references needed for recovery remain subject to their retention rules. A workload that can still execute must be cancelled first. Controls have localized labels and tooltips and work with the keyboard too.</li>
  <li><strong>Attention required.</strong> New batches stop starting; batches already running may still finish and save results. Read the recorded cause before retrying: this state does not necessarily mean usage is unknown. Restarting does not correct the cause and may interrupt useful work.</li>
  <li><strong>Photo recovery.</strong> Complete analyses and explicit negative outcomes are saved even inside an unfinished batch and can be reused by an authorized retry within the same generation. Reuse checks the source and context; it does not make an incomplete index searchable. HEIC photos are supported too. Undecodable photos are recorded separately: completed batches do not equal successfully indexed photos.</li>
  <li><strong>Freshness and problems.</strong> The page periodically checks state and warns when data is not refreshed. A disconnection does not preserve a false progress indication. Available causes are prominent; a generic state update is not presented as a new result. After loading further list pages, use <strong>Refresh list and status</strong> to return to the refreshed first page.</li>

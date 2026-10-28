@@ -4515,8 +4515,9 @@ class DurableWorkloadStore:
         """Historical technical errors, independent of final domain item outcomes.
 
         Writer paths persist canonical StructuredAttemptError values. Read only
-        their versioned, bounded machine codes and approved runner cause, never
-        messages or arbitrary details. The
+        their versioned, bounded machine codes, approved runner cause and the
+        frozen model tier for a proven readiness failure, never messages,
+        endpoints, physical model names or arbitrary details. The
         revision's units lead the indexed attempt lookup even without planner
         statistics; no scan of an owner's unrelated attempt history is needed.
         """
@@ -4524,6 +4525,9 @@ class DurableWorkloadStore:
             """
             WITH error_facts AS MATERIALIZED (
                 SELECT json_extract(attempt.structured_error_json, '$.code') AS code,
+                       CASE WHEN json_extract(attempt.structured_error_json, '$.code')='execution.model_resource_unavailable'
+                       THEN json_extract(attempt.model_snapshot_json, '$.tier')
+                       END AS model_resource,
                        CASE WHEN json_extract(attempt.structured_error_json, '$.code')='execution.runner_failed'
                          AND json_type(attempt.structured_error_json, '$.details_redacted.reported_error_code')='text'
                        THEN json_extract(attempt.structured_error_json, '$.details_redacted.reported_error_code')
@@ -4546,20 +4550,25 @@ class DurableWorkloadStore:
                     AND length(CAST(reported_cause AS BLOB))=length(reported_cause)
                     AND reported_cause GLOB '[a-z]*'
                     AND reported_cause NOT GLOB '*[^a-z0-9_.-]*'
-                    THEN reported_cause END AS cause
+                    THEN reported_cause END AS cause,
+                    CASE WHEN typeof(model_resource)='text'
+                    AND length(model_resource) BETWEEN 1 AND 64
+                    AND model_resource GLOB '[A-Za-z0-9]*'
+                    AND model_resource NOT GLOB '*[^A-Za-z0-9_.:-]*'
+                    THEN model_resource END AS resource_name
                 FROM error_facts
                 WHERE length(code) BETWEEN 3 AND 96
                   AND length(CAST(code AS BLOB))=length(code)
                   AND code GLOB '[a-z]*'
                   AND code NOT GLOB '*[^a-z0-9_.-]*'
             ), categories AS (
-                SELECT code, cause, COUNT(*) AS count FROM bounded_facts
-                GROUP BY code, cause
+                SELECT code, cause, resource_name, COUNT(*) AS count FROM bounded_facts
+                GROUP BY code, cause, resource_name
             )
-            SELECT code, cause, count, SUM(count) OVER () AS nattempts,
+            SELECT code, cause, resource_name, count, SUM(count) OVER () AS nattempts,
                    COUNT(*) OVER () AS category_count
             FROM categories
-            ORDER BY count DESC, code ASC, cause ASC
+            ORDER BY count DESC, code ASC, cause ASC, resource_name ASC
             LIMIT 20
             """, (owner, revision_id, ERROR_SCHEMA_VERSION),
         ).fetchall()
@@ -4567,7 +4576,8 @@ class DurableWorkloadStore:
             "nattempts": int(rows[0]["nattempts"]) if rows else 0,
             "categories": [
                 {"error_code": str(row["code"]), "count": int(row["count"]),
-                 **({"cause_code": str(row["cause"])} if row["cause"] is not None else {})}
+                 **({"cause_code": str(row["cause"])} if row["cause"] is not None else {}),
+                 **({"resource_name": str(row["resource_name"])} if row["resource_name"] is not None else {})}
                 for row in rows
             ],
             "truncated": bool(rows and int(rows[0]["category_count"]) > len(rows)),
@@ -4687,24 +4697,42 @@ class DurableWorkloadStore:
             })
         errors = self._connection.execute(
             """
-            WITH error_facts(error_code) AS (
-              SELECT error_class
-              FROM units
-              WHERE owner_user_id=? AND revision_id=?
-                AND error_class IS NOT NULL
+            WITH error_facts(error_code, model_resource) AS (
+              SELECT CASE WHEN u.error_class='capability_unavailable'
+                     AND json_extract(a.structured_error_json, '$.schema_version')=?
+                     AND json_extract(a.structured_error_json, '$.scope')='attempt'
+                     AND json_extract(a.structured_error_json, '$.error_class')=u.error_class
+                     AND json_extract(a.structured_error_json, '$.code')='execution.model_resource_unavailable'
+                     THEN 'execution.model_resource_unavailable'
+                     ELSE u.error_class END,
+                     json_extract(a.model_snapshot_json, '$.tier')
+              FROM units u
+              LEFT JOIN attempts a ON a.owner_user_id=u.owner_user_id
+                AND a.unit_id=u.id AND a.number=u.attempt_count AND a.fence=u.fence
+                AND a.ended_at IS NOT NULL
+              WHERE u.owner_user_id=? AND u.revision_id=?
+                AND u.error_class IS NOT NULL
               UNION ALL
-              SELECT attention_code
+              SELECT attention_code, NULL
               FROM stage_materialization
               WHERE owner_user_id=? AND revision_id=?
                 AND attention_code IS NOT NULL
+            ), bounded_facts AS (
+              SELECT error_code, CASE WHEN error_code='execution.model_resource_unavailable'
+                AND typeof(model_resource)='text'
+                AND length(model_resource) BETWEEN 1 AND 64
+                AND model_resource GLOB '[A-Za-z0-9]*'
+                AND model_resource NOT GLOB '*[^A-Za-z0-9_.:-]*'
+                THEN model_resource END AS resource_name
+              FROM error_facts
             )
-            SELECT error_code, COUNT(*) AS count
-            FROM error_facts
-            GROUP BY error_code
-            ORDER BY count DESC, error_code ASC
+            SELECT error_code, resource_name, COUNT(*) AS count
+            FROM bounded_facts
+            GROUP BY error_code, resource_name
+            ORDER BY count DESC, error_code ASC, resource_name ASC
             LIMIT 20
             """,
-            (owner, revision_id, owner, revision_id),
+            (ERROR_SCHEMA_VERSION, owner, revision_id, owner, revision_id),
         ).fetchall()
         warnings: list[str] = []
         if bool(revision["caps_truncated"]):
@@ -4745,7 +4773,8 @@ class DurableWorkloadStore:
             "budget": budget,
             "stages": stages,
             "error_categories": [
-                {"error_code": str(row["error_code"]), "count": int(row["count"])}
+                {"error_code": str(row["error_code"]), "count": int(row["count"]),
+                 **({"resource_name": str(row["resource_name"])} if row["resource_name"] is not None else {})}
                 for row in errors
             ],
             "domain_errors": self._domain_errors(owner, str(revision_id)),

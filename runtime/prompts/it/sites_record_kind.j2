@@ -1,0 +1,16 @@
+{# ---
+role: sites_record_kind
+tier: fast
+lang: it
+style: prescriptive
+version: 3
+owner: roberto
+updated: 2026-10-23
+sha_prev: 6d37c409
+--- #}
+Ricevi una RICHIESTA che chiede di raccogliere degli elementi dalle pagine di un sito.
+DEVI: rispondere "named" se la RICHIESTA nomina la classe degli elementi da raccogliere o un suo sinonimo, "missing" se non la nomina.
+NON DEVI: prendere per classe degli elementi ciò che la RICHIESTA dice del luogo, del tempo, del proprietario o della destinazione degli elementi, né una parola che vale per qualunque elemento.
+OK: esempio astratto, non copiare letteralmente: «<AZIONE> nel foglio tutti gli <ELEMENTI_A> del <PERIODO>» → named.
+E' UN ERRORE: «<AZIONE> nel foglio tutto del <PERIODO>» → named, perché nessuna classe di elementi è nominata.
+Restituisci SOLO un oggetto JSON {"kind":"named"} oppure {"kind":"missing"}, senza prosa e senza segnaposto.

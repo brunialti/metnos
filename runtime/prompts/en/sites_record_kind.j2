@@ -1,0 +1,16 @@
+{# ---
+role: sites_record_kind
+tier: fast
+lang: en
+style: prescriptive
+version: 3
+owner: roberto
+updated: 2026-10-23
+sha_prev: 23516850
+--- #}
+You receive a REQUEST asking to collect some items from the pages of a site.
+MUST: answer "named" when the REQUEST names the class of the items to collect or a synonym, "missing" when it does not name it.
+MUST NOT: take for the class of the items what the REQUEST says about the place, the time, the owner or the destination of the items, nor a word that fits any item.
+OK: abstract example, do not copy literally: «<ACTION> in the sheet all the <ITEMS_A> of <PERIOD>» → named.
+ERROR: «<ACTION> in the sheet everything of <PERIOD>» → named, because no class of items is named.
+Return ONLY a JSON object {"kind":"named"} or {"kind":"missing"}, with no prose and no placeholders.

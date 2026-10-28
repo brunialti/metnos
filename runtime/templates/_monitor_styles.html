@@ -67,9 +67,9 @@ p.monitor-note{width:100%}
   .monitor-period{min-width:100%}
   .monitor-table .monitor-wide{display:none}
   .monitor-mobile-details{display:block}
-  .monitor-mobile-details dl{display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-1) var(--sp-3);margin:var(--sp-2) 0}
-  .monitor-mobile-details dt{color:var(--muted)}
-  .monitor-mobile-details dd{margin:0;text-align:right}
+  .monitor-mobile-details dl{display:grid;grid-template-columns:minmax(0,1fr);gap:var(--sp-1);margin:var(--sp-2) 0}
+  .monitor-mobile-details dt{color:var(--muted);overflow-wrap:normal}
+  .monitor-mobile-details dd{margin:0 0 var(--sp-2);text-align:left}
   .monitor-table th,.monitor-table td{padding:.5rem .35rem}
   .monitor-table .monitor-speed{min-width:3rem;max-width:5rem}
   .monitor-table th:first-child,.monitor-table td:first-child{max-width:125px}

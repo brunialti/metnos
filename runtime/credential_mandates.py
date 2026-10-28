@@ -260,8 +260,10 @@ def resolve_sites_binding(owner: str, host: str, *,
             _payload = _cred.load(_cand)
             if isinstance(_payload, dict):
                 _co = _payload.get("credential_origins")
-                if isinstance(_co, (list, tuple)):
-                    vault_origins = sorted(str(o) for o in _co)
+                _ap = _payload.get("approved_origins")
+                vault_origins = sorted({
+                    str(o) for value in (_co, _ap)
+                    if isinstance(value, (list, tuple)) for o in value})
                 break
     except Exception:
         vault_origins = []

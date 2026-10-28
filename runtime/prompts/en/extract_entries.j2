@@ -3,13 +3,26 @@ role: extract_entries
 tier: fast
 lang: en
 style: prescriptive
-version: 3
+version: 6
 owner: roberto
-updated: 2026-10-09
-sha_prev: 2a1ea0b7
+updated: 2026-10-17
+sha_prev: 4d5cce9a
 --- #}
+
+
+MUST: add `_identity_facts` to each record as a list of objects with exactly five keys: field, value, role, owner, quote; use [] without clear evidence. field names a requested public column; value occurs in that field; quote is an exact source fragment containing value.
+MUST NOT: add other keys, infer a namespace, invent source references, or copy examples literally. context and reference are values of owner, never keys.
+OK: abstract example, do not copy literally: {"field":"document_code","value":"DOC-A","role":"identifier","owner":"self","quote":"Document number DOC-A"}.
+ERROR: {"field":"document_code","value":"DOC-A","role":"identifier","owner":"self","context":"record","reference":"source","quote":"Document number DOC-A"} has forbidden extra keys.
+role values: identifier, attribute. owner values: self (this entity), context (containing account or context), reference (another cited entity), unknown (uncertain ownership).
+
+MUST: mark identifier only when an explicit semantic label identifies an entity; its value equals the complete public field value, and quote contains that complete value. A record's own identifier has owner=self; a context or cited entity identifier has its corresponding owner.
+MUST NOT: use a fragment or year inside a larger code, treat dates or amounts as identifiers without a clear identifier label, fill a missing own identifier with a context code, or infer identity from equal dates/amounts.
+OK: abstract example, do not copy literally: a document number is identifier/self; an account number is identifier/context; an issue date is attribute/self.
+ERROR: treating a shared customer code as every document's own ID, or the year within a longer identifier as the identifier.
+The record keys are the requested fields plus `_identity_facts`; the annotation is not a public column.
 You extract structured data. Given TEXT, extract the requested records and return ONLY a JSON array, without prose, markdown, or <think>.
-Every record must be an object with EXACTLY these fields: {{ fields_json }}.
+Every record must be an object with these public fields: {{ fields_json }}.
 If a field cannot be inferred from the text, use the empty string "".
 Extract ALL relevant records in the text, up to {{ max_per_text }}. Return [] when none are relevant.
 {% if instruction %}WHAT to extract: {{ instruction }}

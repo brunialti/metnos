@@ -199,6 +199,69 @@ def _context_requirement_applies(requirement: Any, args: dict,
     return False
 
 
+def input_conditions(consumer_schema: dict | None) -> dict[str, Any]:
+    """Conditions under which an argument satisfies ``requires_one_of``.
+
+    ``input_when`` reuses the source-context predicate ``{arg, values}``.
+    It does not prohibit an accessory argument when another source is valid.
+    Unannotated groups retain their existing validation semantics.
+    """
+    if not isinstance(consumer_schema, dict):
+        return {}
+    alternatives = {
+        name for group in consumer_schema.get("requires_one_of") or []
+        if isinstance(group, list) for name in group if isinstance(name, str)
+    }
+    return {
+        name: spec["input_when"]
+        for name, spec in _properties(consumer_schema).items()
+        if name in alternatives and isinstance(spec, dict)
+        and "input_when" in spec
+    }
+
+
+def missing_applicable_input_groups(
+        args: dict, consumer_schema: dict | None, *,
+        allow_deferred: bool = False) -> list[list[str]]:
+    """Return unsatisfied input groups that contain conditional alternatives.
+
+    Planning may defer an absent selector or a runtime placeholder, and a
+    vector still carried by ``from_step``. Invocation checks concrete inputs
+    against the resolved selector (or its manifest default), before effects.
+    Neither stage invents a reference or changes the selected backend.
+    """
+    conditions = input_conditions(consumer_schema)
+    if not conditions:
+        return []
+    properties = _properties(consumer_schema)
+    missing = []
+    for group in consumer_schema.get("requires_one_of") or []:
+        if not isinstance(group, list) or not any(
+                name in conditions for name in group):
+            continue
+        for name in group:
+            if name in conditions:
+                condition = conditions[name]
+                selector = condition.get("arg") if isinstance(condition, dict) else None
+                value = args.get(selector) if isinstance(selector, str) else None
+                deferred = (
+                    allow_deferred and isinstance(selector, str) and bool(selector.strip())
+                    and (value is None or isinstance(value, str) and "${" in value)
+                )
+                if not deferred and not _context_requirement_applies(
+                        condition, args, properties):
+                    continue
+            if _is_selected_alternative(args.get(name)) or (
+                    name == "from_step" and _is_selected_alternative(args.get("entries"))):
+                break
+            if (allow_deferred and carries_upstream_payload(args)
+                    and projection_can_fill(consumer_schema, [name])):
+                break
+        else:
+            missing.append(list(group))
+    return missing
+
+
 def required_source_context_fields(
         args: dict, consumer_schema: dict | None, *,
         allow_deferred_from_step: bool = False) -> list[str]:

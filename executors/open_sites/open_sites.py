@@ -17,7 +17,6 @@ from pathlib import Path
 
 _RT = os.environ.get("METNOS_RUNTIME") or str(
     Path(__file__).resolve().parents[2] / "runtime")
-_ROOT = Path(__file__).resolve().parents[2]
 if _RT not in sys.path:
     sys.path.insert(0, _RT)
 
@@ -132,18 +131,13 @@ def _invoke(args: dict) -> dict:
                                         or "approval_invalid"), "entries": []}
             pending_tokens.append(token)
         if extras:
-            approval_dir = _ROOT / "executors" / "get_approval"
-            if str(approval_dir) not in sys.path:
-                sys.path.insert(0, str(approval_dir))
-            from get_approval import invoke as approval_invoke
-            return approval_invoke({
-                "prompt": _msg("MSG_SITES_ALLOWLIST_APPROVAL_PROMPT",
-                               hosts=", ".join(sorted(extras))),
-                "title": _msg("MSG_SITES_ALLOWLIST_APPROVAL_TITLE"),
-                "actor": owner,
-                "channel": os.environ.get("METNOS_CHANNEL") or "",
-                "timeout_s": 3600,
-                "on_approve": {"tool": "open_sites", "args": {
+            from approval_request import approval_request
+            return approval_request(
+                prompt=_msg("MSG_SITES_ALLOWLIST_APPROVAL_PROMPT",
+                            hosts=", ".join(sorted(extras))),
+                title=_msg("MSG_SITES_ALLOWLIST_APPROVAL_TITLE"),
+                timeout_s=3600,
+                on_approve={"tool": "open_sites", "args": {
                     "urls": urls, "allowlist": allowlist,
                     "session_label": label, "max_total": max_total,
                     "_credential_mode": credential_mode,
@@ -154,7 +148,7 @@ def _invoke(args: dict) -> dict:
                     "_lang": lang or "",
                     "_allowlist_tokens": pending_tokens,
                 }},
-            })
+            )
 
     entries = []
     attempted_specs = []
@@ -229,18 +223,13 @@ def _invoke(args: dict) -> dict:
                     and not entry.get("reused")):
                 session_client.session_close(
                     session_id=entry["session_id"], owner=owner)
-        approval_dir = _ROOT / "executors" / "get_approval"
-        if str(approval_dir) not in sys.path:
-            sys.path.insert(0, str(approval_dir))
-        from get_approval import invoke as approval_invoke
-        return approval_invoke({
-            "prompt": _msg("MSG_SITES_ALLOWLIST_APPROVAL_PROMPT",
-                           hosts=", ".join(sorted(pending_hosts))),
-            "title": _msg("MSG_SITES_ALLOWLIST_APPROVAL_TITLE"),
-            "actor": owner,
-            "channel": os.environ.get("METNOS_CHANNEL") or "",
-            "timeout_s": 3600,
-            "on_approve": {"tool": "open_sites", "args": {
+        from approval_request import approval_request
+        return approval_request(
+            prompt=_msg("MSG_SITES_ALLOWLIST_APPROVAL_PROMPT",
+                        hosts=", ".join(sorted(pending_hosts))),
+            title=_msg("MSG_SITES_ALLOWLIST_APPROVAL_TITLE"),
+            timeout_s=3600,
+            on_approve={"tool": "open_sites", "args": {
                 "urls": urls, "session_label": label,
                 "max_total": max_total,
                 "_credential_mode": credential_mode,
@@ -250,7 +239,7 @@ def _invoke(args: dict) -> dict:
                 "_lang": lang or "",
                 "_open_approvals": attempted_specs,
             }},
-        })
+        )
 
     out = {
         "ok": any(e["ok"] for e in entries),

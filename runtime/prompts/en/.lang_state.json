@@ -90,14 +90,24 @@
     "version_hash": "sha256:a7c7badc6472229fff27f05e1ff4141bc6d19e18855760cbc9371933357f9b63"
   },
   "extract_entries": {
-    "source_hash": null,
-    "source_lang": null,
-    "version_hash": "sha256:f6fabe3be10614949f09cc3a1347a425b076db38bf1cfa9c5738be69f3c7bf8b"
+    "source_hash": "sha256:7b0bb9955cd02424b9fff5449376a22bdcca19aff04a501f2e48a438617ae6e4",
+    "source_lang": "it",
+    "version_hash": "sha256:b27415b5912b6a599f6fc5f95b24178d321a015c3dc4c4c378f718eba44568e9"
   },
   "extract_entries_batch": {
-    "source_hash": null,
-    "source_lang": null,
-    "version_hash": "sha256:62d7991c4def8e90c23dc78e495b5e7c9343d1f2a06635121cad9fc4a8c62a22"
+    "source_hash": "sha256:d283c6f8893b5d30243ad7f8e66e8d9f8d83f7440703b485ae55b6128bc00c24",
+    "source_lang": "it",
+    "version_hash": "sha256:baa49d89f94f5c6b3978c35e8945507abe2dcb21642c5a77fcfab2a165f0b42d"
+  },
+  "extract_entries_headings": {
+    "source_hash": "sha256:4ffee798a0b225e0b29203afe295f7d73a7bdf2086100bd643c8610e1bafab8c",
+    "source_lang": "it",
+    "version_hash": "sha256:2cbfa5c319423c7114a1f23ac55ef48bd4937270d93d8f38345a727279123bd7"
+  },
+  "extract_entries_list_columns": {
+    "source_hash": "sha256:9b310ac687c6104d7f5e1bd6e983a898a98eabf57e5f5810b2ebbfb66f1494e5",
+    "source_lang": "it",
+    "version_hash": "sha256:1d9bc429fbe4a1978ee1bfc6ef0fb64b298cda8db3678604e710ac4d04a0569a"
   },
   "extract_entries_schema": {
     "source_hash": null,
@@ -259,10 +269,20 @@
     "source_lang": "it",
     "version_hash": "sha256:26f8f80694d215986292d298466bcd2164ee86a691d77459df1887ee61445153"
   },
+  "sites_challenge_vision": {
+    "source_hash": "sha256:71bf9bc175fdf2ff58d6fd8759f18bbbee512f1d35796ec8bc9fbefeeacb4f45",
+    "source_lang": "it",
+    "version_hash": "sha256:207727606dedb374ce62812d32964c81439d0a0c13961768218fd66cf6e99dba"
+  },
   "sites_goal_reducer": {
     "source_hash": null,
     "source_lang": null,
     "version_hash": "sha256:613dd6eab16e1000c6dddcb0c8677c600646eaa9883cab259e1355278c339ad9"
+  },
+  "sites_record_kind": {
+    "source_hash": "sha256:ac354fac7e96dafb275f3771225ed40cc60ca22cfc9216463432de11d8f8a8b1",
+    "source_lang": "it",
+    "version_hash": "sha256:fed4b0296b7e368ed2bd8d09a330fc596137fbb73d660539df12815e14a1e9c0"
   },
   "synt_birth_tests": {
     "source_hash": "sha256:1ee7f4acdff85e404f40794eef7364785a6fe2510392f8dfb77e111102b349c9",

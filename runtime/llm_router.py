@@ -181,6 +181,7 @@ class TierConfigError(Exception):
         self.tier = tier
 
 
+@dataclass(frozen=True, slots=True, init=False, repr=False, eq=False)
 class _TierBoundProvider:
     """Provider concreto con la policy del tier applicata al confine.
 
@@ -192,12 +193,14 @@ class _TierBoundProvider:
     profilo di decoding introdotto dal singolo chiamante.
     """
 
-    __slots__ = ("_provider", "_policy", "_tier")
+    _provider: object
+    _policy: dict
+    _tier: str
 
     def __init__(self, provider, policy: dict, tier: str):
-        self._provider = provider
-        self._policy = dict(policy)
-        self._tier = tier
+        object.__setattr__(self, "_provider", provider)
+        object.__setattr__(self, "_policy", dict(policy))
+        object.__setattr__(self, "_tier", tier)
 
     def __getattr__(self, name: str):
         return getattr(self._provider, name)
@@ -255,6 +258,8 @@ def provider_from_tier_spec(
     tier inference policy and tier-level telemetry.
     """
 
+    from llm_workloads import workload_for_request
+    workload_for_request(tier)
     completed = complete_tier_spec(tier, spec, level=level)
     provider_spec = {
         key: value for key, value in completed.items()
@@ -658,6 +663,9 @@ class LLMRouter:
         self._provider_cache = {}
 
     def provider(self, tier: str = "fast", *, level: str | None = None):
+        from llm_workloads import workload_for_request
+        request = tier
+        workload = workload_for_request(request)
         tier, level = _tier_and_level(tier, level)
         if tier == FRONTIER_TIER and tier not in self.tiers:
             _fm = DEFAULT_TIERS[FRONTIER_TIER]  # SoT model id, mai hardcoded altrove
@@ -669,12 +677,15 @@ class LLMRouter:
             )
         cache_key = (tier, level)
         if cache_key in self._provider_cache:
-            return self._provider_cache[cache_key]
-        spec = {k: v for k, v in self.tiers[tier].items()
-                if not k.startswith("_")}
-        bound = provider_from_tier_spec(tier, spec, level=level)
-        self._provider_cache[cache_key] = bound
-        return bound
+            bound = self._provider_cache[cache_key]
+        else:
+            spec = {k: v for k, v in self.tiers[tier].items()
+                    if not k.startswith("_")}
+            bound = provider_from_tier_spec(tier, spec, level=level)
+            self._provider_cache[cache_key] = bound
+        # Workloads share the concrete client and policy, never mutable role
+        # state. The per-request adapter establishes context only on invocation.
+        return _TierBoundProvider(bound._provider, bound._policy, request) if workload else bound
 
     def is_aliased(self, tier: str) -> bool:
         tier, _ = _tier_and_level(tier)
@@ -743,7 +754,6 @@ class LLMRouter:
     def chat(self, system, user, *, tier="fast", level: str | None = None,
              for_code: bool = False,
              **kwargs) -> ChatResult:
-        tier, level = _tier_and_level(tier, level)
         prov = self.provider(tier, level=level)
         return prov.chat(
             self._system_for_tier(system, tier, prov.name, prov.model, for_code),
@@ -754,7 +764,6 @@ class LLMRouter:
                         level: str | None = None, history=None,
                         for_code: bool = False,
                         **kwargs) -> ToolUseResult:
-        tier, level = _tier_and_level(tier, level)
         prov = self.provider(tier, level=level)
         return prov.chat_with_tools(
             self._system_for_tier(system, tier, prov.name, prov.model, for_code),

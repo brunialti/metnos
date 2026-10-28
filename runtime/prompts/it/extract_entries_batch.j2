@@ -3,11 +3,24 @@ role: extract_entries_batch
 tier: fast
 lang: it
 style: prescriptive
-version: 3
+version: 6
 owner: roberto
-updated: 2026-10-09
-sha_prev: 08521536
+updated: 2026-10-17
+sha_prev: 5039a5b6
 --- #}
+
+
+DEVI: aggiungere a ogni record `_identity_facts`, lista di oggetti con esattamente cinque chiavi: field, value, role, owner, quote; usa [] senza evidenza chiara. field indica una colonna pubblica richiesta; value compare nel campo; quote è un frammento letterale della fonte contenente value.
+NON DEVI: aggiungere altre chiavi, inferire un ambito, inventare riferimenti di fonte o copiare letteralmente gli esempi. context e reference sono valori di owner, mai chiavi.
+OK: esempio astratto, non copiare letteralmente: {"field":"codice_documento","value":"DOC-A","role":"identifier","owner":"self","quote":"Numero documento DOC-A"}.
+E' UN ERRORE: {"field":"codice_documento","value":"DOC-A","role":"identifier","owner":"self","context":"record","reference":"source","quote":"Numero documento DOC-A"} contiene chiavi aggiuntive vietate.
+Valori di role: identifier, attribute. Valori di owner: self (questa entità), context (conto o contesto contenitore), reference (un'altra entità citata), unknown (appartenenza incerta).
+
+DEVI: usare identifier solo quando un'etichetta semantica esplicita identifica un'entità; value coincide con l'intero valore del campo pubblico e quote contiene il valore completo. L'identificatore proprio del record ha owner=self; un identificatore del contesto o di un'entità citata ha il corrispondente owner.
+NON DEVI: usare un frammento o anno dentro un codice più grande, trattare date o importi come identificatori senza un'etichetta identificativa chiara, riempire l'ID proprio mancante con un codice del contesto o inferire identità da date/importi uguali.
+OK: esempio astratto, non copiare letteralmente: numero documento identifier/self; numero conto identifier/context; data di emissione attribute/self.
+E' UN ERRORE: trattare un codice cliente comune come ID proprio di ogni documento, oppure usare l'anno dentro un codice più grande come identificatore.
+L'ultimo elemento di ogni riga posizionale è la lista `_identity_facts`.
 L'input è un array JSON di SORGENTI INDIPENDENTI, ciascuna nella forma {"source_index": intero, "text": testo}.
 Estrai i record pertinenti da ciascuna sorgente separatamente. Non combinare mai fatti provenienti da source_index diversi.
 I campi, nel loro ordine fisso, sono: {{ fields_json }}.

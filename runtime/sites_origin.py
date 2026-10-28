@@ -9,6 +9,9 @@ autorizzazione di RETE). Due regimi (`origin_authorized`):
   `booking.com`), `https` obbligatorio (`http` solo host locali). E' il
   contratto storico dei binding creati per nome-sito; il consenso one-shot
   resta per le origini DELEGATE (altro sito registrabile), a match esatto.
+- `approved_origins` nel vault = origini DELEGATE che l'utente ha approvato una
+  volta e che Metnos ricorda (decisione di Roberto, 13/10/2026): match ESATTO,
+  valide con entrambi i regimi, senza mai allargarli al sito delle origini.
 
 Regole di normalizzazione (deterministiche):
 - host IDNA/punycode -> ASCII lowercase; trailing-dot rimosso; IPv6 tra `[...]`.
@@ -151,6 +154,18 @@ def explicit_origins(payload: dict | None) -> list[str] | None:
     return sorted(norm)
 
 
+def approved_origins(payload: dict | None) -> list[str]:
+    """Delegated origins the user approved once and asked to remember.
+
+    Exact canonical tuples only; an invalid entry is ignored, never widened.
+    """
+    stored = payload.get("approved_origins") if isinstance(payload, dict) else None
+    if not isinstance(stored, (list, tuple)):
+        return []
+    return sorted({origin for entry in stored
+                   if (origin := normalize_entry(str(entry)))})
+
+
 def same_site_origin(origin: str | None, domain: str | None) -> bool:
     """True se `origin` (canonica) appartiene allo STESSO SITO del domain
     handle: host uguale o sottodominio first-party dot-anchored, scheme lecito
@@ -177,10 +192,13 @@ def origin_authorized(origin: str | None, payload: dict | None,
                       storage_domain: str, *, extra: str | None = None) -> bool:
     """Autorita' del fill per una origine canonica (vedi docstring modulo).
     `extra` = origine one-shot approvata dall'utente (delega IdP, ADR 0188):
-    match esatto, mai persistita."""
+    match esatto. Un'origine approvata e ricordata (`approved_origins`) vale
+    allo stesso modo, a match esatto."""
     if not origin:
         return False
     if extra and normalize_entry(extra) == origin:
+        return True
+    if origin in approved_origins(payload):
         return True
     explicit = explicit_origins(payload)
     if explicit is not None:

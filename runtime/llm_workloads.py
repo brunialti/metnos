@@ -11,7 +11,7 @@ from dataclasses import dataclass
 
 
 class TierRequest(str):
-    """A tier name carrying the optional centrally-owned fast level.
+    """An immutable tier name carrying its local workload and fast level.
 
     ``str`` compatibility keeps generic adapters simple.  ``LLMRouter`` reads
     ``level`` before resolving the provider, so a caller never manages model
@@ -19,11 +19,19 @@ class TierRequest(str):
     """
 
     level: str | None
+    workload: str | None
 
-    def __new__(cls, tier: str, level: str | None = None):
+    def __new__(cls, tier: str, level: str | None = None, *, workload: str | None = None):
         value = str.__new__(cls, tier)
-        value.level = level
+        object.__setattr__(value, "level", level)
+        object.__setattr__(value, "workload", workload)
         return value
+
+    def __setattr__(self, name, value):
+        raise AttributeError("TierRequest is immutable")
+
+    def __delattr__(self, name):
+        raise AttributeError("TierRequest is immutable")
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,6 +51,7 @@ WORKLOADS: dict[str, WorkloadContract] = {
     "sites.goal_reduce": WorkloadContract("fast", "micro", "micro_decision", "json"),
     "sites.action_reduce": WorkloadContract("fast", "micro", "micro_decision", "json"),
     "sites.cookie_resolution": WorkloadContract("fast", "micro", "micro_decision", "json"),
+    "sites.challenge_vision": WorkloadContract("frontier", None, "frontier", "json"),
     "images.search_rerank": WorkloadContract("fast", "micro", "micro_decision", "json"),
     "tutor.mode": WorkloadContract("fast", "micro", "micro_decision", "label"),
     "tutor.obligations": WorkloadContract("fast", "micro", "micro_decision", "json"),
@@ -108,9 +117,10 @@ WORKLOADS: dict[str, WorkloadContract] = {
 
     # Explicit maximum-capability escalation.
     "frontier.consult": WorkloadContract("frontier", None, "frontier", "caller_owned"),
-    # Opt-in, off by default: route choice on site pages without requested
-    # items; the request carries control names and contexts, no page content.
+    # Collection-only, when Frontier is configured and Sites has not opted
+    # out. Route choice uses controls; observation also reads visible content.
     "sites.collection_route": WorkloadContract("frontier", None, "frontier", "json"),
+    "sites.collection_observe": WorkloadContract("frontier", None, "frontier", "json"),
 }
 
 
@@ -119,9 +129,19 @@ def tier_for(workload: str) -> TierRequest:
 
     try:
         contract = WORKLOADS[workload]
-        return TierRequest(contract.tier, contract.level)
+        return TierRequest(contract.tier, contract.level, workload=workload)
     except KeyError as exc:
         raise ValueError(f"unknown LLM workload: {workload!r}") from exc
+
+
+def workload_for_request(request: str | None) -> str | None:
+    """Read only registered, coherent local declarations; never infer a role."""
+    if not isinstance(request, TierRequest) or request.workload is None:
+        return None
+    contract = WORKLOADS.get(request.workload) if isinstance(request.workload, str) else None
+    if contract is None or (str(request), request.level) != (contract.tier, contract.level):
+        raise ValueError("invalid LLM workload declaration")
+    return request.workload
 
 
 def contracts_by_tier() -> dict[str, tuple[str, ...]]:

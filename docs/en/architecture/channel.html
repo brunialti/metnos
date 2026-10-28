@@ -91,6 +91,12 @@ and user separation remain the same.</p>
 <p>Available routes and methods are documented in
 <a href="http_api.html">HTTP API</a>.</p>
 
+<p>When restoring history, chat keeps turns in server event order.
+Interactions added while waiting stay after earlier messages in the saved
+history as well: an earlier reply recovered late does not become the latest
+reply. A recovery superseded by a newer request is ignored. Recovery does not
+resubmit user requests and preserves drafts, attachments, and open forms.</p>
+
 <h2 id="telegram">The Telegram channel</h2>
 
 <p>Telegram uses a small service process and the official Bot API. Metnos opens

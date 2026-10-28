@@ -62,6 +62,7 @@ en = "List of records with a `path` field, typically piped via `from_step: N` (e
 
 [args.properties.name]
 type    = "string"
+input_when = { arg = "client", values = ["google_workspace"] }
 
 [args.properties.name.description]
 it = "Nome/titolo del file su Drive (solo client google_workspace): il backend lo risolve all'id via ricerca, preferenza nome esatto. In locale usa path/paths."

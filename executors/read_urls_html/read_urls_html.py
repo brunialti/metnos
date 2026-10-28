@@ -55,7 +55,10 @@ from host_throttle import HostThrottle  # noqa: E402
 # Estrazione PDF condivisa con read_urls_pdf (§7.3) per il PDF-handoff:
 # find_urls ritorna liste miste HTML+PDF e il planner non puo' conoscere
 # il Content-Type a priori — il dispatch per tipo vive QUI (12/6/2026).
-from pdf_extract import extract_pdf_text  # noqa: E402
+from pdf_extract import (  # noqa: E402
+    PDFInspectionError, aggregate_pdf_limits, extract_pdf_text,
+    pdf_extraction_state, read_pdf_response,
+)
 # HTTP cache disk-based (ADR 0105).
 from http_cache import HttpCache, DEFAULT_TTL_S  # noqa: E402
 # Host health tracker per auto-degrade T2→T1 su 429/503 (ADR 0108).
@@ -351,12 +354,16 @@ def _pdf_entry(pdf_body: bytes, final_url: str) -> tuple[dict | None, dict | Non
     """
     try:
         info = extract_pdf_text(pdf_body, trim_chars=_BODY_TRIM_CHARS)
-    except ImportError as e:
-        return None, {"error": str(e), "error_class": "unknown"}
-    except Exception as e:
+    except ImportError:
+        return None, {"error": "pdf_parser_unavailable", "error_class": "unsupported",
+                      "input_complete": True, "parse_complete": False}
+    except PDFInspectionError as e:
+        return None, {"error": e.code, "error_class": "invalid_content",
+                      "input_complete": True, "parse_complete": False}
+    except Exception:
         return None, {
-            "error": f"pdf parse error: {type(e).__name__}: {e}",
-            "error_class": "unknown",
+            "error": "pdf_inspection_failed", "error_class": "unknown",
+            "input_complete": True, "parse_complete": False,
         }
     entry = {
         "url": final_url,
@@ -371,10 +378,11 @@ def _pdf_entry(pdf_body: bytes, final_url: str) -> tuple[dict | None, dict | Non
         "js_signals": [],
         "notice": None,
         "content_kind": "pdf",
-        "n_pages": info["n_pages"],
-        "n_pages_read": info["n_pages_read"],
-        "used_lib": info["used_lib"],
+        "readable": bool(info["body_text"].strip()),
+        **pdf_extraction_state(info),
     }
+    if not entry["readable"]:
+        entry["parse_diagnostic"] = "pdf_text_unavailable"
     return entry, None
 
 
@@ -626,11 +634,15 @@ def _fetch_one(url: str, opener, timeout_s: float, max_bytes: int,
                             "error": _msg("ERR_NON_HTML_CONTENT", ctype=ctype),
                             "error_class": "non_html",
                         }
-                    body = resp.read(_PDF_HANDOFF_MAX_BYTES if is_pdf
-                                     else max_bytes)
+                    if is_pdf:
+                        body, failure = read_pdf_response(resp, _PDF_HANDOFF_MAX_BYTES)
+                        if failure is not None:
+                            return None, failure
+                    else:
+                        body = resp.read(max_bytes)
                     # Decompressione body se Content-Encoding (server-side
                     # cache come Varnish gzip-pa anche senza Accept-Encoding).
-                    enc = (resp.headers.get("Content-Encoding") or "").lower()
+                    enc = "" if is_pdf else (resp.headers.get("Content-Encoding") or "").lower()
                     resp_headers = dict(resp.headers.items())
                     final_url = resp.geturl()
                 if "gzip" in enc:
@@ -979,7 +991,7 @@ def _invoke_default(args: dict) -> dict:
     def _failed_entry(url: str, err, i: int) -> dict:
         """Normalizza err (dict|str|None) in failed-entry con error_class."""
         if isinstance(err, dict):
-            return {"url": url, "error": err.get("error", "unknown"),
+            return {**err, "url": url, "error": err.get("error", "unknown"),
                     "error_class": err.get("error_class", "unknown"),
                     "error_code": err.get("error_code") or (
                         "url_" + str(err.get("error_class", "unknown"))),
@@ -1213,7 +1225,7 @@ def _invoke_default(args: dict) -> dict:
         result["js_render_attempted"] = js_render_attempted
         result["js_render_sidecar_available"] = js_render_sidecar_up
         result["js_render_auto"] = auto_escalate
-    return result
+    return aggregate_pdf_limits(result, entries + failed)
 
 
 # --- Dispatcher (refactor 13/5/2026, ADR pending) -------------------------

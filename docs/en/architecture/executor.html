@@ -358,6 +358,18 @@ effect if that context is absent.
 </p>
 
 <p>
+A <code>requires_one_of</code> alternative may declare
+<code>input_when = { arg = "client", values = ["google_workspace"] }</code>
+to count as a source only for the indicated selector. The proposer sees the
+same condition as the manifest. Plan validation defers the check when the
+selector still needs resolution; the invocation choke-point applies it to
+the effective value, or its declared default, before side effects. Another
+valid source can satisfy the group without forbidding accessory arguments.
+This declaration neither selects a backend nor converts names into paths;
+groups without conditions retain their existing behavior.
+</p>
+
+<p>
 <strong>The permissions</strong> (<code>capabilities</code>): the manifest does not
 decide what the executor may do. The manifest <em>declares</em> what it would need in
 order to function; the system then decides whether to grant those permissions and

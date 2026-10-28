@@ -216,6 +216,14 @@ state. This visual distinction changes neither health checks, supervisor
 decisions nor the persistent feature setting.</p>
 <h2 id="outcomes">Outcomes, errors, and records</h2>
 
+<p>The LRE console separates detail arrows from log selection checkboxes.
+Multiple selection covers loaded logs and survives refreshes. Deletion asks for
+one confirmation and uses the existing owner-scoped command for each log, with
+an expected version and an idempotency key. Only finished jobs with verified
+temporary cleanup can be dismissed. Successful responses remove rows; logs that
+could not be deleted remain selected. Earlier read responses cannot reinsert
+logs whose deletion has already been confirmed.</p>
+
 <p>The LRE console derives start time from actual attempts in the current revision,
 not workload creation. A compact table separates completed and total batches in
 the current phase from the known total across phases, which may grow. The main

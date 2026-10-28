@@ -1,0 +1,23 @@
+{# ---
+role: extract_entries_list_columns
+tier: fast
+lang: en
+style: prescriptive
+version: 4
+owner: roberto
+updated: 2026-10-23
+sha_prev: 2e44790e
+--- #}
+You receive a REQUEST, the requested FIELDS and the numbered COLUMNS of the rows of a list.
+Each column has a label (the text the site writes beside the value; it may be missing), a kind (date, amount, code, text) and some values taken from the rows.
+MUST: answer "items":"yes" when the rows are items of the class asked by the REQUEST, "no" when they are other objects.
+MUST: for each field give the number of the column holding it, 0 when none does.
+MUST: in "identifier" give the column of each row's own code (its number), 0 when missing.
+MUST NOT: give the same column to two fields, nor choose a column for its kind alone when its label or values say something else.
+OK: abstract example, do not copy literally: fields [<F1>, <F2>]; columns 1 «<CODE_LABEL>» code, 2 «<DATE_LABEL>» date, 3 «<OTHER_LABEL>» text → {"items":"yes","fields":{"<F1>":1,"<F2>":2},"identifier":1}.
+ERROR: the same columns → "fields":{"<F1>":1,"<F2>":1}.
+MUST: for a generic date field with several columns of kind date, choose the item's own date, the one it was issued or created on; with a single date column, choose it.
+MUST NOT: choose the date of another event of the item when its own date is there.
+OK: abstract example, do not copy literally: columns 2 «<ISSUE_LABEL>» date, 4 «<OTHER_EVENT_LABEL>» date → "<F2>":2.
+ERROR: the same columns → "<F2>":4.
+Return ONLY a JSON object {"items":"yes" or "no","fields":{field: number},"identifier":number}, with no prose and no placeholders.

@@ -54,21 +54,55 @@ data, permissions, and conversations remain separate.</p>
 or remove channels; and list devices owned by the user. Available preferences
 come from a closed vocabulary: the interface does not accept arbitrary keys.</p>
 
-<p>In the user detail page, <strong>Site names</strong> pairs the name used in
-requests with a URL. For example, you can save “telepas” with
-<code>https://www.telepass.com/</code>: when you ask Metnos to open or use that
-site, it starts from the saved address instead of guessing it from the name.
-Associations are separate for each user; an explicit URL in the request takes
-precedence. If a request names several saved sites, Metnos asks which one to
-use.</p>
+<p>In the user detail page, the <strong>Credentials</strong> section lists
+every credential given to Metnos: sites, mailboxes and services. Passwords and
+codes are never shown; to delete a credential or an approved address use
+<strong>Settings → Credentials</strong>.</p>
 
-<p>If you know the URL but have not chosen a name, leave the
-<strong>Invocation name</strong> field empty and enter the address. Metnos
-suggests a name from the domain without saving anything: check or change it,
-then select <strong>Save association</strong>. If the site is already registered,
-the existing name is suggested; names remain editable and separate from URLs.</p>
+<p>A site or a mailbox can have a <strong>name</strong> and
+<strong>synonyms</strong>, separated by commas. For example, you can call
+<code>https://www.telepass.com/</code> “telepas”, with synonyms “telepass” and
+“tolls”; or call a mailbox “work”, with synonym “office”. Names are separate
+for each user.</p>
 
-<p>The association contains no password and grants no extra permission:
+<p>The type column is compact; details distinguish the identifier, username
+or login email, and site address. If you have not given a name yet, an editable
+suggestion appears: the full domain without <code>www.</code> for a site (for
+example <code>example.org</code>), or the mailbox name for mail. The
+“Name suggested” note means you need to press <strong>Save</strong> to register
+it. Names and synonyms already saved keep your choices; the
+<strong>Remove the names</strong> button only appears for these.</p>
+
+<p>A name only chooses <em>which</em> site or <em>which</em> mailbox to use:
+Metnos first understands the request as always, and only when it is about a
+site or about mail does it use the names to choose. An explicit URL in the
+request takes precedence. If a site request names two different sites, Metnos
+asks which one to use. For mail, “read my work mail” uses the mailbox called
+“work”; when the word is the text to search instead, as in “find the emails
+about work”, the mailbox stays the one the request chose. When a name is part
+of a longer name, the longer one counts.</p>
+
+<p>Metnos refuses names that could capture ordinary words: names shorter than
+three characters or without letters (except IP addresses), and words it already uses to understand
+requests, such as “mail” or “read”. A name points to one thing only: if it is
+already used for another site or mailbox, it is not moved and Metnos says so.</p>
+
+<p>Names can also be given while entering the credentials of a site or a
+mailbox: the form asks, as an optional field, which names you will call it by
+(the first is the name, the others synonyms). For a site without credentials
+use <strong>Add a site by name</strong>: if the name is left empty, Metnos
+suggests one from the domain without saving anything.</p>
+
+<p>The same section adds and updates credentials. In the row of a site or a
+mailbox, <strong>Update credentials</strong> opens the chat's protected form,
+already filled with the stored non-secret data: passwords and codes left empty
+keep their stored value, while the usage policy and the addresses already
+approved do not change. For new credentials use <strong>Site
+credentials</strong>, with the site address, or <strong>Mailbox
+credentials</strong>, with the mailbox name. The form appears in the page;
+passwords and codes are typed only there.</p>
+
+<p>Names and synonyms contain no password and grant no extra permission:
 credential handling, consent, and checks against the actual site remain
 separate.</p>
 

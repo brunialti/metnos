@@ -259,7 +259,7 @@ quello della sessione amministrativa.</p>
 
 <ul>
 <li><strong>Visibile non significa autorizzato.</strong> Un montaggio permette al processo di raggiungere una risorsa; l'identit&agrave;, il consenso e la finalit&agrave; dell'azione devono essere verificati prima.</li>
-<li><strong>Alcuni montaggi di base sono ampi.</strong> Sul server <code>/etc</code> e <code>/sys</code> sono visibili in sola lettura quando esistono. Il montaggio condiviso di <code>/opt</code> &egrave; stato rimosso, per impedire il riuso di una dipendenza sorella firmata ma non dichiarata.</li>
+<li><strong>Alcuni montaggi di base sono ampi.</strong> Sul server <code>/etc</code> e <code>/sys</code> sono visibili in sola lettura quando esistono. Il montaggio condiviso di <code>/opt</code> &egrave; stato rimosso, per impedire il riuso di una dipendenza sorella firmata ma non dichiarata. Un executor che chiede un consenso dal proprio interno non importa quindi <code>get_approval</code>: restituisce una richiesta di consenso e il modulo lo crea il runtime, con la stessa verifica dell'invio umano.</li>
 <li><strong>La rete &egrave; binaria.</strong> Quando serve, viene ereditata la rete dell'host; bubblewrap non applica una lista di host ammessi.</li>
 <li><strong>Il profilo non usa Landlock o seccomp personalizzati</strong> e, sul server, non separa lo spazio dei nomi PID.</li>
 <li><strong><code>system:undo</code> &egrave; un'eccezione vincolata ai byte.</strong> L'annullamento deve ricostruire dal registro risorse note soltanto al momento dell'esecuzione. Il percorso diretto richiede digest e lista dei file revisionati; ogni revisione successiva fallisce chiusa.</li>

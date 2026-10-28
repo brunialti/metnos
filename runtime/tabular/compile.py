@@ -49,6 +49,108 @@ def _sensitive_fields(*declarations: dict) -> set[str]:
     return fields
 
 
+def _conflict_details(records: list, sensitive: set[str], sheet: str) -> list[dict]:
+    """Keep observed alternatives in Notes; private metadata is never a column."""
+    from credential_intake import scrub_sensitive_text
+    from record_identity import valid_reference
+
+    notices = []
+    for number, record in enumerate(records, 1):
+        if not isinstance(record, dict) or record.get("sensitive") is True:
+            continue
+        conflicts = record.get("_record_conflicts")
+        witnesses = record.get("_record_provenance")
+        if not isinstance(conflicts, list):
+            continue
+        if not isinstance(witnesses, list) or not witnesses:
+            witnesses = [record]
+        for field in conflicts:
+            if (not isinstance(field, str) or field.startswith("_")
+                    or field in sensitive or field not in record):
+                continue
+            observations = []
+            for witness in witnesses:
+                if (not isinstance(witness, dict) or witness.get("sensitive") is True
+                        or field not in witness):
+                    continue
+                source = witness.get("_record_source")
+                if not valid_reference(source):
+                    continue
+                value = _clean(witness[field], sensitive)
+                if value is not None:
+                    observations.append({"source": source, "value": value})
+            if observations:
+                detail = json.dumps({"record": number, "field": field,
+                    "observations": observations}, ensure_ascii=False, default=str)
+                notices.append({"code": "MSG_TABLE_CONFLICT_DETAIL", "label": "INVALID_DATA",
+                                "sheet": sheet, "detail": scrub_sensitive_text(detail)[0]})
+    return notices
+
+
+def _row_text(record: dict, columns: list, sensitive: set[str]) -> str:
+    """A row as the sheet would show it: each column header and its value."""
+    clean = _clean(record, sensitive) or {}
+    parts = []
+    for column in columns:
+        value = (_cell(_transform(clean.get(column.source), column.transform))
+                 if column.source in clean else None)
+        parts.append(f"{column.header}: {_text(value) or '-'}")
+    return "; ".join(parts)
+
+
+def _row_actions(records: list, rejected: list, columns: list, sensitive: set[str],
+                 sheet: str) -> list[dict]:
+    """Rows merged or rejected, each with its values and then its action code."""
+    from credential_intake import scrub_sensitive_text
+
+    notes = []
+    for number, record in enumerate(records, 1):
+        if not isinstance(record, dict) or record.get("sensitive") is True:
+            continue
+        witnesses = [w for w in record.get("_record_provenance") or () if isinstance(w, dict)]
+        if len(witnesses) < 2:
+            continue
+        for witness in witnesses:
+            notes.append({"code": "MSG_TABLE_ROW_MERGED", "label": "MERGED", "sheet": sheet,
+                          "row": number,
+                          "detail": scrub_sensitive_text(_row_text(witness, columns, sensitive))[0]})
+    for record in rejected:
+        if record.get("sensitive") is not True:
+            notes.append({"code": "MSG_TABLE_ROW_REJECTED", "label": "REJECTED", "sheet": sheet,
+                          "detail": scrub_sensitive_text(_row_text(record, columns, sensitive))[0]})
+    return notes
+
+
+_ROW_ACTION_CODES = {"MSG_TABLE_ROW_MERGED": "MERGED", "MSG_TABLE_ROW_REJECTED": "REJECTED",
+                     "MSG_TABLE_CONFLICT_DETAIL": "INVALID_DATA"}
+# Bounds of the row notes a writer may provide; writers shorten to fit.
+ROW_ACTION_DETAIL_MAX = 4000
+ROW_ACTIONS_MAX = 2048
+
+
+def _provided_row_actions(actions, sensitive: set[str], sheet: str) -> list[dict]:
+    """Row notes a writer derived from the same records before projecting
+    them; only the closed row-action codes and bounded text are accepted."""
+    from credential_intake import scrub_sensitive_text
+
+    if actions is None:
+        return []
+    if not isinstance(actions, list) or len(actions) > ROW_ACTIONS_MAX:
+        raise TableError("invalid_row_actions")
+    notes = []
+    for action in actions:
+        if (not isinstance(action, dict) or action.get("code") not in _ROW_ACTION_CODES
+                or not isinstance(action.get("detail"), str) or len(action["detail"]) > ROW_ACTION_DETAIL_MAX
+                or ("row" in action and (type(action["row"]) is not int or action["row"] < 1))):
+            raise TableError("invalid_row_actions")
+        note = {"code": action["code"], "label": _ROW_ACTION_CODES[action["code"]], "sheet": sheet,
+                "detail": scrub_sensitive_text(action["detail"])[0]}
+        if "row" in action:
+            note["row"] = action["row"]
+        notes.append(note)
+    return notes
+
+
 def _source_metadata(table: dict, source: dict, sensitive: set[str]) -> dict:
     declared = {key: table[key] if key in table else source[key]
                 for key in SOURCE_METADATA_FIELDS if key in table or key in source}
@@ -209,6 +311,9 @@ def compile_workbook(source, spec: dict | None, capabilities: Capabilities, *, m
         raw = table.get("values", table.get("entries", []))
         if not isinstance(raw, list):
             raise TableError("invalid_rows")
+        # Rows the producer rejected stay out of the data, declared in Notes.
+        rejected = [row for row in raw if isinstance(row, dict) and row.get("_record_rejected") is True]
+        raw = [row for row in raw if not (isinstance(row, dict) and row.get("_record_rejected") is True)]
         explicit = table_spec.get("column_specs") or []
         if not isinstance(explicit, list) or any(not isinstance(item, dict) for item in explicit):
             raise TableError("invalid_column_specs")
@@ -334,11 +439,42 @@ def compile_workbook(source, spec: dict | None, capabilities: Capabilities, *, m
                           "detail": _text(detail)}
                 if runtime_evidence:
                     notice["reason_code"] = item.get("reason_code", "")
+                    for field in ("cap_field", "cap_value"):
+                        if field in item:
+                            notice[field] = item[field]
                 notices.append(notice)
+            if "producer" in item and item.get("reason_code") in {"identifier_merge", "record_enrichment"}:
+                if item.get("merged"):
+                    notices.append({"code": "WARN_TABLE_MERGED_ROWS", "sheet": name,
+                                    "count": item["merged"]})
+                if item.get("suspected"):
+                    notices.append({"code": "WARN_TABLE_SUSPECTED_DUPLICATES", "sheet": name,
+                                    "count": item["suspected"]})
+                if item.get("conflicted"):
+                    notices.append({"code": "WARN_TABLE_CONFLICTING_ROWS", "sheet": name,
+                                    "count": item["conflicted"]})
+                if item.get("absorbed"):
+                    notices.append({"code": "WARN_TABLE_UNIDENTIFIED_ABSORBED", "sheet": name,
+                                    "count": item["absorbed"]})
+            if ("producer" in item and item.get("reason_code") == "foreign_section"
+                    and item.get("excluded")):
+                notices.append({"code": "WARN_TABLE_FOREIGN_SECTIONS", "sheet": name,
+                                "count": item["excluded"]})
             if item.get("provenance"):
                 notices.append({"code": "MSG_TABLE_PROVENANCE", "sheet": name,
                                 "detail": item["provenance"]["url"]})
         provenance = table.get("provenance", source.get("provenance"))
+        notices.extend(_row_actions(raw[:row_cap], rejected, columns, sensitive, name))
+        provided = _provided_row_actions(
+            table.get("row_actions", source.get("row_actions") if len(sources) == 1 else None),
+            sensitive, name)
+        notices.extend(provided)
+        if not rejected:
+            rejected = [item for item in provided if item["label"] == "REJECTED"]
+        notices.extend(_conflict_details(raw[:row_cap], sensitive, name))
+        if rejected:
+            notices.append({"code": "WARN_TABLE_UNIDENTIFIED_REJECTED", "sheet": name,
+                            "count": len(rejected)})
         if provenance:
             notices.append({"code": "MSG_TABLE_PROVENANCE", "sheet": name,
                             "detail": _text(_clean(provenance, sensitive))})

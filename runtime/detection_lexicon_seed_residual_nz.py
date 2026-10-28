@@ -97,7 +97,10 @@ TABULAR_CONCEPT_PAYLOAD = {
         "duplikate",
     ],
     "url": ["url", "urls", "link", "links", "web_url", "web_view_url"],
-    "count": ["count", "counts", "conteggio", "numero", "total", "totale"],
+    "count": ["count", "counts", "conteggio", "total", "totale"],
+    "number": ["number", "numbers", "numero", "numeri"],
+    "amount": ["amount", "amounts", "importo", "importi"],
+    "status": ["status", "stato", "stati"],
 }
 
 TABULAR_ORDINAL_PAYLOAD = {

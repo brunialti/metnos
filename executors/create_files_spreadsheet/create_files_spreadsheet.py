@@ -20,7 +20,6 @@ Contratto:
 from __future__ import annotations
 
 import os
-import re
 import sys
 from pathlib import Path
 
@@ -107,20 +106,12 @@ def _backend(client: str):
     return backend
 
 
-def _short_turn_id(args: dict) -> str:
-    """Return the filesystem-safe turn fragment shown by the chat UI."""
-    raw = args.get("_turn_id") or os.environ.get("METNOS_TURN_ID") or ""
-    if not isinstance(raw, str):
-        raw = str(raw)
-    return re.sub(r"[^A-Za-z0-9_-]", "_", raw.strip())[:8].strip("_-")
-
-
-def _collision_title(args: dict, turn_id: str, ordinal: int) -> str:
-    """Build ``<title>_<short-turn>[_N]`` without truncating the suffix."""
+def _collision_title(args: dict, ordinal: int) -> str:
+    """Build ``<title> (N)`` without truncating the ordinal (N >= 2)."""
     raw_title = args.get("title")
     title = raw_title.strip() if isinstance(raw_title, str) else ""
     title = title or "spreadsheet"
-    suffix = f"_{turn_id}" if ordinal == 1 else f"_{turn_id}_{ordinal}"
+    suffix = f" ({ordinal})"
     room = max(1, _TITLE_FILENAME_LIMIT - len(suffix))
     return f"{title[:room].rstrip() or 'spreadsheet'[:room]}{suffix}"
 
@@ -131,24 +122,17 @@ def _create_local_collision_safe(backend, args: dict) -> dict:
     An explicit ``path``/``spreadsheet_id`` remains create-only and fail-closed:
     silently moving an explicitly placed artifact would violate caller intent.
     For the ordinary title-derived destination, retry an ``ERR_DST_EXISTS``
-    with the short runtime turn id.  The bounded ordinal also handles a replay
-    of the same turn and the create race remains safe because the backend uses
-    exclusive file creation.
+    with the next free ordinal, as a person would name a copy: «report (2)»
+    (Roberto, 13/10/2026: no turn code in the name). The create race remains
+    safe because the backend uses exclusive file creation.
     """
     result = backend.create_spreadsheet(args)
     if result.get("error_code") != "ERR_DST_EXISTS":
         return result
     if args.get("path") or args.get("spreadsheet_id"):
         return result
-    turn_id = _short_turn_id(args)
-    if not turn_id:
-        return result
-
-    for ordinal in range(1, _COLLISION_RETRY_LIMIT + 1):
-        retry_args = {
-            **args,
-            "title": _collision_title(args, turn_id, ordinal),
-        }
+    for ordinal in range(2, _COLLISION_RETRY_LIMIT + 2):
+        retry_args = {**args, "title": _collision_title(args, ordinal)}
         result = backend.create_spreadsheet(retry_args)
         if result.get("error_code") != "ERR_DST_EXISTS":
             return result

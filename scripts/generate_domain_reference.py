@@ -150,8 +150,8 @@ DOMAIN_COPY = {
         ("Cerca sul web le linee guida europee più recenti sul passaporto digitale dei prodotti e cita le fonti.", "Leggi questo PDF online e riassumi requisiti, scadenze e destinatari."),
         ("Search the web for the latest European guidance on digital product passports and cite the sources.", "Read this online PDF and summarise requirements, deadlines, and intended audiences.")),
     "sites": _copy("world", ("Siti con sessione", "Stateful sites"),
-        ("Apre una sessione browser persistente, raggiunge il login con credenziali protette, legge lo stato della pagina e compie azioni web a mandato ristretto.",
-         "Opens a persistent browser session, reaches login using protected credentials, reads page state, and performs narrow-mandate web actions."),
+        ("Apre una sessione browser persistente, raggiunge il login con credenziali protette, legge lo stato della pagina e compie azioni web a mandato ristretto.\n\nDurante una raccolta può tornare direttamente a una pagina già raggiunta e verificarne contenuto e contesto prima di continuare. Se la verifica fallisce, ripercorre il percorso precedente entro i limiti della sessione.\n\nPer fatture di un anno preciso, il passaggio a un anno precedente può fermare la ricerca nello stesso elenco quando le date e il loro ordine sono verificabili. I dettagli delle fatture richieste restano da leggere. Le viste dello stesso documento possono essere unite usando il collegamento osservato al dettaglio; data e importo uguali da soli non provano un doppione. La verifica delle righe scritte non certifica la completezza dell'archivio.",
+         "Opens a persistent browser session, reaches login using protected credentials, reads page state, and performs narrow-mandate web actions.\n\nDuring collection, it can return directly to a previously reached page and verify its content and context before continuing. If verification fails, it follows the previous path again within the session limits.\n\nFor invoices from one specific year, reaching an earlier year can stop the search within the same list when its dates and order can be verified. Details of the requested invoices still need to be read. Views of the same document can be merged using the observed link to its detail; equal dates and amounts alone do not prove a duplicate. Verifying written rows does not certify archive completeness."),
         ("Le credenziali sono iniettate dal broker e non mostrate al modello. Azioni sensibili richiedono conferma.",
          "Credentials are injected by the broker and never shown to the model. Sensitive actions require confirmation."),
         ("Accedi al portale del corriere e dimmi dove si trova la spedizione 12345.", "Apri il sito della banca, scarica l'estratto conto di giugno e fermati prima di qualsiasi disposizione."),
@@ -425,10 +425,14 @@ def render(lang: str, operations: dict[str, tuple[str, ...]]) -> str:
                 f'{open_quote}{html.escape(example)}{close_quote}</p>'
                 for example in examples
             )
+            summary_html = "\n  ".join(
+                f"<p>{html.escape(paragraph)}</p>"
+                for paragraph in summary.split("\n\n")
+            )
             cards.append(f'''
 <article class="domain-card" id="domain-{html.escape(domain.lstrip("_"))}">
   <div class="domain-head"><div><span class="domain-key">{html.escape(domain)}</span><h3>{html.escape(label)}</h3></div><span class="count">{len(names)} {availability}</span></div>
-  <p>{html.escape(summary)}</p>
+  {summary_html}
   <p class="boundary"><strong>{text["boundary"]}.</strong> {html.escape(boundary)}</p>
   <div class="examples">{examples_html}</div>
   <details><summary>{text["operations"]} ({len(names)})</summary><div class="operations">{operation_body}</div></details>

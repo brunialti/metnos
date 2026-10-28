@@ -231,6 +231,15 @@ la destinazione richiesta resta invariata e soggetta ai normali controlli.
 I dati restituiti da un executor non possono scegliere la destinazione.</p>
 <h2 id="esiti">Risultati, errori e registri</h2>
 
+<p>La console LRE distingue le frecce di apertura del dettaglio dalle caselle
+di selezione dei log. La selezione multipla riguarda i log già caricati e resta
+durante gli aggiornamenti. La cancellazione richiede una sola conferma e usa
+per ogni log il comando esistente, circoscritto al proprietario, con versione
+attesa e chiave di idempotenza. Solo lavori conclusi con pulizia dei temporanei
+verificata sono cancellabili. Le risposte riuscite rimuovono le righe; i log
+non cancellati restano selezionati. Le risposte di letture precedenti non
+reinseriscono log la cui cancellazione è già confermata.</p>
+
 <p>La console LRE ricava l'avvio dai tentativi realmente eseguiti nella revisione
 corrente, non dalla creazione del lavoro. Una tabella compatta separa batch
 completati e previsti nella fase corrente dal totale noto di tutte le fasi, che

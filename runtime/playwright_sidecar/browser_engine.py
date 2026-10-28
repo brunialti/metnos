@@ -128,7 +128,8 @@ def prepare_environment(environment: dict[str, str]) -> None:
     os.environ["XDG_CACHE_HOME"] = environment["XDG_CACHE_HOME"]
 
 
-async def launch(playwright, *, headless: bool, environment: dict[str, str]):
+async def launch(playwright, *, headless: bool, environment: dict[str, str],
+                 downloads_path: str):
     if selected() != "camoufox":
         raise RuntimeError("camoufox_not_selected")
     from camoufox.addons import DefaultAddons
@@ -140,7 +141,8 @@ async def launch(playwright, *, headless: bool, environment: dict[str, str]):
         playwright, executable_path=str(installed_binary()),
         ff_version=int(CAMOUFOX_VERSION.split(".")[0]),
         i_know_what_im_doing=True, os="linux", headless=headless,
-        window=(1280, 800), env=environment, exclude_addons=list(DefaultAddons),
+        window=(1280, 800), env=environment, downloads_path=downloads_path,
+        exclude_addons=list(DefaultAddons),
         addons=[],
         geoip=False, humanize=False, main_world_eval=False, disable_coop=False,
         block_webrtc=True, firefox_user_prefs={

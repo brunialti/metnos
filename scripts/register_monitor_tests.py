@@ -20,6 +20,7 @@ CASES = {
     "monitor_events": ["tests/runtime/infra/test_monitor_store.py"],
     "monitor_requests": ["tests/runtime/infra/test_monitor_late_coverage.py"],
     "monitor_store": ["tests/runtime/infra/test_monitor_store.py"],
+    "monitor_sql": ["tests/runtime/infra/test_monitor_sql.py"],
     "monitor_capture": ["tests/runtime/infra/test_monitor_capture.py",
                         "tests/runtime/infra/test_monitor_boundaries.py",
                         "tests/runtime/infra/test_monitor_browser_transport.py",
@@ -80,6 +81,9 @@ def register(registry):
     registry.add_dependency("monitor_store", "monitor_requests")
     registry.add_dependency("monitor_views", "monitor_store")
     registry.add_dependency("http_routes_monitor", "monitor_views")
+    registry.add_dependency("http_routes_monitor", "monitor_sql")
+    registry.add_dependency("monitor_sql", "monitor_store")
+    registry.add_dependency("monitor_capture", "monitor_store")
     registry.add_dependency("monitor_capture", "monitor_events")
     # Voci audit storiche: medesime prove, tipo supportato e interprete/root
     # derivati. Nessun percorso dell'installazione fissato nello script.

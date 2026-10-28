@@ -120,11 +120,22 @@ def _bind_reads_to_open_source(query: str, actions: list, llm_call) -> list:
     """
     if len(actions) < 2 or not callable(llm_call):
         return actions
-    if not any(a.get("object") == "sites" for a in actions[:-1]):
-        return actions
-    ultima = actions[-1]
+    indice = len(actions) - 1
+    ultima = actions[indice]
+    if ultima.get("verb") not in _READING_VERBS:
+        # A reading clause right before the acting clause that consumes it can
+        # carry that clause's object: «sign in and put all the bills of 2025 in
+        # a spreadsheet» became find FILES, create files, and the plan read a
+        # local file with no path (real turn 211eafb27707436a). Only that copy
+        # is questioned; a reading clause with an object of its own is not.
+        precedente = actions[indice - 1]
+        if not (precedente.get("verb") in _READING_VERBS
+                and precedente.get("object")
+                and precedente.get("object") == ultima.get("object")):
+            return actions
+        indice, ultima = indice - 1, precedente
     if (ultima.get("object") == "sites"
-            or ultima.get("verb") not in _READING_VERBS):
+            or not any(a.get("object") == "sites" for a in actions[:indice])):
         return actions
     try:
         risposta = llm_call(_OPEN_SOURCE_PROBE, query, max_tokens=4)
@@ -134,7 +145,7 @@ def _bind_reads_to_open_source(query: str, actions: list, llm_call) -> list:
         return actions
     if "site" in testo.strip().lower():
         actions = list(actions)
-        actions[-1] = {**ultima, "object": "sites"}
+        actions[indice] = {**ultima, "object": "sites"}
     return actions
 
 
@@ -401,8 +412,8 @@ def extract_intent(query: str, llm_call) -> Optional[dict]:
         return None
     if kind != "action":
         return {"kind": kind}
-    # La sonda tocca solo l'ULTIMA clausola, e si applica da due in su: la
-    # clausola primaria non e' mai quella, quindi `verb`/`obj` non si toccano.
+    # La sonda tocca solo l'ULTIMA clausola che legge (o quella che copia
+    # l'oggetto dell'azione finale), da due in su: `verb`/`obj` restano.
     actions = _bind_reads_to_open_source(query, actions, llm_call)
     out = {"kind": "action", "verb": verb, "object": obj}
     # Esponi la decomposizione SOLO se compound reale (>=2 clausole distinte):

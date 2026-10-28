@@ -36,12 +36,13 @@ import inspect
 import re
 import struct
 import time
+import unicodedata
 import urllib.parse
 
 import credentials  # runtime/credentials.py — vault cifrato (dentro il broker)
 import sites_audit
 import sites_origin  # ADR 0191 P2 — origine credenziale (scheme,host,port)
-from playwright_sidecar import factor_resolvers
+from playwright_sidecar import factor_resolvers, challenges
 from playwright_sidecar.cookie_privacy import CookieOutcome
 from sites_url_scrub import scrub_url
 
@@ -55,6 +56,69 @@ _LOGIN_SURFACE_SETTLE_S = 5.0
 _EMAIL_FACTOR_WAIT_S = 22.0
 _FACTOR_SUBMIT_SETTLE_S = 15.0
 _AUTH_SUCCESS_STABLE_POLLS = 6
+_REQUEST_AUDIT_KEYS = tuple(
+    f"{kind}_{event}" for kind in ("document", "data")
+    for event in ("started", "finished", "failed", "1xx", "2xx", "3xx", "4xx", "5xx", "other_status"))
+
+
+def _audit_count(value) -> int:
+    return min(1_000_000, max(0, value)) if type(value) is int else 0
+
+
+def _request_audit_counts(page, baseline=None) -> dict:
+    """Closed counters only; requests may be unrelated to the form submission."""
+    counts = getattr(page, "_metnos_request_audit_counts", {})
+    counts = counts if isinstance(counts, dict) else {}
+    baseline = baseline if isinstance(baseline, dict) else {}
+    return {key: _audit_count(_audit_count(counts.get(key))
+                             - _audit_count(baseline.get(key)))
+            for key in _REQUEST_AUDIT_KEYS}
+
+
+def _submission_error_code(error) -> str:
+    return {"TimeoutError": "timeout", "TargetClosedError": "target_closed",
+            "Error": "browser_error", "CancelledError": "cancelled"}.get(
+                type(error).__name__, "other")
+
+
+def _record_submission(*, owner, session_id, domain, stage, action, status,
+                       error_code="none") -> None:
+    # New diagnostics must not alter a login if the audit writer itself fails.
+    try:
+        sites_audit.record(
+            "login_submission", owner=owner, session_id=session_id, domain=domain,
+            stage=stage if stage in {"username", "primary", "factor"} else "unknown",
+            action=action if action in {"click", "enter"} else "unknown",
+            status=status if status in {
+                "attempt", "returned", "raised", "interrupted", "preparation_failed"} else "unknown",
+            error_code=error_code if error_code in {
+                "none", "timeout", "target_closed", "browser_error", "cancelled", "other"} else "other")
+    except Exception:
+        pass
+
+
+async def _submit_login_control(*, page, selector, enter, timeout_ms,
+                                owner, session_id, domain, stage) -> None:
+    """Observe the existing single action, with no selectors or error text in audit."""
+    _install_request_tracker(page)
+    page._metnos_submission_baseline = _request_audit_counts(page)
+    page._metnos_submission_stage = stage
+    action = "enter" if enter else "click"
+    _record_submission(owner=owner, session_id=session_id, domain=domain,
+                       stage=stage, action=action, status="attempt")
+    status, error_code = "interrupted", "none"
+    try:
+        if enter:
+            await page.press(selector, "Enter", timeout=timeout_ms, no_wait_after=True)
+        else:
+            await page.click(selector, timeout=timeout_ms, no_wait_after=True)
+        status = "returned"
+    except Exception as error:
+        status, error_code = "raised", _submission_error_code(error)
+        raise
+    finally:
+        _record_submission(owner=owner, session_id=session_id, domain=domain,
+                           stage=stage, action=action, status=status, error_code=error_code)
 
 
 class _LoginBudget:
@@ -86,44 +150,69 @@ async def _checkpoint(callback, stage: str) -> None:
 # Cerca SOLO in `document` (main frame): `document.forms`/`querySelectorAll` NON
 # discendono negli iframe → un campo password in un iframe NON viene trovato
 # (CRITICO-1 punto 2: mai iframe).
+# Shared main-form precondition. A disabled submit still exists;
+# opacity/hidden ancestors affect the whole control, not only its own style.
+_LOGIN_ACTIONABILITY_JS = r"""
+  const visible = el => {
+    const r = el.getBoundingClientRect();
+    if (r.width < 2 || r.height < 2 || el.disabled ||
+        el.matches(':disabled') || el.getAttribute('aria-disabled') === 'true')
+      return false;
+    let opacity = 1;
+    for (let node = el; node; node = node.parentElement) {
+      const st = getComputedStyle(node);
+      if (node.hidden || node.getAttribute('aria-hidden') === 'true' ||
+          st.display === 'none' || st.visibility === 'hidden' ||
+          st.visibility === 'collapse') return false;
+      opacity *= Number.parseFloat(st.opacity || '1');
+      if (!Number.isFinite(opacity) || opacity < 0.05) return false;
+    }
+    return true;
+  };
+  const submitSelection = form => {
+    const all = form ? Array.from(document.querySelectorAll(
+      'button,input')).filter(el => el.form === form && (
+      (el.tagName === 'BUTTON' && el.type === 'submit') ||
+      (el.tagName === 'INPUT' && ['submit', 'image'].includes(el.type)))) : [];
+    const actionable = all.filter(visible);
+    return {present: all.length > 0, ambiguous: actionable.length > 1,
+            control: actionable.length === 1 ? actionable[0] : all[0] || null};
+  };
+  const actionFor = (form, submit) => submit && submit.hasAttribute('formaction')
+    ? submit.formAction : ((form && form.action) ? form.action : location.href);
+"""
+
 _LOCATE_LOGIN_FORM_JS = r"""
 () => {
+""" + _LOGIN_ACTIONABILITY_JS + r"""
   document.querySelectorAll(
     '[data-metnos-pw],[data-metnos-user],[data-metnos-submit]')
     .forEach(el => {
+      delete el.__metnosLoginFormBindingV1;
       el.removeAttribute('data-metnos-pw');
       el.removeAttribute('data-metnos-user');
       el.removeAttribute('data-metnos-submit');
     });
-  const visible = el => {
-    const r = el.getBoundingClientRect();
-    const st = getComputedStyle(el);
-    return r.width >= 2 && r.height >= 2 && st.display !== 'none' &&
-      st.visibility !== 'hidden' && Number.parseFloat(st.opacity || '1') >= 0.05 &&
-      !el.disabled && el.getAttribute('aria-disabled') !== 'true';
-  };
   const passwordFields = Array.from(
     document.querySelectorAll('input[type=password]')).filter(visible);
   if (passwordFields.length !== 1)
     return {found: false, ambiguous: passwordFields.length > 1};
   const pw = passwordFields[0];
-  const form = pw.closest('form');
-  // Origine di submit: form.action riflette già l'URL ASSOLUTO risolto; se non
-  // c'è form, l'origine è quella della pagina (submit-to-self).
-  const actionResolved = (form && form.action) ? form.action : location.href;
-  const scope = form || document;
+  const form = pw.form;
+  // Resolve fields by their native form owner, including external controls.
+  // The selected submit's formaction takes precedence over form.action.
+  const all = Array.from(document.querySelectorAll('input'))
+    .filter(el => el.form === form);
   // username field: match esplicito per name/id, poi fallback all'input
   // testuale che PRECEDE la password in DOM order.
   const RE = /user|email|login|userid|account|utente|matricola|nome/i;
   let userEl = null;
-  const cand = Array.from(scope.querySelectorAll(
-    'input[type=text], input[type=email], input[type=tel], input:not([type])'))
-    .filter(visible);
+  const cand = all.filter(el =>
+    ['text', 'email', 'tel'].includes(el.type) && visible(el));
   for (const c of cand) {
     if (RE.test(c.name || '') || RE.test(c.id || '')) { userEl = c; break; }
   }
   if (!userEl) {
-    const all = Array.from(scope.querySelectorAll('input'));
     const pwIdx = all.indexOf(pw);
     for (let i = pwIdx - 1; i >= 0; i--) {
       const t = (all[i].type || 'text').toLowerCase();
@@ -133,12 +222,13 @@ _LOCATE_LOGIN_FORM_JS = r"""
       }
     }
   }
-  let submitEl = null;
-  if (form) {
-    submitEl = Array.from(form.querySelectorAll(
-      'button[type=submit], input[type=submit], input[type=image], button:not([type])'))
-      .find(visible) || null;
-  }
+  const selection = submitSelection(form);
+  if (selection.ambiguous) return {found: false, ambiguous: true};
+  const submitEl = selection.control;
+  const actionResolved = actionFor(form, submitEl);
+  // DOM references do not survive cloneNode/innerHTML or a new document.
+  // Retain the filled fields' identity; later scans may refresh only submit.
+  pw.__metnosLoginFormBindingV1 = {form, user: userEl, hadSubmit: selection.present};
   // Tag deterministici broker-owned. Redaction del pw field SUBITO (prima di
   // qualunque digitazione o capture — CRITICO-3).
   pw.setAttribute('data-metnos-pw', '1');
@@ -150,6 +240,34 @@ _LOCATE_LOGIN_FORM_JS = r"""
   if (submitEl) submitEl.setAttribute('data-metnos-submit', '1');
   return {found: true, actionResolved, hasUser: !!userEl, hasSubmit: !!submitEl,
           inForm: !!form};
+}
+"""
+
+
+_LOGIN_SUBMIT_STATE_JS = r"""
+() => {
+""" + _LOGIN_ACTIONABILITY_JS + r"""
+  const fields = document.querySelectorAll('[data-metnos-pw="1"]');
+  if (fields.length !== 1) return {found: false, formChanged: true};
+  const pw = fields[0];
+  const binding = pw.__metnosLoginFormBindingV1;
+  if (!binding || !pw.isConnected || pw.form !== binding.form ||
+      (binding.form && !binding.form.isConnected) ||
+      (binding.user && (!binding.user.isConnected || binding.user.form !== binding.form)))
+    return {found: false, formChanged: true};
+  const selection = submitSelection(binding.form);
+  if (selection.ambiguous) return {found: false, ambiguous: true};
+  const submitEl = selection.control;
+  // Enter is allowed only when no submit exists or existed on the bound form.
+  const lostSubmit = binding.hadSubmit && !selection.present;
+  binding.hadSubmit = binding.hadSubmit || selection.present;
+  document.querySelectorAll('[data-metnos-submit]').forEach(
+    el => el.removeAttribute('data-metnos-submit'));
+  if (submitEl) submitEl.setAttribute('data-metnos-submit', '1');
+  return {found: true, hasSubmit: selection.present,
+          actionResolved: actionFor(binding.form, submitEl),
+          submitBlocked: !!(lostSubmit || !visible(pw) ||
+            (binding.user && !visible(binding.user)) || (submitEl && !visible(submitEl)))};
 }
 """
 
@@ -257,56 +375,166 @@ _LOCATE_OTP_FORM_JS = r"""
 }
 """
 
-# JS: rileva un CAPTCHA (recaptcha/hcaptcha/turnstile) nel main frame.
-_DETECT_CAPTCHA_JS = r"""
+# Existing login and solver calls keep their boolean protocol, using the same
+# active-widget rules as navigation. No response token leaves the browser.
+_DETECT_CAPTCHA_JS = "() => (" + challenges._OBSERVE_JS + ")().challenges.length > 0"
+
+# Read only the credential form's own visible messages, never input values.
+# Keep the complete message container so a quoted request inside a FAQ or a
+# negated sentence cannot become a positive request by selecting its fragment.
+_LOGIN_HUMAN_VERIFICATION_MESSAGES_JS = r"""
 () => {
+  if (document.readyState === 'loading') return null;
   const visible = el => {
-    const r = el.getBoundingClientRect();
-    const st = getComputedStyle(el);
-    return r.width >= 2 && r.height >= 2 && st.display !== 'none' &&
-      st.visibility !== 'hidden' && Number.parseFloat(st.opacity || '1') >= 0.05;
-  };
-  // A completed widget remains on screen. Inspect only its own response;
-  // one solved widget must not mask a second pending one. No token leaves JS.
-  const answered = el => {
-    const widget = el.closest('.g-recaptcha, #g-recaptcha, .h-captcha, .cf-turnstile, [data-sitekey]');
-    let container = widget || el.parentElement;
-    if (!container || (!widget && ['BODY', 'HTML', 'FORM'].includes(container.tagName))) return false;
-    const frame = el.matches('iframe') ? el : el.querySelector('iframe');
-    const src = (frame?.src || '').toLowerCase();
-    const name = container.matches('.h-captcha') || src.includes('hcaptcha') ? 'h-captcha-response' :
-      container.matches('.cf-turnstile') || src.includes('/cdn-cgi/challenge-platform/') ||
-      src.includes('turnstile') ? 'cf-turnstile-response' :
-      container.matches('.g-recaptcha, #g-recaptcha') || src.includes('recaptcha') ? 'g-recaptcha-response' : null;
-    if (!name) return false;
-    // Explicit rendering can wrap the frame without a provider CSS class.
-    // Find its response in the nearest isolated container, never in the whole
-    // form/page or across another widget. A neighbour's token is not an answer.
-    while (container && !['BODY', 'HTML', 'FORM'].includes(container.tagName)) {
-      const frames = [...container.querySelectorAll('iframe')].filter(f =>
-        /recaptcha|hcaptcha|turnstile|\/cdn-cgi\/challenge-platform\//i.test(f.src || ''));
-      if (frames.some(f => f !== frame)) return false;
-      const responses = container.querySelectorAll(`[name="${name}"]`);
-      if (responses.length) return responses.length === 1 && Boolean(responses[0].value.trim());
-      if (container === widget) return false;
-      container = container.parentElement;
+    const rect = el.getBoundingClientRect();
+    if (rect.width < 2 || rect.height < 2) return false;
+    for (let node = el; node; node = node.parentElement) {
+      const style = getComputedStyle(node);
+      if (node.hidden || node.getAttribute('aria-hidden') === 'true' ||
+          style.display === 'none' || style.visibility === 'hidden' ||
+          style.visibility === 'collapse' ||
+          Number.parseFloat(style.opacity || '1') < 0.05) return false;
     }
-    return false;
+    return true;
   };
-  const markers = Array.from(document.querySelectorAll(
-    '.g-recaptcha, #g-recaptcha, .h-captcha, [data-sitekey], .cf-turnstile'));
-  if (markers.some(el => visible(el) && !answered(el))) return true;
-  const ifr = Array.from(document.querySelectorAll('iframe'));
-  for (const f of ifr) {
-    if (!visible(f)) continue;
-    const s = (f.src || '').toLowerCase();
-    if ((s.includes('recaptcha') || s.includes('hcaptcha') ||
-         s.includes('turnstile') || s.includes('/cdn-cgi/challenge-platform/')) &&
-        !answered(f)) return true;
+  const fields = Array.from(document.querySelectorAll(
+    'input[type=password],input[autocomplete=username i],input[type=email],'
+    + 'input[autocomplete=email i],[data-metnos-user-step],[data-metnos-user]'));
+  if (fields.length > 128) return null;
+  // Disabled fields still identify the form whose challenge the user must
+  // complete. Actual credential filling keeps its own enabled-field checks.
+  const active = fields.filter(el => visible(el) && el.closest('form'));
+  const password = active.filter(el => el.type === 'password');
+  const username = active.filter(el =>
+    (el.getAttribute('autocomplete') || '').toLowerCase() === 'username' ||
+    el.hasAttribute('data-metnos-user-step') || el.hasAttribute('data-metnos-user'));
+  const candidates = password.length ? password : username.length ? username : active;
+  const forms = new Set(candidates.map(el => el.closest('form')));
+  if (!forms.size) return [];
+  if (forms.size !== 1) return null;
+  const form = forms.values().next().value;
+  if (form.querySelectorAll('*').length > 512) return null;
+  const ignored = 'input,button,select,textarea,script,style,template,noscript,q,blockquote,code,pre';
+  const prose = 'p,div,section,article,aside,li,dd,dt,legend,h1,h2,h3,h4,h5,h6';
+  const blocks = new Set();
+  const walker = document.createTreeWalker(form, NodeFilter.SHOW_TEXT);
+  let count = 0;
+  for (let text = walker.nextNode(); text; text = walker.nextNode()) {
+    if (++count > 512) return null;
+    let node = text.parentElement;
+    if (!text.data.trim() || node.closest(ignored) || !visible(node)) continue;
+    // An adjacent link/button/input must not detach an inline request from
+    // the negation or quotation around it. Use the complete prose container;
+    // absent one, inspect the whole form rather than an isolated fragment.
+    while (node !== form && !node.matches(prose)) node = node.parentElement;
+    blocks.add(node);
   }
-  return false;
+  const messages = [];
+  for (const block of blocks) {
+    const content = document.createTreeWalker(
+      block, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
+    let message = '';
+    for (let text = content.nextNode(); text; text = content.nextNode()) {
+      if (text.nodeType === Node.ELEMENT_NODE) {
+        if (text.tagName === 'BR' && visible(text.parentElement)) message += ' ';
+      } else if (!text.parentElement.closest(ignored) && visible(text.parentElement)) {
+        message += text.data;
+      }
+      if (message.length > 512) return null;
+    }
+    if (message.trim() && message.length <= 512) messages.push(message);
+    if (messages.length > 64) return null;
+  }
+  return messages;
 }
 """
+
+
+def _normalize_human_verification_request(value: str) -> str:
+    if not isinstance(value, str):
+        return ""
+    value = unicodedata.normalize("NFKC", value).casefold()
+    if any(unicodedata.category(char).startswith("C") and not char.isspace()
+           for char in value):
+        return ""
+    return " ".join(value.split()).rstrip(".!?").rstrip()
+
+
+async def _textual_login_challenge_observation(page) -> bool | None:
+    """True/False require a complete read; None means observation unavailable."""
+    if _detlex is None:
+        return None
+    try:
+        forms = {_normalize_human_verification_request(value)
+                 for value in _detlex.native_ready_forms(
+                     "sites.human_verification_marker",
+                     include_reviewed_baselines=True)} - {""}
+        if not forms:
+            return None
+        messages = await page.evaluate(_LOGIN_HUMAN_VERIFICATION_MESSAGES_JS)
+        if (not isinstance(messages, list) or len(messages) > 64
+                or any(not isinstance(message, str) or len(message) > 512
+                       for message in messages)):
+            return None
+        return any(_normalize_human_verification_request(message) in forms
+                   for message in messages)
+    except Exception:
+        return None
+
+
+async def _textual_login_challenge(page) -> bool:
+    """An explicit own-form request remains a pending challenge signal."""
+    return await _textual_login_challenge_observation(page) is True
+
+
+_LOGIN_CAPTCHA_FRAMES_JS = "els => {" + challenges._HELPERS_JS + """
+    return els.map((el,index) => ({index,info:providerFrame(el),visible:visible(el)}))
+        .filter(item => item.visible && item.info);
+}"""
+
+
+async def _manual_only_login_challenge(page) -> bool:
+    """Text alone has no solver target; one supported widget may be delegated.
+
+    Sites commonly render their validation request beside the widget. Keep
+    that request as an independent pending signal, without letting it mask a
+    unique provider target. This read grants no browser effect or login proof.
+    """
+    if not await _textual_login_challenge(page):
+        return False
+    try:
+        async with asyncio.timeout(challenges.OBSERVATION_TIMEOUT_S):
+            observed = await challenges.observe(page)
+            if (not isinstance(observed, dict)
+                    or observed.get("status") != "required"
+                    or observed.get("provider") not in {"recaptcha", "hcaptcha", "turnstile"}):
+                return True
+            candidates = await page.locator("iframe").evaluate_all(_LOGIN_CAPTCHA_FRAMES_JS)
+            return not (isinstance(candidates, list) and len(candidates) == 1
+                        and candidates[0].get("info", {}).get("provider") == observed["provider"])
+    except Exception:
+        return True
+
+
+async def observe_manual_login_challenge(page) -> bool | None:
+    """Observe textual and framed challenges within one shared deadline."""
+    try:
+        # Both read-only observations run in this task. Timeout cancels the
+        # current await; no detached task or background reader survives it.
+        async with asyncio.timeout(challenges.OBSERVATION_TIMEOUT_S):
+            widget = await challenges.observe(page)
+            status = widget.get("status") if isinstance(widget, dict) else None
+            if status == "required":
+                return True
+            textual = await _textual_login_challenge_observation(page)
+            if textual is True:
+                return True
+            if textual is False and status == "clear":
+                return False
+    except TimeoutError:
+        pass
+    return None
+
 
 # JS: la pagina ha ancora un campo password interagibile nel main frame?
 # I portali SPA spesso mantengono form di login nascosti anche nella dashboard.
@@ -476,10 +704,17 @@ async def _locate_username_stage(page):
 
 _CURRENT_FORM_ACTION_JS = r"""
 () => {
-  const pw = document.querySelector('[data-metnos-pw="1"]');
-  if (!pw) return '';
-  const form = pw.closest('form');
-  return (form && form.action) ? form.action : location.href;
+""" + _LOGIN_ACTIONABILITY_JS + r"""
+  const fields = document.querySelectorAll('[data-metnos-pw="1"]');
+  if (fields.length !== 1) return '';
+  const pw = fields[0];
+  const binding = pw.__metnosLoginFormBindingV1;
+  if (!binding || pw.form !== binding.form ||
+      (binding.form && !binding.form.isConnected) ||
+      (binding.user && (!binding.user.isConnected || binding.user.form !== binding.form)))
+    return '';
+  const selection = submitSelection(binding.form);
+  return selection.ambiguous ? '' : actionFor(binding.form, selection.control);
 }
 """
 
@@ -622,6 +857,8 @@ async def _page_matches_concept(page, concept: str) -> bool:
 
 async def classify_login_surface(page) -> str | None:
     """Return the most specific stable authentication blocker on the page."""
+    if await _textual_login_challenge(page):
+        return "captcha_required"
     try:
         if bool(await page.evaluate(_DETECT_CAPTCHA_JS)):
             return "captcha_required"
@@ -750,6 +987,178 @@ def _install_nav_status_listener(page) -> None:
         pass
 
 
+def _install_request_tracker(page) -> None:
+    """Track main-frame document/XHR/fetch requests still awaiting an end.
+
+    A submission sent by script keeps its outcome unobservable until its own
+    request ends; only that pending state is kept, never URLs or payloads.
+    """
+    if page is None or getattr(page, "_metnos_request_tracker", False):
+        return
+    inflight: set = set()
+    documents: set = set()
+    since: dict = {}
+    started = {"document": 0, "data": 0}
+    audit_counts = dict.fromkeys(_REQUEST_AUDIT_KEYS, 0)
+
+    def _kind(request):
+        if (request.resource_type in ("document", "xhr", "fetch")
+                and request.frame == page.main_frame):
+            return "document" if request.resource_type == "document" else "data"
+        return None
+
+    def _started(request):
+        try:
+            kind = _kind(request)
+            if kind:
+                inflight.add(request)
+                since[request] = time.monotonic()
+                started[kind] += 1
+                key = f"{kind}_started"
+                audit_counts[key] = _audit_count(audit_counts[key] + 1)
+                if kind == "document":
+                    documents.add(request)
+        except Exception:
+            pass
+
+    def _ended(request):
+        inflight.discard(request)
+        documents.discard(request)
+        since.pop(request, None)
+
+    def _completed(request, outcome):
+        try:
+            if request in inflight:
+                kind = _kind(request)
+                if kind:
+                    key = f"{kind}_{outcome}"
+                    audit_counts[key] = _audit_count(audit_counts[key] + 1)
+        except Exception:
+            pass
+        _ended(request)
+
+    def _response(response):
+        try:
+            request = response.request
+            kind = _kind(request)
+            if kind and request in inflight:
+                status = response.status
+                family = f"{status // 100}xx" if type(status) is int and 100 <= status <= 599 else "other_status"
+                key = f"{kind}_{family}"
+                audit_counts[key] = _audit_count(audit_counts[key] + 1)
+        except Exception:
+            pass
+
+    try:
+        page.on("request", _started)
+        page.on("requestfinished", lambda request: _completed(request, "finished"))
+        page.on("requestfailed", lambda request: _completed(request, "failed"))
+        page.on("response", _response)
+        page._metnos_inflight = inflight
+        page._metnos_inflight_documents = documents
+        page._metnos_inflight_since = since
+        page._metnos_requests_started = started
+        page._metnos_request_audit_counts = audit_counts
+        page._metnos_request_tracker = True
+    except Exception:
+        pass
+
+
+def main_document_pending(page) -> bool:
+    """A main-frame navigation has started and not ended yet."""
+    return bool(getattr(page, "_metnos_inflight_documents", None))
+
+
+_DOCUMENT_LOADING_JS = "() => document.readyState === 'loading'"
+
+
+async def _await_parsed_document(page, timeout_s: float) -> bool:
+    """Wait only for parsing/main navigation, within the caller's budget.
+
+    An early password field may precede the submit button and its handlers.
+    Unrelated data requests do not delay a form that is already parsed.
+    """
+    deadline = time.monotonic() + max(0.0, float(timeout_s))
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return False
+        try:
+            loading = await asyncio.wait_for(
+                page.evaluate(_DOCUMENT_LOADING_JS), timeout=min(0.5, remaining))
+            if time.monotonic() >= deadline:
+                return False
+            if loading is False and not main_document_pending(page):
+                return True
+        except Exception:
+            # Context changes can make the old document temporarily unreadable.
+            pass
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return False
+        await asyncio.sleep(min(0.1, remaining))
+
+
+async def _await_login_actionability(page, timeout_s: float, *, after_fill=False):
+    """Read DOM only; never fill again or infer login success from readiness."""
+    deadline = time.monotonic() + max(0.0, float(timeout_s))
+    script = _LOGIN_SUBMIT_STATE_JS if after_fill else _LOCATE_LOGIN_FORM_JS
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return None
+        try:
+            info = await asyncio.wait_for(page.evaluate(script),
+                                          timeout=min(0.5, remaining))
+            if time.monotonic() >= deadline:
+                return None
+            if not isinstance(info, dict):
+                return None
+            if info.get("formChanged") is True or info.get("ambiguous") is True:
+                return info
+            if info.get("found") is True and (
+                    not after_fill or info.get("submitBlocked") is False):
+                return info
+        except Exception:
+            # Context transitions can make the old document unreadable.
+            # CancelledError propagates; all retries share this one deadline.
+            pass
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return None
+        await asyncio.sleep(min(0.1, remaining))
+
+
+def data_requests_pending(page, max_age_s: float) -> int:
+    """Main-frame data requests in flight that started under max_age_s ago.
+
+    One open for longer (a long poll, a stream) no longer describes loading.
+    """
+    since = getattr(page, "_metnos_inflight_since", None)
+    if not isinstance(since, dict):
+        return 0
+    documents = getattr(page, "_metnos_inflight_documents", None) or set()
+    now = time.monotonic()
+    return sum(1 for request, at in list(since.items())
+               if request not in documents and now - at < max_age_s)
+
+
+def requests_started(page) -> dict | None:
+    """Main-frame document/data requests started so far; None untracked."""
+    started = getattr(page, "_metnos_requests_started", None)
+    return dict(started) if isinstance(started, dict) else None
+
+
+# A CAPTCHA widget laid out on the page but never drawn: its provider frame is
+# missing, typically because the provider could not load. Structure only.
+_CAPTCHA_UNRENDERED_JS = r"""
+() => Array.from(document.querySelectorAll(
+    '.g-recaptcha, #g-recaptcha, .h-captcha, .cf-turnstile, [data-sitekey]'))
+  .some(el => el.offsetParent !== null && !el.querySelector('iframe') &&
+    el.getBoundingClientRect().height < 2)
+"""
+
+
 _AUTH_ENTRY_SEGMENTS = frozenset({
     "login", "log-in", "signin", "sign-in", "signon", "sign-on",
     "register", "registration", "signup", "sign-up",
@@ -851,6 +1260,12 @@ async def _observe_post_submit(*, page, context, cookies_before: dict,
                                resolve_captcha=None) -> dict:
     """Osserva una transizione di autenticazione SPA senza inferenze premature."""
     attempts = max(1, min(25, int(op_timeout_s * 5)))
+    observation_start = time.monotonic()
+    baseline = getattr(page, "_metnos_submission_baseline", None)
+    from_submission = isinstance(baseline, dict)
+    if not from_submission:
+        baseline = _request_audit_counts(page)
+    cookie_errors = detector_errors = surface_unobserved = 0
     state = {
         "cookies": [], "changed": [], "still_pw": False,
         "otp": False, "captcha": False, "push": False,
@@ -858,30 +1273,50 @@ async def _observe_post_submit(*, page, context, cookies_before: dict,
         "login_surface": False, "surface_checked": False,
         "auth_entry_route": False,
         "stable_positive": False,
+        "confirmed_after_window": False,
+        "submission_pending": False, "captcha_unrendered": False,
     }
     positive_streak = 0
     required_stable_polls = min(
         _AUTH_SUCCESS_STABLE_POLLS, max(2, attempts - 1))
-    for attempt in range(attempts):
+    # The window bounds when positive evidence may first appear. Evidence that
+    # appeared inside it completes its stability check, at most the polls the
+    # check itself needs; a negative or missing observation ends it at once.
+    # A submission whose own request has not ended yet has no observable
+    # outcome: the window may move once, by one more window.
+    window_end = attempts
+    for attempt in range(2 * attempts + required_stable_polls - 1):
         try:
             cookies = await context.cookies()
         except Exception:
             cookies = []
+            cookie_errors += 1
         surface_state = await _login_surface_state(page)
         login_surface = surface_state is True
         surface_checked = surface_state is not None
+        surface_unobserved += int(not surface_checked)
         still_pw = login_surface
         otp = captcha = password_rejected = False
         try:
+            text_challenge = await _textual_login_challenge(page)
+            captcha = text_challenge
             otp = bool(await page.evaluate(_DETECT_OTP_JS))
-            captcha = bool(await page.evaluate(_DETECT_CAPTCHA_JS))
-            if captcha and resolve_captcha is not None:
+            captcha = captcha or bool(await page.evaluate(_DETECT_CAPTCHA_JS))
+            if (captcha and resolve_captcha is not None
+                    and not await _manual_only_login_challenge(page)):
                 await resolve_captcha(page)
-                captcha = bool(await page.evaluate(_DETECT_CAPTCHA_JS))
+                captcha = (await _textual_login_challenge(page)
+                           or bool(await page.evaluate(_DETECT_CAPTCHA_JS)))
             password_rejected = bool(
                 await page.evaluate(_PASSWORD_REJECTED_JS))
         except Exception:
-            pass
+            detector_errors += 1
+        try:
+            captcha_unrendered = bool(await page.evaluate(_CAPTCHA_UNRENDERED_JS))
+        except Exception:
+            captcha_unrendered = False
+            detector_errors += 1
+        submission_pending = bool(getattr(page, "_metnos_inflight", None))
         push = await _page_matches_concept(
             page, "sites.two_factor_push_marker")
         changed = _changed_cookies(cookies, cookies_before)
@@ -890,6 +1325,7 @@ async def _observe_post_submit(*, page, context, cookies_before: dict,
                 scrub_url(page.url) != scrub_url(url_before))
         except Exception:
             navigation_confirmed = False
+            detector_errors += 1
         auth_entry_route = _is_auth_entry_route(getattr(page, "url", ""))
         state = {
             "cookies": cookies, "changed": changed, "still_pw": still_pw,
@@ -900,18 +1336,26 @@ async def _observe_post_submit(*, page, context, cookies_before: dict,
             "surface_checked": surface_checked,
             "auth_entry_route": auth_entry_route,
             "stable_positive": False,
+            "confirmed_after_window": False,
+            "submission_pending": submission_pending,
+            "captcha_unrendered": captcha_unrendered,
             # Fix adversarial #5: status HTTP top-level catturato dal listener di
             # navigazione (perform_login), riletto FRESCO a ogni poll (la Response
             # puo' arrivare durante l'osservazione). Alimenta `rate_limited`.
             "http_status": getattr(page, "_metnos_nav_status", None),
         }
+        # A page in the middle of a navigation is not an outcome yet: the
+        # next document may still replace it (single sign-on redirects).
         positive = bool(
             surface_checked and not login_surface
             and not auth_entry_route
+            and not main_document_pending(page)
             and (changed or navigation_confirmed))
         positive_streak = positive_streak + 1 if positive else 0
         state["stable_positive"] = (
             positive_streak >= required_stable_polls)
+        state["confirmed_after_window"] = bool(
+            state["stable_positive"] and attempt >= attempts)
         # Challenge e rifiuti sono terminali. La superficie login puo' essere
         # ancora visibile nel primo frame dopo il click: azzera la sequenza ma
         # deve essere riosservata fino al budget. Se persiste o ricompare, lo
@@ -925,7 +1369,11 @@ async def _observe_post_submit(*, page, context, cookies_before: dict,
             # loading. Stop only on the same evidence accepted by the caller,
             # including its configured session-cookie requirement.
             break
-        if attempt + 1 >= attempts:
+        if (window_end == attempts and attempt + 1 >= attempts
+                and submission_pending and not positive):
+            window_end = 2 * attempts
+        if attempt + 1 >= window_end and not (
+                positive and positive_streak < required_stable_polls):
             break
         try:
             if hasattr(page, "wait_for_timeout"):
@@ -934,7 +1382,58 @@ async def _observe_post_submit(*, page, context, cookies_before: dict,
                 await asyncio.sleep(0.2)
         except Exception:
             await asyncio.sleep(0.2)
+    state["diagnostic"] = {
+        "polls": attempt + 1,
+        "observation_ms": int(max(0, time.monotonic() - observation_start) * 1000),
+        "cookie_errors": cookie_errors, "detector_errors": detector_errors,
+        "surface_unobserved_polls": surface_unobserved,
+        "window_extended": window_end > attempts,
+        "requests_since_submission": from_submission,
+        "request_tracker_ready": getattr(page, "_metnos_request_tracker", False) is True,
+        "submission_stage": getattr(page, "_metnos_submission_stage", None),
+        "http_status": state.get("http_status"),
+        "request_counters": _request_audit_counts(page, baseline),
+    }
     return state
+
+
+def _expected_session_cookie_changed(observed: dict,
+                                     session_cookie_names: list[str]) -> bool:
+    return any(c.get("name") in session_cookie_names
+               for c in observed.get("changed") or ())
+
+
+def _post_submit_audit_fields(observed: dict,
+                              session_cookie_names: list[str]) -> dict:
+    """Proietta soli predicati: nomi, valori dei cookie e URL restano privati."""
+    fields = {
+        name: bool(observed.get(name)) for name in (
+            "surface_checked", "login_surface", "navigation_confirmed",
+            "auth_entry_route", "stable_positive", "confirmed_after_window",
+            "submission_pending", "captcha_unrendered",
+        )
+    } | {
+        "session_cookie_required": bool(session_cookie_names),
+        "expected_session_cookie_changed": _expected_session_cookie_changed(
+            observed, session_cookie_names),
+    }
+    diagnostic = observed.get("diagnostic")
+    if isinstance(diagnostic, dict):
+        counters = diagnostic.get("request_counters")
+        counters = counters if isinstance(counters, dict) else {}
+        status = diagnostic.get("http_status")
+        stage = diagnostic.get("submission_stage")
+        fields["post_submit_observation"] = {
+            **{name: _audit_count(diagnostic.get(name)) for name in (
+                "polls", "observation_ms", "cookie_errors", "detector_errors",
+                "surface_unobserved_polls")},
+            **{name: diagnostic.get(name) is True for name in (
+                "window_extended", "requests_since_submission", "request_tracker_ready")},
+            "submission_stage": stage if type(stage) is str and stage in {"username", "primary", "factor"} else None,
+            "last_main_document_http_status": status if type(status) is int and 100 <= status <= 599 else None,
+            "request_counters": {key: _audit_count(counters.get(key)) for key in _REQUEST_AUDIT_KEYS},
+        }
+    return fields
 
 
 def _authed_success(observed: dict,
@@ -955,9 +1454,8 @@ def _authed_success(observed: dict,
             or observed.get("captcha") or observed.get("push")
             or observed.get("password_rejected")):
         return False
-    changed = list(observed.get("changed") or ())
     if session_cookie_names:
-        return any(c.get("name") in session_cookie_names for c in changed)
+        return _expected_session_cookie_changed(observed, session_cookie_names)
     if (not observed.get("stable_positive")
             or observed.get("auth_entry_route")):
         return False
@@ -966,7 +1464,7 @@ def _authed_success(observed: dict,
                   str(c.get("name") or ""), re.IGNORECASE)
         and not re.search(r"csrf|xsrf", str(c.get("name") or ""),
                           re.IGNORECASE)
-        for c in changed
+        for c in observed.get("changed") or ()
     )
     # Una navigazione di rotta confermata verso una superficie non-login (form
     # password sparito, nessun rifiuto/sfida — gia' esclusi sopra) e' di per se'
@@ -1170,14 +1668,12 @@ async def _submit_otp_stage(*, page, vault_domain: str,
             selector=('[data-metnos-otp-submit="1"]'
                       if info.get("hasSubmit")
                       else '[data-metnos-otp="1"]'))
-        if info.get("hasSubmit"):
-            await page.click('[data-metnos-otp-submit="1"]',
-                             timeout=int(op_timeout_s * 1000),
-                             no_wait_after=True)
-        else:
-            await page.press('[data-metnos-otp="1"]', "Enter",
-                             timeout=int(op_timeout_s * 1000),
-                             no_wait_after=True)
+        await _submit_login_control(
+            page=page,
+            selector=('[data-metnos-otp-submit="1"]' if info.get("hasSubmit")
+                      else '[data-metnos-otp="1"]'),
+            enter=not info.get("hasSubmit"), timeout_ms=int(op_timeout_s * 1000),
+            owner=owner, session_id=session_id, domain=vault_domain, stage="factor")
     except Exception:
         return {"ok": False, "error_class": failure_class}
     try:
@@ -1261,9 +1757,7 @@ async def _complete_one_time_code_stage(*, page, context,
     sites_audit.record("login_attempt", owner=owner, session_id=session_id,
                        domain=vault_domain, outcome=logged_in, reason=reason,
                        post_submit_outcome=outcome,
-                       surface_checked=observed["surface_checked"],
-                       login_surface=observed["login_surface"],
-                       navigation_confirmed=observed["navigation_confirmed"])
+                       **_post_submit_audit_fields(observed, session_cookie_names))
     _apply_cooldown_outcome(owner, storage_domain, outcome, payload=payload)
     return {"ok": True, "logged_in": logged_in, "reason_code": reason}
 
@@ -1335,14 +1829,12 @@ async def _advance_username_stage(*, page, vault_domain: str,
             prepared = before_submit()
             if inspect.isawaitable(prepared):
                 await prepared
-        if info.get("hasSubmit"):
-            await page.click('[data-metnos-user-submit="1"]',
-                             timeout=int(op_timeout_s * 1000),
-                             no_wait_after=True)
-        else:
-            await page.press('[data-metnos-user-step="1"]', "Enter",
-                             timeout=int(op_timeout_s * 1000),
-                             no_wait_after=True)
+        await _submit_login_control(
+            page=page,
+            selector=('[data-metnos-user-submit="1"]' if info.get("hasSubmit")
+                      else '[data-metnos-user-step="1"]'),
+            enter=not info.get("hasSubmit"), timeout_ms=int(op_timeout_s * 1000),
+            owner=owner, session_id=session_id, domain=vault_domain, stage="username")
     except Exception:
         return {"ok": False, "error_class": "fill_failed"}
     try:
@@ -1369,6 +1861,24 @@ def _load_site_credentials(domain: str) -> tuple[dict | None, str]:
         if payload:
             return payload, binding
     return None, domain
+
+
+def remember_approved_origin(domain: str, origin: str) -> bool:
+    """Persist a delegated origin the user approved for this credential.
+
+    Resolves the exact stored record like the fill does; only the canonical
+    origin tuple is written. Any failure leaves the record unchanged.
+    """
+    canonical = sites_origin.normalize_entry(str(origin or ""))
+    if not canonical:
+        return False
+    try:
+        payload, binding = _load_site_credentials(domain)
+        if not payload:
+            return False
+        return credentials.remember_approved_origin(binding, canonical)
+    except Exception:  # noqa: BLE001 -- a failed write must not break the login
+        return False
 
 
 def legacy_storage_candidate(host: str) -> str:
@@ -1579,7 +2089,9 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
                 observed_page = current_page(previous)
                 blocker = await classify_login_surface(observed_page)
                 if blocker == "captcha_required":
-                    if resolve_captcha is not None and await resolve_captcha(observed_page):
+                    if (resolve_captcha is not None
+                            and not await _manual_only_login_challenge(observed_page)
+                            and await resolve_captcha(observed_page)):
                         # Solving a challenge never counts as a privacy decision.
                         # Re-observe the separate cookie precondition once.
                         outcome = await prepare_page(redact=redact)
@@ -1607,6 +2119,7 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
     # e goto NON restituivano la Response). Listener bounded: aggiorna un attributo
     # sulla pagina, riletto da `_observe_post_submit` → alimenta `rate_limited`.
     _install_nav_status_listener(page)
+    _install_request_tracker(page)
     if one_time_code is not None:
         await _checkpoint(checkpoint, "factor_submit")
         completed = await _complete_one_time_code_stage(
@@ -1652,6 +2165,19 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
         await _checkpoint(checkpoint, "factor_pending")
         return {"ok": True, "logged_in": False,
                 "reason_code": "two_factor_required"}
+
+    async def pending_login_factor() -> dict | None:
+        blocker = await classify_login_surface(page)
+        if (blocker == "captcha_required" and resolve_captcha is not None
+                and not await _manual_only_login_challenge(page)
+                and await resolve_captcha(page)):
+            blocker = await classify_login_surface(page)
+        if blocker == "two_factor_required" and not totp_secret:
+            return await _handle_email_factor()
+        if blocker:
+            await _checkpoint(checkpoint, "factor_pending")
+            return {"ok": True, "logged_in": False, "reason_code": blocker}
+        return None
 
     async def finish_submission(cookies_before, url_before):
         # 7. Rilevazioni oneste. Il click di una SPA puo' completare molto dopo il
@@ -1744,9 +2270,7 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
         sites_audit.record("login_attempt", owner=owner, session_id=session_id,
                            domain=domain, outcome=logged_in, reason=reason,
                            post_submit_outcome=outcome,
-                           surface_checked=observed["surface_checked"],
-                           login_surface=observed["login_surface"],
-                           navigation_confirmed=observed["navigation_confirmed"])
+                           **_post_submit_audit_fields(observed, session_cookie_names))
         await _checkpoint(
             checkpoint,
             "complete" if logged_in else
@@ -1763,6 +2287,7 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
     # checkpoint before attempting to rediscover or click the login entry.
     initial_blocker = await classify_login_surface(page)
     if (initial_blocker == "captcha_required" and resolve_captcha is not None
+            and not await _manual_only_login_challenge(page)
             and await resolve_captcha(page)):
         initial_blocker = await classify_login_surface(page)
     if initial_blocker == "two_factor_required" and not totp_secret:
@@ -1896,6 +2421,10 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
                             "selector_missing"),
                         "error_class": error_class}
             username_advanced = True
+            if await _manual_only_login_challenge(page):
+                await _checkpoint(checkpoint, "factor_pending")
+                return {"ok": True, "logged_in": False,
+                        "reason_code": "captcha_required"}
             password_visible = bool(advanced.get("password_visible"))
             if password_visible:
                 break
@@ -1934,15 +2463,16 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
                 if continued.get("ok") and continued.get("executed"):
                     entry_steps += 1
                     page = current_page(page)
+                    pending = await pending_login_factor()
+                    if pending:
+                        return pending
                     password_visible = await _wait_for_password_stage(
                         page, budget.remaining(4))
                     if password_visible:
                         break
-            if await _page_matches_concept(
-                    page, "sites.two_factor_push_marker"):
-                await _checkpoint(checkpoint, "factor_pending")
-                return {"ok": True, "logged_in": False,
-                        "reason_code": "two_factor_push_required"}
+            pending = await pending_login_factor()
+            if pending:
+                return pending
             return {"ok": True, "logged_in": False,
                     "reason_code": "selector_missing",
                     "error_class": "no_password_stage"}
@@ -2015,13 +2545,27 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
                 "reason_code": "credentials_missing",
                 "error_class": "no_credentials"}
 
+    # A partially parsed form does not yet bind its final submit control.
+    if not await _await_parsed_document(
+            page, min(5.0, budget.remaining(op_timeout_s, floor_s=0.0))):
+        return {"ok": True, "logged_in": False,
+                "reason_code": "login_timeout",
+                "error_class": "document_not_ready"}
+
     # 3. CRITICO-1 — verifica ORIGINE prima di digitare. Il JS tagga anche i
     #    campi (CRITICO-2: risoluzione autonoma del broker, mai selettori LLM).
     page, obstruction = await prepared_page(page)
     if obstruction:
         return obstruction
-    info = await page.evaluate(_LOCATE_LOGIN_FORM_JS)
-    if not info or not info.get("found"):
+    pending = await pending_login_factor()
+    if pending:
+        return pending
+    info = await _await_login_actionability(
+        page, min(3.0, budget.remaining(op_timeout_s, floor_s=0.0)))
+    if info is None:
+        return {"ok": True, "logged_in": False, "reason_code": "login_timeout",
+                "error_class": "form_not_actionable"}
+    if not info.get("found"):
         return {"ok": True, "logged_in": False, "reason_code": "selector_missing",
                 "error_class": "no_login_form"}
     form_action = info.get("actionResolved") or page.url
@@ -2111,9 +2655,38 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
     page, obstruction = await prepared_page(page)
     if obstruction:
         return obstruction
+    submit_info = await _await_login_actionability(
+        page, min(3.0, budget.remaining(op_timeout_s, floor_s=0.0)), after_fill=True)
+    if not submit_info or submit_info.get("found") is not True:
+        return {"ok": True, "logged_in": False, "reason_code": "login_timeout",
+                "error_class": ("form_changed" if submit_info and
+                                submit_info.get("formChanged") else "submit_not_actionable")}
+    info = submit_info
+    submission_entered = False
     try:
         await _checkpoint(checkpoint, "primary_submit")
-        current_action = await page.evaluate(_CURRENT_FORM_ACTION_JS)
+        await _arm_email_factor(
+            username=username, payload=payload, factor_state=factor_state,
+            budget=budget, checkpoint=checkpoint, force=True)
+        await _human_pause(
+            page, stealth_techniques=stealth_techniques,
+            selector=('[data-metnos-submit="1"]' if info.get("hasSubmit")
+                      else '[data-metnos-pw="1"]'))
+        action_timeout = budget.remaining(op_timeout_s, floor_s=0.0)
+        if action_timeout <= 0:
+            return {"ok": True, "logged_in": False, "reason_code": "login_timeout",
+                    "error_class": "submit_not_actionable"}
+        # Refresh the bound form/selected button AFTER all waits and pauses.
+        # This read never rebinds or refills the credential fields.
+        info = await asyncio.wait_for(page.evaluate(_LOGIN_SUBMIT_STATE_JS),
+                                      timeout=min(0.5, action_timeout))
+        if not isinstance(info, dict) or info.get("found") is not True:
+            return {"ok": True, "logged_in": False, "reason_code": "login_timeout",
+                    "error_class": "form_changed"}
+        if info.get("submitBlocked") is not False or budget.expired:
+            return {"ok": True, "logged_in": False, "reason_code": "login_timeout",
+                    "error_class": "submit_not_actionable"}
+        current_action = info.get("actionResolved")
         if not _origin_ok(current_action):
             sites_audit.record("origin_mismatch", owner=owner,
                                session_id=session_id, domain=domain,
@@ -2121,24 +2694,34 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
             return {"ok": True, "logged_in": False,
                     "reason_code": "origin_unverified",
                     "error_class": "origin_mismatch"}
-        await _arm_email_factor(
-            username=username, payload=payload, factor_state=factor_state,
-            budget=budget, checkpoint=checkpoint, force=True)
-        action_timeout = budget.remaining(op_timeout_s)
-        await _human_pause(
-            page, stealth_techniques=stealth_techniques,
+        action_timeout = budget.remaining(op_timeout_s, floor_s=0.0)
+        if action_timeout <= 0:
+            return {"ok": True, "logged_in": False, "reason_code": "login_timeout",
+                    "error_class": "submit_not_actionable"}
+        # Dispatch immediately after this exact-origin check. Playwright's
+        # action still crosses IPC and can auto-wait; this is not atomic DOM I/O.
+        submission_entered = True
+        await _submit_login_control(
+            page=page,
             selector=('[data-metnos-submit="1"]' if info.get("hasSubmit")
-                      else '[data-metnos-pw="1"]'))
-        if info.get("hasSubmit"):
-            await page.click('[data-metnos-submit="1"]',
-                             timeout=int(action_timeout * 1000),
-                             no_wait_after=True)
-        else:
-            await page.press('[data-metnos-pw="1"]', "Enter",
-                             timeout=int(action_timeout * 1000),
-                             no_wait_after=True)
-    except Exception:
-        pass  # il submit può innescare navigazione che chiude il contesto DOM
+                      else '[data-metnos-pw="1"]'),
+            enter=not info.get("hasSubmit"), timeout_ms=max(1, int(action_timeout * 1000)),
+            owner=owner, session_id=session_id, domain=domain, stage="primary")
+    except Exception as error:
+        # Navigation can close the old DOM. Preserve the existing observation
+        # path, while distinguishing a failed preparation from an attempted action.
+        if not submission_entered:
+            error_code = _submission_error_code(error)
+            _record_submission(
+                owner=owner, session_id=session_id, domain=domain, stage="primary",
+                action="click" if info.get("hasSubmit") else "enter",
+                status="preparation_failed", error_code=error_code)
+            # No action was dispatched. Existing form validation is not a
+            # response to these credentials and must not affect cooldown.
+            return {"ok": True, "logged_in": False,
+                    "reason_code": ("login_timeout" if error_code == "timeout"
+                                    else "login_failed"),
+                    "error_class": "submit_preparation_failed"}
     try:
         load_timeout = budget.remaining(op_timeout_s)
         await asyncio.wait_for(

@@ -1305,7 +1305,7 @@ async def admin_user_detail(request: web.Request) -> web.Response:
         "devices": dev_rows,
         # W2 v1 (ADR 0187): preferenze esplicite (vocabolario chiuso).
         "prefs": users.list_prefs(u["id"]),
-        "site_invocations": users.list_site_invocations(u["id"]),
+        "invocation_names": users.list_invocation_names(u["id"]),
     }
     if "text/html" in request.headers.get("Accept", ""):
         stealth_options = users.sites_stealth_preference_specs()
@@ -1324,8 +1324,9 @@ async def admin_user_detail(request: web.Request) -> web.Response:
                                    if key not in web_pref_keys
                                },
                                stealth_options=stealth_options,
-                               site_invocations=payload["site_invocations"],
-                               site_error=request.query.get("site_error") == "invalid",
+                               credential_rows=await asyncio.to_thread(
+                                   _credential_rows, u["id"]),
+                               names_error=_names_error_message(request.query),
                                flash=request.query.get("flash", ""))
         return web.Response(text=html, content_type="text/html")
     return web.json_response(payload)
@@ -1375,28 +1376,122 @@ async def admin_user_prefs(request: web.Request) -> web.Response:
     raise web.HTTPFound(f"/admin/users/{user_id}")
 
 
-async def admin_user_sites(request: web.Request) -> web.Response:
-    """Suggest, save or remove a per-user invocation name and site URL."""
+def _credential_rows(user_id: str) -> list[dict]:
+    import credential_names
+    return credential_names.profile_rows(user_id)
+
+
+def _names_error_message(query) -> str:
+    """The reason a name was refused, from the redirect after the form."""
+    from invocation_form import error_message
+    return error_message(str(query.get("names_error") or ""),
+                         name=str(query.get("names_name") or ""),
+                         other=str(query.get("names_other") or ""))
+
+
+def _names_error_redirect(user_id: str, error: users.InvocationNameError):
+    params = urllib.parse.urlencode({
+        "names_error": error.reason, "names_name": error.name,
+        "names_other": error.other})
+    return web.HTTPFound(f"/admin/users/{user_id}?{params}#credentials")
+
+
+async def admin_user_credential_names(request: web.Request) -> web.Response:
+    """Suggest, save or remove the names of one site or mailbox of a user."""
     user_id = request.match_info["id"]
     data = await request.post()
-    name = str(data.get("name") or "")
-    if data.get("action") == "suggest":
+    kind = str(data.get("kind") or "")
+    target = str(data.get("target") or "")
+    action = data.get("action")
+    if action == "suggest":
         try:
-            proposal = users.suggest_site_invocation_name(
-                user_id, str(data.get("url") or ""))
-        except ValueError:
+            proposal = users.suggest_site_invocation_name(user_id, target)
+        except users.InvocationNameError:
             return _error(400, "invalid_input", "invalid site URL")
         return web.json_response(proposal, headers={"Cache-Control": "no-store"})
     try:
-        if data.get("action") == "delete":
-            users.delete_site_invocation(user_id, name)
-        elif data.get("action") == "save":
-            users.set_site_invocation(user_id, name, str(data.get("url") or ""))
+        if action == "delete":
+            users.delete_invocation_names(user_id, kind, target)
+        elif action == "save":
+            import credential_names
+            if (kind == "mail" and not await asyncio.to_thread(
+                    credential_names.mail_account_known, target)
+                    and users.invocation_names_for(user_id, kind, target) is None):
+                raise users.InvocationNameError("unknown_mailbox")
+            users.set_invocation_names(
+                user_id, kind, target, str(data.get("name") or ""),
+                users.parse_invocation_synonyms(str(data.get("synonyms") or "")))
         else:
-            raise ValueError("invalid action")
-    except ValueError:
-        raise web.HTTPFound(f"/admin/users/{user_id}?site_error=invalid")
-    raise web.HTTPFound(f"/admin/users/{user_id}")
+            raise users.InvocationNameError("invalid")
+    except users.InvocationNameError as error:
+        raise _names_error_redirect(user_id, error)
+    raise web.HTTPFound(f"/admin/users/{user_id}#credentials")
+
+
+async def admin_user_credential_form(request: web.Request) -> web.Response:
+    """Open the protected form that adds or updates a site or mailbox credential.
+
+    The form belongs to the signed-in user, like the chat's; the page then
+    shows it in place. A request without JavaScript is sent to the form.
+    """
+    import credential_ui
+    user_id = request.match_info["id"]
+    data = await request.post()
+    owner = str(request.get("authenticated_user_id") or "")
+    result = await asyncio.to_thread(
+        credential_ui.open_form, owner_user_id=owner,
+        kind=str(data.get("kind") or ""), target=str(data.get("target") or ""),
+        ask_names=bool(owner) and owner == user_id)
+    if "application/json" in request.headers.get("Accept", ""):
+        return web.json_response(result, status=200 if result.get("ok") else 400,
+                                 headers={"Cache-Control": "no-store"})
+    if result.get("ok"):
+        raise web.HTTPSeeOther(result["form_url"])
+    raise web.HTTPSeeOther(f"/admin/users/{user_id}?" + urllib.parse.urlencode(
+        {"names_error": "invalid_target"}) + "#credentials")
+
+
+async def admin_credentials(request: web.Request) -> web.Response:
+    """GET /admin/credentials: stored credentials without secret values."""
+    import credential_admin
+    rows = await asyncio.to_thread(credential_admin.list_credentials)
+    if "text/html" in request.headers.get("Accept", ""):
+        html = render_template("credentials.html", rows=rows,
+                               flash=request.query.get("flash", ""))
+        return web.Response(text=html, content_type="text/html",
+                            headers={"Cache-Control": "no-store"})
+    return web.json_response({"credentials": rows},
+                             headers={"Cache-Control": "no-store"})
+
+
+def _credential_audit(request: web.Request, event: str, binding: str,
+                      outcome: bool, **fields) -> None:
+    import sites_audit
+    sites_audit.record(event, owner=str(request.get("authenticated_user_id") or "admin"),
+                       domain=binding, outcome=bool(outcome),
+                       source="admin_credentials_page", **fields)
+
+
+async def admin_credential_origin_forget(request: web.Request) -> web.Response:
+    """POST: forget one remembered sign-in origin; the next login asks again."""
+    import credential_admin
+    binding = request.match_info["binding"]
+    origin = str((await request.post()).get("origin") or "")
+    ok = await asyncio.to_thread(credential_admin.forget_origin, binding, origin)
+    _credential_audit(request, "credential_origin_forgotten", binding, ok,
+                      origin=origin)
+    raise web.HTTPFound("/admin/credentials?flash="
+                        + ("forgotten" if ok else "unchanged"))
+
+
+async def admin_credential_delete(request: web.Request) -> web.Response:
+    """POST: delete one stored credential, like the chat deletion."""
+    import credential_admin
+    binding = request.match_info["binding"]
+    ok = await asyncio.to_thread(credential_admin.delete, binding)
+    _credential_audit(request, "credential_deleted", binding, ok)
+    raise web.HTTPFound("/admin/credentials?flash="
+                        + ("deleted" if ok else "unchanged"))
 
 
 async def admin_user_delete(request: web.Request) -> web.Response:
@@ -2252,7 +2347,12 @@ ROUTES = (
     ("POST", "/admin/users",                      admin_users),
     ("GET",  "/admin/users/{id}",                 admin_user_detail),
     ("POST", "/admin/users/{id}/prefs",          admin_user_prefs),
-    ("POST", "/admin/users/{id}/sites",          admin_user_sites),
+    ("POST", "/admin/users/{id}/credential-names", admin_user_credential_names),
+    ("POST", "/admin/users/{id}/credential-form", admin_user_credential_form),
+    ("GET",  "/admin/credentials",                admin_credentials),
+    ("POST", "/admin/credentials/{binding}/origins/forget",
+              admin_credential_origin_forget),
+    ("POST", "/admin/credentials/{binding}/delete", admin_credential_delete),
     ("POST", "/admin/users/{id}/delete",          admin_user_delete),
     ("POST", "/admin/users/{id}/update",           admin_user_update),
     ("POST", "/admin/users/{id}/autonomy",        admin_user_set_autonomy),

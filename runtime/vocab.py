@@ -698,11 +698,13 @@ ACTION_MAPPING = {
         },
     },
     "delete": {
-        "it": ["cancella", "elimina", "rimuovi", "butta-via"],
-        "en": ["delete", "remove", "erase", "drop", "discard"],
+        # Closing terminates a session but retains an editable issue. Shared
+        # forms stay ambiguous in lexical recognition; the boundary decides.
+        "it": ["cancella", "elimina", "rimuovi", "butta-via", "chiudi"],
+        "en": ["delete", "remove", "erase", "drop", "discard", "close"],
         "boundary": {
-            "it": "Distruzione (irreversibile o reversibile con backup blob).",
-            "en": "Destroys an object (irreversible, or reversible when a blob backup exists).",
+            "it": "Distrugge un oggetto (irreversibile o reversibile con backup blob) oppure termina/revoca un'entità con un ciclo di vita. Chiudere o terminare una sessione browser è delete/sites: sites indica la sessione con stato, urls l'indirizzo o il contenuto di una pagina. La chiusura della sessione non cancella dati del sito né cambia preferenze. NON set: set mantiene l'entità viva e modificabile, aggiornandone lo stato.",
+            "en": "Destroys an object (irreversible, or reversible when a blob backup exists) or terminates/revokes an entity with a lifecycle. Closing or terminating a browser session is delete/sites: sites denotes the stateful session, urls a page address or content. Closing the session does not delete website data or change preferences. NOT set: set keeps the entity alive and editable while updating its state.",
         },
     },
     "find": {
@@ -782,8 +784,8 @@ ACTION_MAPPING = {
         "en": ["set", "configure", "update-value",
                "close", "reopen", "assign", "label", "change-state"],
         "boundary": {
-            "it": "Upsert idempotente di STATO/labels/assignee/metadata di un'entità ESISTENTE (config locale O entità remota), per IDENTIFICATORE noto: il record resta, cambia un suo campo di stato. Es. «chiudi/riapri la issue» (state=closed/open), «assegna», «etichetta», impostare una config. side_effect=state_update, reversibile via diff/stato-precedente. NON delete (delete DISTRUGGE il record; set lo lascia vivo e modificabile — «chiudi»≠«cancella») · NON change (change trasforma FORMA/contenuto: resize/convert/merge; set tocca STATO/labels, non i pixel/il corpo) · NON create (create fa un'entità NUOVA; set modifica una esistente).",
-            "en": "Idempotent upsert of STATE/labels/assignee/metadata of an EXISTING entity (local config OR remote entity), by KNOWN identifier: the record stays, a status field changes. E.g. «close/reopen the issue» (state=closed/open), «assign», «label», set a config. side_effect=state_update, reversible via diff/prior-state. NOT delete (delete DESTROYS the record; set keeps it alive and editable — «close»≠«delete») · NOT change (change transforms FORM/content: resize/convert/merge; set touches STATE/labels, not pixels/body) · NOT create (create makes a NEW entity; set modifies an existing one).",
+            "it": "Upsert idempotente di STATO/labels/assignee/metadata di un'entità ESISTENTE (config locale O entità remota), per IDENTIFICATORE noto: il record resta vivo e modificabile, cambia un suo campo di stato. Es. «chiudi/riapri la issue» (state=closed/open), «assegna», «etichetta», impostare una config. side_effect=state_update, reversibile via diff/stato-precedente. NON delete (delete distrugge o termina/revoca l'entità: chiudere una issue conservata è set/issues, terminare una sessione browser è delete/sites) · NON change (change trasforma FORMA/contenuto: resize/convert/merge; set tocca STATO/labels, non i pixel/il corpo) · NON create (create fa un'entità NUOVA; set modifica una esistente).",
+            "en": "Idempotent upsert of STATE/labels/assignee/metadata of an EXISTING entity (local config OR remote entity), by KNOWN identifier: the record stays alive and editable, a status field changes. E.g. «close/reopen the issue» (state=closed/open), «assign», «label», set a config. side_effect=state_update, reversible via diff/prior-state. NOT delete (delete destroys or terminates/revokes the entity: closing a retained issue is set/issues, terminating a browser session is delete/sites) · NOT change (change transforms FORM/content: resize/convert/merge; set touches STATE/labels, not pixels/body) · NOT create (create makes a NEW entity; set modifies an existing one).",
         },
     },
     "send": {

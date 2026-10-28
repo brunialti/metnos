@@ -908,7 +908,7 @@ class DurableExecutionBridge:
                 except ModelResourceUnavailable as exc:
                     raise self._failure(
                         "capability_unavailable", code="execution.model_resource_unavailable",
-                        message_key="ERR_DURABLE_RUNNER_UNAVAILABLE", retry="manual",
+                        message_key="ERR_DURABLE_MODEL_RESOURCE_UNAVAILABLE", retry="manual",
                     ) from exc
             # RM-0008 F5 §6.9: the generation is authenticated again after
             # resource readiness, because it can be replaced during that wait.

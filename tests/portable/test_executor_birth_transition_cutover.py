@@ -1041,6 +1041,12 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
         portable_authorities, record_v2,
     )
 
+    # The early manager read is a real bounded-systemctl port, never the host manager.
+    monkeypatch.setattr(
+        admin, "_run_systemctl_bounded_v1",
+        lambda _argv: (0, b"Version=255.4-1ubuntu8.17\n", b""),
+    )
+
     events: list[str] = []
     held: list[str] = []
     successor = release_sequence > 1
@@ -1152,6 +1158,7 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
         service_home="/srv/metnos", service_shell="/usr/sbin/nologin",
         service_supplementary_gids=(42,),
         python_executable=_TCB_PYTHON,
+        systemctl_executable=os.path.realpath(admin.SYSTEMCTL_LINK),
     )
     preparation = SimpleNamespace(
         descriptor=descriptor, previous_context=SimpleNamespace(distribution=previous_distribution),
@@ -1368,6 +1375,13 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
         return SimpleNamespace(catalog=observed, unit_fragments=())
 
     monkeypatch.setattr(service_catalog, "capture_current_service_catalog_v1", capture_catalog)
+    def preflight_topology(candidate, selected, historical):
+        assert candidate is distribution and selected is descriptor
+        assert historical is previous_catalog and held == ["deployment"]
+
+    # The readonly topology port is exercised with real files in the focused
+    # restored-predecessor tests. This composition double keeps its other ports.
+    monkeypatch.setattr(provisioner, "_preflight_bound_topology_v2", preflight_topology, raising=False)
     monkeypatch.setattr(provisioner, "_observe_bound_enforcement_v2", lambda *_: D("6"))
     effect_calls = []
 
@@ -1623,6 +1637,12 @@ def test_completed_cutover_only_reattests_and_skips_administrative_install(
     import install.executor_birth_source_receiver as source_receiver
     import install.executor_birth_systemd as systemd_installer
 
+    # The early manager read is a real bounded-systemctl port, never the host manager.
+    monkeypatch.setattr(
+        admin, "_run_systemctl_bounded_v1",
+        lambda _argv: (0, b"Version=255.4-1ubuntu8.17\n", b""),
+    )
+
     events = []
     distribution = SimpleNamespace(
         encoded=b"distribution", signature=b"s" * 64, release_sequence=2,
@@ -1630,6 +1650,7 @@ def test_completed_cutover_only_reattests_and_skips_administrative_install(
     descriptor = SimpleNamespace(
         service_user="metnos", service_uid=41, service_gid=42,
         service_home="/srv/metnos", python_executable=_TCB_PYTHON,
+        systemctl_executable=os.path.realpath(admin.SYSTEMCTL_LINK),
     )
     completed, result = object(), object()
     expected_distribution = distribution

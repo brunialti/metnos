@@ -39,6 +39,19 @@ CREATE TABLE IF NOT EXISTS sites_cooldown(
 """
 
 
+# After a login ended at a challenge only a person can solve, the next fresh
+# login to that site waits (Roberto, 20/10/2026): repeated attempts make
+# anti-robot checks escalate. A verified login clears the pause.
+_CHALLENGE_SCHEMA = """
+CREATE TABLE IF NOT EXISTS sites_login_challenge(
+  owner       TEXT    NOT NULL,
+  binding_id  TEXT    NOT NULL,
+  observed_at INTEGER NOT NULL,
+  PRIMARY KEY (owner, binding_id)
+);
+"""
+
+
 def _bounded_int(env: str, default: int, lo: int, hi: int) -> int:
     try:
         v = int(os.getenv(env, ""))
@@ -79,6 +92,7 @@ def _connect() -> sqlite3.Connection:
     if path not in _initialized:
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute(_SCHEMA)
+        conn.execute(_CHALLENGE_SCHEMA)
         _initialized.add(path)
     return conn
 
@@ -191,3 +205,49 @@ def retry_after_s(owner: str, binding_id: str, credential_fp: str,
     now_i = int(now if now is not None else time.time())
     until = active_until(owner, binding_id, credential_fp, now=now_i)
     return max(0, until - now_i) if until else 0
+
+
+def challenge_pause_s() -> int:
+    """Seconds a fresh login waits after a person-only challenge; 0 disables."""
+    return _bounded_int("METNOS_SITES_CHALLENGE_PAUSE_S", 3600, 0, 86400)
+
+
+def record_challenge(owner: str, binding_id: str, *, now: float | None = None) -> None:
+    now_i = int(now if now is not None else time.time())
+
+    def _txn() -> None:
+        conn = _connect()
+        try:
+            conn.execute("INSERT OR REPLACE INTO sites_login_challenge(owner, binding_id, observed_at) "
+                         "VALUES (?, ?, ?)", (owner, binding_id, now_i))
+        finally:
+            conn.close()
+
+    _with_lock_retry(_txn)
+
+
+def clear_challenge(owner: str, binding_id: str) -> None:
+    def _txn() -> None:
+        conn = _connect()
+        try:
+            conn.execute("DELETE FROM sites_login_challenge WHERE owner=? AND binding_id=?",
+                         (owner, binding_id))
+        finally:
+            conn.close()
+
+    _with_lock_retry(_txn)
+
+
+def challenge_retry_after_s(owner: str, binding_id: str, *, now: float | None = None) -> int:
+    """Seconds before a fresh login to this site is allowed again (0 = now)."""
+    pause = challenge_pause_s()
+    if not pause:
+        return 0
+    now_i = int(now if now is not None else time.time())
+    conn = _connect()
+    try:
+        row = conn.execute("SELECT observed_at FROM sites_login_challenge "
+                           "WHERE owner=? AND binding_id=?", (owner, binding_id)).fetchone()
+    finally:
+        conn.close()
+    return max(0, int(row[0]) + pause - now_i) if row else 0

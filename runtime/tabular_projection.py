@@ -39,6 +39,7 @@ _TRANSFORMS = frozenset({"identity", "basename", "dirname"})
 _TABULAR_CONCEPTS = frozenset({
     "path", "directory", "name", "description", "size", "hash", "score",
     "keywords", "date", "domain", "origin", "duplicate", "url", "count",
+    "number", "amount", "status",
 })
 
 
@@ -307,12 +308,20 @@ def _legacy_projection(entries: list[dict], columns: list[str],
                 if len(top) == 1:
                     chosen = next(iter(top))
 
-        if chosen is None and exact is not None and not populated_candidates:
-            # The header names exactly one record field, present and empty,
-            # and no populated field competes for it: the column is empty.
-            projections.append(ColumnProjection(header, exact))
-            used.add(exact)
-            continue
+        if chosen is None and not populated_candidates:
+            # No populated field competes: the header's own field, or a field
+            # its concept names, is empty in every record, and the column is
+            # written empty (Telepass 21/10/2026: no invoice had a status and
+            # the whole sheet was refused). Several such fields stay refused:
+            # key order never decides.
+            empty = [(field, max(strengths[field].get(concept, 0) for concept in concepts))
+                     for field in fields if not populated.get(field)
+                     and any(strengths[field].get(concept) for concept in concepts)]
+            chosen = exact or _choose(empty, ordinal, used)
+            if chosen is not None:
+                projections.append(ColumnProjection(header, chosen))
+                used.add(chosen)
+                continue
         if chosen is None:
             unresolved.append(header)
             continue

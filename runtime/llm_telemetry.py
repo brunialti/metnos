@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable
 
 from hashutil import sha256_prefixed
+from llm_content import contains_image
 
 log = logging.getLogger("metnos.llm")
 
@@ -330,7 +331,11 @@ def tier_context(tier: str | None):
     provider implementation.
     """
 
-    token = _current_tier.set(str(tier) if tier else None)
+    # TierRequest is a str carrying a local workload declaration. Keep it
+    # through this lexical boundary; serialised tier labels remain strings.
+    from llm_workloads import workload_for_request
+    workload_for_request(tier)
+    token = _current_tier.set(tier if tier else None)
     try:
         yield
     finally:
@@ -414,6 +419,10 @@ def record(*, provider: str, model: str | None = None, system: str = "",
         text = getattr(result, "text", result)
         if not isinstance(text, str):
             text = "" if text is None else str(text)
+        if contains_image(user):
+            # Image prompts and echoed visual content must never reach optional
+            # logs or observers. Token, latency, tier and cost records survive.
+            system = user = text = "[image content omitted]"
         if os.environ.get("METNOS_LOG_PROMPTS") == "1":
             log.info("CHAT[%s/%s] sys=%r | user=%r | -> %r",
                      provider, kind, (system or "")[:400],

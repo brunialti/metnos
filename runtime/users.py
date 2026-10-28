@@ -78,11 +78,13 @@ CREATE TABLE IF NOT EXISTS deleted_user_tombstones (
     user_id TEXT PRIMARY KEY,
     deleted_at TEXT NOT NULL
 );
-CREATE TABLE IF NOT EXISTS site_invocations (
+CREATE TABLE IF NOT EXISTS invocation_names (
     user_id TEXT NOT NULL,
     name_key TEXT NOT NULL,
     name TEXT NOT NULL,
-    url TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    target TEXT NOT NULL,
+    is_primary INTEGER NOT NULL DEFAULT 0,
     updated_at TEXT NOT NULL,
     PRIMARY KEY (user_id, name_key)
 );
@@ -105,7 +107,41 @@ def _open_db() -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.executescript(SCHEMA)
     _ensure_unique_verified_recipients(conn)
+    _migrate_site_invocations(conn)
     return conn
+
+
+def _migrate_site_invocations(conn: sqlite3.Connection) -> None:
+    """Move the release-101 site names into the shared invocation names.
+
+    Every saved name keeps its user and address; for each address the first
+    name in alphabetical order becomes the main one, the others its synonyms.
+    """
+    if conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' "
+            "AND name='site_invocations'").fetchone() is None:
+        return
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        conn.execute(
+            "INSERT OR IGNORE INTO invocation_names"
+            "(user_id,name_key,name,kind,target,is_primary,updated_at) "
+            "SELECT user_id,name_key,name,'site',url,0,updated_at "
+            "FROM site_invocations")
+        conn.execute(
+            "UPDATE invocation_names SET is_primary=1 "
+            "WHERE (user_id,kind,target,name_key) IN ("
+            "SELECT user_id,kind,target,MIN(name_key) FROM invocation_names "
+            "GROUP BY user_id,kind,target) "
+            "AND NOT EXISTS (SELECT 1 FROM invocation_names AS other "
+            "WHERE other.user_id=invocation_names.user_id "
+            "AND other.kind=invocation_names.kind "
+            "AND other.target=invocation_names.target AND other.is_primary=1)")
+        conn.execute("DROP TABLE site_invocations")
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
 
 
 def _ensure_unique_verified_recipients(conn: sqlite3.Connection) -> None:
@@ -463,7 +499,7 @@ def delete_user(user_id: str) -> bool:
                     conn.execute(
                         "DELETE FROM user_prefs WHERE user_id=?", (user_id,))
                 conn.execute(
-                    "DELETE FROM site_invocations WHERE user_id=?", (user_id,))
+                    "DELETE FROM invocation_names WHERE user_id=?", (user_id,))
                 conn.execute(
                     "DELETE FROM user_channels WHERE user_id=?", (user_id,))
                 conn.execute(
@@ -1031,24 +1067,88 @@ def list_prefs(user_id_or_name: str) -> dict:
             for k, rec in list_prefs_detailed(user_id_or_name).items()}
 
 
-def _site_invocation_name(name: str) -> tuple[str, str]:
+# --- invocation names (sites and mailboxes) ---------------------------------
+
+# The kinds a user can name. A name only selects which site or mailbox a
+# request already about sites or mail refers to; it never decides the domain.
+INVOCATION_KINDS = ("site", "mail")
+_MAIL_ACCOUNT_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}")
+# Argument values with a fixed meaning that a name must not replace.
+_RESERVED_INVOCATION_NAMES = frozenset({"all"})
+_EXPLICIT_SITE_ADDRESS_RE = re.compile(
+    r"https?://|(?<![@\w])(?:[\w-]+\.)+[\w-]{2,63}\b|\blocalhost\b",
+    re.IGNORECASE)
+
+
+class InvocationNameError(ValueError):
+    """A rejected name or target; `reason` selects the user-facing message."""
+
+    def __init__(self, reason: str, *, name: str = "", other: str = ""):
+        super().__init__(reason)
+        self.reason = reason
+        self.name = name
+        self.other = other
+
+
+def _invocation_fold(text: str) -> str:
+    return " ".join(unicodedata.normalize("NFKC", text or "").casefold().split())
+
+
+def _is_vocabulary_term(key: str) -> bool:
+    """True when Metnos already reads `key` as an action or an object."""
+    import vocab
+
+    if vocab.canonical_object(key):
+        return True
+    forms = {key, key.replace(" ", "-")}
+    for action, spec in vocab.ACTION_MAPPING.items():
+        if action in forms:
+            return True
+        for value in (spec.values() if isinstance(spec, dict) else ()):
+            if isinstance(value, (list, tuple)) and any(
+                    isinstance(word, str) and word.casefold() in forms
+                    for word in value):
+                return True
+    return False
+
+
+def _invocation_name(name: str) -> tuple[str, str]:
+    """Display form and lookup key of one user-chosen name.
+
+    A name is recognised as a whole phrase inside any request, so it must be
+    long enough not to occur by chance (three characters, one letter at
+    least, except IP addresses) and must not be an action or object word.
+    """
     if not isinstance(name, str):
-        raise ValueError("invalid invocation name")
-    display = " ".join(unicodedata.normalize("NFKC", name or "").split())
-    if (not 1 <= len(display) <= 80
-            or not all(c.isalnum() or c in " -_" for c in display)):
-        raise ValueError("invalid invocation name")
-    return display, display.casefold()
+        raise InvocationNameError("invalid")
+    display = " ".join(unicodedata.normalize("NFKC", name).split())
+    key = display.casefold()
+    # A local site's address is also a useful default name. A numeric suffix
+    # distinguishes two targets on the same host without admitting bare numbers.
+    host, _, suffix = display.partition(" ")
+    try:
+        ipaddress.ip_address(host)
+        is_ip = not suffix or suffix.isdecimal()
+    except ValueError:
+        is_ip = False
+    if (len(display) > 80
+            or (not is_ip and not all(c.isalnum() or c in " .-_" for c in display))):
+        raise InvocationNameError("invalid", name=display)
+    if len(display) < 3 or (not is_ip and not any(c.isalpha() for c in display)):
+        raise InvocationNameError("too_short", name=display)
+    if key in _RESERVED_INVOCATION_NAMES or _is_vocabulary_term(key):
+        raise InvocationNameError("vocabulary", name=display)
+    return display, key
 
 
 def _site_invocation_url(value: str) -> str:
     from sites_origin import _norm_host, origin_of_url
 
     if not isinstance(value, str):
-        raise ValueError("invalid site URL")
+        raise InvocationNameError("invalid_target")
     raw = (value or "").strip()
     if not raw or len(raw) > 2048 or any(c.isspace() or c == "\\" for c in raw):
-        raise ValueError("invalid site URL")
+        raise InvocationNameError("invalid_target")
     if "://" not in raw:
         raw = "https://" + raw
     try:
@@ -1066,109 +1166,234 @@ def _site_invocation_url(value: str) -> str:
         netloc = host + (f":{parts.port}" if parts.port else "")
         return urlunsplit((parts.scheme.lower(), netloc, parts.path or "/", "", ""))
     except ValueError as exc:
-        raise ValueError("invalid site URL") from exc
+        raise InvocationNameError("invalid_target") from exc
 
 
-def suggest_site_invocation_name(user_id_or_name: str, url: str) -> dict:
-    """Propose an editable invocation name from a URL; never save it."""
-    if not get_user(user_id_or_name):
-        raise ValueError("unknown user")
-    normalized_url = _site_invocation_url(url)
-    entries = list_site_invocations(user_id_or_name)
-    for entry in entries:
-        if entry["url"] == normalized_url:
-            return {"name": entry["name"], "url": normalized_url}
-
-    host = urlsplit(normalized_url).hostname or ""
-    try:
-        ipaddress.ip_address(host)
-        raw_name = host
-    except ValueError:
-        raw_name = host.removeprefix("www.").split(".", 1)[0]
-        try:
-            raw_name = raw_name.encode("ascii").decode("idna")
-        except UnicodeError:
-            pass
-    base = " ".join("".join(
-        char if char.isalnum() or char in "-_" else " " for char in raw_name
-    ).split())[:80].strip() or "site"
-    occupied = {entry["name"].casefold() for entry in entries}
-    candidate = base
-    serial = 2
-    while candidate.casefold() in occupied:
-        suffix = f" {serial}"
-        candidate = base[:80 - len(suffix)].rstrip() + suffix
-        serial += 1
-    return {"name": candidate, "url": normalized_url}
+def _invocation_target(kind: str, target: str) -> str:
+    if kind == "site":
+        return _site_invocation_url(target)
+    if (kind == "mail" and isinstance(target, str)
+            and _MAIL_ACCOUNT_RE.fullmatch(target.strip())):
+        return target.strip()
+    raise InvocationNameError("invalid_target")
 
 
-def set_site_invocation(user_id_or_name: str, name: str, url: str) -> dict:
-    """Save a user's invocation label separately from site credentials."""
-    user = get_user(user_id_or_name)
-    if not user:
-        raise ValueError("unknown user")
-    display, key = _site_invocation_name(name)
-    normalized_url = _site_invocation_url(url)
+def parse_invocation_synonyms(text: str) -> list[str]:
+    """Synonyms typed in one field: separated by commas, semicolons or lines."""
+    return [part.strip() for part in re.split(r"[,;\n]", text or "")
+            if part.strip()]
+
+
+def _invocation_rows(user_id: str) -> list[dict]:
     conn = _open_db()
     try:
-        conn.execute(
-            "INSERT INTO site_invocations(user_id,name_key,name,url,updated_at) "
-            "VALUES (?,?,?,?,?) ON CONFLICT(user_id,name_key) DO UPDATE SET "
-            "name=excluded.name,url=excluded.url,updated_at=excluded.updated_at",
-            (user["id"], key, display, normalized_url, _now_iso()),
-        )
-        conn.commit()
+        return [dict(row) for row in conn.execute(
+            "SELECT name,name_key,kind,target,is_primary FROM invocation_names "
+            "WHERE user_id=? ORDER BY kind,target,is_primary DESC,name_key",
+            (user_id,)).fetchall()]
     finally:
         conn.close()
-    return {"name": display, "url": normalized_url}
 
 
-def list_site_invocations(user_id_or_name: str) -> list[dict]:
+def list_invocation_names(user_id_or_name: str) -> list[dict]:
+    """One entry per named site or mailbox: main name and synonyms."""
     user = get_user(user_id_or_name)
     if not user:
         return []
-    conn = _open_db()
+    grouped: dict[tuple[str, str], dict] = {}
+    for row in _invocation_rows(user["id"]):
+        entry = grouped.setdefault((row["kind"], row["target"]), {
+            "kind": row["kind"], "target": row["target"],
+            "name": "", "synonyms": []})
+        if not entry["name"]:
+            entry["name"] = row["name"]
+        else:
+            entry["synonyms"].append(row["name"])
+    return sorted(grouped.values(), key=lambda e: (e["name"].casefold(), e["kind"]))
+
+
+def invocation_names_for(user_id_or_name: str, kind: str, target: str) -> dict | None:
     try:
-        rows = conn.execute(
-            "SELECT name,url FROM site_invocations WHERE user_id=? "
-            "ORDER BY name_key", (user["id"],),
-        ).fetchall()
-        return [dict(row) for row in rows]
+        target = _invocation_target(kind, target)
+    except InvocationNameError:
+        return None
+    return next((entry for entry in list_invocation_names(user_id_or_name)
+                 if entry["kind"] == kind and entry["target"] == target), None)
+
+
+def set_invocation_names(user_id_or_name: str, kind: str, target: str,
+                         name: str, synonyms=()) -> dict:
+    """Replace the names of one site or mailbox for one user.
+
+    All names are checked before anything is written: a name already used for
+    another site or mailbox of the same user is refused, never moved.
+    """
+    user = get_user(user_id_or_name)
+    if not user:
+        raise InvocationNameError("unknown_user")
+    if kind not in INVOCATION_KINDS:
+        raise InvocationNameError("invalid_target")
+    target = _invocation_target(kind, target)
+    labels: dict[str, str] = {}
+    for raw in [name, *synonyms]:
+        display, key = _invocation_name(raw)
+        labels.setdefault(key, display)
+    if not labels:
+        raise InvocationNameError("invalid")
+    keys = list(labels)
+    conn = _open_db()
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        placeholders = ",".join("?" * len(keys))
+        taken = conn.execute(
+            "SELECT name,kind,target FROM invocation_names WHERE user_id=? "
+            f"AND name_key IN ({placeholders}) AND NOT (kind=? AND target=?)",
+            (user["id"], *keys, kind, target)).fetchone()
+        if taken is not None:
+            raise InvocationNameError(
+                "taken", name=taken["name"], other=taken["target"])
+        conn.execute(
+            "DELETE FROM invocation_names WHERE user_id=? AND kind=? AND target=?",
+            (user["id"], kind, target))
+        now = _now_iso()
+        for position, key in enumerate(keys):
+            conn.execute(
+                "INSERT INTO invocation_names"
+                "(user_id,name_key,name,kind,target,is_primary,updated_at) "
+                "VALUES (?,?,?,?,?,?,?)",
+                (user["id"], key, labels[key], kind, target,
+                 1 if position == 0 else 0, now))
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
+    return {"kind": kind, "target": target, "name": labels[keys[0]],
+            "synonyms": [labels[key] for key in keys[1:]]}
 
 
-def delete_site_invocation(user_id_or_name: str, name: str) -> bool:
+def delete_invocation_names(user_id_or_name: str, kind: str, target: str) -> bool:
     user = get_user(user_id_or_name)
     if not user:
         return False
-    _, key = _site_invocation_name(name)
+    try:
+        target = _invocation_target(kind, target)
+    except InvocationNameError:
+        return False
     conn = _open_db()
     try:
         deleted = conn.execute(
-            "DELETE FROM site_invocations WHERE user_id=? AND name_key=?",
-            (user["id"], key),
-        ).rowcount > 0
+            "DELETE FROM invocation_names WHERE user_id=? AND kind=? AND target=?",
+            (user["id"], kind, target)).rowcount > 0
         conn.commit()
         return deleted
     finally:
         conn.close()
 
 
-def resolve_site_invocation(user_id_or_name: str, query: str) -> str | None:
-    """Resolve one explicit label; ask for clarification when several match."""
-    if re.search(r"https?://|(?<![@\w])(?:[\w-]+\.)+[\w-]{2,63}\b|\blocalhost\b",
-                 query or "", re.IGNORECASE):
-        return ""
-    folded = " ".join(unicodedata.normalize("NFKC", query or "").casefold().split())
-    matched = {
-        entry["url"] for entry in list_site_invocations(user_id_or_name)
-        if re.search(r"(?<!\w)" + re.escape(entry["name"].casefold())
-                     + r"(?!\w)", folded)
-    }
-    if len(matched) > 1:
+def invocation_target(user_id_or_name: str, kind: str, name: str) -> str | None:
+    """Target of exactly this name, e.g. a mailbox the planner wrote by name."""
+    user = get_user(user_id_or_name)
+    if not user or not isinstance(name, str):
         return None
-    return next(iter(matched)) if matched else ""
+    key = _invocation_fold(name)
+    return next((row["target"] for row in _invocation_rows(user["id"])
+                 if row["kind"] == kind and row["name_key"] == key), None)
+
+
+def match_invocation_names(user_id_or_name: str, query: str) -> list[dict]:
+    """Names written in a request, as whole phrases, longest phrase first.
+
+    A name inside a longer matched name does not count on its own: with the
+    names «enel» and «enel energia», the request «enel energia» names one
+    target, not two.
+    """
+    user = get_user(user_id_or_name)
+    if not user:
+        return []
+    folded = _invocation_fold(query)
+    spans = []
+    for row in _invocation_rows(user["id"]):
+        pattern = r"(?<!\w)" + re.escape(row["name_key"]) + r"(?!\w)"
+        for match in re.finditer(pattern, folded):
+            spans.append((match.start(), match.end(), row))
+    kept = [
+        (start, end, row) for start, end, row in spans
+        if not any(o_start <= start and end <= o_end
+                   and o_end - o_start > end - start
+                   for o_start, o_end, _ in spans)
+    ]
+    kept.sort(key=lambda span: (span[0] - span[1], span[0]))
+    return [{"kind": row["kind"], "target": row["target"], "name": row["name"],
+             "name_key": row["name_key"]} for _, _, row in kept]
+
+
+def resolve_invocation(user_id_or_name: str, query: str, kind: str) -> str | None:
+    """The one target of `kind` a request names: "" for none, None if several.
+
+    An explicit address written in a site request always wins over a name.
+    """
+    if kind == "site" and _EXPLICIT_SITE_ADDRESS_RE.search(query or ""):
+        return ""
+    targets = {match["target"] for match in match_invocation_names(user_id_or_name, query)
+               if match["kind"] == kind}
+    if len(targets) > 1:
+        return None
+    return next(iter(targets)) if targets else ""
+
+
+def propose_invocation_name(kind: str, target: str, entries: list[dict]) -> str:
+    """An editable, valid and available domain/account name; no database writes."""
+    normalized = _invocation_target(kind, target)
+    if kind == "site":
+        raw_name = (urlsplit(normalized).hostname or "").removeprefix("www.")
+        try:
+            raw_name = raw_name.encode("ascii").decode("idna")
+        except UnicodeError:
+            pass
+    else:
+        raw_name = normalized
+    base = raw_name[:80].strip()
+    # Short numeric account identifiers need a letter; vocabulary words and
+    # occupied names instead become valid by adding the usual numeric suffix.
+    try:
+        _invocation_name(base)
+    except InvocationNameError as exc:
+        if exc.reason == "invalid":
+            base = " ".join("".join(
+                c if c.isalnum() or c in ".-_" else " " for c in base
+            ).split()) or kind
+        if not any(c.isalpha() for c in base) and exc.reason != "vocabulary":
+            base = f"{base[:74]} {kind}"
+    occupied = {name.casefold() for entry in entries
+                for name in (entry["name"], *entry["synonyms"])}
+    candidate = base
+    serial = 2
+    while True:
+        try:
+            _invocation_name(candidate)
+            if candidate.casefold() not in occupied:
+                return candidate
+        except InvocationNameError:
+            pass
+        suffix = f" {serial}"
+        candidate = base[:80 - len(suffix)].rstrip() + suffix
+        serial += 1
+
+
+def suggest_site_invocation_name(user_id_or_name: str, url: str) -> dict:
+    """Propose an editable name from a URL; never save it."""
+    if not get_user(user_id_or_name):
+        raise InvocationNameError("unknown_user")
+    normalized_url = _site_invocation_url(url)
+    entries = list_invocation_names(user_id_or_name)
+    for entry in entries:
+        if entry["kind"] == "site" and entry["target"] == normalized_url:
+            return {"name": entry["name"], "synonyms": entry["synonyms"],
+                    "url": normalized_url}
+    return {"name": propose_invocation_name("site", normalized_url, entries),
+            "synonyms": [], "url": normalized_url}
 
 
 def delete_pref(user_id_or_name: str, key: str) -> bool:

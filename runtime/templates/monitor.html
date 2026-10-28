@@ -29,8 +29,8 @@
     {'id':'call-duration-mean','label':msg('UI_MONITOR_CALL_LATENCY') ~ ' · ' ~ msg('UI_MONITOR_MEAN'),'unit':msg('UI_MONITOR_SECONDS'),'source':'models','factor':0.001,'metrics':[{'key':'call_mean_ms','label':msg('UI_MONITOR_MEAN')}]},
     {'id':'prefill-speed','label':msg('UI_MONITOR_PREFILL'),'unit':msg('UI_MONITOR_TPS'),'source':'models','factor':1,'metrics':[{'key':'prefill_tps','label':msg('UI_MONITOR_PREFILL')}]},
     {'id':'generation-speed','label':msg('UI_MONITOR_GENERATION'),'unit':msg('UI_MONITOR_TPS'),'source':'models','factor':1,'metrics':[{'key':'generation_tps','label':msg('UI_MONITOR_GENERATION')}]},
-    {'id':'input-tokens','label':msg('UI_MONITOR_INPUT_TOKENS'),'unit':msg('UI_MONITOR_TOKEN_UNIT'),'source':'models','factor':1,'metrics':[{'key':'input_tokens','label':msg('UI_MONITOR_INPUT_TOKENS')}]},
-    {'id':'output-tokens','label':msg('UI_MONITOR_OUTPUT_TOKENS'),'unit':msg('UI_MONITOR_TOKEN_UNIT'),'source':'models','factor':1,'metrics':[{'key':'output_tokens','label':msg('UI_MONITOR_OUTPUT_TOKENS')}]}] %}
+    {'id':'input-tokens','label':msg('UI_MONITOR_INPUT_TOKENS') ~ ' · ' ~ msg('UI_MONITOR_MEAN'),'unit':msg('UI_MONITOR_TOKEN_UNIT'),'source':'models','factor':1,'metrics':[{'key':'input_tokens','label':msg('UI_MONITOR_INPUT_TOKENS') ~ ' · ' ~ msg('UI_MONITOR_MEAN')}]},
+    {'id':'output-tokens','label':msg('UI_MONITOR_OUTPUT_TOKENS') ~ ' · ' ~ msg('UI_MONITOR_MEAN'),'unit':msg('UI_MONITOR_TOKEN_UNIT'),'source':'models','factor':1,'metrics':[{'key':'output_tokens','label':msg('UI_MONITOR_OUTPUT_TOKENS') ~ ' · ' ~ msg('UI_MONITOR_MEAN')}]}] %}
 {% elif view == 'overview' %}
   {% set chart_panels = [
     {'id':'request-output-speed','label':msg('UI_MONITOR_REQUEST_OUTPUT_SPEED'),'unit':msg('UI_MONITOR_TPS'),'source':'requests','factor':1,'metrics':[{'key':'request_output_tps','label':msg('UI_MONITOR_REQUEST_OUTPUT_SPEED')}]},

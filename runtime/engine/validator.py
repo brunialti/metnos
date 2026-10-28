@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from from_step_projection import (
-    carries_upstream_payload, projection_can_fill,
+    carries_upstream_payload, missing_applicable_input_groups, projection_can_fill,
     required_source_context_fields,
 )
 from manifest_rules import UNIVERSAL_ARGS
@@ -133,6 +133,10 @@ class Validator:
                 continue
             return f"missing required arg '{r}'"
         # requires_one_of
+        missing_inputs = missing_applicable_input_groups(
+            args, schema, allow_deferred=True)
+        if missing_inputs:
+            return _msg("ERR_ARG_MISSING", arg=" | ".join(missing_inputs[0]))
         for group in schema.get("requires_one_of") or []:
             if not isinstance(group, list) or not group:
                 continue

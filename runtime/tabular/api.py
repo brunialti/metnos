@@ -12,6 +12,7 @@ from dataclasses import replace
 from tabular.compile import compile_workbook, _source_is_partial
 from tabular.model import CAPABILITIES, Cell, Column, Sheet, TableError
 from tabular_projection import TabularProjectionError
+from tabular_records import collection_limit_message
 
 
 def _message(code: str, **parameters) -> str:
@@ -22,19 +23,34 @@ def _message(code: str, **parameters) -> str:
     return text
 
 
-def _notice_message(notice: dict) -> str:
+_ONE_SHEET_VARIANTS = frozenset({"WARN_TABLE_MERGED_ROWS", "WARN_TABLE_CONFLICTING_ROWS",
+                                  "WARN_TABLE_SUSPECTED_DUPLICATES", "WARN_TABLE_UNIDENTIFIED_ABSORBED",
+                                  "WARN_TABLE_UNIDENTIFIED_REJECTED", "WARN_TABLE_FOREIGN_SECTIONS"})
+
+
+def _notice_message(notice: dict, *, one_sheet: bool = False) -> str:
     defaults = {"sheet": "", "column": "", "count": 0, "detail": "",
                 "truncated_what": "", "used": 0, "available_total": "",
                 "cap_field": "", "cap_value": ""}
     parameters = defaults | {key: value for key, value in notice.items()
                              if key not in {"code", "message", "reason_code"}}
     if notice["code"] == "WARN_TABLE_PARTIAL_SOURCE" and "reason_code" in notice:
-        # The navigation reason registry is shared with the sites presenter;
-        # neither the sheet nor the row payload selects a translation key.
+        # Shared closed limit/reason registries own the cause; neither a row
+        # nor producer metadata can supply prose or select a catalog key.
         from sites_observed import REASON_MSG
-        key = REASON_MSG.get(notice.get("reason_code"))
-        parameters["detail"] = _message(key, **parameters) if key else ""
-    return _message(notice["code"], **parameters)
+        limit = collection_limit_message(notice.get("cap_field"), notice.get("cap_value"))
+        if limit:
+            key, limit_parameters = limit
+            parameters["detail"] = _message(key, **limit_parameters)
+        else:
+            key = REASON_MSG.get(notice.get("reason_code"))
+            parameters["detail"] = _message(key, **parameters) if key else ""
+    code = notice["code"]
+    if one_sheet and code == "WARN_TABLE_PARTIAL_SOURCE":
+        code = "MSG_COLLECTION_COMPLETENESS_UNVERIFIED"
+    elif one_sheet and code in _ONE_SHEET_VARIANTS:
+        code += "_ONE_SHEET"
+    return _message(code, **parameters).strip()
 
 
 def _notes(workbook, notices: list[dict]):
@@ -45,7 +61,9 @@ def _notes(workbook, notices: list[dict]):
     columns = (Column(_message("MSG_TABLE_NOTE_KIND"), "code"),
                Column(_message("MSG_TABLE_NOTE_SHEET"), "sheet"),
                Column(_message("MSG_TABLE_NOTE_DETAIL"), "detail"))
-    rows = tuple((Cell("text", notice["code"]), Cell("text", notice.get("sheet", "")),
+    # Notes acting on rows come first, each labelled by its action code.
+    notices = sorted(notices, key=lambda notice: "label" not in notice)
+    rows = tuple((Cell("text", notice.get("label", notice["code"])), Cell("text", notice.get("sheet", "")),
                   Cell("text", notice["message"] if "message" in notice else _notice_message(notice))) for notice in notices)
     return replace(workbook, sheets=workbook.sheets + (Sheet(name, columns, rows, notes=True),))
 
@@ -139,8 +157,9 @@ def write_table(source, spec: dict | None, destination: dict, mode: str = "creat
         notices = list(compiled.notices)
         # Localize every notice before publishing, so Note never silently lacks
         # the same warning/provenance returned to the conversation.
+        one_sheet = sum(not sheet.notes for sheet in compiled.workbook.sheets) == 1
         for notice in notices:
-            notice["message"] = _notice_message(notice)
+            notice["message"] = _notice_message(notice, one_sheet=one_sheet)
         workbook = _notes(compiled.workbook, notices)
         if backend == "csv":
             from spreadsheet_cells import is_active_text
@@ -163,8 +182,10 @@ def write_table(source, spec: dict | None, destination: dict, mode: str = "creat
             raise TableError("notes_exceed_workbook_limit")
         # All required messages must exist before any mutation. A missing
         # translation must never hide an already created artifact afterwards.
-        success_hint = _message("MSG_TABLE_WRITTEN", title=workbook.title,
-                                rows=compiled.data_rows, notices=len(notices))
+        success_hint = _message("MSG_TABLE_CREATED" if mode == "create" else "MSG_TABLE_WRITTEN",
+                                title=workbook.title, rows=compiled.data_rows, notices=len(notices))
+        if notices:
+            success_hint += " " + _message("MSG_TABLE_NOTES_COUNT", notices=len(notices))
         incomplete_hint = _message("WARN_TABLE_WRITE_INCOMPLETE", title=workbook.title,
                                    rows=compiled.data_rows, notices=len(notices))
         write_error = _message("ERR_TABLE_WRITE", reason="write_failed")
@@ -176,6 +197,12 @@ def write_table(source, spec: dict | None, destination: dict, mode: str = "creat
                           "source_partial": any(_source_is_partial(item) for item in compiled.source_metadata),
                           "source_truncated": any(item.get("truncated") is True for item in compiled.source_metadata)}
         source_notices = [item["message"] for item in notices if item["code"] == "WARN_TABLE_PARTIAL_SOURCE"]
+        merge_notices = [item["message"] for item in notices
+                         if item["code"] in {"WARN_TABLE_MERGED_ROWS", "WARN_TABLE_SUSPECTED_DUPLICATES",
+                                              "WARN_TABLE_CONFLICTING_ROWS",
+                                              "WARN_TABLE_UNIDENTIFIED_ABSORBED",
+                                              "WARN_TABLE_UNIDENTIFIED_REJECTED",
+                                              "WARN_TABLE_FOREIGN_SECTIONS"}]
         result = write(workbook, destination, mode)
         # OAuth needs_inputs is not a written-file receipt.
         if result.get("decision") == "needs_inputs":
@@ -196,13 +223,16 @@ def write_table(source, spec: dict | None, destination: dict, mode: str = "creat
             result.update({key: value for key, value in compiled.truncations[0].items()
                            if key in {"truncated_what", "cap_field", "cap_value"}})
         result["final_message_hint"] = success_hint if result.get("ok") and result.get("verified") else incomplete_hint
+        if merge_notices:
+            # Not a partiality: the same localized text written into Note.
+            result["final_message_hint"] += "\n" + "\n".join(merge_notices)
         if source_notices:
+            result["partial_source_only"] = not result.get("partial_reason")
             result["partial"] = True
             # Keep any writer failure reason; source warnings already use the
             # same localized text that was written into the Note artifact.
             reasons = ([result["partial_reason"]] if result.get("partial_reason") else []) + source_notices
             result["partial_reason"] = "\n".join(reasons)
-            result["final_message_hint"] += "\n" + "\n".join(source_notices)
         if not result.get("ok"):
             result["error"] = write_error
         return result

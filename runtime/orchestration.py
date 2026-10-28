@@ -190,6 +190,10 @@ def invoke_get_inputs_internal(*,
     if not owner_user_id:
         return {"ok": False, "error": _msg(
             "MSG_ORCH_SAVE_PENDING_FAILED", detail="owner unavailable")}
+    # A site or mailbox credential form also asks the names the user will call
+    # it by; the step is the runtime's, its value never reaches the executor.
+    from invocation_form import augment_dialog
+    dialog, on_complete = augment_dialog(dialog, on_complete, owner_user_id)
 
     n_steps = len(dialog)
     # Risolvi fmt='auto' lato runtime. Su HTTP:
@@ -537,6 +541,17 @@ def process_completion_callback(sender_id: str, dialog_id: str,
                 host_override=host_override)
         result = (out if isinstance(out, CompletionResult) else
                   CompletionResult(text=str(out) if out is not None else ""))
+        from invocation_form import save_from_values
+        names_notice = ""
+        if (state.get("completed") and not state.get("cancelled")
+                and not dialog_pending.is_expired(state)
+                and str(state.get("owner_user_id") or "").strip()
+                == str(owner_user_id or "").strip()):
+            names_notice = save_from_values(
+                callback, state.get("values_collected"), owner_user_id)
+        if names_notice:
+            result.text = "\n\n".join(
+                part for part in (result.text, names_notice) if part)
     except Exception:
         if not gated:
             raise
@@ -680,6 +695,9 @@ def _dispatch_completion(sender_id: str, dialog_id: str,
         return _process_restart_turn_with_chosen_query(
             on_complete, values, actor=actor, channel=channel,
         )
+    if callback_type == "rerun_query_with_record_kind":
+        return _process_rerun_query_with_record_kind(
+            on_complete, values, actor=actor, channel=channel)
 
     if callback_type == "strato3_choice_dispatch":
         return _process_strato3_choice_dispatch(
@@ -1669,6 +1687,31 @@ def _invoke_gate_branch_result(branch: dict | None, *, actor: str,
         target_device=target_device, contesto="executor gate branch")
 
 
+def _gate_tail_callback(gate: dict, parent_callback: dict,
+                        **overrides) -> dict | None:
+    """`gate_dispatch` → `resume_executor_gate_tail` keeping the parent tail.
+
+    Only a gate whose approved branch names an executor can resume a tail.
+    """
+    approve_branch = gate.get("on_approve")
+    if not isinstance(approve_branch, dict) or not (
+            approve_branch.get("tool") or approve_branch.get("executor")):
+        return None
+    callback = {
+        "type": "resume_executor_gate_tail",
+        "gate_approve_value": gate.get("approve_value", "approve"),
+        "gate_on_approve": approve_branch,
+        "gate_on_reject": gate.get("on_reject"),
+    }
+    for key in ("tail_steps", "tail_final_message", "original_query",
+                "conversation_id", "turn_id", "source_request_id",
+                "target_device"):
+        callback[key] = parent_callback.get(key) or (
+            [] if key == "tail_steps" else "")
+    callback.update(overrides)
+    return callback
+
+
 def _carry_executor_tail_to_nested_gate(
         branch_result: dict, parent_callback: dict, *,
         actor: str, channel: str | None) -> bool:
@@ -1696,30 +1739,14 @@ def _carry_executor_tail_to_nested_gate(
     nested = state.get("on_complete") or {}
     if not isinstance(nested, dict) or nested.get("type") != "gate_dispatch":
         return False
-    approve_branch = nested.get("on_approve")
-    if not isinstance(approve_branch, dict):
+    callback = _gate_tail_callback(
+        nested, parent_callback, owner_user_id=state.get("owner_user_id"))
+    if callback is None:
         return False
-    approve_tool = approve_branch.get("tool") or approve_branch.get("executor")
-    if not isinstance(approve_tool, str) or not approve_tool:
-        return False
-
-    state["on_complete"] = {
-        "type": "resume_executor_gate_tail",
-        "owner_user_id": state.get("owner_user_id"),
-        "gate_approve_value": nested.get("approve_value", "approve"),
-        "gate_on_approve": approve_branch,
-        "gate_on_reject": nested.get("on_reject"),
-        "tail_steps": raw_tail,
-        "tail_final_message": parent_callback.get("tail_final_message") or "",
-        "original_query": parent_callback.get("original_query") or "",
-        "conversation_id": parent_callback.get("conversation_id") or "",
-        "turn_id": parent_callback.get("turn_id") or "",
-        "source_request_id": parent_callback.get("source_request_id") or "",
-        "target_device": parent_callback.get("target_device") or "",
-    }
+    state["on_complete"] = callback
     dialog_pending.save_pending(sender, dialog_id, state)
     log.info("orchestration: coda executor trasferita al gate annidato %s "
-             "(%s, %d step)", dialog_id, approve_tool, len(raw_tail))
+             "(%d step)", dialog_id, len(raw_tail))
     return True
 
 
@@ -1839,6 +1866,15 @@ def _process_resume_executor_gate_tail(on_complete: dict, values: dict, *,
                 "target_device": device or "",
             })
             payload["on_complete"] = nested_callback
+        elif (raw_tail and isinstance(nested_callback, dict)
+                and nested_callback.get("type") == "gate_dispatch"):
+            # A second consent requested by the resumed executor inherits the
+            # same tail; the runtime still creates and verifies its form.
+            carried = _gate_tail_callback(
+                nested_callback, on_complete, turn_id=continuation_id,
+                target_device=device or "")
+            if carried is not None:
+                payload["on_complete"] = carried
         conversation_id = str(on_complete.get("conversation_id") or "")
         sender = f"{channel or 'http'}:{actor or 'host'}"
         if conversation_id:
@@ -2082,6 +2118,9 @@ def _apply_dialog_values(on_complete: dict, values: dict | None) -> dict:
     """
     args = dict(on_complete.get("args_base") or {})
     remaining = dict(values or {})
+    # Steps the runtime added for itself (e.g. the names of a credential).
+    for name in (on_complete.get("runtime_vars") or ()):
+        remaining.pop(name, None)
     list_args = on_complete.get("list_args")
     for name, slots in (list_args.items() if isinstance(list_args, dict) else ()):
         args[name] = [
@@ -2282,6 +2321,33 @@ def _process_restart_turn_with_chosen_query(
         return _msg("MSG_ORCH_CONTINUATION_EMPTY")
     # Bug zip-line (5/7): il resume È un turno completo — porta su
     # attachments/gallery e meta, non solo il testo.
+    return _completion_from_turnlog(new_log)
+
+
+def _process_rerun_query_with_record_kind(
+    on_complete: dict, values: dict, *,
+    actor: str = "host", channel: str | None = None,
+) -> str:
+    """The request named no kind of items to collect from a site: the
+    answer is added to it in one localized sentence and the request is
+    planned again (see engine.dispatch._record_kind_form)."""
+    query = (on_complete or {}).get("query") or ""
+    kind = " ".join(str((values or {}).get("record_kind") or "").split())[:200]
+    if not isinstance(query, str) or not query.strip() or not kind:
+        return _msg("MSG_ORCH_DISAMB_EMPTY_CHOICE")
+    try:
+        import agent_runtime
+        new_log = agent_runtime.run_turn(
+            _msg("MSG_RECORD_KIND_REQUEST", query=query.strip().rstrip("."), kind=kind),
+            actor=actor or "host", channel=channel or "",
+            conversation_id=on_complete.get("conversation_id") or "",
+            owner_user_id=str(on_complete.get("owner_user_id") or ""))
+    except (RuntimeError, TypeError, ImportError) as ex:
+        log.exception("orchestration: rerun_query_with_record_kind fallito")
+        return _msg("MSG_ORCH_CONTINUATION_FAILED",
+                    detail=f"{type(ex).__name__}: {ex}")
+    if new_log is None:
+        return _msg("MSG_ORCH_CONTINUATION_EMPTY")
     return _completion_from_turnlog(new_log)
 
 

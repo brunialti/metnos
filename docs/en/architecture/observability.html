@@ -182,7 +182,13 @@ also defines the terms used: model measurement coverage, observed/expected
 calls in requests, valid/total samples, mean, median and 95th percentile,
 along with tokens, PP/TG phases and data quality. Ratios such as 8/10 have
 examples; token and timing completeness is distinguished from observed
-call counts. The median duration header wraps to keep the table compact;
+call counts. The model table also shows <strong>Average prompt</strong> in tokens:
+known input tokens divided by calls with known input counts, within the filtered
+period and selected logical/physical grouping. It includes the full prompt,
+with any instructions, history and tools; cached tokens are included when part
+of the provider's input count. Calls without counts are excluded from the mean;
+the ratio of known counts to observed calls appears below the value.
+The median duration header wraps to keep the table compact;
 numeric values remain aligned.</p>
 
 <p>Charts refresh every five seconds while the page is visible.
@@ -194,6 +200,14 @@ without waiting for disk. Lost events, incomplete data and stale collection
 are shown on the page. Collection retains identifiers and measurements,
 without questions, answers or credentials. Access requires the admin role.</p>
 
+<p>Each attempt retains its logical role declared in the workload registry,
+including when several roles share one model. Context is isolated between
+concurrent calls and restored on exit. Delegated processes retain the
+observing process origin through closed, bounded metadata; a receiving
+process with its own collector uses its own origin. Unobserved roles and
+origins remain unknown. This attribution does not change models, parameters
+or call counts.</p>
+
 <p>Each Monitor screen remembers applied filters, the time period, model
 grouping and selected series in the browser. Preferences are separated by
 authenticated user and screen, and survive restarts when using the same
@@ -202,6 +216,30 @@ opening; a custom range retains its dates. A link with explicit parameters
 takes precedence over saved preferences. Settings are saved after a
 successful load, without writes during regular automatic refreshes. If the
 browser prevents saving, the page reports this and remains usable.</p>
+
+<h2>Database aggregation and 90-day history</h2>
+<p>The collector writes analytical records directly to SQLite in a thread
+separate from the LLM call. Statistical SELECTs apply the period and filters
+before grouping by interval, provider, logical name and physical model.
+Summaries have no 10,000-sample limit: the page receives aggregates and at
+most 200 detail rows per page. Charts have at most 500 intervals and 12
+selected series; hiding a series or changing pages does not change summaries
+for the filtered period.</p>
+<p>Each token chart point shows the mean known count per call, while cards
+and tables also retain totals. Call duration uses the mean; request duration
+uses the median and nearest-rank 95th percentile over all valid samples.
+Speeds use summed tokens divided by summed valid durations. SQLite sorts
+percentiles using disk-backed temporary storage and a 4 MiB cache per
+connection, without loading historical records into Python lists.</p>
+<p>The rolling window retains 90 days of analytical data. At most once an
+hour, on the next write or read, a transaction deletes closed requests,
+segments, calls and revisions with no activity in the last 90 days. Freed
+pages are reused without a full compaction on every deletion. Open requests
+and chains with recent activity remain until the whole chain expires.
+Importing an old event does not restore expired records. Old JSONL files
+are imported in bounded batches, with a warning while unread bytes remain;
+the new collector does not append to them. Cumulative health counters remain
+separate from analytical records.</p>
 
 <h1 id="cap4">4. The static HTML snapshot</h1>
 

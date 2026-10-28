@@ -235,6 +235,8 @@ def _model_item(identity: Mapping[str, Any], calls: list[Mapping[str, Any]],
         item[name] = ({"value": cell["value"], "known": cell["known"],
                        "expected": cell["total"], "complete": cell["known"] == cell["total"]}
                       if name in {"input_tokens", "output_tokens"} else cell["value"])
+    inputs = metrics["input_tokens"]
+    item["input_tokens_mean"] = inputs["value"] / inputs["known"] if inputs["known"] else None
     return item
 
 
@@ -358,6 +360,8 @@ def build_view(
         metrics: dict[str, list[dict[str, Any]]] = {name: [] for name in _CALL_METRICS}
         for index in range(bucket_count):
             for name, cell in _call_metrics(call_buckets[key].get(index, [])).items():
+                if name in {"input_tokens", "output_tokens"} and cell["known"]:
+                    cell["value"] /= cell["known"]
                 metrics[name].append(cell)
         series.append({**identities[key], "metrics": metrics})
     coverage = {"requests": {"known": len(requests) - incomplete, "total": len(requests)},

@@ -258,6 +258,7 @@ _SCHEMA_NODE.update({
     "format": None, "runtime_resolved": None, "additionalProperties": None,
     "minProperties": None, "maxProperties": None,
     "runtime_source": None, "forbid_placeholder_values": None,
+    "input_when": {"arg": None, "values": None, "nonempty": None},
     "source_cardinality": None, "from_step_alternatives": None,
     "complete_value": None, "from_entries_candidates_key": None,
     "from_entries_complete": None,

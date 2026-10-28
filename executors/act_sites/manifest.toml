@@ -2,10 +2,10 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "act_sites"
-version     = "0.2.5"
+version     = "0.3.0"
 intelligence = "agentic"
-# Four available sessions, each with a five-minute active search budget.
-timeout_s   = 1800
+# Four available sessions, each with a ten-minute active search budget.
+timeout_s   = 3000
 platforms   = ["linux"]
 author      = "Roberto Brunialti"
 critical    = true
@@ -18,12 +18,12 @@ affinity    = [
 ]
 
 [description]
-it = "SCOPO: naviga a un fine dentro una sessione web, con conferma se sensibile. PATTERN: act_sites(from_step=2, action=\"fatture 2026\", ambito=\"personale\"). NON: pagina senza stato -> read_urls_html; niente CSS/XPath. OUT: results=[{session_id,ok,url}]; dati incompleti: partial=true e partial_reason, lettura consentita."
-en = "SCOPO: reach a goal inside a web session, with consent when sensitive. PATTERN: act_sites(from_step=2, action=\"invoices 2026\", ambito=\"personale\"). NON: stateless page -> read_urls_html; no CSS/XPath. OUT: results=[{session_id,ok,url}]; incomplete data: partial=true and partial_reason, reading may continue."
+it = "SCOPO: naviga a un fine dentro una sessione web, con conferma se sensibile, o salva un documento dall'azione indicata. PATTERN: act_sites(from_step=2, action=\"fatture 2026\", ambito=\"personale\"); download: action=\"clicca Scarica PDF\", dst_dir=\"/percorso/autorizzato\". NON: pagina senza stato -> read_urls_html; niente CSS/XPath. OUT: results=[{session_id,ok,url}], documenti in entries=[{path,bytes,sha256,session_id}] per read_files; dati incompleti: partial=true e partial_reason."
+en = "SCOPO: reach a goal inside a web session, with consent when sensitive, or save a document from the specified action. PATTERN: act_sites(from_step=2, action=\"invoices 2026\", ambito=\"personale\"); download: action=\"click Download PDF\", dst_dir=\"/authorized/path\". NON: stateless page -> read_urls_html; no CSS/XPath. OUT: results=[{session_id,ok,url}], documents in entries=[{path,bytes,sha256,session_id}] for read_files; incomplete data: partial=true and partial_reason."
 
 [code]
 files = ["act_sites.py"]
-digest = "sha256:03004b04d5d26564842f2fa560e66e141c5ac52e0ac230e4b0bdcecf596111ea"
+digest = "sha256:d3e84501684a2c29f8a4eb1ed19a4a24ea0c3aa287913cb31753a6f0ca6107f5"
 
 [args]
 type = "object"
@@ -42,9 +42,10 @@ en = "Provenance and incompleteness declared by runtime producers. Injected auto
 [args.properties.session_ids]
 type = "array"
 from_entries_key = "session_id"
+from_result_key = "session_ids"
 [args.properties.session_ids.description]
-it = "Sessioni prodotte da open_sites, normalmente via from_step. ID esatti, mai wildcard."
-en = "Sessions produced by open_sites, normally via from_step. Exact IDs, never wildcards."
+it = "Sessioni esatte da open_sites o dagli esiti act_sites, anche dopo un download fallito; normalmente via from_step. Mai wildcard."
+en = "Exact sessions from open_sites or act_sites results, including failed downloads; normally via from_step. Never wildcards."
 
 [args.properties.action]
 type = "string"
@@ -71,12 +72,48 @@ type = "string"
 it = "Opzionale. Valore da inserire; per credenziali usare cred:<dominio>:<campo>. Il broker sceglie autonomamente il campo."
 en = "Optional. Value to enter; for credentials use cred:<domain>:<field>. The broker selects the field itself."
 
+[args.properties.dst_dir]
+type = "string"
+[args.properties.dst_dir.description]
+it = "Cartella assoluta esistente e autorizzata dove salvare il documento scaricato dall'azione. Il consenso comprende destinazione e limiti."
+en = "Existing authorized absolute directory for the document downloaded by this action. Approval binds destination and limits."
+
+[args.properties.download_limits]
+type = "object"
+[args.properties.download_limits.properties.max_file_bytes]
+type = "integer"
+minimum = 1
+maximum = 33554432
+[args.properties.download_limits.properties.max_total_bytes]
+type = "integer"
+minimum = 1
+maximum = 268435456
+[args.properties.download_limits.properties.max_files]
+type = "integer"
+minimum = 1
+maximum = 100
+[args.properties.download_limits.properties.timeout_s]
+type = "integer"
+minimum = 1
+maximum = 120
+[args.properties.download_limits.description]
+it = "Limiti riducibili: massimo 32 MiB per file, 256 MiB totali, 100 file e 120 secondi."
+en = "Narrowable limits: at most 32 MiB per file, 256 MiB total, 100 files and 120 seconds."
+
 [args.properties.approval_tokens]
 type = "object"
 runtime_resolved = true
 [args.properties.approval_tokens.description]
 it = "Solo runtime: token opachi emessi dal broker e ripresentati dopo approvazione."
 en = "Runtime only: opaque tokens issued by the broker and replayed after approval."
+
+[args.properties.continuation_ids]
+type = "object"
+runtime_resolved = true
+from_result_key = "continuation_ids"
+[args.properties.continuation_ids.description]
+it = "Solo runtime: ricevute opache per sessione, restituite anche dal download per recuperare lo stesso file senza ripetere l'azione."
+en = "Runtime only: opaque receipts per session, also returned by downloads to recover the same file without replaying the action."
 
 [args.properties._goal_mode]
 type = "boolean"
@@ -85,9 +122,16 @@ runtime_resolved = true
 it = "Solo runtime: interpreta action come fine semantico da raggiungere prima della lettura."
 en = "Runtime only: treat action as the semantic goal to reach before reading."
 
+[args.properties._record_mode]
+type = "boolean"
+runtime_resolved = true
+[args.properties._record_mode.description]
+it = "Solo runtime: osservazione dei record richiesta da una lettura ed estrazione collegate; non dichiara la raccolta completa."
+en = "Runtime only: record observation required by a linked read and extraction; does not declare collection completeness."
+
 [output]
 schema_inline = """
-{ok: bool, partial?: bool, partial_reason?: str, collection_partial?: bool, results: Array<{session_id: str, ok: bool, executed: bool, primitive?: str, url?: str, text?: str, collection_partial?: bool, reason_code?: str}>}
+{ok: bool, partial?: bool, partial_reason?: str, collection_partial?: bool, session_ids?: Array<str>, continuation_ids?: object, results: Array<{session_id: str, ok: bool, executed: bool, primitive?: str, url?: str, text?: str, collection_partial?: bool, reason_code?: str, automatic_resume_blocked?: bool}>, entries?: Array<{path: str, bytes: int, sha256: str, media_type: str, session_id: str, source_url: str, action_id: str, state: str}>}
 """
 
 [[capabilities]]
@@ -97,6 +141,12 @@ hint = ["*"]
 [[capabilities]]
 name = "dialog.user_input"
 hint = []
+
+[[capabilities]]
+name = "fs:write"
+hint = ["~/notes/scratch/**", "/tmp/**", "arg:dst_dir"]
+path_args = ["dst_dir"]
+when = { arg = "dst_dir", nonempty = true }
 
 [[tests]]
 name = "manca_session_ids"

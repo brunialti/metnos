@@ -157,7 +157,9 @@ def test_denials_preflight_the_whole_set_without_effects(tmp_path: Path, case: s
     elif case == "candidate_without_backup":
         final.write_bytes(_NEW)
     elif case == "backup_collision":
-        backup.write_bytes(_OLD)
+        # An exact authenticated restoration is covered by its positive test.
+        # The collision denial remains for bytes outside the previous catalog.
+        backup.write_bytes(b"foreign")
     elif case == "staging_with_previous":
         temporary.write_bytes(_NEW)
     elif case.startswith("backup_") or case.startswith("temporary_") or case == "staging_drift":

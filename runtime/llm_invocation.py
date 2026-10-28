@@ -15,8 +15,10 @@ from monitor_capture import call_scope as _monitor_scope, observe_response
 @contextmanager
 def call_scope(*, provider, model=None, level=None, kind="chat", binding_revision=None):
     from llm_telemetry import mark_call_started
+    from llm_workloads import workload_for_request
 
     with _monitor_scope(provider=provider, model=model, level=level, kind=kind,
+                        workload=workload_for_request(level),
                         binding_revision=binding_revision) as observation:
         mark_call_started()
         yield observation

@@ -187,6 +187,13 @@ rilevate/attese nelle richieste, campioni validi/totali, media, mediana e
 95&deg; percentile, insieme a token, fasi PP/TG e qualit&agrave; dei dati.
 Un rapporto come 8/10 &egrave; accompagnato da esempi; la completezza dei
 token e dei tempi &egrave; distinta dal conteggio delle chiamate rilevate.
+La tabella dei modelli mostra anche il <strong>Prompt medio</strong> in token:
+somma dei token in ingresso noti divisa per il numero di chiamate con conteggio
+noto, nel periodo filtrato e secondo il raggruppamento logico/fisico scelto.
+Include l'intero prompt, con istruzioni, cronologia e strumenti presenti;
+i token in cache sono inclusi quando fanno parte del conteggio del fornitore.
+Le chiamate senza conteggio sono escluse dalla media; sotto il valore compare
+il rapporto fra chiamate con conteggio noto e chiamate rilevate.
 L'intestazione della durata mediana va a capo per contenere la larghezza
 della tabella; i valori numerici restano allineati.</p>
 
@@ -200,6 +207,14 @@ e raccolta non aggiornata sono indicati nella pagina. La raccolta conserva
 identificativi e misure, senza domande, risposte o credenziali; l'accesso
 richiede il ruolo amministrativo.</p>
 
+<p>Ogni tentativo conserva il ruolo logico dichiarato nel registro dei
+workload, anche quando pi&ugrave; ruoli usano lo stesso modello. Il contesto
+&egrave; isolato fra chiamate concorrenti e ripristinato alla loro uscita.
+I processi delegati conservano l'origine del processo osservante tramite
+metadati chiusi e limitati; il processo ricevente con un proprio raccoglitore
+usa la propria origine. Ruolo e origine non osservati restano sconosciuti.
+Questa attribuzione non cambia modelli, parametri o conteggi delle chiamate.</p>
+
 <p>Ogni schermata Monitor ricorda nel browser i filtri applicati, il periodo,
 il raggruppamento dei modelli e le serie selezionate. Le preferenze sono
 separate per utente autenticato e schermata e restano disponibili dopo un
@@ -209,6 +224,32 @@ date. Un collegamento con parametri espliciti prevale sulle preferenze
 salvate. Le impostazioni vengono salvate dopo un caricamento riuscito,
 senza scritture durante i normali aggiornamenti automatici. Se il browser
 impedisce il salvataggio, la pagina lo segnala e resta utilizzabile.</p>
+
+<h2>Aggregazioni nel database e storico di 90 giorni</h2>
+<p>Il raccoglitore scrive i dati analitici direttamente in SQLite, nel thread
+separato dalla chiamata LLM. Le SELECT statistiche applicano periodo e filtri
+prima di raggruppare per intervallo, fornitore, nome logico e modello fisico.
+Non esiste un limite di 10.000 campioni per i riepiloghi: alla pagina arrivano
+solo aggregati e al massimo 200 righe di dettaglio per consultazione.
+I grafici hanno al massimo 500 intervalli e 12 serie selezionate; nascondere
+una serie o cambiare pagina non cambia i riepiloghi del periodo filtrato.</p>
+<p>Ogni punto dei grafici dei token mostra la media per chiamata dei conteggi
+noti, mentre schede e tabelle mantengono anche i totali. La durata delle
+chiamate usa la media; la durata delle richieste usa mediana e 95&deg;
+percentile a rango pi&ugrave; vicino, calcolati su tutti i campioni validi.
+Le velocit&agrave; usano la somma dei token divisa per la somma dei tempi validi.
+SQLite esegue gli ordinamenti dei percentili con temporanei su disco e una
+cache di 4 MiB per connessione, senza caricare lo storico in liste Python.</p>
+<p>La finestra ciclica conserva 90 giorni di dati analitici. Al massimo una
+volta all'ora, alla prima scrittura o consultazione utile, una transazione
+elimina richieste chiuse, segmenti, chiamate e revisioni senza attivit&agrave;
+negli ultimi 90 giorni. Le pagine liberate vengono riutilizzate, senza una
+compattazione completa a ogni cancellazione. Richieste aperte e catene con
+attivit&agrave; recente rimangono fino alla scadenza dell'intera catena. Un
+vecchio evento importato non ripristina dati gi&agrave; scaduti. I vecchi
+JSONL vengono importati in gruppi limitati, con un avviso finch&eacute;
+rimangono byte da acquisire; il nuovo raccoglitore non li incrementa.
+I contatori cumulativi di salute rimangono separati dai dati analitici.</p>
 
 <h1 id="cap4">4. Il rendiconto HTML statico</h1>
 

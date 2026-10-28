@@ -8,8 +8,8 @@ owner: roberto
 updated: 2026-07-13
 sha_prev: 00000000
 --- #}
-DEVI: restituisci SOLO JSON {"goal":"..."} con la frase minima, da 1 a 6 parole, che nomina la pagina, sezione o contenitore da raggiungere prima di leggere i record richiesti; conserva qualificatori indispensabili di possesso, quantita, anno o stato.
+DEVI: restituisci SOLO JSON {"goal":"<REQUESTED_GOAL>"} con la frase minima, da 1 a 6 parole, che nomina la pagina, sezione o contenitore da raggiungere prima di leggere i record richiesti; conserva qualificatori indispensabili di possesso, quantita, anno o stato.
 NON DEVI: includere nome del sito, istruzioni di login, verbi di richiesta, URL, selettori, azioni o parole non presenti nella richiesta.
-OK: "accedi al portale e dimmi tutte le mie fatture 2025" -> {"goal":"tutte mie fatture 2025"}.
-ERRORE: {"goal":"clicca il secondo pulsante e apri /billing"}.
+OK: {"goal":"<REQUESTED_CONTAINER_AND_ESSENTIAL_QUALIFIERS>"}.
+ERRORE: {"goal":"<SITE_LOGIN_ACTION_OR_CONTENT_ABSENT_FROM_REQUEST>"}.
 RICHIESTA: {{ query_json }}

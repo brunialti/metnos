@@ -2,13 +2,13 @@
 """read_urls_pdf — fetch + estrazione testo da URL che servono PDF.
 
 Scarica una lista di URL e ne estrae il testo via `runtime/pdf_extract`
-(pypdf, fallback pdfminer.six — helper CONDIVISO con il PDF-handoff di
+(pypdf nativo rigoroso — helper CONDIVISO con il PDF-handoff di
 read_urls_html, §7.3). Ritorna entries con `body_text`, `title`,
 `author`, `n_pages`. Skippa Content-Type non-PDF e file > max_bytes.
 
 OCR fallback: hook ma non implementato (richiede Tesseract via pdftoppm
-+ tesseract; piu' costoso). `ocr_fallback=true` produrra' una nota di
-escalation invece dell'OCR.
++ tesseract; piu' costoso). `ocr_fallback=true` espone richiesta e
+indisponibilita' dell'OCR, senza dedurre che il documento sia una scansione.
 
 Cookie: come read_urls_html, supporta `auth_cookies_file` Mozilla.
 
@@ -36,7 +36,10 @@ from messages import get as _msg  # noqa: E402
 from executor_helpers import run_stdio  # noqa: E402
 from host_throttle import HostThrottle  # noqa: E402
 # Estrazione PDF condivisa (§7.3).
-from pdf_extract import extract_pdf_text as _extract_pdf_text  # noqa: E402
+from pdf_extract import (  # noqa: E402
+    PDFInspectionError, aggregate_pdf_limits, extract_pdf_text as _extract_pdf_text,
+    pdf_extraction_state, read_pdf_response,
+)
 
 
 USER_AGENT = "metnos-crawler/1.1 (+contact@metnos.com)"
@@ -66,7 +69,7 @@ def _build_opener(cookies_file: str | None):
 
 def _fetch_one(url: str, opener, timeout_s: float, max_bytes: int,
                max_pages: int, ocr_fallback: bool,
-               throttle: "HostThrottle | None" = None) -> tuple[dict | None, str | None]:
+               throttle: "HostThrottle | None" = None) -> tuple[dict | None, dict | None]:
     host = urllib.parse.urlparse(url).netloc
     if throttle is not None:
         throttle.acquire(host)
@@ -79,18 +82,20 @@ def _fetch_one(url: str, opener, timeout_s: float, max_bytes: int,
                 if "pdf" not in ctype:
                     # fallback: guarda l'URL — alcuni server servono PDF con
                     # generic content-type
-                    if not url.lower().endswith(".pdf"):
-                        return None, f"non-pdf content-type: {ctype}"
-                body = resp.read(max_bytes)
+                    if not urllib.parse.urlparse(url).path.lower().endswith(".pdf"):
+                        return None, {"error": f"non-pdf content-type: {ctype}", "error_class": "non_pdf"}
+                body, failure = read_pdf_response(resp, max_bytes)
+                if failure is not None:
+                    return None, failure
                 final_url = resp.geturl()
         except urllib.error.HTTPError as e:
-            return None, f"http error {e.code}: {e.reason}"
+            return None, {"error": f"http error {e.code}: {e.reason}", "error_class": "http_error"}
         except urllib.error.URLError as e:
-            return None, f"url error: {e.reason}"
+            return None, {"error": f"url error: {e.reason}", "error_class": "network"}
         except TimeoutError:
-            return None, f"timeout after {timeout_s}s"
+            return None, {"error": f"timeout after {timeout_s}s", "error_class": "timeout"}
         except Exception as e:
-            return None, f"unexpected: {type(e).__name__}: {e}"
+            return None, {"error": f"unexpected: {type(e).__name__}: {e}", "error_class": "unknown"}
     finally:
         # Rilascia lo slot subito dopo il fetch network: il parsing PDF e'
         # CPU-locale e non deve trattenere lo slot per-host.
@@ -100,31 +105,28 @@ def _fetch_one(url: str, opener, timeout_s: float, max_bytes: int,
     # Parse in-memory (helper condiviso runtime/pdf_extract, §7.3).
     try:
         info = _extract_pdf_text(body, max_pages=max_pages,
-                                 trim_chars=_BODY_TRIM_CHARS)
-    except ImportError as e:
-        return None, str(e)
-    except Exception as e:
-        return None, f"pdf parse error: {type(e).__name__}: {e}"
-    # OCR fallback hook: se body_text vuoto e flag attivo, segnaliamo
-    # che l'OCR sarebbe necessario ma non e' implementato qui.
-    if not info["body_text"].strip() and ocr_fallback:
-        info["needs_ocr"] = True
-        info["ocr_note"] = (
-            "PDF parser ha estratto 0 char di testo: probabile PDF "
-            "scansionato. OCR non implementato in read_urls_pdf; "
-            "considera read_files_ocr dopo download manuale."
-        )
+                                 trim_chars=_BODY_TRIM_CHARS, max_bytes=max_bytes)
+    except ImportError:
+        return None, {"error": "pdf_parser_unavailable", "error_class": "unsupported",
+                      "input_complete": True, "parse_complete": False}
+    except PDFInspectionError as e:
+        return None, {"error": e.code, "error_class": "invalid_content",
+                      "input_complete": True, "parse_complete": False}
+    except Exception:
+        return None, {"error": "pdf_inspection_failed", "error_class": "unknown",
+                      "input_complete": True, "parse_complete": False}
+    # Blank text does not establish that the PDF is scanned or needs OCR.
+    readable = bool(info["body_text"].strip())
     return {
         "url": final_url,
         "title": info["title"],
         "author": info["author"],
         "body_text": info["body_text"],
-        "n_pages": info["n_pages"],
-        "n_pages_read": info["n_pages_read"],
-        "used_lib": info["used_lib"],
+        "readable": readable,
+        **pdf_extraction_state(info),
         "fetched_at": time.time(),
-        **({"needs_ocr": True, "ocr_note": info["ocr_note"]}
-           if info.get("needs_ocr") else {}),
+        **({"parse_diagnostic": "pdf_text_unavailable"} if not readable else {}),
+        **({"ocr_requested": True, "ocr_available": False} if not readable and ocr_fallback else {}),
     }, None
 
 
@@ -174,7 +176,7 @@ def _invoke_default(args: dict) -> dict:
         ent, err = _fetch_one(url, opener, timeout_s, max_bytes,
                               max_pages, ocr_fallback, None)
         if ent is None:
-            failed.append({"url": url, "error": err or "unknown", "_idx": i})
+            failed.append({"url": url, **(err or {"error": "unknown"}), "_idx": i})
         else:
             entries_indexed.append((i, ent))
     elif valid_jobs:
@@ -189,9 +191,9 @@ def _invoke_default(args: dict) -> dict:
                 try:
                     ent, err = fut.result()
                 except Exception as e:
-                    ent, err = None, f"worker error: {type(e).__name__}: {e}"
+                    ent, err = None, {"error": f"worker error: {type(e).__name__}: {e}", "error_class": "unknown"}
                 if ent is None:
-                    failed.append({"url": url, "error": err or "unknown",
+                    failed.append({"url": url, **(err or {"error": "unknown"}),
                                    "_idx": i})
                 else:
                     entries_indexed.append((i, ent))
@@ -214,7 +216,7 @@ def _invoke_default(args: dict) -> dict:
     }
     if entries and failed:
         result["partial"] = True
-    return result
+    return aggregate_pdf_limits(result, entries + failed)
 
 
 # --- Dispatcher (refactor 13/5/2026, ADR pending) -------------------------

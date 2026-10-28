@@ -80,14 +80,18 @@ def _ensure_admin_key() -> bytes:
         return raw.encode("utf-8")
 
 
-def _derive_fernet_key(salt: bytes) -> bytes:
-    """HKDF-SHA256(admin_key, salt) -> 32 byte -> base64 url-safe per Fernet."""
+def _derive_fernet_key(salt: bytes, *, info: bytes = b"metnos-credentials-v1") -> bytes:
+    """HKDF-SHA256(admin_key, salt) -> 32 byte -> base64 url-safe per Fernet.
+
+    ``info`` separates the keys of other secrets derived from the same master
+    (saved site sessions use their own label).
+    """
     master = _ensure_admin_key()
     derived = HKDF(
         algorithm=hashes.SHA256(),
         length=32,
         salt=salt,
-        info=b"metnos-credentials-v1",
+        info=info,
     ).derive(master)
     return base64.urlsafe_b64encode(derived)
 
@@ -142,6 +146,40 @@ def load(domain: str) -> dict | None:
     except InvalidToken as ex:
         raise ValueError(f"credential decryption failed for {domain}: {ex}")
     return json.loads(plaintext.decode("utf-8"))
+
+
+def remember_approved_origin(domain: str, origin: str) -> bool:
+    """Add a canonical delegated origin the user approved to the record.
+
+    The caller passes the exact canonical ``scheme://host:port``. Returns True
+    when the record changed, False when it is absent or already contains it.
+    Other keys of the payload are preserved.
+    """
+    if not isinstance(origin, str) or origin.count("://") != 1:
+        raise ValueError("canonical origin required")
+    payload = load(domain)
+    if payload is None:
+        return False
+    current = payload.get("approved_origins")
+    current = [str(o) for o in current] if isinstance(current, list) else []
+    if origin in current:
+        return False
+    payload["approved_origins"] = sorted({*current, origin})
+    store(domain, payload)
+    return True
+
+
+def forget_approved_origin(domain: str, origin: str) -> bool:
+    """Remove one remembered delegated origin. True when it was present."""
+    payload = load(domain)
+    if payload is None:
+        return False
+    current = payload.get("approved_origins")
+    if not isinstance(current, list) or origin not in current:
+        return False
+    payload["approved_origins"] = [o for o in current if o != origin]
+    store(domain, payload)
+    return True
 
 
 def list_domains() -> list[str]:
@@ -199,6 +237,14 @@ def remove(domain: str) -> bool:
     if not path.exists():
         return False
     path.unlink()
+    # A saved login session of the site goes with its credentials.
+    try:
+        import sites_saved_sessions
+        for binding in {domain, domain.removeprefix("web_")}:
+            if binding:
+                sites_saved_sessions.remove_binding(binding)
+    except Exception:  # noqa: BLE001 -- the credential is removed regardless
+        pass
     return True
 
 

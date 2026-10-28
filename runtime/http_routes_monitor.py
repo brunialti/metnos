@@ -15,11 +15,11 @@ from http_render import _error, render_template, wants_html
 from monitor_metrics import call_rates
 from monitor_requests import derive_request
 from monitor_store import MonitorIndex
+from monitor_sql import StatisticalReader
 from monitor_views import adapt_request, build_timeline, build_view
 
 log = logging.getLogger(__name__)
 HEADERS = {"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"}
-READ_CAP = 10_000
 FILTERS = ("channel", "origin", "status", "provider", "level", "physical_model_key", "owner_id")
 
 
@@ -45,20 +45,15 @@ def _filters(query, *, now=None):
 
 def _options(source):
     import messages
-    requests, calls = source["requests"], source["calls"]
-    def choices(rows, name):
-        return [{"value": value, "label": value} for value in sorted({
-            row.get(name) for row in rows if row.get(name)})]
-    return {"channels": choices(requests, "channel"),
+    def choices(name):
+        return [{"value": value, "label": value} for value in source[name]]
+    return {"channels": choices("channel"),
             "origins": [{"value": name, "label": messages.get("UI_MONITOR_ORIGIN_" + name.upper())}
                         for name in ("interactive", "background", "test")],
             "statuses": [{"value": name, "label": messages.get("UI_MONITOR_STATUS_" + name.upper())} for name in (
                 "completed", "in_progress", "awaiting_input", "interrupted", "expired", "unknown")],
-            "providers": choices(calls, "provider"), "levels": choices(calls, "level"),
-            "physical_models": [{"value": key, "label": label} for key, label in sorted({
-                (row["physical_model_key"], row.get("physical_model_reported") or
-                 row.get("physical_model_requested") or row["physical_model_key"])
-                for row in calls if row.get("physical_model_key")})]}
+            "providers": choices("provider"), "levels": choices("level"),
+            "physical_models": source["physical_models"]}
 
 
 def _read(query, view, request_id=None):
@@ -81,23 +76,25 @@ def _read(query, view, request_id=None):
     with MonitorIndex() as index:
         files = sorted(index.directory.glob("events-*.jsonl*"))
         ingest = index.ingest(files)
-        source = index.aggregate_source(filters, cap=READ_CAP)
         page = index.list_requests(filters, limit=limit, cursor=query.get("cursor"))
-        result = build_view(source["requests"], source["calls"], filters["from"], filters["to"],
-                            series_keys=selected, model_grouping=grouping)
-        result["filters"] = {**source["filters"], "period": period,
-                             "origin": source["filters"].get("origin", ""),
+        reader = StatisticalReader(index.connection, page["filters"], page["revision"], model_grouping=grouping)
+        # Una fotografia SQLite per tutte le SELECT, senza caricare lo storico.
+        with index.connection:
+            index.connection.execute("BEGIN")
+            result = reader.build(selected)
+            result["filter_options"] = _options(reader.options())
+        result["filters"] = {**page["filters"], "period": period,
+                             "origin": page["filters"].get("origin", ""),
                              "model_grouping": grouping}
         result["health"] = index.health()
         result["health"]["ingest"] = ingest
-        result["health"]["read_limit"] = READ_CAP
-        result["health"]["truncated"] = source["truncated"]
+        result["health"]["truncated"] = False
         result["latest_event_at"] = result["health"]["latest_event_at"]
         result["next_cursor"] = page["next_cursor"]
         result["revision"] = page["revision"]
         # Il cursore conserva la revisione: i dati correnti arricchiscono solo
         # i nomi dei modelli, senza sostituire stato o metriche della pagina.
-        result["items"] = [adapt_request(row, source["calls"]) for row in page["items"]]
+        result["items"] = [adapt_request(row, result["charts"]["available_series"]) for row in page["items"]]
         if view == "models":
             result["items"] = result["model_items"]
             for field in ("input_tokens", "output_tokens"):
@@ -114,7 +111,6 @@ def _read(query, view, request_id=None):
                 alive=index.alive)["status"],
                 "turn_url": "/agent/turns/" + quote(segment["turn_id"], safe="")
                 if segment.get("turn_id") else None} for segment in detail["segments"]]
-        result["filter_options"] = _options(source)
         return result
 
 
