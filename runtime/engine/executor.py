@@ -18,6 +18,7 @@ executor target NON richiede modifiche qui.
 """
 from __future__ import annotations
 
+import contextvars
 import hashlib
 import json
 import logging
@@ -66,6 +67,11 @@ _TABLE_COL_SKIP = frozenset({"content", "body", "body_text", "text", "snippet",
 _TABLE_MAX_ROWS = 200
 _TABLE_MAX_COLS = 6
 _TABLE_MAX_CHARS = 16_000
+# The web chat pages long tables itself, so it receives them whole; a chat
+# without pages (Telegram) keeps the declared budget.
+_TABLE_PAGED_ROWS = 2_000
+_TABLE_PAGED_CHARS = 300_000
+_paged_tables = contextvars.ContextVar("paged_tables", default=False)
 # Private-use markers consumed only by the safe HTML table renderer.  Markdown
 # has no native per-cell attributes, so this is the transport between a
 # manifest's declarative ``nowrap`` field and the browser presentation.
@@ -104,6 +110,11 @@ def _align_url_reader_jit(tool: str, args: dict) -> str:
         else "read_urls_html"
 
 
+def _table_budget(max_rows: int, max_chars: int) -> tuple[int, int]:
+    return ((_TABLE_PAGED_ROWS, _TABLE_PAGED_CHARS) if _paged_tables.get()
+            else (max_rows, max_chars))
+
+
 def _entries_table(entries: list, *, max_rows: int = _TABLE_MAX_ROWS,
                    max_cols: int = _TABLE_MAX_COLS,
                    max_chars: int = _TABLE_MAX_CHARS,
@@ -116,6 +127,7 @@ def _entries_table(entries: list, *, max_rows: int = _TABLE_MAX_ROWS,
     if isinstance(contract, dict) and contract.get("columns"):
         return _contract_entries_table(entries, contract)
 
+    max_rows, max_chars = _table_budget(max_rows, max_chars)
     rows = [e for e in entries if isinstance(e, dict)]
     if not rows:
         return _entries_bullet_lines(entries, fields=_BULLET_FIELDS_DATED,
@@ -210,8 +222,8 @@ def _read_content(result: dict, *, max_chars: int = _TABLE_MAX_CHARS) -> str:
 def _contract_entries_table(entries: list, contract: dict) -> str:
     """Render a manifest-declared list projection with bounded dimensions."""
     columns = contract.get("columns") or []
-    max_rows = int(contract.get("max_rows", _TABLE_MAX_ROWS))
-    max_chars = int(contract.get("max_chars", _TABLE_MAX_CHARS))
+    max_rows, max_chars = _table_budget(int(contract.get("max_rows", _TABLE_MAX_ROWS)),
+                                        int(contract.get("max_chars", _TABLE_MAX_CHARS)))
 
     def value(entry: object, spec: dict):
         source = spec.get("source", spec.get("key"))
@@ -2379,6 +2391,7 @@ class Executor:
             remediate_args_cb: Optional[Callable] = None,
             progress=None) -> RunResult:
         result = RunResult()
+        _paged_tables.set((runtime_ctx or {}).get("channel") == "http")
         # Seed-state (ADR 0177 M1): le history pre-esistenti (es. foto allegate
         # @uploaded) partono a 0-offset così `from_step=1` del primo step reale
         # le consuma. Copia per-run: il recovery ri-esegue con lo stesso seed.

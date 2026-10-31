@@ -6822,6 +6822,7 @@ def _run_engine(
     pre_approved_gate: bool = False,
     conversation_id: str = "",
     forced_object: str = "",
+    device_named: bool = False,
     reference_images=None,
     resume_steps=None,
     placement_target: str | None = None,
@@ -6976,7 +6977,7 @@ def _run_engine(
     _extract_llm_call.supports_grammar = _llm_call_fast.supports_grammar
 
     # Intent extraction
-    intent_raw = extract_intent(query, _extract_llm_call)
+    intent_raw = extract_intent(query, _extract_llm_call, device_named=device_named)
     _diagnostics = {"intent_replies": _intent_replies,
                     "normalized_intent": deepcopy(intent_raw)}
     if _llm_state["failure_kind"]:
@@ -8378,6 +8379,7 @@ def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, progress=None,
     # di destinazione (per il pattern-match fast_path e per il planning). Nessun
     # PC citato → None + query invariata → comportamento IDENTICO a prima.
     _placement_target = None
+    _device_named = False
     _query_for_planning = user_query_for_run
     _explicit_device_ref = False
     try:
@@ -8443,6 +8445,8 @@ def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, progress=None,
                 log.ts_end = time.time(); log.write(); return log
             if _tr.target != _td_mod.SERVER:
                 _placement_target = _tr.device_name
+                # The name leaves the query below: the fact must not.
+                _device_named = _tr.explicit
             _query_for_planning = _tr.cleaned_query or user_query_for_run
             if _tr.explicit:  # destinazione appiccicosa: solo su riferimento esplicito
                 _cts_mod.set_last_target(
@@ -8638,6 +8642,7 @@ def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, progress=None,
                     pre_approved_gate=pre_approved_gate,
                     conversation_id=conversation_id,
                     forced_object=forced_object,
+                    device_named=_device_named,
                     placement_target=_placement_target,  # chat-driven placement (ADR 0034)
                     user_query_raw=user_query_for_run,
                     credential_meta=extracted_meta,

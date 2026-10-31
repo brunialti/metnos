@@ -354,6 +354,9 @@ body.readonly #log .dialog-stale button{opacity:.5;pointer-events:none;cursor:no
 /* Risposta ricca temporanea: una tabella ha bisogno della colonna intera;
    il resto delle risposte mantiene la misura di lettura compatta. */
 .msg.bot.wide-table:not(.gallery){width:100%;max-width:none}
+.table-pager{display:flex;align-items:center;gap:.6rem;margin-top:.5rem}
+.table-pager button{padding:.2rem .6rem;cursor:pointer}
+.table-pager button:disabled{opacity:.45;cursor:default}
 /* I moduli di input seguono la larghezza disponibile anche dopo un resize. */
 .msg.bot.input-dialog:not(.gallery){width:100%;max-width:none}
 /* R3 raggruppamento dei turni: più aria PRIMA del messaggio utente, così
@@ -438,6 +441,9 @@ const thumbBar = document.getElementById('thumbBar');
 // statica del template e impedisce fallback ad hoc in una lingua particolare.
 const CHAT_I18N = {
   httpError: {{ msg("MSG_CHAT_HTTP_ERROR")|tojson }},
+  tablePrevious: {{ msg("MSG_CHAT_TABLE_PREVIOUS")|tojson }},
+  tableNext: {{ msg("MSG_CHAT_TABLE_NEXT")|tojson }},
+  tableRange: {{ msg("MSG_CHAT_TABLE_RANGE")|tojson }},
   errorPrefix: {{ msg("MSG_CHAT_ERROR_PREFIX")|tojson }},
   transcriptBot: {{ msg("MSG_CHAT_TRANSCRIPT_BOT")|tojson }},
   transcriptMe: {{ msg("MSG_CHAT_TRANSCRIPT_ME")|tojson }},
@@ -494,6 +500,43 @@ function chatText(name, vars){
     out = out.replaceAll('{' + key + '}', String(value == null ? '' : value));
   }
   return out;
+}
+
+const TABLE_PAGE_ROWS = 50;
+
+// A long table is read a page at a time: every row is already in the message.
+function paginateTables(root){
+  root.querySelectorAll('table').forEach(table => {
+    const rows = Array.from(table.tBodies[0] ? table.tBodies[0].rows : []);
+    if(rows.length <= TABLE_PAGE_ROWS) return;
+    const last = Math.ceil(rows.length / TABLE_PAGE_ROWS) - 1;
+    const bar = document.createElement('div');
+    bar.className = 'table-pager';
+    const previous = document.createElement('button');
+    const next = document.createElement('button');
+    const range = document.createElement('span');
+    previous.type = next.type = 'button';
+    previous.textContent = CHAT_I18N.tablePrevious;
+    next.textContent = CHAT_I18N.tableNext;
+    let page = 0;
+    const show = () => {
+      rows.forEach((row, index) => {
+        row.hidden = Math.floor(index / TABLE_PAGE_ROWS) !== page;
+      });
+      range.textContent = chatText('tableRange', {
+        from: page * TABLE_PAGE_ROWS + 1,
+        to: Math.min((page + 1) * TABLE_PAGE_ROWS, rows.length),
+        total: rows.length,
+      });
+      previous.disabled = page === 0;
+      next.disabled = page === last;
+    };
+    previous.addEventListener('click', () => { page -= 1; show(); });
+    next.addEventListener('click', () => { page += 1; show(); });
+    bar.append(previous, range, next);
+    table.after(bar);
+    show();
+  });
 }
 
 function executorBrainIcon(mode){
@@ -876,6 +919,7 @@ function add(cls, text, meta, persist, attachments, galleryInfo, htmlMode, histo
     d.setAttribute('data-html-mode', 'true');
     if(cls === 'bot' && d.querySelector('table')){
       d.classList.add('wide-table');
+      paginateTables(d);
     }
   } else {
     d.textContent = text;

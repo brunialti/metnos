@@ -191,13 +191,16 @@ def _reads_before_sink(query: str, actions: list) -> list:
 
 def _names_a_device(query: str) -> bool:
     """The request names a paired device: «come si chiama pc-example»."""
-    import devices
     text = query.casefold()
-    return any(device.name.casefold() in text for device in devices.list_devices()
-               if device.name)
+    try:
+        import devices
+        return any(device.name.casefold() in text for device in devices.list_devices()
+                   if device.name)
+    except Exception:  # noqa: BLE001 - no registry, no device named
+        return False
 
 
-def extract_intent(query: str, llm_call) -> Optional[dict]:
+def extract_intent(query: str, llm_call, *, device_named: bool = False) -> Optional[dict]:
     """Estrae verb+object dalla richiesta. Ritorna None se LLM o parsing fallisce.
 
     Bypass deterministico per query di UNDO (annulla/undo/ripristina): il
@@ -300,10 +303,13 @@ def extract_intent(query: str, llm_call) -> Optional[dict]:
     # a grammar (live turn bc9778a2bdb94721: an unconstrained reply was
     # malformed JSON). Callers advertise it; without it nothing changes.
     call_options = {"max_tokens": _INTENT_MAX_TOKENS}
+    # A request naming a paired device is about that device, never about Metnos.
+    kinds = (INTENT_KINDS - {"metnos_help"}
+             if device_named or _names_a_device(query) else INTENT_KINDS)
     if getattr(llm_call, "supports_grammar", False):
         from tool_grammar import generate_intent_grammar
         call_options["grammar"] = generate_intent_grammar(
-            VOCAB_VERBS, VOCAB_OBJECTS, INTENT_KINDS,
+            VOCAB_VERBS, VOCAB_OBJECTS, kinds,
             scaffold=bool(_scaffold and len(_segments) >= 2))
     try:
         res = llm_call(prompt, query, **call_options)
@@ -454,7 +460,7 @@ def extract_intent(query: str, llm_call) -> Optional[dict]:
     # gia' materializzati, un output legacy verb/object implica ``action``.
     if verb or obj or actions:
         kind = "action"
-    if kind not in INTENT_KINDS:
+    if kind not in kinds:
         return None
     if kind == "action" and not (verb or obj):
         return None

@@ -27,6 +27,7 @@ GROUPS = {
          "tests/runtime/engine/test_copy_not_invented.py",
          "tests/runtime/engine/test_undo_single_run.py",
          "tests/runtime/engine/test_named_folder.py",
+         "tests/runtime/engine/test_table_pagination.py",
          "tests/runtime/engine/test_machine_name_question.py",
          "tests/runtime/executors/test_find_packages_inventory.py",
          "tests/runtime/executors/test_spreadsheet_on_the_server.py",
