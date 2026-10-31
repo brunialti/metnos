@@ -5,7 +5,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "write_files"
-version     = "0.3.0"
+version     = "0.4.0"
 # C7 CP4: backend local pathlib/os puro → gira anche su Windows
 # (mutanti validati e2e device 5/7). Senza dichiarazione, placement
 # rifiuterebbe un device Windows (F1).
@@ -212,3 +212,7 @@ expect   = { ok = true, metadata_field_eq = { ok_count = 0 } }
 scope    = "any"
 device_ok = true
 min_sandbox = "appcontainer"
+
+[filesystem]
+protocol = "filesystem_broker_v1"
+operation = "write"

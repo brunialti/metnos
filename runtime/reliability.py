@@ -82,7 +82,8 @@ def classify_turn(record: dict) -> dict[str, object]:
 
     if final_kind in _AWAITING_KINDS:
         outcome = "awaiting_input"
-    elif false_success or record.get("error_class") == "capability_missing":
+    elif (false_success or record.get("error_class") == "capability_missing"
+          or (not results and record.get("match_source") == "terminator")):
         outcome = "failed"
     elif explicit_partial or (failed_steps and positive):
         outcome = "partial"

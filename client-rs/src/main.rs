@@ -6,6 +6,7 @@ mod appcontainer;
 mod appx_activation;
 mod config;
 mod executors;
+mod file_broker;
 // Fuori Windows non c'e' nessun aiutante elevato con cui parlare, ma i due
 // moduli restano compilati e PROVATI anche qui: sono meta' di un contratto
 // fra due programmi separati, e la meta' che si puo' provare ovunque e'

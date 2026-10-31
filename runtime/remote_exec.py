@@ -86,6 +86,10 @@ def invoke_remote(executor, args: dict, device_id: str, *,
     # (ADR 0183) non li ritrova. Viaggia SOLO nel payload firmato (mTLS), mai a
     # riposo sul device. `env_injections` esplicito ha precedenza.
     env = dict(env_injections or {})
+    # The device package has no model-usage envelope (`llm_telemetry` is not
+    # in DEVICE_SUPPORT_FILES): requesting one made every device executor
+    # stop on its import inside a turn (live turn fbd6ade1, 30/10/2026).
+    env.pop("METNOS_CAPTURE_MODEL_USAGE", None)
     if turn_id:
         env.setdefault("METNOS_TURN_ID", turn_id)
     # Lingua istanza (§7.13): il device rende i messaggi user-facing (repertorio
@@ -144,6 +148,14 @@ def invoke_remote(executor, args: dict, device_id: str, *,
     payload = result.get("payload")
     if isinstance(payload, dict) and payload:
         merged = dict(payload)
+        # Closed native error codes are localized at the server boundary;
+        # transport signatures continue to cover the original device bytes.
+        from filesystem_permissions import ERROR_CODES
+        if merged.get("error_code") in ERROR_CODES:
+            merged["error"] = _msg(merged["error_code"])
+        for failed in merged.get("failed") or []:
+            if isinstance(failed, dict) and failed.get("error_code") in ERROR_CODES:
+                failed["error"] = _msg(failed["error_code"])
         merged.setdefault("ok", bool(result.get("ok")))
         remote_meta = {
             "device_id": device_id,

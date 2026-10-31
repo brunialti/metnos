@@ -1,0 +1,16 @@
+{# ---
+role: sites_challenge_target_reverse
+tier: fast
+lang: en
+style: prescriptive
+version: 2
+owner: roberto
+updated: 2026-10-29
+sha_prev: 5db049b5
+--- #}
+YOU MUST: return ONLY JSON {"every":<BOOLEAN>}: the CLASS is a kind of object photographed in image challenges; true when every object of the CLASS is also an object named by the WORD, in whatever language it is written, even if the WORD also names something else; false when some objects of the CLASS are not named by the WORD.
+YOU MUST NOT: answer true for a WORD that names only a subtype, a special case or a different object; add other fields or text.
+OK: {"every":true} for a WORD that names the same kind as the CLASS.
+ERROR: {"every":true} for a WORD that names a subtype of the CLASS.
+WORD: {{ keyword_json }}
+CLASS: {{ class_json }}

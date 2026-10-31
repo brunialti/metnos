@@ -89,6 +89,7 @@ class FastPattern:
     template_en: str = ""        # compat API; i nuovi output vivono in i18n
     requires_capability: bool = False  # se True passa per vaglio (default no)
     message_key: str = ""        # output nel catalogo i18n
+    final_on_failure: bool = False  # True: a failure is the answer, no second run
 
 
 # ── Tabella patterns ───────────────────────────────────────────────────
@@ -173,6 +174,7 @@ _FAST_PATTERNS: list[FastPattern] = [
         executor="undo_last_turn",
         args={},
         message_key="MSG_FAST_UNDO",
+        final_on_failure=True,
     ),
     # get_location: query trivialemente single-step (#H0 19/5/2026 sera).
     # L'executor restituisce {lat, lon, ts, accuracy, channel}. Rendering
@@ -245,6 +247,21 @@ for _fp in _FAST_PATTERNS:
     if _fp.executor == "undo_last_turn":
         _UNDO_FALLBACK_FP = _fp
         break
+
+
+def _undo_failure(observation: dict, lang: str) -> str:
+    """Return the first concrete reason a reversal did not complete."""
+    for detail in observation.get("details") or []:
+        if detail.get("status") == "undone":
+            continue
+        stages = detail.get("stages") or []
+        for text in [detail.get("reverse_error"), detail.get("reason"),
+                     *((stage.get("result") or {}).get("error") for stage in stages)]:
+            if isinstance(text, str) and text.strip():
+                reason = (_i18n.get_for_language(text, lang)
+                          if re.fullmatch(r"ERR_[A-Z0-9_]+", text) else text)
+                return _i18n.get_for_language("MSG_UNDO_FAILED", lang, reason=reason)
+    return ""
 
 
 def _render_template(message_key: str, observation: dict, default_tz: str,
@@ -408,14 +425,12 @@ def try_fast_path(query: str, lang: str = "it",
 
     def _render(observation: dict) -> str:
         if not observation.get("ok"):
-            # Caso speciale undo_last_turn ok=False (nothing-to-undo): NON
-            # un errore, e' uno stato legittimo. Messaggio dedicato.
+            # A failed reversal states its own reason (§2.8): it never reads
+            # as "nothing to undo".
             if fp.executor == "undo_last_turn":
-                undone = observation.get("undone_count") or 0
-                if undone == 0:
-                    return _i18n.get_for_language(
-                        "MSG_FAST_NOTHING_UNDO", lang,
-                    )
+                failure = _undo_failure(observation, lang)
+                if failure:
+                    return failure
             # get_location ok=False: posizione non condivisa / non disponibile.
             if fp.executor == "get_location":
                 return _i18n.get_for_language(
@@ -428,6 +443,8 @@ def try_fast_path(query: str, lang: str = "it",
         # undo_last_turn ok=True: render dai details + undone_count.
         if fp.executor == "undo_last_turn":
             undone = observation.get("undone_count") or 0
+            if undone == 0:
+                return _i18n.get_for_language("MSG_FAST_NOTHING_UNDO", lang)
             details = observation.get("details") or []
             d0 = details[0] if details else {}
             target_executor = d0.get("executor", "action")
@@ -468,4 +485,5 @@ def try_fast_path(query: str, lang: str = "it",
         "args": args,
         "render": _render,
         "pattern": norm,
+        "final_on_failure": fp.final_on_failure,
     }

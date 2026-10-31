@@ -11,6 +11,10 @@
 #      → $MODELS_DIR/siglip/
 #   2. InsightFace buffalo_l (RetinaFace det_10g + ArcFace w600k_r50)
 #      → $MODELS_DIR/face/
+#   3. recaptcha-classification-57k (YOLO ONNX; card MIT, export metadata
+#      AGPL-3.0): the public classifier of
+#      reCAPTCHA 3x3 image tiles → $MODELS_DIR/captcha-grid/. Without it every
+#      image grid is left to the person.
 #
 # MODELS_DIR deriva da METNOS_MODELS_DIR, default <user_data>/models.
 #
@@ -24,6 +28,7 @@
 #   ./download_models.sh --dry-run # stampa cosa farebbe, non scarica
 #   ./download_models.sh siglip    # solo SigLIP
 #   ./download_models.sh face      # solo face pack
+#   ./download_models.sh captcha-grid  # solo classificatore delle griglie CAPTCHA
 #
 # Requisiti: curl, sha256sum, unzip.
 
@@ -34,7 +39,7 @@ TARGETS=()
 for arg in "$@"; do
     case "$arg" in
         --dry-run) DRY_RUN=1 ;;
-        siglip|face) TARGETS+=("$arg") ;;
+        siglip|face|captcha-grid) TARGETS+=("$arg") ;;
         -h|--help)
             sed -n '2,30p' "$0"
             exit 0
@@ -45,12 +50,13 @@ for arg in "$@"; do
             ;;
     esac
 done
-[[ ${#TARGETS[@]} -eq 0 ]] && TARGETS=(siglip face)
+[[ ${#TARGETS[@]} -eq 0 ]] && TARGETS=(siglip face captcha-grid)
 
 # Same default as runtime/config.py, independent of the sealed source tree.
 MODELS_DIR="${METNOS_MODELS_DIR:-${METNOS_USER_DATA:-$HOME/.local/share/metnos}/models}"
 SIGLIP_DIR="${MODELS_DIR}/siglip"
 FACE_DIR="${MODELS_DIR}/face"
+GRID_DIR="${MODELS_DIR}/captcha-grid"
 
 # ── Helper ───────────────────────────────────────────────────────────
 
@@ -185,6 +191,17 @@ download_face() {
     log "Face pack OK"
 }
 
+# ── CAPTCHA image grid classifier ────────────────────────────────────
+
+download_captcha_grid() {
+    log "=== reCAPTCHA tile classifier (recaptcha-classification-57k) ==="
+    ensure_dir "$GRID_DIR"
+    local base="https://huggingface.co/DannyLuna/recaptcha-classification-57k/resolve/0c1ee9525510bdd7f9513737796d7d1ea47a6926"
+    fetch "$base/recaptcha_classification_57k.onnx" "$GRID_DIR/recaptcha_classification_57k.onnx" \
+        "4092e8917ee8c2963895d66ba10a97d6ef975c468a95858a8a7bd9e70681b65d"
+    log "CAPTCHA grid classifier OK"
+}
+
 # ── Main ─────────────────────────────────────────────────────────────
 
 ensure_dir "$MODELS_DIR"
@@ -193,6 +210,7 @@ for t in "${TARGETS[@]}"; do
     case "$t" in
         siglip) download_siglip ;;
         face)   download_face ;;
+        captcha-grid) download_captcha_grid ;;
     esac
 done
 

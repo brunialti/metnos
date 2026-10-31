@@ -40,7 +40,7 @@ import sys
 import tempfile
 import zipfile
 import xml.etree.ElementTree as ET
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 # Lazy: il modulo move() usa platform_policy per system-file safety net.
 _RUNTIME = os.environ.get("METNOS_RUNTIME") or next(
@@ -2808,6 +2808,13 @@ def create_spreadsheet(args: dict) -> dict:
                 "error_class": "invalid_args", "results": [], "used": 0, "n_created": 0}
     title = (args.get("title") or "").strip()
     explicit_path = args.get("path") or args.get("spreadsheet_id")
+    if explicit_path and os.name != "nt" and PureWindowsPath(str(explicit_path)).drive:
+        # The writer runs on the server: a PC path would become an odd file
+        # name in the server's spreadsheet folder.
+        return {"ok": False, "error_code": "ERR_SPREADSHEET_DEVICE_PATH",
+                "error": _msg("ERR_SPREADSHEET_DEVICE_PATH"),
+                "error_class": "needs_user_action",
+                "results": [], "used": 0, "n_created": 0}
     if not title and not explicit_path:
         # `title` NON è obbligatorio: auto-nome col timestamp. Rationale: create
         # richiedeva title (che il planner doveva INVENTARE) mentre write

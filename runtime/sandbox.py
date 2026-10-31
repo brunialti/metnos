@@ -472,6 +472,9 @@ def _system_read_resources(hints: list[str]) -> tuple[bool, list[Path]]:
 _EXEC_TOOL_STATE = {
     "apt-get": ("/var/lib/apt",),
     "apt-cache": ("/var/lib/apt",),
+    "dpkg-query": ("/var/lib/dpkg",),
+    "rpm": ("/var/lib/rpm",),
+    "pacman": ("/var/lib/pacman",),
 }
 
 

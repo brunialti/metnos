@@ -36,6 +36,7 @@ decides; the paired computer executes.</p>
   <li><a href="#components">Server and local component</a></li>
   <li><a href="#pairing">How to pair a computer</a></li>
   <li><a href="#choice">How Metnos chooses where to act</a></li>
+  <li><a href="#permissions">Personal access and permission extensions</a></li>
   <li><a href="#invocation">What happens during an action</a></li>
   <li><a href="#heartbeat">What a heartbeat is</a></li>
   <li><a href="#sandbox">Isolation on Linux and Windows</a></li>
@@ -127,6 +128,46 @@ a permanent preference and does not survive as general authority.</p>
 Executors tied to the controlled browser, server credentials, or services
 installed only on the server remain there even when a device is paired.</p></div>
 
+<h2 id="permissions">Personal access and permission extensions</h2>
+
+<div class="callout note"><p><strong>Delivery status.</strong> This extension is
+a release candidate and requires client 0.2.64. Automated tests and Windows
+compilation pass; installation and testing on the actual PC are still pending.</p></div>
+
+<p>Existing personal directories and workspace scopes remain available without
+new grants. To extend access to other server files or folders, the administrator
+opens <strong>System &rsaquo; Server permissions</strong>, selects the account and sets
+the path and read and/or write access. This page is independent of devices and
+also serves tasks that run entirely on the server.</p>
+
+<p>For a paired PC, <strong>Devices &rsaquo; Permissions</strong> manages grants
+for that device and its owner. A grant distinguishes files from folders,
+recursive access, overwrite permission and optional expiry. Revocation retains
+an audit event and preserves existing personal access. Grants do not change
+operating-system permissions: Metnos remains limited by the effective rights of
+the service or client account.</p>
+
+<p>A copy checks read authority on its source and write authority on its
+destination, including a Windows path such as
+<code>C:\Documents\note.txt</code> and a server path. Signed contracts select
+only predefined list, read, write, copy and delete operations. The native
+component verifies paths and signatures without executing arbitrary code with
+the additional rights. Hostname and platform are device observations and do
+not require a folder grant.</p>
+
+<p>Transfers check size and data digests; an atomic replacement publishes the
+file and overwrites preserve an undo backup. The server rechecks grants before
+the final mutation; the device refreshes signed authority within five seconds.
+This bounds authority already issued to the device, so revocation must not be
+described as instantaneous.</p>
+
+<p>The initial protocol allows up to 100 files and 4 GiB per file. Reads return
+at most 256 KiB; listing is bounded to 1,000 entries, 256 KiB and depth 64.
+For extensions and remote copies, the destination parent must already exist;
+directory-tree copies, globs, links and reserved application paths are
+explicitly refused. Server operations within existing scopes retain their
+previous behavior.</p>
+
 <h2 id="invocation">What happens during an action</h2>
 
 <ol>
@@ -190,6 +231,10 @@ itself isolate files and network as AppContainer does. The client therefore
 reports the level actually applied, not the one desired. If a process exceeds
 its deadline, the client terminates the entire tree started for that invocation.</p>
 
+<p>The native file operations described above instead use the client's bounded
+protocol, verified paths and signed authority. They do not require granting an
+entire volume to an executor inside AppContainer.</p>
+
 <h2 id="failures">Network failures, duplicates, and revocation</h2>
 
 <p>Every job has a stable identity. The client records work it has started or
@@ -216,8 +261,8 @@ the old client behaving well; it simply stops recognising it.</p>
  application or resource on the device.</li>
  <li>Linux and Windows offer different containment; the result must state what
  was actually applied.</li>
- <li>Undo for a remote action, where supported, runs on the same device that
- produced the effect.</li>
+ <li>Undo, where supported, acts where the mutation occurred. For a PC/server
+ copy, this is the destination; the source remains intact.</li>
  <li>A backup used to undo remote deletion stays on the device; it is not
  silently moved to the server.</li>
 </ul>

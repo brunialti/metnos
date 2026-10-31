@@ -54,6 +54,8 @@ pub struct CachedExecutor {
     /// True only when the verified manifest declares both `revertible=true`
     /// and `module.reverse` as a reverse pattern.
     pub module_reverse: bool,
+    /// Closed, native filesystem protocol from the verified manifest.
+    pub filesystem: Option<crate::file_broker::Contract>,
 }
 
 #[derive(Debug, Clone)]
@@ -141,6 +143,7 @@ pub async fn ensure_executor(
                 let min_sandbox = parse_min_sandbox(&manifest)?;
                 let managed_providers = parse_managed_providers(&manifest)?;
                 let module_reverse = manifest_allows_module_reverse(&manifest);
+                let filesystem = crate::file_broker::parse_contract(&manifest)?;
                 return Ok(CachedExecutor {
                     name: name.to_string(),
                     dir,
@@ -149,6 +152,7 @@ pub async fn ensure_executor(
                     min_sandbox,
                     managed_providers,
                     module_reverse,
+                    filesystem,
                 });
             }
             Err(e) => {
@@ -171,6 +175,7 @@ pub async fn ensure_executor(
     let min_sandbox = parse_min_sandbox(&manifest)?;
     let managed_providers = parse_managed_providers(&manifest)?;
     let module_reverse = manifest_allows_module_reverse(&manifest);
+    let filesystem = crate::file_broker::parse_contract(&manifest)?;
     Ok(CachedExecutor {
         name: name.to_string(),
         dir,
@@ -179,6 +184,7 @@ pub async fn ensure_executor(
         min_sandbox,
         managed_providers,
         module_reverse,
+        filesystem,
     })
 }
 

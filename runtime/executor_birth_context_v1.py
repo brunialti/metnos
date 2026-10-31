@@ -62,7 +62,7 @@ CONTEXT_CATALOG_V1: tuple[tuple[str, str, tuple[str, ...], str], ...] = (
         "productive",
     ),
     (
-        "property_catalog", "3",
+        "property_catalog", "5",
         (
             'executor_birth_properties.py',
             'executor_birth_property_runner.py',
@@ -88,6 +88,7 @@ CONTEXT_CATALOG_V1: tuple[tuple[str, str, tuple[str, ...], str], ...] = (
             'backends/__init__.py',
             'backends/files/__init__.py',
             'backends/files/local.py',
+            'pdf_extract.py',
             'backends/files/tabular_local.py',
             'backends/files/tabular_xlsx.py',
             'monitor_capture.py',
@@ -103,6 +104,8 @@ CONTEXT_CATALOG_V1: tuple[tuple[str, str, tuple[str, ...], str], ...] = (
             'skills_paths.py',
             'detection_lexicon.py',
             'detection_lexicon_seed_resolvers.py',
+            'credential_intake.py',
+            'record_identity.py',
             'install/data/i18n_seed.sqlite',
         ),
         "productive",
@@ -316,7 +319,25 @@ def prepare_context_material_v1(
     attest the frozen bytes; they do not attest that any check consumes them
     (section 9.1).
     """
+    _require_functional_support_bound_v1(CONTEXT_CATALOG_V1)
     return _prepare_context_material_v1(sources, authority_registry, CONTEXT_CATALOG_V1)
+
+
+def _require_functional_support_bound_v1(catalog) -> None:
+    """Refuse a current catalogue that leaves an executed support file unbound.
+
+    The functional runner mounts every ``FUNCTIONAL_SUPPORT_FILES`` entry, so
+    one missing from ``property_catalog`` could change while its functional
+    evidence is still reused (ADR 0231).  The catalogue must stay a literal
+    for the predecessor rebuild, hence a check instead of a derivation; the
+    historical rebuild is exempt and reads a published catalogue as declared.
+    """
+    from executor_support import FUNCTIONAL_SUPPORT_FILES
+
+    bound = {label for name, _version, files, _state in catalog
+             if name == "property_catalog" for label in files}
+    if not set(FUNCTIONAL_SUPPORT_FILES) <= bound:
+        raise ContextMaterialError("birth_context_catalog_incomplete")
 
 
 def rebuild_previous_context_material_v1(

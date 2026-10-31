@@ -184,6 +184,22 @@ files = [
 ]
 
 [[models.entry]]
+name = "captcha_grid_classifier"
+role = "classifier:captcha-grid"
+provider = "onnxruntime"
+purpose = "Classificatore pubblico dei riquadri delle griglie reCAPTCHA 3x3; senza, ogni griglia passa alla persona."
+source = "huggingface"
+source_url = "https://huggingface.co/DannyLuna/recaptcha-classification-57k"
+source_revision = "0c1ee9525510bdd7f9513737796d7d1ea47a6926"
+license = "MIT (model card); AGPL-3.0 in the Ultralytics export metadata"
+managed_by = "install/download_models.sh"
+required = false
+size_mb = 109
+files = [
+  { name = "recaptcha_classification_57k.onnx", local = "models/captcha-grid/recaptcha_classification_57k.onnx", sha256 = "4092e8917ee8c2963895d66ba10a97d6ef975c468a95858a8a7bd9e70681b65d" },
+]
+
+[[models.entry]]
 name = "face_pack_buffalo_l"
 role = "embedding:face"
 provider = "insightface"

@@ -499,6 +499,34 @@
  limiti già previsti. Con il solo testo o con widget ambigui, Metnos chiede
  assistenza. Il tentativo deve comunque essere verificato sulla pagina;
  non qualifica la risoluzione generale dei CAPTCHA o delle griglie di immagini.</p>
+ <p><strong>A ogni comparsa, ovunque (dal 29/10):</strong> una sfida può
+ tornare più volte nella stessa visita, per esempio una casella all'ingresso,
+ una griglia a immagini, un controllo del sito e una nuova casella sulla
+ pagina delle credenziali. Ogni comparsa riceve gli stessi tentativi descritti
+ sotto, all'accesso come durante la navigazione, la raccolta e la lettura:
+ la casella del provider, la libreria locale per i CAPTCHA Cloudflare e una
+ sola proposta visuale; se la sfida resta, passa a te nel pannello CAPTCHA.
+ Una comparsa finisce quando il sito la accetta o quando hai avuto tu il
+ controllo; il tempo che passi sul pannello non consuma il tempo dell'accesso.
+ Al massimo cinque comparse per sessione browser ricevono tentativi
+ automatici; le successive passano a te. Le verifiche solo testuali restano
+ a te. Se un accesso è rimandato dopo una sfida abbandonata, il messaggio
+ indica l'orario da cui riprovare.</p>
+ <p><strong>Griglie a immagini 3×3 (dal 29/10):</strong> quando la casella apre
+ una griglia di nove immagini («seleziona tutte le immagini con…»), Metnos la
+ fa etichettare da un classificatore pubblico locale, senza modelli cloud.
+ Una griglia nuova contiene quasi sempre tre immagini giuste: Metnos risponde
+ solo quando tre riquadri spiccano chiaramente sugli altri, poi preme
+ «Verifica»; nelle griglie che sostituiscono le immagini cliccate valuta ogni
+ nuova immagine e clicca solo se è chiaramente dentro o fuori. Se è in dubbio,
+ se la griglia ha 16 quadrati o se l'oggetto è sconosciuto, chiede un'altra
+ sfida con il pulsante della griglia, come faresti tu, fino a sei griglie;
+ poi la griglia passa a te. La parola dell'istruzione, nella lingua della
+ pagina, è abbinata all'oggetto dal codice o dal modello locale. Su 662
+ griglie reali la prima schermata è risolta esattamente nel 57% dei casi, con
+ un riquadro sbagliato nello 0,8%; con le nuove sfide la stima è di circa 85
+ comparse su 100 risolte da sole, da confermare sui siti veri. Senza il
+ classificatore installato la griglia passa sempre a te. Le griglie a cui non sa rispondere restano sul server in un piccolo archivio di casi difficili (massimo 500): solo le immagini del fornitore, la parola dell'istruzione e i punteggi, senza indirizzi né dati dell'account. Servono per provare in seguito il riconoscimento.</p>
  <p>Prima del tentativo visuale, Metnos pu&ograve; attivare una sola checkbox
  nativa o ARIA non selezionata, dentro un unico iframe di un provider
  riconosciuto. Ricontrolla origine reale, identit&agrave; di frame e controllo,

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -11,6 +12,8 @@ import executor_birth_dominant_topology as topology
 from install import birth_authority_provisioner as provisioner
 import test_executor_birth_dominant_topology_replacement as replacement
 import test_systemd_manager_cutover_compatibility as manager
+
+pytestmark = pytest.mark.skipif(sys.platform.startswith("win"), reason="POSIX topology")
 
 
 _OLD, _NEW, _NAME = replacement._OLD, replacement._NEW, replacement._NAME

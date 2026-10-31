@@ -219,7 +219,9 @@ class SimpleTerminator:
             action = _msg("MSG_CHAT_FB_RETRY")
         # A concrete user-action failure already carries the executor instruction.
         # Recovery out_of_scope must not invent a physical/capability remedy.
-        concrete_user_action = step_error_class == "needs_user_action" and bool(step_err)
+        concrete_user_action = (
+            step_error_class in ("needs_user_action", "filesystem_permission")
+            and bool(step_err))
         if concrete_user_action:
             action = ""
         cause = step_err if step_err else _msg(ck)

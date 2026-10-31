@@ -28,6 +28,7 @@ if _RUNTIME not in _sys.path:
     _sys.path.insert(0, _RUNTIME)
 from messages import get as _msg
 import config as _C  # §7.11
+from audit_jsonl import jsonl_line, read_jsonl_records
 
 AGING_DIR = _C.PATH_USER_DATA / "aging"
 INTROVERTIVA_DIR = _C.PATH_USER_DATA / "introvertiva"
@@ -56,18 +57,15 @@ def _latest(dir_path: Path, pattern: str, *, since_ts: float | None = None) -> P
 
 def _read_jsonl_first(p: Path) -> dict | None:
     try:
-        for ln in p.read_text().splitlines():
-            ln = ln.strip()
-            if ln:
-                return json.loads(ln)
+        records = read_jsonl_records(p)
     except Exception:
         return None
-    return None
+    return records[0] if records else None
 
 
 def _count_jsonl_records(p: Path) -> int:
     try:
-        return sum(1 for ln in p.read_text().splitlines() if ln.strip())
+        return len(read_jsonl_records(p))
     except Exception:
         return 0
 
@@ -290,10 +288,10 @@ def run_summary(*, window_hours: int = 24) -> dict:
     LIFECYCLE_DIR.mkdir(parents=True, exist_ok=True)
     ts = int(time.time())
     audit_path = LIFECYCLE_DIR / f"lifecycle_summary_{ts}.jsonl"
-    audit_path.write_text(json.dumps({
+    audit_path.write_bytes(jsonl_line({
         "ts": ts, "window_hours": window_hours,
         "summary": summary, "rendered": rendered,
-    }, ensure_ascii=False) + "\n")
+    }))
     return {
         "ok": True,
         "audit_path": str(audit_path),

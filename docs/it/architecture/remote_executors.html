@@ -36,6 +36,7 @@ Windows. Il server decide; il computer associato esegue.</p>
   <li><a href="#componenti">Server e componente locale</a></li>
   <li><a href="#associazione">Come si associa un computer</a></li>
   <li><a href="#scelta">Come Metnos sceglie dove agire</a></li>
+  <li><a href="#permessi">Accessi personali ed estensioni dei permessi</a></li>
   <li><a href="#invocazione">Che cosa accade durante un'azione</a></li>
   <li><a href="#heartbeat">Che cos'è l'heartbeat</a></li>
   <li><a href="#sandbox">Isolamento su Linux e Windows</a></li>
@@ -133,6 +134,51 @@ executor legati al browser controllato, alle credenziali del server o a servizi
 installati soltanto sul server restano lì, anche se esiste un dispositivo
 associato.</p></div>
 
+<h2 id="permessi">Accessi personali ed estensioni dei permessi</h2>
+
+<div class="callout note"><p><strong>Stato di consegna.</strong> Il codice di
+questa estensione è candidato al rilascio e richiede il client 0.2.64. Le prove
+automatiche e la compilazione Windows sono riuscite; il collaudo sul PC e
+l'attivazione in esercizio restano da completare.</p></div>
+
+<p>Le directory personali e gli spazi di lavoro già disponibili all'utente
+restano accessibili senza nuove concessioni. Per estendere l'accesso ad altri
+file o cartelle del server, l'amministratore apre <strong>Sistema &rsaquo;
+Permessi del server</strong>, sceglie l'account e indica percorso, lettura e/o scrittura.
+Questa pagina è indipendente dai dispositivi e serve anche per attività che
+avvengono interamente sul server.</p>
+
+<p>Per un PC associato, la pagina <strong>Dispositivi &rsaquo; Permessi</strong>
+gestisce invece le concessioni per quel dispositivo e il suo proprietario.
+Ogni concessione distingue un file da una cartella, l'inclusione delle
+sottocartelle, la sovrascrittura e una scadenza facoltativa. Revocarla conserva
+la traccia dell'operazione e lascia intatti gli accessi personali già previsti.
+La concessione non modifica i diritti del sistema operativo: Metnos può agire
+soltanto con i diritti effettivi del servizio o del client.</p>
+
+<p>Una copia verifica lettura sull'origine e scrittura sulla destinazione,
+anche tra un percorso Windows come <code>C:\Documenti\nota.txt</code> e un
+percorso del server. I contratti firmati selezionano soltanto operazioni
+predefinite di elenco, lettura, scrittura, copia e cancellazione. Il componente
+nativo controlla percorsi e firme senza eseguire codice arbitrario con i nuovi
+diritti. Nome del PC e piattaforma sono osservazioni del dispositivo e non
+richiedono una concessione su una cartella.</p>
+
+<p>I trasferimenti controllano dimensione e impronta dei dati; il file diventa
+visibile con una sostituzione atomica e una sovrascrittura conserva una copia
+per l'annullamento. Il server ricontrolla i diritti prima della modifica finale;
+il dispositivo rinnova l'autorità firmata entro cinque secondi. Questa è la
+finestra massima dell'autorità già concessa sul dispositivo, quindi la revoca
+non va presentata come istantanea.</p>
+
+<p>Il primo protocollo ammette fino a 100 file e 4 GiB per file. Le letture
+restituiscono al massimo 256 KiB; l'elenco è limitato a 1.000 voci, 256 KiB e
+64 livelli. Nelle estensioni e nelle copie remote la cartella di destinazione
+deve esistere; copie di interi alberi, percorsi con caratteri jolly, collegamenti
+e percorsi riservati all'applicazione vengono rifiutati esplicitamente.
+Le operazioni server negli spazi già autorizzati mantengono il comportamento
+precedente.</p>
+
 <h2 id="invocazione">Che cosa accade durante un'azione</h2>
 
 <ol>
@@ -198,6 +244,10 @@ isola file e rete come AppContainer. Per questo il client restituisce il livello
 realmente applicato, non quello desiderato. Se un processo supera il tempo
 massimo, il client termina l'intero albero avviato per quell'invocazione.</p>
 
+<p>Le operazioni native sui file descritte sopra usano invece il protocollo
+circoscritto del client, con percorsi verificati e autorità firmata. Non
+richiedono di concedere un intero volume a un executor dentro AppContainer.</p>
+
 <h2 id="guasti">Rete, duplicati e revoca</h2>
 
 <p>Ogni lavoro ha un'identità stabile. Il client registra quali lavori ha già
@@ -226,8 +276,8 @@ affida alla buona volontà del vecchio client: smette di riconoscerlo.</p>
  applicazione o risorsa del dispositivo.</li>
  <li>Linux e Windows offrono contenimenti diversi; il risultato deve dichiarare
  quello realmente applicato.</li>
- <li>L'annullamento di un'azione remota, quando previsto, viene eseguito sullo
- stesso dispositivo che ha prodotto l'effetto.</li>
+ <li>L'annullamento, quando previsto, interviene dove è avvenuta la modifica.
+ Per una copia tra PC e server conta la destinazione; l'origine resta intatta.</li>
  <li>Un backup usato per annullare una cancellazione remota rimane sul
  dispositivo; non viene spostato silenziosamente sul server.</li>
 </ul>

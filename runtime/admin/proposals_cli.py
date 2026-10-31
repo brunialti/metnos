@@ -22,6 +22,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import config as _C  # §7.11
+from audit_jsonl import read_jsonl_records
 
 SYNT_PROPOSALS_DIR = _C.PATH_USER_DATA / "synt_proposals"
 INTROVERTIVA_DIR = _C.PATH_USER_DATA / "introvertiva"
@@ -35,19 +36,10 @@ def _read_json_safe(p: Path) -> dict | None:
 
 
 def _read_jsonl_safe(p: Path) -> list[dict]:
-    out: list[dict] = []
     try:
-        for ln in p.read_text().splitlines():
-            ln = ln.strip()
-            if not ln:
-                continue
-            try:
-                out.append(json.loads(ln))
-            except Exception:
-                continue
+        return read_jsonl_records(p)
     except Exception:
-        pass
-    return out
+        return []
 
 
 # ─── summary ──────────────────────────────────────────────────────────────

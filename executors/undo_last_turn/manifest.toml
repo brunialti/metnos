@@ -5,8 +5,9 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "undo_last_turn"
-version     = "0.3.0"
+version     = "0.3.1"
 platforms   = ["linux"]
+timeout_s   = 300
 revertible  = false
 lifecycle   = "active"
 author      = "Roberto Brunialti"

@@ -6,7 +6,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "find_packages"
-version     = "0.5.3"
+version     = "0.6.1"
 platforms   = ["linux", "windows"]
 author      = "synt-multistage <synt@metnos.com>"
 affinity    = ["installato", "installed", "e' installato", "is installed",
@@ -17,16 +17,16 @@ revertible  = false
 lifecycle   = "active"
 
 [description]
-it = "SCOPO: verifica software installato e risolve un nome umano nell'id registrato. PATTERN: find_packages(packages=['Blocco note']). NON: installare (-> install_packages), avviare (-> run_processes), cercare file o eseguire comandi. OUT: una entry per richiesta; resolved_id solo se esatta o univoca."
-en = "SCOPO: checks installed software and resolves a human name to its registered id. PATTERN: find_packages(packages=['Notepad']). NON: installing (-> install_packages), starting (-> run_processes), finding files, or running commands. OUT: one entry per request; resolved_id only for an exact or unique match."
+it = "SCOPO: verifica un programma o elenca quelli installati. PATTERN: find_packages(packages=['Blocco note']) o find_packages(all=true). NON: installare (-> install_packages), avviare (-> run_processes), cercare file o eseguire comandi. OUT: una entry per richiesta; resolved_id solo se esatta o univoca."
+en = "SCOPO: checks one program or lists all installed. PATTERN: find_packages(packages=['Notepad']) or find_packages(all=true). NON: installing (-> install_packages), starting (-> run_processes), finding files, or running commands. OUT: one entry per request; resolved_id only for an exact or unique match."
 
 [code]
 files  = ["find_packages.py"]
-digest = "sha256:7e54cabc9601164debbc8455334517d11510cbd7fdb93533a91014ed38f22021"
+digest = "sha256:44575d5fd7f0028d1c1c27ee169809703e1e45172cedb30092d55de9c2df9573"
 
 [args]
 type     = "object"
-required = ["packages"]
+requires_one_of = [["packages", "all"]]
 
 [args.properties.packages]
 type = "array"
@@ -36,6 +36,21 @@ items = { type = "string", maxLength = 128 }
 [args.properties.packages.description]
 it = "Lista di programmi da controllare. Accetta nomi localizzati ('Blocco note') o id esatti ('Microsoft.VisualStudioCode'); prova prima l'id, poi il nome. Niente caratteri jolly."
 en = "Programs to check. Accepts localized names ('Notepad') or exact IDs ('Microsoft.VisualStudioCode'); tries the ID first, then the name. No wildcards."
+
+[args.properties.all]
+type = "boolean"
+
+[args.properties.all.description]
+it = "true = elenca tutti i programmi installati, senza nominarne nessuno. Default false."
+en = "true = list every installed program, naming none. Default false."
+
+[args.properties.max_results]
+type = "integer"
+minimum = 0
+
+[args.properties.max_results.description]
+it = "Con all=true: quanti programmi al massimo, in ordine di nome. 0 = nessun limite. Default 500."
+en = "With all=true: how many programs at most, in name order. 0 = no limit. Default 500."
 
 [output]
 schema_inline = """
@@ -71,6 +86,7 @@ default_view = "list"
 [presentation.list]
 mode = "table"
 columns = [
+  { key = "name", source = "name", cell_max = 80 },
   { key = "package_id", source = "package_id", cell_max = 120 },
   { key = "installed", source = "installed", cell_max = 12 },
   { key = "version", source = "version", cell_max = 60 },

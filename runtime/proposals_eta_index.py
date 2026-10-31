@@ -34,6 +34,7 @@ from pathlib import Path
 from typing import Iterable
 
 import config as _C  # §7.11
+from audit_jsonl import read_jsonl_records
 
 DB_PATH = _C.PATH_USER_DATA / "proposals_eta.sqlite"
 
@@ -165,18 +166,11 @@ def aggregate_from_jsonls(
 
     for fp in sorted(base.glob("*.jsonl")):
         try:
-            content = fp.read_text(encoding="utf-8")
+            records = read_jsonl_records(fp)
         except OSError:
             continue
         files_read += 1
-        for line in content.splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                rec = json.loads(line)
-            except (TypeError, ValueError):
-                continue
+        for rec in records:
             ts = rec.get("ts_start")
             if not isinstance(ts, (int, float)) or ts < since_ts:
                 continue
@@ -225,17 +219,10 @@ def count_shape_calls(
     n = 0
     for fp in sorted(base.glob("*.jsonl")):
         try:
-            content = fp.read_text(encoding="utf-8")
+            records = read_jsonl_records(fp)
         except OSError:
             continue
-        for line in content.splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                rec = json.loads(line)
-            except (TypeError, ValueError):
-                continue
+        for rec in records:
             ts = rec.get("ts_start")
             if not isinstance(ts, (int, float)) or ts < since_ts:
                 continue

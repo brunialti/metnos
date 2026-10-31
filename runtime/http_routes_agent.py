@@ -620,11 +620,8 @@ def _persist_pending_http_turn(*, turn_id: str, query: str, message: str,
         ))
         _config.ensure_private_dir(_config.PATH_TURNS)
         path = _config.PATH_TURNS / f"{time.strftime('%Y-%m-%d')}.jsonl"
-        _config.append_private_bytes(
-            path,
-            (json.dumps(record, ensure_ascii=False, default=str) + "\n")
-            .encode("utf-8"),
-        )
+        from audit_jsonl import jsonl_line
+        _config.append_private_bytes(path, jsonl_line(record, default=str))
     except Exception:
         # The response remains available in the resumable event log.  A
         # persistence outage must not turn a valid dialog response into 500.
@@ -3803,21 +3800,13 @@ async def turn_status(request: web.Request) -> web.Response:
             "events": snapshot["events"],
         })
     # Fallback: cerca su disco (TurnLog jsonl).
-    import json as _json
-    from pathlib import Path as _Path
+    from audit_jsonl import read_jsonl_records
     import config as _C
     turns_dir = _C.PATH_TURNS
     if turns_dir.is_dir():
         for f in sorted(turns_dir.glob("*.jsonl"), reverse=True)[:7]:
             try:
-                for line in _Path(f).read_text(
-                        encoding="utf-8").splitlines():
-                    if not line.strip():
-                        continue
-                    try:
-                        d = _json.loads(line)
-                    except _json.JSONDecodeError:
-                        continue
+                for d in read_jsonl_records(f):
                     if d.get("turn_id") == turn_id:
                         access_error = await _turn_access_error(request, d)
                         if access_error is not None:

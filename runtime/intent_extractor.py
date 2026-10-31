@@ -120,22 +120,12 @@ def _bind_reads_to_open_source(query: str, actions: list, llm_call) -> list:
     """
     if len(actions) < 2 or not callable(llm_call):
         return actions
-    indice = len(actions) - 1
-    ultima = actions[indice]
-    if ultima.get("verb") not in _READING_VERBS:
-        # A reading clause right before the acting clause that consumes it can
-        # carry that clause's object: «sign in and put all the bills of 2025 in
-        # a spreadsheet» became find FILES, create files, and the plan read a
-        # local file with no path (real turn 211eafb27707436a). Only that copy
-        # is questioned; a reading clause with an object of its own is not.
-        precedente = actions[indice - 1]
-        if not (precedente.get("verb") in _READING_VERBS
-                and precedente.get("object")
-                and precedente.get("object") == ultima.get("object")):
-            return actions
-        indice, ultima = indice - 1, precedente
-    if (ultima.get("object") == "sites"
-            or not any(a.get("object") == "sites" for a in actions[:indice])):
+    ultima = len(actions) - 1
+    if actions[ultima].get("verb") in _READING_VERBS:
+        domande = [ultima] if actions[ultima].get("object") != "sites" else []
+    else:
+        domande = _reads_before_sink(query, actions)
+    if not domande or not any(a.get("object") == "sites" for a in actions[:domande[0]]):
         return actions
     try:
         risposta = llm_call(_OPEN_SOURCE_PROBE, query, max_tokens=4)
@@ -145,8 +135,66 @@ def _bind_reads_to_open_source(query: str, actions: list, llm_call) -> list:
         return actions
     if "site" in testo.strip().lower():
         actions = list(actions)
-        actions[indice] = {**ultima, "object": "sites"}
+        for indice in domande:
+            actions[indice] = {**actions[indice], "object": "sites"}
+        # Two reading clauses now on the open site are one: its collection
+        # reads the pages. Kept, «read sites» after «find sites» became a page
+        # read alone and the collection was dropped (installed turn, Fastweb
+        # 28/10/2026: two rows of ten, no warning).
+        for indice in reversed(domande[1:]):
+            del actions[indice]
     return actions
+
+
+def _named_objects(query: str) -> set | None:
+    """Objects the request names by a word of the objects' lexicon; None when
+    the lexicon cannot be read (the caller then questions only copies)."""
+    try:
+        from prefilter import object_hint_mapping, tokenize
+        tokens = tokenize(query)
+        return {obj for obj, hints in object_hint_mapping().items() if tokens & set(hints)}
+    except Exception:  # noqa: BLE001 -- the narrower rule still applies
+        return None
+
+
+def _reads_before_sink(query: str, actions: list) -> list:
+    """The reading clauses right before the acting clause that consumes them,
+    across the transformers of their entries, that the question is about.
+
+    Such a clause can carry the acting clause's object: «sign in and put all
+    the bills of 2025 in a spreadsheet» became find FILES, create files, and
+    the plan read a local file with no path (real turn 211eafb27707436a). Or
+    an object the request never names: «open the fastweb site, sign in and put
+    all the 2026 invoices in a spreadsheet» became find URLS, read URLS,
+    create files, the collection lost «all» and the year, and the turn
+    stopped (production turns 12-28/10/2026: nine of twelve read so, three of
+    four failed). A reading clause whose object the request names (my mail)
+    is not questioned.
+    """
+    ultima = len(actions) - 1
+    sink = actions[ultima].get("object")
+    named = _named_objects(query)
+    domande = []
+    indice = ultima - 1
+    while indice >= 0:
+        azione = actions[indice]
+        verbo, oggetto = azione.get("verb"), azione.get("object")
+        if verbo in _READING_VERBS:
+            if oggetto and oggetto != "sites" and (
+                    oggetto == sink or (named is not None and oggetto not in named)):
+                domande.append(indice)
+        elif not (verbo in _ENTRIES_INTENT_VERBS and oggetto in (None, "entries")):
+            break
+        indice -= 1
+    return sorted(domande)
+
+
+def _names_a_device(query: str) -> bool:
+    """The request names a paired device: «come si chiama pc-example»."""
+    import devices
+    text = query.casefold()
+    return any(device.name.casefold() in text for device in devices.list_devices()
+               if device.name)
 
 
 def extract_intent(query: str, llm_call) -> Optional[dict]:
@@ -180,7 +228,7 @@ def extract_intent(query: str, llm_call) -> Optional[dict]:
     # Con un verbo d'azione (send/move/…) NON bypassare: potrebbe essere un
     # compound («manda l'ip del server a X») che l'LLM deve decomporre.
     try:
-        if _dl.match("machine.reference", lexical_query):
+        if _dl.match("machine.reference", lexical_query) or _names_a_device(lexical_query):
             _fmap = _dl.mapping("health.section_focus") or {}
             _ql = lexical_query.lower()
             if any(_dl.match_any(f, _ql) for f in _fmap.values()):
@@ -412,8 +460,9 @@ def extract_intent(query: str, llm_call) -> Optional[dict]:
         return None
     if kind != "action":
         return {"kind": kind}
-    # La sonda tocca solo l'ULTIMA clausola che legge (o quella che copia
-    # l'oggetto dell'azione finale), da due in su: `verb`/`obj` restano.
+    # La sonda tocca solo l'ULTIMA clausola che legge, o quelle subito prima
+    # dell'azione finale che ne copiano l'oggetto o nominano un oggetto che la
+    # richiesta non nomina, da due in su: `verb`/`obj` restano.
     actions = _bind_reads_to_open_source(query, actions, llm_call)
     out = {"kind": "action", "verb": verb, "object": obj}
     # Esponi la decomposizione SOLO se compound reale (>=2 clausole distinte):

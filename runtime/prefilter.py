@@ -273,7 +273,9 @@ def detect_canonical_verb(qtokens, query: str | None = None):
 def _strip_italian_clitic(tok: str) -> str | None:
     """Universal §7.9: rimuovi clitico pronome IT. Ritorna stem o None."""
     for suf in italian_clitic_suffixes():
-        if tok.endswith(suf) and len(tok) > len(suf) + 2:
+        # «-ti» is also the plural past participle («programmi installati»,
+        # «file spostati»), and nobody orders Metnos to do something to itself.
+        if suf != "ti" and tok.endswith(suf) and len(tok) > len(suf) + 2:
             return tok[:-len(suf)]
     return None
 

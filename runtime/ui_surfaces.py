@@ -616,6 +616,18 @@ SURFACES: tuple[UiSurfaceSpec, ...] = (
         structure_sha="8cc0bf5b682b",
     ),
     UiSurfaceSpec(
+        "permissions", "system", "/admin/permissions", "Permessi del server", "Server permissions",
+        "Accessi aggiuntivi ai percorsi del server, per utente e indipendenti dai dispositivi; le directory personali restano disponibili senza nuove concessioni.",
+        "Additional per-user server path access, independent of devices; personal directories remain available without new grants.",
+        ("utente", "percorso", "lettura e scrittura", "scadenza", "stato"),
+        ("user", "path", "read and write", "expiry", "status"),
+        ("concedi accesso a file o cartelle", "includi sottocartelle", "consenti sovrascrittura", "revoca"),
+        ("grant access to files or folders", "include subfolders", "allow overwrite", "revoke"),
+        knowledge_audience="user",
+        template="filesystem_permissions.html",
+        structure_sha="1d2072bd6e9d",
+    ),
+    UiSurfaceSpec(
         "devices", "system", "/admin/devices", "Dispositivi", "Devices",
         "Dispositivi remoti associati che eseguono executor.",
         "Paired remote devices that run executors.",

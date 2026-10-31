@@ -28,6 +28,7 @@ from pathlib import Path
 _ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_ROOT / "runtime"))
 import config as _C  # noqa: E402  §7.11
+from audit_jsonl import read_jsonl_records  # noqa: E402
 
 TURNS_DIR = _C.PATH_TURNS
 OUT = _ROOT / "data" / "prefilter_corpus_snapshot.jsonl"
@@ -91,14 +92,7 @@ def load_organic() -> list[dict]:
     out: list[dict] = []
     # Stable ordering: filename asc, then line order (NOT newest-first — frozen).
     for jl in sorted(TURNS_DIR.glob("*.jsonl")):
-        for ln in jl.read_text(encoding="utf-8").splitlines():
-            ln = ln.strip()
-            if not ln:
-                continue
-            try:
-                t = json.loads(ln)
-            except json.JSONDecodeError:
-                continue
+        for t in read_jsonl_records(jl):
             if is_synthetic(t.get("conversation_id")):
                 continue
             q = (t.get("user_query") or "").strip()

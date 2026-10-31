@@ -89,6 +89,7 @@ _PROBE_TIMEOUT_S = 25
 # Total budget for the whole call. What is left unprobed is DECLARED (§2.7),
 # never dropped in silence.
 _TOTAL_BUDGET_S = 120
+_DEFAULT_MAX_RESULTS = 500
 
 
 def _which(name):
@@ -392,6 +393,50 @@ def _probe(package_id, ctx):
     return entry
 
 
+def _inventory(ctx):
+    """Every installed program as (name, id, version), or None when the
+    machine's package manager cannot answer."""
+    if ctx["winget"]:
+        rc, out = _run([ctx["winget"], "list", "--accept-source-agreements",
+                        "--disable-interactivity"], _TOTAL_BUDGET_S)
+        return _winget_rows(out, "") if rc == 0 else None
+    tool = ctx["manager_path"]
+    if ctx["manager"] == "dpkg":
+        rc, out = _run([tool, "-W", "-f=${Package}\\t${Version}\\t"
+                        "${db:Status-Status}\\n"], _TOTAL_BUDGET_S)
+        rows = _dpkg_rows(out)
+    elif ctx["manager"] == "rpm":
+        rc, out = _run([tool, "-qa", "--qf", "%{NAME}\\t%{VERSION}\\n"], _TOTAL_BUDGET_S)
+        rows = [tuple(line.split("\t", 1)) for line in out.splitlines() if "\t" in line]
+    elif ctx["manager"] == "pacman":
+        rc, out = _run([tool, "-Q"], _TOTAL_BUDGET_S)
+        rows = [tuple(line.split()[:2]) for line in out.splitlines() if len(line.split()) > 1]
+    else:
+        return None
+    return [(name, name, version) for name, version in rows] if rc == 0 else None
+
+
+def _list_all(ctx, cap):
+    """The whole inventory, in name order, within the requested cap (§2.7)."""
+    rows = _inventory(ctx)
+    if not rows:  # a working machine has programs: empty means it could not tell
+        return _fail(_msg("ERR_PACKAGES_INVENTORY_UNAVAILABLE"),
+                     "package_inventory_unavailable", "dependency_unavailable")
+    rows.sort(key=lambda row: (row[0].casefold(), row[1]))
+    shown = rows[:cap] if cap else rows
+    out = {
+        "ok": True, "ok_count": len(shown), "fail_count": 0, "failed": [],
+        "entries": [{"package_id": pkg_id, "installed": True, "match": "inventory",
+                     "name": name, "version": version, "source": ctx["primary_source"]}
+                    for name, pkg_id, version in shown],
+        "source_primary": ctx["primary_source"],
+    }
+    if len(shown) < len(rows):
+        out.update(truncated=True, truncated_what="packages", used=len(shown),
+                   available_total=len(rows), cap_field="max_results", cap_value=cap)
+    return out
+
+
 def _context():
     is_windows = sys.platform.startswith("win")
     winget = _which("winget") if is_windows else ""
@@ -424,6 +469,14 @@ def _fail(error, code, error_class="invalid_input"):
 def invoke(args: dict) -> dict:
     if not isinstance(args, dict):
         return _fail(_msg("ERR_ARGS_NOT_OBJECT"), "args_not_object")
+
+    if args.get("all") is True:
+        cap = args.get("max_results", _DEFAULT_MAX_RESULTS)
+        if type(cap) is not int or cap < 0:
+            return _fail(_msg("ERR_ARG_INVALID", arg="max_results",
+                              reason="non-negative integer required"),
+                         "max_results_invalid")
+        return _list_all(_context(), cap)
 
     requested = _as_list(args.get("packages"))
     if not requested:

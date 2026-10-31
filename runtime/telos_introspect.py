@@ -36,6 +36,7 @@ from typing import Callable, Optional
 _LOG = logging.getLogger(__name__)
 
 import config as _C  # §7.11
+from audit_jsonl import read_jsonl_records
 from llm_workloads import tier_for
 
 TELEMETRY_PATH = _C.PATH_USER_DATA / "telos_proposals.jsonl"
@@ -162,11 +163,7 @@ def _build_user_patterns(days: int = 30, top_n: int = 8) -> str:
         for jsonl in sorted(turn_dir.glob("*.jsonl"), reverse=True):
             if jsonl.stat().st_mtime < cutoff:
                 break
-            for line in jsonl.read_text().splitlines():
-                try:
-                    d = json.loads(line)
-                except Exception:
-                    continue
+            for d in read_jsonl_records(jsonl):
                 if d.get("ts_start", 0) < cutoff:
                     continue
                 n_turns += 1

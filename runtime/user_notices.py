@@ -13,13 +13,13 @@ from __future__ import annotations
 
 import fcntl
 import hashlib
-import json
 import os
 import re
 import time
 from pathlib import Path
 
 import config as _C  # §7.11
+from audit_jsonl import jsonl_line, read_jsonl_records
 
 NOTICES_DIR = _C.PATH_USER_DATA / "user_notices"
 TTL_S = 7 * 24 * 3600  # avvisi più vecchi scartati al drain
@@ -50,14 +50,13 @@ def append(channel: str, actor: str, text: str, *,
     try:
         NOTICES_DIR.mkdir(parents=True, exist_ok=True)
         p = _path(channel, owner)
-        line = json.dumps({"ts": time.time(), "text": text,
+        line = jsonl_line({"ts": time.time(), "text": text,
                            "owner_user_id": owner,
-                           "actor": str(actor or "")},
-                          ensure_ascii=False) + "\n"
+                           "actor": str(actor or "")})
         fd = os.open(p, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
         try:
             fcntl.flock(fd, fcntl.LOCK_EX)
-            os.write(fd, line.encode("utf-8"))
+            os.write(fd, line)
         finally:
             fcntl.flock(fd, fcntl.LOCK_UN)
             os.close(fd)
@@ -79,20 +78,17 @@ def drain(channel: str, actor: str, *, owner_user_id: str) -> list[str]:
         fd = os.open(p, os.O_RDWR)
         try:
             fcntl.flock(fd, fcntl.LOCK_EX)
-            data = os.read(fd, 4 * 1024 * 1024).decode("utf-8", "replace")
+            # Another drain may have taken this file meanwhile: read by path
+            # only the file this lock holds, never a newer one.
+            if not os.path.samestat(os.fstat(fd), os.stat(p)):
+                return []
+            records = read_jsonl_records(p)
             os.unlink(p)
         finally:
             fcntl.flock(fd, fcntl.LOCK_UN)
             os.close(fd)
         now = time.time()
-        for line in data.splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                rec = json.loads(line)
-            except json.JSONDecodeError:
-                continue
+        for rec in records:
             if (str(rec.get("owner_user_id") or "") == owner
                     and now - float(rec.get("ts") or 0) <= TTL_S
                     and rec.get("text")):
@@ -129,9 +125,8 @@ def purge_unscoped() -> int:
     removed = 0
     for path in tuple(NOTICES_DIR.glob("*.jsonl")):
         try:
-            lines = path.read_text(encoding="utf-8").splitlines()
-            records = [json.loads(line) for line in lines if line.strip()]
-        except (OSError, json.JSONDecodeError):
+            records = read_jsonl_records(path)
+        except OSError:
             records = []
         if not records or any(not row.get("owner_user_id") for row in records):
             try:

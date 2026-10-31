@@ -363,11 +363,9 @@ class SyntAudit:
         out = []
         if not self.dir.exists():
             return out
+        from audit_jsonl import read_jsonl_records
         for p in sorted(self.dir.glob("*.jsonl")):
-            for line in p.read_text(encoding="utf-8").splitlines():
-                if not line.strip():
-                    continue
-                e = json.loads(line)
+            for e in read_jsonl_records(p):
                 if since_iso and e.get("ts", "") < since_iso:
                     continue
                 out.append(e)

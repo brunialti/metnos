@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import argparse
 import contextlib
-import json
 import os
 import shutil
 import sys
@@ -460,8 +459,9 @@ def _append_audit(parsed, plans, report,
         ],
         "translator_rejected": tr_rej,
     }
-    with audit.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    from audit_jsonl import jsonl_line
+    with audit.open("ab") as f:
+        f.write(jsonl_line(entry))
 
 
 # ---------------------------------------------------------------------------
@@ -616,14 +616,9 @@ def _cmd_status(args) -> int:
         print(f"  - {e}: (live stats post Layer 3 efficacy ager)")
     audit = _audit_log_path()
     if audit.exists():
-        relevant = []
-        for line in audit.read_text().splitlines():
-            try:
-                e = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if e.get("skill") == args.skill:
-                relevant.append(e)
+        from audit_jsonl import read_jsonl_records
+        relevant = [e for e in read_jsonl_records(audit)
+                    if e.get("skill") == args.skill]
         if relevant:
             last = relevant[-1]
             print(f"Last import: {last.get('ts')}")

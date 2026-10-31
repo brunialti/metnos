@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import argparse
 import html
-import json
 import sqlite3
 import sys
 from datetime import datetime, timezone
@@ -29,6 +28,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 # ADR 0148 rename-resilient
 import config as _C  # noqa: E402
+from audit_jsonl import read_jsonl_records  # noqa: E402
 DEFAULT_OUT = _C.PATH_WORKSPACE / "dashboard" / "index.html"
 TURNS_DIR = _C.PATH_TURNS
 VAGLIO_DIR = _C.PATH_USER_DATA / "vaglio"
@@ -95,13 +95,8 @@ def _collect_recent_turns(limit: int = 15) -> list[dict]:
     rows: list[dict] = []
     for f in files[:5]:  # ultimi 5 giorni al massimo
         try:
-            for line in reversed(f.read_text(encoding="utf-8").splitlines()):
-                if not line.strip():
-                    continue
-                try:
-                    rows.append(json.loads(line))
-                except Exception as _e:  # silent swallow (auto-fixed)
-                    log.warning("silent exception in %s: %s", __name__, _e)
+            for record in reversed(read_jsonl_records(f)):
+                rows.append(record)
                 if len(rows) >= limit:
                     return rows[:limit]
         except Exception as _e:  # silent swallow (auto-fixed)
@@ -116,13 +111,8 @@ def _collect_vaglio_decisions(limit: int = 20) -> list[dict]:
     rows: list[dict] = []
     for f in files[:3]:
         try:
-            for line in reversed(f.read_text(encoding="utf-8").splitlines()):
-                if not line.strip():
-                    continue
-                try:
-                    rows.append(json.loads(line))
-                except Exception as _e:  # silent swallow (auto-fixed)
-                    log.warning("silent exception in %s: %s", __name__, _e)
+            for record in reversed(read_jsonl_records(f)):
+                rows.append(record)
                 if len(rows) >= limit:
                     return rows[:limit]
         except Exception as _e:  # silent swallow (auto-fixed)

@@ -19,6 +19,7 @@ from collections import defaultdict
 
 
 import config as _C  # §7.11
+from audit_jsonl import read_jsonl_records
 TELEMETRY_PATH = _C.PATH_USER_DATA / "prefilter_telemetry.jsonl"
 
 
@@ -40,13 +41,7 @@ def _load(since_ts: float = 0.0) -> list[dict]:
     if not TELEMETRY_PATH.exists():
         return []
     out = []
-    for line in TELEMETRY_PATH.read_text(encoding="utf-8").splitlines():
-        if not line.strip():
-            continue
-        try:
-            rec = json.loads(line)
-        except json.JSONDecodeError:
-            continue
+    for rec in read_jsonl_records(TELEMETRY_PATH):
         if rec.get("ts", 0) < since_ts:
             continue
         out.append(rec)

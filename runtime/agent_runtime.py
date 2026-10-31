@@ -3621,9 +3621,8 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
                     "dispatch_key": f"durable:{_dispatch_id}",
                     "execution_context": execution_context,
                 }
-                _remote_env["METNOS_CAPTURE_MODEL_USAGE"] = "1"
-            from llm_telemetry import prepare_child_model_calls
-            _child_calls = prepare_child_model_calls(_remote_env)
+            # No model-usage envelope on a device: its package cannot report
+            # one, and a pending child would only turn the count unknown.
             from monitor_capture import prepare_child
             _monitor_child = prepare_child(_remote_env)
             _obs = _remote.invoke_remote(
@@ -3631,8 +3630,6 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
                 turn_id=turn_id,
                 env_injections=_remote_env or None,
                 actor=actor or "", channel=channel or "", **_remote_kwargs)
-            if _child_calls is not None:
-                _child_calls.finish(_obs, retain=execution_context is not None)
             if _monitor_child:
                 _monitor_child.finish(_obs)
             from program_start_consent import bind_prompt
@@ -3671,6 +3668,29 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
             "error_code": "frozen_plan_authorization_required",
             "_undo": {"outcome": "no_effect"},
         }
+
+    # Extra server grants are account scoped, independent of device placement.
+    # Only a signed closed operation can consume them; arbitrary executor code
+    # never receives a wider filesystem bind. Existing scopes keep their path.
+    import server_filesystem as _files
+    _fs_manifest = _files.manifest_for(executor)
+    import devices as _fs_devices
+    _fs_owner = owner_user_id or _fs_devices.owner_id_for_actor(actor or "host")
+    try:
+        _fs_extension = _files.needs_extension(_fs_owner, _fs_manifest, args)
+    except (ValueError, OSError, TypeError, LookupError) as exc:
+        return _files.error_result(exc)
+    if _fs_extension:
+        from invocation_scope import _server_authority_denial
+        _admin_denial = _server_authority_denial(executor, actor=actor or "host")
+        if _admin_denial:
+            return {"ok": False, "error": _admin_denial, "error_class": "permission_denied"}
+        _undo_op = _undo_pending(executor, args, turn_id=turn_id,
+                                 actor=actor, channel=channel, device="")
+        _obs = _files.execute(_fs_owner, _fs_manifest, args, turn_id or "",
+                              timeout_s=timeout_s)
+        _undo_done(_undo_op, _obs, executor=executor)
+        return _obs
 
     # Signed opt-in path preflight: this remains effective when bubblewrap is
     # unavailable/disabled and runs before journaling or any subprocess side
@@ -4398,6 +4418,8 @@ class TurnLog:
     # Non contengono testo utente e restano vuote sui record storici.
     metnos_version: str = ""
     match_source: str = ""
+    # Part of the persisted turn, including planning failures with no steps.
+    error_class: str = ""
     durable_admission: dict | None = None
     # Actual request-scoped provider starts; None means capture is unavailable
     # or a dispatched child did not return its usage envelope.
@@ -6037,11 +6059,8 @@ class TurnLog:
         if n_redacted_total[0] > 0:
             record["redacted"] = True
             record["n_redacted_fields"] = n_redacted_total[0]
-        _C.append_private_bytes(
-            path,
-            (json.dumps(record, ensure_ascii=False, default=str) + "\n")
-            .encode("utf-8"),
-        )
+        from audit_jsonl import jsonl_line
+        _C.append_private_bytes(path, jsonl_line(record, default=str))
 
 
 # --- Hook synt-on-the-fly --------------------------------------------------
@@ -8517,6 +8536,14 @@ def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, progress=None,
                     if verbose:
                         print(f"[fast_path] hit pattern='{_fp_hit['pattern']}' "
                               f"executor={_fp_hit['executor']} exec_ms={_fp_step.exec_ms}")
+                    log.ts_end = time.time(); log.write(); return log
+                # A failed reversal ends here: a second run would repeat an
+                # effect that may already have happened (live turn 676ef2db:
+                # the file was gone, the repeat failed on it).
+                if _fp_hit.get("final_on_failure"):
+                    log.steps.append(_fp_step)
+                    log.final_kind = "error"
+                    log.final_message = _fp_hit["render"](_fp_obs)
                     log.ts_end = time.time(); log.write(); return log
                 # Se l'executor fallisce: NON crashare il turno. Cadi nel
                 # flusso normale PLANNER, che potra' tentare strade alternative

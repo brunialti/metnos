@@ -1,0 +1,16 @@
+{# ---
+role: sites_challenge_target
+tier: fast
+lang: en
+style: prescriptive
+version: 2
+owner: roberto
+updated: 2026-10-29
+sha_prev: 3adf6600
+--- #}
+YOU MUST: return ONLY JSON {"class":<NUMBER>,"subtype":<BOOLEAN>}: the CLASSES are kinds of objects photographed in image challenges; "class" is the number of the class that names the kind of object of the WORD, in whatever language it is written, or 0 when no class names it; "subtype" is true when the WORD names only a subtype or a special case of that class, false when it names the whole class, even together with something else.
+YOU MUST NOT: choose a class that is only similar or related; add other fields or text.
+OK: {"class":<NUMBER_OF_THE_EQUIVALENT_CLASS>,"subtype":false}.
+ERROR: {"class":<NUMBER_OF_A_MERELY_SIMILAR_CLASS>,"subtype":false}.
+WORD: {{ keyword_json }}
+CLASSES: {{ classes_json }}

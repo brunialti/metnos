@@ -16,12 +16,12 @@ one.  Deletion of an owner removes both, as before.
 from __future__ import annotations
 
 from dataclasses import replace
-import json
 import queue
 import threading
 import time
 import uuid
 
+from audit_jsonl import jsonl_line
 import config
 from logging_setup import get_logger
 
@@ -100,9 +100,8 @@ def _persist(payload: dict, ledger: dict) -> None:
     try:
         config.ensure_private_dir(config.PATH_TURNS)
         path = config.PATH_TURNS / f"{time.strftime('%Y-%m-%d')}.jsonl"
-        data = (json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
-                + "\n").encode("utf-8")
-        config.append_private_bytes(path, data)
+        config.append_private_bytes(
+            path, jsonl_line(payload, separators=(",", ":")))
     except Exception:
         log.warning("tutor telemetry append failed", exc_info=True)
     try:

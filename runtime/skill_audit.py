@@ -36,6 +36,7 @@ from pathlib import Path
 from typing import Any
 
 import config as _C  # §7.11 — rispetta METNOS_USER_DATA
+from audit_jsonl import jsonl_line, read_jsonl_records
 
 
 # ── Constants (no magic numbers, §7.3) ────────────────────────────────
@@ -72,26 +73,20 @@ def _migrate_legacy_flat_if_present() -> None:
     if archive.exists():
         return  # gia' migrato
     AUDIT_DIR.mkdir(parents=True, exist_ok=True)
-    by_day: dict[str, list[str]] = {}
+    by_day: dict[str, list[dict]] = {}
     try:
-        for line in flat.read_text(encoding="utf-8").splitlines():
-            if not line.strip():
-                continue
-            try:
-                rec = json.loads(line)
-            except json.JSONDecodeError:
-                continue
+        for rec in read_jsonl_records(flat):
             ts = rec.get("ts", 0.0)
             try:
                 day = time.strftime(_DATE_FMT, time.gmtime(float(ts)))
             except (TypeError, ValueError):
                 day = time.strftime(_DATE_FMT, time.gmtime(0))
-            by_day.setdefault(day, []).append(line)
-        for day, lines in by_day.items():
+            by_day.setdefault(day, []).append(rec)
+        for day, records in by_day.items():
             shard = AUDIT_DIR / f"{day}{_SHARD_EXT}"
-            with shard.open("a", encoding="utf-8") as fh:
-                for ln in lines:
-                    fh.write(ln + "\n")
+            with shard.open("ab") as fh:
+                for rec in records:
+                    fh.write(jsonl_line(rec))
         flat.rename(archive)
     except OSError:
         pass  # migration best-effort, non blocca audit
@@ -168,8 +163,8 @@ def audit_skill_invocation(
     try:
         AUDIT_DIR.mkdir(parents=True, exist_ok=True)
         shard = _shard_path_for_ts(now)
-        with shard.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+        with shard.open("ab") as f:
+            f.write(jsonl_line(rec))
     except Exception:
         pass  # fail-silent: l'audit non deve mai bloccare l'invocazione
 
@@ -201,16 +196,10 @@ def stats(since_ts: float = 0.0) -> dict:
     skills_seen: set = set()
     for shard in shards:
         try:
-            text = shard.read_text(encoding="utf-8")
+            records = read_jsonl_records(shard)
         except OSError:
             continue
-        for line in text.splitlines():
-            if not line.strip():
-                continue
-            try:
-                r = json.loads(line)
-            except json.JSONDecodeError:
-                continue
+        for r in records:
             if r.get("ts", 0) < since_ts:
                 continue
             n_total += 1

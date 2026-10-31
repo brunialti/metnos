@@ -47,6 +47,7 @@ from typing import Any
 
 _sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import config as _C  # §7.11
+from audit_jsonl import read_jsonl_records
 import i18n as _i18n
 from messages import get as _msg
 from llm_workloads import tier_for
@@ -103,17 +104,10 @@ def _find_real_query_for_path_hash(path_hash: str) -> str | None:
         return None
     for fp in sorted(base.glob("*.jsonl")):
         try:
-            content = fp.read_text(encoding="utf-8")
+            records = read_jsonl_records(fp)
         except OSError:
             continue
-        for line in content.splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                rec = json.loads(line)
-            except (TypeError, ValueError):
-                continue
+        for rec in records:
             steps = rec.get("steps") or []
             if not steps:
                 continue
@@ -216,17 +210,10 @@ def _aggregate_token_in_for_path_hash(path_hash: str) -> tuple[int, int]:
     totals: list[int] = []
     for fp in sorted(base.glob("*.jsonl")):
         try:
-            content = fp.read_text(encoding="utf-8")
+            records = read_jsonl_records(fp)
         except OSError:
             continue
-        for line in content.splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                rec = json.loads(line)
-            except (TypeError, ValueError):
-                continue
+        for rec in records:
             steps = rec.get("steps") or []
             if not steps:
                 continue

@@ -508,6 +508,30 @@ finche' restano non eseguo niente su questo computer: {}",
             &self.paths.executors_dir,
         )
         .await?;
+        if inv.operation == "invoke" {
+            if let Some(contract) = exec.filesystem.as_ref().filter(|c| c.applies(&inv.args)) {
+                let started = Instant::now();
+                let session = crate::file_broker::Session {
+                    server: &self.server,
+                    public_key: &self.server_pubkey,
+                    identity: &self.id,
+                    http: &self.http,
+                    device_id: &self.device_id,
+                    invocation: inv,
+                    private_dir: &self.paths.data_dir,
+                    deadline: started + Duration::from_millis(inv.deadline_ms.max(1) as u64),
+                };
+                let parsed = crate::file_broker::execute(&session, contract).await;
+                return Ok(result_from_executor(
+                    inv,
+                    &self.device_id,
+                    parsed,
+                    started.elapsed().as_millis() as i64,
+                    "native-filesystem-broker".into(),
+                    None,
+                ));
+            }
+        }
         pyenv::assert_stdlib_only(&exec.dir)?;
         if inv.operation == "reverse" && !exec.module_reverse {
             bail!("il manifest firmato non autorizza module.reverse");
@@ -799,11 +823,12 @@ async fn send_heartbeat(
     // The address is observed by the authenticated device, not guessed from
     // the HTTP peer (which might be a proxy/NAT). Sign its observation time
     // as well, so replaying an old heartbeat cannot refresh an old address.
-    if let Ok(Ok(address)) = tokio::time::timeout(
-        Duration::from_secs(2), address_towards_server(server),
-    ).await {
+    if let Ok(Ok(address)) =
+        tokio::time::timeout(Duration::from_secs(2), address_towards_server(server)).await
+    {
         let observed_at = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)?.as_secs();
+            .duration_since(std::time::UNIX_EPOCH)?
+            .as_secs();
         profile["network_observation"] = json!({
             "address": address.to_string(), "observed_at": observed_at,
         });
@@ -827,11 +852,19 @@ async fn send_heartbeat(
 
 async fn address_towards_server(server: &str) -> Result<std::net::IpAddr> {
     let url = reqwest::Url::parse(server)?;
-    let host = url.host_str().ok_or_else(|| anyhow::anyhow!("server host missing"))?;
-    let port = url.port_or_known_default().ok_or_else(|| anyhow::anyhow!("server port missing"))?;
+    let host = url
+        .host_str()
+        .ok_or_else(|| anyhow::anyhow!("server host missing"))?;
+    let port = url
+        .port_or_known_default()
+        .ok_or_else(|| anyhow::anyhow!("server port missing"))?;
     // UDP connect only selects a route/local interface: no packet is sent.
     for peer in tokio::net::lookup_host((host.trim_matches(['[', ']']), port)).await? {
-        let bind = if peer.is_ipv4() { "0.0.0.0:0" } else { "[::]:0" };
+        let bind = if peer.is_ipv4() {
+            "0.0.0.0:0"
+        } else {
+            "[::]:0"
+        };
         let socket = tokio::net::UdpSocket::bind(bind).await?;
         if socket.connect(peer).await.is_ok() {
             let ip = socket.local_addr()?.ip();
@@ -925,7 +958,7 @@ fn collect_profile() -> Value {
         "client_version": env!("CARGO_PKG_VERSION"),
         // Positive protocol negotiation: the server never infers support for
         // a new signed field from the OS or from a version string.
-        "protocol_capabilities": ["executor_reverse_v1"],
+        "protocol_capabilities": ["executor_reverse_v1", crate::file_broker::CAPABILITY],
         // B.5 (fase 7): livello sandbox che run_sandboxed userebbe ORA su
         // questo device -> devices.profile_json (telemetria per il gate
         // min_sandbox, W4).
@@ -1280,7 +1313,9 @@ mod tests {
 
     #[tokio::test]
     async fn network_observation_does_not_publish_loopback() {
-        assert!(address_towards_server("http://127.0.0.1:8080").await.is_err());
+        assert!(address_towards_server("http://127.0.0.1:8080")
+            .await
+            .is_err());
         assert!(address_towards_server("not a URL").await.is_err());
     }
 

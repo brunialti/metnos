@@ -485,6 +485,33 @@
  With text alone or ambiguous widgets, Metnos asks for help. The attempt
  still requires verification on the page; this does not qualify general
  CAPTCHA solving or image-grid solving.</p>
+ <p><strong>At every appearance, anywhere (since 29/10):</strong> a challenge
+ can come back several times in one visit, for example a checkbox at the
+ entrance, an image grid, a check of the site's own and a new checkbox on the
+ credentials page. Every appearance gets the same attempts described below,
+ at the login as well as while navigating, collecting and reading: the
+ provider checkbox, the local library for Cloudflare CAPTCHAs and one visual
+ proposal; if the challenge remains, it goes to you in the CAPTCHA panel. An
+ appearance ends when the site accepts it or after you had control; the time
+ you spend on the panel does not use up the login's time. At most five
+ appearances per browser session get automatic attempts; later ones go to
+ you. Text-only verifications stay with you. When a login is postponed
+ after an abandoned challenge, the message gives the time from which to try
+ again.</p>
+ <p><strong>3×3 image grids (since 29/10):</strong> when the checkbox opens a
+ grid of nine images ("select all images with…"), Metnos has a public local
+ classifier label them, with no cloud model. A fresh grid almost always holds
+ three right images: Metnos answers only when three tiles clearly stand out,
+ then presses "Verify"; in grids that replace the clicked images it scores
+ each new image and clicks only when it is clearly in or out. When in doubt,
+ when the grid has 16 squares or when the object is unknown, it asks for
+ another challenge with the grid's own button, as you would, up to six grids;
+ then the grid goes to you. The instruction's word, in the page's language,
+ is matched to the object by code or by the local model. On 662 real grids
+ the first view is answered exactly in 57% of cases, with a wrong tile in
+ 0.8%; with new challenges the estimate is about 85 appearances in 100 solved
+ by itself, to be confirmed on real sites. Without the classifier installed
+ the grid always goes to you. Grids it cannot answer stay on the server in a small store of hard cases (at most 500): only the provider's pictures, the instruction word and the scores, with no addresses or account data. They serve to test recognition later.</p>
  <p>Before the visual attempt, Metnos may activate one unchecked native or
  ARIA checkbox inside one recognized provider iframe. It checks the actual
  origin, frame and control identity, visibility, obstructions and session

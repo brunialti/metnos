@@ -2289,6 +2289,8 @@ def _dropped_required_verbs(framework: Framework, query: str, intent=None,
         if not t or t == "final_answer":
             continue
         head = t.split("_", 1)[0]
+        if t == "move_files" and (s.args or {}).get("copy") is True:
+            fw_verbs.add("write")  # a copy writes its destination
         if head in ACTIONS:
             fw_verbs.add(head)
             nc = _ng.parse_name(t)
@@ -6476,6 +6478,98 @@ class Guard:
     adr: str = ""
 
 
+def _named_folder(query: str) -> str:
+    """Return the last word of the request that is an existing folder."""
+    from path_alias import resolve_path_with_alias
+
+    for word in reversed(re.findall(r"[^\W\d_]{3,}", query)):
+        try:
+            if resolve_path_with_alias(word)[0].is_dir():
+                return word
+        except (OSError, ValueError, RuntimeError):
+            continue
+    return ""
+
+
+def _resolve_named_folder(framework: Framework, intent, query: str) -> Framework:
+    """A folder named in the request is the input, not a place to locate.
+
+    Live turns 70351e11 and de44f916: «the path of the folder X» was planned as
+    a place search; aligning it to find_dirs left the location step feeding it
+    and no folder, so the person was asked again which folder.
+    """
+    if getattr(intent, "object", "") != "dirs":
+        return framework
+    steps = list(getattr(framework, "steps", None) or [])
+    target = next((step for step in steps
+                   if step.tool in ("find_dirs", "list_dirs")
+                   and not (step.args or {}).get(_FS_CONTAINER_PRODUCERS[step.tool])), None)
+    folder = _named_folder(query) if target is not None else ""
+    if not folder:
+        return framework
+    # list_dirs, because its read authority follows the path argument: a
+    # folder on a mounted archive is out of find_dirs' reach.
+    target.args = {key: value for key, value in (target.args or {}).items()
+                   if key not in ("entries", "from_step", "base_path")}
+    target.tool = "list_dirs"
+    target.args["path"] = folder
+    kept, idx_map = [], {}
+    for position, step in enumerate(steps, start=1):
+        if step.tool != _GEO_CENTER_PRODUCER:
+            kept.append(step)
+            idx_map[position] = len(kept)
+    for step in kept:
+        step.args = _remap_step_refs(step.args, idx_map)
+    return Framework(steps=kept, fillers=getattr(framework, "fillers", {}) or {},
+                     final_message=f"${{step{kept.index(target) + 1}.metadata.path}}")
+
+
+def _copy_instead_of_invented_write(framework: Framework, query: str, catalog) -> Framework:
+    """A write of text the request never gave, naming another file, is a copy.
+
+    Live turn 6978422a (30/10/2026): a copy «sovrascrivendo» an existing file
+    became write_files with invented content, reported as a copy. Language
+    neutral: the request holds exactly one path besides the target, the content
+    is absent from it, and its words match the signed affinity of move_files.
+    The copy keeps its source and every check; nothing is invented.
+    """
+    from tool_grammar import _RE_FS_PATH_TOKEN, _looks_like_fs_path
+    mover = {_entry_name(entry): entry for entry in (catalog or [])}.get("move_files")
+    affinity = (mover.get("affinity", ()) if isinstance(mover, dict)
+                else getattr(mover, "affinity", ())) or ()
+    text = query or ""
+    words = set(re.findall(r"\w+", _RE_FS_PATH_TOKEN.sub(" ", text).casefold()))
+    paths = {token.strip("\"'`,;:") for token in _RE_FS_PATH_TOKEN.findall(text)
+             if _looks_like_fs_path(token)}
+    if not paths or not words & {str(term).casefold() for term in affinity}:
+        return framework
+
+    def folded(path):
+        return path.replace("\\", "/").rstrip("/").casefold()
+
+    steps = list(framework.steps)
+    for index, step in enumerate(steps):
+        args = step.args or {}
+        target, content = args.get("path"), args.get("content")
+        if step.tool != "write_files" or not isinstance(target, str) or "from_step" in args:
+            continue
+        if content is not None and (not isinstance(content, str) or "${" in content
+                                    or "{{" in content or content.casefold() in text.casefold()):
+            continue
+        destination = folded(target)
+        sources = [path for path in paths if folded(path) != destination
+                   and not destination.startswith(folded(path) + "/")]
+        if len(sources) != 1:
+            continue
+        steps[index] = StepSpec(tool="move_files", args={
+            "entries": [{"path": sources[0]}], "dst_template": target, "copy": True,
+            "overwrite": args.get("mode") == "overwrite",
+            **({"client": args["client"]} if "client" in args else {})},
+            if_prev_entries_nonempty=step.if_prev_entries_nonempty)
+    framework.steps = steps
+    return framework
+
+
 def _bind_site_record_navigation(framework: Framework) -> Framework:
     """Bind record observation to its explicit read/extract lineage.
 
@@ -6814,6 +6908,18 @@ GUARD_PIPELINE: tuple = (
           reads=frozenset({"step.tool", "step.args"}),
           rationale="dopo le riscritture del grafo, read→extract lega l'osservazione dei record alla sola navigazione sorgente; nessuna esaustività o modifica del goal",
           adr="sites-record-observation"),
+    Guard("resolve_named_folder",
+          lambda fw, i, q, c: _resolve_named_folder(fw, i, q),
+          scope="per-clause", writes=frozenset({"step.args", "steps"}),
+          reads=frozenset({"intent.object", "query", "step.tool", "step.args"}),
+          rationale="una cartella nominata nella richiesta è l'ingresso del passo, non un luogo da localizzare (turni 70351e11, de44f916).",
+          adr="0237"),
+    Guard("copy_instead_of_invented_write",
+          lambda fw, i, q, c: _copy_instead_of_invented_write(fw, q, c),
+          scope="structure", writes=frozenset({"step.tool", "step.args"}),
+          reads=frozenset({"query", "step.tool", "step.args", "catalog"}),
+          rationale="contenuto assente dalla richiesta + un'altra sorgente nominata = copia, mai testo inventato dichiarato come copia (turno 6978422a)",
+          adr="0237"),
     Guard("strip_unknown_args",
           lambda fw, i, q, c: _strip_unknown_args(fw, c),
           v3_only=True, scope="structure", writes=frozenset({"args.*"}),
@@ -6914,6 +7020,11 @@ def _finalize_framework_for_run(framework: Framework, intent, query: str,
         framework = _bind_site_invocation(framework, _site_url)
     if _mail_names:
         framework = _bind_mail_invocation(framework, _mail_names, catalog)
+    if any(step.tool == "act_sites" for step in framework.steps):
+        # Argument names only: what the site pilot will receive, for diagnosis.
+        log.info("[site_plan] %s", [
+            (step.tool, sorted(step.args)) for step in framework.steps
+            if step.tool.endswith("_sites")])
     # Output-policy deterministica (matrice intent×data_kind → modo, §7.9):
     # il runtime — non il proposer — sceglie il TERMINALE di presentazione.
     if is_output_policy_enabled():
@@ -7957,7 +8068,8 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
     # con allegati è context-specific, deve ripianificare sul contenuto corrente
     # (parità col path legacy ADR 0092 che skippava il fast_path). Evita anche
     # di servire un piano cachato no-upload a un turno upload (e viceversa).
-    if is_fastpath_enabled() and not seed_state:
+    response_only = intent.kind in {"conversation", "metnos_help"}
+    if is_fastpath_enabled() and not seed_state and not response_only:
         fp_hit = _fp.lookup(query)
         if fp_hit is not None:
             # VALIDITÀ DEL MONDO a hit-time (ADR 0182, sussume la morte C1):
@@ -8060,7 +8172,7 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
 
     # ── Layer 1: Autopath ────────────────────────────────────────────────
     # Seed-state (ADR 0177 M1): salta anche L1 con seed (vedi L0 sopra).
-    if is_autopath_enabled() and intent.is_complete() and not seed_state:
+    if is_autopath_enabled() and intent.is_complete() and not seed_state and not response_only:
         ap_hit = _ap.lookup(query, intent)
         if ap_hit is not None:
             # VALIDITÀ DEL MONDO a hit-time (ADR 0182, gemello di L0): firme
@@ -8176,7 +8288,7 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
         resp = terminator.explain(query=query, intent=intent,
                                     failed_run=None, error_class="wrong_args")
         return DispatchResult(
-            final_text=resp.final_text, final_kind="answer",
+            final_text=resp.final_text, final_kind="error",
             match_source="terminator", framework_hash="",
             elapsed_ms=int((time.time() - t_start) * 1000),
             error_class="propose_failed")
@@ -8543,7 +8655,7 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                 observed_error_class = observed[0]
                 break
         return DispatchResult(
-            final_text=resp.final_text, final_kind="answer",
+            final_text=resp.final_text, final_kind="error",
             match_source="terminator",
             framework_hash=run.framework_hash,
             elapsed_ms=int((time.time() - t_start) * 1000),

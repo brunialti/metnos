@@ -24,6 +24,7 @@ import time
 from pathlib import Path
 
 import config as _C  # §7.11
+from audit_jsonl import read_jsonl_records
 
 SYNT_PROPOSALS_DIR = _C.PATH_USER_DATA / "synt_proposals"
 INTROVERTIVA_DIR = _C.PATH_USER_DATA / "introvertiva"
@@ -262,19 +263,12 @@ def dedupe_introvertiva_candidates(*, retention_days: int = 7,
             continue
 
         try:
-            lines = [ln for ln in p.read_text().splitlines() if ln.strip()]
+            records = read_jsonl_records(p)
         except Exception as ex:
             errors.append(f"{p.name}: read: {ex}")
             continue
-        if not lines:
+        if not records:
             continue
-
-        records: list[dict] = []
-        for ln in lines:
-            try:
-                records.append(json.loads(ln))
-            except Exception:
-                continue
 
         # Dedup: per ogni signature, scegli il "vincitore"
         kind_hint = _kind_from_filename(p)

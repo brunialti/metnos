@@ -638,8 +638,9 @@ def register_all() -> None:
     # macchina (server o device) → col focus-hardware instrada a get_processes.
     R("machine.reference", "phrases", match_mode="substring",
       it=["server", ".33", "questo pc", "mio pc", "macchina", "computer",
-          "sistema"],
-      en=["server", "this pc", "my pc", "machine", "computer", "system"])
+          "sistema", "dispositivo"],
+      en=["server", "this pc", "my pc", "machine", "computer", "system",
+          "device"])
 
     # ── HEALTH SECTION FOCUS (agent_runtime._prepend_health_block_if_any) ──
     # Domanda SPECIFICA su una sezione health («qual è l'ip», «che gpu ha») →
@@ -651,7 +652,10 @@ def register_all() -> None:
           "gpu": ["gpu", "scheda video", "scheda grafica", "vram"],
           "cpu": ["cpu", "processore", "core", "frequenza"],
           "system": ["sistema operativo", "hostname", "kernel", "distro",
-                     "che os", "quale os", "architettura"],
+                     "che os", "quale os", "architettura", "come si chiama",
+                     "nome del dispositivo", "nome del computer", "nome del pc",
+                     "nome del mio pc", "nome del mio computer",
+                     "nome della macchina"],
           "memory": ["ram", "memoria"],
           "disk": ["disco", "dischi", "spazio su disco", "filesystem"],
           "thermal": ["temperatura", "temperature", "gradi"],
@@ -664,7 +668,8 @@ def register_all() -> None:
           "gpu": ["gpu", "video card", "graphics card", "vram"],
           "cpu": ["cpu", "processor", "cores", "frequency"],
           "system": ["operating system", "hostname", "kernel", "distro",
-                     "which os", "architecture"],
+                     "which os", "architecture", "what is the name of",
+                     "device name", "computer name", "pc name", "machine name"],
           "memory": ["ram", "memory"],
           "disk": ["disk", "disks", "disk space", "filesystem"],
           "thermal": ["temperature", "temperatures", "degrees"],

@@ -2,6 +2,7 @@
 {% block title %}Utente {{ user.name }} · Console Metnos{% endblock %}
 {% block body %}
 <p><a href="/admin/users">&larr; tutti gli utenti</a></p>
+<p><a class="btn" href="/admin/permissions?owner={{ user.id }}">{{ msg('MSG_FS_SERVER_PERMISSIONS') }}</a></p>
 <h1>{{ user.name }}
   {% if user.role == "host" %}<span class="chip ok">host</span>
   {% else %}<span class="chip">guest</span>{% endif %}
@@ -488,7 +489,7 @@
     <tbody>
     {% for d in devices %}
       <tr>
-        <td><code>{{ d.name }}</code></td>
+        <td><code>{{ d.name }}</code> <a href="/admin/devices/{{ d.id }}/permissions">{{ msg('MSG_FS_PERMISSIONS') }}</a></td>
         <td class="muted">{{ d.id[:12] }}</td>
         <td>{{ d.os }}</td>
         <td class="muted">{{ d.last_heartbeat or "mai" }}</td>

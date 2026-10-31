@@ -87,9 +87,15 @@ def test_published_v1_membership_remains_readable_by_the_successor(tmp_path, mon
         "raise RuntimeError('historical code must not run')\n"
     )
     (stage / "executor_birth_context_v1.py").chmod(0o644)
-    with monkeypatch.context() as previous:
-        previous.setattr(catalog, "CONTEXT_CATALOG_V1", previous_catalog)
-        published_material = provisioning._prepare_installed_admission_context_v1(REGISTRY)
+    # Version 1 predates the support-binding check of the current factory:
+    # its material came from the common framing alone.
+    sources = provisioning._resolve_context_sources_v1()
+    try:
+        published_material = catalog._prepare_context_material_v1(
+            sources, REGISTRY, previous_catalog,
+        )
+    finally:
+        sources.close()
     current = provisioning._prepare_installed_admission_context_v1(REGISTRY)
     assert current.prepared_admission_context_id != published_material.prepared_admission_context_id
     sources = provisioning._resolve_context_sources_v1()
@@ -338,7 +344,7 @@ def test_property_evidence_changes_with_each_packaged_dependency(tmp_path, monke
     from executor_support import FUNCTIONAL_SUPPORT_FILES
     version, files = next((item[1], item[2]) for item in catalog.CONTEXT_CATALOG_V1
                           if item[0] == "property_catalog")
-    assert version == "3"
+    assert version == "5"
     assert set(FUNCTIONAL_SUPPORT_FILES) <= set(files)
     first = _prepare(tmp_path, monkeypatch)
     stage = support.stage_runtime_sources(tmp_path, monkeypatch)
@@ -351,3 +357,20 @@ def test_property_evidence_changes_with_each_packaged_dependency(tmp_path, monke
     after = json.loads(changed.document)["components"]
     assert before["property_catalog"] != after["property_catalog"]
     assert before["runner"] == after["runner"]
+
+
+def test_an_unbound_functional_support_file_is_refused(tmp_path, monkeypatch):
+    from executor_support import FUNCTIONAL_SUPPORT_FILES
+
+    missing = FUNCTIONAL_SUPPORT_FILES[-1]
+    unbound = tuple(
+        (name, version,
+         tuple(f for f in files if f != missing) if name == "property_catalog" else files,
+         state)
+        for name, version, files, state in catalog.CONTEXT_CATALOG_V1
+    )
+    support.stage_runtime_sources(tmp_path, monkeypatch)
+    monkeypatch.setattr(catalog, "CONTEXT_CATALOG_V1", unbound)
+    with pytest.raises(BirthProvisioningError) as error:
+        provisioning._prepare_installed_admission_context_v1(REGISTRY)
+    assert error.value.code == "birth_context_catalog_incomplete"

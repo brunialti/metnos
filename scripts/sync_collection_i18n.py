@@ -23,9 +23,9 @@ TRANSLATIONS = {
     "SELECTOR_HIDDEN": ("Il controllo richiesto non è visibile nella pagina.",
                         "The requested control is not visible on the page."),
     "LOGIN_INTERVAL": ("Accesso rimandato: l'ultimo tentativo ha chiesto una verifica anti-robot "
-                       "e ripeterlo subito la renderebbe più severa. Riprova fra un'ora.",
+                       "e ripeterlo subito la renderebbe più severa. Riprova dopo le {time}.",
                        "Login postponed: the last attempt asked for an anti-robot check and "
-                       "repeating it now would make it stricter. Try again in an hour."),
+                       "repeating it now would make it stricter. Try again after {time}."),
 }
 
 COLLECTION_TRANSLATIONS = {

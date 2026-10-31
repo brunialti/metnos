@@ -193,6 +193,7 @@ Il client non ha mai iniziativa: esegue, traccia, risponde.</p>
         {% else %}<span class="chip warn">offline</span>{% endif %}
       </td>
       <td>
+        <a class="btn" href="/admin/devices/{{ r.id }}/permissions">{{ msg('MSG_FS_PERMISSIONS') }}</a>
         <form method="post" action="/admin/devices/{{ r.id }}/revoke"
               onsubmit="return confirm('Revocare {{ r.name }}? I token futuri saranno rifiutati.')">
           <button type="submit" class="btn danger">Revoca</button>

@@ -50,7 +50,7 @@ _JSON_SCHEMA_TYPES = frozenset({
     "array", "boolean", "integer", "null", "number", "object", "string",
 })
 _TOP_LEVEL_AUTHORITY_KEYS = frozenset({
-    "revertible", "reversible", "reverse_pattern", "placement", "platforms",
+    "revertible", "reversible", "reverse_pattern", "placement", "platforms", "filesystem",
 })
 _UNDO_OUTCOMES = frozenset({"per_execution"})
 _OUTBOUND_CAPABILITY_NAMES = frozenset({
@@ -659,6 +659,15 @@ def validate_manifest(manifest: dict, *, require_declaration: bool = True,
     _validate_intelligence(findings, manifest)
     _validate_presentation(findings, manifest, active=active)
     _validate_execution(findings, manifest, active=active)
+    if "filesystem" in manifest:
+        try:
+            from filesystem_permissions import contract
+            from capabilities import parse_condition
+            if not manifest["filesystem"] or contract(manifest) is None:
+                raise ValueError("empty filesystem contract")
+            parse_condition(manifest["filesystem"], manifest.get("args", {}))
+        except (ValueError, TypeError, KeyError) as exc:
+            _add(findings, "filesystem_contract", str(exc))
 
     code = manifest.get("code")
     if not isinstance(code, dict) or not code.get("files"):

@@ -27,6 +27,7 @@ import users
 import services_registry
 import periodic_services
 import config as _C  # §7.11
+from audit_jsonl import read_jsonl_records
 from reliability import classify_turn
 from http_auth import (
     ADMIN_COOKIE,
@@ -459,14 +460,7 @@ def _load_recent_turns(limit: int = 50) -> list[dict]:
         return out
     files = sorted(d.glob("*.jsonl"), reverse=True)
     for fp in files:
-        for line in reversed(fp.read_text().splitlines()):
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                t = json.loads(line)
-            except json.JSONDecodeError:
-                continue
+        for t in reversed(read_jsonl_records(fp)):
             out.append(t)
             if len(out) >= limit:
                 return out
@@ -2370,3 +2364,6 @@ ROUTES = (
 
 from http_routes_monitor import ROUTES as _MONITOR_ROUTES
 ROUTES += _MONITOR_ROUTES
+
+from http_routes_filesystem_permissions import ROUTES as _FILESYSTEM_PERMISSION_ROUTES
+ROUTES += tuple(_FILESYSTEM_PERMISSION_ROUTES)

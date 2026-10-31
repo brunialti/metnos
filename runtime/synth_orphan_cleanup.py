@@ -186,7 +186,7 @@ def verify_receipt(receipt: dict, trusted_publics: Iterable[TrustedPublic]):
 def _read_exact_receipt(path: Path, event_id: str) -> dict:
     matches: list[dict] = []
     try:
-        lines = path.read_text(encoding="utf-8").splitlines()
+        lines = path.read_bytes().splitlines()
     except OSError as exc:
         raise OrphanCleanupError("receipt_read_failed", str(path)) from exc
     for line in lines:

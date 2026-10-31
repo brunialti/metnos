@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import os
 import sys
+import time
 from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parents[2]
@@ -55,7 +56,16 @@ _REASONS_THE_PERSON_RESOLVES = frozenset({
 })
 
 
-def _reason_message(reason_code: str | None) -> str | None:
+def _reason_values(res: dict) -> dict:
+    """Values a reason message names: the clock time a postponed login may
+    be retried (it said «in an hour» whatever the remaining pause was)."""
+    wait = res.get("retry_after_s")
+    if type(wait) is not int or wait <= 0:
+        return {}
+    return {"time": time.strftime("%H:%M", time.localtime(time.time() + wait))}
+
+
+def _reason_message(reason_code: str | None, **values) -> str | None:
     """Mappa lo slug della tassonomia fallimento (§9) al messaggio i18n.
     Nessun eco di credenziali. Fallback onesto se lo slug non ha una chiave."""
     if not reason_code:
@@ -70,7 +80,7 @@ def _reason_message(reason_code: str | None) -> str | None:
         REASON_MSG = {}
     key = (_special.get(reason_code) or REASON_MSG.get(reason_code)
            or f"MSG_SITES_RC_{reason_code.upper()}")
-    msg = _msg(key)
+    msg = _msg(key, **values)
     if msg.startswith("<missing:"):
         return None  # slug senza messaggio dedicato: nessun eco, solo il code
     return msg
@@ -138,7 +148,7 @@ def invoke(args: dict) -> dict:
         entry = {"session_id": sid, "logged_in": logged_in}
         if reason:
             entry["reason_code"] = reason  # slug i18n, MAI un segreto
-            msg = _reason_message(reason)
+            msg = _reason_message(reason, **_reason_values(res))
             if msg:
                 entry["message"] = msg
             # Un FALLIMENTO definitivo non deve lasciare context orfani ne'
@@ -258,9 +268,9 @@ def invoke(args: dict) -> dict:
            "metadata": {"logged_in": sum(1 for e in entries if e["logged_in"]),
                         "total": len(entries)}}
     if not ok:
-        first_reason = next((e.get("reason_code") for e in entries
-                             if e.get("reason_code")), "login_failed")
-        out["error"] = (_reason_message(first_reason)
+        first = next((e for e in entries if e.get("reason_code")), None)
+        first_reason = first["reason_code"] if first else "login_failed"
+        out["error"] = ((first.get("message") if first else _reason_message(first_reason))
                         or _msg("ERR_OP_FAILED", reason="login_sites"))
         # Credenziali mancanti/errate, CAPTCHA e 2FA non si correggono
         # riproponendo lo stesso piano: il Terminator deve cedere all'utente.

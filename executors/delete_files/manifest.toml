@@ -6,7 +6,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "delete_files"
-version     = "0.2.0"
+version     = "0.3.0"
 platforms   = ["linux", "windows"]
 author      = "Roberto Brunialti"
 affinity    = [
@@ -163,3 +163,14 @@ expect = { ok = false, field_eq = { error_code = "ERR_NOT_APPLICABLE" } }
 scope    = "any"
 device_ok = true
 min_sandbox = "appcontainer"
+
+[args.properties.location]
+type = "string"
+enum = ["server", "device"]
+[args.properties.location.description]
+it = "Posizione dei file: dispositivo selezionato o server. Serve anche a ripristinare correttamente una copia tra PC e server."
+en = "File location: selected device or server. Also used to reverse copies between PC and server correctly."
+
+[filesystem]
+protocol = "filesystem_broker_v1"
+operation = "delete"

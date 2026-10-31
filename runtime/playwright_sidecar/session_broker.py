@@ -44,6 +44,7 @@ from playwright_sidecar import captcha_solver
 from playwright_sidecar import challenges
 from playwright_sidecar import captcha_delegate
 from playwright_sidecar import captcha_checkbox
+from playwright_sidecar import captcha_grid
 from playwright_sidecar import redaction
 from playwright_sidecar import action_resolver
 from playwright_sidecar import browser_surface
@@ -77,6 +78,10 @@ except Exception:  # pragma: no cover
 # ── Cap di sicurezza (§3.1 FIX C) ──────────────────────────────────────────
 _OP_TIMEOUT_S = 20.0            # timeout per singola operazione
 _LOGIN_TIMEOUT_S = 120.0        # budget assoluto della macchina login
+# Challenge appearances that get automatic attempts in one browser session;
+# later ones go to the person (Roberto, 28/10/2026).
+_CAPTCHA_APPEARANCES_MAX = 5
+_CAPTCHA_GRID_TIME_S = 60.0  # one appearance's image grids, up to captcha_grid.MAX_DRAWS
 _MAX_CONTEXTS = 8              # contesti concorrenti totali
 _PER_USER_QUOTA = 8           # sessioni per owner
 _TTL_IDLE_S = 15 * 60         # scadenza idle sessione
@@ -2523,9 +2528,13 @@ async def _capture_screenshot(entry: dict) -> str | None:
     return str(path)
 
 
-async def _navigation_challenge(entry: dict, *, navigation_anchor: tuple | None = None
-                                ) -> dict | None:
-    """Suspend navigation on a fresh observation, without consuming its cursor."""
+async def _navigation_challenge(entry: dict, *, navigation_anchor: tuple | None = None,
+                                solve: bool = True) -> dict | None:
+    """Suspend navigation on a fresh observation, without consuming its cursor.
+
+    A new challenge is first tried with the login's chain (`solve`); only an
+    unresolved one, or one already handed over, waits for the person.
+    """
     page = entry["page"]
     observed_url = page.url
     scope = frozenset(entry.get("allowlist") or ())
@@ -2608,6 +2617,9 @@ async def _navigation_challenge(entry: dict, *, navigation_anchor: tuple | None 
     if entry.get("secret_pending") or (entry.get("factor_pending")
                                       and not entry.get("user_control_pending")):
         return {"ok": False, "error_class": "user_control_unavailable"}
+    if (solve and not context and not entry.get("user_control_pending")
+            and await _resolve_navigation_captcha(entry)):
+        return await _navigation_challenge(entry, solve=False)
     # Preserve a pending login's existing context and expiry. Authenticated
     # sessions receive a separate context; authentication alone grants nothing.
     if not entry.get("user_control_pending") or context:
@@ -2656,7 +2668,8 @@ async def op_user_control(*, action: dict, proof: str) -> dict:
         if not isinstance(operation, str) or operation not in {"snapshot", "click", "scroll"}:
             return fail("invalid_args")
         if navigation:
-            blocked = await _navigation_challenge(entry)
+            # The person has this challenge: observe it, never act on it.
+            blocked = await _navigation_challenge(entry, solve=False)
             if not blocked:
                 return fail("user_control_complete")
             if not blocked.get("user_control_required"):
@@ -2711,7 +2724,7 @@ async def op_user_control(*, action: dict, proof: str) -> dict:
         revision = secrets.token_hex(16)
         entry["user_control_frame"] = {**viewport, "revision": revision, "url": page.url}
         if navigation:
-            observed = await _navigation_challenge(entry)
+            observed = await _navigation_challenge(entry, solve=False)
             if observed and not observed.get("user_control_required"):
                 entry.pop("user_control_frame", None)
                 return observed
@@ -2734,7 +2747,8 @@ async def op_read(*, session_id: str, owner: str | None = None,
     if entry is None:
         return {"ok": False, "error": validation_error,
                 "error_class": validation_error}
-    async with entry["lock"]:
+    # The holder is named: a challenge met by the read gets the chain too.
+    async with _session_lock(entry):
         try:
             return await asyncio.wait_for(
                 _read_impl(entry, session_id, include_screenshot,
@@ -2798,13 +2812,13 @@ def _goal_text_span(testo: str, goal: str, *, max_char: int = 1800) -> str:
 
 async def _read_impl(entry, session_id, include_screenshot, include_forms,
                      goal: str = "") -> dict:
+    entry["_sid"] = session_id
     blocked = await _navigation_challenge(entry)
     if blocked:
         return {**blocked, "source_metadata": entry.get("collection_source_metadata", [])}
     page = entry["page"]
     entry["web_content_ingested"] = True
     await _touch(entry)
-    entry["_sid"] = session_id
     try:
         title = await page.title()
     except Exception:
@@ -2980,7 +2994,7 @@ async def op_login(*, session_id: str, owner: str | None = None,
                     "reason_code": "already_authenticated",
                     "session_id": session_id}
         entry["_sid"] = session_id
-        entry.pop("user_control_pending", None)
+        handed_over = bool(entry.pop("user_control_pending", None))
         entry.pop("user_control_frame", None)
         login_budget = _LOGIN_TIMEOUT_S
         flow = entry.get("login_flow")
@@ -3004,6 +3018,11 @@ async def op_login(*, session_id: str, owner: str | None = None,
             }
             entry["login_flow"] = flow
             entry["factor_pending"] = False
+        elif handed_over:
+            # The person had the challenge until this resume: whatever is
+            # shown now is a new appearance for the automatic stages.
+            flow["captcha_person_handled"] = True
+        flow["call_started"] = time.time()
 
         # Un token emesso durante la ricerca dell'area di login viene eseguito
         # nello stesso lock e poi la macchina riosserva la pagina. Il planner
@@ -4377,7 +4396,7 @@ def _login_choice_audit(observation: dict, tried, *, mechanism: str,
 
 _CAPTCHA_DIAGNOSTIC_REASONS = frozenset({
     "entered", "authority_missing", "binding_changed", "action_budget", "time_budget",
-    "textual_challenge", "challenge_not_required", "observation_timeout",
+    "textual_challenge", "challenge_not_required", "observation_timeout", "appearance_limit",
     "observation_unavailable", "provider_unsupported", "iframe_not_unique",
     "iframe_provider_mismatch", "frontier_unavailable", "attempt_already_used",
     "delegate_started", "delegate_error", "cancelled", "resolver_not_called",
@@ -4390,14 +4409,14 @@ _CAPTCHA_DIAGNOSTIC_REASONS = frozenset({
     "invalid_plan", "stale_widget", "extra_model_strategy", "nested_delegation",
     "invalid_strategies", "verification_reserve", "proposal_budget", "no_valid_proposal",
     "postcondition_failed", "budget_or_deadline", "stale_authority", "adapter_failed",
-}) | captcha_delegate.WIDGET_QUALIFICATION_REASONS | captcha_checkbox.REASONS
+}) | captcha_delegate.WIDGET_QUALIFICATION_REASONS | captcha_checkbox.REASONS | captcha_grid.REASONS
 
 
 def _audit_captcha_resolution(entry: dict, session_id: str, flow: dict,
                               stage: str, status: str, reason: str, *, allocation=None) -> None:
     """Closed diagnostic facts only; None means consumption was not observed."""
     state_key = {"local": "captcha_state", "visual": "captcha_vision_state",
-                 "checkbox": "captcha_checkbox_state"}.get(stage)
+                 "checkbox": "captcha_checkbox_state", "grid": "captcha_grid_state"}.get(stage)
     state = flow.get(state_key) if state_key else None
     state = state if isinstance(state, dict) else {}
 
@@ -4428,7 +4447,7 @@ def _audit_captcha_resolution(entry: dict, session_id: str, flow: dict,
     sites_audit.record(
         "captcha_resolution", owner=entry.get("owner", ""),
         session_id=session_id, domain=entry.get("domain", ""),
-        stage=stage if stage in {"resolver", "local", "checkbox", "visual", "handoff"} else "unknown",
+        stage=stage if stage in {"resolver", "local", "checkbox", "grid", "visual", "handoff"} else "unknown",
         status=status if status in {"entered", "skipped", "started", "accepted", "unresolved",
                                     "blocked", "cancelled", "failed", "handoff"} else "unknown",
         reason=reason if type(reason) is str and reason in _CAPTCHA_DIAGNOSTIC_REASONS else "other",
@@ -4455,8 +4474,11 @@ def _audit_captcha_resolution(entry: dict, session_id: str, flow: dict,
         checkbox_expected_same=(state.get("checkbox_expected_same")
                                 if type(state.get("checkbox_expected_same")) is bool else None),
         checkbox_document=checkbox_document,
-        decision_actor={"actor_type": "executor", "source": "provider_checkbox"}
-                       if stage == "checkbox" else {"actor_type": "unknown"},
+        grid_draws=state_count("draws") if stage == "grid" else None,
+        grid_reloads=state_count("reloads") if stage == "grid" else None,
+        decision_actor={"actor_type": "executor",
+                        "source": "provider_checkbox" if stage == "checkbox" else "public_grid_classifier"}
+                       if stage in {"checkbox", "grid"} else {"actor_type": "unknown"},
         model_calls=count("model_calls"), effects=count("effects"))
 
 
@@ -4514,8 +4536,11 @@ async def _resolve_login_captcha(entry: dict, session_id: str, flow: dict, page)
         _audit_captcha_resolution(entry, session_id, flow, "resolver", "skipped", "binding_changed")
         return False
     search = flow.setdefault("entry_search", {})
+    # The clock of this call only: a person's time on an earlier challenge of
+    # the same login is not the machine's (Fastweb, 28/10/2026: the second
+    # checkbox, on the credentials page, was skipped after the person's wait).
     remaining = min(float(search.get("remaining_s", _LOGIN_TIMEOUT_S)),
-                    max(0.0, _LOGIN_TIMEOUT_S - (time.time() - float(flow["started"]))))
+                    max(0.0, _LOGIN_TIMEOUT_S - (time.time() - float(flow["call_started"]))))
     if remaining <= 0 or int(search.get("actions", 0)) >= login_navigation.MAX_ACTIONS:
         _audit_captcha_resolution(entry, session_id, flow, "resolver", "skipped",
                                   "time_budget" if remaining <= 0 else "action_budget")
@@ -4523,7 +4548,7 @@ async def _resolve_login_captcha(entry: dict, session_id: str, flow: dict, page)
     started = _monotonic()
     deadline = started + min(20.0, remaining)
     try:
-        async with asyncio.timeout_at(deadline):
+        async with asyncio.timeout_at(deadline) as window:
             textual = await credential_injection._manual_only_login_challenge(page)
             require_binding()
             if textual:
@@ -4534,11 +4559,29 @@ async def _resolve_login_captcha(entry: dict, session_id: str, flow: dict, page)
             if surface != "captcha_required":
                 _audit_captcha_resolution(entry, session_id, flow, "resolver", "skipped", "challenge_not_required")
                 return False
+            if not _captcha_appearance(entry, flow):
+                _audit_captcha_resolution(entry, session_id, flow, "resolver", "skipped", "appearance_limit")
+                return False
             checkbox = await _resolve_login_captcha_checkbox(
                 entry, session_id, flow, page, deadline=deadline, binding_valid=still_owned)
             require_binding()
-            if checkbox is not None:
-                return checkbox
+            if checkbox is True:
+                return True
+            # The checkbox opened an image grid, or the grid was already open:
+            # the public classifier answers a 3x3 grid, else the person does.
+            opened = (checkbox is False and flow.get("captcha_checkbox_state", {}).get("reason")
+                      == "checkbox_interactive")
+            if not opened and checkbox is None:
+                shown = await challenges.observe(page)
+                require_binding()
+                opened = shown.get("provider") == "recaptcha" and shown.get("kind") == "interactive"
+            if opened:
+                deadline = started + min(_CAPTCHA_GRID_TIME_S, remaining)
+                window.reschedule(deadline)
+                return await _resolve_login_captcha_grid(
+                    entry, session_id, flow, page, deadline=deadline, binding_valid=still_owned)
+            if checkbox is False:
+                return False
             kind = await page.evaluate(captcha_solver._CHALLENGE_KIND_JS)
             require_binding()
             if kind in {"turnstile", "interstitial"}:
@@ -4564,6 +4607,34 @@ async def _resolve_login_captcha(entry: dict, session_id: str, flow: dict, page)
         raise
     finally:
         search["remaining_s"] = max(0.0, remaining - (_monotonic() - started))
+
+
+_CAPTCHA_STAGE_STATES = ("captcha_checkbox_state", "captcha_grid_state", "captcha_state",
+                         "captcha_vision_state")
+
+
+def _captcha_appearance(entry: dict, flow: dict) -> bool:
+    """Whether the challenge now shown may get automatic attempts.
+
+    Roberto, 28/10/2026: «il captcha può presentarsi più volte. metnos deve
+    riconoscere il captcha e cercare di risolverlo indipendentemente da dove
+    e quando si presenta». Each stage still runs once per appearance; an
+    appearance ends when a stage was accepted or a person handled it, and the
+    next one starts with fresh stages. At most `_CAPTCHA_APPEARANCES_MAX` per
+    browser session: a site that keeps asking gets the person.
+    """
+    if (flow.pop("captcha_person_handled", False)
+            or any((flow.get(key) or {}).get("status") in {"accepted", "solved"}
+                   for key in _CAPTCHA_STAGE_STATES)):
+        for key in (*_CAPTCHA_STAGE_STATES, "captcha_appearance"):
+            flow.pop(key, None)
+    if flow.get("captcha_appearance"):
+        return True
+    if int(entry.get("captcha_appearances", 0)) >= _CAPTCHA_APPEARANCES_MAX:
+        return False
+    entry["captcha_appearances"] = int(entry.get("captcha_appearances", 0)) + 1
+    flow["captcha_appearance"] = True
+    return True
 
 
 async def _resolve_login_captcha_checkbox(entry: dict, session_id: str, flow: dict, page,
@@ -4615,42 +4686,82 @@ async def _resolve_login_captcha_checkbox(entry: dict, session_id: str, flow: di
         search["actions"] = int(search.get("actions", 0)) + allocation.effects
 
 
-async def _resolve_navigation_checkbox(entry: dict, session_id: str, blocked) -> bool:
-    """One provider checkbox click on a challenge met while navigating.
+async def _resolve_login_captcha_grid(entry: dict, session_id: str, flow: dict, page,
+                                     *, deadline: float, binding_valid) -> bool:
+    """An open reCAPTCHA image grid, answered by the public local classifier.
 
-    Roberto, 20/10/2026: «Metnos spunta la casella "non sono un robot" anche
-    durante la navigazione, una sola volta, con le stesse protezioni
-    dell'accesso». The login's checkbox resolver runs under a loan of the
-    session lock the caller already holds, bound to this page, owner and
-    session; one attempt per browser session and no visual fallback. True only
-    when the site no longer shows the challenge.
+    Roberto, 29/10/2026: «usa solo risolutore pubblico senza usare frontier; se
+    non passa da solo passa all'utente il captcha». Once per appearance, under
+    the session loan; any doubt leaves the grid to the person.
     """
-    challenge = blocked.get("challenge") if isinstance(blocked, dict) else None
-    lock = entry.get("lock")
-    if (not isinstance(challenge, dict) or challenge.get("kind") != "checkbox"
-            or blocked.get("error_class") != "captcha_required"
-            or entry.get("navigation_checkbox_attempted") or lock is None or not lock.locked()
-            or entry.get("_lock_holder") is not asyncio.current_task()
-            or _captcha_scope_busy(entry) or entry.get("secret_pending")):
+    scope = entry.get("_captcha_scope")
+    if scope is None or not scope.authorized() or not binding_valid():
+        _audit_captcha_resolution(entry, session_id, flow, "grid", "blocked", "authority_missing")
+        raise _LoginCaptchaBlocked("captcha_resource_busy")
+    attempt = flow.setdefault("captcha_grid_state", {})
+    if attempt.get("attempted") or attempt.get("status"):
+        _audit_captcha_resolution(entry, session_id, flow, "grid", "skipped", "attempt_already_used")
         return False
-    entry["navigation_checkbox_attempted"] = True
-    page, owner = entry["page"], entry.get("owner")
+    # Grid clicks and reloads have their own cap per appearance; the login's
+    # action counter keeps counting only the login's own steps.
+    allocation = Budget(deadline, captcha_grid.MAX_MODEL_CALLS,
+                        captcha_grid.MAX_MODEL_CALLS * captcha_grid.LABEL_TOKENS, captcha_grid.MAX_EFFECTS)
+
+    async def site_clear():
+        if not binding_valid():
+            return False
+        challenge = await credential_injection.observe_manual_login_challenge(page)
+        return binding_valid() and challenge is False
+
+    try:
+        result = await captcha_grid.solve_grid(
+            page=page, session=session_id, owner=entry.get("owner", ""), budget=allocation,
+            resource_lock=entry["lock"], resource_loan=scope,
+            binding_valid=binding_valid, site_accepted=site_clear, state=attempt)
+        attempt.update(status=result.status, reason=result.reason)
+        _audit_captcha_resolution(entry, session_id, flow, "grid",
+                                  "accepted" if result.status == "accepted" else
+                                  "blocked" if result.status == "blocked" else "unresolved",
+                                  result.reason, allocation=allocation)
+        if result.status == "blocked":
+            raise _LoginCaptchaBlocked("captcha_resource_busy")
+        return result.status == "accepted"
+    except DrainIncomplete:
+        _audit_captcha_resolution(entry, session_id, flow, "grid", "blocked", "drain_incomplete",
+                                  allocation=allocation)
+        raise _LoginCaptchaBlocked("captcha_cleanup_pending") from None
+    except asyncio.CancelledError:
+        _audit_captcha_resolution(entry, session_id, flow, "grid", "cancelled", "cancelled",
+                                  allocation=allocation)
+        raise
+
+
+async def _resolve_navigation_captcha(entry: dict) -> bool:
+    """The login's chain on a challenge met outside the login.
+
+    Roberto, 28/10/2026: the challenge is recognized and tried wherever and
+    whenever it appears, not only at the login (real run Fastweb: a checkbox,
+    images, «Sei un computer?», then a second checkbox). The provider checkbox,
+    the local library and one visual proposal run as at the login, under a
+    loan of the session lock the caller already holds, bound to this page,
+    owner and session, within the session's appearance cap. True only when
+    the site no longer shows the challenge.
+    """
+    # The registered session holding this entry, not a label it may carry.
+    session_id = next((sid for sid, item in _sessions.items() if item is entry), None)
+    lock = entry.get("lock")
+    if (session_id is None or lock is None or not lock.locked()
+            or entry.get("_lock_holder") is not asyncio.current_task()
+            or _captcha_scope_busy(entry) or entry.get("secret_pending")
+            or entry.get("gate_pending")):
+        return False
+    page = entry["page"]
     before = str(getattr(page, "url", "") or "")
-    allowed_hosts = frozenset(entry.get("allowlist") or ())
-    flow = {"started": time.time(), "entry_search": {"remaining_s": 20.0, "actions": 0}}
+    flow = {"call_started": time.time(),
+            "entry_search": {"remaining_s": _CAPTCHA_GRID_TIME_S, "actions": 0}}
     accepted = False
     async with _login_scope(entry, held=True) as scope:
-        def still_owned():
-            origin = urllib.parse.urlsplit(str(page.url))
-            return (scope.entered and not scope.exited and not scope.quarantined
-                    and not scope.revoked and scope.lock.locked() and page is entry.get("page")
-                    and entry.get("owner") == owner and _sessions.get(session_id) is entry
-                    and entry.get("_captcha_scope") is scope and entry.get("lock") is scope.lock
-                    and origin.scheme in {"http", "https"} and origin.hostname in allowed_hosts)
-
-        task = asyncio.create_task(_resolve_login_captcha_checkbox(
-            entry, session_id, flow, page, deadline=_monotonic() + 20.0,
-            binding_valid=still_owned))
+        task = asyncio.create_task(_resolve_login_captcha(entry, session_id, flow, page))
         scope.bind(task)
         try:
             accepted = await task is True
@@ -5604,7 +5715,6 @@ async def _discover_collection(entry: dict, session_id: str,
         anchor, navigation_anchor = navigation_anchor, None
         blocked = (await _navigation_challenge(entry, navigation_anchor=anchor)
                    if anchor is not None else await _navigation_challenge(entry))
-        blocked = await checkbox_or(blocked)
         if blocked:
             return {"terminal": blocked}
         privacy = None if verifying_get else await _dismiss_privacy_obstruction(entry)
@@ -5618,19 +5728,11 @@ async def _discover_collection(entry: dict, session_id: str,
         page = entry["page"]
         if _host_of_url(page.url) not in set(entry.get("allowlist") or ()):
             return {"terminal": {"ok": False, "error_class": "mandate_scope_exceeded"}}
-        blocked = await checkbox_or(await _navigation_challenge(entry))
+        blocked = await _navigation_challenge(entry)
         if blocked:
             return {"terminal": blocked}
         state["pages"].add(page)
         return None
-
-    async def checkbox_or(blocked):
-        """A provider checkbox met while collecting gets the login's one click;
-        the page is then observed again, and any other challenge still waits
-        for a person."""
-        if blocked and await _resolve_navigation_checkbox(entry, session_id, blocked):
-            return await _navigation_challenge(entry)
-        return blocked
 
     async def guard_before_restore():
         # A return is already decided: keep every gate, skip scrolling,
@@ -5695,7 +5797,7 @@ async def _discover_collection(entry: dict, session_id: str,
                 confirmed.add(page.url)
             scrolls = scrolling.get("collection_scrolls", 0)
             state["actions"] = int(state.get("actions", 0)) + scrolls
-            blocked = await checkbox_or(scrolling.get("challenge") or await _navigation_challenge(entry))
+            blocked = scrolling.get("challenge") or await _navigation_challenge(entry)
             if blocked:
                 return {"terminal": blocked}
             if scrolls or scrolling.get("collection_scroll_limited"):
@@ -10900,9 +11002,6 @@ async def op_act(*, session_id: str, owner: str | None, action: str,
                 # once more, as after a consumed navigation; nothing has acted.
                 return (entry["page"], sites_origin.origin_of_url(entry["page"].url))
             blocked = await _navigation_challenge(entry, navigation_anchor=anchor())
-            if blocked and await _resolve_navigation_checkbox(entry, session_id, blocked):
-                # The login's single checkbox click (real run R38).
-                blocked = await _navigation_challenge(entry, navigation_anchor=anchor())
             if not blocked and await _reopen_login_landing(entry, action):
                 blocked = await _navigation_challenge(entry, navigation_anchor=anchor())
             if blocked:

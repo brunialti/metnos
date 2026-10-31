@@ -15,7 +15,7 @@ from dataclasses import dataclass
 class CapabilityCondition:
     arg: str
     predicate: str
-    values: tuple[str, ...] = ()
+    values: tuple[str | bool, ...] = ()
     item_key: str | None = None
 
 
@@ -78,12 +78,18 @@ def parse_condition(capability: dict, args_schema: dict) -> CapabilityCondition 
 
     if shape == {"arg", "values"}:
         values = when.get("values")
+        # Boolean conditions must be backed by a boolean argument schema;
+        # strings remain the existing closed scalar vocabulary. In particular
+        # integers 0/1 must never acquire the authority of False/True.
+        value_type = bool if arg_schema.get("type") == "boolean" else str
         if (not isinstance(values, list) or not values
-                or any(not isinstance(value, str) or not value.strip()
+                or any(type(value) is not value_type
+                       or (isinstance(value, str) and not value.strip())
                        for value in values)):
             raise CapabilityConditionError(
                 "capability_when_values",
-                "when.values must be a non-empty list of non-empty strings",
+                "when.values must be a non-empty list of strings, or booleans "
+                "for an argument with type boolean",
             )
     else:
         values = []
@@ -91,10 +97,10 @@ def parse_condition(capability: dict, args_schema: dict) -> CapabilityCondition 
     if shape == {"arg", "values"} and "enum" in arg_schema:
         enum = arg_schema.get("enum")
         if (not isinstance(enum, list)
-                or any(not isinstance(value, str) for value in enum)):
+                or any(type(value) is not value_type for value in enum)):
             raise CapabilityConditionError(
                 "capability_when_enum",
-                f"args.properties.{arg}.enum must be a list of strings",
+                f"args.properties.{arg}.enum must match the argument scalar type",
             )
         outside = sorted(set(values) - set(enum))
         if outside:
@@ -181,7 +187,8 @@ def effective_capabilities(capabilities, args_schema, args) -> list[dict]:
             selected = arg_schema.get("default")
         matches = False
         if condition.predicate == "values":
-            matches = selected in condition.values
+            matches = any(type(selected) is type(value) and selected == value
+                          for value in condition.values)
         elif condition.predicate == "nonempty":
             matches = bool(selected)
         elif condition.predicate == "any_item_has":

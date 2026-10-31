@@ -18,6 +18,7 @@ sono brevi, quindi safe-by-construction (niente interleaving fra processi).
 from __future__ import annotations
 
 import json
+import logging
 import os
 import stat
 import time
@@ -27,6 +28,50 @@ from typing import Mapping
 
 _NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
 _REPLACE_TIMEOUT = 2.0
+log = logging.getLogger(__name__)
+
+# JSON leaves U+0085, U+2028 and U+2029 raw with ``ensure_ascii=False``, but
+# ``str.splitlines`` breaks a line on them: a turn whose text held one split
+# into undecodable pieces and vanished from /admin/turns (29/10/2026).  The
+# control characters it also splits on are always escaped by ``json.dumps``.
+_LINE_BREAK_ESCAPES = {0x85: "\\u0085", 0x2028: "\\u2028", 0x2029: "\\u2029"}
+
+
+def jsonl_line(record, **dumps_options) -> bytes:
+    """Encode one JSONL row: readable UTF-8, one physical line, final newline.
+
+    The audit appenders below keep their existing byte form; new JSONL logs
+    read by generic tools (the turn log) use this encoder.
+    """
+    text = json.dumps(record, ensure_ascii=False, **dumps_options)
+    return (text.translate(_LINE_BREAK_ESCAPES) + "\n").encode("utf-8")
+
+
+def read_jsonl_records(path) -> list[dict]:
+    """Return the object rows of a JSONL file, in file order.
+
+    Rows end at "\\n" only, so rows written before ``jsonl_line`` with a raw
+    line separator inside a string still decode.  Undecodable or non-object
+    rows are skipped with a warning that counts them (§2.8).  ``OSError``
+    propagates to the caller.
+    """
+    path = Path(path)
+    records: list[dict] = []
+    malformed = 0
+    for raw in path.read_bytes().split(b"\n"):
+        if not raw.strip():
+            continue
+        try:
+            value = json.loads(raw)
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            value = None
+        if isinstance(value, dict):
+            records.append(value)
+        else:
+            malformed += 1
+    if malformed:
+        log.warning("JSONL %s: %d undecodable rows skipped", path.name, malformed)
+    return records
 
 
 class AuditPathError(RuntimeError):

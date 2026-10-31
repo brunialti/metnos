@@ -6,7 +6,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "read_files"
-version     = "0.1.0"
+version     = "0.2.0"
 # C7 CP3: il backend local è pathlib/os puro → gira anche su
 # Windows (validato find/read sul device e2e 5/7). Senza questa
 # dichiarazione placement rifiuterebbe un device Windows (F1).
@@ -278,3 +278,7 @@ teardown = "rm -rf /tmp/metnos_test_fs_read"
 scope    = "any"
 device_ok = true
 min_sandbox = "appcontainer"
+
+[filesystem]
+protocol = "filesystem_broker_v1"
+operation = "read"

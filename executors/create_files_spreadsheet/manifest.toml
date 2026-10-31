@@ -6,7 +6,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name             = "create_files_spreadsheet"
-version          = "0.4.4"
+version          = "0.4.5"
 platforms        = ["linux", "windows"]
 author           = "Roberto Brunialti"
 affinity         = [
@@ -25,7 +25,7 @@ en = "SCOPO: creates and populates a new local .xlsx. PATTERN: create_files_spre
 
 [code]
 files  = ["create_files_spreadsheet.py"]
-digest = "sha256:c0087c29c441fa2443ee905bc5040535cbbac81b525906ebe3ab7b163b6e8647"
+digest = "sha256:9cb216594cfda93aa3fcdeedce8b2d0189de3145bd8384ad24b29c4a825ad192"
 
 [args]
 type     = "object"
@@ -135,7 +135,7 @@ en = "Backend: 'local' (default, attachable .xlsx/.csv file) or 'google_workspac
 
 [placement]
 scope = "any"
-device_ok = true
+device_ok = false
 min_sandbox = "appcontainer"
 
 [output]

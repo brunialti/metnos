@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 import os
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -12,6 +13,12 @@ import executor_birth_admin_preflight as preflight
 import executor_birth_distribution_assembler as assembler
 from install import birth_authority_provisioner as provisioner
 import test_executor_birth_admin_preflight_systemd_live as live
+
+# Parsing is portable; the cutover entry and the effective-unit observation
+# run only under systemd, with POSIX paths, identities and symlinks.
+LINUX_ONLY = pytest.mark.skipif(
+    sys.platform != "linux", reason="systemd cutover is Linux-only",
+)
 
 
 @pytest.mark.parametrize("version", ("255.4-1ubuntu8.17", "255.4-1ubuntu8.18"))
@@ -107,6 +114,7 @@ def _cutover_entry(monkeypatch, reply, *, executable=None):
     return call, events
 
 
+@LINUX_ONLY
 @pytest.mark.parametrize("reply", (
     (0, b"Version=255.4-1ubuntu8.19\n", b""),
     (0, b"Version=255.5\n", b""),
@@ -123,6 +131,7 @@ def test_unsupported_or_unavailable_manager_refuses_before_reserve_and_quiescenc
     assert events == ["deployment-lock", "manager-version", "deployment-unlock"]
 
 
+@LINUX_ONLY
 @pytest.mark.parametrize("version", ("255.4-1ubuntu8.17", "255.4-1ubuntu8.18"))
 def test_supported_manager_reaches_next_port_without_reserving_or_stopping(
     monkeypatch, version,
@@ -135,6 +144,7 @@ def test_supported_manager_reaches_next_port_without_reserving_or_stopping(
     ]
 
 
+@LINUX_ONLY
 @pytest.mark.parametrize("executable", ("/untrusted/systemctl", "relative-systemctl"))
 def test_early_manager_read_cannot_execute_an_unbound_descriptor_path(monkeypatch, executable):
     call, events = _cutover_entry(
@@ -205,6 +215,7 @@ def _observation_fixture(tmp_path, monkeypatch, *, signed_version, observed_vers
     return administrative, common, encoded
 
 
+@LINUX_ONLY
 def test_native_double_observation_accepts_exact_signed_18(tmp_path, monkeypatch):
     administrative, common, encoded = _observation_fixture(
         tmp_path, monkeypatch, signed_version="255.4-1ubuntu8.18",
@@ -215,6 +226,7 @@ def test_native_double_observation_accepts_exact_signed_18(tmp_path, monkeypatch
     assert observed.observation.prerequisite.content == encoded
 
 
+@LINUX_ONLY
 def test_supported_18_does_not_reinterpret_a_prerequisite_signed_for_17(tmp_path, monkeypatch):
     administrative, common, _encoded = _observation_fixture(
         tmp_path, monkeypatch, signed_version="255.4-1ubuntu8.17",
@@ -228,6 +240,7 @@ def test_supported_18_does_not_reinterpret_a_prerequisite_signed_for_17(tmp_path
     )
 
 
+@LINUX_ONLY
 def test_switch_between_two_supported_versions_still_denies_ab_drift(tmp_path, monkeypatch):
     administrative, common, _encoded = _observation_fixture(
         tmp_path, monkeypatch, signed_version="255.4-1ubuntu8.17",

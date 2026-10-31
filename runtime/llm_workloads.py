@@ -51,6 +51,7 @@ WORKLOADS: dict[str, WorkloadContract] = {
     "sites.goal_reduce": WorkloadContract("fast", "micro", "micro_decision", "json"),
     "sites.action_reduce": WorkloadContract("fast", "micro", "micro_decision", "json"),
     "sites.cookie_resolution": WorkloadContract("fast", "micro", "micro_decision", "json"),
+    "sites.challenge_target": WorkloadContract("fast", "micro", "micro_decision", "json"),
     "sites.challenge_vision": WorkloadContract("frontier", None, "frontier", "json"),
     "images.search_rerank": WorkloadContract("fast", "micro", "micro_decision", "json"),
     "tutor.mode": WorkloadContract("fast", "micro", "micro_decision", "label"),

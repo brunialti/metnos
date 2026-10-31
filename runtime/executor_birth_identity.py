@@ -312,6 +312,9 @@ MANIFEST_FIELD_GRAMMAR_V1: dict[str, object] = {
         "frozen_plan": _FROZEN_PLAN,
     },
     "placement": {"scope": None, "min_sandbox": None, "device_ok": None},
+    # Signed native file-broker contract (ADR 0237): part of the identity.
+    "filesystem": {"protocol": None, "operation": None,
+                   "when": {"arg": None, "values": None}},
     "sandbox": {"network_allowed": None, "fs_read": None, "fs_write": None,
                 "exec_allowed": None},
     "provenance": {"skill_id": None, "imported_from": None,

@@ -774,8 +774,21 @@ def _scope_without_destination(text: str, target: set[str]) -> str:
     return text.strip()
 
 
+def _goal_alternatives(goal: str) -> list[str]:
+    """The parts of a goal the planner wrote as alternatives ("A or B")."""
+    forms = "|".join(re.escape(form) for form in sorted(
+        _concept_forms("syntax.negative_coordination"), key=len, reverse=True))
+    if not forms:
+        return [goal]
+    return [part.strip() for part in re.split(rf"(?<!\w)(?:{forms})(?!\w)", goal,
+                                              flags=re.IGNORECASE) if part.strip()]
+
+
 def goal_scope_sources(clause: str, goal: str) -> set[str]:
     """Return every asserted object phrase attached to this goal.
+
+    A goal listing alternatives binds through any of them: a planner that adds
+    a second name for the same place has not swapped the object.
 
     The quantified phrase runs to the next registered list connector or
     punctuation. Before the goal, it binds from its first goal word that is
@@ -790,6 +803,9 @@ def goal_scope_sources(clause: str, goal: str) -> set[str]:
     margin is separate. Distinct phrases stay ambiguous even when both use
     the same quantifier. This never borrows 'all' from another object.
     """
+    alternatives = _goal_alternatives(goal) if _detlex is not None else [goal]
+    if len(alternatives) > 1:
+        return set().union(*(goal_scope_sources(clause, part) for part in alternatives))
     target = set(_scope_target_tokens(goal))
     if not target or _detlex is None:
         return set()

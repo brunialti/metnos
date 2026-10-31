@@ -1,0 +1,16 @@
+{# ---
+role: sites_challenge_target
+tier: fast
+lang: it
+style: prescriptive
+version: 2
+owner: roberto
+updated: 2026-10-29
+sha_prev: 3adf6600
+--- #}
+DEVI: restituisci SOLO JSON {"class":<NUMERO>,"subtype":<BOOLEANO>}: le CLASSI sono categorie di oggetti fotografati nelle sfide a immagini; "class" e' il numero della classe che nomina il tipo di oggetto della PAROLA, in qualunque lingua sia scritta, oppure 0 se nessuna classe lo nomina; "subtype" e' true quando la PAROLA nomina solo un sottotipo o un caso particolare di quella classe, false quando nomina tutta la classe, anche insieme ad altro.
+NON DEVI: scegliere una classe soltanto simile o vicina; aggiungere altri campi o testo.
+OK: {"class":<NUMERO_DELLA_CLASSE_EQUIVALENTE>,"subtype":false}.
+E' UN ERRORE: {"class":<NUMERO_DI_UNA_CLASSE_SOLO_SIMILE>,"subtype":false}.
+PAROLA: {{ keyword_json }}
+CLASSI: {{ classes_json }}

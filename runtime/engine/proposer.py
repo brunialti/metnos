@@ -590,6 +590,16 @@ class SimpleProposer:
             query=query, intent=intent, pool=pool,
             catalog=catalog, exclude_tools=exclude_tools)
 
+        # Non-action routing deliberately supplies no operational tools. Keep
+        # its grammar closed while allowing the virtual response step. Never
+        # give an empty action pool this exception.
+        response_only = intent.kind in {"conversation", "metnos_help"}
+        if response_only:
+            if "final_answer" in exclude_tools:
+                return None
+            effective_pool = ["final_answer"]
+            use_grammar = True
+
         # B10 — pool effettivo VUOTO (verb-filter/exclude_tools hanno tolto
         # tutto, o pool vuoto dal caller): la grammar GBNF degraderebbe a
         # `tool ::= string` (allucinazione libera) e il prompt non offrirebbe
@@ -604,6 +614,7 @@ class SimpleProposer:
         # Render tool schemas inline (Mētis needs arg names + required)
         tools_inline = _render_tool_pool(effective_pool, catalog)
         prompt_vars = dict(
+            kind=intent.kind,
             verb=intent.verb, obj=intent.object,
             keywords=", ".join(intent.keywords),
             tools=tools_inline,
@@ -722,6 +733,19 @@ class SimpleProposer:
         if not parsed:
             log.info("SimpleProposer parse fail. Raw head: %r", (raw or "")[:200])
             return None
+        if response_only:
+            # Validate before tolerant decoding: malformed fields must not
+            # become an operational step or raise an exception here.
+            steps = parsed.get("steps")
+            if (not isinstance(steps, list) or len(steps) != 1
+                    or not isinstance(steps[0], dict)
+                    or steps[0].get("tool") != "final_answer"
+                    or steps[0].get("args") != {}
+                    or steps[0].get("if_prev_entries_nonempty")
+                    or parsed.get("fillers", {}) != {}
+                    or not isinstance(parsed.get("final_message"), str)
+                    or not parsed["final_message"].strip()):
+                return None
         try:
             return Framework.from_dict(parsed)
         except Exception as ex:

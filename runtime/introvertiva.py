@@ -39,6 +39,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent))
 from mnestoma import Mnestoma  # noqa: E402
 import config as _C  # §7.11
+from audit_jsonl import read_jsonl_records  # noqa: E402
 
 AUDIT_DIR = _C.PATH_USER_DATA / "introvertiva"
 
@@ -95,15 +96,7 @@ def candidates_dedupe(*, min_uses: int = 1) -> list[dict]:
 def _read_audit(path: Path) -> list[dict]:
     if not path.exists():
         return []
-    out = []
-    for line in path.read_text().splitlines():
-        if not line.strip():
-            continue
-        try:
-            out.append(json.loads(line))
-        except json.JSONDecodeError:
-            continue
-    return out
+    return read_jsonl_records(path)
 
 
 def _candidate_key(rec: dict, op: str) -> str:

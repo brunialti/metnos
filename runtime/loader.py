@@ -471,6 +471,7 @@ def builtin_contract_executor(name: str, module_path: Path,
         deprecated_at=None,
         deprecation_ttl_hours=24,
         placement=dict(manifest.get("placement") or {}),
+        filesystem=dict(manifest.get("filesystem") or {}),
         undo=dict(manifest.get("undo") or {}),
         platforms=list(manifest.get("platforms") or ["linux"]),
         digest=str((manifest.get("code") or {}).get("digest") or ""),
@@ -830,6 +831,8 @@ class Executor:
     # Vuoto = scope "any" (gira su .33 come oggi). Consumato da
     # placement.choose_placement nel hook di invoke_executor.
     placement: dict = field(default_factory=dict)
+    # Signed closed filesystem operations, independent of executor code.
+    filesystem: dict = field(default_factory=dict)
     # Sezione `[undo]` del manifest (ADR 0209 D3): che cosa rispondere a un
     # «annulla» quando l'operazione NON e' annullabile ma esiste un rimedio.
     # Un'installazione non si ripercorre all'indietro; disinstallare e'
@@ -2195,6 +2198,7 @@ def _load_parsed_manifest_into_catalog(
             sandbox_profile=sandbox_profile,
             provenance=provenance,
             placement=_placement,
+            filesystem=dict(manifest.get("filesystem") or {}),
             undo=dict(manifest.get("undo") or {})
             if isinstance(manifest.get("undo"), dict) else {},
             complexity=_complexity,

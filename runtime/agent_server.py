@@ -38,6 +38,7 @@ import json
 import logging
 import os
 import re
+import sqlite3
 import sys
 import threading
 from pathlib import Path
@@ -947,15 +948,80 @@ async def client_join_installer(request: web.Request) -> web.Response:
 
 # --- app factory ----------------------------------------------------------
 
-def make_app() -> web.Application:
+# Server files touched for a device are written by the main Metnos service.
+# This port may live in a sandboxed process (the combined Telegram daemon has a
+# read-only filesystem outside its data): it relays the signed request as-is.
+FILESYSTEM_RELAY_PATH = "/agent/filesystem/server"
+_FILESYSTEM_DELEGATE = web.AppKey("filesystem_delegate", str)
+
+
+async def filesystem_response(device, body: dict) -> web.Response:
+    """Answer one verified device file-broker request in this process."""
+    import device_filesystem
+    import filesystem_permissions
+    from messages import get as _msg
+    try:
+        response = await asyncio.to_thread(device_filesystem.respond, device, body)
+    except filesystem_permissions.PermissionError as exc:
+        return _error(403, str(exc), _msg(str(exc)))
+    except OSError as exc:
+        # The operating system refused the server file (permissions, read-only
+        # filesystem): say so, never an integrity failure (§2.8).
+        log.warning("file broker: server file refused for %s: %s",
+                    device.id[:12], type(exc).__name__)
+        return _error(403, "ERR_FS_IO", _msg("ERR_FS_IO"))
+    except (ValueError, sqlite3.Error) as exc:
+        log.warning("file broker: invalid transfer for %s: %s",
+                    device.id[:12], type(exc).__name__)
+        return _error(400, "ERR_FS_TRANSFER_INVALID", _msg("ERR_FS_TRANSFER_INVALID"))
+    return web.json_response(response)
+
+
+def _admin_bearer() -> str:
+    from http_auth import ADMIN_KEY_PATH
+    return ADMIN_KEY_PATH.read_text(encoding="ascii").strip()
+
+
+async def _relay_filesystem(request: web.Request, delegate: str) -> web.Response:
+    import aiohttp
+    from messages import get as _msg
+    raw = await request.read()
+    headers = {"Content-Type": "application/json",
+               DEVICE_SIG_HEADER: request.headers.get(DEVICE_SIG_HEADER, ""),
+               "Authorization": "Bearer " + await asyncio.to_thread(_admin_bearer)}
+    try:
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=60)) as session:
+            async with session.post(delegate.rstrip("/") + FILESYSTEM_RELAY_PATH,
+                                    data=raw, headers=headers) as reply:
+                payload = await reply.read()
+                return web.Response(status=reply.status, body=payload,
+                                    content_type="application/json")
+    except (aiohttp.ClientError, OSError, asyncio.TimeoutError) as exc:
+        log.warning("file broker relay unavailable: %s", type(exc).__name__)
+        return _error(503, "ERR_FS_IO", _msg("ERR_FS_IO"))
+
+
+async def filesystem_broker(request: web.Request) -> web.Response:
+    out = await _verified_device_body(request)
+    if isinstance(out, web.Response):
+        return out
+    device, body = out
+    delegate = request.app.get(_FILESYSTEM_DELEGATE, "")
+    if delegate:
+        return await _relay_filesystem(request, delegate)
+    return await filesystem_response(device, body)
+
+def make_app(*, filesystem_delegate: str = "") -> web.Application:
     # 4 MB: gli entries di un result remoto possono essere corposi (§2.7 cap
     # a monte via max_total; qui e' solo il limite di trasporto).
     app = web.Application(client_max_size=4 * 1024 * 1024)
+    app[_FILESYSTEM_DELEGATE] = filesystem_delegate
     app.router.add_get("/agent/health", health)
     app.router.add_post("/agent/register", register)
     app.router.add_post("/agent/poll", poll)
     app.router.add_post("/agent/result", result)
     app.router.add_post("/agent/heartbeat", heartbeat)
+    app.router.add_post("/agent/filesystem", filesystem_broker)
     app.router.add_get("/agent/executor/{name}", executor_bundle)
     app.router.add_get("/agent/shim", shim_bundle)
     # Join flow (§5): PRIMA del mirror, che ha la route catch-all
@@ -973,8 +1039,8 @@ def make_app() -> web.Application:
 # --- standalone runner ----------------------------------------------------
 
 async def _serve(host: str, port: int, ready: asyncio.Event | None = None,
-                 stop: asyncio.Event | None = None) -> None:
-    app = make_app()
+                 stop: asyncio.Event | None = None, *, filesystem_delegate: str = "") -> None:
+    app = make_app(filesystem_delegate=filesystem_delegate)
     runner = web.AppRunner(app, access_log=None)
     await runner.setup()
     site = web.TCPSite(runner, host, port)
@@ -1022,9 +1088,11 @@ class AgentServerThread:
     inalterato.
     """
 
-    def __init__(self, host: str = DEFAULT_HOST, port: int = DEFAULT_PORT):
+    def __init__(self, host: str = DEFAULT_HOST, port: int = DEFAULT_PORT, *,
+                 filesystem_delegate: str = ""):
         self.host = host
         self.port = port
+        self.filesystem_delegate = filesystem_delegate
         self._thread: threading.Thread | None = None
         self._stop_flag = threading.Event()
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -1058,7 +1126,8 @@ class AgentServerThread:
             self._stop_evt = asyncio.Event()
             ready = asyncio.Event()
             task = loop.create_task(
-                _serve(self.host, self.port, ready=ready, stop=self._stop_evt)
+                _serve(self.host, self.port, ready=ready, stop=self._stop_evt,
+                       filesystem_delegate=self.filesystem_delegate)
             )
             loop.run_until_complete(task)
         finally:

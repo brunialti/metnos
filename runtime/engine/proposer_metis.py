@@ -183,7 +183,7 @@ class MetisProposer:
             recovery_key = ""
         # Fix #2: lang separa IT/EN. Il segnale di recovery separa i candidati
         # ordinari da quelli prodotti dopo un fallimento osservato.
-        return (h, intent.verb, intent.object, lang, epoch, recovery_key)
+        return (h, intent.kind, intent.verb, intent.object, lang, epoch, recovery_key)
 
     def _cache_put(self, key, value):
         """LRU insert: move to end (most recent), evict oldest if over cap."""
@@ -208,6 +208,12 @@ class MetisProposer:
                 prior_steps: Sequence = ()) -> Optional[Framework]:
         if not query or llm_call is None:
             return None
+        if intent.kind in {"conversation", "metnos_help"}:
+            return self._simple.propose(
+                query=query, intent=intent, pool=pool,
+                excluded_hashes=excluded_hashes, llm_call=llm_call,
+                lang=lang, catalog=catalog, exclude_tools=exclude_tools,
+                prior_steps=prior_steps)
         # exclude_tools (guard get_inputs-misroute in dispatch): rimuovi dal
         # pool PRIMA del render/grammar e propaga a SimpleProposer (i tool
         # esclusi possono rientrare come universal-helper → SimpleProposer li

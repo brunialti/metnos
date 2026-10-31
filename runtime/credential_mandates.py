@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import ipaddress
-import json
 import re
 from pathlib import Path
 
 import credentials
 from messages import get as _msg
 import sites_audit
+from audit_jsonl import read_jsonl_records
 
 SITES_READ_SCOPE = "sites.read"
 INTERACTIVE_PROFILE = "interactive"
@@ -106,18 +106,9 @@ def canonical_site_host(value: str) -> str:
 def _read_sites_audit(path: Path | None = None) -> list[dict]:
     source = Path(path or sites_audit.AUDIT_PATH)
     try:
-        lines = source.read_text(encoding="utf-8").splitlines()
+        return read_jsonl_records(source)
     except OSError:
         return []
-    out = []
-    for line in lines:
-        try:
-            value = json.loads(line)
-        except (TypeError, json.JSONDecodeError):
-            continue
-        if isinstance(value, dict):
-            out.append(value)
-    return out
 
 
 def verified_site_topology(owner_user_id: str, *,

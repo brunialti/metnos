@@ -2857,8 +2857,13 @@ def main(argv: list[str] | None = None) -> int:
 
     # Server HTTP per executor remoti, in thread daemon, auto-resume su crash.
     if not args.no_agent_server:
+        # This process is sandboxed: server files for devices are written by
+        # the main service, reached on this host.
+        import os as _os
         srv = agent_server.AgentServerThread(
             host=args.agent_host, port=args.agent_port,
+            filesystem_delegate=_os.environ.get(
+                "METNOS_HTTP_BASE_URL", "http://127.0.0.1:8770"),
         )
         srv.start()
         log.info("agent_server thread avviato su %s:%d", args.agent_host, args.agent_port)

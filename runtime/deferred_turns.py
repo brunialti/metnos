@@ -14,13 +14,13 @@ Stati: pending → done | failed | expired. TTL default 24h
 from __future__ import annotations
 
 import fcntl
-import json
 import os
 import time
 import uuid
 from contextlib import contextmanager
 
 import config as _C  # §7.11
+from audit_jsonl import jsonl_line, read_jsonl_records
 
 DB_PATH = _C.PATH_USER_DATA / "deferred_turns.jsonl"
 LOCK_PATH = _C.PATH_USER_DATA / "deferred_turns.lock"
@@ -57,11 +57,11 @@ def _ttl_s() -> float:
 
 def _append(rec: dict) -> None:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    line = json.dumps(rec, ensure_ascii=False) + "\n"
+    line = jsonl_line(rec)
     with _store_lock(exclusive=True):
         fd = os.open(DB_PATH, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
         try:
-            _write_all(fd, line.encode("utf-8"))
+            _write_all(fd, line)
             os.fsync(fd)
         finally:
             os.close(fd)
@@ -72,26 +72,10 @@ def _load() -> dict[str, dict]:
     out: dict[str, dict] = {}
     with _store_lock(exclusive=False):
         try:
-            fd = os.open(DB_PATH, os.O_RDONLY)
+            records = read_jsonl_records(DB_PATH)
         except FileNotFoundError:
             return out
-        try:
-            chunks = []
-            while True:
-                chunk = os.read(fd, 1024 * 1024)
-                if not chunk:
-                    break
-                chunks.append(chunk)
-        finally:
-            os.close(fd)
-    for line in b"".join(chunks).decode("utf-8", "replace").splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            rec = json.loads(line)
-        except json.JSONDecodeError:
-            continue
+    for rec in records:
         rid = rec.get("id")
         if rid:
             out[rid] = {**out.get(rid, {}), **rec}
@@ -174,26 +158,12 @@ def _rewrite_excluding(*, owner_user_id: str | None = None,
                        unscoped: bool = False) -> int:
     with _store_lock(exclusive=True):
         try:
-            fd = os.open(DB_PATH, os.O_RDONLY)
+            records = read_jsonl_records(DB_PATH)
         except FileNotFoundError:
             return 0
-        try:
-            chunks = []
-            while True:
-                chunk = os.read(fd, 1024 * 1024)
-                if not chunk:
-                    break
-                chunks.append(chunk)
-        finally:
-            os.close(fd)
-        data = b"".join(chunks).decode("utf-8", "replace")
         parsed: list[tuple[str, dict]] = []
         final: dict[str, dict] = {}
-        for line in data.splitlines():
-            try:
-                record = json.loads(line)
-            except json.JSONDecodeError:
-                continue
+        for record in records:
             rid = str(record.get("id") or "")
             if not rid:
                 continue
@@ -207,14 +177,14 @@ def _rewrite_excluding(*, owner_user_id: str | None = None,
                 or (unscoped and not record.get("owner_user_id")))
         }
         retained = [
-            json.dumps(record, ensure_ascii=False) + "\n"
+            jsonl_line(record)
             for rid, record in parsed if rid not in remove_ids
         ]
         temporary = DB_PATH.with_name(DB_PATH.name + ".rewrite.tmp")
         tmp_fd = os.open(
             temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         try:
-            _write_all(tmp_fd, "".join(retained).encode("utf-8"))
+            _write_all(tmp_fd, b"".join(retained))
             os.fsync(tmp_fd)
         finally:
             os.close(tmp_fd)

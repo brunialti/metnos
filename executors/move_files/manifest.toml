@@ -6,22 +6,22 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "move_files"
-version     = "0.10.0"
+version     = "0.11.0"
 # C7 CP4: backend local pathlib/os puro → gira anche su Windows
 # (mutanti validati e2e device 5/7). Senza dichiarazione, placement
 # rifiuterebbe un device Windows (F1).
 platforms   = ["linux", "windows"]
 author      = "Roberto Brunialti"
 affinity    = [
-    "move", "sposta", "rinomina", "rename", "mv", "spostare", "rinominare",
+    "copy", "copia", "copiare", "cp", "move", "sposta", "rinomina", "rename", "mv", "spostare", "rinominare",
     "file", "files", "documenti", "relocate", "archive", "cartella", "batch",
 ]
 revertible      = true
 reverse_pattern = ["swap_src_dst", "restore_blob_backup", "delete_created_dirs"]
 
 [description]
-it = "SCOPO: sposta o rinomina file in batch. PATTERN: move_files(from_step=1, dst_template='/a/{name}'). NON: convertire formati (-> change_files_format); comprimere (-> compress_files). OUT: {results:[{src,dst}], dirs_created:[...], failed:[...]}, best-effort."
-en = "SCOPO: move or rename files in batch. PATTERN: move_files(from_step=1, dst_template='/a/{name}'). NON: convert formats (-> change_files_format); compress (-> compress_files). OUT: {results:[{src,dst}], dirs_created:[...], failed:[...]}, best effort."
+it = "SCOPO: sposta, rinomina o copia file in batch; con copy=true conserva l’origine, anche tra dispositivo e server. PATTERN: move_files(from_step=1, dst_template='/a/{name}'). NON: convertire formati (-> change_files_format); comprimere (-> compress_files). OUT: {results:[{src,dst}], dirs_created:[...], failed:[...]}, best-effort."
+en = "SCOPO: move, rename or copy files in batch; copy=true preserves the source, including transfers between device and server. PATTERN: move_files(from_step=1, dst_template='/a/{name}'). NON: convert formats (-> change_files_format); compress (-> compress_files). OUT: {results:[{src,dst}], dirs_created:[...], failed:[...]}, best effort."
 
 [code]
 files  = ["move_files.py"]
@@ -66,19 +66,18 @@ en = "If true, replace dst if it exists (removes it first). Default false: the s
 [args.properties.copy]
 type        = "boolean"
 default     = false
-runtime_resolved = true
 
 [args.properties.copy.description]
-it = "Runtime-only. Se true COPIA invece di spostare (src resta). Usato dal reverse remoto restore_blob_backup: un blob deduplicato serve piu' path."
-en = "Runtime-only. If true COPY instead of move (src remains). Used by the remote restore_blob_backup reverse: a deduplicated blob serves multiple paths."
+it = "Se true copia i file e conserva le origini. Usalo quando l’utente chiede una copia; false sposta i file."
+en = "If true, copy files and preserve their sources. Use it when the user requests a copy; false moves files."
 
 [args.properties.parents]
 type        = "boolean"
 default     = true
 
 [args.properties.parents.description]
-it = "Se true (default), crea la dir parent di dst se manca."
-en = "If true (default), create the parent dir of dst if it is missing."
+it = "Se true (default), crea la cartella di destinazione mancante negli spazi ordinari del server. Sui percorsi autorizzati aggiuntivi o remoti la cartella deve già esistere."
+en = "If true (default), create a missing destination folder in ordinary server working areas. For additional authorized or remote paths, the folder must already exist."
 
 [args.properties.allow_dirs]
 type        = "boolean"
@@ -230,11 +229,34 @@ input  = { entries = [], dst_template = "/tmp/metnos_test_move_files/{name}", cl
 expect = { ok = false, field_eq = { error_code = "ERR_NOT_APPLICABLE" } }
 
 [placement]
-# C7 Area-2 CP4 (5/7): mutante device-abile — scope="any" = server di
-# default; device SOLO se la chat lo nomina. UNDO round-trip: il reverse
-# (pure-path: swap_src_dst / delete_created_*) viene ACCODATO ALLO STESSO
-# device da undo_last_turn (§2.9 mai ribaltare sul server). delete_files
-# resta server-only (restore_blob_backup non remotabile: blob sul device).
+# Server per default; dispositivo soltanto se richiesto nella chat. Le copie
+# remote usano il protocollo filesystem firmato e conservano le origini.
+# L'annullamento torna sul dispositivo originale; il server verifica anche
+# le ricevute delle destinazioni che ospita e i permessi correnti.
 scope    = "any"
 device_ok = true
 min_sandbox = "appcontainer"
+
+[[capabilities]]
+name = "fs:read"
+hint = ["~/notes/**", "/tmp/**"]
+when = { arg = "copy", values = [true] }
+
+[args.properties.source_location]
+type = "string"
+enum = ["server", "device"]
+[args.properties.source_location.description]
+it = "Per una copia indica dove si trova l’origine: server Metnos o dispositivo selezionato. I percorsi Windows assoluti identificano il dispositivo; quelli POSIX il server per un dispositivo Windows."
+en = "For a copy, locate the source on the Metnos server or selected device. Absolute Windows paths identify the device; POSIX paths identify the server for a Windows device."
+
+[args.properties.destination_location]
+type = "string"
+enum = ["server", "device"]
+[args.properties.destination_location.description]
+it = "Per una copia indica dove si trova la destinazione. Specifica entrambe le posizioni quando dispositivo e server usano percorsi POSIX. Le cartelle di destinazione del broker devono già esistere."
+en = "For a copy, locate the destination. Specify both locations when device and server use POSIX paths. Broker destination directories must already exist."
+
+[filesystem]
+protocol = "filesystem_broker_v1"
+operation = "copy"
+when = { arg = "copy", values = [true] }

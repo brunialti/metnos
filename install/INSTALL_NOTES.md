@@ -45,6 +45,16 @@ The shell handoff prepends both the selected repository root and its `runtime/`
 directory to `PYTHONPATH`. This is required by the runtime's reviewed flat peer
 imports; an inherited path can never select modules from another checkout.
 
+The filesystem permissions UI preserves existing personal/workspace access.
+Additional server grants are account-scoped and independent of device grants;
+they are stored with audit events in the existing devices database. They do not
+alter OS permissions. Its IT/EN catalogue is materialized into the installation
+seed by `scripts/sync_filesystem_permissions_i18n.py`; this seed must ship with
+the matching runtime and templates. Native device filesystem operations require
+client 0.2.64 advertising `filesystem_broker_v1` and signed matching contracts.
+Older clients display an update notice rather than receiving expanded access.
+See ADR 0237 for transfer limits and the five-second device authority lifetime.
+
 `bash install/bootstrap.sh --check` may create or update `.venv` before it
 reaches the Python pre-flight. When that environment already exists,
 `./.venv/bin/python -m install --check` is the read-only pre-flight: it must not
@@ -774,6 +784,11 @@ paths used by the in-process embedder and verifies their pinned SHA-256 values.
 An absent or corrupt mandatory asset aborts the phase. Optional assets must
 likewise use a pinned revision or digest whenever the upstream distribution
 provides a stable artifact.
+The optional reCAPTCHA tile classifier (`captcha_grid_classifier`) follows
+this rule; its absence or a different digest disables only the automatic
+answer to 3x3 image grids, which then go to the person. Its model card declares
+MIT while the Ultralytics export metadata states AGPL-3.0: the installer fetches
+it from the source at the pinned revision and the distribution never ships it.
 
 A compatible text endpoint may be local or remote. Reuse requires an explicit
 entry in `services.toml`; a responding undeclared local endpoint is a conflict,

@@ -758,6 +758,27 @@ def _distinct_records(records: list[dict]) -> int:
     return len(representatives)
 
 
+def _one_document(records: list[dict]) -> bool:
+    """Rows agreeing on a date and on an amount are lines of one document: the
+    code they share is its number, however many lines it has (Roberto,
+    31/10/2026, real run Telepass: «righe ripetute»)."""
+    fields = [_evidence_fields(record) for record in records]
+    codes = {fact.get("field") for record in records for fact in record.get("_record_facts") or ()
+             if isinstance(fact, dict) and fact.get("role") == "identifier"}
+    agreed = [next(iter(values)) for name in set.intersection(*(set(f) for f in fields)) - codes
+              if len(values := {str(f[name]) for f in fields}) == 1]
+    return (any(_period(value) for value in agreed)
+            and any(_number(value) is not None and not _period(value) for value in agreed))
+
+
+def _line_codes_differ(records: list[dict], conflicts: set) -> bool:
+    """Every row carries its own code in one of the differing fields."""
+    codes = {fact.get("field") for fact in records[0].get("_record_facts") or ()
+             if isinstance(fact, dict) and fact.get("role") == "identifier"}
+    return any(len({str(_public(record).get(field)) for record in records}) == len(records)
+               for field in conflicts & codes)
+
+
 def _release_shared_codes(records: list[dict]) -> list[dict]:
     """A value claimed as the own identifier of three or more records that
     differ from each other is a code they share (a customer or supply
@@ -773,7 +794,8 @@ def _release_shared_codes(records: list[dict]) -> list[dict]:
             holders.setdefault(claim, []).append(index)
     shared = {claim for claim, members in holders.items()
               if len(members) >= _SHARED_CODE_RECORDS
-              and _distinct_records([records[i] for i in members]) >= _SHARED_CODE_RECORDS}
+              and _distinct_records([records[i] for i in members]) >= _SHARED_CODE_RECORDS
+              and not _one_document([records[i] for i in members])}
     released = list(records)
     for claim in shared:
         for index in holders[claim]:
@@ -857,7 +879,15 @@ def merge_observed_identifiers(records: list[dict], *, source_key: str = "_sourc
             suspected.update(members)
             continue
         merged = _merge_group([records[i] for i in members])
-        if conflicts:
+        group = [records[i] for i in sorted(members)]
+        if conflicts and _one_document(group) and _line_codes_differ(group, conflicts):
+            # The lines of one invoice, not a contradiction: every cell keeps
+            # them in the page's order, so a value still sits next to its own
+            # (real run Telepass 31/10, confirmed on the site's page).
+            for field in conflicts:
+                merged[field] = " / ".join(str(_public(record).get(field) or "") for record in group)
+            merged.pop("_record_conflicts", None)
+        elif conflicts:
             # One identifier, one row (Roberto, 20/10/2026): every different
             # value observed for a conflicting field is shown, compatible
             # ones once, and the row is declared invalid data.

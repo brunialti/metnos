@@ -1,6 +1,6 @@
 {
   "schema": "metnos.contract-boundary-inventory/2",
-  "source_census": "sha256:48427c15fd007241fb129cc1793e4546026b066ef35cc11f693bc915637f0911",
+  "source_census": "sha256:71542ea44d64fa8629bbed99872d7fb03714ad4b998fc6abc10f7d1d758e10b8",
   "scan_roots": [
     "runtime",
     "install",
@@ -2909,6 +2909,16 @@
     {
       "path": "runtime/credentials.py",
       "scope": "credential_form_kinds",
+      "role": "live_reader",
+      "capabilities": [
+        "live_artifact_read"
+      ],
+      "destination": "verified live catalog, immutable store, or live artifact boundary only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/device_filesystem.py",
+      "scope": "_invocation",
       "role": "live_reader",
       "capabilities": [
         "live_artifact_read"

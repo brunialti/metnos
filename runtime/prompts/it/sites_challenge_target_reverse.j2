@@ -1,0 +1,16 @@
+{# ---
+role: sites_challenge_target_reverse
+tier: fast
+lang: it
+style: prescriptive
+version: 2
+owner: roberto
+updated: 2026-10-29
+sha_prev: 5db049b5
+--- #}
+DEVI: restituisci SOLO JSON {"every":<BOOLEANO>}: la CLASSE e' una categoria di oggetti fotografati nelle sfide a immagini; true quando ogni oggetto della CLASSE e' anche un oggetto nominato dalla PAROLA, in qualunque lingua sia scritta, anche se la PAROLA nomina anche altro; false quando esistono oggetti della CLASSE che la PAROLA non nomina.
+NON DEVI: rispondere true per una PAROLA che nomina soltanto un sottotipo, un caso particolare o un oggetto diverso; aggiungere altri campi o testo.
+OK: {"every":true} per una PAROLA che nomina lo stesso tipo della CLASSE.
+E' UN ERRORE: {"every":true} per una PAROLA che nomina un sottotipo della CLASSE.
+PAROLA: {{ keyword_json }}
+CLASSE: {{ class_json }}

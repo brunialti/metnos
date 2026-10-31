@@ -9,11 +9,11 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 import fcntl
-import json
 import os
 import time
 
 import config as _C
+from audit_jsonl import jsonl_line, read_jsonl_records
 
 DEFAULT_LOG = _C.PATH_USER_DATA / "locations.jsonl"
 LOCK_PATH = _C.PATH_USER_DATA / "locations.lock"
@@ -41,32 +41,12 @@ def _write_all(descriptor: int, body: bytes) -> None:
         remaining = remaining[written:]
 
 
-def _read_bytes_unlocked() -> bytes:
+def _records_unlocked() -> list[dict] | None:
+    """Return the stored records, or None when the store does not exist."""
     try:
-        descriptor = os.open(DEFAULT_LOG, os.O_RDONLY)
+        return read_jsonl_records(DEFAULT_LOG)
     except FileNotFoundError:
-        return b""
-    try:
-        chunks: list[bytes] = []
-        while True:
-            chunk = os.read(descriptor, 1024 * 1024)
-            if not chunk:
-                return b"".join(chunks)
-            chunks.append(chunk)
-    finally:
-        os.close(descriptor)
-
-
-def _records(data: bytes):
-    for raw_line in data.decode("utf-8", "replace").splitlines():
-        if not raw_line.strip():
-            continue
-        try:
-            record = json.loads(raw_line)
-        except (TypeError, ValueError, json.JSONDecodeError):
-            continue
-        if isinstance(record, dict):
-            yield record
+        return None
 
 
 def record_location(*, owner_user_id: str, actor: str, channel: str,
@@ -90,8 +70,7 @@ def record_location(*, owner_user_id: str, actor: str, channel: str,
         record["accuracy"] = float(accuracy)
     if source:
         record["source"] = str(source)
-    line = (json.dumps(record, ensure_ascii=False, separators=(",", ":"))
-            + "\n").encode("utf-8")
+    line = jsonl_line(record, separators=(",", ":"))
     with _store_lock(exclusive=True):
         descriptor = os.open(
             DEFAULT_LOG, os.O_CREAT | os.O_WRONLY | os.O_APPEND, 0o600)
@@ -109,9 +88,9 @@ def get_last_location(*, owner_user_id: str) -> dict | None:
     if not owner:
         return None
     with _store_lock(exclusive=False):
-        data = _read_bytes_unlocked()
+        records = _records_unlocked() or []
     last = None
-    for record in _records(data):
+    for record in records:
         if str(record.get("owner_user_id") or "") == owner:
             last = record
     return last
@@ -121,10 +100,12 @@ def _rewrite_excluding(*, owner_user_id: str | None = None,
                        unscoped: bool = False) -> int:
     target_owner = str(owner_user_id or "").strip()
     with _store_lock(exclusive=True):
-        data = _read_bytes_unlocked()
+        records = _records_unlocked()
+        if records is None:
+            return 0
         retained: list[dict] = []
         removed = 0
-        for record in _records(data):
+        for record in records:
             remove = bool(
                 (target_owner
                  and str(record.get("owner_user_id") or "") == target_owner)
@@ -133,11 +114,8 @@ def _rewrite_excluding(*, owner_user_id: str | None = None,
                 removed += 1
             else:
                 retained.append(record)
-        if not data and not retained:
-            return removed
-        body = "".join(
-            json.dumps(record, ensure_ascii=False, separators=(",", ":"))
-            + "\n" for record in retained).encode("utf-8")
+        body = b"".join(
+            jsonl_line(record, separators=(",", ":")) for record in retained)
         temporary = DEFAULT_LOG.with_name(DEFAULT_LOG.name + ".rewrite.tmp")
         descriptor = os.open(
             temporary, os.O_CREAT | os.O_WRONLY | os.O_TRUNC, 0o600)

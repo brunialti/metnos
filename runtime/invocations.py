@@ -534,6 +534,11 @@ def _validate_operation(artifact: ExecutorArtifact, args: dict, operation: str,
                         dev: devices.Device) -> None:
     """Validate one signed executor operation before it reaches the queue."""
     if operation == "invoke":
+        import filesystem_permissions
+        if (filesystem_permissions.contract(artifact.parsed, args) is not None
+                and filesystem_permissions.CAPABILITY not in _device_protocol_capabilities(dev)):
+            from messages import get as _message
+            raise InvocationError(_message("MSG_FS_UPDATE_REQUIRED"))
         return
     if operation != "reverse":
         raise InvocationError(f"unsupported executor operation: {operation}")
@@ -578,6 +583,8 @@ def mark_abandoned(invocation_id: str, *, db_path: Path | None = None) -> None:
             conn.commit()
         finally:
             conn.close()
+        from device_filesystem import cleanup_stale_transfers
+        cleanup_stale_transfers(db_path=db_path)
     except Exception as ex:  # noqa: BLE001 — best-effort, non blocca il turno
         log.warning("mark_abandoned(%s) fallita: %r", invocation_id, ex)
 
@@ -704,6 +711,17 @@ def enqueue_invocation(device_id: str, executor: str, args: dict, *,
     manifest_sha = artifact.manifest_sha256
     code_sha = artifact.code_sha256
     _validate_operation(artifact, args or {}, operation, dev)
+    # Resolve the ordinary vector/entry forms before signing. The native
+    # broker receives explicit paths and bytes, with no template execution.
+    from filesystem_permissions import contract as filesystem_contract
+    if operation == "invoke" and filesystem_contract(artifact.parsed, args or {}) == "write":
+        from filesystem_permissions import PermissionError as FilesystemError
+        from messages import get as _message
+        from server_filesystem import write_specs
+        try:
+            args = {**args, "files": write_specs(args)}
+        except FilesystemError as exc:
+            raise InvocationError(_message(str(exc))) from exc
     chosen_id = (
         _new_invocation_id()
         if invocation_id is None
@@ -886,6 +904,11 @@ def expire_stale_invocations(ttl_h: float | None = None, *,
         raise
     finally:
         conn.close()
+    try:
+        from device_filesystem import cleanup_stale_transfers
+        cleanup_stale_transfers(db_path=db_path)
+    except (OSError, ValueError, sqlite3.Error) as exc:
+        log.warning("filesystem staging cleanup: %s", exc)
     for row in rows:
         log.warning("invocation %s SCADUTA senza esecuzione (TTL %sh, "
                     "device %s)", row["invocation_id"], ttl_h,

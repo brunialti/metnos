@@ -83,6 +83,16 @@ def _normalize_imap_pair(p):
 def _swap_src_dst_filesystem(pairs):
     out, failed = [], []
     for i, p in enumerate(pairs):
+        if p.get("copy"):
+            # Copy never consumes its source. Overwritten targets belong to
+            # restore_blob_backup; only newly created targets are removed.
+            if p.get("created"):
+                try:
+                    Path(p["dst"]).unlink()
+                    out.append({"path": p["dst"], "removed": True})
+                except OSError as e:
+                    failed.append({"index": i, "error": str(e)})
+            continue
         src_now = Path(p["dst"])
         dst_back = Path(p["src"])
         if str(src_now) == str(dst_back):
@@ -488,9 +498,9 @@ del _sys, _register_by_id
 # fs puri-path sono espressi come chiamate agli executor mutanti già
 # device-abili, accodate al device da undo_last_turn. NIENTE replica del
 # catalogo in Rust: i rail (coda firmata + executor firmati) bastano.
-# `restore_blob_backup` NON è remotabile (il blob vive sul device, il log sul
-# server): le op che lo richiedono restano server-only per costruzione
-# (delete_files non è device_ok in CP4).
+# `restore_blob_backup` usa copie dai blob privati del dispositivo o del
+# server: l'autorizzazione richiede il turno originale dello stesso utente,
+# una ricevuta verificata e i permessi correnti sulla destinazione.
 
 def build_remote_reverse_calls(names, plan: dict, results: dict, *,
                                module_executor: str | None = None) -> dict:
@@ -524,8 +534,13 @@ def build_remote_reverse_calls(names, plan: dict, results: dict, *,
                 return (PureWindowsPath(x) if ("\\" in x or ":" == x[1:2])
                         else PurePosixPath(x)).name
             groups, singles = {}, []
+            copied = {}
             for p in pairs:
                 now, back = str(p["dst"]), str(p["src"])
+                if p.get("copy") or (plan or {}).get("copy"):
+                    if p.get("created"):
+                        copied.setdefault(p.get("destination_scope", "device"), []).append(now)
+                    continue
                 if now == back:
                     continue
                 n_now, n_back = _name(now), _name(back)
@@ -534,9 +549,14 @@ def build_remote_reverse_calls(names, plan: dict, results: dict, *,
                     groups.setdefault(parent, []).append(now)
                 else:
                     singles.append((now, back))
+            for scope, paths in copied.items():
+                for start in range(0, len(paths), 100):
+                    calls.append({"executor": "delete_files", "args": {
+                        "paths": paths[start:start + 100], "client": "local", "location": scope}})
             for parent, paths in groups.items():
-                calls.append({"executor": "move_files",
-                              "args": {"entries": [{"src": x} for x in paths],
+                for start in range(0, len(paths), 100):
+                    calls.append({"executor": "move_files",
+                              "args": {"entries": [{"src": x} for x in paths[start:start + 100]],
                                        "dst_template": parent + "/{name}",
                                        "parents": True, "client": "local"}})
             for now, back in singles:
@@ -545,11 +565,14 @@ def build_remote_reverse_calls(names, plan: dict, results: dict, *,
                                        "dst_template": back,
                                        "parents": True, "client": "local"}})
         elif n == "delete_created_paths":
-            created = [e["path"] for e in (res.get("results") or [])
-                       if isinstance(e, dict) and e.get("created") and e.get("path")]
-            if created:
-                calls.append({"executor": "delete_files",
-                              "args": {"paths": created, "client": "local"}})
+            created = {}
+            for entry in res.get("results") or []:
+                if isinstance(entry, dict) and entry.get("created") and entry.get("path"):
+                    created.setdefault(entry.get("destination_scope", "device"), []).append(entry["path"])
+            for scope, paths in created.items():
+                for start in range(0, len(paths), 100):
+                    calls.append({"executor": "delete_files", "args": {
+                        "paths": paths[start:start + 100], "client": "local", "location": scope}})
             parent_dirs = res.get("dirs_created") or []
             if parent_dirs:
                 calls.append({"executor": "delete_dirs",
@@ -577,25 +600,34 @@ def build_remote_reverse_calls(names, plan: dict, results: dict, *,
             # → ERR_TEMPLATE_FAIL per-item onesto, ritentabile dopo il
             # restart del daemon. Righe senza blob_path → unsupported onesto.
             _CHUNK = 100
-            batch = []
+            batches = {}
             missing_blob = False
             for entry in (res.get("results") or []):
                 if not isinstance(entry, dict):
                     continue
-                bp, path = entry.get("blob_path"), entry.get("path")
+                bp, path = entry.get("prev_blob_path") or entry.get("blob_path"), entry.get("dst") or entry.get("path")
                 if bp and path:
-                    batch.append({"src": str(bp), "dst": str(path)})
-                elif path:
+                    scope = entry.get("destination_scope", "device")
+                    overwrite = bool(entry.get("prev_blob_path")) and entry.get("restore_mode") != "create"
+                    batches.setdefault((scope, overwrite), []).append({"src": str(bp), "dst": str(path)})
+                elif path and not entry.get("created") and not entry.get("skipped"):
                     missing_blob = True
-            for i in range(0, len(batch), _CHUNK):
-                calls.append({"executor": "move_files",
+            for (scope, overwrite), batch in batches.items():
+                for i in range(0, len(batch), _CHUNK):
+                    calls.append({"executor": "move_files",
                               "args": {"entries": batch[i:i + _CHUNK],
                                        "dst_template": "{dst}",
                                        "parents": True,
                                        "copy": True,
+                                       "overwrite": overwrite,
+                                       "source_location": scope,
+                                       "destination_location": scope,
                                        "client": "local"}})
             if missing_blob:
                 unsupported.append(n + ":righe-senza-blob")
+        elif n == "restore_trashed_files" and not any(
+                isinstance(e, dict) and "account" in e for e in res.get("results") or []):
+            continue
         elif n == "module.reverse" and module_executor:
             calls.append({
                 "executor": module_executor,
@@ -612,6 +644,9 @@ def apply_pattern(name: str, plan: dict, results: dict, *, catalog=None) -> dict
     fn = PATTERNS.get(name)
     if fn is None:
         return {"ok": False, "error": f"unknown reverse_pattern: {name!r}; valid: {sorted(PATTERNS.keys())}"}
+    if (results or {}).get("_filesystem"):
+        from server_filesystem import undo_stage
+        return undo_stage(name, results)
     try:
         if getattr(fn, "_metnos_catalog_required", False):
             return fn(plan or {}, results or {}, catalog=catalog)
