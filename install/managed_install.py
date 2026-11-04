@@ -45,9 +45,12 @@ def launch(args, profile: dict) -> int:
     selection = disclaimer.read_language_selection()
     if selection is None:
         ui.fail(i18n.t("managed_consent"))
+    from install.managed_filesystem_host import installer_identity
+    owner_uid, owner_gid = installer_identity()
     request = {
         "args": asdict(args), "profile": validate_profile(profile),
         "consent": json.loads(disclaimer._sentinel().read_text()),
+        "filesystem_owner": {"uid": owner_uid, "gid": owner_gid},
     }
     ui.info(i18n.t("managed_privilege"))
     command = [sys.executable, "-I", "-B", str(Path(__file__).resolve()), "prepare", _encode(request)]
@@ -127,6 +130,10 @@ def _prepare_python(source: Path, profile: dict):
 def _prepare(request: dict) -> int:
     if os.geteuid() != 0:
         raise PermissionError("administrative installer required")
+    from install.managed_filesystem_host import installer_identity
+    owner_uid, owner_gid = installer_identity()
+    if request.get('filesystem_owner') != {'uid': owner_uid, 'gid': owner_gid}:
+        raise ValueError('filesystem host installer identity changed')
     profile = validate_profile(request["profile"])
     # This is a temporary read-only source projection, not another installation.
     with tempfile.TemporaryDirectory(prefix="metnos-installer-", dir="/var/tmp") as temporary:
@@ -222,6 +229,10 @@ def _run(request: dict) -> int:
     worker(7)
     ui.step(i18n.t("managed_activate"))
     transition._invoke_closed_release_v1(**handoff, activate=True)
+    from install.managed_filesystem_host import refresh
+    owner = request.get('filesystem_owner', {})
+    refresh(runtime_root, python, service_uid=account.uid,
+            owner_uid=owner.get('uid'), owner_gid=owner.get('gid'))
     for phase in (5, 6):
         if only is None or only == phase:
             worker(phase)

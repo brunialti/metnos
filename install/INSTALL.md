@@ -79,6 +79,16 @@ modello testuale e visione a servizi esistenti; ricerca SearXNG, geografia
 Photon e browser Playwright seguono la stessa regola. I servizi locali usano
 unità di sistema e l’account `metnos`. La visione locale parte su richiesta.
 
+La fase 2 chiede se scaricare da Hugging Face il classificatore facoltativo
+delle griglie reCAPTCHA:
+[recaptcha-classification-57k](https://huggingface.co/DannyLuna/recaptcha-classification-57k)
+di DannyLuna, licenza MIT, circa 109 MB. La risposta predefinita è no e `--yes`
+lo esclude; senza, le griglie a immagini restano a te. Per aggiungerlo dopo:
+
+```bash
+sudo -H -u metnos bash -s captcha-grid < install/download_models.sh
+```
+
 Il profilo selezionato fa parte della distribuzione firmata. Se una fase 2 è
 già completa, riprendi con lo stesso profilo. Cambiare i servizi di un’istanza
 già installata richiede un nuovo rilascio amministrato, non la modifica dei

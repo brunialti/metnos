@@ -12,6 +12,8 @@ Errori onesti §2.8 (mai silenzio):
 """
 from __future__ import annotations
 
+import os
+import stat
 import sys
 import time
 from pathlib import Path
@@ -37,9 +39,15 @@ SCALE_MIN_ITEMS = 10
 SCALE_S_PER_ITEM = 1
 SCALE_CAP_S = 600
 
+# Bytes a mutating invocation moves from server files, at a floor rate the
+# chunked transfer exceeds on a LAN (live f791c998, 2/11/2026: a 53 MB copy
+# to the PC stopped at the fixed 30 s).
+TRANSFER_FLOOR_BYTES_PER_S = 1_000_000
+
 
 def _scaled_timeout_s(timeout_s: int, args: dict | None,
-                      reversibility: str) -> int:
+                      reversibility: str, *, owner: str = "",
+                      executor=None) -> int:
     """Timeout effettivo per l'invocazione remota. Read-only invariati;
     mutanti con vettori grandi (>SCALE_MIN_ITEMS) → base + 1s/item, cap
     SCALE_CAP_S. Deterministico §7.9 (conta il max fra gli arg lista)."""
@@ -47,15 +55,64 @@ def _scaled_timeout_s(timeout_s: int, args: dict | None,
         return int(timeout_s)
     n_items = max((len(v) for v in (args or {}).values()
                    if isinstance(v, list)), default=0)
-    if n_items <= SCALE_MIN_ITEMS:
-        return int(timeout_s)
-    return min(SCALE_CAP_S,
-               max(int(timeout_s), 30 + n_items * SCALE_S_PER_ITEM))
+    scaled = int(timeout_s)
+    if n_items > SCALE_MIN_ITEMS:
+        scaled = max(scaled, 30 + n_items * SCALE_S_PER_ITEM)
+    moved = _server_source_bytes(args, owner=owner, executor=executor)
+    if moved is None:
+        scaled = SCALE_CAP_S
+    elif moved:
+        scaled = max(scaled, int(timeout_s) + moved // TRANSFER_FLOOR_BYTES_PER_S)
+    return scaled if scaled == int(timeout_s) else min(SCALE_CAP_S, scaled)
+
+
+def _server_source_bytes(args: dict | None, *, owner: str = "",
+                         executor=None) -> int | None:
+    """Size of the regular server files named as sources (a stat, never a
+    read): only how long the transfer may take, never what is allowed.
+
+    A source outside the service's reach is measured by the owner's host
+    component under the owner's grant, as the copy itself reads it (live
+    turn 140cb92c, 2/11/2026: a directory of the owner only). None when
+    that size stays unknown: the transfer then gets the cap.
+    """
+    args = args or {}
+    sources = [(entry.get("path") or entry.get("src")) if isinstance(entry, dict) else None
+               for entry in args.get("entries") or ()]
+    sources += list(args.get("paths") or ()) if isinstance(args.get("paths"), list) else []
+    total = 0
+    for source in sources:
+        if not isinstance(source, str) or not os.path.isabs(source):
+            continue
+        try:
+            info = os.stat(source)
+        except PermissionError:
+            size = _granted_size(owner, executor, args, source)
+            if size is None:
+                return None
+            total += size
+            continue
+        except (OSError, ValueError):
+            continue
+        if stat.S_ISREG(info.st_mode):
+            total += info.st_size
+    return total
 
 
 # §7.13: le 5 chiavi ERR_DEVICE_* vivono nel catalogo seed
 # (install/data/i18n_seed.sqlite, IT+EN) e si risolvono via _msg() puro.
 # Guard di presenza: tests/runtime/i18n/test_seed_i18n_gate_keys.py.
+
+
+def _granted_size(owner: str, executor, args: dict, path: str) -> int | None:
+    if not owner or executor is None:
+        return None
+    try:
+        import server_filesystem as server
+        import server_filesystem_host as host
+        return host.source_size(owner, server.manifest_for(executor), args, path)
+    except (OSError, ValueError, TypeError, LookupError):
+        return None
 
 
 def invoke_remote(executor, args: dict, device_id: str, *,
@@ -78,7 +135,9 @@ def invoke_remote(executor, args: dict, device_id: str, *,
 
     rev = reversibility or (
         "revertible" if getattr(executor, "revertible", False) else "read_only")
-    timeout_s = _scaled_timeout_s(timeout_s, args, rev)
+    timeout_s = _scaled_timeout_s(timeout_s, args, rev,
+                                  owner=getattr(dev, "owner_user_id", "") or "",
+                                  executor=executor)
     deadline_ms = int(timeout_s) * 1000
     # METNOS_TURN_ID nell'env del sandbox device (bug live 1ba8e2c4, 6/7): il
     # client fa env_clear() → senza iniezione l'executor revertibile scrive i
@@ -102,21 +161,24 @@ def invoke_remote(executor, args: dict, device_id: str, *,
     except Exception:
         pass
     wait_started = time.monotonic()
-    invocation_id = invocations.enqueue_invocation(
-        device_id,
-        executor.name,
-        args or {},
-        turn_id=turn_id,
-        scope="device",
-        reversibility=rev,
-        env_injections=env or None,
-        deadline_ms=deadline_ms,
-        origin_actor=actor or "",
-        origin_channel=channel or "",
-        invocation_id=invocation_id,
-        dispatch_key=dispatch_key,
-        execution_context=execution_context,
-    )
+    try:
+        invocation_id = invocations.enqueue_invocation(
+            device_id,
+            executor.name,
+            args or {},
+            turn_id=turn_id,
+            scope="device",
+            reversibility=rev,
+            env_injections=env or None,
+            deadline_ms=deadline_ms,
+            origin_actor=actor or "",
+            origin_channel=channel or "",
+            invocation_id=invocation_id,
+            dispatch_key=dispatch_key,
+            execution_context=execution_context,
+        )
+    except invocations.RefusedForUser as refused:
+        return {"ok": False, "error": str(refused), "error_class": "needs_user_action"}
 
     wait_s = timeout_s + WAIT_MARGIN_S
     result = invocations.wait_result(invocation_id, wait_s)

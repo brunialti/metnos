@@ -321,6 +321,25 @@ def _render_skeleton(intent, lang: str = "it") -> str:
     return "\n" + rendered
 
 
+def _render_named_sheets(query: str, lang: str = "it") -> str:
+    """Tabs and headers of the existing sheets the request names.
+
+    Splitting or classifying rows of a sheet needs its real tab and column
+    names, which the planner otherwise invents.  Deterministic and limited to
+    labels; empty when no sheet is named, so the prompt stays byte-identical.
+    """
+    try:
+        from backends.files.local import named_sheet_headers
+        sheets = named_sheet_headers(query)
+    except Exception as ex:  # noqa: BLE001 - planning goes on without the hint
+        log.debug("named sheets unavailable: %r", ex)
+        return ""
+    if not sheets:
+        return ""
+    from prompt_loader import get as _prompt_get
+    return "\n" + _prompt_get("engine_named_sheets", lang, sheets=sheets).strip()
+
+
 def _render_prior_steps(prior_steps, lang: str = "it") -> str:
     """«FATTO FINORA» (ADR 0177 M1): blocco per la CONTINUAZIONE di un turno —
     elenca gli step GIÀ ESEGUITI (seed kind="done": un dialogo si era fermato a
@@ -536,7 +555,8 @@ class SimpleProposer:
             try:
                 from tool_grammar import filter_pool_by_intent_verb
                 from vocab import SYSTEM_EXECUTOR_NAMES
-                from engine.routing_pool import explicit_catalog_names
+                from engine.routing_pool import (explicit_catalog_names,
+                                                 named_sheet_tool_names)
                 pool_objs = [next((e for e in catalog if e.name == n), None) for n in pool] \
                             if catalog else []
                 pool_objs = [p for p in pool_objs if p is not None]
@@ -544,7 +564,9 @@ class SimpleProposer:
                     kept, excluded = filter_pool_by_intent_verb(
                         pool_objs,
                         intent.verb,
-                        always_include=set(SYSTEM_EXECUTOR_NAMES) | explicit_catalog_names(query, pool_objs),
+                        always_include=(set(SYSTEM_EXECUTOR_NAMES)
+                                        | explicit_catalog_names(query, pool_objs)
+                                        | named_sheet_tool_names(query, pool_objs)),
                     )
                     if kept:
                         effective_pool = [e.name for e in kept]
@@ -626,6 +648,7 @@ class SimpleProposer:
             # «FATTO FINORA» continuazione (ADR 0177 M1): vuoto se non è una
             # ripresa (seed kind="done" assente) → prompt byte-identico.
             prior=_render_prior_steps(prior_steps, lang),
+            sheets=_render_named_sheets(query, lang),
             user_query=query,
         )
         try:

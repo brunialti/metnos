@@ -12,13 +12,24 @@ GROUPS = {
     "filesystem_permissions": (
         "module",
         ("tests/runtime/remote/test_filesystem_permissions.py",
+         "tests/runtime/remote/test_server_filesystem_protocol.py",
+         "tests/runtime/remote/test_server_filesystem_host.py",
+         "tests/runtime/remote/test_document_parse_worker.py",
+         "tests/runtime/infra/test_installer_managed_filesystem_host.py",
          "tests/runtime/remote/test_device_filesystem.py",
+         "tests/runtime/remote/test_device_filesystem_host.py",
          "tests/runtime/remote/test_filesystem_permissions_ui.py",
+         "tests/runtime/http/test_inline_form_provenance.py",
+         "tests/runtime/http/test_http_server.py",
          "tests/runtime/remote/test_device_filesystem_relay.py"),
     ),
     "filesystem_permissions_integration": (
         "cluster",
-        ("tests/runtime/remote/test_invocations.py",
+        ("tests/runtime/safety/test_sandbox_filesystem_host_boundary.py",
+         "tests/runtime/engine/test_repo_slug_punctuation.py",
+         "tests/runtime/i18n/test_args_extractor_i18n.py",
+         "tests/runtime/engine/test_args_extractor_lang.py",
+         "tests/runtime/remote/test_invocations.py",
          "tests/runtime/remote/test_late_result_a0.py",
          "tests/runtime/remote/test_agent_server_remote.py",
          "tests/runtime/remote/test_target_context_observation.py",
@@ -28,9 +39,22 @@ GROUPS = {
          "tests/runtime/engine/test_undo_single_run.py",
          "tests/runtime/engine/test_named_folder.py",
          "tests/runtime/engine/test_table_pagination.py",
+         "tests/runtime/engine/test_read_content_presentation.py",
+         "tests/runtime/engine/test_output_policy_normalize.py",
+         "tests/runtime/engine/test_finalizer_unico.py",
+         "tests/runtime/engine/test_orchestration.py",
+         "tests/runtime/http/test_dialog_async_completion.py",
+         "tests/runtime/http/test_recent_attachment_history.py",
+         "tests/runtime/entries/test_dialog_choice_form_http.py",
+         "tests/runtime/infra/test_dialog_consent_once.py",
+         "tests/runtime/infra/test_dialog_pending_conversation_scope.py",
+         "tests/simulator/web/test_chat_dialog_lifecycle_browser.py",
          "tests/runtime/engine/test_machine_name_question.py",
          "tests/runtime/executors/test_find_packages_inventory.py",
          "tests/runtime/executors/test_spreadsheet_on_the_server.py",
+         "tests/runtime/executors/test_executor_birth_property_runner.py",
+         "tests/runtime/executors/test_complex_document_report_pipeline.py",
+         "tests/runtime/entries/test_extract_entries_parser.py",
          "tests/runtime/engine/test_fast_path.py",
          "tests/runtime/infra/test_reliability.py",
          "tests/runtime/infra/test_reverse_patterns_declared.py",
@@ -67,6 +91,7 @@ def register(path: Path) -> dict[str, int]:
                 f"*{files!r}], cwd=Path(_RT).parent, "
                 "env={**os.environ, 'PYTHONPATH': 'runtime:.'}, "
                 "capture_output=True, text=True, timeout=180)\n"
+                "print(result.stdout.strip().splitlines()[-1] if result.stdout.strip() else result.stderr[-1000:])\n"
                 "print(result.stdout.strip())\n"
                 "assert result.returncode == 0, result.stdout[-8000:] + result.stderr[-2000:]\n"
                 "assert not re.search(r'\\b[1-9][0-9]* skipped\\b', result.stdout), result.stdout\n"

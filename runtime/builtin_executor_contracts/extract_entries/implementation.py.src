@@ -1013,10 +1013,15 @@ def _section_heading(entry) -> str:
         # has no heading class.
         return ""
     slug = urlsplit(url).path.rstrip("/").rsplit("/", 1)[-1]
+    return " | ".join(part for part in (re.sub(r"[-_]+", " ", slug).strip(), _page_title(entry)) if part)
+
+
+def _page_title(entry) -> str:
+    """The title a page shows: its own title, or its first line without one."""
     title = entry.get("title").strip() if isinstance(entry.get("title"), str) else ""
     if not title:
         title = next((line.strip() for line in _pick_text(entry).splitlines() if line.strip()), "")
-    return " | ".join(part for part in (re.sub(r"[-_]+", " ", slug).strip(), title[:160]) if part)
+    return title[:160]
 
 
 def _heading_labels(headings: list[str], instruction: str, tier: str) -> dict[str, str]:
@@ -1140,21 +1145,55 @@ def _page_key(entry) -> tuple | None:
                                               "_source_partition", "_source_identity_scope")))
 
 
-def _redundant_snapshots(sources: list) -> set[int]:
-    """Indexes of web page snapshots that another snapshot of the same page,
-    title and context shows whole (Fastweb 21/10/2026: six snapshots of one
-    list growing after each «show more», every invoice extracted four or
-    five times). Of two identical snapshots the later one is kept. Detail
-    views, unreadable sources and sources other than web pages are always
-    read."""
-    keyed = []
+def _redundant_snapshots(sources: list) -> tuple[set[int], dict[int, str]]:
+    """Web page snapshots read for what they add (Fastweb 21/10/2026: six
+    snapshots of one list growing after each «show more», every invoice
+    extracted four or five times; live Fineco 5511d054, 3/11/2026: a list
+    grown to 25000 characters with a line near the top changing in each
+    snapshot, the same rows written five times and the older half cut at the
+    text cap).
+
+    The first snapshot of a page is read whole; each later one only for the
+    lines it inserts or changes against every copy read before, each compared
+    on its own, in page order: the rows the site added. A snapshot adding
+    nothing is not read, nor one taken after the page reloaded and the list
+    started over (live Fineco c4eddda0, 4/11/2026: three reloads, the same
+    rows read again and again, 18 minutes of extraction), nor rows a filtered
+    view showed before. The copies are never joined into one: a short line
+    of a new row (an amount) would match a line of another copy by chance. Of pages whose
+    rows the browser lists (copied row by row), a snapshot that another one
+    shows whole is not read. Detail views, unreadable sources and sources
+    other than web pages are always read whole.
+
+    Returns the indexes not read and, per later snapshot, the text it adds."""
+    from difflib import SequenceMatcher
+    keyed, previous, redundant, additions = [], {}, set(), {}
     for index, entry in enumerate(sources):
         key = _page_key(entry)
         if key is None or entry.get("readable") is False:
             continue
-        lines = _text_lines(_pick_model_text(entry)[:_MAX_TEXT_CHARS])
-        if lines:
-            keyed.append((index, key, lines))
+        if isinstance(entry.get("_source_list"), dict):
+            lines = _text_lines(_pick_model_text(entry)[:_MAX_TEXT_CHARS])
+            if lines:
+                keyed.append((index, key, lines))
+            continue
+        lines = _text_lines(_pick_model_text(entry))
+        if not lines:
+            continue
+        copies = previous.setdefault(key, [])
+        copies.append(lines)
+        if len(copies) == 1:
+            continue
+        new = set(range(len(lines)))
+        for before in copies[:-1]:
+            new &= {j for tag, _i1, _i2, j1, j2 in SequenceMatcher(
+                        None, before, lines, autojunk=False).get_opcodes()
+                    if tag in ("insert", "replace") for j in range(j1, j2)}
+        added = [lines[j] for j in sorted(new)]
+        if added:
+            additions[index] = "\n".join(added)
+        else:
+            redundant.add(index)
     shown_in = {index: {other for other, other_key, other_lines in keyed
                         if other != index and other_key == key
                         and (len(other_lines) > len(lines)
@@ -1163,7 +1202,47 @@ def _redundant_snapshots(sources: list) -> set[int]:
                 for index, key, lines in keyed}
     # Only a snapshot that no other one shows whole stands in for others.
     kept = {index for index, containers in shown_in.items() if not containers}
-    return {index for index, containers in shown_in.items() if containers & kept}
+    redundant |= {index for index, containers in shown_in.items() if containers & kept}
+    return redundant, additions
+
+
+# Readings of a text whose extraction reply hit the output cap, after the first.
+_SPLIT_DEPTH = 3
+# A value this long, on one line only, places a record in the text.
+_ANCHOR_CHARS = 8
+
+
+def _resume_line(lines: list[str], records: list, fields: list) -> int:
+    """Line after the last record a cut reply returned whole, or 0.
+
+    The record is placed by its own words: its longest value of at least
+    _ANCHOR_CHARS characters found on exactly one line. It ends there, or on
+    the lines right after that hold another of its values found on one line
+    only. Values repeated in the text (an empty "0,00", a common word) and
+    values the model rewrote (an ISO date) place nothing; without a place the
+    reading does not go on (review of 4/11/2026: a repeated value skipped
+    rows nobody had read)."""
+    if not records or not isinstance(records[-1], dict):
+        return 0
+    folded = [line.casefold() for line in lines]
+
+    def only_line(value: str):
+        hits = [index for index, line in enumerate(folded) if value in line]
+        return hits[0] if len(hits) == 1 else None
+
+    values = sorted({value.strip().casefold() for field in fields
+                     if isinstance(value := records[-1].get(field), str)
+                     and len(value.strip()) >= 3}, key=len, reverse=True)
+    placed = {value: only_line(value) for value in values}
+    anchor = next((placed[value] for value in values
+                   if len(value) >= _ANCHOR_CHARS and placed[value] is not None), None)
+    if anchor is None:
+        return 0
+    own = {placed[value] for value in values if placed[value] is not None}
+    end = anchor
+    while end + 1 in own:
+        end += 1
+    return end + 1
 
 
 def _extract_max_tokens(max_per_text: int) -> int:
@@ -1506,10 +1585,16 @@ def _handle_extract_entries(args, *, verbose: bool = False,
         headings = [_section_heading(source) for source in sources]
         labels = _heading_labels(headings, instruction, tier)
         heading_labels = [labels.get(heading) for heading in headings]
-        # Excluded only beside a heading of the requested class.
-        if "same" in labels.values():
+        # Excluded only beside a heading of the requested class, and only
+        # under another title than that heading's: pages showing one title
+        # differ by address alone, too little to drop their rows (live Fineco
+        # f0311c, 3/11/2026: the grown list of movements labelled «other»
+        # beside its own overview, same title, every row lost).
+        same_titles = {_page_title(source) for source, label in zip(sources, heading_labels)
+                       if label == "same"}
+        if same_titles:
             kept_sources = [source for source, label, heading in zip(sources, heading_labels, headings)
-                            if not heading or label != "other"]
+                            if not heading or label != "other" or _page_title(source) in same_titles]
             foreign_sections = len(sources) - len(kept_sources)
             sources = kept_sources
     filtered_source_total = input_source_total - len(sources)
@@ -1633,14 +1718,14 @@ def _handle_extract_entries(args, *, verbose: bool = False,
     batch_circuit_open = False
     llm_metrics_lock = threading.Lock()
 
-    def _record_llm_meta(meta: dict, token_cap: int) -> None:
+    def _record_llm_meta(meta: dict, token_cap: int, *, final: bool = True) -> None:
         nonlocal in_tok, out_tok, lat, out_truncated
         emitted = int(meta.get("out_tokens") or 0)
         with llm_metrics_lock:
             in_tok += int(meta.get("in_tokens") or 0)
             out_tok += emitted
             lat += int(meta.get("latency_ms") or 0)
-            if emitted >= token_cap - 16:
+            if final and emitted >= token_cap - 16:
                 out_truncated += 1
 
     class _ObservedRecords(list):
@@ -1658,14 +1743,40 @@ def _handle_extract_entries(args, *, verbose: bool = False,
         return (int(meta.get("out_tokens") or 0) < cap - 16
                 and meta.get("finish_reason") not in ("length", "max_tokens"))
 
-    def _llm_extract(src_text):
+    def _llm_extract(src_text, depth=0):
         raw, meta = call_llm(src_text, prompt, tier=tier, max_tokens=mt)
-        _record_llm_meta(meta, mt)
+        complete = _complete_output(raw, meta, mt)
         observed = _parse_records(raw, model_fields)
+        lines = src_text.split("\n")
+        resume = (_resume_line(lines, observed, model_fields)
+                  if not complete and depth < _SPLIT_DEPTH else 0)
+        if resume:
+            # The reply was cut at the output cap (live Fineco c4eddda0,
+            # 4/11/2026: seven pieces cut, three movements missing). Its whole
+            # rows are kept; the text after the last of them is read next, or
+            # nothing remains when that row closes the text. Without a place
+            # to go on from the piece stays declared incomplete.
+            _record_llm_meta(meta, mt, final=False)
+            values = [{**{f: rec.get(f, "") for f in model_fields},
+                       "_identity_facts": rec.get("_identity_facts", [])} for rec in observed]
+            rest = (_llm_extract("\n".join(lines[resume:]), depth + 1)
+                    if resume < len(lines) else _ObservedRecords([], total=0, complete=True))
+            following = list(rest)
+            # A place found too early reads the last rows again: the rows the
+            # reading starts with that repeat the last ones kept are the same.
+            same = lambda one, other: all(one.get(f) == other.get(f) for f in model_fields)
+            overlap = next((k for k in range(min(len(values), len(following)), 0, -1)
+                            if all(same(a, b) for a, b in zip(values[-k:], following[:k]))), 0)
+            values += following[overlap:]
+            return _ObservedRecords(
+                values[:max_per_text],
+                total=len(observed) + getattr(rest, "total", len(rest)) - overlap,
+                complete=getattr(rest, "complete", False))
+        _record_llm_meta(meta, mt)
         parsed = _ObservedRecords([{**{f: rec.get(f, "") for f in model_fields},
                    "_identity_facts": rec.get("_identity_facts", [])}
                   for rec in observed[:max_per_text]], total=len(observed),
-                  complete=_complete_output(raw, meta, mt))
+                  complete=complete)
         context = AgenticContext(
             goal={"operation": "extract_records", "fields": model_fields},
             observed={"source_char_count": len(src_text)},
@@ -1837,9 +1948,14 @@ def _handle_extract_entries(args, *, verbose: bool = False,
 
     # A snapshot another one of the same page shows whole adds no record:
     # reading it again costs one more extraction of the same rows.
-    redundant = _redundant_snapshots(sources)
+    redundant, snapshot_additions = _redundant_snapshots(sources)
+    additions = {id(sources[index]): text for index, text in snapshot_additions.items()}
     if redundant:
         sources = [source for index, source in enumerate(sources) if index not in redundant]
+
+    def _source_text(entry):
+        """What a source is read for: a later snapshot, the lines it adds."""
+        return additions.get(id(entry)) or _pick_model_text(entry)
 
     observations = {id(source): index for index, source in enumerate(sources)}
     observation_scope = uuid4().hex
@@ -1917,7 +2033,7 @@ def _handle_extract_entries(args, *, verbose: bool = False,
                     "single": (len(records) == 1 and max_per_text > 1
                                and getattr(records, "total", None) == 1
                                and getattr(records, "complete", False)
-                               and len(text) >= len(_pick_model_text(entry))),
+                               and len(text) >= len(_source_text(entry))),
                 }
             # Provenienza privata riservata al runtime. Nelle estrazioni
             # confinate conserva il link osservato senza aprirlo.
@@ -1934,7 +2050,8 @@ def _handle_extract_entries(args, *, verbose: bool = False,
             norm["_source_complete"] = copied or bool(
                 getattr(records, "complete", True)
                 and getattr(records, "total", len(records)) < max_per_text
-                and (not isinstance(entry, dict) or len(text) >= len(_pick_model_text(entry))))
+                and (not isinstance(entry, dict)
+                     or len(text) >= len(_source_text(entry))))
             out.append(norm)
             if max_total and len(out) >= max_total:
                 total_capped = True
@@ -1953,7 +2070,7 @@ def _handle_extract_entries(args, *, verbose: bool = False,
                 direct[source_index] = (
                     entry, "", [{field: "" for field in fields}])
                 continue
-            full_text = listed.residual.get(source_index, _pick_model_text(entry))
+            full_text = listed.residual.get(source_index, _source_text(entry))
             text_value = full_text[:_MAX_TEXT_CHARS]
             if text_value.strip():
                 text_truncated_sources += int(len(full_text) > _MAX_TEXT_CHARS)
@@ -2073,7 +2190,7 @@ def _handle_extract_entries(args, *, verbose: bool = False,
                     break
                 continue
             nonlocal_drill = drill_down and bool(_entry_links(entry))
-            full_text = _pick_model_text(entry)
+            full_text = _source_text(entry)
             if source_index in listed.records:
                 # Copied rows first; the model reads only what is left beside them.
                 _append_records(entry, full_text, _copied_records(source_index), copied=True)
@@ -2178,6 +2295,9 @@ def _handle_extract_entries(args, *, verbose: bool = False,
     if redundant:
         # Diagnostics: snapshots not read again, their rows shown in another.
         res["redundant_snapshot_sources"] = len(redundant)
+    if additions:
+        # Diagnostics: later snapshots read only for the lines they add.
+        res["incremental_snapshot_sources"] = len(additions)
     if listed.meta:
         # Diagnostics: listed rows copied, choices asked and their outcomes.
         res["list_columns"] = dict(listed.meta)

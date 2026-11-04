@@ -101,6 +101,14 @@ _CATALOG: dict[str, dict[str, str]] = {
         "en": 'Enable the paid Anthropic frontier tier explicitly?',
         "it": 'Abilitare esplicitamente il ruolo frontier Anthropic a pagamento?',
     },
+    'captcha_grid_prompt': {
+        "en": 'Download the optional reCAPTCHA image-grid classifier from Hugging Face? (recaptcha-classification-57k by DannyLuna, MIT license, ~109 MB; without it, image grids are left to you)',
+        "it": 'Scaricare da Hugging Face il classificatore facoltativo delle griglie reCAPTCHA? (recaptcha-classification-57k di DannyLuna, licenza MIT, ~109 MB; senza, le griglie a immagini restano a te)',
+    },
+    'captcha_grid_failed': {
+        "en": 'The reCAPTCHA image-grid classifier could not be downloaded. Installation continues; image grids are left to you.',
+        "it": 'Il classificatore delle griglie reCAPTCHA non si è potuto scaricare. L’installazione prosegue; le griglie a immagini restano a te.',
+    },
     'services_local_install': {
         "en": 'Local installation: {name} ({size}). Existing services can be selected in services.toml before installation.',
         "it": 'Installazione locale: {name} ({size}). Puoi scegliere servizi esistenti in services.toml prima dell’installazione.',

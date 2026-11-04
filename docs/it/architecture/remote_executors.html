@@ -136,10 +136,10 @@ associato.</p></div>
 
 <h2 id="permessi">Accessi personali ed estensioni dei permessi</h2>
 
-<div class="callout note"><p><strong>Stato di consegna.</strong> Il codice di
-questa estensione è candidato al rilascio e richiede il client 0.2.64. Le prove
-automatiche e la compilazione Windows sono riuscite; il collaudo sul PC e
-l'attivazione in esercizio restano da completare.</p></div>
+<div class="callout note"><p><strong>Compatibilità del dispositivo.</strong>
+I permessi aggiuntivi sui file del PC richiedono il client 0.2.64 o successivo
+e i contratti firmati corrispondenti. I permessi del server funzionano
+indipendentemente dal PC.</p></div>
 
 <p>Le directory personali e gli spazi di lavoro già disponibili all'utente
 restano accessibili senza nuove concessioni. Per estendere l'accesso ad altri
@@ -148,13 +148,28 @@ Permessi del server</strong>, sceglie l'account e indica percorso, lettura e/o s
 Questa pagina è indipendente dai dispositivi e serve anche per attività che
 avvengono interamente sul server.</p>
 
+<p><strong>Concedi permessi</strong> verifica che Metnos possa usare il percorso
+con i diritti richiesti prima di registrare la concessione. Il controllo non
+legge il contenuto dei file e non li modifica. Se l'accesso non è disponibile,
+la concessione non viene salvata. All'apertura della pagina vengono verificati
+anche gli accessi attivi: una risorsa divenuta inaccessibile appare come
+<strong>Non disponibile</strong> e resta possibile revocarla.</p>
+
+<p>Il servizio principale applica le concessioni dell'account Metnos che ha
+richiesto l'operazione. Per i file esterni agli spazi privati del servizio,
+la configurazione installata usa un componente locale eseguito con l'identità
+ordinaria fissata durante l'installazione. L'account Metnos selezionato non cambia questa identità e non
+concede accesso agli altri account. Il componente esegue soltanto le operazioni
+sui file autorizzate dal servizio principale.</p>
+
 <p>Per un PC associato, la pagina <strong>Dispositivi &rsaquo; Permessi</strong>
 gestisce invece le concessioni per quel dispositivo e il suo proprietario.
 Ogni concessione distingue un file da una cartella, l'inclusione delle
 sottocartelle, la sovrascrittura e una scadenza facoltativa. Revocarla conserva
 la traccia dell'operazione e lascia intatti gli accessi personali già previsti.
-La concessione non modifica i diritti del sistema operativo: Metnos può agire
-soltanto con i diritti effettivi del servizio o del client.</p>
+La concessione non modifica i diritti del sistema operativo: il componente
+locale del server e il client del PC usano ciascuno i diritti dell'identità
+ordinaria con cui vengono eseguiti.</p>
 
 <p>Una copia verifica lettura sull'origine e scrittura sulla destinazione,
 anche tra un percorso Windows come <code>C:\Documenti\nota.txt</code> e un
@@ -172,12 +187,21 @@ finestra massima dell'autorità già concessa sul dispositivo, quindi la revoca
 non va presentata come istantanea.</p>
 
 <p>Il primo protocollo ammette fino a 100 file e 4 GiB per file. Le letture
-restituiscono al massimo 256 KiB; l'elenco è limitato a 1.000 voci, 256 KiB e
+dirette restituiscono al massimo 256 KiB; la lettura automatica dei documenti
+sul server accetta fino a 32 MiB per file e restituisce fino a 200.000 caratteri,
+entro il limite della risposta. PDF, DOCX e XLSX vengono interpretati in un
+processo isolato, senza accesso ad altri file personali. Una lettura limitata
+viene indicata come incompleta. L'elenco è limitato a 1.000 voci, 256 KiB e
 64 livelli. Nelle estensioni e nelle copie remote la cartella di destinazione
 deve esistere; copie di interi alberi, percorsi con caratteri jolly, collegamenti
 e percorsi riservati all'applicazione vengono rifiutati esplicitamente.
 Le operazioni server negli spazi già autorizzati mantengono il comportamento
 precedente.</p>
+
+<p>Chiedere di leggere o mostrare il contenuto di un file restituisce il testo,
+anche senza estensione. Elenchi, conteggi e tabelle richieste esplicitamente
+mantengono la propria forma. Il testo letto non viene reinterpretato come
+istruzioni o controlli dell’interfaccia.</p>
 
 <h2 id="invocazione">Che cosa accade durante un'azione</h2>
 

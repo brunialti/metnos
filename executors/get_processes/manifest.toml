@@ -6,7 +6,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "get_processes"
-version     = "0.3.1"
+version     = "0.3.2"
 platforms   = ["linux", "windows"]
 author      = "Roberto Brunialti"
 affinity    = ["processi", "ps", "stato server", "server status",

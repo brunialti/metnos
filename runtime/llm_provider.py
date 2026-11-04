@@ -288,6 +288,21 @@ class LlamaCppProvider:
         # None = comportamento default (selettore LCP-similarity di llama-server).
         self.id_slot = id_slot
 
+    def own_slot_busy(self) -> bool:
+        """True while Metnos's slot serves another request: the server queues
+        a new one behind it. Unknown state reads as free."""
+        if self.id_slot is None:
+            return False
+        try:
+            with _api_urlopen(urllib.request.Request(f"{self.endpoint}/slots"),
+                              timeout=2) as resp:
+                slots = json.loads(resp.read().decode("utf-8"))
+        except (OSError, ValueError):
+            return False
+        return isinstance(slots, list) and any(
+            isinstance(slot, dict) and slot.get("id") == self.id_slot
+            and slot.get("is_processing") is True for slot in slots)
+
     def chat(self, system, user, *, max_tokens=512, temperature=0, think=None,
              reasoning_budget=1024, grammar: str | None = None,
              seed: int | None = None, request_timeout_s=None):

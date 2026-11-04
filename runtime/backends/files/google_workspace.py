@@ -38,7 +38,9 @@ from backends._google_auth_common import (  # noqa: E402
     auth_needs_inputs as _auth_needs_inputs,
 )
 from messages import get as _msg  # noqa: E402
-from spreadsheet_cells import active_cell_count, neutralized_rows  # noqa: E402
+from spreadsheet_cells import (  # noqa: E402
+    active_cell_count, header_records, neutralized_rows,
+)
 
 
 _DRIVE_ID_RE = re.compile(r"[A-Za-z0-9_-]{12,}")
@@ -1166,14 +1168,16 @@ def read_spreadsheet(args: dict) -> dict:
             return err
         return {**err, "entries": [], "used": 0}
     values = data if isinstance(data, list) else []
+    entries = header_records(values)
+    entries = values if entries is None else entries
     return {
         "ok": True,
         "values": values,
         "range": rng,
         "spreadsheet_id": sid,
-        "entries": values,
-        "used": len(values),
-        "available_total": len(values),
+        "entries": entries,
+        "used": len(entries),
+        "available_total": len(entries),
         "files_source": "google_workspace",
     }
 

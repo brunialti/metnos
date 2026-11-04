@@ -681,12 +681,22 @@ def _link_compatible(records: list[dict], kept: list[int], sources: list,
         return top, tied[0]
 
     chosen = {key: choice(found) for key, found in best.items()}
+
+    def undecided(i) -> bool:
+        # Equally good partners in other sources that exclude each other:
+        # nothing says which one this record belongs to, it stays apart.
+        found = [picked for (x, _source), picked in chosen.items() if x == i and picked]
+        top = max((score for score, _j in found), default=None)
+        tied = [j for score, j in found if score == top]
+        return any(_link_score(current[a], current[b]) is None for a, b in combinations(tied, 2))
+
     pairs = []
     for (i, _source), picked in chosen.items():
         if picked is None:
             continue
         score, j = picked
-        if i < j and chosen.get((j, sources[i])) == (score, i):
+        if (i < j and chosen.get((j, sources[i])) == (score, i)
+                and not undecided(i) and not undecided(j)):
             pairs.append((score, i, j))
     group = {i: {i} for i in current}
     owner = {i: i for i in current}

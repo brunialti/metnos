@@ -3,7 +3,7 @@
 {% block body %}
 {% if scope != 'server' %}<p><a href="/admin/devices">← {{ msg('MSG_FS_DEVICES') }}</a></p>{% endif %}
 <h1>{{ msg('MSG_FS_PERMISSIONS') }} · {{ title }}</h1>
-<p class="page-sub">{{ msg('MSG_FS_EXPLANATION') }}</p>
+<p class="page-sub">{{ msg('MSG_FS_SERVER_EXPLANATION' if scope == 'server' else 'MSG_FS_EXPLANATION') }}</p>
 {% if not supported %}<p class="chip warn" role="status">{{ msg('MSG_FS_UPDATE_REQUIRED') }}</p>{% endif %}
 {% if error %}<p role="alert" class="chip warn">{{ error }}</p>{% endif %}
 {% if scope == 'server' %}
@@ -39,7 +39,7 @@
       <td style="overflow-wrap:anywhere"><code>{{ g.path }}</code> ({{ msg('MSG_FS_FILE') if g.kind == 'file' else msg('MSG_FS_FOLDER') }})</td>
       <td>{% if g.can_read %}{{ msg('MSG_FS_READ') }}{% endif %} {% if g.can_write %}{{ msg('MSG_FS_WRITE') }}{% endif %}{% if g.recursive %} · {{ msg('MSG_FS_RECURSIVE') }}{% endif %}{% if g.can_overwrite %} · {{ msg('MSG_FS_OVERWRITE') }}{% endif %}</td>
       <td>{% if g.expires_at %}<time class="fs-expiry" datetime="{{ g.expires_at }}">{{ g.expires_at }}</time>{% else %}{{ msg('MSG_FS_NO_EXPIRY') }}{% endif %}</td>
-      <td>{{ msg('MSG_FS_STATE_' ~ g.state|upper) }}</td>
+      <td>{% if g.availability_error %}<span class="chip warn">{{ msg('MSG_FS_STATE_UNAVAILABLE') }}</span><p class="muted">{{ msg(g.availability_error) }}</p>{% else %}{{ msg('MSG_FS_STATE_' ~ g.state|upper) }}{% endif %}</td>
       <td>{% if g.state == 'active' %}<form method="post"><input type="hidden" name="form_token" value="{{ form_token }}"><input type="hidden" name="action" value="revoke"><input type="hidden" name="grant_id" value="{{ g.id }}"><button type="submit" class="btn danger">{{ msg('MSG_FS_REVOKE') }}</button></form>{% endif %}</td>
     </tr>{% else %}<tr><td colspan="5">{{ msg('MSG_FS_EMPTY') }}</td></tr>{% endfor %}</tbody>
   </table></div>

@@ -92,12 +92,12 @@
   "extract_entries": {
     "source_hash": null,
     "source_lang": null,
-    "version_hash": "sha256:7b0bb9955cd02424b9fff5449376a22bdcca19aff04a501f2e48a438617ae6e4"
+    "version_hash": "sha256:a007d9590f76beb98060a0cb8a974a6794ad1a669f3576e6607a682eac1afb29"
   },
   "extract_entries_batch": {
     "source_hash": null,
     "source_lang": null,
-    "version_hash": "sha256:d283c6f8893b5d30243ad7f8e66e8d9f8d83f7440703b485ae55b6128bc00c24"
+    "version_hash": "sha256:5875ecaff0db87649e507abad4d4febd61d861a7bc1ef5a05e4a27b895884ffd"
   },
   "extract_entries_headings": {
     "source_hash": null,

@@ -81,6 +81,11 @@ def _heads(manifest: dict):
                 yield lingua, testo.strip().replace("\n", " ")
 
 
+def _offline_provider_fake(env: object) -> bool:
+    return (isinstance(env, dict) and set(env) == {"METNOS_SUBPROCESS_FAKE"}
+            and str(env["METNOS_SUBPROCESS_FAKE"]).startswith("skill_test_fakes."))
+
+
 def validate_generated_manifest_text(
         text: str, *, expected_lifecycle: str = "active") -> dict:
     """Fail closed if a renderer drifts from the runtime-owned envelope.
@@ -116,10 +121,13 @@ def validate_generated_manifest_text(
     # An empty shell/env/reference field is still unsupported, not permission
     # for another runner to execute it later. Other declarative test formats
     # keep their existing cardinality and matcher contracts.
+    # The one closed exception: an imported skill's offline test names a fake
+    # provider from `skill_test_fakes`, so no network and no credentials.
     tests = manifest.get("tests", [])
     if not isinstance(tests, list) or any(
         not isinstance(case, dict)
-        or not {"setup", "teardown", "env", "reference"}.isdisjoint(case)
+        or not {"setup", "teardown", "reference"}.isdisjoint(case)
+        or ("env" in case and not _offline_provider_fake(case["env"]))
         for case in tests
     ):
         raise GeneratedContractError("generated_tests_must_be_declarative")

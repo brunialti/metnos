@@ -609,7 +609,10 @@ def _persist_pending_http_turn(*, turn_id: str, query: str, message: str,
             user_query=query,
             turn_id=turn_id,
             mode="pending",
-            final_message=message,
+            final_message=str(message),
+            expandable_caps=[{"kind": "get_inputs_response", "dialog_id": dialog_id}
+                             for dialog_id in (message.inline_dialog_ids
+                                 if isinstance(message, _DialogMessage) else ())],
             final_kind="answer",
             actor=actor,
             owner_user_id=owner_user_id,
@@ -677,6 +680,15 @@ def _apply_dialog_cancel(sender_id: str, query: str, *,
     return _msg("MSG_DIALOG_CANCELLED_N", n=cancelled)
 
 
+class _DialogMessage(str):
+    """Internal text plus dialog IDs attested by the pending producer."""
+
+    def __new__(cls, text, inline_dialog_ids=()):
+        value = super().__new__(cls, text)
+        value.inline_dialog_ids = tuple(inline_dialog_ids)
+        return value
+
+
 def _with_dialog_form_marker(message: str, dialog: dict, dialog_id: str,
                              *, channel: str) -> str:
     """Keep an HTTP form actionable when a pending step is re-presented."""
@@ -688,8 +700,8 @@ def _with_dialog_form_marker(message: str, dialog: dict, dialog_id: str,
         return message
     marker = f"INLINE_FORM:/agent/dialog/{dialog_id}/form"
     if marker in message:
-        return message
-    return f"{message.rstrip()}\n\n{marker}"
+        return _DialogMessage(message, [dialog_id])
+    return _DialogMessage(f"{message.rstrip()}\n\n{marker}", [dialog_id])
 
 
 def _is_repeated_defer_request(dialog: dict, query: str) -> bool:
@@ -829,10 +841,11 @@ def _apply_dialog_pending(sender_id: str, query: str,
     if consume_res.get("completed"):
         try:
             from orchestration import process_completion_callback
-            return process_completion_callback(
+            completed = process_completion_callback(
                 sender_id_used, dialog_id, actor=actor, channel=channel,
                 owner_user_id=owner_user_id,
-            ).text
+            )
+            return _DialogMessage(completed.text, getattr(completed, "inline_dialog_ids", ()))
         except Exception as ex:
             import logging
             logging.getLogger(__name__).warning(
@@ -1126,10 +1139,11 @@ def _consume_http_get_inputs_response(
         # Dialogo finito → applica callback. Per cap-expand questo
         # invoca direttamente l'executor con cap esteso e ritorna
         # un summary user-facing.
-        msg = _orch.process_completion_callback(
+        completed = _orch.process_completion_callback(
             sender_for_state, dialog_id, actor=actor,
             owner_user_id=owner_user_id,
-        ).text
+        )
+        msg = _DialogMessage(completed.text, getattr(completed, "inline_dialog_ids", ()))
         _cap_pending_clear(sender_id)
         return query, proposal, msg
 
@@ -1268,6 +1282,17 @@ def _enrich_attachments(log_obj, admin_key: str, *, cap: int = CHAT_INLINE_ATT_C
     return out
 
 
+def _session_event_data(ev: dict, admin_key: str) -> dict:
+    """A session event as the client receives it: a late outcome's files
+    become signed links of their turn, never server paths."""
+    data = {k: v for k, v in ev.items() if k not in ("kind", "attachments")}
+    if ev.get("attachments") and ev.get("turn_id"):
+        from types import SimpleNamespace
+        data["attachments"] = _enrich_attachments(SimpleNamespace(
+            attachments=ev["attachments"], turn_id=ev["turn_id"]), admin_key)
+    return data
+
+
 def _gallery_url_for(log_obj) -> tuple[str | None, int]:
     """Ritorna (gallery_url, n_total). La gallery e' IMAGE-only: i file
     deliverable (kind='file', xlsx/doc/zip) NON contano e non generano un
@@ -1295,18 +1320,44 @@ def _dialog_cap_verify(dialog_id: str, token: str, admin_key: str, *,
     return verify(dialog_id, token, admin_key, now=now)
 
 
-def _decorate_dialog_markers(message: str | None, admin_key: str) -> str:
-    """Aggiunge JIT la capability ai marker dei form nel solo boundary HTTP."""
+def _dialog_presentation(message: str | None, admin_key: str, *,
+                         record=None, owner_user_id: str = "",
+                         inline_dialog_ids=()) -> tuple[str, list[str]]:
+    """Authorize form controls from runtime provenance, never reader text.
+
+    The text remains unchanged unless a matching, owner-bound dialog was
+    emitted by orchestration. The browser consumes the separate allowlist.
+    """
     text = message or ""
     if not text or not admin_key:
-        return text
+        return text, []
 
-    def _replace(match: re.Match) -> str:
+    def field(value, key, default=None):
+        return value.get(key, default) if isinstance(value, dict) else getattr(value, key, default)
+
+    owner = owner_user_id or str(field(record, "owner_user_id", "") or "")
+    if not owner:
+        return text, []
+    from orchestration import dialog_ids_from_turn
+    candidates = set(dialog_ids_from_turn(record)) | set(inline_dialog_ids)
+    if isinstance(message, _DialogMessage):
+        candidates.update(message.inline_dialog_ids)
+    forms = []
+
+    def replace(match):
         path, dialog_id = match.group(1), match.group(2)
-        cap = _dialog_cap_sign(dialog_id, admin_key)
-        return f"INLINE_FORM:{path}?cap={cap}" if cap else match.group(0)
+        if dialog_id not in candidates:
+            return match.group(0)
+        state = _resolve_dialog_state(None, dialog_id)
+        if (not state or str(state.get("owner_user_id") or "") != owner
+                or state.get("fmt") != "form"):
+            return match.group(0)
+        url = path + "?cap=" + _dialog_cap_sign(dialog_id, admin_key)
+        if url not in forms:
+            forms.append(url)
+        return "INLINE_FORM:" + url
 
-    return _DIALOG_FORM_MARKER_RE.sub(_replace, text)
+    return _DIALOG_FORM_MARKER_RE.sub(replace, text), forms
 
 
 def _step_cloud(result) -> bool:
@@ -1330,10 +1381,12 @@ def _build_final_event_payload(log_obj, admin_key: str) -> dict:
         res = s.result if isinstance(s.result, dict) else {}
         path_summary.append({"tool": tool, "ok": bool(res.get("ok", True)),
                              "cloud": _step_cloud(res)})
-    final_message = _decorate_dialog_markers(log_obj.final_message, admin_key)
+    final_message, inline_forms = _dialog_presentation(
+        log_obj.final_message, admin_key, record=log_obj)
     return {
         "turn_id": log_obj.turn_id,
         "final_message": final_message,
+        "inline_forms": inline_forms,
         "final_message_html": _safe_final_html(final_message),
         "final_kind": log_obj.final_kind,
         "outcome": _semantic_turn_outcome(log_obj),
@@ -1808,7 +1861,8 @@ async def _turn_with_usage(request: web.Request) -> web.Response:
     want_sse = "text/event-stream" in accept
     if immediate_msg is not None:
         admin_key = app_get(request.app, APP_ADMIN_KEY, "")
-        immediate_http = _decorate_dialog_markers(immediate_msg, admin_key)
+        immediate_http, inline_forms = _dialog_presentation(
+            immediate_msg, admin_key, owner_user_id=user_id)
         if want_sse:
             # Stream un singolo evento `final` SSE-formattato cosi' il
             # client chat.html chiude pulito (niente "connessione interrotta").
@@ -1824,6 +1878,7 @@ async def _turn_with_usage(request: web.Request) -> web.Response:
             payload = {
                 "turn_id": immediate_turn_id,
                 "final_message": immediate_http,
+                "inline_forms": inline_forms,
                 "final_message_html": _safe_final_html(immediate_http),
                 "final_kind": "answer",
                 "outcome": "completed",
@@ -1842,6 +1897,7 @@ async def _turn_with_usage(request: web.Request) -> web.Response:
         return web.json_response({
             "turn_id": immediate_turn_id,
             "final_message": immediate_http,
+            "inline_forms": inline_forms,
             "final_message_html": _safe_final_html(immediate_http),
             "final_kind": "answer",
             "outcome": "completed",
@@ -1897,10 +1953,12 @@ async def _turn_json(request: web.Request, agent_runtime, query: str, actor: str
         owner_user_id=user_id)
     admin_key = app_get(request.app, APP_ADMIN_KEY, "")
     gallery_url, n_total = _gallery_url_for(log_obj)
-    final_message = _decorate_dialog_markers(log_obj.final_message, admin_key)
+    final_message, inline_forms = _dialog_presentation(
+        log_obj.final_message, admin_key, record=log_obj)
     return web.json_response({
         "turn_id": log_obj.turn_id,
         "final_message": final_message,
+        "inline_forms": inline_forms,
         "final_message_html": _safe_final_html(final_message),
         "final_kind": log_obj.final_kind,
         "outcome": _semantic_turn_outcome(log_obj),
@@ -2495,8 +2553,11 @@ def _dialog_completion_response(state: dict, admin_key: str) -> web.Response:
             attachments=receipt["attachments"],
             turn_id=receipt.get("turn_id") or origin_turn_id), admin_key)
     if completion_message:
-        completion_message = _decorate_dialog_markers(
-            completion_message, admin_key)
+        completion_message, inline_forms = _dialog_presentation(
+            completion_message, admin_key,
+            owner_user_id=str(state.get("owner_user_id") or ""),
+            inline_dialog_ids=receipt.get("inline_dialog_ids") or [])
+        completion_meta["inline_forms"] = inline_forms
         # Marker strutturato `__REDIRECT__:<url>\n<msg>` (core, general):
         # il callback chiede una browser navigation diretta. Estraiamo
         # l'URL, includiamo `data-redirect-url` cosi' che lo script JS
@@ -2729,7 +2790,7 @@ async def dialog_context(request: web.Request) -> web.Response:
 
 
 async def dialog_cancel(request: web.Request) -> web.Response:
-    """GET /agent/dialog/<dialog_id>/cancel — cancella il dialogo."""
+    """POST /agent/dialog/<dialog_id>/cancel — cancella il dialogo."""
     dialog_id = request.match_info["dialog_id"]
     state = _resolve_dialog_state(request, dialog_id)
     if state is None:
@@ -2918,6 +2979,34 @@ def _validate_fetch_url(raw_url: str) -> tuple[str | None, str | None]:
     return _resolve_public_host(parsed.hostname)
 
 
+def _raster_image_type(data: bytes) -> str | None:
+    """The raster type these bytes prove to be, or None.
+
+    What a site declares is not what a browser may run under this origin: an
+    SVG is an image and a document with scripts (R-055 S2).
+    """
+    if data[:3] == b"\xff\xd8\xff":
+        return "image/jpeg"
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image/png"
+    if data[:6] in (b"GIF87a", b"GIF89a"):
+        return "image/gif"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    if data[4:12] in (b"ftypavif", b"ftypavis"):
+        return "image/avif"
+    return None
+
+
+def _web_photo_response(data: bytes, ctype: str) -> web.Response:
+    return web.Response(body=data, content_type=ctype, headers={
+        "Cache-Control": "public, max-age=86400",
+        "Referrer-Policy": "no-referrer",
+        "X-Content-Type-Options": "nosniff",
+        "Content-Security-Policy": "default-src 'none'; sandbox",
+    })
+
+
 async def photo_web_proxy(request: web.Request) -> web.Response:
     """GET /agent/photos/web?u=<url> — fetch + cache + serve.
 
@@ -2944,16 +3033,10 @@ async def photo_web_proxy(request: web.Request) -> web.Response:
             age = time.time() - cache_path.stat().st_mtime
             if age < _WEB_PHOTO_CACHE_TTL_S:
                 data = cache_path.read_bytes()
-                ctype = "image/jpeg"
-                if data[:8].startswith(b"\x89PNG"):
-                    ctype = "image/png"
-                elif data[:6] in (b"GIF87a", b"GIF89a"):
-                    ctype = "image/gif"
-                elif data[:4] == b"RIFF":
-                    ctype = "image/webp"
-                return web.Response(body=data, content_type=ctype,
-                                     headers={"Cache-Control": "public, max-age=86400",
-                                              "Referrer-Policy": "no-referrer"})
+                ctype = _raster_image_type(data)
+                if ctype is None:
+                    return _error(404, "not_image", "only raster images are served")
+                return _web_photo_response(data, ctype)
         except OSError:
             pass
     # Fetch fresh. Ogni hop viene risolto una volta e quegli IP sono iniettati
@@ -3016,18 +3099,17 @@ async def photo_web_proxy(request: web.Request) -> web.Response:
             return _error(400, "too_many_redirects", "redirect limit exceeded")
     except (aiohttp.ClientError, OSError, TimeoutError, asyncio.TimeoutError) as ex:
         return _error(404, "fetch_failed", f"{type(ex).__name__}: {ex}")
+    ctype = _raster_image_type(data)
+    if ctype is None:
+        # A login page, an SVG, anything else that is not a picture.
+        return _error(404, "not_image", "only raster images are served")
     if len(data) <= _WEB_PHOTO_MAX_BYTES:
         try:
             cache_path.parent.mkdir(parents=True, exist_ok=True)
             cache_path.write_bytes(data)
         except OSError:
             pass
-    if not ctype.startswith("image/"):
-        # Non un'immagine reale (es. HTML login page)
-        return _error(404, "not_image", f"content-type {ctype} not image")
-    return web.Response(body=data, content_type=ctype,
-                         headers={"Cache-Control": "public, max-age=86400",
-                                  "Referrer-Policy": "no-referrer"})
+    return _web_photo_response(data, ctype)
 
 
 # GET /agent/photos/<turn_id>/<idx>?size=thumb|full&exp=<ts>&t=<sig>
@@ -3471,7 +3553,7 @@ async def session_events(request: web.Request) -> web.StreamResponse:
                 # i comment SSE). Esce solo su disconnect o eccezione write.
                 continue
             kind = ev.get("kind") or "message"
-            data = {k: v for k, v in ev.items() if k != "kind"}
+            data = _session_event_data(ev, app_get(request.app, APP_ADMIN_KEY, ""))
             body = json.dumps(data, ensure_ascii=False, default=str)
             try:
                 await resp.write(f"event: {kind}\ndata: {body}\n\n".encode())
@@ -3545,10 +3627,12 @@ async def turn_submit(request: web.Request) -> web.Response:
     # Risposta immediata (dialog/cap pending): nessun run_turn, append `final`
     # nel log e chiudi. Il client si attacca e riceve subito l'esito.
     if immediate_msg is not None:
-        immediate_http = _decorate_dialog_markers(immediate_msg, admin_key)
+        immediate_http, inline_forms = _dialog_presentation(
+            immediate_msg, admin_key, owner_user_id=user_id)
         event_log.append(turn_id, "final", {
             "turn_id": turn_id,
             "final_message": immediate_http,
+            "inline_forms": inline_forms,
             "final_message_html": _safe_final_html(immediate_http),
             "final_kind": "answer",
             "outcome": "completed",
@@ -3608,11 +3692,12 @@ async def turn_submit(request: web.Request) -> web.Response:
                 )
                 deferred_immediate = runtime_data["immediate_msg"]
                 if deferred_immediate is not None:
-                    immediate_http = _decorate_dialog_markers(
-                        deferred_immediate, admin_key)
+                    immediate_http, inline_forms = _dialog_presentation(
+                        deferred_immediate, admin_key, owner_user_id=user_id)
                     event_log.append(turn_id, "final", {
                         "turn_id": turn_id,
                         "final_message": immediate_http,
+                        "inline_forms": inline_forms,
                         "final_message_html": _safe_final_html(immediate_http),
                         "final_kind": "answer",
                         "outcome": "completed",
@@ -3813,15 +3898,16 @@ async def turn_status(request: web.Request) -> web.Response:
                             return access_error
                         ts_start = float(d.get("ts_start") or 0)
                         ts_end = float(d.get("ts_end") or 0)
-                        final_msg = _decorate_dialog_markers(
+                        final_msg, inline_forms = _dialog_presentation(
                             d.get("final_message") or "",
-                            app_get(request.app, APP_ADMIN_KEY, ""),
+                            app_get(request.app, APP_ADMIN_KEY, ""), record=d,
                         )
                         return web.json_response({
                             "turn_id": turn_id,
                             "state": "complete",
                             "persistent": True,
                             "final_message": final_msg,
+                            "inline_forms": inline_forms,
                             "final_message_html": _safe_final_html(final_msg)
                             if final_msg else "",
                             "final_kind": d.get("final_kind"),
@@ -3904,6 +3990,7 @@ async def turns_recent(request: web.Request) -> web.Response:
     # sette giorni: scansiona i file dal piu' recente finche' il limite e'
     # raggiunto, invece di troncare arbitrariamente la conversazione.
     files = sorted(turns_dir.glob("*.jsonl"), reverse=True)
+    found: list[tuple[float, dict]] = []
     for f in files:
         try:
             with f.open() as fh:
@@ -3923,50 +4010,58 @@ async def turns_recent(request: web.Request) -> web.Response:
                     ts_start = float(t.get("ts_start") or 0)
                     if since_ts and ts_start <= since_ts:
                         continue
-                    ts_end = float(t.get("ts_end") or 0)
-                    in_flight = ts_end == 0 or not t.get("final_kind")
-                    final_msg = _decorate_dialog_markers(
-                        t.get("final_message") or "",
-                        app_get(request.app, APP_ADMIN_KEY, ""),
-                    )
-                    steps_summary = [
-                        {"step": s.get("step_num"),
-                         "tool": s.get("chosen_tool"),
-                         "ok": bool((s.get("result") or {}).get("ok", True))
-                         if isinstance(s.get("result"), dict) else None,
-                         "error_class": (s.get("result") or {}).get(
-                             "error_class")
-                         if isinstance(s.get("result"), dict) else None,
-                         "cloud": _step_cloud(s.get("result"))}
-                        for s in (t.get("steps") or [])
-                    ]
-                    out.append({
-                        "turn_id": t.get("turn_id", ""),
-                        "query": t.get("user_query", ""),
-                        "final_message": final_msg,
-                        "final_message_html": _safe_final_html(final_msg) if final_msg else "",
-                        "final_kind": t.get("final_kind", ""),
-                        "outcome": _semantic_turn_outcome(t),
-                        "ts_start": ts_start,
-                        "ts_end": ts_end if ts_end else None,
-                        "total_ms": int((ts_end - ts_start) * 1000) if ts_end else None,
-                        "target_device": t.get("target_device"),
-                        "in_flight": in_flight,
-                        "steps_summary": steps_summary,
-                        "expandable_caps": t.get("expandable_caps") or [],
-                        # Keep canonical order/indices; history has no inline cap.
-                        "attachments": _enrich_attachments(
-                            SimpleNamespace(turn_id=t.get("turn_id", ""),
-                                            attachments=t.get("attachments") or []),
-                            app_get(request.app, APP_ADMIN_KEY, ""), cap=0,
-                        ),
-                    })
-                    if len(out) >= limit * 2:  # cap scan, sort below
-                        break
+                    found.append((ts_start, t))
         except Exception as e:
             log.warning("turns_recent scan %s failed: %s", f, e)
-        if len(out) >= limit * 2:
+        # A day's file runs from its oldest turn: the newest are known only
+        # once it has been read to the end.
+        if len(found) >= limit:
             break
+
+    found.sort(key=lambda item: item[0], reverse=True)
+    for ts_start, t in found[:limit]:
+        try:
+            ts_end = float(t.get("ts_end") or 0)
+            in_flight = ts_end == 0 or not t.get("final_kind")
+            final_msg, inline_forms = _dialog_presentation(
+                t.get("final_message") or "",
+                app_get(request.app, APP_ADMIN_KEY, ""), record=t,
+            )
+            steps_summary = [
+                {"step": s.get("step_num"),
+                 "tool": s.get("chosen_tool"),
+                 "ok": bool((s.get("result") or {}).get("ok", True))
+                 if isinstance(s.get("result"), dict) else None,
+                 "error_class": (s.get("result") or {}).get(
+                     "error_class")
+                 if isinstance(s.get("result"), dict) else None,
+                 "cloud": _step_cloud(s.get("result"))}
+                for s in (t.get("steps") or [])
+            ]
+            out.append({
+                "turn_id": t.get("turn_id", ""),
+                "query": t.get("user_query", ""),
+                "final_message": final_msg,
+                "inline_forms": inline_forms,
+                "final_message_html": _safe_final_html(final_msg) if final_msg else "",
+                "final_kind": t.get("final_kind", ""),
+                "outcome": _semantic_turn_outcome(t),
+                "ts_start": ts_start,
+                "ts_end": ts_end if ts_end else None,
+                "total_ms": int((ts_end - ts_start) * 1000) if ts_end else None,
+                "target_device": t.get("target_device"),
+                "in_flight": in_flight,
+                "steps_summary": steps_summary,
+                "expandable_caps": t.get("expandable_caps") or [],
+                # Keep canonical order/indices; history has no inline cap.
+                "attachments": _enrich_attachments(
+                    SimpleNamespace(turn_id=t.get("turn_id", ""),
+                                    attachments=t.get("attachments") or []),
+                    app_get(request.app, APP_ADMIN_KEY, ""), cap=0,
+                ),
+            })
+        except Exception as e:
+            log.warning("turns_recent turn %s failed: %s", t.get("turn_id"), e)
 
     # Merge turn IN-FLIGHT dall'event log: girano ancora e NON sono nei JSONL
     # (scritti solo a fine turno). Senza questo, ricaricare la chat mentre un
@@ -4456,7 +4551,7 @@ ROUTES = (
     ("GET",  "/agent/dialog/{dialog_id}/form",   dialog_form),
     ("POST", "/agent/dialog/{dialog_id}/submit", dialog_submit),
     ("POST", "/agent/dialog/{dialog_id}/browser/{step_idx}", dialog_browser),
-    ("GET",  "/agent/dialog/{dialog_id}/cancel", dialog_cancel),
+    ("POST", "/agent/dialog/{dialog_id}/cancel", dialog_cancel),
     ("GET",  "/agent/dialog/{dialog_id}/preview/{step_idx}/{option_idx}", dialog_preview),
     ("GET",  "/agent/dialog/{dialog_id}/preview/{option_idx}",            dialog_preview),
     ("GET",  "/agent/dialog/{dialog_id}/context/{step_idx}",              dialog_context),

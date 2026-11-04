@@ -50,28 +50,35 @@ def site_collection_periods(steps, extract_pos: int, query: str
     read_pos = source(extract_pos)
     if read_pos is None or getattr(steps[read_pos - 1], "tool", "") != "read_sites":
         return ()
+    def goal_periods(act):
+        action = str(act.get("action") or "")
+        if act.get("value_ref") or not is_goal_navigation_request(action):
+            return ()
+        target = set(goal_tokens(action))
+        clauses = {clause for clause in split_query_chunks(query or "")
+                   if goal_scope_qualifier(clause, action)
+                   or target and set(goal_tokens(clause)) == target}
+        if len(clauses) != 1:
+            return ()
+        periods = calendar_periods(next(iter(clauses)))
+        if not periods:
+            return ()
+        if calendar_periods(action) == periods:
+            return periods
+        whole_years = all(low[5:] == "01-01" and high[5:] == "12-31"
+                          and low[:4] == high[:4] for low, high in periods)
+        if whole_years and {low[:4] for low, _high in periods} <= target:
+            return periods
+        return ()
+
+    # The goal may sit on any act of the chain read, the nearest first (live
+    # Fineco, 4/11/2026: a second act after the one naming the year).
     act_pos = source(read_pos)
-    if act_pos is None or getattr(steps[act_pos - 1], "tool", "") != "act_sites":
-        return ()
-    act = getattr(steps[act_pos - 1], "args", None) or {}
-    action = str(act.get("action") or "")
-    if act.get("value_ref") or not is_goal_navigation_request(action):
-        return ()
-    target = set(goal_tokens(action))
-    clauses = {clause for clause in split_query_chunks(query or "")
-               if goal_scope_qualifier(clause, action)
-               or target and set(goal_tokens(clause)) == target}
-    if len(clauses) != 1:
-        return ()
-    periods = calendar_periods(next(iter(clauses)))
-    if not periods:
-        return ()
-    if calendar_periods(action) == periods:
-        return periods
-    whole_years = all(low[5:] == "01-01" and high[5:] == "12-31"
-                      and low[:4] == high[:4] for low, high in periods)
-    if whole_years and {low[:4] for low, _high in periods} <= target:
-        return periods
+    while act_pos is not None and getattr(steps[act_pos - 1], "tool", "") == "act_sites":
+        periods = goal_periods(getattr(steps[act_pos - 1], "args", None) or {})
+        if periods:
+            return periods
+        act_pos = source(act_pos)
     return ()
 
 
@@ -83,6 +90,7 @@ def resolve_period_filter_field(args: dict, source_result: dict,
     its Sites goal. Neither row values nor a container label select the field.
     An unresolved predicate retains its missing where_field, so filter_entries
     returns its ordinary hard error instead of guessing or passing all rows.
+    Of several date fields the first in the schema's order is taken.
     """
     if (not isinstance(args, dict) or not periods
             or args.get("where_field") is not None
@@ -101,7 +109,7 @@ def resolve_period_filter_field(args: dict, source_result: dict,
         return args
     year_forms = {form.casefold() for form in
                   temporal["parser.time.singular_unit"]["y"]}
-    candidates = set()
+    candidates = []
     for field in fields:
         if not isinstance(field, str) or not field or field.startswith("_"):
             continue
@@ -114,11 +122,28 @@ def resolve_period_filter_field(args: dict, source_result: dict,
                 for form in forms)
                 or reconciliation.matches_gate("period_date_field", field.casefold())
                 or reconciliation.matches_gate("datetime_field", field.casefold())):
-            candidates.add(field)
-    if len(candidates) != 1:
+            candidates.append(field)
+    if not candidates:
         return args
+    # Several dates: the period applies to the first one the request names,
+    # the schema's order (Roberto, 3/11/2026, live Fineco f04f9aa3: «data
+    # operazione, data valuta»); the answer says which one.
     out = dict(args)
-    out["where_field"] = candidates.pop()
+    out["where_field"] = candidates[0]
+    if len(candidates) > 1:
+        out["_period_field_from"] = len(candidates)
+        # The sheet's Note says it too, through the runtime-owned envelope.
+        from hashlib import sha256
+        from tabular_records import merge_source_metadata
+        try:
+            # One choice, one note: the scope names the field, not the call.
+            scope = sha256(candidates[0].encode("utf-8")).hexdigest()[:16]
+            out["source_metadata"] = merge_source_metadata(
+                args.get("source_metadata"),
+                [{"producer": "filter_entries", "scope": scope,
+                  "reason_code": "period_field_choice", "field": candidates[0]}])
+        except ValueError:
+            pass
     return out
 
 

@@ -1,0 +1,13 @@
+{# ---
+role: engine_named_sheets
+tier: wise
+lang: it
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-11-04
+sha_prev:
+--- #}
+FOGLI NOMINATI NELLA RICHIESTA (schede e intestazioni lette ora): usa questi nomi esatti per spreadsheet_id, sheet_name e per i campi (where_field, source).
+{% for sheet in sheets %}- {{ sheet.name }}{% for tab in sheet.tabs %}; scheda «{{ tab.title }}»: {{ tab.columns|join(", ") }}{% endfor %}
+{% endfor %}

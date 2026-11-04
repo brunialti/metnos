@@ -3,9 +3,8 @@
 
 Roberto, 29/10/2026: «usa solo risolutore pubblico senza usare frontier; se non
 passa da solo passa all'utente il captcha». The public classifier
-recaptcha-classification-57k (YOLO, ONNX; the model card says MIT, the
-export metadata written by Ultralytics says AGPL-3.0) labels the numbered tiles;
-this code decides and acts. A fresh 3x3 grid holds three tiles with the
+recaptcha-classification-57k by DannyLuna (YOLO, ONNX, MIT) labels the numbered
+tiles; this code decides and acts. A fresh 3x3 grid holds three tiles with the
 object (480 of 497 real 2026 grids): it is answered only when exactly three
 tiles stand out; a replacement tile only when it is clearly in or clearly out.
 A grid in doubt, a 4x4 grid or an unknown target is reloaded, as a person

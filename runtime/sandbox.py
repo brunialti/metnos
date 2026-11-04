@@ -39,6 +39,52 @@ _TRUSTED_UNDO_BROKER_DIGEST_V1 = (
     "sha256:8f819a52ce9f242ace86de74822058baf609c863557f7cdc4482439983f4f895"
 )
 _PROJECTED_TRUST_ROOT_V1 = Path("/.metnos-admission-v1")
+_FILESYSTEM_HOST_PRIVATE_PATHS = (
+    (Path("/run/metnos-filesystem-host"), True),
+    (Path("/var/lib/metnos-filesystem-host"), True),
+    (Path("/etc/metnos/filesystem-host.json"), False),
+)
+
+
+def _filesystem_host_masks(bind_args: list[str]) -> list[str]:
+    """Hide administrative endpoints, including aliases exposed by any bind.
+
+    Read-only mounts still permit connections to UNIX sockets. Apply these
+    masks after every capability, skill and runtime bind, never at the caller.
+    """
+    # An uninstalled helper has no authority to hide. In particular, trying
+    # to create its absent configuration file beneath the read-only /etc bind
+    # would prevent unrelated executors from starting on fresh installations.
+    private_paths = tuple((path, directory) for path, directory in
+                          _FILESYSTEM_HOST_PRIVATE_PATHS if path.exists())
+    masks = dict(private_paths)
+    for index, option in enumerate(bind_args):
+        if option not in {"--bind", "--ro-bind"}:
+            continue
+        source, destination = Path(bind_args[index + 1]), Path(bind_args[index + 2])
+        try:
+            resolved = source.resolve(strict=True)
+        except (OSError, RuntimeError) as exc:
+            raise SandboxUnavailableError("cannot resolve filesystem projection") from exc
+        for protected, directory in private_paths:
+            if resolved == protected:
+                masks[destination] = directory
+            elif directory and protected in resolved.parents:
+                masks[destination] = resolved.is_dir()
+            elif resolved in protected.parents:
+                masks[destination / protected.relative_to(resolved)] = directory
+    args = []
+    # Parent masks subsume descendants, which may no longer exist afterwards.
+    selected = []
+    for destination, directory in sorted(masks.items(), key=lambda item: len(item[0].parts)):
+        if any(parent in destination.parents for parent in selected):
+            continue
+        if directory:
+            args += ["--tmpfs", str(destination), "--remount-ro", str(destination)]
+            selected.append(destination)
+        else:
+            args += ["--ro-bind", "/dev/null", str(destination)]
+    return args
 
 
 def requires_os_sandbox(executor) -> bool:
@@ -925,6 +971,11 @@ def _build_bwrap_args(
     for name, path in sorted(sealed_by_name.items()):
         args += ["--ro-bind", str(path), str(root / name)]
     args += ["--remount-ro", str(root)]
+
+    # These endpoints trust the service process. Ordinary executor subprocesses
+    # share its UID, so they must never inherit endpoint access from a broad or
+    # aliased filesystem bind, even when that bind is read-only.
+    args += _filesystem_host_masks(args)
 
     # Network: se nessuna capability (o extra del chiamante) lo richiede, isola
     if not has_network:

@@ -95,7 +95,14 @@ def _server_authority_denial(executor, *, actor: str) -> str | None:
 
 
 def check_invocation_scope(executor, args, *, actor: str = "host") -> str | None:
-    """Return a stable denial reason, or ``None`` when the preflight passes.
+    """Return a stable denial reason, or ``None`` when the preflight passes."""
+    denial = scope_denial(executor, args, actor=actor)
+    return denial[0] if denial else None
+
+
+def scope_denial(executor, args, *, actor: str = "host") -> tuple[str, str] | None:
+    """The denial reason and the path value as the caller gave it (the one
+    the person can recognise), or ``None`` when the preflight passes.
 
     Two independent checks share this preflight because they share its one
     property: it sits at the invocation choke-point, so fast paths, resumes
@@ -108,7 +115,7 @@ def check_invocation_scope(executor, args, *, actor: str = "host") -> str | None
     """
     denial = _server_authority_denial(executor, actor=actor)
     if denial:
-        return denial
+        return denial, ""
     if not isinstance(args, dict):
         return None
     from capabilities import effective_capabilities
@@ -133,17 +140,17 @@ def check_invocation_scope(executor, args, *, actor: str = "host") -> str | None
                 candidate = _resolved(raw)
                 if not any(_within(candidate, hint) for hint in scope):
                     return (f"outside allowed scope: {candidate} is not "
-                            f"authorized by {name}")
+                            f"authorized by {name}"), raw
                 if any(_within(candidate, hint) for hint in excludes):
                     return (f"outside allowed scope: {candidate} is excluded "
-                            f"from {name}")
+                            f"from {name}"), raw
         for field in capability.get("parent_path_args") or []:
             for raw in _values(args.get(field)):
                 candidate = _resolved(raw).parent
                 if not any(_within(candidate, hint) for hint in scope):
                     return (f"outside allowed scope: {candidate} is not "
-                            f"authorized by {name}")
+                            f"authorized by {name}"), raw
                 if any(_within(candidate, hint) for hint in excludes):
                     return (f"outside allowed scope: {candidate} is excluded "
-                            f"from {name}")
+                            f"from {name}"), raw
     return None

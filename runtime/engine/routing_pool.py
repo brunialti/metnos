@@ -88,6 +88,38 @@ def explicit_invocations_covered(query: str, names, tools, *, required: int = 1)
         and Counter(name for name, _, _ in calls) <= Counter(tools))
 
 
+def named_sheet_tool_names(query: str, catalog: list) -> set[str]:
+    """Tools of the sheets the request names by their file name.
+
+    «In the sheet F, tab T, add the column C: …» reads as one change of
+    files, whose verb selects no sheet tool (offline plans of 4/11/2026); the
+    named workbook is evidence of the tools that read and write it, kept in
+    the pool and through the planner's verb filter alike.
+    """
+    try:
+        from backends.files.local import SHEET_TOOLS_QUALIFIER, named_sheet_headers
+        from naming_grammar import parse_name
+        if not named_sheet_headers(query):
+            return set()
+    except Exception as ex:  # noqa: BLE001 - the pool stays as ranked
+        log.debug("routing_pool: named sheets unavailable: %r", ex)
+        return set()
+    names = set()
+    for ex_obj in catalog:
+        name = getattr(ex_obj, "name", None)
+        parts = parse_name(name) if name else None
+        if parts is not None and parts.qualifier == SHEET_TOOLS_QUALIFIER:
+            names.add(name)
+    return names
+
+
+def _with_named_sheet_tools(pool: list, query: str, catalog: list) -> list:
+    """The pool plus the tools of the sheets the request names."""
+    present = {getattr(e, "name", None) for e in pool}
+    wanted = named_sheet_tool_names(query, catalog) - present
+    return pool + [e for e in catalog if getattr(e, "name", None) in wanted]
+
+
 def _tool_object_of(nm: str) -> str:
     """Object canonico dal NOME tool (2° token in vocab.OBJECTS; '' se n/d)."""
     try:
@@ -557,6 +589,8 @@ def build_routing_pool(query: str, intent, catalog: list, *,
                 # prefiltrato resta valido; flusso invariato).
                 log.debug("routing_pool: injection universal-helper/companion "
                           "fallita: %r", ex)
+            pool_for_propose = _with_named_sheet_tools(
+                pool_for_propose, query, catalog)
             log.debug("routing_pool: pool reduced %d → %d via prefilter "
                        "(+helpers)", len(catalog), len(pool_for_propose))
         except Exception as ex:

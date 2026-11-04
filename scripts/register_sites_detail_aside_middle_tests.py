@@ -64,7 +64,6 @@ MODULES = {
             'test_collection_replay_light_browser.py',
             'test_collection_restore_guard_browser.py',
             'test_collection_restore_guard.py',
-            'test_collection_route_audit.py',
             'test_collection_routed_bookmark_browser.py',
             'test_collection_semantic_context.py',
             'test_collection_source_metadata.py',

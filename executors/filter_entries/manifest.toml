@@ -10,8 +10,8 @@ author      = "Roberto Brunialti"
 affinity    = ["filter", "filtra", "select", "where", "criterio", "subset", "match", "partiziona", "scarta", "tieni", "solo"]
 
 [description]
-it = "SCOPO: filtra entries per criteri. PATTERN: filter_entries(from_step=1, kind='image'). NON: cercare su disco (-> find); enumerare (-> list). OUT: entries=[...]."
-en = "SCOPO: filter entries by criteria. PATTERN: filter_entries(from_step=1, kind='image'). NON: search disk (-> find); enumerate (-> list). OUT: entries=[...]."
+it = "SCOPO: filtra entries per criteri. PATTERN: filter_entries(from_step=1, kind='image') | (from_step=1, where_field='scadenza', where_present=true). NON: cercare su disco (-> find); enumerare (-> list). OUT: entries=[...]."
+en = "SCOPO: filter entries by criteria. PATTERN: filter_entries(from_step=1, kind='image') | (from_step=1, where_field='due_date', where_present=true). NON: search disk (-> find); enumerate (-> list). OUT: entries=[...]."
 
 [code]
 files  = ["filter_entries.py"]

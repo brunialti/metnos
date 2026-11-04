@@ -1,0 +1,13 @@
+{# ---
+role: engine_named_sheets
+tier: wise
+lang: en
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-11-04
+sha_prev:
+--- #}
+SHEETS NAMED IN THE REQUEST (tabs and headers read now): use these exact names for spreadsheet_id, sheet_name and the fields (where_field, source).
+{% for sheet in sheets %}- {{ sheet.name }}{% for tab in sheet.tabs %}; tab «{{ tab.title }}»: {{ tab.columns|join(", ") }}{% endfor %}
+{% endfor %}

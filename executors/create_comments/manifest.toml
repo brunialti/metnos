@@ -6,7 +6,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "create_comments"
-version     = "0.1.0"
+version     = "0.1.1"
 timeout_s   = 60
 platforms   = ["linux"]
 author      = "Roberto Brunialti"
@@ -63,6 +63,9 @@ en = "Comment text, possibly multi-line. The same text goes to every listed targ
 type        = "string"
 enum        = ["github"]
 default     = "github"
+# config non-intento: risolta dal runtime, NON esposta all'LLM.
+# Politica: tests/runtime/infra/test_config_args_marking_policy.py.
+runtime_resolved = true
 
 [args.properties.client.description]
 it = "Implementazione backend. Oggi solo 'github'. Il runtime lo sceglie: non va indicato nella richiesta."

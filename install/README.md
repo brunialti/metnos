@@ -78,6 +78,16 @@ Downloaded models belong to data, not the immutable source. Administrative
 private keys remain root-only. Secrets collected during phase 4 are encrypted.
 Existing incompatible service units are refused, not overwritten.
 
+Phase 2 asks whether to download the optional reCAPTCHA image-grid classifier
+from Hugging Face:
+[recaptcha-classification-57k](https://huggingface.co/DannyLuna/recaptcha-classification-57k)
+by DannyLuna, MIT license, about 109 MB. The default answer is no and `--yes`
+leaves it out; without it, image grids are left to you. To add it later:
+
+```bash
+sudo -H -u metnos bash -s captcha-grid < install/download_models.sh
+```
+
 The system catalog includes the HTTP server, selected companions and mandatory
 background services. Local vision starts on demand. LRE is disabled by default.
 The watchdog interval can be configured on Services; its default is 30 minutes.

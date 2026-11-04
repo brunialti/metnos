@@ -12,8 +12,13 @@ Classifica {{ n }} entries di tipo '{{ kind }}' sulla dimensione '{{ dimension }
 
 Criterio: {{ criterion }}
 
+DEVI: applicare il criterio alla lettera guardando solo la parte dell'entry che il criterio indica (per esempio il testo dopo l'etichetta che nomina); un nome del criterio vale anche con le parole in altro ordine, in maiuscolo o con altri nomi accanto in quella stessa parte.
+NON DEVI: usare un nome che compare in un'altra parte dell'entry (dopo un'altra etichetta) né sostituire il criterio con un tuo giudizio.
+OK: esempio astratto, non copiare letteralmente: criterio «a se il mittente (Da:) è Anna Neri»; entry «Da: NERI ANNA VERDI LUCA A: Anna Neri» → a.
+E' UN ERRORE: entry «Da: Ditta X A: Anna Neri» classificata a perché Anna Neri compare dopo «A:».
+
 OUTPUT: SOLO un JSON array di {{ n }} stringhe, una per entry nello stesso ordine. Niente prosa, niente markdown, niente chiavi extra.
 
 Esempio per {{ example_n }} entries: {{ example_str }}
 
-Se incerto su una entry, scegli la classe piu' bassa fra le ammesse. Non inventare classi nuove. Lunghezza array esattamente {{ n }}.
+Se incerto su una entry, scegli la classe che il criterio assegna ai casi restanti; se non ne indica una, la classe piu' bassa fra le ammesse. Non inventare classi nuove. Lunghezza array esattamente {{ n }}.

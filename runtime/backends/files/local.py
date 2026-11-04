@@ -29,7 +29,6 @@ import datetime
 import fnmatch
 import hashlib
 import html
-import io
 import json
 import mimetypes
 import os
@@ -39,7 +38,6 @@ import stat
 import sys
 import tempfile
 import zipfile
-import xml.etree.ElementTree as ET
 from pathlib import Path, PureWindowsPath
 
 # Lazy: il modulo move() usa platform_policy per system-file safety net.
@@ -60,7 +58,9 @@ from executor_helpers import (  # noqa: E402
 from tabular_projection import (  # noqa: E402
     TabularProjectionError, project_entries,
 )
-from spreadsheet_cells import active_cell_count, neutralized_rows  # noqa: E402
+from spreadsheet_cells import (  # noqa: E402
+    active_cell_count, header_records, neutralized_rows,
+)
 import config as _C  # noqa: E402 §7.11
 import pdf_extract  # noqa: E402
 # path_alias modulo riusabile (D.1, D.3). Re-export degli alias come moduli
@@ -84,192 +84,30 @@ from path_alias import (  # noqa: E402
 # --- read ------------------------------------------------------------------
 
 
-def _decode_document_text(raw: bytes) -> str:
-    """Decode testuale bounded e senza dipendenze esterne."""
-    for encoding in ("utf-8-sig", "utf-16", "cp1252", "latin-1"):
-        try:
-            return raw.decode(encoding)
-        except (UnicodeDecodeError, LookupError):
-            continue
-    return raw.decode("utf-8", errors="replace")
-
-
-def _xml_local_name(tag: str) -> str:
-    return tag.rsplit("}", 1)[-1]
-
-
-def _parse_docx_text(raw: bytes) -> str:
-    with zipfile.ZipFile(io.BytesIO(raw)) as archive:
-        xml = archive.read("word/document.xml")
-    root = ET.fromstring(xml)
-    chunks: list[str] = []
-    paragraph: list[str] = []
-    for node in root.iter():
-        name = _xml_local_name(node.tag)
-        if name in {"t", "tab", "br"}:
-            paragraph.append("\t" if name == "tab" else
-                             "\n" if name == "br" else (node.text or ""))
-        elif name == "p" and paragraph:
-            text = "".join(paragraph).strip()
-            if text:
-                chunks.append(text)
-            paragraph = []
-    if paragraph:
-        chunks.append("".join(paragraph).strip())
-    return "\n".join(part for part in chunks if part)
-
-
-def _xlsx_cell_text(cell, shared: list[str]) -> str:
-    ctype = cell.attrib.get("t")
-    if ctype == "inlineStr":
-        return "".join((n.text or "") for n in cell.iter()
-                       if _xml_local_name(n.tag) == "t")
-    value = next((n.text or "" for n in cell
-                  if _xml_local_name(n.tag) == "v"), "")
-    if ctype == "s" and value:
-        try:
-            return shared[int(value)]
-        except (ValueError, IndexError):
-            return value
-    if ctype == "b":
-        return "TRUE" if value == "1" else "FALSE"
-    return value
-
-
-def _parse_xlsx_text(raw: bytes) -> str:
-    with zipfile.ZipFile(io.BytesIO(raw)) as archive:
-        names = set(archive.namelist())
-        shared: list[str] = []
-        if "xl/sharedStrings.xml" in names:
-            root = ET.fromstring(archive.read("xl/sharedStrings.xml"))
-            for item in root.iter():
-                if _xml_local_name(item.tag) == "si":
-                    shared.append("".join((n.text or "") for n in item.iter()
-                                          if _xml_local_name(n.tag) == "t"))
-        sheets = sorted(name for name in names
-                        if re.fullmatch(r"xl/worksheets/sheet\d+\.xml", name))
-        rendered: list[str] = []
-        for sheet_no, name in enumerate(sheets, 1):
-            root = ET.fromstring(archive.read(name))
-            rows: list[str] = []
-            for row in root.iter():
-                if _xml_local_name(row.tag) != "row":
-                    continue
-                cells = [_xlsx_cell_text(cell, shared) for cell in row
-                         if _xml_local_name(cell.tag) == "c"]
-                if cells:
-                    rows.append("\t".join(cells))
-            if rows:
-                rendered.append(f"[Sheet {sheet_no}]\n" + "\n".join(rows))
-    return "\n\n".join(rendered)
-
-
 def _auto_parse_file(path: str, source: dict | None = None) -> dict:
-    """Legge un documento; i PDF hanno un unico parser e ingresso limitato.
-
-    Un contenitore corrotto e' un'osservazione valida (`readable=false`), non
-    un fallimento I/O: la pipeline puo' segnalarlo e proseguire sugli altri.
-    """
-    # Keep relative reads aligned with the user workspace convention.
+    """Open once and share the document contract with authorized byte readers."""
+    import document_parse
     abs_path = str(_normalize_input_path(path))
-    suffix = Path(abs_path).suffix.casefold()
-    input_complete = True
-    pdf_state = {}
     try:
-        if suffix == ".pdf":
-            with Path(abs_path).open("rb") as handle:
-                size_before = os.fstat(handle.fileno()).st_size
-                raw = handle.read(pdf_extract.DEFAULT_MAX_BYTES + 1)
-                size_after = os.fstat(handle.fileno()).st_size
-            input_complete = len(raw) <= pdf_extract.DEFAULT_MAX_BYTES
-            pdf_state = {"parse_complete": False, "input_complete": input_complete,
-                         "truncated": False, "limits": [], "pdf_metadata": {}}
-        else:
-            raw = Path(abs_path).read_bytes()
+        with Path(abs_path).open("rb") as handle:
+            size = os.fstat(handle.fileno()).st_size
+            raw = handle.read(document_parse.MAX_BYTES + 1)
+            after = os.fstat(handle.fileno()).st_size
+        if size != after:
+            return {"ok": False, "path": abs_path, "error_code": "ERR_FS_SOURCE_CHANGED",
+                    "error": _msg("ERR_FS_SOURCE_CHANGED")}
     except FileNotFoundError:
-        return {"ok": False, "path": abs_path,
-                "error_code": "ERR_PATH_NOT_FOUND",
+        return {"ok": False, "path": abs_path, "error_code": "ERR_PATH_NOT_FOUND",
                 "error": _msg("ERR_PATH_NOT_FOUND", path=abs_path)}
     except PermissionError:
-        return {"ok": False, "path": abs_path,
-                "error_code": "ERR_PERMISSION_DENIED",
+        return {"ok": False, "path": abs_path, "error_code": "ERR_PERMISSION_DENIED",
                 "error": _msg("ERR_PERMISSION_DENIED", path=abs_path)}
     except OSError as exc:
         return {"ok": False, "path": abs_path, "error_code": "ERR_OP_FAILED",
                 "error": _msg("ERR_OP_FAILED", reason=str(exc))}
-
-    raw_sha = hashlib.sha256(raw).hexdigest() if input_complete else ""
-    readable = True
-    diagnostic = ""
-    try:
-        if suffix == ".docx":
-            content = _parse_docx_text(raw)
-            file_type = "docx"
-        elif suffix == ".xlsx":
-            content = _parse_xlsx_text(raw)
-            file_type = "xlsx"
-        elif suffix == ".pdf":
-            file_type = "pdf"
-            if not input_complete:
-                total = size_after if size_before == size_after and size_after >= len(raw) else None
-                pdf_state.update(pdf_extract.pdf_input_limit(pdf_extract.DEFAULT_MAX_BYTES,
-                                                            available_total=total))
-                content = ""
-                readable = False
-                diagnostic = "pdf_input_bytes_limit"
-            else:
-                info = pdf_extract.extract_pdf_text(raw, max_bytes=pdf_extract.DEFAULT_MAX_BYTES)
-                content = info["body_text"]
-                pdf_state.update(pdf_extract.pdf_extraction_state(info))
-                pdf_state["pdf_metadata"] = {key: info[key] for key in
-                                             ("title", "author", "n_pages", "n_pages_read", "used_lib")}
-            if input_complete and not content.strip():
-                readable = False
-                diagnostic = "pdf_text_unavailable"
-        elif suffix == ".xls":
-            content = ""
-            file_type = "xls"
-            readable = False
-            diagnostic = "legacy_xls_not_supported_without_converter"
-        else:
-            content = _decode_document_text(raw)
-            file_type = suffix.lstrip(".") or "text"
-    except ImportError:
-        if suffix != ".pdf":
-            raise
-        content = ""
-        file_type = "pdf"
-        readable = False
-        diagnostic = "pdf_parser_unavailable"
-    except (ValueError, KeyError, zipfile.BadZipFile, ET.ParseError,
-            UnicodeError, OSError) as exc:
-        content = ""
-        file_type = suffix.lstrip(".") or "unknown"
-        readable = False
-        diagnostic = str(exc) or type(exc).__name__
-
-    normalized = re.sub(r"\s+", " ", content).strip().casefold()
-    entry = dict(source or {})
-    entry.update({
-        "path": abs_path,
-        "name": entry.get("name") or Path(abs_path).name,
-        "ok": True,
-        "content": content,
-        "file_type": file_type,
-        "readable": readable,
-        "signature": raw_sha,
-        "sha256": raw_sha,
-        "content_sha256": (hashlib.sha256(normalized.encode("utf-8")).hexdigest()
-                           if normalized else ""),
-        "file_size": len(raw) if input_complete else size_after,
-    })
-    if suffix == ".pdf":
-        for key in ("parse_diagnostic", "cap_field", "cap_value", "used",
-                    "available_total", "truncated_what", "error", "error_class"):
-            entry.pop(key, None)
-        entry.update(pdf_state)
-    if diagnostic:
-        entry["parse_diagnostic"] = diagnostic
+    entry = document_parse.merge_entry(document_parse.parse_bytes(
+        raw, suffix=Path(abs_path).suffix, file_size=max(size, len(raw))), source)
+    entry.update({"path": abs_path, "name": entry.get("name") or Path(abs_path).name})
     return entry
 
 
@@ -2335,6 +2173,33 @@ def _resolve_spreadsheet_output_path(raw: str | Path) -> Path:
     return _normalize_input_path(str(path))
 
 
+_SHEET_SUFFIXES = (".xlsx", ".csv")
+
+
+def _sheet_file(path: Path) -> Path:
+    """A workbook named without its extension is the file a person sees.
+
+    «Movimenti_2026» names ``Movimenti_2026.xlsx`` (``.csv`` when only that
+    one exists), as Metnos itself names the sheets it creates; a workbook
+    suffix or an existing file is kept as given.
+    """
+    if path.suffix.lower() in _SHEET_SUFFIXES or path.exists():
+        return path
+    for suffix in _SHEET_SUFFIXES:
+        candidate = path.with_name(path.name + suffix)
+        if candidate.is_file():
+            return candidate
+    return path.with_name(path.name + ".xlsx")
+
+
+def _worksheet(workbook, name: str):
+    """The worksheet ``name`` names, exactly or else case-insensitively; None if absent."""
+    if name in workbook.sheetnames:
+        return workbook[name]
+    folded = [title for title in workbook.sheetnames if title.casefold() == name.casefold()]
+    return workbook[folded[0]] if len(folded) == 1 else None
+
+
 def _resolve_xlsx_path(args: dict, *, must_exist: bool):
     """Risolve il path del file spreadsheet locale da `spreadsheet_id`|`path`.
 
@@ -2351,7 +2216,7 @@ def _resolve_xlsx_path(args: dict, *, must_exist: bool):
         return None, {"ok": False, "error_code": "ERR_ARG_MISSING",
                       "error": _msg("ERR_ARG_MISSING", arg="spreadsheet_id"),
                       "error_class": "invalid_args"}
-    p = _resolve_spreadsheet_output_path(raw)
+    p = _sheet_file(_resolve_spreadsheet_output_path(raw))
     if must_exist and not p.is_file():
         return None, {"ok": False, "error_code": "ERR_PATH_NOT_FOUND",
                       "error": _msg("ERR_PATH_NOT_FOUND", path=str(p)),
@@ -2957,7 +2822,7 @@ def write_spreadsheet(args: dict) -> dict:
                 "error_class": "invalid_args", "results": [], "used": 0, "n_written": 0}
     raw = (raw or "").strip()
     if raw:
-        path = _resolve_spreadsheet_output_path(raw)
+        path = _sheet_file(_resolve_spreadsheet_output_path(raw))
     else:
         path = _spreadsheet_out_dir() / (
             "spreadsheet_" + datetime.datetime.now().strftime("%Y%m%d_%H%M%S") + ".xlsx")
@@ -3005,8 +2870,10 @@ def write_spreadsheet(args: dict) -> dict:
             import openpyxl
             if existed:
                 wb = openpyxl.load_workbook(str(path))
-                ws = (wb[sheet_name] if sheet_name and sheet_name in wb.sheetnames
-                      else wb.active)
+                # A named sheet that is not there yet is added: writing it in
+                # the first sheet would replace the rows the person kept there.
+                ws = (wb.active if not sheet_name
+                      else _worksheet(wb, sheet_name) or wb.create_sheet(sheet_name[:31]))
                 if mode == "overwrite":
                     ws.delete_rows(1, ws.max_row)
                 else:
@@ -3085,6 +2952,56 @@ def append_spreadsheet(args: dict) -> dict:
     return write_spreadsheet(a)
 
 
+# Qualifier of the tools that read and write the sheets of this folder.
+SHEET_TOOLS_QUALIFIER = "spreadsheet"
+
+
+def named_sheet_headers(text: str, *, limit: int = 3) -> list[dict]:
+    """Tabs and header labels of the sheets in the default folder ``text`` names.
+
+    A plan over an existing sheet filters, classifies and writes by tab and
+    column names that the planner cannot guess before reading it (offline
+    plan of 4/11/2026: a filter on an invented «tipo» for a sheet whose
+    columns are «Entrate» and «Uscite»).  A sheet is named when its file
+    name, with or without extension, occurs in the text as a whole word.
+    Only labels are returned, never cell values.
+    """
+    folded = str(text or "").casefold()
+    if not folded:
+        return []
+    try:
+        files = sorted(p for p in _spreadsheet_out_dir().iterdir()
+                       if p.suffix.lower() in _SHEET_SUFFIXES and p.is_file())
+    except OSError:
+        return []
+    named = [p for p in files if re.search(
+        rf"(?<![\w-]){re.escape(p.stem.casefold())}"
+        rf"(?:{re.escape(p.suffix.casefold())})?(?![\w-])", folded)]
+    sheets = []
+    for path in named[:limit]:
+        def labels(row):
+            return [str(cell).strip() for cell in list(row or ())[:40]
+                    if cell is not None and str(cell).strip()]
+        try:
+            if _is_csv(path):
+                import csv
+                with path.open("r", newline="", encoding="utf-8") as fh:
+                    tabs = [{"title": path.stem, "columns": labels(next(csv.reader(fh), []))}]
+            else:
+                import openpyxl
+                wb = openpyxl.load_workbook(str(path), read_only=True, data_only=True)
+                try:
+                    tabs = [{"title": ws.title,
+                             "columns": labels(next(ws.iter_rows(max_row=1, values_only=True), ()))}
+                            for ws in wb.worksheets[:8]]
+                finally:
+                    wb.close()
+        except Exception:  # noqa: BLE001 - an unreadable sheet is simply not described
+            continue
+        sheets.append({"name": path.stem, "tabs": tabs})
+    return sheets
+
+
 def read_spreadsheet(args: dict) -> dict:
     """Legge tutte le righe da uno spreadsheet LOCALE.
 
@@ -3109,7 +3026,12 @@ def read_spreadsheet(args: dict) -> dict:
         else:
             import openpyxl
             wb = openpyxl.load_workbook(str(path), read_only=True, data_only=True)
-            ws = wb[sheet_name] if sheet_name and sheet_name in wb.sheetnames else wb.active
+            ws = _worksheet(wb, sheet_name) if sheet_name else wb.active
+            if ws is None:
+                # Another sheet's rows would be presented as the named one (§2.8).
+                return {"ok": False, "error_code": "ERR_WORKSHEET_NOT_FOUND",
+                        "error": _msg("ERR_WORKSHEET_NOT_FOUND", sheet=sheet_name),
+                        "error_class": "not_found", "entries": [], "used": 0}
             values = [list(row) for row in ws.iter_rows(values_only=True)]
     except ImportError:
         return {"ok": False, "error_code": "ERR_DEPENDENCY_MISSING",
@@ -3120,9 +3042,11 @@ def read_spreadsheet(args: dict) -> dict:
                 "error": _msg("ERR_IO", detail=str(e)),
                 "error_class": "io_error", "entries": [], "used": 0}
     sid = str(path)
+    entries = header_records(values)
+    entries = values if entries is None else entries
     return {"ok": True, "values": values, "spreadsheet_id": sid,
-            "entries": values, "used": len(values),
-            "available_total": len(values), "files_source": "local"}
+            "entries": entries, "used": len(entries),
+            "available_total": len(entries), "files_source": "local"}
 
 
 # --------------------------------------------------------------------------

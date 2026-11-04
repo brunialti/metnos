@@ -26,6 +26,7 @@ COMMON_SUPPORT_FILES = (
     'backends/files/__init__.py',
     'backends/files/local.py',
     'pdf_extract.py',
+    'document_parse.py',
     'backends/files/tabular_local.py',
     'backends/files/tabular_xlsx.py',
     'monitor_capture.py',

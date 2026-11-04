@@ -53,10 +53,22 @@ _pid_alive() {
 }
 
 _find_server_pid() {
+  # Ours is the server of the configured model on this port: the PID written
+  # at start when it is still that process, else the same search over the
+  # command lines. Binary and model may have any name, and another program's
+  # server on the machine is not ours to report or stop.
+  local pid model_re
+  pid=$(cat "$PID_FILE" 2>/dev/null || true)
+  if _pid_alive "$pid" \
+      && tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null | grep -qF -- "-m $MODEL "; then
+    echo "$pid"
+    return
+  fi
+  model_re=$(printf '%s' "$MODEL" | sed 's/[][\.*^$+?(){}|]/\\&/g')
   # `|| true`: pgrep ritorna 1 se nessun match → con `set -euo pipefail` la
   # pipeline propagherebbe l'errore e abortirebbe lo script al primo cold-start
   # (server non ancora avviato). Empty stdout E' il segnale "non trovato".
-  pgrep -f "llama-server.*Qwen3VL.*--port $PORT" 2>/dev/null | head -1 || true
+  pgrep -f -- "-m $model_re .*--port $PORT" 2>/dev/null | head -1 || true
 }
 
 _find_watchdog_pid() {

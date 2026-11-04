@@ -149,11 +149,12 @@
 
     <div style="display:flex;gap:.5rem;margin-top:.5rem;">
       <button type="submit" class="btn primary">{{ msg("MSG_BROWSER_USER_RESUME") if dialog|selectattr('schema.kind', 'equalto', 'browser_session')|list else msg("MSG_CHAT_SEND") }}</button>
-      <a class="btn" href="/agent/dialog/{{ dialog_id }}/cancel{{ dialog_cap_query|e }}"
-         data-confirm-message="{{ msg('MSG_CHAT_DIALOG_CANCEL_CONFIRM') }}"
-         onclick="return confirm(this.dataset.confirmMessage);">{{ msg("MSG_BTN_CANCEL") }}</a>
+      <input type="submit" class="btn" form="dialog-cancel-form" value="{{ msg("MSG_BTN_CANCEL") }}">
     </div>
   </form>
+  <form id="dialog-cancel-form" method="post" action="/agent/dialog/{{ dialog_id }}/cancel{{ dialog_cap_query|e }}"
+        data-confirm-message="{{ msg('MSG_CHAT_DIALOG_CANCEL_CONFIRM') }}"
+        onsubmit="return confirm(this.dataset.confirmMessage);"></form>
 </div>
 {% include "_browser_session_script.html" %}
 <script>
@@ -197,7 +198,7 @@
       // turno intero) — senza feedback l'utente ri-clicca o crede sia rotto.
       // Disabilita TUTTO + progress; riabilita solo su errore (il successo
       // sostituisce l'iframe con la bolla risultato).
-      const _controls = form.querySelectorAll('input, select, textarea, button');
+      const _controls = form.querySelectorAll('input:not([form]), select, textarea, button');
       _controls.forEach(el => { el.disabled = true; });
       form.style.opacity = '0.6';
       let _prog = document.getElementById('_metnos_progress');
@@ -294,13 +295,14 @@
       }
     });
   }
-  const cancelLink = document.querySelector('a[href*="/cancel"]');
-  if(cancelLink){
-    cancelLink.addEventListener('click', async (e) => {
+  const cancelForm = document.getElementById('dialog-cancel-form');
+  if(cancelForm){
+    cancelForm.removeAttribute('onsubmit');
+    cancelForm.addEventListener('submit', async (e) => {
       e.preventDefault();
-      if(!confirm(cancelLink.dataset.confirmMessage || '')) return;
+      if(!confirm(cancelForm.dataset.confirmMessage || '')) return;
       try {
-        const r = await fetch(cancelLink.href, {cache:'no-store'});
+        const r = await fetch(cancelForm.action, {method:'POST', cache:'no-store'});
         if(r.headers.get('X-Metnos-Dialog-State') === 'cancelled'){
           window.parent.postMessage(
             {type:'metnos.dialog.cancelled',

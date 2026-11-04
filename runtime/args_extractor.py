@@ -171,7 +171,9 @@ def _extract_paths(query: str) -> list[str]:
             _add(p)
     # 3. "home" standalone (senza /) → "~/" se non gia' coperto.
     import detection_lexicon as _detlex
-    if _detlex.match("args.home_marker", query) and not any(
+    from tool_grammar import _strip_fs_paths
+    prose = _strip_fs_paths(_URL_RE.sub(" ", query))
+    if _detlex.match("args.home_marker", prose) and not any(
             p.startswith("~") for p in out):
         _add("~/")
     # 4. "~" standalone (senza /) → "~/" se non gia' coperto.
@@ -388,10 +390,10 @@ def _extract_time_window(query: str) -> Optional[str]:
     return None
 
 
-# Slug 'owner/name' (es. repo GitHub) inline nella query. Lookaround esclude
-# path (/a/b) e URL (host/owner/name): un solo '/', non preceduto/seguito da \w o /.
+# Slug 'owner/name' (es. repo GitHub) inline nella query. I confini escludono
+# anche match parziali dentro segmenti di percorso con punti o trattini.
 _REPO_SLUG_RE = re.compile(
-    r"(?<![\w/])([A-Za-z0-9][\w.-]*/[A-Za-z0-9][\w.-]*)(?![\w/])")
+    r"(?<![\w./\\-])([A-Za-z0-9][\w.-]*/[A-Za-z0-9][\w.-]*)(?![\w./\\-])")
 _PLACEHOLDER_OWNERS = {"owner", "org", "organization", "user", "username",
                        "example", "your-org", "your-username", "you"}
 

@@ -62,7 +62,7 @@ CONTEXT_CATALOG_V1: tuple[tuple[str, str, tuple[str, ...], str], ...] = (
         "productive",
     ),
     (
-        "property_catalog", "5",
+        "property_catalog", "6",
         (
             'executor_birth_properties.py',
             'executor_birth_property_runner.py',
@@ -89,6 +89,7 @@ CONTEXT_CATALOG_V1: tuple[tuple[str, str, tuple[str, ...], str], ...] = (
             'backends/files/__init__.py',
             'backends/files/local.py',
             'pdf_extract.py',
+            'document_parse.py',
             'backends/files/tabular_local.py',
             'backends/files/tabular_xlsx.py',
             'monitor_capture.py',

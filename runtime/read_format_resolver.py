@@ -41,6 +41,18 @@ def resolve_read_format(tool: str, args: dict, query: str, *,
     if not isinstance(parse_schema, dict) or "auto" not in (parse_schema.get("enum") or []):
         return args
 
+    # Document interpretation consumes a complete input and chooses its text
+    # encoding. Do not introduce it over an explicit byte read; callers may
+    # still opt into parse=auto themselves. Zero offsets/caps and the declared
+    # encoding default are neutral, including defaults materialized by a plan.
+    encoding_schema = props.get("encoding")
+    default_encoding = encoding_schema.get("default") if isinstance(encoding_schema, dict) else None
+    if args.get("parse") != "auto" and (
+        any(args.get(key) not in (None, 0) for key in ("max_bytes", "tail_bytes", "offset"))
+        or args.get("encoding") not in (None, "", default_encoding)
+    ):
+        return args
+
     paths = _paths(args)
     materialized_mixed = any(
         PurePath(path.replace("\\", "/")).suffix.casefold() in _AUTO_SUFFIXES

@@ -968,6 +968,9 @@ SERVICE_SOURCE_V1 = tuple(sorted((
                 "scripts/normalize_installed_github_executors.py",
             ),
     ),
+    # The scripts of the next three are gone (owner, 1/11/2026). Their entries
+    # stay: a retirement step is one-way (`require_successor_retirement_v1`)
+    # and the closed operations fail before any I/O.
     _entrypoint(
         "entry-rename-myclaw",
         _administrative_operation("rename-myclaw"),

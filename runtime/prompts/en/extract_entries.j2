@@ -33,4 +33,8 @@ ERROR: include an overview instead of a record, or a record whose required categ
 {% endif %}{% if datetime_fields %}Normalize DATE/TIME fields ({{ datetime_fields }}) to ISO 8601 ONLY when year, date, time, and timezone are explicit in the text. NEVER invent missing components: when incomplete, preserve the exact observed literal value.
 {% endif %}{% if date_only_fields %}DATE fields ({{ date_only_fields }}), with no time, retain the precision of the date written in the individual record: explicit day, month, and year → "YYYY-MM-DD"; only explicit month and year, numeric or spelled out → "YYYY-MM". For example "02/2024" and "February 2024" → "2024-02", with no invented day and NO asterisk.
 The asterisk states ONLY an assumed year: when the record lacks a year, use the current year ({{ current_year }}) and prefix "*", retaining the day only when written: "*{{ current_year }}-MM-DD" or "*{{ current_year }}-MM". Never take the year from the request, an overview, or another record. An explicit year in the record never receives "*". Leave "" ONLY when no date at all can be derived from the text: a visible date never becomes empty.
+MUST: date each record with the day shown for that row or item, completing the year as stated above.
+MUST NOT: use as the date a month, year or period named inside the description or another field of the record.
+OK: abstract example, do not copy literally: item «12 March» with description «February fee» → dated 12 March.
+ERROR: the same item dated "YYYY-02" because the description names February.
 {% endif %}Output ONLY the JSON array. Minimal shape: [{"{{ example_field }}":"..."}].

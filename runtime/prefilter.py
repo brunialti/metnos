@@ -188,13 +188,20 @@ def _localized_verb_table() -> dict[str, str]:
     parte del payload versionato del concept specifico.
     """
     table = verb_to_canonical_mapping()
+    for token, canonicals in _action_surfaces().items():
+        if len(canonicals) == 1:
+            table.setdefault(token, next(iter(canonicals)))
+    return table
+
+
+def _action_surfaces() -> dict[str, set[str]]:
+    """Every canonical action each simple token can name."""
     try:
         from vocab import action_recognition_mapping
     except Exception:  # pragma: no cover - bootstrap minimale
-        return table
-    mapping = action_recognition_mapping()
+        return {}
     candidates: dict[str, set[str]] = {}
-    for canonical, surfaces in mapping.items():
+    for canonical, surfaces in action_recognition_mapping().items():
         if not isinstance(surfaces, list):
             continue
         for surface in surfaces:
@@ -204,10 +211,14 @@ def _localized_verb_table() -> dict[str, str]:
             if not _WORD_RE.fullmatch(token):
                 continue
             candidates.setdefault(token, set()).add(canonical)
-    for token, canonicals in candidates.items():
-        if len(canonicals) == 1:
-            table.setdefault(token, next(iter(canonicals)))
-    return table
+    return candidates
+
+
+def shared_verb_candidates(qtokens) -> set[str]:
+    """Actions a token shares: recognition never picks among them, tools can."""
+    surfaces = _action_surfaces()
+    return {verb for token in qtokens for verb in surfaces.get(token, ())
+            if len(surfaces[token]) > 1}
 
 try:
     from vocab import ROUTING_COMPATIBLE_ACTION_PAIRS

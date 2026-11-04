@@ -131,8 +131,12 @@ def existing(fd, name):
     return file
 
 
-def stage(fd):
-    name = ".metnos-transfer-" + secrets.token_hex(24)
+def staging_name():
+    return ".metnos-transfer-" + secrets.token_hex(24)
+
+
+def stage(fd, name=None):
+    name = name or staging_name()
     file = os.open(name, os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=fd)
     return name, file
 

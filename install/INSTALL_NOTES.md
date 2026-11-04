@@ -55,6 +55,28 @@ client 0.2.64 advertising `filesystem_broker_v1` and signed matching contracts.
 Older clients display an update notice rather than receiving expanded access.
 See ADR 0237 for transfer limits and the five-second device authority lifetime.
 
+Server grants outside the service workspace use one independent filesystem
+host under the installer's ordinary OS identity. The root-owned binding in
+`/etc/metnos/filesystem-host.json` retains that UID/GID across upgrades; an
+application administrator never selects or acquires an OS identity. After the
+authenticated release cutover, the installer refreshes the host unit to use
+that release's immutable runtime and Python. Its private state and bootstrap
+workspace live under `/var/lib/metnos-filesystem-host`; after configuration
+initialization it selects the service's canonical workspace for authorization.
+The host accepts only the service UID in its own user namespace, and the
+service keeps connected descriptors out of executors. The existing account
+grants remain authoritative for every operation and commit, including live
+revocation and expiry. A grant is reported active only after a nondestructive
+access probe succeeds under the identity that will perform its operations.
+
+The host unit permits only `AF_UNIX` and `AF_NETLINK` socket families.
+Bubblewrap needs `NETLINK_ROUTE` to configure loopback inside the document
+worker's separate network namespace; omitting it prevents document parsing
+before the worker starts. `AF_INET` and `AF_INET6` remain denied, with
+`NoNewPrivileges=yes` and an empty capability bounding set. Refresh accepts
+the exact earlier `AF_UNIX`-only managed recipe for this upgrade; any other
+unit modification or override still blocks replacement.
+
 `bash install/bootstrap.sh --check` may create or update `.venv` before it
 reaches the Python pre-flight. When that environment already exists,
 `./.venv/bin/python -m install --check` is the read-only pre-flight: it must not
@@ -784,11 +806,12 @@ paths used by the in-process embedder and verifies their pinned SHA-256 values.
 An absent or corrupt mandatory asset aborts the phase. Optional assets must
 likewise use a pinned revision or digest whenever the upstream distribution
 provides a stable artifact.
-The optional reCAPTCHA tile classifier (`captcha_grid_classifier`) follows
-this rule; its absence or a different digest disables only the automatic
-answer to 3x3 image grids, which then go to the person. Its model card declares
-MIT while the Ultralytics export metadata states AGPL-3.0: the installer fetches
-it from the source at the pinned revision and the distribution never ships it.
+The optional reCAPTCHA tile classifier (`captcha_grid_classifier`,
+recaptcha-classification-57k by DannyLuna, MIT) follows this rule. Phase 2 asks
+with a default of no and fetches it from Hugging Face at the pinned revision
+only on acceptance; `--yes` leaves it out and the distribution never ships it.
+Its absence, a failed download or a different digest disables only the automatic
+answer to 3x3 image grids, which then go to the person; installation continues.
 
 A compatible text endpoint may be local or remote. Reuse requires an explicit
 entry in `services.toml`; a responding undeclared local endpoint is a conflict,

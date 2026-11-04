@@ -76,6 +76,8 @@ class SchedulerDaemon:
         # created in start() so it binds to the running loop).
         self._running: dict[int, int] = {}
         self._running_lock: asyncio.Lock | None = None
+        # entry_id -> its fire in progress: a slow entry never holds the others.
+        self._firing: dict[int, asyncio.Task] = {}
         # Runtime health is process-local and therefore authoritative for the
         # co-hosted loop.  Observers must not infer liveness from whether a job
         # happened to run recently: an idle scheduler is still healthy.
@@ -171,25 +173,28 @@ class SchedulerDaemon:
             await self._recover_missed()
             assert self.shutdown_evt is not None and self.wake_evt is not None
             while not self.shutdown_evt.is_set():
+                # Cleared before reading: a kick arriving from here on wakes
+                # the wait below instead of being lost.
+                self.wake_evt.clear()
                 now = time.time()
                 self._heartbeat_at_epoch = now
                 self._publish_health()
-                due = self.storage.fetch_due(now, limit=100)
-                if due:
-                    await asyncio.gather(
-                        *[self._fire(e) for e in due], return_exceptions=True
-                    )
+                for entry in self.storage.fetch_due(now, limit=100):
+                    if entry.id not in self._firing:
+                        self._start_fire(entry)
                 # Recompute now to avoid stale sleep
                 now2 = time.time()
                 sleep_s = self._compute_sleep(now2)
-                self.wake_evt.clear()
                 try:
                     await asyncio.wait_for(self.wake_evt.wait(), timeout=sleep_s)
                 except asyncio.TimeoutError:
                     pass
                 self._heartbeat_at_epoch = time.time()
                 self._publish_health()
+            if self._firing:
+                await asyncio.gather(*self._firing.values(), return_exceptions=True)
         except asyncio.CancelledError:
+            await self._cancel_fires()
             return
         except Exception as exc:
             self._last_error_class = type(exc).__name__
@@ -292,8 +297,29 @@ class SchedulerDaemon:
             "error_summary": self._last_error_summary,
         }
 
+    def _start_fire(self, entry: ScheduleEntry) -> None:
+        task = asyncio.get_running_loop().create_task(self._fire(entry))
+        self._firing[entry.id] = task
+
+        def finished(done: asyncio.Task) -> None:
+            self._firing.pop(entry.id, None)
+            if not done.cancelled() and done.exception() is not None:
+                log.error("entry %s: fire failed", entry.name, exc_info=done.exception())
+            if self.wake_evt is not None:
+                self.wake_evt.set()
+
+        task.add_done_callback(finished)
+
+    async def _cancel_fires(self) -> None:
+        """Stop what is running and let each fire record how it ended."""
+        tasks = list(self._firing.values())
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+
     def _compute_sleep(self, now: float) -> float:
-        nxt = self.storage.next_fire_at_min()
+        nxt = self.storage.next_fire_at_min(exclude=tuple(self._firing))
         if nxt is None:
             return _MAX_SLEEP_S
         delta = nxt - now
@@ -388,13 +414,15 @@ class SchedulerDaemon:
         status = "success"
         error: str | None = None
         output = ""
+        interrupted = False
+        jobs: list = []
 
         try:
             if cb is None:
                 status = "error"
                 error = f"unknown callback_key: {entry.callback_key!r}"
             else:
-                coro = self._invoke(cb.fn, entry, is_async=cb.is_async)
+                coro = self._invoke(cb.fn, entry, is_async=cb.is_async, jobs=jobs)
                 if entry.timeout_s and entry.timeout_s > 0:
                     result = await asyncio.wait_for(coro, timeout=entry.timeout_s)
                 else:
@@ -420,6 +448,12 @@ class SchedulerDaemon:
         except asyncio.TimeoutError:
             status = "timeout"
             error = f"timed out after {entry.timeout_s}s"
+        except asyncio.CancelledError:
+            # Stopped midway is not done: what it had already done is unknown.
+            status = "error"
+            error = "interrupted before the end"
+            interrupted = True
+            raise
         except Exception as exc:
             status = "error"
             error = f"{type(exc).__name__}: {exc}"
@@ -444,7 +478,7 @@ class SchedulerDaemon:
                         "entry %s: cannot recompute next_fire_at", entry.name
                     )
                 # remaining_runs > 0 means countdown is active
-                if entry.remaining_runs and entry.remaining_runs > 0:
+                if entry.remaining_runs and entry.remaining_runs > 0 and not interrupted:
                     decrement_remaining = True
                     if entry.remaining_runs - 1 <= 0:
                         disable = True
@@ -492,14 +526,26 @@ class SchedulerDaemon:
                         self._pool.submit(_safe_hook)
                     else:
                         _safe_hook()
-            async with self._running_lock:
-                cur = self._running.get(entry.id, 0)
-                if cur <= 1:
-                    self._running.pop(entry.id, None)
-                else:
-                    self._running[entry.id] = cur - 1
+            # A thread past its timeout is still working: its slot stays taken
+            # until it really ends.
+            alive = next((job for job in jobs if not job.done()), None)
+            if alive is None:
+                await self._release_slot(entry.id)
+            else:
+                loop = asyncio.get_running_loop()
+                alive.add_done_callback(lambda _job: None if loop.is_closed() else
+                                        asyncio.run_coroutine_threadsafe(
+                                            self._release_slot(entry.id), loop))
 
-    async def _invoke(self, fn, entry: ScheduleEntry, *, is_async: bool):
+    async def _release_slot(self, entry_id: int) -> None:
+        async with self._running_lock:
+            cur = self._running.get(entry_id, 0)
+            if cur <= 1:
+                self._running.pop(entry_id, None)
+            else:
+                self._running[entry_id] = cur - 1
+
+    async def _invoke(self, fn, entry: ScheduleEntry, *, is_async: bool, jobs: list | None = None):
         metadata = {"origin": "background", "channel": "scheduler",
                     "job_ref": f"schedule:{entry.id}:{uuid.uuid4().hex}"}
         def observed_result(segment, result):
@@ -515,8 +561,11 @@ class SchedulerDaemon:
             # Le chiamate sincrone appartengono al thread che le esegue.
             with _monitor.segment_scope(independent=True, **metadata) as segment:
                 return observed_result(segment, fn(entry.payload))
-        loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(self._pool, invoke)
+        if self._pool is None or jobs is None:
+            return await asyncio.get_running_loop().run_in_executor(self._pool, invoke)
+        job = self._pool.submit(invoke)
+        jobs.append(job)
+        return await asyncio.wrap_future(job)
 
     # --- convenience -------------------------------------------------
 

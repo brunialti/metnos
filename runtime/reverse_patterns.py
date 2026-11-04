@@ -19,6 +19,7 @@ rientra → escalation a Roberto per progettare un pattern aggiuntivo.
 Replica cross-language: i client remoti (Rust per Windows) replicano lo
 stesso catalogo coi medesimi nomi.
 """
+import hashlib
 import shutil
 from pathlib import Path
 
@@ -241,16 +242,33 @@ def _delete_created_dirs(plan, results):
 # Order di rimozione: file prima, poi dir piu' profonde (per rimuovere
 # i parent una volta vuoti).
 
+def _changed_since(path, sha256) -> bool:
+    """The file is no longer what the original operation left there."""
+    if not isinstance(sha256, str) or not sha256:
+        return False
+    digest = hashlib.sha256()
+    try:
+        with Path(path).open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1 << 20), b""):
+                digest.update(chunk)
+    except OSError:
+        return True
+    return digest.hexdigest() != sha256
+
+
 def _delete_created_paths(plan, results):
     entries = (results or {}).get("results") or []
     parent_dirs = (results or {}).get("dirs_created") or []
     files = []
     dirs = []
+    changed = []
     for entry in entries:
         if not isinstance(entry, dict) or not entry.get("created"):
             continue
         p = Path(entry["path"])
-        if p.is_file() or p.is_symlink():
+        if p.is_file() and _changed_since(p, entry.get("sha256")):
+            changed.append({"path": str(p), "error": "ERR_FS_SOURCE_CHANGED", "kind": "file"})
+        elif p.is_file() or p.is_symlink():
             files.append(p)
         elif p.is_dir():
             dirs.append(p)
@@ -261,7 +279,7 @@ def _delete_created_paths(plan, results):
         dirs.append(Path(ds))
     # File prima (cosi' poi le dir possono diventare vuote), poi dir
     # in ordine di profondita' decrescente.
-    out, failed = [], []
+    out, failed = [], changed
     for f in files:
         try:
             f.unlink()
@@ -369,6 +387,11 @@ def _restore_blob_backup(plan, results):
             if "path" in entry and "account" not in entry:
                 target = _Path(entry["path"])
                 temporary = None
+                if entry.get("restore_mode") != "create" and _changed_since(
+                        target, entry.get("sha256")):
+                    failed.append({"index": i, "path": entry.get("path"),
+                                   "error": "ERR_FS_SOURCE_CHANGED"})
+                    continue
                 try:
                     target.parent.mkdir(parents=True, exist_ok=True)
                     fd, temporary_name = _tempfile.mkstemp(
@@ -565,14 +588,21 @@ def build_remote_reverse_calls(names, plan: dict, results: dict, *,
                                        "dst_template": back,
                                        "parents": True, "client": "local"}})
         elif n == "delete_created_paths":
+            # What the operation left is what may go: a file changed since
+            # then is the user's, and the device refuses to delete it.
             created = {}
             for entry in res.get("results") or []:
                 if isinstance(entry, dict) and entry.get("created") and entry.get("path"):
-                    created.setdefault(entry.get("destination_scope", "device"), []).append(entry["path"])
-            for scope, paths in created.items():
-                for start in range(0, len(paths), 100):
-                    calls.append({"executor": "delete_files", "args": {
-                        "paths": paths[start:start + 100], "client": "local", "location": scope}})
+                    created.setdefault(entry.get("destination_scope", "device"), []).append(entry)
+            for scope, rows in created.items():
+                for start in range(0, len(rows), 100):
+                    chunk = rows[start:start + 100]
+                    args = {"paths": [row["path"] for row in chunk],
+                            "client": "local", "location": scope}
+                    expected = {row["path"]: row["sha256"] for row in chunk if row.get("sha256")}
+                    if expected:
+                        args["expected_sha256"] = expected
+                    calls.append({"executor": "delete_files", "args": args})
             parent_dirs = res.get("dirs_created") or []
             if parent_dirs:
                 calls.append({"executor": "delete_dirs",
@@ -609,7 +639,12 @@ def build_remote_reverse_calls(names, plan: dict, results: dict, *,
                 if bp and path:
                     scope = entry.get("destination_scope", "device")
                     overwrite = bool(entry.get("prev_blob_path")) and entry.get("restore_mode") != "create"
-                    batches.setdefault((scope, overwrite), []).append({"src": str(bp), "dst": str(path)})
+                    item = {"src": str(bp), "dst": str(path)}
+                    # The same rule for an overwrite: put back only over what
+                    # the operation wrote, never over a later change.
+                    if overwrite and entry.get("sha256"):
+                        item["expected_sha256"] = entry["sha256"]
+                    batches.setdefault((scope, overwrite), []).append(item)
                 elif path and not entry.get("created") and not entry.get("skipped"):
                     missing_blob = True
             for (scope, overwrite), batch in batches.items():

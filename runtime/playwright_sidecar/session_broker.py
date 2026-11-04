@@ -58,6 +58,7 @@ from playwright_sidecar import collection_observation
 from playwright_sidecar import collection_cutoff
 from playwright_sidecar import action_errors
 from playwright_sidecar import downloads
+from playwright_sidecar.hit_points import HIT_POINTS_JS
 import sites_downloads
 from messages import get as _msg
 import sites_audit
@@ -206,9 +207,11 @@ _CLICK_TIMEOUT_MS = _bounded_int_env(
 )
 _MODEL_FALLBACKS_ENABLED = _enabled_env(
     "METNOS_SITES_MODEL_FALLBACKS", default=True)
-# Collection observation and route choice use Frontier when configured;
-# without it the local decision stands. Login and other actions keep their
-# existing workloads. METNOS_SITES_FRONTIER_ROUTES=0 disables both requests.
+# The collector decides every page with the shared observation
+# (`sites.collection_observe`, ADR 0191 18/10/2026). A collection step chosen
+# outside the collector asks Frontier when configured, the local model
+# otherwise; METNOS_SITES_FRONTIER_ROUTES=0 keeps that step local. Login and
+# other actions keep their existing workloads.
 _FRONTIER_COLLECTION_ROUTES = _enabled_env(
     "METNOS_SITES_FRONTIER_ROUTES", default=True)
 # The return from a detail opened in place tries a verified «back» first;
@@ -267,6 +270,8 @@ _DISCOVERABLE_RESOURCE_TYPES = frozenset({
 _browser_provider = None              # BrowserProvider, impostato da configure() (B1)
 _sessions: dict[str, dict] = {}       # session_id -> entry
 _pending_opens: dict[str, dict] = {}  # token opaco -> piano allowlist
+_opening: dict[str, int] = {}  # owner -> opens past the quota, not registered yet
+_CONTEXT_CLOSE_TIMEOUT_S = 5.0
 _reaper_task = None
 
 _WEBRTC_OFF_JS = r"""
@@ -300,7 +305,7 @@ _ACCESSIBLE_ACTION_NAME_JS = r"""
 
 _ENUMERATE_ACTION_TARGETS_JS = r"""
 (held) => {
-""" + _ACCESSIBLE_ACTION_NAME_JS + r"""
+""" + _ACCESSIBLE_ACTION_NAME_JS + HIT_POINTS_JS + r"""
   // An accessible name is authored by hand and can be wrong: a page may ship
   // an unresolved translation key as its aria-label, which then hides the
   // label the page actually displays. The visible text travels next to the
@@ -634,13 +639,10 @@ _ENUMERATE_ACTION_TARGETS_JS = r"""
       const actionId = enumeratedActionIds.get(p);
       if (actionId) ancestorActionIds.push(actionId);
     }
-    const topmost = (() => {
-      if (!visible) return false;
-      const x = Math.max(0, Math.min(innerWidth - 1, r.left + r.width / 2));
-      const y = Math.max(0, Math.min(innerHeight - 1, r.top + r.height / 2));
+    const topmost = visible && hitPoints(el).some(([x, y]) => {
       const top = document.elementFromPoint(x, y);
       return top === el || !!(top && el.contains(top));
-    })();
+    });
     out.push({
       id, dom_order: order, tag: el.tagName.toLowerCase(),
       type: (el.type || '').toLowerCase(),
@@ -722,6 +724,7 @@ _COVERING_LAYERS_JS = r"""
 
 _LOCATE_SAFE_OVERLAY_DISMISS_JS = r"""
 (config) => {
+""" + HIT_POINTS_JS + r"""
   document.querySelectorAll('[data-metnos-overlay-dismiss]').forEach(
     el => el.removeAttribute('data-metnos-overlay-dismiss'));
   const normalize = value => (value || '').normalize('NFKD')
@@ -742,10 +745,10 @@ _LOCATE_SAFE_OVERLAY_DISMISS_JS = r"""
     if (r.width < 2 || r.height < 2 || st.display === 'none' ||
         st.visibility === 'hidden' || Number.parseFloat(st.opacity || '1') < 0.05 ||
         el.disabled || el.getAttribute('aria-disabled') === 'true') return false;
-    const x = Math.max(0, Math.min(innerWidth - 1, r.left + r.width / 2));
-    const y = Math.max(0, Math.min(innerHeight - 1, r.top + r.height / 2));
-    const top = document.elementFromPoint(x, y);
-    return top === el || !!(top && el.contains(top));
+    return hitPoints(el).some(([x, y]) => {
+      const top = document.elementFromPoint(x, y);
+      return top === el || !!(top && el.contains(top));
+    });
   };
   const modalRoot = el => {
     let structural = null;
@@ -1177,7 +1180,7 @@ _SCROLL_COLLECTION_JS = r"""
 
 _ELEMENT_STATE_JS = r"""
 (el) => {
-""" + _ACCESSIBLE_ACTION_NAME_JS + r"""
+""" + _ACCESSIBLE_ACTION_NAME_JS + HIT_POINTS_JS + r"""
   if (!el || !el.isConnected) return null;
   const form = el.form || el.closest('form');
   const r = el.getBoundingClientRect();
@@ -1191,9 +1194,10 @@ _ELEMENT_STATE_JS = r"""
     ? (ix * iy) / (r.width * r.height) : 0;
   const inViewport = visibleRatio >= 0.2;
   const visible = rendered && inViewport;
-  const x = Math.max(0, Math.min(innerWidth - 1, r.left + r.width / 2));
-  const y = Math.max(0, Math.min(innerHeight - 1, r.top + r.height / 2));
-  const top = visible ? document.elementFromPoint(x, y) : null;
+  const topmost = visible && hitPoints(el).some(([x, y]) => {
+    const top = document.elementFromPoint(x, y);
+    return top === el || !!(top && el.contains(top));
+  });
   return {
     id: el.getAttribute('data-metnos-action-id') || '',
     tag: el.tagName.toLowerCase(), type: (el.type || '').toLowerCase(),
@@ -1216,7 +1220,7 @@ _ELEMENT_STATE_JS = r"""
     aria_checked: el.getAttribute('aria-checked') || '',
     aria_current: el.getAttribute('aria-current') || '',
     checked: !!el.checked,
-    topmost: top === el || !!(top && el.contains(top)),
+    topmost,
     rect: {x: Math.round(r.x), y: Math.round(r.y),
            width: Math.round(r.width), height: Math.round(r.height)}
   };
@@ -1704,6 +1708,12 @@ def _stored_credential(binding: str) -> tuple[dict | None, str | None]:
     return payload, hashlib.sha256(json.dumps(identity).encode("utf-8")).hexdigest()
 
 
+def _credential_stands(entry: dict) -> bool:
+    """A live login holds only while the credential it used is the stored one."""
+    binding = entry.get("saved_session_binding")
+    return not binding or _stored_credential(binding)[1] == entry.get("credential_digest")
+
+
 def _session_may_contact(entry: dict, host: str) -> bool:
     """A host this session is allowed to talk to (cookie domains included)."""
     host = str(host or "").lower().lstrip(".")
@@ -1749,7 +1759,8 @@ async def _save_site_session(entry: dict, *, landing: bool = False) -> None:
     the same address, yet the site drew its public page or the private frame
     without the user's data). Only cookies of hosts this session could
     contact and the private origin's storage are kept; no stored credential
-    or no controls, nothing kept.
+    or no controls, nothing kept. A browser logged in with a credential since
+    replaced keeps nothing either: its cookies belong to the previous account.
     """
     binding = entry.get("saved_session_binding")
     verify_url = str(entry.get("entry_url") or "")
@@ -1764,7 +1775,7 @@ async def _save_site_session(entry: dict, *, landing: bool = False) -> None:
     try:
         if digest is None:
             sites_saved_sessions.remove(owner_key, binding)
-        else:
+        elif digest == entry.get("credential_digest"):
             if landing:
                 page = entry["page"]
                 await _settle_resource_discovery(page)
@@ -1879,6 +1890,7 @@ async def _restore_saved_session(entry: dict, session_id: str, binding: str) -> 
         entry["session_restored"] = True
         entry["landing_controls"] = list(saved["landing"])
         entry["saved_session_binding"] = binding
+        entry["credential_digest"] = digest
         entry["saved_session_saved_at"] = saved.get("saved_at")
         entry["login_start_url"] = start_url
         entry["entry_url"] = str(page.url)
@@ -1962,7 +1974,8 @@ def _note_abandoned_challenge(entry: dict) -> None:
     The challenge may come at the login or, in a session already logged in,
     while navigating (real runs R33/R38): both escalate on a quick retry.
     """
-    if not entry.get("user_control_pending"):
+    if (not entry.get("user_control_pending")
+            or (entry.get("navigation_challenge") or {}).get("person_step")):
         return
     flow = entry.get("login_flow")
     if entry.get("authenticated"):
@@ -2049,6 +2062,7 @@ async def shutdown() -> None:
         await _close_entry(entry)
     _sessions.clear()
     _pending_opens.clear()
+    _opening.clear()
     _browser_provider = None
 
 
@@ -2059,7 +2073,8 @@ async def _reuse_compatible_session(*, owner: str, owner_user_id: str,
                                     allowlist: set[str], session_label: str,
                                     credential_mode: str, browser_mode: str,
                                     stealth_techniques: tuple[str, ...],
-                                    task_binding, credential_binding) -> dict | None:
+                                    task_binding, credential_binding,
+                                    auto_allow: bool) -> dict | None:
     """Trova una sessione autenticata viva con identico confine operativo."""
     for session_id, entry in reversed(tuple(_sessions.items())):
         if (_validate(session_id) is None
@@ -2077,7 +2092,9 @@ async def _reuse_compatible_session(*, owner: str, owner_user_id: str,
                 or entry.get("credential_mandate") != credential_binding
                 or not entry.get("authenticated")
                 or entry.get("gate_pending") or entry.get("factor_pending")
-                or entry.get("secret_pending")):
+                or entry.get("secret_pending")
+                or bool(entry.get("auto_allow")) != auto_allow
+                or not _credential_stands(entry)):
             continue
         lock = entry.get("lock")
         if lock is not None and getattr(lock, "locked", lambda: False)():
@@ -2105,18 +2122,52 @@ async def _reuse_compatible_session(*, owner: str, owner_user_id: str,
     return None
 
 
-async def op_open(*, owner: str, url: str, allowlist_arg=None,
-                  owner_user_id: str | None = None,
-                  session_label: str = "",
-                  approval_token: str | None = None,
-                  task_name: str | None = None,
-                  task_owner_user_id: str | None = None,
-                  credential_mode: str = "default",
-                  stealth: bool = False,
-                  stealth_techniques=None,
-                  browser_mode: str = "headless",
-                  auto_allow_resources: bool = False,
-                  lang: str | None = None) -> dict:
+async def _close_unregistered(claim: dict) -> None:
+    """Close a context no session owns yet, exactly once."""
+    context = claim.pop("context", None)
+    if context is None:
+        return
+    try:
+        await asyncio.wait_for(context.close(), timeout=_CONTEXT_CLOSE_TIMEOUT_S)
+    except Exception:  # noqa: BLE001 -- the slot is released all the same
+        pass
+
+
+def _release_open_slot(claim: dict) -> None:
+    owner = claim.pop("owner", None)
+    if owner is None:
+        return
+    left = _opening.get(owner, 0) - 1
+    if left > 0:
+        _opening[owner] = left
+    else:
+        _opening.pop(owner, None)
+
+
+async def op_open(**request) -> dict:
+    """Open one session: what it reserved and created ends with it, on any exit."""
+    claim: dict = {}
+    try:
+        return await _open_session(claim, **request)
+    finally:
+        try:
+            await _close_unregistered(claim)
+        finally:
+            _release_open_slot(claim)
+
+
+async def _open_session(claim: dict, *, owner: str, url: str, allowlist_arg=None,
+                        owner_user_id: str | None = None,
+                        session_label: str = "",
+                        approval_token: str | None = None,
+                        task_name: str | None = None,
+                        task_owner_user_id: str | None = None,
+                        credential_mode: str = "default",
+                        stealth: bool = False,
+                        stealth_techniques=None,
+                        browser_mode: str = "headless",
+                        auto_allow_resources: bool = False,
+                        lang: str | None = None) -> dict:
     """Apre UNA sessione su `url` (§3.4 open_sites fa fan-out su N url).
 
     `stealth` e' il master per-turno; `stealth_techniques` e' la selezione
@@ -2265,15 +2316,17 @@ async def op_open(*, owner: str, url: str, allowlist_arg=None,
             session_label=session_label, credential_mode=credential_mode,
             browser_mode=browser_mode,
             stealth_techniques=effective_techniques,
-            task_binding=task_binding, credential_binding=credential_binding)
+            task_binding=task_binding, credential_binding=credential_binding,
+            auto_allow=bool(auto_allow_resources))
         if reused is not None:
             return reused
     # Il riuso non consuma un nuovo context. Le quote si applicano soltanto
     # quando serve davvero creare una nuova sessione.
-    if len(_sessions) >= _MAX_CONTEXTS:
+    if len(_sessions) + sum(_opening.values()) >= _MAX_CONTEXTS:
         return {"ok": False, "error": "max concurrent sessions reached",
                 "error_class": "capacity"}
-    owner_count = sum(1 for e in _sessions.values() if e.get("owner") == owner)
+    owner_count = (sum(1 for e in _sessions.values() if e.get("owner") == owner)
+                   + _opening.get(owner, 0))
     if owner_count >= _PER_USER_QUOTA:
         # «Quota piena» da sola non dice niente a chi legge. I fatti che
         # servono per capire e per decidere sono tre, e li sappiamo tutti e
@@ -2294,6 +2347,9 @@ async def op_open(*, owner: str, url: str, allowlist_arg=None,
                 "quota": _PER_USER_QUOTA,
                 "idle_release_s": int(_TTL_IDLE_S),
                 "retry_after_s": attesa}
+    # Taken before the first wait: concurrent opens cannot all pass the quota.
+    _opening[owner] = _opening.get(owner, 0) + 1
+    claim["owner"] = owner
     try:
         browser = await _browser_provider(
             browser_mode,
@@ -2308,10 +2364,11 @@ async def op_open(*, owner: str, url: str, allowlist_arg=None,
         **_context_kwargs(
             stealth_techniques=effective_techniques, lang=lang,
             browser_version=str(getattr(browser, "version", "") or "")))
+    claim["context"] = context
     download_capture = downloads.ContextDownloads(context)
-    await download_capture.install()
     # FIX D: WebRTC off + route-guard per-sessione.
     try:
+        await download_capture.install()
         await context.add_init_script(_WEBRTC_OFF_JS)
         # Occultamento OPT-IN, default OFF (ADR 0191): il default non nasconde
         # l'automazione. Il layer CONTEXT stealth (init-JS) e' applicato solo su
@@ -2328,7 +2385,7 @@ async def op_open(*, owner: str, url: str, allowlist_arg=None,
                     _host_of_url(url)), "session_label": session_label}))
         await browser_engine.apply_websocket_policy(context)
     except Exception as e:
-        await context.close()
+        await _close_unregistered(claim)
         return {"ok": False, "error": f"context setup failed: {e}",
                 "error_class": "unknown"}
 
@@ -2378,7 +2435,7 @@ async def op_open(*, owner: str, url: str, allowlist_arg=None,
     if discovered:
         expanded = set(allowlist)
         expanded.update(discovered)
-        await context.close()
+        await _close_unregistered(claim)
         if len(expanded) > _MAX_ALLOWLIST_HOSTS:
             return {"ok": False, "error": "allowlist host limit exceeded",
                     "error_class": "allowlist_limit",
@@ -2413,7 +2470,7 @@ async def op_open(*, owner: str, url: str, allowlist_arg=None,
             }
 
     if navigation_error is not None:
-        await context.close()
+        await _close_unregistered(claim)
         return navigation_error
 
     session_id = secrets.token_hex(16)
@@ -2475,6 +2532,7 @@ async def op_open(*, owner: str, url: str, allowlist_arg=None,
         "observed_reason": observed_reason,  # ADR 0191 P4 (slug o None)
         "lock": asyncio.Lock(),
     }
+    claim.pop("context")  # From here on the registry owns it.
     try:
         title = await page.title()
     except Exception:
@@ -2528,13 +2586,37 @@ async def _capture_screenshot(entry: dict) -> str | None:
     return str(path)
 
 
+# Pages handed to the person within one collection search; one more ends it.
+_MAX_PERSON_STEPS = 2
+
+
+def _hand_page_to_person(entry: dict) -> None:
+    """The page waits for a step only the person can complete (a confirmation
+    on their device, a code): the same browser dialog as a CAPTCHA, ended by
+    the person's Resume instead of by a cleared challenge."""
+    started = time.time()
+    entry["navigation_challenge"] = {"started": started, "person_step": True}
+    entry.update(user_control_pending=True, factor_pending=True, factor_started=started)
+
+
 async def _navigation_challenge(entry: dict, *, navigation_anchor: tuple | None = None,
-                                solve: bool = True) -> dict | None:
+                                solve: bool = True, resumed: bool = False) -> dict | None:
     """Suspend navigation on a fresh observation, without consuming its cursor.
 
     A new challenge is first tried with the login's chain (`solve`); only an
-    unresolved one, or one already handed over, waits for the person.
+    unresolved one, or one already handed over, waits for the person. A page
+    handed to the person for their own step waits until they resume.
     """
+    handed = entry.get("navigation_challenge")
+    if handed and handed.get("person_step"):
+        if not resumed:
+            if time.time() - handed["started"] > 600:
+                return {"ok": False, "error_class": "user_control_unavailable"}
+            return {"ok": False, "error_class": "person_step_required",
+                    "user_control_required": True}
+        for key in ("navigation_challenge", "user_control_frame",
+                    "user_control_pending", "factor_pending", "factor_started"):
+            entry.pop(key, None)
     page = entry["page"]
     observed_url = page.url
     scope = frozenset(entry.get("allowlist") or ())
@@ -3160,6 +3242,7 @@ async def op_login(*, session_id: str, owner: str | None = None,
         entry["gate_pending"] = True
         entry["gate_started"] = time.time()
         res = None
+        flow.setdefault("credential_digest", _stored_credential(dom)[1])
         captcha_resolutions_before = flow.get("captcha_resolution_invocations", 0)
         try:
             login_task = asyncio.create_task(
@@ -3252,6 +3335,7 @@ async def op_login(*, session_id: str, owner: str | None = None,
         if res.get("logged_in"):
             entry["authenticated"] = True
             entry["saved_session_binding"] = dom
+            entry["credential_digest"] = flow.get("credential_digest")
             await _save_site_session(entry, landing=True)
         _note_challenge(entry, dom, res)
         factor_reason = res.get("reason_code") in {
@@ -3724,6 +3808,109 @@ async def _page_has_transient_loading(entry: dict, *, timeout_s: float = .5,
         return finish(True, "observation_unavailable", unavailable_reason="timeout")
     except Exception:
         return finish(True, "observation_unavailable", unavailable_reason="evaluation_error")
+
+
+# A list-extending control («more», «load more») brings its rows after the
+# click: the page is read again once its text has grown and stopped changing,
+# within a bound (live Fineco 1f69a247, 2/11/2026: the list was read back
+# before its rows came, and the next choice left the list).
+_CONTINUATION_GROWTH_S = 8.0
+_CONTINUATION_QUIET_S = 1.5
+
+
+async def _page_text_length(page) -> int | None:
+    try:
+        value = await asyncio.wait_for(page.evaluate(
+            "() => (document.body ? document.body.innerText : '').length"), timeout=1.0)
+    except Exception:  # noqa: BLE001 -- an unknown length stops the wait
+        return None
+    return value if type(value) is int else None
+
+
+async def _newly_shown(page) -> list:
+    try:
+        value = await asyncio.wait_for(page.evaluate(_NEWLY_SHOWN_JS), timeout=1.0)
+    except Exception:  # noqa: BLE001 -- the audit then says nothing
+        return []
+    return value if isinstance(value, list) else []
+
+
+async def _page_shape(page) -> list[int]:
+    """Element count and document height: numbers only, for the audit."""
+    try:
+        value = await asyncio.wait_for(page.evaluate(
+            "() => [document.getElementsByTagName('*').length,"
+            " document.documentElement.scrollHeight]"), timeout=1.0)
+    except Exception:  # noqa: BLE001 -- the audit then says nothing
+        return []
+    return [v for v in value if type(v) is int] if isinstance(value, list) else []
+
+
+_MARK_SHOWN_JS = """() => {
+  const shown = new WeakSet();
+  for (const el of document.querySelectorAll('body *')) if (el.getClientRects().length) shown.add(el);
+  window.__metnosShown = shown;
+  return true;
+}"""
+# What became visible since the mark, as shapes only: tag, role, live region,
+# layered over the page, text length, buttons, links and list items.
+_NEWLY_SHOWN_JS = """() => {
+  const shown = window.__metnosShown;
+  if (!shown) return [];
+  const out = [];
+  for (const el of document.querySelectorAll('body *')) {
+    if (!el.getClientRects().length || shown.has(el)) continue;
+    const parent = el.parentElement;
+    if (parent && !shown.has(parent) && parent.getClientRects().length) continue;
+    let layered = 0;
+    for (let n = el; n; n = n.parentElement) {
+      const position = getComputedStyle(n).position;
+      if (position === 'fixed' || position === 'sticky' || position === 'absolute') { layered = 1; break; }
+    }
+    out.push([el.tagName.toLowerCase().slice(0, 12), (el.getAttribute('role') || '').slice(0, 16),
+              (el.getAttribute('aria-live') || '').slice(0, 10), layered, (el.innerText || '').length,
+              el.querySelectorAll('button,[role=button]').length, el.querySelectorAll('a[href]').length,
+              el.querySelectorAll('[role=option],[role=menuitem],li').length]);
+    if (out.length >= 5) break;
+  }
+  return out;
+}"""
+
+
+async def _await_continuation_growth(entry: dict, page, before: int) -> bool:
+    """Wait for a list-extending click to show its rows; True when the text grew."""
+    credential_injection._install_request_tracker(page)
+    shape_before = await _page_shape(page)
+    started = _monotonic()
+    last, changed_at, changes, loading = before, None, [], set()
+    while _monotonic() - started < _CONTINUATION_GROWTH_S:
+        await asyncio.sleep(0.25)
+        if page.is_closed() or entry.get("page") is not page:
+            break
+        size = await _page_text_length(page)
+        if size is None:
+            break
+        if size != last:
+            last, changed_at = size, _monotonic()
+            if len(changes) < 16:
+                changes.append([round((changed_at - started) * 1000), size - before])
+        elif (changed_at is not None
+              and _monotonic() - changed_at >= _CONTINUATION_QUIET_S
+              and credential_injection.data_requests_pending(page, _CONTINUATION_QUIET_S) == 0):
+            # A short change may be the list's own «loading» notice: the rows
+            # come after it (LAB Fineco f0211d: 93 characters, then nothing).
+            marker: dict = {}
+            if not await _page_has_transient_loading(entry, timeout_s=.3, observation=marker):
+                break
+            loading.add(str(marker.get("reason") or "unknown")[:24])
+    sites_audit.record("collection_continuation_growth", owner=entry.get("owner", ""),
+                       session_id=entry.get("_sid", ""), domain=entry.get("domain", ""),
+                       grew=last > before, delta=last - before, changes=changes,
+                       loading=sorted(loading)[:4],
+                       shape=[shape_before, await _page_shape(page)],
+                       appeared=await _newly_shown(page),
+                       elapsed_ms=round((_monotonic() - started) * 1000))
+    return last > before
 
 
 async def _visible_controls(entry: dict) -> int:
@@ -5122,6 +5309,12 @@ async def _discover_login_entry(entry: dict, session_id: str, flow: dict) -> dic
                 return await _handle_prepared_action(
                     entry, session_id, "click login", expansion)
         return result
+    except _CandidateObservationError as exc:
+        # The page did not answer a read (live turn 0d08fc8d): the same closed
+        # outcome as a collection, not an unhandled failure of the broker.
+        sites_audit.record("login_observation_failed", session_id=session_id,
+                           reason=exc.reason, detail=exc.detail)
+        return {"ok": False, "error_class": "target_unstable"}
     except asyncio.TimeoutError:
         return {"ok": False, "error_class": "login_timeout"}
     finally:
@@ -5675,6 +5868,9 @@ async def _discover_collection(entry: dict, session_id: str,
                     "decision_actor": decision.get("_decision_actor", {"actor_type":"unknown"})}
                 return finish(decision)
             state["record_scope"] = decision["scope"]
+            if decision["person_step"]:
+                # The page waits for the person: no other window decides it.
+                return finish(decision)
             # Unknown context roles or unvisited record partitions cannot
             # attest TUTTE from the current selection alone.
             if any(c["kind"] == "unknown" for c in decision["contexts"]):
@@ -5707,7 +5903,7 @@ async def _discover_collection(entry: dict, session_id: str,
                 proximity=collection_observation.STATUSES[observed_status])
         return finish(last)
 
-    async def page_guards(*, verifying_get=False):
+    async def page_guards(*, verifying_get=False, keep_overlay=False):
         """Current-page gates shared by every observation, before any read."""
         nonlocal navigation_anchor
         # Consume before any gate: a challenge, unstable page or blocked
@@ -5721,7 +5917,7 @@ async def _discover_collection(entry: dict, session_id: str,
         if isinstance(privacy, cookie_privacy.CookieOutcome) and privacy.status == "blocked":
             return {"terminal": {"ok": False,
                     "error_class": "cookie_precondition_unresolved"}}
-        if not verifying_get:
+        if not verifying_get and not keep_overlay:
             await _dismiss_obstructing_overlay(entry)
         if not await _wait_for_content_settle(entry):
             return {"terminal": {"ok": False, "error_class": "target_unstable"}}
@@ -5738,6 +5934,7 @@ async def _discover_collection(entry: dict, session_id: str,
         # A return is already decided: keep every gate, skip scrolling,
         # enumeration and semantic decisions on the page being left.
         state.pop("cutoff_continuation", None)
+        state.pop("own_overlay", None)
         guarded = await page_guards()
         sites_audit.record("collection_restore_guarded", session_id=session_id,
                            terminal=guarded is not None,
@@ -5748,7 +5945,11 @@ async def _discover_collection(entry: dict, session_id: str,
         carried = state.pop("cutoff_continuation", None)
         verifying_get = bool((state.get("replay") or {}).get("verify_get")
                              and (state.get("replay") or {}).get("index", -1) >= 0)
-        guarded = await page_guards(verifying_get=verifying_get)
+        # A layer our own click opened in place is its effect, to be read, not
+        # an obstruction (live Fineco 67519d07, 2/11/2026: the request for a
+        # confirmation on the person's device was closed by its X unseen).
+        keep_overlay = state.pop("own_overlay", False)
+        guarded = await page_guards(verifying_get=verifying_get, keep_overlay=keep_overlay)
         if guarded is not None:
             return guarded
         page = entry["page"]
@@ -5814,7 +6015,7 @@ async def _discover_collection(entry: dict, session_id: str,
                     ("max_actions", login_navigation.COLLECTION_MAX_ACTIONS))
             if observed is None or scrolls:
                 observed = await enumerate_controls(page)
-        if not verifying_get and covered_controls(observed):
+        if not verifying_get and not keep_overlay and covered_controls(observed):
             # A modal may appear during scrolling. Try its existing safe
             # exit, but keep covered routes for semantic selection: a fixed
             # header over an unrelated footer link is not a page-wide veto.
@@ -5851,6 +6052,8 @@ async def _discover_collection(entry: dict, session_id: str,
                 semantic_snapshot = semantic.pop("_snapshot")
                 if semantic.get("error_class"):
                     return semantic
+                if semantic["person_step"]:
+                    return person_step(semantic)
                 await verify_scene(raw, candidates, expected_scene)
                 remember_list(listed, semantic, semantic_snapshot, candidates)
                 if kind:
@@ -5861,6 +6064,25 @@ async def _discover_collection(entry: dict, session_id: str,
                 if parent and semantic_snapshot["text"]:
                     collection_evidence.add_view(entry, parent, semantic_snapshot["key"])
             return {**semantic["context"], "controls": semantic["context_controls"]}
+
+        def person_step(decision):
+            # Only the person can give it (a confirmation on their device, a
+            # code): the session waits for them as for a CAPTCHA, with the
+            # search kept for Resume. Once more than allowed, it ends the
+            # search with what was collected and says why.
+            count = int(state.get("person_steps") or 0) + 1
+            state["person_steps"] = count
+            state["rejection"] = {"phase": "person_step", "reason": "person_step_required",
+                "decision_actor": decision.get("_decision_actor", {"actor_type": "unknown"})}
+            sites_audit.record("collection_person_step", session_id=session_id, count=count,
+                               steps=int(state.get("actions", 0)))
+            if count > _MAX_PERSON_STEPS:
+                return {"error_class": "person_step_required"}
+            # After Resume the page is read as the person left it: a step
+            # still open is seen again, not closed unseen by its X.
+            state["own_overlay"] = True
+            _hand_page_to_person(entry)
+            return {"error_class": "person_step_required", "user_control_required": True}
 
         async def read_context():
             nonlocal context_controls, observed
@@ -6445,7 +6667,24 @@ async def _discover_collection(entry: dict, session_id: str,
         try:
             state.pop("cutoff_continuation", None)
             observed_cutoff = state.get("cutoff_observed", {})
+            before = (await _page_text_length(page)
+                      if choice.get("continuation") and not choice.get("replay")
+                      and resume_token is None else None)
+            if before is not None:
+                try:
+                    await asyncio.wait_for(page.evaluate(_MARK_SHOWN_JS), timeout=1.0)
+                except Exception:  # noqa: BLE001 -- only the audit loses detail
+                    pass
+            location = page.url
             result = await execute_native(choice, resume_token=resume_token)
+            if (result.get("ok") and result.get("executed")
+                    and not result.get("user_control_required")
+                    and entry["page"] is page and page.url == location):
+                state["own_overlay"] = True
+            if (before is not None and result.get("ok") and result.get("executed")
+                    and not result.get("user_control_required")
+                    and entry["page"] is page and not page.is_closed()):
+                await _await_continuation_growth(entry, page, before)
             if (choice.get("continuation") and not choice.get("replay")
                     and result.get("ok") and result.get("executed")
                     and not result.get("user_control_required")
@@ -7301,6 +7540,7 @@ def _collection_observation_payload(result):
             for c in result["contexts"]],
         "next_control": result["candidate"].get("id", "NONE"),
         "purpose": result["candidate"]["collection_purpose"],
+        "person_step": result["person_step"],
     })
 
 
@@ -7331,7 +7571,7 @@ def _needs_in_place_witness(seen: dict) -> bool:
 _PROVIDER_RETRY_WAITS_S = (2.0, 6.0)
 _COLLECTION_OBSERVATION_RETRY = frozenset({
     "provider_timeout", "provider_error", "invalid_response", "response_limit",
-    "invalid_content_status", "invalid_route"})
+    "invalid_content_status", "invalid_person_step", "invalid_route"})
 
 
 async def _frontier_collection_observation(entry: dict, request: str,
@@ -7494,61 +7734,8 @@ async def _frontier_collection_observation_attempt(entry: dict, request: str,
             "content_status": status, "_decision_actor": actor}
 
 
-async def _collection_route_decision(entry: dict, target: str,
-                                     candidates: list[dict], *, first_visit: bool,
-                                     preserve, route_needed: bool = True) -> dict:
-    """Content recognition and, when configured, Frontier's separate route.
-
-    The two answer independent questions (a page with invoices can still offer
-    unrelated menus), so both requests start together. The observed evidence is
-    preserved as soon as it exists, even if routing then fails. An observation
-    failure discards the pending route: an unavailable or invalid model answer
-    is not proof of a dead end, and no late answer may change the state.
-    """
-    route = None
-    if route_needed and _FRONTIER_COLLECTION_ROUTES and _frontier_routes_configured():
-        route = asyncio.create_task(
-            _frontier_collection_route(entry, target, candidates))
-    try:
-        candidate = await _local_llm_choose_goal_candidate(
-            entry, target, candidates, [], set(), collection=True,
-            first_visit=first_visit)
-        if candidate is None:
-            raise ValueError("collection_observation_unresolved")
-        preserve(candidate)
-        if route is not None:
-            routed = await route
-            if routed is None:
-                raise ValueError("collection_observation_unresolved")
-            # An exhaustive request expands the list before opening details
-            # (real turns 7ff3e239, 92f548a3: the local reading named «view
-            # all bills» while the route opened one bill after another until
-            # the budget ran out). The detail stays available afterwards.
-            expand_first = (candidate.get("id")
-                and candidate.get("collection_continuation") is True
-                and routed.get("collection_purpose") == "detail")
-            # A content-aware, observed record detail remains work even when
-            # the content-free route observer considers the list exhausted.
-            # It still passes the normal action gate; no row-value identity
-            # or unobserved link is inferred here.
-            detail_pending = (not routed.get("id") and candidate.get("id")
-                and candidate.get("collection_purpose") == "detail"
-                and candidate.get("_record_context_key")
-                and any(c.get("id") == candidate["id"]
-                    and c.get("_record_context_key") == candidate["_record_context_key"]
-                    for c in candidates))
-            if not (expand_first or detail_pending):
-                candidate = routed
-        return candidate
-    finally:
-        if route is not None:
-            if not route.done():
-                route.cancel()
-            await asyncio.gather(route, return_exceptions=True)
-
-
 def _valid_collection_route(choice, purpose, by_id, *, continuation=False):
-    """Local and Frontier choices use the same typed, observed route contract."""
+    """The typed, observed route contract of a collection step's choice."""
     if not isinstance(choice, str) or not isinstance(purpose, str):
         return False
     if choice == "NONE":
@@ -7556,96 +7743,6 @@ def _valid_collection_route(choice, purpose, by_id, *, continuation=False):
     purposes = {"expand_collection"} if continuation else {
         "navigate", "expand_collection", "detail"}
     return choice != "CURRENT_CONTENT" and choice in by_id and purpose in purposes
-
-
-async def _frontier_collection_route(entry: dict, target: str,
-                                     candidates: list[dict]) -> dict | None:
-    """Frontier route choice independent of the local content observation.
-
-    The request carries the user's target and the observed control names and
-    contexts only: no page content, field values, URLs or credentials. Any
-    provider, timeout or format failure leaves the decision unresolved; the
-    local model is not used as a silent fallback.
-    """
-    import i18n
-    import prompt_loader
-    from llm_router import LLMRouter
-    from llm_workloads import tier_for
-    eligible = _goal_eligible(entry, target, candidates, set(), collection=True)
-    started, outcome = time.monotonic(), "none"
-    try:
-        provider = LLMRouter().provider(tier_for("sites.collection_route"))
-        system = prompt_loader.get("agentic_sites_action_system",
-                                   i18n.current_lang(), route=True)
-        search = entry.get("collection_search") or {}
-        # Previously selected observed labels help avoid leaving an archive
-        # for the site's global navigation. No URLs or page content are sent.
-        history = [str((f.get("via") or {}).get("candidate", {}).get("name") or "")
-                   for f in search.get("frames", [])]
-        history = [label[:300] for label in history if label][-8:]
-        for offset in range(0, len(eligible), 64):
-            by_id = {str(c.get("id")): c for c in eligible[offset:offset + 64] if c.get("id")}
-            sites_audit.record(
-                "collection_route_window", owner=entry.get("owner", ""),
-                session_id=entry.get("_sid", ""), domain=entry.get("domain", ""),
-                offset=offset, controls=[{
-                    "id": cid, "kind": c.get("role") or c.get("tag") or "",
-                    "name": str(c.get("name") or c.get("label") or "")[:300],
-                    "context": str(c.get("context_name") or "")[:300],
-                    "record_bound": bool(c.get("_record_context_key")),
-                    **({"record_diagnostics": diagnostic} if (diagnostic :=
-                        _safe_record_diagnostics(c.get("_record_diagnostics"))) else {}),
-                } for cid, c in by_id.items()])
-            user = _bounded_action_prompt(
-                goal={"primitive": "navigate_toward_goal", "target": target,
-                      "collection": True, "exhaustive": True,
-                      "expected_content": str(entry.get("goal_done_when") or "")},
-                state={"authenticated": bool(entry.get("authenticated")),
-                       "collection_seen": bool(search.get("found"))},
-                observed={"CURRENT_CONTENT": "", "CONTROLS": [
-                    f"{cid}: {c.get('role') or c.get('tag')} "
-                    f"{c.get('name') or c.get('label') or ''} | "
-                    f"{str(c.get('context_name') or '')[:300]}"
-                    + (" | record_action=true" if c.get("_record_context_key") else "")
-                    for cid, c in by_id.items()]},
-                history=history, forbidden="collection_navigation")
-            search = entry.get("collection_search")
-            if isinstance(search, dict):
-                # Counted before the call: the request has left the host.
-                search["cloud_llm_calls"] = int(search.get("cloud_llm_calls") or 0) + 1
-            reply = await asyncio.to_thread(
-                provider.chat, system, user, max_tokens=128,
-                request_timeout_s=_LOCAL_RESOLVER_TIMEOUT_MS / 1000.0)
-            text = str(getattr(reply, "text", "") or "")
-            decision = json.loads(text[text.find("{"): text.rfind("}") + 1])
-            choice, purpose = decision.get("next_control"), decision.get("purpose")
-            if not _valid_collection_route(choice, purpose, by_id):
-                outcome = "invalid_response"
-                return None
-            sites_audit.record(
-                "collection_route_selection", owner=entry.get("owner", ""),
-                session_id=entry.get("_sid", ""), domain=entry.get("domain", ""),
-                decision_actor=sites_audit.model_actor("sites.collection_route", reply),
-                offset=offset, selected_control=choice, purpose=purpose)
-            if choice in by_id:
-                outcome = "route"
-                return {**by_id[choice],
-                        "_decision_actor": sites_audit.model_actor("sites.collection_route", reply),
-                        "collection_purpose": purpose,
-                        "collection_continuation": purpose == "expand_collection"}
-        return {}
-    except asyncio.CancelledError:
-        outcome = "cancelled"
-        raise
-    except Exception as exc:
-        outcome = type(exc).__name__
-        return None
-    finally:
-        sites_audit.record(
-            "collection_route_frontier", owner=entry.get("owner", ""),
-            session_id=entry.get("_sid", ""), domain=entry.get("domain", ""),
-            candidate_count=len(eligible), outcome=outcome,
-            elapsed_ms=round((time.monotonic() - started) * 1000))
 
 
 async def _local_llm_choose_goal_candidate(entry: dict, target: str,
@@ -10955,6 +11052,7 @@ async def op_act(*, session_id: str, owner: str | None, action: str,
                     else "download_request_invalid"}
         binding["download_request"] = download_request
     async with _session_lock(entry):
+        resumed = continuation_id is not None
         receipts = entry.setdefault("action_continuations", {})
         now = time.time()
         for key, item in list(receipts.items()):
@@ -11001,7 +11099,8 @@ async def op_act(*, session_id: str, owner: str | None, action: str,
                 # late redirect after a restored session, real run R44) is read
                 # once more, as after a consumed navigation; nothing has acted.
                 return (entry["page"], sites_origin.origin_of_url(entry["page"].url))
-            blocked = await _navigation_challenge(entry, navigation_anchor=anchor())
+            blocked = await _navigation_challenge(entry, navigation_anchor=anchor(),
+                                                  resumed=resumed)
             if not blocked and await _reopen_login_landing(entry, action):
                 blocked = await _navigation_challenge(entry, navigation_anchor=anchor())
             if blocked:

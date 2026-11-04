@@ -330,6 +330,10 @@ def _register_output_messages() -> None:
             "Annullato: {executor} ({count} elementi).",
             "Undone: {executor} ({count} items).",
         ),
+        "MSG_UNDO_DONE": (
+            "Annullato. Elementi ripristinati: {count}.",
+            "Undone. Items restored: {count}.",
+        ),
         "MSG_FAST_LOCATION_RECENT_MISSING": (
             "Posizione non disponibile (nessuna condivisione recente).",
             "Location not available (no recent share).",

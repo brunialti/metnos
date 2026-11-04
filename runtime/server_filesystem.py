@@ -1,4 +1,4 @@
-"""Closed operations for additional server scopes; existing default paths stay unchanged.
+"""Closed operations for explicit server grants and additional server scopes.
 
 Only signed declarative filesystem contracts enter this broker. It never runs
 executor code with a widened parent-directory bind. Paths stay pinned to directory
@@ -7,6 +7,7 @@ descriptors, and each chunk/atomic mutation checks the account's current grants.
 from __future__ import annotations
 
 import base64
+from contextlib import contextmanager
 import json
 import os
 import time
@@ -65,25 +66,61 @@ def needs_extension(owner, manifest, args):
     operation = permissions.contract(manifest, args)
     if operation is None:
         return False
-    return any(not permissions.server_default_permits(owner, manifest, args, path, action)
-               for path, action in requests(operation, args))
+    requested = requests(operation, args)
+    if any(not permissions.server_default_permits(owner, manifest, args, path, action)
+           for path, action in requested):
+        return True
+    grants = permissions.list_grants(owner, "server", active_only=True) if owner else []
+    return any(permissions.permits(grants, path, action, directory=operation == "list")
+               for path, action in requested)
+
+
+class LocalAuthority:
+    """Current server rights, with a short lock around visible file mutations."""
+
+    def __init__(self, owner, manifest, args, *, db_path=None):
+        self.owner, self.manifest, self.args, self.db_path = owner, manifest, args, db_path
+        self._connection = None
+
+    def check(self, path, action, **kwargs):
+        permissions.require(self.owner, "server", path, action, conn=self._connection,
+                            db_path=self.db_path, manifest=self.manifest, args=self.args, **kwargs)
+
+    @contextmanager
+    def mutation(self):
+        if self._connection is not None:
+            raise permissions.PermissionError("ERR_FS_INVOCATION_INVALID")
+        conn = permissions._open(self.db_path)
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            self._connection = conn
+            try:
+                yield
+                conn.commit()
+            except BaseException:
+                conn.rollback()
+                raise
+        finally:
+            self._connection = None
+            conn.close()
 
 
 class Broker:
-    def __init__(self, owner, manifest, args, turn_id, *, timeout_s=30, db_path=None):
+    def __init__(self, owner, manifest, args, turn_id, *, timeout_s=30, db_path=None, authority=None):
         if not owner:
             raise permissions.PermissionError("ERR_FS_PERMISSION_REQUIRED")
         self.owner, self.manifest, self.args, self.turn_id = owner, manifest, args, turn_id
-        self.deadline, self.db_path = time.monotonic() + timeout_s, db_path
+        self.deadline = time.monotonic() + timeout_s
+        self.authority = authority if authority is not None else LocalAuthority(owner, manifest, args, db_path=db_path)
 
-    def check(self, path, action, *, conn=None, **kwargs):
+    def check(self, path, action, **kwargs):
         if time.monotonic() > self.deadline:
             raise permissions.PermissionError("ERR_FS_INVOCATION_INVALID")
         io.reserved(path)
-        permissions.require(self.owner, "server", path, action, conn=conn, db_path=self.db_path,
-                            manifest=self.manifest, args=self.args, **kwargs)
+        self.authority.check(path, action, **kwargs)
 
-    def replace(self, path, producer, *, overwrite=True, mode="overwrite", final_check=None):
+    def replace(self, path, producer, *, overwrite=True, mode="overwrite", final_check=None,
+                expected_identity=None):
         self.check(path, "write")
         with io.parent(path) as (parent, name):
             previous = io.existing(parent, name)
@@ -96,6 +133,8 @@ class Broker:
                         raise permissions.PermissionError("ERR_FS_DEST_EXISTS")
                     self.check(path, "write", overwrite=True)
                 before = io.identity(io.regular(previous)) if previous is not None else None
+                if expected_identity is not None and before != expected_identity:
+                    raise permissions.PermissionError("ERR_FS_SOURCE_CHANGED")
                 check = lambda: self.check(path, "write", overwrite=previous is not None)
                 blob = io.backup(previous, self.turn_id, check) if previous is not None else None
                 temp, out = io.stage(parent)
@@ -114,12 +153,10 @@ class Broker:
                     digest = actual_digest
                     # Grant revocation and the visible mutation serialize on
                     # one short transaction; hashing/backup holds no write lock.
-                    conn = permissions._open(self.db_path)
-                    try:
-                        conn.execute("BEGIN IMMEDIATE")
-                        self.check(path, "write", conn=conn, overwrite=previous is not None)
+                    with self.authority.mutation():
+                        self.check(path, "write", overwrite=previous is not None)
                         if final_check is not None:
-                            final_check(conn)
+                            final_check()
                         current = io.existing(parent, name)
                         try:
                             if (io.identity(io.regular(current)) if current is not None else None) != before:
@@ -129,9 +166,6 @@ class Broker:
                                 os.close(current)
                         io.commit(parent, temp, name, overwrite=previous is not None)
                         temp = None
-                        conn.commit()
-                    finally:
-                        conn.close()
                     return {"path": path, "created": previous is None, "prev_blob_path": blob,
                             "bytes_written": count, "sha256": digest}
                 finally:
@@ -151,7 +185,10 @@ class Broker:
         if encoding == "binary":
             data = base64.b64decode(content, validate=True)
         elif encoding in {"utf-8", "latin-1"}:
-            data = content.encode(encoding)
+            try:
+                data = content.encode(encoding)
+            except UnicodeEncodeError as exc:
+                raise permissions.PermissionError("ERR_FS_BROKER_UNSUPPORTED") from exc
         else:
             raise permissions.PermissionError("ERR_FS_BROKER_UNSUPPORTED")
         if len(data) > MAX_READ:
@@ -162,29 +199,79 @@ class Broker:
             return len(data), hashlib.sha256(data).hexdigest()
         return self.replace(path, produce, mode=mode)
 
+    def _read_auto(self, path, fd, before):
+        from pathlib import Path
+        import document_parse
+        limit = self.args.get("max_bytes", 0) or document_parse.MAX_BYTES
+        if (type(limit) is not int or limit < 1 or self.args.get("tail_bytes", 0)
+                or self.args.get("offset", 0)):
+            raise permissions.PermissionError("ERR_FS_BROKER_UNSUPPORTED")
+        limit = min(limit, document_parse.MAX_BYTES)
+        chunks, count = [], 0
+        while count < min(before[3], limit):
+            self.check(path, "read")
+            chunk = os.read(fd, min(io.CHUNK_SIZE, limit - count))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            count += len(chunk)
+        if io.identity(io.regular(fd)) != before:
+            raise permissions.PermissionError("ERR_FS_SOURCE_CHANGED")
+        self.check(path, "read")
+        raw, suffix = b"".join(chunks), Path(path).suffix.casefold()
+        if suffix in {".pdf", ".docx", ".xlsx"} and count == before[3]:
+            from document_parse_worker import parse_bytes_bounded
+            try:
+                parsed = parse_bytes_bounded(raw, suffix=suffix, file_size=before[3],
+                    max_bytes=limit, timeout_s=self.deadline - time.monotonic())
+            except (OSError, ValueError, TimeoutError) as exc:
+                raise permissions.PermissionError("ERR_FS_BROKER_UNSUPPORTED") from exc
+        else:
+            parsed = document_parse.parse_bytes(raw, suffix=suffix, file_size=before[3], max_bytes=limit)
+        if io.identity(io.regular(fd)) != before:
+            raise permissions.PermissionError("ERR_FS_SOURCE_CHANGED")
+        self.check(path, "read")
+        source = next((entry for entry in (self.args.get("entries") or [])
+                       if isinstance(entry, dict) and entry.get("path") == path), {})
+        return {**document_parse.merge_entry(parsed, source), "path": path,
+                "name": source.get("name") or Path(path).name, "bytes_read": count}
+
     def read(self, path):
         self.check(path, "read")
-        if self.args.get("pattern") or self.args.get("parse") == "auto":
+        if self.args.get("pattern"):
             raise permissions.PermissionError("ERR_FS_BROKER_UNSUPPORTED")
         with io.parent(path) as (parent, name):
             fd = io.open_file(parent, name)
             try:
                 before = io.identity(io.regular(fd))
+                if self.args.get("parse") == "auto":
+                    return self._read_auto(path, fd, before)
                 cap, tail = self.args.get("max_bytes", 0) or 0, self.args.get("tail_bytes", 0) or 0
                 if type(cap) is not int or type(tail) is not int or cap < 0 or tail < 0 or cap and tail:
                     raise permissions.PermissionError("ERR_FS_BROKER_UNSUPPORTED")
-                offset = max(0, before[3] - tail) if tail else self.args.get("offset", 0)
+                effective = min(tail or cap or MAX_READ, MAX_READ)
+                offset = max(0, before[3] - effective) if tail else self.args.get("offset", 0)
                 if type(offset) is not int or offset < 0:
                     raise permissions.PermissionError("ERR_FS_BROKER_UNSUPPORTED")
                 os.lseek(fd, offset, os.SEEK_SET)
-                data = os.read(fd, min((tail or cap or MAX_READ), MAX_READ))
+                data = os.read(fd, effective)
                 if io.identity(io.regular(fd)) != before:
                     raise permissions.PermissionError("ERR_FS_SOURCE_CHANGED")
                 self.check(path, "read")
                 encoding = self.args.get("encoding", "utf-8")
-                content = base64.b64encode(data).decode() if encoding == "binary" else data.decode(encoding)
+                if encoding not in {"utf-8", "latin-1", "binary"}:
+                    raise permissions.PermissionError("ERR_FS_BROKER_UNSUPPORTED")
+                try:
+                    content = base64.b64encode(data).decode() if encoding == "binary" else data.decode(encoding)
+                except UnicodeDecodeError as exc:
+                    raise permissions.PermissionError("ERR_FS_BINARY_ENCODING_REQUIRED") from exc
+                truncated = offset > 0 or offset + len(data) < before[3]
                 entry = {"path": path, "content": content, "size": before[3], "bytes_read": len(data),
-                         "offset": offset, "encoding": encoding, "truncated": offset + len(data) < before[3]}
+                         "offset": offset, "encoding": encoding, "truncated": truncated,
+                         "source_complete": not truncated}
+                if truncated:
+                    entry.update({"used": len(data), "available_total": before[3],
+                                  "cap_field": "tail_bytes" if tail else "max_bytes", "cap_value": effective})
                 if self.args.get("parse") == "json":
                     parsed = json.loads(content)
                     entry.update({k: v for k, v in parsed.items() if k != "path"} if isinstance(parsed, dict) else {"value": parsed})
@@ -192,49 +279,63 @@ class Broker:
             finally:
                 os.close(fd)
 
-    def copy(self, spec):
-        import hashlib
-        src, dst = spec["src"], spec["dst"]
-        self.check(src, "read")
-        with io.parent(src) as (parent, name):
-            source = io.open_file(parent, name)
+    @contextmanager
+    def copy_source(self, path, source_fd=None):
+        self.check(path, "read")
+        if source_fd is not None:
+            source = os.dup(source_fd)
             try:
-                before = io.identity(io.regular(source))
-                def produce(out):
-                    digest, size = hashlib.sha256(), 0
-                    while chunk := os.read(source, io.CHUNK_SIZE):
-                        self.check(src, "read")
-                        self.check(dst, "write")
-                        if size + len(chunk) > io.MAX_FILE_SIZE:
-                            raise permissions.PermissionError("ERR_FS_SIZE_LIMIT")
-                        io.write_all(out, chunk)
-                        size += len(chunk)
-                        digest.update(chunk)
-                    if io.identity(io.regular(source)) != before:
-                        raise permissions.PermissionError("ERR_FS_SOURCE_CHANGED")
-                    self.check(src, "read")
-                    return size, digest.hexdigest()
-                def final_check(conn):
-                    self.check(src, "read", conn=conn)
-                    if io.identity(io.regular(source)) != before:
-                        raise permissions.PermissionError("ERR_FS_SOURCE_CHANGED")
-                result = self.replace(dst, produce, overwrite=self.args.get("overwrite") is True,
-                                      final_check=final_check)
-                return {**result, "src": src, "dst": dst, "copy": True, "source_scope": "server", "destination_scope": "server"}
+                io.regular(source)
+                os.lseek(source, 0, os.SEEK_SET)
+                yield source
             finally:
                 os.close(source)
+        else:
+            with io.parent(path) as (parent, name):
+                source = io.open_file(parent, name)
+                try:
+                    yield source
+                finally:
+                    os.close(source)
 
-    def delete(self, path):
+    def copy(self, spec, *, source_fd=None):
+        import hashlib
+        src, dst = spec["src"], spec["dst"]
+        with self.copy_source(src, source_fd) as source:
+            before = io.identity(io.regular(source))
+            def produce(out):
+                digest, size = hashlib.sha256(), 0
+                while chunk := os.read(source, io.CHUNK_SIZE):
+                    self.check(src, "read")
+                    self.check(dst, "write")
+                    if size + len(chunk) > io.MAX_FILE_SIZE:
+                        raise permissions.PermissionError("ERR_FS_SIZE_LIMIT")
+                    io.write_all(out, chunk)
+                    size += len(chunk)
+                    digest.update(chunk)
+                if io.identity(io.regular(source)) != before:
+                    raise permissions.PermissionError("ERR_FS_SOURCE_CHANGED")
+                self.check(src, "read")
+                return size, digest.hexdigest()
+            def final_check():
+                self.check(src, "read")
+                if io.identity(io.regular(source)) != before:
+                    raise permissions.PermissionError("ERR_FS_SOURCE_CHANGED")
+            result = self.replace(dst, produce, overwrite=self.args.get("overwrite") is True,
+                                  final_check=final_check)
+            return {**result, "src": src, "dst": dst, "copy": True, "source_scope": "server", "destination_scope": "server"}
+
+    def delete(self, path, *, expected_identity=None):
         self.check(path, "write")
         with io.parent(path) as (parent, name):
             fd = io.open_file(parent, name)
             try:
                 before = io.identity(io.regular(fd))
+                if expected_identity is not None and before != expected_identity:
+                    raise permissions.PermissionError("ERR_FS_SOURCE_CHANGED")
                 blob = io.backup(fd, self.turn_id, lambda: self.check(path, "write"))
-                conn = permissions._open(self.db_path)
-                try:
-                    conn.execute("BEGIN IMMEDIATE")
-                    self.check(path, "write", conn=conn)
+                with self.authority.mutation():
+                    self.check(path, "write")
                     current = io.open_file(parent, name)
                     try:
                         if io.identity(io.regular(current)) != before:
@@ -243,9 +344,6 @@ class Broker:
                         os.close(current)
                     os.unlink(name, dir_fd=parent)
                     os.fsync(parent)
-                    conn.commit()
-                finally:
-                    conn.close()
                 return {"path": path, "blob_path": blob, "deleted": True, "restore_mode": "create"}
             finally:
                 os.close(fd)
@@ -283,11 +381,12 @@ class Broker:
                 finally:
                     os.close(fd)
             if len(entries) >= cap or output_bytes > 256 * 1024:
+                truncated = truncated or bool(todo)
                 break
-        sort = self.args.get("sort_by", "name")
+        sort = self.args.get("sort", "name")
         if sort not in {"name", "size", "mtime"}:
             raise permissions.PermissionError("ERR_FS_BROKER_UNSUPPORTED")
-        entries.sort(key=lambda e: e["name"].casefold() if sort == "name" else e["size" if sort == "size" else "mtime_epoch"], reverse=sort != "name")
+        entries.sort(key=lambda e: (e["name"].casefold() if sort == "name" else e["size" if sort == "size" else "mtime_epoch"], e["path"]), reverse=sort != "name")
         return {"ok": True, "ok_count": len(entries), "entries": entries, "truncated": truncated,
                 "truncated_what": "entries", "used": len(entries), "cap_field": "max_results", "cap_value": cap,
                 "source_complete": not truncated, "metadata": {"path": path, "truncated": truncated, "source_complete": not truncated}}
@@ -300,44 +399,79 @@ def error_result(error):
             "error_code": code, "error": _msg(code), "error_class": "filesystem_permission"}
 
 
-def execute(owner, manifest, args, turn_id, *, timeout_s=30, db_path=None):
+def batch_result(owner, manifest, args, turn_id, operation, results, failed):
+    value = {"ok": not failed, "ok_count": len(results), "fail_count": len(failed),
+             "entries" if operation == "read" else "results": results, "failed": failed, "dirs_created": []}
+    if failed:
+        value.update({"error": failed[0]["error"], "error_code": failed[0]["error_code"], "error_class": "filesystem_permission"})
+    if operation == "read" and args.get("parse") == "auto":
+        import document_parse
+        value.update(document_parse.summarize(results, deduplicate=bool(args.get("deduplicate_content"))))
+    if operation in {"copy", "write", "delete"}:
+        value["_filesystem"] = {"owner": owner, "manifest": manifest, "args": args, "turn_id": turn_id}
+    return value
+
+
+def execute(owner, manifest, args, turn_id, *, timeout_s=30, db_path=None, authority=None, source_fd=None):
     try:
         operation = permissions.contract(manifest, args)
-        broker = Broker(owner, manifest, args, turn_id, timeout_s=timeout_s, db_path=db_path)
+        if not owner:
+            raise permissions.PermissionError("ERR_FS_PERMISSION_REQUIRED")
+        if source_fd is not None and authority is None:
+            raise permissions.PermissionError("ERR_FS_AUTHORITY_INVALID")
+        if source_fd is not None and operation != "copy":
+            raise permissions.PermissionError("ERR_FS_AUTHORITY_INVALID")
+        if authority is None:
+            import server_filesystem_host as host
+            delegated = host.execute(owner, manifest, args, turn_id, timeout_s=timeout_s, db_path=db_path)
+            if delegated is not None:
+                return delegated
+        broker = Broker(owner, manifest, args, turn_id, timeout_s=timeout_s, db_path=db_path, authority=authority)
         if operation == "list":
             return broker.list(permissions.normalize_path(args.get("path"), "posix"))
         specs = write_specs(args) if operation == "write" else copy_specs(args) if operation == "copy" else paths(args)
         if len(specs) > 100:
             raise permissions.PermissionError("ERR_FS_SIZE_LIMIT")
+        if source_fd is not None and (operation != "copy" or len(specs) != 1):
+            raise permissions.PermissionError("ERR_FS_AUTHORITY_INVALID")
         results, failed = [], []
         for index, spec in enumerate(specs):
             try:
-                results.append(getattr(broker, operation)(spec))
+                results.append(broker.copy(spec, source_fd=source_fd) if source_fd is not None
+                               else getattr(broker, operation)(spec))
             except (OSError, ValueError, TypeError, LookupError) as exc:
                 failure = error_result(exc)
                 failed.append({"index": index, "error": failure["error"], "error_code": failure["error_code"]})
-        value = {"ok": not failed, "ok_count": len(results), "fail_count": len(failed),
-                 "entries" if operation == "read" else "results": results, "failed": failed, "dirs_created": []}
-        if failed:
-            value.update({"error": failed[0]["error"], "error_code": failed[0]["error_code"], "error_class": "filesystem_permission"})
-        if operation in {"copy", "write", "delete"}:
-            value["_filesystem"] = {"owner": owner, "manifest": manifest, "args": args, "turn_id": turn_id}
-        return value
+        return batch_result(owner, manifest, args, turn_id, operation, results, failed)
     except (OSError, ValueError, TypeError, LookupError) as exc:
         return error_result(exc)
 
 
-def undo_stage(pattern, results, *, db_path=None, actor=None):
+def undo_stage(pattern, results, *, db_path=None, actor=None, authority=None, trusted_owner=None, timeout_s=30):
     """Undo only recorded native effects, under the account's current rights."""
-    import devices
     import hashlib
     import re
     import config as C
     context = results["_filesystem"]
-    owner = devices.owner_id_for_actor(actor or os.environ.get("METNOS_ACTOR") or "host")
+    if trusted_owner is None:
+        import devices
+        owner = devices.owner_id_for_actor(actor or os.environ.get("METNOS_ACTOR") or "host")
+    else:
+        owner = trusted_owner
     if owner != context["owner"]:
         return error_result(permissions.PermissionError("ERR_FS_PERMISSION_REQUIRED"))
-    broker = Broker(owner, context["manifest"], context["args"], context["turn_id"], db_path=db_path)
+    if authority is None:
+        try:
+            import server_filesystem_host as host
+            delegated = host.undo(pattern, results, actor=actor, db_path=db_path, timeout_s=timeout_s)
+            if delegated is not None:
+                return delegated
+            if context.get("backend") in {"host", "mixed"}:
+                raise permissions.PermissionError("ERR_FS_HOST_UNAVAILABLE")
+        except (OSError, ValueError, TypeError, LookupError) as exc:
+            return error_result(exc)
+    broker = Broker(owner, context["manifest"], context["args"], context["turn_id"], db_path=db_path,
+                    authority=authority, timeout_s=timeout_s)
     done, failed = [], []
     for index, entry in enumerate(results.get("results") or []):
         path = entry.get("dst") or entry.get("path")
@@ -349,17 +483,21 @@ def undo_stage(pattern, results, *, db_path=None, actor=None):
             continue
         try:
             # An undo does not overwrite a newer edit to a created/replaced file.
+            expected_identity = None
             if entry.get("sha256"):
                 broker.check(path, "write")
                 with io.parent(path) as (parent, name):
                     fd = io.open_file(parent, name)
                     try:
+                        expected_identity = io.identity(io.regular(fd))
                         if io.digest(fd, lambda: broker.check(path, "write")) != entry["sha256"]:
+                            raise permissions.PermissionError("ERR_FS_SOURCE_CHANGED")
+                        if io.identity(io.regular(fd)) != expected_identity:
                             raise permissions.PermissionError("ERR_FS_SOURCE_CHANGED")
                     finally:
                         os.close(fd)
             if remove:
-                done.append(broker.delete(path))
+                done.append(broker.delete(path, expected_identity=expected_identity))
             else:
                 root = C.PATH_USER_DATA / "_history" / context["turn_id"] / "blob"
                 if os.path.dirname(blob) != str(root) or not re.fullmatch("[0-9a-f]{64}\\.bin", os.path.basename(blob)):
@@ -378,7 +516,8 @@ def undo_stage(pattern, results, *, db_path=None, actor=None):
                             if hasher.hexdigest() != expected:
                                 raise permissions.PermissionError("ERR_FS_HASH_MISMATCH")
                             return size, expected
-                        done.append(broker.replace(path, produce, overwrite=entry.get("restore_mode") != "create"))
+                        done.append(broker.replace(path, produce, overwrite=entry.get("restore_mode") != "create",
+                                                   expected_identity=expected_identity))
                     finally:
                         os.close(source)
         except (OSError, ValueError, TypeError, LookupError) as exc:

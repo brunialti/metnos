@@ -35,4 +35,8 @@ ERRORE: includere un riepilogo al posto di un record, oppure un record con categ
 {% endif %}{% if datetime_fields %}Normalizza DATA/ORA ({{ datetime_fields }}) in ISO 8601 solo quando tutti i componenti sono espliciti; altrimenti conserva il valore letterale.
 {% endif %}{% if date_only_fields %}I campi DATA ({{ date_only_fields }}), SENZA orario, conservano la precisione della data scritta nel singolo record: giorno, mese e anno espliciti → "YYYY-MM-DD"; solo mese e anno espliciti, numerici o in lettere → "YYYY-MM". Per esempio "02/2024" e "febbraio 2024" → "2024-02", senza giorno inventato e SENZA asterisco.
 L'asterisco dichiara SOLO un anno assunto: se nel record manca l'anno, usa l'anno corrente ({{ current_year }}) e premetti "*", conservando il giorno solo quando scritto: "*{{ current_year }}-MM-DD" oppure "*{{ current_year }}-MM". Non prendere l'anno dalla richiesta, da un riepilogo o da un altro record. Un anno esplicito nel record non riceve mai "*". Lascia "" SOLO se dal testo non si ricava nessuna data: una data visibile non diventa mai vuota.
+DEVI: datare ogni record col giorno mostrato per quella riga o voce, completando l'anno come indicato sopra.
+NON DEVI: usare come data un mese, un anno o un periodo citato dentro la descrizione o un altro campo del record.
+OK: esempio astratto, non copiare letteralmente: voce «12 marzo» con descrizione «quota di febbraio» → data del 12 marzo.
+E' UN ERRORE: la stessa voce datata "YYYY-02" perché la descrizione nomina febbraio.
 {% endif %}Output: SOLO l'oggetto JSON, senza prosa, markdown o <think>.

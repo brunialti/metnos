@@ -102,6 +102,12 @@ def domain_for(executor_name: str) -> Optional[str]:
     obj = getattr(nc, "obj", None) or getattr(nc, "object", None)
     if qual and qual in _provider_qualifiers():
         return qual
+    # A provider chosen by argument has no suffix: an object served by one
+    # provider alone still groups with that provider's other objects.
+    from backend_resolver import OBJECT_BACKENDS
+    backends = (OBJECT_BACKENDS.get(obj) or {}).get("providers") or ()
+    if len(backends) == 1:
+        return backends[0]
     return obj or qual or None
 
 

@@ -45,12 +45,12 @@ che chiama admin la prima volta; il resume e' una chiamata diretta al verb.
 from __future__ import annotations
 
 import os
-
 import json
 import hmac
 import sys
 import time
 import uuid
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Optional
 
@@ -61,6 +61,9 @@ from logging_setup import get_logger
 from messages import get as _msg
 
 log = get_logger(__name__)
+
+# Only the dialog producer may attest controls emitted during a callback.
+_callback_dialog_ids = ContextVar("callback_dialog_ids", default=None)
 
 
 # A process can exist before the capability it exposes is ready. Keep one
@@ -299,6 +302,9 @@ def invoke_get_inputs_internal(*,
     except (OSError, ValueError, TypeError) as ex:
         return {"ok": False, "error": _msg("MSG_ORCH_SAVE_PENDING_FAILED", detail=str(ex))}
 
+    emitted = _callback_dialog_ids.get()
+    if emitted is not None and resolved_fmt == "form":
+        emitted.append(dialog_id)
     final_message_hint = _build_final_message_hint(state, resolved_fmt)
     return {
         "ok": True,
@@ -418,6 +424,7 @@ class CompletionResult:
     gallery_url: str = ""
     n_total_matches: int = 0
     path: list = _dcfield(default_factory=list)
+    inline_dialog_ids: list[str] = _dcfield(default_factory=list)
 
 
 def _completion_receipt(result: CompletionResult) -> dict:
@@ -432,6 +439,8 @@ def _completion_receipt(result: CompletionResult) -> dict:
         "gallery_url": str(result.gallery_url or ""),
         "n_total_matches": int(result.n_total_matches or 0),
         "path": list(result.path or []),
+        "inline_dialog_ids": list(dict.fromkeys(
+            list(result.inline_dialog_ids or []) + (_callback_dialog_ids.get() or []))),
     }
 
 
@@ -447,6 +456,7 @@ def _completion_from_receipt(receipt: dict) -> CompletionResult:
         gallery_url=str(receipt.get("gallery_url") or ""),
         n_total_matches=max(0, int(receipt.get("n_total_matches") or 0)),
         path=list(receipt.get("path") or []),
+        inline_dialog_ids=list(receipt.get("inline_dialog_ids") or []),
     )
 
 
@@ -482,10 +492,63 @@ def _completion_from_turnlog(new_log) -> CompletionResult:
         gallery_url=(f"/agent/gallery/{turn_id}" if (n_total and turn_id) else ""),
         n_total_matches=n_total,
         path=path_summary,
+        inline_dialog_ids=dialog_ids_from_turn(new_log),
     )
 
 
-def process_completion_callback(sender_id: str, dialog_id: str,
+def dialog_ids_from_turn(record) -> list[str]:
+    """Select runtime dialog proposals; generic executor fields are not authority."""
+    def field(value, key, default=None):
+        return value.get(key, default) if isinstance(value, dict) else getattr(value, key, default)
+
+    def ids(caps):
+        return {cap["dialog_id"] for cap in caps or []
+                if isinstance(cap, dict) and cap.get("kind") == "get_inputs_response"
+                and isinstance(cap.get("dialog_id"), str)}
+
+    candidates, copied = set(), set()
+    for step in field(record, "steps", []) or []:
+        result = field(step, "result", {}) or {}
+        if not isinstance(result, dict):
+            continue
+        proposed = ids(result.get("expandable_caps"))
+        if field(step, "chosen_tool") in {"get_inputs", "get_approval"}:
+            candidates.update(proposed)
+            if isinstance(result.get("dialog_id"), str):
+                candidates.add(result["dialog_id"])
+        else:
+            copied.update(proposed)
+    # Turn-level proposals absent from generic results are emitted by runtime
+    # orchestration (needs-inputs, consent, cap expansion, device deferral).
+    candidates.update(ids(field(record, "expandable_caps", [])) - copied)
+    return sorted(candidates)
+
+
+def _attest_dialog_result(executor: str, result):
+    """Record only the actual canonical producer invoked by this callback."""
+    emitted = _callback_dialog_ids.get()
+    if emitted is not None and executor in {"get_inputs", "get_approval"}:
+        emitted.extend(dialog_ids_from_turn({"steps": [
+            {"chosen_tool": executor, "result": result}]}))
+    return result
+
+
+def process_completion_callback(sender_id: str, dialog_id: str, *, actor: str = "host",
+                                owner_user_id: str, channel: Optional[str] = None,
+                                host_override: Optional[str] = None) -> "CompletionResult":
+    emitted = []
+    token = _callback_dialog_ids.set(emitted)
+    try:
+        result = _process_completion_callback(
+            sender_id, dialog_id, actor=actor, owner_user_id=owner_user_id,
+            channel=channel, host_override=host_override)
+        result.inline_dialog_ids = list(dict.fromkeys(result.inline_dialog_ids + emitted))
+        return result
+    finally:
+        _callback_dialog_ids.reset(token)
+
+
+def _process_completion_callback(sender_id: str, dialog_id: str,
                                   *, actor: str = "host",
                                   owner_user_id: str,
                                   channel: Optional[str] = None,
@@ -1385,6 +1448,16 @@ def _consegna_esito_tardivo(futuro, *, channel: str | None,
         payload = {"message": _messaggio_da_result(res),
                    "ok": bool(isinstance(res, dict) and res.get("ok")),
                    "executor": executor}
+        if isinstance(res, CompletionResult):
+            # A resumed turn ending late keeps what an on-time one shows: its
+            # files and its turn badge (live turn 597237b3, 3/11/2026: the
+            # sheet was written, only the text reached the chat).
+            payload.update(turn_id=res.turn_id, total_ms=res.total_ms,
+                           target_device=res.target_device,
+                           path=list(res.path or []),
+                           attachments=list(res.attachments or []),
+                           gallery_url=res.gallery_url,
+                           n_total_matches=res.n_total_matches)
         # Qui siamo nel filo del lavoro, non in quello che gira l'attesa. Le
         # code su cui poggia lo stream verso la chat appartengono a
         # quest'ultimo e non si toccano da fuori: metterci dentro qualcosa
@@ -1424,13 +1497,64 @@ def _consegna_esito_tardivo(futuro, *, channel: str | None,
         log.exception("orchestration: consegna dell'esito tardivo fallita")
 
 
+def _entro_il_tetto(lavoro, *, executor: str, channel: str | None,
+                    owner_user_id: str):
+    """`lavoro()` within the wait cap, or «in corso» and its outcome later.
+
+    The work goes on in its own thread past the cap; its outcome is told to
+    the owner when it ends (see `_consegna_esito_tardivo`).
+    """
+    import concurrent.futures as _cf
+    # Il ciclo che sta girando adesso, se c'e': servira' al filo del
+    # lavoro per consegnare l'esito senza toccare da fuori cose che non
+    # gli appartengono.
+    try:
+        import asyncio as _asyncio
+        ciclo = _asyncio.get_running_loop()
+    except RuntimeError:
+        ciclo = None
+
+    # Only the callback's record of the dialogs it produced follows the work
+    # into its thread; no other request context does.
+    emessi = _callback_dialog_ids.get()
+
+    def nel_filo():
+        token = _callback_dialog_ids.set(emessi)
+        try:
+            return lavoro()
+        finally:
+            _callback_dialog_ids.reset(token)
+
+    pool = _cf.ThreadPoolExecutor(max_workers=1)
+    try:
+        futuro = pool.submit(nel_filo)
+        try:
+            return futuro.result(timeout=_ATTESA_MASSIMA_RAMO_S)
+        except _cf.TimeoutError:
+            log.info("orchestration: ramo %s ancora in corso dopo %ss, "
+                     "rispondo senza aspettarlo", executor,
+                     _ATTESA_MASSIMA_RAMO_S)
+            # L'esito arrivera' dopo, e deve arrivare comunque: si
+            # consegna da solo quando il lavoro finisce.
+            futuro.add_done_callback(
+                lambda f: _consegna_esito_tardivo(
+                    f, channel=channel, owner_user_id=owner_user_id,
+                    executor=executor, loop=ciclo))
+            return {"ok": True, "pending": True,
+                    "final_message_hint": _msg("MSG_GATE_IN_CORSO")}
+    finally:
+        # Non si aspetta la chiusura: il filo deve poter finire da solo.
+        pool.shutdown(wait=False)
+
+
 def _esegui_ramo(executor: str, args: dict, *, actor: str,
                  channel: str | None, owner_user_id: str = "",
                  target_device: str | None = None,
                  turn_id: str = "", source_request_id: str = "",
                  contesto: str = "gate",
                  expected_executor_binding: str = "",
-                 frozen_record: dict | None = None) -> dict:
+                 frozen_record: dict | None = None,
+                 wait: bool = True) -> dict:
     """Esegue UN executor per conto di un dialogo. Ritorna sempre un result.
 
     Punto unico. Prima questo blocco — carica il catalogo, cerca l'executor,
@@ -1471,7 +1595,6 @@ def _esegui_ramo(executor: str, args: dict, *, actor: str,
                         "error": _msg("MSG_TUTOR_HANDOFF_STALE"),
                         "error_class": "stale_contract"}
         import agent_runtime
-        import concurrent.futures as _cf
 
         def _invoca():
             # Use the canonical by-name dispatcher: catalog entries for
@@ -1513,41 +1636,19 @@ def _esegui_ramo(executor: str, args: dict, *, actor: str,
             from frozen_plan_consent import grant
             with grant(grant_record, owner_user_id=owner_user_id,
                        actor=actor, channel=channel or "", turn_id=turn_id):
-                result = _invoca()
+                result = _attest_dialog_result(executor, _invoca())
                 if isinstance(result, dict):
                     from frozen_plan_consent import redact_result
                     return redact_result(ex, result)
                 return result
 
-        # Il ciclo che sta girando adesso, se c'e': servira' al filo del
-        # lavoro per consegnare l'esito senza toccare da fuori cose che non
-        # gli appartengono.
-        try:
-            import asyncio as _asyncio
-            ciclo = _asyncio.get_running_loop()
-        except RuntimeError:
-            ciclo = None
-
-        pool = _cf.ThreadPoolExecutor(max_workers=1)
-        try:
-            futuro = pool.submit(_invoca)
-            try:
-                return futuro.result(timeout=_ATTESA_MASSIMA_RAMO_S)
-            except _cf.TimeoutError:
-                log.info("orchestration: ramo %s ancora in corso dopo %ss, "
-                         "rispondo senza aspettarlo", executor,
-                         _ATTESA_MASSIMA_RAMO_S)
-                # L'esito arrivera' dopo, e deve arrivare comunque: si
-                # consegna da solo quando il lavoro finisce.
-                futuro.add_done_callback(
-                    lambda f: _consegna_esito_tardivo(
-                        f, channel=channel, owner_user_id=owner_user_id,
-                        executor=executor, loop=ciclo))
-                return {"ok": True, "pending": True,
-                        "final_message_hint": _msg("MSG_GATE_IN_CORSO")}
-        finally:
-            # Non si aspetta la chiusura: il filo deve poter finire da solo.
-            pool.shutdown(wait=False)
+        if not wait:
+            # The caller already runs under the cap (a resumed pipeline):
+            # what follows needs this result, not a promise of it.
+            return _attest_dialog_result(executor, _invoca())
+        return _entro_il_tetto(
+            lambda: _attest_dialog_result(executor, _invoca()),
+            executor=executor, channel=channel, owner_user_id=owner_user_id)
     except (PermissionError, KeyError, RuntimeError, TypeError) as exc:
         log.exception("orchestration: ramo %s fallito (%s)", executor, contesto)
         return {"ok": False, "orchestration_error": True, "error": _msg(
@@ -1570,6 +1671,8 @@ def _messaggio_da_result(res) -> str:
             err = res.get("error") or res.get("error_class") or ""
             return f"✗ {err}" if err else _msg("ERR_GENERIC")
         return _msg("MSG_ACTION_DONE")
+    if isinstance(res, CompletionResult):
+        return res.text or _msg("MSG_ACTION_DONE")
     return str(res)
 
 
@@ -1674,7 +1777,8 @@ def _invoke_gate_branch_result(branch: dict | None, *, actor: str,
                                owner_user_id: str,
                                turn_id: str = "",
                                source_request_id: str = "",
-                               target_device: str | None = None):
+                               target_device: str | None = None,
+                               wait: bool = True):
     """Esegue un branch dichiarativo e conserva il result strutturato."""
     if not isinstance(branch, dict):
         return {"ok": False, "orchestration_error": True,
@@ -1684,7 +1788,7 @@ def _invoke_gate_branch_result(branch: dict | None, *, actor: str,
         dict(branch.get("args") or {}),
         actor=actor, channel=channel, owner_user_id=owner_user_id,
         turn_id=turn_id, source_request_id=source_request_id,
-        target_device=target_device, contesto="executor gate branch")
+        target_device=target_device, contesto="executor gate branch", wait=wait)
 
 
 def _gate_tail_callback(gate: dict, parent_callback: dict,
@@ -1753,6 +1857,28 @@ def _carry_executor_tail_to_nested_gate(
 def _process_resume_executor_gate_tail(on_complete: dict, values: dict, *,
                                        actor: str = "host",
                                        channel: str | None = None):
+    """A paused pipeline resumed: its remaining steps need the branch's own
+    result, so branch and steps together run under the wait cap (live
+    Fineco b1f7bb1a, 2/11/2026: a collection resumed past 25 s handed «in
+    corso» to the next step, which then read no session)."""
+    if not on_complete.get("tail_steps"):
+        return _resume_executor_gate_tail(on_complete, values, actor=actor,
+                                          channel=channel)
+    branch = on_complete.get("gate_on_approve") or {}
+    outcome = _entro_il_tetto(
+        lambda: _resume_executor_gate_tail(on_complete, values, actor=actor,
+                                           channel=channel, wait=False),
+        executor=str(branch.get("tool") or branch.get("executor") or ""),
+        channel=channel, owner_user_id=str(on_complete.get("owner_user_id") or ""))
+    if isinstance(outcome, dict) and outcome.get("pending"):
+        return _messaggio_da_result(outcome)
+    return outcome
+
+
+def _resume_executor_gate_tail(on_complete: dict, values: dict, *,
+                               actor: str = "host",
+                               channel: str | None = None,
+                               wait: bool = True):
     """Riprende una pipeline dopo un gate creato dentro un executor.
 
     Prima ripresenta al broker il token opaco del branch approvato, poi esegue
@@ -1782,7 +1908,10 @@ def _process_resume_executor_gate_tail(on_complete: dict, values: dict, *,
         owner_user_id=str(on_complete.get("owner_user_id") or ""),
         turn_id=continuation_id,
         source_request_id=str(on_complete.get("source_request_id") or ""),
-        target_device=device)
+        target_device=device, wait=wait)
+
+    # The resumed branch, already recorded as step 1 of this continuation.
+    seeds = []
 
     def complete(text, *, run=None, failure=None):
         # The HTTP photo resolver and history both read TurnLog. A result
@@ -1806,7 +1935,7 @@ def _process_resume_executor_gate_tail(on_complete: dict, values: dict, *,
                 branch_receipt, ExecutionReceipt) else None),
         )]
         for step in (run.steps if run is not None else ()):
-            if step.tool == "@approved_executor_gate":
+            if any(step is seed for seed in seeds):
                 continue
             result = dict(step.result) if isinstance(step.result, dict) else {}
             result.pop(EXECUTION_RECEIPT_RESULT_KEY, None)
@@ -1939,9 +2068,16 @@ def _process_resume_executor_gate_tail(on_complete: dict, values: dict, *,
                     on_complete.get("source_request_id") or ""),
                 target_device=device)
 
+        # The paused executor with its own arguments: the tail reads what it
+        # asked for (live Fineco 1e749961, 2/11/2026: a resumed collection
+        # left the period filter without its date field).
+        approved = on_complete.get("gate_on_approve") or {}
         seed = StepRun(
-            step_idx=1, tool="@approved_executor_gate", args={},
+            step_idx=1,
+            tool=str(approved.get("tool") or approved.get("executor") or ""),
+            args=dict(approved.get("args") or {}),
             result=branch_result, ok=True, latency_ms=0, kind="input")
+        seeds.append(seed)
         run = Executor(
             invoke_executor=_invoke, seed_steps=[seed], catalog=catalog).run(
                 framework, query=on_complete.get("original_query") or "",

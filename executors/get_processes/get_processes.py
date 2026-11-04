@@ -741,7 +741,7 @@ def _read_services(
             rows = services_registry.snapshots(
                 probe_endpoints=False, include_missing=True,
             )
-        except (ImportError, OSError):
+        except Exception:  # noqa: BLE001 - the rest of the health report stands
             return out
         for row in rows:
             name = str(row.get("unit") or row.get("key") or "")
@@ -1235,7 +1235,7 @@ def _read_power() -> dict:
 
 def _network_fallback_stdlib() -> list[dict]:
     """Rete SENZA psutil (device shim, 10/7 turn 6dce715f: health.network=[]
-    sul PC → «ip del pc-roberto» rispondeva vuoto): IP primario via UDP-connect
+    sul PC → «ip del PC» rispondeva vuoto): IP primario via UDP-connect
     (nessun pacchetto inviato), hostname, MAC primario via uuid.getnode().
     Meno ricco del ramo psutil (una sola «interfaccia» logica) ma ONESTO."""
     import socket

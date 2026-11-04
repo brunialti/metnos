@@ -282,10 +282,13 @@ class SchedulerStorage:
             rows = cur.fetchall()
         return [ScheduleEntry.from_row(r) for r in rows]
 
-    def next_fire_at_min(self) -> float | None:
+    def next_fire_at_min(self, exclude: tuple = ()) -> float | None:
+        """The next timer, leaving out entries already being fired."""
+        holes = ",".join("?" * len(exclude))
         with self._lock:
             cur = self._conn.execute(
                 "SELECT MIN(next_fire_at) AS m FROM schedule_entries WHERE enabled=1"
+                + (f" AND id NOT IN ({holes})" if exclude else ""), exclude,
             )
             r = cur.fetchone()
         return float(r["m"]) if r and r["m"] is not None else None

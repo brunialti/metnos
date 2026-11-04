@@ -944,6 +944,28 @@ fn with_jitter(d: Duration) -> Duration {
     d.mul_f64(factor)
 }
 
+/// The operating system's own folders, keyed by its name for each. `dirs`
+/// follows redirections such as OneDrive; a folder without a path is left out.
+fn known_folders() -> Value {
+    let folders = [
+        ("Desktop", dirs::desktop_dir()),
+        ("Documents", dirs::document_dir()),
+        ("Downloads", dirs::download_dir()),
+        ("Music", dirs::audio_dir()),
+        ("Pictures", dirs::picture_dir()),
+        ("Public", dirs::public_dir()),
+        ("Templates", dirs::template_dir()),
+        ("Videos", dirs::video_dir()),
+    ];
+    let mut known = serde_json::Map::new();
+    for (name, folder) in folders {
+        if let Some(path) = folder.as_deref().and_then(std::path::Path::to_str) {
+            known.insert(name.to_string(), json!(path));
+        }
+    }
+    Value::Object(known)
+}
+
 /// Profilo carico per il placement L2 (§10). Solo interi (canonical JSON).
 fn collect_profile() -> Value {
     let ncpu = std::thread::available_parallelism()
@@ -959,6 +981,9 @@ fn collect_profile() -> Value {
         // Positive protocol negotiation: the server never infers support for
         // a new signed field from the OS or from a version string.
         "protocol_capabilities": ["executor_reverse_v1", crate::file_broker::CAPABILITY],
+        // Where the user's folders really are: the server anchors a named
+        // folder before signing, since a relative path cannot be sandboxed.
+        "known_folders": known_folders(),
         // B.5 (fase 7): livello sandbox che run_sandboxed userebbe ORA su
         // questo device -> devices.profile_json (telemetria per il gate
         // min_sandbox, W4).

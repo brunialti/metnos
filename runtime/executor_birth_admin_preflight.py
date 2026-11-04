@@ -910,7 +910,7 @@ _REQUIRED_MANIFEST_PATHS = {
 _BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:5b21ac1a13c7a828d07c798de789b9eb682d32190db2855d2746eaba7de3beae"
+_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:079b2a232dcafe588bf777bdad8232aac96a6de1f1e41da43b9899a60c0c6acc"
 _SOURCE_REVIEW_PIN_VALUE_V1 = (
     rb'(?:(?:"sha256:" \+ "0" \* 64)|(?:"sha256:[0-9a-f]{64}"))'
 )
@@ -13560,7 +13560,6 @@ def _normalize_manager_directive_v1(
             _normalize_systemd_integer_v1(raw),
             _normalize_systemd_integer_v1(soft),
         )
-        return (normalized,)
     if value_type == "boolean":
         return (_normalize_systemd_boolean_v1(raw),)
     if value_type == "duration":

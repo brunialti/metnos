@@ -447,11 +447,8 @@ def try_fast_path(query: str, lang: str = "it",
                 return _i18n.get_for_language("MSG_FAST_NOTHING_UNDO", lang)
             details = observation.get("details") or []
             d0 = details[0] if details else {}
-            target_executor = d0.get("executor", "action")
-            target_count = d0.get("ok_count", undone)
             return _i18n.get_for_language(
-                "MSG_FAST_UNDO", lang, executor=target_executor,
-                count=target_count,
+                "MSG_UNDO_DONE", lang, count=d0.get("ok_count", undone),
             )
         if fp.executor == "get_location":
             loc = observation.get("location") or {}

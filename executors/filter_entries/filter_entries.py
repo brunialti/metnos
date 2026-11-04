@@ -286,6 +286,25 @@ def _invoke(args):
             "error": _msg("ERR_FILTER_WHERE_FIELD"),
         }
 
+    # A field no entry has is a wrong name, not an empty result: selecting on
+    # it would hand on zero entries as if none matched (offline plan of
+    # 4/11/2026, «tipo» on a sheet whose columns are «Entrate»/«Uscite»).
+    # Selecting where the field is absent stays a valid predicate.
+    records = [e for e in entries if isinstance(e, dict)]
+    if (where_field and records
+            and (where_in or _has_where_str_op or where_periods or where_present is True)
+            and not any(where_field in e for e in records)):
+        supported = sorted({str(k) for e in records for k in e
+                            if not str(k).startswith("_")})[:24]
+        return {
+            "ok": False,
+            "error_class": "invalid_input",
+            "error_code": "unknown_where_field",
+            "error": _msg("ERR_UNKNOWN_FIELDS", unknown=where_field,
+                          supported=", ".join(supported)),
+            "entries": [],
+        }
+
     def keep(e):
         nonlocal period_unreadable
         if not isinstance(e, dict):

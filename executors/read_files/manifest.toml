@@ -6,7 +6,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "read_files"
-version     = "0.2.0"
+version     = "0.2.1"
 # C7 CP3: il backend local è pathlib/os puro → gira anche su
 # Windows (validato find/read sul device e2e 5/7). Senza questa
 # dichiarazione placement rifiuterebbe un device Windows (F1).
@@ -20,8 +20,8 @@ affinity    = ["read", "leggi", "lettura", "apri", "file", "documento", "testo",
 # qui dichiarato. Mismatch → executor rifiutato.
 
 [description]
-it = "SCOPO: legge file locali o remoti, anche PDF/DOCX/XLSX/CSV. PATTERN: read_files(path=P, repo=R), P relativo nel repository; oppure from_step=N. NON: fogli -> read_files_spreadsheet; OCR -> read_files_ocr. OUT: entries con testo, leggibilità, sha256 e origine; duplicates."
-en = "SCOPO: reads local or remote files, including PDF/DOCX/XLSX/CSV. PATTERN: read_files(path=P, repo=R), P relative in repositories; or from_step=N. NON: sheets -> read_files_spreadsheet; OCR -> read_files_ocr. OUT: entries with text, readability, sha256, source; duplicates."
+it = "SCOPO: legge file locali o remoti, anche PDF/DOCX/XLSX/CSV. PATTERN: read_files(path=P, repo=R), P relativo nel repository; oppure from_step=N. NON: fogli -> read_files_spreadsheet, read_files_xlsx; OCR -> read_files_ocr. OUT: entries con testo, leggibilità, sha256 e origine; duplicates."
+en = "SCOPO: reads local or remote files, including PDF/DOCX/XLSX/CSV. PATTERN: read_files(path=P, repo=R), P relative in repositories; or from_step=N. NON: sheets -> read_files_spreadsheet, read_files_xlsx; OCR -> read_files_ocr. OUT: entries with text, readability, sha256, source; duplicates."
 
 [code]
 files  = ["read_files.py"]

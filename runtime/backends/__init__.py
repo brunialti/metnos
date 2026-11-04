@@ -33,7 +33,11 @@ def _load_declared(area: str, provider: str):
 
 def load(area: str, provider: str):
     """Return a provider, or None if absent; expose broken installed imports."""
-    from backend_resolver import provider_enabled
+    try:
+        from backend_resolver import provider_enabled
+    except ModuleNotFoundError:
+        # A device carries no provider policy and no provider backend.
+        return None
     if not provider_enabled(provider):
         return None
     key = (area, provider)

@@ -331,6 +331,12 @@ observable result, and logs with secrets removed.
 
 [MIT](LICENSE), copyright (c) 2026 the owner.
 
+The optional reCAPTCHA image-grid classifier is
+[recaptcha-classification-57k](https://huggingface.co/DannyLuna/recaptcha-classification-57k)
+by DannyLuna, MIT license. It is not part of this repository: the installer
+offers to download it from Hugging Face, and without it image grids are left
+to you.
+
 Third-party libraries, companion services and downloaded models retain their
 own licenses. The Metnos license does not replace their terms; check those
 terms before using or redistributing the corresponding components.

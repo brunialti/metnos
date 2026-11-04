@@ -17,7 +17,6 @@ GROUPS = {
     "cluster": (
         "tests/runtime/sites/test_collection_navigation.py",
         "tests/runtime/sites/test_collection_frontier_route.py",
-        "tests/runtime/sites/test_collection_route_overlap.py",
         "tests/runtime/sites/test_collection_observation_bounds.py",
         "tests/runtime/sites/test_collection_observation_preservation.py",
         "tests/runtime/sites/test_collection_model_timeout.py",

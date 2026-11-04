@@ -41,8 +41,10 @@ use windows_sys::Win32::System::Pipes::{
     ConnectNamedPipe, CreateNamedPipeW, GetNamedPipeClientProcessId, PIPE_READMODE_BYTE,
     PIPE_REJECT_REMOTE_CLIENTS, PIPE_TYPE_BYTE, PIPE_WAIT,
 };
+use windows_sys::Win32::System::IO::CancelSynchronousIo;
 use windows_sys::Win32::System::Threading::{
-    OpenProcess, OpenProcessToken, PROCESS_QUERY_LIMITED_INFORMATION,
+    GetCurrentThreadId, OpenProcess, OpenProcessToken, OpenThread,
+    PROCESS_QUERY_LIMITED_INFORMATION, THREAD_TERMINATE,
 };
 
 /// La versione della struttura del descrittore di sicurezza. Costante di
@@ -70,6 +72,49 @@ impl Handle {
 
     pub fn writer(&self) -> PipeIo<'_> {
         PipeIo(self)
+    }
+}
+
+/// Interrompe una lettura o una scrittura che non finisce entro il limite.
+///
+/// La pipe e' sincrona: l'operazione ferma il filo che la chiama, e solo un
+/// altro filo puo' annullarla. Il controllo si ripete perche' l'annullamento
+/// vale solo per l'operazione in corso in quel momento. Finisce con `Drop`.
+pub struct Scadenza {
+    fine: Option<std::sync::mpsc::Sender<()>>,
+    filo: Option<std::thread::JoinHandle<()>>,
+}
+
+struct FiloDaAnnullare(Handle);
+// Un handle di filo si puo' usare da qualunque filo.
+unsafe impl Send for FiloDaAnnullare {}
+
+impl Scadenza {
+    pub fn per_questo_filo(limite: std::time::Duration) -> std::io::Result<Self> {
+        let handle = unsafe { OpenThread(THREAD_TERMINATE, 0, GetCurrentThreadId()) };
+        if handle.is_null() {
+            return Err(std::io::Error::last_os_error());
+        }
+        let bersaglio = FiloDaAnnullare(Handle(handle));
+        let (fine, attesa) = std::sync::mpsc::channel::<()>();
+        let filo = std::thread::spawn(move || {
+            let bersaglio = bersaglio;
+            let mut pausa = limite;
+            while let Err(std::sync::mpsc::RecvTimeoutError::Timeout) = attesa.recv_timeout(pausa) {
+                unsafe { CancelSynchronousIo(bersaglio.0 .0) };
+                pausa = std::time::Duration::from_millis(100);
+            }
+        });
+        Ok(Self { fine: Some(fine), filo: Some(filo) })
+    }
+}
+
+impl Drop for Scadenza {
+    fn drop(&mut self) {
+        drop(self.fine.take());
+        if let Some(filo) = self.filo.take() {
+            let _ = filo.join();
+        }
     }
 }
 

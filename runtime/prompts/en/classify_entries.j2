@@ -12,8 +12,13 @@ Classify {{ n }} entries of type '{{ kind }}' based on the dimension '{{ dimensi
 
 Criterion: {{ criterion }}
 
+MUST: apply the criterion literally, looking only at the part of the entry the criterion points to (for example the text after the label it names); a name in the criterion matches also with its words in another order, in capitals or with other names next to it in that same part.
+MUST NOT: use a name that appears in another part of the entry (after another label) or replace the criterion with your own judgement.
+OK: abstract example, do not copy literally: criterion «a if the sender (From:) is Anna Neri»; entry «From: NERI ANNA VERDI LUCA To: Anna Neri» → a.
+ERROR: entry «From: Company X To: Anna Neri» classified a because Anna Neri appears after «To:».
+
 OUTPUT: ONLY a JSON array of {{ n }} strings, one per entry in the same order. No prose, no markdown, no extra keys.
 
 Example for {{ example_n }} entries: {{ example_str }}
 
-If uncertain about an entry, choose the lowest class among those allowed. Do not invent new classes. Array length exactly {{ n }}.
+If uncertain about an entry, choose the class the criterion gives to the remaining cases; if it gives none, the lowest class among those allowed. Do not invent new classes. Array length exactly {{ n }}.

@@ -61,5 +61,29 @@ def neutralized_rows(rows) -> list:
             for row in rows or []]
 
 
-__all__ = ["TEXT_PREFIX", "active_cell_count", "is_active_text", "neutralized",
-           "neutralized_rows"]
+def _is_label(value) -> bool:
+    text = str(value).strip() if value is not None else ""
+    return bool(text) and not re.fullmatch(r"[\d.,/:\-\s]+", text)
+
+
+def header_records(rows) -> list | None:
+    """Rows under a header row, as records keyed by the header's labels.
+
+    Filters, classifiers and writers work on named fields, so a sheet whose
+    first row names its columns is read as records; ``None`` for a sheet
+    without such a row (empty, a label missing or repeated, a number or a
+    date in it), which stays rows.  Rows with no value are not records.
+    """
+    rows = [list(row) for row in rows or [] if isinstance(row, (list, tuple))]
+    if not rows or not all(_is_label(cell) for cell in rows[0]):
+        return None
+    header = [str(cell).strip() for cell in rows[0]]
+    if len(set(header)) != len(header):
+        return None
+    return [dict(zip(header, row + [None] * (len(header) - len(row))))
+            for row in rows[1:]
+            if any(cell not in (None, "") for cell in row)]
+
+
+__all__ = ["TEXT_PREFIX", "active_cell_count", "header_records", "is_active_text",
+           "neutralized", "neutralized_rows"]

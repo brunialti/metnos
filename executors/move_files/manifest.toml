@@ -6,7 +6,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "move_files"
-version     = "0.11.0"
+version     = "0.11.1"
 # C7 CP4: backend local pathlib/os puro → gira anche su Windows
 # (mutanti validati e2e device 5/7). Senza dichiarazione, placement
 # rifiuterebbe un device Windows (F1).
@@ -20,8 +20,8 @@ revertible      = true
 reverse_pattern = ["swap_src_dst", "restore_blob_backup", "delete_created_dirs"]
 
 [description]
-it = "SCOPO: sposta, rinomina o copia file in batch; con copy=true conserva l’origine, anche tra dispositivo e server. PATTERN: move_files(from_step=1, dst_template='/a/{name}'). NON: convertire formati (-> change_files_format); comprimere (-> compress_files). OUT: {results:[{src,dst}], dirs_created:[...], failed:[...]}, best-effort."
-en = "SCOPO: move, rename or copy files in batch; copy=true preserves the source, including transfers between device and server. PATTERN: move_files(from_step=1, dst_template='/a/{name}'). NON: convert formats (-> change_files_format); compress (-> compress_files). OUT: {results:[{src,dst}], dirs_created:[...], failed:[...]}, best effort."
+it = "SCOPO: sposta, rinomina o copia file in batch; copy=true conserva l’origine, anche fra dispositivo e server. PATTERN: move_files(from_step=1, dst_template='/a/{name}'). NON: formati (-> change_files_format); comprimere (-> compress_files). OUT: {results:[{src,dst}], dirs_created:[...], failed:[...]}, best-effort."
+en = "SCOPO: move, rename or copy files in batch; copy=true keeps the source, also between device and server. PATTERN: move_files(from_step=1, dst_template='/a/{name}'). NON: formats (-> change_files_format); compress (-> compress_files). OUT: {results:[{src,dst}], dirs_created:[...], failed:[...]}, best effort."
 
 [code]
 files  = ["move_files.py"]
@@ -133,6 +133,11 @@ schema_inline = """
 name = "fs:write"
 hint = ["~/notes/**", "/tmp/**"]
 
+[[capabilities]]
+name = "fs:read"
+hint = ["~/notes/**", "/tmp/**"]
+when = { arg = "copy", values = [true] }
+
 [[tests]]
 name     = "rinomina_lista_di_uno"
 setup    = "mkdir -p /tmp/metnos_test_move_files && echo x > /tmp/metnos_test_move_files/a.txt"
@@ -236,11 +241,6 @@ expect = { ok = false, field_eq = { error_code = "ERR_NOT_APPLICABLE" } }
 scope    = "any"
 device_ok = true
 min_sandbox = "appcontainer"
-
-[[capabilities]]
-name = "fs:read"
-hint = ["~/notes/**", "/tmp/**"]
-when = { arg = "copy", values = [true] }
 
 [args.properties.source_location]
 type = "string"

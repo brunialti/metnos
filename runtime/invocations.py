@@ -135,6 +135,10 @@ class InvocationError(Exception):
     pass
 
 
+class RefusedForUser(InvocationError):
+    """A refusal already written for the person, in the instance language."""
+
+
 class SignatureError(InvocationError):
     """Firma device non verificata: il result NON viene accettato."""
 
@@ -530,6 +534,27 @@ def _device_protocol_capabilities(dev: devices.Device) -> set[str]:
     }
 
 
+def _anchored_args(artifact: ExecutorArtifact, args: dict, dev: devices.Device) -> dict:
+    """Named folders become the device's own paths before signing.
+
+    A path still relative under a contract that requires the AppContainer
+    would only be refused by the client: say so now, in words.
+    """
+    import device_paths
+    from messages import get as _message
+
+    anchored = device_paths.anchor_args(args, dev.profile_json)
+    required = (artifact.parsed.get("placement") or {}).get("min_sandbox")
+    still = device_paths.relative_paths(anchored) if required == "appcontainer" else []
+    try:
+        profile = json.loads(dev.profile_json or "{}")
+    except (TypeError, ValueError):
+        profile = {}
+    if still and isinstance(profile, dict) and profile.get("os_family") == "windows":
+        raise RefusedForUser(_message("MSG_DEVICE_PATH_RELATIVE", path=still[0]))
+    return anchored
+
+
 def _validate_operation(artifact: ExecutorArtifact, args: dict, operation: str,
                         dev: devices.Device) -> None:
     """Validate one signed executor operation before it reaches the queue."""
@@ -538,7 +563,7 @@ def _validate_operation(artifact: ExecutorArtifact, args: dict, operation: str,
         if (filesystem_permissions.contract(artifact.parsed, args) is not None
                 and filesystem_permissions.CAPABILITY not in _device_protocol_capabilities(dev)):
             from messages import get as _message
-            raise InvocationError(_message("MSG_FS_UPDATE_REQUIRED"))
+            raise RefusedForUser(_message("MSG_FS_UPDATE_REQUIRED"))
         return
     if operation != "reverse":
         raise InvocationError(f"unsupported executor operation: {operation}")
@@ -710,6 +735,8 @@ def enqueue_invocation(device_id: str, executor: str, args: dict, *,
     artifact = load_executor_artifact(executor)
     manifest_sha = artifact.manifest_sha256
     code_sha = artifact.code_sha256
+    if operation == "invoke":
+        args = _anchored_args(artifact, args or {}, dev)
     _validate_operation(artifact, args or {}, operation, dev)
     # Resolve the ordinary vector/entry forms before signing. The native
     # broker receives explicit paths and bytes, with no template execution.
@@ -828,6 +855,8 @@ def purge_invocations(older_than_days: int = 30, *,
     più orfano per sempre. Confronto ISO lessicografico (formato unico UTC
     '...Z' → ordinamento corretto), con fallback su `delivered_epoch` per
     l'edge terminale senza completed_at. NON tocca queued/delivered (in volo).
+    A committed transfer's receipt goes with its invocation; an uncommitted
+    one keeps it, since only through it can its staging file be cleaned.
     Ritorna le righe rimosse. Idempotente.
     Agganciato a `jobs/maintenance_tasks.task_state_reaper`."""
     import time as _t
@@ -835,13 +864,23 @@ def purge_invocations(older_than_days: int = 30, *,
     cutoff_iso = _t.strftime("%Y-%m-%dT%H:%M:%SZ", _t.gmtime(cutoff))
     conn = _open_db(db_path)
     try:
+        transfers = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE name='filesystem_transfers'").fetchone()
+        conn.execute("BEGIN IMMEDIATE")
         cur = conn.execute(
             "DELETE FROM invocations "
             "WHERE state IN ('done','failed','expired') AND ("
             "  (completed_at IS NOT NULL AND completed_at < ?) "
             "  OR (completed_at IS NULL AND delivered_epoch IS NOT NULL "
-            "      AND delivered_epoch < ?))",
+            "      AND delivered_epoch < ?))"
+            + (" AND invocation_id NOT IN (SELECT invocation_id FROM"
+               " filesystem_transfers WHERE committed=0)" if transfers else ""),
             (cutoff_iso, cutoff))
+        if transfers:
+            conn.execute(
+                "DELETE FROM filesystem_transfers WHERE committed=1 AND "
+                "invocation_id NOT IN (SELECT invocation_id FROM invocations)")
+        conn.execute("COMMIT")
         return cur.rowcount
     finally:
         conn.close()

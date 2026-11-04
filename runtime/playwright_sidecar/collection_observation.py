@@ -112,6 +112,12 @@ def parse(request, payload, candidates, controls, choices, *, previous_scope=Non
     status = payload.get('content_status')
     if status not in STATUSES:
         _fail('invalid_content_status', phase='collection_content')
+    # A step only the person can complete (a confirmation on their device,
+    # a code they receive): a label of the page, never a route (live Fineco
+    # 67519d07, 2/11/2026: older movements behind a strong authentication).
+    person_step = payload.get('person_step', False)
+    if type(person_step) is not bool:
+        _fail('invalid_person_step', phase='collection_content')
     by_id = {c['id']: c for c in candidates}
     context_ids = {c['id']: c for c in controls}
     option_ids = {c['id']: c for c in choices}
@@ -187,11 +193,21 @@ def parse(request, payload, candidates, controls, choices, *, previous_scope=Non
                               else 'other')})
     if choice in context_ids or choice in option_ids:
         _fail('context_used_as_route', phase='collection_route')
+    if purpose == 'expand_collection':
+        # While the list is being extended its period waits: every record
+        # carries its date and the period filter applies after extraction,
+        # and changing the period starts the list over (live Fineco d5bb4b9a
+        # and LAB f0411a, 4/11/2026: «Ultimi 2 anni» pressed before «Carica
+        # altri» reset the list, and the collection ended before January).
+        # When the list ends without the period, the next answer asks again.
+        kept = [(control, role) for control, role in zip(pending, roles) if role != 'temporal']
+        pending, roles = [control for control, _ in kept], [role for _, role in kept]
     candidate = dict(by_id[choice]) if choice != 'NONE' else {}
     candidate.update(collection_observed=STATUSES[status] != 'none',
         proximity=STATUSES[status], collection_purpose=purpose,
         collection_continuation=purpose == 'expand_collection')
-    return {'scope': request_scope, 'content_status': status, 'candidate': candidate,
+    return {'scope': request_scope, 'content_status': status, 'person_step': person_step,
+            'candidate': candidate,
             'contexts': grounded_contexts, 'partitions': partitions, 'requested': requested,
             'context_controls': effective_controls,
             'context': ({'candidate': pending[0], 'model_selected': True,

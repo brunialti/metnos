@@ -3695,13 +3695,17 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
     # Signed opt-in path preflight: this remains effective when bubblewrap is
     # unavailable/disabled and runs before journaling or any subprocess side
     # effect.  Legacy executors without annotations keep historical semantics.
-    from invocation_scope import check_invocation_scope
-    _scope_denial = check_invocation_scope(
-        executor, args, actor=actor or "host")
+    from invocation_scope import scope_denial
+    _scope_denial = scope_denial(executor, args, actor=actor or "host")
     if _scope_denial:
+        _reason, _path = _scope_denial
+        # The person reads the path they gave, in their language; the
+        # resolved path and the capability stay in the diagnostic (live turn
+        # 3279176c, 3/11/2026: an English reason naming a release folder).
         return {
             "ok": False,
-            "error": _scope_denial,
+            "error": (msg("ERR_PERMISSION_DENIED", path=_path) if _path else _reason),
+            "detail": _reason,
             "error_class": "permission_denied",
             "error_code": "ERR_PERMISSION_DENIED",
         }
@@ -5490,7 +5494,14 @@ class TurnLog:
             # per sorgente con il template no-total già localizzato.
             if (s.chosen_tool == "extract_entries"
                     and res.get("output_truncated_sources")):
-                used = res.get("cap_value") or used
+                # The records cap, not whichever cap was declared last (live
+                # 597237b3, 3/11/2026: «more than 12000 sources» was the
+                # 12000-character text cap).
+                cut = next((t for t in res.get("truncations") or []
+                            if isinstance(t, dict)
+                            and t.get("cap_field") == "max_per_text"), {})
+                what = _resolve_i18n_payload_value(cut.get("truncated_what") or what)
+                used = cut.get("cap_value") or res.get("cap_value") or used
                 key = (what, used, "extract_output")
                 if key not in seen:
                     seen.add(key)
@@ -5648,6 +5659,14 @@ class TurnLog:
                 if _fn and _fn not in (self.final_message or ""):
                     self.final_message = ((self.final_message or "").rstrip()
                                           + "\n\n" + _fn).strip()
+            # A period applied to one of several dates says which one.
+            for _s in self.steps:
+                _a = _s.resolved_args if isinstance(_s.resolved_args, dict) else {}
+                if (_a.get("_period_field_from") or 0) > 1 and isinstance(_a.get("where_field"), str):
+                    _pn = msg("MSG_PERIOD_FIELD_CHOSEN", field=_a["where_field"])
+                    if _pn not in (self.final_message or ""):
+                        self.final_message = ((self.final_message or "").rstrip()
+                                              + "\n\n" + _pn).strip()
             for notice in _truncations:
                 if notice and notice not in (self.final_message or ""):
                     self.final_message = (
@@ -6767,6 +6786,17 @@ ENGINE_FAST_LLM_TIMEOUT_S = _bounded_engine_llm_timeout(
 ENGINE_WISE_LLM_TIMEOUT_S = _bounded_engine_llm_timeout(
     "METNOS_ENGINE_WISE_LLM_TIMEOUT_S", 90.0)
 
+# A local slot already serving another Metnos request queues the call behind
+# it on the server: that wait is not the call's own work (live turn 4c1cf71d,
+# 3/11/2026: a 30 s planner call expired behind another turn's extraction).
+ENGINE_QUEUE_WAIT_S = 600.0
+
+
+def _engine_call_timeout(provider, own_s: float) -> tuple[float, bool]:
+    busy = getattr(provider, "own_slot_busy", None)
+    queued = callable(busy) and busy() is True
+    return (own_s + ENGINE_QUEUE_WAIT_S if queued else own_s), queued
+
 
 def _llm_dependency_failure_kind(exc: Exception) -> str | None:
     """Classify wrapped timeouts separately from provider unavailability."""
@@ -6852,7 +6882,17 @@ def _run_engine(
         log.warning("engine v2 import failed: %r", ex)
         return None
 
-    _llm_state = {"failure_kind": None, "reported": False}
+    _llm_state = {"failure_kind": None, "reported": False, "queued": False}
+
+    def _call_timeout(provider, own_s: float) -> float:
+        timeout, queued = _engine_call_timeout(provider, own_s)
+        if queued and progress is not None and not _llm_state["queued"]:
+            _llm_state["queued"] = True
+            try:
+                progress.update_free(msg("MSG_LLM_QUEUED"))
+            except Exception as ex:  # progress is best-effort
+                log.debug("LLM queue progress update failed: %r", ex)
+        return timeout
 
     def _report_llm_failure(failure_kind: str) -> str:
         key = (
@@ -6905,11 +6945,11 @@ def _run_engine(
             try:
                 from llm_router import LLMRouter
                 from llm_workloads import tier_for
+                provider = LLMRouter().provider(tier_for("intent.extract"))
                 ck = {
                     "max_tokens": max_tokens,
-                    "request_timeout_s": ENGINE_FAST_LLM_TIMEOUT_S,
+                    "request_timeout_s": _call_timeout(provider, ENGINE_FAST_LLM_TIMEOUT_S),
                 }
-                provider = LLMRouter().provider(tier_for("intent.extract"))
                 # Only an adapter that declares it receives a grammar: the
                 # others have no such parameter, and passing it would fail
                 # before the request and spend the retry on a sure error.
@@ -6947,13 +6987,14 @@ def _run_engine(
             # METNOS_PROPOSER_GRAMMAR=1 → nomi tool allucinati (es. get_issues)
             # fuori dal pool (bug 2/6/2026). chat() supporta grammar →
             # payload['grammar'] a llama-server.
+            provider = LLMRouter().provider(tier)
             ck = {
                 "max_tokens": max_tokens,
-                "request_timeout_s": ENGINE_WISE_LLM_TIMEOUT_S,
+                "request_timeout_s": _call_timeout(provider, ENGINE_WISE_LLM_TIMEOUT_S),
             }
             if kw.get("grammar") is not None:
                 ck["grammar"] = kw["grammar"]
-            res = LLMRouter().provider(tier).chat(sys_msg, user_msg, **ck)
+            res = provider.chat(sys_msg, user_msg, **ck)
             return (getattr(res, "text", res) or "").strip()
         except Exception as ex:
             log.warning("engine v2 _llm_call_wise: %r", ex)

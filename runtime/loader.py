@@ -1454,7 +1454,7 @@ def _load_catalog_under_catalog_lock(
     return catalog
 
 
-def load_catalog(executors_dir=DEFAULT_EXECUTORS_DIR, verify=True, *,
+def load_catalog(executors_dir=None, verify=True, *,
                  include_synth=True, include_verb_unique=True,
                  lang: str | None = None,
                  catalog_trusted_owner: tuple[int, int] | None = None) -> Catalog:
@@ -1467,6 +1467,7 @@ def load_catalog(executors_dir=DEFAULT_EXECUTORS_DIR, verify=True, *,
     publication still excludes every reader, and the snapshot is checked
     before and after the load, so a read never returns a mixed catalog.
     """
+    executors_dir = DEFAULT_EXECUTORS_DIR if executors_dir is None else executors_dir
     layout = resolve_manifest_layout()
     _validate_catalog_read_options(
         layout,

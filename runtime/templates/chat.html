@@ -881,6 +881,7 @@ function mergeDialogCompletionMeta(originMeta, eventTurnId, turnMeta){
   if(!hasResumeMeta){
     return {
       ...origin,
+      inline_forms: Array.isArray(resumed.inline_forms) ? resumed.inline_forms : [],
       turn_id: turnId,
       path: originPath,
       left: origin.left || (turnId
@@ -889,6 +890,7 @@ function mergeDialogCompletionMeta(originMeta, eventTurnId, turnMeta){
   }
   return {
     turn_id: turnId,
+    inline_forms: Array.isArray(resumed.inline_forms) ? resumed.inline_forms : [],
     path: resumedPath.length ? resumedPath : originPath,
     where: resumed.target_device || origin.where
            || {{ msg("MSG_CHAT_EXEC_LOCAL")|tojson }},
@@ -947,23 +949,23 @@ function add(cls, text, meta, persist, attachments, galleryInfo, htmlMode, histo
   // fmt=form) lo emette al posto di un URL assoluto. Rimpiazzo: estraggo
   // il path, rimuovo la riga, allego un <iframe> in coda al bubble cosi'
   // l'utente compila il form senza navigare. Path deve iniziare con
-  // /agent/dialog/ per evitare frame di altre origini.
-  if(cls === 'bot'){
+  // /agent/dialog/ e deve essere attestato dal metadato HTTP separato.
+  if(cls === 'bot' && meta && Array.isArray(meta.inline_forms)){
     // Regex senza anchor di linea: textContent puo' collassare \n fra
     // <p>...</p> in alcuni browser. Tolerante a spazi/newline iniziali.
     const rxForm = /INLINE_FORM:(\/agent\/dialog\/[A-Za-z0-9._-]+\/form(?:\?cap=[0-9]+\.[a-f0-9]{64})?)/;
     const txt = htmlMode === true ? d.textContent : text;
-    const mF = txt.match(rxForm);
+    const mF = Array.from(txt.matchAll(new RegExp(rxForm.source, 'g')))
+      .find(match => meta.inline_forms.includes(match[1]));
     if(mF){
       const formPath = mF[1];
       const dialogIdMatch = formPath.match(/\/agent\/dialog\/([^/]+)\/form/);
       const dialogId = dialogIdMatch ? dialogIdMatch[1] : '';
       // Rimuovi il marker dal display sia da innerHTML che da textContent.
-      const rxRemove = /\s*INLINE_FORM:\/agent\/dialog\/[A-Za-z0-9._-]+\/form(?:\?cap=[0-9]+\.[a-f0-9]{64})?\s*/g;
       if(htmlMode === true){
-        d.innerHTML = d.innerHTML.replace(rxRemove, '');
+        d.innerHTML = d.innerHTML.replace('INLINE_FORM:' + formPath, '');
       } else {
-        d.textContent = d.textContent.replace(rxRemove, '');
+        d.textContent = d.textContent.replace('INLINE_FORM:' + formPath, '');
       }
       // Una cattura allegata a un consenso e' contesto, non il risultato del
       // turno. La mostriamo compatta DENTRO la stessa bolla, prima del modulo:
@@ -1411,23 +1413,6 @@ function renderLivePath(path, predicted){
   return d;
 }
 
-function addTool(tool, args){
-  const stick = nearBottom();
-  const d = document.createElement('div');
-  d.className = 'msg tool';
-  const sum = document.createElement('details');
-  const s = document.createElement('summary');
-  s.innerHTML = '<span class="dot"></span> ⚙ ' + tool;
-  sum.appendChild(s);
-  const pre = document.createElement('div');
-  pre.textContent = JSON.stringify(args || {}, null, 2);
-  sum.appendChild(pre);
-  d.appendChild(sum);
-  log.appendChild(d);
-  if(stick) scrollToEnd();
-  return d;
-}
-
 // Un turno completato deve avere la stessa rappresentazione indipendentemente
 // da come arriva: stream live, stream riagganciato o polling dopo un reload.
 // Tenere qui l'unica costruzione di body/meta evita che i percorsi di recovery
@@ -1452,10 +1437,19 @@ function renderAtPlaceholder(placeholder, render){
   return rendered;
 }
 
+// Turns read by a stream open in this page: history must not open another.
+const liveTurns = new Set();
+
 function renderCompletedTurn(data, options){
   data = (data && typeof data === 'object') ? data : {};
   options = (options && typeof options === 'object') ? options : {};
   const turnId = data.turn_id || options.turnId || '';
+  liveTurns.delete(turnId);
+  // Whoever ends a turn second finds its answer already there.
+  if(turnId && log.querySelector('.msg:is(.bot,.err)[data-turn-id="' + CSS.escape(turnId) + '"]:not([data-in-flight])')){
+    if(options.placeholder) options.placeholder.remove();
+    return null;
+  }
   const elapsedMs = (typeof data.total_ms === 'number') ? data.total_ms
     : ((typeof options.elapsedMs === 'number') ? options.elapsedMs : null);
   const path = Array.isArray(data.path) ? data.path
@@ -1495,6 +1489,7 @@ function renderCompletedTurn(data, options){
     : null;
   const meta = {
     path: path,
+    inline_forms: Array.isArray(data.inline_forms) ? data.inline_forms : [],
     where: where,
     whereRemote: !!data.target_device,
     left: leftParts.join(' · '),
@@ -1648,6 +1643,7 @@ async function fetchServerHistory(){
     // describes a contiguous block. Keep the cache boundary only without a merge.
     log.querySelectorAll('.log-sep').forEach(node => node.remove());
     for(const t of turns){
+      if(t.turn_id && liveTurns.has(t.turn_id)) continue;
       // La sola domanda persistita non dimostra che la risposta sia gia' visibile.
       if(t.turn_id && knownTurnIds.has(t.turn_id)) continue;
       if(t.turn_id) knownTurnIds.add(t.turn_id);
@@ -1696,10 +1692,12 @@ async function fetchServerHistory(){
 // il TTL, fallback al risultato persistente via GET /agent/turns/{id}.
 function reattachTurnStream(turnId, ph){
   if(!turnId || !ph) return;
+  liveTurns.add(turnId);
   const settleFinal = (payload) => {
     renderCompletedTurn(payload, { placeholder: ph, turnId: turnId });
   };
   const settleError = (payload) => {
+    liveTurns.delete(turnId);
     renderAtPlaceholder(ph, () => add(
       'err', '✗ ' + ((payload && payload.message) || CHAT_I18N.genericError),
       null, true));
@@ -1962,6 +1960,7 @@ function adoptConversation(nextId){
 }
 
 async function renderConversation(){
+  liveTurns.clear();
   log.replaceChildren();
   restoreHistory();
   await fetchServerHistory();
@@ -2098,7 +2097,14 @@ function subscribeSessionEvents(token){
       let info = {};
       try { info = JSON.parse(ev.data || '{}'); } catch(_){}
       const testo = (info && info.message) ? String(info.message) : '';
-      if(testo) add('bot', testo, null, true);
+      if(!testo) return;
+      // A resumed turn that ended late keeps its files and its turn badge.
+      const meta = info.turn_id ? mergeDialogCompletionMeta(null, info.turn_id, info) : null;
+      const atts = Array.isArray(info.attachments) ? info.attachments : null;
+      const gInfo = (info.gallery_url && info.n_total_matches)
+        ? { gallery_url: info.gallery_url, n_total_matches: info.n_total_matches }
+        : null;
+      if(!hasSettledTurnHistory(info.turn_id || '', '')) add('bot', testo, meta, true, atts, gInfo);
     });
     sessionSse.addEventListener('session_revoked', (ev) => {
       let info = {};
@@ -2318,6 +2324,7 @@ form.addEventListener('submit', async (e) => {
   // gli eventi dello stream resumable EventSource. Tutta la logica di
   // rendering del turno (thinking/tool/final/error) vive qui.
   let receivedFinal = false;
+  let streamTurnId = '';
   const processSSEEvent = (kind, data) => {
     if(kind === 'thinking' || kind === 'progress' || kind === 'start'
        || kind === 'update'){
@@ -2358,6 +2365,7 @@ form.addEventListener('submit', async (e) => {
       });
     } else if(kind === 'error'){
       receivedFinal = true;
+      liveTurns.delete(streamTurnId);
       if(pending){ pending.remove(); pending = null; }
       add('err', '✗ ' + (data.message || CHAT_I18N.genericError));
     }
@@ -2421,6 +2429,8 @@ form.addEventListener('submit', async (e) => {
       const turnId = submitBody.turn_id;
       const streamUrl = submitBody.stream_url;
       if(turnId){
+        streamTurnId = turnId;
+        liveTurns.add(turnId);
         if(submittedQueryBubble) submittedQueryBubble.dataset.historyTurnId = turnId;
         if(pending) pending.dataset.historyTurnId = turnId;
       }

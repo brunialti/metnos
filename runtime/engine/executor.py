@@ -64,6 +64,15 @@ _TABLE_COL_PREFERENCE = ("name", "title", "subject", "path", "size", "mtime",
                          "cpu", "mem", "role", "email", "url", "count")
 _TABLE_COL_SKIP = frozenset({"content", "body", "body_text", "text", "snippet",
                              "thumbnail", "data", "raw", "html", "mime"})
+# These names are English; another language can mean something short by the
+# same word ("data" is the date in Italian: live Fineco 1f69a247, 2/11/2026,
+# lost its date column). A named column is skipped only when it is bulky.
+_TABLE_BULKY_CHARS = 200
+
+
+def _bulky_cell(value: object) -> bool:
+    return (isinstance(value, (dict, list, bytes, bytearray))
+            or (isinstance(value, str) and len(value) > _TABLE_BULKY_CHARS))
 _TABLE_MAX_ROWS = 200
 _TABLE_MAX_COLS = 6
 _TABLE_MAX_CHARS = 16_000
@@ -137,8 +146,9 @@ def _entries_table(entries: list, *, max_rows: int = _TABLE_MAX_ROWS,
     for e in rows[:50]:
         for k in e.keys():
             ks = str(k)
-            if (k not in seen and ks not in _TABLE_COL_SKIP
-                    and not ks.startswith("_")):
+            if (k not in seen and not ks.startswith("_")
+                    and not (ks in _TABLE_COL_SKIP
+                             and any(_bulky_cell(r.get(k)) for r in rows[:50]))):
                 seen.append(k)
     def _rank(k):
         return (_TABLE_COL_PREFERENCE.index(k)
@@ -192,31 +202,48 @@ def _entries_table(entries: list, *, max_rows: int = _TABLE_MAX_ROWS,
 
 def _read_content(result: dict, *, max_chars: int = _TABLE_MAX_CHARS) -> str:
     """Render text-reader output without replacing content with metadata."""
-    scalar = result.get("content")
-    if isinstance(scalar, str):
-        return scalar if len(scalar) <= max_chars else scalar[:max_chars - 1] + "…"
-    entries = result.get("entries")
+    scalar = isinstance(result.get("content"), str)
+    entries = [result] if scalar else result.get("entries")
     if not isinstance(entries, list):
         return ""
     blocks: list[str] = []
     used = 0
+    partial = False
+    display_truncated = False
     for entry in entries:
         if not isinstance(entry, dict):
             continue
         content = next((entry.get(key) for key in ("content", "body_text", "text")
                         if isinstance(entry.get(key), str)), None)
-        if content is None:
-            continue
         source = entry.get("path") or entry.get("url") or entry.get("name")
-        block = f"### {source}\n{content}" if source else content
-        remaining = max_chars - used
-        if remaining <= 0:
+        unreadable = (entry.get("readable") is False
+                      or bool(entry.get("parse_diagnostic") and not content))
+        if unreadable:
+            block = _msg("MSG_DOCUMENT_AUDIT_UNREADABLE",
+                         files=source or _msg("MSG_OBJECT_FILES"))
+        elif content is None:
+            continue
+        else:
+            block = f"### {source}\n{content}" if source and not scalar else content
+            partial |= (entry.get("truncated") is True
+                        or any(entry.get(key) is False for key in
+                               ("source_complete", "input_complete", "parse_complete")))
+        remaining = max_chars - used - (2 if blocks else 0)
+        blocks.append(block[:max(0, remaining + 1)])
+        used += len(block) + (2 if len(blocks) > 1 else 0)
+        if used > max_chars:
+            display_truncated = True
             break
-        if len(block) > remaining:
-            block = block[:max(0, remaining - 1)] + "…"
-        blocks.append(block)
-        used += len(block) + 2
-    return "\n\n".join(blocks)
+    rendered = "\n\n".join(blocks)
+    # Top-level truncation is already announced by TurnLog. Entry-only
+    # limits and the renderer's own cap otherwise have no user-facing notice.
+    notice = (_msg("MSG_TRUNCATED_UNKNOWN")
+              if (partial or display_truncated) and not result.get("truncated") else "")
+    suffix = "\n\n" + notice if notice else ""
+    if len(rendered) + len(suffix) > max_chars or display_truncated:
+        budget = max(0, max_chars - len(suffix) - 1)
+        return (rendered[:budget] + "…" + suffix)[:max_chars]
+    return rendered + suffix
 
 
 def _contract_entries_table(entries: list, contract: dict) -> str:
@@ -1924,6 +1951,18 @@ def _finalize_answer_text(framework, steps: list, query: str,
         # The actual skip guard, rather than the wording of a proposed
         # template, establishes that the requested effect did not take place.
         return _deterministic_zero_result(steps) or _msg("MSG_NO_RESULTS")
+    # A terminal content projection carries external text, not another
+    # template.  Do not expand literal ${...}/{{...}} found in a file or
+    # reinterpret numeric/empty content as a count or failed rendering.
+    content_ref = _STEPREF_RE.fullmatch(framework.final_message or "")
+    if content_ref and content_ref.group(2) == "@content":
+        position = int(content_ref.group(1)) - 1
+        if 0 <= position < len(steps) and steps[position].ok:
+            result = steps[position].result
+            if isinstance(result, dict):
+                content = _read_content(result)
+                if content or isinstance(result.get("content"), str):
+                    return content
     rendered = _render_final_message(framework.final_message, steps)
     # 2. count-only → bullets (universal §7.9)
     if steps:
@@ -2327,8 +2366,13 @@ class Executor:
     def _start_parallel_wave(
             self, framework: Framework, start: int, first_args: dict,
             pending: dict[int, _ParallelCall], *, query: str,
-            runtime_ctx: dict, history: list[StepRun], progress=None) -> None:
-        """Submit one conservative contiguous wave, or leave it serial."""
+            runtime_ctx: dict, history: list[StepRun], budget: int,
+            progress=None) -> None:
+        """Submit one conservative contiguous wave, or leave it serial.
+
+        ``budget`` is what the step cap still allows: a step already started
+        cannot be taken back when the cap is checked at collection time.
+        """
         if (self.submit is None or self.can_parallelize is None
                 or self.seed_steps or pending):
             return
@@ -2342,7 +2386,8 @@ class Executor:
         except Exception as exc:
             log.warning("parallel wave admission failed closed: %r", exc)
             return
-        if not indexes:
+        indexes = indexes[:budget]
+        if len(indexes) < 2:
             return
 
         prepared: dict[int, dict] = {start: first_args}
@@ -2577,7 +2622,11 @@ class Executor:
                     step_idx=step_idx, tool=step.tool, args=args,
                     result=failure, ok=False, latency_ms=0,
                 ))
-                continue
+                # What this step needed is unknown: the steps after it must
+                # not act as if it had run (R-055 E1).
+                result.aborted_reason = f"step_{step_idx}_error"
+                result.final_kind = "error"
+                break
             # Universal §7.3: gli helper che consumano `entries` (describe/
             # classify/filter/sort/group/compute/compare_entries) sono spesso
             # emessi dal Proposer SENZA from_step → ricevono 0 entries →
@@ -2846,7 +2895,7 @@ class Executor:
                 self._start_parallel_wave(
                     framework, i, args, _parallel_pending, query=query,
                     runtime_ctx=runtime_ctx or {}, history=result.steps,
-                    progress=progress)
+                    budget=effective_max_steps - i, progress=progress)
             _parallel_call = _parallel_pending.pop(i, None)
             if _parallel_call is not None and _exec_tool != step.tool:
                 # Defensive future-proofing if a preceding wave was built

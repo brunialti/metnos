@@ -460,6 +460,10 @@ def compile_workbook(source, spec: dict | None, capabilities: Capabilities, *, m
                     and item.get("excluded")):
                 notices.append({"code": "WARN_TABLE_FOREIGN_SECTIONS", "sheet": name,
                                 "count": item["excluded"]})
+            if ("producer" in item and item.get("reason_code") == "period_field_choice"
+                    and item.get("field")):
+                notices.append({"code": "MSG_PERIOD_FIELD_CHOSEN", "sheet": name,
+                                "field": item["field"]})
             if item.get("provenance"):
                 notices.append({"code": "MSG_TABLE_PROVENANCE", "sheet": name,
                                 "detail": item["provenance"]["url"]})

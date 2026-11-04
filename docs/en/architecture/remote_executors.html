@@ -130,9 +130,9 @@ installed only on the server remain there even when a device is paired.</p></div
 
 <h2 id="permissions">Personal access and permission extensions</h2>
 
-<div class="callout note"><p><strong>Delivery status.</strong> This extension is
-a release candidate and requires client 0.2.64. Automated tests and Windows
-compilation pass; installation and testing on the actual PC are still pending.</p></div>
+<div class="callout note"><p><strong>Device compatibility.</strong> Additional
+file permissions on a paired PC require client 0.2.64 or later and matching
+signed filesystem contracts. Server permissions work independently of a PC.</p></div>
 
 <p>Existing personal directories and workspace scopes remain available without
 new grants. To extend access to other server files or folders, the administrator
@@ -140,12 +140,25 @@ opens <strong>System &rsaquo; Server permissions</strong>, selects the account a
 the path and read and/or write access. This page is independent of devices and
 also serves tasks that run entirely on the server.</p>
 
+<p><strong>Grant permissions</strong> verifies that Metnos can use the path with
+the requested rights before recording the grant. This check does not read file
+contents or modify files. If access is unavailable, the grant is not saved.
+Opening the page also checks active grants: a resource that has become
+inaccessible appears as <strong>Unavailable</strong> and can still be revoked.</p>
+
+<p>The main service applies the grants belonging to the Metnos account that
+requested the operation. For files outside the service's private workspaces,
+the installed configuration uses a local component running as the ordinary
+operating-system user fixed during installation. Selecting a Metnos account does not change
+that identity or grant access to other accounts. The component performs only
+filesystem operations authorized by the main service.</p>
+
 <p>For a paired PC, <strong>Devices &rsaquo; Permissions</strong> manages grants
 for that device and its owner. A grant distinguishes files from folders,
 recursive access, overwrite permission and optional expiry. Revocation retains
 an audit event and preserves existing personal access. Grants do not change
-operating-system permissions: Metnos remains limited by the effective rights of
-the service or client account.</p>
+operating-system permissions: the local server component and the PC client each
+use the rights of the ordinary operating-system user running them.</p>
 
 <p>A copy checks read authority on its source and write authority on its
 destination, including a Windows path such as
@@ -161,12 +174,21 @@ the final mutation; the device refreshes signed authority within five seconds.
 This bounds authority already issued to the device, so revocation must not be
 described as instantaneous.</p>
 
-<p>The initial protocol allows up to 100 files and 4 GiB per file. Reads return
-at most 256 KiB; listing is bounded to 1,000 entries, 256 KiB and depth 64.
+<p>The initial protocol allows up to 100 files and 4 GiB per file. Direct reads
+return at most 256 KiB. Automatic document reading on the server accepts up to
+32 MiB per file and returns up to 200,000 characters within the response limit.
+PDF, DOCX and XLSX are interpreted in an isolated process with no access to
+other personal files. Limited reads are reported as incomplete.
+Listing is bounded to 1,000 entries, 256 KiB and depth 64.
 For extensions and remote copies, the destination parent must already exist;
 directory-tree copies, globs, links and reserved application paths are
 explicitly refused. Server operations within existing scopes retain their
 previous behavior.</p>
+
+<p>Asking to read or show a file’s contents returns its text, including files
+without an extension. Listings, counts and explicitly requested tables retain
+their own presentation. Read text is not reinterpreted as instructions or
+interface controls.</p>
 
 <h2 id="invocation">What happens during an action</h2>
 

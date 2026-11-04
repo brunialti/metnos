@@ -35,6 +35,17 @@ _PUBLIC_EXPORT_OMITTED_ENTRYPOINTS = {
     "scripts/migrate-syspath-to-package.py",
     "scripts/rename-myclaw-to-metnos.sh",
 }
+# The catalog keeps these so that the old names stay blocked (RM-0008), but
+# they are no longer in the repository: the backup was replaced by the
+# encrypted one, the rename of May was retired.
+_RETIRED_ENTRYPOINTS = {
+    "deploy/backup_nas.sh",
+    "scripts/post-rename-verify.sh",
+    "scripts/rename-myclaw-to-metnos.sh",
+}
+_RETIRED_BACKUP_UNITS = {"metnos-backup.service", "metnos-backup.timer"}
+# The encrypted backup is installed apart, by root: it never joins a release.
+_OUTSIDE_THE_CATALOG = {"metnos-logical-backup.service", "metnos-logical-backup.timer"}
 _PUBLIC_EXPORT_OMITTED_UNITS = {
     "metnos-backup.service",
     "metnos-backup.timer",
@@ -295,7 +306,7 @@ def test_single_source_covers_repository_units_entrypoints_and_maintenance() -> 
     repository_units = {
         name.removesuffix(".tmpl") for name in repository_units
     }
-    assert repository_units <= source_units
+    assert repository_units - _OUTSIDE_THE_CATALOG <= source_units
 
     repository_bindings = {
         str(item["locator"])
@@ -357,7 +368,8 @@ def test_single_source_covers_repository_units_entrypoints_and_maintenance() -> 
         repository_bindings | store_entrypoints | candidate_only_entrypoints
     )
     assert repository_bindings - discovered_entrypoints == (
-        set() if complete_source_tree else _PUBLIC_EXPORT_OMITTED_ENTRYPOINTS
+        _RETIRED_ENTRYPOINTS if complete_source_tree
+        else _PUBLIC_EXPORT_OMITTED_ENTRYPOINTS
     )
 
     from executor_birth_maintenance_units import (
@@ -376,7 +388,8 @@ def test_current_unit_directives_have_an_explicit_codec_decision() -> None:
         for path in directory.rglob("*"):
             if not path.is_file():
                 continue
-            if not path.name.endswith((".service", ".timer", ".target", ".tmpl")):
+            if (not path.name.endswith((".service", ".timer", ".target", ".tmpl"))
+                    or path.name in _OUTSIDE_THE_CATALOG):
                 continue
             section = None
             for line in path.read_text(encoding="utf-8").splitlines():
@@ -409,7 +422,7 @@ def test_current_unit_directives_have_an_explicit_codec_decision() -> None:
     }
     observed_legacy_units = set(observed) - set(candidate)
     assert observed_legacy_units <= set(legacy_unit_owners)
-    expected_unmaterialized = {"metnos-llm.service"}
+    expected_unmaterialized = {"metnos-llm.service"} | _RETIRED_BACKUP_UNITS
     if not (root / "scripts/export-public.sh").is_file():
         expected_unmaterialized |= _PUBLIC_EXPORT_OMITTED_UNITS
     assert set(legacy_unit_owners) - observed_legacy_units == expected_unmaterialized

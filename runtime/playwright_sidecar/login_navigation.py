@@ -194,11 +194,12 @@ async def discover(state: dict, *, observe, choose, execute, restore,
         deferred.setdefault(key, set()).update(left)
         tried.setdefault(key, set()).update(left)
 
-    def refresh(frame: dict, observation: dict, *, preserve: bool = False) -> bool:
+    def refresh(frame: dict, observation: dict, *, preserve: bool = False,
+                own_change: bool = False) -> bool:
         previous = frame["observation"]
         if previous["key"] == observation["key"]:
             return True
-        if (not previous.get("location_key") or
+        if not own_change and (not previous.get("location_key") or
                 previous["location_key"] != observation.get("location_key")):
             return False
         if preserve:
@@ -339,7 +340,7 @@ async def discover(state: dict, *, observe, choose, execute, restore,
                 # location the same control is not tried again on a later visit.
                 place = observation.get("location_key") or key
                 state.setdefault("no_effect", {}).setdefault(place, set()).add(pending["key"])
-        elif not refresh(frames[-1], observation):
+        elif not refresh(frames[-1], observation, own_change=state.pop("reobserving", False)):
             if state.pop("aside_returned", False):
                 # The page changed while its leaf was open aside: return as
                 # usual, and follow later leaves in place.
@@ -366,6 +367,10 @@ async def discover(state: dict, *, observe, choose, execute, restore,
                 state["rejection"] = {"phase": "collection_snapshot_fence",
                                       "reason": "scene_changed_repeatedly"}
                 return _failure("target_changed")
+            # The search itself asked for this reading, after a filter it
+            # opened and closed (live ENI 5de89cc7): the same page, not an
+            # external change, and no budget comes back with it.
+            state["reobserving"] = True
             continue
         state.pop("reobserved", None)
         if at_limit and choice is not None and not choice.get("continuation"):

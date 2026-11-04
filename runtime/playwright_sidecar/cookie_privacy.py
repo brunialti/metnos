@@ -10,6 +10,8 @@ import dataclasses
 from dataclasses import dataclass
 from typing import Literal
 
+from playwright_sidecar.hit_points import HIT_POINTS_JS
+
 
 @dataclass(frozen=True)
 class CookieOutcome:
@@ -53,6 +55,7 @@ MAX_SESSION_DISMISSALS = 6
 # References remain inside a JSHandle, so identical replacement nodes cannot
 # inherit a model decision. Text is bounded and excludes editable/secret areas.
 _OBSERVE_JS = r"""() => {
+""" + HIT_POINTS_JS + r"""
   const SHADOW_ROOT_BUDGET = %d;
   // Upwards through the composed tree: a shadow root has no parent element,
   // its host does. Plain `parentElement` stops at the boundary and would make
@@ -100,13 +103,10 @@ _OBSERVE_JS = r"""() => {
     }
     return node;
   };
-  const topmost = el => {
-    const r = el.getBoundingClientRect();
-    const top = deepFromPoint(
-      Math.max(0, Math.min(innerWidth - 1, r.x + r.width / 2)),
-      Math.max(0, Math.min(innerHeight - 1, r.y + r.height / 2)));
+  const topmost = el => hitPoints(el).some(([x, y]) => {
+    const top = deepFromPoint(x, y);
     return top === el || !!(top && within(el, top));
-  };
+  });
   const excluded = 'input:not([type=button]):not([type=submit]),textarea,select,' +
     '[contenteditable]:not([contenteditable=false]),[data-metnos-redact],script,style';
   const publicArea = el => {
@@ -240,13 +240,16 @@ _OBSERVE_JS = r"""() => {
       const name = (el.getAttribute('aria-label') || labelled ||
         el.getAttribute('title') || text(el) ||
         (el.matches('input[type=button],input[type=submit]') ? el.value : '')).trim();
+      // The words on screen count too: an aria-label may say only «Close».
+      const shown = text(el).trim();
       const form = el.form || el.closest('form');
       const submit = !!form && (el.matches('input[type=submit],input[type=image]') ||
         (el.tagName === 'BUTTON' && el.type === 'submit'));
       const safe = !submit && !el.closest('a[href],[formaction],[download]') &&
         !el.disabled && el.getAttribute('aria-disabled') !== 'true' &&
         !el.isContentEditable && /[\p{L}\p{N}]/u.test(name) && !/^x$/i.test(name);
-      return {id: panel_id + 'c' + (i + 1), name: name.slice(0, 300), safe: !!safe};
+      return {id: panel_id + 'c' + (i + 1), name: name.slice(0, 300), safe: !!safe,
+              ...(shown && shown !== name ? {shown: shown.slice(0, 300)} : {})};
     });
     nodes.push({root, controls, signatures: controls.map(el =>
       [el.outerHTML, String(el.onclick || '')])});
@@ -286,11 +289,13 @@ def _privacy_rejection_forms() -> tuple[tuple[str, ...], tuple[str, ...]]:
     try:
         import detection_lexicon
 
-        forms = [tuple(normalized for value in detection_lexicon.native_ready_forms(
-                     concept, include_reviewed_baselines=True)
-                     if (normalized := _normalize_privacy_label(value)))
-                 for concept in ("sites.privacy_reject_target",
-                                 "sites.privacy_reject_noun_target")]
+        forms = [tuple(normalized for concept in concepts
+                       for value in detection_lexicon.native_ready_forms(
+                           concept, include_reviewed_baselines=True)
+                       if (normalized := _normalize_privacy_label(value)))
+                 for concepts in (("sites.privacy_reject_target",
+                                   "sites.privacy_reject_phrase_target"),
+                                  ("sites.privacy_reject_noun_target",))]
         return forms[0], forms[1]
     except Exception:
         # Missing or unreadable native language resources grant no click.
@@ -304,20 +309,21 @@ def _has_explicit_rejection(
     """Require a native rejection on this safe control's own visible label."""
     if control.get("safe") is not True:
         return False
-    label = _normalize_privacy_label(control.get("name", ""))
-    if not label:
-        return False
     targets, nouns = forms if forms is not None else _privacy_rejection_forms()
-    if label in nouns:
-        return True
-    for target in targets:
-        if not label.startswith(target):
+    for value in (control.get("name", ""), control.get("shown", "")):
+        label = _normalize_privacy_label(value)
+        if not label:
             continue
-        suffix = label[len(target):]
-        if (not suffix or not (
-                suffix[0].isalnum() or suffix[0] == "_"
-                or unicodedata.category(suffix[0]).startswith("M"))):
+        if label in nouns:
             return True
+        for target in targets:
+            if not label.startswith(target):
+                continue
+            suffix = label[len(target):]
+            if (not suffix or not (
+                    suffix[0].isalnum() or suffix[0] == "_"
+                    or unicodedata.category(suffix[0]).startswith("M"))):
+                return True
     return False
 
 

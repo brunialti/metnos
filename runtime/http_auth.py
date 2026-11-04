@@ -4,8 +4,8 @@ Tre ruoli: anonymous / user / admin (admin >= user).
 
 - Admin key: `~/.config/metnos/admin.key` (mode 0600), 256-bit hex,
   auto-generata al primo start. Solo il fingerprint sha256 va nei log.
-- Device pairing token: lookup in `devices.db` (Bearer = public_key_b64);
-  se trovato → ruolo `user`.
+- A public key is no credential: devices prove themselves with signatures
+  on the device channel (`agent_server`), never with a Bearer here;
 - LAN compatibility: disabled by default; when explicitly enabled it creates
   an isolated synthetic principal, never the registered host user.
 - Altrove: `anonymous`.
@@ -27,7 +27,6 @@ from aiohttp import web
 
 from http_app_state import ADMIN_KEY as APP_ADMIN_KEY, app_get
 
-import devices
 import config as _C  # §7.11
 from logging_setup import get_logger
 from messages import get as _msg
@@ -320,26 +319,6 @@ def _is_lan_trusted(remote: str | None) -> bool:
     return any(ip in net for net in LAN_NETS)
 
 
-def _device_identity_for_token(token: str) -> tuple[str, str] | None:
-    """Resolve one device bearer to its currently live logical owner."""
-    try:
-        for d in devices.list_devices():
-            if hmac.compare_digest(d.public_key_b64, token):
-                owner = devices.owner_user(d.owner_user_id)
-                if owner is not None:
-                    return d.id, str(owner["id"])
-    except Exception as e:  # device DB non ancora inizializzato in test isolati
-        log.debug("device lookup failed: %s", e)
-    return None
-
-
-def _device_for_token(token: str) -> str | None:
-    """Compatibility projection for callers that only need the device ID."""
-
-    identity = _device_identity_for_token(token)
-    return identity[0] if identity else None
-
-
 @web.middleware
 async def auth_middleware(request: web.Request, handler):
     """Classifica il ruolo del chiamante e applica la policy /admin/."""
@@ -363,12 +342,7 @@ async def auth_middleware(request: web.Request, handler):
     admin_key = app_get(request.app, APP_ADMIN_KEY, "")
     if token and admin_key and hmac.compare_digest(token, admin_key):
         role = "admin"
-    elif token:
-        identity = _device_identity_for_token(token)
-        if identity:
-            device_id, authenticated_user_id = identity
-            role = "user"
-    else:
+    elif not token:
         # Cookie firmato (solo se Bearer assente: Bearer ha priorita').
         cookie_val = request.cookies.get(ADMIN_COOKIE, "")
         if cookie_val and admin_key and verify_admin_cookie(cookie_val, admin_key):

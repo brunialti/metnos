@@ -122,6 +122,13 @@ H. CLASSIFY → FILTER (keep only one class after a classification)
 - OK: classify_entries(dimension="importance", classes=["important","normal","low"]) → filter_entries(from_step=2, where_field="importance", where_value="important").
 - ERROR: filter_entries(kind="classification", type="important").
 
+I. EXISTING SHEET (split the rows into tabs, add a column of classes)
+- MUST: read the tab with read_files_spreadsheet(spreadsheet_id="<sheet>"), transform the entries (one filter_entries per tab to fill; classify_entries for a column whose values come from a closed list and a criterion) and write each tab with write_files_spreadsheet(path="<sheet>", sheet_name="<tab>", from_step=N).
+- MUST NOT: create a new file with create_files_spreadsheet, write formulas or finish without write_files_spreadsheet when the request names a sheet that already exists: without the write the sheet does not change.
+- OK: abstract example, do not copy literally: «in the sheet <F>, tab <T>, add the column <C>: x if …, y otherwise» → [read_files_spreadsheet(spreadsheet_id="<F>", sheet_name="<T>"), classify_entries(from_step=1, dimension="<C>", classes=["x","y"], criterion="x if …; y otherwise"), write_files_spreadsheet(path="<F>", sheet_name="<T>", from_step=2), final_answer].
+- OK: abstract example, do not copy literally: «in the sheet <F> split the rows into <A> and <B>; in <A> add the column <C>: x if …, y otherwise» → [read_files_spreadsheet(spreadsheet_id="<F>"), filter_entries(from_step=1, where_field="<field of A>", where_present=true), classify_entries(from_step=2, dimension="<C>", classes=["x","y"], criterion="x if …; y otherwise"), write_files_spreadsheet(path="<F>", sheet_name="<A>", from_step=3), filter_entries(from_step=1, where_field="<field of B>", where_present=true), write_files_spreadsheet(path="<F>", sheet_name="<B>", from_step=5), final_answer].
+- ERROR: create_files_spreadsheet(title="<F>_<A>", column_specs=[{"header": "<C>", "formula": "IF(…)"}]).
+
 C. MUTATING (move/delete/send/write/create/set)
 - The requested action-verb step MUST be present: never stop at the producer.
 - PUNCTUAL target already NAMED in the query (explicit filename, path, url, id) → action tool as FIRST step with the literals (§4.2), WITHOUT a producer in front. Mutating tools declaring `from_step` alternatively accept `entries=[{"path": "<literal>"}]` inline.
@@ -205,14 +212,14 @@ OUTPUT FORMAT (STRICT JSON, nothing else)
 {# STATIC-END — prefix cache boundary (optimization A, the design guide §11 + ADR-pending).
 ABOVE: per-query-invariant text only — the rendered prefix stays byte-identical across
 queries and llama-server reuses it from the n_before_user checkpoint (prompt_n ~5500 → ~1300).
-BELOW: per-query content only ({{ verb }}/{{ obj }}/{{ keywords }}/{{ skeleton }}/{{ prior }}/{{ tools }}/{{ excluded }}/{{ recovery }}/{{ user_query }}),
+BELOW: per-query content only ({{ verb }}/{{ obj }}/{{ keywords }}/{{ skeleton }}/{{ prior }}/{{ sheets }}/{{ tools }}/{{ excluded }}/{{ recovery }}/{{ user_query }}),
 sent as the USER message via prompt_loader.get_split. Do NOT move interpolations above
 this line, do NOT add static text below. Guard: prompts_lint L6. #}
 EXTRACTED INTENT
 - kind: {{ kind }}
 - verb: {{ verb }}
 - object: {{ obj }}
-- keywords: {{ keywords }}{{ skeleton }}{{ prior }}
+- keywords: {{ keywords }}{{ skeleton }}{{ prior }}{{ sheets }}
 
 AVAILABLE TOOLS
 {{ tools }}

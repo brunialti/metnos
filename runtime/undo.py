@@ -12,7 +12,6 @@ dell'executor.
 Crash safety: pending senza done ne' undone => orfano (op crashata in
 volo); listato da `find_crashed`. Nessun auto-rollback.
 
-TTL: `purge_older_than(days)` riscrive il file scartando record vecchi.
 """
 import fcntl
 import json
@@ -24,7 +23,6 @@ from typing import Iterator
 import config as _C  # §7.11
 
 DEFAULT_LOG = _C.PATH_USER_DATA / "undo.jsonl"
-DEFAULT_BLOBS = _C.PATH_USER_DATA / "undo_blobs"
 
 PER_EXECUTION_OUTCOME = "per_execution"
 UNDO_OUTCOMES = frozenset({"reversible", "no_effect", "irreversible"})
@@ -259,35 +257,3 @@ class UndoLog:
                     "executor": executor_name,
                 })
         return out
-
-    def purge_older_than(self, days: int = 30) -> int:
-        """Riscrive il log scartando i record con ts < now - days*86400.
-        Ritorna il numero di record purgati."""
-        cutoff = time.time() - days * 86400
-        kept: list[str] = []
-        purged = 0
-        if not self.path.exists():
-            return 0
-        with open(self.path, "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.rstrip("\n")
-                if not line.strip():
-                    continue
-                try:
-                    rec = json.loads(line)
-                except json.JSONDecodeError:
-                    kept.append(line)  # preserve corrupted-but-not-our-fault
-                    continue
-                if rec.get("ts", 0) < cutoff:
-                    purged += 1
-                else:
-                    kept.append(line)
-        if purged:
-            tmp = self.path.with_suffix(".jsonl.tmp")
-            with open(tmp, "w", encoding="utf-8") as f:
-                for line in kept:
-                    f.write(line + "\n")
-                f.flush()
-                os.fsync(f.fileno())
-            os.replace(tmp, self.path)
-        return purged

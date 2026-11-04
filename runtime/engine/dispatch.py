@@ -17,6 +17,7 @@ import os
 import re
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional, Callable
 
 from .types import (
@@ -729,7 +730,12 @@ def _ensure_extract_clause(framework: Framework, intent, query: str,
                 _verb(s) in ("create", "write")
                 and (getattr(s, "args", None) or {}).get("columns")
                 for s in steps)
-            if _has_reader and _has_col_sink and _derived_fields:
+            # A site page is never a table and an authenticated one is refused
+            # by the sink: the records are extracted even with no declared
+            # schema (live Fastweb 9696d5b6, 1/11/2026).
+            _site_pages_to_sheet = bool(_spreadsheet_sinks) and any(
+                (s.tool or "") == "read_sites" for s in steps)
+            if (_has_reader and _has_col_sink and _derived_fields) or _site_pages_to_sheet:
                 _need_by_structure = True
                 log.info("[ensure_extract] trigger STRUTTURALE (content-reader → "
                          "columns-sink, intent senza extract)")
@@ -744,9 +750,13 @@ def _ensure_extract_clause(framework: Framework, intent, query: str,
         # guida onesto a valle).
         # SINK BULK a valle (create/write con `columns`) → l'extract deve prendere
         # TUTTI i record, non i primi 20 (default): alza max_per_text (turn 8167889d).
-        _bulk_sink = any(_verb(s) in ("create", "write")
-                         and (getattr(s, "args", None) or {}).get("columns")
-                         for s in steps)
+        # A sheet takes every record whatever declares its schema: `columns`
+        # or `column_specs` (live Fineco 597237b3, 3/11/2026: four pages cut
+        # at 20 movements behind a `column_specs` sheet).
+        _bulk_sink = bool(_spreadsheet_sinks) or any(
+            _verb(s) in ("create", "write")
+            and (getattr(s, "args", None) or {}).get("columns")
+            for s in steps)
 
         def _producer_tool(extract_args: dict) -> str:
             pos = extract_args.get("from_step")
@@ -2198,7 +2208,7 @@ def _prohibited_plan_verbs(framework: Framework, query: str) -> set[str]:
 
 
 def _dropped_required_verbs(framework: Framework, query: str, intent=None,
-                            catalog=None) -> set:
+                            catalog=None, *, weak_evidence: bool = True) -> set:
     """Verbi RICHIESTI dalla query ma ASSENTI dal framework → decomposizione
     incompleta. Copre PRODUCER (find/read/get/list: senza i dati la pipeline è
     monca) + side-effecting espliciti (send/create/write/move/delete/share: «manda
@@ -2229,12 +2239,15 @@ def _dropped_required_verbs(framework: Framework, query: str, intent=None,
                 lexical_qverbs.add(_action[0])
                 if _action[0] in {"create", "write"}:
                     lexical_writer_chunks.append((_action[0], _chunk))
-            else:
+            elif weak_evidence:
                 # Unknown objects (for example a conference topic) prevent
                 # structured detection, but the clause's explicit verb still
                 # belongs to the request.  Keep the fallback scoped to this
                 # clause so nouns in a successfully parsed transform cannot
-                # leak in as unrelated actions.
+                # leak in as unrelated actions.  It is weak evidence: a verb
+                # of a subordinate clause reads the same («a if who sends the
+                # money is …», real turn 2ceac365, 4/11/2026), so the final
+                # refusal before execution does not rest on it.
                 _chunk_verbs = detect_canonical_verbs_all(tokenize(_chunk))
                 lexical_qverbs.update(_chunk_verbs)
                 lexical_writer_chunks.extend(
@@ -2243,7 +2256,7 @@ def _dropped_required_verbs(framework: Framework, query: str, intent=None,
     except Exception:
         lexical_qverbs = set()
         lexical_writer_chunks = []
-    if not lexical_qverbs:
+    if not lexical_qverbs and weak_evidence:
         lexical_qverbs = set(detect_canonical_verbs_all(tokenize(query or "")))
     qverbs = set(lexical_qverbs)
     # Unisci i verbi della decomposizione LLM (intent.actions): il detector
@@ -2528,7 +2541,38 @@ def _dropped_required_verbs(framework: Framework, query: str, intent=None,
             objs = {(a.get("object") or "") for a in _acts if (a.get("verb") or "") == wv}
             if objs and all(have[o] >= need[o] for o in objs):
                 dropped.discard(wv)
+    # Changing a sheet the request names is writing into it: «in the sheet F
+    # split the rows into tabs / add the column C» reads as change(files) and
+    # the plan writes tabs of F (real turn 2ceac365, 4/11/2026: refused with
+    # zero steps).  Scoped to an existing sheet the request names that the
+    # plan both reads or writes and writes into.
+    if "change" in dropped and _plan_writes_a_named_sheet(framework, query):
+        dropped.discard("change")
     return dropped
+
+
+def _plan_writes_a_named_sheet(framework: Framework, query: str) -> bool:
+    """True when the plan writes a tab of an existing sheet the request names."""
+    try:
+        from backends.files.local import SHEET_TOOLS_QUALIFIER, named_sheet_headers
+        import naming_grammar as _ng
+        names = {sheet["name"].casefold() for sheet in named_sheet_headers(query)}
+    except Exception:  # noqa: BLE001 - no evidence, no exemption
+        return False
+    if not names:
+        return False
+    touched, writes = set(), False
+    for step in getattr(framework, "steps", None) or []:
+        parts = _ng.parse_name(step.tool or "")
+        if parts is None or parts.qualifier != SHEET_TOOLS_QUALIFIER:
+            continue
+        args = step.args if isinstance(step.args, dict) else {}
+        target = args.get("path") or args.get("spreadsheet_id")
+        if isinstance(target, str) and target.strip():
+            touched.add(Path(target.strip()).stem.casefold()
+                        if Path(target.strip()).suffix else target.strip().casefold())
+        writes = writes or parts.verb == "write"
+    return writes and bool(touched & names)
 
 
 def _normalize_store_clauses(intent, query: str, catalog: Optional[list]) -> None:
@@ -2640,9 +2684,18 @@ def _decontaminate_clause_objects(intent, query: str) -> None:
                             found.add(obj); break
             return next(iter(found)) if len(found) == 1 else None
 
+        from prefilter import (
+            tokenize, detect_canonical_verbs_all, implements_intent_verb)
         changed = False
         for a, chunk in zip(actions, chunks):
             o = (a.get("object") or "").lower()
+            v = (a.get("verb") or "").lower()
+            # Equal counts do not make a chunk the action's own: it must name
+            # the action's verb (live Fineco 38ebbe35, 4/11/2026: «data
+            # valuta» opened a chunk of its own, the create action fell on it).
+            if not any(implements_intent_verb(cv, v) for cv in
+                       detect_canonical_verbs_all(tokenize(chunk)) or []):
+                continue
             text_obj = _obj_from_text(chunk)
             # corregge SOLO se il testo dà un oggetto univoco DIVERSO (contaminazione).
             # Mai se concordano o se ambiguo/None.
@@ -2677,12 +2730,22 @@ def _fix_unroutable_verbs(intent, query: str, catalog: Optional[list]) -> None:
             actions = [{"verb": getattr(intent, "verb", ""),
                         "object": getattr(intent, "object", "")}]
         from compound_decomposer import split_query_chunks, derive_tool_name
-        from prefilter import tokenize, detect_canonical_verbs_all
+        from prefilter import (
+            tokenize, detect_canonical_verbs_all, shared_verb_candidates)
+        import naming_grammar as _ng
         names = catalog_names(catalog)
         names.discard(None)
         chunks = split_query_chunks(query)
         if len(chunks) != len(actions):
             return
+
+        def _routes_object(verb: str, obj: str) -> bool:
+            # The generic ``<verb>_entries`` carrier is not a tool for ``obj``
+            # (live Fineco 38ebbe35: create urls became compute urls).
+            tool = derive_tool_name(verb, obj, names)
+            parsed = _ng.parse_name(tool) if tool else None
+            return bool(parsed) and (parsed.obj == obj or obj == "entries")
+
         changed = False
         for a, chunk in zip(actions, chunks):
             v = (a.get("verb") or "").lower()
@@ -2695,10 +2758,17 @@ def _fix_unroutable_verbs(intent, query: str, catalog: Optional[list]) -> None:
             # quali verbi canonici dà il TESTO della clausola?
             cand = detect_canonical_verbs_all(tokenize(chunk)) or []
             for cv in cand:
-                if cv != v and derive_tool_name(cv, o, names):
+                if cv != v and _routes_object(cv, o):
                     a["verb"] = cv
                     changed = True
                     break
+            else:
+                # «chiudi» can delete or set: the one tool that exists decides.
+                shared = sorted(cv for cv in shared_verb_candidates(tokenize(chunk))
+                                if _routes_object(cv, o))
+                if len(shared) == 1:
+                    a["verb"] = shared[0]
+                    changed = True
         if changed:
             if primary_only:
                 intent.verb = actions[0]["verb"]
@@ -2771,6 +2841,25 @@ def insert_steps(framework: Framework, at: int, new_steps: list) -> Framework:
         framework.fillers = _remap_step_refs(fillers, idx_map)
     steps[at:at] = list(new_steps)
     return framework
+
+
+def _step_refs(obj) -> set[int]:
+    """Positions an argument tree reads: from_step(s) and ${stepN...}."""
+    if isinstance(obj, dict):
+        refs: set[int] = set()
+        for key, value in obj.items():
+            if key == "from_step" and type(value) is int:
+                refs.add(value)
+            elif key == "from_steps" and isinstance(value, list):
+                refs.update(v for v in value if type(v) is int)
+            else:
+                refs |= _step_refs(value)
+        return refs
+    if isinstance(obj, (list, tuple)):
+        return set().union(*(_step_refs(v) for v in obj)) if obj else set()
+    if isinstance(obj, str):
+        return {int(m.group(2)) for m in _STEPREF_RE.finditer(obj)}
+    return set()
 
 
 def _contains_stepref(obj, pos: int) -> bool:
@@ -4770,15 +4859,33 @@ def _ensure_site_session_precursor(framework: Framework, intent, query: str,
         }))
         want_act = True
 
+    dropped_acts: list = []
+
     def _append_acts(source_steps) -> None:
         from playwright_sidecar.action_resolver import preserve_goal_qualifiers
 
+        # A download saves what a goal reached; it is not a second goal
+        # (live ENI 3ad3c108, 2/11/2026: a planned download turned the only
+        # navigation goal's completion condition into its own instruction).
         goal_count = sum(
             is_goal_navigation_request(str((getattr(step, "args", {}) or {}).get("action") or ""))
             and not (getattr(step, "args", {}) or {}).get("value_ref")
+            and not (getattr(step, "args", {}) or {}).get("dst_dir")
             for step in source_steps)
         for original_act in source_steps:
             original_args = dict(getattr(original_act, "args", {}) or {})
+            destination = original_args.get("dst_dir")
+            named = [part.casefold() for part in (
+                destination.strip(), Path(destination.strip()).name) if part] \
+                if isinstance(destination, str) else []
+            if named and not any(part in (query or "").casefold() for part in named):
+                # A folder the request does not name is no request to save
+                # files there (live Fineco 3279176c, 3/11/2026: an invented
+                # download after the collection ended the turn before the
+                # sheet).
+                log.info("[site-guard] act_sites with an unrequested destination dropped")
+                dropped_acts.append(original_act)
+                continue
             if structured_record_request:
                 action = str(original_args.get("action") or "")
                 if not original_args.get("value_ref") and is_goal_navigation_request(action):
@@ -4876,8 +4983,9 @@ def _ensure_site_session_precursor(framework: Framework, intent, query: str,
             "from_step": site_output_pos,
             "instruction": query,
             "drill_down": False,
+            # Each page is bounded; the collection's total is not: reaching
+            # an unrequested total stopped reading the remaining pages.
             "max_per_text": _SITES_COLLECTION_EXTRACT_CAP,
-            "max_total": _SITES_COLLECTION_EXTRACT_CAP,
         }))
         original_describe = original_describes[0][1] \
             if original_describes else None
@@ -4949,6 +5057,23 @@ def _ensure_site_session_precursor(framework: Framework, intent, query: str,
             absorbed_web_positions.add(pos)
             site_source_positions.add(pos)
 
+    # A reader of what a dropped act saved has no input of its own: what it
+    # stood for is the chain's own output (live Fineco 2392b7a6, 3/11/2026:
+    # the download was dropped, read_files of the saved file kept no paths
+    # and the sheet after it got no rows).
+    dropped_positions = {pos for pos, step in enumerate(steps, start=1)
+                         if any(step is act for act in dropped_acts)}
+    orphan_readers: set[int] = set()
+    if dropped_positions:
+        import naming_grammar as _ng
+        from compound_decomposer import PRODUCER_VERBS
+        for pos, step in enumerate(steps, start=1):
+            parsed = _ng.parse_name(getattr(step, "tool", "") or "")
+            refs = _step_refs(getattr(step, "args", {}) or {})
+            if (parsed and parsed.verb in PRODUCER_VERBS
+                    and refs and refs <= dropped_positions):
+                orphan_readers.add(pos)
+
     preserved: list[tuple[int, object]] = []
     finals: list[tuple[int, object]] = []
     idx_map: dict[int, int] = {}
@@ -4958,7 +5083,8 @@ def _ensure_site_session_precursor(framework: Framework, intent, query: str,
             finals.append((old_pos, step))
         elif old_pos in absorbed_describe_positions:
             idx_map[old_pos] = canonical_describe_pos
-        elif tool in site_tools or old_pos in absorbed_web_positions:
+        elif (tool in site_tools or old_pos in absorbed_web_positions
+              or old_pos in orphan_readers):
             # Nell'inserzione automatica i consumer a valle devono vedere i
             # record, non il blob di read_sites. L'extract stesso e' gia' stato
             # costruito manualmente sul producer raw e non passa da idx_map.
@@ -4968,6 +5094,18 @@ def _ensure_site_session_precursor(framework: Framework, intent, query: str,
             preserved.append((old_pos, step))
     for offset, (old_pos, _step) in enumerate(preserved, start=1):
         idx_map[old_pos] = canonical_pos + offset
+    if not auto_extract:
+        # The planner's own extract holds the records an orphan reader stood
+        # for; the raw page text would fill a sheet with one row of prose.
+        for reader_pos in orphan_readers:
+            extract_pos = next((
+                old_pos for old_pos, step in preserved
+                if old_pos < reader_pos
+                and (getattr(step, "tool", "") or "") == "extract_entries"
+                and _step_refs(getattr(step, "args", {}) or {})
+                <= site_source_positions), 0)
+            if extract_pos:
+                idx_map[reader_pos] = idx_map[extract_pos]
     final_pos = canonical_pos + len(preserved) + 1
     for old_pos, _step in finals:
         idx_map[old_pos] = final_pos
@@ -4975,6 +5113,18 @@ def _ensure_site_session_precursor(framework: Framework, intent, query: str,
     for _old_pos, step in preserved:
         original_args = dict(getattr(step, "args", {}) or {})
         remapped_args = _remap_step_refs(original_args, idx_map)
+        if (structured_record_request and want_read
+                and (getattr(step, "tool", "") or "") == "extract_entries"):
+            # The planner's own extract reads the same collection as the
+            # inferred one: a page holds many records, not the default 20.
+            remapped_args.setdefault("max_per_text", _SITES_COLLECTION_EXTRACT_CAP)
+            # A total the request does not state is not the person's limit
+            # (live Fineco f04f9aa3, 3/11/2026: an invented 100 stopped the
+            # reading of a longer list).
+            total = remapped_args.get("max_total")
+            if total is not None and not re.search(
+                    rf"(?<!\d){re.escape(str(total))}(?!\d)", query or ""):
+                remapped_args.pop("max_total")
         if auto_extract and original_args.get("from_step") in absorbed_describe_positions:
             # from_step consumes the row payload; describe has only text.
             # Explicit ${stepN.summary} references retain their text producer.
@@ -6231,9 +6381,153 @@ _ENTRY_CARRIER_TRANSFORMS = frozenset({
     "filter_entries", "sort_entries", "group_entries", "classify_entries",
     "compute_entries", "compare_entries",
 })
+def _key_spelling(key: str) -> str:
+    """A record key without its separators: spaces, underscores, hyphens."""
+    return " ".join(re.split(r"[\s_\-]+", key.strip()))
+
+
 _TABULAR_SINKS = frozenset({
     "create_files_spreadsheet", "write_files_spreadsheet",
 })
+
+
+def _point_self_references_back(framework: Framework) -> Framework:
+    """A step that reads itself reads the step right before it.
+
+    ``from_step`` equal to the step's own position is a counting slip of the
+    planner (offline plan of 4/11/2026: classify_entries as step 3 with
+    ``from_step=3``); the step before it is the only reading of a linear
+    chain.  Other references are left as planned.
+    """
+    for position, step in enumerate(getattr(framework, "steps", None) or [], 1):
+        args = step.args if isinstance(step.args, dict) else {}
+        if position > 1 and args.get("from_step") == position:
+            step.args = {**args, "from_step": position - 1}
+    return framework
+
+
+def _feed_sheets_their_records(framework: Framework, query: str) -> Framework:
+    """§4.3: a sheet is built from records, never from a detour before it.
+
+    Two detours put something else between the records and the sheet (live
+    Fineco 5f12e382, 3/11/2026; offline plans of 4/11/2026): describe_entries,
+    which turns the records into prose, and a reader of a file the request
+    never names that reads no earlier step («/tmp/x.csv»).  A sheet fed by a
+    detour, or written right after one while reading nothing, takes the
+    records the detour stood in front of, and the bypassed detours that no
+    step reads any more are dropped.  A summary written to a file or sent
+    («summarize the mails and save it») is the requested content and stays;
+    so does a sheet given its own literal ``values``.
+    """
+    from backends.files.local import SHEET_TOOLS_QUALIFIER
+    from naming_grammar import parse_name
+
+    steps = list(getattr(framework, "steps", None) or [])
+    text = str(query or "").casefold()
+
+    def is_sheet(step):
+        parts = parse_name(step.tool or "")
+        return (parts is not None and parts.verb in {"create", "write"}
+                and parts.qualifier == SHEET_TOOLS_QUALIFIER
+                and not (step.args or {}).get("values"))
+
+    def named(value):
+        return isinstance(value, str) and value.strip() and (
+            value.strip().casefold() in text
+            or Path(value.strip()).name.casefold() in text)
+
+    def detour_source(position):
+        """The position whose records the detour at ``position`` stands for."""
+        step = steps[position - 1]
+        args = step.args if isinstance(step.args, dict) else {}
+        if (step.tool or "") == "describe_entries" and type(args.get("from_step")) is int:
+            return args["from_step"]
+        parts = parse_name(step.tool or "")
+        literal = [v for key in ("path", "paths") for v in
+                   (args.get(key) if isinstance(args.get(key), list) else [args.get(key)])
+                   if isinstance(v, str) and v.strip()]
+        if (parts is not None and parts.verb == "read" and parts.obj == "files"
+                and literal and not _step_refs(args)
+                and not any(named(v) for v in literal) and position > 1):
+            return position - 1
+        return None
+
+    bypassed = set()
+    for index, sink in enumerate(steps):
+        if not is_sheet(sink):
+            continue
+        refs = _step_refs(sink.args or {}) or ({index} if index else set())
+        mapping = {}
+        for ref in refs:
+            origin, seen = ref, set()
+            while 1 <= origin <= index and origin not in seen:
+                seen.add(origin)
+                source = detour_source(origin)
+                if source is None:
+                    break
+                bypassed.add(origin)
+                origin = source
+            if origin != ref:
+                mapping[ref] = origin
+        if not mapping:
+            continue
+        if _step_refs(sink.args or {}):
+            sink.args = _remap_step_refs(sink.args or {}, mapping)
+        else:
+            sink.args = {**(sink.args or {}), "from_step": mapping[index]}
+    for position in sorted(bypassed, reverse=True):
+        target = steps[position - 1]
+        current = getattr(framework, "steps", None) or []
+        if not any(position in _step_refs(s.args or {}) for s in current if s is not target):
+            _drop_step(framework, target)
+    return framework
+
+
+def _bind_sheet_writes_to_their_source(framework: Framework) -> Framework:
+    """A tab written from rows read out of one local sheet goes into that sheet.
+
+    «In the sheet F split the rows into the tabs A and B» reads F and writes
+    A and B; a write naming its tab but no workbook would create a new,
+    automatically named file instead (offline plan of 4/11/2026).  Only one
+    source sheet in the write's own lineage is adopted; an explicit
+    destination, a write without a tab and non-local reads stay as planned.
+    """
+    from naming_grammar import parse_name
+    from backends.files.local import SHEET_TOOLS_QUALIFIER
+
+    def sheet_tool(tool, verb):
+        parts = parse_name(tool or "")
+        return (parts is not None and parts.verb == verb
+                and parts.qualifier == SHEET_TOOLS_QUALIFIER)
+
+    steps = list(getattr(framework, "steps", None) or [])
+    for index, step in enumerate(steps):
+        args = step.args if isinstance(step.args, dict) else {}
+        if (not sheet_tool(step.tool, "write")
+                or not str(args.get("sheet_name") or "").strip()
+                or any(str(args.get(key) or "").strip()
+                       for key in ("spreadsheet_id", "path", "range"))):
+            continue
+        sources, seen, pending = set(), set(), list(_step_refs(args))
+        while pending:
+            position = pending.pop()
+            if position in seen or not 1 <= position <= index:
+                continue
+            seen.add(position)
+            source = steps[position - 1]
+            source_args = source.args if isinstance(source.args, dict) else {}
+            if sheet_tool(source.tool, "read"):
+                sheet = source_args.get("spreadsheet_id") or source_args.get("path")
+                local = (source_args.get("client") or "local") == "local"
+                sources.add(sheet.strip() if local and isinstance(sheet, str)
+                            and sheet.strip() else None)
+                continue
+            pending.extend(_step_refs(source_args))
+        if len(sources) == 1 and None not in sources:
+            # `path` names the workbook for the writer; its `spreadsheet_id`
+            # is resolved by the runtime and never taken from a plan.
+            step.args = {**args, "path": sources.pop()}
+    return framework
 
 
 def _propagate_sink_schema_to_extract(framework: Framework) -> Framework:
@@ -6296,10 +6590,23 @@ def _propagate_sink_schema_to_extract(framework: Framework) -> Framework:
             # Explicit source identity is case-sensitive. Strip whitespace as
             # extract_entries and compile_projection already do. Legacy
             # bootstrap preserves its historical case-insensitive spelling.
-            if not any(isinstance(field, str) and (
+            if any(isinstance(field, str) and (
                     field.strip() == key if exact else
                     field.strip().casefold() == key.strip().casefold())
-                       for field in merged):
+                   for field in merged):
+                continue
+            # The same name spelled with spaces instead of underscores is the
+            # same key: the extraction takes the plan's spelling, so the sink
+            # and every other step of the plan read the field it fills (live
+            # Fineco c4eddda0, 4/11/2026: "data operazione" from the request
+            # and "data_operazione" from the sheet were both asked, the model
+            # filled one and the sheet read the other, left empty).
+            same = next((index for index, field in enumerate(merged)
+                         if isinstance(field, str)
+                         and _key_spelling(field) == _key_spelling(key)), None)
+            if exact and same is not None:
+                merged[same] = key
+            else:
                 merged.append(key)
         if merged != fields:
             extract_args["fields"] = merged
@@ -6631,8 +6938,11 @@ def _bind_site_record_navigation(framework: Framework) -> Framework:
             if ancestor.tool not in {"act_sites", "login_sites"}:
                 break
             action = ancestor.args.get("action")
+            # A download between the read and the navigation saves files; the
+            # records are observed by the navigation that reached them.
             if (ancestor.tool == "act_sites" and isinstance(action, str)
                     and not ancestor.args.get("value_ref")
+                    and not ancestor.args.get("dst_dir")
                     and is_goal_navigation_request(action)):
                 ancestor.args["_record_mode"] = True
                 break
@@ -6871,6 +7181,25 @@ GUARD_PIPELINE: tuple = (
           v3_only=True, scope="cross-clause", writes=frozenset({"step"}),
           reads=frozenset({"intent.actions", "query", "catalog"}),
           rationale="workflow email+calendario -> schema comune, batching bounded, dedup/conflitti e due output create-only",
+          adr="0177"),
+    Guard("point_self_references_back",
+          lambda fw, i, q, c: _point_self_references_back(fw),
+          scope="structure", writes=frozenset({"step"}),
+          reads=frozenset({"args.from_step"}),
+          rationale="uno step con from_step uguale alla propria posizione legge lo step precedente (errore di conteggio)",
+          adr="0177"),
+    Guard("feed_sheets_their_records",
+          lambda fw, i, q, c: _feed_sheets_their_records(fw, q),
+          scope="cross-clause", writes=frozenset({"step"}),
+          reads=frozenset({"query", "step.tool", "args.from_step", "args.path", "args.paths", "args.values"}),
+          rationale="§4.3: un foglio riceve i record, non un describe_entries o la lettura di un file mai nominato messi davanti",
+          adr="0177"),
+    Guard("bind_sheet_writes_to_their_source",
+          lambda fw, i, q, c: _bind_sheet_writes_to_their_source(fw),
+          scope="cross-clause", writes=frozenset({"args.path"}),
+          reads=frozenset({"step.tool", "args.from_step", "args.sheet_name",
+                           "args.spreadsheet_id", "args.path", "args.client"}),
+          rationale="una scheda scritta con righe lette da un foglio locale torna in quel foglio se il piano non dà altra destinazione",
           adr="0177"),
     Guard("propagate_sink_schema_to_extract",
           lambda fw, i, q, c: _propagate_sink_schema_to_extract(fw),
@@ -7861,8 +8190,12 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
     # via object_hint_mapping (funzione canonica) PRIMA di tutto. Gated is_v3().
     from . import is_v3
     if is_v3():
-        _decontaminate_clause_objects(intent, query)
-        _fix_unroutable_verbs(intent, query, catalog)
+        # Clauses are the person's words: a site address the runtime appended
+        # to the planner's text is no clause of theirs (live Fineco 38ebbe35,
+        # 4/11/2026: its "https" turned «crea un foglio» into create urls).
+        clause_text = str((runtime_ctx or {}).get("user_query_raw") or query)
+        _decontaminate_clause_objects(intent, clause_text)
+        _fix_unroutable_verbs(intent, clause_text, catalog)
     # gate-resume (20/6): sulla RIPRESA dopo approvazione (runtime_ctx
     # _gate_approved) il gate e' gia' consentito → togli la clausola
     # (get, approval) dall'intent cosi' il proposer compone la pipeline PULITA a
@@ -8418,7 +8751,8 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
     # with a harmless lookup.  Re-proposal and deterministic guards have
     # already had their chance above, so a residual means there is no safe
     # executable plan in the current catalog.
-    _missing_actions = _dropped_required_verbs(framework, query, intent, catalog)
+    _missing_actions = _dropped_required_verbs(framework, query, intent, catalog,
+                                               weak_evidence=False)
     if _missing_actions:
         from messages import get as _msg_get
         log.info("[intent-fulfilment] unavailable actions=%s",
@@ -8539,7 +8873,7 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                 # confident «here is what I found» for a request to install is
                 # the §2.8 anti-pattern, not a recovery.
                 _missing_alt = _dropped_required_verbs(
-                    framework_alt, query, intent, catalog)
+                    framework_alt, query, intent, catalog, weak_evidence=False)
                 if _missing_alt:
                     from messages import get as _msg_get
                     log.info("[L3 recovery] REJECT: unavailable actions=%s",

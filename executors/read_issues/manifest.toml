@@ -5,7 +5,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "read_issues"
-version     = "0.1.0"
+version     = "0.1.2"
 timeout_s   = 60
 platforms   = ["linux"]
 author      = "Roberto Brunialti"
@@ -66,10 +66,29 @@ en = "Maximum items returned. 0 = no limit. Default 100."
 type        = "string"
 enum        = ["github"]
 default     = "github"
+# config non-intento: risolta dal runtime, NON esposta all'LLM.
+# Politica: tests/runtime/infra/test_config_args_marking_policy.py.
+runtime_resolved = true
 
 [args.properties.client.description]
 it = "Implementazione backend. Oggi solo 'github'. Il runtime lo sceglie: non va indicato nella richiesta."
 en = "Backend implementation. Today only 'github'. The runtime picks it: it is not stated in the request."
+
+[presentation]
+default_view = "list"
+
+[presentation.list]
+mode = "table"
+columns = [
+  { key = "number", source = "number", cell_max = 12 },
+  { key = "title", source = "title", cell_max = 160 },
+  { key = "state", source = "state", cell_max = 24 },
+  { key = "url", source = ["html_url", "url"], cell_max = 240 },
+  { key = "updated", source = ["updated_at", "created_at"], cell_max = 32 },
+]
+max_rows = 200
+max_chars = 16000
+overflow = "notice"
 
 [[capabilities]]
 # L'autorita' e' legata al VALORE dell'argomento, non al nome dello

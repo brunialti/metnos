@@ -46,7 +46,7 @@ def collection_limit_message(cap_field: object, cap_value: object) -> tuple[str,
 _SOURCE_KEYS = frozenset({"producer", "scope", "source_ref", "partial",
     "collection_partial", "truncated", "truncated_what", "used",
     "available_total", "cap_field", "cap_value", "reason_code", "provenance",
-    "merged", "suspected", "conflicted", "absorbed", "excluded"})
+    "merged", "suspected", "conflicted", "absorbed", "excluded", "field"})
 _SOURCE_FLAGS = frozenset({"partial", "collection_partial", "truncated"})
 _SOURCE_COUNTS = frozenset({"used", "available_total", "merged", "suspected", "conflicted",
                             "absorbed", "excluded"})
@@ -111,6 +111,11 @@ def validate_source_metadata(value: object) -> list[dict]:
             elif key == "cap_value":
                 if (isinstance(field, bool) or not isinstance(field, (int, float))
                         or not 0 <= field <= 2**63 - 1 or not math.isfinite(field)):
+                    raise ValueError("invalid_source_metadata")
+            elif key == "field":
+                # A record field name the runtime chose, e.g. the period's date.
+                if (not isinstance(field, str) or not 0 < len(field) <= 256
+                        or any(ord(c) < 32 or 0xD800 <= ord(c) <= 0xDFFF for c in field)):
                     raise ValueError("invalid_source_metadata")
             elif key == "provenance":
                 if not isinstance(field, dict) or set(field) != {"url"}:

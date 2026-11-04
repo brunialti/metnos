@@ -28,6 +28,7 @@ REASON_MSG = {
     "target_changed": "MSG_SITES_RC_TARGET_CHANGED",
     "page_changed": "MSG_SITES_RC_PAGE_CHANGED",
     "selector_hidden": "MSG_SITES_RC_SELECTOR_HIDDEN",
+    "person_step_required": "MSG_SITES_RC_PERSON_STEP_REQUIRED",
 }
 
 

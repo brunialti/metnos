@@ -71,6 +71,11 @@ fn channel_name(owner_sid: &str) -> io::Result<String> {
         .map_err(|_| io::Error::other("SID del proprietario non valido"))
 }
 
+/// Quanto un capo del canale puo' tacere. Il servizio serve una connessione
+/// per volta: chi apre la pipe e non finisce di parlare, o non legge la
+/// risposta, terrebbe fermi tutti gli altri.
+const LIMITE_CANALE: std::time::Duration = std::time::Duration::from_secs(30);
+
 /// Una connessione, una richiesta, una risposta.
 fn servi_una_richiesta(
     pipe: &win_pipe::Handle,
@@ -82,7 +87,10 @@ fn servi_una_richiesta(
     // interessa.
     let chiamante = win_pipe::caller_sid(pipe)?;
 
-    let corpo = leggi_richiesta(pipe)?;
+    let corpo = {
+        let _scadenza = win_pipe::Scadenza::per_questo_filo(LIMITE_CANALE)?;
+        leggi_richiesta(pipe)?
+    };
     let risposta = match serde_json::from_slice::<WireRequest>(&corpo) {
         Ok(richiesta) => service::handle(
             &richiesta,
@@ -111,6 +119,7 @@ fn servi_una_richiesta(
 
     let testo =
         serde_json::to_vec(&risposta).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+    let _scadenza = win_pipe::Scadenza::per_questo_filo(LIMITE_CANALE)?;
     scrivi(pipe, &testo)
 }
 

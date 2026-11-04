@@ -28,8 +28,13 @@ _CONFIGURATION_KEYS = frozenset({
 })
 
 
+def _user_data() -> Path:
+    import config as C
+    return Path(os.environ.get("METNOS_USER_DATA", C.PATH_USER_DATA))
+
+
 def configuration_path() -> Path:
-    return Path(os.environ.get("METNOS_USER_DATA", Path.home() / ".local/share/metnos")) / "browser-engine.env"
+    return _user_data() / "browser-engine.env"
 
 
 def load_configuration() -> None:
@@ -94,8 +99,7 @@ def incompatible_techniques(techniques) -> tuple[str, ...]:
 
 
 def browser_directory() -> Path:
-    data = Path(os.environ.get("METNOS_USER_DATA", Path.home() / ".local/share/metnos"))
-    base = Path(os.environ.get("METNOS_CAMOUFOX_BROWSERS_PATH", data / "camoufox-browsers"))
+    base = Path(os.environ.get("METNOS_CAMOUFOX_BROWSERS_PATH", _user_data() / "camoufox-browsers"))
     return base / CAMOUFOX_RELEASE
 
 

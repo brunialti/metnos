@@ -17,6 +17,8 @@ recorded in ``runtime/llm_router.py::DEFAULT_TIERS`` and
   delegated to ``install/llm_manager.py`` — the smart managed path.
 - ``frontier`` — opt-in cloud API (Anthropic primary).
 - Optional services: VLM, Photon (geocoder), SearXNG (web search).
+- Optional reCAPTCHA tile classifier: downloaded from Hugging Face only if the
+  user accepts. Without it image grids go to the person.
 
 Existing services must be selected explicitly in ``services.toml``.
 An occupied local endpoint is reported before provisioning; it is never
@@ -42,6 +44,11 @@ from ..downloads import Asset, fetch
 _BGE_M3_REVISION = "46ce10a0ac77ca4bab460d6676ba8260b33e68dc"
 _BGE_M3_BASE_URL = (
     f"https://huggingface.co/Xenova/bge-m3/resolve/{_BGE_M3_REVISION}"
+)
+_CAPTCHA_GRID_REVISION = "0c1ee9525510bdd7f9513737796d7d1ea47a6926"
+_CAPTCHA_GRID_BASE_URL = (
+    "https://huggingface.co/DannyLuna/recaptcha-classification-57k/resolve/"
+    f"{_CAPTCHA_GRID_REVISION}"
 )
 
 @dataclass
@@ -95,6 +102,44 @@ def _bge_m3() -> Component:
             ),
         ],
     )
+
+
+def _captcha_grid() -> Component:
+    # runtime/playwright_sidecar/captcha_grid.py opens this file and checks the
+    # same digest; a missing or different file leaves image grids to the person.
+    return Component(
+        key="captcha_grid",
+        label="reCAPTCHA tile classifier (ONNX)",
+        mandatory=False,
+        recommended=False,
+        size_estimate="~109 MB",
+        description="recaptcha-classification-57k by DannyLuna, MIT license. Answers 3x3 image grids locally.",
+        assets=[
+            Asset(
+                name="recaptcha_classification_57k.onnx",
+                url=f"{_CAPTCHA_GRID_BASE_URL}/recaptcha_classification_57k.onnx",
+                dest=_model_dir() / "captcha-grid" / "recaptcha_classification_57k.onnx",
+                sha256="4092e8917ee8c2963895d66ba10a97d6ef975c468a95858a8a7bd9e70681b65d",
+            ),
+        ],
+    )
+
+
+def _offer_captcha_grid(args: Any) -> str:
+    """Fetch the author's model from its source only if the user accepts.
+
+    Declining or a failed download leaves image grids to the person and never
+    stops the installation.
+    """
+    component = _captcha_grid()
+    if all(asset.already_present() for asset in component.assets):
+        return "installed"
+    if args.yes or not ui.confirm(i18n.t("captcha_grid_prompt"), default=False):
+        return "declined"
+    if all(fetch(asset) for asset in component.assets):
+        return "installed"
+    ui.warn(i18n.t("captcha_grid_failed"))
+    return "failed"
 
 
 # ─── LLM tier configuration (tier-based; provisioning via llm_manager) ──
@@ -270,5 +315,6 @@ def run(args: Any) -> dict[str, Any]:
 
     # 3. Optional components
     notes.update(_offer_optionals(args, profile))
+    notes["captcha_grid"] = _offer_captcha_grid(args)
 
     return notes

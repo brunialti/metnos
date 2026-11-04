@@ -586,6 +586,11 @@ def register_all() -> None:
     R("output.visualize_request", "regex",
       it=[r"\b(mostra|mostrami|fammi vedere|vedi|visualizz\w*|guarda)\b"],
       en=[r"\b(show|show me|display|view|let me see)\b"])
+    R("output.table_request", "regex",
+      it=[r"\b(?:in|come|sotto forma di)\s+(?:una\s+)?tabella\b",
+          r"\bformato\s+tabellare\b"],
+      en=[r"\b(?:as|in)\s+(?:a\s+)?table\b",
+          r"\btabular\s+(?:format|form)\b"])
 
     # Richiesta ESPLICITA di unicita' delle righe tabellari. Non include
     # "file duplicati" / "duplicate files": quello descrive il dominio dei
@@ -1099,6 +1104,15 @@ def register_all() -> None:
     # dal locator privacy strutturale, mai come click testuale libero.
     R("sites.privacy_reject_noun_target", "phrases", match_mode="word",
       it=["rifiuto"], en=[])
+    # Stessa ragione: frasi di chiusura che tengono solo i cookie necessari
+    # (Fineco, 1/11/2026). Valgono solo come inizio dell'etichetta del controllo.
+    R("sites.privacy_reject_phrase_target", "phrases", match_mode="word",
+      it=["chiudi e prosegui solo con i cookies tecnici",
+          "chiudi e prosegui solo con i cookie tecnici",
+          "prosegui solo con i cookie tecnici", "prosegui solo con i cookies tecnici",
+          "continua solo con i cookie necessari", "continua solo con i cookies necessari"],
+      en=["continue with necessary cookies only", "continue with essential cookies only",
+          "continue with only necessary cookies"])
     # Marker del CONTENITORE, distinti dalle azioni. Il broker li combina con
     # struttura modale/fixed e un target di rifiuto esatto: una parola isolata
     # nel corpo pagina non e' mai sufficiente per produrre un click.

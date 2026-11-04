@@ -1,6 +1,6 @@
 {
   "schema": "metnos.contract-boundary-inventory/2",
-  "source_census": "sha256:5b21ac1a13c7a828d07c798de789b9eb682d32190db2855d2746eaba7de3beae",
+  "source_census": "sha256:079b2a232dcafe588bf777bdad8232aac96a6de1f1e41da43b9899a60c0c6acc",
   "scan_roots": [
     "runtime",
     "install",
@@ -5090,7 +5090,7 @@
     },
     {
       "path": "runtime/orchestration.py",
-      "scope": "_process_resume_executor_gate_tail",
+      "scope": "_resume_executor_gate_tail",
       "role": "live_reader",
       "capabilities": [
         "live_artifact_read"

@@ -10,6 +10,7 @@ from aiohttp import web
 import devices
 import users
 import filesystem_permissions as permissions
+import server_filesystem_host as host_files
 from http_app_state import ADMIN_KEY, app_get
 from http_render import render_template
 from messages import get as _msg
@@ -49,6 +50,19 @@ async def server_permissions(request: web.Request) -> web.Response:
                        supported=True, all_users=all_users)
 
 
+def _server_grants(owner):
+    """Keep recorded grants revocable even when access is no longer usable."""
+    grants = permissions.list_grants(owner, "server")
+    for grant in grants:
+        if grant["state"] != "active":
+            continue
+        try:
+            host_files.probe_grant(owner, grant)
+        except permissions.PermissionError as exc:
+            grant["availability_error"] = str(exc)
+    return grants
+
+
 async def _page(request, *, scope, owner, title, style, supported, all_users=None):
     # Bind the token to both the account and the host. A device form cannot
     # change server rights, nor can a form for one account affect another.
@@ -72,20 +86,26 @@ async def _page(request, *, scope, owner, title, style, supported, all_users=Non
                 ttl = form.get("ttl", "")
                 if ttl not in {"", "3600", "86400", "604800"}:
                     raise permissions.PermissionError("ERR_FS_GRANT_INVALID")
-                await asyncio.to_thread(
-                    permissions.create_grant, owner=owner, device_id=scope,
+                options = dict(
                     path=form.get("path", ""), kind=form.get("kind", ""),
                     read=form.get("read") == "on", write=form.get("write") == "on",
                     recursive=form.get("recursive") == "on", overwrite=form.get("overwrite") == "on",
                     expires_at=int(time.time()) + int(ttl) if ttl else None,
                     actor=request["authenticated_user_id"])
+                if scope == "server":
+                    grant = permissions.validate_grant(**options, style=style)
+                    await asyncio.to_thread(host_files.probe_grant, owner, grant)
+                await asyncio.to_thread(
+                    permissions.create_grant, owner=owner, device_id=scope,
+                    **options)
             else:
                 raise web.HTTPBadRequest()
         except permissions.PermissionError as exc:
             error = _msg(str(exc))
         else:
             raise web.HTTPSeeOther(str(request.rel_url))
-    grants = await asyncio.to_thread(permissions.list_grants, owner, scope)
+    grants = await asyncio.to_thread(_server_grants, owner) if scope == "server" else (
+        await asyncio.to_thread(permissions.list_grants, owner, scope))
     return web.Response(text=render_template(
         "filesystem_permissions.html", scope=scope, owner=owner, title=title,
         grants=grants, style=style, supported=supported, all_users=all_users,

@@ -26,6 +26,7 @@ ERROR_CODES = frozenset({
     "ERR_FS_AUTHORITY_INVALID", "ERR_FS_INVOCATION_INVALID", "ERR_FS_REQUEST_EXPIRED", "ERR_FS_TRANSFER_INVALID",
     "ERR_FS_SIZE_LIMIT", "ERR_FS_DEST_EXISTS", "ERR_FS_HASH_MISMATCH", "ERR_FS_SOURCE_CHANGED",
     "ERR_FS_BINARY_ENCODING_REQUIRED", "ERR_FS_BROKER_UNSUPPORTED", "ERR_FS_IO",
+    "ERR_FS_ACCESS_UNAVAILABLE", "ERR_FS_HOST_UNAVAILABLE",
 })
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS filesystem_grants (
@@ -99,12 +100,12 @@ def _validate_scope(owner: str, device_id: str, db_path=None) -> str:
     return path_style(device_id, db_path=db_path)
 
 
-def create_grant(*, owner: str, device_id: str, path: str, kind: str,
-                 read: bool, write: bool, recursive: bool = False,
-                 overwrite: bool = False, expires_at: int | None = None,
-                 actor: str, db_path=None, now: int | None = None) -> str:
+def validate_grant(*, path: str, kind: str, read: bool, write: bool,
+                   recursive: bool = False, overwrite: bool = False,
+                   expires_at: int | None = None, actor: str,
+                   style: str = "posix", now: int | None = None) -> dict:
+    """Validate a form before any probe or persistent grant is attempted."""
     now = int(time.time()) if now is None else now
-    style = _validate_scope(owner, device_id, db_path)
     path = normalize_path(path, style)
     flags = (read, write, recursive, overwrite)
     if (kind not in {"file", "folder"} or any(type(v) is not bool for v in flags)
@@ -112,6 +113,22 @@ def create_grant(*, owner: str, device_id: str, path: str, kind: str,
             or (overwrite and not write) or not actor
             or (expires_at is not None and (type(expires_at) is not int or expires_at <= now))):
         raise PermissionError("ERR_FS_GRANT_INVALID")
+    return {"path": path, "path_style": style, "kind": kind,
+            "can_read": int(read), "can_write": int(write),
+            "recursive": int(recursive), "can_overwrite": int(overwrite),
+            "expires_at": expires_at}
+
+
+def create_grant(*, owner: str, device_id: str, path: str, kind: str,
+                 read: bool, write: bool, recursive: bool = False,
+                 overwrite: bool = False, expires_at: int | None = None,
+                 actor: str, db_path=None, now: int | None = None) -> str:
+    now = int(time.time()) if now is None else now
+    style = _validate_scope(owner, device_id, db_path)
+    checked = validate_grant(path=path, kind=kind, read=read, write=write,
+                             recursive=recursive, overwrite=overwrite,
+                             expires_at=expires_at, actor=actor, style=style, now=now)
+    path = checked["path"]
     grant_id = uuid.uuid4().hex
     conn = _open(db_path)
     try:
@@ -151,6 +168,10 @@ def list_grants(owner: str, device_id: str, *, db_path=None, active_only=False,
             "expired" if item["expires_at"] is not None and item["expires_at"] <= now else "active")
         if not active_only or item["state"] == "active":
             result.append(item)
+    # Active first, newest first; then the latest to stop applying.
+    result.sort(key=lambda grant: (
+        (1, -(grant["revoked_at"] if grant["revoked_at"] is not None else grant["expires_at"]))
+        if grant["state"] != "active" else (0, 0)))
     return result
 
 
@@ -276,7 +297,7 @@ def contract(manifest: dict, args: dict | None = None) -> str | None:
                              or not when["values"]):
         raise PermissionError("ERR_FS_CONTRACT_INVALID")
     if args is not None:
-        if args.get("client", "local") != "local" or args.get("repo"):
+        if args.get("client", "local") != "local" or (args.get("repo") and "client" not in args):
             return None
         if when and not any(type(args.get(when["arg"])) is type(v) and args.get(when["arg"]) == v for v in when["values"]):
             return None

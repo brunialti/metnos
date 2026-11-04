@@ -345,6 +345,19 @@ def normalize_terminal(framework, intent, query: str = "", catalog=None):
     )
     if web_content:
         r.update(mode=T, manifest_declared=False)
+    if producer == "read_files" and r["intent_class"] in {READ, VISUALIZE}:
+        # A request to see a reader's content has the same meaning as a
+        # request to read it.  File discovery still uses metadata tables;
+        # explicit tables, parsed records and downstream transforms retain
+        # their own terminal projection.
+        tabular_read = (
+            (steps[ppos - 1].args or {}).get("parse") == "json"
+            or _dl.match("output.table_request", query or "")
+            or _terminal_entries_pos(steps, ppos) != ppos
+            or declared_presentation.get("default_view") == "list"
+            or verb == "list"
+        )
+        r.update(mode=L if tabular_read else T)
     info.update(r)
 
     from engine.types import StepSpec, Framework  # lazy: evita import circolari

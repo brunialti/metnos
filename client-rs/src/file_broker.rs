@@ -1008,14 +1008,14 @@ async fn read(session: &Session<'_>, args: &Value) -> Result<Value> {
             session.check("read",&path,false,false,false,false).await?;
             let guard=Guard::new(&path)?;let mut file=guard.open(false,false)?;
             let before=file_identity(&file)?;let size=file.metadata()?.len();
-            let offset=if tail>0 {size.saturating_sub(tail)}else{args.get("offset").and_then(Value::as_u64).unwrap_or(0)};
+            let offset=if tail>0 {size.saturating_sub(limit as u64)}else{args.get("offset").and_then(Value::as_u64).unwrap_or(0)};
             file.seek(SeekFrom::Start(offset))?;
             let mut bytes=Vec::new();std::io::Read::by_ref(&mut file).take(limit as u64).read_to_end(&mut bytes)?;
             if before!=file_identity(&file)? {bail!("ERR_FS_SOURCE_CHANGED");}
             session.check("read",&path,false,false,false,false).await?;
             let encoding=args.get("encoding").and_then(Value::as_str).unwrap_or("utf-8");
             let content=match encoding {"binary"=>STANDARD.encode(&bytes),"latin-1"=>bytes.iter().map(|v|char::from(*v)).collect(),"utf-8"=>String::from_utf8(bytes.clone()).map_err(|_|anyhow!("ERR_FS_BINARY_ENCODING_REQUIRED"))?,_=>bail!("ERR_FS_BROKER_UNSUPPORTED")};
-            let mut entry=json!({"path":path,"content":content,"size":size,"bytes_read":bytes.len(),"offset":offset,"truncated":offset+(bytes.len() as u64)<size,"encoding":encoding});
+            let mut entry=json!({"path":path,"content":content,"size":size,"bytes_read":bytes.len(),"offset":offset,"truncated":offset>0||offset+(bytes.len() as u64)<size,"encoding":encoding});
             if args.get("parse").and_then(Value::as_str)==Some("json") {
                 let parsed:Value=serde_json::from_str(entry["content"].as_str().unwrap())?;
                 if let Some(fields)=parsed.as_object(){for (key,value) in fields {if key!="path" {entry[key]=value.clone();}}}else{entry["value"]=parsed;}
@@ -1059,6 +1059,39 @@ fn file_identity(file: &File) -> Result<(u64, u64, u64, u128)> {
             stamp,
         ))
     }
+}
+
+fn file_sha256(file: &mut File) -> Result<String> {
+    file.flush()?;
+    file.seek(SeekFrom::Start(0))?;
+    let mut hash = Sha256::new();
+    let mut buffer = vec![0; CHUNK];
+    loop {
+        let count = file.read(&mut buffer)?;
+        if count == 0 {
+            return Ok(format!("{:x}", hash.finalize()));
+        }
+        hash.update(&buffer[..count]);
+    }
+}
+
+/// An undo acts only on what the original operation left there: a file
+/// changed since then is the user's.
+fn require_content(file: &mut File, expected: Option<&str>) -> Result<()> {
+    if let Some(expected) = expected {
+        if file_sha256(file)? != expected {
+            bail!("ERR_FS_SOURCE_CHANGED");
+        }
+    }
+    Ok(())
+}
+
+/// Characters past U+00FF have no latin-1 byte: refused, as on the server.
+fn latin1_bytes(content: &str) -> Result<Vec<u8>> {
+    content
+        .chars()
+        .map(|c| u8::try_from(c as u32).map_err(|_| anyhow!("ERR_FS_BROKER_UNSUPPORTED")))
+        .collect()
 }
 
 async fn backup(
@@ -1164,7 +1197,7 @@ async fn write(session: &Session<'_>, args: &Value) -> Result<Value> {
         let result:Result<Value>=async {
             let content=spec.get("content").and_then(Value::as_str).context("ERR_FS_BROKER_UNSUPPORTED")?;
             let encoding=spec.get("encoding").or_else(||args.get("encoding")).and_then(Value::as_str).unwrap_or("utf-8");
-            let data=match encoding {"binary"=>STANDARD.decode(content)?,"utf-8"=>content.as_bytes().to_vec(),_=>bail!("ERR_FS_BROKER_UNSUPPORTED")};
+            let data=match encoding {"binary"=>STANDARD.decode(content)?,"utf-8"=>content.as_bytes().to_vec(),"latin-1"=>latin1_bytes(content)?,_=>bail!("ERR_FS_BROKER_UNSUPPORTED")};
             if data.len()>MAX_READ{bail!("ERR_FS_SIZE_LIMIT");}
             let mode=spec.get("mode").or_else(||args.get("mode")).and_then(Value::as_str).unwrap_or("overwrite");
             if !["overwrite","append","fail_if_exists","skip_if_exists"].contains(&mode){bail!("ERR_FS_BROKER_UNSUPPORTED");}
@@ -1177,7 +1210,7 @@ async fn write(session: &Session<'_>, args: &Value) -> Result<Value> {
             let prior=previous.as_ref().map(file_identity).transpose()?;
             let blob=if let Some(file)=previous.as_mut(){Some(backup(session,file,"write",path).await?)}else{None};
             let (stage,mut out)=guard.stage()?;
-            let work:Result<()>=async {
+            let work:Result<String>=async {
                 if mode=="append" {if let Some(file)=previous.as_mut(){let mut buffer=vec![0;CHUNK];loop {session.check("write",path,true,false,false,true).await?;let n=file.read(&mut buffer)?;if n==0 {break;}out.write_all(&buffer[..n])?;}}}
                 out.write_all(&data)?;
                 if out.metadata()?.len()>MAX_COPY {bail!("ERR_FS_SIZE_LIMIT");}
@@ -1185,10 +1218,11 @@ async fn write(session: &Session<'_>, args: &Value) -> Result<Value> {
                 if previous.as_ref().map(file_identity).transpose()?!=prior {bail!("ERR_FS_SOURCE_CHANGED");}
                 let current=match guard.open(false,false){Ok(file)=>Some(file_identity(&file)?),Err(e) if is_missing(&e)=>None,Err(e)=>return Err(e)};
                 if current!=prior {bail!("ERR_FS_SOURCE_CHANGED");}
-                drop(previous.take());guard.commit(&stage,&out,blob.is_some())?;Ok(())
+                let digest=file_sha256(&mut out)?;
+                drop(previous.take());guard.commit(&stage,&out,blob.is_some())?;Ok(digest)
             }.await;
-            drop(out);if work.is_err(){stage.cleanup();}work?;
-            Ok(json!({"path":path,"created":blob.is_none(),"prev_blob_path":blob,"bytes_written":data.len(),"encoding":encoding}))
+            drop(out);if work.is_err(){stage.cleanup();}let digest=work?;
+            Ok(json!({"path":path,"created":blob.is_none(),"prev_blob_path":blob,"bytes_written":data.len(),"encoding":encoding,"sha256":digest}))
         }.await;
         match result {
             Ok(value) => results.push(value),
@@ -1269,6 +1303,12 @@ async fn copy_one(
         bail!("ERR_FS_DEST_EXISTS");
     }
     let before = previous.as_ref().map(file_identity).transpose()?;
+    if !remote_dst {
+        if let Some(expected) = entry["expected_sha256"].as_str() {
+            let file = previous.as_mut().context("ERR_FS_SOURCE_CHANGED")?;
+            require_content(file, Some(expected))?;
+        }
+    }
     let blob = if let Some(file) = previous.as_mut() {
         Some(backup(session, file, "copy", dst).await?)
     } else {
@@ -1343,6 +1383,11 @@ async fn delete(session: &Session<'_>, args: &Value) -> Result<Value> {
             let guard = Guard::new(&path)?;
             let mut file = guard.open(false, false)?;
             let before = file_identity(&file)?;
+            let expected = args
+                .get("expected_sha256")
+                .and_then(|map| map.get(&path))
+                .and_then(Value::as_str);
+            require_content(&mut file, expected)?;
             let blob = backup(session, &mut file, "delete", &path).await?;
             session
                 .check("delete", &path, true, false, false, false)
@@ -1408,6 +1453,31 @@ mod tests {
             can_overwrite: 0,
             expires_at: None,
         }
+    }
+
+    #[test]
+    fn latin1_refuses_what_it_cannot_write() {
+        assert_eq!(latin1_bytes("caffè").unwrap(), b"caff\xe8");
+        assert!(latin1_bytes("10 €").is_err());
+    }
+
+    #[test]
+    fn an_undo_acts_only_on_the_content_it_left() {
+        let dir = std::env::temp_dir().join(format!("metnos-require-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("a.txt");
+        fs::write(&path, b"abc").unwrap();
+        let mut file = OpenOptions::new().read(true).open(&path).unwrap();
+        let digest = file_sha256(&mut file).unwrap();
+        assert_eq!(
+            digest,
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+        assert!(require_content(&mut file, Some(&digest)).is_ok());
+        assert!(require_content(&mut file, None).is_ok());
+        let refused = require_content(&mut file, Some("0")).unwrap_err();
+        assert_eq!(refused.to_string(), "ERR_FS_SOURCE_CHANGED");
+        fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

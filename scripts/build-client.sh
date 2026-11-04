@@ -25,6 +25,10 @@
 #   <version>/<target>/metnos-client[.exe].sig firma Ed25519 (raw)
 #   manifest.json                              indice (latest + sha256)
 #   install.sh, install.ps1                    installer con pubkey pinnata
+#
+# Tutto si prepara in un'area temporanea accanto al mirror e passa al pubblico
+# con rinomine: chi legge vede la versione precedente completa o la nuova
+# completa, mai una via di mezzo. Una versione pubblicata non si riscrive.
 
 set -euo pipefail
 
@@ -38,7 +42,27 @@ REPO="$(cd "$(dirname "$0")/.." && pwd)"
 CLIENT_DIR="$REPO/client-rs"
 MIRROR_ROOT="${METNOS_MIRROR_ROOT:-$HOME/.local/share/metnos/mirror}"
 CLIENT_OUT="$MIRROR_ROOT/client"
-SIGNER="$REPO/scripts/client_signing.py"
+SIGNER="${METNOS_CLIENT_SIGNER:-$REPO/scripts/client_signing.py}"
+
+# Il client decide se aggiornarsi confrontando il manifest con la versione
+# compilata: quella scritta qui deve essere la stessa, prima di ogni scrittura.
+for CRATE in client-rs helper-rs; do
+    DECLARED=$(sed -n 's/^version = "\(.*\)"$/\1/p' "$REPO/$CRATE/Cargo.toml" | head -1)
+    if [ "$DECLARED" != "$VERSION" ]; then
+        echo "ERROR: $CRATE dichiara $DECLARED, non $VERSION" >&2
+        exit 1
+    fi
+done
+
+mkdir -p "$CLIENT_OUT"
+exec 9>"$CLIENT_OUT/.publish.lock"
+flock -n 9 || { echo "ERROR: un'altra pubblicazione e' in corso" >&2; exit 1; }
+if [ -e "$CLIENT_OUT/$VERSION" ]; then
+    echo "ERROR: $VERSION e' gia' pubblicata: una versione non si riscrive" >&2
+    exit 1
+fi
+STAGE="$(mktemp -d "$CLIENT_OUT/.stage-XXXXXX")"
+trap 'rm -rf "$STAGE"' EXIT
 
 echo "==> building metnos-client v$VERSION"
 
@@ -89,7 +113,7 @@ for TARGET in "${TARGETS[@]}"; do
         SRC="${CARGO_TARGET_DIR:-$CRATE_DIR/target}/$TARGET/release/$BIN_NAME"
         [ -f "$SRC" ] || { echo "ERROR: $SRC not produced" >&2; exit 1; }
 
-        DST_DIR="$CLIENT_OUT/$VERSION/$TARGET"
+        DST_DIR="$STAGE/$VERSION/$TARGET"
         mkdir -p "$DST_DIR"
         install -m 0644 "$SRC" "$DST_DIR/$BIN_NAME"
         sign_blob "$DST_DIR/$BIN_NAME"
@@ -104,12 +128,14 @@ done
 # Scritto in Python: costruire JSON a mano in bash e' il posto dove una
 # virgola di troppo passa inosservata fino al primo aggiornamento fallito.
 MANIFEST="$CLIENT_OUT/manifest.json"
-python3 - "$CLIENT_OUT" "$VERSION" "$MANIFEST" "${TARGETS[@]}" <<'PYEOF'
+python3 - "$STAGE" "$VERSION" "$MANIFEST" "${TARGETS[@]}" <<'PYEOF'
 import hashlib, json, sys
 from pathlib import Path
 
 out, version, manifest_path = Path(sys.argv[1]), sys.argv[2], Path(sys.argv[3])
 targets = sys.argv[4:]
+versioni = (json.loads(manifest_path.read_text()).get("versions", {})
+            if manifest_path.exists() else {})
 
 # Il nome del componente e' la chiave: chi cerca «helper» chiede «helper», e
 # non deve sapere come si chiama il file su quel sistema.
@@ -132,20 +158,26 @@ for target in targets:
     if trovati:
         per_target[target] = trovati
 
-manifest_path.write_text(json.dumps(
-    {"latest": version, "versions": {version: per_target}}, indent=2) + "\n")
+(out / "manifest.json").write_text(json.dumps(
+    {"latest": version, "versions": {**versioni, version: per_target}}, indent=2) + "\n")
 PYEOF
-echo "==> manifest written: $MANIFEST"
 
 # --- installer con pubkey server pinnata ----------------------------------
 PUBKEY_DER_B64=$(python3 "$SIGNER" pubkey-der-b64)
 [ -n "$PUBKEY_DER_B64" ] || { echo "ERROR: pubkey server non disponibile" >&2; exit 1; }
 
 sed "s|@@SERVER_PUBKEY_DER_B64@@|$PUBKEY_DER_B64|g" \
-    "$CLIENT_DIR/install/install.sh.in" > "$CLIENT_OUT/install.sh"
+    "$CLIENT_DIR/install/install.sh.in" > "$STAGE/install.sh"
 sed "s|@@SERVER_PUBKEY_DER_B64@@|$PUBKEY_DER_B64|g" \
-    "$CLIENT_DIR/install/install.ps1.in" > "$CLIENT_OUT/install.ps1"
-chmod 0644 "$CLIENT_OUT/install.sh" "$CLIENT_OUT/install.ps1"
+    "$CLIENT_DIR/install/install.ps1.in" > "$STAGE/install.ps1"
+chmod 0644 "$STAGE/install.sh" "$STAGE/install.ps1" "$STAGE/manifest.json"
 echo "==> installer generati (pubkey pinnata: ${PUBKEY_DER_B64:0:16}...)"
+
+# --- passaggio al pubblico ------------------------------------------------
+# L'indice per ultimo: finche' non cambia, nessuno cerca la versione nuova.
+mv "$STAGE/$VERSION" "$CLIENT_OUT/$VERSION"
+mv -f "$STAGE/install.sh" "$STAGE/install.ps1" "$CLIENT_OUT/"
+mv -f "$STAGE/manifest.json" "$MANIFEST"
+echo "==> manifest written: $MANIFEST"
 
 echo "==> binaries in $CLIENT_OUT (latest: $VERSION)"

@@ -90,14 +90,14 @@
     "version_hash": "sha256:a7c7badc6472229fff27f05e1ff4141bc6d19e18855760cbc9371933357f9b63"
   },
   "extract_entries": {
-    "source_hash": "sha256:7b0bb9955cd02424b9fff5449376a22bdcca19aff04a501f2e48a438617ae6e4",
+    "source_hash": "sha256:a007d9590f76beb98060a0cb8a974a6794ad1a669f3576e6607a682eac1afb29",
     "source_lang": "it",
-    "version_hash": "sha256:b27415b5912b6a599f6fc5f95b24178d321a015c3dc4c4c378f718eba44568e9"
+    "version_hash": "sha256:da98e01f0a8f6f3da81d394af8549b4d05e56705af0a634bf24f0f6ba16a2c8b"
   },
   "extract_entries_batch": {
-    "source_hash": "sha256:d283c6f8893b5d30243ad7f8e66e8d9f8d83f7440703b485ae55b6128bc00c24",
+    "source_hash": "sha256:5875ecaff0db87649e507abad4d4febd61d861a7bc1ef5a05e4a27b895884ffd",
     "source_lang": "it",
-    "version_hash": "sha256:baa49d89f94f5c6b3978c35e8945507abe2dcb21642c5a77fcfab2a165f0b42d"
+    "version_hash": "sha256:25a2a7863956a7b1a53e30d19e54f1a1d81530553ecdf76b99bfe8f918c8bb6c"
   },
   "extract_entries_headings": {
     "source_hash": "sha256:4ffee798a0b225e0b29203afe295f7d73a7bdf2086100bd643c8610e1bafab8c",

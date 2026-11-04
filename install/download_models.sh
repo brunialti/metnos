@@ -11,10 +11,9 @@
 #      → $MODELS_DIR/siglip/
 #   2. InsightFace buffalo_l (RetinaFace det_10g + ArcFace w600k_r50)
 #      → $MODELS_DIR/face/
-#   3. recaptcha-classification-57k (YOLO ONNX; card MIT, export metadata
-#      AGPL-3.0): the public classifier of
-#      reCAPTCHA 3x3 image tiles → $MODELS_DIR/captcha-grid/. Without it every
-#      image grid is left to the person.
+#   3. recaptcha-classification-57k by DannyLuna (YOLO ONNX, MIT): the public
+#      classifier of reCAPTCHA 3x3 image tiles → $MODELS_DIR/captcha-grid/.
+#      Only when named. Without it every image grid is left to the person.
 #
 # MODELS_DIR deriva da METNOS_MODELS_DIR, default <user_data>/models.
 #
@@ -24,7 +23,7 @@
 # fornito/scaricato a parte. Questo script scarica solo SigLIP + face.
 #
 # Uso:
-#   ./download_models.sh           # scarica tutto
+#   ./download_models.sh           # scarica SigLIP + face
 #   ./download_models.sh --dry-run # stampa cosa farebbe, non scarica
 #   ./download_models.sh siglip    # solo SigLIP
 #   ./download_models.sh face      # solo face pack
@@ -50,7 +49,7 @@ for arg in "$@"; do
             ;;
     esac
 done
-[[ ${#TARGETS[@]} -eq 0 ]] && TARGETS=(siglip face captcha-grid)
+[[ ${#TARGETS[@]} -eq 0 ]] && TARGETS=(siglip face)
 
 # Same default as runtime/config.py, independent of the sealed source tree.
 MODELS_DIR="${METNOS_MODELS_DIR:-${METNOS_USER_DATA:-$HOME/.local/share/metnos}/models}"

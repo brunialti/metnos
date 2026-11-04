@@ -6,16 +6,18 @@ Server filesystem access uses directory descriptors and refuses links.
 """
 from __future__ import annotations
 
-import base64
-import hashlib
 import json
 import ntpath
 import os
 import re
-import secrets
-import stat
 import time
 import sqlite3
+from contextlib import contextmanager
+from pathlib import Path
+
+import filesystem_transfer_io
+import server_filesystem_host as host
+import server_filesystem_protocol as protocol
 
 import filesystem_io as io
 
@@ -35,7 +37,7 @@ CREATE TABLE IF NOT EXISTS filesystem_transfers (
  invocation_id TEXT NOT NULL, entry_index INTEGER NOT NULL, temp_name TEXT NOT NULL,
  destination TEXT NOT NULL, written INTEGER NOT NULL, inode INTEGER NOT NULL,
  created_at INTEGER NOT NULL, committed INTEGER NOT NULL DEFAULT 0,
- receipt_json TEXT,
+ receipt_json TEXT, backend TEXT NOT NULL DEFAULT 'native',
  PRIMARY KEY(invocation_id, entry_index)
 );
 """
@@ -109,7 +111,13 @@ def copy_entries(args, device_style):
         same_path = src.translate(lower) == dst.translate(lower) if source_scope == destination_scope == "device" and device_style == "windows" else src == dst
         if same_path and source_scope == destination_scope:
             _error()
-        result.append({"index": i, "src": src, "dst": dst, "source_scope": source_scope, "destination_scope": destination_scope})
+        item = {"index": i, "src": src, "dst": dst, "source_scope": source_scope, "destination_scope": destination_scope}
+        expected = entry.get("expected_sha256")
+        if expected is not None:
+            if not isinstance(expected, str) or not re.fullmatch("[0-9a-f]{64}", expected):
+                _error()
+            item["expected_sha256"] = expected
+        result.append(item)
     if len({(e["destination_scope"], e["dst"].translate(str.maketrans("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz")) if device_style == "windows" and e["destination_scope"] == "device" else e["dst"]) for e in result}) != len(result):
         _error()
     return result
@@ -147,17 +155,20 @@ def _undo_sources(dev, payload, entries, conn):
             if not re.fullmatch(r"[0-9a-f]{64}\.bin", basename):
                 continue
             if scope == "server":
-                root = C.PATH_USER_DATA / "_history" / payload["turn_id"] / "blob"
-                if os.path.dirname(blob) != str(root):
-                    continue
                 receipts = conn.execute(
-                    "SELECT receipt_json, destination FROM filesystem_transfers "
+                    "SELECT receipt_json, destination, backend FROM filesystem_transfers "
                     "WHERE invocation_id=? AND committed=1 AND receipt_json IS NOT NULL",
                     (row["invocation_id"],))
-                if not any(r["destination"] == destination and
-                           blob in (json.loads(r["receipt_json"]).get("prev_blob_path"),
-                                    (json.loads(r["receipt_json"]).get("result") or {}).get("blob_path"))
-                           for r in receipts):
+                verified = False
+                for receipt_row in receipts:
+                    recorded = json.loads(receipt_row["receipt_json"])
+                    if (receipt_row["destination"] != destination or blob not in
+                            (recorded.get("prev_blob_path"), (recorded.get("result") or {}).get("blob_path"))):
+                        continue
+                    if os.path.dirname(blob) == str(_history_root(receipt_row["backend"], payload["turn_id"])):
+                        verified = True
+                        break
+                if not verified:
                     continue
             found[(scope, blob, destination)] = {"path": blob, "sha256": basename[:-4],
                                                   "scope": scope, "destination": destination}
@@ -188,238 +199,207 @@ def _row(conn, invocation_id, index):
                         (invocation_id, index)).fetchone()
 
 
-def _stage_file(parent, row):
-    fd = io.open_file(parent, row["temp_name"], os.O_RDWR)
-    if os.fstat(fd).st_ino != row["inode"] or os.fstat(fd).st_size != row["written"]:
-        os.close(fd)
-        _error("ERR_FS_TRANSFER_INVALID")
-    return fd
+def _ensure_schema(conn):
+    conn.executescript(permissions.SCHEMA + SCHEMA)
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        if "backend" not in {r[1] for r in conn.execute("PRAGMA table_info(filesystem_transfers)")}:
+            conn.execute("ALTER TABLE filesystem_transfers ADD COLUMN backend TEXT NOT NULL DEFAULT 'native'")
+        conn.commit()
+    finally:
+        if conn.in_transaction:
+            conn.rollback()
+
+
+def _state(row):
+    if row is None:
+        return None
+    return {**{key: row[key] for key in ("temp_name", "destination", "written", "inode", "created_at", "committed")},
+            "receipt": json.loads(row["receipt_json"]) if row["receipt_json"] else None}
+
+
+def _history_root(backend, turn_id, binding=None):
+    if backend == "host":
+        binding = binding or host.configuration()
+        if binding is None:
+            _error("ERR_FS_HOST_UNAVAILABLE")
+        data = Path(binding["state_dir"]) / "data"
+    else:
+        data = C.PATH_USER_DATA
+    return data / "_history" / turn_id / "blob"
+
+
+class _TransferAuthority:
+    """One signed entry and its receipt; the helper never receives a database."""
+    def __init__(self, conn, key, transfer, backend, fresh, overwrite, turn_id, binding):
+        self.conn, self.key, self.transfer, self.backend = conn, key, transfer, backend
+        self.fresh, self.overwrite = fresh, overwrite
+        self.turn_id, self.binding = turn_id, binding
+        self.current = _state(_row(conn, *key))
+        self.active = False
+
+    def check(self, path, action, **kwargs):
+        expected = "read" if self.transfer["action"] == "read" and not self.transfer["internal"] else "write"
+        if (path != self.transfer["check_path"] or action != expected
+                or self.transfer["action"] == "abort" or set(kwargs) - {"overwrite"}
+                or kwargs.get("overwrite") and (action != "write" or not self.transfer["overwrite"])):
+            _error("ERR_FS_AUTHORITY_INVALID")
+        io.reserved(path)
+        self.fresh()
+        if kwargs.get("overwrite"):
+            self.overwrite()
+
+    @contextmanager
+    def mutation(self):
+        if self.active or self.transfer["action"] == "read":
+            _error("ERR_FS_AUTHORITY_INVALID")
+        old = self.current
+        self.conn.execute("BEGIN IMMEDIATE")
+        self.active = True
+        try:
+            stored = _row(self.conn, *self.key)
+            if (_state(stored) != self.current
+                    or stored is not None and stored["backend"] != self.backend):
+                _error("ERR_FS_TRANSFER_INVALID")
+            if self.transfer["action"] != "abort":
+                self.fresh()
+            yield
+            self.conn.commit()
+        except BaseException:
+            self.conn.rollback()
+            self.current = old
+            raise
+        finally:
+            self.active = False
+
+    def checkpoint(self, row):
+        if not self.active:
+            with self.mutation():
+                self.checkpoint(row)
+            return
+        protocol._transfer_row(row)
+        action = self.transfer["action"]
+        if row is None:
+            if action != "abort" or self.current is None or self.current["committed"]:
+                _error("ERR_FS_AUTHORITY_INVALID")
+            self.conn.execute("DELETE FROM filesystem_transfers WHERE invocation_id=? AND entry_index=?", self.key)
+        else:
+            if (action not in {"write", "commit", "delete"} or row["destination"] != self.transfer["path"]
+                    or self.current is not None and self.current["committed"]):
+                _error("ERR_FS_AUTHORITY_INVALID")
+            # Inode 0 is a staging name made durable before its file exists.
+            pinned = ("temp_name", "destination", "created_at")
+            if self.current is not None and any(row[k] != self.current[k] for k in (
+                    pinned + ("inode",) if self.current["inode"] else pinned)):
+                _error("ERR_FS_AUTHORITY_INVALID")
+            if action == "write":
+                import base64
+                expected = self.transfer["offset"] + len(base64.b64decode(self.transfer["content"], validate=True))
+                reserving = self.current is None and row["inode"] == 0 and row["written"] == 0
+                if (not row["temp_name"] or row["committed"] or row["receipt"] is not None
+                        or not reserving and (row["written"] != expected or row["inode"] == 0
+                            or self.transfer["offset"] != (self.current["written"] if self.current else 0)
+                            or self.current and self.current["receipt"] is not None)):
+                    _error("ERR_FS_AUTHORITY_INVALID")
+            elif action == "commit":
+                receipt = row["receipt"]
+                if (self.current is None or row["written"] != self.current["written"]
+                        or not isinstance(receipt, dict)
+                        or set(receipt) != {"committed", "size", "sha256", "created", "prev_blob_path", "destination_scope"}
+                        or receipt["committed"] is not True or receipt["size"] != self.transfer["size"]
+                        or receipt["sha256"] != self.transfer["sha256"] or type(receipt["created"]) is not bool
+                        or receipt["destination_scope"] != "server"
+                        or receipt["created"] and receipt["prev_blob_path"] is not None):
+                    _error("ERR_FS_AUTHORITY_INVALID")
+                self._blob(receipt["prev_blob_path"], optional=receipt["created"])
+                if not receipt["created"]:
+                    self.check(self.transfer["check_path"], "write", overwrite=True)
+            else:
+                receipt = row["receipt"]
+                if not isinstance(receipt, dict) or set(receipt) != {"result", "identity"} or row["temp_name"]:
+                    _error("ERR_FS_AUTHORITY_INVALID")
+                effect, identity = receipt["result"], receipt["identity"]
+                if (not isinstance(effect, dict) or set(effect) != {"path", "deleted", "blob_path", "restore_mode", "destination_scope"}
+                        or effect["path"] != self.transfer["path"] or effect["deleted"] is not True
+                        or effect["restore_mode"] != "create" or effect["destination_scope"] != "server"
+                        or not isinstance(identity, (list, tuple)) or len(identity) != 4
+                        or identity[1] != row["inode"] or identity[3] != row["written"]):
+                    _error("ERR_FS_AUTHORITY_INVALID")
+                self._blob(effect["blob_path"])
+            if row["committed"] and (self.current is None or self.current["receipt"] != json.loads(json.dumps(row["receipt"]))):
+                _error("ERR_FS_AUTHORITY_INVALID")
+            self.conn.execute(
+                "INSERT INTO filesystem_transfers(invocation_id,entry_index,temp_name,destination,written,inode,created_at,committed,receipt_json,backend) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(invocation_id,entry_index) DO UPDATE SET "
+                "written=excluded.written,inode=excluded.inode,committed=excluded.committed,receipt_json=excluded.receipt_json",
+                (*self.key, row["temp_name"], row["destination"], row["written"], row["inode"], row["created_at"],
+                 row["committed"], json.dumps(row["receipt"]) if row["receipt"] is not None else None, self.backend))
+        self.current = json.loads(json.dumps(row))
+
+    def _blob(self, path, optional=False):
+        if optional and path is None:
+            return
+        if (not isinstance(path, str) or os.path.dirname(path) != str(_history_root(self.backend, self.turn_id, self.binding))
+                or not re.fullmatch(r"[0-9a-f]{64}\.bin", os.path.basename(path))):
+            _error("ERR_FS_AUTHORITY_INVALID")
+
+
+def _dispatch(dev, payload, body, conn, transfer, fresh, overwrite, *, backend=None):
+    row = _row(conn, payload["invocation_id"], body["index"])
+    binding = host.configuration()
+    if backend is None:
+        backend = row["backend"] if row is not None and transfer["action"] != "read" else "host" if binding and not host._workspace(transfer["path"]) else "native"
+    if backend not in {"native", "host"} or backend == "host" and binding is None:
+        _error("ERR_FS_HOST_UNAVAILABLE")
+    request = {"action": "transfer", "owner": dev.owner_user_id, "turn_id": payload["turn_id"], "transfer": transfer}
+    protocol.validate_request(request)
+    authority = _TransferAuthority(conn, (payload["invocation_id"], body["index"]), transfer,
+                                   backend, fresh, overwrite, payload["turn_id"], binding)
+    if backend == "host":
+        return host._exchange(binding, request, authority)
+    return filesystem_transfer_io.execute(transfer, payload["turn_id"], authority)
 
 
 def _transfer(dev, payload, artifact, spec, body, conn, db_path):
-    action, index = body.get("action"), body["index"]
-    key = (payload["invocation_id"], index)
-    # Abort only removes a staging file belonging to this signed invocation.
-    # It is allowed after a grant is revoked, so revocation cannot strand data.
-    if action != "abort":
-        _fresh(dev, body, artifact, spec, conn, db_path)
+    action = body.get("action")
+    undo = _undo_source(dev, payload, spec, conn) if action == "read" else None
     if action == "read" and spec["source_scope"] == "server":
-        offset = body.get("offset")
-        if type(offset) is not int or not 0 <= offset <= MAX_FILE_SIZE:
-            _error()
-        with io.parent(spec["src"], internal=bool(_undo_source(dev, payload, spec, conn))) as (parent, name):
-            fd = io.open_file(parent, name)
-            try:
-                before = io.identity(io.regular(fd))
-                os.lseek(fd, offset, os.SEEK_SET)
-                data = os.read(fd, CHUNK_SIZE)
-                if io.identity(io.regular(fd)) != before:
-                    _error("ERR_FS_SOURCE_CHANGED")
-                _fresh(dev, body, artifact, spec, conn, db_path)
-                return {"content": base64.b64encode(data).decode(), "size": before[3],
-                        "source_identity": ":".join(map(str, before)), "offset": offset}
-            finally:
-                os.close(fd)
-    if spec["destination_scope"] != "server" or action not in {"write", "commit", "abort"}:
+        path, state = spec["src"], None
+    elif action in {"write", "commit", "abort"} and spec["destination_scope"] == "server":
+        path, state = spec["dst"], _state(_row(conn, payload["invocation_id"], body["index"]))
+    else:
         _error()
-    overwrite = payload["args"].get("overwrite") is True
-    with io.parent(spec["dst"]) as (parent, name):
-        row = _row(conn, *key)
-        if action == "abort":
-            if row and not row["committed"]:
-                try:
-                    os.unlink(row["temp_name"], dir_fd=parent)
-                except FileNotFoundError:
-                    pass
-                conn.execute("DELETE FROM filesystem_transfers WHERE invocation_id=? AND entry_index=?", key)
-                conn.commit()
-            return {"aborted": True}
-        if action == "write":
-            content, offset = body.get("content"), body.get("offset")
-            if (not isinstance(content, str) or len(content) > 4 * CHUNK_SIZE // 3 + 4
-                    or type(offset) is not int or offset < 0):
-                _error()
-            try:
-                data = base64.b64decode(content, validate=True)
-            except ValueError:
-                _error()
-            if len(data) > CHUNK_SIZE or offset + len(data) > MAX_FILE_SIZE:
-                _error("ERR_FS_SIZE_LIMIT")
-            conn.execute("BEGIN IMMEDIATE")
-            try:
-                _fresh(dev, body, artifact, spec, conn, db_path)
-                row = _row(conn, *key)
-                if row is None:
-                    if offset != 0:
-                        _error()
-                    temp, fd = io.stage(parent)
-                    try:
-                        inode = os.fstat(fd).st_ino
-                    finally:
-                        os.close(fd)
-                    conn.execute("INSERT INTO filesystem_transfers VALUES(?,?,?,?,?,?,?,0,NULL)",
-                                 (*key, temp, spec["dst"], 0, inode, int(time.time())))
-                    row = _row(conn, *key)
-                if row["committed"] or row["destination"] != spec["dst"]:
-                    _error()
-                fd = _stage_file(parent, row)
-                try:
-                    # Repeating a chunk after a lost reply is safe only when
-                    # the exact bytes at that offset have already been stored.
-                    if offset != row["written"]:
-                        if offset + len(data) > row["written"]:
-                            _error()
-                        os.lseek(fd, offset, os.SEEK_SET)
-                        if os.read(fd, len(data)) != data:
-                            _error()
-                        return {"written": row["written"]}
-                    os.lseek(fd, offset, os.SEEK_SET)
-                    with os.fdopen(os.dup(fd), "wb") as out:
-                        out.write(data)
-                    os.fsync(fd)
-                    conn.execute("UPDATE filesystem_transfers SET written=? WHERE invocation_id=? AND entry_index=?",
-                                 (offset + len(data), *key))
-                finally:
-                    os.close(fd)
-                conn.commit()
-                return {"written": offset + len(data)}
-            finally:
-                if conn.in_transaction:
-                    conn.rollback()
-        if row is None or row["destination"] != spec["dst"]:
-            _error()
-        digest = body.get("sha256")
-        if (type(body.get("size")) is not int or body["size"] != row["written"]
-                or not isinstance(digest, str) or not re.fullmatch("[0-9a-f]{64}", digest)):
-            _error()
-        if row["committed"]:
-            receipt = json.loads(row["receipt_json"])
-            if receipt["sha256"] != digest:
-                _error("ERR_FS_HASH_MISMATCH")
-            return receipt
-        check = lambda: _fresh(dev, body, artifact, spec, conn, db_path)
-        try:
-            fd = _stage_file(parent, row)
-        except FileNotFoundError:
-            # Recover a commit whose atomic rename completed before its final
-            # database acknowledgement. Never manufacture a second operation.
-            receipt = json.loads(row["receipt_json"] or "null")
-            if not receipt:
-                raise
-            fd = io.open_file(parent, name)
-            try:
-                if (os.fstat(fd).st_ino != row["inode"] or os.fstat(fd).st_size != row["written"]
-                        or io.digest(fd, check) != digest or receipt["sha256"] != digest):
-                    _error("ERR_FS_HASH_MISMATCH")
-            finally:
-                os.close(fd)
-            conn.execute("UPDATE filesystem_transfers SET committed=1 WHERE invocation_id=? AND entry_index=?", key)
-            conn.commit()
-            return receipt
-        try:
-            if io.digest(fd, check) != digest:
-                _error("ERR_FS_HASH_MISMATCH")
-            previous = io.existing(parent, name)
-            try:
-                if previous is not None and not overwrite:
-                    _error("ERR_FS_DEST_EXISTS")
-                if previous is not None:
-                    permissions.require(dev.owner_user_id, "server", spec["dst"], "write", conn=conn,
-                                        db_path=db_path, manifest=artifact.parsed, args=payload["args"], overwrite=True)
-                before = io.identity(io.regular(previous)) if previous is not None else None
-                blob = io.backup(previous, payload["turn_id"], check) if previous is not None else None
-                receipt = {"committed": True, "size": row["written"], "sha256": digest,
-                           "created": previous is None, "prev_blob_path": blob, "destination_scope": "server"}
-                # Persist the recovery receipt before the only visible change.
-                conn.execute("UPDATE filesystem_transfers SET receipt_json=? WHERE invocation_id=? AND entry_index=?",
-                             (json.dumps(receipt), *key))
-                conn.commit()
-                conn.execute("BEGIN IMMEDIATE")
-                try:
-                    check()
-                    current = io.existing(parent, name)
-                    try:
-                        if (io.identity(io.regular(current)) if current is not None else None) != before:
-                            _error("ERR_FS_SOURCE_CHANGED")
-                    finally:
-                        if current is not None:
-                            os.close(current)
-                    if previous is not None:
-                        permissions.require(dev.owner_user_id, "server", spec["dst"], "write", conn=conn,
-                                            db_path=db_path, manifest=artifact.parsed, args=payload["args"], overwrite=True)
-                    os.fsync(fd)
-                    io.commit(parent, row["temp_name"], name, overwrite=previous is not None)
-                    conn.execute("UPDATE filesystem_transfers SET committed=1 WHERE invocation_id=? AND entry_index=?", key)
-                    conn.commit()
-                finally:
-                    if conn.in_transaction:
-                        conn.rollback()
-                return receipt
-            finally:
-                if previous is not None:
-                    os.close(previous)
-        finally:
-            os.close(fd)
+    transfer = {"action": action, "path": path, "check_path": spec["dst"] if undo else path,
+                "internal": bool(undo), "overwrite": payload["args"].get("overwrite") is True, "row": state,
+                **{key: body.get(key) if key in {"read": {"offset"}, "write": {"offset", "content"},
+                    "commit": {"size", "sha256"}, "abort": set()}[action] else None
+                   for key in ("offset", "content", "size", "sha256")},
+                "expected_sha256": spec.get("expected_sha256") if action == "commit" else None}
+    backend = None
+    if undo:
+        backend = "native" if os.path.dirname(path) == str(_history_root("native", payload["turn_id"])) else "host"
+    return _dispatch(dev, payload, body, conn, transfer,
+        lambda: _fresh(dev, body, artifact, spec, conn, db_path),
+        lambda: permissions.require(dev.owner_user_id, "server", spec["dst"], "write", conn=conn,
+            db_path=db_path, manifest=artifact.parsed, args=payload["args"], overwrite=True), backend=backend)
 
 
 def _delete(dev, payload, artifact, body, conn, db_path):
-    paths = payload["args"].get("paths")
-    index = body.get("index")
+    paths, index = payload["args"].get("paths"), body.get("index")
     if (payload["args"].get("location") != "server" or not isinstance(paths, list)
             or len(paths) > 100 or type(index) is not int or not 0 <= index < len(paths)):
         _error()
     path = permissions.normalize_path(paths[index], "posix")
-    key = (payload["invocation_id"], index)
     def check():
         _invocation(dev, body, db_path, conn=conn, artifact=artifact)
         permissions.require(dev.owner_user_id, "server", path, "write", db_path=db_path,
                             conn=conn, manifest=artifact.parsed, args=payload["args"])
-    check()
-    row = _row(conn, *key)
-    if row and (row["destination"] != path or row["temp_name"] != ""):
-        _error()
-    if row and row["committed"]:
-        return json.loads(row["receipt_json"])
-    with io.parent(path) as (parent, name):
-        fd = io.existing(parent, name)
-        try:
-            if row:
-                receipt = json.loads(row["receipt_json"])
-                if fd is not None and io.identity(io.regular(fd)) != tuple(receipt["identity"]):
-                    _error("ERR_FS_SOURCE_CHANGED")
-            else:
-                if fd is None:
-                    raise FileNotFoundError(path)
-                before = io.identity(io.regular(fd))
-                blob = io.backup(fd, payload["turn_id"], check)
-                receipt = {"result": {"path": path, "deleted": True, "blob_path": blob,
-                                      "restore_mode": "create", "destination_scope": "server"},
-                           "identity": before}
-                conn.execute("INSERT INTO filesystem_transfers VALUES(?,?,?,?,?,?,?,0,?)",
-                             (*key, "", path, before[3], before[1], int(time.time()), json.dumps(receipt)))
-                conn.commit()
-            conn.execute("BEGIN IMMEDIATE")
-            try:
-                check()
-                current = io.existing(parent, name)
-                try:
-                    if current is not None:
-                        if io.identity(io.regular(current)) != tuple(receipt["identity"]):
-                            _error("ERR_FS_SOURCE_CHANGED")
-                        os.unlink(name, dir_fd=parent)
-                        os.fsync(parent)
-                finally:
-                    if current is not None:
-                        os.close(current)
-                conn.execute("UPDATE filesystem_transfers SET committed=1 WHERE invocation_id=? AND entry_index=?", key)
-                conn.commit()
-            finally:
-                if conn.in_transaction:
-                    conn.rollback()
-            return receipt
-        finally:
-            if fd is not None:
-                os.close(fd)
+    expected = payload["args"].get("expected_sha256")
+    transfer = {"action": "delete", "path": path, "check_path": path, "internal": False, "overwrite": False,
+                "row": _state(_row(conn, payload["invocation_id"], index)),
+                "offset": None, "content": None, "size": None, "sha256": None,
+                "expected_sha256": expected.get(paths[index]) if isinstance(expected, dict) else None}
+    return _dispatch(dev, payload, body, conn, transfer, check, check)
 
 
 def respond(dev, body, *, db_path=None):
@@ -429,7 +409,7 @@ def respond(dev, body, *, db_path=None):
     if type(issued_at) is not int or abs(int(time.time()) - issued_at) > 60:
         _error("ERR_FS_REQUEST_EXPIRED")
     conn = invocations._open_db(db_path)
-    conn.executescript(permissions.SCHEMA + SCHEMA)
+    _ensure_schema(conn)
     try:
         payload, operation, artifact = _invocation(dev, body, db_path, conn=conn)
         conn.execute("BEGIN IMMEDIATE")
@@ -470,30 +450,28 @@ def cleanup_stale_transfers(*, db_path=None):
     try:
         if not conn.execute("SELECT 1 FROM sqlite_master WHERE name='filesystem_transfers'").fetchone():
             return 0
+        _ensure_schema(conn)
         rows = conn.execute(
-            "SELECT f.* FROM filesystem_transfers f JOIN invocations i USING(invocation_id) "
+            "SELECT f.*, i.owner_user_id, i.payload_json FROM filesystem_transfers f JOIN invocations i USING(invocation_id) "
             "JOIN devices d ON d.id=i.device_id WHERE f.committed=0 AND "
             "(i.state<>'delivered' OR i.abandoned_by_turn=1 OR d.revoked_at IS NOT NULL "
             "OR COALESCE(i.delivered_epoch,0)+i.deadline_ms/1000.0<?) LIMIT 128", (time.time(),)).fetchall()
         removed = 0
         for row in rows:
             if not re.fullmatch(r"\.metnos-transfer-[0-9a-f]{48}", row["temp_name"]):
-                continue  # a prepared deletion is an audit receipt, not a stage
+                continue
+            transfer = {"action": "abort", "path": row["destination"], "check_path": row["destination"],
+                        "internal": False, "overwrite": False, "row": _state(row),
+                        "offset": None, "content": None, "size": None, "sha256": None,
+                        "expected_sha256": None}
             try:
-                with io.parent(row["destination"]) as (parent, _):
-                    info = os.stat(row["temp_name"], dir_fd=parent, follow_symlinks=False)
-                    if info.st_ino != row["inode"] or not stat.S_ISREG(info.st_mode):
-                        continue
-                    os.unlink(row["temp_name"], dir_fd=parent)
-                    os.fsync(parent)
-            except FileNotFoundError:
-                pass
+                from types import SimpleNamespace
+                _dispatch(SimpleNamespace(owner_user_id=row["owner_user_id"]), json.loads(row["payload_json"]),
+                          {"index": row["entry_index"]}, conn, transfer, lambda: None, lambda: None,
+                          backend=row["backend"])
+                removed += 1
             except (OSError, ValueError):
                 continue
-            conn.execute("DELETE FROM filesystem_transfers WHERE invocation_id=? AND entry_index=? AND committed=0",
-                         (row["invocation_id"], row["entry_index"]))
-            removed += 1
-        conn.commit()
         return removed
     finally:
         conn.close()

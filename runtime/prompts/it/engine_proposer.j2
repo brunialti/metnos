@@ -128,6 +128,13 @@ H. CLASSIFY → FILTER (tieni solo una classe dopo una classificazione)
 - OK: classify_entries(dimension="importance", classes=["important","normal","low"]) → filter_entries(from_step=2, where_field="importance", where_value="important").
 - ERRORE: filter_entries(kind="classification", type="important").
 
+I. FOGLIO ESISTENTE (dividere le righe in schede, aggiungere una colonna di classi)
+- DEVI: leggere la scheda con read_files_spreadsheet(spreadsheet_id="<foglio>"), trasformare le entries (un filter_entries per ogni scheda da riempire; classify_entries per una colonna con valori da un elenco chiuso e un criterio) e scrivere ogni scheda con write_files_spreadsheet(path="<foglio>", sheet_name="<scheda>", from_step=N).
+- NON DEVI: creare un file nuovo con create_files_spreadsheet, scrivere formule o chiudere senza write_files_spreadsheet quando la richiesta nomina un foglio che esiste già: senza la scrittura il foglio non cambia.
+- OK: esempio astratto, non copiare letteralmente: «nel foglio <F>, scheda <T>, aggiungi la colonna <C>: x se …, y per il resto» → [read_files_spreadsheet(spreadsheet_id="<F>", sheet_name="<T>"), classify_entries(from_step=1, dimension="<C>", classes=["x","y"], criterion="x se …; y per il resto"), write_files_spreadsheet(path="<F>", sheet_name="<T>", from_step=2), final_answer].
+- OK: esempio astratto, non copiare letteralmente: «nel foglio <F> dividi le righe in <A> e <B>; in <A> aggiungi la colonna <C>: x se …, y per il resto» → [read_files_spreadsheet(spreadsheet_id="<F>"), filter_entries(from_step=1, where_field="<campo di A>", where_present=true), classify_entries(from_step=2, dimension="<C>", classes=["x","y"], criterion="x se …; y per il resto"), write_files_spreadsheet(path="<F>", sheet_name="<A>", from_step=3), filter_entries(from_step=1, where_field="<campo di B>", where_present=true), write_files_spreadsheet(path="<F>", sheet_name="<B>", from_step=5), final_answer].
+- ERRORE: create_files_spreadsheet(title="<F>_<A>", column_specs=[{"header": "<C>", "formula": "IF(…)"}]).
+
 C. MUTATING (move/delete/send/write/create/set)
 - Lo step del verbo d'azione richiesto DEVE esserci: mai fermarsi al produttore.
 - Target PUNTUALE gia' NOMINATO nella query (filename esplicito, path, url, id) → tool d'azione come PRIMO step coi literal (§4.2), SENZA produttore davanti. I tool mutating che dichiarano `from_step` accettano in alternativa `entries=[{"path": "<literal>"}]` inline.
@@ -219,14 +226,14 @@ FORMATO USCITA (JSON RIGOROSO, nient'altro)
 {# STATIC-END — confine cache del prefisso (ottimizzazione A, the design guide §11 + ADR-pending).
 SOPRA: solo testo invariante per-query — il prefisso renderizzato resta byte-identico fra
 le query e llama-server lo riusa dal checkpoint n_before_user (prompt_n ~5500 → ~1300).
-SOTTO: solo contenuto per-query ({{ verb }}/{{ obj }}/{{ keywords }}/{{ skeleton }}/{{ prior }}/{{ tools }}/{{ excluded }}/{{ recovery }}/{{ user_query }}),
+SOTTO: solo contenuto per-query ({{ verb }}/{{ obj }}/{{ keywords }}/{{ skeleton }}/{{ prior }}/{{ sheets }}/{{ tools }}/{{ excluded }}/{{ recovery }}/{{ user_query }}),
 inviato come messaggio USER via prompt_loader.get_split. NON spostare interpolazioni sopra
 questa riga, NON aggiungere testo statico sotto. Guard: prompts_lint L6. #}
 INTENT ESTRATTO
 - kind: {{ kind }}
 - verbo: {{ verb }}
 - oggetto: {{ obj }}
-- keywords: {{ keywords }}{{ skeleton }}{{ prior }}
+- keywords: {{ keywords }}{{ skeleton }}{{ prior }}{{ sheets }}
 
 POOL TOOL DISPONIBILI
 {{ tools }}

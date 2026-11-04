@@ -2,7 +2,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name         = "organize_files"
-version      = "0.1.0"
+version      = "0.1.1"
 timeout_s    = 540
 intelligence = "deterministic"
 platforms    = ["linux"]
@@ -48,7 +48,7 @@ equals = "preview"
 effect = "read_only"
 
 [description]
-it = "SCOPO: organizza file: politica chiusa, SHA-256, piano congelato. PATTERN: mode='preview'; form runtime; mode='apply' solo a ripresa autenticata. NON: move risolti, ricerca duplicati, sort/group/classify/order, sovrascrittura, regex/codice. OUT: anteprima completa consultabile o ricevuta reversibile con effetti reali."
+it = "SCOPO: organizza file: politica chiusa, SHA-256, piano congelato. PATTERN: mode='preview'; form runtime; mode='apply' solo a ripresa autenticata. NON: move risolti, cerca duplicati, sort/group/classify/order, sovrascrittura, regex/codice. OUT: anteprima completa consultabile o ricevuta reversibile con effetti reali."
 en = "SCOPO: organize files: closed policy, SHA-256, frozen plan. PATTERN: mode='preview'; runtime form; mode='apply' only on authenticated resume. NON: resolved moves, duplicate search, sort/group/classify/order, overwrite, regex/code. OUT: a complete inspectable preview or a reversible receipt of actual effects."
 
 [code]
