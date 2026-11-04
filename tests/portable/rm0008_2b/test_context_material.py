@@ -344,7 +344,7 @@ def test_property_evidence_changes_with_each_packaged_dependency(tmp_path, monke
     from executor_support import FUNCTIONAL_SUPPORT_FILES
     version, files = next((item[1], item[2]) for item in catalog.CONTEXT_CATALOG_V1
                           if item[0] == "property_catalog")
-    assert version == "5"
+    assert version == "6"
     assert set(FUNCTIONAL_SUPPORT_FILES) <= set(files)
     first = _prepare(tmp_path, monkeypatch)
     stage = support.stage_runtime_sources(tmp_path, monkeypatch)

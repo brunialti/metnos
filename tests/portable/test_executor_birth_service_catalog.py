@@ -33,6 +33,8 @@ _PUBLIC_EXPORT_OMITTED_ENTRYPOINTS = {
     "deploy/backup_nas.sh",
     "deploy/run_prompts_translator.sh",
     "scripts/migrate-syspath-to-package.py",
+    # Retired on 1/11/2026: absent from both trees, like the rename below.
+    "scripts/post-rename-verify.sh",
     "scripts/rename-myclaw-to-metnos.sh",
 }
 # The catalog keeps these so that the old names stay blocked (RM-0008), but
