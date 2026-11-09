@@ -1558,15 +1558,10 @@ HANDCRAFTED_FAMILIES: frozenset[str] = frozenset({
     "create_dirs", "delete_dirs",
 })
 
-# Soglia di Jaccard al di sopra (>=) della quale un synth viene rejected.
-# 0.5 = almeno meta' dei termini sono in comune. Calibrata sul caso live
-# 8/5/2026 (`find_texts` con 5/8 termini overlap su `find_urls`).
-AFFINITY_OVERLAP_THRESHOLD: float = 0.5
-
-# Soglia stretta per skill imported binding-suffixed (ADR 0123): il binding
-# qualifica esplicitamente il dominio remoto, le keyword sovrapposte sono
-# attese. 0.85 = quasi identita' richiesta per parlare di squatting.
-AFFINITY_OVERLAP_THRESHOLD_BINDING: float = 0.85
+# Jaccard at or above which two families collide: the one rule of
+# `affinity_integrity` (RM-0010), calibrated on the live case of 8/5/2026
+# (`find_texts`, 5/8 terms shared with `find_urls`).
+from affinity_integrity import OVERLAP_THRESHOLD as AFFINITY_OVERLAP_THRESHOLD  # noqa: E402
 
 _AFFINITY_AUDIT_DIR = _C.PATH_USER_DATA / "synth_audit"
 
@@ -1599,10 +1594,8 @@ def check_affinity_pair(candidate_aff: set, existing_aff: set,
     se `jaccard >= threshold`. Caller decide cosa fare (reject, audit,
     log) — questa funzione e' un puro predicato deterministico.
 
-    Usato da:
-    - `_check_affinity_overlap(catalog)` al boot (threshold 0.5),
-    - `skill_admission._affinity_overlap_check(plan, ...)` at-import
-       (threshold 0.5 default, 0.85 se plan binding-suffixed).
+    Admission uses `affinity_integrity.findings` (catalog load, import and
+    release alike); this predicate serves comparisons outside admission.
     """
     j = jaccard_affinity(candidate_aff, existing_aff)
     return (j >= threshold, j)
@@ -1615,7 +1608,7 @@ def _apply_affinity_rejections(
         executor = catalog.executors.pop(name, None)
         catalog.rejected.append((
             str(executor.manifest_path) if executor else f"<{name}>",
-            f"affinity_overlap with '{entry['overlapping_with']}' "
+            f"{entry['reason']} with '{entry['overlapping_with']}' "
             f"(jaccard={entry['jaccard']}, shared={entry['shared_terms']})",
         ))
 
@@ -1623,28 +1616,22 @@ def _apply_affinity_rejections(
 def _check_affinity_overlap(
     catalog: Catalog, *, write_audit: bool = True,
 ) -> list[dict]:
-    """Pairwise Jaccard su affinity. Synth con Jaccard >= soglia verso
-    UN handcrafted o un altro synth con identita' strutturale prioritaria
-    viene rejected con motivo `affinity_overlap`. Audit JSONL append.
+    """One affinity rule for every executor (RM-0010, `affinity_integrity`).
 
-    Conserva la priorita' handcrafted-vince (ADR 0079): non viene MAI
-    rifiutato un handcrafted, solo synth (manifest_path dentro
-    SYNTHESIZED_EXECUTORS_DIR). Idempotente: append solo entries nuove.
+    A synthesized or imported executor that breaks it is refused here, where
+    it enters the catalog; an authored one is refused by the release, so here
+    it is only reported. Between two refusable executors the larger structural
+    identity yields, stable across restarts. Refusals append to the audit.
     """
-    rejected_local: list[dict] = []
-    # Snapshot affinity per nome (set per Jaccard).
-    affinities = {n: set(e.affinity or []) for n, e in catalog.executors.items()}
-    # Origin is declared by the contract and survives lifecycle promotion.
-    # Paths constrain allowed code roots, not overlap exemptions.
+    import affinity_integrity
 
-    def _is_synth(name: str) -> bool:
-        ex = catalog.executors.get(name)
-        return ex is not None and getattr(ex, "source", "") == "synthesized"
+    affinities = {n: list(e.affinity or []) for n, e in catalog.executors.items()}
+    affinity_integrity.remember_catalog(affinities)
 
-    def _is_imported(name: str) -> bool:
-        """Use declared skill provenance for the remote-domain exemption."""
+    def _refusable(name: str) -> bool:
         ex = catalog.executors.get(name)
-        return ex is not None and getattr(ex, "source", "") == "imported"
+        return (ex is not None and name not in HANDCRAFTED_FAMILIES
+                and getattr(ex, "source", "") in ("synthesized", "imported"))
 
     def _stable_identity(name: str) -> str:
         """Tie-break with structural identity, never mutable file metadata."""
@@ -1657,70 +1644,34 @@ def _check_affinity_overlap(
             return ex.authoring_manifest_path.as_posix()
         return ex.name
 
-    to_remove: list[tuple[str, dict]] = []
-    for synth_name, synth_aff in affinities.items():
-        # Skip handcrafted (non rifiutiamo mai handcrafted per overlap).
-        if synth_name in HANDCRAFTED_FAMILIES:
+    to_remove: dict[str, dict] = {}
+    # Only a refusable executor makes a breach actionable here: authored ones
+    # meet the rule at release, and the check would read the lexicon for nothing.
+    breaches = (affinity_integrity.findings(affinities)
+                if any(_refusable(name) for name in affinities) else [])
+    for finding in breaches:
+        pair = (finding.name, finding.other) if finding.kind == "overlap" else (finding.name,)
+        candidates = [n for n in pair if _refusable(n) and n not in to_remove]
+        loser = max(candidates, key=_stable_identity) if candidates else None
+        subject = loser or finding.name
+        other = finding.other if subject == finding.name else finding.name
+        left, right = set(affinities.get(subject) or []), set(affinities.get(other) or [])
+        entry = {
+            "name": subject,
+            "reason": "affinity_" + finding.kind,
+            "overlapping_with": other,
+            "jaccard": round(len(left & right) / len(left | right), 3) if left | right else 0.0,
+            "shared_terms": list(finding.terms),
+        }
+        if loser is None:
+            log.warning("[loader] authored executor breaks the affinity rule: %s",
+                        entry)
             continue
-        if not _is_synth(synth_name):
-            continue
-        # Skip imported (ADR 0123): binding qualifica il dominio remoto.
-        if _is_imported(synth_name):
-            continue
-        if not synth_aff:
-            continue
+        to_remove[loser] = entry
 
-        # Confronto verso TUTTI gli altri executor del catalog (handcrafted
-        # canonici + altri synth). Fra due synth vince la minore identita'
-        # strutturale: e' stabile fra restart, copy e nuova pubblicazione.
-        overlap_with: str | None = None
-        overlap_jaccard: float = 0.0
-        overlap_shared: list[str] = []
-        synth_identity = _stable_identity(synth_name)
-        for other_name, other_aff in affinities.items():
-            if other_name == synth_name:
-                continue
-            if not other_aff:
-                continue
-            # Un solo lato della coppia decide: quello con identita' maggiore.
-            if (_is_synth(other_name)
-                    and _stable_identity(other_name) >= synth_identity):
-                continue
-            # Imported (vs imported o vs altri): non bloccano un synth nativo
-            # piu' giovane; il binding e' la sola garanzia di distinzione.
-            if _is_imported(other_name):
-                continue
-            # Delega a SoT centralizzata (ADR 0159): pure Jaccard test.
-            triggered, jaccard = check_affinity_pair(
-                synth_aff, other_aff,
-                threshold=AFFINITY_OVERLAP_THRESHOLD,
-            )
-            if not triggered:
-                continue
-            inter = synth_aff & other_aff
-            # Preferisci handcrafted come "overlapping_with" se entrambi
-            # candidati: l'audit message e' piu' chiaro.
-            if overlap_with is None or (
-                other_name in HANDCRAFTED_FAMILIES
-                and overlap_with not in HANDCRAFTED_FAMILIES
-            ):
-                overlap_with = other_name
-                overlap_jaccard = jaccard
-                overlap_shared = sorted(inter)
-        if overlap_with is not None:
-            entry = {
-                "name": synth_name,
-                "reason": "affinity_overlap",
-                "overlapping_with": overlap_with,
-                "jaccard": round(overlap_jaccard, 3),
-                "shared_terms": overlap_shared,
-            }
-            rejected_local.append(entry)
-            to_remove.append((synth_name, entry))
-
-    # Apply: rimuovi dal catalog + append a rejected list + audit log.
+    rejected_local = list(to_remove.values())
     if to_remove:
-        _apply_affinity_rejections(catalog, to_remove)
+        _apply_affinity_rejections(catalog, list(to_remove.items()))
     if to_remove and write_audit:
         import json as _json
         import time as _time
@@ -1728,13 +1679,13 @@ def _check_affinity_overlap(
         ts = _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime())
         try:
             with audit_path.open("a", encoding="utf-8") as fh:
-                for _name, entry in to_remove:
+                for entry in rejected_local:
                     line = dict(entry)
                     line["ts"] = ts
                     fh.write(_json.dumps(line, ensure_ascii=False) + "\n")
         except OSError as ex:
             log.warning("[loader] affinity audit log write failed: %s", ex)
-        log.info("[loader] %d synth rejected for affinity overlap (ADR 0114)",
+        log.info("[loader] %d executors refused by the affinity rule (RM-0010)",
                  len(to_remove))
     return rejected_local
 

@@ -3,6 +3,7 @@
 {% block body %}
 <h1>{{ msg('UI_CHANGE_TITLE') }}</h1>
 <p class="page-sub">{{ msg('UI_CHANGE_SUBTITLE') }}</p>
+<p class="muted">{{ msg('UI_CHANGE_VOCAB_PRESSURE', days=pressure.days, refused=pressure.refused, requests=pressure.requests) }}</p>
 
 <details class="muted" style="margin:.4rem 0 .8rem">
   <summary>{{ msg('UI_CHANGE_LEGEND') }}</summary>

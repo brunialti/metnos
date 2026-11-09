@@ -245,7 +245,7 @@ The final audit records both categories.</p>
 <tr><td><strong>Name and collisions</strong></td><td>The composed name is canonical, provider-qualified, and distinct from other names in the same skill.</td><td>The translator records the rejection reason.</td></tr>
 <tr><td><strong>Binding uniqueness</strong></td><td>The skill identifier, called its <em>binding</em>, is not already owned by another import.</td><td>The whole skill is rejected.</td></tr>
 <tr><td><strong>L1 — vocabulary</strong></td><td>The plan action, object, and qualifiers belong to the current vocabulary.</td><td>The individual plan is rejected.</td></tr>
-<tr><td><strong>L2 — affinity</strong></td><td>Canonical affinity does not exceed the overlap threshold against installed executors; an explicit binding uses a distinct threshold.</td><td>The individual plan is rejected as a possible duplicate.</td></tr>
+<tr><td><strong>L2 — affinity</strong></td><td>The same rule as for every executor applies: affinity does not share half of its words with another family, and with an external service every tag has a word of its own or the service's name.</td><td>The individual plan is rejected as a possible duplicate.</td></tr>
 <tr><td><strong>L5 — routing</strong></td><td>When a prototype question and runner are available, the assertion must select the expected executor.</td><td>An executed failure rejects the plan; an unmapped or unavailable case is skipped.</td></tr>
 <tr><td><strong>L6 — semantic alignment</strong></td><td>The verifier compares the generated manifest and code.</td><td>Drift, an error, or verifier unavailability rejects the plan in the ordinary flow.</td></tr>
 </table>

@@ -9,8 +9,7 @@ name             = "find_images_google_photos"
 version          = "0.1.0"
 author           = "Roberto Brunialti"
 affinity         = [
-    "google photos", "google foto", "gphotos", "cerca foto",
-    "search photos", "trova foto", "find photos", "album",
+    "google photos", "google foto", "gphotos", "album",
     "elenca album", "list albums", "quante foto", "how many photos"
 ]
 revertible       = false

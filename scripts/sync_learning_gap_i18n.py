@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
-"""Texts of a proposal born from a missing capability (RM-0009, 9/11/2026).
+"""Texts of the growth loop on the changes page (RM-0009 and RM-0010 F3, 9/11/2026).
 
 The changes page shows them in the instance language. The replay keeps the
 hashes of the previous baseline; it does not replace the DB.
@@ -14,6 +14,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 TRANSLATIONS = {
+    'UI_CHANGE_VOCAB_PRESSURE': (
+        'Parole degli strumenti, ultimi {days} giorni: {refused} strumenti rifiutati '
+        'per parole in comune, {requests} proposte chiedono una parola nuova del vocabolario.',
+        'Tool words, last {days} days: {refused} tools refused for shared words, '
+        '{requests} proposals ask for a new vocabulary word.'),
     'MSG_LEARNING_GAP_SUMMARY': (
         'Funzione mancante chiesta {n} volte, per esempio: «{query}».',
         'Missing capability requested {n} times, for example: “{query}”.'),

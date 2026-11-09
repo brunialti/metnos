@@ -178,6 +178,13 @@ def generic_affinity_verbs() -> frozenset[str]:
                      _detlex.forms(_PREFILTER_GENERIC_AFFINITY_CONCEPT) if form)
 
 
+def generic_affinity_tokens() -> frozenset[str]:
+    """Reviewed generic words joined with those derived from the loaded catalog."""
+    import affinity_integrity
+
+    return generic_affinity_verbs() | affinity_integrity.derived_tokens()
+
+
 def _localized_verb_table() -> dict[str, str]:
     """Tabella operativa: risorse RM-0005 specifica + action vocabulary.
 
@@ -966,7 +973,7 @@ def affinity_phrase_score(query, executor) -> int:
         return 0
     best = 0
     for tag in (getattr(executor, "affinity", None) or []):
-        distinctive = tokenize(tag) - stopwords() - generic_affinity_verbs()
+        distinctive = tokenize(tag) - stopwords() - generic_affinity_tokens()
         if len(distinctive) >= 2 and distinctive <= qtokens:
             best = max(best, len(distinctive))
     return best
@@ -1089,7 +1096,7 @@ def rank_with_intent(query, catalog, intent, *, k=3):
             aff_tokens = set()
             for a in (getattr(e, "affinity", None) or []):
                 aff_tokens.update(tokenize(a))
-            aff_tokens -= generic_affinity_verbs()
+            aff_tokens -= generic_affinity_tokens()
             s += min(len(qtokens & aff_tokens), 3)
         if _rule_fn is not None:
             try:

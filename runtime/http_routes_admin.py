@@ -644,6 +644,10 @@ async def admin_changes(request: web.Request) -> web.Response:
         qs_parts.append(f"limit={limit}")
     qs_extra = ("&" + "&".join(qs_parts)) if qs_parts else ""
 
+    # RM-0010 F3: how the tool vocabulary is holding up (refusals per new word).
+    import affinity_integrity
+    pressure = affinity_integrity.vocabulary_pressure()
+
     return negotiate_collection(
         request,
         json_payload={
@@ -651,6 +655,7 @@ async def admin_changes(request: web.Request) -> web.Response:
             "counts": counts,
             "family_counts": family_counts,
             "kind_counts": kind_counts,
+            "vocabulary_pressure": pressure,
             "filters": {
                 "state": state,
                 "family": family or "",
@@ -665,6 +670,7 @@ async def admin_changes(request: web.Request) -> web.Response:
             "counts": counts,
             "family_counts": family_counts,
             "kind_counts": kind_counts,
+            "pressure": pressure,
             "tabs": _CHANGES_TABS,
             "state": state,
             "family": family or "",

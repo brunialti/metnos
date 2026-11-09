@@ -37,12 +37,38 @@ def _corpus() -> list[dict]:
     return [json.loads(riga) for riga in CORPUS.read_text().splitlines() if riga.strip()]
 
 
+def _authored_catalog() -> list:
+    """The checkout's manifests, with the fields the bag-of-words score reads.
+
+    The live catalog is opened only through the Birth chain (RM-0008), which a
+    developer checkout does not have; an A/B of the score or of an affinity
+    edit measures exactly these manifests.
+    """
+    import tomllib
+    from types import SimpleNamespace
+
+    entries = []
+    for path in sorted((_RADICE / "executors").glob("*/manifest.toml")):
+        data = tomllib.loads(path.read_text(encoding="utf-8"))
+        description = data.get("description") or ""
+        if isinstance(description, dict):
+            description = description.get("it") or next(iter(description.values()), "")
+        entries.append(SimpleNamespace(name=data["name"], affinity=list(data.get("affinity") or []),
+                                       description=str(description)))
+    return entries
+
+
 def misura() -> tuple[dict, dict]:
     """Ritorna (totali, primo-per-query)."""
-    from loader import load_catalog
     from prefilter import rank
 
-    catalogo = list(load_catalog())
+    try:
+        from loader import load_catalog
+        catalogo = list(load_catalog())
+    except Exception as exc:  # noqa: BLE001 - checkout without the Birth chain
+        print(f"catalogo vivo non disponibile ({type(exc).__name__}): manifest del checkout",
+              file=sys.stderr)
+        catalogo = _authored_catalog()
     nomi = {e.name for e in catalogo}
     top1 = top3 = top10 = valutabili = 0
     primi: dict[str, str] = {}

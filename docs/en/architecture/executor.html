@@ -311,7 +311,11 @@ schema.</figcaption>
 
 <div class="callout note"><p><strong>About <code>affinity</code>.</strong> It is
 an intentionally language-independent list of canonical routing hints, not
-user-facing prose. The multilingual validator checks its structure and overlap;
+user-facing prose. The multilingual validator checks its structure. One rule
+applies to every tool, whoever wrote it: two different families do not share
+half of their words; a tool of an external service has a word of its own or
+the service's name in every tag; action words used by many tools do not weigh
+in the choice. The rule applies at load, at import and at release;
 natural-language recognition instead belongs to the versioned detection
 lexicon, where coverage and review policy are explicit. See
 <a href="multilang.html">Language and internationalisation</a>.</p></div>

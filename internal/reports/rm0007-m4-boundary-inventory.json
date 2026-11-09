@@ -1,6 +1,6 @@
 {
   "schema": "metnos.contract-boundary-inventory/2",
-  "source_census": "sha256:cc8bac1faddea31fe101f6d2d4f04bbb3427ac5caa12e33795d1421276a8c6d0",
+  "source_census": "sha256:1861cfb2208cb4b9f14a25ae5d532eba99668f4ad9323ba6b01c632d6a1ce123",
   "scan_roots": [
     "runtime",
     "install",
@@ -5359,6 +5359,16 @@
         "live_artifact_read"
       ],
       "destination": "verified live catalog, immutable store, or live artifact boundary only",
+      "phase": "M4"
+    },
+    {
+      "path": "scripts/bench_prefilter_corpus.py",
+      "scope": "_authored_catalog",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_read"
+      ],
+      "destination": "read-only affinity of the checkout manifests for the prefilter A/B; no store, no birth",
       "phase": "M4"
     },
     {

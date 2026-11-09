@@ -261,54 +261,28 @@ def _existing_affinity_sets() -> tuple[dict, dict]:
     return handcrafted, synthesized
 
 
-def _affinity_overlap_check(plan, plan_affinity, scan_handcrafted, scan_synth,
-                             threshold: Optional[float] = None,
-                             binding: str = "") -> tuple[bool, str]:
-    """Ritorna (ok, reason). ok=False = reject (jaccard >= threshold).
+def _affinity_overlap_check(plan, plan_affinity, scan_handcrafted,
+                             scan_synth) -> tuple[bool, str]:
+    """Ritorna (ok, reason): the plan meets the one affinity rule (RM-0010).
 
-    Delega a `loader.check_affinity_pair` (single source of truth §7.3):
-    questa funzione applica solo la policy at-import (binding-aware
-    threshold choice), il calcolo Jaccard e' centralizzato in loader.
-
-    Soglia default 0.5 (= `loader.AFFINITY_OVERLAP_THRESHOLD`) al catalog
-    load (ADR 0114 L2 / ADR 0159). 0.4 stretta come gate preventivo a
-    evaluator-time (ADR 0122 — non applicata qui).
-
-    Se il plan ha il suffix `_<binding>` (disambiguato in translate_skill
-    per evitare collisione con handcrafted/synth gia' esistenti col nome
-    canonico), la soglia sale a `AFFINITY_OVERLAP_THRESHOLD_BINDING` (0.85):
-    il binding qualifica esplicitamente il dominio remoto, le keyword
-    sovrapposte sono attese e legittime, non un doppione mascherato.
+    Same rule as the catalog load and the release (`affinity_integrity`): no
+    threshold or exemption depends on where the plan comes from. A provider
+    suffix is checked for words of its own, not given a laxer threshold.
     """
-    from loader import (
-        check_affinity_pair,
-        AFFINITY_OVERLAP_THRESHOLD,
-        AFFINITY_OVERLAP_THRESHOLD_BINDING,
-    )
-    plan_set = set(t.lower() for t in plan_affinity if t)
+    import affinity_integrity
+
+    plan_set = {str(t).lower() for t in plan_affinity if t}
     if not plan_set:
         return True, ""
-
-    if threshold is None:
-        threshold = AFFINITY_OVERLAP_THRESHOLD
-    eff_threshold = threshold
-    if binding and plan.name.endswith(f"_{binding}"):
-        eff_threshold = AFFINITY_OVERLAP_THRESHOLD_BINDING
-
-    for name, aff in scan_handcrafted.items():
+    for name in (*scan_handcrafted, *scan_synth):
         if name == plan.name:
-            return False, f"name collision with handcrafted {name}"
-        triggered, j = check_affinity_pair(plan_set, aff, threshold=eff_threshold)
-        if triggered:
-            return False, f"affinity jaccard={j:.2f} >= {eff_threshold} vs handcrafted {name}"
-
-    for name, aff in scan_synth.items():
-        if name == plan.name:
-            return False, f"name collision with existing synth {name}"
-        triggered, j = check_affinity_pair(plan_set, aff, threshold=eff_threshold)
-        if triggered:
-            return False, f"affinity jaccard={j:.2f} >= {eff_threshold} vs synth {name}"
-
+            return False, f"name collision with existing executor {name}"
+    affinities = {**scan_handcrafted, **scan_synth, plan.name: plan_set}
+    for finding in affinity_integrity.findings(affinities):
+        if plan.name in (finding.name, finding.other):
+            other = finding.other if finding.name == plan.name else finding.name
+            return False, (f"affinity_{finding.kind} vs {other}: "
+                           + ", ".join(finding.terms))
     return True, ""
 
 
@@ -649,7 +623,6 @@ def admit_skill_import(parsed_skill, plans, *,
             aff = _default_affinity(plan)
             ok, reason = _affinity_overlap_check(
                 plan, aff, handcrafted_aff, synth_aff,
-                binding=binding_norm,
             )
             verdict.layer_results["L2_affinity"] = ok
             if not ok:
