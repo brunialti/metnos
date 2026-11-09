@@ -624,6 +624,13 @@ async def admin_changes(request: web.Request) -> web.Response:
     rows = [asdict(r) for r in rows_objs]
     counts = ci_mod.count_by_state()
 
+    # RM-0010 F5: a proposal that asks for a new vocabulary word carries its
+    # case file, computed now against the current vocabulary and catalog.
+    import vocabulary_dossier
+    every_intent = ci_mod.list_intents(limit=5000)
+    for row, obj in zip(rows, rows_objs):
+        row["vocabulary_dossier"] = vocabulary_dossier.dossier(obj, every_intent)
+
     # Facets — conta per family e kind sull'INSIEME corrente (state filtered)
     all_in_state = ci_mod.list_intents(state=state, limit=5000)
     family_counts: dict[str, int] = {}
@@ -696,12 +703,16 @@ def _render_change_row_html(ci_row) -> str:
         "failed":      f'<span class="chip bad">{_msg("UI_CHANGE_BADGE_FAILED")}</span>',
         "proposed":    '<span class="chip muted">proposed</span>',
     }.get(ci_row.state, f'<span class="chip muted">{ci_row.state}</span>')
+    import html as _html
+    reason = (f' <span class="muted">{_html.escape(_msg("UI_CHANGE_DECISION_REASON"))}: '
+              f'{_html.escape(ci_row.decision_reason)}</span>'
+              if getattr(ci_row, "decision_reason", None) else "")
     return (
         f'<tr id="ci-{ci_row.id}">'
         f'<td colspan="6" class="muted">'
         f'{ci_row.intent_target}: {state_chip}'
         f' <span class="muted">(by {ci_row.decision_by or "system"} at '
-        f'{ci_row.updated_at})</span></td></tr>'
+        f'{ci_row.updated_at})</span>{reason}</td></tr>'
     )
 
 
@@ -726,11 +737,18 @@ async def admin_change_action(request: web.Request) -> web.Response:
 
     by = request.get("admin_user") or "admin"
 
+    # The page posts its reason field as a form; API clients send JSON.
     try:
-        body = await request.json() if request.body_exists else {}
+        if not request.body_exists:
+            body = {}
+        elif request.content_type == "application/x-www-form-urlencoded":
+            body = dict(await request.post())
+        else:
+            body = await request.json()
     except Exception:
         body = {}
     reason = body.get("reason") if isinstance(body, dict) else None
+    reason = " ".join(str(reason).split())[:500] or None if reason else None
 
     try:
         if action in ("accept", "reject", "stage"):

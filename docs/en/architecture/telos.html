@@ -144,7 +144,14 @@ executor, extending one, or trying an existing sequence. Its initial state is
 always <code>proposed</code>: nothing has changed at this point.</p>
 
 <p>The administrator finds these proposals under <strong>Changes</strong> in the
-web chat, at <code>/admin/changes</code>, and may accept, reject, or stage them.
+web chat, at <code>/admin/changes</code>, and may accept, reject, or stage them,
+writing the reason for the decision, which stays recorded with the proposal. A
+proposal that asks for a new word of the naming vocabulary carries a case file
+prepared without a model: for each word it says whether it already exists, is a
+synonym of an existing verb, names a known object, is excluded by the naming
+rules, or is really new, and then how many proposals ask for it and how many
+tools already use it. Over the last 30 days the page also shows how many tools
+were refused for shared words and how many proposals ask for a new word.
 Only an accepted proposal reaches the component that applies it. It is then
 observed and, where the change type allows, can be finalized or rolled back.
 The <a href="lifecycle.html">change lifecycle</a> page describes every state.</p>

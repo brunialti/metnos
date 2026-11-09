@@ -84,6 +84,11 @@ def remember_catalog(affinities: Mapping[str, Iterable[str]]) -> None:
     _derived = None
 
 
+def remembered_affinities() -> dict[str, tuple[str, ...]]:
+    """Affinities of the catalog this process loaded last."""
+    return dict(_seen)
+
+
 def derived_tokens() -> frozenset[str]:
     global _derived
     if _derived is None:
@@ -165,5 +170,6 @@ def vocabulary_pressure(days: int = 30, *, now: float | None = None) -> dict:
     requests = sum(
         1 for intent in change_intents.list_intents(limit=5000)
         if str(intent.discovered_at or "") >= stamp
-        and VOCABULARY_MARKER in f"{intent.intent_rationale or ''} {intent.intent_body or ''}")
+        and VOCABULARY_MARKER.casefold()
+        in f"{intent.intent_rationale or ''} {intent.intent_body or ''}".casefold())
     return {"days": days, "refused": len(refused), "requests": requests}

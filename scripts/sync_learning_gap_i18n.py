@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
-"""Texts of the growth loop on the changes page (RM-0009 and RM-0010 F3, 9/11/2026).
+"""Texts of the growth loop on the changes page (RM-0009, RM-0010 F3 and F5, 9-10/11/2026).
 
 The changes page shows them in the instance language. The replay keeps the
 hashes of the previous baseline; it does not replace the DB.
@@ -14,6 +14,38 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 TRANSLATIONS = {
+    'UI_VOCAB_DOSSIER': (
+        'Scheda della parola nuova', 'New word case file'),
+    'UI_VOCAB_WORD_EXISTS': (
+        '«{word}» c’è già nel vocabolario ({kind}): la parola nuova non serve.',
+        '“{word}” is already in the vocabulary ({kind}): no new word is needed.'),
+    'UI_VOCAB_WORD_SYNONYM': (
+        '«{word}» è un sinonimo del verbo «{term}», che c’è già: basta quello.',
+        '“{word}” is a synonym of the existing verb “{term}”: that one is enough.'),
+    'UI_VOCAB_WORD_OBJECT': (
+        '«{word}» nomina l’oggetto «{term}», che c’è già.',
+        '“{word}” names the existing object “{term}”.'),
+    'UI_VOCAB_WORD_FORBIDDEN': (
+        '«{word}» è esclusa dalle regole dei nomi degli strumenti.',
+        '“{word}” is excluded by the tool naming rules.'),
+    'UI_VOCAB_WORD_NEW': (
+        '«{word}» è nuova: nessun termine o sinonimo la copre. La chiedono {requests} '
+        'proposte; le descrizioni di {tools} strumenti su {objects} oggetti la usano già. '
+        'Che sia comprensibile lo dichiara il proponente.',
+        '“{word}” is new: no term or synonym covers it. {requests} proposals ask for it; '
+        'the descriptions of {tools} tools over {objects} objects already use it. '
+        'Its clarity is stated by the proposer.'),
+    'UI_VOCAB_WORD_NONE': (
+        'La proposta non indica quale parola serve: la richiesta non si può valutare.',
+        'The proposal does not say which word it needs: the request cannot be assessed.'),
+    'UI_VOCAB_PROPOSER': (
+        'Testo del proponente: {text}', 'Proposer’s text: {text}'),
+    'UI_VOCAB_KIND_ACTION': ('verbo', 'verb'),
+    'UI_VOCAB_KIND_OBJECT': ('oggetto', 'object'),
+    'UI_VOCAB_KIND_QUALIFIER': ('qualificatore', 'qualifier'),
+    'UI_VOCAB_KIND_SYSTEM': ('verbo di sistema', 'system verb'),
+    'UI_CHANGE_DECISION_REASON': (
+        'Motivo della decisione', 'Reason for the decision'),
     'UI_CHANGE_VOCAB_PRESSURE': (
         'Parole degli strumenti, ultimi {days} giorni: {refused} strumenti rifiutati '
         'per parole in comune, {requests} proposte chiedono una parola nuova del vocabolario.',

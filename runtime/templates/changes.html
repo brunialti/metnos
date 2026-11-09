@@ -100,6 +100,28 @@
       </td>
       <td data-tutor-id="changes-row-summary">
         <div>{{ r.intent_summary }}</div>
+        {% if r.vocabulary_dossier %}
+          <details data-tutor-id="changes-row-vocabulary" style="margin-top:.3rem" open>
+            <summary>{{ msg('UI_VOCAB_DOSSIER') }}</summary>
+            <ul style="margin:.3rem 0">
+              {% for w in r.vocabulary_dossier.words %}
+                <li>
+                  {% if w.verdict == 'exists' %}{{ msg('UI_VOCAB_WORD_EXISTS', word=w.word, kind=msg('UI_VOCAB_KIND_' ~ w.kind|upper)) }}
+                  {% elif w.verdict == 'synonym' %}{{ msg('UI_VOCAB_WORD_SYNONYM', word=w.word, term=w.term) }}
+                  {% elif w.verdict == 'object_word' %}{{ msg('UI_VOCAB_WORD_OBJECT', word=w.word, term=w.term) }}
+                  {% elif w.verdict == 'forbidden' %}{{ msg('UI_VOCAB_WORD_FORBIDDEN', word=w.word) }}
+                  {% else %}{{ msg('UI_VOCAB_WORD_NEW', word=w.word, requests=w.requests, tools=w.tools, objects=w.objects) }}{% endif %}
+                </li>
+              {% else %}
+                <li>{{ msg('UI_VOCAB_WORD_NONE') }}</li>
+              {% endfor %}
+            </ul>
+            <div class="muted">{{ msg('UI_VOCAB_PROPOSER', text=r.vocabulary_dossier.proposer) }}</div>
+          </details>
+        {% endif %}
+        {% if r.decision_reason %}
+          <div class="muted">{{ msg('UI_CHANGE_DECISION_REASON') }}: {{ r.decision_reason }}</div>
+        {% endif %}
         {% if r.intent_rationale or r.intent_body %}
           <details data-tutor-id="changes-row-details" style="margin-top:.3rem">
             <summary class="muted">{{ msg('UI_CHANGE_DETAILS') }}</summary>
@@ -139,19 +161,23 @@
       </td>
       <td class="tp-actions">
         {% if r.state in ['proposed', 'staged'] %}
+          <input type="text" name="reason" maxlength="500"
+                 aria-label="{{ msg('UI_CHANGE_DECISION_REASON') }}"
+                 placeholder="{{ msg('UI_CHANGE_DECISION_REASON') }}"
+                 style="width:100%;margin-bottom:.3rem">
           <button class="btn ok" data-tutor-id="changes-row-accept"
-                  hx-post="/admin/changes/{{ r.id }}/accept"
+                  hx-post="/admin/changes/{{ r.id }}/accept" hx-include="closest td"
                   hx-target="closest tr" hx-swap="outerHTML">
             {{ msg('UI_CHANGE_BTN_ACCEPT') }}
           </button>
           <button class="btn bad"
-                  hx-post="/admin/changes/{{ r.id }}/reject"
+                  hx-post="/admin/changes/{{ r.id }}/reject" hx-include="closest td"
                   hx-target="closest tr" hx-swap="outerHTML">
             {{ msg('MSG_BTN_REJECT') }}
           </button>
           {% if r.state == 'proposed' %}
             <button class="btn"
-                    hx-post="/admin/changes/{{ r.id }}/stage"
+                    hx-post="/admin/changes/{{ r.id }}/stage" hx-include="closest td"
                     hx-target="closest tr" hx-swap="outerHTML">
               {{ msg('UI_CHANGE_BTN_STAGE') }}
             </button>
