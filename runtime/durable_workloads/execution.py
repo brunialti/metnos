@@ -61,6 +61,8 @@ from .worker import (
 _TRANSIENT_ERRORS = frozenset({
     "timeout", "remote_timeout", "network", "rate_limited",
     "temporarily_unavailable", "provider_unavailable", "executor_transient",
+    # A child ended by a signal (service stop, OOM) produced no verdict.
+    "execution_interrupted",
 })
 _CONTRACT_ERRORS = frozenset({
     "non_json", "contract_violation", "invalid_output", "schema_mismatch",
@@ -193,8 +195,6 @@ class DurableExecutionBridge:
             str, Callable[[Mapping[str, Any], ExecutionContext], object]
         ] | None = None,
         device_selector: Callable[[Mapping[str, Any] | None], str | None] | None = None,
-        executor_generation_attestor: Callable[[object], object] | None = None,
-        require_generation_attestation: bool = False,
         resource_readiness: Callable[..., None] | None = None,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
@@ -207,10 +207,6 @@ class DurableExecutionBridge:
         self._workload_invoker = workload_invoker
         self._internal_runners = dict(internal_runners or {})
         self._device_selector = device_selector or self._source_device
-        if require_generation_attestation and executor_generation_attestor is None:
-            raise ValueError("generation attestation authority is required")
-        self._executor_generation_attestor = executor_generation_attestor
-        self._require_generation_attestation = bool(require_generation_attestation)
         self._resource_readiness = resource_readiness
         self._clock = clock or _now
 
@@ -275,34 +271,7 @@ class DurableExecutionBridge:
             target_device=device_id,
             owner_user_id=context.owner_user_id,
             execution_context=context,
-            _before_invoke=(
-                lambda: self._attest_executor_generation(executor, usage_sink=usage_sink)
-            ) if self._require_generation_attestation else None,
         )
-
-    def _attest_executor_generation(self, executor: object, *, usage_sink=None) -> None:
-        """Reread the exact generation at a boundary after a possible wait."""
-        if not self._require_generation_attestation:
-            return
-        try:
-            assert self._executor_generation_attestor is not None
-            self._executor_generation_attestor(executor)
-        except Exception as exc:
-            if usage_sink is not None:
-                # Refusal at this hook proves transport was never entered,
-                # including when the scheduler waited after preparation.
-                usage_sink.complete_local_capture()
-            code = getattr(exc, "code", "execution.runner_absent")
-            if code not in {
-                "execution.runner_absent", "execution.dormant",
-                "execution.retired", "execution.quarantined",
-            }:
-                code = "execution.runner_absent"
-            raise self._failure(
-                "capability_unavailable", code=code,
-                message_key="ERR_DURABLE_RUNNER_UNAVAILABLE", retry="manual",
-                details={"runner_name": str(getattr(executor, "name", ""))},
-            ) from exc
 
     def _failure(
         self,
@@ -837,42 +806,20 @@ class DurableExecutionBridge:
                 )
                 raise self._failure(
                     "capability_unavailable",
-                    code=("execution.runner_absent" if self._require_generation_attestation
-                          else "execution.executor_unavailable"),
+                    code="execution.executor_unavailable",
                     message_key="ERR_DURABLE_RUNNER_UNAVAILABLE",
                     retry="manual",
                     details=details,
                 ) from exc
-            lifecycle = str(getattr(executor, "lifecycle", "") or "")
-            if self._require_generation_attestation and lifecycle == "quarantined":
-                raise self._failure(
-                    "capability_unavailable", code="execution.quarantined",
-                    message_key="ERR_DURABLE_RUNNER_UNAVAILABLE", retry="manual",
-                    details={"runner_name": contract.name},
-                )
-            if self._require_generation_attestation and lifecycle in {"deprecated", "archived"}:
-                raise self._failure(
-                    "capability_unavailable", code="execution.retired",
-                    message_key="ERR_DURABLE_RUNNER_UNAVAILABLE", retry="manual",
-                    details={"runner_name": contract.name},
-                )
-            if self._require_generation_attestation and (
-                lifecycle != "active" or bool(getattr(executor, "dormant", False))
-            ):
-                raise self._failure(
-                    "capability_unavailable", code="execution.dormant",
-                    message_key="ERR_DURABLE_RUNNER_UNAVAILABLE", retry="manual",
-                    details={"runner_name": contract.name},
-                )
             try:
                 attestor = getattr(self.runners, "attest_executor", None)
                 if callable(attestor):
                     loaded_contract = attestor(contract.name, executor)
                     if loaded_contract != contract:
                         raise ValueError("loaded executor contract changed")
-                elif not self._require_generation_attestation:
-                    # Lightweight compatibility check for test/custom
-                    # resolvers that predate exact-object attestation.
+                else:
+                    # Lightweight check for test/custom resolvers without
+                    # exact-object attestation.
                     loaded_name = getattr(executor, "name", contract.name)
                     loaded_digest = getattr(executor, "digest", None)
                     if loaded_name != contract.name or (
@@ -881,8 +828,6 @@ class DurableExecutionBridge:
                         and loaded_digest != contract.implementation_digest
                     ):
                         raise ValueError("loaded executor identity changed")
-                else:
-                    raise ValueError("exact-object executor attestation is required")
             except Exception as exc:
                 raise self._failure(
                     "contract_violation",
@@ -910,9 +855,6 @@ class DurableExecutionBridge:
                         "capability_unavailable", code="execution.model_resource_unavailable",
                         message_key="ERR_DURABLE_MODEL_RESOURCE_UNAVAILABLE", retry="manual",
                     ) from exc
-            # RM-0008 F5 §6.9: the generation is authenticated again after
-            # resource readiness, because it can be replaced during that wait.
-            self._attest_executor_generation(executor)
             return (
                 executor, self._remaining_timeout(context),
                 self._autonomy(DurableEffect(stage["effect_profile"])),

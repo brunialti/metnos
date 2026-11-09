@@ -356,7 +356,8 @@ def _intent_to_params(ci: ChangeIntent) -> dict:
 def upsert_intent(ci: ChangeIntent) -> str:
     """Insert se fingerprint nuovo. Se esiste già:
       - bumpa convergence (+1 se origin_family diversa)
-      - aggiorna score = max(esistente, nuovo)
+      - aggiorna score = ultima valutazione: scende quando i dati peggiorano
+        (RM-0009, nucleo); quante fonti concordano lo dice convergence
       - aggiorna discovered_at = piu' recente
       - PRESERVA decision_*/applied_*/observed_*/state se gia' progrediti
 
@@ -402,7 +403,7 @@ def upsert_intent(ci: ChangeIntent) -> str:
         new_conv = existing["convergence"]
         if existing["origin_family"] != ci.origin_family:
             new_conv = new_conv + 1
-        new_score = max(existing["score"] or 0.0, ci.score or 0.0)
+        new_score = existing["score"] if ci.score is None else ci.score
         # Discovered_at = il piu' recente
         new_discovered = max(existing["discovered_at"], ci.discovered_at)
         cn.execute(

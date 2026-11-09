@@ -15,8 +15,7 @@ def test_the_table_covers_every_capability_and_nothing_else():
         for item in _producer_capabilities_for_bootstrap()
     }
     assert set(table.PRODUCER_AUTHOR_V1) == declared
-    assert len(declared) == 12
-    assert table.PRODUCER_AUTHOR_V1[("promoter", "quarantine")] is RevisionAuthor.MAINTENANCE
+    assert len(declared) == 9
     assert all(
         isinstance(value, RevisionAuthor)
         for value in table.PRODUCER_AUTHOR_V1.values()
@@ -67,7 +66,7 @@ def test_synth_inventory_enters_exact_candidate_consent_without_changing_human_o
     assert len(sources) == 1
     generated = SimpleNamespace(executor_origin=table.executor_origin_v1(sources[0].origin))
     human = SimpleNamespace(executor_origin=table.executor_origin_v1(ManifestOrigin.EXPLICIT))
-    assert approval_scope(generated, RevisionClass.FIRST_BIRTH) == "preexercise"
+    assert approval_scope(generated, RevisionClass.FIRST_BIRTH) == "active"
     assert approval_scope(human, RevisionClass.FIRST_BIRTH) is None
 
 

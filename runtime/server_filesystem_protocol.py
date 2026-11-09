@@ -272,6 +272,11 @@ def validate_request(request):
     """Validate the closed request envelope before calling a helper handler."""
     if not isinstance(request, dict):
         raise _error()
+    if request.get("action") == "known_folders":
+        # The owner's named folders: no account, path or callback involved.
+        if set(request) != {"action"}:
+            raise _error()
+        return
     owner = request.get("owner")
     if not isinstance(owner, str) or not owner or len(owner) > 256 or any(ord(c) < 32 for c in owner):
         raise _error()
@@ -351,7 +356,7 @@ def _check_message(message):
 def _callback_allowed(request, kind, action=None):
     if kind == "checkpoint" and request["action"] != "transfer":
         return False
-    if request["action"] == "probe":
+    if request["action"] in {"probe", "known_folders"}:
         return False
     if request["action"] in {"open_source", "size"}:
         return kind == "check" and action == "read"

@@ -206,7 +206,7 @@ does not read them. L0 and L1 have separate stores and signals.</p>
 <code>proto</code> edges.</p>
 
 <p>The same database also contains <code>canonical_query_log</code>, a separate
-table originally introduced for request-normalisation telemetry. Current plan
+table for request-normalisation telemetry. Current plan
 reuse takes place in the L0 and L1 stores described in the
 <a href="fast_path.html">fastpath and autopath guide</a>: a row in this table is
 not a mnest and does not show that the link graph was updated. The module does

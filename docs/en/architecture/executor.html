@@ -541,19 +541,19 @@ and dependencies; operating conditions are observed again.</p>
 
 <p>Only the Birth commit boundary can send an admitted candidate to the
 immutable contract store. It then rereads the published manifest and code
-before exposing the generation as active, pre-exercise, or quarantined. A
+before making the generation available. A
 signature by itself, a copied directory, or a service restart cannot make
 changed bytes operational. Maintainer updates use
 <code>runtime/stack_reconcile.py deploy --executor &lt;name&gt; --sign</code>;
-the compatibility flag submits the candidate to Executor Birth and does not
-select the former direct publisher.</p>
+the <code>--sign</code> option submits the candidate to Executor Birth, the only
+publication path.</p>
 
 <p>During transition, the inventory and first cold catalog load use the same
 author public-key set already authenticated by Birth. In exercise, readers use
 the authorities of the installed Birth context; separate administrative
 processes authenticate them through the current ownership chain. In the closed
-store, missing keys or an invalid context stop the read: the legacy key
-directory is never consulted as a fallback.</p>
+store, missing keys or an invalid context stop the read: no other key
+directory is consulted as a fallback.</p>
 
 <p>Before requiring the new distribution, the transition binds the candidate's
 authenticated bytes to its durable receipts. It does not prematurely require

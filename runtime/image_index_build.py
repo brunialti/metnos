@@ -10,6 +10,7 @@ import copy
 import fcntl
 import hashlib
 import json
+import logging
 import os
 from pathlib import Path
 import re
@@ -56,6 +57,7 @@ _GENERATION_FILES = ("entries.jsonl", "lookup.sqlite", *(
     f"embeddings_{axis}.npy" for axis in _AXES))
 _HASH = re.compile(r"[0-9a-f]{64}")
 _GENERATION = re.compile(r"[A-Za-z0-9_-]{1,128}")
+_log = logging.getLogger(__name__)
 
 
 class ImageIndexBuildError(ValueError):
@@ -779,6 +781,8 @@ class ImageIndexBuild:
                 os.rename(temporary, target)
                 _sync_directory(target.parent)
             _write_bytes(self.root / "meta.json", _json_bytes(metadata), immutable=False)
+            _retain_generations(self.root / ".generations",
+                                keep={self.generation, current.get("active_generation")})
             return metadata
         finally:
             os.close(lock_fd)
@@ -905,6 +909,31 @@ class ImageIndexBuild:
         finally:
             if temporary.exists():
                 shutil.rmtree(temporary)
+
+
+def _retain_generations(directory: Path, *, keep) -> dict:
+    """Keep the active and the previous generation, drop the older ones.
+
+    Readers resolve only the generation named by the active meta; a reader that
+    loaded it just before this activation still finds the previous one. Older
+    generations are never read again, and keeping them only grows the disk by
+    one generation per publication. A removal error never undoes the
+    publication: the next one retries.
+    """
+    removed, freed = 0, 0
+    try:
+        for child in directory.iterdir():
+            if (child.name in keep or not _GENERATION.fullmatch(child.name)
+                    or child.is_symlink() or not child.is_dir()):
+                continue
+            size = sum(item.lstat().st_size for item in child.iterdir())
+            shutil.rmtree(child)
+            removed, freed = removed + 1, freed + size
+    except OSError as exc:
+        _log.warning("image index generation retention deferred: %s", type(exc).__name__)
+    if removed:
+        _log.info("image index generations removed=%d bytes=%d", removed, freed)
+    return {"removed": removed, "bytes": freed}
 
 
 def _read_entries(path: Path):

@@ -253,8 +253,9 @@ def apply_cache_pattern(ci: ChangeIntent) -> dict:
 # --- Handler: reject_pattern ---------------------------------------------
 
 def apply_reject_pattern(ci: ChangeIntent) -> dict:
-    """Append in rejected_patterns.jsonl. Agent_runtime legge e usa
-    come hard constraint nel planner prompt."""
+    """Append in rejected_patterns.jsonl, letto da
+    `turn_feedback.rejected_pipelines_for_query`: il planner esclude quella
+    pipeline per la stessa richiesta, per tutti gli utenti."""
     body = ci.intent_body or {}
     canonical = body.get("canonical_query") or ci.intent_target
     tools = body.get("tools_sequence") or []

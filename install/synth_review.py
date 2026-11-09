@@ -31,7 +31,7 @@ from executor_birth_approval_store import (
 )
 from executor_birth_functional import SynthTestData
 from executor_birth_intent import (
-    BirthIntent, _PROMOTE, _SYNTH_APPROVE, _SYNTH_MULTISTAGE, _SYNTH_SPECIALIZE,
+    BirthIntent, _SYNTH_APPROVE, _SYNTH_MULTISTAGE, _SYNTH_SPECIALIZE,
 )
 from executor_birth_operational import (
     _execute, _preview_approval_subject, _request_for_intent_with_capability,
@@ -48,7 +48,7 @@ from manifest_inventory import ContractId, ManifestOrigin
 
 
 _PRODUCERS = {cap.producer_id: cap for cap in (
-    _SYNTH_MULTISTAGE, _SYNTH_SPECIALIZE, _SYNTH_APPROVE, _PROMOTE,
+    _SYNTH_MULTISTAGE, _SYNTH_SPECIALIZE, _SYNTH_APPROVE,
 )}
 _PROPOSAL_FIELDS = frozenset({"files", "contract_id", "reason", "producer"})
 _REVIEW_FIELDS = frozenset({"proposal", "human_cases"})
@@ -183,8 +183,6 @@ def _review_as_service(document: dict, now: datetime) -> tuple[dict, object]:
                                  document["proposal"]["reason"], (token,))
             request, bundle = _request_for_intent_with_capability(intent, producer)
             subject = _preview_approval_subject(request, bundle.core, expires_at=expires)
-            if producer is _PROMOTE and subject.lifecycle != "promotion":
-                raise ValueError("synth_review_promotion_predecessor_required")
             current = _current()
             actor = current.authorities.approval.actors.get("operator", {})
             if (subject.admission_context_id != current.selection.admission_context_id
@@ -329,14 +327,6 @@ def approve(document: dict) -> dict:
             # After a signed decision, Birth also owns terminal replay. A
             # successful earlier commit has already changed the predecessor;
             # previewing it again would incorrectly prevent crash recovery.
-            if producer is _PROMOTE:
-                from jobs.promoter_promote import promote_reviewed_candidate
-                promoted = promote_reviewed_candidate(
-                    contract, review_id=review_id, reason=record["proposal"]["reason"],
-                    approval_refs=(record["token"],), candidate=snapshot,
-                )
-                return {"status": "admitted" if promoted["ok"] else "birth_refused",
-                        "review_id": review_id, **promoted}
             result = _execute(request, bundle.core)
     return {"status": "admitted" if result.publication is not None else "birth_refused",
             "review_id": review_id, "error": result.error_code,
@@ -400,3 +390,42 @@ def run_delegated(operation: str, document: dict) -> dict:
         sys.stderr.write(result.stderr[-4096:].decode("utf-8", errors="replace"))
         raise ValueError("synth_review_service_failed")
     return json.loads(result.stdout)
+
+
+_OPERATIONS = ("review", "approve")
+_CLOSED_CODE = re.compile(r"[a-z][a-z0-9_]{0,79}\Z")
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Closed administrative entry: ``review`` or ``approve``, document on stdin.
+
+    The root-owned launcher imports this from the verified release. There is
+    deliberately no ``__main__`` guard: the launcher is the only way in, and
+    the document arrives on standard input, never in the argument vector.
+    """
+    arguments = tuple(sys.argv[1:] if argv is None else argv)
+    if len(arguments) != 1 or arguments[0] not in _OPERATIONS:
+        print("usage: synth_review review|approve < document.json", file=sys.stderr)
+        return 64
+    try:
+        from executor_birth_semantic_authority import _pairs
+
+        raw = sys.stdin.buffer.readline(_MAX_DOCUMENT + 1)
+        if len(raw) > _MAX_DOCUMENT:
+            raise ValueError("synth_review_size_invalid")
+        try:
+            document = json.loads(raw.decode("utf-8"), object_pairs_hook=_pairs)
+        except (UnicodeError, ValueError) as exc:
+            raise ValueError("synth_review_document_invalid") from exc
+        report = run_delegated(arguments[0], document)
+    except Exception as exc:
+        # Closed codes only: an exception text may carry paths or bytes.
+        code = getattr(exc, "code", None)
+        if code is None:
+            text = str(exc)
+            code = text if _CLOSED_CODE.match(text) else type(exc).__name__
+        print(json.dumps({"error": str(code), "detail": str(getattr(exc, "detail", "") or "")}),
+              file=sys.stderr)
+        return 1
+    print(json.dumps(report, ensure_ascii=True, indent=2, sort_keys=True, default=str))
+    return 0

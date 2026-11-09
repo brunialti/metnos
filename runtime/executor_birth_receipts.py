@@ -52,7 +52,6 @@ class RevisionClass(str, Enum):
     CONTRACT_REVISION = "contract_revision"
     LOCALIZATION_REVISION = "localization_revision"
     EQUIVALENT_REPUBLISH = "equivalent_republish"
-    PROMOTION_REVISION = "promotion_revision"
     REACTIVATION_REVISION = "reactivation_revision"
     REATTESTATION = "reattestation"
 
@@ -64,8 +63,6 @@ class AdmissionKind(str, Enum):
 
 class ApprovedLifecycle(str, Enum):
     ACTIVE = "active"
-    PREEXERCISE = "preexercise"
-    QUARANTINED = "quarantined"
 
 
 class AdmittedCheckStatus(str, Enum):

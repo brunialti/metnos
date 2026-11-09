@@ -62,11 +62,10 @@ CONTEXT_CATALOG_V1: tuple[tuple[str, str, tuple[str, ...], str], ...] = (
         "productive",
     ),
     (
-        "property_catalog", "6",
+        "property_catalog", "7",
         (
             'executor_birth_properties.py',
             'executor_birth_property_runner.py',
-            'executor_birth_preexercise.py',
             'executor_birth_functional.py',
             'executor_support.py',
             'executor_helpers.py',

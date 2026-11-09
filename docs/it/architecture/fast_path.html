@@ -420,10 +420,9 @@ memorizzati affatto.
 <p>
 Le soglie di fastpath e autopath sono lette dalle variabili d'ambiente del
 processo Metnos; se una variabile manca, vale il valore predefinito nel modulo.
-Le vecchie sezioni <code>[fast_path]</code> e
-<code>[multi_tool_fast_path]</code> di
-<code>~/.config/metnos/runtime.toml</code> sono state ritirate e vengono
-ignorate. La pagina Praxis permette di osservare e svuotare le cache, ma non
+Eventuali sezioni <code>[fast_path]</code> e
+<code>[multi_tool_fast_path]</code> in
+<code>~/.config/metnos/runtime.toml</code> non vengono lette. La pagina Praxis permette di osservare e svuotare le cache, ma non
 modifica queste soglie. Per rendere permanente un override, va quindi inserito
 nella configurazione del servizio; le costanti lette all'importazione richiedono
 il riavvio del processo.

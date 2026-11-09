@@ -6,8 +6,9 @@ root. The portable suite does not require the full application environment.
 
 Every test here must have its required source files in the public export.
 Checks for private administrative tooling belong in the development-only
-`tests/internal/` suite. In particular, the local F5 launcher is checked there;
-`test_f5_authority_entry.py` verifies the F5 entry shipped in the public source.
+`tests/internal/` suite. In particular, the local Synth review launcher is
+checked there; `test_synth_review.py` verifies the review entry shipped in the
+public source.
 
 ## During development
 

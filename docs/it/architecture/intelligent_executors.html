@@ -305,7 +305,7 @@
  del sito. Un dettaglio vuoto in una seconda scheda, dove altri dettagli dello
  stesso tipo mostrano dati, viene riaperto una volta nella stessa scheda prima
  di considerare la riga senza dettaglio.</p>
- <p><strong>Limiti misurati</strong> (giri reali del 23–25 ottobre): ENI 12 fatture
+ <p><strong>Limiti misurati</strong> sui siti reali: ENI 12 fatture
  su 12 in circa 5 minuti e mezzo (tre contratti, un dettaglio per fattura: il
  numero è solo nel dettaglio), Enel circa 2 minuti e mezzo, Fastweb circa 2
  minuti. Su ENI la raccolta può dichiararsi parziale alla fine, quando dopo
@@ -331,7 +331,7 @@
  e il passo mostra un simbolo
  <strong>$</strong> rosso; una richiesta già inviata rimane conteggiata anche
  se scade il tempo disponibile.</p>
- <p><strong>Comportamento aggiornato; collaudo reale ENI/CAPTCHA ancora aperto:</strong>
+ <p><strong>Collaudo sui siti reali in corso:</strong>
  quando la lettura di una pagina alimenta l'estrazione di righe, la
  navigazione collegata usa la raccolta e conserva le osservazioni anche
  dopo un cambio di pagina o un errore successivo. Senza quantità indicata,
@@ -343,8 +343,7 @@
  non passa automaticamente a un altro modello. L’amministratore può disattivare
  entrambe le decisioni cloud con <code>METNOS_SITES_FRONTIER_ROUTES=0</code>.</p>
 
- <p><strong>Consegnato con la release del 28 ottobre:</strong>
- la stessa osservazione della raccolta classifica contenuto e contesto,
+ <p>La stessa osservazione della raccolta classifica contenuto e contesto,
  anche quando un filtro è un pulsante senza attributi ARIA. Ogni comando
  deve essere realmente osservato; il valore richiesto cita la richiesta
  originale. Un filtro già soddisfatto consente di proseguire senza cambiarlo.
@@ -420,10 +419,10 @@
  soltanto contatori e confronti da un insieme chiuso, senza dati della pagina,
  destinazioni o segreti. Questa traccia serve alla diagnosi e non introduce
  nuovi tentativi né certifica la causa di un errore.</p>
- <h3 id="recovery-candidate">Correzioni candidate del recupero, 15 ottobre 2026</h3>
- <p>Dopo un accesso verificato, il candidato conserva come punto di ritorno
+ <h3 id="recovery">Recupero dopo l’accesso e durante la raccolta</h3>
+ <p>Dopo un accesso verificato, Metnos conserva come punto di ritorno
  l’indirizzo effettivamente raggiunto, invece della pagina pubblica di apertura.
- L’unico recupero già previsto non reinvia credenziali o moduli. Richiede la
+ L’unico recupero previsto non reinvia credenziali o moduli. Richiede la
  stessa pagina, l’indirizzo esatto e l’origine autorizzata; un cambio o una
  richiesta di intervento pendente fermano il recupero. Tornare all’indirizzo
  non costituisce una nuova verifica dell’autenticazione.</p>
@@ -432,15 +431,13 @@
  e origine, entro quattro secondi complessivi e il tempo residuo del chiamante.
  Il risultato della lettura precedente viene scartato anche se era favorevole.
  Nessun clic viene ripetuto; una sfida o un consenso pendente restano bloccanti.</p>
- <p>I nuovi registri distinguono il motivo del recupero e l’esito della scelta
+ <p>I registri distinguono il motivo del recupero e l’esito della scelta
  locale fra comandi osservati: conservano contatori, durata e categorie chiuse,
  senza testo della pagina, indirizzi, valori dei campi o risposta del modello.
  La completezza dichiarata riguarda soltanto la finestra consegnata alla scelta,
  non l’inventario del sito. La diagnostica non cambia decisioni o tentativi.</p>
- <p>La qualifica isolata di questi delta resta distinta dalla consegna e dal
- collaudo sul sito. Non dimostra che il primo comando non trovato sia risolto,
- che siano state raccolte tutte le fatture o che esista un risolutore CAPTCHA
- automatico generale o un nuovo supervisore.</p>
+ <p>Il recupero non dimostra che siano state raccolte tutte le fatture né
+ risolve da solo una sfida CAPTCHA.</p>
  <div class="note"><strong>La raccolta completa è ancora in collaudo.</strong>
  Le prove isolate IT/EN dei filtri sono superate; completezza e assenza di
  duplicati devono ancora essere confermate sul sito reale. Raggiungere un
@@ -493,13 +490,13 @@
  credenziali visibili possono essere temporaneamente disabilitati: questo
  non elimina la sfida e non permette di compilarli o inviarli. La richiesta
  testuale passa al controllo manuale quando non è riconoscibile un widget.</p>
- <p><strong>Comportamento aggiornato; collaudo reale ENI/CAPTCHA ancora aperto:</strong>
+ <p><strong>Collaudo sui siti reali in corso:</strong>
  il testo di verifica insieme a un solo widget supportato, riconosciuto
  sulla pagina corrente, non impedisce il tentativo automatico entro i
  limiti già previsti. Con il solo testo o con widget ambigui, Metnos chiede
  assistenza. Il tentativo deve comunque essere verificato sulla pagina;
  non qualifica la risoluzione generale dei CAPTCHA o delle griglie di immagini.</p>
- <p><strong>A ogni comparsa, ovunque (dal 29/10):</strong> una sfida può
+ <p><strong>A ogni comparsa, ovunque:</strong> una sfida può
  tornare più volte nella stessa visita, per esempio una casella all'ingresso,
  una griglia a immagini, un controllo del sito e una nuova casella sulla
  pagina delle credenziali. Ogni comparsa riceve gli stessi tentativi descritti
@@ -512,7 +509,7 @@
  automatici; le successive passano a te. Le verifiche solo testuali restano
  a te. Se un accesso è rimandato dopo una sfida abbandonata, il messaggio
  indica l'orario da cui riprovare.</p>
- <p><strong>Griglie a immagini 3×3 (dal 29/10):</strong> quando la casella apre
+ <p><strong>Griglie a immagini 3×3:</strong> quando la casella apre
  una griglia di nove immagini («seleziona tutte le immagini con…»), Metnos la
  fa etichettare da un classificatore pubblico locale, senza modelli cloud.
  Una griglia nuova contiene quasi sempre tre immagini giuste: Metnos risponde
@@ -533,10 +530,9 @@
  e revocando i comandi automatici. Il pannello manuale si apre soltanto quando
  tutte le operazioni sono terminate, la pulizia è riuscita e la sfida è ancora
  presente. Una pulizia fallita o non verificabile continua a bloccare il
- passaggio. L'ispezione dei 12 casi difficili raccolti l'1–2 novembre ha
- confermato griglie 4×4 e categorie non supportate, oltre a riconoscimenti
- incerti: questo campione selezionato non misura il tasso di successo. Le
- immagini archiviate rappresentano la prima vista, non necessariamente le
+ passaggio. Fra i casi difficili archiviati compaiono griglie 4×4, categorie
+ non supportate e riconoscimenti incerti: è un campione selezionato e non
+ misura il tasso di successo. Le immagini archiviate rappresentano la prima vista, non necessariamente le
  sostituzioni presenti alla rinuncia.</p>
  <p>Prima del tentativo visuale, Metnos pu&ograve; attivare una sola checkbox
  nativa o ARIA non selezionata, dentro un unico iframe di un provider
@@ -573,7 +569,7 @@
  locale, il collegamento visuale descritto sotto pu&ograve; valutare una sfida
  supportata con una sola richiesta Frontier. Se non verifica il superamento,
  Metnos chiede il tuo intervento.</p>
- <p>Il supervisore single/swarm &egrave; presente dalla release199; il login
+ <p>Il supervisore single/swarm &egrave; attivo; il login
  usa una sola proposta visuale. Il confronto tra pi&ugrave; alternative &egrave;
  verificato su casi isolati, ma non &egrave; attivo nel login corrente.
  La risoluzione automatica generale resta non qualificata. Il solo rilevamento
@@ -616,8 +612,7 @@
  confermare il risultato, lo dichiara e non ripete automaticamente l’operazione.</p>
 
  <h2>Se non riesce</h2>
- <p><strong>Dalla release 122:</strong>
- quando un comando web risulta coperto, il browser gestito conserva da solo
+ <p>Quando un comando web risulta coperto, il browser gestito conserva da solo
  una copia statica della pagina e le misure dell'ostacolo. Non serve eseguire
  script nella console. La copia esclude campi riservati e codice attivo;
  rimane locale, protetta come gli screenshot. Non viene acquisita durante
@@ -635,7 +630,7 @@
 
  <section id="spin-supervisor">
  <h2>Supervisore: una proposta o pi&ugrave; alternative</h2>
- <div class="note"><strong>Capacit&agrave; circoscritta, 17 ottobre 2026.</strong>
+ <div class="note"><strong>Capacit&agrave; circoscritta.</strong>
  Il supervisore e l'adattatore visuale hanno superato i controlli isolati
  e della composizione. L'accettazione sui siti reali resta aperta: le prove
  non dimostrano una risoluzione generale dei CAPTCHA o tempi migliori.</div>
@@ -654,25 +649,25 @@
  <p>Il progetto mantiene il tentativo locale e il pannello umano esistenti.
  Per una sfida supportata, un adattatore pu&ograve; richiedere a Frontier una
  proposta sul solo ritaglio del widget, dopo il tentativo locale. Il
- collegamento candidato al login consente al massimo una richiesta visuale.
+ collegamento al login consente al massimo una richiesta visuale.
  Il contratto generale ammette un secondo tentativo soltanto per una nuova
  sfida osservata, entro il budget comune; questo secondo round non &egrave;
  attivo nel collegamento corrente. Fotogrammi animati o un errore non concedono
  altri tentativi.</p>
- <p>Il primo schema candidato propone un solo clic interno al widget oppure
+ <p>Lo schema propone un solo clic interno al widget oppure
  si astiene. Non copre tutte le griglie o le verifiche a pi&ugrave; passi.
  Un clic, un token o la scomparsa del pannello non provano l'accettazione del
  sito o il login. Se la verifica manca, il controllo umano usa la stessa
  sessione dopo l'arresto delle attivit&agrave; automatiche. OTP, consensi e
  manutenzione conservano i propri percorsi.</p>
- <p>Una prova completa su un widget sintetico ha verificato il passaggio
+ <p>Le prove su un widget sintetico verificano il passaggio
  dell'immagine a Frontier, un solo clic corretto, l'accettazione del sito
  e l'arresto delle attivit&agrave;. Le prove offline del collegamento al
  login verificano anche timeout, cancellazione e astensione sulle
  sovrapposizioni osservabili. Il tempo di lavoro &egrave; 20 secondi, seguito
  da attese di arresto limitate. Restano da verificare il percorso completo sui siti reali
- e i CAPTCHA effettivamente incontrati. La griglia &egrave; un candidato
- separato nel laboratorio e non rientra nella consegna. Gli altri ruoli
+ e i CAPTCHA effettivamente incontrati. Le griglie a immagini seguono il
+ classificatore locale descritto sopra. Gli altri ruoli
  conservano il modello gi&agrave; configurato.</p>
  </section>
 

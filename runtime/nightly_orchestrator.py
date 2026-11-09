@@ -14,7 +14,7 @@ Vincoli (richiesta utente):
 
 Proprieta':
   - ORDINE rispettato (dipendenze): observer dopo materialize; reaper dopo aging;
-    digest dopo promoter; consegna del refresh indice immagini per prima.
+    consegna del refresh indice immagini per prima.
   - I callback sono sequenziali; un lavoro consegnato a LRE continua in modo
     asincrono. Le sue risorse sono regolate da LRE, non da questa sequenza.
   - ERROR-ISOLATION (§2.8): un task che fallisce NON abortisce gli altri; ogni esito
@@ -42,12 +42,9 @@ NIGHTLY_SEQUENCE: tuple[str, ...] = (
     "nightly_aging",
     "state_reaper",              # dopo aging (reaper unico stato persistente)
     "learning_loop_review",      # W1: pota seed shadow + conteggi (ADR 0185)
-    "birth_failure_reviews",     # RM-0008 F5: classifica le quarantene esatte
     "telos_synth_consume",
     "proposals_eta_aggregate",
     "introvertiva_propose",
-    "promoter",
-    "promoter_digest",           # dopo promoter
     "proposals_cleanup",
     "lifecycle_summary",
     "skill_sandbox_watchdog",

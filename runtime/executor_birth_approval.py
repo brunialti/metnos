@@ -15,11 +15,11 @@ APPROVAL_SCHEMA_VERSION = 1
 _DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 _TIME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
 _LIFECYCLES = frozenset({
-    "proposed", "synthesized", "preexercise", "active", "quarantined",
+    "proposed", "synthesized", "active",
     # Productive approval scopes for changes to an existing executor.  These
     # are deliberately distinct from lifecycle values: an approval for an
-    # authority change must not authorize promotion or reactivation.
-    "authority", "promotion", "reactivation",
+    # authority change must not authorize reactivation.
+    "authority", "reactivation",
 })
 
 

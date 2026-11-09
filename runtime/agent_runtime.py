@@ -26,6 +26,7 @@ import hashlib
 import json
 import os
 import re
+import signal
 import subprocess
 import sys
 import time
@@ -49,80 +50,9 @@ from credential_intake import (
     credential_pairs_for_storage,
     scrub_sensitive_text as _scrub_credentials,
 )
-from executor_birth_feedback import (
-    EXECUTION_RECEIPT_RESULT_KEY, ExecutionReceipt, FeedbackError, make_execution_receipt,
-    dispatch_identifier_reference, reduce_retainable_payload,
-    reduced_query_reference, utc_now_seconds,
-)
-from manifest_inventory import ContractId, ManifestOrigin
 
 # Executor che PRODUCONO un file deliverable (consegna su ogni canale §7.3).
 _FILE_PRODUCER_PREFIXES = ("create_", "write_", "render_", "compress_")
-
-
-def _dispatch_contract_id(value: object) -> ContractId:
-    """Parse the catalog's authenticated structural identity, exactly."""
-    if not isinstance(value, str) or value.count(":") != 1:
-        raise FeedbackError("feedback_binding_invalid", "contract_id")
-    origin, relative = value.split(":", 1)
-    try:
-        contract = ContractId(ManifestOrigin(origin), relative)
-    except (TypeError, ValueError) as exc:
-        raise FeedbackError("feedback_binding_invalid", "contract_id") from exc
-    if contract.value != value:
-        raise FeedbackError("feedback_binding_invalid", "contract_id")
-    return contract
-
-
-def _authenticated_dispatch_candidate_id(
-    executor: object, contract_id: ContractId, generation_id: str,
-) -> str:
-    """Resolve candidate identity from the signed AdmissionReceipt.
-
-    Catalog objects intentionally do not accept a caller-provided candidate
-    identifier.  The productive Birth bundle owns the verifier keyring, and
-    the receipt adjacent to the immutable generation is the sole authority.
-    """
-    from executor_birth_operational import _runtime_bundle_snapshot
-
-    bundle = _runtime_bundle_snapshot()
-    if bundle is None:
-        raise FeedbackError("feedback_binding_invalid", "candidate_id")
-    try:
-        binding = bundle.core.commit_publisher.authenticate_execution_binding(
-            contract_id, generation_id,
-        )
-    except Exception as exc:
-        raise FeedbackError("feedback_binding_invalid", "candidate_id") from exc
-    if binding.executor_name != getattr(executor, "name", None):
-        raise FeedbackError("feedback_binding_invalid", "executor_name")
-    return binding.candidate_id
-
-
-def _execution_receipt_for_dispatch(
-    executor: object, *, arguments: dict, output: dict, request_id: str,
-    turn_id: str, reduced_query_ref: str, dispatched_at: str, completed_at: str,
-) -> ExecutionReceipt:
-    """Bind one completed call only when every authenticated field exists."""
-    contract_id = _dispatch_contract_id(getattr(executor, "contract_id", None))
-    generation_id = getattr(executor, "generation_id", None)
-    candidate_id = _authenticated_dispatch_candidate_id(
-        executor, contract_id, generation_id,
-    )
-    from frozen_plan_consent import redact_args, redact_result
-    return make_execution_receipt(
-        request_id=request_id,
-        turn_id=dispatch_identifier_reference("turn", turn_id),
-        reduced_query_ref=reduced_query_ref,
-        arguments=reduce_retainable_payload(redact_args(executor, arguments)),
-        reduced_output=reduce_retainable_payload(redact_result(executor, output)),
-        contract_id=contract_id,
-        executor_name=getattr(executor, "name", None),
-        candidate_id=candidate_id,
-        generation_id=generation_id,
-        dispatched_at=dispatched_at,
-        completed_at=completed_at,
-    )
 
 
 def _derive_file_attachments(tool, res: dict) -> list:
@@ -197,6 +127,9 @@ from vaglio import guard_check
 import config as _C  # §7.11
 
 TURN_LOG_DIR = _C.PATH_USER_DATA / "turns"
+# Signals that end a durable child from outside (service stop, OOM killer).
+_EXTERNAL_TERMINATION_SIGNALS = frozenset(
+    int(item) for item in (signal.SIGTERM, signal.SIGKILL, signal.SIGINT, signal.SIGHUP))
 DEFAULT_CAP_STEPS = 30
 DEFAULT_CAP_SAME_EXECUTOR = 10
 # Cap per-turn per executor non-action (find/get/list/read/classify/filter):
@@ -3417,7 +3350,10 @@ def finalize_local_executor_args(executor, args: dict) -> dict:
     """Return the exact server-local child payload before authorization."""
     import sandbox as _sandbox
     final = _fill_runtime_sourced_args(executor, dict(args or {}))
-    return _sandbox.resolve_filesystem_read_args(executor, final)
+    final = _sandbox.resolve_filesystem_read_args(executor, final)
+    # A named folder still relative is the installation owner's, as on a PC.
+    import server_filesystem_host
+    return server_filesystem_host.anchor_named_folders(final)
 
 
 def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised",
@@ -3953,13 +3889,23 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
             parsed_result = json.loads(result.stdout)
         except json.JSONDecodeError:
             if execution_context is not None:
+                # Termination from outside (service stop, OOM killer) leaves
+                # no verdict: an interruption, not a result contract violation.
+                # A child's own crash signal (SIGSEGV, SIGABRT) stays non_json.
+                interrupted = -result.returncode in _EXTERNAL_TERMINATION_SIGNALS
                 log.warning(
-                    "durable_transport_failed attempt_id=%s cause=non_json returncode=%d "
+                    "durable_transport_failed attempt_id=%s cause=%s returncode=%d "
                     "stdout_chars=%d stderr_chars=%d",
-                    execution_context.attempt_id, result.returncode,
+                    execution_context.attempt_id,
+                    "signal" if interrupted else "non_json", result.returncode,
                     len(result.stdout), len(result.stderr),
                 )
                 parsed_result = {
+                    "ok": False,
+                    "error_class": "execution_interrupted",
+                    "error_code": "ERR_DURABLE_EXECUTION_FAILED",
+                    "error": msg("ERR_DURABLE_EXECUTION_FAILED"),
+                } if interrupted else {
                     "ok": False,
                     "error_class": "non_json",
                     "error_code": "ERR_DURABLE_RESULT_CONTRACT_VIOLATION",
@@ -4056,7 +4002,7 @@ def _invoke_executor_impl_optional_context(
 
 def invoke_executor(executor, args, timeout_s=30, *, autonomy="supervised",
                     turn_id=None, actor=None, channel=None, target_device=None,
-                    owner_user_id=None, execution_context=None, _before_invoke=None):
+                    owner_user_id=None, execution_context=None):
     """Universal scheduled choke-point for local and remote executors.
 
     The scheduler is synchronous and serial-first by default, so this wrapper
@@ -4066,10 +4012,6 @@ def invoke_executor(executor, args, timeout_s=30, *, autonomy="supervised",
     from executor_scheduler import concurrency_identity_for, invoke_scheduled
 
     def call():
-        # An internal owner may require a fresh attestation after queueing.
-        # Refusal happens before transport, without replacing sandbox checks.
-        if _before_invoke is not None:
-            _before_invoke()
         return _invoke_executor_impl_optional_context(
             executor, args, timeout_s=timeout_s, autonomy=autonomy,
             turn_id=turn_id, actor=actor, channel=channel,
@@ -4089,7 +4031,7 @@ def invoke_executor(executor, args, timeout_s=30, *, autonomy="supervised",
 def submit_executor(executor, args, timeout_s=30, *, autonomy="supervised",
                     turn_id=None, actor=None, channel=None,
                     target_device=None, owner_user_id=None,
-                    execution_context=None, _before_invoke=None):
+                    execution_context=None):
     """Submit one admitted executor call to the single central pool.
 
     This is deliberately the asynchronous twin of :func:`invoke_executor`:
@@ -4100,8 +4042,6 @@ def submit_executor(executor, args, timeout_s=30, *, autonomy="supervised",
     from executor_scheduler import concurrency_identity_for, submit_scheduled
 
     def call():
-        if _before_invoke is not None:
-            _before_invoke()
         return _invoke_executor_impl_optional_context(
             executor, args, timeout_s=timeout_s, autonomy=autonomy,
             turn_id=turn_id, actor=actor, channel=channel,
@@ -4157,9 +4097,6 @@ class StepLog:
     # by-product del tool_call JSON (solo se METNOS_CANONICAL_QUERY=1).
     # Persistita per telemetria e riusata da mnestoma.canonical_query_log.
     canonical_query: str = ""
-    # RM-0008 F5 (inactive until its certified threshold): exact typed dispatch
-    # identity.  Legacy steps remain representable through the explicit None.
-    execution_receipt: ExecutionReceipt | None = None
     execution_effect: str | None = None
 
 
@@ -7264,14 +7201,6 @@ def _run_engine(
     _catalog_by_name = {
         e.name: e for e in catalog if getattr(e, "name", None)
     }
-    try:
-        _dispatch_query_ref = reduced_query_reference(query)
-    except FeedbackError:
-        # A malformed query cannot acquire a durable feedback binding.  The
-        # ordinary invocation remains available; later negative feedback must
-        # fail closed before quarantine because StepLog has no receipt.
-        _dispatch_query_ref = ""
-
     def _attach_presentation_contract(tool_name: str, result: object) -> object:
         """Carry producer-owned rendering metadata into the shared engine.
 
@@ -7347,7 +7276,6 @@ def _run_engine(
             return {"ok": False, "error": f"tool '{tool_name}' non in catalog",
                      "error_class": "tool_unknown"}
         try:
-            _receipt_dispatched_at = utc_now_seconds()
             _effective_args = _effective_executor_args(tool_name, args)
             result = invoke_executor(
                 exec_obj, _effective_args,
@@ -7378,60 +7306,16 @@ def _run_engine(
                     )
                     if bound is not None:
                         result = bound
-            # The receipt is created only after completion, from the exact
-            # authenticated catalog binding captured for this dispatch.  An
-            # incomplete/pre-cutover executor deliberately leaves StepLog
-            # without a receipt; feedback then returns
-            # ``feedback_binding_invalid`` before any quarantine callback.
-            if isinstance(result, dict) and _dispatch_query_ref:
-                try:
-                    receipt = _execution_receipt_for_dispatch(
-                        exec_obj,
-                        arguments=_effective_args,
-                        output=result,
-                        request_id=source_request_id,
-                        turn_id=turn_id,
-                        reduced_query_ref=_dispatch_query_ref,
-                        dispatched_at=_receipt_dispatched_at,
-                        completed_at=utc_now_seconds(),
-                    )
-                except (FeedbackError, TypeError, ValueError):
-                    receipt = None
-                if receipt is not None:
-                    result = dict(result)
-                    result[EXECUTION_RECEIPT_RESULT_KEY] = receipt
             return _attach_presentation_contract(tool_name, result)
         except Exception as ex:
-            failure = {"ok": False, "error": f"{type(ex).__name__}: {ex}",
-                       "error_class": "exception"}
-            # Executor exceptions are completed dispatches too.  Preserve an
-            # exact binding when the authenticated identity is available;
-            # never let receipt construction disguise the original failure.
-            if (_dispatch_query_ref and "_receipt_dispatched_at" in locals()
-                    and "_effective_args" in locals()):
-                try:
-                    failure[EXECUTION_RECEIPT_RESULT_KEY] = (
-                        _execution_receipt_for_dispatch(
-                            exec_obj,
-                            arguments=_effective_args,
-                            output=failure,
-                            request_id=source_request_id,
-                            turn_id=turn_id,
-                            reduced_query_ref=_dispatch_query_ref,
-                            dispatched_at=_receipt_dispatched_at,
-                            completed_at=utc_now_seconds(),
-                        )
-                    )
-                except (FeedbackError, TypeError, ValueError):
-                    pass
-            return failure
+            return {"ok": False, "error": f"{type(ex).__name__}: {ex}",
+                    "error_class": "exception"}
 
     def _submit(tool_name: str, args: dict):
         """Async twin used only after the engine and scheduler both admit it."""
         exec_obj = _catalog_by_name.get(tool_name)
         if exec_obj is None or tool_name in _BUILTIN_TOOL_HANDLERS:
             raise ValueError(f"tool '{tool_name}' is not async-admissible")
-        _receipt_dispatched_at = utc_now_seconds()
         _effective_args = _effective_executor_args(tool_name, args)
         future = submit_executor(
             exec_obj, _effective_args,
@@ -7463,26 +7347,9 @@ def _run_engine(
                             "error_class": "exception",
                         }
                 try:
-                    if isinstance(result, dict):
+                    if isinstance(result, dict) and contract:
                         result = dict(result)
-                        if _dispatch_query_ref:
-                            try:
-                                receipt = _execution_receipt_for_dispatch(
-                                    exec_obj,
-                                    arguments=_effective_args,
-                                    output=result,
-                                    request_id=source_request_id,
-                                    turn_id=turn_id,
-                                    reduced_query_ref=_dispatch_query_ref,
-                                    dispatched_at=_receipt_dispatched_at,
-                                    completed_at=utc_now_seconds(),
-                                )
-                            except (FeedbackError, TypeError, ValueError):
-                                receipt = None
-                            if receipt is not None:
-                                result[EXECUTION_RECEIPT_RESULT_KEY] = receipt
-                        if contract:
-                            result.setdefault("_presentation_contract", contract)
+                        result.setdefault("_presentation_contract", contract)
                     completed.set_result(result)
                 except BaseException as exc:
                     completed.set_exception(exc)
@@ -7630,9 +7497,6 @@ def _run_engine(
         step.raw_args = dict(args)
         step.resolved_args = dict(args)
         step.result = dict(observation)
-        receipt = step.result.pop(EXECUTION_RECEIPT_RESULT_KEY, None)
-        if isinstance(receipt, ExecutionReceipt):
-            step.execution_receipt = receipt
         needs_inputs = observation.get("decision") == "needs_inputs"
         return {
             "steps": [step],
@@ -7687,13 +7551,7 @@ def _run_engine(
             sl.resolved_args = dict(s.args)
             sl.exec_ms = s.latency_ms
             sl.execution_effect = getattr(s, "execution_effect", None)
-            _step_result = dict(s.result) if isinstance(s.result, dict) else s.result
-            if isinstance(_step_result, dict):
-                _step_result.pop(EXECUTION_RECEIPT_RESULT_KEY, None)
-            _receipt = getattr(s, "execution_receipt", None)
-            if isinstance(_receipt, ExecutionReceipt):
-                sl.execution_receipt = _receipt
-            sl.result = _step_result
+            sl.result = dict(s.result) if isinstance(s.result, dict) else s.result
             steps_out.append(sl)
             # §7.3: propaga needs_inputs all'upstream per dialog handling
             if isinstance(s.result, dict) and s.result.get("decision") == "needs_inputs":
@@ -8532,7 +8390,6 @@ def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, progress=None,
                 _fp_step.resolved_args = dict(_fp_hit["args"])
                 _fp_step.vaglio_approved = True  # short-circuit, no vaglio (read-only)
                 _t_fp = time.perf_counter()
-                _fp_dispatched_at = utc_now_seconds()
                 try:
                     _fp_obs = invoke_executor(
                         _fp_exec, _fp_hit["args"],
@@ -8552,21 +8409,6 @@ def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, progress=None,
                 if hasattr(_fp_step, "__dict__"):
                     _fp_step.__dict__["fast_path"] = True
                 if _fp_obs.get("ok"):
-                    try:
-                        _fp_step.execution_receipt = _execution_receipt_for_dispatch(
-                            _fp_exec,
-                            arguments=_fp_step.resolved_args,
-                            output=_fp_obs,
-                            request_id=source_request_id,
-                            turn_id=turn_id,
-                            reduced_query_ref=reduced_query_reference(_query_for_planning),
-                            dispatched_at=_fp_dispatched_at,
-                            completed_at=utc_now_seconds(),
-                        )
-                    except (FeedbackError, TypeError, ValueError):
-                        # As on the engine path, an unauthenticated binding
-                        # must remain without a receipt; feedback fails closed.
-                        pass
                     log.steps.append(_fp_step)
                     log.final_kind = "answer"
                     _fp_msg = _fp_hit["render"](_fp_obs)

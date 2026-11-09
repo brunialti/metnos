@@ -97,9 +97,14 @@ def _record_lacuna(query: str, intent: Intent, error_class: str,
         # capacità (change_intent PROPOSED, triage umano su /admin/changes).
         # Nel choke-point: copre SimpleTerminator E MetisTerminator.
         try:
+            # The same missing capability is asked with different words: a
+            # proposal counts every request with the same verb, object and
+            # class, not only the identical sentence (RM-0009 core).
             row = conn.execute(
-                "SELECT n_seen FROM lacune WHERE lacuna_id = ?",
-                (lid,)).fetchone()
+                "SELECT COALESCE(SUM(n_seen), 1) FROM lacune "
+                "WHERE intent_verb IS ? AND intent_object IS ? "
+                "AND error_class IS ?",
+                (intent.verb, intent.object, error_class)).fetchone()
             n_seen = int(row[0]) if row else 1
             import learning_loop as _ll
             _ll.propose_from_lacuna(

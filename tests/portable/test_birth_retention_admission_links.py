@@ -36,7 +36,7 @@ def joined(linked, history):
             generation_id=history.generation, candidate_id=subject.candidate_id,
             semantic_core_id=subject.semantic_core_id, admission_context_id=subject.admission_context_id,
             birth_request_id=D, authoring_journal_hash=D, predecessor_id=None, producer_receipt_hash=D,
-            revision_class=RevisionClass.PROMOTION_REVISION,
+            revision_class=RevisionClass.FIRST_BIRTH,
             check_results={'manifest': AdmissionCheck('historical/v1', AdmittedCheckStatus.PASSED, D)},
             semantic_review_hash=D, approval_hash=approval_evidence_hash(evidence),
             approved_lifecycle=ApprovedLifecycle.ACTIVE, kind=AdmissionKind.ADMISSION,

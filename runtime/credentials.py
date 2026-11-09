@@ -1,8 +1,14 @@
 """credentials — storage cifrato delle credenziali utente per login web (ADR 0082).
 
-Cifratura simmetrica derivata da `~/.config/metnos/admin.key` via HKDF-SHA256
+Cifratura simmetrica derivata da `~/.config/metnos/vault.key` via HKDF-SHA256
 con salt random per file. Cipher: `cryptography.fernet.Fernet`. Niente
-passphrase utente, l'admin key locale fa da master.
+passphrase utente, la chiave locale del vault fa da master.
+
+The vault key is separate from the HTTP admin key (RM-0009 FS-B): executors
+that read credentials receive the vault key, never the key that authenticates
+administrative HTTP requests and signs user cookies. `ensure_vault()` creates
+the vault key and moves files encrypted with the old shared key to it; the
+server keeps the admin key, so nothing becomes unreadable.
 
 Storage: `~/.config/metnos/credentials/<domain>.json.age` (mode 0600).
 Format JSON cifrato:
@@ -42,7 +48,10 @@ import config as _C  # §7.11
 
 
 # Path canonici. Esposti come modulo-level per facilitare test (monkeypatch).
+# ADMIN_KEY_PATH is read only to move files written before the vault had its
+# own key; sandboxes never receive it.
 ADMIN_KEY_PATH = _C.PATH_USER_CONFIG / "admin.key"
+VAULT_KEY_PATH = _C.PATH_USER_CONFIG / "vault.key"
 CRED_DIR = _C.PATH_USER_CONFIG / "credentials"
 
 
@@ -62,17 +71,12 @@ def _validate_domain(domain: str) -> None:
         raise ValueError(f"domain cannot start with '.': {domain!r}")
 
 
-def _ensure_admin_key() -> bytes:
-    """Carica la admin key (32 bytes equivalenti, hex 64 caratteri).
-    Se assente, fallisce esplicitamente: la generazione e' responsabilita'
-    di `runtime.http_auth.get_or_create_admin_key()` (boot del server).
-    """
-    if not ADMIN_KEY_PATH.exists():
-        raise FileNotFoundError(
-            f"admin key non trovata in {ADMIN_KEY_PATH}; avvia almeno una "
-            "volta `metnos_http_server` per generarla."
-        )
-    raw = ADMIN_KEY_PATH.read_text().strip()
+_CREDENTIALS_INFO = b"metnos-credentials-v1"
+_VAULT_READY: set[tuple[str, str, str]] = set()
+
+
+def _key_bytes(path: Path) -> bytes:
+    raw = path.read_text().strip()
     # Tolerante: accetta hex (256-bit) o stringa qualunque.
     try:
         return bytes.fromhex(raw)
@@ -80,13 +84,77 @@ def _ensure_admin_key() -> bytes:
         return raw.encode("utf-8")
 
 
-def _derive_fernet_key(salt: bytes, *, info: bytes = b"metnos-credentials-v1") -> bytes:
-    """HKDF-SHA256(admin_key, salt) -> 32 byte -> base64 url-safe per Fernet.
+def _encrypted_vault_files() -> list[tuple[Path, bytes]]:
+    """Every file encrypted under the vault master, with its HKDF label."""
+    found = [(path, _CREDENTIALS_INFO) for path in sorted(CRED_DIR.glob("*.json.age"))]
+    import sites_saved_sessions  # Lazy: that module imports this one.
+    sessions = sites_saved_sessions._dir()
+    if sessions.is_dir():
+        found += [(path, sites_saved_sessions._INFO)
+                  for path in sorted(sessions.glob("*.age"))]
+    return found
 
-    ``info`` separates the keys of other secrets derived from the same master
-    (saved site sessions use their own label).
+
+def _move_to_vault_key(path: Path, info: bytes, old: bytes, new: bytes) -> bool:
+    """Re-encrypt one file under the vault key; False when already there."""
+    salt_b64, token = path.read_bytes().split(b"\n", 1)
+    salt = base64.urlsafe_b64decode(salt_b64)
+    try:
+        Fernet(_derive(new, salt, info)).decrypt(token)
+        return False
+    except InvalidToken:
+        pass
+    plaintext = Fernet(_derive(old, salt, info)).decrypt(token)
+    before = path.stat()
+    tmp = path.parent / (path.name + ".tmp")
+    tmp.write_bytes(salt_b64 + b"\n" + Fernet(_derive(new, salt, info)).encrypt(plaintext))
+    os.chmod(tmp, 0o600)
+    # Same content, new key: the file keeps its age (shown as age_days).
+    os.utime(tmp, ns=(before.st_atime_ns, before.st_mtime_ns))
+    os.replace(tmp, path)
+    return True
+
+
+def ensure_vault() -> int:
+    """Give the vault its own key and move older files to it. Idempotent.
+
+    Runs where the admin key is readable (the services); inside a sandbox only
+    the vault key exists and there is nothing to do. A file that neither key
+    opens is left as it is, so its reader still reports it honestly.
     """
-    master = _ensure_admin_key()
+    if VAULT_KEY_PATH.exists() and not ADMIN_KEY_PATH.exists():
+        return 0
+    import fcntl
+
+    VAULT_KEY_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(VAULT_KEY_PATH.parent / ".vault.lock", "a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        if not VAULT_KEY_PATH.exists():
+            _C.write_private_text(VAULT_KEY_PATH, secrets.token_hex(32))
+        if not ADMIN_KEY_PATH.exists():
+            return 0
+        old, new = _key_bytes(ADMIN_KEY_PATH), _key_bytes(VAULT_KEY_PATH)
+        moved = 0
+        for path, info in _encrypted_vault_files():
+            try:
+                moved += _move_to_vault_key(path, info, old, new)
+            except (ValueError, InvalidToken, OSError):
+                continue
+        return moved
+
+
+def _vault_master() -> bytes:
+    """The vault master key; the first use in a process settles the vault."""
+    marker = (str(VAULT_KEY_PATH), str(ADMIN_KEY_PATH), str(CRED_DIR))
+    if marker not in _VAULT_READY:
+        ensure_vault()
+        _VAULT_READY.add(marker)
+    if not VAULT_KEY_PATH.exists():
+        raise FileNotFoundError(f"vault key not found in {VAULT_KEY_PATH}")
+    return _key_bytes(VAULT_KEY_PATH)
+
+
+def _derive(master: bytes, salt: bytes, info: bytes) -> bytes:
     derived = HKDF(
         algorithm=hashes.SHA256(),
         length=32,
@@ -94,6 +162,15 @@ def _derive_fernet_key(salt: bytes, *, info: bytes = b"metnos-credentials-v1") -
         info=info,
     ).derive(master)
     return base64.urlsafe_b64encode(derived)
+
+
+def _derive_fernet_key(salt: bytes, *, info: bytes = _CREDENTIALS_INFO) -> bytes:
+    """HKDF-SHA256(vault_key, salt) -> 32 byte -> base64 url-safe per Fernet.
+
+    ``info`` separates the keys of other secrets derived from the same master
+    (saved site sessions use their own label).
+    """
+    return _derive(_vault_master(), salt, info)
 
 
 def _file_for(domain: str) -> Path:

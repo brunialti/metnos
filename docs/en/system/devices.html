@@ -63,7 +63,7 @@ compatible, and the required resources are available.</p>
  </tbody>
 </table>
 
-<p><strong>Folders by name.</strong> On a PC you can ask for “the Documents folder”, “Pictures” or “Downloads”: the device reports where they really are, even when OneDrive moves them, and Metnos uses that path. Any other folder needs its full path. A name grants nothing: file operations follow the device permissions.</p>
+<p><strong>Folders by name.</strong> On a PC you can ask for “the Documents folder”, “Pictures” or “Downloads”: the device reports where they really are, even when OneDrive moves them, and Metnos uses that path. On the server they are the folders of the user who installed Metnos, unless the Metnos workspace already has a folder with that name. Any other folder needs its full path. A name grants nothing: file operations follow the device permissions or, on the server, those in System → Server permissions.</p>
 
 <p>“Remote” therefore does not mean “intelligent”, and “local” does not mean
 “serial”. A remote executor may perform a deterministic read; a local executor

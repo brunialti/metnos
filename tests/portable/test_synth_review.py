@@ -15,7 +15,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 import pytest
 
 from install import synth_review as review
-from executor_birth_approval import ApprovalSubject, approval_subject_hash
+from executor_birth_approval import ApprovalSubject
 from executor_birth_approval_authority import ApprovalAuthority
 from executor_birth_approval_store import verified_approval, consume_verified_approval
 from executor_birth_functional import SynthTestReport
@@ -123,7 +123,7 @@ def document():
 def setup(monkeypatch, tmp_path):
     keys = {name: Ed25519PrivateKey.generate() for name in ("review-key", "operator-key")}
     approval = ApprovalAuthority(1, {"operator-key": keys["operator-key"].public_key()}, {
-        "operator": {"key_ids": frozenset({"operator-key"}), "scopes": frozenset({"preexercise"})}})
+        "operator": {"key_ids": frozenset({"operator-key"}), "scopes": frozenset({"active"})}})
     current = NS(selection=NS(admission_context_id=D, set_id="set"),
                  authorities=NS(approval=approval))
     bundle = NS(core=NS(
@@ -135,7 +135,7 @@ def setup(monkeypatch, tmp_path):
     calls = []
 
     def request(intent, cap):
-        assert cap in (review._SYNTH_MULTISTAGE, review._PROMOTE)
+        assert cap is review._SYNTH_MULTISTAGE
         manifest = tomllib.loads((intent.candidate_source_root / "manifest.toml").read_text())
         source = (intent.candidate_source_root / "example.py").read_bytes()
         assert manifest["code"]["digest"] == "sha256:" + hashlib.sha256(source).hexdigest()
@@ -146,8 +146,7 @@ def setup(monkeypatch, tmp_path):
         return NS(candidate_id=candidate, request_id=candidate, producer=cap), bundle
 
     def subject(request, core, *, expires_at):
-        scope = "promotion" if request.producer is review._PROMOTE else "preexercise"
-        return ApprovalSubject(request.candidate_id, D, D, scope, expires_at)
+        return ApprovalSubject(request.candidate_id, D, D, "active", expires_at)
 
     def functional(data):
         calls.append(data)
@@ -217,7 +216,7 @@ def test_review_does_not_request_consent_for_authenticated_current_generation(
         payloads = {"manifest.toml": candidate.manifest_bytes,
                     "manifest.lang_state.json": candidate.language_state_bytes}
     previous = predecessor_snapshot(D, "generation", payloads,
-                                    approved_lifecycle="preexercise",
+                                    approved_lifecycle="active",
                                     admission_receipt=b"existing signed receipt")
     setup.bundle.core.predecessor_resolver = lambda _request: (previous, payloads)
 
@@ -251,7 +250,7 @@ def test_changed_candidate_cannot_reuse_current_admission(document, setup, chang
         payloads = {"manifest.toml": candidate.manifest_bytes,
                     "manifest.lang_state.json": candidate.language_state_bytes}
     previous = predecessor_snapshot(D, "generation", payloads,
-                                    approved_lifecycle="preexercise",
+                                    approved_lifecycle="active",
                                     admission_receipt=b"existing signed receipt")
     setup.bundle.core.predecessor_resolver = lambda _request: (previous, payloads)
     replacement = {
@@ -384,7 +383,7 @@ def test_proof_publication_authenticates_before_mutating_selected_authority(docu
     import executor_birth_prepared_root as prepared
     from install import birth_authority_provisioner as provisioner
     current = setup.current
-    subject = ApprovalSubject(D, D, D, "preexercise", "2026-09-27T13:00:00Z")
+    subject = ApprovalSubject(D, D, D, "active", "2026-09-27T13:00:00Z")
     record = {"subject": asdict(subject), "tests": document["human_cases"]}
     key = setup.keys["review-key"]
     policy = ReviewPolicyV1({kind: frozenset({"v1"}) for kind in IndependentEvidenceKind},
@@ -415,78 +414,36 @@ def test_proof_publication_authenticates_before_mutating_selected_authority(docu
         assert len(writes) == (0 if scenario == "retry" else 1)
 
 
-@pytest.fixture
-def promotion_document(document, setup):
-    document["proposal"]["producer"] = "promoter"
-    setup.current.authorities.approval.actors["operator"]["scopes"] = frozenset({"preexercise", "promotion"})
-    return document
-
-
-@pytest.mark.parametrize("outcome", ["success", "refusal", "interrupted"])
-def test_promotion_resumes_existing_promoter_with_exact_verified_consent(
-    promotion_document, setup, monkeypatch, outcome,
-):
-    from jobs import promoter_promote
-    result = review.review(promotion_document)
-    assert result["subject"]["lifecycle"] == "promotion"
-    record = json.loads((setup.root / (result["review_id"][7:] + ".json")).read_bytes())
-    subject = ApprovalSubject(**record["subject"])
-    command = {"review_id": result["review_id"], "subject_hash": result["subject_hash"], "decision": "approved"}
-    attempts = []
-
-    def promote(contract, *, review_id, reason, approval_refs, candidate):
-        assert contract.value == promotion_document["proposal"]["contract_id"]
-        assert review_id == result["review_id"] and reason == promotion_document["proposal"]["reason"]
-        assert approval_refs == (record["token"],)
-        for filename, payload in promotion_document["proposal"]["files"].items():
-            if filename != "manifest.toml":  # digest is finalized by preparation
-                assert (candidate.private_root / filename).read_bytes() == base64.b64decode(payload)
-        assert candidate.manifest_bytes == (candidate.private_root / "manifest.toml").read_bytes()
-        attempts.append(consume_verified_approval(
-            subject, token=approval_refs[0], request_id=subject.candidate_id,
-            now=NOW, authority=setup.current.authorities.approval,
-            db_path=review._approval_db(setup.bundle),
-        ))
-        if outcome == "interrupted" and len(attempts) == 1:
-            raise RuntimeError("postcommit_interruption")
-        return {"ok": outcome != "refusal", "error": "semantic_review_uncertain" if outcome == "refusal" else None}
-
-    monkeypatch.setattr(promoter_promote, "promote_reviewed_candidate", promote)
-    monkeypatch.setattr(review, "_execute", lambda *_: pytest.fail("must retain promoter rollback and readback"))
-    if outcome == "interrupted":
-        with pytest.raises(RuntimeError, match="postcommit_interruption"):
-            review.approve(command)
-        monkeypatch.setattr(review, "_preview_approval_subject",
-                            lambda *_a, **_k: pytest.fail("Birth owns retry after signed consent"))
-    accepted = review.approve(command)
-    assert accepted["status"] == ("birth_refused" if outcome == "refusal" else "admitted")
-    assert len(attempts) == (2 if outcome == "interrupted" else 1)
-    if outcome == "interrupted":
-        assert attempts[0] == attempts[1]
-
-
-@pytest.mark.parametrize("scope", ["preexercise", "active", "reactivation", "authority"])
-def test_promotion_review_requires_authentic_promotion_predecessor(
-    promotion_document, setup, monkeypatch, scope,
-):
-    monkeypatch.setattr(review, "_preview_approval_subject", lambda request, core, *, expires_at:
-                        ApprovalSubject(request.candidate_id, D, D, scope, expires_at))
-    with pytest.raises(ValueError, match="promotion_predecessor_required"):
-        review.review(promotion_document)
-    assert not setup.calls and not setup.published
-    assert not review._approval_db(setup.bundle).exists()
-
-
-def test_preexercise_authority_cannot_approve_promotion(promotion_document, setup):
-    setup.current.authorities.approval.actors["operator"]["scopes"] = frozenset({"preexercise"})
-    with pytest.raises(ValueError, match="authority_upgrade_required"):
-        review.review(promotion_document)
-    assert not setup.calls and not setup.published
-
-
-@pytest.mark.parametrize("producer", ["promoter:quarantine", "promoter:rollback"])
-def test_promotion_review_does_not_enable_other_maintenance_operations(document, setup, producer):
+@pytest.mark.parametrize("producer", ["promoter", "stack_reconcile"])
+def test_review_accepts_only_synth_producers(document, setup, producer):
     document["proposal"]["producer"] = producer
     with pytest.raises(ValueError, match="producer_invalid"):
         review.review(document)
     assert not setup.calls and not setup.published
+
+
+@pytest.mark.parametrize("argv", [[], ["proposal", "review"], ["REVIEW"], ["review", "--force"]])
+def test_entry_accepts_only_the_closed_forms(argv, monkeypatch):
+    monkeypatch.setattr(review, "run_delegated", lambda *_: pytest.fail("an operation ran"))
+    assert review.main(argv) == 64
+
+
+@pytest.mark.parametrize("payload", [b'{"proposal":{},"proposal":{},"human_cases":[]}', b'not json'])
+def test_entry_rejects_ambiguous_json_before_launch(monkeypatch, capsys, payload):
+    import io
+    monkeypatch.setattr(review.sys, "stdin", type("S", (), {"buffer": io.BytesIO(payload)})())
+    monkeypatch.setattr(review, "run_delegated",
+                        lambda *_: pytest.fail("ambiguous proposal must not launch"))
+    assert review.main(["review"]) == 1
+    assert json.loads(capsys.readouterr().err) == {
+        "error": "synth_review_document_invalid", "detail": ""}
+
+
+def test_entry_reports_the_delegated_result(monkeypatch, capsys):
+    import io
+    monkeypatch.setattr(review.sys, "stdin",
+                        type("S", (), {"buffer": io.BytesIO(b'{"review_id":"x"}\n')})())
+    monkeypatch.setattr(review, "run_delegated",
+                        lambda operation, document: {"operation": operation, **document})
+    assert review.main(["approve"]) == 0
+    assert json.loads(capsys.readouterr().out) == {"operation": "approve", "review_id": "x"}

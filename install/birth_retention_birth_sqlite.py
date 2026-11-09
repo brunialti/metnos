@@ -6,7 +6,6 @@ remove a bundle in one SQLite transaction; they grant no collection authority.
 """
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from executor_birth_retention import RetentionError, RootKind
@@ -38,25 +37,6 @@ def _birth_approval_state(row):
     ))):
         return _retained(row["created_at"], RootKind.OPEN_AUDIT)
     return _closed(row["created_at"], row["decision_at"], row["expires_at"])
-
-
-def _review_state(row):
-    from executor_birth_failure_review import FailureReviewError, FailureReviewRequest, _canonical, _pairs
-
-    try:
-        raw = row["request_json"]
-        if type(raw) is not bytes or len(raw) > 8 * 1024 * 1024:
-            raise ValueError("request bytes")
-        value = json.loads(raw, object_pairs_hook=_pairs)
-        request = FailureReviewRequest(**value)
-        if (raw != _canonical(value)
-                or request.execution_receipt_id != row["execution_receipt_id"]):
-            raise ValueError("request binding")
-    except (TypeError, ValueError, FailureReviewError) as exc:
-        raise RetentionError("retention_owner_state_invalid", "failure review") from exc
-    # This queue contains only unresolved work. Its native owner removes a row
-    # after processing, rather than recording a terminal state in this table.
-    return _retained(row["created_at"], RootKind.IN_PROGRESS_JOB, RootKind.OPEN_FEEDBACK)
 
 
 class _BirthBundleOwner(_SQLiteOwner):
@@ -136,15 +116,10 @@ class _BirthBundleOwner(_SQLiteOwner):
 
 def _operational_birth_sqlite_owners(require_exclusion, account_owner):
     import config
-    from executor_birth_feedback import _QUEUE_SCHEMA
 
     directory = config.PATH_USER_STATE / "birth"
-    return (
-        *(_BirthBundleOwner(kind, path=directory / (kind + ".sqlite"),
-                            require_exclusion=require_exclusion, owner=account_owner)
-          for kind in ("producer_receipts", "approvals")),
-        _SQLiteOwner(name="birth_failure_reviews", path=directory / "failure_reviews.sqlite",
-                     schema=_QUEUE_SCHEMA, table="executor_failure_review_queue",
-                     primary_key="job_id", node_type="feedback", state=_review_state,
-                     require_exclusion=require_exclusion, owner=account_owner),
+    return tuple(
+        _BirthBundleOwner(kind, path=directory / (kind + ".sqlite"),
+                          require_exclusion=require_exclusion, owner=account_owner)
+        for kind in ("producer_receipts", "approvals")
     )

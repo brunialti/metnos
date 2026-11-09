@@ -1,14 +1,11 @@
 """Native journal references and signed collection; not installed F6 acceptance."""
 from dataclasses import replace
-import json
 import os
-import sqlite3
 from types import SimpleNamespace
 
 import pytest
 
 import turn_feedback
-from executor_birth_failure_review import _canonical
 from executor_birth_retention import RetentionError, RootKind
 from install.birth_retention_journals import _JournalInventory
 from install.birth_retention_history import _HistoryBackupOwner
@@ -117,7 +114,7 @@ def test_signed_collection_across_native_journals_preserves_readers_and_secret_l
     assert not (root / "active.json").exists()
 
 
-@pytest.mark.parametrize("root_kind", ["feedback", "undo", "copy", "hold", "review"])
+@pytest.mark.parametrize("root_kind", ["feedback", "undo", "copy", "hold"])
 def test_retained_turn_preserves_every_physical_copy_and_gzip_cotenant(native, tmp_path, root_kind):
     archive = native.archives.create([record("kept"), record("cotenant", parent_turn_id="parent")])
     for turn in ("kept", "cotenant", "parent", "unrelated"):
@@ -131,8 +128,6 @@ def test_retained_turn_preserves_every_physical_copy_and_gzip_cotenant(native, t
         native.undo.add("operation", "reversible", turn="kept")
     elif root_kind == "hold":
         holds = frozenset({native.archives.owner.identity("2020/01/" + DAY + ".gz").key.node_id})
-    elif root_kind == "review":
-        native.feedback.quarantine("kept")
     selected = candidates(native, tmp_path, holds=holds)
     assert [(obj.identity.owner, obj.identity.local_id) for obj in selected] == [("turn_logs", "unrelated")]
     assert archive.exists()
@@ -166,35 +161,14 @@ def test_native_feedback_without_turn_is_not_an_unresolved_reference(native, tmp
     assert turn_feedback.rejected_pipelines_for_query("query") == []
 
 
-@pytest.mark.parametrize("source", ["parent", "undo", "feedback", "review"])
+@pytest.mark.parametrize("source", ["parent", "undo", "feedback"])
 def test_missing_required_turn_blocks_before_any_effect(native, source):
     if source == "parent":
         native.turns.append(record("child", parent_turn_id="missing"))
     elif source == "undo":
         native.undo.add("operation", turn="missing")
-    elif source == "feedback":
-        native.feedback.append(feedback_record("missing"))
     else:
-        native.feedback.quarantine("missing")
-        # Same executor is not the exact receipt requested by the queue.
-        native.turns.append(record("another"))
-    with pytest.raises(RetentionError, match="retention_inventory_incomplete"):
-        native.inventory.inventory()
-
-
-@pytest.mark.parametrize("field", ["job_id", "generation_id", "execution_receipt_hash", "reduced_arguments"])
-def test_pending_review_requires_exact_native_evidence(native, field):
-    native.turns.append(record("turn"))
-    native.feedback.quarantine("turn")
-    with sqlite3.connect(native.feedback.reviews.path) as connection:
-        if field == "job_id":
-            connection.execute("UPDATE executor_failure_review_queue SET job_id=?", ("sha256:" + "9" * 64,))
-        else:
-            raw, = connection.execute("SELECT request_json FROM executor_failure_review_queue").fetchone()
-            value = json.loads(raw)
-            value[field] = {} if field == "reduced_arguments" else "sha256:" + "9" * 64
-            encoded = _canonical(value)
-            connection.execute("UPDATE executor_failure_review_queue SET request_json=?", (encoded,))
+        native.feedback.append(feedback_record("missing"))
     with pytest.raises(RetentionError, match="retention_inventory_incomplete"):
         native.inventory.inventory()
 

@@ -164,8 +164,8 @@ photos in small groups, in parallel within configured resource limits. Only
 completed, accepted units and verified outputs survive a worker restart without repetition.
 Initial discovery is one unit: it establishes the group count and starts over
 if interrupted before commit; intermediate parts are not a resumable cursor.
-Uncertain effects or usage may require review before retrying: a restart does not
-resolve the problem. The local vision model starts when needed and may stop
+An analysis interrupted by a service stop resumes after the restart; uncertain
+effects or usage without a verifiable limit require review. The local vision model starts when needed and may stop
 when idle. The new index appears only when its complete generation is published;
 the previous complete index remains usable. A model or file error remains visible
 as a problem, not a successful index.</p>
@@ -195,9 +195,11 @@ authority, accounting and source-integrity errors do not become skippable photos
 <p>Unreadable EXIF GPS coordinates, including fractions with a zero denominator,
 are omitted: a decodable photograph is still analyzed and indexed. If a managed
 executor ends with an application exception, it preserves already recorded model
-call usage and reports the failure. Calls started without a usage report remain
-uncertain; the correction does not automatically reconstruct counters lost in
-earlier attempts.</p>
+call usage and reports the failure. A call started without a usage report never
+counts as zero: when the local model contract is zero-cost with a fixed maximum,
+LRE reserves that whole maximum and continues. The reservation is not measured
+usage and stays separate in the attempt detail. Without a verifiable maximum the
+usage stays unknown and the job stops in attention.</p>
 
 <p>Folder classification requests a model response in the required format. If
 the response is still invalid, the workload stops for attention and retains a
@@ -350,8 +352,8 @@ attempt and effect limits. Exhausting those attempts does not make the cause
 permanent: the job becomes <strong>Needs attention</strong>, preserving pending
 batches and saved results. An unknown cause requires review immediately, without
 blind retries. After review, <strong>Retry</strong> grants one new attempt; it
-does not reset the limit. Unknown usage, missing authority or ambiguous effects
-can still prevent recovery. Explicit permanent errors and invalid contracts do
+does not reset the limit. Usage without a verifiable limit, missing authority or
+ambiguous effects can still prevent recovery. Explicit permanent errors and invalid contracts do
 not become recoverable. History distinguishes the general code and, when
 available, its approved cause; these counts are attempts, not items.</p>
 

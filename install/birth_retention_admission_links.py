@@ -52,7 +52,7 @@ class _ApprovalAdmissionInventory:
                     obj = objects[row.identity]
                     objects[row.identity] = replace(obj, state=NodeState.OPEN, eligible_after=None,
                         roots=tuple(sorted(set(obj.roots) | {RootKind.OPEN_AUDIT}, key=lambda root: root.value)))
-        scopes = {RevisionClass.AUTHORITY_REVISION: 'authority', RevisionClass.PROMOTION_REVISION: 'promotion',
+        scopes = {RevisionClass.AUTHORITY_REVISION: 'authority',
                   RevisionClass.REACTIVATION_REVISION: 'reactivation'}
         for identity, admission in admissions.items():
             if identity not in objects:
@@ -66,7 +66,7 @@ class _ApprovalAdmissionInventory:
             data = row.values
             scope = scopes.get(admission.revision_class)
             if scope is None:
-                if admission.approved_lifecycle not in (ApprovedLifecycle.ACTIVE, ApprovedLifecycle.PREEXERCISE):
+                if admission.approved_lifecycle is not ApprovedLifecycle.ACTIVE:
                     raise RetentionError('retention_inventory_incomplete', 'admission approval lifecycle')
                 scope = admission.approved_lifecycle.value
             if (data['approval_scope'] != scope

@@ -4,8 +4,8 @@
  <meta charset="UTF-8">
  <meta name="viewport" content="width=device-width, initial-scale=1.0">
  <title>Metnos &mdash; Synt and new executor creation</title>
- <meta name="description" content="How Synt verifies a genuine gap, generates an executor in separate stages, keeps it quarantined, and promotes it only after testing and admission.">
- <meta name="keywords" content="Metnos, Synt, synthesis, executor, birth tests, promoter, quarantine">
+ <meta name="description" content="How Synt verifies a genuine gap, generates an executor in separate stages, and activates it only after testing, independent review, and consent.">
+ <meta name="keywords" content="Metnos, Synt, synthesis, executor, birth tests, review, consent">
  <meta name="author" content="the owner">
  <meta name="robots" content="index, follow, max-snippet:-1">
  <link rel="canonical" href="https://metnos.com/en/architecture/synt">
@@ -174,8 +174,8 @@ through Birth.</p>
 </ol>
 
 <p><code>synt review</code> prepares the review document;
-<code>metnos-f5-authority proposal review</code> runs the checks and
-<code>proposal approve</code> records exact consent. Private keys remain in
+<code>metnos-synth-review review</code> runs the checks and
+<code>metnos-synth-review approve</code> records exact consent. Private keys remain in
 administrative custody. Signed evidence is stored through the installer's
 existing write authority, without granting new runtime permissions.
 The reviewer uses the same model configuration as the installed services,
@@ -186,10 +186,10 @@ from captured source bytes without changing the function code.
 This first integration uses the supported Linux
 installation and does not yet provide a dedicated web page.</p>
 
-<p>Preexercise admission and activation are separate steps. The promoter and
-<a href="lifecycle.html">lifecycle management</a> remain subject to Birth,
-independent evidence and current permissions. A favorable score does not certify
-F5 or activate a candidate by itself.</p>
+<p>A candidate that Birth admits after review and consent is active.
+<a href="lifecycle.html">Lifecycle management</a> can later deprecate or archive
+it when it stays unused. A favorable score does not activate a candidate by
+itself.</p>
 
 <h1 id="cap7">7. Language and records</h1>
 
@@ -204,8 +204,8 @@ with the i18n architecture. A general redesign is registered at maximum priority
 and requires analysis, comparison of alternatives, an approved specification,
 and only then development.</p>
 
-<p>Proposals, step results, rejection reasons, evaluations, promotions, and
-rollbacks remain in local stores. Prompts do not receive clear-text credentials.
+<p>Proposals, step results, rejection reasons, and evaluations remain in local
+stores. Prompts do not receive clear-text credentials.
 Generated code remains subject to allowed Python modules, its sandbox profile,
 and the limits of the Executor Standard.</p>
 
@@ -214,14 +214,12 @@ and the limits of the Executor Standard.</p>
 <ul>
  <li>Name, description, test, and code generation are probabilistic. The controls
  reduce risk but do not constitute a formal proof.</li>
- <li>Tests cover only their declared cases. Grace, telemetry, and rollback exist
- for failures that appear in real use.</li>
+ <li>Tests cover only their declared cases. For failures that appear in real
+ use, repeated negative user feedback deprecates the synthesized executor.</li>
  <li>Independent review and consent are separate: their successful outcome
- does not replace the remaining Birth checks or F5/F6 certification.</li>
- <li>The first administrative integration is under acceptance testing; F5/F6
- are not declared certified. Independent cases need operator confirmation.</li>
- <li>Error-based automatic rollback is disabled by default. Without enforcement,
- monitoring only reports that it would have withdrawn the candidate.</li>
+ does not replace the remaining Birth checks.</li>
+ <li>The first administrative integration is under acceptance testing.
+ Independent cases need operator confirmation.</li>
  <li>Synt must not duplicate work already handled by a learned sequence, a
  skill, or an integration.</li>
 </ul>
@@ -232,7 +230,7 @@ and the limits of the Executor Standard.</p>
  <li><code>runtime/synt_multistage.py</code>: staged generation, lint, and semantic verification;</li>
  <li><code>runtime/generated_executor_contract.py</code>: generated-manifest envelope;</li>
  <li><code>runtime/proposal_evaluator.py</code>: deterministic evaluation;</li>
- <li><code>runtime/jobs/promoter*.py</code>: promotion, digest, grace, and rollback;</li>
+ <li><code>install/synth_review.py</code>: independent review and consent;</li>
  <li><code>runtime/loader.py</code>: lifecycle visibility.</li>
 </ul>
 

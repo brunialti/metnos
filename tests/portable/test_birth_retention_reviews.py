@@ -24,9 +24,9 @@ def review(tmp_path):
         'manifest.toml': b'name="compute_sample"\n', 'manifest.lang_state.json': b'{}',
         'compute_sample.py': b'def run(args): return args\n'}.items()}
     record = dict(schema_version=1, proposal=dict(files=files, contract_id='user:compute_sample/manifest.toml',
-        producer='promoter', reason='native retained review'), human_cases=[], tests=[],
+        producer='synt_multistage', reason='native retained review'), human_cases=[], tests=[],
         subject=dict(candidate_id='sha256:' + 'a' * 64, semantic_core_id='sha256:' + 'b' * 64,
-            admission_context_id='sha256:' + 'c' * 64, lifecycle='promotion',
+            admission_context_id='sha256:' + 'c' * 64, lifecycle='active',
             expires_at='2020-01-01T00:00:00Z'), token='native-approval-token',
         created_at='2019-12-31T00:00:00Z', name='compute_sample', description={},
         capabilities={}, execution={})

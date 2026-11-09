@@ -297,7 +297,7 @@
  changed. A detail empty in a second tab, where other details of its kind show
  data, is opened once more in the same tab before its row counts as having no
  detail.</p>
- <p><strong>Measured limits</strong> (real runs of 23–25 October): ENI 12 invoices
+ <p><strong>Measured limits</strong> on real sites: ENI 12 invoices
  out of 12 in about five and a half minutes (three contracts, one detail per
  invoice: the number is only on the detail), Enel about two and a half minutes,
  Fastweb about two minutes. On ENI the collection may declare itself partial at
@@ -321,7 +321,7 @@
  operations keep their respective configured models. The response counts
  cloud requests and the step displays a red <strong>$</strong>; a request already sent
  remains counted even if the available time expires.</p>
- <p><strong>Updated behavior; real ENI/CAPTCHA acceptance remains open:</strong>
+ <p><strong>Real-site acceptance in progress:</strong>
  when a page read supplies rows for extraction, the linked navigation uses
  collection traversal and retains observations after page changes or a
  later error. Without a stated quantity, the goal is to collect all requested
@@ -334,8 +334,7 @@
  Administrators can disable both cloud decisions with
  <code>METNOS_SITES_FRONTIER_ROUTES=0</code>.</p>
 
- <p><strong>Delivered with the 28 October release:</strong>
- the same collection observation classifies content and context, including
+ <p>The same collection observation classifies content and context, including
  a filter rendered as a button without ARIA attributes. Each control must
  be observed, and requested values quote the original request. An already
  satisfied filter allows traversal without changing it. Every control window
@@ -407,9 +406,9 @@
  counters and comparisons from a closed set, without page data, destinations,
  or secrets. This trace supports diagnosis without adding attempts or
  establishing the cause of an error.</p>
- <h3 id="recovery-candidate">Candidate recovery corrections, 15 October 2026</h3>
- <p>After verified sign-in, the candidate keeps the actual destination as its
- return anchor, instead of the public opening page. The existing single recovery
+ <h3 id="recovery">Recovery after sign-in and during collection</h3>
+ <p>After verified sign-in, Metnos keeps the actual destination as its
+ return anchor, instead of the public opening page. The single recovery
  does not resubmit credentials or forms. It requires the same page, exact address
  and authorized origin; a change or pending request for user intervention stops
  recovery. Reaching that address is not a fresh authentication check.</p>
@@ -418,15 +417,13 @@
  four seconds in total and the caller’s remaining time. The earlier result is
  discarded even if it was clear. No click is repeated; a challenge or pending
  approval remains blocking.</p>
- <p>The new records distinguish the recovery reason and the outcome of local
+ <p>The records distinguish the recovery reason and the outcome of local
  selection among observed controls. They retain counts, elapsed time and closed
  categories, without page text, addresses, field values or model responses.
  Reported completeness concerns only the input window supplied to selection,
  not the website inventory. Diagnostics do not change decisions or attempts.</p>
- <p>Isolated qualification of these changes remains separate from delivery and
- real-site testing. It does not establish that the initial missing control is
- resolved, that all invoices were collected, or that a general automatic CAPTCHA
- solver or a new supervisor exists.</p>
+ <p>Recovery does not establish that all invoices were collected and does not
+ solve a CAPTCHA challenge by itself.</p>
  <div class="note"><strong>Complete collection is still being tested.</strong>
  Isolated IT/EN filter tests pass; completeness and absence of duplicates
  still need confirmation on the real website. Reaching a time, action,
@@ -479,13 +476,13 @@
  requests do not activate verification. Visible credential fields can be temporarily
  disabled: this does not clear the challenge or permit filling or submission.
  A textual request goes to manual control when no widget can be identified.</p>
- <p><strong>Updated behavior; real ENI/CAPTCHA acceptance remains open:</strong>
+ <p><strong>Real-site acceptance in progress:</strong>
  verification text alongside one supported widget, identified on the current
  page, does not prevent an automatic attempt within the existing limits.
  With text alone or ambiguous widgets, Metnos asks for help. The attempt
  still requires verification on the page; this does not qualify general
  CAPTCHA solving or image-grid solving.</p>
- <p><strong>At every appearance, anywhere (since 29/10):</strong> a challenge
+ <p><strong>At every appearance, anywhere:</strong> a challenge
  can come back several times in one visit, for example a checkbox at the
  entrance, an image grid, a check of the site's own and a new checkbox on the
  credentials page. Every appearance gets the same attempts described below,
@@ -498,7 +495,7 @@
  you. Text-only verifications stay with you. When a login is postponed
  after an abandoned challenge, the message gives the time from which to try
  again.</p>
- <p><strong>3×3 image grids (since 29/10):</strong> when the checkbox opens a
+ <p><strong>3×3 image grids:</strong> when the checkbox opens a
  grid of nine images ("select all images with…"), Metnos has a public local
  classifier label them, with no cloud model. A fresh grid almost always holds
  three right images: Metnos answers only when three tiles clearly stand out,
@@ -517,10 +514,9 @@
  while retaining exclusive session control and revoking automatic commands.
  The manual panel opens only after all operations have ended, cleanup has
  succeeded and the challenge is still present. Failed or unverified cleanup
- continues to block the handoff. Inspection of the 12 hard cases collected
- on 1–2 November confirmed unsupported 4×4 grids and categories, alongside
- uncertain recognition: this selected sample does not measure the success
- rate. Archived images show the first view, which may differ from the
+ continues to block the handoff. The archived hard cases include unsupported
+ 4×4 grids and categories, alongside uncertain recognition: they are a
+ selected sample and do not measure the success rate. Archived images show the first view, which may differ from the
  replacement images present when automation gives up.</p>
  <p>Before the visual attempt, Metnos may activate one unchecked native or
  ARIA checkbox inside one recognized provider iframe. It checks the actual
@@ -554,7 +550,7 @@
  the visual integration described below may evaluate a supported challenge
  with one Frontier request. If it cannot verify acceptance, Metnos asks
  for your help.</p>
- <p>The single/swarm supervisor has been present since release199; sign-in
+ <p>The single/swarm supervisor is active; sign-in
  uses one visual proposal. Comparing multiple alternatives has been verified
  on isolated cases but is not active in the current sign-in integration.
  General automatic solving remains unqualified. Observing or loading a
@@ -597,8 +593,7 @@
  confirm the result, it says so and does not automatically repeat the operation.</p>
 
  <h2>When it cannot finish</h2>
- <p><strong>Since release 122:</strong>
- when a web control is obstructed, the managed browser automatically saves
+ <p>When a web control is obstructed, the managed browser automatically saves
  a static page copy and the obstruction measurements. No console script is
  required. The copy omits private fields and active code; it stays local,
  protected like screenshots. Capture is skipped during pending consent or
@@ -615,7 +610,7 @@
 
  <section id="spin-supervisor">
  <h2>Supervisor: one proposal or several alternatives</h2>
- <div class="note"><strong>Limited capability, 17 October 2026.</strong>
+ <div class="note"><strong>Limited capability.</strong>
  The supervisor and visual adapter have passed isolated and composition
  checks. Real-site acceptance remains open: the tests do not establish
  general CAPTCHA solving or faster operation.</div>
@@ -633,24 +628,24 @@
  <h3>First adapter: visual challenges</h3>
  <p>The design retains the existing local attempt and human panel.
  For a supported challenge, an adapter may ask Frontier for a proposal using
- only the widget crop, after the local attempt. The candidate login
+ only the widget crop, after the local attempt. The login
  integration permits at most one visual request. The general contract allows
  a second request only for a new observed challenge within the shared budget;
  that second round is not active in the current login integration. Animated
  frames or an error do not grant extra attempts.</p>
- <p>The first candidate schema proposes one click inside the widget or
+ <p>The schema proposes one click inside the widget or
  abstains. It does not cover every grid or multi-step challenge.
  A click, token or disappearing panel does not prove site acceptance or
  successful login. Without verified acceptance, human control uses the same
  session after automated activities have stopped. OTP, consent and
  maintenance retain their own paths.</p>
- <p>One complete test on a synthetic widget verified image delivery to
+ <p>Tests on a synthetic widget verify image delivery to
  Frontier, one correct click, site acceptance and completion of all owned
  activities. Offline login integration tests also verify timeout,
  cancellation and abstention on observable overlays. Work has a 20-second
  deadline, followed by bounded cleanup waits. The complete path on real sites
- and the CAPTCHAs actually encountered still require verification. The grid adapter is a
- separate laboratory candidate and is excluded from delivery. Other roles
+ and the CAPTCHAs actually encountered still require verification. Image grids follow the local
+ classifier described above. Other roles
  retain their configured model.</p>
  </section>
 

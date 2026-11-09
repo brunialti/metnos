@@ -20,7 +20,7 @@ from install.birth_retention_exclusion import (
 
 @pytest.fixture
 def units(monkeypatch):
-    import install.birth_lifecycle_migration as migration
+    import install.birth_retention_exclusion as exclusion
     import stack_reconcile
 
     observed = (
@@ -43,7 +43,7 @@ def units(monkeypatch):
         assert scope == "system" and args[0:2] == ("show", "writer.service")
         return response
 
-    monkeypatch.setattr(migration, "_prove_productive_services_stopped_v1", stopped)
+    monkeypatch.setattr(exclusion, "_prove_productive_services_stopped_v1", stopped)
     monkeypatch.setattr(stack_reconcile.Systemctl, "run", run)
     return observed, response, calls
 

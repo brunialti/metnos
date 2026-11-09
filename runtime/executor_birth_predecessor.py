@@ -100,11 +100,7 @@ def derive_revision_facts(
     predecessor_payloads: Mapping[str, bytes] | None,
     candidate: CandidateSnapshot,
 ) -> RevisionFacts:
-    """Derive byte-backed facts from the authenticated predecessor.
-
-    Promotion requires the admission authenticated by the store, independently
-    of the lifecycle claimed in the author's manifest.
-    """
+    """Derive byte-backed facts from the authenticated predecessor."""
     if predecessor.revision_kind == "absent":
         return RevisionFacts(first_birth=True)
     if predecessor.revision_kind == "retirement":
@@ -113,9 +109,6 @@ def derive_revision_facts(
         raise ValueError("predecessor_snapshot_invalid: manifest.toml")
     old_manifest = tomllib.loads(predecessor_payloads["manifest.toml"].decode("utf-8"))
     new_manifest = tomllib.loads(candidate.manifest_bytes.decode("utf-8"))
-    if (predecessor.approved_lifecycle == "active"
-            and new_manifest.get("lifecycle") in {"synthesized", "preexercise"}):
-        raise ValueError("birth_active_to_preexercise_forbidden")
     # Immutable generations authenticate the manifest and its declared code
     # digest/file map; source bytes are deliberately not duplicated in the
     # contract store.  Comparing this closed declaration is consequently the
@@ -130,8 +123,6 @@ def derive_revision_facts(
     exact = (old_manifest == new_manifest and
              predecessor_payloads.get("manifest.lang_state.json") == candidate.language_state_bytes)
     return RevisionFacts(
-        promotion=(predecessor.approved_lifecycle == "preexercise"
-                   and new_manifest.get("lifecycle", "active") == "active"),
         code_changed=code_changed,
         contract_changed=contract_changed,
         linguistic_surface_changed=linguistic_changed,

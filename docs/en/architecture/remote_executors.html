@@ -181,7 +181,7 @@ within a ten-minute limit. This remains an execution limit: it does not
 guarantee that every file size allowed by the protocol will complete on every
 connection.</p>
 
-<p>The initial protocol allows up to 100 files and 4 GiB per file. Direct reads
+<p>The protocol allows up to 100 files and 4 GiB per file. Direct reads
 return at most 256 KiB. Automatic document reading on the server accepts up to
 32 MiB per file and returns up to 200,000 characters within the response limit.
 PDF, DOCX and XLSX are interpreted in an isolated process with no access to
@@ -189,8 +189,8 @@ other personal files. Limited reads are reported as incomplete.
 Listing is bounded to 1,000 entries, 256 KiB and depth 64.
 For extensions and remote copies, the destination parent must already exist;
 directory-tree copies, globs, links and reserved application paths are
-explicitly refused. Server operations within existing scopes retain their
-previous behavior.</p>
+explicitly refused. Server operations within existing scopes follow the
+ordinary server rules.</p>
 
 <p>Asking to read or show a file’s contents returns its text, including files
 without an extension. Listings, counts and explicitly requested tables retain

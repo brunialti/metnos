@@ -63,15 +63,15 @@ _REVIEWED_ACCEPTANCE_EVOLUTIONS = frozenset({
 _FROZEN_WORKFLOW_SHA256 = (
     "3e953be12480be9a4e6dfa19812a053492b5e26e155c9ecb7b749c29bde135e9"
 )
-# Reviewed CI preparation: venv support, the full locked wheelhouse and one
-# native F5 custody node in the existing delegated Linux step. All six
-# acceptance jobs and their blocking summary are unchanged.
+# Reviewed CI preparation: venv support and the full locked wheelhouse in the
+# existing delegated Linux step; the native F5 custody node left with F5
+# (9/11/2026). All six acceptance jobs and their blocking summary are unchanged.
 _REVIEWED_WORKFLOW_SHA256 = (
-    "2558999b3db7a2ddb878f26e8da50eaa6d535474001184b97f6f59d8272204b7"
+    "5aeda2ff4b76d594f56baf9059550bbda74cc1b98fe9df30ac77c0a1f55f18eb"
 )
 _REVIEWED_WORKFLOW_GIT_EDGE = (
     ("100644", "ce3bbd7e5097b23e4ad577ffa1b8af40b75618f7"),
-    ("100644", "d4d7e8efcfc96f858f33cca52aeda4c9e79bf3e5"),
+    ("100644", "fe5afb0b15d754d80f70d00838398ff305d825a8"),
 )
 # Reviewed importlib-mode fixture lookup and isolated portable session state
 # (329d51b3, 10aba165). Collection and acceptance oracles stay unchanged.

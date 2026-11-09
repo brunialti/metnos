@@ -1,45 +1,19 @@
 """Native TurnLog/StepLog records using the shared F6 JSONL mechanism.
 
 One physical object contains every original line for one turn in one daily
-journal. Open input, missing execution evidence and contradictory observations
-remain roots. Native receipt parsing supplies exact contract/generation
-references to the enclosing inventory; this module never infers absence of
-external feedback, undo, review, approval or job references.
+journal. Open input and contradictory observations remain roots; this module
+never infers absence of external feedback, undo, approval or job references.
 """
 from __future__ import annotations
 
 from datetime import date, timedelta
 import time
 
-from executor_birth_feedback import (
-    FeedbackError, dispatch_identifier_reference, execution_receipt_from_record,
-)
 from executor_birth_retention import NodeState, RetentionError, RootKind
 from install.birth_retention_files import _PrivateFiles
 from install.birth_retention_jsonl import JournalEntry, _JsonlOwner, _time
 from install.birth_retention_maintenance import OwnerObject
 from install.birth_retention_sqlite import _iso
-
-
-def _receipts(record):
-    """Native self-verifying dispatch bindings, never a guessed tool name."""
-    found, gap = [], False
-    for step in record["steps"]:
-        tool = step.get("chosen_tool")
-        encoded = step.get("execution_receipt")
-        if encoded is None:
-            if tool and tool != "final_answer":
-                gap = True
-            continue
-        try:
-            receipt = execution_receipt_from_record(encoded)
-            if (receipt.executor_name != tool or receipt.turn_id !=
-                    dispatch_identifier_reference("turn", record["turn_id"])):
-                raise FeedbackError("feedback_binding_invalid", "turn or tool")
-            found.append(receipt)
-        except (FeedbackError, TypeError, ValueError):
-            gap = True
-    return tuple(found), gap
 
 
 class _TurnJournal(_JsonlOwner):
@@ -79,9 +53,6 @@ class _TurnJournal(_JsonlOwner):
                         or record.get("pending_location")):
                     roots.add(RootKind.OPEN_APPROVAL)
                 elif record.get("outcome") not in {"completed", "partial", "failed"}:
-                    roots.add(RootKind.OPEN_AUDIT)
-                _, gap = _receipts(record)
-                if gap:
                     roots.add(RootKind.OPEN_AUDIT)
             if len(owners) != 1:
                 roots.add(RootKind.OPEN_AUDIT)

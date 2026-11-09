@@ -38,10 +38,6 @@ MODULES = {
             "tests/runtime/learning/test_proposals_eta_index.py",
             "tests/runtime/learning/test_telos_introspect_fastpath.py",
             "tests/runtime/learning/test_telos_introspect_dedup.py",
-            "tests/runtime/learning/test_promoter_daemon.py",
-            "tests/runtime/learning/test_promoter_digest.py",
-            "tests/runtime/learning/test_promoter_v2_commentary.py",
-            "tests/runtime/learning/test_promoter_v2_perf_savings.py",
             "tests/runtime/tutor/test_tutor_f2_repair.py",
             # The rest of test_tutor_f1 needs the signed catalog and the real
             # embedding model, red on the base too: only its telemetry case.

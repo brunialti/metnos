@@ -9,11 +9,13 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import pwd
 import socket
 import stat
 import time
 
 import config as C
+import device_paths
 import filesystem_io as io
 import filesystem_permissions as permissions
 import server_filesystem_protocol as protocol
@@ -129,6 +131,47 @@ def probe_grant(owner, grant):
     result = _exchange(binding, request, None, timeout_s=2)
     if result != {'ok': True}:
         raise permissions.PermissionError('ERR_FS_ACCESS_UNAVAILABLE')
+
+
+def _owner_home():
+    """The OS account's own home: the unit points HOME at private state."""
+    return Path(pwd.getpwuid(os.geteuid()).pw_dir)
+
+
+def known_folders():
+    """The installation owner's named folders, as a paired client reports its own."""
+    binding = configuration()
+    if binding is None:
+        return device_paths.local_known_folders(_owner_home())
+    reply = _exchange(binding, {'action': 'known_folders'}, None, timeout_s=2)
+    folders = reply.get('known_folders') if isinstance(reply, dict) else None
+    if not isinstance(folders, dict):
+        return {}
+    checked = {}
+    for name, path in folders.items():
+        try:
+            if name in device_paths._XDG_KEYS and permissions.normalize_path(path, 'posix') == path:
+                checked[name] = path
+        except permissions.PermissionError:
+            continue
+    return checked
+
+
+def anchor_named_folders(args):
+    """«Documenti» on the server becomes the owner's real folder; nothing is granted.
+
+    The broker then checks the account's grants on that exact path. A folder
+    of that name already in the Metnos workspace keeps the workspace meaning.
+    """
+    if not isinstance(args, dict) or not device_paths.has_named_folder(args):
+        return args
+    try:
+        folders = known_folders()
+    except permissions.PermissionError:
+        return args
+    from path_alias import workspace_default
+    return device_paths.anchor_folders(
+        args, folders, keep=lambda name: (workspace_default() / name).exists())
 
 
 def source_size(owner, manifest, args, path):
@@ -271,6 +314,8 @@ def handle(request, authority, source_fd=None):
     if request['action'] == 'probe':
         _probe(request['grant'])
         return {'ok': True}
+    if request['action'] == 'known_folders':
+        return {'ok': True, 'known_folders': device_paths.local_known_folders(_owner_home())}
     if request['action'] == 'size':
         path = request['path']
         authority.check(path, 'read')

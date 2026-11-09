@@ -172,8 +172,8 @@ piccoli gruppi, in parallelo entro le risorse configurate. Solo unità completat
 e risultati verificati sopravvivono al riavvio senza ripetizioni. La scansione
 iniziale è un batch: definisce il totale dei gruppi e, se interrotta prima
 della conferma, ricomincia; le parti intermedie non sono un cursore di ripresa.
-Effetti o consumi incerti possono richiedere verifica prima di riprovare: il riavvio
-non risolve il problema. Il modello visivo locale parte quando serve e può
+Un'analisi interrotta da un arresto del servizio riprende dopo il riavvio; effetti
+incerti o consumi senza limite verificabile richiedono una verifica. Il modello visivo locale parte quando serve e può
 spegnersi per inattività. Il nuovo indice appare solo alla pubblicazione della
 generazione completa; il precedente indice completo resta utilizzabile.
 Un errore di modello o file rimane visibile come problema, non come successo.</p>
@@ -205,8 +205,11 @@ contabilità o integrità delle sorgenti non diventano foto da saltare.</p>
 vengono omesse: una fotografia decodificabile continua a essere analizzata e
 indicizzata. Se un executor gestito termina con un'eccezione applicativa,
 conserva i consumi delle chiamate al modello già registrate e segnala il
-fallimento. Le chiamate iniziate senza un resoconto restano consumi incerti;
-la correzione non ricostruisce automaticamente contatori persi in passato.</p>
+fallimento. Una chiamata iniziata senza resoconto non vale zero: se il contratto
+del modello locale è a costo zero e ha un massimo fissato, LRE riserva l'intero
+massimo e prosegue. Questa riserva non è un consumo misurato e resta distinta nel
+dettaglio del tentativo. Senza un massimo verificabile il consumo resta ignoto e il
+lavoro si ferma in attenzione.</p>
 
 <p>La classificazione delle cartelle richiede al modello una risposta nel formato
 previsto. Se la risposta resta non valida, il lavoro si ferma in attenzione e
@@ -365,8 +368,8 @@ permanente la causa: il lavoro passa a <strong>Richiede attenzione</strong>, con
 i batch in attesa e i risultati già salvati conservati. Un errore di causa ignota
 richiede subito una verifica, senza tentativi alla cieca. Dopo la verifica,
 <strong>Riprova</strong> autorizza un solo nuovo tentativo; non azzera il limite.
-Consumi sconosciuti, autorizzazioni mancanti o effetti ambigui possono ancora
-impedire la ripresa. Errori esplicitamente permanenti o contratti non validi non
+Consumi senza un limite verificabile, autorizzazioni mancanti o effetti ambigui
+possono ancora impedire la ripresa. Errori esplicitamente permanenti o contratti non validi non
 vengono trasformati in recuperabili. Lo storico distingue il codice generale e,
 quando disponibile, la causa approvata; i conteggi sono tentativi, non elementi.</p>
 

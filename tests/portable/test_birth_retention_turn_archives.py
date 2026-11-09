@@ -12,10 +12,9 @@ import pytest
 
 from executor_birth_retention import NodeState, RetentionError
 from install.birth_retention_turn_archives import _TurnArchiveOwner
-from install.birth_retention_turns import _receipts
 from log_lifecycle import archive_daily_logs
 from test_birth_retention_artifacts import RUN, collection
-from test_birth_retention_turns import DAY, OLD, native, receipt, record
+from test_birth_retention_turns import DAY, OLD, native, record
 
 
 pytestmark = pytest.mark.skipif(os.name != "posix", reason="native POSIX archive custody")
@@ -49,14 +48,14 @@ def archived(native, tmp_path):
     return SimpleNamespace(root=root, owner=owner, create=create, live=native)
 
 
-def test_native_archives_keep_receipts_and_only_closed_segments_are_removed(archived, tmp_path):
+def test_native_archives_keep_open_turns_and_only_closed_segments_are_removed(archived, tmp_path):
     old = archived.create([record("old")])
     kept = archived.create([record("other", actor="another"), record("waiting", outcome="awaiting_input")],
                            day="2020-01-02.jsonl")
     before = kept.read_bytes()
     first, second = archived.owner.scan()
     assert first.object.state is NodeState.CLOSED and second.object.state is NodeState.OPEN
-    assert _receipts(second.records[0]) == ((receipt("other"),), False)
+    assert second.records[0]["turn_id"] == "other"
     owners = {archived.owner.name: archived.owner}
     root, public, factory = collection(tmp_path, (first.object,), owners)
     assert factory().resume(owners, public_keys=public, max_objects=10, max_seconds=20)["remaining"] == 0
@@ -67,17 +66,13 @@ def test_native_archives_keep_receipts_and_only_closed_segments_are_removed(arch
     assert not (root / "active.json").exists()
 
 
-@pytest.mark.parametrize("condition", ["open", "missing_receipt", "unknown_outcome", "wrong_turn", "recent"])
+@pytest.mark.parametrize("condition", ["open", "unknown_outcome", "recent"])
 def test_one_unclosed_turn_or_unexpired_window_retains_the_whole_archive(archived, condition):
     value = record("kept")
     if condition == "open":
         value["ts_end"] = 0
-    elif condition == "missing_receipt":
-        value["steps"][0]["execution_receipt"] = None
     elif condition == "unknown_outcome":
         value["outcome"] = ""
-    elif condition == "wrong_turn":
-        value["turn_id"] = "somewhere-else"
     elif condition == "recent":
         value["ts_end"] = datetime.now(timezone.utc).timestamp()
     path = archived.create([record("old"), value])

@@ -23,10 +23,6 @@ from executor_birth_identity import AdmissionContextV1, ExecutorOrigin, Revision
 from manifest_inventory import ContractId
 from executor_birth_approval import ApprovalEvidence, ApprovalSubject, approval_evidence_hash, validate_approval
 from executor_birth_properties import PropertyStatus
-from executor_birth_receipts import ApprovedLifecycle
-from executor_birth_preexercise import (
-    PREEXERCISE_POLICY_V1, decide_preexercise, observed_preexercise_facts,
-)
 from executor_birth_property_runner import (
     ObservedPropertyRunner, PropertyCandidateProfile, PropertyRunner,
     run_applicable_properties,
@@ -52,7 +48,6 @@ class RevisionClass(str, Enum):
     CONTRACT = "contract_revision"
     LOCALIZATION = "localization_revision"
     EQUIVALENT = "equivalent_republish"
-    PROMOTION = "promotion_revision"
     REACTIVATION = "reactivation_revision"
     REATTESTATION = "reattestation"
 
@@ -66,8 +61,6 @@ class CheckStatus(str, Enum):
 
 class BirthOutcome(str, Enum):
     ADMITTED = "admitted"
-    PREEXERCISE = "preexercise"
-    QUARANTINED = "quarantined"
     REJECTED = "rejected"
     NEEDS_HUMAN = "needs_human"
 
@@ -77,7 +70,6 @@ class RevisionFacts:
     """Trusted comparison with the authenticated predecessor, not caller hints."""
 
     first_birth: bool = False
-    promotion: bool = False
     reactivation: bool = False
     reattestation: bool = False
     code_changed: bool = False
@@ -89,7 +81,7 @@ class RevisionFacts:
     exact_republish: bool = False
 
     def __post_init__(self) -> None:
-        state_modes = sum((self.first_birth, self.promotion, self.reactivation, self.reattestation))
+        state_modes = sum((self.first_birth, self.reactivation, self.reattestation))
         if state_modes > 1:
             raise ValueError("revision_state_ambiguous")
 
@@ -112,8 +104,6 @@ def classify_revision(facts: RevisionFacts) -> RevisionDecision:
         kind = RevisionClass.FIRST_BIRTH
     elif facts.reactivation:
         kind = RevisionClass.REACTIVATION
-    elif facts.promotion:
-        kind = RevisionClass.PROMOTION
     elif facts.reattestation:
         kind = RevisionClass.REATTESTATION
     elif facts.exact_republish and not dimensions:
@@ -309,7 +299,6 @@ class _BirthDependencies:
     initial_current_adoption_transition_id: str | None
     _seal: object
     current_continuity: _UnchangedCurrentContinuityV1 | None = None
-    previous_approved_lifecycle: ApprovedLifecycle | None = None
     initial_catalog_adoption: _InitialCatalogAdoptionV1 | None = None
 
     def __post_init__(self) -> None:
@@ -317,8 +306,6 @@ class _BirthDependencies:
             self._seal is not _DEPENDENCY_SEAL
             or (self.initial_catalog_adoption is not None
                 and type(self.initial_catalog_adoption) is not _InitialCatalogAdoptionV1)
-            or (self.previous_approved_lifecycle is not None
-                and type(self.previous_approved_lifecycle) is not ApprovedLifecycle)
             or (self.current_continuity is not None
                 and type(self.current_continuity) is not _UnchangedCurrentContinuityV1)
             or (
@@ -342,7 +329,6 @@ def _sealed_dependencies_for_test(**overrides: object) -> _BirthDependencies:
         "approval_evidence": None, "now": None, "_seal": _DEPENDENCY_SEAL,
         "initial_current_adoption_transition_id": None,
         "current_continuity": None,
-        "previous_approved_lifecycle": None,
         "initial_catalog_adoption": None,
     }
     if set(overrides) - set(values):
@@ -557,13 +543,6 @@ def _closure_check(observed: ObservedCandidate, _decision: RevisionDecision,
                        evidence, "closed")
 
 
-def _requires_preexercise(origin: ExecutorOrigin, revision: RevisionClass,
-                          previous: ApprovedLifecycle | None) -> bool:
-    return (origin is ExecutorOrigin.SYNTHESIZED
-            and revision is not RevisionClass.PROMOTION
-            and previous is not ApprovedLifecycle.ACTIVE)
-
-
 def _property_check(observed: ObservedCandidate, _decision: RevisionDecision, deps: _BirthDependencies) -> CheckResult:
     if deps.initial_catalog_adoption is not None:
         return deps.initial_catalog_adoption.check(observed, _decision, "properties")
@@ -582,26 +561,18 @@ def _property_check(observed: ObservedCandidate, _decision: RevisionDecision, de
         )
     manifest = _manifest(observed)
     profile = _profile(manifest)
-    preexercise = _requires_preexercise(
-        observed.executor_origin, _decision.revision_class,
-        deps.previous_approved_lifecycle,
-    )
-    policy_version = ""
-    if preexercise:
-        eligibility = decide_preexercise(
-            observed_preexercise_facts(manifest, synthesized_origin=True),
-            policy=PREEXERCISE_POLICY_V1,
-        )
-        policy_version = eligibility.policy_version
-        reason = (eligibility.denial.value if eligibility.denial is not None else
-                  "preexercise_positive_case_required" if not profile.positive_inputs else None)
-        if reason is not None:
+    if (observed.executor_origin is ExecutorOrigin.SYNTHESIZED
+            and _decision.revision_class in {RevisionClass.FIRST_BIRTH,
+                                             RevisionClass.REACTIVATION}):
+        # New synthesized code is exercised before admission: at least one
+        # positive case must run in the isolated runner.
+        if not profile.positive_inputs:
+            reason = "synthesized_positive_case_required"
             return CheckResult(
                 "properties", "v1", CheckStatus.FAILED, reason,
-                _shadow_evidence("preexercise", policy_version,
-                                 observed.identities.candidate_id,
+                _shadow_evidence("synthesized", observed.identities.candidate_id,
                                  observed.identities.admission_context_id, reason),
-                "preexercise_ineligible",
+                "synthesized_positive_case_missing",
             )
         # The executor standard always requires a boolean `ok` result. Its
         # host-side oracle is mandatory here, even for textual schema_inline.
@@ -615,7 +586,7 @@ def _property_check(observed: ObservedCandidate, _decision: RevisionDecision, de
     evidence = run_applicable_properties(profile, _runner=runner)
     digest = _shadow_evidence(
         "properties", observed.identities.candidate_id,
-        observed.identities.admission_context_id, policy_version,
+        observed.identities.admission_context_id,
         *(hashlib.sha256(encode_framed_v1(asdict(item))).hexdigest() for item in evidence),
     )
     failed = next((item for item in evidence if item.status in {PropertyStatus.FAILED, PropertyStatus.UNAVAILABLE}), None)
@@ -692,7 +663,7 @@ def _semantic_applies(_decision: RevisionDecision, observed: ObservedCandidate) 
 
 def _approval_applies(decision: RevisionDecision, _observed: ObservedCandidate) -> bool:
     return _observed.executor_origin is ExecutorOrigin.SYNTHESIZED or decision.revision_class in {
-        RevisionClass.AUTHORITY, RevisionClass.PROMOTION, RevisionClass.REACTIVATION,
+        RevisionClass.AUTHORITY, RevisionClass.REACTIVATION,
     }
 
 
@@ -720,20 +691,14 @@ def _unavailable(spec: CheckSpec, exc: Exception) -> CheckResult:
                        type(exc).__name__)
 
 
-def _outcome(results: Iterable[tuple[CheckSpec, CheckResult]], origin: ExecutorOrigin,
-             revision: RevisionClass,
-             previous: ApprovedLifecycle | None = None) -> tuple[BirthOutcome, str | None]:
+def _outcome(results: Iterable[tuple[CheckSpec, CheckResult]]) -> tuple[BirthOutcome, str | None]:
     for spec, result in results:
         if not spec.mandatory:
             continue
         if result.status in {CheckStatus.FAILED, CheckStatus.UNAVAILABLE}:
             if result.error_code in {"semantic_review_uncertain", "approval_required"}:
                 return BirthOutcome.NEEDS_HUMAN, result.error_code
-            if result.error_code == "candidate_quarantined":
-                return BirthOutcome.QUARANTINED, result.error_code
             return BirthOutcome.REJECTED, result.error_code
-    if _requires_preexercise(origin, revision, previous):
-        return BirthOutcome.PREEXERCISE, None
     return BirthOutcome.ADMITTED, None
 
 
@@ -801,10 +766,7 @@ def _observe_birth(
             results.append((spec, result))
             if spec.mandatory and result.status in {CheckStatus.FAILED, CheckStatus.UNAVAILABLE}:
                 break
-        outcome, error = _outcome(
-            results, executor_origin, decision.revision_class,
-            _dependencies.previous_approved_lifecycle,
-        )
+        outcome, error = _outcome(results)
         identities = observed.identities
         return BirthReport(
             1, contract_id, identities.candidate_id, identities.semantic_core_id,

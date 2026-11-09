@@ -8,25 +8,19 @@ This subset neither attests the full F6 census nor grants deletion authority.
 from dataclasses import replace
 from types import MappingProxyType
 
-from executor_birth_feedback import (
-    EXECUTION_RECEIPT_DOMAIN, FeedbackError, _decode_failure_review_request,
-    _hash, _receipt_payload, failure_job_id,
-)
 from executor_birth_retention import RetentionError
 from install.birth_retention_feedback import _compensating_retry
-from install.birth_retention_maintenance import OwnerObject
-from install.birth_retention_turns import _receipts
 
 
 class _JournalInventory:
     def __init__(self, *, turns, archives, feedback, protected_undo, history=None):
         self.turns, self.archives = turns, archives
         self.feedback, self.protected_undo = feedback, protected_undo
-        self.undo, self.reviews = protected_undo.journal, feedback.reviews
-        owners = (turns, archives, feedback, self.undo, protected_undo, self.reviews)
+        self.undo = protected_undo.journal
+        owners = (turns, archives, feedback, self.undo, protected_undo)
         if tuple(owner.name for owner in owners) != (
             "turn_logs", "turn_archives", "turn_feedback", "undo_operations",
-            "protected_undo_blobs", "birth_failure_reviews",
+            "protected_undo_blobs",
         ):
             raise RetentionError("retention_owner_invalid", "journal owners")
         self.history = history
@@ -38,14 +32,14 @@ class _JournalInventory:
 
     def _snapshot(self):
         return (self.turns.scan(), self.archives.scan(), self.feedback.scan(),
-                self.undo.scan(), self.reviews.scan(), self.protected_undo.inventory(),
+                self.undo.scan(), self.protected_undo.inventory(),
                 None if self.history is None else self.history.inventory())
 
     def inventory(self):
         for owner in self.owners.values():
             owner.require_exclusion()
         snapshot = self._snapshot()
-        turns, archives, feedback, undo, reviews, protected, history = snapshot
+        turns, archives, feedback, undo, protected, history = snapshot
         objects = {}
 
         def add(obj):
@@ -55,10 +49,6 @@ class _JournalInventory:
 
         for entry in (*turns, *archives, *feedback, *undo):
             add(entry.object)
-        for row in reviews:
-            state = self.reviews.state_of(row)
-            add(OwnerObject(row.identity, row.version, state.state, state.created_at,
-                            state.eligible_after, roots=state.roots))
         projections = [(self.protected_undo.name, protected)]
         if history is not None:
             projections.append((self.history.name, history))
@@ -88,14 +78,10 @@ class _JournalInventory:
                 obj.identity for obj in history if obj.identity.owner == self.history.name)
             for entry in (*turns, *archives, *feedback):
                 references[entry.object.identity].update(self.history.references(entry.records, index))
-        copies, receipts, evidence = {}, {}, {}
+        copies = {}
         for entry in (*turns, *archives):
             for record in entry.records:
                 copies.setdefault(record["turn_id"], set()).add(entry.object.identity)
-                verified, _ = _receipts(record)
-                for receipt in verified:
-                    receipts.setdefault(receipt.receipt_id, set()).add(entry.object.identity)
-                    evidence[receipt.receipt_id] = receipt
         # A star is enough for transitive retention, without quadratic edges
         # when an interrupted compression left many copies of the same turn.
         for identities in copies.values():
@@ -126,25 +112,6 @@ class _JournalInventory:
             for record in entry.records:
                 if record["type"] == "pending":
                     link_turn(entry.object.identity, record.get("turn_id"))
-        for row in reviews:
-            targets = receipts.get(row.values["execution_receipt_id"])
-            if not targets:
-                raise RetentionError("retention_inventory_incomplete", "review receipt absent")
-            receipt = evidence[row.values["execution_receipt_id"]]
-            try:
-                request = _decode_failure_review_request(row.values["request_json"])
-                if (row.values["job_id"] != failure_job_id(receipt.receipt_id)
-                        or request.execution_receipt_hash != _hash(
-                            EXECUTION_RECEIPT_DOMAIN + b"record\0",
-                            _receipt_payload(receipt, omit_receipt_id=False))
-                        or request.candidate_id != receipt.candidate_id
-                        or request.generation_id != receipt.generation_id
-                        or request.reduced_arguments != receipt.arguments
-                        or request.reduced_output != receipt.reduced_output):
-                    raise ValueError("review evidence binding")
-            except (FeedbackError, TypeError, ValueError) as exc:
-                raise RetentionError("retention_inventory_incomplete", "review evidence binding") from exc
-            references[row.identity].update(targets)
         if any(ref not in objects for refs in references.values() for ref in refs):
             raise RetentionError("retention_inventory_incomplete", "unresolved journal reference")
         if self._snapshot() != snapshot:

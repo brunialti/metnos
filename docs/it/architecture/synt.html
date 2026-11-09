@@ -4,8 +4,8 @@
  <meta charset="UTF-8">
  <meta name="viewport" content="width=device-width, initial-scale=1.0">
  <title>Metnos &mdash; Synt e creazione di nuovi executor</title>
- <meta name="description" content="Come Synt verifica una lacuna reale, genera un executor in stadi separati, lo mantiene in quarantena e lo promuove soltanto dopo test e ammissione.">
- <meta name="keywords" content="Metnos, Synt, sintesi, executor, birth test, promoter, quarantena">
+ <meta name="description" content="Come Synt verifica una lacuna reale, genera un executor in stadi separati e lo rende attivo soltanto dopo test, revisione indipendente e consenso.">
+ <meta name="keywords" content="Metnos, Synt, sintesi, executor, birth test, revisione, consenso">
  <meta name="author" content="the owner">
  <meta name="robots" content="index, follow, max-snippet:-1">
  <link rel="canonical" href="https://metnos.com/it/architecture/synt">
@@ -175,8 +175,8 @@ sostituire l'ammissione attraverso Birth.</p>
 </ol>
 
 <p>Il comando <code>synt review</code> prepara il documento di prova;
-<code>metnos-f5-authority proposal review</code> esegue la verifica e
-<code>proposal approve</code> registra il consenso esatto. Le chiavi private
+<code>metnos-synth-review review</code> esegue la verifica e
+<code>metnos-synth-review approve</code> registra il consenso esatto. Le chiavi private
 restano nell'autorit&agrave; amministrativa. La registrazione delle prove firmate
 passa dall'autorit&agrave; di scrittura dell'installer, senza nuovi permessi al runtime.
 Il revisore usa la stessa configurazione del modello dei servizi installati,
@@ -187,10 +187,10 @@ dai sorgenti acquisiti, senza modificare il codice della funzione.
 Questa prima integrazione usa
 l'installazione Linux supportata e non dispone ancora di una pagina web dedicata.</p>
 
-<p>Ammissione in pre-esercizio e attivazione sono passaggi distinti. Il
-promotore e la <a href="lifecycle.html">gestione del ciclo di vita</a>
-restano soggetti a Birth, alle prove indipendenti e ai permessi correnti.
-Un punteggio favorevole non certifica F5 e non attiva da solo il candidato.</p>
+<p>Un candidato ammesso da Birth dopo revisione e consenso &egrave; attivo.
+La <a href="lifecycle.html">gestione del ciclo di vita</a> pu&ograve; poi
+deprecarlo o archiviarlo se resta inutilizzato. Un punteggio favorevole non
+attiva da solo il candidato.</p>
 
 <h1 id="cap7">7. Lingua e registri</h1>
 
@@ -205,8 +205,8 @@ conforme all'architettura i18n. La riprogettazione generale &egrave; registrata 
 attivit&agrave; di massima priorit&agrave; e richiede analisi, confronto tra alternative,
 specifica e solo dopo sviluppo.</p>
 
-<p>Proposte, risultati dei passaggi, motivi di rifiuto, valutazioni, promozioni
-e ripristini restano negli archivi locali. I prompt non ricevono credenziali in
+<p>Proposte, risultati dei passaggi, motivi di rifiuto e valutazioni restano
+negli archivi locali. I prompt non ricevono credenziali in
 chiaro. Il codice generato &egrave; soggetto ai moduli Python consentiti, alla sandbox
 e ai limiti dell'Executor Standard.</p>
 
@@ -215,15 +215,13 @@ e ai limiti dell'Executor Standard.</p>
 <ul>
  <li>Nome, descrizione, prove e codice sono generati probabilisticamente. I
  controlli riducono il rischio, ma non sono una dimostrazione formale.</li>
- <li>Le prove coprono soltanto i casi dichiarati. Periodo di grazia, telemetria
- e ripristino servono proprio per gli errori che emergono nell'uso reale.</li>
+ <li>Le prove coprono soltanto i casi dichiarati. Per gli errori che emergono
+ nell'uso reale, riscontri negativi ripetuti dell'utente deprecano l'executor
+ sintetizzato.</li>
  <li>Revisione indipendente e consenso sono distinti: il loro esito positivo
- non sostituisce i restanti controlli Birth e la certificazione F5/F6.</li>
- <li>La prima integrazione amministrativa &egrave; in collaudo; F5/F6 non sono
- dichiarati certificati. I casi indipendenti richiedono conferma dell'operatore.</li>
- <li>Il ripristino automatico basato sugli errori &egrave; disattivato per impostazione
- predefinita; senza l'opzione di enforcement, il controllo si limita a segnalare
- che avrebbe ritirato il candidato.</li>
+ non sostituisce i restanti controlli Birth.</li>
+ <li>La prima integrazione amministrativa &egrave; in collaudo. I casi
+ indipendenti richiedono conferma dell'operatore.</li>
  <li>Synt non deve duplicare ci&ograve; che una sequenza appresa, una skill o
  un'integrazione sanno gi&agrave; fare.</li>
 </ul>
@@ -234,7 +232,7 @@ e ai limiti dell'Executor Standard.</p>
  <li><code>runtime/synt_multistage.py</code>: generazione a stadi, controllo strutturale e verifica semantica;</li>
  <li><code>runtime/generated_executor_contract.py</code>: contratto dei manifest generati;</li>
  <li><code>runtime/proposal_evaluator.py</code>: valutazione deterministica;</li>
- <li><code>runtime/jobs/promoter*.py</code>: promozione, riepilogo, grazia e ripristino;</li>
+ <li><code>install/synth_review.py</code>: revisione indipendente e consenso;</li>
  <li><code>runtime/loader.py</code>: visibilit&agrave; dei cicli di vita.</li>
 </ul>
 

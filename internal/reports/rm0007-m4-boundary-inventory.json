@@ -1,6 +1,6 @@
 {
   "schema": "metnos.contract-boundary-inventory/2",
-  "source_census": "sha256:9449cc35bb003f1367aecdf98e57c936f9f100345654b2c64879faed3cb36921",
+  "source_census": "sha256:9203d12c2ae7c4321e62da2271272304424d34a54ce64cb7f87aa519bda4565e",
   "scan_roots": [
     "runtime",
     "install",
@@ -102,256 +102,6 @@
         "verified_store_read"
       ],
       "destination": "sealed productive transition crossing under fixed administrative sessions",
-      "phase": "M4"
-    },
-    {
-      "path": "install/birth_certification_authority_provisioner.py",
-      "scope": "_provision_certification_at_v1",
-      "role": "store_owner",
-      "capabilities": [
-        "store_write"
-      ],
-      "destination": "dedicated optional F5 key custody under the existing administrative lock; no certificate or executor publication",
-      "phase": "M4"
-    },
-    {
-      "path": "install/birth_certification_authority_provisioner.py",
-      "scope": "_provision_certification_locked_v1",
-      "role": "store_owner",
-      "capabilities": [
-        "store_write"
-      ],
-      "destination": "sealed certification-authority provisioning store",
-      "phase": "M4"
-    },
-    {
-      "path": "install/birth_certification_authority_provisioner.py",
-      "scope": "provision_certification_authority_v1",
-      "role": "store_owner",
-      "capabilities": [
-        "store_write"
-      ],
-      "destination": "fixed-root administrator-only F5 key provisioning; returns public material only",
-      "phase": "M4"
-    },
-    {
-      "path": "install/birth_certification_evidence.py",
-      "scope": "_evidence_at_v1",
-      "role": "store_owner",
-      "capabilities": [
-        "store_write"
-      ],
-      "destination": "administrator-owned F5 evidence chronology under the existing lock; no activation or executor publication",
-      "phase": "M4"
-    },
-    {
-      "path": "install/birth_certification_evidence.py",
-      "scope": "_open_database",
-      "role": "store_owner",
-      "capabilities": [
-        "store_write"
-      ],
-      "destination": "private append-only administrative evidence storage; no Birth store mutation",
-      "phase": "M4"
-    },
-    {
-      "path": "install/birth_certification_evidence.py",
-      "scope": "administrative_evidence_v1",
-      "role": "store_owner",
-      "capabilities": [
-        "store_write"
-      ],
-      "destination": "fixed-root Linux administrator-only evidence entry; no caller-selected authority",
-      "phase": "M4"
-    },
-    {
-      "path": "install/birth_certification_issuer.py",
-      "scope": "_install_certificate_v1",
-      "role": "store_owner",
-      "capabilities": [
-        "store_write"
-      ],
-      "destination": "publish the signed certificate and read it back with the reader that will trust it",
-      "phase": "M4"
-    },
-    {
-      "path": "install/birth_certification_issuer.py",
-      "scope": "_install_rehearsal_v1",
-      "role": "store_owner",
-      "capabilities": [
-        "store_write"
-      ],
-      "destination": "publish the purpose-separated signed rehearsal permit under existing custody and verify runtime readback",
-      "phase": "M4"
-    },
-    {
-      "path": "install/birth_certification_issuer.py",
-      "scope": "issue_certificate_v1",
-      "role": "store_owner",
-      "capabilities": [
-        "store_write"
-      ],
-      "destination": "derive the qualification from composed history and evidence, bind the completed migration, and sign",
-      "phase": "M4"
-    },
-    {
-      "path": "install/birth_certification_issuer.py",
-      "scope": "issue_rehearsal_v1",
-      "role": "store_owner",
-      "capabilities": [
-        "store_write"
-      ],
-      "destination": "derive a one-hour isolated rehearsal permit from native confinement and the frozen profile; not productive qualification",
-      "phase": "M4"
-    },
-    {
-      "path": "install/birth_certification_issuer.py",
-      "scope": "main",
-      "role": "store_owner",
-      "capabilities": [
-        "store_write"
-      ],
-      "destination": "administrative entry point; derive only reports, issue signs and publishes",
-      "phase": "M4"
-    },
-    {
-      "path": "install/birth_certification_reuse.py",
-      "scope": "_write_trust",
-      "role": "store_owner",
-      "capabilities": [
-        "store_write"
-      ],
-      "destination": "fixed administrative origin trust store; explicit public-key registration or revocation under the existing provisioning lock",
-      "phase": "M4"
-    },
-    {
-      "path": "install/birth_certification_reuse.py",
-      "scope": "continue_evidence_v1",
-      "role": "store_owner",
-      "capabilities": [
-        "store_write"
-      ],
-      "destination": "retain the locally signed predecessor and qualification, reverify original cycles and current conditions before recording an unchanged successor",
-      "phase": "M4"
-    },
-    {
-      "path": "install/birth_certification_reuse.py",
-      "scope": "export_evidence_v1",
-      "role": "store_owner",
-      "capabilities": [
-        "store_write"
-      ],
-      "destination": "replay the complete native F5 chronology and sign a purpose-separated evidence export; no activation or Birth publication",
-      "phase": "M4"
-    },
-    {
-      "path": "install/birth_certification_reuse.py",
-      "scope": "import_evidence_v1",
-      "role": "store_owner",
-      "capabilities": [
-        "store_write"
-      ],
-      "destination": "verify explicit trust, complete signed chronology, shared oracle and current native conditions before appending provenance",
-      "phase": "M4"
-    },
-    {
-      "path": "install/birth_certification_reuse.py",
-      "scope": "register_origin_v1",
-      "role": "store_owner",
-      "capabilities": [
-        "store_write"
-      ],
-      "destination": "fixed-root administrator-only origin registration through the existing custody owner; no self-trust from imports",
-      "phase": "M4"
-    },
-    {
-      "path": "install/birth_lifecycle_migration.py",
-      "scope": "_apply_handoff_v1",
-      "role": "store_owner",
-      "capabilities": [
-        "store_write"
-      ],
-      "destination": "fixed administrative migration worker; single maintenance barrier, service identity for stores, root only for the final marker",
-      "phase": "M4"
-    },
-    {
-      "path": "install/birth_lifecycle_migration.py",
-      "scope": "_install_marker",
-      "role": "store_owner",
-      "capabilities": [
-        "store_write"
-      ],
-      "destination": "record the root-owned migration marker last, verified with the reader the runtime will use",
-      "phase": "M4"
-    },
-    {
-      "path": "install/birth_lifecycle_migration.py",
-      "scope": "_migrate_as_service",
-      "role": "live_reader",
-      "capabilities": [
-        "live_artifact_read"
-      ],
-      "destination": "inside the privileged child, admit every selectable generation before any restriction is applied",
-      "phase": "M4"
-    },
-    {
-      "path": "install/birth_lifecycle_migration.py",
-      "scope": "_selectable_from_catalog",
-      "role": "live_reader",
-      "capabilities": [
-        "live_artifact_read"
-      ],
-      "destination": "the exact generations a verified catalog load currently selects",
-      "phase": "M4"
-    },
-    {
-      "path": "install/birth_lifecycle_migration.py",
-      "scope": "_service_worker",
-      "role": "store_owner",
-      "capabilities": [
-        "store_write"
-      ],
-      "destination": "fixed administrative migration worker; single maintenance barrier, service identity for stores, root only for the final marker",
-      "phase": "M4"
-    },
-    {
-      "path": "install/birth_lifecycle_migration.py",
-      "scope": "_write_handoff",
-      "role": "store_owner",
-      "capabilities": [
-        "store_write"
-      ],
-      "destination": "stage the reviewed decision under the same root custody as the marker",
-      "phase": "M4"
-    },
-    {
-      "path": "install/birth_lifecycle_migration.py",
-      "scope": "apply_cutover_v1",
-      "role": "store_owner",
-      "capabilities": [
-        "store_write"
-      ],
-      "destination": "migrate with the stack quiescent against the reviewed plan, then record the marker last",
-      "phase": "M4"
-    },
-    {
-      "path": "install/birth_lifecycle_migration.py",
-      "scope": "main",
-      "role": "store_owner",
-      "capabilities": [
-        "store_write"
-      ],
-      "destination": "administrative entry point; plan only observes, apply migrates and records",
-      "phase": "M4"
-    },
-    {
-      "path": "install/birth_lifecycle_migration.py",
-      "scope": "plan_cutover_v1",
-      "role": "store_owner",
-      "capabilities": [
-        "store_write"
-      ],
-      "destination": "observe the running installation and record the decision for review; changes nothing else",
       "phase": "M4"
     },
     {
@@ -706,17 +456,6 @@
         "store_write"
       ],
       "destination": "authenticated retention store inventory and removal owner",
-      "phase": "M4"
-    },
-    {
-      "path": "install/certification/native_probe.py",
-      "scope": "snapshot",
-      "role": "live_reader",
-      "capabilities": [
-        "live_artifact_read",
-        "verified_store_read"
-      ],
-      "destination": "read-only native observation through authenticated catalog, contract store and existing epoch readers; no mutation",
       "phase": "M4"
     },
     {
@@ -1525,76 +1264,6 @@
       "phase": "M4"
     },
     {
-      "path": "install/f5_authority.py",
-      "scope": "<module>",
-      "role": "store_owner",
-      "capabilities": [
-        "store_write"
-      ],
-      "destination": "administrative F5 entry point module; importing it opens no key, store or document",
-      "phase": "M4"
-    },
-    {
-      "path": "install/f5_authority.py",
-      "scope": "_certify",
-      "role": "store_owner",
-      "capabilities": [
-        "store_write"
-      ],
-      "destination": "derive or issue the F5 certificate through its own issuer owner",
-      "phase": "M4"
-    },
-    {
-      "path": "install/f5_authority.py",
-      "scope": "_evidence",
-      "role": "store_owner",
-      "capabilities": [
-        "store_write"
-      ],
-      "destination": "append one closed evidence document to the administrative ledger through its owner",
-      "phase": "M4"
-    },
-    {
-      "path": "install/f5_authority.py",
-      "scope": "_migrate",
-      "role": "store_owner",
-      "capabilities": [
-        "store_write"
-      ],
-      "destination": "run the one-time cutover through its own two-stage owner",
-      "phase": "M4"
-    },
-    {
-      "path": "install/f5_authority.py",
-      "scope": "_provision_key",
-      "role": "store_owner",
-      "capabilities": [
-        "store_write"
-      ],
-      "destination": "provision the dedicated certification key through its installer owner; returns public material only",
-      "phase": "M4"
-    },
-    {
-      "path": "install/f5_authority.py",
-      "scope": "_rehearse",
-      "role": "store_owner",
-      "capabilities": [
-        "store_write"
-      ],
-      "destination": "plan or issue isolated rehearsal through the existing certification issuer owner",
-      "phase": "M4"
-    },
-    {
-      "path": "install/f5_authority.py",
-      "scope": "_reuse",
-      "role": "store_owner",
-      "capabilities": [
-        "store_write"
-      ],
-      "destination": "bounded administrative dispatch to the F5 evidence reuse owner; no authority supplied by caller",
-      "phase": "M4"
-    },
-    {
       "path": "install/managed_install.py",
       "scope": "_run",
       "role": "store_owner",
@@ -2178,18 +1847,6 @@
     },
     {
       "path": "runtime/contract_store.py",
-      "scope": "_authenticate_execution_binding_with_receipt",
-      "role": "store_owner",
-      "capabilities": [
-        "authoring_read",
-        "store_write",
-        "verified_store_read"
-      ],
-      "destination": "sealed exact-generation and admission-receipt authority for dispatch",
-      "phase": "M4"
-    },
-    {
-      "path": "runtime/contract_store.py",
       "scope": "_code_digest",
       "role": "store_owner",
       "capabilities": [
@@ -2597,16 +2254,6 @@
         "verified_store_read"
       ],
       "destination": "sole owner of authenticated predecessor reads under publication-store locks",
-      "phase": "M4"
-    },
-    {
-      "path": "runtime/contract_store.py",
-      "scope": "authenticate_execution_binding",
-      "role": "store_owner",
-      "capabilities": [
-        "store_write"
-      ],
-      "destination": "unchanged dispatch facade delegating to the exact receipt reader",
       "phase": "M4"
     },
     {
@@ -3228,29 +2875,6 @@
     },
     {
       "path": "runtime/executor_birth_commit_publisher.py",
-      "scope": "_BirthCommitPublisher.authenticate_quarantine_predecessor",
-      "role": "store_owner",
-      "capabilities": [
-        "store_write"
-      ],
-      "destination": "sealed read of the exact invoked generation and its prior admission; existing lock ownership only",
-      "phase": "M4"
-    },
-    {
-      "path": "runtime/executor_birth_commit_publisher.py",
-      "scope": "_BirthCommitPublisher.quarantine_candidate",
-      "role": "store_owner",
-      "capabilities": [
-        "authoring_read",
-        "authoring_write",
-        "store_write",
-        "verified_store_read"
-      ],
-      "destination": "sealed authenticated capture and private reduce-only staging, including exact-successor recovery; no direct publication",
-      "phase": "M4"
-    },
-    {
-      "path": "runtime/executor_birth_commit_publisher.py",
       "scope": "_BirthCommitPublisher.retire",
       "role": "administrative_tool",
       "capabilities": [
@@ -3312,36 +2936,6 @@
     },
     {
       "path": "runtime/executor_birth_intent.py",
-      "scope": "submit_promote_birth",
-      "role": "administrative_tool",
-      "capabilities": [
-        "birth"
-      ],
-      "destination": "reviewed administrative authoring scope without live publication authority",
-      "phase": "M4"
-    },
-    {
-      "path": "runtime/executor_birth_intent.py",
-      "scope": "submit_promoter_quarantine_birth",
-      "role": "administrative_tool",
-      "capabilities": [
-        "birth"
-      ],
-      "destination": "data-only exact execution receipt routed to the fixed F5-gated Birth owner",
-      "phase": "M4"
-    },
-    {
-      "path": "runtime/executor_birth_intent.py",
-      "scope": "submit_promoter_rollback_birth",
-      "role": "administrative_tool",
-      "capabilities": [
-        "birth"
-      ],
-      "destination": "reviewed administrative authoring scope without live publication authority",
-      "phase": "M4"
-    },
-    {
-      "path": "runtime/executor_birth_intent.py",
       "scope": "submit_skills_birth",
       "role": "administrative_tool",
       "capabilities": [
@@ -3358,16 +2952,6 @@
         "birth"
       ],
       "destination": "reviewed administrative authoring scope without live publication authority",
-      "phase": "M4"
-    },
-    {
-      "path": "runtime/executor_birth_operational.py",
-      "scope": "_quarantine_execution_with_runtime",
-      "role": "administrative_tool",
-      "capabilities": [
-        "birth"
-      ],
-      "destination": "fixed-certification entry into the existing sealed Birth core; no selectable publisher or authority",
       "phase": "M4"
     },
     {
@@ -4466,16 +4050,6 @@
       "phase": "M4"
     },
     {
-      "path": "runtime/executor_lifecycle_state.py",
-      "scope": "_catalog_executor",
-      "role": "live_reader",
-      "capabilities": [
-        "live_artifact_read"
-      ],
-      "destination": "resolve one executor name to its exact authenticated generation before a local restriction or usage credit",
-      "phase": "M4"
-    },
-    {
       "path": "runtime/executor_standard.py",
       "scope": "_manifest_paths",
       "role": "documentation",
@@ -4670,88 +4244,13 @@
       "phase": "M4"
     },
     {
-      "path": "runtime/jobs/promoter_promote.py",
-      "scope": "_loader_admission",
+      "path": "runtime/learning_loop.py",
+      "scope": "_existing_executor",
       "role": "live_reader",
       "capabilities": [
         "live_artifact_read"
       ],
       "destination": "verified live catalog, immutable store, or live artifact boundary only",
-      "phase": "M4"
-    },
-    {
-      "path": "runtime/jobs/promoter_promote.py",
-      "scope": "_promote_candidate",
-      "role": "operational_producer",
-      "capabilities": [
-        "authoring_read",
-        "authoring_write",
-        "birth"
-      ],
-      "destination": "shared promotion preparation and readback; exact consent and publication remain owned by sealed Birth",
-      "phase": "M4"
-    },
-    {
-      "path": "runtime/jobs/promoter_promote.py",
-      "scope": "_restore_rollback_blob",
-      "role": "offline_authoring",
-      "capabilities": [
-        "authoring_read",
-        "authoring_write"
-      ],
-      "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
-      "phase": "M4"
-    },
-    {
-      "path": "runtime/jobs/promoter_promote.py",
-      "scope": "_write_rollback_blob",
-      "role": "offline_authoring",
-      "capabilities": [
-        "authoring_read"
-      ],
-      "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
-      "phase": "M4"
-    },
-    {
-      "path": "runtime/jobs/promoter_promote.py",
-      "scope": "promote_reviewed_candidate",
-      "role": "operational_producer",
-      "capabilities": [
-        "authoring_write",
-        "birth"
-      ],
-      "destination": "authenticated promotion review through the existing publisher, rollback blob and grace registry; no new authority",
-      "phase": "M4"
-    },
-    {
-      "path": "runtime/jobs/promoter_promote.py",
-      "scope": "promote_to_catalog",
-      "role": "operational_producer",
-      "capabilities": [
-        "authoring_write",
-        "birth"
-      ],
-      "destination": "reviewed publication, retirement, reactivation, or rollback boundary",
-      "phase": "M4"
-    },
-    {
-      "path": "runtime/jobs/promoter_rollback.py",
-      "scope": "_staged_rollback_candidate",
-      "role": "offline_authoring",
-      "capabilities": [
-        "authoring_read"
-      ],
-      "destination": "private rollback candidate preparation; never live authoring mutation",
-      "phase": "M4"
-    },
-    {
-      "path": "runtime/jobs/promoter_rollback.py",
-      "scope": "rollback_promotion",
-      "role": "operational_producer",
-      "capabilities": [
-        "birth"
-      ],
-      "destination": "reviewed publication, retirement, reactivation, or rollback boundary",
       "phase": "M4"
     },
     {
@@ -5930,11 +5429,6 @@
     "coordinator_store_owners": [
       "install/birth_authority_provisioner.py:_publish_initial_predecessor_v2",
       "install/birth_authority_provisioner.py:abandon_unattestable_transition_v2",
-      "install/birth_certification_authority_provisioner.py:_provision_certification_at_v1",
-      "install/birth_certification_authority_provisioner.py:provision_certification_authority_v1",
-      "install/birth_certification_evidence.py:_evidence_at_v1",
-      "install/birth_certification_evidence.py:_open_database",
-      "install/birth_certification_evidence.py:administrative_evidence_v1",
       "install/birth_ownership_authority_provisioner.py:_discard_temporary",
       "install/birth_ownership_authority_provisioner.py:_load_or_create_pair",
       "install/birth_ownership_authority_provisioner.py:_load_or_create_private",

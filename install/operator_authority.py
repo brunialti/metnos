@@ -147,7 +147,18 @@ def _public_bytes(key: Ed25519PrivateKey) -> bytes:
     )
 
 
-def _documents(operator_public: bytes, reviewer_public: bytes, *, legacy_scope: bool = False) -> dict[str, bytes]:
+# The consent scopes this installer grants, and the exact lists earlier
+# installers wrote. An installed earlier list is recognised on re-entry and
+# replaced only on an explicit ``--upgrade-scopes``.
+SCOPES = ("active", "authority", "reactivation")
+PREVIOUS_SCOPES = (
+    ("birth",),
+    ("active", "authority", "preexercise", "promotion", "reactivation"),
+)
+
+
+def _documents(operator_public: bytes, reviewer_public: bytes, *,
+               scopes: tuple[str, ...] = SCOPES) -> dict[str, bytes]:
     runtime_dir = Path(__file__).resolve().parents[1] / "runtime"
     if str(runtime_dir) not in sys.path:
         sys.path.insert(0, str(runtime_dir))
@@ -156,10 +167,7 @@ def _documents(operator_public: bytes, reviewer_public: bytes, *, legacy_scope: 
     kinds = sorted(item.value for item in IndependentEvidenceKind)
     approval = _canonical({
         "actors": {
-            "operator": {"key_ids": ["operator-key"], "scopes": (
-                ["birth"] if legacy_scope else
-                ["active", "authority", "preexercise", "promotion", "reactivation"]
-            )},
+            "operator": {"key_ids": ["operator-key"], "scopes": list(scopes)},
         },
         "keys": {"operator-key": base64.b64encode(operator_public).decode("ascii")},
         "revision": 1,
@@ -253,25 +261,32 @@ def provision_paths(
         operator = _read_private(private / "operator-key.priv", owner=private_owner)
         reviewer = _read_private(private / "review-key.priv", owner=private_owner)
         expected = _documents(_public_bytes(operator), _public_bytes(reviewer))
-        legacy_scope = False
+        previous = None
         try:
             _verify_public(public, expected, owner=target_owner)
         except OperatorAuthorityError:
-            # Never expand an installed authority silently. Recognise the
+            # Never change an installed authority silently. Recognise an
             # exact previous installer output, preserving its original keys.
-            legacy = _documents(_public_bytes(operator), _public_bytes(reviewer),
-                                legacy_scope=True)
-            _verify_public(public, legacy, owner=target_owner)
-            legacy_scope = True
-        if legacy_scope and upgrade_scopes:
-            _upgrade_approval_input(public, legacy["approval-authority.json"],
+            for scopes in PREVIOUS_SCOPES:
+                candidate = _documents(_public_bytes(operator), _public_bytes(reviewer),
+                                       scopes=scopes)
+                try:
+                    _verify_public(public, candidate, owner=target_owner)
+                except OperatorAuthorityError:
+                    continue
+                previous = candidate
+                break
+            else:
+                raise
+        if previous is not None and upgrade_scopes:
+            _upgrade_approval_input(public, previous["approval-authority.json"],
                                     expected["approval-authority.json"], owner=target_owner)
             _verify_public(public, expected, owner=target_owner)
-            legacy_scope = False
+            previous = None
         return {
             "status": "verified", "private_created": False,
             "private_dir": str(private), "public_dir": str(public),
-            "approval_scope_upgrade_required": legacy_scope,
+            "approval_scope_upgrade_required": previous is not None,
         }
 
     operator, operator_created = _load_or_create_private(

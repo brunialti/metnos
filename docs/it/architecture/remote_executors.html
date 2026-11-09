@@ -193,7 +193,7 @@ il trasferimento e la rilettura finale. La stima concede un secondo ogni
 Questo limite resta un vincolo di esecuzione: non garantisce che qualunque
 dimensione ammessa dal protocollo arrivi in tempo su ogni collegamento.</p>
 
-<p>Il primo protocollo ammette fino a 100 file e 4 GiB per file. Le letture
+<p>Il protocollo ammette fino a 100 file e 4 GiB per file. Le letture
 dirette restituiscono al massimo 256 KiB; la lettura automatica dei documenti
 sul server accetta fino a 32 MiB per file e restituisce fino a 200.000 caratteri,
 entro il limite della risposta. PDF, DOCX e XLSX vengono interpretati in un
@@ -202,8 +202,8 @@ viene indicata come incompleta. L'elenco è limitato a 1.000 voci, 256 KiB e
 64 livelli. Nelle estensioni e nelle copie remote la cartella di destinazione
 deve esistere; copie di interi alberi, percorsi con caratteri jolly, collegamenti
 e percorsi riservati all'applicazione vengono rifiutati esplicitamente.
-Le operazioni server negli spazi già autorizzati mantengono il comportamento
-precedente.</p>
+Le operazioni sul server negli spazi già autorizzati seguono le regole
+ordinarie del server.</p>
 
 <p>Chiedere di leggere o mostrare il contenuto di un file restituisce il testo,
 anche senza estensione. Elenchi, conteggi e tabelle richieste esplicitamente

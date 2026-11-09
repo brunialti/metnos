@@ -80,6 +80,7 @@ from .schema import (
     validate_inventory,
     validate_plan,
 )
+from .recovery import frozen_token_allowance
 from .transactions import checked_checkpoint, immediate_transaction
 from .domain_outcome import domain_terminal_detail
 
@@ -180,10 +181,15 @@ _MODEL_RESERVATIONS_CTES = """
                     THEN 1 ELSE 0 END AS unbounded,
                CASE WHEN attempt.id IS NOT NULL
                       AND json_extract(attempt.model_snapshot_json, '$.mode')='llm'
-                      AND json_extract(attempt.metrics_json, '$.llm_usage.schema_version')
-                          ='metnos.durable-model-usage/2'
-                      AND json_type(attempt.metrics_json, '$.llm_usage.usage_missing')='false'
-                      AND json_type(attempt.metrics_json, '$.llm_usage.cost_unknown')='false'
+                      AND (
+                        json_type(attempt.metrics_json, '$.usage_reserved_tokens')='integer'
+                        OR (
+                          json_extract(attempt.metrics_json, '$.llm_usage.schema_version')
+                              ='metnos.durable-model-usage/2'
+                          AND json_type(attempt.metrics_json, '$.llm_usage.usage_missing')='false'
+                          AND json_type(attempt.metrics_json, '$.llm_usage.cost_unknown')='false'
+                        )
+                      )
                     THEN 0 ELSE COALESCE(limits.max_tokens, 0) END AS reserved_tokens
         FROM units unit
         JOIN model_limits limits
@@ -203,6 +209,11 @@ _MODEL_RESERVATIONS_CTES = """
         FROM model_reservations GROUP BY owner_user_id, revision_id
     )
 """
+
+
+def _reserved_metric(reserved_tokens: int | None) -> dict[str, int]:
+    """Attempt metric naming a charged allowance; absent when nothing was reserved."""
+    return {} if reserved_tokens is None else {"usage_reserved_tokens": reserved_tokens}
 
 
 class DurableStoreError(RuntimeError):
@@ -5281,32 +5292,41 @@ class DurableWorkloadStore:
         )
 
     @classmethod
-    def _mark_unaccounted_model_usage_unknown_in_transaction(
+    def _settle_unreported_model_usage_in_transaction(
         cls,
         connection: sqlite3.Connection,
         row: sqlite3.Row,
         *,
         now_text: str,
-    ) -> bool:
-        """Poison a revision when an executed model attempt lacks exact usage.
+    ) -> tuple[bool, int | None]:
+        """Settle an executed model attempt that ends without exact usage.
 
         Once the model boundary has been entered, a missing ledger entry is
-        indistinguishable from an unreported provider call. Persisting that
-        uncertainty prevents later retries from presenting an unsafe token or
-        cost remainder as authoritative.
+        indistinguishable from an unreported provider call. A frozen zero-cost
+        contract bounds that call: its whole allowance is charged, as a
+        reservation rather than a measurement, so later budget remainders stay
+        safe upper bounds. Without such a bound the revision becomes unknown,
+        preventing retries from presenting an unsafe remainder as authoritative.
+        Returns ``(usage_unknown, reserved_tokens)``.
         """
 
         model = json.loads(str(row["model_snapshot_json"]))
         if model.get("mode") != "llm" or cls._model_usage_is_complete(row):
-            return False
+            return False, None
+        metrics = json.loads(str(row["metrics_json"]))
+        if type(metrics.get("usage_reserved_tokens")) is int:
+            return False, None
+        bound = frozen_token_allowance(model)
         cls._add_revision_usage_in_transaction(
             connection,
             owner=str(row["owner_user_id"]),
             revision_id=str(row["revision_id"]),
-            usage_unknown=True,
+            input_tokens=0 if bound is None else bound[0],
+            output_tokens=0 if bound is None else bound[1],
+            usage_unknown=bound is None,
             now_text=now_text,
         )
-        return True
+        return (True, None) if bound is None else (False, bound[0] + bound[1])
 
     @staticmethod
     def _validated_result_dependencies_in_transaction(
@@ -7171,10 +7191,21 @@ class DurableWorkloadStore:
                 raise DurableStoreError(
                     "attempt usage is already frozen for the active fence"
                 )
+            # A frozen zero-cost contract was validated above, so a missing
+            # report is bounded: charge the whole allowance as a reservation.
+            usage_missing = bool(usage_value["usage_missing"])
+            bound = frozen_token_allowance(model_snapshot)
+            if usage_missing and bound is None:
+                raise ModelUsageContractError("frozen model usage limits are invalid")
+            charged = (
+                bound if usage_missing
+                else (int(usage_value["input_tokens"]), int(usage_value["output_tokens"]))
+            )
             metrics = self._attempt_metrics(
                 row,
                 llm_usage=usage_value,
-                usage_missing=bool(usage_value.get("usage_missing", True)),
+                usage_missing=usage_missing,
+                **_reserved_metric(sum(charged) if usage_missing else None),
             )
             updated = connection.execute(
                 """
@@ -7193,13 +7224,10 @@ class DurableWorkloadStore:
                 connection,
                 owner=lease.owner_user_id,
                 revision_id=lease.revision_id,
-                input_tokens=int(usage_value["input_tokens"]),
-                output_tokens=int(usage_value["output_tokens"]),
+                input_tokens=charged[0],
+                output_tokens=charged[1],
                 cost_micros=int(usage_value["cost_micros"]),
-                usage_unknown=(
-                    bool(usage_value["usage_missing"])
-                    or bool(usage_value["cost_unknown"])
-                ),
+                usage_unknown=bool(usage_value["cost_unknown"]),
                 now_text=current_text,
             )
             self._advance_revision_clock_in_transaction(
@@ -8580,6 +8608,8 @@ class DurableWorkloadStore:
                  AND unit.id=attempt.unit_id
                 WHERE attempt.owner_user_id=? AND unit.revision_id=?
                   AND json_extract(attempt.model_snapshot_json, '$.mode')='llm'
+                  AND json_type(attempt.metrics_json, '$.usage_reserved_tokens')
+                      IS NOT 'integer'
                   AND (
                     json_extract(attempt.metrics_json, '$.usage_missing') IS NOT 0
                     OR json_type(attempt.metrics_json, '$.llm_usage') IS NULL
@@ -8956,8 +8986,8 @@ class DurableWorkloadStore:
             clock_regressed = self._clock_regressed(
                 row["revision_clock_high_water_at"], current,
             )
-            usage_unknown = (
-                self._mark_unaccounted_model_usage_unknown_in_transaction(
+            usage_unknown, reserved_tokens = (
+                self._settle_unreported_model_usage_in_transaction(
                     connection, row, now_text=current_text,
                 )
             )
@@ -9008,6 +9038,7 @@ class DurableWorkloadStore:
                 retry_decision=derived.value,
                 usage_accounting_unknown=usage_unknown,
                 clock_regressed=clock_regressed,
+                **_reserved_metric(reserved_tokens),
             )
             changed_attempt = connection.execute(
                 """
@@ -9093,9 +9124,9 @@ class DurableWorkloadStore:
             clock_regressed = self._clock_regressed(
                 row["revision_clock_high_water_at"], current,
             )
-            usage_unknown = (
-                not before_execution
-                and self._mark_unaccounted_model_usage_unknown_in_transaction(
+            usage_unknown, reserved_tokens = (
+                (False, None) if before_execution
+                else self._settle_unreported_model_usage_in_transaction(
                     connection, row, now_text=current_text,
                 )
             )
@@ -9133,6 +9164,7 @@ class DurableWorkloadStore:
                 abandonment_reason=reason_code,
                 usage_accounting_unknown=usage_unknown,
                 clock_regressed=clock_regressed,
+                **_reserved_metric(reserved_tokens),
             )
             unit_error = None if retry_available else "cancelled"
             unit_detail = None if retry_available else error.payload_json
@@ -9303,9 +9335,9 @@ class DurableWorkloadStore:
                     self._clock_regressed(row["clock_high_water_at"], current)
                     or self._clock_regressed(row["unit_updated_at"], current)
                 )
-                usage_unknown = (
-                    not before_execution
-                    and self._mark_unaccounted_model_usage_unknown_in_transaction(
+                usage_unknown, reserved_tokens = (
+                    (False, None) if before_execution
+                    else self._settle_unreported_model_usage_in_transaction(
                         connection, row, now_text=current_text,
                     )
                 )
@@ -9351,6 +9383,7 @@ class DurableWorkloadStore:
                     "reconciled_at": current_text,
                     "usage_accounting_unknown": usage_unknown,
                     "clock_regressed": clock_regressed,
+                    **_reserved_metric(reserved_tokens),
                 })
                 metrics = canonical_json(
                     metrics_value,

@@ -111,7 +111,7 @@ def _replace_public(binding, **changes):
     ))
 
 
-def _fixture(*, embedded=True, preexercise=False, checks=None,
+def _fixture(*, embedded=True, checks=None,
              admission_changes=None, payload_changes=None, revision=RevisionClass.FIRST_BIRTH):
     contract = ContractId(ManifestOrigin.USER, "sample/manifest.toml")
     author = Ed25519PrivateKey.generate()
@@ -144,8 +144,7 @@ def _fixture(*, embedded=True, preexercise=False, checks=None,
         generation_id=generation, check_results=check_map,
         semantic_review_hash=semantic_hash, approval_hash=approval_hash,
         revision_class=receipts.RevisionClass(revision.value),
-        approved_lifecycle=(receipts.ApprovedLifecycle.PREEXERCISE if preexercise
-                            else receipts.ApprovedLifecycle.ACTIVE),
+        approved_lifecycle=receipts.ApprovedLifecycle.ACTIVE,
     )
     admission.update(admission_changes or {})
     binding = _binding(admission_changes=admission)
@@ -162,7 +161,7 @@ def _fixture(*, embedded=True, preexercise=False, checks=None,
     )
     report = BirthReport(
         1, contract, digest(4), digest(5), digest(6), revision, (), tuple(checks),
-        BirthOutcome.PREEXERCISE if preexercise else BirthOutcome.ADMITTED, None,
+        BirthOutcome.ADMITTED, None,
     )
     terminal = operational.BirthResult(
         binding["receipt_row"].request_id, report,

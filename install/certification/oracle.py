@@ -1,4 +1,4 @@
-"""One deterministic schema and oracle for the harness and administrative F5 owner."""
+"""One deterministic schema and oracle for the end-to-end certification harness."""
 from __future__ import annotations
 import hashlib
 import json

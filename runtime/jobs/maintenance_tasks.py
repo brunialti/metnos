@@ -86,7 +86,7 @@ def task_lifecycle_summary() -> dict:
 # --- Nightly aging consolidato (L2 consolidamento timer, 30/5/2026) -----------
 # I 2 stub task_synt_suggest + task_introvertiva_apply sono stati RITIRATI
 # (erano no-op, logica persa con _v1_tasks.pyc, superati da introvertiva_propose
-# + change_applier/promoter). L1 consolidamento timer.
+# + change_applier). L1 consolidamento timer.
 
 def task_nightly_aging() -> dict:
     """Decay notturno UNIFICATO: executor ager + mnest ager in un solo job.

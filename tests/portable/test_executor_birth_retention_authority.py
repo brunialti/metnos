@@ -18,18 +18,6 @@ from executor_birth_canonical import encode_canonical_ascii_v1 as canonical
 from executor_birth_ownership_authorities import OwnershipAuthorityError
 
 
-def test_retention_and_certification_registries_are_not_interchangeable():
-    import executor_birth_certification_authority as certification
-
-    public = Ed25519PrivateKey.generate().public_key()
-    with pytest.raises(OwnershipAuthorityError):
-        authority.decode_retention_registry_v1(
-            certification.encode_certification_registry_v1(public))
-    with pytest.raises(OwnershipAuthorityError):
-        certification.decode_certification_registry_v1(
-            authority.encode_retention_registry_v1(public))
-
-
 native = pytest.mark.skipif(not sys.platform.startswith("linux"), reason="managed custody is Linux-only")
 
 

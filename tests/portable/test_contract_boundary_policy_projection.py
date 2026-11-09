@@ -45,8 +45,11 @@ TOOL = ROOT / "internal" / "tools" / "render_contract_boundary_policy.py"
 # 5/10/2026: a071c73c adds only f5_authority._reuse and the five store_write
 # APIs, module and source owner of birth_certification_reuse. Compared with
 # 6979d0ea, no other policy value or existing capability changed.
+# 9/11/2026: F5 and the promoter are removed. Only removals: the F5,
+# certification, migration and lifecycle-state owners, and the promoter and
+# quarantine Birth facades. Nothing is added and no remaining grant changed.
 GOLDEN_DIGEST_V1 = (
-    "sha256:a4b615ace29f08768a0f02557fd8414de3b5138debbce605d2910ae63191876e"
+    "sha256:7becad9435a7e4d474430740c1d897d6b4a2ba119af24c1a53a6bc4355cf30cb"
 )
 
 POLICY_NAMES = (
@@ -100,15 +103,6 @@ def test_authoring_facts_are_immutable_and_facade_materializes_legacy_types() ->
     assert type(policy.BOUNDARY_APIS) is dict
     assert type(policy.BOUNDARY_MODULES) is dict
     assert type(policy.BOUNDARY_SOURCE_OWNERS) is dict
-
-
-def test_quarantine_facades_request_birth_without_low_level_authority() -> None:
-    for owner, entry in (
-        ("executor_birth_intent", "submit_promoter_quarantine_birth"),
-        ("executor_birth_operational", "_quarantine_execution_with_runtime"),
-    ):
-        assert policy.BOUNDARY_APIS[owner][entry] == ("birth",)
-        assert standalone.BOUNDARY_APIS[owner][entry] == ("birth",)
 
 
 def test_contract_convergence_owner_is_exact_in_all_three_registries() -> None:

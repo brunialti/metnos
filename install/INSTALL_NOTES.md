@@ -110,13 +110,19 @@ re-entry. Links, changed bytes, ownership or permissions fail closed. A phase
 marker or a service-account write cannot authorize activation.
 
 The operator registry grants the named Birth scopes (`active`, `authority`,
-`preexercise`, `promotion`, `reactivation`), never a generic `birth` scope.
-Existing installations retain their exact registry by default. An explicit
-`python -m install.operator_authority --user <service-account> --upgrade-scopes` replaces only that
-legacy scope list in the provisioning input, preserving both private keys.
-It takes effect only in the next authenticated release selection.
+`reactivation`), never a generic `birth` scope. Existing installations retain
+their exact registry by default, including a list written by an earlier
+installer. An explicit
+`python -m install.operator_authority --user <service-account> --upgrade-scopes`
+replaces only such an earlier scope list in the provisioning input, preserving
+both private keys. It takes effect only in the next authenticated release
+selection.
 
-The installed F5 authority also accepts `proposal review` and `proposal approve`.
+The root-owned `metnos-synth-review` launcher, installed once with
+`sudo internal/tools/install_synth_review.sh <account>` after a release, accepts
+exactly `review` and `approve` and runs `install.synth_review` from the selected
+release. The same script removes the retired `metnos-f5-authority` launcher and
+its sudoers rule.
 The first consumes candidate bytes and three to six operator-confirmed cases;
 the second consumes only the exact review identity, subject hash and decision.
 Both run the authenticated installed implementation in a bounded transient
@@ -131,15 +137,9 @@ Before review and approval, retained authoring bytes pass through the existing
 closed-candidate preparation. It computes the code digest from captured source
 bytes before binding tests or consent; source and language state are preserved.
 Review grants no admission: a separate expiring consent resumes the original
-producer through all Birth checks. For `producer: promoter`, the reviewed
-candidate must represent the authenticated preexercise-to-active transition;
-other maintenance operations are refused. Approval resumes the existing
-promoter with the exact captured candidate and operator token, retaining its rollback copy, standard
-catalog readback and promotion registry. Old generation logs remain unchanged:
-a later authenticated admission, not a historical generator status, establishes
-the predecessor. The existing authoring tree supplies only the rollback copy:
-reviewed descriptions and language state must not be replaced by older bytes.
-A changed candidate still fails the ordinary Birth checks.
+Synth producer through all Birth checks; other producers are refused. An
+admitted candidate is active. A changed candidate still fails the ordinary
+Birth checks.
 This administrative integration currently
 requires the supported Linux distribution; portable runner tests do not prove
 equivalent administrative custody on Windows.
@@ -332,9 +332,8 @@ verifying its exact generation and source against the signed receipt and
 authenticated context of the immediate predecessor. The prior lifecycle is
 preserved; property execution, semantic review and renewed operator approval
 are explicitly recorded as not applicable, bound to the prior signed receipt,
-rather than reported as newly passed. No new or extended consent is issued:
-a preexercise executor remains preexercise. Historical receipts and producer
-records remain untouched. New or
+rather than reported as newly passed. No new or extended consent is issued.
+Historical receipts and producer records remain untouched. New or
 changed executors still require the full checks; missing or invalid historical
 evidence never becomes implicit initial adoption.
 
@@ -368,181 +367,6 @@ The administrative development wrapper is
 It authenticates the selected release, requires a clean primary checkout,
 and runs the plan before admission. The historical `--sign` flag submits
 the candidate to Executor Birth; it cannot select direct signing.
-
-### Optional F5 certification custody (development)
-
-The dedicated certification key is not part of F4's mandatory three-key
-inventory. `install.birth_certification_authority_provisioner` owns its
-optional fixed-root Linux preparation under the existing administrative lock.
-It returns public verification material only and installs neither a
-certificate nor an activation. It is not called by the six-phase installer,
-ordinary Birth or service startup.
-
-The separate `certification-authority-v1` directory below the administrative
-Birth root contains root-owned `private.bin` (0600) and `registry.json` (0644).
-Exact retry reuses the key; interrupted preparation resumes the same complete
-staged key. Public-without-private or a mismatched pair requires explicit
-recovery, not automatic regeneration. A revoked registry stays revoked on
-retry. The public reader initializes no user directories and never reads the
-private file. Native Windows custody and the evidence-derived certificate
-remain unfinished; this procedure must not be presented as F5 activation.
-
-The optional `install.birth_certification_evidence.administrative_evidence_v1`
-context records the administrative evidence in a separate fixed-root directory.
-Its private, append-only SQLite store preserves the initial defect census,
-review proofs, frozen routing profiles and every cycle outcome. A process
-interruption remains an interrupted cycle on recovery; it cannot be skipped
-when looking for consecutive successes. The same completed turn cannot count
-twice. Exact retry/review and artifact hashes never confer publication power.
-Only the administrator can open this context; ordinary Birth and startup do
-not read or write it. This persistence component does not yet run the HTTP
-harness, issue an F5 certificate, migrate state or activate lifecycle changes.
-
-New prepared sets also contain the maintenance capability
-`promoter:quarantine`, with its own producer key through the existing catalog.
-An older set without that optional F5 capability can still bootstrap F4.
-Productive quarantine requires the fixed F5 activation and an already migrated
-`birth/executor_epochs.sqlite` in the selected instance state. Its review
-outbox is `birth/failure_reviews.sqlite` in the same private directory.
-These files are neither populated by ordinary F4 startup nor synthesized as
-replacement migration evidence. Live feedback wiring and final qualification
-remain development work; provisioning the optional capability does not enable it.
-
-The approved laboratory candidate adds `rehearse plan` and `rehearse issue`
-to the existing administrative F5 launcher. It requires completed migration,
-a frozen evidence profile and independently observed native isolation. The
-same certification owner signs a separate one-hour `rehearsal.json`; neither
-the permit nor its runtime type is accepted as productive certification.
-Every use checks expiry, authority, installation/head/build, migration and
-native containment again. A present invalid permit refuses rather than
-falling back to production. No automatic renewal, service or extra key is
-introduced. Currently only private Linux directory containers with private
-namespaces are supported; other native layouts refuse. This candidate has
-unit and native observer evidence, but has not completed installed HTTP
-acceptance. See `internal/reports/rm0008-f5-certification-order-20260924.md`.
-
-### Optional one-time lifecycle cutover (development)
-
-`install.birth_lifecycle_migration` moves an installation from its name-based
-executor lifecycle state to the epoch store. It is not part of the six-phase
-installer, ordinary Birth or service startup, and it issues no certificate,
-publishes no executor and retires no file.
-
-It is two commands, because its halves need opposite conditions. `plan` runs
-while the services run: only a live process can say which stores this
-installation selected. The administrator reads that process's environment — only
-`HOME`, `METNOS_USER_DATA`, `METNOS_USER_STATE`, `METNOS_EXECUTOR_STATS_DB` and
-`METNOS_PROMOTER_DB`, with the main PID rechecked — and starts a fresh isolated
-interpreter under the service account to census the stores and decide. This
-prevents configuration imported by the administrator from selecting root's
-stores after the identity change. The reviewed decision is
-recorded root-owned at `certification-v1/migration-plan.json` (0644). Planning
-changes nothing else. The selected sources are `executor_stats` in the state
-root and `proposal_promote` in the data root.
-
-The administrative launcher selects data, state and configuration paths from
-the authenticated HTTP service catalog before importing runtime configuration.
-Caller overrides cannot redirect these readers. Its scratch workspace remains
-separate. The administrative worker binds the catalog lock to the resolved service
-account's UID/GID; it never creates a replacement root-owned service lock.
-It starts with fresh service configuration and retains the same lock while
-using the existing temporary service identity for catalog reads and migration.
-It restores root before recording completion. No subprocess tries to acquire
-the lock held by its parent.
-Its fixed command search path includes the operating system's administrative
-directories, so checking a retired user manager can resolve `runuser` without
-inheriting executable paths from the caller.
-
-`apply` holds the existing maintenance barrier for the whole migration and then
-proves separately that the services which write those stores are stopped. The
-barrier's own target list is the legacy bindings the F4 transition retired;
-those units are masked, so asking whether they are stopped always answers yes,
-and after that transition the services that really run carry the same names in
-system scope. The cutover therefore asks the installed catalog which units this
-product runs, and refuses with `cutover_topology_unknown` when it cannot read
-them or with `cutover_writer_running` when one is alive. That is a precondition, not an
-optimisation: one executor call during the copy would write a row nobody
-preserves. It refuses a decision other than the reviewed one, whether the stores
-or the catalog selection moved. After the copy each source is made unwritable
-(0400) and the observed mode is reported; that stops the next ordinary writer
-and cannot close a handle a running process already holds, which is again why
-the barrier comes first.
-
-Under the service identity the epoch store must already exist at
-`birth/executor_epochs.sqlite`; it is not created here. Every selectable
-generation is admitted first, so no window exists in which a restricted
-executor becomes visible again. The stores are then read read-only and
-query-only, preserved byte-identically, decided, and finally restricted, with
-the exact source object rechecked before and after. Counters and instants do
-not cross: **the inactivity clock restarts at cutover**, so nothing can be
-archived for `METNOS_EXECUTOR_DEPRECATED_DAYS` afterwards.
-
-The same worker restores root and writes `certification-v1/migration.json` (0644, root-owned)
-last, inside the barrier, and only when every decision is settled. An open promotion or a
-restriction with no selectable generation blocks the marker: those cases need a
-disposition, and losing them silently is what retirement must not do. A
-different marker already present is a recovery operation with its own evidence,
-never a retry. Until that marker exists the installation keeps using its
-name-based state and the command can simply be run again.
-
-The marker selects which store owns lifecycle state. It does not activate F5:
-the operations that need a derived qualification still require the separate
-certificate, and without it they refuse individually rather than reselecting the
-retired state.
-
-### Optional evidence-derived F5 certificate (development)
-
-The administrative `evidence` command accepts one bounded JSON line. For a
-cycle, send `start_cycle`, read its flushed acknowledgment, perform the tests,
-then send `finish_cycle` on the same input stream. The evidence owner stays
-open throughout. Disconnecting or sending another document interrupts the
-cycle; reopening records that interruption and resets consecutive successes.
-
-
-`install.birth_certification_issuer` signs the F5 activation document. It is
-not part of the six-phase installer, ordinary Birth or service startup, and it
-publishes no executor and grants no capability.
-
-`derive` reports exactly what `issue` would sign. Both refuse before the
-migration: a certificate authorising a lifecycle the installation has not moved
-to is the one thing this order exists to prevent. The migration marker is read
-first, the migration it names must verify against the epoch store, and only
-then is the qualification derived.
-
-The issuer composes the historical reconciliation in the same fresh service
-process used by the migration, using the service paths in its reviewed plan.
-This prevents the administrative interpreter's imported configuration from
-selecting root's history. The parent passes only its authenticated evidence
-frontier and public archive bytes; private keys remain in the root process.
-The child uses the owner readers and rereads both raw inventories afterwards.
-Before signing, the parent rereads the evidence, migration and installed
-frontiers and refuses if any changed. Its only caller input is the
-bounded public archive candidates, which remain untrusted bytes: the
-declaration owner accepts them where path, role, size and hash match the
-historical signed distribution. No count, receipt list or cycle outcome is
-accepted from a caller, and the signed payload carries none.
-
-The evidence frontier retains the frozen profile's installation, required head,
-source, catalog and harness identities from its authenticated event. Derivation
-refuses a history whose required head differs from that profile; the issuer also
-refuses a different installation before deriving or signing. A new profile
-resets consecutive successes, so completed cycles cannot be rebound by merely
-selecting another installed head. The harness must still record authentic
-observations of its declared source/catalog and implementation; retaining these
-identities is not itself proof that the focused HTTP cycles ran.
-
-The installed `install.certification` package is the single F5 oracle and
-collector implementation used by both the harness and the administrative
-owner. Before signing, the owner replays the full nine-case profile twice,
-including the native action observations. Each cycle uses its frozen subject;
-the subjects, HTTP turns and durable restart jobs must be independent. A
-caller-supplied success flag cannot replace an observation or its replay.
-The optional `queued_subjects` mapping freezes two independent contracts for
-the queued-generation case before registration. This permits genuine durable
-workload capabilities alongside ordinary function samples, without changing
-durable eligibility or accepting another contract's observations. It cannot
-use the unrelated-availability subject. Older manifests retain the original
-cycle-subject binding; their evidence is not rewritten.
 
 F6 preparation uses a separate receipt-only authority and a durable maintenance
 barrier. Startup and administrative writers refuse an unfinished session;
@@ -603,14 +427,12 @@ legacy archive pruning still require the complete inventory and maintenance
 integration; these components provide no independent cleanup command.
 Feedback journals use the same compactor, retaining the native 200-line
 operational window, canonical errors still used by unbounded learning and
-uncertain effects. Exact receipt/job bindings join pending native Birth
-reviews; deletion rechecks the queue. Native counters, rejection decisions,
+uncertain effects. Native counters, rejection decisions,
 change-intent discovery and observation remain unchanged after collection.
-The journal inventory joins feedback, undo and pending reviews to physical
-turn copies and their parents. Bidirectional copy references preserve daily
+The journal inventory joins feedback and undo to physical turn copies and
+their parents. Bidirectional copy references preserve daily
 logs, backups and whole gzip segments together when any copy is retained;
-closed connected groups remain collectible. Reviews bind the exact verified
-receipt, job, generation, arguments and output. Protected-undo projections
+closed connected groups remain collectible. Protected-undo projections
 must agree before merging their blob references. Missing references, duplicate
 objects or changed rereads block inventory. Contract references and the full
 installation census still require integration.
@@ -647,12 +469,6 @@ applying today's policy to old admissions. All signed history remains retained:
 there is no native age-based closure or rollback revocation. Unknown staging or
 recovery namespaces stop this partial inventory. This owner grants neither
 publication nor collection authority; cross-store references remain to be joined.
-The epoch join resolves contract/generation pairs to exact physical signed
-objects and preserves native legacy migration copies and attestations. Missing
-generations or changed rereads block inventory. Current pointers and retirement
-predecessors also retain matching epochs; other archived epochs keep their native
-closure and collectibility. A historical generation without an epoch does not
-cause fabricated metadata. This join does not close signed-generation audits.
 The periodic state reaper defers physical undo, protected-undo, backup-history,
 turn-log and periodic-audit collection to exclusive retention maintenance.
 Native approval expiration still records an expired decision without deleting
@@ -669,48 +485,6 @@ exclusion; an interrupted change blocks collection until recovery. Holds cannot
 change during an unfinished collection. The installed command still needs wiring.
 The complete physical inventory, cross-store references,
 existing cleanup entrypoints and installed recovery still require integration.
-
-The same administrative launcher provides `reuse inspect|export|trust|import|continue`.
-`export` signs the complete chronology and artifact inventory for the distinct
-purpose `f5_evidence_export_v1`; it grants no activation. The destination must
-explicitly register the origin installation and public key through `trust`.
-The fixed, root-owned `certification-origins-v1` store rejects unknown keys,
-replacement keys, and revoked origins; bundles cannot register their own trust.
-`import` verifies the signature and all artifacts, then replays both cycles.
-It compares all product files in the authenticated distributions, including
-prompts, contracts, collector and oracle. Only generated deployment files and
-documentation are excluded; the caller cannot narrow the comparison.
-
-The destination observes its own current native preflight, completed migration,
-platform, architecture and effective model/inference policy in a fresh service
-interpreter. Credentials and installation-specific endpoint aliases are not
-exported. Linux and Windows observations remain separate. The imported proof
-retains both installation identities and never counts as local admissions or
-local cycles: census, absence of defects, five technical admissions and two
-producers still come from the destination. Issuance rereads the trust and
-environment before signing a certificate for that installation and head.
-
-For an unchanged successor, `continue` verifies the previous locally signed
-certificate and its archived qualification, preserves the predecessor, and
-rechecks the imported proof against the current sources and conditions. New
-findings, changed obligations, revoked trust or concurrent changes refuse the
-operation. The nine-case profile is indivisible; a new head still requires a
-new local certificate. Export/import alone never activates F5 or F6.
-
-The threshold is the approved one — at least five genuine technical
-admissions, at least two authenticated producers, two complete consecutive
-cycles and no open defect in the declared scope. A quarantine is not an
-admission. The declared evidence scope is recomputed from the history observed
-now and must equal the one the census recorded, so a gap that appeared since
-refuses the certificate instead of signing a review of something else. Every
-refusal names itself: `census_absent`, `open_defect`, `cycle_interrupted`,
-`profile_absent`, `consecutive_cycles_insufficient`,
-`technical_admissions_insufficient`, `authenticated_producers_insufficient`,
-`duplicate_admission`.
-
-The dedicated key never leaves the signing function, a revoked authority never
-signs, and the published document is read back through the runtime's own
-`load_f5_activation` before the issuer reports success.
 
 ### Private HTTP runtime settings
 
@@ -856,8 +630,7 @@ the delegated initial producer. Each submission must match its bound code,
 manifest, language state, origin and admission context. Resume accepts only
 the same catalog. An empty store or a newly generated signature is insufficient.
 Standard, lint, closure and authorization checks remain mandatory; signed local
-receipts explicitly mark adoption and dynamic checks not applicable. These acts
-never count toward F5 technical-admission thresholds. Ordinary new, modified or
+receipts explicitly mark adoption and dynamic checks not applicable. Ordinary new, modified or
 imported components still require full Birth. Catalog activation remains atomic.
 This candidate requires complete isolated installation acceptance before release.
 
@@ -1145,11 +918,11 @@ complete cross-store inventory, Windows qualification or activation.
 
 Synthesis proposal files now have a physical F6 owner for current JSON and
 historical `_archived` copies. Only native failed-run states close the source;
-synthesis/installation success does not close promotion or revision. Open
+synthesis/installation success does not close revision. Open
 change intents retain their sources; closed intent witnesses remain until
 all source copies are gone, preventing discovery from recreating a collected
 row between bounded windows. The existing file custody, SQLite reader and
-signed maintenance protocol are reused. Marker/Birth/promoter references and
+signed maintenance protocol are reused. Marker/Birth references and
 the complete installed inventory still require integration; no activation.
 
 Introvertiva snapshots use physical identities for current files and historical
@@ -1161,15 +934,6 @@ after interrupted unlink through the existing signed maintenance protocol.
 Unknown namespaces and incomplete JSON stop inventory. Snapshot records remain
 available for the complete external-reference join; this component does not
 activate collection or claim a complete installation inventory.
-
-Promoter inventory joins reopenable native states, current/moved rollback tar
-files, synthesis sources, administrative review records and exact authenticated
-USER generations. Orphan archives retain their sources; successive archive
-copies may refer to distinct generations. Administrative review records preserve
-root custody and canonical digests without revalidating expired consent or
-claiming independent evidence authentication. These components remain open
-until native closure exists. Full cross-store authentication and the installed
-maintenance command remain unfinished; no collection activation is implied.
 
 The internal inventory composer requires an explicit exclusion guard and exact
 owner scope. Shared owners must be the same instances, enumerate the same
@@ -1210,7 +974,7 @@ External durable workspaces now have granular native-fenced physical ownership.
 Job closure requires a current native clean report and physical absence across
 all admitted revisions. Installed composition must supply the total workspace
 resolver and actual ArtifactStore workspace; runtime cleanup integration is
-still pending. Synth archives preserve proposal identity and open obligations.
+still pending.
 Import audits preserve the last physical status row per skill; evaluator and
 Stage6 owners recognize completed observations only. Component checks and
 independent reviews do not constitute installed qualification or activation.
@@ -1218,8 +982,6 @@ independent reviews do not constitute installed qualification or activation.
 Signed-store inventory now validates native generation/binding/current staging
 through read-only recovery planners and retains it OPEN. It never invokes
 recovery deletion. Receipt temporaries are handled separately as described below.
-Daily promoter audit owns completed observations only, with 90-day retention;
-it does not close promotion state or absorb administrative review journals.
 Workspace resolution rejects unregistered historical runners before callbacks.
 These component changes are tested and reviewed, not installed F6 activation.
 
@@ -1265,4 +1027,4 @@ writer/constructor census.
 Root avoids config's known directory-initialization effects, but is not a readonly
 sandbox. Component tests simulate host/UID boundaries; access as the service user,
 service namespaces, full maintenance composition and installed qualification
-remain pending. This change does not alter job archival or activate F5/F6.
+remain pending. This change does not alter job archival or activate F6.

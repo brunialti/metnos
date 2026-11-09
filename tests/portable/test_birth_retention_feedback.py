@@ -1,5 +1,5 @@
-"""Physical compaction must preserve native feedback decisions and queue work."""
-from dataclasses import asdict, replace
+"""Physical compaction must preserve native feedback decisions."""
+from dataclasses import replace
 from datetime import datetime, timezone
 import json
 import os
@@ -12,16 +12,11 @@ import pytest
 
 import config
 import turn_feedback
-from executor_birth_feedback import (
-    QuarantineCAS, apply_negative_feedback, enqueue_failure_review_inactive,
-    resolve_failure_review_job,
-)
 from executor_birth_retention import NodeState, RetentionError, RootKind
-from install.birth_retention_birth_sqlite import _operational_birth_sqlite_owners
 from install.birth_retention_feedback import _FeedbackOwner
 from install.birth_retention_jsonl import _TEMP_PREFIX
 from test_birth_retention_artifacts import RUN, collection
-from test_birth_retention_turns import OLD, receipt
+from test_birth_retention_turns import OLD
 
 
 pytestmark = pytest.mark.skipif(os.name != "posix", reason="native POSIX feedback owner")
@@ -45,8 +40,7 @@ def native(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "PATH_USER_DATA", data)
     path = data / "turn_feedback.jsonl"
     monkeypatch.setattr(turn_feedback, "FEEDBACK_PATH", path)
-    reviews = _operational_birth_sqlite_owners(lambda: None, None)[-1]
-    owner = _FeedbackOwner(path=path, reviews=reviews, require_exclusion=lambda: None, owner=None)
+    owner = _FeedbackOwner(path=path, require_exclusion=lambda: None, owner=None)
 
     def append(value):
         # Native service writers run with UMask=0077; the administrative
@@ -70,24 +64,7 @@ def native(tmp_path, monkeypatch):
                     action="error" if index > 197 else "ok", ts=OLD + index)))
         return b"".join(raw)
 
-    def quarantine(turn_id, *, status=QuarantineCAS.APPLIED):
-        requests = []
-        def enqueue(job, request):
-            requests.append((job, request))
-            previous_umask = os.umask(0o077)
-            try:
-                return enqueue_failure_review_inactive(job, request, created_at="2020-01-01T00:00:02Z",
-                                                       db_path=reviews.path)
-            finally:
-                os.umask(previous_umask)
-        outcome = apply_negative_feedback(receipt(turn_id), failure_evidence_hash="sha256:" + "3" * 64,
-            error_code="user_feedback_error", quarantine_exact=lambda *_: status,
-            enqueue_idempotent=enqueue)
-        effect = {"type": "feedback_quarantine", "tool": "demo", **asdict(outcome)}
-        return effect, requests
-
-    return SimpleNamespace(path=path, owner=owner, reviews=reviews,
-                           append=append, tail=tail, quarantine=quarantine)
+    return SimpleNamespace(path=path, owner=owner, append=append, tail=tail)
 
 
 def objects(native):
@@ -147,51 +124,8 @@ def test_native_compensating_retry_is_closed_only_after_leaving_learning_window(
     assert native.owner.version(obj.identity) is None
 
 
-def test_real_failure_review_queue_must_close_before_feedback_can_be_removed(native):
-    effect, _ = native.quarantine("failed")
-    native.append(record("failed", action="error", effects=[effect]))
-    native.tail()
-    obj = objects(native)["failed"]
-    queued, = native.reviews.scan()
-    assert obj.roots == (RootKind.OPEN_FEEDBACK,) and obj.references == (queued.identity,)
-    with pytest.raises(RetentionError, match="retention_owner_state_invalid"):
-        native.owner.delete(obj.identity, obj.version)
-    assert resolve_failure_review_job(effect["failure_job_id"], db_path=native.reviews.path)
-    closed = objects(native)["failed"]
-    assert closed.state is NodeState.CLOSED and not closed.references
-    native.owner.delete(closed.identity, closed.version)
-    assert native.owner.version(closed.identity) is None
-
-
-def test_a_review_added_after_scan_is_observed_before_the_effect(native):
-    effect, requests = native.quarantine("failed")
-    job, request = requests[0]
-    assert resolve_failure_review_job(job, db_path=native.reviews.path)
-    native.append(record("failed", action="error", effects=[effect]))
-    native.tail()
-    closed = objects(native)["failed"]
-    assert closed.state is NodeState.CLOSED
-    enqueue_failure_review_inactive(job, request, created_at="2020-01-01T00:00:02Z",
-                                    db_path=native.reviews.path)
-    before = native.path.read_bytes()
-    with pytest.raises(RetentionError, match="retention_owner_state_invalid"):
-        native.owner.delete(closed.identity, closed.version)
-    assert native.path.read_bytes() == before
-
-
-def test_native_stale_feedback_has_no_outstanding_review(native):
-    effect, requests = native.quarantine("stale", status=QuarantineCAS.STALE)
-    assert not requests
-    native.append(record("stale", action="error", effects=[effect]))
-    native.tail()
-    obj = objects(native)["stale"]
-    assert obj.state is NodeState.CLOSED
-    native.owner.delete(obj.identity, obj.version)
-
-
 @pytest.mark.parametrize("gap", ["warning", "effects_missing", "tutor_failure", "unknown_effect",
-                                "quarantine_missing", "enqueue_failure", "demote_failure",
-                                "review_binding", "recent_duplicate"])
+                                "demote_failure", "recent_duplicate"])
 def test_uncertain_effects_and_repeat_clicks_never_become_closed_by_age(native, gap):
     value = record("kept")
     if gap == "warning":
@@ -202,19 +136,8 @@ def test_uncertain_effects_and_repeat_clicks_never_become_closed_by_age(native, 
         value["tutor_feedback_status"] = "failed"
     elif gap == "unknown_effect":
         value["effects"] = [{"type": "new-effect"}]
-    elif gap == "quarantine_missing":
-        value["effects"] = [{"type": "feedback_quarantine", "status": "no_execution_receipt"}]
-    elif gap == "enqueue_failure":
-        effect, _ = native.quarantine("kept")
-        resolve_failure_review_job(effect["failure_job_id"], db_path=native.reviews.path)
-        effect["status"] = "enqueue_failed"
-        value["effects"] = [effect]
     elif gap == "demote_failure":
         value["effects"] = [{"type": "feedback_demote", "action": "refused"}]
-    elif gap == "review_binding":
-        effect, _ = native.quarantine("kept")
-        effect["failure_job_id"] = "sha256:" + "0" * 64
-        value["effects"] = [effect]
     native.append(value)
     native.tail()
     if gap == "recent_duplicate":
@@ -227,7 +150,7 @@ def test_uncertain_effects_and_repeat_clicks_never_become_closed_by_age(native, 
     assert native.path.read_bytes() == before
 
 
-@pytest.mark.parametrize("change", ["append", "foreign", "window", "malformed_queue"])
+@pytest.mark.parametrize("change", ["append", "foreign", "window"])
 def test_custody_version_and_window_are_rechecked(native, change):
     native.append(record("closed", ts=datetime.now(timezone.utc).timestamp() if change == "window" else OLD))
     native.tail()
@@ -237,8 +160,6 @@ def test_custody_version_and_window_are_rechecked(native, change):
         native.append(record("closed", warning="turn_not_found"))
     elif change == "foreign":
         identity = replace(identity, store=(native.path.parent / "foreign").as_uri())
-    elif change == "malformed_queue":
-        native.reviews.path.write_bytes(b"unreadable")
     before = native.path.read_bytes()
     with pytest.raises(RetentionError):
         native.owner.delete(identity, obj.version)

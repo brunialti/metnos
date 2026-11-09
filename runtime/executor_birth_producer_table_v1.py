@@ -7,7 +7,7 @@ property of the producer:
 - the **author** of the revision — model, importer, maintenance, human — is
   fixed per producer and lives in the closed table below;
 - the **kind** of executor is a property of the executor being born, not of
-  who asks for it: five producers revise an executor that already exists, and
+  who asks for it: several producers revise an executor that already exists, and
   the installer installs contracts of several kinds without having any
   predecessor on a fresh installation.
 
@@ -46,9 +46,6 @@ PRODUCER_AUTHOR_V1 = MappingProxyType({
     ("installer_phase3", "install"): RevisionAuthor.MAINTENANCE,
     ("change_applier", "extend"): RevisionAuthor.MODEL,
     ("change_rollback", "rollback"): RevisionAuthor.MAINTENANCE,
-    ("promoter", "promote"): RevisionAuthor.MAINTENANCE,
-    ("promoter", "rollback"): RevisionAuthor.MAINTENANCE,
-    ("promoter", "quarantine"): RevisionAuthor.MAINTENANCE,
     ("stack_reconcile", "restart_sign_first"): RevisionAuthor.MAINTENANCE,
 })
 

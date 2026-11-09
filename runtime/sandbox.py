@@ -846,7 +846,8 @@ def _build_bwrap_args(
     if "metnos:credentials_metadata_only" in capability_names:
         # Semantic capability: bind the canonical vault paths from config,
         # never a manifest's home-specific hint. Writers may bootstrap the
-        # empty vault directory; all consumers need the master key read-only.
+        # empty vault directory; all consumers need the vault key read-only.
+        # Never the HTTP admin key (RM-0009 FS-B).
         try:
             import credentials as _credentials
             writable = "metnos:write" in capability_names
@@ -856,9 +857,10 @@ def _build_bwrap_args(
             if vault_dir.exists():
                 args += ["--bind" if writable else "--ro-bind",
                          str(vault_dir), str(vault_dir)]
-            admin_key = Path(_credentials.ADMIN_KEY_PATH)
-            if admin_key.exists():
-                args += ["--ro-bind", str(admin_key), str(admin_key)]
+            _credentials.ensure_vault()
+            vault_key = Path(_credentials.VAULT_KEY_PATH)
+            if vault_key.exists():
+                args += ["--ro-bind", str(vault_key), str(vault_key)]
         except (ImportError, OSError):
             # The executor reports the missing vault/key honestly downstream.
             pass
@@ -1265,9 +1267,6 @@ def mail_extras(executor, args) -> tuple[list[Path], bool, dict[str, str]]:
     vault_root = Path(_credentials.CRED_DIR)
     candidates: list[Path] = []
 
-    admin_key = Path(_credentials.ADMIN_KEY_PATH)
-    candidates.append(admin_key)
-
     if all_accounts:
         if vault_root.is_dir():
             candidates.extend(sorted(vault_root.glob("smtp_*.json.age")))
@@ -1299,6 +1298,13 @@ def mail_extras(executor, args) -> tuple[list[Path], bool, dict[str, str]]:
             continue
         seen.add(key)
         paths.append(path)
+    # The vault key opens the selected vault files, and only when one is
+    # selected; the HTTP admin key never enters (RM-0009 FS-B).
+    if any(path.parent == vault_root for path in paths):
+        _credentials.ensure_vault()
+        vault_key = Path(_credentials.VAULT_KEY_PATH)
+        if vault_key.is_file():
+            paths.insert(0, vault_key)
     return paths, True, environment
 
 

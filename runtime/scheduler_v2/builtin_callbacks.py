@@ -164,27 +164,6 @@ _BUILTIN_JOBS: list[dict[str, Any]] = [
         ),
     },
     {
-        "name": "promoter",
-        "trigger": "daily@04:45",
-        "callback_key": "promoter",
-        "description": (
-            "Promoter daemon: valuta synth proposals via proposal_evaluator "
-            "(ADR 0122), promuove gli accept in `~/.local/share/metnos/"
-            "executors/<name>/` con grace 72h (override env), archivia gli "
-            "reject, marca i gray come review_needed."
-        ),
-    },
-    {
-        "name": "promoter_digest",
-        "trigger": "daily@07:00",
-        "callback_key": "promoter_digest",
-        "description": (
-            "Digest Telegram delle proposte in `promoted_grace` non ancora "
-            "notificate. Inline keyboard ok/rollback (ADR 0090). Cap N=10 "
-            "per fire. Disabilitato via METNOS_PROMOTER_NOTIFY_ADMIN=false."
-        ),
-    },
-    {
         "name": "skill_sandbox_watchdog",
         "trigger": "daily@06:35",
         "callback_key": "skill_sandbox_watchdog",
@@ -592,15 +571,6 @@ def install_default_callbacks(scheduler) -> None:
         "W1 learning-loop: pota seed shadow stantii + conta proposte (ADR 0185)",
         replace=True,
     )
-    # RM-0008 F5: consuma la coda delle quarantene esatte. Nessuna autorita'
-    # di pubblicazione: la revisione classifica, non riattiva.
-    from jobs.birth_failure_reviews import task_birth_failure_reviews
-    cb.register(
-        "birth_failure_reviews",
-        _wrap_zero_arg(task_birth_failure_reviews),
-        "Revisione bounded delle esecuzioni messe in quarantena (RM-0008 F5)",
-        replace=True,
-    )
     cb.register(
         "apply_executor_ager",
         _wrap_zero_arg(task_apply_executor_ager),
@@ -690,23 +660,6 @@ def install_default_callbacks(scheduler) -> None:
         "detection_translate_pending",
         task_detection_translate_pending,
         "Traduce i lessici di detection NL pending (every_6h, translation.detection → wise)",
-        replace=True,
-    )
-
-    # promoter / promoter_digest: scheduler v2 daily@04:45 + daily@07:00.
-    # Firma nativa v2 (cb(payload)). Vedi `runtime/jobs/promoter.py`.
-    from jobs.promoter import task_promoter
-    from jobs.promoter_digest import task_promoter_digest
-    cb.register(
-        "promoter",
-        task_promoter,
-        "Promoter daemon: valuta+promuove synth proposals (daily@04:45)",
-        replace=True,
-    )
-    cb.register(
-        "promoter_digest",
-        task_promoter_digest,
-        "Digest Telegram delle proposte promoted_grace (daily@07:00)",
         replace=True,
     )
 
@@ -861,7 +814,10 @@ def install_default_jobs(scheduler) -> int:
     # Chiavi RITIRATE (bonifica 2026-06-11): callback rimossi dal codice.
     # Eventuali entry DB residue (install pre-ritiro) vanno eliminate, o
     # firerebbero un callback inesistente (§2.8 no silent failure).
-    _retired_keys = frozenset({"multi_tool_maintenance"})
+    _retired_keys = frozenset({
+        "multi_tool_maintenance", "promoter", "promoter_digest",
+        "birth_failure_reviews",
+    })
     removed = 0
     for ent in storage.list_all():
         if ent.origin == "system" and (

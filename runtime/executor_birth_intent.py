@@ -56,13 +56,10 @@ _CHANGE_ROLLBACK = _ProducerCapability("change_rollback", "rollback", _CAPABILIT
 _SYNTH_MULTISTAGE = _ProducerCapability("synt_multistage", "create_or_replay", _CAPABILITY_SEAL)
 _SYNTH_SPECIALIZE = _ProducerCapability("synt_specialize", "specialize_or_replay", _CAPABILITY_SEAL)
 _SYNTH_APPROVE = _ProducerCapability("synt_approve", "approve_or_replay", _CAPABILITY_SEAL)
-_PROMOTE = _ProducerCapability("promoter", "promote", _CAPABILITY_SEAL)
 _STACK_RECONCILE = _ProducerCapability("stack_reconcile", "restart_sign_first", _CAPABILITY_SEAL)
 _SKILLS = _ProducerCapability("skills_cli", "skill_import_or_reactivation", _CAPABILITY_SEAL)
 _INSTALLER = _ProducerCapability("installer_phase3", "install", _CAPABILITY_SEAL)
 _BUILTIN = _ProducerCapability("builtin_contract_generator", "generate_builtin", _CAPABILITY_SEAL)
-_PROMOTER_ROLLBACK = _ProducerCapability("promoter", "rollback", _CAPABILITY_SEAL)
-_PROMOTER_QUARANTINE = _ProducerCapability("promoter", "quarantine", _CAPABILITY_SEAL)
 
 
 def _submit(intent: BirthIntent, capability: _ProducerCapability) -> "BirthResult":
@@ -101,10 +98,6 @@ def submit_synth_approve_birth(intent: BirthIntent) -> "BirthResult":
     return _submit(intent, _SYNTH_APPROVE)
 
 
-def submit_promote_birth(intent: BirthIntent) -> "BirthResult":
-    return _submit(intent, _PROMOTE)
-
-
 def submit_stack_reconcile_birth(intent: BirthIntent) -> "BirthResult":
     return _submit(intent, _STACK_RECONCILE)
 
@@ -130,20 +123,10 @@ def submit_builtin_generation_birth(intent: BirthIntent) -> "BirthResult":
     return _submit(intent, _BUILTIN)
 
 
-def submit_promoter_rollback_birth(intent: BirthIntent) -> "BirthResult":
-    return _submit(intent, _PROMOTER_ROLLBACK)
-
-
-def submit_promoter_quarantine_birth(execution):
-    """Request only exact-execution quarantine, through the certified owner."""
-    from executor_birth_operational import _quarantine_execution_with_runtime
-    return _quarantine_execution_with_runtime(execution)
-
-
 def _producer_capabilities_for_bootstrap() -> tuple[_ProducerCapability, ...]:
     return (_CHANGE_EXTEND, _CHANGE_ROLLBACK, _SYNTH_MULTISTAGE,
-            _SYNTH_SPECIALIZE, _SYNTH_APPROVE, _PROMOTE, _STACK_RECONCILE, _SKILLS,
-            _INSTALLER, _BUILTIN, _PROMOTER_ROLLBACK, _PROMOTER_QUARANTINE)
+            _SYNTH_SPECIALIZE, _SYNTH_APPROVE, _STACK_RECONCILE, _SKILLS,
+            _INSTALLER, _BUILTIN)
 
 
 def _submit_birth_intent_for_test(
@@ -163,9 +146,7 @@ __all__ = [
     "BirthIntent", "require_birth_intent_adapter", "submit_change_extend_birth",
     "submit_change_rollback_birth", "submit_synth_multistage_birth",
     "submit_synth_specialize_birth", "submit_synth_approve_birth",
-    "submit_promote_birth", "submit_stack_reconcile_birth", "submit_skills_birth",
+    "submit_stack_reconcile_birth", "submit_skills_birth",
     "submit_installer_birth", "submit_builtin_generation_birth",
-    "submit_promoter_rollback_birth",
-    "submit_promoter_quarantine_birth",
     "submit_stack_reconcile_retirement",
 ]

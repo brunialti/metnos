@@ -74,8 +74,7 @@ It means that language enters system boundaries rather than merely its copy.
 The core reads it from signed configuration and retains it in an isolated
 context for each concurrent execution. A value received from a request cannot
 replace it. Human-facing components must use that same value: this is a
-verifiable requirement, not a claim that every older page has already been
-migrated.
+verifiable requirement that some pages do not meet yet.
 </p>
 
 <p>
@@ -206,7 +205,7 @@ preference for each user.
 <div class="callout note">
  <p><strong>Current coverage, not the ideal.</strong> Some standalone HTML pages
  inherited from the runtime still contain Italian text directly in code. These
- include the OAuth result page, the older timers view, and several standalone
+ include the OAuth result page, the timers view, and several standalone
  views. They do not all go through the i18n catalog. The chat core and
  template-based administration pages follow the contract, but the complete
  interface cannot yet be described as fully localised.</p>

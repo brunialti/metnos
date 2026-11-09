@@ -71,10 +71,10 @@ def test_the_productive_loaders_agree_with_the_installed_set(report: dict):
     assert observed["admission_active_key_id"] == (
         observed["declared_admission_active_key_id"]
     )
-    # 12, not 11: ('promoter', 'quarantine') joined PRODUCER_AUTHOR_V1 in
-    # 84414376, which publishes exact-execution quarantine through Birth.
-    # This expectation is a reviewed pin and moving it is the approval.
-    assert observed["producer_count"] == 12
+    # 9, not 12: the three promoter capabilities left PRODUCER_AUTHOR_V1
+    # with F5 and the promoter. This expectation is a reviewed pin and
+    # moving it is the approval.
+    assert observed["producer_count"] == 9
 
 
 def test_the_context_material_is_rebuilt_from_the_installed_catalogue(

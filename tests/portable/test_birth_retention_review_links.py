@@ -29,7 +29,7 @@ def linked(review, tmp_path, monkeypatch):
     base = support.make_config(tmp_path / 'native', author=Ed25519PrivateKey.generate(), operator=True)
     registry = json.loads(support.approval_document())
     registry['keys']['operator-key'] = base64.b64encode(key.public_key().public_bytes_raw()).decode()
-    registry['actors']['operator']['scopes'] = ['promotion', 'authority', 'reactivation']
+    registry['actors']['operator']['scopes'] = ['active', 'authority', 'reactivation']
     support.install_operator_input(base, approval=support.canonical_json(registry))
     support.provision(monkeypatch, base)
     support.use_config(monkeypatch, base)

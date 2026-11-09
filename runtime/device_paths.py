@@ -10,7 +10,9 @@ neither side keeps a list of the other's names.
 from __future__ import annotations
 
 import json
+import os
 import re
+from pathlib import Path
 
 _WINDOWS_ROOT = re.compile(r"^[A-Za-z]:[\\/]")
 _PATH_KEYS = frozenset({"path", "paths", "base_path", "root", "dir", "dirs",
@@ -68,13 +70,76 @@ def _walk(value, is_path: bool, change):
 
 def anchor_args(args: dict, profile_json: str | None) -> dict:
     """Replace a named user folder with the device's real one; the rest is unchanged."""
+    return anchor_folders(args, _known_folders(profile_json))
+
+
+def anchor_folders(args: dict, folders: dict[str, str], keep=None) -> dict:
+    """Same translation from folders already known; ``keep(name)`` spares a name."""
     from path_alias import _user_dir_aliases
 
-    folders = _known_folders(profile_json)
     aliases = _user_dir_aliases() if folders else None
     if not aliases:
         return args
-    return _walk(args, False, lambda value: _anchored(value, folders, aliases))
+
+    def change(value: str) -> str:
+        if keep is not None and _relative(value) and keep(_first(value)):
+            return value
+        return _anchored(value, folders, aliases)
+
+    return _walk(args, False, change)
+
+
+def has_named_folder(args: dict) -> bool:
+    """A relative path argument starts with a named user folder («Documenti/...»)."""
+    from path_alias import _user_dir_aliases
+
+    aliases = _user_dir_aliases() or {}
+    found: list[str] = []
+
+    def note(value: str) -> str:
+        if _relative(value) and _first(value).casefold() in aliases:
+            found.append(value)
+        return value
+
+    _walk(args, False, note)
+    return bool(found)
+
+
+# The operating system's own names for the folders a client reports
+# (`client-rs/src/runner.rs::known_folders`) and their XDG user-dirs keys.
+_XDG_KEYS = {"Desktop": "XDG_DESKTOP_DIR", "Documents": "XDG_DOCUMENTS_DIR",
+             "Downloads": "XDG_DOWNLOAD_DIR", "Music": "XDG_MUSIC_DIR",
+             "Pictures": "XDG_PICTURES_DIR", "Public": "XDG_PUBLICSHARE_DIR",
+             "Templates": "XDG_TEMPLATES_DIR", "Videos": "XDG_VIDEOS_DIR"}
+
+
+def local_known_folders(home: Path) -> dict[str, str]:
+    """This machine's folders for ``home``, under the names a client reports.
+
+    The XDG user-dirs file records localized folders («Documenti»); without an
+    entry the default name counts. Only existing folders other than the home
+    itself are reported, as absolute normalized paths.
+    """
+    declared: dict[str, str] = {}
+    try:
+        text = (home / ".config" / "user-dirs.dirs").read_text(encoding="utf-8")
+    except (OSError, UnicodeError):
+        text = ""
+    for line in text.splitlines():
+        key, sep, value = line.strip().partition("=")
+        if sep and len(value) >= 2 and value[0] == value[-1] == '"':
+            value = value[1:-1]
+            declared[key] = str(home) + value[5:] if value.startswith("$HOME") else value
+    folders: dict[str, str] = {}
+    for name, key in _XDG_KEYS.items():
+        path = os.path.normpath(declared.get(key) or str(home / name))
+        if os.path.isabs(path) and path != os.path.normpath(str(home)) and os.path.isdir(path):
+            folders[name] = path
+    return folders
+
+
+def _first(value: str) -> str:
+    return re.split(r"[\\/]+", value.strip())[0]
 
 
 def relative_paths(args: dict) -> list[str]:

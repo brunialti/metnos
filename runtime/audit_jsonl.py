@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 """audit_jsonl.py — scrittura append-only JSONL per i log di audit (§7.2: una
-sola definizione del primitivo, era duplicato ~6 volte in synt/promoter/i18n/
-change-intent/verifier/review).
+sola definizione del primitivo, era duplicato in synt/i18n/change-intent/
+verifier/review).
 
 §2.8 (no silent failure): `fsync=True` di DEFAULT — un record di audit scritto
 DEVE sopravvivere a un crash, altrimenti l'audit mentirebbe ("ho loggato" ma la

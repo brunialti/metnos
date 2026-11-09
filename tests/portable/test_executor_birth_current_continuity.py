@@ -219,7 +219,7 @@ def test_proof_cannot_be_replayed_for_other_observation(continuity, field, check
         check(observed, decision, shadow._sealed_dependencies_for_test(current_continuity=proof))
 
 
-@pytest.mark.parametrize("revision", ["first_birth", "promotion", "reactivation", "code_changed"])
+@pytest.mark.parametrize("revision", ["first_birth", "reactivation", "code_changed"])
 @pytest.mark.parametrize("check", [shadow._property_check, shadow._semantic_check, shadow._approval_check])
 def test_proof_cannot_skip_checks_for_a_new_birth(continuity, revision, check):
     rig = continuity
@@ -284,7 +284,7 @@ def test_unsealed_dependency_hint_cannot_skip_checks():
 
 @pytest.mark.parametrize("continuity", [ExecutorOrigin.CORE, ExecutorOrigin.SYNTHESIZED], indirect=True)
 @pytest.mark.parametrize("receipt_kind", [AdmissionKind.ADMISSION, AdmissionKind.REATTESTATION])
-@pytest.mark.parametrize("lifecycle", [ApprovedLifecycle.ACTIVE, ApprovedLifecycle.PREEXERCISE])
+@pytest.mark.parametrize("lifecycle", [ApprovedLifecycle.ACTIVE])
 def test_successor_issues_real_receipt_and_replays_without_retesting(
     continuity, tmp_path, lifecycle, receipt_kind,
 ):

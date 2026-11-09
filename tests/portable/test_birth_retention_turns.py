@@ -11,28 +11,15 @@ from types import SimpleNamespace
 import pytest
 
 from config import append_private_bytes
-from executor_birth_feedback import dispatch_identifier_reference, make_execution_receipt
 from executor_birth_retention import NodeState, RetentionError, RootKind
 from install.birth_retention_jsonl import _TEMP_PREFIX
-from install.birth_retention_turns import _TurnLogOwner, _receipts
-from manifest_inventory import ContractId, ManifestOrigin
+from install.birth_retention_turns import _TurnLogOwner
 from test_birth_retention_artifacts import RUN, collection
 
 
 pytestmark = pytest.mark.skipif(os.name != "posix", reason="native POSIX turn journals")
 OLD = datetime(2020, 1, 1, tzinfo=timezone.utc).timestamp()
 DAY = "2020-01-01.jsonl"
-CID = ContractId(ManifestOrigin.USER, "demo/manifest.toml")
-DIGEST = "sha256:" + "1" * 64
-
-
-def receipt(turn_id, tool="demo"):
-    return make_execution_receipt(
-        request_id=DIGEST, turn_id=dispatch_identifier_reference("turn", turn_id),
-        reduced_query_ref=DIGEST, arguments={"text": "è🙂"}, reduced_output={"ok": True},
-        contract_id=CID, executor_name=tool, candidate_id=DIGEST,
-        generation_id="sha256:" + "2" * 64, dispatched_at="2020-01-01T00:00:00Z",
-        completed_at="2020-01-01T00:00:01Z")
 
 
 def record(turn_id, *, actor="host", **changes):
@@ -45,8 +32,7 @@ def record(turn_id, *, actor="host", **changes):
     value = asdict(TurnLog(ts_start=OLD, ts_end=OLD + 1, turn_id=turn_id,
                           user_query="test è🙂", actor=actor, owner_user_id=actor,
                           final_kind="answer", outcome="completed", steps=[
-                              StepLog(step_num=1, chosen_tool="demo",
-                                      execution_receipt=receipt(turn_id))]))
+                              StepLog(step_num=1, chosen_tool="demo")]))
     value.update(changes)
     return value
 
@@ -90,12 +76,11 @@ def test_native_feedback_and_another_owner_survive_compaction_byte_for_byte(nati
     after = objects(native)
     assert after == {key: value for key, value in before.items() if key != "old"}
     assert native.load("old") is None
-    assert _receipts(native.load("other")) == ((receipt("other"),), False)
+    assert native.load("other")["turn_id"] == "other"
     assert not (root / "active.json").exists()
 
 
 @pytest.mark.parametrize("condition", ["open", "pending", "ask", "old_format", "reversed_time",
-                                      "missing_receipt", "tampered", "wrong_turn", "wrong_tool",
                                       "foreign_actor", "earlier_open"])
 def test_incomplete_or_ambiguous_native_evidence_is_retained(native, condition):
     value = record("kept")
@@ -109,14 +94,6 @@ def test_incomplete_or_ambiguous_native_evidence_is_retained(native, condition):
         del value["outcome"]
     elif condition == "reversed_time":
         value["ts_end"] = OLD - 1
-    elif condition == "missing_receipt":
-        del value["steps"][0]["execution_receipt"]
-    elif condition == "tampered":
-        value["steps"][0]["execution_receipt"]["arguments"] = {"text": "different"}
-    elif condition == "wrong_turn":
-        value["steps"][0]["execution_receipt"] = asdict(receipt("unrelated"))
-    elif condition == "wrong_tool":
-        value["steps"][0]["chosen_tool"] = "some_other_tool"
     elif condition == "foreign_actor":
         native.append(record("kept", actor="another"))
     elif condition == "earlier_open":
@@ -130,7 +107,7 @@ def test_incomplete_or_ambiguous_native_evidence_is_retained(native, condition):
     assert native.path.read_bytes() == before
 
 
-def test_protocol_final_answer_needs_no_executor_receipt(native):
+def test_protocol_final_answer_closes_the_turn(native):
     from agent_runtime import StepLog
 
     native.append(record("final", steps=[asdict(StepLog(step_num=1, chosen_tool="final_answer"))]))
@@ -250,7 +227,7 @@ def test_interruption_recovers_original_receipt_and_native_feedback(native, tmp_
     assert factory().resume(owners, public_keys=public, max_objects=10, max_seconds=20)["remaining"] == 0
     factory().finish(owners, public_keys=public, verify_recovery=lambda: None)
     assert synchronized and native.path.read_bytes() == remaining
-    assert _receipts(native.load("other")) == ((receipt("other"),), False)
+    assert native.load("other")["turn_id"] == "other"
     assert not tuple(native.root.glob(_TEMP_PREFIX + "*"))
     with sqlite3.connect(journal) as db:
         assert db.execute("SELECT identity,owner_version,authentication FROM intents").fetchall() == original

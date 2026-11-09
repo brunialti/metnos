@@ -408,9 +408,9 @@ authenticated sessions, are not stored at all.
 
 <p>
 Fastpath and autopath thresholds are read from the Metnos process environment;
-when a variable is absent, the module default applies. The former
-<code>[fast_path]</code> and <code>[multi_tool_fast_path]</code> sections in
-<code>~/.config/metnos/runtime.toml</code> have been retired and are ignored.
+when a variable is absent, the module default applies. Any
+<code>[fast_path]</code> or <code>[multi_tool_fast_path]</code> sections in
+<code>~/.config/metnos/runtime.toml</code> are not read.
 The Praxis page can inspect and flush the caches, but it does not edit these
 thresholds. A persistent override therefore belongs in the service
 configuration; constants read at import time require a process restart.

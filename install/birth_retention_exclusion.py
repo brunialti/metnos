@@ -40,8 +40,48 @@ class _RetentionExclusionContextV1:
     def __call__(self):
         self.require_exclusion()
 
+def _prove_productive_services_stopped_v1(service_user: str) -> tuple[dict, ...]:
+    """Prove the services that write these stores are actually stopped.
+
+    This asks the installed catalog which units this product runs, and refuses
+    when it cannot read them: a quiescence claim over an unknown topology is
+    not a claim.
+    """
+    from executor_birth_maintenance_units import QUIESCENT_LOAD_STATES_V1
+    from services_registry import owned_service_units_v1
+    from stack_reconcile import Systemctl
+
+    try:
+        units = owned_service_units_v1()
+    except Exception as exc:
+        raise RetentionError(
+            "retention_topology_unknown", "installed service catalog is unreadable",
+        ) from exc
+    if not units:
+        raise RetentionError("retention_topology_unknown", "no declared unit")
+    systemctl = Systemctl(service_user=service_user)
+    observed = []
+    for scope, unit in units:
+        state = systemctl.show(unit, scope)
+        load_state = str(state.get("LoadState") or "")
+        active_state = str(state.get("ActiveState") or "")
+        try:
+            main_pid = int(state.get("MainPID") or 0)
+        except (TypeError, ValueError):
+            main_pid = -1
+        if load_state not in QUIESCENT_LOAD_STATES_V1 or state.get("ManagerError"):
+            raise RetentionError(
+                "retention_topology_unknown", f"cannot inspect {scope} unit {unit}")
+        if active_state not in {"inactive", "failed"} or main_pid != 0:
+            raise RetentionError(
+                "retention_writer_running",
+                f"{scope} unit {unit} is {active_state or load_state}")
+        observed.append({"scope": scope, "unit": unit, "load_state": load_state,
+                         "active_state": active_state, "main_pid": main_pid})
+    return tuple(observed)
+
+
 def _require_empty_units_v1(service_user: str) -> tuple[dict, ...]:
-    from install.birth_lifecycle_migration import _prove_productive_services_stopped_v1
     from stack_reconcile import Systemctl
 
     observed = _prove_productive_services_stopped_v1(service_user)

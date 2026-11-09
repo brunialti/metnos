@@ -2,16 +2,17 @@
 
 I synt_proposals storici sono "executor request" processati dalla pipeline
 multistage. Importiamo gli stati terminali per preservare l'audit e gli
-``in_progress`` come diagnostica. Gli artefatti ``synthesized`` sono invece
-governati esclusivamente dal promoter (evaluator + grace + kill-switch): non
-li duplichiamo come finta richiesta di triage umano.
+``in_progress`` come diagnostica. Gli artefatti ``synthesized`` passano invece
+dalla revisione indipendente dei candidati Synt (``metnos-synth-review``,
+ADR 0224): non li duplichiamo come finta richiesta di
+triage umano.
 
 Mapping:
   - final_state='installed'       → STATE_FINALIZED  (executor attivo)
   - final_state='rejected*'       → STATE_ROLLED_BACK
   - final_state='abandoned*'      → STATE_ROLLED_BACK
   - final_state='in_progress'/''  → STATE_PROPOSED (nessuna decisione implicita)
-  - final_state='synthesized'     → non proiettato (owner: promoter)
+  - final_state='synthesized'     → non proiettato (owner: revisione Synt)
 """
 from __future__ import annotations
 
@@ -51,10 +52,10 @@ def iter_synt() -> Iterable[ChangeIntent]:
         if not name:
             continue
         if final_state == "synthesized":
-            # One lifecycle owner only. The promoter persists its decision in
-            # promoter.sqlite and exposes gray/grace outcomes in its review
-            # surface; projecting the same artifact here as PROPOSED would
-            # advertise an approval gate that is not part of execution.
+            # One lifecycle owner only. The independent Synt review decides
+            # on a synthesized candidate; projecting the same artifact here as
+            # PROPOSED would advertise an approval gate that is not part of
+            # execution.
             continue
 
         score = score_from_synt_state(final_state)

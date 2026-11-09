@@ -22,9 +22,11 @@ POLICY_NAMES = (
 # consequently reports that additional missing exception scope.
 # 27/9: the five reviewed initial-installation coordinator scopes delegate
 # only to the existing transition; no publication or runtime grant is added.
-POLICY_SHA256 = "2cc84c3ae0e6288e40a305380af1b75eaf01d96ab0efecc48af7336a02e7b7e6"
-INVENTORY_SHA256 = "6b68632f718f1f54d5fc498225f24ede67e25c20e6b93aa288882c95f54268d0"
-FINDINGS_SHA256 = "47589c63cb73360b2fce503be53a19907a60686db39a484feaf431cf232a7e6e"
+# 9/11: F5 removed. The five F5 evidence and certification store owners leave
+# the coordinator list; nothing is added and no other value changes.
+POLICY_SHA256 = "d0bf880c317463e054825dc1c9e7e05748cfc2489baa8372a2852fa2ebae775c"
+INVENTORY_SHA256 = "d723fbe9b8aafed13681817078163b4b060ad7475dde74e5fca821f7efd8315b"
+FINDINGS_SHA256 = "79b9a9a47d8436ab9771c920d3c84a80c775609d1c469c83ad4ce30aa2f0477a"
 
 DIRECT_MANIFEST_ROLES = frozenset({
     "migration_boundary", "offline_authoring", "store_owner",
@@ -120,7 +122,8 @@ def test_inventory_and_findings_outputs_are_frozen() -> None:
     embedded = standalone.birth_closed_findings((), inventory)
     first = [(item.code, item.scope, item.message) for item in imported]
     second = [(item.code, item.scope, item.message) for item in embedded]
-    assert first == second and len(first) == 175
+    # 170, not 175: the five F5 coordinator store owners left the policy.
+    assert first == second and len(first) == 170
     assert _sha256(first) == FINDINGS_SHA256
 
 

@@ -28,10 +28,29 @@ log = get_logger(__name__)
 
 PROPOSE_SEEN = int(os.environ.get("METNOS_PROPOSE_SEEN", "3"))
 
-# Classi di lacuna che indicano una CAPACITÀ mancante (→ create_executor).
+# Classi di lacuna che indicano una CAPACITÀ mancante o insufficiente.
 # `wrong_args`/`missing_input` sono errori d'uso di capacità esistenti: restano
-# tracciati nelle lacune ma non generano proposte di sintesi.
-_CAPABILITY_GAP_CLASSES = {"out_of_scope", "wrong_tool"}
+# tracciati nelle lacune ma non generano proposte. `capability_missing` è un
+# passo richiesto che il piano non ha potuto fare; `tool_unknown` ed
+# `executor_unknown` un passo verso uno strumento che non esiste.
+_CAPABILITY_GAP_CLASSES = {
+    "out_of_scope", "wrong_tool", "capability_missing",
+    "tool_unknown", "executor_unknown",
+}
+
+
+def _existing_executor(target: str) -> bool:
+    """True when the catalog already has `target` (any qualifier).
+
+    An unreadable catalog counts as existing: no proposal is better than a
+    proposal for a twin of an executor that is already there.
+    """
+    try:
+        import loader
+        return any(e.name == target or e.name.startswith(target + "_")
+                   for e in loader.load_catalog())
+    except Exception:  # noqa: BLE001
+        return True
 
 
 def propose_from_lacuna(*, lacuna_id: str, query: str, verb: str,
@@ -42,17 +61,22 @@ def propose_from_lacuna(*, lacuna_id: str, query: str, verb: str,
     Ritorna l'id dell'intent (nuovo o convergente) o None se fuori soglia /
     classe non-capability. Best-effort: mai eccezioni al chiamante (il
     terminator sta già rispondendo all'utente)."""
-    if n_seen < PROPOSE_SEEN or error_class not in _CAPABILITY_GAP_CLASSES:
+    target = f"{verb}_{object_}"
+    # Only a capability that does not exist becomes a creation proposal. When
+    # the executor exists the failure stays among the gaps: an extension has
+    # no concrete change to apply yet, and a twin would only add noise.
+    if (n_seen < PROPOSE_SEEN or error_class not in _CAPABILITY_GAP_CLASSES
+            or not verb or not object_ or _existing_executor(target)):
         return None
     try:
         import change_intents as ci
 
-        target = f"{verb}_{object_}" if verb and object_ else (verb or object_ or "capability")
+        kind = ci.KIND_CREATE_EXECUTOR
         _body = {"name": target, "action": verb, "object": object_,
                  "qualifier": ""}
         fp = ci.compute_fingerprint(
             origin_family="observation",
-            intent_kind=ci.KIND_CREATE_EXECUTOR,
+            intent_kind=kind,
             intent_target=target,
             intent_body=_body,
         )
@@ -64,7 +88,7 @@ def propose_from_lacuna(*, lacuna_id: str, query: str, verb: str,
             origin_module="learning_loop",
             origin_source_id=lacuna_id,
             discovered_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-            intent_kind=ci.KIND_CREATE_EXECUTOR,
+            intent_kind=kind,
             intent_target=target,
             intent_summary=(
                 f"Capacità mancante osservata {n_seen} volte: "

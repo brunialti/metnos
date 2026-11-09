@@ -652,19 +652,18 @@ def _execute(request: ReattestationRequest, core: _ReattestationCore) -> Reattes
 
         shadow = birth.shadow_dependencies
         continuity = _current_continuity_v1(core, request, observed)
-        previous_lifecycle = continuity.approved_lifecycle if continuity is not None else None
         property_runner = shadow.property_runner
         if property_runner is None and initial_adoption is None and continuity is None:
             property_runner = ObservedPropertyRunner(
                 observed, windows_registry=shadow.windows_sandbox_registry,
                 linux_registry=shadow.linux_sandbox_registry,
             )
-        # A verified unchanged receipt preserves admission, not a new approval
-        # or a lifecycle promotion. The resolver still rejects stray references.
+        # A verified unchanged receipt preserves admission, not a new approval.
+        # The resolver still rejects stray references.
         approval_subject, approval_evidence = birth.approval_resolver(
             request, observed,  # type: ignore[arg-type]
             None if continuity is not None else approval_scope(
-                observed, ShadowRevisionClass.REATTESTATION, previous_lifecycle,
+                observed, ShadowRevisionClass.REATTESTATION,
             ),
             instant,
         )
@@ -675,7 +674,6 @@ def _execute(request: ReattestationRequest, core: _ReattestationCore) -> Reattes
             approval_subject=approval_subject, approval_evidence=approval_evidence,
             now=instant,
             current_continuity=continuity,
-            previous_approved_lifecycle=previous_lifecycle,
         )
         report = _observe_birth_for_test(
             request.current.ref.manifest_dir,
@@ -687,7 +685,7 @@ def _execute(request: ReattestationRequest, core: _ReattestationCore) -> Reattes
             revision_facts=RevisionFacts(reattestation=True),
             _dependencies=dependencies,
         )
-        if report.outcome not in {BirthOutcome.ADMITTED, BirthOutcome.PREEXERCISE}:
+        if report.outcome is not BirthOutcome.ADMITTED:
             raise BirthReattestationError(
                 report.error_code or "birth_reattestation_checks_failed",
             )
@@ -732,12 +730,7 @@ def _execute(request: ReattestationRequest, core: _ReattestationCore) -> Reattes
             check_results=checks,
             semantic_review_hash=semantic_hash,
             approval_hash=None,
-            approved_lifecycle=(
-                continuity.approved_lifecycle if continuity is not None else
-                ApprovedLifecycle.PREEXERCISE
-                if report.outcome is BirthOutcome.PREEXERCISE
-                else ApprovedLifecycle.ACTIVE
-            ),
+            approved_lifecycle=ApprovedLifecycle.ACTIVE,
             kind=AdmissionKind.REATTESTATION,
             issued_at=instant.strftime("%Y-%m-%dT%H:%M:%SZ"),
             key_id=birth.admission_key_id,

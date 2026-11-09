@@ -1565,96 +1565,6 @@ class ChannelDaemon:
             self._send_text(msg.sender_id, answer, reply_to=msg.message_id)
         return {"ok": True, "callback": "cap_yes", "kind": kind}
 
-    def _handle_promoter_callback(self, msg: InboundMessage,
-                                    data: str) -> dict:
-        """Gestisce callback dei bottoni inviati dal `promoter_digest`
-        (ADR 0090). Formato `promoter:<proposal_id>:ok|rollback`.
-
-        - `ok`        → mark_acked + reply "Confermato in grace fino a <iso>".
-        - `rollback`  → invoca rollback_promotion + reply esito.
-
-        Determinismo §7.9: niente LLM. Sicurezza: callback_data parsing
-        strict, errori esposti come reply (mai stacktrace).
-        """
-        parts = data.split(":", 2)
-        if len(parts) != 3:
-            return {"ok": False, "reason": "bad_callback_data", "data": data}
-        _, proposal_id, action = parts
-        # E3 11/5/2026: special-case aggregato → invia link al form HTTP.
-        if proposal_id == "_aggregated" and action == "open_form":
-            try:
-                import os as _os
-                base = _os.environ.get(
-                    "METNOS_HTTP_BASE_URL", "http://127.0.0.1:8770",
-                )
-                url = f"{base}/admin/changes?state=proposed"
-                self._send_text(
-                    msg.sender_id,
-                    _msg("MSG_OPEN_FORM_REVIEW", url=url),
-                    reply_to=msg.message_id,
-                )
-            except Exception as ex:  # noqa: BLE001
-                log.warning("aggregated open_form failed: %s", ex)
-                return {"ok": False, "reason": "open_form_error",
-                        "error": str(ex)}
-            return {"ok": True, "callback": "promoter_open_form"}
-        if action == "ok":
-            try:
-                # runtime/ già su sys.path (channels VIVE in runtime/).
-                from jobs.promoter_state import (  # noqa: WPS433
-                    load_proposal_state, mark_acked,
-                )
-                state = load_proposal_state(proposal_id) or {}
-                mark_acked(proposal_id)
-            except Exception as ex:  # noqa: BLE001
-                log.warning("promoter ok callback failed: %s", ex)
-                self._send_text(msg.sender_id,
-                                _msg("ERR_PROMOTER_ACK", error=ex),
-                                reply_to=msg.message_id)
-                return {"ok": False, "reason": "ack_failed",
-                        "error": str(ex)}
-            grace = state.get("grace_until") or "(grace gia' finalizzata)"
-            self._send_text(
-                msg.sender_id,
-                _msg("MSG_PROMOTER_CONFIRMED", grace=grace),
-                reply_to=msg.message_id,
-            )
-            return {"ok": True, "callback": "promoter_ok",
-                    "proposal_id": proposal_id}
-        if action == "rollback":
-            try:
-                # runtime/ già su sys.path (channels VIVE in runtime/).
-                from jobs.promoter_rollback import (  # noqa: WPS433
-                    rollback_promotion,
-                )
-                result = rollback_promotion(proposal_id)
-            except Exception as ex:  # noqa: BLE001
-                log.warning("promoter rollback callback failed: %s", ex)
-                self._send_text(msg.sender_id,
-                                _msg("ERR_ROLLBACK", error=ex),
-                                reply_to=msg.message_id)
-                return {"ok": False, "reason": "rollback_crash",
-                        "error": str(ex)}
-            if result.get("ok"):
-                self._send_text(
-                    msg.sender_id,
-                    _msg("MSG_PROMOTION_CANCELLED",
-                         name=result.get("name", "?")),
-                    reply_to=msg.message_id,
-                )
-            else:
-                self._send_text(
-                    msg.sender_id,
-                    _msg("ERR_ROLLBACK_FAILED",
-                         error=result.get("error") or _msg("MSG_ERR_UNKNOWN")),
-                    reply_to=msg.message_id,
-                )
-            return {"ok": bool(result.get("ok")),
-                    "callback": "promoter_rollback",
-                    "proposal_id": proposal_id,
-                    "result": result}
-        return {"ok": False, "reason": "unknown_action", "action": action}
-
     def _handle_scheduler_callback(self, msg: InboundMessage,
                                     data: str) -> dict:
         """Gestisce i bottoni dell'avviso di pausa fra tentativi dello scheduler
@@ -1798,15 +1708,13 @@ class ChannelDaemon:
         """Risolve un callback_query 'approve:<token>' / 'reject:<token>' /
         'loc_cancel' / 'dlg:...' (dialog inline keyboard, ADR 0090) /
         'cap:<turn_id>:yes|no' (approvazioni cap-pending admin_approval /
-        approval_required) / 'promoter:<id>:ok|rollback' (digest promoter
-        daemon) / 'sched:<azione>:<entry>' (circuit-breaker scheduler)."""
+        approval_required) / 'sched:<azione>:<entry>' (circuit-breaker
+        scheduler)."""
         data = (msg.text or "").strip()
         if data.startswith("dlg:"):
             return self._handle_dialog_callback(msg, data)
         if data.startswith("cap:"):
             return self._handle_cap_callback(msg, data)
-        if data.startswith("promoter:"):
-            return self._handle_promoter_callback(msg, data)
         if data.startswith("sched:"):
             return self._handle_scheduler_callback(msg, data)
         if data == "loc_cancel":
@@ -1903,7 +1811,7 @@ class ChannelDaemon:
         """Implementazione del turno; chiamare tramite ``handle_message``."""
         # Callback: risolvi PRIMA il principal. Il possesso di callback_data
         # non sostituisce pairing/ownership (un ID Telegram inoltrato o
-        # indovinato non deve poter mutare scheduler/promozioni/dialoghi).
+        # indovinato non deve poter mutare scheduler/dialoghi).
         if (msg.extra or {}).get("kind") == "callback":
             principal = ((msg.extra or {}).get("_principal")
                          or self._callback_principal(msg))
@@ -1912,10 +1820,6 @@ class ChannelDaemon:
                                 reply_to=msg.message_id)
                 return {"ok": False, "reason": "sender_not_paired",
                         "sender": msg.sender_id}
-            data = (msg.text or "").strip()
-            if data.startswith("promoter:") \
-                    and principal.get("role") != "host":
-                return {"ok": False, "reason": "host_callback_required"}
             msg.extra["_principal"] = principal
             pairing.touch_last_seen(self.channel.name, msg.sender_id)
             return self._handle_callback(msg)

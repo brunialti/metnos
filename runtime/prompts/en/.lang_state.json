@@ -249,11 +249,6 @@
     "source_lang": "it",
     "version_hash": "sha256:8d44fd56f038d6ddf19857324bea84114e30282cf1b7ce0937fff8af6ab24a2b"
   },
-  "promoter_commentary": {
-    "source_hash": "sha256:78c49c3a18f400d6b69e4b49eca0c75c66235395cafae05a69028c6451540d8e",
-    "source_lang": "it",
-    "version_hash": "sha256:6f6fd598e2f4600e6afbbe02d290e800ee9a97983fbab9e3699d4f5e8c57313e"
-  },
   "pronoia_recovery": {
     "source_hash": "sha256:d0bd32934cba141c21e14c6986492143b5a553896651ff228d476a46a29b7250",
     "source_lang": "it",

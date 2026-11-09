@@ -15,10 +15,9 @@ non serve non serve» (Roberto 2/7):
     arg è SEMPRE compito di L0 (il fastpath memoizza query→piano args
     inclusi) — l'executor-copia inquina il catalogo.
   - GENERALIZE (catena ricorrente → executor macro): duplicava con evidenza
-    più debole ciò che fanno già L1 autopath (impara le pipeline dai turni
-    REALI, con args e feedback ✓) e il promoter ETA (promozione a executor
-    con soglie di frequenza reali + evaluator). Tre meccanismi per lo
-    stesso segnale = due di troppo.
+    più debole ciò che fa già L1 autopath (impara le pipeline dai turni
+    REALI, con args e feedback ✓). Due meccanismi per lo stesso segnale =
+    uno di troppo.
 Le righe storiche in proposals_state restano leggibili (adapter
 change_intent invariato); il codice vive in git.
 

@@ -1918,33 +1918,25 @@ def _resume_executor_gate_tail(on_complete: dict, values: dict, *,
         # returned only to the dialog iframe has no durable attachment target
         # and loses every observation made after the pause (turn 7e430871).
         # Reuse the normal turn writer, including redaction and outcome rules.
-        from agent_runtime import (
-            EXECUTION_RECEIPT_RESULT_KEY, ExecutionReceipt, StepLog, TurnLog,
-            _apply_device_tag,
-        )
+        from agent_runtime import StepLog, TurnLog, _apply_device_tag
 
         branch = on_complete.get("gate_on_approve") or {}
         branch_observation = (dict(branch_result) if isinstance(
             branch_result, dict) else {"ok": False})
-        branch_receipt = branch_observation.pop(EXECUTION_RECEIPT_RESULT_KEY, None)
         observed = [StepLog(
             step_num=1,
             chosen_tool=str(branch.get("tool") or branch.get("executor") or ""),
             result=branch_observation,
-            execution_receipt=(branch_receipt if isinstance(
-                branch_receipt, ExecutionReceipt) else None),
         )]
         for step in (run.steps if run is not None else ()):
             if any(step is seed for seed in seeds):
                 continue
             result = dict(step.result) if isinstance(step.result, dict) else {}
-            result.pop(EXECUTION_RECEIPT_RESULT_KEY, None)
             observed.append(StepLog(
                 step_num=len(observed) + 1, chosen_tool=step.tool,
                 resolved_args=dict(step.args), result=result,
                 exec_ms=step.latency_ms,
                 execution_effect=getattr(step, "execution_effect", None),
-                execution_receipt=getattr(step, "execution_receipt", None),
             ))
         if failure is not None:
             observed.append(StepLog(

@@ -589,19 +589,19 @@ e dipendenze invariati; le condizioni operative si osservano nuovamente.</p>
 
 <p>Soltanto il confine di commit Birth può consegnare un candidato ammesso al
 deposito immutabile dei contratti. Rilegge quindi manifest e codice pubblicati
-prima di esporre la generazione come attiva, in preesercizio o in quarantena.
+prima di rendere disponibile la generazione.
 Una firma isolata, una directory copiata o il riavvio di un servizio non possono
 rendere operativi byte modificati. Gli aggiornamenti del manutentore usano
 <code>runtime/stack_reconcile.py deploy --executor &lt;name&gt; --sign</code>;
-il flag di compatibilità consegna il candidato a Executor Birth e non seleziona
-il precedente pubblicatore diretto.</p>
+l’opzione <code>--sign</code> consegna il candidato a Executor Birth, unico
+percorso di pubblicazione.</p>
 
 <p>Durante la transizione, l'inventario e il primo caricamento del catalogo
 usano lo stesso insieme di chiavi pubbliche autore gi&agrave; autenticato da
 Birth. In esercizio, il lettore usa le autorit&agrave; del contesto Birth
 installato; un processo amministrativo separato le verifica dalla catena
 corrente. Nel deposito chiuso, chiavi mancanti o un contesto non valido
-interrompono la lettura: la vecchia directory delle chiavi non viene
+interrompono la lettura: nessun’altra directory di chiavi viene
 consultata come ripiego.</p>
 
 <p>Il servizio legge la catena firmata senza aprire il file privato con cui

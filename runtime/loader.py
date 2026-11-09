@@ -972,9 +972,8 @@ def _validate_catalog_read_options(
 def _lifecycle_snapshot() -> tuple:
     """Read the exact visibility state without creating/migrating its DB.
 
-    Which store holds that state is `executor_lifecycle_state`'s decision, not
-    this module's: after the migration the historical file is no longer
-    written. The snapshot stays semantic rather than a modification time,
+    The owning store is `executor_lifecycle_state`'s decision, not this
+    module's. The snapshot stays semantic rather than a modification time,
     because invocation accounting shares that database and its mtime changes
     on every recorded call.
     """
@@ -1413,8 +1412,6 @@ def _load_catalog_under_catalog_lock(
 
     # Registration is accounting only, not visibility authority. It remains
     # best-effort and must never run during a side-effect-free cutover audit.
-    # The owning store decides what registration means: the name-based store
-    # learns a name, the epoch store records the exact loaded generation.
     if not audit_only:
         try:
             from executor_lifecycle_state import register_loaded_executors

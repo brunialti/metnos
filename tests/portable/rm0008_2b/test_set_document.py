@@ -194,13 +194,11 @@ def test_the_derivation_is_a_fixed_function_of_its_inputs():
         sandbox_document=b"sandbox",
     )
     # A reviewed pin: it moves only when someone approves the input that moved
-    # it. 17/9/2026: `_PROMOTER_QUARANTINE` joined the bootstrap capabilities in
-    # 84414376. Measured, not copied - removing that one capability from
+    # it. The three promoter capabilities left
     # `executor_birth_intent._producer_capabilities_for_bootstrap`, which is
-    # where `producer_catalog_v1` actually reads from, reproduces the previous
-    # value exactly, so the difference is that addition and nothing else.
+    # where `producer_catalog_v1` actually reads from, with F5 and the promoter.
     assert set_id == (
-        "54d5f12022d938f83bce57b60be1cf8896b213f22926a55f44aa82549ec6666c"
+        "ae36db063c94b6d47a4f3b78e3892c7fc08f2117878c7e070917903a88dfb56f"
     )
     assert json.loads(payload)["set_id"] == set_id
 
