@@ -689,7 +689,14 @@ prerequisiti dei prompt non si inizializzano, il nuovo server HTTP pu&ograve;
 restare in modalit&agrave; di sola manutenzione: autenticazione, stato e
 configurazioni ammesse rimangono disponibili, mentre esecuzione, pubblicazione
 e attivit&agrave; automatiche restano sospese. La salute dichiara esplicitamente
-questa condizione; non equivale a un sistema pienamente operativo.</p>
+questa condizione; non equivale a un sistema pienamente operativo.
+Il motivo viene registrato come codice chiuso, senza dettagli privati. Se il
+server riparte mentre altri servizi stanno usando il catalogo (per esempio un
+lavoro notturno), una contesa passeggera pu&ograve; causare questo stato: il
+controllo periodico riavvia allora il solo server HTTP, una volta, appena
+nessuna operazione &egrave; in corso. Se anche il nuovo processo resta in
+manutenzione, il guasto non &egrave; passeggero e il controllo si limita a
+segnalarlo.</p>
 
 <p>Le impostazioni dei modelli restano modificabili dalla pagina amministrativa
 anche in modalit&agrave; manutenzione. Valori non validi o modifiche basate su

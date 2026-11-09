@@ -16,7 +16,9 @@ import urllib.request
 from aiohttp import web
 
 from durable_workloads.activity import activity_snapshot
-from http_app_state import CATALOG_PROVIDER, STARTUP_FAILURE, app_get
+from http_app_state import (
+    CATALOG_PROVIDER, STARTUP_FAILURE, STARTUP_REASON, app_get,
+)
 from playwright_sidecar import contract as _contract
 from turn_events import TurnEventLog
 
@@ -145,6 +147,7 @@ async def stack_health(request: web.Request) -> web.Response:
             "ok": True,
             "operational": not bool(startup_failure),
             "startup_failure": startup_failure,
+            "startup_reason": app_get(request.app, STARTUP_REASON, ""),
             "active_turns": int(turns.get("active", 0)),
             "contract_loaded": local_contract.get("contract_loaded", ""),
             "contract_current": local_contract.get("contract_current", ""),

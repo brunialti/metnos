@@ -257,6 +257,18 @@ comuni anziché creare una variante per ogni dominio. Quelli strutturali sono
 quelli semantici sono
 <span data-entry-primitives="semantic">classify_entries,compare_entries,extract_entries,describe_entries</span>.</p>
 
+<p>La classificazione applica il criterio indicato a ciascuna riga e richiede
+al modello una breve citazione del dato usato. Metnos verifica che la citazione
+appartenga alla stessa riga e che la classe sia ammessa; questo controllo non
+garantisce da solo la correttezza del giudizio. Per esempio, un trasferimento
+fra conti propri richiede dati che soddisfino il criterio di appartenenza:
+importo positivo, banca diversa o nome somigliante non bastano. Se manca un dato,
+si usa la classe prevista per l'incertezza; in sua assenza la riga resta non
+classificata e il risultato segnala l'incompletezza.
+Gli spazi non contano nel confronto della citazione, perché i testi bancari
+spezzano le parole lunghe; una citazione non valida lascia senza classe solo la
+propria riga, che viene richiesta una seconda volta.</p>
+
 <h2 id="limiti">Limiti intenzionali</h2>
 
 <ul>

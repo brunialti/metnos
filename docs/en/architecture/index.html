@@ -254,6 +254,17 @@ operators are
 the semantic operators are
 <span data-entry-primitives="semantic">classify_entries,compare_entries,extract_entries,describe_entries</span>.</p>
 
+<p>Classification applies the stated criterion to each row and asks the model
+for a short quote of the data it used. Metnos checks that the quote belongs to
+the same row and the class is allowed; this check alone does not guarantee a
+correct judgment. For example, a transfer between one's own accounts requires
+data that satisfies the ownership criterion: a positive amount, another bank,
+or a similar name is insufficient. Missing data uses the class specified for
+uncertainty; without one, the row stays unclassified and the result reports
+incompleteness. Spaces do not count when the quote is compared, because bank
+texts split long words; an invalid quote leaves only its own row without a
+class, and that row is asked a second time.</p>
+
 <h2 id="limits">Deliberate limits</h2>
 
 <ul>

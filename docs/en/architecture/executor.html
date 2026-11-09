@@ -614,7 +614,13 @@ after dropping administrative privileges. If Birth or prompt prerequisites fail
 to initialize, the updated HTTP server can remain in maintenance-only mode:
 authentication, status and allowed configuration remain available, while
 execution, publication and background producers stay suspended. Health explicitly
-reports this condition; it is not equivalent to a fully operational system.</p>
+reports this condition; it is not equivalent to a fully operational system.
+The reason is logged as a closed code, without private details. If the server
+starts while other services are using the catalog (a nightly job, for
+example), a transient contention can cause this state: the periodic check then
+restarts the HTTP server alone, once, as soon as no operation is running. If
+the new process is still in maintenance, the fault is not transient and the
+check only reports it.</p>
 
 <p>Model settings remain editable from administration even in maintenance mode.
 Invalid values or stale revisions do not overwrite the file; reset keeps a

@@ -5,7 +5,7 @@ import importlib.util
 import json
 from pathlib import Path
 import sys
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 
 import pytest
 
@@ -41,28 +41,62 @@ def reconciler(monkeypatch, tmp_path):
     return module, rec, services
 
 
-def test_authenticated_maintenance_is_not_readiness_or_restart_authority(
-        reconciler, monkeypatch):
-    module, rec, _ = reconciler
-    observations = []
+def test_maintenance_is_never_readiness_and_restarts_only_http_once(
+        reconciler, monkeypatch, tmp_path):
+    module, rec, services = reconciler
+    monkeypatch.setattr(sys.modules["config"], "PATH_USER_STATE",
+                        tmp_path / "state", raising=False)
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path / "run"))
+    services.stack_scope = lambda: "user"
+    services.service_user = lambda: "metnos"
+    http_target = SimpleNamespace(unit="metnos-http.service", scope="system")
+    services.get = lambda key: (
+        SimpleNamespace(targets=(http_target,)) if key == "http" else None)
+    monkeypatch.setattr(module.time, "sleep", lambda _seconds: None)
+
+    class Units:
+        """A configuration fault: every fresh start is maintenance-only."""
+        def __init__(self):
+            self.invocation, self.runs = 1, []
+
+        def show(self, unit, scope="user"):
+            assert (scope, unit) == ("system", "metnos-http.service")
+            return {"ActiveState": "active",
+                    "InvocationID": f"boot-{self.invocation}"}
+
+        def run(self, scope, *args, timeout_s=120):
+            self.runs.append((scope, *args))
+            self.invocation += 1
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    rec.systemctl = units = Units()
 
     def observe(url, *, admin_key=None):
-        observations.append(url)
         if url.endswith("/agent/health"):
-            return {"ok": True}
+            return {"ok": True, "operational": False, "maintenance_only": True}
         assert url.endswith("/agent/stack/health")
         assert admin_key == "synthetic-key"
-        return {"http": {"operational": False}}
+        return {"quiescent": True,
+                "durable_workloads": {"known": True, "active_attempts": 0},
+                "http": {"operational": False, "active_turns": 0,
+                         "startup_failure": "birth_runtime_unavailable",
+                         "startup_reason": "trusted_keys_missing"}}
 
     monkeypatch.setattr(module, "_json_request", observe)
-    for _ in range(2):
+    outcomes = []
+    for _ in range(3):
         with pytest.raises(module.StackFailure) as caught:
             rec.watchdog()
         assert caught.value.code == "runtime_maintenance"
-        assert caught.value.details["failed_checks"] == ["http_runtime"]
+        outcomes.append(caught.value.details["automatic_restart"])
         report = json.loads(rec.report_path.read_text())
         assert report["ok"] is False and report["ready"] is False
-    assert len(observations) == 4
+    assert outcomes == ["failed", "already_attempted", "already_attempted"]
+    # Only the HTTP unit, never the stack target or its dependencies.
+    assert units.runs == [(
+        "system", "restart", "--job-mode=ignore-dependencies",
+        "metnos-http.service",
+    )]
 
 
 def test_invalid_service_catalog_cannot_authorize_automatic_restarts(

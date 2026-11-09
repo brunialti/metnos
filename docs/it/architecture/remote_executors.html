@@ -186,6 +186,13 @@ il dispositivo rinnova l'autorità firmata entro cinque secondi. Questa è la
 finestra massima dell'autorità già concessa sul dispositivo, quindi la revoca
 non va presentata come istantanea.</p>
 
+<p>Per le copie dal server al PC, il tempo disponibile tiene conto della
+dimensione misurata dal componente autorizzato e del costo dei controlli durante
+il trasferimento e la rilettura finale. La stima concede un secondo ogni
+250.000 byte, oltre al tempo iniziale, entro il limite di dieci minuti.
+Questo limite resta un vincolo di esecuzione: non garantisce che qualunque
+dimensione ammessa dal protocollo arrivi in tempo su ogni collegamento.</p>
+
 <p>Il primo protocollo ammette fino a 100 file e 4 GiB per file. Le letture
 dirette restituiscono al massimo 256 KiB; la lettura automatica dei documenti
 sul server accetta fino a 32 MiB per file e restituisce fino a 200.000 caratteri,

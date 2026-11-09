@@ -1210,6 +1210,74 @@ def _redundant_snapshots(sources: list) -> tuple[set[int], dict[int, str]]:
 _SPLIT_DEPTH = 3
 # A value this long, on one line only, places a record in the text.
 _ANCHOR_CHARS = 8
+# A cell left empty is read again when its column is full in this share of the
+# rows of the same text (at least _GAP_MIN_ROWS rows), from the record's own
+# lines plus _GAP_CONTEXT around them, at most _GAP_MAX_READINGS times a text.
+_GAP_FILLED_SHARE = 0.8
+_GAP_MIN_ROWS = 5
+_GAP_CONTEXT = 4
+_GAP_MAX_READINGS = 8
+
+
+def _record_span(lines: list[str], record: dict, fields: list) -> tuple[int, int] | None:
+    """First and last line holding the record's own values, or None.
+
+    Placed like a resumed reading: by its longest value of at least
+    _ANCHOR_CHARS characters found on exactly one line, extended over the
+    adjacent lines that hold another of its values found on one line only.
+    """
+    folded = [line.casefold() for line in lines]
+
+    def only_line(value: str):
+        hits = [index for index, line in enumerate(folded) if value in line]
+        return hits[0] if len(hits) == 1 else None
+
+    values = sorted({value.strip().casefold() for field in fields
+                     if isinstance(value := record.get(field), str)
+                     and len(value.strip()) >= 3}, key=len, reverse=True)
+    placed = {value: only_line(value) for value in values}
+    anchor = next((placed[value] for value in values
+                   if len(value) >= _ANCHOR_CHARS and placed[value] is not None), None)
+    if anchor is None:
+        return None
+    own = {placed[value] for value in values if placed[value] is not None}
+    start = end = anchor
+    while start - 1 in own:
+        start -= 1
+    while end + 1 in own:
+        end += 1
+    return start, end
+
+
+def _text_fields(fields: list) -> list:
+    """Fields whose values are copied as written (a date is normalized)."""
+    return [field for field in fields if _field_temporal_kind(field) is None]
+
+
+def _gap_cells(records: list, fields: list) -> list[tuple[dict, str]]:
+    """Empty cells of a column that is full almost everywhere else.
+
+    A row that fills a column most rows leave empty is another kind of row
+    (an income among expenses: «entrate» full, «uscite» empty), so its empty
+    cells are not gaps.
+    """
+    rows = [record for record in records if isinstance(record, dict)]
+    if len(rows) < _GAP_MIN_ROWS:
+        return []
+    text = _text_fields(fields)
+    filled = {field: {id(row) for row in rows if str(row.get(field) or "").strip()}
+              for field in text}
+    usual = [f for f in text if len(filled[f]) >= len(rows) * _GAP_FILLED_SHARE]
+    rare = [f for f in text if len(filled[f]) < len(rows) / 2]
+    return [(row, field) for field in usual for row in rows
+            if id(row) not in filled[field]
+            and not any(id(row) in filled[other] for other in rare)]
+
+
+def _in_text(value: str, text: str) -> bool:
+    """The value occurs in the text, whatever the line breaks and spacing."""
+    flat = lambda s: " ".join(str(s).split()).casefold()
+    return bool(flat(value)) and flat(value) in flat(text)
 
 
 def _resume_line(lines: list[str], records: list, fields: list) -> int:
@@ -1224,25 +1292,8 @@ def _resume_line(lines: list[str], records: list, fields: list) -> int:
     rows nobody had read)."""
     if not records or not isinstance(records[-1], dict):
         return 0
-    folded = [line.casefold() for line in lines]
-
-    def only_line(value: str):
-        hits = [index for index, line in enumerate(folded) if value in line]
-        return hits[0] if len(hits) == 1 else None
-
-    values = sorted({value.strip().casefold() for field in fields
-                     if isinstance(value := records[-1].get(field), str)
-                     and len(value.strip()) >= 3}, key=len, reverse=True)
-    placed = {value: only_line(value) for value in values}
-    anchor = next((placed[value] for value in values
-                   if len(value) >= _ANCHOR_CHARS and placed[value] is not None), None)
-    if anchor is None:
-        return 0
-    own = {placed[value] for value in values if placed[value] is not None}
-    end = anchor
-    while end + 1 in own:
-        end += 1
-    return end + 1
+    span = _record_span(lines, records[-1], fields)
+    return span[1] + 1 if span else 0
 
 
 def _extract_max_tokens(max_per_text: int) -> int:
@@ -1743,6 +1794,49 @@ def _handle_extract_entries(args, *, verbose: bool = False,
         return (int(meta.get("out_tokens") or 0) < cap - 16
                 and meta.get("finish_reason") not in ("length", "max_tokens"))
 
+    gap_readings = 0
+    gap_filled = 0
+
+    def _fill_gaps(records):
+        """Read again the record lines of a cell left empty in a full column.
+
+        The model sometimes leaves one value out while it fills the same
+        column for every other row (live Fineco c046dda4 and f426f57a,
+        4/11-5/11/2026: the description of the same two of ten card
+        payments, both read from one short later copy of the list).  The
+        column is judged over the whole extraction, so a short text counts
+        too; only the record's own lines of its own text are read again, and
+        a value is taken when it occurs in them and the new reading agrees
+        with the record's other values.
+        """
+        nonlocal gap_readings, gap_filled
+        per_text: dict = {}
+        for record, field in _gap_cells(records, [f for f in fields if f in model_fields]):
+            ref = record.get("_record_source")
+            text = source_texts.get(ref)
+            if (not isinstance(text, str) or per_text.get(ref, 0) >= _GAP_MAX_READINGS
+                    or gap_readings >= _GAP_MAX_READINGS * 3):
+                continue
+            lines = text.split("\n")
+            span = _record_span(lines, record, model_fields)
+            if span is None:
+                continue
+            window = "\n".join(lines[max(0, span[0] - _GAP_CONTEXT):span[1] + 1 + _GAP_CONTEXT])
+            per_text[ref] = per_text.get(ref, 0) + 1
+            gap_readings += 1
+            raw, meta = call_llm(window, prompt, tier=tier, max_tokens=mt)
+            _record_llm_meta(meta, mt, final=False)
+            known = [f for f in _text_fields(model_fields)
+                     if f != field and str(record.get(f) or "").strip()]
+            for candidate in _parse_records(raw, model_fields):
+                value = str(candidate.get(field) or "").strip()
+                if (value and _in_text(value, window)
+                        and all(candidate.get(f) == record.get(f) for f in known)):
+                    record[field] = value
+                    gap_filled += 1
+                    break
+        return records
+
     def _llm_extract(src_text, depth=0):
         raw, meta = call_llm(src_text, prompt, tier=tier, max_tokens=mt)
         complete = _complete_output(raw, meta, mt)
@@ -2241,6 +2335,7 @@ def _handle_extract_entries(args, *, verbose: bool = False,
             if total_capped:
                 break
 
+    out = _fill_gaps(out)
     from record_identity import complete_identifier_facts_across
     out = complete_identifier_facts_across(out, source_texts)
     from sites_collection_sources import merge_extracted_views
@@ -2320,6 +2415,9 @@ def _handle_extract_entries(args, *, verbose: bool = False,
         res["partial"] = True
     if audit_fields:
         res["audit_fields"] = audit_fields
+    if gap_readings:
+        res["gap_readings"] = gap_readings
+        res["gap_filled_cells"] = gap_filled
     if batch_calls:
         res["batch_calls"] = batch_calls
         res["batch_size"] = batch_size

@@ -128,6 +128,10 @@ I. EXISTING SHEET (split the rows into tabs, add a column of classes)
 - OK: abstract example, do not copy literally: «in the sheet <F>, tab <T>, add the column <C>: x if …, y otherwise» → [read_files_spreadsheet(spreadsheet_id="<F>", sheet_name="<T>"), classify_entries(from_step=1, dimension="<C>", classes=["x","y"], criterion="x if …; y otherwise"), write_files_spreadsheet(path="<F>", sheet_name="<T>", from_step=2), final_answer].
 - OK: abstract example, do not copy literally: «in the sheet <F> split the rows into <A> and <B>; in <A> add the column <C>: x if …, y otherwise» → [read_files_spreadsheet(spreadsheet_id="<F>"), filter_entries(from_step=1, where_field="<field of A>", where_present=true), classify_entries(from_step=2, dimension="<C>", classes=["x","y"], criterion="x if …; y otherwise"), write_files_spreadsheet(path="<F>", sheet_name="<A>", from_step=3), filter_entries(from_step=1, where_field="<field of B>", where_present=true), write_files_spreadsheet(path="<F>", sheet_name="<B>", from_step=5), final_answer].
 - ERROR: create_files_spreadsheet(title="<F>_<A>", column_specs=[{"header": "<C>", "formula": "IF(…)"}]).
+- MUST: fill a tab that has the same name as a column of the sheet with the rows where that column is filled: filter_entries(where_field="<that column>", where_present=true).
+- MUST NOT: look for the tab name, or a variant of it, as a value of another column.
+- OK: abstract example, do not copy literally: columns «<X>, <A>, <B>», tabs «<A>» and «<B>» → filter_entries(from_step=1, where_field="<A>", where_present=true).
+- ERROR: filter_entries(from_step=1, where_field="<X>", where_value="<A>").
 
 C. MUTATING (move/delete/send/write/create/set)
 - The requested action-verb step MUST be present: never stop at the producer.

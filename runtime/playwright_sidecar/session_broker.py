@@ -1573,9 +1573,10 @@ async def _settle_resource_discovery(page) -> None:
 
 class _LoginCaptchaBlocked(BaseException):
     """Private control flow: credential helpers must not turn a live worker manual."""
-    def __init__(self, reason="captcha_cleanup_pending"):
+    def __init__(self, reason="captcha_cleanup_pending", *, drain=None):
         super().__init__(reason)
         self.reason = reason
+        self.drain = drain
 
 
 def _captcha_scope_busy(entry: dict) -> bool:
@@ -3037,6 +3038,51 @@ async def op_login(*, session_id: str, owner: str | None = None,
                    approval_token: str | None = None,
                    one_time_code: str | None = None,
                    credential_mode: str = "default") -> dict:
+    cleanup_failures = []
+    res = await _op_login_attempt(
+        session_id=session_id, owner=owner, domain=domain, form_hint=form_hint,
+        approval_token=approval_token, one_time_code=one_time_code,
+        credential_mode=credential_mode, cleanup_failures=cleanup_failures)
+    if not cleanup_failures or res.get("reason_code") != "captcha_cleanup_pending":
+        return res
+    blocked, entry, scope, flow, dom, before, page, original_owner = cleanup_failures[0]
+    drain = blocked.drain
+    if drain is None or drain.external or scope is None or not scope.brokers:
+        return res
+    # The original scope has now completed its final bounded drain. Validation
+    # can also recover known work which finished just after that drain. No
+    # retry, timeout increase or task completion alone grants human control.
+    current, _ = _validate_owned(session_id, owner)
+    if (current is not entry or not scope.exited or scope.quarantined
+            or not all(task.done() for task in drain.pending)):
+        return res
+    def binding_unchanged():
+        return (_sessions.get(session_id) is entry and entry.get("page") is page
+                and entry.get("login_flow") is flow and entry.get("owner") == original_owner
+                and not entry.get("user_control_pending") and not entry.get("gate_pending"))
+
+    async with _login_scope(entry):
+        if not binding_unchanged():
+            return res
+        try:
+            blocker = await credential_injection.classify_login_surface(page)
+        except Exception:
+            return res
+        if blocker != "captcha_required" or not binding_unchanged():
+            return res
+        res = {"ok": True, "logged_in": False,
+               "reason_code": "captcha_required", "session_id": session_id}
+        _audit_captcha_resolution(
+            entry, session_id, flow, "resolver", "unresolved", "cleanup_completed")
+        return await _complete_login_result(entry, session_id, flow, dom, res, before)
+
+
+async def _op_login_attempt(*, session_id: str, owner: str | None = None,
+                   domain: str | None = None,
+                   form_hint: str | None = None,
+                   approval_token: str | None = None,
+                   one_time_code: str | None = None,
+                   credential_mode: str = "default", cleanup_failures: list) -> dict:
     entry, validation_error = _validate_owned(session_id, owner)
     if entry is None:
         return {"ok": False, "logged_in": False,
@@ -3284,6 +3330,8 @@ async def op_login(*, session_id: str, owner: str | None = None,
                    "reason_code": blocked.reason, "error_class": blocked.reason,
                    "retryable": False, "user_action_required": False,
                    "session_id": session_id}
+            cleanup_failures.append((blocked, entry, ownership, flow, dom,
+                                     captcha_resolutions_before, entry.get("page"), entry.get("owner")))
         except asyncio.TimeoutError:
             if ownership is not None:
                 try:
@@ -3314,61 +3362,66 @@ async def op_login(*, session_id: str, owner: str | None = None,
             entry["user_control_pending"] = False
             entry["factor_pending"] = False
             return res  # Preserve flow/handles; no screenshot, manual dialog or retry.
-        search = flow.get("entry_search")
-        search = search if isinstance(search, dict) else {}
-        actions = search.get("actions")
-        sites_audit.record(
-            "login_result", owner=entry.get("owner", ""),
-            session_id=session_id, domain=dom,
-            logged_in=bool(res.get("logged_in")),
-            approval_required=bool(res.get("approval_required")),
-            reason_code=res.get("reason_code"),
-            error_class=res.get("error_class"), phase=flow.get("phase"),
-            actions=(min(actions, 1_000_000)
-                     if type(actions) is int and actions >= 0 else 0),
-            rejection=_safe_login_rejection(search.get("rejection")),
-            # Which precondition stopped the login (real run Telepass 21/10:
-            # `cookie_precondition_unresolved` without its cause). Closed
-            # codes only, never page text.
-            **{key: res[key] for key in ("obstruction_kind", "obstruction_reason")
-               if isinstance(res.get(key), str) and re.fullmatch(r"[a-z_]{1,40}", res[key])})
-        if res.get("logged_in"):
-            entry["authenticated"] = True
-            entry["saved_session_binding"] = dom
-            entry["credential_digest"] = flow.get("credential_digest")
-            await _save_site_session(entry, landing=True)
-        _note_challenge(entry, dom, res)
-        factor_reason = res.get("reason_code") in {
+        return await _complete_login_result(
+            entry, session_id, flow, dom, res, captcha_resolutions_before)
+
+
+async def _complete_login_result(entry, session_id, flow, dom, res, captcha_resolutions_before):
+    search = flow.get("entry_search")
+    search = search if isinstance(search, dict) else {}
+    actions = search.get("actions")
+    sites_audit.record(
+        "login_result", owner=entry.get("owner", ""),
+        session_id=session_id, domain=dom,
+        logged_in=bool(res.get("logged_in")),
+        approval_required=bool(res.get("approval_required")),
+        reason_code=res.get("reason_code"),
+        error_class=res.get("error_class"), phase=flow.get("phase"),
+        actions=(min(actions, 1_000_000)
+                 if type(actions) is int and actions >= 0 else 0),
+        rejection=_safe_login_rejection(search.get("rejection")),
+        # Which precondition stopped the login (real run Telepass 21/10:
+        # `cookie_precondition_unresolved` without its cause). Closed
+        # codes only, never page text.
+        **{key: res[key] for key in ("obstruction_kind", "obstruction_reason")
+           if isinstance(res.get(key), str) and re.fullmatch(r"[a-z_]{1,40}", res[key])})
+    if res.get("logged_in"):
+        entry["authenticated"] = True
+        entry["saved_session_binding"] = dom
+        entry["credential_digest"] = flow.get("credential_digest")
+        await _save_site_session(entry, landing=True)
+    _note_challenge(entry, dom, res)
+    factor_reason = res.get("reason_code") in {
+        "two_factor_required", "two_factor_push_required",
+        "captcha_required"}
+    if factor_reason and not res.get("approval_required"):
+        if not entry.get("factor_pending"):
+            entry["factor_started"] = time.time()
+        entry["factor_pending"] = True
+    elif not res.get("approval_required"):
+        entry["factor_pending"] = False
+        entry.pop("factor_started", None)
+    entry["user_control_pending"] = (res.get("reason_code") == "captcha_required"
+                                       and not res.get("approval_required"))
+    if entry["user_control_pending"]:
+        _audit_captcha_resolution(
+            entry, session_id, flow, "handoff", "handoff",
+            "resolver_not_called" if flow.get("captcha_resolution_invocations", 0)
+            == captcha_resolutions_before else "resolver_unresolved")
+    # Ogni login non completato deve lasciare evidenza diagnostica
+    # redatta. La tassonomia puo' crescere senza creare buchi di
+    # osservabilita'; approval resta esclusa perche' ha il proprio gate.
+    if (not res.get("logged_in") and not res.get("approval_required")):
+        shot = await _capture_screenshot(entry)
+        if shot:
+            res["screenshot_path"] = shot
+            res["sensitive"] = True
+    if (not res.get("approval_required") and res.get("reason_code") not in {
             "two_factor_required", "two_factor_push_required",
-            "captcha_required"}
-        if factor_reason and not res.get("approval_required"):
-            if not entry.get("factor_pending"):
-                entry["factor_started"] = time.time()
-            entry["factor_pending"] = True
-        elif not res.get("approval_required"):
-            entry["factor_pending"] = False
-            entry.pop("factor_started", None)
-        entry["user_control_pending"] = (res.get("reason_code") == "captcha_required"
-                                           and not res.get("approval_required"))
-        if entry["user_control_pending"]:
-            _audit_captcha_resolution(
-                entry, session_id, flow, "handoff", "handoff",
-                "resolver_not_called" if flow.get("captcha_resolution_invocations", 0)
-                == captcha_resolutions_before else "resolver_unresolved")
-        # Ogni login non completato deve lasciare evidenza diagnostica
-        # redatta. La tassonomia puo' crescere senza creare buchi di
-        # osservabilita'; approval resta esclusa perche' ha il proprio gate.
-        if (not res.get("logged_in") and not res.get("approval_required")):
-            shot = await _capture_screenshot(entry)
-            if shot:
-                res["screenshot_path"] = shot
-                res["sensitive"] = True
-        if (not res.get("approval_required") and res.get("reason_code") not in {
-                "two_factor_required", "two_factor_push_required",
-                "captcha_required", "login_timeout", "selector_missing"}):
-            entry.pop("login_flow", None)
-        res["session_id"] = session_id
-        return res
+            "captcha_required", "login_timeout", "selector_missing"}):
+        entry.pop("login_flow", None)
+    res["session_id"] = session_id
+    return res
 
 
 async def op_close(*, session_id: str | None = None, owner: str | None = None,
@@ -4590,6 +4643,7 @@ _CAPTCHA_DIAGNOSTIC_REASONS = frozenset({
     "resolver_unresolved", "local_accepted", "local_unresolved", "visual_unresolved",
     "site_postcondition", "unresolved", "effect_budget", "visual_attempt_limit",
     "visual_transport_unbound", "drain_incomplete", "resource_busy", "budget_or_authority",
+    "cleanup_completed",
     "widget_not_unique", "widget_missing", "unqualified_widget",
     "widget_geometry", "widget_crop_budget", "widget_crop_changed",
     "widget_changed_during_capture", "unqualified_challenge_identity", "unstable_widget",
@@ -4862,9 +4916,9 @@ async def _resolve_login_captcha_checkbox(entry: dict, session_id: str, flow: di
         if result.status == "blocked":
             raise _LoginCaptchaBlocked("captcha_resource_busy")
         return True if result.status == "accepted" else False if result.attempted else None
-    except DrainIncomplete:
+    except DrainIncomplete as error:
         _audit_captcha_resolution(entry, session_id, flow, "checkbox", "blocked", "drain_incomplete", allocation=allocation)
-        raise _LoginCaptchaBlocked("captcha_cleanup_pending") from None
+        raise _LoginCaptchaBlocked("captcha_cleanup_pending", drain=error) from None
     except asyncio.CancelledError:
         _audit_captcha_resolution(entry, session_id, flow, "checkbox", "cancelled", "cancelled", allocation=allocation)
         raise
@@ -4913,10 +4967,10 @@ async def _resolve_login_captcha_grid(entry: dict, session_id: str, flow: dict, 
         if result.status == "blocked":
             raise _LoginCaptchaBlocked("captcha_resource_busy")
         return result.status == "accepted"
-    except DrainIncomplete:
+    except DrainIncomplete as error:
         _audit_captcha_resolution(entry, session_id, flow, "grid", "blocked", "drain_incomplete",
                                   allocation=allocation)
-        raise _LoginCaptchaBlocked("captcha_cleanup_pending") from None
+        raise _LoginCaptchaBlocked("captcha_cleanup_pending", drain=error) from None
     except asyncio.CancelledError:
         _audit_captcha_resolution(entry, session_id, flow, "grid", "cancelled", "cancelled",
                                   allocation=allocation)
@@ -5062,10 +5116,10 @@ async def _resolve_login_captcha_visual(entry: dict, session_id: str, flow: dict
         search["actions"] = int(search.get("actions", 0)) + allocation.effects
         try:
             await broker.close()
-        except DrainIncomplete:
+        except DrainIncomplete as error:
             # The scope retains the callback and original lock through cleanup.
             _audit_captcha_resolution(entry, session_id, flow, "visual", "blocked", "drain_incomplete", allocation=allocation)
-            raise _LoginCaptchaBlocked("captcha_cleanup_pending") from None
+            raise _LoginCaptchaBlocked("captcha_cleanup_pending", drain=error) from None
 
 
 async def _resolve_login_captcha_local(entry: dict, session_id: str, flow: dict, page,
@@ -6626,6 +6680,14 @@ async def _discover_collection(entry: dict, session_id: str,
         if not isinstance(continuation, bool):
             continuation = action_resolver.choose_goal_continuation_candidate(
                 target, [probe]).get("ok", False)
+        if continuation and collection_termination.list_passes_period_start(
+                collection_termination.requested_period_start(target), rows):
+            # The list already reaches past the start of the requested
+            # period: more rows would all be older (live Fineco f426f57a).
+            state["search_complete"] = True
+            sites_audit.record("collection_period_passed", session_id=session_id,
+                               steps=int(state.get("actions", 0)))
+            return None
         return {"candidate": candidate,
                 "model_selected": (candidate.get("_decision_actor") or {}).get("actor_type") != "runtime",
                 "confidence": 0.5, "continuation": continuation,

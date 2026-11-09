@@ -39,10 +39,12 @@ SCALE_MIN_ITEMS = 10
 SCALE_S_PER_ITEM = 1
 SCALE_CAP_S = 600
 
-# Bytes a mutating invocation moves from server files, at a floor rate the
-# chunked transfer exceeds on a LAN (live f791c998, 2/11/2026: a 53 MB copy
-# to the PC stopped at the fixed 30 s).
-TRANSFER_FLOOR_BYTES_PER_S = 1_000_000
+# Each 128 KiB needs a signed read, a destination check and a further check
+# during the PC's full hash reread. Live e7f7e4e2 (6/11/2026) completed 1,038
+# requests in 96.9 s: about 450 KiB/s including verification, not 1 MB/s.
+# Budget 250 kB/s, leaving roughly a twofold margin for that measured cost;
+# the 600 s cap and every per-chunk permission check remain unchanged.
+TRANSFER_FLOOR_BYTES_PER_S = 250_000
 
 
 def _scaled_timeout_s(timeout_s: int, args: dict | None,

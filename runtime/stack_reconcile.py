@@ -67,6 +67,9 @@ RUNTIME_COMPONENT_UNITS = (
     "metnos-telegram-daemon.service",
     "metnos-i18n-translator.timer",
 )
+# A Birth startup that loses a transient race stays maintenance-only until
+# the unit is started again; bootstrap normally takes 20-35 seconds.
+HTTP_RESTART_WAIT_S = 90
 FAILURE_WINDOW_S = 10 * 60
 FAILURE_LIMIT = 3
 OPEN_INTERVAL_S = 15 * 60
@@ -396,7 +399,8 @@ class Systemctl:
             raise StackFailure("unknown_unit", "unit is outside the closed stack catalog")
         result = self.run(
             scope, "show", unit,
-            "--property=Id,LoadState,ActiveState,SubState,UnitFileState,MainPID",
+            "--property=Id,LoadState,ActiveState,SubState,UnitFileState,"
+            "MainPID,InvocationID",
             timeout_s=10,
         )
         values: dict[str, str] = {}
@@ -1158,6 +1162,32 @@ class CircuitBreaker:
         })
 
 
+class HttpRestartRecord:
+    """The HTTP instance produced by the last automatic maintenance restart.
+
+    systemd gives every activation a new ``InvocationID``.  An instance that
+    an automatic restart started, and that is still maintenance-only, is
+    never restarted again: a failure that survives a fresh process is not a
+    transient race.  Any start from elsewhere is a new instance.
+    """
+
+    def __init__(self, path: Path | None = None):
+        self.path = path or _state_dir() / "stack_reconcile_http_restart.json"
+
+    def started(self) -> str:
+        try:
+            payload = json.loads(self.path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return ""
+        value = payload.get("invocation_id") if isinstance(payload, dict) else ""
+        return value if isinstance(value, str) else ""
+
+    def record(self, invocation_id: str) -> None:
+        _atomic_json(self.path, {
+            "schema_version": 1, "invocation_id": invocation_id,
+        })
+
+
 class StackReconciler:
     def __init__(self, *, endpoints: Endpoints | None = None,
                  systemctl: Systemctl | None = None,
@@ -1207,12 +1237,15 @@ class StackReconciler:
         composite = _json_request(
             f"{self.endpoints.http}/agent/stack/health", admin_key=key,
         )
-        if (composite.get("http") or {}).get("operational") is False:
+        http = composite.get("http") or {}
+        if http.get("operational") is False:
             # This authenticated observation precedes executor catalog loading,
             # which may be unavailable during repair. Liveness is not
-            # readiness, and a watchdog restart cannot repair configuration.
+            # readiness. The closed reason says why the startup failed.
             checks.append({"name": "http_runtime", "ok": False,
-                           "maintenance_only": True})
+                           "maintenance_only": True,
+                           "startup_failure": str(http.get("startup_failure") or ""),
+                           "startup_reason": str(http.get("startup_reason") or "")})
             return self._finish_check(
                 started, checks, write_report, error_code="runtime_maintenance",
             )
@@ -1667,6 +1700,116 @@ class StackReconciler:
         finally:
             locks.close()
 
+    def _wait_http_operational(self, *, timeout_s: float) -> dict:
+        deadline = time.monotonic() + timeout_s
+        while time.monotonic() < deadline:
+            try:
+                health = _json_request(f"{self.endpoints.http}/agent/health")
+            except StackFailure:
+                time.sleep(1)  # still bootstrapping, not listening yet
+                continue
+            if health.get("operational") is True:
+                return health
+            if health.get("maintenance_only") is True:
+                composite = _json_request(
+                    f"{self.endpoints.http}/agent/stack/health",
+                    admin_key=_admin_key(self.admin_key_path),
+                )
+                http = composite.get("http") or {}
+                raise StackFailure(
+                    "runtime_maintenance",
+                    "HTTP restarted into maintenance again",
+                    details={
+                        "automatic_restart": "failed",
+                        "startup_failure": str(http.get("startup_failure") or ""),
+                        "startup_reason": str(http.get("startup_reason") or ""),
+                    },
+                )
+            time.sleep(1)
+        raise StackFailure(
+            "http_restart_timeout", "HTTP did not become operational",
+        )
+
+    def _restart_maintenance_http(self, failure: StackFailure) -> dict:
+        """Start a maintenance-only HTTP once more, as an operator would.
+
+        The Birth startup failure is latched for the life of the process by
+        design, so a transient race at startup (durable work keeping the
+        catalog lock busy while HTTP starts) lasts until the unit is started
+        again.  The restart waits for a quiet stack and
+        touches only the HTTP unit, under the lifecycle lock that serializes
+        administrative reconciles; the catalog lock is not needed and is the
+        contended resource.  A failure that survives the fresh process is
+        reported and left alone.
+        """
+        from services_registry import get
+
+        spec = get("http")
+        if spec is None or not spec.targets:
+            raise failure
+        target = spec.targets[0]
+        http = next((
+            check for check in (failure.details.get("report") or {}).get("checks", [])
+            if check.get("name") == "http_runtime"
+        ), {})
+        record = HttpRestartRecord()
+        lifecycle = ReconcileLock()
+        lifecycle.acquire(wait_s=2)
+        breaker = CircuitBreaker()
+        try:
+            breaker.assert_closed()
+            invocation = self.systemctl.show(target.unit, target.scope).get(
+                "InvocationID") or ""
+            if not invocation or invocation == record.started():
+                failure.details = {
+                    **failure.details, "automatic_restart": "already_attempted",
+                }
+                raise failure
+            # The one attempt is spent only on a quiet stack: every observed
+            # failure overlapped durable work using the same catalog, and a
+            # restart into that contention would fail again.
+            self.require_quiescent()
+            # Re-read the decision just before acting on it.
+            health = _json_request(f"{self.endpoints.http}/agent/health")
+            if health.get("maintenance_only") is not True:
+                raise StackFailure(
+                    "runtime_state_changed", "HTTP left maintenance meanwhile",
+                )
+            # Without ignore-dependencies an active metnos.target, which
+            # requires HTTP, would propagate the restart to every unit that
+            # is part of it, the durable worker and its running LRE included.
+            result = self.systemctl.run(
+                target.scope, "restart", "--job-mode=ignore-dependencies",
+                target.unit, timeout_s=60)
+            if result.returncode != 0:
+                raise StackFailure(
+                    "service_restart_failed",
+                    f"systemd rejected restart of {target.unit}",
+                    details={"detail": (result.stderr or result.stdout or "")[-300:]},
+                )
+            # Bound the attempt before waiting: a watchdog killed while the
+            # new instance boots must not restart it again on the next tick.
+            record.record(self.systemctl.show(target.unit, target.scope).get(
+                "InvocationID") or "")
+            health = self._wait_http_operational(timeout_s=HTTP_RESTART_WAIT_S)
+            breaker.success()
+            return {
+                "ok": True,
+                "repaired": [{
+                    "service": "http", "action": "restart",
+                    "scope": target.scope, "unit": target.unit,
+                    "startup_failure": str(http.get("startup_failure") or ""),
+                    "startup_reason": str(http.get("startup_reason") or ""),
+                }],
+                "http": {"operational": health.get("operational") is True},
+            }
+        except StackFailure as exc:
+            if exc is not failure and exc.code != "circuit_open":
+                breaker.failure()
+            raise
+        finally:
+            lifecycle.release()
+
     def watchdog(self, *, require_sidecar: str = "auto") -> dict:
         try:
             from service_health_monitor import run as monitor_services
@@ -1681,11 +1824,15 @@ class StackReconciler:
             result["service_monitor"] = monitoring
             return result
         except StackFailure as exc:
-            if exc.code in {"runtime_maintenance", "service_catalog_unavailable"}:
-                # Preserve authenticated repair and the failure report. Only
-                # an explicit maintenance restart should retry bootstrap; an
-                # unverified service catalog cannot authorize a restart either.
+            if exc.code == "service_catalog_unavailable":
+                # An unverified service catalog cannot authorize a restart.
                 raise
+            if exc.code == "runtime_maintenance":
+                # Authenticated repair stays available in maintenance; one
+                # fresh start is what clears a transient startup race.
+                result = self._restart_maintenance_http(exc)
+                result["service_monitor"] = monitoring
+                return result
             failed = set(exc.details.get("failed_checks") or [])
             prefix = "service_health:"
             watched_checks = {f"{prefix}{key}" for key in WATCHED_SERVICE_KEYS}

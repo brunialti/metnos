@@ -20,9 +20,9 @@
     "version_hash": "sha256:5d23bddc9a6647ef47bc7c9e8ae814fa5f10325fa6482b3fc9c4b2284108c22c"
   },
   "classify_entries": {
-    "source_hash": "sha256:eb7a0c68ff6310eff82cf69161bd4cde8b95385a97377dd72e829185501a5f50",
-    "source_lang": "en",
-    "version_hash": "sha256:e9d3ceaeb8c1a9f3bc299781cb801bfb1dc4ca3954f12804071c24a59ba54ae2"
+    "source_hash": null,
+    "source_lang": null,
+    "version_hash": "sha256:4ee452ca764030de8ed049721cdfe08baba6b1f249ecd5aa01f89a572de5db33"
   },
   "describe_entries_by_importance": {
     "source_hash": "sha256:f0172418bcba72311bcae0c96ca9aadd525c28b3852675c6d675fe400cb09bf3",

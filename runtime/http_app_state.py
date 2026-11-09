@@ -15,6 +15,7 @@ from aiohttp import web
 
 STARTED_AT = web.AppKey("started_at", float)
 STARTUP_FAILURE = web.AppKey("startup_failure", str)
+STARTUP_REASON = web.AppKey("startup_reason", str)
 ADMIN_KEY = web.AppKey("admin_key", str)
 CATALOG_PROVIDER = web.AppKey("catalog_provider", Callable)
 SSE_RESPONSES = web.AppKey("sse_responses", set)
@@ -32,6 +33,7 @@ DURABLE_SSE_COUNTS = web.AppKey("durable_sse_counts", dict)
 _LEGACY_NAMES = {
     STARTED_AT: "started_at",
     STARTUP_FAILURE: "startup_failure",
+    STARTUP_REASON: "startup_reason",
     ADMIN_KEY: "admin_key",
     CATALOG_PROVIDER: "catalog_provider",
     SSE_RESPONSES: "sse_responses",

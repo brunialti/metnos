@@ -18,9 +18,9 @@ Strategia:
      tassonomiche non sotto-etichettino.
 
   2. **Batch LLM**: le entries residue (non pre-filtrate) vanno al LLM
-     in batch da `batch_size`. Output atteso: JSON array di stringhe,
-     una per entry, nello stesso ordine. Tier `fast` di default
-     (riconciliazione tassonomica e' compito facile).
+     in batch da `batch_size`. Output atteso: JSON array di decisioni
+     con citazione e classe, una per entry, nello stesso ordine. Tier `fast`
+     di default (riconciliazione tassonomica e' compito facile).
 
   3. **Output**: lista arricchita con campo `<dimension>` su ciascuna
      entry. NON partiziona — la partizione si fa con `filter_entries`
@@ -255,32 +255,65 @@ def _build_prompt(dimension: str, classes: list[str], criterion: str,
     import prompt_loader
     prompt_lang = lang or _prompt_language()
     classes_str = ", ".join(repr(c) for c in classes)
-    # Esempio dimensionato su n: emette n etichette plausibili scelte fra
-    # le classi ammesse, in modo che il modello veda subito un output di
-    # forma corretta. La prima classe e' usata come fill di default per
-    # tenere l'esempio dentro al vocab. Pattern stabile per LLM medi.
-    example_labels = [classes[i % len(classes)] for i in range(min(n, 3))]
-    if n > 3:
-        example_labels = example_labels + [f"... ({n} totali)"]
-    example_str = json.dumps(example_labels[:3] if n <= 3 else example_labels[:3] + ["..."])
     return prompt_loader.get(
         "classify_entries",
         prompt_lang,
         n=n, kind=kind, dimension=dimension,
         classes_str=classes_str, criterion=criterion,
-        example_n=min(n, 3), example_str=example_str,
     )
 
 
 _JSON_ARRAY_RE = re.compile(r"\[[^\[\]]*\]", re.DOTALL)
 
 
-def _parse_labels(text: str, classes: list[str], n: int) -> list[str] | None:
-    """Estrae l'array JSON dalla risposta LLM. Robusto a wrapping
-    accidentale (markdown fences, prosa attorno). Ritorna None se non
-    parsabile o di lunghezza errata."""
+def _entry_values(value):
+    """Yield individual input values without inventing joins between fields."""
+    if isinstance(value, dict):
+        for item in value.values():
+            yield from _entry_values(item)
+    elif isinstance(value, list):
+        for item in value:
+            yield from _entry_values(item)
+    else:
+        yield value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
+
+
+def _compact(text: str) -> str:
+    """Drop whitespace: it is layout, not content (wrapped text splits words)."""
+    return "".join(text.split())
+
+
+def _quoted(evidence: str, entry) -> bool:
+    """True when the quote comes from one value of this row, spaces aside.
+
+    Bank and mail texts are often wrapped at a fixed width, which puts spaces
+    inside words; a model that copies the word without them still quotes the
+    same row. A quote from another row or a paraphrase stays ungrounded.
+    """
+    quote = _compact(evidence)
+    return not quote or any(quote in _compact(value)
+                            for value in _entry_values(entry))
+
+
+def _parse_labels(text: str, classes: list[str],
+                  entries: list[dict]) -> list[str | None] | None:
+    """Accept decisions whose quote comes from the corresponding row.
+
+    The quote grounds the decision; it does not prove its semantic correctness.
+    An empty quote is permitted when the criterion requires missing information.
+    A label without a quote from its own row becomes None for that row only;
+    the other rows of the batch keep their grounded labels. None is returned
+    when the reply is not a complete list of decisions.
+    """
+    labels, _ = _parse_decisions(text, classes, entries)
+    return labels
+
+
+def _parse_decisions(text: str, classes: list[str], entries: list[dict]
+                     ) -> tuple[list[str | None] | None, list[int]]:
+    """Labels per row plus the rows whose label lacked a quote from that row."""
     if not text:
-        return None
+        return None, []
     candidates = []
     try:
         v = json.loads(text)
@@ -297,32 +330,43 @@ def _parse_labels(text: str, classes: list[str], n: int) -> list[str] | None:
             continue
     valid_classes = set(classes)
     for v in candidates:
-        if len(v) != n:
+        if len(v) != len(entries):
             continue
-        if not all(isinstance(x, str) for x in v):
+        if not all(isinstance(x, dict) and set(x) == {"evidence", "label"}
+                   and isinstance(x["evidence"], str)
+                   and (x["label"] is None or isinstance(x["label"], str))
+                   for x in v):
             continue
-        if not all(x in valid_classes for x in v):
+        if not all(x["label"] is None or x["label"] in valid_classes for x in v):
             continue
-        return list(v)
-    return None
+        # A JSON serialization of the whole row would escape quotes/newlines.
+        # Empty evidence is absence of a quote, never a semantic certificate.
+        ungrounded = [i for i, (x, entry) in enumerate(zip(v, entries))
+                      if x["label"] is not None
+                      and not _quoted(x["evidence"], entry)]
+        return [None if i in ungrounded else x["label"]
+                for i, x in enumerate(v)], ungrounded
+    return None, []
 
 
 def _classify_batch(items: list[dict], dimension: str, classes: list[str],
                     criterion: str, kind: str, tier: str,
                     fields: list[str] | None, *,
-                    lang: str | None = None) -> tuple[list[str] | None, dict]:
+                    lang: str | None = None) -> tuple[list[str | None] | None, dict]:
+    """Classify one batch; ``meta["ungrounded"]`` lists rows worth a retry."""
     projected = [_project_entry(e, fields) for e in items]
     prompt = _build_prompt(
         dimension, classes, criterion, kind, len(items), lang=lang)
-    # Output corto: ~5 token per label * n + boilerplate JSON
-    max_tok = max(64, 12 * len(items))
+    # Each label follows a short quote from its own row. This prevents a bare
+    # label sequence from replacing the per-row application of the criterion.
+    max_tok = max(128, 80 * len(items))
     text, meta = call_llm(
         projected, prompt, tier=tier, max_tokens=max_tok,
         max_query_chars=CLASSIFY_QUERY_MAX_CHARS,
         timeout_s=CLASSIFY_LLM_TIMEOUT_S,
     )
-    labels = _parse_labels(text, classes, len(items))
-    return labels, meta
+    labels, ungrounded = _parse_decisions(text, classes, projected)
+    return labels, {**(meta or {}), "ungrounded": ungrounded}
 
 
 def _packed_batch_indices(entries: list, indices: list[int], *,
@@ -602,7 +646,9 @@ def handle_classify_entries(args, *, verbose: bool = False) -> dict:
         if isinstance(result_entries[i], dict):
             result_entries[i][dimension] = lbl
 
-    # 4. Batch LLM su llm_indices.
+    # 4. LLM batches on llm_indices. Rows whose label had no quote from the
+    # row itself, or whose batch reply was unusable, get one more attempt in
+    # a fresh batch; a label the model left undetermined is not asked again.
     if tier == "auto":
         tier = _auto_tier(len(llm_indices))
     in_tok = out_tok = lat = 0
@@ -612,9 +658,12 @@ def handle_classify_entries(args, *, verbose: bool = False) -> dict:
     classified_indices = set(pre_labels)
     failed_indices: list[int] = []
 
-    if llm_indices:
+    def _classify_pass(indices: list[int], *, last: bool) -> list[int]:
+        nonlocal in_tok, out_tok, lat, model_used
+        nonlocal failed_batches, dependency_failed_batches
+        retry: list[int] = []
         for chunk_idx in _packed_batch_indices(
-                result_entries, llm_indices,
+                result_entries, indices,
                 batch_size=batch_size, fields=fields):
             chunk = [result_entries[i] for i in chunk_idx]
             try:
@@ -637,21 +686,38 @@ def handle_classify_entries(args, *, verbose: bool = False) -> dict:
             lat += meta.get("latency_ms", 0) or 0
             model_used = meta.get("model", model_used)
             if labels is None:
-                failed_batches += 1
-                failed_indices.extend(chunk_idx)
+                if last:
+                    failed_batches += 1
+                    failed_indices.extend(chunk_idx)
+                else:
+                    retry.extend(chunk_idx)
                 if verbose:
                     print(f"[classify] batch produced unparsable output (size={len(chunk)})")
                 continue
-            # _parse_labels accetta soltanto un batch completo di label nel set
-            # chiuso. Un errore non viene trasformato in una classe plausibile:
-            # le entry restano osservabili ma non classificate e l'esito e'
-            # dichiarato parziale, cosi' i mutatori downstream non agiscono su
-            # un'etichetta inventata.
+            # A row without a valid class is never given a plausible one: it
+            # stays observable but unclassified and the result is partial, so
+            # downstream mutators do not act on an invented label.
+            ungrounded = {chunk_idx[j] for j in meta.get("ungrounded") or []}
+            batch_failed = False
             for j, lbl in enumerate(labels):
                 target = chunk_idx[j]
+                if lbl is None:
+                    if target in ungrounded and not last:
+                        retry.append(target)
+                    else:
+                        failed_indices.append(target)
+                        batch_failed = True
+                    continue
                 if isinstance(result_entries[target], dict):
                     result_entries[target][dimension] = lbl
                     classified_indices.add(target)
+            failed_batches += int(batch_failed)
+        return retry
+
+    if llm_indices:
+        retry = _classify_pass(llm_indices, last=False)
+        if retry:
+            _classify_pass(retry, last=True)
 
     # 5. Counts (solo entries effettivamente classificate).
     counts: dict[str, int] = {c: 0 for c in classes}
@@ -695,7 +761,8 @@ def handle_classify_entries(args, *, verbose: bool = False) -> dict:
         out.update({
             "error": (_msg("ERR_LLM_UNAVAILABLE_ACTION")
                       if dependency_failed else
-                      "classification incomplete: one or more LLM batches failed"),
+                      _msg("ERR_CLASSIFY_INCOMPLETE",
+                           failed=len(set(failed_indices)), total=len(entries))),
             "error_class": (
                 "provider_unavailable" if dependency_failed
                 else "classification_incomplete"

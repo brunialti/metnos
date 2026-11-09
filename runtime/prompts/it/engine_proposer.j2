@@ -134,6 +134,10 @@ I. FOGLIO ESISTENTE (dividere le righe in schede, aggiungere una colonna di clas
 - OK: esempio astratto, non copiare letteralmente: «nel foglio <F>, scheda <T>, aggiungi la colonna <C>: x se …, y per il resto» → [read_files_spreadsheet(spreadsheet_id="<F>", sheet_name="<T>"), classify_entries(from_step=1, dimension="<C>", classes=["x","y"], criterion="x se …; y per il resto"), write_files_spreadsheet(path="<F>", sheet_name="<T>", from_step=2), final_answer].
 - OK: esempio astratto, non copiare letteralmente: «nel foglio <F> dividi le righe in <A> e <B>; in <A> aggiungi la colonna <C>: x se …, y per il resto» → [read_files_spreadsheet(spreadsheet_id="<F>"), filter_entries(from_step=1, where_field="<campo di A>", where_present=true), classify_entries(from_step=2, dimension="<C>", classes=["x","y"], criterion="x se …; y per il resto"), write_files_spreadsheet(path="<F>", sheet_name="<A>", from_step=3), filter_entries(from_step=1, where_field="<campo di B>", where_present=true), write_files_spreadsheet(path="<F>", sheet_name="<B>", from_step=5), final_answer].
 - ERRORE: create_files_spreadsheet(title="<F>_<A>", column_specs=[{"header": "<C>", "formula": "IF(…)"}]).
+- DEVI: riempire una scheda che ha lo stesso nome di una colonna del foglio con le righe in cui quella colonna è piena: filter_entries(where_field="<quella colonna>", where_present=true).
+- NON DEVI: cercare il nome della scheda, o una sua variante, come valore di un'altra colonna.
+- OK: esempio astratto, non copiare letteralmente: colonne «<X>, <A>, <B>», schede «<A>» e «<B>» → filter_entries(from_step=1, where_field="<A>", where_present=true).
+- ERRORE: filter_entries(from_step=1, where_field="<X>", where_value="<A>").
 
 C. MUTATING (move/delete/send/write/create/set)
 - Lo step del verbo d'azione richiesto DEVE esserci: mai fermarsi al produttore.

@@ -48,6 +48,54 @@ def stream_reaches_year_start(year: int | None, rows: list[str],
     return len(dated) >= 2 and (year, 1) in dated
 
 
+def requested_period_start(target: str) -> tuple[int, int] | None:
+    """(year, month) where the one calendar period the goal names starts.
+
+    The shared resolver of periods reads it («tutti i movimenti del 2026»
+    → January 2026); no period, or more than one, is None.
+    """
+    from time_window_resolver import calendar_periods
+
+    periods = calendar_periods(target or "")
+    if len(periods) != 1:
+        return None
+    start = periods[0][0]
+    return int(start[:4]), int(start[5:7])
+
+
+# Consecutive dated rows older than the period that end its part of a list,
+# and the share of adjacent dated rows up to them in newest-first order.
+_PASSED_RUN = 3
+_DESCENDING_SHARE = 0.9
+
+
+def list_passes_period_start(start: tuple[int, int] | None, rows: list[str],
+                             months: dict[str, int] | None = None) -> bool:
+    """A newest-first list already reaches past the requested period's start.
+
+    Loading more rows then reads only older ones (live Fineco f426f57a,
+    5/11/2026: 26 loads down to November 2024, 172 rows read for 67).  It
+    takes rows of the period followed by _PASSED_RUN consecutive older ones,
+    in a list that up to there runs newest first; dates after the list (a
+    footer, «last access») do not matter, and a list in another order, or of
+    other records, does not stop.
+    """
+    if start is None:
+        return False
+    dated = _dated(rows, months)
+    run = 0
+    for index, value in enumerate(dated):
+        run = run + 1 if value < start else 0
+        if run < _PASSED_RUN:
+            continue
+        head = dated[:index + 1]
+        if not any(d >= start for d in head[:len(head) - run]):
+            return False
+        pairs = list(zip(head, head[1:]))
+        return sum(a >= b for a, b in pairs) >= len(pairs) * _DESCENDING_SHARE
+    return False
+
+
 def _period_context(year: int | None, context) -> bool:
     return (year is not None and isinstance(context, dict) and context.get("current_matches") is True
             and isinstance(context.get("requested"), dict)

@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -51,7 +52,7 @@ from http_app_state import (
     ADMIN_KEY, CATALOG_PROVIDER, DURABLE_ARTIFACT_DOWNLOADS,
     DURABLE_ARTIFACT_STORE_FACTORY, DURABLE_SSE_COUNTS,
     DURABLE_WORKLOAD_STORE_FACTORY, SCHEDULER_V2, SSE_RESPONSES, STARTED_AT,
-    TURN_POOL, TUTOR_BOOTSTRAP_TASK, STARTUP_FAILURE, app_get,
+    TURN_POOL, TUTOR_BOOTSTRAP_TASK, STARTUP_FAILURE, STARTUP_REASON, app_get,
 )
 from http_turn_pool import HttpTurnPool
 from logging_setup import get_logger
@@ -126,25 +127,45 @@ async def maintenance_middleware(request: web.Request, handler):
 
 # --- app factory -------------------------------------------------------------
 
+_CLOSED_CODE = re.compile(r"[a-z][a-z0-9_]{0,63}")
+
+
+def _closed_reason(exc: BaseException) -> str:
+    """Name a startup failure by its stable code, never by its detail.
+
+    Birth and store errors carry a closed ``code`` (``catalog_lock_timeout``,
+    ``lock_timeout``...); their detail may hold private paths and stays out.
+    """
+    code = getattr(exc, "code", None)
+    if isinstance(code, str) and _CLOSED_CODE.fullmatch(code):
+        return code
+    return type(exc).__name__
+
+
 def make_app(*, admin_key: str | None = None) -> web.Application:
     """Costruisce l'app aiohttp con middleware auth + routes registrate."""
     # Authority-dependent execution stays closed on failure, but the operator
     # must retain authenticated access to configuration and lifecycle repair.
-    startup_failure = ""
+    startup_failure = startup_reason = ""
     from executor_birth_bootstrap import require_birth_runtime_before_workers
     try:
         require_birth_runtime_before_workers()
     except Exception as exc:
         startup_failure = "birth_runtime_unavailable"
-        log.error("HTTP maintenance only: Birth startup failed (%s)", type(exc).__name__)
+        startup_reason = _closed_reason(exc)
+        log.error("HTTP maintenance only: Birth startup failed (%s: %s)",
+                  type(exc).__name__, startup_reason)
 
     # Prompt integrity is required for agent work, not authenticated repair.
     import prompt_loader
     try:
         prompt_loader.validate_invariant()
     except Exception as exc:
-        startup_failure = startup_failure or "prompt_catalog_invalid"
-        log.error("HTTP maintenance only: prompt validation failed (%s)", type(exc).__name__)
+        if not startup_failure:
+            startup_failure = "prompt_catalog_invalid"
+            startup_reason = _closed_reason(exc)
+        log.error("HTTP maintenance only: prompt validation failed (%s: %s)",
+                  type(exc).__name__, _closed_reason(exc))
 
     # client_max_size: cap del body request. 50 MB per accomodare upload
     # multipart di foto reference (drag&drop ADR 0092). Foto JPEG/HEIC/PNG
@@ -156,6 +177,7 @@ def make_app(*, admin_key: str | None = None) -> web.Application:
     )
     app[STARTED_AT] = time.time()
     app[STARTUP_FAILURE] = startup_failure
+    app[STARTUP_REASON] = startup_reason
     app[ADMIN_KEY] = (
         admin_key if admin_key is not None else get_or_create_admin_key())
     app[CATALOG_PROVIDER] = (lambda: []) if startup_failure else _build_catalog_provider()
