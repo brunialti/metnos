@@ -2207,6 +2207,27 @@ def _prohibited_plan_verbs(framework: Framework, query: str) -> set[str]:
     return forbidden
 
 
+def _required_action_not_planned(framework: Framework, query: str, intent,
+                                 missing, *, t_start: float) -> "DispatchResult":
+    """Refuse a plan that drops a requested action, and count it as a gap.
+
+    The refusal is the terminator's answer: it reaches the gap register like
+    any other, so a capability asked again and again becomes a proposal.
+    """
+    from messages import get as _msg_get
+    try:
+        from .terminator import record_missing_actions
+        record_missing_actions(query, intent, missing)
+    except Exception as ex:  # noqa: BLE001 - the answer must still reach the user
+        log.warning("[intent-fulfilment] gap not recorded: %r", ex)
+    return DispatchResult(
+        final_text=_msg_get("MSG_REQUIRED_ACTION_NOT_PLANNED"),
+        final_kind="error", match_source="terminator",
+        framework_hash=compute_framework_hash(framework),
+        elapsed_ms=int((time.time() - t_start) * 1000),
+        framework=framework, error_class="capability_missing")
+
+
 def _dropped_required_verbs(framework: Framework, query: str, intent=None,
                             catalog=None, *, weak_evidence: bool = True) -> set:
     """Verbi RICHIESTI dalla query ma ASSENTI dal framework → decomposizione
@@ -8754,15 +8775,10 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
     _missing_actions = _dropped_required_verbs(framework, query, intent, catalog,
                                                weak_evidence=False)
     if _missing_actions:
-        from messages import get as _msg_get
         log.info("[intent-fulfilment] unavailable actions=%s",
                  ",".join(sorted(_missing_actions)))
-        return DispatchResult(
-            final_text=_msg_get("MSG_REQUIRED_ACTION_NOT_PLANNED"),
-            final_kind="error", match_source="terminator",
-            framework_hash=compute_framework_hash(framework),
-            elapsed_ms=int((time.time() - t_start) * 1000),
-            framework=framework, error_class="capability_missing")
+        return _required_action_not_planned(
+            framework, query, intent, _missing_actions, t_start=t_start)
 
     # Execute
     durable, run = _execute_with_lre_boundary(framework)
@@ -8875,16 +8891,10 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                 _missing_alt = _dropped_required_verbs(
                     framework_alt, query, intent, catalog, weak_evidence=False)
                 if _missing_alt:
-                    from messages import get as _msg_get
                     log.info("[L3 recovery] REJECT: unavailable actions=%s",
                              ",".join(sorted(_missing_alt)))
-                    return DispatchResult(
-                        final_text=_msg_get("MSG_REQUIRED_ACTION_NOT_PLANNED"),
-                        final_kind="error", match_source="terminator",
-                        framework_hash=compute_framework_hash(framework_alt),
-                        elapsed_ms=int((time.time() - t_start) * 1000),
-                        framework=framework_alt,
-                        error_class="capability_missing")
+                    return _required_action_not_planned(
+                        framework_alt, query, intent, _missing_alt, t_start=t_start)
                 if (compute_execution_fingerprint(framework_alt)
                         == compute_execution_fingerprint(framework)):
                     # Re-running the same executable graph cannot recover an

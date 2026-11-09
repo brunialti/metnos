@@ -119,6 +119,25 @@ def _record_lacuna(query: str, intent: Intent, error_class: str,
     return lid
 
 
+def record_missing_actions(query: str, intent: Intent, verbs) -> None:
+    """Requested actions that no plan can carry are capability gaps.
+
+    Each verb keeps its own object from the intent decomposition; the primary
+    object belongs to the primary verb only. A verb without an object is still
+    counted, and the learning loop never proposes it.
+    """
+    from messages import get as _msg
+    actions = [a for a in (getattr(intent, "actions", None) or []) if isinstance(a, dict)]
+    cause = _msg("MSG_REQUIRED_ACTION_NOT_PLANNED")
+    for verb in sorted(verbs or ()):
+        obj = next((str(a.get("object") or "") for a in actions
+                    if a.get("verb") == verb and a.get("object")), "")
+        if not obj and verb == intent.verb:
+            obj = intent.object
+        _record_lacuna(query, Intent(verb=verb, object=obj),
+                       "capability_missing", cause, "")
+
+
 # ── SimpleTerminator ──────────────────────────────────────────────────────
 
 # §11: cause/azione user-facing risolte via DB i18n nella lingua dell'istanza

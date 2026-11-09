@@ -39,6 +39,15 @@ _CAPABILITY_GAP_CLASSES = {
 }
 
 
+def _vocabulary_name(verb: str, object_: str) -> bool:
+    """Only a closed-vocabulary verb and object form a name Synt can build."""
+    try:
+        from vocab import ACTIONS, OBJECTS
+        return verb in ACTIONS and object_ in OBJECTS
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def _existing_executor(target: str) -> bool:
     """True when the catalog already has `target` (any qualifier).
 
@@ -66,10 +75,11 @@ def propose_from_lacuna(*, lacuna_id: str, query: str, verb: str,
     # the executor exists the failure stays among the gaps: an extension has
     # no concrete change to apply yet, and a twin would only add noise.
     if (n_seen < PROPOSE_SEEN or error_class not in _CAPABILITY_GAP_CLASSES
-            or not verb or not object_ or _existing_executor(target)):
+            or not _vocabulary_name(verb, object_) or _existing_executor(target)):
         return None
     try:
         import change_intents as ci
+        from messages import get as _msg
 
         kind = ci.KIND_CREATE_EXECUTOR
         _body = {"name": target, "action": verb, "object": object_,
@@ -90,14 +100,10 @@ def propose_from_lacuna(*, lacuna_id: str, query: str, verb: str,
             discovered_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             intent_kind=kind,
             intent_target=target,
-            intent_summary=(
-                f"Capacità mancante osservata {n_seen} volte: "
-                f"«{query[:120]}» (classe {error_class})."),
-            intent_rationale=(
-                "Trigger learning-loop (ADR 0185): la stessa lacuna del "
-                f"terminator è ricorsa {n_seen} volte su turni reali. "
-                "Proposta di sintesi executor; il triage umano decide, "
-                "l'admission 6-layer resta il gate alla materializzazione."),
+            # Shown on the changes page: the instance's language (§7.13).
+            intent_summary=_msg("MSG_LEARNING_GAP_SUMMARY", n=n_seen,
+                                query=query[:120]),
+            intent_rationale=_msg("MSG_LEARNING_GAP_RATIONALE", target=target),
             intent_body={
                 "query_sample": query[:300],
                 "verb": verb, "object": object_,
