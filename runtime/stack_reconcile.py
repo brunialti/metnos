@@ -664,6 +664,38 @@ def _release_plan_details(ref, current, served, prepared, language, code, contex
     return row
 
 
+def affinity_breaches(candidates: dict[str, list]) -> dict[str, str]:
+    """Candidates that break the one affinity rule, with the reason (RM-0010).
+
+    The rule is evaluated on the admitted catalog with every candidate of this
+    publication laid over it, so executors that change together are judged
+    together. A rule that cannot be evaluated here refuses nothing: the
+    release already ran it on the whole checkout in ``prepare``.
+    """
+    if not candidates:
+        return {}
+    try:
+        import affinity_integrity
+        from loader import load_catalog
+
+        affinities = {executor.name: list(executor.affinity or [])
+                      for executor in load_catalog().executors.values()}
+        affinities.update(candidates)
+        found = affinity_integrity.findings(affinities)
+    except Exception as exc:  # noqa: BLE001 - see the docstring
+        import logging
+        logging.getLogger("metnos.stack_reconcile").warning(
+            "affinity rule not evaluated before publication: %s", type(exc).__name__)
+        return {}
+    breaches: dict[str, str] = {}
+    for finding in found:
+        for name, other in ((finding.name, finding.other), (finding.other, finding.name)):
+            if name in candidates:
+                breaches.setdefault(
+                    name, f"affinity_{finding.kind} vs {other}: " + ", ".join(finding.terms))
+    return breaches
+
+
 def verify_named_executors(
         names: list[str], *, sign_first: bool = False,
         changed_only: bool = False, plan_only: bool = False,
@@ -781,6 +813,15 @@ def verify_named_executors(
             pending += [(builtin, path.name) for path in sorted(sources[builtin].iterdir())
                         if (path / MANIFEST_FILE).is_file()]
 
+        candidate_affinity: dict[str, list] = {}
+        for origin, name in pending:
+            try:
+                candidate_affinity[name] = list(tomllib.loads(_read_regular(
+                    sources[origin] / name, MANIFEST_FILE).decode("utf-8")).get("affinity") or [])
+            except Exception:  # noqa: BLE001 - the candidate step reports it below
+                continue
+        affinity_refusals = affinity_breaches(candidate_affinity)
+
         def identity(origin, name):
             # Core rows keep their historical shape: an absent origin is core.
             return {"name": name} if origin is core else {"name": name, "origin": origin.value}
@@ -841,6 +882,11 @@ def verify_named_executors(
                         # Preview must reject the same stale companion that
                         # publication would reject after the release cutover.
                         raise CandidateSnapshotError(exc.code, exc.detail) from exc
+                    if name in affinity_refusals:
+                        # The same rule the catalog load and the release
+                        # apply: this door publishes an authored executor too.
+                        raise CandidateSnapshotError(
+                            "affinity_rule", affinity_refusals[name])
                     declared = _declared_code_files(prepared)
                     code = {item: _read_regular(candidate, item) for item in declared}
                     same = False

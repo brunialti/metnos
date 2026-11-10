@@ -174,6 +174,22 @@ esterne e alcuni casi di lettura del sistema impediscono l'aggiunta di
 dell'host: la limitazione a un dominio o a un fornitore resta compito dei
 controlli applicativi e delle credenziali circoscritte.</p>
 
+<h2>3.3 Configurazione privata</h2>
+
+<p>La cartella di configurazione di Metnos contiene la chiave amministrativa, la
+chiave del deposito delle credenziali e le credenziali cifrate. Un permesso largo
+sui file, per esempio sull'intera cartella personale, non la rende visibile: dopo
+ogni montaggio che la comprende, il profilo la copre con una cartella vuota.
+Restano visibili soltanto i percorsi che una capacit&agrave; dichiara espressamente,
+come le credenziali di un account di posta. La chiave amministrativa non entra mai
+nella sandbox, e al suo interno non viene mai creata una chiave del deposito.</p>
+
+<p>Lo stesso vale per la cartella di stato del servizio, che contiene archivi
+interni, sessioni e registri: un permesso largo la lascia vuota, e ne torna
+visibile solo ci&ograve; che una capacit&agrave; dichiara, per esempio il registro delle
+firme di sicurezza. Un percorso passato come argomento non apre mai queste
+cartelle: la richiesta viene rifiutata con il motivo.</p>
+
 <h1 id="cap4">4. Bubblewrap non disponibile</h1>
 
 <p>Se <code>bwrap</code> non &egrave; nel <code>PATH</code>, oppure se

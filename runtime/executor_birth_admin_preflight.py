@@ -910,7 +910,7 @@ _REQUIRED_MANIFEST_PATHS = {
 _BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:79fd7f1dec4b2a2fc9665b3a2d428c275ac44de68a946d018959b9d03999da06"
+_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:7b188752647cee649a134ab0ff419a2150861bd04caded5fd53c68b1595b3f71"
 _SOURCE_REVIEW_PIN_VALUE_V1 = (
     rb'(?:(?:"sha256:" \+ "0" \* 64)|(?:"sha256:[0-9a-f]{64}"))'
 )
@@ -6075,6 +6075,62 @@ def _metadata_identity_v1(info: os.stat_result) -> tuple[int, ...]:
     )
 
 
+def _stable_resolved_path_v1(resolved: "_TrustedResolvedPathV1") -> tuple:
+    """A resolved chain reduced to what must not move while it is observed.
+
+    Every directory on the way counts as the object it is: device, inode,
+    type and mode, owner. The file at the end counts whole. A directory's
+    times, size and link count change whenever an unrelated entry is created
+    or removed in it: each unit started with a private mount namespace touches
+    ``/run/systemd``, a package trigger rewrites a file in ``/etc``. That says
+    nothing about the file reached through the directory, and it made the
+    final attestation of a release fail at random (R-023: the root mount's
+    generated unit lives under ``/run/systemd/generator``, and two unrelated
+    system services started while it was being observed).
+    """
+    components = resolved.components
+    leaf = components[-1:] if resolved.kind == "file" else ()
+    ancestors = components[:-1] if resolved.kind == "file" else components
+    return (
+        resolved.requested_path, resolved.canonical_path, resolved.kind,
+        tuple(
+            (item.path, item.identity[:5], item.link_target)
+            for item in ancestors
+        ),
+        leaf,
+    )
+
+
+def _stable_trusted_file_v1(captured: "_CapturedTrustedFileV1") -> tuple:
+    return (
+        _stable_resolved_path_v1(captured.resolved),
+        captured.identity, captured.content,
+    )
+
+
+def _stable_systemd_file_v1(item: "_CapturedSystemdFileV1") -> tuple:
+    return (
+        item.logical_path, item.maximum, _stable_trusted_file_v1(item.captured),
+    )
+
+
+def _stable_systemd_link_v1(item: "_CapturedSystemdLinkV1") -> tuple:
+    return (
+        item.logical_path, item.actual_path,
+        _stable_resolved_path_v1(item.parent), item.identity, item.target,
+    )
+
+
+def _stable_effective_systemd_v1(
+    captured: "_CapturedEffectiveSystemdUnitsV1",
+) -> tuple:
+    return (
+        captured.manager_version, captured.snapshot,
+        tuple(_stable_systemd_file_v1(item) for item in captured.files),
+        tuple(_stable_systemd_link_v1(item) for item in captured.links),
+    )
+
+
 def _require_safe_directory_chain_v1(
     directory: Path, *, uid: int, gid: int, stop: Path | None,
 ) -> None:
@@ -8643,8 +8699,10 @@ def _capture_trusted_file_v1(
     identity = _metadata_identity_v1(before)
     if (
         identity != _metadata_identity_v1(after)
-        or repeated != resolved
+        or _stable_resolved_path_v1(repeated)
+        != _stable_resolved_path_v1(resolved)
         or identity != resolved.components[-1].identity
+        or identity != repeated.components[-1].identity
         or len(content) != before.st_size
     ):
         raise _invalid("trusted file changed")
@@ -14151,7 +14209,9 @@ def _capture_systemd_enablement_link_v1(
     identity = _metadata_identity_v1(before)
     if (
         _metadata_identity_v1(after) != identity
-        or repeated_target != target or repeated_parent != parent
+        or repeated_target != target
+        or _stable_resolved_path_v1(repeated_parent)
+        != _stable_resolved_path_v1(parent)
     ):
         raise _invalid("systemd enablement link changed")
     return _CapturedSystemdLinkV1(
@@ -14508,15 +14568,21 @@ def _revalidate_captured_effective_systemd_v1(
             item.logical_path, live_root=live_root, uid=uid, gid=gid,
             maximum=item.maximum,
         )
-        if repeated != item:
-            raise _invalid("effective systemd file changed")
+        if _stable_systemd_file_v1(repeated) != _stable_systemd_file_v1(item):
+            # Which file: a path is not payload, and a mute refusal here
+            # cost seven releases a blind retry.
+            raise _invalid(
+                f"effective systemd file changed path={item.logical_path}"
+            )
     for item in captured.links:
         repeated = _capture_systemd_enablement_link_v1(
             _EnablementLinkV1(item.logical_path, item.target),
             live_root=live_root, uid=uid, gid=gid,
         )
-        if repeated != item:
-            raise _invalid("effective systemd link changed")
+        if _stable_systemd_link_v1(repeated) != _stable_systemd_link_v1(item):
+            raise _invalid(
+                f"effective systemd link changed path={item.logical_path}"
+            )
 
 
 def _capture_startup_prerequisite_file_v1(
@@ -14611,7 +14677,10 @@ def _observe_effective_systemd_core_v1(
     )
     if not prerequisite_0 == prerequisite_1 == prerequisite_2:
         raise _invalid("startup prerequisite changed")
-    if snapshot_0 != snapshot_1:
+    if (
+        _stable_effective_systemd_v1(snapshot_0)
+        != _stable_effective_systemd_v1(snapshot_1)
+    ):
         raise _invalid("effective systemd A/B mismatch")
     prerequisite = materials.prerequisite
     if (

@@ -44,24 +44,51 @@ def _object(name: str) -> str:
     return name.split("_")[1] if "_" in name else name
 
 
-def _provider(name: str) -> str | None:
+def _provider(name: str, providers: Mapping[str, str] | None = None) -> str | None:
+    """The external service a tool is bound to, or None for a native tool.
+
+    ``providers`` names the service of tools whose name alone does not tell
+    (an imported tool carries its skill as suffix, whatever the skill is). A
+    known provider is recognised wherever it follows ``verb_object``, so a
+    fourth-level descriptor after it does not turn the tool into a native one.
+    """
+    if providers and providers.get(name):
+        return providers[name]
     from vocab import PROVIDER_SKILLS
+    rest = "_".join(name.split("_")[2:])
     for provider in sorted(PROVIDER_SKILLS, key=len, reverse=True):
-        if name.endswith("_" + provider):
+        if (rest == provider or rest.startswith(provider + "_")
+                or rest.endswith("_" + provider)):
             return provider
     return None
 
 
+def normalize_tag(tag: object) -> str:
+    """One written form per tag: composed Unicode, case-folded, single spaces."""
+    import unicodedata
+
+    return " ".join(unicodedata.normalize("NFC", str(tag)).casefold().split())
+
+
 def _tags(affinities: Mapping[str, Iterable[str]]) -> dict[str, set[str]]:
-    return {name: {str(tag).strip().lower() for tag in (tags or ()) if str(tag).strip()}
+    return {name: {tag for tag in map(normalize_tag, tags or ()) if tag}
             for name, tags in affinities.items()}
 
 
 def derived_generic_tokens(affinities: Mapping[str, Iterable[str]]) -> frozenset[str]:
-    """Action words claimed by more than five tools spanning several objects."""
-    from prefilter import _localized_verb_table, tokenize
+    """Action words claimed by more than five tools spanning several objects.
 
-    actions = {token for form in _localized_verb_table() for token in tokenize(form)}
+    A word that names an object («email» is also a verb) never becomes
+    generic: it is what tells that object's tools from the others.
+    """
+    from prefilter import _localized_verb_table, object_hint_mapping, tokenize
+    from vocab import OBJECTS
+
+    objects = {token for name in OBJECTS for token in tokenize(name)} | {
+        token for words in object_hint_mapping().values()
+        for word in words for token in tokenize(word)}
+    actions = {token for form in _localized_verb_table()
+               for token in tokenize(form)} - objects
     claims: dict[str, set[str]] = defaultdict(set)
     for name, tags in _tags(affinities).items():
         for tag in tags:
@@ -96,8 +123,12 @@ def derived_tokens() -> frozenset[str]:
     return _derived
 
 
-def findings(affinities: Mapping[str, Iterable[str]]) -> list[Finding]:
-    """Every breach of the rule, for any executor, in a stable order."""
+def findings(affinities: Mapping[str, Iterable[str]],
+             providers: Mapping[str, str] | None = None) -> list[Finding]:
+    """Every breach of the rule, for any executor, in a stable order.
+
+    ``providers`` maps an imported tool to the service it comes from.
+    """
     from prefilter import generic_affinity_verbs, object_hint_mapping, stopwords, tokenize
 
     tags = _tags(affinities)
@@ -113,7 +144,7 @@ def findings(affinities: Mapping[str, Iterable[str]]) -> list[Finding]:
     ignored = stopwords() | generic_affinity_verbs() | derived_generic_tokens(affinities)
     hints = object_hint_mapping()
     for name in names:
-        provider = _provider(name)
+        provider = _provider(name, providers)
         if provider is None:
             continue
         family = _family(name)
@@ -123,7 +154,8 @@ def findings(affinities: Mapping[str, Iterable[str]]) -> list[Finding]:
             token for word in hints.get(_object(name), ()) for token in tokenize(word)}
         claimed = object_words | {
             token for other in names
-            if other != name and _family(other) == family and _provider(other) is None
+            if other != name and _family(other) == family
+            and _provider(other, providers) is None
             for tag in tags[other] for token in tokenize(tag)}
         own_name = {token for part in provider.split("_") for token in tokenize(part)} - object_words
         without_own_word = sorted(
@@ -167,9 +199,12 @@ def vocabulary_pressure(days: int = 30, *, now: float | None = None) -> dict:
             continue
         if isinstance(entry, dict) and str(entry.get("ts") or "") >= stamp:
             refused.add((str(entry.get("name")), str(entry.get("overlapping_with"))))
+    # The same reading as the case file (`vocabulary_dossier`): a request
+    # that is counted here always has its case file on the page.
+    import vocabulary_dossier
+
     requests = sum(
         1 for intent in change_intents.list_intents(limit=5000)
         if str(intent.discovered_at or "") >= stamp
-        and VOCABULARY_MARKER.casefold()
-        in f"{intent.intent_rationale or ''} {intent.intent_body or ''}".casefold())
+        and vocabulary_dossier.proposer_text(intent) is not None)
     return {"days": days, "refused": len(refused), "requests": requests}

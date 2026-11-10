@@ -77,11 +77,11 @@ CREATE INDEX IF NOT EXISTS idx_detlex_pending
     ON detection_lexicon(needs_translation, lang) WHERE needs_translation=1;
 """
 
-_conn: sqlite3.Connection | None = None
+_conn: sqlite3.Connection | None = None      # opens the store, see _open
+_thread_state = threading.local()             # .connection, .data_version
 _lock = threading.RLock()
 _cache: dict[tuple[str, str], tuple] = {}     # (concept, current_lang) -> resolved
 _regex_cache: dict[tuple[str, str], list] = {}
-_cache_data_version: int | None = None
 _seeded = False
 _coverage_gaps_logged: set[tuple[str, str]] = set()
 _declared_review_policies: dict[str, str] = {}
@@ -97,53 +97,98 @@ def current_lang() -> str:
     return _i18n.current_lang()
 
 
-def _open() -> sqlite3.Connection:
+class _Connection(sqlite3.Connection):
+    """A connection opened by this module; ``target`` names its store."""
+
+    target: tuple[str, bool]  # (database, uri)
+
+    def sibling(self) -> "_Connection":
+        """Another connection to the same store, for one other thread."""
+        database, uri = self.target
+        conn = sqlite3.connect(database, uri=uri, factory=_Connection)
+        conn.target = self.target
+        conn.execute("PRAGMA busy_timeout=5000")
+        return conn
+
+
+def _connect() -> _Connection:
+    """Open the store read-write with its schema, or read-only in the sandbox."""
+    try:
+        DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+        target = (str(DB_PATH), False)
+        c = sqlite3.connect(target[0], check_same_thread=False, factory=_Connection)
+        # WAL on the server. The bwrap sandbox (§7.13) mounts the store
+        # read-only and opens it `immutable` (fallback below), so it reads
+        # the main file: writes checkpoint(TRUNCATE) to leave no frame
+        # only in the -wal.
+        c.execute("PRAGMA journal_mode=WAL")
+        c.execute("PRAGMA busy_timeout=5000")
+        c.executescript(_SCHEMA)
+        columns = {row[1] for row in c.execute(
+            "PRAGMA table_info(detection_lexicon)"
+        )}
+        if "review_policy" not in columns:
+            c.execute(
+                "ALTER TABLE detection_lexicon ADD COLUMN "
+                "review_policy TEXT NOT NULL DEFAULT 'automatic'"
+            )
+        if "translation_attempts" not in columns:
+            c.execute(
+                "ALTER TABLE detection_lexicon ADD COLUMN "
+                "translation_attempts INTEGER NOT NULL DEFAULT 0"
+            )
+        if "last_attempt_at" not in columns:
+            c.execute(
+                "ALTER TABLE detection_lexicon ADD COLUMN "
+                "last_attempt_at TEXT"
+            )
+        if "last_translation_error" not in columns:
+            c.execute(
+                "ALTER TABLE detection_lexicon ADD COLUMN "
+                "last_translation_error TEXT"
+            )
+        c.commit()
+    except sqlite3.OperationalError:
+        # Read-only store (sandbox): the server already created the
+        # schema, so open it immutable and read-only, without locks.
+        target = (f"file:{DB_PATH}?mode=ro&immutable=1", True)
+        c = sqlite3.connect(
+            target[0], uri=True, check_same_thread=False, factory=_Connection)
+    c.target = target
+    return c
+
+
+def _process_connection() -> sqlite3.Connection:
+    """``_conn``: opened once per store with its schema, then only cloned."""
     global _conn
     if _conn is None:
         with _lock:
             if _conn is None:
-                try:
-                    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-                    c = sqlite3.connect(str(DB_PATH), check_same_thread=False)
-                    # WAL server-side; la sandbox bwrap (§7.13) lo monta READ-ONLY
-                    # e lo apre `immutable` (fallback sotto) → legge il MAIN, e le
-                    # scritture fanno checkpoint(TRUNCATE) per non lasciare frame
-                    # solo nel -wal.
-                    c.execute("PRAGMA journal_mode=WAL")
-                    c.execute("PRAGMA busy_timeout=5000")
-                    c.executescript(_SCHEMA)
-                    columns = {row[1] for row in c.execute(
-                        "PRAGMA table_info(detection_lexicon)"
-                    )}
-                    if "review_policy" not in columns:
-                        c.execute(
-                            "ALTER TABLE detection_lexicon ADD COLUMN "
-                            "review_policy TEXT NOT NULL DEFAULT 'automatic'"
-                        )
-                    if "translation_attempts" not in columns:
-                        c.execute(
-                            "ALTER TABLE detection_lexicon ADD COLUMN "
-                            "translation_attempts INTEGER NOT NULL DEFAULT 0"
-                        )
-                    if "last_attempt_at" not in columns:
-                        c.execute(
-                            "ALTER TABLE detection_lexicon ADD COLUMN "
-                            "last_attempt_at TEXT"
-                        )
-                    if "last_translation_error" not in columns:
-                        c.execute(
-                            "ALTER TABLE detection_lexicon ADD COLUMN "
-                            "last_translation_error TEXT"
-                        )
-                    c.commit()
-                    _conn = c
-                except sqlite3.OperationalError:
-                    # DB read-only (sandbox): schema già creato dal server →
-                    # apri immutable read-only, lock-free.
-                    _conn = sqlite3.connect(
-                        f"file:{DB_PATH}?mode=ro&immutable=1",
-                        uri=True, check_same_thread=False)
+                _conn = _connect()
     return _conn
+
+
+def _open() -> sqlite3.Connection:
+    """The calling thread's own connection to the lexicon store.
+
+    One sqlite3 connection must never serve two threads at once, not even
+    with ``check_same_thread=False``: concurrent statements fail with
+    ``InterfaceError`` or hand a thread the rows of another (TODO
+    LEXICON-THREADS-001).  Every thread therefore reads and writes through
+    its own sibling of ``_conn``, and SQLite keeps statements, fetches and
+    transactions of different threads apart.
+    Setting ``_conn`` to ``None`` reopens every thread on ``DB_PATH``; a
+    connection assigned to ``_conn`` from outside (tests, lab tools) is used
+    as given by every thread.
+    """
+    shared = _process_connection()
+    if not isinstance(shared, _Connection):
+        return shared
+    mine = getattr(_thread_state, "connection", None)
+    if mine is None or mine[0] is not shared:
+        mine = (shared, shared.sibling())
+        _thread_state.connection = mine
+    return mine[1]
 
 
 def _has_column(conn: sqlite3.Connection, column: str) -> bool:
@@ -177,21 +222,27 @@ def _sync_cache_data_version() -> int | None:
     """Invalidate process caches after a commit made by another connection.
 
     SQLite's ``data_version`` changes only when a *different* connection
-    commits.  Writes through this module still call ``_invalidate`` directly;
-    the epoch closes the materializer/daemon path, which necessarily writes
-    through its own connection or process.
+    commits, and every connection counts on its own.  Each thread compares
+    the value of its own connection with the one it saw last: a commit by the
+    materializer/daemon, another process or another thread moves it, while
+    this thread's own writes inside a read epoch (the lazy seed) do not.  A
+    thread that meets its connection for the first time cannot prove the
+    caches fresh and clears them.  Writes through this module still call
+    ``_invalidate`` directly.
     """
-    global _cache_data_version
-    try:
-        version = int(_open().execute("PRAGMA data_version").fetchone()[0])
-    except Exception:  # noqa: BLE001 - a cache is unsafe if freshness is unknown
-        _invalidate()
-        _cache_data_version = None
-        return None
-    if _cache_data_version is not None and version != _cache_data_version:
-        _invalidate()
-    _cache_data_version = version
-    return version
+    with _lock:
+        try:
+            conn = _open()
+            version = int(conn.execute("PRAGMA data_version").fetchone()[0])
+        except Exception:  # noqa: BLE001 - a cache is unsafe if freshness is unknown
+            _invalidate()
+            _thread_state.data_version = None
+            return None
+        seen = getattr(_thread_state, "data_version", None)
+        if seen != (conn, version):
+            _invalidate()
+        _thread_state.data_version = (conn, version)
+        return version
 
 
 # --------------------------------------------------------------------------

@@ -2175,6 +2175,22 @@ def _negated_only_query_verbs(query: str) -> set[str]:
     return negated - affirmed
 
 
+def _accepted_rejection(framework: Framework, query: str) -> bool:
+    """True when an accepted change rejected exactly this tool sequence for
+    exactly this request (the avoid-list decided on the changes page)."""
+    try:
+        from turn_feedback import accepted_rejections_for_query
+        rejected = accepted_rejections_for_query(query)
+    except Exception as ex:  # an unreadable register must not stop every turn
+        log.warning("[rejected-path] register unreadable: %r", ex)
+        return False
+    if not rejected:
+        return False
+    tools = [step.tool for step in framework.steps
+             if step.tool and step.tool != "final_answer"]
+    return tools in rejected
+
+
 def _prohibited_plan_verbs(framework: Framework, query: str) -> set[str]:
     """Fail closed when a plan tries to run an explicitly negated action."""
     import re
@@ -2208,18 +2224,26 @@ def _prohibited_plan_verbs(framework: Framework, query: str) -> set[str]:
 
 
 def _required_action_not_planned(framework: Framework, query: str, intent,
-                                 missing, *, t_start: float) -> "DispatchResult":
+                                 missing, *, t_start: float,
+                                 record_gap: bool = True) -> "DispatchResult":
     """Refuse a plan that drops a requested action, and count it as a gap.
 
     The refusal is the terminator's answer: it reaches the gap register like
     any other, so a capability asked again and again becomes a proposal.
+    ``record_gap`` is False when the plan lost the action only because a
+    usable tool was set aside after a usage error: that is not a missing
+    capability.
     """
     from messages import get as _msg_get
-    try:
-        from .terminator import record_missing_actions
-        record_missing_actions(query, intent, missing)
-    except Exception as ex:  # noqa: BLE001 - the answer must still reach the user
-        log.warning("[intent-fulfilment] gap not recorded: %r", ex)
+    if record_gap:
+        try:
+            from .terminator import record_missing_actions
+            planned = {tuple(parts[:2]) for parts in (
+                (step.tool or "").split("_") for step in framework.steps)
+                if len(parts) >= 2}
+            record_missing_actions(query, intent, missing, planned=planned)
+        except Exception as ex:  # noqa: BLE001 - the answer must still reach the user
+            log.warning("[intent-fulfilment] gap not recorded: %r", ex)
     return DispatchResult(
         final_text=_msg_get("MSG_REQUIRED_ACTION_NOT_PLANNED"),
         final_kind="error", match_source="terminator",
@@ -2252,12 +2276,14 @@ def _dropped_required_verbs(framework: Framework, query: str, intent=None,
     # look like a three-action request with a missing send step.
     lexical_qverbs = set()
     lexical_writer_chunks = []
+    lexical_actions: list[tuple[str, str]] = []
     try:
         from compound_decomposer import split_query_chunks, detect_chunk_action
         for _chunk in split_query_chunks(query or ""):
             _action = detect_chunk_action(_chunk)
             if _action:
                 lexical_qverbs.add(_action[0])
+                lexical_actions.append((_action[0], str(_action[1] or "")))
                 if _action[0] in {"create", "write"}:
                     lexical_writer_chunks.append((_action[0], _chunk))
             elif weak_evidence:
@@ -2277,6 +2303,7 @@ def _dropped_required_verbs(framework: Framework, query: str, intent=None,
     except Exception:
         lexical_qverbs = set()
         lexical_writer_chunks = []
+        lexical_actions = []
     if not lexical_qverbs and weak_evidence:
         lexical_qverbs = set(detect_canonical_verbs_all(tokenize(query or "")))
     qverbs = set(lexical_qverbs)
@@ -2375,6 +2402,25 @@ def _dropped_required_verbs(framework: Framework, query: str, intent=None,
             actual = planned_objects.get(verb, set())
             if obj not in actual and not any(_fs_equivalent(o, [obj]) for o in actual):
                 dropped.add(verb)
+    # One clause, one action. The lexical reading of a clause and the model's
+    # canonical reading name the same act on the same object: «put the
+    # signature in the blacklist» reads write/signatures, the intent
+    # set/signatures. When the canonical action is planned on that object the
+    # lexical verb is another word for it, not a second action that went
+    # missing (real turn 05ef3bba, 11/11/2026: a correct plan refused as
+    # «capability missing», and a false gap recorded). An object the clause
+    # names differently, or a verb the intent itself asks for, stays required.
+    _planned_pairs = {(_verb, _obj) for _verb, _objects in planned_objects.items()
+                      for _obj in _objects}
+    _carried_objects = {
+        action.get("object") for action in requested_actions
+        if action.get("verb") in required_effects
+        and (action.get("verb"), action.get("object")) in _planned_pairs}
+    for _verb, _obj in lexical_actions:
+        if (_verb in dropped and _verb in required_effects and _obj
+                and _obj in _carried_objects
+                and not any(action.get("verb") == _verb for action in requested_actions)):
+            dropped.discard(_verb)
     # Famiglia PRODUTTORI interscambiabile (find/read/get/list): un produttore
     # qualunque nel framework copre ogni produttore richiesto (find_messages ==
     # read_messages, find_files copre «cerca i file», ...). Senza, «cerca...»
@@ -8287,6 +8333,17 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                 framework=framework_to_run,
                 error_class="capability_missing"), None
 
+        if _accepted_rejection(framework_to_run, query):
+            from messages import get as _msg_get
+            log.info("[rejected-path] plan refused: accepted rejection")
+            return DispatchResult(
+                final_text=_msg_get("MSG_PLAN_REJECTED_BY_DECISION"),
+                final_kind="error", match_source="terminator",
+                framework_hash=compute_framework_hash(framework_to_run),
+                elapsed_ms=int((time.time() - t_start) * 1000),
+                framework=framework_to_run,
+                error_class="capability_missing"), None
+
         record_kind = _record_kind_form(framework_to_run, query, llm_call_fast, runtime_ctx)
         if record_kind is not None:
             return DispatchResult(
@@ -8459,6 +8516,9 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
         if fp_hit is not None and _prohibited_plan_verbs(fp_hit.framework, query):
             log.info("[L0 fastpath] REJECT: prohibited action in cached plan")
             fp_hit = None
+        if fp_hit is not None and _accepted_rejection(fp_hit.framework, query):
+            log.info("[L0 fastpath] REJECT: cached plan rejected by an accepted change")
+            fp_hit = None
         if fp_hit is not None:
             if verbose:
                 log.info("[L0 fastpath] hit (%s, sim=%.2f): %s",
@@ -8559,6 +8619,9 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
             ap_hit = None
         if ap_hit is not None and _prohibited_plan_verbs(ap_hit.framework, query):
             log.info("[L1 autopath] REJECT: prohibited action in cached plan")
+            ap_hit = None
+        if ap_hit is not None and _accepted_rejection(ap_hit.framework, query):
+            log.info("[L1 autopath] REJECT: cached plan rejected by an accepted change")
             ap_hit = None
         if ap_hit is not None:
             if verbose:
@@ -8723,6 +8786,7 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
     # va presa qui. Serve a sapere che cosa ciascuna guardia ripara davvero —
     # l'observation da sola registra un piano già sano.
     _framework_raw = framework.to_dict()
+    _proposed_hash = compute_framework_hash(framework)
     framework = _apply_deterministic_structure_guards(
         framework, intent, query, catalog)
 
@@ -8767,6 +8831,26 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
     # → ordering → consent gate → mass gate. UNICA fonte con la recovery.
     framework = _finalize_framework_for_run(framework, intent, query,
                                             catalog, runtime_ctx)
+
+    # A tool sequence an accepted change rejected for this very request: ask
+    # once for another way, prepared exactly like the first. The comparison is
+    # on the finalized plan, the form the feedback recorded; the execution
+    # boundary keeps the last word.
+    if _accepted_rejection(framework, query):
+        log.info("[guard] plan rejected by an accepted change → re-propose")
+        _other = proposer.propose(
+            query=query, intent=intent, pool=pool_names,
+            excluded_hashes=excluded | {_proposed_hash,
+                                        compute_framework_hash(framework)},
+            llm_call=llm_call_wise, lang=lang, catalog=catalog,
+            prior_steps=seed_state or ())
+        if _other is not None:
+            _other = _finalize_framework_for_run(
+                _apply_deterministic_structure_guards(
+                    _other, intent, query, catalog),
+                intent, query, catalog, runtime_ctx)
+            if not _accepted_rejection(_other, query):
+                framework = _other
 
     # Last word before any executor: never replace an explicit side effect
     # with a harmless lookup.  Re-proposal and deterministic guards have
@@ -8893,8 +8977,11 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                 if _missing_alt:
                     log.info("[L3 recovery] REJECT: unavailable actions=%s",
                              ",".join(sorted(_missing_alt)))
+                    # After a usage error (wrong arguments, missing input)
+                    # the capability exists: its loss here is not a gap.
                     return _required_action_not_planned(
-                        framework_alt, query, intent, _missing_alt, t_start=t_start)
+                        framework_alt, query, intent, _missing_alt, t_start=t_start,
+                        record_gap=err_class == "wrong_tool")
                 if (compute_execution_fingerprint(framework_alt)
                         == compute_execution_fingerprint(framework)):
                     # Re-running the same executable graph cannot recover an

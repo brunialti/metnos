@@ -1564,6 +1564,8 @@ HANDCRAFTED_FAMILIES: frozenset[str] = frozenset({
 from affinity_integrity import OVERLAP_THRESHOLD as AFFINITY_OVERLAP_THRESHOLD  # noqa: E402
 
 _AFFINITY_AUDIT_DIR = _C.PATH_USER_DATA / "synth_audit"
+# The window `affinity_integrity.vocabulary_pressure` reads (RM-0010 F3).
+_AFFINITY_AUDIT_WINDOW_DAYS = 30
 
 
 def _affinity_audit_path() -> Path:
@@ -1629,8 +1631,9 @@ def _check_affinity_overlap(
     affinity_integrity.remember_catalog(affinities)
 
     def _refusable(name: str) -> bool:
+        # Provenance alone decides: no name is exempt from the rule.
         ex = catalog.executors.get(name)
-        return (ex is not None and name not in HANDCRAFTED_FAMILIES
+        return (ex is not None
                 and getattr(ex, "source", "") in ("synthesized", "imported"))
 
     def _stable_identity(name: str) -> str:
@@ -1645,13 +1648,35 @@ def _check_affinity_overlap(
         return ex.name
 
     to_remove: dict[str, dict] = {}
-    # Only a refusable executor makes a breach actionable here: authored ones
-    # meet the rule at release, and the check would read the lexicon for nothing.
-    breaches = (affinity_integrity.findings(affinities)
-                if any(_refusable(name) for name in affinities) else [])
+    # The rule runs on every load. A breach between authored executors is
+    # only reported here (the release refuses it), so a lexicon that cannot be
+    # read stops the load only when a refusable executor is at stake.
+    def _service(name: str) -> str | None:
+        """The skill an imported executor comes from: its name ends with it."""
+        ex = catalog.executors.get(name)
+        if ex is None or getattr(ex, "source", "") != "imported":
+            return None
+        declared = str((getattr(ex, "provenance", None) or {}).get("skill_id") or "")
+        binding = declared.strip().lower().replace("-", "_").replace(".", "_")
+        if binding and name.endswith("_" + binding):
+            return binding
+        return name.rsplit("_", 1)[-1] if name.count("_") >= 2 else None
+
+    providers = {name: service for name in affinities
+                 if (service := _service(name))}
+    try:
+        breaches = affinity_integrity.findings(affinities, providers)
+    except Exception as exc:  # noqa: BLE001 - see the comment above
+        if any(_refusable(name) for name in affinities):
+            raise
+        log.warning("[loader] affinity rule not evaluated: %s", type(exc).__name__)
+        breaches = []
     for finding in breaches:
         pair = (finding.name, finding.other) if finding.kind == "overlap" else (finding.name,)
-        candidates = [n for n in pair if _refusable(n) and n not in to_remove]
+        if any(name in to_remove for name in pair):
+            # That executor is already refused: without it the breach is gone.
+            continue
+        candidates = [n for n in pair if _refusable(n)]
         loser = max(candidates, key=_stable_identity) if candidates else None
         subject = loser or finding.name
         other = finding.other if subject == finding.name else finding.name
@@ -1677,9 +1702,28 @@ def _check_affinity_overlap(
         import time as _time
         audit_path = _affinity_audit_path()
         ts = _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime())
+        # A refusal that persists is the same fact at every load: one line
+        # per executor and rival within the window the changes page counts.
+        since = _time.strftime(
+            "%Y-%m-%dT%H:%M:%SZ",
+            _time.gmtime(_time.time() - _AFFINITY_AUDIT_WINDOW_DAYS * 86400))
+        recorded: set[tuple[str, str]] = set()
+        try:
+            for raw in audit_path.read_text(encoding="utf-8").splitlines():
+                try:
+                    seen = _json.loads(raw)
+                except ValueError:
+                    continue
+                if isinstance(seen, dict) and str(seen.get("ts") or "") >= since:
+                    recorded.add((str(seen.get("name")),
+                                  str(seen.get("overlapping_with"))))
+        except OSError:
+            pass
         try:
             with audit_path.open("a", encoding="utf-8") as fh:
                 for entry in rejected_local:
+                    if (str(entry["name"]), str(entry["overlapping_with"])) in recorded:
+                        continue
                     line = dict(entry)
                     line["ts"] = ts
                     fh.write(_json.dumps(line, ensure_ascii=False) + "\n")

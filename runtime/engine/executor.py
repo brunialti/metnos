@@ -62,8 +62,15 @@ _BULLET_FIELDS_GALLERY_FALLBACK = ("title", "filename", "name", "items_count",
 _TABLE_COL_PREFERENCE = ("name", "title", "subject", "path", "size", "mtime",
                          "date", "start", "type", "kind", "status", "pid",
                          "cpu", "mem", "role", "email", "url", "count")
-_TABLE_COL_SKIP = frozenset({"content", "body", "body_text", "text", "snippet",
-                             "thumbnail", "data", "raw", "html", "mime"})
+# The fields an entry's content travels in: the content view (`@content`,
+# `_read_content`) shows them, the metadata table never does, whatever their
+# length. output_policy chooses between the two views; a table chosen for a
+# list must not disclose what was not asked for (2/11/2026: short file text
+# appeared in «mostrami la lista dei file» once length decided alone).
+_CONTENT_FIELDS = ("content", "body_text", "text")
+# Layout only: verbose or binary columns that spoil a table.
+_TABLE_COL_SKIP = frozenset({"body", "snippet", "thumbnail", "data", "raw",
+                             "html", "mime"})
 # These names are English; another language can mean something short by the
 # same word ("data" is the date in Italian: live Fineco 1f69a247, 2/11/2026,
 # lost its date column). A named column is skipped only when it is bulky.
@@ -147,6 +154,7 @@ def _entries_table(entries: list, *, max_rows: int = _TABLE_MAX_ROWS,
         for k in e.keys():
             ks = str(k)
             if (k not in seen and not ks.startswith("_")
+                    and ks not in _CONTENT_FIELDS
                     and not (ks in _TABLE_COL_SKIP
                              and any(_bulky_cell(r.get(k)) for r in rows[:50]))):
                 seen.append(k)
@@ -213,7 +221,7 @@ def _read_content(result: dict, *, max_chars: int = _TABLE_MAX_CHARS) -> str:
     for entry in entries:
         if not isinstance(entry, dict):
             continue
-        content = next((entry.get(key) for key in ("content", "body_text", "text")
+        content = next((entry.get(key) for key in _CONTENT_FIELDS
                         if isinstance(entry.get(key), str)), None)
         source = entry.get("path") or entry.get("url") or entry.get("name")
         unreadable = (entry.get("readable") is False

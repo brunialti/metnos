@@ -75,6 +75,12 @@ presents these records and keeps their progress visible.</p>
 change, the upsert can merge them into one record and increase convergence without
 duplicating the action. A score is an ordering aid, not an authorization.</p>
 
+<p>For a creation the fingerprint is the executor name alone: one capability has
+one proposal, whoever wrote it, and a rejected proposal does not come back from
+another source. Convergence counts distinct sources, not repeated readings of the
+same one. For missing capabilities the score follows the requests of the last 30
+days and falls when they stop; the same sentence counts once a day.</p>
+
 <h1 id="cap2">2. States and transitions</h1>
 
 <pre><code>proposed  --accept--&gt; accepted --apply--&gt; applied
@@ -127,11 +133,11 @@ rejected pattern.</p>
 <table>
 <thead><tr><th>Kind</th><th>Current effect</th><th>Rollback</th></tr></thead>
 <tbody>
-<tr><td><code>create_executor</code></td><td>Starts executor synthesis; an existing executor is not duplicated.</td><td>Archives the synthesized executor.</td></tr>
+<tr><td><code>create_executor</code></td><td>Starts executor synthesis; an existing executor is not duplicated. The proposal stays accepted while the candidate awaits review and consent; it becomes applied only when the planner can use the tool.</td><td>Archives the synthesized executor.</td></tr>
 <tr><td><code>extend_executor</code></td><td>Extends the manifest, stores a copy, and signs the executor again.</td><td>Restores the stored manifest and re-signs it.</td></tr>
 <tr><td><code>dedupe_executors</code></td><td>Creates an alias and retires the duplicate only when provenance permits it.</td><td>Removes the alias and reactivates the duplicate.</td></tr>
 <tr><td><code>materialize_pipeline</code></td><td>Runs the proposed request once as a real turn, under normal policy and controls.</td><td>Records rollback; the turn installs no persistent pipeline artifact to remove.</td></tr>
-<tr><td><code>reject_pattern</code></td><td>Adds the approved pattern to the registry of paths to avoid.</td><td>Removes the matching registration.</td></tr>
+<tr><td><code>reject_pattern</code></td><td>Adds the approved pattern to the registry of paths to avoid. For that same request the planner looks for another plan; if it finds none, it does not run and says so.</td><td>Removes the matching registration.</td></tr>
 <tr><td><code>cache_pattern</code></td><td>Remains supported for compatible records already present in the store.</td><td>Demotes the associated registration.</td></tr>
 </tbody>
 </table>
@@ -151,7 +157,8 @@ each record.</p>
 
 <ul>
  <li>Acceptance is an explicit decision attributed to the administrator; a high
- score does not replace it.</li>
+ score does not replace it. Accepting a proposal that asks for a new vocabulary
+ word requires the reason; an error is shown in the row it came from.</li>
  <li>The applier is idempotent per kind and writes a local audit. An error leads to
  <code>failed</code>, not apparent success.</li>
  <li>Rollback depends on the kind. A pipeline run as a real turn cannot reverse

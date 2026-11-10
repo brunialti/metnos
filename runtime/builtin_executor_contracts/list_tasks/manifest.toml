@@ -15,7 +15,7 @@ en = "SCOPO: Lists scheduled tasks visible to the actor. PATTERN: natural reques
 
 [code]
 files = ["implementation.py.src"]
-digest = "sha256:adb2daa5d236237981dc126a08e7c788a1834f60e35bec278d3361a961a2ad43"
+digest = "sha256:94e3b80fb10cf36795f4ef131631fffcb9b669612010597c34b8e67054ff8e14"
 
 [args]
 type = "object"

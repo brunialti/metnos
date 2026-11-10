@@ -141,6 +141,37 @@ _STORE_AFFINITY = [
 ]
 
 
+# Each store tool also carries phrases of its own: the three share the object
+# words above, and a tool must not share most of its affinity with another
+# family (RM-0010). A phrase names the action as a noun next to an object word:
+# imperative verbs and function words («trova», «scrivi», «in», «nell'») are
+# said in every kind of request, and measured on the request corpus they moved
+# requests about files and sites to these tools.
+_STORE_VERB_AFFINITY = {
+    "find": [
+        "consultazione archivio", "lettura raccolta",
+        "interrogazione collezione", "consultazione registro dati",
+        "lettura database interno", "interrogazione archivi",
+        "store lookup", "collection lookup", "datastore lookup",
+        "store retrieval", "collection retrieval", "datastore retrieval",
+    ],
+    "write": [
+        "inserimento archivio", "scrittura raccolta",
+        "salvataggio collezione", "inserimento registro dati",
+        "scrittura database interno", "salvataggio archivi",
+        "store insertion", "collection insertion", "datastore insertion",
+        "store saving", "collection saving", "datastore saving",
+    ],
+    "delete": [
+        "cancellazione archivio", "eliminazione raccolta",
+        "rimozione collezione", "cancellazione registro dati",
+        "eliminazione database interno", "rimozione archivi",
+        "store deletion", "collection deletion", "datastore deletion",
+        "store removal", "collection removal", "datastore removal",
+    ],
+}
+
+
 def register_detection() -> None:
     """Registra soltanto le risorse di detection nel relativo store."""
     R = _dl.register
@@ -150,6 +181,9 @@ def register_detection() -> None:
       it=_ACTION_AFFINITY, en=_ACTION_AFFINITY)
     R("codegen.store_entries_affinity", "phrases", match_mode="substring",
       it=_STORE_AFFINITY, en=_STORE_AFFINITY)
+    for verb, phrases in _STORE_VERB_AFFINITY.items():
+        R(f"codegen.store_entries_affinity.{verb}", "phrases",
+          match_mode="substring", it=phrases, en=phrases)
 
 
 def register_all() -> None:

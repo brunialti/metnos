@@ -153,7 +153,11 @@ def _choice(template: _Template, rows: list[list[str]], fields: list[str], instr
             or type(identifier) is not int or not 0 <= identifier <= count):
         return None
     used = [n for n in chosen.values() if n]
-    if len(used) != len(set(used)) or len(used) < 2 or (identifier and identifier not in used):
+    # The row's own code may sit in a column no requested field takes (real
+    # run Fastweb, 10/11/2026: fields date, amount, description, status; the
+    # model named the number column, the choice was refused and nine rows
+    # lost their identity). `_record` keeps it under `own_code_field()`.
+    if len(used) != len(set(used)) or len(used) < 2:
         return None
     for name, n in chosen.items():
         if n and date_field(name) and template.columns[n - 1].kind != "date":
@@ -168,10 +172,26 @@ def _choice(template: _Template, rows: list[list[str]], fields: list[str], instr
             "identifier": identifier}
 
 
+def own_code_field() -> str:
+    """Public field holding a listed row's own code when no requested field
+    takes its column; localized, the sheet shows it under this name."""
+    from messages import get as message
+    name = message("MSG_RECORD_OWN_CODE_FIELD")
+    # No literal fallback (§7.13): a missing translation shows its code.
+    return name if name and not name.startswith("<missing:") else "MSG_RECORD_OWN_CODE_FIELD"
+
+
 def _record(row: list[str], template: _Template, choice: dict, fields: list[str]) -> dict:
     record = {name: "" for name in fields}
     facts, labels = [], {}
-    for name, n in choice["fields"].items():
+    columns = dict(choice["fields"])
+    own = choice["identifier"]
+    if own and own not in columns.values():
+        name = own_code_field()
+        # A requested field of that name mapped elsewhere keeps its column.
+        if columns.get(name, 0) == 0:
+            columns[name] = own
+    for name, n in columns.items():
         column = template.columns[n - 1]
         value = _value(row, column)
         record[name] = value
@@ -179,7 +199,7 @@ def _record(row: list[str], template: _Template, choice: dict, fields: list[str]
             labels[name] = column.label
         if value:
             facts.append({"field": name, "value": value, "owner": "self",
-                          "role": "identifier" if n == choice["identifier"] else "attribute",
+                          "role": "identifier" if n == own else "attribute",
                           "quote": row[column.position]})
     record["_identity_facts"] = facts
     record["_record_extraction"] = "copied"
@@ -259,7 +279,9 @@ def copy_listed_rows(sources: list, fields: list[str], instruction: str, tier: s
                 "unusable" if choice is None else choice["items"] if choice["items"] == "no" else " ".join(
                     f"{name}:{template.columns[n - 1].kind}{'+label' if template.columns[n - 1].label else ''}"
                     f"{'+id' if n == choice['identifier'] else ''}"
-                    for name, n in sorted(choice["fields"].items())))
+                    for name, n in sorted(choice["fields"].items()))
+                + ("" if not choice["identifier"] or choice["identifier"] in choice["fields"].values()
+                   else f" own:{template.columns[choice['identifier'] - 1].kind}+id"))
         return choices[key]
 
     copied: dict[int, list] = {}

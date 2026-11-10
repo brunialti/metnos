@@ -13,17 +13,14 @@ def isolated_aging_db(tmp_path, monkeypatch):
     db_path = tmp_path / "executor_stats.db"
     turns_dir = tmp_path / "turns"
     turns_dir.mkdir()
-    audit_dir = tmp_path / "audit"
     monkeypatch.setenv("METNOS_EXECUTOR_STATS_DB", str(db_path))
     # reload modulo per applicare env var (DB_PATH e' top-level)
     import importlib
     import executor_aging
     importlib.reload(executor_aging)
-    monkeypatch.setattr(executor_aging, "EFFICACY_AUDIT_DIR", audit_dir)
     yield {
         "db_path": db_path,
         "turns_dir": turns_dir,
-        "audit_dir": audit_dir,
         "module": executor_aging,
     }
     # restore default DB_PATH for other tests

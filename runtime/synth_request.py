@@ -79,6 +79,59 @@ def _validate_birth_tests(executor_dir):
     return None if report.all_passed else report.summary
 
 
+def _translate_description(description: str, source_lang: str, target_lang: str) -> str:
+    """Translate the prose of a chaptered description, keeping its frame.
+
+    The chapter anchors are protocol, identical in every language; PATTERN is
+    a literal call and OUT an output shape. Only the prose chapters go to the
+    translator, and the description is rebuilt around the anchors, so a model
+    can never drop or rename one. A description without the four chapters is
+    translated whole and judged by the standard afterwards.
+    """
+    from executor_standard import _DESCRIPTION_ANCHORS
+    from i18n_translator import _translate_short_text
+
+    def translate(text: str) -> str:
+        translated, errors = _translate_short_text(
+            text, source_lang=source_lang, target_lang=target_lang)
+        if not translated or not translated.strip():
+            raise RuntimeError(
+                f"description not available in '{target_lang}': "
+                + "; ".join(errors or ["translation failed"]))
+        return " ".join(translated.split())
+
+    starts = [description.find(anchor) for anchor in _DESCRIPTION_ANCHORS]
+    if min(starts) < 0 or starts != sorted(starts):
+        return translate(description)
+    ends = starts[1:] + [len(description)]
+    parts = [description[:starts[0]]]
+    for anchor, start, end in zip(_DESCRIPTION_ANCHORS, starts, ends):
+        body = description[start + len(anchor):end].strip()
+        prose = anchor in _PROSE_CHAPTERS and body
+        parts.append(f"{anchor} {translate(body) if prose else body}".rstrip())
+    return " ".join(part for part in parts if part.strip())
+
+
+# Chapters written in a person's language; the others are code and shapes.
+_PROSE_CHAPTERS = frozenset({"SCOPO:", "NON:"})
+
+
+def _description_in_required_languages(description: str, source_lang: str) -> dict[str, str]:
+    """The description in every language an active executor declares.
+
+    The candidate is born in its final form, so what the reviewer reads is
+    what runs. A translation that cannot be produced stops the birth with its
+    reason: an active executor is never published half described.
+    """
+    from executor_standard import ACTIVE_DESCRIPTION_LANGUAGES
+
+    texts = {source_lang: description}
+    for lang in ACTIVE_DESCRIPTION_LANGUAGES:
+        if lang not in texts:
+            texts[lang] = _translate_description(description, source_lang, lang)
+    return texts
+
+
 def _install_synthesized(run, intent, user_query):
     """Prepara e prova il candidato privato, poi lo consegna alla porta Birth.
 
@@ -86,7 +139,12 @@ def _install_synthesized(run, intent, user_query):
     devono riuscire nel runner isolato PRIMA di qualsiasi ammissione.
     Soltanto il pubblicatore Birth puo' creare o sostituire l'authoring;
     questa funzione elimina esclusivamente il proprio staging temporaneo.
-    Il lifecycle ``synthesized`` non rende il candidato visibile al planner.
+
+    The candidate is written as it will run: lifecycle ``active``, the final
+    code digest, the description in every required language. It stays out of
+    every catalog until Birth admits it (review and consent for generated
+    code, ADR 0224); nothing rewrites it afterwards, so an approval covers
+    exactly the bytes that become selectable.
     """
     require_synth_birth_service()
     if not run.name or not run.code_text:
@@ -121,6 +179,8 @@ def _install_synthesized(run, intent, user_query):
     (out_dir / code_filename).write_text(run.code_text, encoding="utf-8")
 
     description = s4.get("description") or intent or run.name
+    from manifest_code_digest import compute_code_digest
+    code_digest = compute_code_digest(out_dir, [code_filename])
     affinity = s4.get("affinity") or []
     revertible = bool(s1.get("revertible") or False)
     reverse_pattern = s2.get("reverse_pattern")
@@ -140,7 +200,8 @@ def _install_synthesized(run, intent, user_query):
     import json as _json
     import os as _os
     cur_lang = _os.environ.get("METNOS_LANG", "it")
-    _generated_contract = generated_contract_context(lifecycle="synthesized", origin="synthesized")
+    descriptions = _description_in_required_languages(description, cur_lang)
+    _generated_contract = generated_contract_context(lifecycle="active", origin="synthesized")
     lines = [
         f'# Manifest synthesized — Metnos synt multistage {time.strftime("%Y-%m-%d")}',
         '',
@@ -161,11 +222,12 @@ def _install_synthesized(run, intent, user_query):
         *_generated_contract["execution_policy_toml"].splitlines(),
         '',
         '[description]',
-        f'{cur_lang} = {_json.dumps(description, ensure_ascii=False)}',
+        *(f'{lang} = {_json.dumps(text, ensure_ascii=False)}'
+          for lang, text in descriptions.items()),
         '',
         '[code]',
         f'files  = ["{code_filename}"]',
-        'digest = "sha256:placeholder"',  # publication boundary lo aggiorna
+        f'digest = "{code_digest}"',
         '',
         '[args]',
         'type     = "object"',
@@ -197,8 +259,8 @@ def _install_synthesized(run, intent, user_query):
                 lines.append(f'name = {_toml_value(cap)}')
 
     # Il prompt di code generation impone questo envelope. La forma resta
-    # volutamente larga nel candidato; una futura promozione deve verificarla
-    # contro il comportamento effettivo prima di attivare l'executor.
+    # volutamente larga: i casi eseguiti nel runner isolato e la revisione
+    # indipendente la confrontano col comportamento prima dell'ammissione.
     lines.extend([
         '',
         '[output]',
@@ -236,8 +298,15 @@ def _install_synthesized(run, intent, user_query):
         ])
 
     _manifest_text = "\n".join(lines) + "\n"
-    validate_generated_manifest_text(
-        _manifest_text, expected_lifecycle="synthesized")
+    _generated_manifest = validate_generated_manifest_text(
+        _manifest_text, expected_lifecycle="active")
+    from executor_standard import validate_for_lifecycle
+    _standard_findings = validate_for_lifecycle(
+        _generated_manifest, require_declaration=True)
+    if _standard_findings:
+        raise RuntimeError("generated manifest is not a complete active executor: "
+                           + "; ".join(f"{finding.code}: {finding.message}"
+                                       for finding in _standard_findings[:8]))
     (out_dir / "manifest.toml").write_text(_manifest_text, encoding="utf-8")
 
     # Derive the companion from the completed JSON-Schema tree.  The shared
@@ -412,7 +481,7 @@ def handle_synth_request(args, *, user_query, progress=None, verbose=False, curr
 
     # Un candidato gia' generato non e' un tool disponibile e non deve essere
     # rigenerato o presentato al planner come tale. Rimane una singola unita'
-    # in attesa dei gate di promozione.
+    # pubblicato come candidato prima del 10/11/2026 (oggi nasce attivo).
     _existing_candidate = (
         _raw_cat.executors.get(expected_name)
         if _raw_cat is not None else None
@@ -700,9 +769,9 @@ def handle_synth_request(args, *, user_query, progress=None, verbose=False, curr
             print(f"[synth_request] failed to persist proposal: {ex}")
 
     if run.final_state == "synthesized":
-        # Scrive manifest+code nel pool dei candidati e firma l'unita'. La firma
-        # non implica attivazione: il lifecycle synthesized resta fuori dal
-        # catalogo del composer.
+        # Consegna il candidato a Birth. Senza la revisione indipendente Birth
+        # non lo ammette e il candidato resta conservato fuori da ogni
+        # catalogo (`review_pending`); ammesso, e' attivo e il planner lo usa.
         install_error = None
         pending_proposal_id = None
         try:
@@ -730,10 +799,10 @@ def handle_synth_request(args, *, user_query, progress=None, verbose=False, curr
         return {
             "ok": install_error is None,
             "synthesized": True,
-            "installed": False,
-            "candidate_created": install_error is None,
-            "planner_visible": False,
-            "lifecycle": "synthesized" if install_error is None else None,
+            "installed": install_error is None,
+            "candidate_created": install_error is None or pending_proposal_id is not None,
+            "planner_visible": install_error is None,
+            "lifecycle": "active" if install_error is None else None,
             "install_error": install_error,
             "proposed_name": run.name,
             "proposal_id": pending_proposal_id or proposal_id,

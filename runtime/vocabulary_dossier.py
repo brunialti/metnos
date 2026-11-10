@@ -24,6 +24,9 @@ from affinity_integrity import VOCABULARY_MARKER
 FORBIDDEN_BY_NAMING_RULES = frozenset({"batch", "fetch"})
 
 _QUOTED = re.compile(r"['\"`‘’“”«»]([A-Za-z][A-Za-z0-9_-]{1,29})['\"`‘’“”«»]")
+# Further requested words follow the first one as a list, joined by
+# punctuation only: no connective of any one language is assumed.
+_LISTED = re.compile(r"\s*[,;/+&]\s*" + _QUOTED.pattern)
 _WINDOW = 300
 
 
@@ -45,11 +48,24 @@ def proposer_text(intent) -> str | None:
 
 
 def requested_words(intent) -> list[str]:
-    """Words the proposer quoted after the marker, in order, once each."""
+    """The words the proposer asks for: the first quoted after the marker,
+    and the ones listed right after it.
+
+    The proposer writes the requested token first and then argues for it,
+    often quoting existing words it compares with («'translate' — 'change'
+    does not cover it»). Those are arguments, not requests.
+    """
     text = proposer_text(intent)
     if text is None:
         return []
-    return list(dict.fromkeys(match.lower() for match in _QUOTED.findall(text)))
+    first = _QUOTED.search(text)
+    if first is None:
+        return []
+    words, at = [first.group(1).lower()], first.end()
+    while (listed := _LISTED.match(text, at)) is not None:
+        words.append(listed.group(1).lower())
+        at = listed.end()
+    return list(dict.fromkeys(words))
 
 
 def classify(word: str, affinities: dict[str, Iterable[str]] | None = None) -> dict:

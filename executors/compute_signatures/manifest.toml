@@ -15,8 +15,8 @@ name = "compute:pure"
 hint = ["signature"]
 
 [[capabilities]]
-name = "fs:write"
-hint = ["~/.local/state/metnos/safety.db"]
+name = "metnos:write"
+hint = ["safety_signatures:local"]
 when = { arg = "op", values = ["seed_apply"] }
 
 [[tests]]

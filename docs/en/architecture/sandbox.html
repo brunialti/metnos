@@ -175,6 +175,22 @@ host network; bubblewrap does not restrict it to one host or provider.
 Application controls and narrowly scoped credentials must enforce that
 boundary.</p>
 
+<h2>3.3 Private configuration</h2>
+
+<p>Metnos's configuration folder holds the administrative key, the
+credential-store key, and the encrypted credentials. A broad file grant, for
+example on the whole home folder, does not make it visible: after every mount
+that contains it, the profile covers it with an empty folder. Only the paths a
+capability declares explicitly stay visible, such as the credentials of one mail
+account. The administrative key never enters the sandbox, and a credential-store
+key is never created inside it.</p>
+
+<p>The same holds for the service's state folder, which holds internal stores,
+sessions, and logs: a broad grant leaves it empty, and only what a capability
+declares comes back, for example the safety-signature register. A path passed
+as an argument never opens these folders: the request is refused with the
+reason.</p>
+
 <h1 id="cap4">4. Unavailable bubblewrap</h1>
 
 <p>If <code>bwrap</code> is not on <code>PATH</code>, or if

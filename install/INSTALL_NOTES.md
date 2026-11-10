@@ -657,6 +657,17 @@ the same Metnos user unless a separate Metnos account is deliberately used.
 `--yes` skips optional credential prompts. It must never invent credentials,
 copy values from another account or weaken the initial consent gate.
 
+The vault is encrypted with its own key, `~/.config/metnos/vault.key`, created
+by `runtime/credentials.py` at first use and never by the installer; the HTTP
+admin key (`admin.key`) does not open it (ADR 0082). A backup or a migration of
+an account must carry `vault.key` together with `credentials/`. No executor
+sandbox ever receives `admin.key`, and the configuration root is not exposed by
+a broad file grant (`runtime/sandbox.py`, `_mask_private_configuration`).
+
+A laboratory installation that still holds Birth receipts written with the
+retired F5 states (`preexercise`, `quarantined`, `promotion_revision`) cannot be
+read by the current code: rebuild it, do not migrate it.
+
 ## Optional sidecars
 
 `install/sidecar.py::SIDECARS` is the executable registry and therefore the

@@ -87,6 +87,143 @@ def _filesystem_host_masks(bind_args: list[str]) -> list[str]:
     return args
 
 
+def _private_configuration() -> tuple[Path | None, Path | None, frozenset[Path]]:
+    """Configuration root, the key no executor may see, and the vault secrets.
+
+    The vault key and the credential directory are visible only through a
+    bind that names exactly that path (the credentials capability, the mail
+    account selection); a grant of the whole root does not include them.
+    """
+    try:
+        import config as _C
+        import credentials as _credentials
+    except ImportError:
+        return None, None, frozenset()
+    return (Path(_C.PATH_USER_CONFIG), Path(_credentials.ADMIN_KEY_PATH),
+            frozenset({Path(_credentials.VAULT_KEY_PATH),
+                       Path(_credentials.CRED_DIR)}))
+
+
+def _private_state() -> Path | None:
+    """The service's state root: stores, sessions and logs, never a person's
+    files. Only a managed resource or a bind naming a path inside it shows a
+    part of it to an executor."""
+    try:
+        import config as _C
+    except ImportError:
+        return None
+    return Path(_C.PATH_USER_STATE)
+
+
+def private_roots() -> tuple[Path, ...]:
+    """The roots no path argument may open, resolved; missing ones left out."""
+    roots = [_private_configuration()[0], _private_state()]
+    return tuple(path for path in map(_resolved, (root for root in roots if root is not None))
+                 if path is not None)
+
+
+def inside_private_root(path) -> bool:
+    """True when ``path`` is a private root or lies inside one."""
+    try:
+        resolved = Path(path).resolve()
+    except (OSError, RuntimeError):
+        return False
+    return any(resolved == root or root in resolved.parents for root in private_roots())
+
+
+def _resolved(value) -> Path | None:
+    try:
+        return Path(value).resolve(strict=True)
+    except (OSError, RuntimeError):
+        return None
+
+
+def _mask_private_configuration(args: list[str]) -> list[str]:
+    """Keep the service's own configuration out of broad filesystem binds.
+
+    A hint such as ``~/**`` grants the person's files, not the configuration
+    root that lives beside them (admin key, credential vault, tokens). After
+    every bind whose source contains that root, the root becomes an empty
+    read-only tmpfs and only the binds naming a path inside it are restored.
+    A grant of the root itself restores its entries except the vault secrets.
+    The HTTP admin key is never bound, whatever a manifest declares (RM-0009
+    FS-B): a secret is absent in the sandbox, never an empty placeholder.
+    """
+    root, admin_key, vault_secrets = _private_configuration()
+    root = _resolved(root) if root is not None else None
+    if root is not None:
+        args = _mask_private_root(
+            args, root, admin_key=_resolved(admin_key), read_only=True,
+            secrets={path for path in map(_resolved, vault_secrets) if path is not None})
+    state = _private_state()
+    state = _resolved(state) if state is not None else None
+    if state is not None:
+        # Left writable, as for an executor without a broad grant: stores that
+        # must not be invented refuse to be created in a sandbox themselves.
+        args = _mask_private_root(args, state, admin_key=None, secrets=set(),
+                                  read_only=False)
+    return args
+
+
+def _mask_private_root(args: list[str], root: Path, *, admin_key: Path | None,
+                       secrets: set[Path], read_only: bool) -> list[str]:
+    """Cover ``root`` after every bind that contains it; see the caller."""
+
+    def entries(option: str, mask: Path) -> list[str]:
+        """The root's own entries, without the admin key and vault secrets."""
+        found: list[str] = []
+        for child in sorted(root.iterdir()):
+            entry = _resolved(child)
+            if entry is None or entry == admin_key or entry in secrets:
+                continue
+            found += [option, str(child), str(mask / child.name)]
+        return found
+
+    out: list[str] = []
+    hidden: list[Path] = []
+    earlier: list[tuple[str, str, str, Path]] = []
+    index = 0
+    while index < len(args):
+        if not (args[index] in {"--bind", "--ro-bind"} and index + 2 < len(args)):
+            out.append(args[index])
+            index += 1
+            continue
+        option, source, destination = args[index:index + 3]
+        index += 3
+        origin = _resolved(source)
+        if origin is None:
+            out += [option, source, destination]
+            continue
+        if admin_key is not None and origin == admin_key:
+            continue
+        covers = origin == root or origin in root.parents
+        if not covers:
+            out += [option, source, destination]
+            earlier.append((option, source, destination, origin))
+            continue
+        mask = Path(destination) / root.relative_to(origin)
+        if mask not in hidden:
+            hidden.append(mask)
+        if origin != root:
+            out += [option, source, destination]
+        out += ["--tmpfs", str(mask)]
+        # Binds made before this one inside the root were covered by it; they
+        # come back in their original order, so a later bind still prevails.
+        for previous_option, previous_source, previous_destination, previous in earlier:
+            inner = Path(previous_destination)
+            if previous == root and inner == mask:
+                out += entries(previous_option, mask)
+            elif mask in inner.parents:
+                out += [previous_option, previous_source, previous_destination]
+        if origin == root:
+            out += entries(option, mask)
+        earlier.append((option, source, destination, origin))
+    if read_only:
+        for mask in hidden:
+            out += ["--remount-ro", str(mask)]
+    return out
+
+
 def requires_os_sandbox(executor) -> bool:
     """Every ordinary executor subprocess has no naked fallback.
 
@@ -207,6 +344,13 @@ def _managed_local_resource_paths(hints: list[str], *, writable: bool) -> list[P
                 Path(_C.PATH_USER_CONFIG) / "google_maps.env",
             ), False),
         }
+        # The safety-signature store is granted as its own directory, so the
+        # sidecar files of its write-ahead log are the ones the service uses.
+        # Settled only when asked for: every other executor never opens it.
+        if any(isinstance(hint, str) and hint == "safety_signatures:local"
+               for hint in hints or []):
+            from safety.storage import store_directory
+            resources["safety_signatures"] = ((store_directory(),), True)
     except Exception:
         return []
     out: list[Path] = []
@@ -330,6 +474,10 @@ def _filesystem_argument_extras(
                         path = path.resolve(strict=True)
                     except (OSError, RuntimeError, ValueError):
                         continue
+                # A path argument is the person's word, never a grant of the
+                # service's own configuration or state.
+                if inside_private_root(path):
+                    continue
                 key = str(path)
                 if key in seen:
                     continue
@@ -854,16 +1002,22 @@ def _build_bwrap_args(
             vault_dir = Path(_credentials.CRED_DIR)
             if writable and not vault_dir.exists():
                 vault_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
-            if vault_dir.exists():
-                args += ["--bind" if writable else "--ro-bind",
-                         str(vault_dir), str(vault_dir)]
+            # The key is settled before the vault is exposed: a vault bound
+            # without its key would let the sandbox mint a throwaway key and
+            # store a credential nobody can open again.
             _credentials.ensure_vault()
             vault_key = Path(_credentials.VAULT_KEY_PATH)
             if vault_key.exists():
+                if vault_dir.exists():
+                    args += ["--bind" if writable else "--ro-bind",
+                             str(vault_dir), str(vault_dir)]
                 args += ["--ro-bind", str(vault_key), str(vault_key)]
-        except (ImportError, OSError):
-            # The executor reports the missing vault/key honestly downstream.
-            pass
+        except (ImportError, OSError) as exc:
+            # Neither vault nor key is bound: the executor reports the missing
+            # vault honestly downstream.
+            import logging
+            logging.getLogger("metnos.sandbox").warning(
+                "sandbox: credential vault not exposed: %s", type(exc).__name__)
     for cap in capabilities or []:
         kind = _capability_kind(cap)
         mode = _capability_mode(cap)
@@ -973,6 +1127,12 @@ def _build_bwrap_args(
     for name, path in sorted(sealed_by_name.items()):
         args += ["--ro-bind", str(path), str(root / name)]
     args += ["--remount-ro", str(root)]
+
+    # After every bind: the service's configuration root never rides along
+    # with a broad filesystem grant, and no executor sees the admin key.
+    args = _mask_private_configuration(args)
+    # An executor uses the vault key it was given and never mints one.
+    args += ["--setenv", "METNOS_SANDBOXED", "1"]
 
     # These endpoints trust the service process. Ordinary executor subprocesses
     # share its UID, so they must never inherit endpoint access from a broad or
@@ -1301,10 +1461,18 @@ def mail_extras(executor, args) -> tuple[list[Path], bool, dict[str, str]]:
     # The vault key opens the selected vault files, and only when one is
     # selected; the HTTP admin key never enters (RM-0009 FS-B).
     if any(path.parent == vault_root for path in paths):
-        _credentials.ensure_vault()
         vault_key = Path(_credentials.VAULT_KEY_PATH)
+        try:
+            _credentials.ensure_vault()
+        except OSError as exc:
+            import logging
+            logging.getLogger("metnos.sandbox").warning(
+                "sandbox: mail vault not exposed: %s", type(exc).__name__)
         if vault_key.is_file():
             paths.insert(0, vault_key)
+        else:
+            # A vault file without its key cannot be opened: do not expose it.
+            paths = [path for path in paths if path.parent != vault_root]
     return paths, True, environment
 
 

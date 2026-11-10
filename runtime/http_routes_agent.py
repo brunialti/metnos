@@ -4462,7 +4462,8 @@ async def turn_feedback_handler(request: web.Request) -> web.Response:
 
     Body JSON: {"action": "ok"|"error"}.
     OK/Error propagano il verdict a engine.autopath; error marca il turno
-    negativo in audit log (rejected pipelines LWW + E12 demote executor).
+    negativo in audit log (rejected pipelines LWW). Un riscontro non nasconde
+    mai uno strumento: lo decide una persona dalla pagina Modifiche.
 
     Risposta HTML (htmx HX-Request) o JSON.
     """

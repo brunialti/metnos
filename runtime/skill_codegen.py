@@ -95,9 +95,18 @@ def _affinity_maps() -> tuple[dict, dict]:
 _AFFINITY_BY_OBJ, _AFFINITY_BY_VERB = _affinity_maps()
 
 
-def _default_affinity(plan) -> list:
+def skill_service(parsed_skill) -> str:
+    """The service an imported tool belongs to: its skill's binding name."""
+    return str(parsed_skill.name).lower().replace("-", "_").replace(".", "_")
+
+
+def _default_affinity(plan, service: str = "") -> list:
     """Affinity baseline QUALIFIED: combina verbo+oggetto in frasi (es.
     'cerca mail', 'find email') invece di bare nouns separati.
+
+    With ``service`` every phrase also names it («cerca mail notion»): a tool
+    of an external service needs a word of its own in each tag, and the
+    service's name is that word (RM-0010, `affinity_integrity`).
 
     Razionale §7.3 (bug F4 22/5/2026): `find_messages` con affinity
     `[mail, email, find, search]` matchava «mandami una mail» (send_messages
@@ -109,19 +118,20 @@ def _default_affinity(plan) -> list:
     affinity_by_obj, affinity_by_verb = _affinity_maps()
     objs = list(affinity_by_obj.get(plan.obj, []))
     verbs = list(affinity_by_verb.get(plan.verb, []))
+    named = " " + " ".join(service.split("_")) if service else ""
     if not objs or not verbs:
         # Fallback: concat dedup capped 15.
         seen, out = set(), []
         for t in objs + verbs:
             if t not in seen:
                 seen.add(t)
-                out.append(t)
+                out.append(t + named)
         return out[:15]
     # Cartesian qualified: verbo + " " + oggetto. Cap 15 = ~3 verbi × 5 obj.
     out: list[str] = []
     for v in verbs:
         for o in objs:
-            phrase = f"{v} {o}"
+            phrase = f"{v} {o}{named}"
             if phrase not in out:
                 out.append(phrase)
             if len(out) >= 15:
@@ -680,7 +690,7 @@ def build_context(plan, parsed_skill, *, description_it=None,
         description_en = description_en or d_en
 
     if affinity is None:
-        affinity = _default_affinity(plan)
+        affinity = _default_affinity(plan, skill_service(parsed_skill))
 
     vectorial_coalesce = _vectorial_hint_from_plan(plan)
     resource_input_group = _resource_input_group(plan)

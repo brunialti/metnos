@@ -51,6 +51,34 @@ TRANSLATIONS = {
         'per parole in comune, {requests} proposte chiedono una parola nuova del vocabolario.',
         'Tool words, last {days} days: {refused} tools refused for shared words, '
         '{requests} proposals ask for a new vocabulary word.'),
+    'ERR_CHANGE_INVALID_BODY': (
+        'Il contenuto della richiesta non è leggibile: la decisione non è stata registrata.',
+        'The request body cannot be read: the decision was not recorded.'),
+    'UI_CHANGE_REVIEW_PENDING': (
+        'Candidato pronto, in attesa della revisione indipendente ({proposal_id}).',
+        'Candidate ready, waiting for the independent review ({proposal_id}).'),
+    'MSG_PLAN_REJECTED_BY_DECISION': (
+        'Non ho eseguito il piano: per questa richiesta quel percorso è stato rifiutato dalla '
+        'pagina Modifiche e non ne ho trovato un altro. Non ho cambiato niente. '
+        'Puoi riformulare la richiesta o togliere il rifiuto dalla pagina Modifiche.',
+        'I did not run the plan: for this request that path was rejected on the Changes page '
+        'and I found no other one. Nothing was changed. '
+        'You can rephrase the request or remove the rejection on the Changes page.'),
+    'MSG_CHANGE_REJECT_EMPTY': (
+        'La proposta non indica quali strumenti evitare: non c’è niente da registrare.',
+        'The proposal does not say which tools to avoid: there is nothing to record.'),
+    'ERR_CHANGE_REASON_REQUIRED': (
+        'Questa proposta chiede una parola nuova del vocabolario: per accettarla scrivi il motivo.',
+        'This proposal asks for a new vocabulary word: write the reason to accept it.'),
+    'ERR_CHANGE_RETRY_NOT_FAILED': (
+        'Si può riprovare solo una modifica fallita; questa è nello stato «{state}».',
+        'Only a failed change can be retried; this one is in state “{state}”.'),
+    'MSG_CHANGE_REDIRECTED': (
+        'Synt non ha creato {name}: esiste già lo strumento {existing}, che fa lo stesso lavoro.',
+        'Synt did not create {name}: the tool {existing} already does the same job.'),
+    'MSG_CHANGE_NOT_ACTIVE': (
+        'Synt ha concluso, ma {name} non è fra gli strumenti attivi: nessuna funzione nuova è in uso.',
+        'Synt finished, but {name} is not among the active tools: no new capability is in use.'),
     'MSG_LEARNING_GAP_SUMMARY': (
         'Funzione mancante chiesta {n} volte, per esempio: «{query}».',
         'Missing capability requested {n} times, for example: “{query}”.'),

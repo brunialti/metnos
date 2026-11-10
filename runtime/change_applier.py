@@ -40,6 +40,9 @@ from change_intents import (
     mark_applied,
     mark_failed,
 )
+from logging_setup import get_logger
+
+_log = get_logger(__name__)
 
 
 # --- Audit ---------------------------------------------------------------
@@ -57,33 +60,70 @@ def _audit(record: dict) -> None:
 
 # --- Handler: create_executor --------------------------------------------
 
-def apply_create_executor(ci: ChangeIntent) -> dict:
-    """Invoca pipeline synt_request per generare nuovo executor.
+class ReviewPending(Exception):
+    """Synth made a candidate that waits for the independent review.
 
-    Idempotente: short-circuit se l'executor esiste gia' nel catalog.
-    Reuse handle_synth_request che ha gia' i suoi short-circuit
-    (already_in_catalog, redirected alias).
+    Nothing is applied and nothing failed: the proposal stays accepted until
+    the reviewed candidate is admitted (ADR 0224) or the person withdraws it.
+    """
+
+    def __init__(self, proposal_id: str) -> None:
+        self.proposal_id = proposal_id
+        super().__init__(proposal_id)
+
+
+def _planner_can_use(name: str) -> bool:
+    """True when ``name`` is an executor the planner selects from."""
+    from loader import VISIBILITY_COMPOSER, filter_for_visibility, load_catalog
+
+    return name in filter_for_visibility(
+        load_catalog(verify=True), VISIBILITY_COMPOSER).executors
+
+
+def pending_review(name: str) -> str | None:
+    """The retained candidate of ``name`` that waits for review, if any."""
+    try:
+        from synt import DEFAULT_PROPOSALS_DIR
+        from synth_proposal_store import pending_for_name
+        return pending_for_name(DEFAULT_PROPOSALS_DIR, name)
+    except Exception as exc:  # noqa: BLE001 - an unreadable store is not a candidate
+        _log.warning("change_applier: pending review lookup failed: %r", exc)
+        return None
+
+
+def apply_create_executor(ci: ChangeIntent) -> dict:
+    """Ask Synth for the executor and report only what really happened.
+
+    «Applied» means the planner can use the executor now. A candidate that
+    waits for the independent review raises ``ReviewPending``; a redirect to
+    an existing executor or a candidate that is not active is a failure with
+    its reason, never a silent success (§2.8).
 
     Latenza: ~150s wall per generazione full (stage 1-5). Daemon ok.
     """
+    from messages import get as _msg
+
     body = ci.intent_body or {}
     target = ci.intent_target
     expected_name = body.get("name") or target
-    intent_text = body.get("intent_text") or ci.intent_summary or target
+    # What Synth builds from is the request frozen when the proposal was
+    # born, never the page sentence: that one is rewritten at every new gap.
+    intent_text = (body.get("intent_text") or body.get("query_sample")
+                   or ci.intent_summary or target)
 
-    # Short-circuit: gia' nel catalog
     try:
-        from loader import load_catalog
-        cat = load_catalog(verify=True)
-        if expected_name in cat.executors:
+        if _planner_can_use(expected_name):
             return {
                 "executor_name": expected_name,
                 "short_circuit": "already_in_catalog",
             }
-    except Exception:
-        pass
+    except Exception as exc:  # noqa: BLE001 - Synth below reports the real state
+        _log.warning("change_applier: catalog check failed: %r", exc)
 
-    # Invoca synth
+    waiting = pending_review(expected_name)
+    if waiting:
+        raise ReviewPending(waiting)
+
     from synth_request import handle_synth_request
     result = handle_synth_request(
         {"expected_name": expected_name, "intent": intent_text},
@@ -91,8 +131,16 @@ def apply_create_executor(ci: ChangeIntent) -> dict:
         progress=None,
         verbose=False,
     )
+    if result.get("review_pending"):
+        raise ReviewPending(str(result.get("proposal_id") or ""))
     if not result.get("ok", True):
-        raise RuntimeError(f"synth_request failed: {result.get('error', 'unknown')}")
+        reason = result.get("error") or result.get("install_error") or "unknown"
+        raise RuntimeError(f"synth_request failed: {reason}")
+    if result.get("redirected"):
+        raise RuntimeError(_msg("MSG_CHANGE_REDIRECTED", name=expected_name,
+                                existing=str(result.get("name") or "")))
+    if not _planner_can_use(expected_name):
+        raise RuntimeError(_msg("MSG_CHANGE_NOT_ACTIVE", name=expected_name))
     return {
         "executor_name": expected_name,
         "synth_proposal_id": result.get("proposal_id"),
@@ -259,6 +307,10 @@ def apply_reject_pattern(ci: ChangeIntent) -> dict:
     body = ci.intent_body or {}
     canonical = body.get("canonical_query") or ci.intent_target
     tools = body.get("tools_sequence") or []
+    if not tools:
+        # Nothing to avoid: recording it would be an effect in name only.
+        from messages import get as _msg
+        raise RuntimeError(_msg("MSG_CHANGE_REJECT_EMPTY"))
     out_path = C.PATH_USER_DATA / "rejected_patterns.jsonl"
     out_path.parent.mkdir(parents=True, exist_ok=True)
     record = {
@@ -327,12 +379,15 @@ def task_change_applier(payload: dict | None = None) -> dict:
             continue
         try:
             effect = handler(ci)
-            mark_applied(ci.id, effect=effect)
-            applied_count += 1
+        except ReviewPending as pending:
+            # Still accepted: the next run checks again without asking Synth.
+            skipped_count += 1
             details.append({"id": ci.id, "kind": ci.intent_kind,
-                            "result": "applied", "effect": effect})
-            _audit({"event": "applied", "id": ci.id, "kind": ci.intent_kind,
-                    "effect": effect})
+                            "result": "review_pending",
+                            "proposal_id": pending.proposal_id})
+            _audit({"event": "review_pending", "id": ci.id,
+                    "kind": ci.intent_kind, "proposal_id": pending.proposal_id})
+            continue
         except NotImplementedError as exc:
             mark_failed(ci.id, reason=f"not_yet_implemented: {exc}")
             skipped_count += 1
@@ -341,6 +396,7 @@ def task_change_applier(payload: dict | None = None) -> dict:
                             "reason": str(exc)})
             _audit({"event": "not_implemented", "id": ci.id,
                     "kind": ci.intent_kind, "reason": str(exc)})
+            continue
         except Exception as exc:
             mark_failed(ci.id, reason=f"{type(exc).__name__}: {exc}")
             failed_count += 1
@@ -348,6 +404,13 @@ def task_change_applier(payload: dict | None = None) -> dict:
                             "result": "failed", "error": str(exc)[:200]})
             _audit({"event": "failed", "id": ci.id, "kind": ci.intent_kind,
                     "error": str(exc)[:200]})
+            continue
+        mark_applied(ci.id, effect=effect)
+        applied_count += 1
+        details.append({"id": ci.id, "kind": ci.intent_kind,
+                        "result": "applied", "effect": effect})
+        _audit({"event": "applied", "id": ci.id, "kind": ci.intent_kind,
+                "effect": effect})
 
     return {
         "ok": True,

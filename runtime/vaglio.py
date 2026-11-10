@@ -267,6 +267,17 @@ def guard_check(executor_name: str, args: dict, context: dict | None = None,
             if pat.search(s):
                 return False, f"forbidden path violato: pattern {pat.pattern!r} in args"
 
+    # The service's own configuration and state are never reached through a
+    # path argument, for reading either; the roots come from the configuration.
+    try:
+        from sandbox import inside_private_root
+        for s in expanded:
+            if os.path.isabs(s) and inside_private_root(s):
+                from messages import get as _msg
+                return False, _msg("ERR_VAGLIO_PRIVATE_ROOT")
+    except ImportError:
+        return False, "private_root_policy_unavailable"
+
     # Keep the conservative name-based fallback. Signed read-only bindings may
     # exclude only their own argument, never another destination with the same
     # value. Declared filesystem writes apply regardless of the executor name.

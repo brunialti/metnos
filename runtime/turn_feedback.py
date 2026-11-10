@@ -5,8 +5,9 @@ Loop di rinforzo esplicito (22/5/2026). L'utente preme:
 - `ok`: rinforza il path usato (verdict propagato a engine.autopath).
 - `error`: il path usato e' sbagliato: marca il turno come negativo in
   `~/.local/share/metnos/turn_feedback.jsonl` (audit + rejected pipelines
-  per il PLANNER), propaga il verdict a engine.autopath e — dopo N ✗
-  consecutive sullo stesso tool — demote l'executor synth (E12).
+  per il PLANNER) e propaga il verdict a engine.autopath. A ✗ never hides
+  an executor: the name-based demotion after repeated ✗ was removed on
+  10/11/2026 by Roberto's decision, like the quarantine before it.
 
 Non premere = nessun segnale (default neutro).
 
@@ -117,7 +118,7 @@ def _owner_scoped_feedback(function):
 @_owner_scoped_feedback
 def apply_feedback(turn_id: str, action: str, by: str = "user") -> dict:
     """Applica il feedback. Persistente in FEEDBACK_PATH e propaga gli
-    effetti (E12 demote executor, verdict a engine.autopath).
+    effetti (verdict a engine.autopath).
 
     Ritorna dict con: turn_id, action, by, ts, effects (lista).
     """
@@ -163,13 +164,6 @@ def apply_feedback(turn_id: str, action: str, by: str = "user") -> dict:
             record["rejected_pipeline"] = pipeline
         else:  # ok
             record["approved_pipeline"] = pipeline
-
-    # E12 feedback→demote (24/5/2026): su action="error" con pipeline nota,
-    # controlla se uno dei tool ha superato la soglia ✗ consecutive. Il
-    # count comprende il feedback CORRENTE (lookback storia + 1). Demote
-    # solo synth non-protetti (ADR 0114 L3, enforcement in apply_feedback_ager).
-    if pipeline:
-        effects.extend(_tool_verdict_effects(pipeline, action))
 
     # ── Fastpath L0 valve (12/6/2026, §2.8) ───────────────────────────
     # Un ✗ cancella la riga L0 della query del turno (qualunque layer
@@ -236,44 +230,11 @@ def apply_feedback(turn_id: str, action: str, by: str = "user") -> dict:
     return record
 
 
-def _aged_demote(tool_name: str, consecutive: int) -> dict:
-    """Demote by executor name in the aging store."""
-    try:
-        from executor_aging import apply_feedback_ager
-        result = apply_feedback_ager(tool_name, consecutive_errors=consecutive)
-    except Exception as ex:
-        log.warning("turn_feedback: apply_feedback_ager(%s) failed: %r", tool_name, ex)
-        result = {"action": "noop", "reason": f"ager_error: {ex}"}
-    return {"type": "feedback_demote", **result}
-
-
-def _tool_verdict_effects(pipeline: list, action: str) -> list[dict]:
-    """Apply the one consecutive-✗ threshold per tool, by executor name."""
-    if action != "error":
-        return []
-    try:
-        from runtime_settings import feedback_error_demote_threshold
-        threshold = feedback_error_demote_threshold()
-    except Exception as ex:
-        log.warning("turn_feedback: demote setup failed: %r", ex)
-        threshold = 0
-    if threshold <= 0:
-        return []
-    effects: list[dict] = []
-    for tool_name in dict.fromkeys(pipeline):  # dedup preservando ordine
-        consecutive = count_consecutive_errors_for_tool(tool_name) + 1
-        if consecutive >= threshold:
-            effects.append(_aged_demote(tool_name, consecutive))
-    return effects
-
-
 def _append_feedback(record: dict) -> None:
     """Append-only JSONL."""
     FEEDBACK_PATH.parent.mkdir(parents=True, exist_ok=True)
     with FEEDBACK_PATH.open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(record, ensure_ascii=False) + "\n")
-
-
 
 
 def count_consecutive_errors_for_query(user_query: str,
@@ -306,44 +267,6 @@ def count_consecutive_errors_for_query(user_query: str,
             break  # un ok resetta il counter consecutivo
         if rec.get("action") == "error":
             count += 1
-    return count
-
-
-def count_consecutive_errors_for_tool(tool_name: str,
-                                       *, lookback: int = FEEDBACK_LOOKBACK) -> int:
-    """Conteggio feedback ✗ consecutive (cross-query) per `tool_name`.
-
-    Usato da E12 feedback→demote: dopo N ✗ consecutive sullo stesso tool,
-    l'executor viene demoted. LWW: un ✓ su un feedback che include
-    `tool_name` nella `approved_pipeline` resetta il counter (signal che
-    il tool e' valido in qualche altro contesto).
-
-    Scan dal piu' recente all'indietro, stop al primo ✓ che menziona
-    `tool_name`. ✗ che menzionano `tool_name` incrementano. Feedback su
-    altri tool sono ignorati (non interrompono la sequenza).
-    """
-    if not tool_name or not FEEDBACK_PATH.is_file():
-        return 0
-    with FEEDBACK_PATH.open(encoding="utf-8") as fh:
-        lines = fh.readlines()
-    count = 0
-    for line in reversed(lines[-lookback:]):
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            rec = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        action = rec.get("action")
-        if action == "ok":
-            pipeline = rec.get("approved_pipeline") or []
-            if tool_name in pipeline:
-                break  # ✓ sullo stesso tool resetta
-        elif action == "error":
-            pipeline = rec.get("rejected_pipeline") or []
-            if tool_name in pipeline:
-                count += 1
     return count
 
 
@@ -396,6 +319,17 @@ def rejected_pipelines_for_query(user_query: str,
     rejected = [pipeline_by_sig[sig] for sig, act in latest.items()
                 if act == "error"]
     return rejected + [p for p in accepted if p not in rejected]
+
+
+def normalized_request(text) -> str:
+    """The form in which a request is compared with the refusals on record."""
+    return str(text or "").strip().lower()
+
+
+def accepted_rejections_for_query(user_query: str) -> list[list[str]]:
+    """Tool sequences an accepted change told Metnos to avoid for this request."""
+    needle = normalized_request(user_query)
+    return _accepted_rejections(needle) if needle else []
 
 
 def _accepted_rejections(needle: str) -> list[list[str]]:

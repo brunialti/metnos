@@ -80,6 +80,9 @@ TRANSLATIONS = {
     'MSG_TABLE_CONTEXT_COLUMN': (
         'Contesto',
         'Context'),
+    'MSG_RECORD_OWN_CODE_FIELD': (
+        'numero',
+        'number'),
 }
 
 

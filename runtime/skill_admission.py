@@ -237,48 +237,62 @@ def _scan_existing_executors(roots) -> dict:
     return out
 
 
-def _existing_affinity_sets() -> tuple[dict, dict]:
-    """Return admitted handcrafted/synth affinity from the live authority."""
+def _existing_affinity_sets(importing: str = "") -> tuple[dict, dict]:
+    """Affinity of every executor already there, whoever wrote it.
+
+    The first mapping holds the authored ones (builtin, handcrafted, imported
+    from other skills), the second the synthesized ones. Tools of the skill
+    being imported (``importing``, its binding) are left out: a re-import
+    replaces them.
+    """
     from manifest_inventory import ManifestLayout, resolve_manifest_layout
 
     if resolve_manifest_layout() is ManifestLayout.AUTHORING:
+        builtin = Path(__file__).resolve().parent / "builtin_executor_contracts"
         return (
-            _scan_existing_executors(_HANDCRAFTED_DIRS),
+            _scan_existing_executors((*_HANDCRAFTED_DIRS, str(builtin))),
             _scan_existing_executors(_SYNTH_DIRS),
         )
     from loader import load_catalog
 
-    handcrafted: dict[str, set[str]] = {}
+    authored: dict[str, set[str]] = {}
     synthesized: dict[str, set[str]] = {}
     for executor in load_catalog().executors.values():
         affinity = {str(token).lower() for token in executor.affinity if token}
         if not affinity:
             continue
-        if executor.source == "handcrafted":
-            handcrafted[executor.name] = affinity
-        elif executor.source == "synthesized":
+        if executor.source == "synthesized":
             synthesized[executor.name] = affinity
-    return handcrafted, synthesized
+        elif not (importing and executor.source == "imported"
+                  and executor.name.endswith("_" + importing)):
+            authored[executor.name] = affinity
+    return authored, synthesized
 
 
 def _affinity_overlap_check(plan, plan_affinity, scan_handcrafted,
-                             scan_synth) -> tuple[bool, str]:
+                             scan_synth, *, service: str = "",
+                             siblings: dict | None = None) -> tuple[bool, str]:
     """Ritorna (ok, reason): the plan meets the one affinity rule (RM-0010).
 
     Same rule as the catalog load and the release (`affinity_integrity`): no
-    threshold or exemption depends on where the plan comes from. A provider
-    suffix is checked for words of its own, not given a laxer threshold.
+    threshold or exemption depends on where the plan comes from. ``service``
+    is the skill the plan belongs to: every tag needs a word of its own or
+    the service's name. ``siblings`` are the plans of the same import already
+    accepted, compared like any other executor.
     """
     import affinity_integrity
 
     plan_set = {str(t).lower() for t in plan_affinity if t}
     if not plan_set:
         return True, ""
-    for name in (*scan_handcrafted, *scan_synth):
+    siblings = siblings or {}
+    for name in (*scan_handcrafted, *scan_synth, *siblings):
         if name == plan.name:
             return False, f"name collision with existing executor {name}"
-    affinities = {**scan_handcrafted, **scan_synth, plan.name: plan_set}
-    for finding in affinity_integrity.findings(affinities):
+    affinities = {**scan_handcrafted, **scan_synth, **siblings, plan.name: plan_set}
+    providers = ({name: service for name in (*siblings, plan.name)}
+                 if service else None)
+    for finding in affinity_integrity.findings(affinities, providers):
         if plan.name in (finding.name, finding.other):
             other = finding.other if finding.name == plan.name else finding.name
             return False, (f"affinity_{finding.kind} vs {other}: "
@@ -571,7 +585,6 @@ def _run_smoke_for_plan(plan, case: dict) -> tuple[bool, str]:
 
 def admit_skill_import(parsed_skill, plans, *,
                        executor_dir: Optional[Path] = None,
-                       skip_l2: bool = False,
                        skip_binding_check: bool = False,
                        audit_log: bool = True) -> AdmissionReport:
     """Applica i controlli di binding, L1, L2, L5 e L6 a una skill.
@@ -582,7 +595,9 @@ def admit_skill_import(parsed_skill, plans, *,
     fa stage6 sul testo della description plan-only).
     """
     verbs, objs, quals = _load_vocab()
-    handcrafted_aff, synth_aff = _existing_affinity_sets()
+    binding_norm = parsed_skill.name.lower().replace("-", "_").replace(".", "_")
+    handcrafted_aff, synth_aff = _existing_affinity_sets(binding_norm)
+    accepted_aff: dict[str, set[str]] = {}
     verifier = _stage6_verify_callable()
     # Existing bindings = catalog corrente ON-DISK, escludendo la skill che
     # stiamo importando (la pipeline codegen ha gia' creato la dir prima
@@ -606,7 +621,6 @@ def admit_skill_import(parsed_skill, plans, *,
                 _write_audit(report, parsed_skill)
             return report
 
-    binding_norm = parsed_skill.name.lower().replace("-", "_").replace(".", "_")
     for plan in plans:
         verdict = AdmissionVerdict(plan_name=plan.name, accepted=True)
 
@@ -617,17 +631,24 @@ def admit_skill_import(parsed_skill, plans, *,
             verdict.accepted = False
             verdict.reasons.append(f"L1_vocab: {reason}")
 
-        # L2 affinity overlap
-        if not skip_l2 and verdict.accepted:
+        # L2 affinity rule: the tags the generated manifest really carries
+        # (they may come from a model), or the default ones before codegen.
+        if verdict.accepted:
             from skill_codegen import _default_affinity
-            aff = _default_affinity(plan)
+            written = (_read_affinity_from_manifest(
+                Path(executor_dir) / plan.name / "manifest.toml")
+                if executor_dir is not None else [])
+            aff = written or _default_affinity(plan, binding_norm)
             ok, reason = _affinity_overlap_check(
                 plan, aff, handcrafted_aff, synth_aff,
+                service=binding_norm, siblings=accepted_aff,
             )
             verdict.layer_results["L2_affinity"] = ok
             if not ok:
                 verdict.accepted = False
                 verdict.reasons.append(f"L2_affinity: {reason}")
+            else:
+                checked_aff = {str(t).lower() for t in aff if t}
 
         # L5 smoke routing case
         verdict.smoke_battery_case = _smoke_case_for_plan(plan)
@@ -659,6 +680,8 @@ def admit_skill_import(parsed_skill, plans, *,
 
         if verdict.accepted:
             report.accepted.append(verdict)
+            # Only a plan that passed every layer counts as a sibling.
+            accepted_aff[plan.name] = checked_aff
         else:
             report.rejected.append(verdict)
 

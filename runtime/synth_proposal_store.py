@@ -84,6 +84,29 @@ def preserve_candidate(source: Path, *, proposals_dir: Path, reason: str,
             shutil.rmtree(staging)
 
 
+def pending_for_name(proposals_dir: Path, name: str) -> str | None:
+    """The retained candidate that waits for review under ``name``, if any.
+
+    Reads only the stored metadata: it decides nothing about the candidate,
+    it tells a caller that asking Synth again would duplicate work.
+    """
+    try:
+        folders = sorted(Path(proposals_dir).iterdir())
+    except OSError:
+        return None
+    for folder in folders:
+        if not re.fullmatch(r"[0-9a-f]{64}", folder.name) or folder.is_symlink():
+            continue
+        try:
+            metadata = json.loads((folder / "proposal.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if (isinstance(metadata, dict) and metadata.get("name") == name
+                and metadata.get("stage") == "birth_blocked"):
+            return folder.name
+    return None
+
+
 def load_candidate(proposals_dir: Path, proposal_id: str) -> tuple[Path, dict]:
     """Detect substituted files/intent before review; links are never candidates."""
     if not isinstance(proposal_id, str) or not re.fullmatch(r"[0-9a-f]{64}", proposal_id):

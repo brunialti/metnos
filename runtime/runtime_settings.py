@@ -15,8 +15,6 @@ Schema TOML:
 
     [telos]
     # vedi _DEFAULTS sotto
-    [feedback]
-    error_demote_threshold = 3            # METNOS_FEEDBACK_DEMOTE_THRESHOLD
 
 Determinismo §7.9: niente LLM nella lettura. tomllib stdlib (Python 3.11+),
 cache process-life, reload on file mtime change.
@@ -65,7 +63,6 @@ _DEFAULTS: dict[str, Any] = {
     # stesso tool synth (cross-query, LWW: un ✓ resetta) prima di
     # demotare l'executor a `deprecated`. Handcrafted/protected mai
     # demoted (ADR 0114 L3).
-    "feedback.error_demote_threshold": 3,
 }
 
 
@@ -79,7 +76,6 @@ _ENV_MAP: dict[str, str] = {
     "telos.dashboard_strict_name_status": "METNOS_TELOS_DASHBOARD_STRICT_NAME_STATUS",
     "telos.accept_hard_gate": "METNOS_TELOS_ACCEPT_HARD_GATE",
     "telos.synth_daily_cap": "METNOS_TELOS_SYNTH_DAILY_CAP",
-    "feedback.error_demote_threshold": "METNOS_FEEDBACK_DEMOTE_THRESHOLD",
 }
 
 
@@ -283,10 +279,6 @@ def telos_nightly_enabled() -> bool:
     return value
 
 
-def feedback_error_demote_threshold() -> int:
-    return get_int("feedback.error_demote_threshold")
-
-
 # ── Bootstrap helper: scrivi runtime.toml di default se assente ────────────
 
 _DEFAULT_TOML_BODY = """\
@@ -294,13 +286,6 @@ _DEFAULT_TOML_BODY = """\
 # Generato automaticamente al primo boot. Modifica con cura.
 # Override via variabile d'ambiente METNOS_* ha priorita' superiore.
 
-[feedback]
-# E12 (24/5/2026): demote di executor synth dopo N feedback ✗ consecutive
-# (cross-query, LWW: un ✓ sullo stesso tool resetta il counter). Si applica
-# SOLO a synth (ADR 0114 L3): handcrafted e PROTECTED_NAMES restano sempre
-# attivi. La demotion setta `deprecated_at` in executor_stats e nasconde
-# l'executor dal pool catalog al boot successivo.
-error_demote_threshold = 3
 """
 
 

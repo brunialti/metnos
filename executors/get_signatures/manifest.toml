@@ -14,8 +14,14 @@ revertible       = false
 schema_inline = "{ ok: bool, negate?: bool, allow?: bool, matched_pattern?: string | null, matched_path?: string | null, severity?: string, reason?: string, age_class?: string | null, uses?: integer, last_used_at?: string | null, count?: integer, entries?: array, threshold?: object, seed_path?: string, seed_version?: integer, db_version?: integer, diff?: object, totals?: object, error?: string }"
 
 [[capabilities]]
-name = "fs:read"
-hint = ["~/.config/metnos/**", "~/.local/share/metnos/**"]
+name = "metnos:read"
+hint = ["safety_signatures:local"]
+
+# Usage counters only (uses, last_used_at): bookkeeping, not a change of rules.
+[[capabilities]]
+name = "metnos:cache"
+hint = ["safety_signatures:local"]
+when = { arg = "record_use", values = [true] }
 
 [[tests]]
 name = "missing_kind"

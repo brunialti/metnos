@@ -1,7 +1,7 @@
 manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 name        = "set_signatures"
-version     = "0.3.0"
+version     = "0.4.0"
 author      = "Roberto Brunialti"
 affinity    = ["imposta", "autorizza", "vieta", "permetti", "rimuovi",
                 "curatela", "gestione signatures", "configura permessi",
@@ -9,18 +9,14 @@ affinity    = ["imposta", "autorizza", "vieta", "permetti", "rimuovi",
                 "authorize command", "allow command", "deny command",
                 "blacklist command", "whitelist command", "remove signature"]
 
-revertible       = true
-reverse_pattern  = "module.reverse"
+revertible       = false
 
 [output]
-schema_inline = "{ ok: bool, signature?: string, kind?: string, severity?: string, source?: string, removed?: bool, previous_kind?: string, message?: string, error?: string, _undo: {outcome: string, state_receipt?: object} }"
-
-[undo]
-outcome = "per_execution"
+schema_inline = "{ ok: bool, signature?: string, kind?: string, severity?: string, source?: string, removed?: bool, previous_kind?: string, message?: string, error?: string }"
 
 [[capabilities]]
-name = "fs:write"
-hint = ["~/.config/metnos/**", "~/.local/share/metnos/**"]
+name = "metnos:write"
+hint = ["safety_signatures:local"]
 
 [[tests]]
 name = "missing_kind"
@@ -28,8 +24,8 @@ input = { signature = "x" }
 expect = { ok = false }
 
 [description]
-it = "SCOPO: imposta/rimuove signature e salva lo stato per l'annullamento, salvo `forbidden`. PATTERN: set_signatures(kind=\"blacklist\", signature=\"bin:cmd:kind\", reason=\"motivo\"). NON: calcolo -> compute_signatures; lettura -> get_signatures. OUT: esito e ricevuta."
-en = "SCOPO: sets or removes signatures and records exact state for undo, except `forbidden`. PATTERN: set_signatures(kind=\"blacklist\", signature=\"bin:cmd:kind\", reason=\"reason\"). NON: compute -> compute_signatures; read -> get_signatures. OUT: {signature,kind,removed?,message,_undo}."
+it = "SCOPO: mette una signature in blacklist/whitelist o la leva (kind=\"unknown\"); no annulla. PATTERN: set_signatures(kind=\"blacklist\", signature=\"bin:cmd:kind\", reason=\"motivo\"). NON: calcolo -> compute_signatures; leggere -> get_signatures. OUT: {signature,kind,removed?,message}; `forbidden` intoccabili."
+en = "SCOPO: puts a signature in blacklist/whitelist or removes it (kind=\"unknown\"); no undo. PATTERN: set_signatures(kind=\"blacklist\", signature=\"bin:cmd:kind\", reason=\"reason\"). NON: compute -> compute_signatures; read -> get_signatures. OUT: {signature,kind,removed?,message}; `forbidden` ones untouched."
 
 [code]
 files  = ["set_signatures.py"]

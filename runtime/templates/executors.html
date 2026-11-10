@@ -20,6 +20,9 @@ reversibilità.</p>
       <td>
         {% if r.lifecycle == "active" %}<span class="chip ok">{{ r.lifecycle }}</span>
         {% elif r.lifecycle == "deprecated" %}<span class="chip warn">{{ r.lifecycle }}</span>
+          <button class="btn" hx-post="/admin/executors/{{ r.name }}/revive"
+                  hx-confirm="{{ msg('UI_EXECUTOR_REVIVE_CONFIRM', name=r.name) }}"
+                  hx-swap="none">{{ msg('UI_EXECUTOR_REVIVE') }}</button>
         {% elif r.lifecycle == "archived" %}<span class="chip bad">{{ r.lifecycle }}</span>
         {% else %}<span class="chip">{{ r.lifecycle }}</span>{% endif %}
       </td>
@@ -49,7 +52,12 @@ esposto per evitare sparizioni silenziose.</p>
   <tbody>
   {% for r in rejected %}
     <tr><td><code>{{ r.name }}</code></td><td class="muted">{{ r.path }}</td>
-        <td><span class="chip bad">{{ r.reason }}</span></td></tr>
+        <td><span class="chip bad">{{ r.reason }}</span>
+          {% if r.restricted %}
+          <button class="btn" hx-post="/admin/executors/{{ r.name }}/revive"
+                  hx-confirm="{{ msg('UI_EXECUTOR_REVIVE_CONFIRM', name=r.name) }}"
+                  hx-swap="none">{{ msg('UI_EXECUTOR_REVIVE') }}</button>
+          {% endif %}</td></tr>
   {% endfor %}
   </tbody>
 </table>

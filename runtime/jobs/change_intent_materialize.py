@@ -4,7 +4,9 @@ in change_intents.sqlite via gli adapter (ADR 0158).
 Idempotente:
   - upsert by fingerprint → re-run non duplica
   - convergence bumpa cross-source
-  - score = max
+  - score = ultima valutazione; le proposte nate dalle lacune seguono le
+    richieste degli ultimi 30 giorni (scendono quando smettono di arrivare)
+  - le lacune non viste da 90 giorni si cancellano
   - non sovrascrive decision/applied/observed se gia' progrediti
 
 Trigger default: `daily@01:00` (prima delle altre task notturne, cosi'
@@ -54,6 +56,18 @@ def task_change_intent_materialize(payload: dict | None = None) -> dict:
                     "exc": str(exc)[:200],
                 })
 
+    # Gap proposals follow the requests still recent; old gaps are dropped.
+    gap_scores = gaps_pruned = 0
+    try:
+        import learning_loop
+        from engine import terminator
+        gap_scores = learning_loop.refresh_gap_scores()
+        gaps_pruned = terminator.prune_gaps()
+    except Exception as exc:
+        errors += 1
+        _audit({"event": "error", "family": "observation",
+                "module": "learning_loop", "exc": str(exc)[:200]})
+
     elapsed_s = round(time.time() - ts_start, 2)
     # by_state reale (post-dedup) — interroga DB invece di contare yielded
     from runtime.change_intents import count_by_state
@@ -70,6 +84,8 @@ def task_change_intent_materialize(payload: dict | None = None) -> dict:
         "by_kind": dict(kind_counts),
         "by_state_yielded": dict(state_counts),
         "by_state_real": real_state_counts,
+        "gap_scores_recomputed": gap_scores,
+        "gaps_pruned": gaps_pruned,
     }
     _audit({"event": "completed", **report})
     return report

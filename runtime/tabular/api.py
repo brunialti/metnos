@@ -26,6 +26,9 @@ def _message(code: str, **parameters) -> str:
 _ONE_SHEET_VARIANTS = frozenset({"WARN_TABLE_MERGED_ROWS", "WARN_TABLE_CONFLICTING_ROWS",
                                   "WARN_TABLE_SUSPECTED_DUPLICATES", "WARN_TABLE_UNIDENTIFIED_ABSORBED",
                                   "WARN_TABLE_UNIDENTIFIED_REJECTED", "WARN_TABLE_FOREIGN_SECTIONS"})
+# Row merges and exclusions: written into Note and stated in the answer,
+# the same codes that have a one-sheet wording.
+ANSWER_NOTICE_CODES = _ONE_SHEET_VARIANTS
 
 
 def _notice_message(notice: dict, *, one_sheet: bool = False) -> str:
@@ -197,12 +200,7 @@ def write_table(source, spec: dict | None, destination: dict, mode: str = "creat
                           "source_partial": any(_source_is_partial(item) for item in compiled.source_metadata),
                           "source_truncated": any(item.get("truncated") is True for item in compiled.source_metadata)}
         source_notices = [item["message"] for item in notices if item["code"] == "WARN_TABLE_PARTIAL_SOURCE"]
-        merge_notices = [item["message"] for item in notices
-                         if item["code"] in {"WARN_TABLE_MERGED_ROWS", "WARN_TABLE_SUSPECTED_DUPLICATES",
-                                              "WARN_TABLE_CONFLICTING_ROWS",
-                                              "WARN_TABLE_UNIDENTIFIED_ABSORBED",
-                                              "WARN_TABLE_UNIDENTIFIED_REJECTED",
-                                              "WARN_TABLE_FOREIGN_SECTIONS"}]
+        merge_notices = [item["message"] for item in notices if item["code"] in ANSWER_NOTICE_CODES]
         result = write(workbook, destination, mode)
         # OAuth needs_inputs is not a written-file receipt.
         if result.get("decision") == "needs_inputs":

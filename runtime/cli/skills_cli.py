@@ -177,6 +177,7 @@ def _cmd_import(args) -> int:
         generate_executor_files,
         _description_boilerplate,
         _default_affinity,
+        skill_service,
     )
     from skill_admission import admit_skill_import
     from skill_description_llm import generate_description_or_fallback
@@ -227,7 +228,7 @@ def _cmd_import(args) -> int:
     n_boil = 0
     for p in plans:
         boil_it, boil_en = _description_boilerplate(p)
-        boil_aff = _default_affinity(p)
+        boil_aff = _default_affinity(p, skill_service(parsed))
         desc = generate_description_or_fallback(
             p, parsed,
             skill_body_snippet=body_snippet,
@@ -276,7 +277,6 @@ def _cmd_import(args) -> int:
         parsed, plans,
         executor_dir=executors_dir,
         skip_binding_check=skip_binding,
-        skip_l2=bool(args.skip_l2),
     )
     print(f"  accepted: {len(report.accepted)}")
     print(f"  rejected: {len(report.rejected)}")
@@ -612,8 +612,7 @@ def _cmd_status(args) -> int:
     print(f"Skill: {args.skill}")
     print(f"Executors: {len(executors)}")
     for e in executors:
-        # Cerca turn JSONL per stats (richiede runtime/turn_logs - skipped).
-        print(f"  - {e}: (live stats post Layer 3 efficacy ager)")
+        print(f"  - {e}")
     audit = _audit_log_path()
     if audit.exists():
         from audit_jsonl import read_jsonl_records
@@ -723,7 +722,6 @@ def main(argv=None) -> int:
     sp.add_argument("--update", action="store_true",
                     help="re-import: skip binding uniqueness check")
     sp.add_argument("--no-sign", action="store_true", help="skip Ed25519 sign")
-    sp.add_argument("--skip-l2", action="store_true", help="skip L2 affinity check (dev)")
     sp.add_argument("--skip-smoke-battery", action="store_true",
                     help="skip auto-add to BATTERY_IMPORTS (dev/test)")
     sp.set_defaults(func=_cmd_import)

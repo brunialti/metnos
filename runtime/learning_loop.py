@@ -44,7 +44,8 @@ def _vocabulary_name(verb: str, object_: str) -> bool:
     try:
         from vocab import ACTIONS, OBJECTS
         return verb in ACTIONS and object_ in OBJECTS
-    except Exception:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
+        log.warning("[learning-loop] vocabulary unavailable, no proposal: %r", exc)
         return False
 
 
@@ -58,8 +59,37 @@ def _existing_executor(target: str) -> bool:
         import loader
         return any(e.name == target or e.name.startswith(target + "_")
                    for e in loader.load_catalog())
-    except Exception:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
+        log.warning("[learning-loop] catalog unreadable, no proposal for %s: %r",
+                    target, exc)
         return True
+
+
+def gap_score(n_seen: int) -> float:
+    """The one score of a gap proposal: recent requests, bounded."""
+    return min(1.0, 0.4 + 0.1 * max(0, int(n_seen)))
+
+
+def refresh_gap_scores() -> int:
+    """Recompute open gap proposals from the requests still recent.
+
+    Run by the nightly materializer: without it a score would only move when
+    a new request arrives, and could never tell that they stopped.
+    """
+    import change_intents as ci
+    from engine import terminator
+
+    changed = 0
+    for intent in ci.list_intents(state=ci.STATE_PROPOSED, origin_family="observation",
+                                  intent_kind=ci.KIND_CREATE_EXECUTOR, limit=5000):
+        body = intent.intent_body or {}
+        if intent.origin_module != "learning_loop" or not body.get("verb"):
+            continue
+        score = gap_score(terminator.recent_gap_count(body.get("verb"), body.get("object")))
+        if abs(score - float(intent.score or 0.0)) > 1e-9:
+            ci.set_score(intent.id, score)
+            changed += 1
+    return changed
 
 
 def propose_from_lacuna(*, lacuna_id: str, query: str, verb: str,
@@ -110,7 +140,7 @@ def propose_from_lacuna(*, lacuna_id: str, query: str, verb: str,
                 "error_class": error_class, "n_seen": n_seen,
                 "lacuna_id": lacuna_id,
             },
-            score=min(1.0, 0.4 + 0.1 * n_seen),
+            score=gap_score(n_seen),
         )
         iid = ci.upsert_intent(intent)
         log.info("[learning-loop] lacuna %s (n_seen=%d) → change_intent %s "

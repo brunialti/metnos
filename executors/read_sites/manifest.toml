@@ -14,8 +14,8 @@ affinity    = [
 ]
 
 [description]
-it = "SCOPO: legge le pagine distinte osservate durante la raccolta; senza raccolta legge la pagina corrente della sessione (post-login se autenticata). Ogni fonte conserva URL e titolo propri. Moduli e screenshot REDATTO descrivono solo la pagina corrente, separata in current_pages se esterna alla raccolta. PATTERN: login_sites → read_sites(from_step=2). NON: read_urls_html (pagina pubblica senza sessione); sites = sessione con stato. OUT: entries=[{session_id,url,title,text,screenshot_path,sensitive}] + gallery."
-en = "SCOPO: reads distinct pages observed during collection; without a collection reads the session's current page (post-login if authenticated). Each source retains its own URL and title. Forms and REDACTED screenshot describe only the current page, separate in current_pages when outside the collection. PATTERN: login_sites → read_sites(from_step=2). NON: read_urls_html (public sessionless page); sites = a stateful session. OUT: entries=[{session_id,url,title,text,screenshot_path,sensitive}] + gallery."
+it = "SCOPO: legge le pagine osservate durante la raccolta, altrimenti la pagina corrente della sessione (post-login se autenticata). PATTERN: open_sites -> read_sites(from_step=1). NON: pagina pubblica senza sessione -> read_urls_html. OUT: entries=[{session_id,url,title,text,screenshot_path,sensitive}], una per fonte con URL e titolo propri; current_pages = pagina corrente fuori raccolta; gallery."
+en = "SCOPO: reads the pages observed during collection, otherwise the session's current page (post-login if authenticated). PATTERN: open_sites -> read_sites(from_step=1). NON: public sessionless page -> read_urls_html. OUT: entries=[{session_id,url,title,text,screenshot_path,sensitive}], one per source with its own URL and title; current_pages = current page outside the collection; gallery."
 
 [code]
 files  = ["read_sites.py"]
@@ -48,16 +48,16 @@ type = "boolean"
 default = true
 
 [args.properties.include_screenshot.description]
-it = "Se true (default), cattura uno screenshot REDATTO (campi segreti oscurati dal broker) e lo mostra in chat."
-en = "If true (default), captures a REDACTED screenshot (secret fields blacked out by the broker) and shows it in chat."
+it = "Se true (default), cattura uno screenshot REDATTO della sola pagina corrente (campi segreti oscurati dal broker) e lo mostra in chat."
+en = "If true (default), captures a REDACTED screenshot of the current page only (secret fields blacked out by the broker) and shows it in chat."
 
 [args.properties.include_forms]
 type = "boolean"
 default = false
 
 [args.properties.include_forms.description]
-it = "Se true, include un riassunto dei form presenti nella pagina. Default false."
-en = "If true, includes a summary of the forms on the page. Default false."
+it = "Se true, include un riassunto dei moduli della sola pagina corrente. Default false."
+en = "If true, includes a summary of the forms on the current page only. Default false."
 
 [output]
 schema_inline = """

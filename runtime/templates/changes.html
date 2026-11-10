@@ -122,6 +122,9 @@
         {% if r.decision_reason %}
           <div class="muted">{{ msg('UI_CHANGE_DECISION_REASON') }}: {{ r.decision_reason }}</div>
         {% endif %}
+        {% if r.review_pending %}
+          <div class="muted" data-tutor-id="changes-row-review-pending">{{ msg('UI_CHANGE_REVIEW_PENDING', proposal_id=r.review_pending[:12]) }}</div>
+        {% endif %}
         {% if r.intent_rationale or r.intent_body %}
           <details data-tutor-id="changes-row-details" style="margin-top:.3rem">
             <summary class="muted">{{ msg('UI_CHANGE_DETAILS') }}</summary>
@@ -160,6 +163,7 @@
         {% endif %}
       </td>
       <td class="tp-actions">
+        <div id="ci-notice-{{ r.id }}" role="alert"></div>
         {% if r.state in ['proposed', 'staged'] %}
           <input type="text" name="reason" maxlength="500"
                  aria-label="{{ msg('UI_CHANGE_DECISION_REASON') }}"

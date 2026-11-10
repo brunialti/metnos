@@ -24,7 +24,7 @@ else:  # pragma: no cover
     import tomli as tomllib
 
 from safety.canonicalize import Signature, signature_matches
-from safety.storage import SafetyStore
+from safety.storage import SafetyStore, open_store_or_error
 from safety.seed_bootstrap import DEFAULT_SEED_PATH
 
 
@@ -254,7 +254,9 @@ def invoke(args: dict, ctx: dict | None = None) -> dict:
     if not kind:
         return {"ok": False, "error": _msg("ERR_ARG_MISSING", arg="kind")}
 
-    store = SafetyStore()
+    store, unavailable = open_store_or_error()
+    if store is None:
+        return unavailable
     try:
         if kind == "blacklist":
             sig = args.get("signature")

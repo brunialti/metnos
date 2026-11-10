@@ -18,8 +18,8 @@ affinity    = [
 ]
 
 [description]
-it = "SCOPO: naviga a un fine dentro una sessione web, con conferma se sensibile, o salva un documento dall'azione indicata. PATTERN: act_sites(from_step=2, action=\"fatture 2026\", ambito=\"personale\"); download: action=\"clicca Scarica PDF\", dst_dir=\"/percorso/autorizzato\". NON: pagina senza stato -> read_urls_html; niente CSS/XPath. OUT: results=[{session_id,ok,url}], documenti in entries=[{path,bytes,sha256,session_id}] per read_files; dati incompleti: partial=true e partial_reason."
-en = "SCOPO: reach a goal inside a web session, with consent when sensitive, or save a document from the specified action. PATTERN: act_sites(from_step=2, action=\"invoices 2026\", ambito=\"personale\"); download: action=\"click Download PDF\", dst_dir=\"/authorized/path\". NON: stateless page -> read_urls_html; no CSS/XPath. OUT: results=[{session_id,ok,url}], documents in entries=[{path,bytes,sha256,session_id}] for read_files; incomplete data: partial=true and partial_reason."
+it = "SCOPO: naviga a un fine nella sessione web, con conferma se sensibile, o scarica un file in dst_dir. PATTERN: act_sites(from_step=2, action=\"fatture 2026\", ambito=\"personale\"). NON: pagina senza stato -> read_urls_html; niente CSS/XPath. OUT: results=[{session_id,ok,url}], documenti in entries=[{path,bytes,sha256,session_id}] per read_files; dati incompleti: partial=true e partial_reason."
+en = "SCOPO: reaches a goal in the web session, with consent when sensitive, or downloads a file into dst_dir. PATTERN: act_sites(from_step=2, action=\"invoices 2026\", ambito=\"personale\"). NON: stateless page -> read_urls_html; no CSS/XPath. OUT: results=[{session_id,ok,url}], documents in entries=[{path,bytes,sha256,session_id}] for read_files; incomplete data: partial=true and partial_reason."
 
 [code]
 files = ["act_sites.py"]
@@ -75,8 +75,8 @@ en = "Optional. Value to enter; for credentials use cred:<domain>:<field>. The b
 [args.properties.dst_dir]
 type = "string"
 [args.properties.dst_dir.description]
-it = "Cartella assoluta esistente e autorizzata dove salvare il documento scaricato dall'azione. Il consenso comprende destinazione e limiti."
-en = "Existing authorized absolute directory for the document downloaded by this action. Approval binds destination and limits."
+it = "Solo per scaricare: cartella assoluta esistente e autorizzata; action nomina il comando, es. \"clicca Scarica PDF\". Il consenso comprende destinazione e limiti."
+en = "Downloads only: existing authorized absolute directory; action names the control, e.g. \"click Download PDF\". Approval binds destination and limits."
 
 [args.properties.download_limits]
 type = "object"

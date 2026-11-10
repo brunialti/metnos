@@ -425,7 +425,7 @@ name = "admin_key"
 path = "~/.config/metnos/admin.key"
 generator = "secrets.token_hex(32)"
 mode = "0600"
-purpose = "Chiave principale per accesso amministrativo e derivazione della cifratura delle credenziali."
+purpose = "Chiave per l’accesso amministrativo HTTP. Non cifra le credenziali: il vault ha una chiave sua, ~/.config/metnos/vault.key, creata dal runtime al primo uso (ADR 0082)."
 
 [[secrets.entry]]
 name = "executor_author_keypair"

@@ -128,10 +128,11 @@ def _verify_executor_health(ci: ChangeIntent) -> Verdict:
     if stat.deprecated_at:
         return ("rollback", metrics,
                 f"executor auto-deprecated at {stat.deprecated_at}")
-    # Rollback soft: last_call_ok=False con calls >= 3
+    # Rollback soft: last_call_ok=False con calls >= 3. The reason says what
+    # is measured: the last call, not the last three.
     if stat.last_call_ok is False and stat.total_calls >= 3:
         return ("rollback", metrics,
-                "last 3+ calls failed (fail rate too high)")
+                f"last call failed after {stat.total_calls} calls")
     # Finalize: oltre grace e calls >= 1 success
     if age >= _grace_days():
         if stat.total_calls >= 1 and stat.last_call_ok is not False:

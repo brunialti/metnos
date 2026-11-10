@@ -57,7 +57,7 @@ OK pattern: `compute_files_loc_per-language` | `find_dirs_empty` | `change_files
 ERRORE pattern: `set_tasks_invoice-lifecycle` (no qualifier) | `create_events_promotion_nightly` (3°+4° nuovi insieme) | `_nightly` (timing).
 
 ESTENSIONE VOCAB §2.2: nuovo token? NON inventarlo nel nome. Scrivi nel rationale
-"RICHIEDE estensione vocab §2.2: <criterio>". 3 CRITERI: necessario (no synonym in classe) + generale (semantica riusabile, no domain-specific) + comprensibile (il modello locale senza glossa)."""
+"RICHIEDE estensione vocab §2.2: 'token' — <criterio>", col token richiesto fra apici subito dopo i due punti. 3 CRITERI: necessario (no synonym in classe) + generale (semantica riusabile, no domain-specific) + comprensibile (il modello locale senza glossa)."""
 
 # Per lenti concept-only.
 SHARED_NAMING_NULL = "NAMING: `new_op_name` = SEMPRE null (questa lens propone un concetto, non un executor variant)."

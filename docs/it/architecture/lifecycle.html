@@ -76,6 +76,12 @@ stessa modifica, l'upsert pu&ograve; riunirle in un record e aumentare la conver
 duplicare l'azione. Il punteggio resta un criterio di ordinamento, non
 un'autorizzazione.</p>
 
+<p>Per una creazione l'impronta &egrave; il solo nome dell'executor: una capacit&agrave; ha
+una sola proposta, chiunque l'abbia scritta, e una proposta rifiutata non torna da
+un'altra sorgente. La convergenza conta le sorgenti diverse, non le riletture della
+stessa. Per le capacit&agrave; mancanti il punteggio segue le richieste degli ultimi 30
+giorni e scende quando cessano; la stessa frase conta una volta al giorno.</p>
+
 <h1 id="cap2">2. Stati e transizioni</h1>
 
 <pre><code>proposed  --accetta--&gt; accepted --applica--&gt; applied
@@ -129,11 +135,11 @@ sequenza o un nuovo riscontro sullo schema rifiutato.</p>
 <table>
 <thead><tr><th>Tipo</th><th>Effetto corrente</th><th>Ripristino</th></tr></thead>
 <tbody>
-<tr><td><code>create_executor</code></td><td>Avvia la sintesi dell'executor; se esiste gi&agrave;, non lo duplica.</td><td>Archivia l'executor sintetizzato.</td></tr>
+<tr><td><code>create_executor</code></td><td>Avvia la sintesi dell'executor; se esiste gi&agrave;, non lo duplica. La proposta resta accettata finch&eacute; il candidato attende revisione e consenso; diventa applicata solo quando il planner pu&ograve; usare lo strumento.</td><td>Archivia l'executor sintetizzato.</td></tr>
 <tr><td><code>extend_executor</code></td><td>Estende il manifest, conserva una copia e firma di nuovo l'executor.</td><td>Ripristina il manifest conservato e lo firma di nuovo.</td></tr>
 <tr><td><code>dedupe_executors</code></td><td>Crea un alias e ritira il duplicato solo se la provenienza consente l'operazione.</td><td>Rimuove l'alias e riattiva il duplicato.</td></tr>
 <tr><td><code>materialize_pipeline</code></td><td>Esegue una volta la richiesta proposta come turno reale, con policy e controlli normali.</td><td>Registra il ripristino; il turno non installa un artefatto persistente da rimuovere.</td></tr>
-<tr><td><code>reject_pattern</code></td><td>Aggiunge lo schema approvato al registro dei percorsi da evitare.</td><td>Rimuove la registrazione corrispondente.</td></tr>
+<tr><td><code>reject_pattern</code></td><td>Aggiunge lo schema approvato al registro dei percorsi da evitare. Per quella stessa richiesta il planner cerca un altro piano; se non lo trova, non esegue e lo dice.</td><td>Rimuove la registrazione corrispondente.</td></tr>
 <tr><td><code>cache_pattern</code></td><td>Resta supportato per record compatibili gi&agrave; presenti nell'archivio.</td><td>Retrocede la registrazione associata.</td></tr>
 </tbody>
 </table>
@@ -154,7 +160,8 @@ per ciascun record.</p>
 
 <ul>
  <li>L'accettazione &egrave; una decisione esplicita attribuita all'utente amministratore;
- un punteggio alto non la sostituisce.</li>
+ un punteggio alto non la sostituisce. Accettare una proposta che chiede una parola nuova
+ del vocabolario richiede il motivo; un errore compare nella riga da cui &egrave; partito.</li>
  <li>L'applicatore &egrave; idempotente per tipo e conserva una traccia locale; un errore porta
  a <code>failed</code>, non a un successo apparente.</li>
  <li>Il ripristino dipende dal tipo. Per una sequenza eseguita come turno reale non &egrave;

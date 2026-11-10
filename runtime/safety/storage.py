@@ -19,12 +19,50 @@ from typing import Iterator
 import sys as _sys
 _sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import config as _C  # §7.11 — rispetta METNOS_USER_STATE
+# One store, one directory: the sidecar files of a WAL database are shared
+# with the service only when a sandbox is granted the directory, never the
+# lone file.
 DEFAULT_DB_PATH = Path(
     os.environ.get(
         "SAFETY_DB_PATH",
-        str(_C.PATH_USER_STATE / "safety.db"),
+        str(_C.PATH_USER_STATE / "safety" / "safety.db"),
     )
 )
+
+
+class SafetyStoreUnavailable(RuntimeError):
+    """The store is not reachable from this process; nothing was created."""
+
+
+def _sandboxed() -> bool:
+    return bool(os.environ.get("METNOS_SANDBOXED"))
+
+
+def _adopt_previous_location(target: Path) -> None:
+    """Move the store written next to the other state files into its own
+    directory. Repeatable; never overwrites a store already in place."""
+    previous = target.parent.parent / target.name
+    if target.exists() or not previous.is_file():
+        return
+    target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    try:
+        # Fold the write-ahead log into the main file, so that one name moves
+        # everything. ``mode=rw`` never creates a missing database.
+        conn = sqlite3.connect(f"{previous.as_uri()}?mode=rw", uri=True)
+        try:
+            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        finally:
+            conn.close()
+        os.link(previous, target)     # fails, instead of replacing, if present
+    except (OSError, sqlite3.Error):
+        if not target.exists():
+            raise
+        return
+    for suffix in ("", "-wal", "-shm"):
+        try:
+            os.unlink(previous.with_name(previous.name + suffix))
+        except FileNotFoundError:
+            pass
 
 
 SCHEMA = """
@@ -77,16 +115,62 @@ class SignatureRow:
     seed_version: int | None
 
 
+def store_directory() -> Path:
+    """The directory to grant; the store is settled there first, outside any
+    sandbox, so that a grant never exposes an empty directory."""
+    if not _sandboxed():
+        SafetyStore().close()
+    return DEFAULT_DB_PATH.parent
+
+
+def open_store_or_error() -> tuple["SafetyStore | None", dict | None]:
+    """The store, or the result that says it cannot be used here."""
+    try:
+        return SafetyStore(), None
+    except (SafetyStoreUnavailable, OSError, sqlite3.Error):
+        from messages import get as _msg
+        return None, {"ok": False, "error_code": "ERR_SAFETY_STORE_UNAVAILABLE",
+                      "error": _msg("ERR_SAFETY_STORE_UNAVAILABLE")}
+
+
 class SafetyStore:
     """Thin CRUD wrapper around the SQLite-backed safety store."""
 
     def __init__(self, db_path: str | Path | None = None):
         self.db_path = Path(db_path or DEFAULT_DB_PATH)
+        self.read_only = False
+        if _sandboxed():
+            # A sandbox never creates the store: without a grant it would be
+            # a private, empty copy, and every answer from it would be false.
+            if not self.db_path.is_file():
+                raise SafetyStoreUnavailable(str(self.db_path))
+            if not os.access(self.db_path.parent, os.W_OK):
+                self.conn = self._connect_read_only()
+                self.conn.row_factory = sqlite3.Row
+                self.read_only = True
+                return
+        elif db_path is None and "SAFETY_DB_PATH" not in os.environ:
+            _adopt_previous_location(self.db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self.conn = sqlite3.connect(str(self.db_path), isolation_level=None)
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA journal_mode=WAL")
         self.conn.executescript(SCHEMA)
+
+    def _connect_read_only(self) -> sqlite3.Connection:
+        """Open under a read grant. With no sidecar files there is no pending
+        write to miss, so the main file can be read as it is."""
+        failure: sqlite3.Error | None = None
+        for query in ("mode=ro", "mode=ro&immutable=1"):
+            conn = sqlite3.connect(f"{self.db_path.as_uri()}?{query}", uri=True,
+                                   isolation_level=None)
+            try:
+                conn.execute("SELECT COUNT(*) FROM safety_signatures").fetchone()
+                return conn
+            except sqlite3.Error as exc:
+                failure = exc
+                conn.close()
+        raise SafetyStoreUnavailable(str(self.db_path)) from failure
 
     # ── lookups ───────────────────────────────────────────────────────
 

@@ -5,6 +5,10 @@ state:
   - 'blacklist' / 'whitelist': insert with source='user'.
   - 'unknown':                 delete the row (entries severity='forbidden'
                                are refused — Law 1).
+
+Not revertible by design (decision of 10/11/2026): a change is taken back
+with another call (`kind='unknown'`, or the other list). The store is the
+service's own; a process that cannot reach it says so and changes nothing.
 """
 from __future__ import annotations
 
@@ -17,8 +21,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent / "runtime"))
 from messages import get as _msg  # noqa: E402
 from executor_helpers import run_stdio  # noqa: E402
 from safety.canonicalize import Signature
-from safety.storage import SafetyStore
-from state_receipts import state_to_restore, state_transition
+from safety.storage import SafetyStore, open_store_or_error
 
 
 def _set_blacklist(
@@ -101,7 +104,9 @@ def invoke(args: dict, ctx: dict | None = None) -> dict:
         return {"ok": False, "error": _msg("ERR_ARG_MISSING", arg="reason")}
 
     actor = (ctx or {}).get("actor") or os.environ.get("METNOS_ACTOR") or "host"
-    store = SafetyStore()
+    store, unavailable = open_store_or_error()
+    if store is None:
+        return unavailable
     try:
         store.conn.execute("BEGIN IMMEDIATE")
         before = store.snapshot(signature)
@@ -111,7 +116,6 @@ def invoke(args: dict, ctx: dict | None = None) -> dict:
                 "ok": False,
                 "error_code": "ERR_PERMISSION_DENIED",
                 "error": _msg("ERR_PERMISSION_DENIED"),
-                "_undo": {"outcome": "no_effect"},
             }
         if kind == "blacklist":
             result = _set_blacklist(
@@ -120,17 +124,7 @@ def invoke(args: dict, ctx: dict | None = None) -> dict:
             result = _set_whitelist(store, signature, reason, actor)
         else:
             result = _set_unknown(store, signature)
-        after = store.snapshot(signature)
         store.conn.execute("COMMIT")
-        if before == after:
-            result["_undo"] = {"outcome": "no_effect"}
-        elif after is not None and after.get("severity") == "forbidden":
-            result["_undo"] = {"outcome": "irreversible"}
-        else:
-            result["_undo"] = {
-                "outcome": "reversible",
-                "state_receipt": state_transition(before, after),
-            }
         return result
     except Exception:
         if store.conn.in_transaction:
@@ -138,41 +132,6 @@ def invoke(args: dict, ctx: dict | None = None) -> dict:
         raise
     finally:
         store.close()
-
-
-def reverse(_plan: dict, results: dict) -> dict:
-    metadata = results.get("_undo") if isinstance(results, dict) else None
-    receipt = metadata.get("state_receipt") if isinstance(metadata, dict) else None
-    after = receipt.get("state_after") if isinstance(receipt, dict) else None
-    before = receipt.get("state_before") if isinstance(receipt, dict) else None
-    signature = None
-    if isinstance(after, dict):
-        signature = after.get("signature")
-    elif isinstance(before, dict):
-        signature = before.get("signature")
-    if not isinstance(signature, str) or not signature:
-        return {"ok": False, "ok_count": 0, "fail_count": 1,
-                "error_class": "invalid_receipt"}
-
-    store = SafetyStore()
-    try:
-        current = store.snapshot(signature)
-        try:
-            restore = state_to_restore(receipt, current)
-        except ValueError:
-            return {"ok": False, "ok_count": 0, "fail_count": 1,
-                    "error_class": "state_conflict"}
-        restored, reason = store.restore_snapshot_if_current(
-            signature, expected=after, restore=restore)
-        return {
-            "ok": restored,
-            "ok_count": 1 if restored else 0,
-            "fail_count": 0 if restored else 1,
-            **({"error_class": reason} if not restored else {}),
-        }
-    finally:
-        store.close()
-
 
 
 def main():

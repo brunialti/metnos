@@ -4,7 +4,7 @@ executor_standard = "metnos.executor/1.0"
 name = "find_entries"
 version = "1.0.0"
 author = "Metnos builtin maintainers"
-affinity = ["store", "archivio", "archivi", "raccolta", "collezione", "registro dati", "database interno", "collection", "datastore", "memorizza nello store", "salva nell'archivio"]
+affinity = ["store", "archivio", "archivi", "raccolta", "collezione", "registro dati", "database interno", "collection", "datastore", "memorizza nello store", "salva nell'archivio", "consultazione archivio", "lettura raccolta", "interrogazione collezione", "consultazione registro dati", "lettura database interno", "interrogazione archivi", "store lookup", "collection lookup", "datastore lookup", "store retrieval", "collection retrieval", "datastore retrieval"]
 platforms = ["linux"]
 revertible = false
 lifecycle = "active"
@@ -15,7 +15,7 @@ en = "SCOPO: Queries records in a declared store. PATTERN: natural request typed
 
 [code]
 files = ["implementation.py.src"]
-digest = "sha256:0ae86fb64f13b9a51dd3d27f73ea9a4dea0b7ce0548ed82598ff49cca735ceba"
+digest = "sha256:2dab4e264ece4a7eb2bc19f5a19feeb21ee2848359158f5c29ce5465e7ceb5ed"
 
 [args]
 type = "object"

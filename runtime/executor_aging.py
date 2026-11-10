@@ -136,6 +136,59 @@ def _open() -> sqlite3.Connection:
     return c
 
 
+_GENERATION_COLUMN_READY: set[str] = set()
+
+
+def _ensure_generation_column(conn: sqlite3.Connection) -> None:
+    key = str(DB_PATH)
+    if key in _GENERATION_COLUMN_READY:
+        return
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(executor_stats)")}
+    if "loaded_generation" not in columns:
+        conn.execute("ALTER TABLE executor_stats ADD COLUMN loaded_generation TEXT")
+        conn.commit()
+    _GENERATION_COLUMN_READY.add(key)
+
+
+def note_generation(name: str, generation: str) -> bool:
+    """Remember the revision loaded as ``name``; lift a restriction it did not earn.
+
+    Deprecated and archived are judgements on one revision: unused for too
+    long, a duplicate, a rolled-back creation. A new revision reaches the
+    catalog only through Birth (with review and consent for generated code),
+    so it starts unrestricted and with its own inactivity clock, instead of
+    inheriting a verdict by name for ever. Returns True when a restriction
+    was lifted. A name seen without a recorded revision is only recorded.
+    """
+    if not name or not generation:
+        return False
+    conn = _open()
+    try:
+        _ensure_generation_column(conn)
+        row = conn.execute(
+            "SELECT loaded_generation, deprecated_at, archived_at, source "
+            "FROM executor_stats WHERE name = ?", (name,)).fetchone()
+        if row is None or row["loaded_generation"] == generation:
+            return False
+        lifted = bool(row["loaded_generation"]
+                      and (row["deprecated_at"] or row["archived_at"]))
+        if lifted:
+            conn.execute(
+                "UPDATE executor_stats SET deprecated_at = NULL, archived_at = NULL, "
+                "last_used_at = NULL, last_call_ok = NULL, first_seen = ?, "
+                "loaded_generation = ? WHERE name = ?",
+                (now_iso_z(), generation, name))
+            _log_event(conn, name, "undeprecated", row["source"],
+                       {"by": "new_generation"})
+        else:
+            conn.execute("UPDATE executor_stats SET loaded_generation = ? WHERE name = ?",
+                         (generation, name))
+        conn.commit()
+        return lifted
+    finally:
+        conn.close()
+
+
 def _open_read_only() -> sqlite3.Connection | None:
     """Open an existing statistics database without creating or migrating it."""
     if not DB_PATH.exists():
@@ -224,8 +277,8 @@ def touch(name: str, ok: bool | None = None) -> None:
 
     Se l'executor era deprecated o archived, NON viene resuscitato
     automaticamente — la chiamata viene comunque tracciata, ma il
-    lifecycle override non si tocca. Resuscitare richiede un'azione
-    esplicita (gestita da Synt promotion / undeprecate).
+    lifecycle override non si tocca. Lo riapre una nuova revisione ammessa
+    da Birth (`note_generation`) oppure un'azione esplicita (`undeprecate`).
 
     Storia: emette evento `first_used` solo la prima volta che l'executor
     viene chiamato (per il timeline). Le successive chiamate aggiornano
@@ -373,7 +426,7 @@ def apply_executor_ager(
 
     NB (13/6/2026): solo gli executor SYNTH invecchiano per inattivita'. Gli
     handcrafted (source non-synth) sono esclusi dal decay (vedi docstring
-    modulo + simmetria con apply_feedback_ager): sono capacita' core curate a
+    modulo): sono capacita' core curate a
     mano, un raro uso non e' obsolescenza, e ritirarli causa misroute silenzioso.
     """
     deprecate_days = deprecate_days if deprecate_days is not None else DEPRECATED_DAYS
@@ -413,8 +466,7 @@ def apply_executor_ager(
             # dal catalog composer (filter_for_visibility) → il pool di routing
             # perde l'unico provider della capacita' → misroute silenzioso a un
             # fratello sbagliato (delete_persons→delete_credentials, falso
-            # successo §2.8). Simmetrico con `apply_feedback_ager` (handcrafted
-            # MAI demoted da efficacy) e col docstring del modulo ("Esclusi dal
+            # successo §2.8). Coerente col docstring del modulo ("Esclusi dal
             # decay: tutti gli handcrafted"). Solo synth invecchiano.
             if not _is_synth(row.name, row.source):
                 handcrafted_skipped += 1
@@ -476,10 +528,13 @@ def apply_executor_ager(
         conn.close()
 
 
-def undeprecate(name: str) -> bool:
-    """Resuscita un executor deprecated/archived (azione manuale, rara).
-    Non riapre il file su disco: l'executor deve essere ancora presente
-    sul filesystem. Ritorna True se uno stato e' stato cambiato.
+def undeprecate(name: str, *, by: str = "") -> bool:
+    """Bring back a deprecated or archived executor (a person's decision).
+
+    The executor must still be published; nothing is rewritten. Its
+    inactivity clock restarts, as for a new revision: otherwise the next
+    nightly pass would hide it again for the same old silence. Returns True
+    when a restriction was lifted.
     """
     # Reappearance is a visibility change, not contract publication.  Prove
     # the complete current policy first; the check includes archived contracts
@@ -490,12 +545,13 @@ def undeprecate(name: str) -> bool:
     conn = _open()
     try:
         cur = conn.execute(
-            "UPDATE executor_stats SET deprecated_at = NULL, archived_at = NULL "
-            "WHERE name = ?",
-            (name,),
+            "UPDATE executor_stats SET deprecated_at = NULL, archived_at = NULL, "
+            "last_used_at = NULL, last_call_ok = NULL, first_seen = ? "
+            "WHERE name = ? AND (deprecated_at IS NOT NULL OR archived_at IS NOT NULL)",
+            (now_iso_z(), name),
         )
         if cur.rowcount > 0:
-            _log_event(conn, name, "undeprecated", None, None)
+            _log_event(conn, name, "undeprecated", None, {"by": by} if by else None)
         conn.commit()
         return cur.rowcount > 0
     finally:
@@ -547,29 +603,6 @@ def counts_by_source_lifecycle() -> dict:
         conn.close()
 
 
-# ── Layer 3 admission policy: efficacy ager (ADR 0114) ──────────────
-#
-# A differenza di `apply_executor_ager` (sopra) — che decay per inattivita'
-# temporale — `apply_efficacy_ager` decay per *inefficacia*: synth con
-# success_rate basso vengono demoted a deprecated (>=100 invocations) o
-# archived (success_rate < 0.05 dopo demotion + altri 30 inv).
-#
-# Stats source: turn JSONL log in `~/.local/share/metnos/turns/*.jsonl`.
-# Filtra per chosen_tool e calcola: success = (result.ok == True OR
-# entries non vuote) AND error_class non in fail set.
-
-EFFICACY_DEPRECATE_THRESHOLD = float(os.environ.get(
-    "METNOS_EFFICACY_DEPRECATE_THRESHOLD", "0.20"))
-EFFICACY_ARCHIVE_THRESHOLD   = float(os.environ.get(
-    "METNOS_EFFICACY_ARCHIVE_THRESHOLD", "0.05"))
-EFFICACY_MIN_INVOCATIONS     = int(os.environ.get(
-    "METNOS_EFFICACY_MIN_INVOCATIONS", "100"))
-EFFICACY_RE_EVAL_INVOCATIONS = int(os.environ.get(
-    "METNOS_EFFICACY_RE_EVAL_INVOCATIONS", "30"))
-
-EFFICACY_AUDIT_DIR = _C.PATH_USER_DATA / "synth_audit"
-
-
 def _is_synth(name: str, source: str | None) -> bool:
     """True se l'executor e' synth (NON handcrafted).
 
@@ -590,302 +623,6 @@ def _is_synth(name: str, source: str | None) -> bool:
     if source is None:
         return False
     return source.startswith("synth")
-
-
-def _step_was_successful(step: dict) -> bool:
-    """Definizione di "step successful":
-       result.ok == True AND nessun error_class fatale.
-       In assenza di entries esplicite, ok=True basta.
-       Se result.entries presente → richiede entries non vuote.
-    """
-    err = step.get("error")
-    if err and err != "":
-        return False
-    res = step.get("result") or {}
-    if not isinstance(res, dict):
-        return False
-    if res.get("ok") is False:
-        return False
-    if res.get("error_class"):
-        return False
-    # Se l'executor produce entries, esigi qualcosa.
-    if "entries" in res and not res.get("entries"):
-        return False
-    if "results" in res and not res.get("results"):
-        # results vuoto → no work done (es. move 0 files): tratta come fail.
-        return False
-    return True
-
-
-def collect_invocation_stats(turns_dir: Path | None = None,
-                              tool_name: str | None = None) -> dict:
-    """Itera tutti i turn JSONL, raccoglie per-tool (nome → {ok, total}).
-
-    Args:
-        turns_dir: dir dei turn log (default ~/.local/share/metnos/turns/).
-        tool_name: se passato, filtra solo le invocations di quel tool.
-
-    Returns:
-        dict {tool_name: {"total": int, "ok": int, "success_rate": float}}.
-    """
-    import json as _json
-    if turns_dir is None:
-        turns_dir = _C.PATH_USER_DATA / "turns"
-    out: dict[str, dict] = {}
-    if not turns_dir.exists():
-        return out
-    for jsonl_path in sorted(turns_dir.glob("*.jsonl")):
-        try:
-            with jsonl_path.open("r", encoding="utf-8") as fh:
-                for line in fh:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        turn = _json.loads(line)
-                    except _json.JSONDecodeError:
-                        continue
-                    for step in turn.get("steps") or []:
-                        ct = step.get("chosen_tool")
-                        if not ct:
-                            continue
-                        if tool_name is not None and ct != tool_name:
-                            continue
-                        bucket = out.setdefault(ct, {"total": 0, "ok": 0})
-                        bucket["total"] += 1
-                        if _step_was_successful(step):
-                            bucket["ok"] += 1
-        except OSError:
-            continue
-    for ct, b in out.items():
-        b["success_rate"] = (b["ok"] / b["total"]) if b["total"] > 0 else 0.0
-    return out
-
-
-def _efficacy_audit_path() -> Path:
-    EFFICACY_AUDIT_DIR.mkdir(parents=True, exist_ok=True)
-    return EFFICACY_AUDIT_DIR / "efficacy_demotions.jsonl"
-
-
-def apply_efficacy_ager(
-    *,
-    deprecate_threshold: float | None = None,
-    archive_threshold: float | None = None,
-    min_invocations: int | None = None,
-    re_eval_invocations: int | None = None,
-    turns_dir: Path | None = None,
-    now_iso: str | None = None,
-) -> dict:
-    """Demote synth con success_rate basso (ADR 0114, 8/5/2026).
-
-    Per ogni synth con invocations >= `min_invocations` (default 100):
-      - success_rate < `deprecate_threshold` (default 0.20) → deprecated.
-      - success_rate < `archive_threshold` (default 0.05) DOPO demotion
-        e con altre `re_eval_invocations` (default 30) post-demotion →
-        archived.
-
-    Idempotente: re-run tocca solo synth con stati nuovi/modificati.
-    Handcrafted (source='handcrafted' o NULL) MAI demoted da efficacy ager.
-
-    Returns:
-      summary dict con liste deprecated/archived + audit info.
-    """
-    import json as _json
-    if deprecate_threshold is None:
-        deprecate_threshold = EFFICACY_DEPRECATE_THRESHOLD
-    if archive_threshold is None:
-        archive_threshold = EFFICACY_ARCHIVE_THRESHOLD
-    if min_invocations is None:
-        min_invocations = EFFICACY_MIN_INVOCATIONS
-    if re_eval_invocations is None:
-        re_eval_invocations = EFFICACY_RE_EVAL_INVOCATIONS
-    now_iso = now_iso or now_iso_z()
-
-    stats = collect_invocation_stats(turns_dir)
-    deprecated_now: list[dict] = []
-    archived_now: list[dict] = []
-    skipped_handcrafted = 0
-    skipped_below_threshold = 0
-    skipped_protected = 0
-
-    audit_lines: list[dict] = []
-    conn = _open()
-    try:
-        for tool_name, st in stats.items():
-            if st["total"] < min_invocations:
-                skipped_below_threshold += 1
-                continue
-            row = conn.execute(
-                "SELECT * FROM executor_stats WHERE name = ?", (tool_name,)
-            ).fetchone()
-            if row is None:
-                continue
-            row = _row(row)
-            if row.name in PROTECTED_NAMES:
-                skipped_protected += 1
-                continue
-            if not _is_synth(row.name, row.source):
-                skipped_handcrafted += 1
-                continue
-            sr = st["success_rate"]
-            # Already archived → nothing to do.
-            if row.archived_at:
-                continue
-            # Already deprecated → check archive threshold.
-            if row.deprecated_at:
-                # Re-eval requires extra invocations dopo deprecation.
-                # Stima conservativa: confronta total invocations corrente
-                # con un soglia inv >= min_invocations + re_eval_invocations.
-                if st["total"] < min_invocations + re_eval_invocations:
-                    continue
-                if sr < archive_threshold:
-                    conn.execute(
-                        "UPDATE executor_stats SET archived_at = ? "
-                        "WHERE name = ?",
-                        (now_iso, row.name),
-                    )
-                    detail = {"success_rate": round(sr, 3),
-                              "total_invocations": st["total"],
-                              "ok_invocations": st["ok"]}
-                    _log_event(conn, row.name, "archived", row.source,
-                               {**detail, "by": "efficacy_ager"})
-                    archived_now.append({"name": row.name, **detail})
-                    audit_lines.append({
-                        "ts": now_iso, "event": "archived",
-                        "name": row.name, **detail,
-                    })
-                continue
-            # Active → check deprecate threshold.
-            if sr < deprecate_threshold:
-                conn.execute(
-                    "UPDATE executor_stats SET deprecated_at = ? "
-                    "WHERE name = ?",
-                    (now_iso, row.name),
-                )
-                detail = {"success_rate": round(sr, 3),
-                          "total_invocations": st["total"],
-                          "ok_invocations": st["ok"]}
-                _log_event(conn, row.name, "deprecated", row.source,
-                           {**detail, "by": "efficacy_ager"})
-                deprecated_now.append({"name": row.name, **detail})
-                audit_lines.append({
-                    "ts": now_iso, "event": "deprecated",
-                    "name": row.name, **detail,
-                })
-        conn.commit()
-    finally:
-        conn.close()
-
-    # Audit log JSONL append. Fail-safe: se OS error, prosegui.
-    if audit_lines:
-        try:
-            audit_path = _efficacy_audit_path()
-            with audit_path.open("a", encoding="utf-8") as fh:
-                for line in audit_lines:
-                    fh.write(_json.dumps(line, ensure_ascii=False) + "\n")
-        except OSError:
-            pass
-
-    return {
-        "deprecated": deprecated_now,
-        "archived": archived_now,
-        "skipped_handcrafted": skipped_handcrafted,
-        "skipped_below_threshold": skipped_below_threshold,
-        "skipped_protected": skipped_protected,
-        "thresholds": {
-            "deprecate": deprecate_threshold,
-            "archive": archive_threshold,
-            "min_invocations": min_invocations,
-            "re_eval_invocations": re_eval_invocations,
-        },
-    }
-
-
-# ── Layer 3 admission policy: feedback ager (E12, ADR 0114 reinforcement) ───
-#
-# A differenza di `apply_efficacy_ager` (success_rate dai turn JSONL su
-# bulk di ≥100 invocations), `apply_feedback_ager` reagisce al signal
-# esplicito ✗ dell'utente: dopo N feedback negative consecutive su uno
-# stesso tool synth (cross-query, LWW), demota l'executor a `deprecated`.
-#
-# Vincoli ADR 0114 L3:
-#   - Handcrafted MAI demoted (source NOT starts with 'synth').
-#   - PROTECTED_NAMES MAI demoted.
-#   - Idempotente: se gia' deprecated/archived, no-op.
-#
-# Audit: stesso JSONL di efficacy_ager (`synth_audit/efficacy_demotions.jsonl`)
-# con campo `by: "feedback_ager"`.
-
-def apply_feedback_ager(
-    tool_name: str,
-    *,
-    consecutive_errors: int,
-    now_iso: str | None = None,
-) -> dict:
-    """Demote `tool_name` a deprecated se synth e non protetto.
-
-    Args:
-      tool_name:           nome executor candidato a demotion.
-      consecutive_errors:  conteggio ✗ consecutive che ha triggerato
-                           la chiamata (per audit/history detail).
-      now_iso:             timestamp di riferimento (default: now).
-
-    Returns:
-      dict {action, name, reason?} dove action ∈
-        {"demoted", "skip_protected", "skip_handcrafted",
-         "skip_already_deprecated", "skip_unknown"}.
-    """
-    import json as _json
-    if not tool_name:
-        return {"action": "skip_unknown", "name": tool_name,
-                "reason": "empty_name"}
-    now_iso = now_iso or now_iso_z()
-
-    if tool_name in PROTECTED_NAMES:
-        return {"action": "skip_protected", "name": tool_name}
-
-    conn = _open()
-    try:
-        row = conn.execute(
-            "SELECT * FROM executor_stats WHERE name = ?", (tool_name,)
-        ).fetchone()
-        if row is None:
-            return {"action": "skip_unknown", "name": tool_name,
-                    "reason": "not_in_stats"}
-        row = _row(row)
-        if not _is_synth(row.name, row.source):
-            return {"action": "skip_handcrafted", "name": tool_name,
-                    "source": row.source}
-        if row.archived_at or row.deprecated_at:
-            return {"action": "skip_already_deprecated", "name": tool_name,
-                    "deprecated_at": row.deprecated_at,
-                    "archived_at": row.archived_at}
-        conn.execute(
-            "UPDATE executor_stats SET deprecated_at = ? WHERE name = ?",
-            (now_iso, tool_name),
-        )
-        detail = {"by": "feedback_ager",
-                  "consecutive_errors": int(consecutive_errors)}
-        _log_event(conn, tool_name, "deprecated", row.source, detail)
-        conn.commit()
-    finally:
-        conn.close()
-
-    # Audit JSONL append. Fail-safe.
-    try:
-        audit_path = _efficacy_audit_path()
-        with audit_path.open("a", encoding="utf-8") as fh:
-            fh.write(_json.dumps({
-                "ts": now_iso, "event": "deprecated",
-                "name": tool_name, "by": "feedback_ager",
-                "consecutive_errors": int(consecutive_errors),
-            }, ensure_ascii=False) + "\n")
-    except OSError:
-        pass
-
-    return {"action": "demoted", "name": tool_name,
-            "deprecated_at": now_iso,
-            "consecutive_errors": int(consecutive_errors)}
 
 
 def daily_event_counts(*, days: int = 30) -> list[dict]:

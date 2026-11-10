@@ -847,7 +847,13 @@ def merge_observed_identifiers(records: list[dict], *, source_key: str = "_sourc
                   for fact in _qualified_identifier_facts(records[index])
                   if any(match.group() == fact["value"]
                          for match, _code in _identifier_matches(fact["value"]))} if keys else set()
-        for key in keys | fields:
+        # The same own code under two field names is one identity too: lists
+        # of one site may hold it in different fields (real run Fastweb
+        # 9b8c8622, 10/11/2026: «numero» in one list, «descrizione» in
+        # another, 13 rows for 11 invoices). Only a code joins, as above.
+        codes = {("", "", value) for _scope, _field, value in keys | fields
+                 if any(match.group() == value for match, _code in _identifier_matches(value))}
+        for key in keys | fields | codes:
             holders.setdefault(key, []).append(index)
     parent = list(range(len(records)))
 

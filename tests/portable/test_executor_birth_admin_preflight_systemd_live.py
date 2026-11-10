@@ -440,7 +440,108 @@ def test_snapshot_denies_foreign_dropin_and_fragment_mutation(
     assert _assert_invalid(
         preflight._revalidate_captured_effective_systemd_v1,
         captured, live_root=live_root, uid=os.getuid(), gid=os.getgid(),
-    ).detail == "effective systemd file changed"
+    ).detail == "effective systemd file changed path=/etc/systemd/system/probe.target"
+
+
+def _captured_probe_target(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """One enabled target under a private live root, captured once."""
+    live_root = tmp_path / "root"
+    unit_root = live_root / "etc" / "systemd" / "system"
+    wants = unit_root / "default.target.wants"
+    wants.mkdir(parents=True)
+    live_root.chmod(0o700)
+    materials, fragment = _target_materials()
+    fragment_path = unit_root / "probe.target"
+    fragment_path.write_bytes(fragment)
+    fragment_path.chmod(0o644)
+    (wants / "probe.target").symlink_to("../probe.target")
+    _harden_directories(live_root)
+    manager = _target_manager_observation(materials)
+    monkeypatch.setattr(
+        preflight, "_run_systemctl_show_v1",
+        lambda _executable, unit_name, _properties: (
+            {"Version": ("255.4-1ubuntu8.17",)}
+            if unit_name is None else manager
+        ),
+    )
+    captured = preflight._capture_effective_systemd_units_core_v1(
+        materials, systemctl_executable="/usr/bin/systemctl",
+        live_root=live_root, uid=os.getuid(), gid=os.getgid(),
+    )
+    return live_root, unit_root, wants, captured
+
+
+def test_an_unrelated_entry_beside_an_observed_file_is_not_a_change(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """R-023: a sibling created in a directory of the chain moves that
+    directory's times, size and link count, not the observed file."""
+    live_root, unit_root, wants, captured = _captured_probe_target(
+        tmp_path, monkeypatch)
+    (live_root / "etc" / "unrelated.conf").write_bytes(b"synthetic")
+    (live_root / "etc" / "unrelated.d").mkdir(mode=0o755)
+    (unit_root / "another.service").write_bytes(b"[Unit]\n")
+    (wants / "another.service").symlink_to("../another.service")
+    preflight._revalidate_captured_effective_systemd_v1(
+        captured, live_root=live_root, uid=os.getuid(), gid=os.getgid(),
+    )
+    repeated = preflight._capture_effective_systemd_units_core_v1(
+        _target_materials()[0], systemctl_executable="/usr/bin/systemctl",
+        live_root=live_root, uid=os.getuid(), gid=os.getgid(),
+    )
+    assert repeated != captured, "the raw captures do differ: directory times moved"
+    assert (preflight._stable_effective_systemd_v1(repeated)
+            == preflight._stable_effective_systemd_v1(captured))
+
+
+def test_a_directory_of_the_chain_replaced_or_reowned_is_still_a_change(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    live_root, unit_root, _wants, captured = _captured_probe_target(
+        tmp_path, monkeypatch)
+    view = preflight._stable_effective_systemd_v1(captured)
+    # Same directory, other permissions: the object changed.
+    (live_root / "etc" / "systemd").chmod(0o700)
+    repeated = preflight._capture_effective_systemd_units_core_v1(
+        _target_materials()[0], systemctl_executable="/usr/bin/systemctl",
+        live_root=live_root, uid=os.getuid(), gid=os.getgid(),
+    )
+    assert preflight._stable_effective_systemd_v1(repeated) != view
+    assert _assert_invalid(
+        preflight._revalidate_captured_effective_systemd_v1,
+        captured, live_root=live_root, uid=os.getuid(), gid=os.getgid(),
+    ).detail == "effective systemd file changed path=/etc/systemd/system/probe.target"
+    (live_root / "etc" / "systemd").chmod(0o755)
+    preflight._revalidate_captured_effective_systemd_v1(
+        captured, live_root=live_root, uid=os.getuid(), gid=os.getgid(),
+    )
+    # Another directory under the same name: a different inode.
+    moved = unit_root.with_name("system.moved")
+    unit_root.rename(moved)
+    import shutil
+    shutil.copytree(moved, unit_root, symlinks=True)
+    _harden_directories(live_root)
+    assert _assert_invalid(
+        preflight._revalidate_captured_effective_systemd_v1,
+        captured, live_root=live_root, uid=os.getuid(), gid=os.getgid(),
+    ).detail.startswith("effective systemd file changed path=")
+
+
+def test_the_observed_file_itself_counts_whole(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Same bytes written again: new times on the file are a change."""
+    live_root, unit_root, _wants, captured = _captured_probe_target(
+        tmp_path, monkeypatch)
+    fragment_path = unit_root / "probe.target"
+    content = fragment_path.read_bytes()
+    info = fragment_path.stat()
+    os.utime(fragment_path, ns=(info.st_atime_ns, info.st_mtime_ns + 1_000_000_000))
+    assert fragment_path.read_bytes() == content
+    assert _assert_invalid(
+        preflight._revalidate_captured_effective_systemd_v1,
+        captured, live_root=live_root, uid=os.getuid(), gid=os.getgid(),
+    ).detail == "effective systemd file changed path=/etc/systemd/system/probe.target"
 
 
 @LINUX_ONLY

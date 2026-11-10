@@ -1,6 +1,6 @@
 {
   "schema": "metnos.contract-boundary-inventory/2",
-  "source_census": "sha256:79fd7f1dec4b2a2fc9665b3a2d428c275ac44de68a946d018959b9d03999da06",
+  "source_census": "sha256:7b188752647cee649a134ab0ff419a2150861bd04caded5fd53c68b1595b3f71",
   "scan_roots": [
     "runtime",
     "install",
@@ -1627,7 +1627,7 @@
     },
     {
       "path": "runtime/change_applier.py",
-      "scope": "apply_create_executor",
+      "scope": "_planner_can_use",
       "role": "live_reader",
       "capabilities": [
         "live_artifact_read"
@@ -5061,6 +5061,16 @@
         "verified_store_read"
       ],
       "destination": "authenticated owned snapshot without creating productive store locks",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/stack_reconcile.py",
+      "scope": "affinity_breaches",
+      "role": "live_reader",
+      "capabilities": [
+        "live_artifact_read"
+      ],
+      "destination": "verified live catalog, immutable store, or live artifact boundary only",
       "phase": "M4"
     },
     {

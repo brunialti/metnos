@@ -1,20 +1,21 @@
 """user_feedback adapter — turn_feedback.jsonl → ChangeIntent.
 
-Aggrega i feedback negativi (action='error') per (canonical_query,
-pipeline_tools) e propone reject_pattern. Solo se n_rejections >= 2
-(evita 1-shot noise).
+Aggregates negative feedback (action='error') per request and tool sequence
+and proposes a reject_pattern. Only with at least two refusals still standing
+(a later ✓ on the same sequence cancels the earlier ✗, as the reader does).
+
+The request is keyed in the form the reader compares
+(`turn_feedback.normalized_request`), and the tool sequence is the one the
+feedback record itself carries: a proposal without a sequence would have
+nothing to avoid, so it is not produced.
 
 Mapping:
   - intent_kind: KIND_REJECT_PATTERN
-  - state: STATE_PROPOSED (servono approvazione umana per ban formale)
-
-I feedback OK non generano change_intent (sono solo conferme di pattern
-gia' esistenti — sarebbe rumore puro).
+  - state: STATE_PROPOSED (a formal ban needs a human decision)
 """
 from __future__ import annotations
 
 import json
-from collections import defaultdict
 from typing import Iterable
 
 import config as C
@@ -22,6 +23,7 @@ from change_intents import (
     KIND_REJECT_PATTERN,
     ChangeIntent,
 )
+from turn_feedback import normalized_request
 
 from ._base import _iso_from_ts, score_for_reject_pattern
 
@@ -31,13 +33,10 @@ def iter_user_feedback() -> Iterable[ChangeIntent]:
     if not fpath.exists():
         return
 
-    # (canonical, tools_sig) → {count, first_ts, last_ts, turn_ids}
-    aggregated: dict[tuple, dict] = defaultdict(
-        lambda: {"count": 0, "first_ts": None, "last_ts": None, "turn_ids": []}
-    )
-
+    # (request, tools) -> refusals still standing, in file (chronological) order
+    aggregated: dict[tuple[str, tuple[str, ...]], dict] = {}
     try:
-        with fpath.open("r") as fp:
+        with fpath.open("r", encoding="utf-8") as fp:
             for line in fp:
                 line = line.strip()
                 if not line:
@@ -46,55 +45,48 @@ def iter_user_feedback() -> Iterable[ChangeIntent]:
                     rec = json.loads(line)
                 except json.JSONDecodeError:
                     continue
-                if rec.get("action") != "error":
+                action = rec.get("action")
+                request = normalized_request(rec.get("user_query") or rec.get("canonical"))
+                tools = tuple(str(tool) for tool in (
+                    rec.get("rejected_pipeline") or rec.get("approved_pipeline") or ()) if tool)
+                if not request or not tools or action not in ("error", "ok"):
                     continue
-                canonical = rec.get("canonical") or ""
-                if not canonical:
+                key = (request, tools)
+                if action == "ok":
+                    aggregated.pop(key, None)
                     continue
-                # tools_sig: stringa "t1→t2→..." (None se non disponibile)
-                effects = rec.get("effects") or []
-                tools_sig = None
-                for ef in effects:
-                    if ef.get("type") == "demote_pipeline":
-                        tools = ef.get("tools") or []
-                        if tools:
-                            tools_sig = "→".join(tools)
-                            break
-                key = (canonical, tools_sig or "")
                 ts = float(rec.get("ts") or 0.0)
-                agg = aggregated[key]
+                agg = aggregated.setdefault(
+                    key, {"count": 0, "first_ts": ts, "turn_ids": []})
                 agg["count"] += 1
-                agg["last_ts"] = ts if agg["last_ts"] is None else max(agg["last_ts"], ts)
-                agg["first_ts"] = ts if agg["first_ts"] is None else min(agg["first_ts"], ts)
+                agg["first_ts"] = min(agg["first_ts"], ts)
                 agg["turn_ids"].append(rec.get("turn_id", ""))
     except OSError:
         return
 
-    for (canonical, tools_sig), agg in aggregated.items():
+    for (request, tools), agg in aggregated.items():
         if agg["count"] < 2:
             continue  # 1-shot noise
-        score = score_for_reject_pattern(agg["count"])
-        tools = tools_sig.split("→") if tools_sig else []
+        tools_sig = "→".join(tools)
         body = {
-            "canonical_query": canonical,
-            "tools_sequence": tools,
+            "canonical_query": request,
+            "tools_sequence": list(tools),
             "n_rejections": agg["count"],
             "turn_ids_sample": agg["turn_ids"][:5],
         }
         summary = (
-            f"Bandisci pattern «{canonical}» → {tools_sig or '(no pipeline)'} "
+            f"Bandisci pattern «{request}» → {tools_sig} "
             f"(rifiutato {agg['count']} volte)"
         )
-        first_ts = agg["first_ts"] or 0.0
         yield ChangeIntent.new(
             origin_family="user",
             origin_module="feedback",
-            origin_source_id=f"{canonical}::{tools_sig}",
+            origin_source_id=f"{request}::{tools_sig}",
             intent_kind=KIND_REJECT_PATTERN,
-            intent_target=canonical,
+            intent_target=request,
             intent_summary=summary,
             intent_body=body,
-            score=score,
-            confidence=1.0,  # feedback diretto utente
-            discovered_at=_iso_from_ts(first_ts) if first_ts else None,
+            score=score_for_reject_pattern(agg["count"]),
+            confidence=1.0,  # direct user feedback
+            discovered_at=_iso_from_ts(agg["first_ts"]) if agg["first_ts"] else None,
         )

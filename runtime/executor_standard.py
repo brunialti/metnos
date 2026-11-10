@@ -24,6 +24,8 @@ from typing import Iterable
 STANDARD_ID = "metnos.executor/1.0"
 SUPPORTED_MANIFEST_FORMAT = "1.0"
 CANDIDATE_LIFECYCLES = frozenset({"proposed", "synthesized"})
+# The languages an active executor must describe itself in.
+ACTIVE_DESCRIPTION_LANGUAGES = ("it", "en")
 _SEMVER_RE = re.compile(r"^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$")
 _DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 _DESCRIPTION_ANCHORS = ("SCOPO:", "PATTERN:", "NON:", "OUT:")
@@ -90,7 +92,7 @@ def _validate_description(findings: list[StandardFinding], manifest: dict,
         _add(findings, "description_map", "description must be a non-empty language map")
         return
 
-    required_langs = ("it", "en") if active else ()
+    required_langs = ACTIVE_DESCRIPTION_LANGUAGES if active else ()
     for lang in required_langs:
         if not isinstance(descriptions.get(lang), str) or not descriptions[lang].strip():
             _add(findings, "description_language", f"description.{lang} is required")

@@ -447,3 +447,15 @@ def test_entry_reports_the_delegated_result(monkeypatch, capsys):
                         lambda operation, document: {"operation": operation, **document})
     assert review.main(["approve"]) == 0
     assert json.loads(capsys.readouterr().out) == {"operation": "approve", "review_id": "x"}
+
+
+def test_entry_reads_a_document_written_over_several_lines(monkeypatch, capsys):
+    """Review of 10/11/2026 (A8): only the first line was read, so an
+    indented document was refused as invalid."""
+    import io
+    payload = b'{\n  "review_id": "x",\n  "human_cases": []\n}\n'
+    monkeypatch.setattr(review.sys, "stdin", type("S", (), {"buffer": io.BytesIO(payload)})())
+    monkeypatch.setattr(review, "run_delegated",
+                        lambda operation, document: {"operation": operation, **document})
+    assert review.main(["review"]) == 0
+    assert json.loads(capsys.readouterr().out)["review_id"] == "x"

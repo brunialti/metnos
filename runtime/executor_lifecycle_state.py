@@ -1,9 +1,11 @@
 """One reader for the restrictions that shape the loaded catalog.
 
-The name-based aging store owns executor lifecycle state. An executor is
-active, deprecated (kept in the catalog, ranked lower) or archived (out of the
-catalog). Every reader and writer of that state goes through this module, so
-the loader, the change applier and the nightly aging agree on one owner.
+The aging store owns executor lifecycle state. An executor is active,
+deprecated (kept in the catalog, ranked lower) or archived (out of the
+catalog). The loader, the change applier and the nightly aging read and write
+that state through this module. A restriction is recorded by name and holds
+for the revision that earned it: a new revision admitted under the same name
+starts unrestricted (`register_loaded_executors`).
 """
 from __future__ import annotations
 
@@ -71,14 +73,28 @@ def _source_tag(executor: object) -> str:
     return "handcrafted"
 
 
+def _generation(executor: object) -> str:
+    """What changes when a new revision of the executor is admitted."""
+    return str(getattr(executor, "generation_id", None)
+               or getattr(executor, "digest", None) or "")
+
+
 def register_loaded_executors(executors: Iterable[object]) -> int:
-    """Let the aging store learn the names this catalog load produced."""
-    from executor_aging import register
+    """Let the aging store learn the names and revisions this load produced.
+
+    A restriction earned by an earlier revision is lifted here when a new one
+    arrives under the same name; the load that notices it still applies the
+    snapshot it signed, the next one sees the executor unrestricted.
+    """
+    from executor_aging import note_generation, register
 
     recorded = 0
     for executor in executors:
         try:
             register(executor.name, source=_source_tag(executor))
+            if note_generation(executor.name, _generation(executor)):
+                log.info("lifecycle state: %s is a new revision, restriction lifted",
+                         executor.name)
         except Exception:
             continue
         recorded += 1
@@ -160,7 +176,7 @@ def revive_executor(executor_name: str, *, reason: str) -> bool:
     """Undo a local restriction on one executor, through its owner."""
     from executor_aging import undeprecate
 
-    return bool(undeprecate(executor_name))
+    return bool(undeprecate(executor_name, by=reason))
 
 
 __all__ = ["RESTRICTED_REJECT_PREFIX", "Restriction", "apply_inactivity_decay",

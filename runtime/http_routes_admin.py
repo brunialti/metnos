@@ -628,8 +628,15 @@ async def admin_changes(request: web.Request) -> web.Response:
     # case file, computed now against the current vocabulary and catalog.
     import vocabulary_dossier
     every_intent = ci_mod.list_intents(limit=5000)
+    import change_applier
     for row, obj in zip(rows, rows_objs):
         row["vocabulary_dossier"] = vocabulary_dossier.dossier(obj, every_intent)
+        # An accepted creation whose candidate waits for the independent
+        # review says so, instead of looking idle (computed when shown).
+        row["review_pending"] = (
+            change_applier.pending_review(str(obj.intent_body.get("name") or obj.intent_target))
+            if obj.state == ci_mod.STATE_ACCEPTED
+            and obj.intent_kind == ci_mod.KIND_CREATE_EXECUTOR else None)
 
     # Facets — conta per family e kind sull'INSIEME corrente (state filtered)
     all_in_state = ci_mod.list_intents(state=state, limit=5000)
@@ -702,18 +709,45 @@ def _render_change_row_html(ci_row) -> str:
         "rolled_back": f'<span class="chip bad">{_msg("UI_CHANGE_BADGE_ROLLED_BACK")}</span>',
         "failed":      f'<span class="chip bad">{_msg("UI_CHANGE_BADGE_FAILED")}</span>',
         "proposed":    '<span class="chip muted">proposed</span>',
-    }.get(ci_row.state, f'<span class="chip muted">{ci_row.state}</span>')
+    }
     import html as _html
-    reason = (f' <span class="muted">{_html.escape(_msg("UI_CHANGE_DECISION_REASON"))}: '
-              f'{_html.escape(ci_row.decision_reason)}</span>'
+
+    def _safe(value) -> str:
+        # Proposal fields can carry model-written text: never raw in the page.
+        return _html.escape(str(value if value is not None else ""), quote=True)
+
+    state_chip = state_chip.get(
+        ci_row.state, f'<span class="chip muted">{_safe(ci_row.state)}</span>')
+    reason = (f' <span class="muted">{_safe(_msg("UI_CHANGE_DECISION_REASON"))}: '
+              f'{_safe(ci_row.decision_reason)}</span>'
               if getattr(ci_row, "decision_reason", None) else "")
     return (
-        f'<tr id="ci-{ci_row.id}">'
+        f'<tr id="ci-{_safe(ci_row.id)}">'
         f'<td colspan="6" class="muted">'
-        f'{ci_row.intent_target}: {state_chip}'
-        f' <span class="muted">(by {ci_row.decision_by or "system"} at '
-        f'{ci_row.updated_at})</span>{reason}</td></tr>'
+        f'{_safe(ci_row.intent_target)}: {state_chip}'
+        f' <span class="muted">(by {_safe(ci_row.decision_by or "system")} at '
+        f'{_safe(ci_row.updated_at)})</span>{reason}</td></tr>'
     )
+
+
+def _change_error(request: web.Request, id_: str, status: int, code: str,
+                  message: str) -> web.Response:
+    """A decision that was not taken, said where the person is looking.
+
+    The page posts with htmx, which discards the body of an error status: the
+    row stayed as it was and nothing told why. For the page the text goes to
+    the notice of the row it came from; API clients get the status and code.
+    """
+    import html as _html
+    import re as _re
+
+    if (request.headers.get("HX-Request") == "true"
+            and _re.fullmatch(r"[A-Za-z0-9_-]{1,80}", id_ or "")):
+        return web.Response(
+            text=f'<span class="chip bad">{_html.escape(message)}</span>',
+            content_type="text/html",
+            headers={"HX-Retarget": f"#ci-notice-{id_}", "HX-Reswap": "innerHTML"})
+    return _error(status, code, message)
 
 
 async def admin_change_action(request: web.Request) -> web.Response:
@@ -732,12 +766,15 @@ async def admin_change_action(request: web.Request) -> web.Response:
     action = request.match_info["action"]
 
     if action not in ("accept", "reject", "stage", "rollback", "retry"):
-        return _error(400, "INVALID_ACTION",
-                      _msg("ERR_CHANGE_INVALID_ACTION", action=action))
+        return _change_error(request, id_, 400, "INVALID_ACTION",
+                             _msg("ERR_CHANGE_INVALID_ACTION", action=action))
 
-    by = request.get("admin_user") or "admin"
+    # Who decided: the signed-in person when the session has one.
+    by = str(request.get("authenticated_user_id")
+             or request.get("lan_principal") or "admin")
 
-    # The page posts its reason field as a form; API clients send JSON.
+    # The page posts its reason field as a form; API clients send JSON. A body
+    # that cannot be read may carry the reason: nothing is decided without it.
     try:
         if not request.body_exists:
             body = {}
@@ -746,9 +783,20 @@ async def admin_change_action(request: web.Request) -> web.Response:
         else:
             body = await request.json()
     except Exception:
-        body = {}
-    reason = body.get("reason") if isinstance(body, dict) else None
+        body = None
+    if not isinstance(body, dict):
+        return _change_error(request, id_, 400, "INVALID_BODY",
+                             _msg("ERR_CHANGE_INVALID_BODY"))
+    reason = body.get("reason")
     reason = " ".join(str(reason).split())[:500] or None if reason else None
+
+    # A new word enters a closed vocabulary only with the reason on record.
+    if action == "accept" and not reason:
+        import vocabulary_dossier
+        current = ci_mod.get_intent(id_)
+        if current is not None and vocabulary_dossier.proposer_text(current):
+            return _change_error(request, id_, 400, "REASON_REQUIRED",
+                                 _msg("ERR_CHANGE_REASON_REQUIRED"))
 
     try:
         if action in ("accept", "reject", "stage"):
@@ -761,24 +809,25 @@ async def admin_change_action(request: web.Request) -> web.Response:
             # failed → accepted (re-enqueue al daemon)
             cur = ci_mod.get_intent(id_)
             if cur is None:
-                return _error(404, "NOT_FOUND",
-                              _msg("ERR_CHANGE_NOT_FOUND", id=id_))
+                return _change_error(request, id_, 404, "NOT_FOUND",
+                                     _msg("ERR_CHANGE_NOT_FOUND", id=id_))
             if cur.state != "failed":
-                return _error(400, "INVALID_TRANSITION",
-                              f"retry richiede state=failed, attuale={cur.state}")
+                return _change_error(
+                    request, id_, 400, "INVALID_TRANSITION",
+                    _msg("ERR_CHANGE_RETRY_NOT_FAILED", state=cur.state))
             updated = ci_mod._transition(id_, to_state="accepted",
                                           extra_cols={"decision_by": by,
                                                       "decision_ts": ci_mod._iso_utc_now(),
                                                       "decision_action": "retry",
                                                       "decision_reason": reason})
         else:
-            return _error(400, "INVALID_ACTION",
-                          _msg("ERR_CHANGE_INVALID_ACTION", action=action))
+            return _change_error(request, id_, 400, "INVALID_ACTION",
+                                 _msg("ERR_CHANGE_INVALID_ACTION", action=action))
     except ci_mod.TransitionError as exc:
-        return _error(400, "TRANSITION_ERROR", str(exc))
+        return _change_error(request, id_, 400, "TRANSITION_ERROR", str(exc))
     except Exception as exc:
         log.exception("change_action failed: %s", exc)
-        return _error(500, "INTERNAL", str(exc))
+        return _change_error(request, id_, 500, "INTERNAL", str(exc))
 
     # htmx negotiate (HX-Request header) o JSON
     if request.headers.get("HX-Request") == "true":
@@ -980,10 +1029,7 @@ async def admin_executors(request: web.Request) -> web.Response:
     """GET /admin/executors"""
     catalog = app_get(request.app, CATALOG_PROVIDER, lambda: [])()
     rows = _executors_rows(catalog)
-    rejected = [
-        {"path": path, "name": Path(path).name, "reason": reason}
-        for path, reason in (getattr(catalog, "rejected", None) or [])
-    ]
+    rejected = _executors_rejected(catalog)
     return negotiate_collection(
         request,
         json_payload={"rows": rows, "total": len(rows),
@@ -992,6 +1038,55 @@ async def admin_executors(request: web.Request) -> web.Response:
         template="executors.html",
         template_ctx={"rows": rows, "rejected": rejected},
     )
+
+
+def _executors_rejected(catalog) -> list[dict]:
+    """Executors left out of the catalog, with the name a person knows them by.
+
+    ``restricted`` marks the ones the lifecycle owner stopped (unused for too
+    long, a rolled-back change): those, and only those, can be brought back.
+    """
+    from executor_lifecycle_state import RESTRICTED_REJECT_PREFIX
+
+    rows = []
+    for path, reason in (getattr(catalog, "rejected", None) or []):
+        located = Path(path)
+        name = located.parent.name if located.suffix else located.name
+        rows.append({"path": path, "name": name, "reason": reason,
+                     "restricted": str(reason).startswith(RESTRICTED_REJECT_PREFIX)})
+    return rows
+
+
+async def admin_executor_revive(request: web.Request) -> web.Response:
+    """POST /admin/executors/{name}/revive — lift a lifecycle restriction.
+
+    Only a name the page shows as stopped is accepted: a deprecated row of
+    the catalog, or an executor the lifecycle owner left out of it.
+    """
+    from messages import get as _msg
+
+    name = request.match_info["name"]
+    catalog = app_get(request.app, CATALOG_PROVIDER, lambda: [])()
+    stopped = {ex.name for ex in catalog if ex.lifecycle == "deprecated"} | {
+        row["name"] for row in _executors_rejected(catalog) if row["restricted"]}
+    if name not in stopped:
+        return _error(404, "NOT_RESTRICTED",
+                      _msg("UI_EXECUTOR_REVIVE_NOT_RESTRICTED", name=name))
+    by = str(request.get("authenticated_user_id")
+             or request.get("lan_principal") or "admin")
+    try:
+        from executor_lifecycle_state import revive_executor
+        revived = revive_executor(name, reason=by)
+    except Exception as exc:
+        log.exception("executor revive failed: %s", exc)
+        return _error(500, "INTERNAL", type(exc).__name__)
+    if not revived:
+        return _error(404, "NOT_RESTRICTED",
+                      _msg("UI_EXECUTOR_REVIVE_NOT_RESTRICTED", name=name))
+    if request.headers.get("HX-Request") == "true":
+        # The whole table changes (the row moves between the two lists).
+        return web.Response(status=200, headers={"HX-Refresh": "true"})
+    return web.json_response({"ok": True, "name": name, "lifecycle": "active"})
 
 
 async def admin_executors_stats(request: web.Request) -> web.Response:
@@ -2356,6 +2451,7 @@ ROUTES = (
     # (Bonifica 28/5). Feature ritirata, nessun rimpiazzo.
     ("GET",  "/admin/executors",                  admin_executors),
     ("GET",  "/admin/executors/stats",            admin_executors_stats),
+    ("POST", r"/admin/executors/{name}/revive",   admin_executor_revive),
     ("GET",  r"/admin/jobs/{key}",                admin_job_info),
     ("POST", r"/admin/jobs/{key}/fire",           admin_job_fire),
     ("GET",  "/admin/runs",                       admin_runs),

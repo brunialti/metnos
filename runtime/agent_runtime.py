@@ -4301,11 +4301,17 @@ def _ensure_verified_table_rows(final_message: str, steps: list) -> str:
         if not title or (title, rows) in seen:
             continue
         seen.add((title, rows))
-        tables.append((title, rows))
-    for title, rows in tables:
+        # Merged and excluded rows are part of the receipt (§2.8): the model's
+        # prose may drop the writer's hint (real run Fastweb, 10/11/2026).
+        from tabular.api import ANSWER_NOTICE_CODES
+        warnings = [str(item.get("message") or "") for item in result.get("notices") or ()
+                    if isinstance(item, dict) and item.get("code") in ANSWER_NOTICE_CODES]
+        tables.append((title, rows, [text for text in warnings if text]))
+    for title, rows, warnings in tables:
         notice = msg("MSG_TABLE_VERIFIED_ROWS_SINGLE" if len(tables) == 1 else "MSG_TABLE_VERIFIED_ROWS", title=title, rows=rows)
-        if notice and not notice.startswith("<missing:") and notice not in (final_message or ""):
-            final_message = ((final_message or "").rstrip() + "\n\n" + notice).strip()
+        for text in ([notice] if notice and not notice.startswith("<missing:") else []) + warnings:
+            if text not in (final_message or ""):
+                final_message = ((final_message or "").rstrip() + "\n\n" + text).strip()
     return final_message
 
 

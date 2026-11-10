@@ -16,8 +16,8 @@ affinity    = [
 ]
 
 [description]
-it = "SCOPO: raggiunge l'accesso e usa credenziali cifrate, mai esposte all'agente. Tenta i CAPTCHA locali supportati, poi chiede intervento; OTP separato. PATTERN: open_sites -> login_sites(from_step=1). NON: raccolta valori -> get_inputs; credenziali gia' salvate, nessun selettore. OUT: entries=[{session_id,logged_in,reason_code?}]."
-en = "SCOPO: reaches sign-in and uses encrypted credentials never exposed to the agent. Tries supported local CAPTCHA solving, then requests intervention; OTP stays separate. PATTERN: open_sites -> login_sites(from_step=1). NON: value collection -> get_inputs; stored credentials, no selectors. OUT: entries=[{session_id,logged_in,reason_code?}]."
+it = "SCOPO: accede all'area personale del sito con credenziali cifrate, mai esposte all'agente. Tenta i CAPTCHA locali, poi chiede intervento; OTP separato. PATTERN: open_sites -> login_sites(from_step=1). NON: raccolta valori -> get_inputs. OUT: entries=[{session_id,logged_in,reason_code?}]."
+en = "SCOPO: enters the site's personal area with encrypted credentials never exposed to the agent. Tries local CAPTCHA, then asks for help; OTP separate. PATTERN: open_sites -> login_sites(from_step=1). NON: value collection -> get_inputs. OUT: entries=[{session_id,logged_in,reason_code?}]."
 
 [code]
 files  = ["login_sites.py"]

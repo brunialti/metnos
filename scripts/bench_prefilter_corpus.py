@@ -48,7 +48,11 @@ def _authored_catalog() -> list:
     from types import SimpleNamespace
 
     entries = []
-    for path in sorted((_RADICE / "executors").glob("*/manifest.toml")):
+    # Every authored executor: the builtin contracts compete for the same
+    # requests, so a measure without them is a measure of another catalog.
+    paths = [path for folder in ("executors", "runtime/builtin_executor_contracts")
+             for path in sorted((_RADICE / folder).glob("*/manifest.toml"))]
+    for path in paths:
         data = tomllib.loads(path.read_text(encoding="utf-8"))
         description = data.get("description") or ""
         if isinstance(description, dict):

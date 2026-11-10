@@ -2086,6 +2086,8 @@ def _handle_extract_entries(args, *, verbose: bool = False,
         if _page_key(entry) is not None:
             source_pages[source_ref] = _page_key(entry)
         admitted = []
+        from list_columns import own_code_field
+        own_code = own_code_field()
         for extracted in records:
             norm = {
                 field: _normalize_extracted_date(
@@ -2094,6 +2096,9 @@ def _handle_extract_entries(args, *, verbose: bool = False,
                 )
                 for field in fields
             }
+            # A listed row's own code outside the requested fields (list_columns).
+            if own_code not in norm and isinstance(extracted.get(own_code), str) and extracted[own_code]:
+                norm[own_code] = extracted[own_code]
             if audit_values:
                 norm.update(audit_values)
             admitted.append(admit_identity_facts(

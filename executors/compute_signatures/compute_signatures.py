@@ -16,6 +16,7 @@ from messages import get as _msg  # noqa: E402
 from executor_helpers import run_stdio  # noqa: E402
 from safety.canonicalize import Signature, compute_signature, has_sudo_wrapper
 from safety.seed_bootstrap import bootstrap_safety_seed
+from safety.storage import open_store_or_error
 
 
 _IRREVERSIBLE_BINARIES = frozenset({
@@ -91,7 +92,13 @@ def _op_reversibility(signature: str) -> dict:
 
 def _op_seed_apply(seed_path: str | None) -> dict:
     p = Path(seed_path) if seed_path else None
-    res = bootstrap_safety_seed(seed_path=p)
+    store, unavailable = open_store_or_error()
+    if store is None:
+        return unavailable
+    try:
+        res = bootstrap_safety_seed(store=store, seed_path=p)
+    finally:
+        store.close()
     return {
         "ok": True,
         "applied": res.applied,

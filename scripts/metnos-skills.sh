@@ -4,7 +4,7 @@
 # col PYTHONPATH giusto per Metnos.
 #
 # Uso:
-#   metnos-skills import <url_or_path> [--skip-l2] [--skip-l6] [--no-sign]
+#   metnos-skills import <url_or_path> [--skip-l6] [--no-sign]
 #   metnos-skills list
 #   metnos-skills uninstall <skill_name>
 #   metnos-skills status <skill_name>

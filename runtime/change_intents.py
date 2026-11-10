@@ -90,7 +90,6 @@ CREATE INDEX IF NOT EXISTS idx_ci_origin_family ON change_intents(origin_family)
 CREATE INDEX IF NOT EXISTS idx_ci_origin_module ON change_intents(origin_module);
 CREATE INDEX IF NOT EXISTS idx_ci_intent_kind   ON change_intents(intent_kind);
 CREATE INDEX IF NOT EXISTS idx_ci_score         ON change_intents(score DESC);
-CREATE INDEX IF NOT EXISTS idx_ci_fingerprint   ON change_intents(fingerprint);
 CREATE INDEX IF NOT EXISTS idx_ci_target        ON change_intents(intent_target);
 CREATE INDEX IF NOT EXISTS idx_ci_discovered    ON change_intents(discovered_at DESC);
 """
@@ -239,7 +238,9 @@ def compute_fingerprint(
     origin_family per permettere convergence cross-source.
 
     Body essenziale = subset chiave kind-specific:
-      - create_executor:      {name, action, object, qualifier}
+      - create_executor:      name (two proposals to create the same
+                              executor are one proposal, whoever wrote them
+                              and however each producer filled the body)
       - extend_executor:      {target, arg_name}
       - dedupe_executors:     sorted set di {a, b}
       - materialize_pipeline: tools_sequence
@@ -249,12 +250,7 @@ def compute_fingerprint(
     import hashlib
     essential: Any
     if intent_kind == KIND_CREATE_EXECUTOR:
-        essential = {
-            "name": intent_body.get("name") or intent_target,
-            "action": intent_body.get("action"),
-            "object": intent_body.get("object"),
-            "qualifier": intent_body.get("qualifier"),
-        }
+        essential = {"name": intent_body.get("name") or intent_target}
     elif intent_kind == KIND_EXTEND_EXECUTOR:
         essential = {
             "target": intent_target,
@@ -301,10 +297,79 @@ def _conn() -> sqlite3.Connection:
     return cn
 
 
+# Kept when two rows turn out to be the same proposal: what happened in the
+# world first, then a decision in flight, then a refusal (it must not come
+# back), last a proposal nobody decided on.
+_MERGE_PRECEDENCE = (
+    STATE_FINALIZED, STATE_OBSERVED, STATE_APPLIED, STATE_ACCEPTED,
+    STATE_REJECTED, STATE_FAILED, STATE_ROLLED_BACK, STATE_STAGED,
+    STATE_PROPOSED,
+)
+_SCHEMA_VERSION = 1
+
+
+def _migrate(cn: sqlite3.Connection) -> None:
+    """One proposal per fingerprint (review of 10/11/2026). Repeatable.
+
+    Fingerprints of creation proposals are recomputed with the current rule,
+    rows that are the same proposal are merged keeping the most advanced
+    one, and the fingerprint becomes unique so a concurrent save cannot
+    duplicate it again.
+    """
+    cn.execute("BEGIN IMMEDIATE")
+    try:
+        if cn.execute("PRAGMA user_version").fetchone()[0] >= _SCHEMA_VERSION:
+            cn.execute("COMMIT")
+            return
+        columns = {row[1] for row in cn.execute("PRAGMA table_info(change_intents)")}
+        if "seen_families" not in columns:
+            cn.execute("ALTER TABLE change_intents "
+                       "ADD COLUMN seen_families TEXT NOT NULL DEFAULT ''")
+        for row in cn.execute(
+                "SELECT id, origin_family, intent_target, intent_body FROM change_intents "
+                "WHERE intent_kind = ?", (KIND_CREATE_EXECUTOR,)).fetchall():
+            try:
+                body = json.loads(row["intent_body"] or "{}")
+            except ValueError:
+                body = {}
+            cn.execute("UPDATE change_intents SET fingerprint = ? WHERE id = ?", (
+                compute_fingerprint(
+                    origin_family=row["origin_family"], intent_kind=KIND_CREATE_EXECUTOR,
+                    intent_target=row["intent_target"],
+                    intent_body=body if isinstance(body, dict) else {}),
+                row["id"]))
+        rank = {state: index for index, state in enumerate(_MERGE_PRECEDENCE)}
+        kept: dict[str, sqlite3.Row] = {}
+        for row in cn.execute(
+                "SELECT id, fingerprint, state, origin_family, updated_at "
+                "FROM change_intents ORDER BY updated_at DESC, id").fetchall():
+            best = kept.get(row["fingerprint"])
+            if best is None:
+                kept[row["fingerprint"]] = row
+                continue
+            if rank.get(row["state"], len(rank)) < rank.get(best["state"], len(rank)):
+                best, row = row, best
+                kept[best["fingerprint"]] = best
+            cn.execute("DELETE FROM change_intents WHERE id = ?", (row["id"],))
+        cn.execute("DROP INDEX IF EXISTS idx_ci_fingerprint")
+        cn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_ci_fingerprint_unique "
+                   "ON change_intents(fingerprint)")
+        cn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
+        cn.execute("COMMIT")
+    except BaseException:
+        cn.execute("ROLLBACK")
+        raise
+
+
 def init_db() -> None:
-    """Crea schema + indici (idempotente)."""
-    with _conn() as cn:
+    """Crea schema + indici (idempotente) e porta i dati alla forma corrente."""
+    cn = _conn()
+    try:
         cn.executescript(_SCHEMA)
+        if cn.execute("PRAGMA user_version").fetchone()[0] < _SCHEMA_VERSION:
+            _migrate(cn)
+    finally:
+        cn.close()
 
 
 def _iso_utc_now() -> str:
@@ -355,25 +420,30 @@ def _intent_to_params(ci: ChangeIntent) -> dict:
 
 def upsert_intent(ci: ChangeIntent) -> str:
     """Insert se fingerprint nuovo. Se esiste già:
-      - bumpa convergence (+1 se origin_family diversa)
+      - convergence +1 only when a family that had not said so yet agrees
       - aggiorna score = ultima valutazione: scende quando i dati peggiorano
         (RM-0009, nucleo); quante fonti concordano lo dice convergence
       - aggiorna discovered_at = piu' recente
       - PRESERVA decision_*/applied_*/observed_*/state se gia' progrediti
+
+    One writer at a time: the lookup and the write are one transaction, and
+    the fingerprint is unique, so two turns crossing the threshold together
+    cannot create the same proposal twice.
 
     Ritorna l'`id` (esistente o nuovo).
     """
     init_db()
     now = _iso_utc_now()
     ci.updated_at = now
-    with _conn() as cn:
-        # Cerca esistente per fingerprint
+    cn = _conn()
+    try:
+        cn.execute("BEGIN IMMEDIATE")
         existing = cn.execute(
             "SELECT * FROM change_intents WHERE fingerprint=? LIMIT 1",
             (ci.fingerprint,),
         ).fetchone()
         if existing is None:
-            params = _intent_to_params(ci)
+            params = {**_intent_to_params(ci), "seen_families": ci.origin_family}
             cn.execute(
                 """
                 INSERT INTO change_intents
@@ -384,7 +454,7 @@ def upsert_intent(ci: ChangeIntent) -> str:
                    decision_by, decision_ts, decision_action, decision_reason,
                    applied_at, applied_effect, observed_at, observed_metrics,
                    finalized_at, rolled_back_at, rolled_back_reason,
-                   failed_at, failed_reason, updated_at)
+                   failed_at, failed_reason, updated_at, seen_families)
                 VALUES
                   (:id, :fingerprint, :state, :origin_family, :origin_module,
                    :origin_source_id, :discovered_at, :intent_kind, :intent_target,
@@ -393,35 +463,51 @@ def upsert_intent(ci: ChangeIntent) -> str:
                    :decision_by, :decision_ts, :decision_action, :decision_reason,
                    :applied_at, :applied_effect, :observed_at, :observed_metrics,
                    :finalized_at, :rolled_back_at, :rolled_back_reason,
-                   :failed_at, :failed_reason, :updated_at)
+                   :failed_at, :failed_reason, :updated_at, :seen_families)
                 """,
                 params,
             )
+            cn.execute("COMMIT")
             return ci.id
         # Esiste → merge non-distruttivo
         existing_id = existing["id"]
+        families = [family for family in
+                    (existing["seen_families"] or existing["origin_family"]).split(",")
+                    if family]
         new_conv = existing["convergence"]
-        if existing["origin_family"] != ci.origin_family:
+        if ci.origin_family not in families:
+            families.append(ci.origin_family)
             new_conv = new_conv + 1
-        new_score = existing["score"] if ci.score is None else ci.score
         # Discovered_at = il piu' recente
         new_discovered = max(existing["discovered_at"], ci.discovered_at)
+        # What a person decided on stays as they read it: summary and
+        # rationale follow new evidence only while the proposal is open.
+        open_for_text = existing["state"] == STATE_PROPOSED
         cn.execute(
             """
             UPDATE change_intents
                SET score        = ?,
                    convergence  = ?,
+                   seen_families = ?,
                    discovered_at = ?,
                    intent_summary = COALESCE(NULLIF(?, ''), intent_summary),
                    intent_rationale = COALESCE(NULLIF(?, ''), intent_rationale),
                    updated_at   = ?
              WHERE id = ?
             """,
-            (new_score, new_conv, new_discovered,
-             ci.intent_summary or "", ci.intent_rationale or "",
+            (ci.score, new_conv, ",".join(families), new_discovered,
+             (ci.intent_summary or "") if open_for_text else "",
+             (ci.intent_rationale or "") if open_for_text else "",
              now, existing_id),
         )
+        cn.execute("COMMIT")
         return existing_id
+    except BaseException:
+        if cn.in_transaction:
+            cn.execute("ROLLBACK")
+        raise
+    finally:
+        cn.close()
 
 
 def get_intent(id_: str) -> ChangeIntent | None:
@@ -653,6 +739,17 @@ def mark_failed(id_: str, *, reason: str) -> ChangeIntent:
         "failed_at": _iso_utc_now(),
         "failed_reason": reason,
     })
+
+
+def set_score(id_: str, score: float) -> None:
+    """Record a recomputed score; state and decision fields are untouched."""
+    init_db()
+    cn = _conn()
+    try:
+        cn.execute("UPDATE change_intents SET score = ?, updated_at = ? WHERE id = ?",
+                   (float(score), _iso_utc_now(), id_))
+    finally:
+        cn.close()
 
 
 # --- Utility per UI / adapter --------------------------------------------

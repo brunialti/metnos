@@ -124,6 +124,10 @@ def ensure_vault() -> int:
     """
     if VAULT_KEY_PATH.exists() and not ADMIN_KEY_PATH.exists():
         return 0
+    if os.environ.get("METNOS_SANDBOXED"):
+        # Without the key the vault is unavailable here: a key minted inside
+        # the sandbox would seal a credential nobody can open afterwards.
+        return 0
     import fcntl
 
     VAULT_KEY_PATH.parent.mkdir(parents=True, exist_ok=True)

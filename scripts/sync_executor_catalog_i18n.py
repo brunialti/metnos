@@ -21,6 +21,15 @@ TRANSLATIONS = {
     "ORIGIN_IMPORTED": ("Importati", "Imported"),
     "DEPRECATED": ("Deprecati", "Deprecated"),
     "VIEW_ALL": ("Vedi tutti", "View all"),
+    "REVIVE": ("Riattiva", "Reactivate"),
+    "REVIVE_CONFIRM": (
+        "Riattivare «{name}»? Tornerà fra gli strumenti che Metnos può scegliere.",
+        "Reactivate “{name}”? It will be among the tools Metnos can choose again.",
+    ),
+    "REVIVE_NOT_RESTRICTED": (
+        "«{name}» non è fermo: non c’è niente da riattivare.",
+        "“{name}” is not stopped: there is nothing to reactivate.",
+    ),
     "STATISTICS": ("Statistiche", "Statistics"),
     "STATS_HELP": (
         "I conteggi usano lo stesso catalogo attuale dell’elenco executor. Il grafico degli eventi conserva la storia degli ultimi 30 giorni.",

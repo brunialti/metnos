@@ -23,9 +23,16 @@ def _msg(key: str, **kwargs) -> str:
     return _i18n.get(key, **kwargs)
 
 
-def _store_affinity() -> list[str]:
+def _tool_name(tool: dict) -> str:
+    return tool["function"]["name"]
+
+
+def _store_affinity(tool: dict) -> list[str]:
+    """Object words shared by the store tools, then the phrases of the tool's own verb."""
     _codegen_seed.ensure_registered()
-    return _detlex.forms("codegen.store_entries_affinity")
+    verb = _tool_name(tool).partition("_")[0]
+    return [*_detlex.forms("codegen.store_entries_affinity"),
+            *_detlex.forms(f"codegen.store_entries_affinity.{verb}")]
 
 
 def _resolve(name):
@@ -246,15 +253,17 @@ DELETE_ENTRIES_TOOL = {
     },
 }
 
-# Affinità RISTRETTA store-specifica (IT+EN): solo query che nominano un
-# archivio/raccolta generico arrivano qui — niente verbi generici.
-_AFFINITY = _store_affinity()
+# Store-specific affinity (IT+EN): only requests naming a generic archive or
+# collection arrive here. Each tool adds the phrases of its own action, so no
+# two of them share most of their words (RM-0010, one rule for every executor).
+_AFFINITY = {_tool_name(tool): _store_affinity(tool)
+             for tool in (FIND_ENTRIES_TOOL, WRITE_ENTRIES_TOOL, DELETE_ENTRIES_TOOL)}
 
 BUILTIN_INPROC_SPECS = [
     {"name": "find_entries", "tool_spec": FIND_ENTRIES_TOOL,
-     "affinity": _AFFINITY},
+     "affinity": _AFFINITY["find_entries"]},
     {"name": "write_entries", "tool_spec": WRITE_ENTRIES_TOOL,
-     "affinity": _AFFINITY},
+     "affinity": _AFFINITY["write_entries"]},
     {"name": "delete_entries", "tool_spec": DELETE_ENTRIES_TOOL,
-     "affinity": _AFFINITY},
+     "affinity": _AFFINITY["delete_entries"]},
 ]

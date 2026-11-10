@@ -88,7 +88,10 @@ def _record_lacuna(query: str, intent: Intent, error_class: str,
                                 last_seen)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(lacuna_id) DO UPDATE SET
-                n_seen = lacune.n_seen + 1,
+                -- The same sentence counts once a day: a retry, or a
+                -- recurring task failing every hour, is one request.
+                n_seen = lacune.n_seen + (
+                    substr(lacune.last_seen, 1, 10) <> substr(excluded.last_seen, 1, 10)),
                 last_seen = excluded.last_seen
         """, (lid, ts, query, intent.verb, intent.object, error_class,
               root_cause, suggested_action, ts))
@@ -98,40 +101,84 @@ def _record_lacuna(query: str, intent: Intent, error_class: str,
         # Nel choke-point: copre SimpleTerminator E MetisTerminator.
         try:
             # The same missing capability is asked with different words: a
-            # proposal counts every request with the same verb, object and
-            # class, not only the identical sentence (RM-0009 core).
-            row = conn.execute(
-                "SELECT COALESCE(SUM(n_seen), 1) FROM lacune "
-                "WHERE intent_verb IS ? AND intent_object IS ? "
-                "AND error_class IS ?",
-                (intent.verb, intent.object, error_class)).fetchone()
-            n_seen = int(row[0]) if row else 1
+            # proposal counts every recent request for the same verb and
+            # object, whatever capability class each one failed with.
             import learning_loop as _ll
             _ll.propose_from_lacuna(
                 lacuna_id=lid, query=query, verb=intent.verb or "",
                 object_=intent.object or "", error_class=error_class,
-                n_seen=n_seen)
+                n_seen=_recent_gap_count(conn, intent.verb, intent.object))
         except Exception as ex:  # noqa: BLE001 — mai rompere la risposta
-            log.debug("learning_loop hook noop: %r", ex)
+            log.warning("terminator: gap not offered to the learning loop: %r", ex)
         conn.close()
     except Exception as ex:
         log.warning("terminator: record_lacuna failed: %r", ex)
     return lid
 
 
-def record_missing_actions(query: str, intent: Intent, verbs) -> None:
+GAP_WINDOW_DAYS = 30
+GAP_RETENTION_DAYS = 90
+
+
+def _days_ago(days: int) -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - days * 86400))
+
+
+def _recent_gap_count(conn: sqlite3.Connection, verb, object_) -> int:
+    """Requests for a capability on (verb, object) in the last 30 days.
+
+    A proposal's score follows this number: it goes down when the requests
+    stop arriving, not only up while they come.
+    """
+    import learning_loop as _ll
+    classes = sorted(_ll._CAPABILITY_GAP_CLASSES)
+    row = conn.execute(
+        "SELECT COALESCE(SUM(n_seen), 0) FROM lacune "
+        "WHERE intent_verb IS ? AND intent_object IS ? AND last_seen >= ? "
+        f"AND error_class IN ({','.join('?' * len(classes))})",
+        (verb, object_, _days_ago(GAP_WINDOW_DAYS), *classes)).fetchone()
+    return int(row[0]) if row else 0
+
+
+def recent_gap_count(verb, object_) -> int:
+    conn = _ensure_db()
+    try:
+        return _recent_gap_count(conn, verb, object_)
+    finally:
+        conn.close()
+
+
+def prune_gaps() -> int:
+    """Drop gaps not seen for 90 days: they hold the request as it was typed."""
+    conn = _ensure_db()
+    try:
+        removed = conn.execute("DELETE FROM lacune WHERE last_seen < ?",
+                               (_days_ago(GAP_RETENTION_DAYS),)).rowcount
+        conn.commit()
+        return int(removed or 0)
+    finally:
+        conn.close()
+
+
+def record_missing_actions(query: str, intent: Intent, verbs, *,
+                           planned=()) -> None:
     """Requested actions that no plan can carry are capability gaps.
 
-    Each verb keeps its own object from the intent decomposition; the primary
-    object belongs to the primary verb only. A verb without an object is still
+    Each verb keeps its own object from the intent decomposition; when the
+    same verb is asked on several objects, the gap is the one the plan
+    (``planned``, its verb/object pairs) does not carry. The primary object
+    belongs to the primary verb only. A verb without an object is still
     counted, and the learning loop never proposes it.
     """
     from messages import get as _msg
     actions = [a for a in (getattr(intent, "actions", None) or []) if isinstance(a, dict)]
     cause = _msg("MSG_REQUIRED_ACTION_NOT_PLANNED")
+    carried = set(planned or ())
     for verb in sorted(verbs or ()):
-        obj = next((str(a.get("object") or "") for a in actions
-                    if a.get("verb") == verb and a.get("object")), "")
+        objects = [str(a.get("object") or "") for a in actions
+                   if a.get("verb") == verb and a.get("object")]
+        obj = next((item for item in objects if (verb, item) not in carried),
+                   objects[0] if objects else "")
         if not obj and verb == intent.verb:
             obj = intent.object
         _record_lacuna(query, Intent(verb=verb, object=obj),

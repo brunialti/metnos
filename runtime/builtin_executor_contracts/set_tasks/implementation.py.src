@@ -1520,8 +1520,9 @@ BUILTIN_INPROC_SPECS = [
     {"name": "list_tasks", "tool_spec": LIST_TASKS_TOOL,
      "affinity": ["task", "elenco", "lista", "scheduled", "ricorrenti", "list"]},
     {"name": "delete_tasks", "tool_spec": DELETE_TASKS_TOOL,
-     "affinity": ["task", "cancella", "elimina", "rimuovi", "delete",
-                  "remove"]},
+     # Every tag names the object: bare verbs belong to every delete tool.
+     "affinity": ["task", "cancella task", "elimina attività ricorrente",
+                  "rimuovi promemoria", "delete task", "remove reminder"]},
     {"name": "read_tasks", "tool_spec": READ_TASKS_TOOL,
      "affinity": ["task", "dettaglio", "info", "read", "show"]},
     {"name": "set_tasks", "tool_spec": SET_TASKS_TOOL,

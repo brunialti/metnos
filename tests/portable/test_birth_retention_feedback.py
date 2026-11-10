@@ -78,7 +78,6 @@ def decisions():
         intent_target="canonical", applied_at="2019-01-01T00:00:00Z")
     return (
         turn_feedback.count_consecutive_errors_for_query("query"),
-        turn_feedback.count_consecutive_errors_for_tool("demo"),
         turn_feedback.rejected_pipelines_for_query("query"),
         tuple((item.intent_target, item.intent_body, item.score)
               for item in iter_user_feedback()),
@@ -95,9 +94,10 @@ def test_collection_preserves_all_native_learning_consumers_and_other_user_bytes
     remaining += native.tail()
     before = objects(native)
     observed = decisions()
-    assert observed[:3] == (2, 2, [["demo"]])
-    assert observed[3][0][1]["n_rejections"] == 2
-    assert observed[4][0] == "rollback"
+    # The per-tool ✗ counter left with the demotion it fed (10/11/2026).
+    assert observed[:2] == (2, [["demo"]])
+    assert observed[2][0][1]["n_rejections"] == 2
+    assert observed[3][0] == "rollback"
     assert before["closed"].state is NodeState.CLOSED
     assert before["single-reject"].roots == (RootKind.OPEN_REVISION,)
     owners = {native.owner.name: native.owner}

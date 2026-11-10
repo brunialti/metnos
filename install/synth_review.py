@@ -410,7 +410,9 @@ def main(argv: list[str] | None = None) -> int:
     try:
         from executor_birth_semantic_authority import _pairs
 
-        raw = sys.stdin.buffer.readline(_MAX_DOCUMENT + 1)
+        # The whole document, not its first line: a document written over
+        # several lines is the same document.
+        raw = sys.stdin.buffer.read(_MAX_DOCUMENT + 1)
         if len(raw) > _MAX_DOCUMENT:
             raise ValueError("synth_review_size_invalid")
         try:
