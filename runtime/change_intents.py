@@ -361,13 +361,25 @@ def _migrate(cn: sqlite3.Connection) -> None:
         raise
 
 
-def init_db() -> None:
-    """Crea schema + indici (idempotente) e porta i dati alla forma corrente."""
-    cn = _conn()
+def init_schema(cn: sqlite3.Connection) -> None:
+    """Bring ``cn`` to the current schema: the one definition for the real
+    store and for anyone who needs to know its exact shape (the retention
+    owner compares a disposable store built here with the real one)."""
+    factory = cn.row_factory
+    cn.row_factory = sqlite3.Row
     try:
         cn.executescript(_SCHEMA)
         if cn.execute("PRAGMA user_version").fetchone()[0] < _SCHEMA_VERSION:
             _migrate(cn)
+    finally:
+        cn.row_factory = factory
+
+
+def init_db() -> None:
+    """Crea schema + indici (idempotente) e porta i dati alla forma corrente."""
+    cn = _conn()
+    try:
+        init_schema(cn)
     finally:
         cn.close()
 

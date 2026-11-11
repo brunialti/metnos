@@ -73,6 +73,9 @@ TRANSLATIONS = {
     'ERR_CHANGE_RETRY_NOT_FAILED': (
         'Si può riprovare solo una modifica fallita; questa è nello stato «{state}».',
         'Only a failed change can be retried; this one is in state “{state}”.'),
+    'ERR_CHANGE_ROLLBACK_FAILED': (
+        'Il ritiro non è riuscito: la modifica resta com’era. Riprova più tardi o guarda il registro.',
+        'The rollback did not succeed: the change stays as it was. Try again later or check the log.'),
     'MSG_CHANGE_REDIRECTED': (
         'Synt non ha creato {name}: esiste già lo strumento {existing}, che fa lo stesso lavoro.',
         'Synt did not create {name}: the tool {existing} already does the same job.'),

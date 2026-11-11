@@ -255,7 +255,7 @@ def test_intent_native_schema_keeps_all_reversible_states(tmp_path, monkeypatch,
     intent.updated_at = "2020-02-01T00:00:00Z"
     intent.rolled_back_at = "2020-01-02T00:00:00Z" if state == "rolled_back" else None
     change_intents.upsert_intent(intent)
-    owner = _SQLiteOwner(name="change_intents", path=path, schema=change_intents._SCHEMA,
+    owner = _SQLiteOwner(name="change_intents", path=path, schema=change_intents.init_schema,
                          table="change_intents", primary_key="id", node_type="revision",
                          state=_intent_state, require_exclusion=lambda: None, owner=None)
     row, = owner.scan()

@@ -802,9 +802,22 @@ async def admin_change_action(request: web.Request) -> web.Response:
         if action in ("accept", "reject", "stage"):
             updated = ci_mod.apply_decision(id_, action=action, by=by, reason=reason)
         elif action == "rollback":
-            updated = ci_mod.mark_rolled_back(
-                id_, reason=reason or "user-initiated rollback",
-            )
+            # The effect is taken back for real before the state says so: a
+            # change marked «rolled back» with its tool still in the catalog
+            # is the opposite of an honest undo.
+            current = ci_mod.get_intent(id_)
+            if current is None:
+                return _change_error(request, id_, 404, "NOT_FOUND",
+                                     _msg("ERR_CHANGE_NOT_FOUND", id=id_))
+            import change_observer
+            try:
+                change_observer.rollback_change(
+                    current, reason or "user-initiated rollback")
+            except RuntimeError as exc:
+                log.warning("change rollback failed: %s", exc)
+                return _change_error(request, id_, 409, "ROLLBACK_FAILED",
+                                     _msg("ERR_CHANGE_ROLLBACK_FAILED"))
+            updated = ci_mod.get_intent(id_)
         elif action == "retry":
             # failed → accepted (re-enqueue al daemon)
             cur = ci_mod.get_intent(id_)

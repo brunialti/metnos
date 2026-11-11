@@ -23,7 +23,7 @@ def sample(tmp_path, monkeypatch):
     root, path = tmp_path / 'synt_proposals', tmp_path / 'intents.sqlite'
     root.mkdir(mode=0o700)
     with sqlite3.connect(path) as connection:
-        connection.executescript(native._SCHEMA)
+        native.init_schema(connection)
     path.chmod(0o600)
     monkeypatch.setattr(native.C, 'DB_CHANGE_INTENTS', path)
     monkeypatch.setattr(native, '_iso_utc_now', lambda: OLD)
@@ -33,7 +33,7 @@ def sample(tmp_path, monkeypatch):
         def now(cls, tz=None):
             return datetime(2035, 1, 1, tzinfo=timezone.utc)
     monkeypatch.setattr('install.birth_retention_synth.datetime', Future)
-    intents = _SQLiteOwner(name='change_intents', path=path, schema=native._SCHEMA,
+    intents = _SQLiteOwner(name='change_intents', path=path, schema=native.init_schema,
         table='change_intents', primary_key='id', node_type='revision', state=_intent_state,
         require_exclusion=lambda: None, owner=None)
     owner = _SynthProposalOwner(root=root, intents=intents)

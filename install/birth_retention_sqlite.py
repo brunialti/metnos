@@ -366,7 +366,7 @@ def _operational_sqlite_owners(require_exclusion, account_owner, *,
     definitions = (
         ("proposals_state", proposals_state_path, proposals_state.init_schema,
          "proposals_state", "sig_key", "proposal", _proposal_state),
-        ("change_intents", change_intents_path, change_intents._SCHEMA,
+        ("change_intents", change_intents_path, change_intents.init_schema,
          "change_intents", "id", "revision", _intent_state),
         ("approval_registry", approval_registry_path,
          approval_registry.SCHEMA, "pending", "token", "approval", _approval_state),

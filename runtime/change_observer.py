@@ -274,6 +274,8 @@ def _verify_cache_pattern(ci: ChangeIntent) -> Verdict:
 def _verify_reject_pattern(ci: ChangeIntent) -> Verdict:
     body = ci.intent_body or {}
     canonical = body.get("canonical_query") or ci.intent_target
+    from turn_feedback import normalized_request
+    wanted = normalized_request(canonical)
     age = _age_days(ci.applied_at)
     applied_epoch = _iso_to_epoch(ci.applied_at)
     fpath = C.PATH_USER_DATA / "turn_feedback.jsonl"
@@ -286,8 +288,14 @@ def _verify_reject_pattern(ci: ChangeIntent) -> Verdict:
                         rec = json.loads(line)
                     except json.JSONDecodeError:
                         continue
+                    # A record names its request twice: the text and, when
+                    # the engine fills it, the canonical form. The engine
+                    # leaves `canonical` empty, and comparing only that made
+                    # every ban look effective.
+                    names = {normalized_request(rec.get("user_query")),
+                             normalized_request(rec.get("canonical"))}
                     if (rec.get("action") == "error"
-                            and rec.get("canonical") == canonical
+                            and wanted and wanted in names
                             and float(rec.get("ts") or 0) > applied_epoch):
                         new_rejects += 1
         except OSError:
@@ -399,13 +407,24 @@ def _physical_rollback(ci: ChangeIntent, reason: str) -> dict:
             f"change_rollback non importabile, rollback fisico impossibile "
             f"per intent {ci.id}: {exc}") from exc
     effect = rollback_for_kind(ci)
-    if isinstance(effect, dict) and effect.get("physical_rollback") == "error":
-        # Rollback fisico fallito: NON marcare rolled_back (§2.8).
+    # Every handler reports a failure under `error` (or `re_sign_error` when
+    # the old manifest could not be published again): looking for another key
+    # marked a rollback that had not happened as done (§2.8).
+    failure = None
+    if isinstance(effect, dict):
+        failure = (effect.get("error") or effect.get("re_sign_error")
+                   or ("error" if effect.get("physical_rollback") == "error" else None))
+    if failure:
         raise RuntimeError(
-            f"rollback fisico fallito per intent {ci.id}: "
-            f"{effect.get('error')}")
+            f"rollback fisico fallito per intent {ci.id}: {failure}")
     mark_rolled_back(ci.id, reason=reason)
     return effect
+
+
+def rollback_change(ci: ChangeIntent, reason: str) -> dict:
+    """Take an applied change back for real, then record it (also for the
+    person's own decision on the changes page)."""
+    return _physical_rollback(ci, reason)
 
 
 if __name__ == "__main__":
