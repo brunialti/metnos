@@ -637,6 +637,9 @@ async def admin_changes(request: web.Request) -> web.Response:
             change_applier.pending_review(obj)
             if obj.state == ci_mod.STATE_ACCEPTED
             and obj.intent_kind == ci_mod.KIND_CREATE_EXECUTOR else None)
+        # A failed creation that waits for the person's answer on the
+        # external model shows the question instead of a bare «retry».
+        row["external_model_offer"] = ci_mod.waits_for_external_model(obj)
 
     # Facets — conta per family e kind sull'INSIEME corrente (state filtered)
     all_in_state = ci_mod.list_intents(state=state, limit=5000)
@@ -753,7 +756,7 @@ def _change_error(request: web.Request, id_: str, status: int, code: str,
 async def admin_change_action(request: web.Request) -> web.Response:
     """POST /admin/changes/{id}/{action}.
 
-    action ∈ accept | reject | stage | rollback | retry
+    action ∈ accept | reject | stage | rollback | retry | external | close
     Body opzionale: {"reason": "..."}.
     """
     import change_intents as ci_mod
@@ -765,7 +768,8 @@ async def admin_change_action(request: web.Request) -> web.Response:
     id_ = request.match_info["id"]
     action = request.match_info["action"]
 
-    if action not in ("accept", "reject", "stage", "rollback", "retry"):
+    if (action not in ("accept", "reject", "stage", "rollback", "retry")
+            and not ci_mod.is_person_answer(action)):
         return _change_error(request, id_, 400, "INVALID_ACTION",
                              _msg("ERR_CHANGE_INVALID_ACTION", action=action))
 
@@ -799,7 +803,12 @@ async def admin_change_action(request: web.Request) -> web.Response:
                                  _msg("ERR_CHANGE_REASON_REQUIRED"))
 
     try:
-        if action in ("accept", "reject", "stage"):
+        if ci_mod.is_person_answer(action):
+            # The question a failed creation leaves after every local attempt
+            # (ADR 0239): allow the external model for this one tool, or give
+            # the proposal up for a while.
+            updated = ci_mod.person_answer(id_, action, by=by, reason=reason)
+        elif action in ("accept", "reject", "stage"):
             updated = ci_mod.apply_decision(id_, action=action, by=by, reason=reason)
         elif action == "rollback":
             # The effect is taken back for real before the state says so: a
@@ -2447,7 +2456,7 @@ ROUTES = (
     ("POST", "/admin/logout",                     admin_logout),
     ("GET",  "/admin",                            admin_home),
     ("GET",  "/admin/changes",                    admin_changes),
-    ("POST", r"/admin/changes/{id}/{action:accept|reject|stage|rollback|retry}",
+    ("POST", r"/admin/changes/{id}/{action:accept|reject|stage|rollback|retry|external|close}",
               admin_change_action),
     # /admin/proposals* rimosse 13/6/2026: superate dalla vista unificata
     # /admin/changes (ADR 0158, full migration accepted 22/5). Telos/introvertiva

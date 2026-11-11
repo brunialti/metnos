@@ -82,6 +82,16 @@ TRANSLATIONS = {
     'MSG_CHANGE_NOT_ACTIVE': (
         'Synt ha concluso, ma {name} non è fra gli strumenti attivi: nessuna funzione nuova è in uso.',
         'Synt finished, but {name} is not among the active tools: no new capability is in use.'),
+    'UI_CHANGE_EXTERNAL_QUESTION': (
+        'Tre tentativi non sono bastati. Posso usare il modello esterno per finire questo '
+        'strumento? Gli mando la richiesta d’esempio, la descrizione, le prove e il codice generato.',
+        'Three attempts were not enough. May I use the external model to finish this tool? '
+        'I will send it the sample request, the description, the test cases and the generated code.'),
+    'UI_CHANGE_BTN_EXTERNAL': ('Usa il modello esterno', 'Use the external model'),
+    'UI_CHANGE_BTN_CLOSE': ('Chiudi la proposta', 'Close the proposal'),
+    'ERR_CHANGE_EXTERNAL_NOT_OFFERED': (
+        'Per questa proposta non c’è una richiesta di modello esterno in attesa.',
+        'No external-model request is pending for this proposal.'),
     'MSG_LEARNING_GAP_SUMMARY': (
         'Funzione mancante chiesta {n} volte, per esempio: «{query}».',
         'Missing capability requested {n} times, for example: “{query}”.'),

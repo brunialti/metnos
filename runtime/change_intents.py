@@ -492,9 +492,22 @@ def upsert_intent(ci: ChangeIntent) -> str:
             new_conv = new_conv + 1
         # Discovered_at = il piu' recente
         new_discovered = max(existing["discovered_at"], ci.discovered_at)
+        # A proposal given up with a date comes back, as a proposal, when the
+        # same gap is seen again after that date (ADR 0239): never before.
+        reopened = False
+        if existing["state"] == STATE_REJECTED:
+            try:
+                until = (json.loads(existing["intent_body"] or "{}") or {}).get("closed_until")
+            except (TypeError, ValueError):
+                until = None
+            reopened = bool(until) and now >= str(until)
+        if reopened:
+            cn.execute(
+                "UPDATE change_intents SET state=?, failed_at=NULL, failed_reason=NULL WHERE id=?",
+                (STATE_PROPOSED, existing["id"]))
         # What a person decided on stays as they read it: summary and
         # rationale follow new evidence only while the proposal is open.
-        open_for_text = existing["state"] == STATE_PROPOSED
+        open_for_text = existing["state"] == STATE_PROPOSED or reopened
         cn.execute(
             """
             UPDATE change_intents
@@ -750,6 +763,64 @@ def mark_failed(id_: str, *, reason: str) -> ChangeIntent:
     return _transition(id_, to_state=STATE_FAILED, extra_cols={
         "failed_at": _iso_utc_now(),
         "failed_reason": reason,
+    })
+
+
+# A proposal closed after every attempt failed stays closed this long: new
+# evidence does not rebuild at once what was just given up (ADR 0239).
+CLOSED_DAYS = 30
+
+
+def update_body(id_: str, **fields: Any) -> ChangeIntent:
+    """Merge fields into the proposal's body; state and decisions untouched."""
+    current = get_intent(id_)
+    if current is None:
+        raise TransitionError(f"intent {id_} not found")
+    body = {**(current.intent_body or {}), **fields}
+    return _transition(id_, to_state=current.state, extra_cols={"intent_body": body})
+
+
+def close_until(id_: str, *, reason: str, days: int = CLOSED_DAYS) -> ChangeIntent:
+    """Give a failed proposal up for ``days``: it leaves the open list and
+    comes back only if the same gap is still seen after that date."""
+    until = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() + days * 86400))
+    update_body(id_, closed_until=until, external_model_offer=False)
+    return _transition(id_, to_state=STATE_REJECTED, extra_cols={
+        "decision_action": "close", "decision_reason": reason,
+        "decision_ts": _iso_utc_now(),
+    })
+
+
+def waits_for_external_model(intent: ChangeIntent) -> bool:
+    """A failed creation whose local attempts are over and that asks the
+    person whether the external model may finish it."""
+    return bool(intent.state == STATE_FAILED
+                and (intent.intent_body or {}).get("external_model_offer"))
+
+
+def is_person_answer(action: str) -> bool:
+    """The two answers to that question: allow the external model, or close."""
+    return action in ("external", "close")
+
+
+def person_answer(id_: str, action: str, *, by: str, reason: str | None) -> ChangeIntent:
+    """Record the person's answer; nothing else may give this consent."""
+    from messages import get as _msg
+
+    current = get_intent(id_)
+    if current is None:
+        raise TransitionError(_msg("ERR_CHANGE_NOT_FOUND", id=id_))
+    if current.state != STATE_FAILED:
+        raise TransitionError(_msg("ERR_CHANGE_RETRY_NOT_FAILED", state=current.state))
+    if action == "close":
+        return close_until(id_, reason=reason or "closed by the person")
+    if not waits_for_external_model(current):
+        raise TransitionError(_msg("ERR_CHANGE_EXTERNAL_NOT_OFFERED"))
+    update_body(id_, external_model_offer=False,
+                external_model_consent={"by": by, "ts": _iso_utc_now()})
+    return _transition(id_, to_state=STATE_ACCEPTED, extra_cols={
+        "decision_by": by, "decision_ts": _iso_utc_now(),
+        "decision_action": "external", "decision_reason": reason,
     })
 
 

@@ -219,11 +219,25 @@
           <span class="chip bad">{{ msg('UI_CHANGE_BADGE_ROLLED_BACK') }}</span>
         {% elif r.state == 'failed' %}
           <span class="chip bad">{{ msg('UI_CHANGE_BADGE_FAILED') }}</span>
+          {% if r.external_model_offer %}
+            <div class="muted" data-tutor-id="changes-row-external-question">{{ msg('UI_CHANGE_EXTERNAL_QUESTION') }}</div>
+            <button class="btn ok"
+                    hx-post="/admin/changes/{{ r.id }}/external"
+                    hx-target="closest tr" hx-swap="outerHTML">
+              {{ msg('UI_CHANGE_BTN_EXTERNAL') }}
+            </button>
+            <button class="btn"
+                    hx-post="/admin/changes/{{ r.id }}/close"
+                    hx-target="closest tr" hx-swap="outerHTML">
+              {{ msg('UI_CHANGE_BTN_CLOSE') }}
+            </button>
+          {% else %}
           <button class="btn"
                   hx-post="/admin/changes/{{ r.id }}/retry"
                   hx-target="closest tr" hx-swap="outerHTML">
             {{ msg('UI_CHANGE_BTN_RETRY') }}
           </button>
+          {% endif %}
         {% endif %}
       </td>
     </tr>

@@ -92,6 +92,30 @@ def refresh_gap_scores() -> int:
     return changed
 
 
+def gap_requests(verb: str, object_: str, *, limit: int = 5) -> list[str]:
+    """The recent requests that found no tool for (verb, object), newest first.
+
+    They are what the capability is asked for in practice; Synth builds its
+    functional cases on them. Best effort: no store, no examples.
+    """
+    try:
+        from engine import terminator
+        conn = terminator._ensure_db()
+        try:
+            classes = sorted(_CAPABILITY_GAP_CLASSES)
+            rows = conn.execute(
+                "SELECT query FROM lacune WHERE intent_verb IS ? AND intent_object IS ? "
+                f"AND error_class IN ({','.join('?' * len(classes))}) "
+                "ORDER BY last_seen DESC LIMIT ?",
+                (verb, object_, *classes, int(limit))).fetchall()
+        finally:
+            conn.close()
+        return [str(row[0]) for row in rows if row[0]]
+    except Exception as ex:  # noqa: BLE001 - examples are an aid, never a condition
+        log.debug("[learning-loop] gap_requests unavailable: %r", ex)
+        return []
+
+
 def propose_from_lacuna(*, lacuna_id: str, query: str, verb: str,
                         object_: str, error_class: str,
                         n_seen: int) -> str | None:

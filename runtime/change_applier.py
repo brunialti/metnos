@@ -39,6 +39,8 @@ from change_intents import (
     list_intents,
     mark_applied,
     mark_failed,
+    update_body,
+    close_until,
 )
 from logging_setup import get_logger
 
@@ -59,6 +61,26 @@ def _audit(record: dict) -> None:
 
 
 # --- Handler: create_executor --------------------------------------------
+
+class ExternalModelConsentNeeded(Exception):
+    """Every local attempt failed: only the person can allow the external
+    model for this tool (ADR 0239). Carries the last refusal."""
+
+
+class ClosedAfterExternalModel(Exception):
+    """The external model failed too: the proposal is given up for a while."""
+
+
+def external_model_available() -> bool:
+    """True when the instance has an external model configured."""
+    try:
+        from llm_router import LLMRouter
+        from llm_workloads import tier_for
+        LLMRouter().provider(tier_for("synt.finalize.external"))
+        return True
+    except Exception:  # noqa: BLE001 - not configured is an ordinary answer
+        return False
+
 
 class ReviewPending(Exception):
     """Synth made a candidate that waits for the independent review.
@@ -134,11 +156,18 @@ def apply_create_executor(ci: ChangeIntent) -> dict:
         raise ReviewPending(waiting)
 
     from synth_request import handle_synth_request
+    external = bool((ci.intent_body or {}).get("external_model_consent"))
+    body = ci.intent_body or {}
+    examples: list[str] = []
+    if body.get("verb") and body.get("object"):
+        import learning_loop
+        examples = learning_loop.gap_requests(str(body["verb"]), str(body["object"]))
     result = handle_synth_request(
-        {"expected_name": expected_name, "intent": intent_text},
+        {"expected_name": expected_name, "intent": intent_text, "examples": examples},
         user_query=intent_text,
         progress=None,
         verbose=False,
+        external_model=external,
     )
     if result.get("review_pending"):
         raise ReviewPending(str(result.get("proposal_id") or ""))
@@ -147,7 +176,14 @@ def apply_create_executor(ci: ChangeIntent) -> dict:
         # a refusal at delivery, or the reason a stage refused the candidate.
         reason = (result.get("error") or result.get("install_error")
                   or result.get("reason") or "unknown")
-        raise RuntimeError(f"synth_request failed: {reason}")
+        attempts = int(result.get("attempts") or 1)
+        counted = f" after {attempts} attempts" if attempts > 1 else ""
+        message = f"synth_request failed{counted}: {reason}"
+        if external:
+            raise ClosedAfterExternalModel(message)
+        if result.get("attempts_exhausted") and external_model_available():
+            raise ExternalModelConsentNeeded(message)
+        raise RuntimeError(message)
     if result.get("redirected"):
         raise RuntimeError(_msg("MSG_CHANGE_REDIRECTED", name=expected_name,
                                 existing=str(result.get("name") or "")))
@@ -399,6 +435,25 @@ def task_change_applier(payload: dict | None = None) -> dict:
                             "proposal_id": pending.proposal_id})
             _audit({"event": "review_pending", "id": ci.id,
                     "kind": ci.intent_kind, "proposal_id": pending.proposal_id})
+            continue
+        except ExternalModelConsentNeeded as need:
+            # Failed, with a question for the person: the page shows it.
+            mark_failed(ci.id, reason=str(need))
+            update_body(ci.id, external_model_offer=True)
+            failed_count += 1
+            details.append({"id": ci.id, "kind": ci.intent_kind,
+                            "result": "external_model_consent_needed"})
+            _audit({"event": "external_model_consent_needed", "id": ci.id,
+                    "kind": ci.intent_kind})
+            continue
+        except ClosedAfterExternalModel as closed:
+            mark_failed(ci.id, reason=str(closed))
+            close_until(ci.id, reason=str(closed)[:500])
+            failed_count += 1
+            details.append({"id": ci.id, "kind": ci.intent_kind,
+                            "result": "closed_after_external_model"})
+            _audit({"event": "closed_after_external_model", "id": ci.id,
+                    "kind": ci.intent_kind})
             continue
         except NotImplementedError as exc:
             mark_failed(ci.id, reason=f"not_yet_implemented: {exc}")

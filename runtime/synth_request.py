@@ -19,6 +19,10 @@ import time
 from pathlib import Path
 
 from synt_multistage import run_full as multistage_run_full
+from synt_multistage import can_repair as multistage_can_repair
+from synt_multistage import run_repair as multistage_run_repair
+from synt_multistage import is_retryable as multistage_is_retryable
+from synt_multistage import is_synthesized as multistage_is_synthesized
 from loader import SYNTHESIZED_EXECUTORS_DIR
 from executor_birth_synth import (
     SynthBirthData, require_synth_birth_service, submit_synth_multistage,
@@ -63,6 +67,17 @@ def _toml_value(v):
     return _json.dumps(str(v), ensure_ascii=False)
 
 
+# How many times Synth may write one candidate before it stops and says why.
+# Each attempt after the first knows the refusal of the one before.
+SYNTH_MAX_ATTEMPTS = 3
+# With the external model, asked for only after those: one writing, one rewrite.
+SYNTH_EXTERNAL_ATTEMPTS = 2
+
+
+class CandidateTestsFailed(RuntimeError):
+    """The candidate's code does not pass its own functional cases."""
+
+
 def _validate_birth_tests(executor_dir):
     """Validate private staging bytes before Birth, never execute on the host."""
     import tomllib
@@ -78,7 +93,19 @@ def _validate_birth_tests(executor_dir):
     except (OSError, ValueError, TypeError, AttributeError):
         return "synth_test_candidate_invalid"
     report = validate_synth_tests(data)
-    return None if report.all_passed else report.summary
+    if report.all_passed:
+        return None
+    # The summary names the failed cases; the first one also says what was
+    # expected and what the code returned, so a rewrite has something to fix.
+    failed = next((case for case in report.tests if case.get("passed") is not True), None)
+    detail = ""
+    if failed:
+        seen = "; ".join(str(item) for item in failed.get("failures") or [])
+        output = " ".join(str(failed.get("stdout") or failed.get("stderr") or "").split())[:300]
+        detail = (f" | case {failed.get('name')!r} with input "
+                  f"{json.dumps(failed.get('input'), ensure_ascii=False)[:200]}"
+                  + (f": {seen}" if seen else "") + (f" | returned: {output}" if output else ""))
+    return report.summary + detail
 
 
 def _translate_texts(texts: dict[str, str], source_lang: str, target_lang: str) -> dict[str, str]:
@@ -359,7 +386,7 @@ def _install_synthesized(run, intent, user_query):
     try:
         test_error = _validate_birth_tests(out_dir)
         if test_error is not None:
-            raise RuntimeError(f"birth tests failed: {test_error}")
+            raise CandidateTestsFailed(f"birth tests failed: {test_error}")
         birth = submit_synth_multistage(SynthBirthData(
             candidate_root=out_dir,
             contract_id=ContractId(ManifestOrigin.USER, f"{run.name}/manifest.toml"),
@@ -471,7 +498,8 @@ def _find_canonical_alias(expected_name, catalog):
     return None
 
 
-def handle_synth_request(args, *, user_query, progress=None, verbose=False, current_steps=None):
+def handle_synth_request(args, *, user_query, progress=None, verbose=False, current_steps=None,
+                         external_model=False):
     """Gestisce la chiamata a request_new_executor.
 
     Lancia synt_multistage.run_full sincronamente (~150 s wall). Usa i tier
@@ -706,37 +734,102 @@ def handle_synth_request(args, *, user_query, progress=None, verbose=False, curr
         return _invoke(
             "synt.semantic_verify", system, user, max_tokens, **kwargs)
 
+    # ``external_model``: the person allowed the external model for this one
+    # tool, after the local attempts failed (ADR 0239). It writes the two
+    # things the local model got wrong, the functional cases and the code;
+    # name, signature, description, the reviewer and the isolated cases stay
+    # local, so the gates do not change with the writer.
+    _llm_tests, _llm_code, max_attempts = _llm_procedural, _llm_wise, SYNTH_MAX_ATTEMPTS
+    if external_model:
+        _providers["synt.finalize.external"] = _router.provider(
+            tier_for("synt.finalize.external"))
+
+        def _llm_external(system, user, max_tokens=5000, **kwargs):
+            kwargs.pop("grammar", None)       # a local-server option
+            return _invoke("synt.finalize.external", system, user, max_tokens, **kwargs)
+
+        _llm_tests = _llm_code = _llm_external
+        max_attempts = SYNTH_EXTERNAL_ATTEMPTS
+
     if verbose:
         print(f"[synth_request] starting multistage for expected_name={expected_name!r} intent={intent!r}")
 
     if progress is not None:
         progress.start(_msg("MSG_SYNTH_PROGRESS_START", name=expected_name))
 
+    # What people really asked when the capability was missing: the functional
+    # cases are built on these requests (Roberto, 11/11/2026).
+    real_requests = tuple(
+        " ".join(str(text).split())[:300]
+        for text in (args.get("examples") or []) if str(text).strip())[:5]
     t_start = time.time()
-    try:
-        run = multistage_run_full(
-            intent, _llm_procedural, _llm_wise,
-            llm_call_creative=_llm_creative,
-            llm_call_fidelity=_llm_fidelity,
-            progress=progress,
-            # A canonical name asked by the caller is the name: stage 1
-            # ignores one outside the closed vocabulary and chooses itself.
-            decided_name=expected_name,
-        )
-    except Exception as ex:
-        if progress is not None:
-            progress.update_free(_msg(
-                "MSG_SYNTH_PROGRESS_INTERRUPTED",
-                reason=f"{type(ex).__name__}: {ex}",
-            ))
-        return {
-            "ok": False,
-            "error": _msg(
-                "ERR_SYNTH_MULTISTAGE_FAILED",
-                reason=f"{type(ex).__name__}: {ex}",
-            ),
-            "expected_name": expected_name,
-        }
+    # Counted attempts. The first writes the candidate; each later one knows
+    # why the previous was refused, and rewrites only the code when name,
+    # signature, cases and description were sound. Delivery (the functional
+    # cases in the isolated runner, then Birth) is part of the attempt: a
+    # candidate that fails its own cases is refused like any other.
+    run = None
+    refusals: list[str] = []
+    install_error = None
+    pending_proposal_id = None
+    for _attempt in range(max_attempts):
+        try:
+            if run is not None and multistage_can_repair(run):
+                run = multistage_run_repair(
+                    run, intent, _llm_code,
+                    llm_call_fidelity=_llm_fidelity, feedback=refusals[-1])
+            else:
+                run = multistage_run_full(
+                    intent, _llm_procedural, _llm_code,
+                    llm_call_creative=_llm_creative,
+                    llm_call_fidelity=_llm_fidelity,
+                    progress=progress,
+                    # A canonical name asked by the caller is the name: stage 1
+                    # ignores one outside the closed vocabulary and chooses itself.
+                    decided_name=expected_name,
+                    llm_call_tests=_llm_tests,
+                    real_requests=real_requests,
+                )
+        except Exception as ex:
+            if progress is not None:
+                progress.update_free(_msg(
+                    "MSG_SYNTH_PROGRESS_INTERRUPTED",
+                    reason=f"{type(ex).__name__}: {ex}",
+                ))
+            return {
+                "ok": False,
+                "error": _msg(
+                    "ERR_SYNTH_MULTISTAGE_FAILED",
+                    reason=f"{type(ex).__name__}: {ex}",
+                ),
+                "expected_name": expected_name,
+                "attempts": len(refusals) + 1,
+            }
+        install_error = pending_proposal_id = None
+        if multistage_is_synthesized(run):
+            # Consegna il candidato a Birth. Senza la revisione indipendente
+            # Birth non lo ammette e il candidato resta conservato fuori da
+            # ogni catalogo (`review_pending`); ammesso, e' attivo.
+            try:
+                _install_synthesized(run, intent, user_query)
+            except PendingSynthProposal as ex:
+                install_error, pending_proposal_id = ex.reason, ex.proposal_id
+            except CandidateTestsFailed as ex:
+                install_error = str(ex)
+                refusals.append(install_error)
+                continue
+            except Exception as ex:
+                # Not about the code (authority, languages, the standard):
+                # writing the code again would not change it.
+                install_error = f"{type(ex).__name__}: {ex}"
+                if verbose:
+                    print(f"[synth_request] install fallito: {install_error}")
+            break
+        if not multistage_is_retryable(run):
+            break
+        refusals.append(run.abandon_reason or run.final_state)
+    attempts = min(len(refusals) + 1, max_attempts)
+    attempts_exhausted = len(refusals) >= max_attempts
     elapsed_s = round(time.time() - t_start, 1)
 
     proposal_id = f"{int(t_start)}_{(run.name or expected_name).replace('/', '_')}"
@@ -780,6 +873,9 @@ def handle_synth_request(args, *, user_query, progress=None, verbose=False, curr
         "final_state": run.final_state,
         "name": run.name,
         "abandon_reason": run.abandon_reason,
+        "attempts": attempts,
+        "refusals": refusals,
+        "external_model": bool(external_model),
         # ADR 0122: instrumentation forward
         "path_hash": path_hash,
         "path_steps": path_steps_list,
@@ -805,21 +901,6 @@ def handle_synth_request(args, *, user_query, progress=None, verbose=False, curr
             print(f"[synth_request] failed to persist proposal: {ex}")
 
     if run.final_state == "synthesized":
-        # Consegna il candidato a Birth. Senza la revisione indipendente Birth
-        # non lo ammette e il candidato resta conservato fuori da ogni
-        # catalogo (`review_pending`); ammesso, e' attivo e il planner lo usa.
-        install_error = None
-        pending_proposal_id = None
-        try:
-            _install_synthesized(run, intent, user_query)
-        except PendingSynthProposal as ex:
-            install_error = ex.reason
-            pending_proposal_id = ex.proposal_id
-        except Exception as ex:
-            install_error = f"{type(ex).__name__}: {ex}"
-            if verbose:
-                print(f"[synth_request] install fallito: {install_error}")
-
         if progress is not None:
             if install_error:
                 progress.update_free(_msg(
@@ -841,6 +922,9 @@ def handle_synth_request(args, *, user_query, progress=None, verbose=False, curr
             "lifecycle": "active" if install_error is None else None,
             "install_error": install_error,
             "proposed_name": run.name,
+            "attempts": attempts,
+            "attempts_exhausted": attempts_exhausted,
+            "refusals": refusals,
             "proposal_id": pending_proposal_id or proposal_id,
             "review_pending": pending_proposal_id is not None,
             "elapsed_s": elapsed_s,
@@ -884,6 +968,9 @@ def handle_synth_request(args, *, user_query, progress=None, verbose=False, curr
             "synthesized": False,
             "abandoned": True,
             "elapsed_s": elapsed_s,
+            "attempts": attempts,
+            "attempts_exhausted": attempts_exhausted,
+            "refusals": refusals,
             "reason": run.abandon_reason or "unknown",
             "message": _msg("MSG_SYNTH_FAILED",
                             reason=(run.abandon_reason

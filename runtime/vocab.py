@@ -833,11 +833,13 @@ ACTION_MAPPING = {
         },
     },
     "compute": {
-        "it": ["calcola", "valuta", "risolvi", "fai-il-conto", "somma", "calcola-l'hash"],
-        "en": ["compute", "evaluate", "calculate", "eval-expression", "hash", "checksum"],
+        "it": ["calcola", "valuta", "risolvi", "fai-il-conto", "somma", "calcola-l'hash",
+               "conta", "conteggia"],
+        "en": ["compute", "evaluate", "calculate", "eval-expression", "hash", "checksum",
+               "count", "tally"],
         "boundary": {
-            "it": "Calcolo deterministico puro (math, eval, unit convert, hashing). Nessun side-effect.",
-            "en": "Performs pure deterministic computation (math, evaluation, unit conversion, hashing). No side effects.",
+            "it": "Calcolo deterministico puro (math, eval, unit convert, hashing, conteggi). Nessun side-effect.",
+            "en": "Performs pure deterministic computation (math, evaluation, unit conversion, hashing, counting). No side effects.",
         },
     },
     "compare": {

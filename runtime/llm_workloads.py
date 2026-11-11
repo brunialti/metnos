@@ -109,6 +109,9 @@ WORKLOADS: dict[str, WorkloadContract] = {
     "synt.generate": WorkloadContract("wise", None, "deliberate", "tools"),
     "synt.birth_tests": WorkloadContract("wise", None, "deliberate", "tools"),
     "synt.multistage": WorkloadContract("wise", None, "deliberate", "json"),
+    # After the counted local attempts, and only with the person's consent
+    # (ADR 0239): cases and code of one generated tool.
+    "synt.finalize.external": WorkloadContract("frontier", None, "frontier", "json"),
 
     # Divergent proposal and editorial generation.
     "telos.lens": WorkloadContract("creative", None, "divergent", "grammar_optional"),

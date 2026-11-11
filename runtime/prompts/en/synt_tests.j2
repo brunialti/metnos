@@ -3,14 +3,14 @@ role: synt_tests
 tier: middle
 lang: en
 style: definitional
-version: 16
+version: 18
 owner: roberto
-updated: 2026-10-05
-sha_prev: 64094bab
+updated: 2026-11-11
+sha_prev: 801bf57c
 --- #}
 Generate declarative tests for the function below. Return only valid compact JSON, without markdown, comments or explanations.
 
-1. Produce four uniquely named cases: normal with two or three items, empty list when applicable, invalid input and a domain edge case. Each case checks one property. For the edge case use one item with the fewest necessary characters, preserving the relevant feature such as Unicode or spaces. The invalid case must contain an invalid nested item if the schema constrains items. Add a fifth or sixth case only for a distinct constraint not yet checked. Use small data and exactly calculable results; always respect request constraints.
+1. Produce four uniquely named cases: normal with two or three items, empty list only when an argument is a list, invalid input and a domain edge case. Each case checks one property. For the edge case use one item with the fewest necessary characters, preserving the relevant feature such as Unicode or spaces. The invalid case must contain an invalid nested item if the schema constrains items. Add a fifth or sixth case only for a distinct constraint not yet checked. Use small data and exactly calculable results; always respect request constraints.
 
 2. For EVERY input, FIRST check all request constraints, including the type and number of nested items. If the request rejects that input, expect is {"ok":false}: do not mentally perform the operation on invalid data or invent counts or messages. Only a request explicitly allowing per-item errors permits partial processing: discarded items increment fail_count, other items increment ok_count.
 
@@ -18,7 +18,9 @@ Generate declarative tests for the function below. Return only valid compact JSO
 
 4. The final object has only tests, a list of objects with exactly name (string), input (object) and expect (nonempty object). The only matchers inside expect are ok (boolean), ok_count_eq (integer), fail_count_eq (integer), field_eq (field:value object) and error_contains (string). Use error_contains only if the request specifies error wording. Close every object and list. Represent all numbers as small integers or decimals without exponent notation. Every input must be representable in the runner’s JSON protocol, even when the function must reject it. A value outside that protocol never reaches the function: DO NOT generate cases for that constraint. For an invalid numeric type use null, "x" or a boolean. Transport representation limits are checked by the runtime separately from function tests.
 
-5. Direct invocation: use the declared argument names. Only when from_step is declared, pass entries containing concrete records instead of the reference; there is no scratchpad in a test. No setup, teardown, env, reference, shell command, network or host data. When files are needed, each case gets a fresh private environment: fixture/input.txt contains "birth fixture\n", fixture/empty.txt is empty, fixture/output is an empty directory. Use relative paths.
+5. Direct invocation: use the declared argument names. Only when from_step is declared, pass entries containing concrete records instead of the reference; there is no scratchpad in a test. No setup, teardown, env, reference, shell command, network or host data. When files are needed, each case gets a fresh private environment: fixture/input.txt contains "birth fixture\n" (one line, two words, 14 characters with the line break), fixture/empty.txt is empty, fixture/output is an empty directory. Use relative paths. These are the ONLY paths that exist: any other (a.txt, src, /tmp/x) does not exist and the case would fail on a missing file; a file to create goes under fixture/output/. Compute expectations from the real content of these files. from_step never appears as a number in a test: pass entries in its place.
+
+6. Do not put in field_eq values you cannot compute by hand with certainty (hash digests, checksums, current dates and times, random numbers, absolute paths): for those cases check only ok, ok_count_eq and fail_count_eq. Cases must not contradict each other: the same kind of input cannot be valid in one case and invalid in another; an empty argument the request forbids is an invalid case.
 
 Shape-only example for a different function: do not copy its inputs or expectations.
 {"tests":[
@@ -37,5 +39,13 @@ revertible: {{ revertible }}; reverse_pattern: {{ reverse_pattern }}
 
 Request to verify (determines input validity and expected behavior):
 {{ user_request }}
-
+{% if real_requests %}
+Real requests from people this function is born from:
+{{ real_requests }}
+The normal case uses exactly the data of one of these requests, and every real request must correspond to a valid input (ok=true).
+{% endif %}{% if correction %}
+MANDATORY CORRECTION: the cases you wrote before were refused for this reason:
+{{ correction }}
+Rewrite all the cases fixing this.
+{% endif %}
 Now produce only the JSON object with tests for {{ name }}.

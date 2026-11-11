@@ -264,7 +264,17 @@ def _canonical_name_error(name: str) -> str | None:
     """
     from naming_grammar import validate_name
     verdict = validate_name(name)
-    return None if verdict.ok else (verdict.reason or "name is not canonical")
+    if verdict.ok:
+        return None
+    reason = verdict.reason or "name is not canonical"
+    # Say which objects the qualifier goes with: told only «not valid», the
+    # model proposed the same name again.
+    from vocab import QUALIFIER_OBJECT_COMPAT
+    parts = verdict.components
+    allowed = QUALIFIER_OBJECT_COMPAT.get(getattr(parts, "qualifier", None) or "")
+    if allowed and getattr(parts, "obj", None) not in allowed:
+        reason += f" The qualifier '{parts.qualifier}' goes only with: {', '.join(sorted(allowed))}."
+    return reason
 
 
 def run_stage1(user_request: str, llm_call, *, decided_name: str = "") -> StageResult:
@@ -368,8 +378,41 @@ def test_generation_options(provider) -> dict:
     return {"grammar": generate_json_grammar(decimal_numbers_only=True)}
 
 
-def run_stage3(user_request: str, stage1: dict, stage2: dict, llm_call) -> StageResult:
-    """Stage 3 = TESTS. Procedurale, struttura fissa."""
+def stage3_cases_problem(stage2: dict, tests: list) -> str | None:
+    """A defect of the functional cases that no code could satisfy, or None.
+
+    Decided by reading the cases, with no model: the same input expected both
+    to succeed and to fail, or ``from_step`` passed as a value (in a test
+    there is no earlier step: the records go in ``entries``). Whether an
+    empty value is valid depends on the tool, so it is not judged here.
+    """
+    verdicts: dict[str, tuple[str, bool]] = {}
+    for case in tests or []:
+        arguments = case.get("input") or {}
+        if "from_step" in arguments:
+            return (f"case {case.get('name')!r} passes from_step={arguments['from_step']!r}: "
+                    "a test has no earlier step, pass the concrete records in `entries`")
+        expected = (case.get("expect") or {}).get("ok")
+        if not isinstance(expected, bool):
+            continue
+        key = json.dumps(arguments, sort_keys=True, ensure_ascii=False)
+        seen = verdicts.get(key)
+        if seen and seen[1] is not expected:
+            return (f"cases {seen[0]!r} and {case.get('name')!r} give the same input "
+                    f"{key[:160]} and expect opposite outcomes")
+        verdicts[key] = (str(case.get("name")), expected)
+    return None
+
+
+def run_stage3(user_request: str, stage1: dict, stage2: dict, llm_call, *,
+               real_requests: tuple[str, ...] = (), correction: str = "") -> StageResult:
+    """Stage 3 = TESTS. Procedurale, struttura fissa.
+
+    ``real_requests``: what people actually asked when the capability was
+    missing. The cases are built on them, so the tool is tried on the use it
+    is born for and not on inputs a model made up. ``correction``: why the
+    cases of a first attempt were refused.
+    """
     args_summary = ", ".join(f"{k}:{v.get('type','?')}" for k, v in stage2.get("args_properties", {}).items())
     user_prompt = prompt_loader.get(
         "synt_tests",
@@ -381,6 +424,8 @@ def run_stage3(user_request: str, stage1: dict, stage2: dict, llm_call) -> Stage
         revertible=str(stage1["revertible"]),
         reverse_pattern=str(stage2.get("reverse_pattern")),
         user_request=user_request,
+        real_requests="\n".join(f"- {text}" for text in real_requests),
+        correction=correction,
     )
     res = llm_call("", user_prompt, max_tokens=4000,
                    **test_generation_options(llm_call))
@@ -390,7 +435,7 @@ def run_stage3(user_request: str, stage1: dict, stage2: dict, llm_call) -> Stage
         return StageResult(stage=3, success=False, error="JSON parse failed", raw_text=text[:500],
                            in_tokens=res.get("in_tokens", 0), out_tokens=res.get("out_tokens", 0),
                            latency_ms=res.get("latency_ms", 0))
-    err = validate_stage3(out)
+    err = validate_stage3(out) or stage3_cases_problem(stage2, out.get("tests"))
     if err:
         return StageResult(stage=3, success=False, error=err, output=out, raw_text=text[:500],
                            in_tokens=res.get("in_tokens", 0), out_tokens=res.get("out_tokens", 0),
@@ -487,7 +532,7 @@ def run_stage4(user_request: str, stage1: dict, stage2: dict, stage3: dict, llm_
 
 
 def run_stage5(user_request: str, stage1: dict, stage2: dict, stage3: dict, stage4: dict,
-               llm_call, *, scope: str | None = None) -> StageResult:
+               llm_call, *, scope: str | None = None, correction: str = "") -> StageResult:
     """Stage 5 = CODE. Usa wise.
 
     `scope`: opzionale, "device" attiva la regola di portabilita' cross-
@@ -516,7 +561,8 @@ def run_stage5(user_request: str, stage1: dict, stage2: dict, stage3: dict, stag
         scope=scope or "",
     )
     import ast
-    request = user_prompt
+    # ``correction``: why an earlier file for this same candidate was refused.
+    request = f"{user_prompt}\n\n{correction}" if correction else user_prompt
     for attempt in range(2):
         res = llm_call("", request, max_tokens=5000)
         text = res.get("text", "")
@@ -545,7 +591,7 @@ def run_stage5(user_request: str, stage1: dict, stage2: dict, stage3: dict, stag
                                    error=f"code does not parse ({problem})", raw_text=text[:500],
                                    in_tokens=res.get("in_tokens", 0), out_tokens=res.get("out_tokens", 0),
                                    latency_ms=res.get("latency_ms", 0))
-            request = (f"{user_prompt}\n\nCORRECTION: the file you wrote does not parse "
+            request = (f"{request}\n\nCORRECTION: the file you wrote does not parse "
                        f"({problem}). Write the complete file again, shorter if needed.")
     # Fase 11 (c) 19/5/2026 v4: scan delle chiavi i18n emesse dal LLM nel
     # codice synth. Ogni chiave non presente nel DB viene auto-registrata
@@ -603,7 +649,9 @@ def _register_synth_keys(code: str) -> int:
 
 def run_full(user_request: str, llm_call_procedural, llm_call_wise, *,
              llm_call_creative=None, llm_call_fidelity=None,
-             progress=None, decided_name: str = "") -> MultistageRun:
+             progress=None, decided_name: str = "",
+             llm_call_tests=None,
+             real_requests: tuple[str, ...] = ()) -> MultistageRun:
     """Orchestratore a 6 stadi, separato per contratto di workload.
 
     Stages 1-3 are procedural (middle), stage 4 is editorial (creative),
@@ -637,7 +685,13 @@ def run_full(user_request: str, llm_call_procedural, llm_call_wise, *,
         run.final_state = "abandoned"; run.abandon_reason = f"stage2: {s2.error}"; return run
 
     if progress is not None: progress.update(3)
-    s3 = run_stage3(user_request, s1.output, s2.output, llm_call_procedural)
+    s3 = run_stage3(user_request, s1.output, s2.output,
+                    llm_call_tests or llm_call_procedural, real_requests=real_requests)
+    if not s3.success and s3.output:
+        # Cases refused for a reason the model can act on: asked once more.
+        s3 = run_stage3(user_request, s1.output, s2.output,
+                        llm_call_tests or llm_call_procedural,
+                        real_requests=real_requests, correction=str(s3.error))
     run.stages.append(s3)
     if not s3.success:
         run.final_state = "abandoned"; run.abandon_reason = f"stage3: {s3.error}"; return run
@@ -707,6 +761,11 @@ def run_full(user_request: str, llm_call_procedural, llm_call_wise, *,
 
     run.code_text = s5.output["code"]
 
+    return _review_code(run, s4, llm_call_fidelity)
+
+
+def _review_code(run: "MultistageRun", s4: "StageResult", llm_call_fidelity) -> "MultistageRun":
+    """Stage 6 on the run's code: sets the final state and returns the run."""
     # Stage 6 — semantic verification (ADR 0114 Layer 6, 8/5/2026).
     # Confronta description (s4) vs code (s5). Se misaligned → rejected.
     # Determinismo §7.9: LLM solo per il giudizio, mai per la decisione.
@@ -751,3 +810,55 @@ def run_full(user_request: str, llm_call_procedural, llm_call_wise, *,
 
     run.final_state = "synthesized"
     return run
+
+
+def is_synthesized(run: "MultistageRun") -> bool:
+    """The run produced a candidate every stage accepted."""
+    return run.final_state == "synthesized"
+
+
+def is_retryable(run: "MultistageRun") -> bool:
+    """A refusal another attempt can cure: the reviewer found a difference,
+    the card was malformed, a stage gave no usable answer. A refusal by the
+    vocabulary is an answer, and an unavailable reviewer or linter is not the
+    candidate's fault."""
+    return run.final_state in ("rejected_semantic_drift", "rejected_lint_structural", "abandoned")
+
+
+def can_repair(run: "MultistageRun") -> bool:
+    """True when a refused run keeps a sound name, signature, cases and
+    description: only its code needs writing again."""
+    return (bool(run.name) and len(run.stages) >= 4
+            and all(stage.success and stage.output for stage in run.stages[:4])
+            and not (run.final_state or "").startswith("rejected_lint"))
+
+
+_REFUSED_FILE_LIMIT = 12000
+
+
+def run_repair(previous: "MultistageRun", user_request: str, llm_call_wise, *,
+               llm_call_fidelity=None, feedback: str) -> "MultistageRun":
+    """Write the code again for a refused candidate, knowing why it was refused.
+
+    Name, signature, functional cases and description stay: they were not the
+    problem, and changing them would make every attempt a different tool. The
+    code stage receives the refusal and the refused file, then the reviewer
+    judges the new one. A second attempt that starts from zero repeats the
+    same mistake as often as not; one that knows the reason can fix it.
+    """
+    run = MultistageRun(user_request=user_request, proposal_id=previous.proposal_id)
+    run.name = previous.name
+    run.stages = list(previous.stages[:4])
+    s1, s2, s3, s4 = run.stages
+    refused = (previous.code_text or "")[:_REFUSED_FILE_LIMIT]
+    correction = (
+        f"CORRECTION: the file below was refused. Reason: {feedback}\n"
+        "Fix exactly that and write the complete file again."
+        + (f"\n--- refused file ---\n{refused}" if refused else ""))
+    s5 = run_stage5(user_request, s1.output, s2.output, s3.output, s4.output,
+                    llm_call_wise, correction=correction)
+    run.stages.append(s5)
+    if not s5.success:
+        run.final_state = "abandoned"; run.abandon_reason = f"stage5: {s5.error}"; return run
+    run.code_text = s5.output["code"]
+    return _review_code(run, s4, llm_call_fidelity or llm_call_wise)

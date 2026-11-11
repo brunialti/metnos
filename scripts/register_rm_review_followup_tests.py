@@ -40,6 +40,9 @@ GROUPS = {
         "tests/runtime/learning/test_synth_stage6_verify.py",
         "tests/runtime/learning/test_synth_delivery_chain.py",
         "tests/runtime/engine/test_output_policy_normalize.py",
+        "tests/runtime/learning/test_synth_attempts.py",
+        "tests/runtime/i18n/test_seed_i18n_gate_keys.py",
+        "tests/runtime/infra/test_installer_operator_authority.py",
     ),
 }
 

@@ -118,6 +118,19 @@ replaces only such an earlier scope list in the provisioning input, preserving
 both private keys. It takes effect only in the next authenticated release
 selection.
 
+An installation whose private operator/reviewer keys no longer exist (one
+provisioned before the keys were kept on the host) can sign nothing, so no
+generated executor can become active. The ordinary procedure refuses to
+repair it. `python -m install.operator_authority --user <service-account>
+--replace-lost-keys` is the explicit replacement: it moves the installed
+public registry, whole, to `/var/lib/metnos-operator-authority/retired/` and
+creates a fresh authority; it is refused while either private key exists.
+The administrator runs it through
+`sudo internal/tools/install_operator_authority.sh [--replace-lost-keys]`,
+which executes the selected signed release, never a worktree; without the
+option it only shows the state. The new registry is adopted by the next
+release. The private keys must be backed up by the administrator.
+
 The root-owned `metnos-synth-review` launcher, installed once with
 `sudo internal/tools/install_synth_review.sh <account>` after a release, accepts
 exactly `review` and `approve` and runs `install.synth_review` from the selected

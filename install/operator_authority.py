@@ -339,6 +339,65 @@ def provision_paths(
     }
 
 
+RETIRED_DIRECTORY = "retired"
+
+
+def replace_lost_authority(
+    *, target_config: Path, private_base: Path, target_owner: tuple[int, int],
+    private_owner: tuple[int, int], stamp: str,
+) -> dict[str, object]:
+    """Replace, on explicit request, an authority whose private keys are gone.
+
+    An installed public registry without its private keys can sign nothing:
+    no review, no consent, so no generated executor can ever become active.
+    The ordinary procedure refuses to touch it, on purpose. This one is asked
+    for by name: it keeps the old registry whole, under the root-only base,
+    and creates a fresh authority. It is refused while either private key
+    exists, because then nothing is lost. The new registry takes effect at
+    the next authenticated release selection, like every operator input.
+    """
+    if not target_config.is_absolute() or not private_base.is_absolute():
+        raise OperatorAuthorityError("operator_authority_unsafe_path")
+    if not stamp or not stamp.isalnum():
+        raise OperatorAuthorityError("operator_authority_unsafe_path", "stamp")
+    public = target_config / "birth" / "operator-input-v1"
+    if not public.exists() and not public.is_symlink():
+        raise OperatorAuthorityError("operator_authority_nothing_to_replace", str(public))
+    _require_directory(public, owner=target_owner, modes=frozenset({0o755}))
+    private = private_base / str(target_owner[0])
+    present = sorted(name for name in PRIVATE_FILES
+                     if (private / name).exists() or (private / name).is_symlink())
+    if present:
+        raise OperatorAuthorityError("operator_authority_keys_present", ",".join(present))
+    _ensure_directory(private_base, owner=private_owner, mode=0o700)
+    retired_base = private_base / RETIRED_DIRECTORY
+    _ensure_directory(retired_base, owner=private_owner, mode=0o700)
+    retired = retired_base / f"operator-input-v1.{stamp}"
+    if retired.exists() or retired.is_symlink():
+        raise OperatorAuthorityError("operator_authority_unsafe_path", str(retired))
+    try:
+        os.rename(public, retired)
+    except OSError as exc:
+        raise OperatorAuthorityError("operator_authority_io_error", str(public)) from exc
+    try:
+        result = provision_paths(
+            target_config=target_config, private_base=private_base,
+            target_owner=target_owner, private_owner=private_owner,
+        )
+    except BaseException:
+        # Nothing was replaced: the installation gets its registry back and
+        # the half-made private directory keeps no key the registry lacks.
+        if not public.exists() and not public.is_symlink():
+            os.rename(retired, public)
+            for name in PRIVATE_FILES:
+                try:
+                    (private / name).unlink()
+                except FileNotFoundError:
+                    pass
+        raise
+    return {**result, "status": "replaced", "retired_dir": str(retired)}
+
+
 def _upgrade_approval_input(directory: Path, before: bytes, after: bytes,
                             *, owner: tuple[int, int]) -> None:
     """Explicit, atomic upgrade of provisioning input, never a selected set.
@@ -390,7 +449,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--user", required=True, help="non-root Metnos service account")
     parser.add_argument("--upgrade-scopes", action="store_true",
                         help="explicitly upgrade legacy consent scopes for the next release")
+    parser.add_argument("--replace-lost-keys", action="store_true",
+                        help="explicitly replace an installed authority whose private keys "
+                             "no longer exist; the old registry is kept under the private base")
     args = parser.parse_args(argv)
+    if args.upgrade_scopes and args.replace_lost_keys:
+        print(_canonical({"error": "operator_authority_options_conflict"}).decode())
+        return 2
     if os.geteuid() != 0:
         print(_canonical({"error": "operator_authority_requires_root"}).decode())
         return 2
@@ -400,13 +465,23 @@ def main(argv: list[str] | None = None) -> int:
             raise OperatorAuthorityError("operator_authority_target_invalid", args.user)
         home = Path(account.pw_dir)
         _require_account_parent(home, owner=(account.pw_uid, account.pw_gid))
-        result = provision_paths(
-            target_config=home / ".config" / "metnos",
-            private_base=PRIVATE_BASE,
-            target_owner=(account.pw_uid, account.pw_gid),
-            private_owner=(0, 0),
-            upgrade_scopes=args.upgrade_scopes,
-        )
+        if args.replace_lost_keys:
+            import time
+            result = replace_lost_authority(
+                target_config=home / ".config" / "metnos",
+                private_base=PRIVATE_BASE,
+                target_owner=(account.pw_uid, account.pw_gid),
+                private_owner=(0, 0),
+                stamp=time.strftime("%Y%m%dT%H%M%SZ", time.gmtime()),
+            )
+        else:
+            result = provision_paths(
+                target_config=home / ".config" / "metnos",
+                private_base=PRIVATE_BASE,
+                target_owner=(account.pw_uid, account.pw_gid),
+                private_owner=(0, 0),
+                upgrade_scopes=args.upgrade_scopes,
+            )
     except (KeyError, OperatorAuthorityError, OSError) as exc:
         code = getattr(exc, "code", "operator_authority_target_invalid")
         print(_canonical({"error": code}).decode())
