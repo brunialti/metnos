@@ -39,6 +39,7 @@ GROUPS = {
         "tests/runtime/learning/test_synth_stage4_description.py",
         "tests/runtime/learning/test_synth_stage6_verify.py",
         "tests/runtime/learning/test_synth_delivery_chain.py",
+        "tests/runtime/engine/test_output_policy_normalize.py",
     ),
 }
 

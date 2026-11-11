@@ -345,7 +345,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'orchestration.py': ('2807339be7ec3e0dbf5e292659dc032c330b606d913f816ecf6332e0960b2634', (('comparison', 90), ('helper-argument', 3), ('iteration', 2), ('membership', 11))),
     'ordering_clause.py': ('079e02f456c85755ed00a1b3bd09e77abc4636bd14031f1fbe6a80e38d319bf2', (('comparison', 11),)),
     'output_format.py': ('26890c3121f27cf156e8c5b36af86c828f7833cbf94cdba5b713b6b19798bcf1', (('comparison', 2),)),
-    'output_policy.py': ('c9f1ffa5648f3236779da49829c76f66973fb9bf35e7f7b42b8fa9c1454bef9c', (('comparison', 30), ('regex', 1))),
+    'output_policy.py': ('ceefc24436e75a0d5444bf9746c6a9eadf468ee0a425534b220f33ffa92f3281', (('comparison', 31), ('regex', 1))),
     'paired_device_arg_resolver.py': ('cd4703ea17ef7756b1b31dd403937bfd442dd81b40522bc9fd48d286bb6d3ce2', (('comparison', 2), ('regex', 1))),
     'pairing.py': ('f946cd1296455f11d183c09e3d89282f65280b92029eaeba683ed046629fc961', (('comparison', 12), ('helper-argument', 1))),
     'parallel_walk.py': ('242fc2bc9168b8be43330bd613060debaa4cc28d88cddeaa60ad45f63ae51ab9', (('comparison', 1),)),

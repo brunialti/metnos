@@ -484,7 +484,13 @@ def normalize_terminal(framework, intent, query: str = "", catalog=None):
             # `${stepN.time}`/`${stepN.date}` terminal to `@count` rendered
             # the truthful executor result as “Totale: 0”.  Preserve a
             # producer-field terminal, otherwise use the stable time field.
-            if r["data_kind"] == "time":
+            # A producer that computes is the same case: the number asked is
+            # the one it computed, not how many items it processed («conta le
+            # linee di codice» answered «Totale: 22», the files, for 7,605
+            # lines).  Its own rendered result is the answer.
+            scalar_field = ("time" if r["data_kind"] == "time"
+                            else "summary" if producer_verb == "compute" else "")
+            if scalar_field:
                 scalar_ref = (
                     ppos in _refs_in(base_fm)
                     and "@count" not in base_fm
@@ -494,7 +500,7 @@ def normalize_terminal(framework, intent, query: str = "", catalog=None):
                     final = _remap_value(base_fm, mapping)
                     info["action"] = "drop_describe" if drop else "noop"
                 else:
-                    final = f"${{step{k}.time}}"
+                    final = f"${{step{k}.{scalar_field}}}"
                     info["action"] = (
                         "drop_describe+final" if drop else "final_only")
             elif (("@count" in base_fm or "@shown" in base_fm)
