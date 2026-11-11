@@ -116,7 +116,7 @@ description:</p>
 <tbody>
 <tr><td>1. Name and class</td><td><code>middle</code></td><td><code>action_object[_qualifier]</code>, criticality, undoability, and target kind.</td></tr>
 <tr><td>2. Operational signature</td><td><code>middle</code></td><td>Argument schema, declared capabilities, and a reverse pattern when required.</td></tr>
-<tr><td>3. Birth tests</td><td><code>middle</code></td><td>At least three cases with input and an observable expected outcome.</td></tr>
+<tr><td>3. Birth tests</td><td><code>middle</code></td><td>At least three cases with input and an observable expected outcome. When they exist, the cases start from the real requests that found no tool.</td></tr>
 <tr><td>4. Description</td><td><code>creative</code></td><td>Manifest head, affinity terms, and usage boundaries.</td></tr>
 <tr><td>5. Code</td><td><code>wise</code></td><td><code>invoke</code>, <code>main</code>, and any reverse operation, built against the earlier contract.</td></tr>
 <tr><td>6. Consistency</td><td><code>wise</code></td><td>A comparison between described behavior and generated code.</td></tr>
@@ -150,6 +150,12 @@ the code cannot silently redefine the name, arguments, or undo semantics.</p>
 rejects the candidate. Environment variables cannot disable the linter or the
 judge. An infrastructure failure is recorded as unavailability; it is never
 converted into certification of semantic consistency.</p>
+
+<p>A refused candidate does not end the path at once: the exact reason goes back to
+the builder, which tries again, up to three attempts in all. After the third failure
+Metnos asks the person whether it may use the external model to write tests and code;
+name, arguments, description and checks stay local. The whole path, with its figure,
+is in <a href="lifecycle.html#cap6">the cycle of a generated tool</a>.</p>
 
 <h1 id="cap6">6. Proposals, review and consent</h1>
 

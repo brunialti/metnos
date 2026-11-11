@@ -49,8 +49,9 @@ un record tipizzato con origine, obiettivo, motivazione, punteggio e stato. La p
  <li><a href="#cap3">Sorgenti attive</a></li>
  <li><a href="#cap4">Materializzazione, applicazione e osservazione</a></li>
  <li><a href="#cap5">Cosa viene applicato</a></li>
- <li><a href="#cap6">Esempio in linguaggio naturale</a></li>
- <li><a href="#cap7">Garanzie e limiti</a></li>
+ <li><a href="#cap6">Il ciclo di uno strumento generato</a></li>
+ <li><a href="#cap7">Esempio in linguaggio naturale</a></li>
+ <li><a href="#cap8">Garanzie e limiti</a></li>
 </ol>
 </div>
 
@@ -135,7 +136,7 @@ sequenza o un nuovo riscontro sullo schema rifiutato.</p>
 <table>
 <thead><tr><th>Tipo</th><th>Effetto corrente</th><th>Ripristino</th></tr></thead>
 <tbody>
-<tr><td><code>create_executor</code></td><td>Avvia la sintesi dell'executor; se esiste gi&agrave;, non lo duplica. La proposta resta accettata finch&eacute; il candidato attende revisione e consenso; diventa applicata solo quando il planner pu&ograve; usare lo strumento.</td><td>Archivia l'executor sintetizzato.</td></tr>
+<tr><td><code>create_executor</code></td><td>Avvia la sintesi dell'executor; se esiste gi&agrave;, non lo duplica. La proposta resta accettata finch&eacute; il candidato attende revisione e consenso; diventa applicata solo quando il planner pu&ograve; usare lo strumento. I tentativi sono al massimo tre (<a href="#cap6">capitolo 6</a>).</td><td>Archivia l'executor sintetizzato.</td></tr>
 <tr><td><code>extend_executor</code></td><td>Estende il manifest, conserva una copia e firma di nuovo l'executor.</td><td>Ripristina il manifest conservato e lo firma di nuovo.</td></tr>
 <tr><td><code>dedupe_executors</code></td><td>Crea un alias e ritira il duplicato solo se la provenienza consente l'operazione.</td><td>Rimuove l'alias e riattiva il duplicato.</td></tr>
 <tr><td><code>materialize_pipeline</code></td><td>Esegue una volta la richiesta proposta come turno reale, con policy e controlli normali.</td><td>Registra il ripristino; il turno non installa un artefatto persistente da rimuovere.</td></tr>
@@ -144,7 +145,137 @@ sequenza o un nuovo riscontro sullo schema rifiutato.</p>
 </tbody>
 </table>
 
-<h1 id="cap6">6. Esempio in linguaggio naturale</h1>
+<h1 id="cap6">6. Il ciclo di uno strumento generato</h1>
+
+<p>Metnos pu&ograve; costruirsi da solo uno strumento che gli manca. &Egrave; il punto in cui
+le sue funzioni introspettive si vedono meglio: si accorge di ci&ograve; che non sa fare,
+propone di impararlo, prova a costruirlo e toglie ci&ograve; che non funziona. La figura
+mostra tutto il percorso.</p>
+
+<figure>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 548" width="100%" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Il percorso di uno strumento generato, dalla richiesta non servita all'uso" style="font-family:'Segoe UI',Calibri,sans-serif;font-size:11px;">
+<defs><marker id="m-cycle" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#1A477A"/></marker></defs>
+<rect x="10" y="24" width="190" height="56" rx="8" fill="#D9E4F0" stroke="#1A477A"/>
+<text x="105" y="48" text-anchor="middle" fill="#1A477A" font-weight="700">richiesta non servita</text>
+<text x="105" y="66" text-anchor="middle" fill="#475569" font-size="9.5">&#171;questo non lo so fare&#187;</text>
+<rect x="240" y="24" width="190" height="56" rx="8" fill="#D9E4F0" stroke="#1A477A"/>
+<text x="335" y="48" text-anchor="middle" fill="#1A477A" font-weight="700">mancanza annotata</text>
+<text x="335" y="66" text-anchor="middle" fill="#475569" font-size="9.5">quale azione, su quale oggetto</text>
+<rect x="470" y="24" width="190" height="56" rx="8" fill="#D9E4F0" stroke="#1A477A"/>
+<text x="565" y="48" text-anchor="middle" fill="#1A477A" font-weight="700">proposta</text>
+<text x="565" y="66" text-anchor="middle" fill="#475569" font-size="9.5">una per capacit&#224;</text>
+<rect x="700" y="24" width="190" height="56" rx="8" fill="#FEF3C7" stroke="#B7791F"/>
+<text x="795" y="48" text-anchor="middle" fill="#1A477A" font-weight="700">decisione</text>
+<text x="795" y="66" text-anchor="middle" fill="#475569" font-size="9.5">oggi della persona</text>
+<path d="M200,52 H238" fill="none" stroke="#1A477A" stroke-width="2" marker-end="url(#m-cycle)"/>
+<path d="M430,52 H468" fill="none" stroke="#1A477A" stroke-width="2" marker-end="url(#m-cycle)"/>
+<path d="M660,52 H698" fill="none" stroke="#1A477A" stroke-width="2" marker-end="url(#m-cycle)"/>
+<rect x="452" y="98" width="330" height="28" rx="6" fill="#FFFFFF" stroke="#B7791F" stroke-dasharray="6 4"/>
+<text x="617" y="116" text-anchor="middle" fill="#475569" font-size="9.5">previsto: Metnos accetta da solo le migliori e sicure</text>
+<path d="M810,80 V174" fill="none" stroke="#1A477A" stroke-width="2" marker-end="url(#m-cycle)"/>
+<text x="820" y="150" text-anchor="start" fill="#475569" font-size="9.5">accettata</text>
+<rect x="700" y="176" width="190" height="56" rx="8" fill="#D9E4F0" stroke="#1A477A"/>
+<text x="795" y="200" text-anchor="middle" fill="#1A477A" font-weight="700">costruzione</text>
+<text x="795" y="218" text-anchor="middle" fill="#475569" font-size="9.5">tentativo 1, 2, 3</text>
+<rect x="470" y="176" width="190" height="56" rx="8" fill="#D9E4F0" stroke="#1A477A"/>
+<text x="565" y="200" text-anchor="middle" fill="#1A477A" font-weight="700">controlli automatici</text>
+<text x="565" y="218" text-anchor="middle" fill="#475569" font-size="9.5">prove nel recinto, revisore</text>
+<rect x="240" y="176" width="190" height="56" rx="8" fill="#FEF3C7" stroke="#B7791F"/>
+<text x="335" y="200" text-anchor="middle" fill="#1A477A" font-weight="700">revisione e consenso</text>
+<text x="335" y="218" text-anchor="middle" fill="#475569" font-size="9.5">della persona, firmati</text>
+<rect x="10" y="176" width="190" height="56" rx="8" fill="#DCFCE7" stroke="#3F6212"/>
+<text x="105" y="200" text-anchor="middle" fill="#1A477A" font-weight="700">strumento in servizio</text>
+<text x="105" y="218" text-anchor="middle" fill="#475569" font-size="9.5">il pianificatore lo usa</text>
+<path d="M700,204 H662" fill="none" stroke="#1A477A" stroke-width="2" marker-end="url(#m-cycle)"/>
+<path d="M470,204 H432" fill="none" stroke="#1A477A" stroke-width="2" marker-end="url(#m-cycle)"/>
+<path d="M240,204 H202" fill="none" stroke="#1A477A" stroke-width="2" marker-end="url(#m-cycle)"/>
+<text x="451" y="168" text-anchor="middle" fill="#475569" font-size="9.5">superati</text>
+<path d="M600,176 V156 H760 V174" fill="none" stroke="#1A477A" stroke-width="2" marker-end="url(#m-cycle)"/>
+<text x="680" y="150" text-anchor="middle" fill="#475569" font-size="9.5">bocciato: il motivo torna al costruttore</text>
+<path d="M795,232 V298" fill="none" stroke="#1A477A" stroke-width="2" marker-end="url(#m-cycle)"/>
+<text x="785" y="286" text-anchor="end" fill="#475569" font-size="9.5">dopo 3 tentativi falliti</text>
+<rect x="700" y="300" width="190" height="56" rx="8" fill="#FEF3C7" stroke="#B7791F"/>
+<text x="795" y="324" text-anchor="middle" fill="#1A477A" font-weight="700">domanda alla persona</text>
+<text x="795" y="342" text-anchor="middle" fill="#475569" font-size="9.5">usare il modello esterno?</text>
+<rect x="470" y="300" width="190" height="56" rx="8" fill="#EDE4F7" stroke="#6B21A8"/>
+<text x="565" y="324" text-anchor="middle" fill="#1A477A" font-weight="700">modello esterno</text>
+<text x="565" y="342" text-anchor="middle" fill="#475569" font-size="9.5">scrive solo prove e codice</text>
+<path d="M700,328 H662" fill="none" stroke="#1A477A" stroke-width="2" marker-end="url(#m-cycle)"/>
+<text x="681" y="320" text-anchor="middle" fill="#475569" font-size="9.5">s&#236;</text>
+<path d="M565,300 V234" fill="none" stroke="#1A477A" stroke-width="2" marker-end="url(#m-cycle)"/>
+<text x="555" y="262" text-anchor="end" fill="#475569" font-size="9.5">stessi controlli</text>
+<path d="M795,356 V408" fill="none" stroke="#1A477A" stroke-width="2" marker-end="url(#m-cycle)"/>
+<text x="805" y="386" text-anchor="start" fill="#475569" font-size="9.5">no</text>
+<rect x="700" y="410" width="190" height="56" rx="8" fill="#F1F5F9" stroke="#64748B"/>
+<text x="795" y="434" text-anchor="middle" fill="#1A477A" font-weight="700">proposta chiusa</text>
+<text x="795" y="452" text-anchor="middle" fill="#475569" font-size="9.5">per 30 giorni</text>
+<path d="M565,356 V438 H698" fill="none" stroke="#1A477A" stroke-width="2" marker-end="url(#m-cycle)"/>
+<text x="575" y="430" text-anchor="start" fill="#475569" font-size="9.5">non basta nemmeno cos&#236;</text>
+<path d="M70,232 V298" fill="none" stroke="#1A477A" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#m-cycle)"/>
+<text x="78" y="286" text-anchor="start" fill="#475569" font-size="9.5">se d&#224; errore</text>
+<path d="M150,232 V262 H335 V298" fill="none" stroke="#1A477A" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#m-cycle)"/>
+<text x="343" y="286" text-anchor="start" fill="#475569" font-size="9.5">se nessuno lo usa</text>
+<rect x="10" y="300" width="190" height="56" rx="8" fill="#FDE8E8" stroke="#9B1C1C" stroke-dasharray="6 4"/>
+<text x="105" y="324" text-anchor="middle" fill="#1A477A" font-weight="700">ritirato subito</text>
+<text x="105" y="342" text-anchor="middle" fill="#475569" font-size="9.5">e riscritto con quel motivo</text>
+<rect x="240" y="300" width="190" height="56" rx="8" fill="#F1F5F9" stroke="#64748B" stroke-dasharray="6 4"/>
+<text x="335" y="324" text-anchor="middle" fill="#1A477A" font-weight="700">decade</text>
+<text x="335" y="342" text-anchor="middle" fill="#475569" font-size="9.5">dopo 60 giorni senza uso</text>
+<rect x="10" y="500" width="26" height="16" rx="4" fill="#D9E4F0" stroke="#1A477A"/>
+<text x="42" y="512" text-anchor="start" fill="#475569" font-size="9.5">in funzione</text>
+<rect x="250" y="500" width="26" height="16" rx="4" fill="#FFFFFF" stroke="#1A477A" stroke-dasharray="6 4"/>
+<text x="282" y="512" text-anchor="start" fill="#475569" font-size="9.5">previsto</text>
+<rect x="470" y="500" width="26" height="16" rx="4" fill="#FEF3C7" stroke="#B7791F"/>
+<text x="502" y="512" text-anchor="start" fill="#475569" font-size="9.5">decide la persona</text>
+</svg>
+<figcaption>Il percorso di uno strumento generato. I riquadri tratteggiati sono previsti; quelli gialli sono decisioni della persona.</figcaption>
+</figure>
+
+<ol>
+ <li><strong>Si accorge.</strong> Quando una richiesta finisce con &laquo;questo non lo so
+ fare&raquo;, Metnos annota che cosa mancava: quale azione, su quale oggetto. La stessa
+ mancanza chiesta pi&ugrave; volte pesa di pi&ugrave;; se nessuno la chiede pi&ugrave;, il peso
+ scende.</li>
+ <li><strong>Propone.</strong> Ogni capacit&agrave; mancante ha una sola proposta, insieme alle
+ richieste reali da cui &egrave; nata. Oggi la accetta o la rifiuta la persona. &Egrave; previsto
+ che Metnos accetti da solo le proposte migliori e sicure e mostri alla persona soltanto
+ le altre.</li>
+ <li><strong>Costruisce.</strong> Con il modello locale sceglie il nome, decide gli
+ argomenti, scrive le prove partendo proprio da quelle richieste reali, poi la
+ descrizione e il codice.</li>
+ <li><strong>Controlla.</strong> Il candidato gira in un recinto isolato contro le sue
+ prove, e un revisore confronta ci&ograve; che la descrizione promette con ci&ograve; che il
+ codice fa. Se qualcosa non torna, il motivo preciso torna al costruttore, che riprova
+ sapendo che cosa correggere. I tentativi sono al massimo tre.</li>
+ <li><strong>Chiede aiuto solo se serve.</strong> Dopo tre tentativi falliti Metnos non
+ insiste: chiede alla persona se pu&ograve; usare il modello esterno per finire. Con un
+ s&igrave;, il modello esterno scrive soltanto prove e codice; nome, argomenti, descrizione
+ e controlli restano gli stessi. Con un no, o se non basta nemmeno cos&igrave;, la proposta
+ si chiude per trenta giorni: niente giro infinito di crea, butta e ricrea.</li>
+ <li><strong>Entra in servizio.</strong> Il candidato che supera i controlli aspetta la
+ revisione e il consenso della persona, tutti e due firmati. Solo allora il
+ pianificatore pu&ograve; usarlo. &Egrave; previsto che per gli strumenti sicuri questo
+ passaggio diventi automatico.</li>
+ <li><strong>Resta sotto osservazione.</strong> &Egrave; previsto che uno strumento generato
+ che d&agrave; errore sia ritirato subito e riscritto con quel motivo, e che uno mai usato
+ decada dopo sessanta giorni.</li>
+</ol>
+
+<p>&laquo;Sicuro&raquo; ha un significato preciso: lo strumento legge o calcola soltanto,
+oppure fa cose che si possono annullare, e non chiede permessi nuovi.</p>
+
+<p><strong>Che cosa resta sempre della persona:</strong> le parole nuove del vocabolario,
+i permessi nuovi, le azioni che non si possono annullare, i servizi esterni come posta
+o rubrica, e l'uso del modello esterno. Gli strumenti scritti a mano non sono mai
+toccati da questo ciclo.</p>
+
+<p>La domanda sul modello esterno compare nella pagina <strong>Modifiche</strong>, nella
+riga della proposta, con due pulsanti. &Egrave; previsto che arrivi anche in chat.</p>
+
+<p>L'idea di fondo: la sicurezza non viene dal chiedere tutto alla persona, ma dal
+saper togliere subito ci&ograve; che non funziona.</p>
+
+<h1 id="cap7">7. Esempio in linguaggio naturale</h1>
 
 <p><strong>Chiedi a Metnos con una richiesta come quella di questo esempio:</strong>
 &laquo;Mostrami le modifiche al sistema che aspettano una mia decisione e spiegami la
@@ -156,7 +287,7 @@ apri la chat web, entra nell'area di amministrazione e scegli
 permette di filtrare per stato, sorgente e tipo e offre soltanto le transizioni ammesse
 per ciascun record.</p>
 
-<h1 id="cap7">7. Garanzie e limiti</h1>
+<h1 id="cap8">8. Garanzie e limiti</h1>
 
 <ul>
  <li>L'accettazione &egrave; una decisione esplicita attribuita all'utente amministratore;

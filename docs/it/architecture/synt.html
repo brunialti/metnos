@@ -117,7 +117,7 @@ descrizione:</p>
 <tbody>
 <tr><td>1. Nome e classe</td><td><code>middle</code></td><td><code>azione_oggetto[_qualifier]</code>, criticit&agrave;, annullabilit&agrave; e tipo di bersaglio.</td></tr>
 <tr><td>2. Firma operativa</td><td><code>middle</code></td><td>Schema degli argomenti, capacit&agrave; dichiarate e schema inverso quando richiesto.</td></tr>
-<tr><td>3. Prove iniziali</td><td><code>middle</code></td><td>Almeno tre casi con dati in ingresso ed esito osservabile atteso.</td></tr>
+<tr><td>3. Prove iniziali</td><td><code>middle</code></td><td>Almeno tre casi con dati in ingresso ed esito osservabile atteso. Quando esistono, partono dalle richieste reali rimaste senza strumento.</td></tr>
 <tr><td>4. Descrizione</td><td><code>creative</code></td><td>Testa del manifest, termini di affinit&agrave; e confini d'uso.</td></tr>
 <tr><td>5. Codice</td><td><code>wise</code></td><td><code>invoke</code>, <code>main</code> e l'eventuale operazione inversa, costruiti sul contratto precedente.</td></tr>
 <tr><td>6. Coerenza</td><td><code>wise</code></td><td>Confronto tra comportamento descritto e codice generato.</td></tr>
@@ -152,6 +152,13 @@ tipizzato o non &egrave; disponibile, il candidato viene rifiutato. Linter e
 giudice non sono disattivabili tramite variabili d'ambiente. Un errore
 infrastrutturale viene registrato come indisponibilit&agrave;, non trasformato in
 una certificazione di coerenza.</p>
+
+<p>Un candidato bocciato non chiude subito il percorso: il motivo preciso torna al
+costruttore, che riprova, fino a tre tentativi in tutto. Dopo il terzo fallimento
+Metnos chiede alla persona se pu&ograve; usare il modello esterno per scrivere prove e
+codice; nome, argomenti, descrizione e controlli restano locali. Il percorso completo,
+con il disegno, &egrave; nel <a href="lifecycle.html#cap6">ciclo di uno strumento
+generato</a>.</p>
 
 <h1 id="cap6">6. Proposte, revisione e consenso</h1>
 
