@@ -81,57 +81,82 @@ def _validate_birth_tests(executor_dir):
     return None if report.all_passed else report.summary
 
 
-def _translate_description(description: str, source_lang: str, target_lang: str) -> str:
-    """Translate the prose of a chaptered description, keeping its frame.
+def _translate_texts(texts: dict[str, str], source_lang: str, target_lang: str) -> dict[str, str]:
+    """Short texts in another language, all in one request, or the reason.
 
-    The chapter anchors are protocol, identical in every language; PATTERN is
-    a literal call and OUT an output shape. Only the prose chapters go to the
-    translator, and the description is rebuilt around the anchors, so a model
-    can never drop or rename one. A description without the four chapters is
-    translated whole and judged by the standard afterwards.
+    The texts travel as a JSON object and come back as one: a model that
+    derails cannot return a page of noise for a six-word sentence, which the
+    whole-text translator did (16,000 characters of box drawing, accepted).
+    Every text must come back, on one line and of a plausible length.
     """
-    from executor_standard import _DESCRIPTION_ANCHORS
-    from i18n_translator import _translate_short_text
+    from i18n_translator import translate_batch
 
-    def translate(text: str) -> str:
-        translated, errors = _translate_short_text(
-            text, source_lang=source_lang, target_lang=target_lang)
-        if not translated or not translated.strip():
-            raise RuntimeError(
-                f"description not available in '{target_lang}': "
-                + "; ".join(errors or ["translation failed"]))
-        return " ".join(translated.split())
+    wanted = {key: text for key, text in texts.items() if text.strip()}
+    missing = sorted(wanted)
+    done: dict[str, str] = {}
+    for _attempt in range(2):
+        answer = translate_batch([
+            {"key": key, "source_text": wanted[key],
+             "source_lang": source_lang, "target_lang": target_lang}
+            for key in missing])
+        for key in list(missing):
+            text = " ".join(str(answer.get(f"{key}::{target_lang}") or "").split())
+            if text and len(text) <= 3 * len(wanted[key]) + 40:
+                done[key] = text
+                missing.remove(key)
+        if not missing:
+            return {key: done.get(key, "") for key in texts}
+    raise RuntimeError(
+        f"description not available in '{target_lang}': " + ", ".join(missing))
+
+
+def _description_parts(description: str) -> list[tuple[str, str]] | None:
+    """The four chapters as (anchor, body), or None without the frame."""
+    from executor_standard import _DESCRIPTION_ANCHORS
 
     starts = [description.find(anchor) for anchor in _DESCRIPTION_ANCHORS]
     if min(starts) < 0 or starts != sorted(starts):
-        return translate(description)
+        return None
     ends = starts[1:] + [len(description)]
-    parts = [description[:starts[0]]]
-    for anchor, start, end in zip(_DESCRIPTION_ANCHORS, starts, ends):
-        body = description[start + len(anchor):end].strip()
-        prose = anchor in _PROSE_CHAPTERS and body
-        parts.append(f"{anchor} {translate(body) if prose else body}".rstrip())
-    return " ".join(part for part in parts if part.strip())
+    return [(anchor, description[start + len(anchor):end].strip())
+            for anchor, start, end in zip(_DESCRIPTION_ANCHORS, starts, ends)]
 
 
 # Chapters written in a person's language; the others are code and shapes.
 _PROSE_CHAPTERS = frozenset({"SCOPO:", "NON:"})
 
 
-def _description_in_required_languages(description: str, source_lang: str) -> dict[str, str]:
-    """The description in every language an active executor declares.
+def _candidate_texts_in_required_languages(
+        description: str, argument_descriptions: dict[str, str],
+        source_lang: str) -> tuple[dict[str, str], dict[str, dict[str, str]]]:
+    """The description and every argument's description, in every language an
+    active executor declares.
 
     The candidate is born in its final form, so what the reviewer reads is
     what runs. A translation that cannot be produced stops the birth with its
-    reason: an active executor is never published half described.
+    reason: an active executor is never published half described. The chapter
+    anchors are protocol, PATTERN is a literal call and OUT a shape: only the
+    prose chapters and the arguments' sentences go to the translator.
     """
     from executor_standard import ACTIVE_DESCRIPTION_LANGUAGES
 
-    texts = {source_lang: description}
+    parts = _description_parts(description)
+    prose = ({f"chapter.{anchor}": body for anchor, body in parts
+              if anchor in _PROSE_CHAPTERS and body} if parts
+             else {"chapter.whole": description})
+    arguments = {f"argument.{name}": text for name, text in argument_descriptions.items()}
+    descriptions = {source_lang: description}
+    by_argument = {name: {source_lang: text} for name, text in argument_descriptions.items()}
     for lang in ACTIVE_DESCRIPTION_LANGUAGES:
-        if lang not in texts:
-            texts[lang] = _translate_description(description, source_lang, lang)
-    return texts
+        if lang == source_lang:
+            continue
+        translated = _translate_texts({**prose, **arguments}, source_lang, lang)
+        descriptions[lang] = (
+            " ".join(f"{anchor} {translated.get(f'chapter.{anchor}', body)}".rstrip()
+                     for anchor, body in parts) if parts else translated["chapter.whole"])
+        for name in argument_descriptions:
+            by_argument[name][lang] = translated[f"argument.{name}"]
+    return descriptions, by_argument
 
 
 def _install_synthesized(run, intent, user_query):
@@ -202,7 +227,12 @@ def _install_synthesized(run, intent, user_query):
     import json as _json
     import os as _os
     cur_lang = _os.environ.get("METNOS_LANG", "it")
-    descriptions = _description_in_required_languages(description, cur_lang)
+    descriptions, argument_descriptions = _candidate_texts_in_required_languages(
+        description,
+        {name: str(definition["description"])
+         for name, definition in (args_schema.get("properties") or {}).items()
+         if isinstance(definition, dict) and definition.get("description") is not None},
+        cur_lang)
     _generated_contract = generated_contract_context(lifecycle="active", origin="synthesized")
     lines = [
         f'# Manifest synthesized — Metnos synt multistage {time.strftime("%Y-%m-%d")}',
@@ -249,7 +279,9 @@ def _install_synthesized(run, intent, user_query):
         if arg_desc is not None:
             lines.append('')
             lines.append(f'[args.properties.{arg_name}.description]')
-            lines.append(f'{cur_lang} = {_json.dumps(arg_desc, ensure_ascii=False)}')
+            lines.extend(
+                f'{lang} = {_json.dumps(text, ensure_ascii=False)}'
+                for lang, text in argument_descriptions[arg_name].items())
     if capabilities:
         for cap in capabilities:
             lines.append('')
@@ -430,13 +462,12 @@ def _find_canonical_alias(expected_name, catalog):
     for pv in ("get", "find", "read", "list"):
         if pv == verb:
             continue
+        # Same object AND same qualifier: the qualifier is part of what the
+        # tool does. Dropping it declared `get_files` equal to
+        # `read_files_lines` and closed a real gap as «already available».
         candidate = f"{pv}_{obj}_{qualifier}" if qualifier else f"{pv}_{obj}"
         if candidate in cat_names:
             return candidate
-        if qualifier:
-            candidate_no_q = f"{pv}_{obj}"
-            if candidate_no_q in cat_names:
-                return candidate_no_q
     return None
 
 
@@ -688,6 +719,9 @@ def handle_synth_request(args, *, user_query, progress=None, verbose=False, curr
             llm_call_creative=_llm_creative,
             llm_call_fidelity=_llm_fidelity,
             progress=progress,
+            # A canonical name asked by the caller is the name: stage 1
+            # ignores one outside the closed vocabulary and chooses itself.
+            decided_name=expected_name,
         )
     except Exception as ex:
         if progress is not None:

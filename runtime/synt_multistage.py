@@ -123,6 +123,9 @@ def validate_stage1(out: dict) -> Optional[str]:
         return f"action {action!r} non in vocabolario chiuso ({len(VOCAB_ACTIONS)} ammesse)"
     if obj not in VOCAB_OBJECTS:
         return f"object {obj!r} non in vocabolario chiuso ({len(VOCAB_OBJECTS)} ammessi)"
+    canonical_error = _canonical_name_error(name)
+    if canonical_error:
+        return f"name {name!r}: {canonical_error}"
     # Inietta action/object derivati dal name: run_stage2 li legge come
     # stage1["action"]/["object"] → senza, l'LLM che omette le chiavi causava
     # KeyError (bug 21/6). setdefault: un valore esplicito dell'LLM vince.
@@ -241,12 +244,55 @@ def _parse_json_strict(text: str) -> Optional[dict]:
         return None
 
 
-def run_stage1(user_request: str, llm_call) -> StageResult:
+def decided_name_fields(name: str) -> dict | None:
+    """Action, object and qualifier of a name that is already canonical, or None.
+
+    The same check stage 1 applies to a name the model proposes.
+    """
+    match = NAME_RE.match(name or "")
+    if not match or _canonical_name_error(name):
+        return None
+    return {"name": name, "action": match.group(1), "object": match.group(2),
+            "qualifier": match.group(3)}
+
+
+def _canonical_name_error(name: str) -> str | None:
+    """Why the standard would refuse this name at delivery, or None.
+
+    Stage 1 used to check verb and object only; a qualifier that does not go
+    with the object passed here and was refused five stages later.
+    """
+    from naming_grammar import validate_name
+    verdict = validate_name(name)
+    return None if verdict.ok else (verdict.reason or "name is not canonical")
+
+
+def run_stage1(user_request: str, llm_call, *, decided_name: str = "") -> StageResult:
     """llm_call: callable(system, user, max_tokens) -> {text, in_tokens, out_tokens, latency_ms}.
 
     ``max_tokens`` e' il tetto strutturale dell'output dello stage. La policy
     di reasoning non viene stimata o compensata qui: appartiene al tier.
+
+    ``decided_name``: a canonical name the caller already decided (a proposal
+    is born from a measured verb and object). The model then fills only the
+    remaining fields; asked to choose again it picked another name, or a verb
+    outside the vocabulary, and the proposal could never be applied.
     """
+    decided = decided_name_fields(decided_name) if decided_name else None
+    if decided:
+        user_request = (
+            f"{user_request}\n\nThe name is already decided: `{decided['name']}`. "
+            "Return exactly this name and fill the other fields for it.")
+    first = _run_stage1_once(user_request, llm_call, decided)
+    if first.success or not first.output or decided:
+        return first
+    # The name was refused by a rule the model can follow once told which.
+    return _run_stage1_once(
+        f"{user_request}\n\nCORRECTION: your previous answer was refused: {first.error}. "
+        "Choose a name the vocabulary allows.", llm_call, decided)
+
+
+def _run_stage1_once(user_request: str, llm_call, decided: dict | None) -> StageResult:
     stage1_prompt = prompt_loader.get(
         "synt_naming",
         _i18n.current_lang(),
@@ -264,6 +310,9 @@ def run_stage1(user_request: str, llm_call) -> StageResult:
         return StageResult(stage=1, success=False, error="JSON parse failed", raw_text=text[:500],
                            in_tokens=res.get("in_tokens", 0), out_tokens=res.get("out_tokens", 0),
                            latency_ms=res.get("latency_ms", 0))
+    if decided:
+        out.update(decided)
+        out.pop("reason_no_name", None)
     if out.get("name") is None and out.get("reason_no_name"):
         return StageResult(stage=1, success=True, output=out, raw_text=text,
                            in_tokens=res.get("in_tokens", 0), out_tokens=res.get("out_tokens", 0),
@@ -296,6 +345,11 @@ def run_stage2(user_request: str, stage1: dict, llm_call) -> StageResult:
         return StageResult(stage=2, success=False, error="JSON parse failed", raw_text=text[:500],
                            in_tokens=res.get("in_tokens", 0), out_tokens=res.get("out_tokens", 0),
                            latency_ms=res.get("latency_ms", 0))
+    if out.get("capabilities") == []:
+        # Declaring nothing means asking for nothing: in the sandbox that is
+        # pure computation, and the standard wants it said. A tool that needs
+        # more fails its own cases in the isolated runner.
+        out["capabilities"] = [{"name": "compute:pure"}]
     err = validate_stage2(out, stage1)
     if err:
         return StageResult(stage=2, success=False, error=err, output=out, raw_text=text[:500],
@@ -461,20 +515,38 @@ def run_stage5(user_request: str, stage1: dict, stage2: dict, stage3: dict, stag
         user_request=user_request,
         scope=scope or "",
     )
-    res = llm_call("", user_prompt, max_tokens=5000)
-    text = res.get("text", "")
-    code = text.strip()
-    # Strip markdown fences indipendentemente: l'LLM puo' aprire+chiudere,
-    # solo aprire, solo chiudere o nessuno (il prompt dice di non emetterli ma
-    # alcuni provider lo fanno comunque). Stripping idempotente.
-    code = re.sub(r"^```[a-zA-Z]*\n?", "", code)
-    code = re.sub(r"\n?```\s*$", "", code)
-    code = code.strip()
-    if not code or "def invoke" not in code or "def main" not in code:
-        return StageResult(stage=5, success=False, error="code missing def invoke or def main",
-                           raw_text=text[:500],
-                           in_tokens=res.get("in_tokens", 0), out_tokens=res.get("out_tokens", 0),
-                           latency_ms=res.get("latency_ms", 0))
+    import ast
+    request = user_prompt
+    for attempt in range(2):
+        res = llm_call("", request, max_tokens=5000)
+        text = res.get("text", "")
+        code = text.strip()
+        # Strip markdown fences indipendentemente: l'LLM puo' aprire+chiudere,
+        # solo aprire, solo chiudere o nessuno (il prompt dice di non emetterli ma
+        # alcuni provider lo fanno comunque). Stripping idempotente.
+        code = re.sub(r"^```[a-zA-Z]*\n?", "", code)
+        code = re.sub(r"\n?```\s*$", "", code)
+        code = code.strip()
+        if not code or "def invoke" not in code or "def main" not in code:
+            return StageResult(stage=5, success=False, error="code missing def invoke or def main",
+                               raw_text=text[:500],
+                               in_tokens=res.get("in_tokens", 0), out_tokens=res.get("out_tokens", 0),
+                               latency_ms=res.get("latency_ms", 0))
+        # Syntax only: nothing is compiled to bytecode or executed here. A
+        # file that does not parse cannot be delivered, so it is asked again
+        # once with the error, before the reviewer spends a call on it.
+        try:
+            ast.parse(code)
+            break
+        except SyntaxError as exc:
+            problem = f"line {exc.lineno}: {exc.msg}"
+            if attempt:
+                return StageResult(stage=5, success=False,
+                                   error=f"code does not parse ({problem})", raw_text=text[:500],
+                                   in_tokens=res.get("in_tokens", 0), out_tokens=res.get("out_tokens", 0),
+                                   latency_ms=res.get("latency_ms", 0))
+            request = (f"{user_prompt}\n\nCORRECTION: the file you wrote does not parse "
+                       f"({problem}). Write the complete file again, shorter if needed.")
     # Fase 11 (c) 19/5/2026 v4: scan delle chiavi i18n emesse dal LLM nel
     # codice synth. Ogni chiave non presente nel DB viene auto-registrata
     # come stub `<auto-synth: KEY>` con `needs_translation=1` per review
@@ -531,7 +603,7 @@ def _register_synth_keys(code: str) -> int:
 
 def run_full(user_request: str, llm_call_procedural, llm_call_wise, *,
              llm_call_creative=None, llm_call_fidelity=None,
-             progress=None) -> MultistageRun:
+             progress=None, decided_name: str = "") -> MultistageRun:
     """Orchestratore a 6 stadi, separato per contratto di workload.
 
     Stages 1-3 are procedural (middle), stage 4 is editorial (creative),
@@ -550,7 +622,7 @@ def run_full(user_request: str, llm_call_procedural, llm_call_wise, *,
     run = MultistageRun(user_request=user_request, proposal_id=uuid.uuid4().hex[:12])
 
     if progress is not None: progress.update(1)
-    s1 = run_stage1(user_request, llm_call_procedural)
+    s1 = run_stage1(user_request, llm_call_procedural, decided_name=decided_name)
     run.stages.append(s1)
     if not s1.success:
         run.final_state = "abandoned"; run.abandon_reason = f"stage1: {s1.error}"; return run
