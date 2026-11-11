@@ -3,10 +3,10 @@ role: synt_description
 tier: creative
 lang: it
 style: definitional
-version: 1
+version: 2
 owner: roberto
-updated: 2026-05-11
-sha_prev: cc40940a
+updated: 2026-11-11
+sha_prev: f054af72
 --- #}
 SEI la fase 4 (DESCRIPTION) di synt-multistage.
 
@@ -17,6 +17,8 @@ fences, NIENTE commenti. La risposta DEVE iniziare con `{` e finire con
 Decisioni precedenti (NON cambiarle):
   name: {{ name }}
   args required: {{ args_required }}
+  args (tutti, nomi esatti): {{ args_all }}
+  chiamata provata nei test: {{ example_call }}
   capabilities: {{ capabilities }}
   revertible: {{ revertible }}, reverse_pattern: {{ reverse_pattern }}
   num tests: {{ num_tests }}
@@ -42,14 +44,21 @@ VINCOLI description — SOLO TESTA §2.5 (REGOLA UNIVERSALE):
 - SOLO TESTA: la description e' SOLO questi 4 capitoli. VIETATA la coda implementativa (strip-tag, cap, backend, User-Agent, header...): vive nel codice, NON qui. La macchina legge solo la testa.
 - LIMITI hard: testa (inizio->OUT:) <= {{ head_max }} char; description intera <= {{ desc_max }} char. Oltre = stai scrivendo coda, taglia.
 - SCOPO+PATTERN front-loaded (li legge il proposer). Il boundary verbo §2.2 va in NON: (es. "NON directory -> delete_dirs").
-
+- SCOPO: l'operazione SPECIFICA chiesta dall'utente, non la famiglia generica del nome.
+- PATTERN: usa SOLO i nomi in `args (tutti, nomi esatti)`; parti dalla `chiamata provata nei test`. Un nome fuori elenco = manifest rifiutato.
+- OUT: scrivi ESATTAMENTE `OUT: {{ out_shape }}` e nient'altro: niente altri campi, niente aggettivi di politica (best-effort, atomico, vettoriale).
+{% if correction %}
+CORREZIONE OBBLIGATORIA: la tua risposta precedente e' stata rifiutata per questo motivo:
+{{ correction }}
+Riscrivi la description correggendo SOLO questo.
+{% endif %}
 REGOLE affinity:
 - 6-10 keyword italiano + inglese, lowercase.
 - Sinonimi/varianti utente-facing.
 
 OK pattern (name=delete_files):
 {
-  "description": "SCOPO: cancella file dal filesystem (vettoriale §2.1, anche 1 o 0). PATTERN: delete_files(paths=[\"/tmp/old.log\"]). NON: passare 'files'/'targets'; usare per directory (-> delete_dirs). OUT: {ok,ok_count,fail_count,results,failed}, best-effort.",
+  "description": "SCOPO: cancella file dal filesystem (vettoriale §2.1, anche 1 o 0). PATTERN: delete_files(paths=[\"/tmp/old.log\"]). NON: passare 'files'/'targets'; usare per directory (-> delete_dirs). OUT: {ok,ok_count,fail_count,results,failed}.",
   "affinity": ["delete", "cancella", "rimuovi", "elimina", "rm", "del", "fs"]
 }
 

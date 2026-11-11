@@ -36,6 +36,8 @@ GROUPS = {
         "tests/runtime/skills/test_manifest_routing_hygiene.py",
         "tests/runtime/infra/test_config_args_marking_policy.py",
         "tests/runtime/executors/test_executor_catalog_docs.py",
+        "tests/runtime/learning/test_synth_stage4_description.py",
+        "tests/runtime/learning/test_synth_stage6_verify.py",
     ),
 }
 

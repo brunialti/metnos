@@ -48,7 +48,7 @@ def validate_stage6_verdict(value: object) -> dict:
     mismatch = value["mismatch"]
     if type(aligned) is not bool or not isinstance(mismatch, str):
         raise SemanticVerdictInvalid("types")
-    if "\x00" in mismatch or len(mismatch.encode("utf-8")) > 200:
+    if "\x00" in mismatch or len(mismatch.encode("utf-8")) > _MISMATCH_MAX_BYTES:
         raise SemanticVerdictInvalid("mismatch_length")
     if aligned and mismatch:
         raise SemanticVerdictInvalid("aligned_with_mismatch")
@@ -63,6 +63,19 @@ DESCRIPTION dichiara:
 
 CODE body:
 {code_body}
+
+Giudica SOLO il comportamento osservabile promesso dalla DESCRIPTION: che
+cosa fa, su quali dati agisce, quali effetti ha (file scritti o cancellati,
+rete, invii), che cosa restituisce nella lista principale.
+NON sono un disallineamento:
+- le scelte interne del codice (parallelismo, strutture dati, efficienza,
+  validazioni in piu' degli argomenti);
+- i campi di servizio standard in uscita: truncated, truncated_what, used,
+  available_total, cap_field, cap_value, failed, error, error_class,
+  error_code, _undo.
+SONO un disallineamento: un effetto non dichiarato (cancella, scrive, invia
+dati in rete), un'operazione diversa da quella promessa, una promessa non
+mantenuta (il codice non fa il lavoro).
 
 Output: un solo oggetto JSON, senza testo esterno o chiavi aggiuntive.
 - Se il codice esegue ESATTAMENTE quanto promesso, restituisci
@@ -96,9 +109,31 @@ def _parse_verify_json(text: str) -> dict | None:
     return None
 
 
+_MISMATCH_MAX_BYTES = 200
+
+
+def _fit_reason(text: str) -> str:
+    """Cut a reason to the contract's size, on a character boundary."""
+    raw = text.encode("utf-8")
+    if len(raw) <= _MISMATCH_MAX_BYTES:
+        return text
+    mark = "…"
+    kept = raw[:_MISMATCH_MAX_BYTES - len(mark.encode("utf-8"))]
+    return kept.decode("utf-8", errors="ignore").rstrip() + mark
+
+
 def _normalize_verdict(parsed: dict | None) -> dict:
-    """Canonicalizza l'output del LLM. Fallback fail-safe (aligned=False)
-    se parsed e' None o malformato."""
+    """Validate the reviewer's answer; a refusal keeps its reason, shortened.
+
+    The verdict is the boolean. The reason of a refusal is a note for people:
+    a long one cannot turn a refusal into an approval, so it is cut to the
+    contract's size instead of discarding the whole verdict (the reviewer
+    repeats the same long reason on retry, and the refusal was recorded as
+    «invalid answer» with no reason at all). Nothing else is repaired.
+    """
+    if (isinstance(parsed, dict) and parsed.get("aligned") is False
+            and isinstance(parsed.get("mismatch"), str)):
+        parsed = {**parsed, "mismatch": _fit_reason(parsed["mismatch"])}
     return validate_stage6_verdict(parsed)
 
 
@@ -183,7 +218,14 @@ def verify_semantic_alignment(
         llm_call = _default_llm_call
 
     model = tier_for("synt.semantic_verify")
-    verdict, raw_text = _single_verify(prompt, model, llm_call)
+    try:
+        verdict, raw_text = _single_verify(prompt, model, llm_call)
+    except SemanticVerdictInvalid as exc:
+        # The refused answer leaves a trace too: without it nobody can tell
+        # a broken reviewer from a candidate that was never judged.
+        _write_audit(name_hint, prompt, getattr(exc, "raw_text", ""),
+                     {"invalid": str(exc)}, [model])
+        raise
     out = {**verdict, "model": _request_label(model),
            "raw": _parse_verify_json(raw_text or "")}
     validate_stage6_verdict(out)
@@ -207,8 +249,10 @@ def _single_verify(prompt: str, model: str, llm_call: Callable) -> tuple[dict, s
                 return _normalize_verdict(parsed), raw_text
             except SemanticVerdictInvalid:
                 continue
-    # 2x fail → fail-safe: aligned=False
-    raise SemanticVerdictInvalid("malformed_or_invalid_after_retry")
+    # Two unusable answers: no verdict. The caller refuses the candidate.
+    failure = SemanticVerdictInvalid("malformed_or_invalid_after_retry")
+    failure.raw_text = raw_text
+    raise failure
 
 
 def _write_audit(name_hint: str, prompt: str, response: str | None,

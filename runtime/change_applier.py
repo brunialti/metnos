@@ -143,7 +143,10 @@ def apply_create_executor(ci: ChangeIntent) -> dict:
     if result.get("review_pending"):
         raise ReviewPending(str(result.get("proposal_id") or ""))
     if not result.get("ok", True):
-        reason = result.get("error") or result.get("install_error") or "unknown"
+        # Synth says why in one of three places: an error before it starts,
+        # a refusal at delivery, or the reason a stage refused the candidate.
+        reason = (result.get("error") or result.get("install_error")
+                  or result.get("reason") or "unknown")
         raise RuntimeError(f"synth_request failed: {reason}")
     if result.get("redirected"):
         raise RuntimeError(_msg("MSG_CHANGE_REDIRECTED", name=expected_name,

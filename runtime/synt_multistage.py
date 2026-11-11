@@ -346,12 +346,57 @@ def run_stage3(user_request: str, stage1: dict, stage2: dict, llm_call) -> Stage
                        latency_ms=res.get("latency_ms", 0))
 
 
-def run_stage4(user_request: str, stage1: dict, stage2: dict, stage3: dict, llm_call) -> StageResult:
-    """Stage 4 = DESCRIPTION + AFFINITY. Creativo (prosa)."""
+def stage4_out_shape(stage1: dict, stage3: dict) -> str:
+    """The OUT chapter, decided by code: the standard shape the code stage is
+    required to return, with the list field the functional cases check.
+
+    The description is written before the code and without seeing the cases,
+    so a free OUT chapter contradicted the code (measured on 11/11/2026:
+    four candidates out of six refused by the final review for this alone).
+    """
+    checked = {field for case in (stage3 or {}).get("tests") or []
+               for field in ((case.get("expect") or {}).get("field_eq") or {})}
+    named = [field for field in ("entries", "results") if field in checked]
+    if len(named) == 1:
+        field = named[0]
+    else:
+        from vocab import SAFE_VERBS
+        field = "entries" if (stage1 or {}).get("action") in SAFE_VERBS else "results"
+    return "{ok,ok_count,fail_count," + field + ",failed}"
+
+
+def _stage4_example_call(name: str, stage3: dict, limit: int = 140) -> str:
+    """One call the functional cases really make, as the PATTERN's raw material."""
+    cases = (stage3 or {}).get("tests") or []
+    case = next((c for c in cases if (c.get("expect") or {}).get("ok") is True),
+                cases[0] if cases else None)
+    arguments = (case or {}).get("input") or {}
+    call = name + "(" + ", ".join(
+        f"{key}={json.dumps(value, ensure_ascii=False)}" for key, value in arguments.items()) + ")"
+    if len(call) > limit:
+        call = name + "(" + ", ".join(f"{key}=..." for key in arguments) + ")"
+    return call
+
+
+def _with_out_shape(description: str, shape: str) -> str:
+    """Replace whatever follows ``OUT:`` with the decided shape."""
+    cut = description.find("OUT:")
+    head = (description[:cut] if cut >= 0 else description).rstrip()
+    return f"{head} OUT: {shape}."
+
+
+def run_stage4(user_request: str, stage1: dict, stage2: dict, stage3: dict, llm_call,
+               *, correction: str = "") -> StageResult:
+    """Stage 4 = DESCRIPTION + AFFINITY. Creativo (prosa).
+
+    ``correction`` carries the refusal of a first attempt: the model rewrites
+    knowing what was wrong, instead of being asked the same question again.
+    """
     try:
         from manifest_rules import HEAD_MAX as _hm, DESC_MAX as _dm
     except Exception:
         _hm, _dm = 240, 280
+    out_shape = stage4_out_shape(stage1, stage3)
     user_prompt = prompt_loader.get(
         "synt_description",
         _i18n.current_lang(),
@@ -363,6 +408,10 @@ def run_stage4(user_request: str, stage1: dict, stage2: dict, stage3: dict, llm_
         num_tests=len(stage3.get("tests", [])),
         user_request=user_request,
         head_max=_hm, desc_max=_dm,
+        args_all=str(sorted(stage2.get("args_properties") or {})),
+        example_call=_stage4_example_call(stage1["name"], stage3),
+        out_shape=out_shape,
+        correction=correction,
     )
     res = llm_call("", user_prompt, max_tokens=2200)
     text = res.get("text", "")
@@ -371,6 +420,8 @@ def run_stage4(user_request: str, stage1: dict, stage2: dict, stage3: dict, llm_
         return StageResult(stage=4, success=False, error="JSON parse failed", raw_text=text[:500],
                            in_tokens=res.get("in_tokens", 0), out_tokens=res.get("out_tokens", 0),
                            latency_ms=res.get("latency_ms", 0))
+    if isinstance(out.get("description"), str) and "\n" not in out["description"]:
+        out["description"] = _with_out_shape(out["description"], out_shape)
     err = validate_stage4(out)
     if err:
         return StageResult(stage=4, success=False, error=err, output=out, raw_text=text[:500],
@@ -526,46 +577,46 @@ def run_full(user_request: str, llm_call_procedural, llm_call_wise, *,
     if not s4.success:
         run.final_state = "abandoned"; run.abandon_reason = f"stage4: {s4.error}"; return run
 
-    if progress is not None: progress.update(5)
-    s5 = run_stage5(user_request, s1.output, s2.output, s3.output, s4.output, llm_call_wise)
-    run.stages.append(s5)
-    if not s5.success:
-        run.final_state = "abandoned"; run.abandon_reason = f"stage5: {s5.error}"; return run
-
-    run.code_text = s5.output["code"]
-
-    # Stage 5.5 — LINT STRUTTURALE del manifest (ADR 0169, deterministico §7.9).
-    # Gira PRIMA del verifier LLM (stage6): becca i difetti di FORMA della scheda
-    # (PATTERN con arg inventato, arg runtime_resolved citato, output-shape) senza
-    # spendere una call LLM. Rigetta solo su severity 'error' (difetti genuini);
-    # i 'warn' (es. SCOPO lungo) sono loggati. La policy non è modificabile
-    # tramite API o ambiente; i test isolati sostituiscono il simbolo interno.
+    # Structural lint of the card (ADR 0169, deterministic §7.9), BEFORE the
+    # code stage: it reads only the name, the signature and the description,
+    # so a malformed card is caught without paying for the code. One informed
+    # retry: the description is rewritten knowing the linter's refusal.
+    # Rejects only on severity 'error'; 'warn' findings are logged.
     try:
         import config as _C_lint
         from manifest_lint import lint_manifest as _lint
-        _man = {
-            "name": run.name or (s1.output.get("name") if s1.output else "") or "",
-            "description": (s4.output.get("description") if s4.output else "") or "",
-            "affinity": (s4.output.get("affinity") if s4.output else []) or [],
-            "args": {
-                "properties": (s2.output.get("args_properties") if s2.output else {}) or {},
-                "required": (s2.output.get("args_required") if s2.output else []) or [],
-            },
-        }
-        _findings = _lint(
-            _man, language=_C_lint.INSTANCE_LANG,
-            allow_flat_description=True,
-        )
-        _errs = [f for f in _findings if f.severity == "error"]
-        _warns = [f for f in _findings if f.severity == "warn"]
-        if _warns:
-            try:
-                from logging_setup import get_logger
-                get_logger(__name__).info(
-                    "[synt.lint] %s: %d warn — %s", _man["name"], len(_warns),
-                    "; ".join(w.message for w in _warns[:3]))
-            except Exception:
-                pass
+        for _attempt in range(2):
+            _man = {
+                "name": run.name or (s1.output.get("name") if s1.output else "") or "",
+                "description": (s4.output.get("description") if s4.output else "") or "",
+                "affinity": (s4.output.get("affinity") if s4.output else []) or [],
+                "args": {
+                    "properties": (s2.output.get("args_properties") if s2.output else {}) or {},
+                    "required": (s2.output.get("args_required") if s2.output else []) or [],
+                },
+            }
+            _findings = _lint(
+                _man, language=_C_lint.INSTANCE_LANG,
+                allow_flat_description=True,
+            )
+            _errs = [f for f in _findings if f.severity == "error"]
+            _warns = [f for f in _findings if f.severity == "warn"]
+            if _warns:
+                try:
+                    from logging_setup import get_logger
+                    get_logger(__name__).info(
+                        "[synt.lint] %s: %d warn — %s", _man["name"], len(_warns),
+                        "; ".join(w.message for w in _warns[:3]))
+                except Exception:
+                    pass
+            if not _errs or _attempt:
+                break
+            s4 = run_stage4(
+                user_request, s1.output, s2.output, s3.output, llm_call_creative,
+                correction="; ".join(e.message for e in _errs[:3]))
+            run.stages[-1] = s4          # one description per run: the rewritten one
+            if not s4.success:
+                run.final_state = "abandoned"; run.abandon_reason = f"stage4: {s4.error}"; return run
         if _errs:
             run.final_state = "rejected_lint_structural"
             run.abandon_reason = "manifest_lint: " + "; ".join(
@@ -575,6 +626,14 @@ def run_full(user_request: str, llm_call_procedural, llm_call_wise, *,
         run.final_state = "rejected_lint_unavailable"
         run.abandon_reason = f"manifest_lint_unavailable: {type(ex).__name__}"
         return run
+
+    if progress is not None: progress.update(5)
+    s5 = run_stage5(user_request, s1.output, s2.output, s3.output, s4.output, llm_call_wise)
+    run.stages.append(s5)
+    if not s5.success:
+        run.final_state = "abandoned"; run.abandon_reason = f"stage5: {s5.error}"; return run
+
+    run.code_text = s5.output["code"]
 
     # Stage 6 — semantic verification (ADR 0114 Layer 6, 8/5/2026).
     # Confronta description (s4) vs code (s5). Se misaligned → rejected.
