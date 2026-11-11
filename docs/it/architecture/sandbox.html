@@ -156,6 +156,13 @@ librerie, <code>/etc</code>, <code>/var/lib/python3</code> e
 <code>--die-with-parent</code>. Il profilo del server non aggiunge attualmente
 uno spazio dei nomi PID, Landlock o un filtro seccomp personalizzato.</p>
 
+<p>L'executor parte nella cartella di lavoro della persona. Un percorso senza
+radice, come <code>progetti/demo</code>, indica quindi sempre quella cartella,
+per ogni strumento, e mai la cartella da cui gira il servizio. Se il profilo
+non mostra la cartella di lavoro, l'executor ne trova una vuota allo stesso
+indirizzo: il percorso risulta inesistente, con lo stesso significato per
+tutti. Le concessioni legate agli argomenti si calcolano sulla stessa base.</p>
+
 <h2>3.2 Risorse derivate dalle capacit&agrave;</h2>
 
 <table>

@@ -44,6 +44,11 @@ GROUPS = {
         "tests/runtime/learning/test_synth_candidate_admission.py",
         "tests/runtime/i18n/test_seed_i18n_gate_keys.py",
         "tests/runtime/infra/test_installer_operator_authority.py",
+        "tests/runtime/infra/test_sandbox_relative_paths.py",
+        "tests/runtime/learning/test_synt_undo_claim.py",
+        "tests/runtime/executors/test_parallel_recursive_executors.py",
+        "tests/runtime/executors/test_applicable_input_boundary.py",
+        "tests/runtime/executors/test_array_args_boundary.py",
     ),
 }
 

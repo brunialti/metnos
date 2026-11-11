@@ -87,6 +87,9 @@ TRANSLATIONS = {
         'strumento? Gli mando la richiesta d’esempio, la descrizione, le prove e il codice generato.',
         'Three attempts were not enough. May I use the external model to finish this tool? '
         'I will send it the sample request, the description, the test cases and the generated code.'),
+    'UI_CHANGE_WAITING_TITLE': ('Aspettano una tua risposta', 'Waiting for your answer'),
+    'UI_CHANGE_WAITING_ABOVE': (
+        'La domanda è in cima alla pagina.', 'The question is at the top of the page.'),
     'UI_CHANGE_BTN_EXTERNAL': ('Usa il modello esterno', 'Use the external model'),
     'UI_CHANGE_BTN_CLOSE': ('Chiudi la proposta', 'Close the proposal'),
     'ERR_CHANGE_EXTERNAL_NOT_OFFERED': (

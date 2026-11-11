@@ -641,6 +641,11 @@ async def admin_changes(request: web.Request) -> web.Response:
         # external model shows the question instead of a bare «retry».
         row["external_model_offer"] = ci_mod.waits_for_external_model(obj)
 
+    # What waits for the person comes first, whatever tab is open.
+    waiting = [dict(asdict(obj), waiting_kind=kind)
+               for obj in every_intent
+               for kind in (ci_mod.waits_for_person(obj),) if kind]
+
     # Facets — conta per family e kind sull'INSIEME corrente (state filtered)
     all_in_state = ci_mod.list_intents(state=state, limit=5000)
     family_counts: dict[str, int] = {}
@@ -669,6 +674,7 @@ async def admin_changes(request: web.Request) -> web.Response:
         request,
         json_payload={
             "rows": rows,
+            "waiting": waiting,
             "counts": counts,
             "family_counts": family_counts,
             "kind_counts": kind_counts,
@@ -684,6 +690,7 @@ async def admin_changes(request: web.Request) -> web.Response:
         template="changes.html",
         template_ctx={
             "rows": rows,
+            "waiting": waiting,
             "counts": counts,
             "family_counts": family_counts,
             "kind_counts": kind_counts,

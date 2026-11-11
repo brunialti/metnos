@@ -411,6 +411,19 @@ def _index_resource_paths(hints: list[str]) -> list[Path]:
     return out
 
 
+def relative_path_root() -> Path:
+    """What a path without a root means, for every executor on this server.
+
+    The person's Metnos workspace, never the directory the service happens to
+    run from: that is the installed program, where ``runtime/...`` exists by
+    accident. One tool resolved the same folder there and another in the
+    workspace (turns ef88bd2e and d9599fbe, 11/11/2026). The child starts in
+    this directory and the grants are computed against it.
+    """
+    from path_alias import workspace_default
+    return workspace_default()
+
+
 def _filesystem_argument_extras(
         executor, args, *, capability_name: str) -> list[Path]:
     """Resolve exact existing paths named by signed ``arg:<name>`` hints."""
@@ -454,7 +467,7 @@ def _filesystem_argument_extras(
                     continue
                 path = Path(os.path.expanduser(value))
                 if not path.is_absolute():
-                    path = Path.cwd() / path
+                    path = relative_path_root() / path
                 if capability_name == "fs:read" and not path.exists():
                     try:
                         from path_alias import resolve_path_with_alias
@@ -556,8 +569,7 @@ def resolve_filesystem_read_args(executor, args) -> dict:
                     # whose keys include the lexical path.
                     candidate = Path(os.path.expanduser(value))
                     if not candidate.is_absolute():
-                        from path_alias import workspace_default
-                        candidate = workspace_default() / candidate
+                        candidate = relative_path_root() / candidate
                     if candidate.exists():
                         resolved = candidate.absolute()
                     else:
@@ -1166,8 +1178,15 @@ def wrap_command(
     sealed_ro_files: list | None = None,
     force_net: bool = False,
     invocation_args: dict | None = None,
+    working_directory: Path | None = None,
 ) -> list[str]:
     """Costruisce il comando isolato o fallisce chiuso.
+
+    ``working_directory``: where the child starts. A relative path the child
+    resolves by itself then means that directory; without it the child keeps
+    the caller's own directory, as before. The directory is created empty in
+    the sandbox when no bind shows it, so the meaning of a relative path never
+    depends on what this executor may see.
 
     `executor` deve avere `code_path` (Path) e `capabilities` (lista
     di dict o str, formato manifest). `force_net=True` NON isola la rete
@@ -1225,6 +1244,10 @@ def wrap_command(
         sealed_ro_files=[Path(p) for p in (sealed_ro_files or [])],
         force_net=force_net,
     )
+    # Only a directory that exists here: bubblewrap cannot create a missing
+    # one below a read-only bind, and would refuse the whole invocation.
+    if working_directory is not None and Path(working_directory).is_dir():
+        bwrap_args += ["--dir", str(working_directory), "--chdir", str(working_directory)]
     return ["bwrap", *bwrap_args, "--", *command]
 
 

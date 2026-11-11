@@ -3742,6 +3742,7 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
             sealed_ro_files=_dependency_signer_keys,
             force_net=_force_net,
             invocation_args=args,
+            working_directory=_sandbox.relative_path_root(),
         )
     except _sandbox.SandboxUnavailableError:
         return {

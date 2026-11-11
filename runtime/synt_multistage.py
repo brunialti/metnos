@@ -157,6 +157,34 @@ def validate_stage2(out: dict, stage1: dict) -> Optional[str]:
     return None
 
 
+def settle_undo_claim(stage1: dict, stage2: dict) -> bool:
+    """Keep «revertible» only where the birth door can prove the undo.
+
+    Stage 1 guesses whether the action can be undone and stage 2 picks a
+    catalog pattern, but the door proves an undo only on the contract shapes
+    it owns a fixture for. A claim outside them was refused at the very end,
+    after every other step. Decided here by the door's own rule, not by the
+    model: the claim is withdrawn, the later stages build a tool that says it
+    cannot be undone, and such a tool is always the person's to allow.
+    Returns True when the claim was withdrawn.
+    """
+    if not stage1.get("revertible"):
+        return False
+    from executor_birth_property_runner import undo_proof_available
+    contract = {
+        "reverse_pattern": stage2.get("reverse_pattern"),
+        "capabilities": stage2.get("capabilities") or [],
+        "args": {"type": "object",
+                 "required": stage2.get("args_required") or [],
+                 "properties": stage2.get("args_properties") or {}},
+    }
+    if undo_proof_available(contract):
+        return False
+    stage1["revertible"] = False
+    stage2["reverse_pattern"] = None
+    return True
+
+
 def validate_stage3(out: dict) -> Optional[str]:
     """Stage 3 = TESTS. Si aspetta {tests: list[...]} con >= 3 entries."""
     from executor_birth_functional import validate_functional_cases
@@ -683,6 +711,9 @@ def run_full(user_request: str, llm_call_procedural, llm_call_wise, *,
     run.stages.append(s2)
     if not s2.success:
         run.final_state = "abandoned"; run.abandon_reason = f"stage2: {s2.error}"; return run
+    if settle_undo_claim(s1.output, s2.output):
+        log.info("synt %s: undo claim withdrawn, the door has no proof for this contract",
+                 run.name)
 
     if progress is not None: progress.update(3)
     s3 = run_stage3(user_request, s1.output, s2.output,

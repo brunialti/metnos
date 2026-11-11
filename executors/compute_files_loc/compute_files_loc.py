@@ -201,6 +201,14 @@ def invoke(args):
         else:
             return {"ok": False, "error": _msg("ERR_ARG_NOT_POSITIVE_INT", arg="max_files")}
 
+    # A folder that is not there is said, never counted as zero lines (§2.8).
+    missing = [str(root) for root in paths
+               if not Path(os.path.expanduser(str(root))).exists()]
+    if missing and len(missing) == len(paths):
+        return {"ok": False, "error_code": "ERR_PATH_NOT_FOUND",
+                "error": _msg("ERR_PATH_NOT_FOUND", path=", ".join(
+                    str(Path(os.path.expanduser(root)).absolute()) for root in missing))}
+
     # Walk ricorsivo parallelo, con fusione deterministica e cap a max_files.
     candidates: list[Path] = list(_walk_paths(paths, include_ext, exclude_subs, max_files))
     visited_files = len(candidates)
@@ -286,6 +294,8 @@ def invoke(args):
             f"Skip {fail_count} file binari/illeggibili."
         ),
     }
+    if missing:
+        out["missing_paths"] = missing
     if truncated:
         out["truncated"] = True
         out["truncated_what"] = _msg("MSG_OBJECT_FILES")

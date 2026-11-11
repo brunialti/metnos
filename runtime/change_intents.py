@@ -798,6 +798,17 @@ def waits_for_external_model(intent: ChangeIntent) -> bool:
                 and (intent.intent_body or {}).get("external_model_offer"))
 
 
+def waits_for_person(intent: ChangeIntent) -> str | None:
+    """The kind of answer this proposal waits for from the person, or None.
+
+    The changes page shows these first, on every tab: a question left in the
+    last tab was not found by the person it was for (11/11/2026).
+    """
+    if waits_for_external_model(intent):
+        return "external_model"
+    return None
+
+
 def is_person_answer(action: str) -> bool:
     """The two answers to that question: allow the external model, or close."""
     return action in ("external", "close")

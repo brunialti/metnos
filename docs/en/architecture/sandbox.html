@@ -156,6 +156,13 @@ directories, <code>/etc</code>,
 requested. The server profile currently adds neither a PID namespace nor
 Landlock or a custom seccomp filter.</p>
 
+<p>The executor starts in the person's workspace. A path without a root, such
+as <code>projects/demo</code>, therefore always means that folder, for every
+tool, and never the directory the service runs from. When the profile does not
+show the workspace, the executor finds an empty one at the same address: the
+path does not exist, with the same meaning for everyone. Grants bound to
+arguments are computed on the same base.</p>
+
 <h2>3.2 Capability-derived resources</h2>
 
 <table>

@@ -12,6 +12,46 @@
   <div style="margin-top:.3rem">{{ msg('UI_CHANGE_LEGEND_KIND_VS_MODULE') }}</div>
 </details>
 
+{% if waiting %}
+<section class="tp-waiting" data-tutor-id="changes-waiting">
+  <h2>{{ msg('UI_CHANGE_WAITING_TITLE') }} <span class="badge">{{ waiting|length }}</span></h2>
+  <div class="table-wrap">
+  <table class="tp">
+    <tbody>
+    {% for w in waiting %}
+      <tr>
+        <td>
+          <code>{{ w.intent_target }}</code>
+          <div class="muted">{{ w.intent_summary }}</div>
+        </td>
+        <td>
+          {% if w.waiting_kind == 'external_model' %}
+            <div data-tutor-id="changes-row-external-question">{{ msg('UI_CHANGE_EXTERNAL_QUESTION') }}</div>
+          {% endif %}
+          <div id="ci-notice-{{ w.id }}" role="alert"></div>
+        </td>
+        <td class="tp-actions">
+          {% if w.waiting_kind == 'external_model' %}
+            <button class="btn ok"
+                    hx-post="/admin/changes/{{ w.id }}/external"
+                    hx-target="closest tr" hx-swap="outerHTML">
+              {{ msg('UI_CHANGE_BTN_EXTERNAL') }}
+            </button>
+            <button class="btn"
+                    hx-post="/admin/changes/{{ w.id }}/close"
+                    hx-target="closest tr" hx-swap="outerHTML">
+              {{ msg('UI_CHANGE_BTN_CLOSE') }}
+            </button>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+{% endif %}
+
 <nav class="tp-tiers">
   {% for st in tabs %}
     <a class="tp-tier{% if state == st.key %} current{% endif %}"
@@ -163,7 +203,7 @@
         {% endif %}
       </td>
       <td class="tp-actions">
-        <div id="ci-notice-{{ r.id }}" role="alert"></div>
+        {% if not r.external_model_offer %}<div id="ci-notice-{{ r.id }}" role="alert"></div>{% endif %}
         {% if r.state in ['proposed', 'staged'] %}
           <input type="text" name="reason" maxlength="500"
                  aria-label="{{ msg('UI_CHANGE_DECISION_REASON') }}"
@@ -220,17 +260,8 @@
         {% elif r.state == 'failed' %}
           <span class="chip bad">{{ msg('UI_CHANGE_BADGE_FAILED') }}</span>
           {% if r.external_model_offer %}
-            <div class="muted" data-tutor-id="changes-row-external-question">{{ msg('UI_CHANGE_EXTERNAL_QUESTION') }}</div>
-            <button class="btn ok"
-                    hx-post="/admin/changes/{{ r.id }}/external"
-                    hx-target="closest tr" hx-swap="outerHTML">
-              {{ msg('UI_CHANGE_BTN_EXTERNAL') }}
-            </button>
-            <button class="btn"
-                    hx-post="/admin/changes/{{ r.id }}/close"
-                    hx-target="closest tr" hx-swap="outerHTML">
-              {{ msg('UI_CHANGE_BTN_CLOSE') }}
-            </button>
+            {# The question and its buttons are once in the page: on top. #}
+            <div class="muted">{{ msg('UI_CHANGE_WAITING_ABOVE') }}</div>
           {% else %}
           <button class="btn"
                   hx-post="/admin/changes/{{ r.id }}/retry"
@@ -256,5 +287,7 @@
   table.tp td.tp-ea{white-space:nowrap;width:6em}
   table.tp td.tp-actions{width:9em}
   table.tp .tp-fits{margin-top:.4rem;font-size:.85em}
+  section.tp-waiting{margin:.6rem 0 1rem;padding:.6rem .8rem;border:2px solid var(--accent);border-radius:var(--r-1)}
+  section.tp-waiting h2{margin:0 0 .4rem;font-size:1.05em}
 </style>
 {% endblock %}

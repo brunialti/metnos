@@ -505,6 +505,20 @@ def _uses_managed_helper(manifest: Mapping[str, object]) -> bool:
                for cap in capabilities)
 
 
+def undo_proof_available(manifest: Mapping[str, object]) -> bool:
+    """True when the door owns a fixture that can prove this contract's undo.
+
+    The round trip is proved on fixed, declared shapes: the door supplies the
+    paths, applies the catalog pattern and compares the tree before and after.
+    Any other revertible contract must carry its own ``reverse`` and act
+    inside the test folder; a generated tool has neither, so its claim could
+    only be refused (first seen 11/11/2026: a tool writing to a fixed store
+    was refused after the person's consent). The builder asks here before
+    declaring a tool undoable.
+    """
+    return bool(_domain_contract(manifest))
+
+
 def _domain_contract(manifest: Mapping[str, object]) -> str:
     """Select fixed fixture semantics from declared contracts, never a tool name."""
     args = manifest.get('args')
