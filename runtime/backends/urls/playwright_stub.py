@@ -42,6 +42,3 @@ def read_pdf(args: dict) -> dict:
 def find(args: dict) -> dict:
     return _not_impl_dict()
 
-
-def login(args: dict) -> dict:
-    return _not_impl_dict()

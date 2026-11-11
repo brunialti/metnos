@@ -612,7 +612,7 @@ def handle_synth_request(args, *, user_query, progress=None, verbose=False, curr
     _BINDING_TO_BUILTIN = {
         "cifs": "admin",         # mount via sudoer
         "ssh":  "admin",          # comandi remoti via sudoer
-        "web":  "login_urls",  # autenticazione HTTP/cookie del dominio urls
+        "web":  "login_sites",   # accesso a un sito col browser
     }
     _redirect_tool = _BINDING_TO_BUILTIN.get(_binding)
     if _redirect_tool:

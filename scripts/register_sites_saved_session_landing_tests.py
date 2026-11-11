@@ -40,7 +40,6 @@ OPT_IN = ("not test_installed_local_model_keeps_object_filter_and_continuation_s
 # Red on a7cacd6d too: test_document_acquisition (download language contract),
 # test_sites_security (offscreen partial period) and, in this harness only,
 # test_replica_accesso_completo (cookie precondition); the others as on 20/10.
-# test_login_urls.py opens local sockets, refused by this sandbox: run apart.
 PREEXISTING_FAILURES = tuple(SITES + name for name in ('test_document_acquisition.py', 'test_sites_security.py', 'test_replica_accesso_completo.py', 'test_browser_user_handoff_browser.py', 'test_click_dispatch_terminal.py', 'test_credential_ui_forms.py', 'test_login_cookie_precondition.py', 'test_login_navigation_browser.py', 'test_login_robot_user_control_browser.py', 'test_login_stato_non_azione.py'))
 COMPOSITION = (
     "runtime/playwright_sidecar/session_broker.py",

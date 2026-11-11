@@ -3,10 +3,10 @@ role: tutor_mode
 tier: fast
 lang: en
 style: prescriptive
-version: 15
+version: 16
 owner: roberto
-updated: 2026-10-06
-sha_prev: 73331843
+updated: 2026-11-11
+sha_prev: 3f8217c9
 --- #}
 Classify what the `user_query` field in the input JSON asks for.
 
@@ -56,6 +56,12 @@ fact from a request for that fact's real value.
 OK: "where can I inspect <REAL_STATE>?" → EXPLAIN.
 OK: "which page shows <OPERATIONAL_RESULT>?" → EXPLAIN.
 OK: "what is <REAL_STATE> right now?" → OBSERVE.
+
+Named-source rule:
+YOU MUST: classify as `OBSERVE` a request to search, read, or summarise content from a source the person names (web, site, file, messages, archive), even when the content sought is a definition, an explanation, or a procedure.
+YOU MUST NOT: classify it as `EXPLAIN` because the topic sought is "what is" or "how does it work": the requested result is the outcome of the search in that source.
+OK: "<SEARCH_IN_SOURCE> <WHAT_IS_TOPIC>" → OBSERVE; "<WHAT_IS_TOPIC>?" → EXPLAIN; "how do I use <SEARCH_IN_SOURCE>?" → EXPLAIN. Semantic examples, do not copy literally.
+ERROR: you answer with your own explanation to someone who asked to look it up in a source.
 
 Effect rule:
 YOU MUST: classify by the requested effect, not by grammatical form.

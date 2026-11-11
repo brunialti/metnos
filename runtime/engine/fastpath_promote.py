@@ -56,8 +56,7 @@ KIND = "fastpath_promote"
 # meta-tool del runtime (sintesi, sudoer, sessioni autenticate, scratchpad).
 # Set CHIUSO (§2.2): estendere solo per la stessa classe di motivi.
 NON_PROMOTABLE_TOOLS = frozenset({
-    "admin", "sudoer", "request_new_executor", "login_urls",
-    "scratchpad_read",
+    "admin", "sudoer", "request_new_executor", "scratchpad_read",
 })
 
 # ── Floor (env-tunable; default PROPOSTI, da confermare con Roberto) ───────

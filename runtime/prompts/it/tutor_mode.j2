@@ -3,10 +3,10 @@ role: tutor_mode
 tier: fast
 lang: it
 style: prescriptive
-version: 15
+version: 16
 owner: roberto
-updated: 2026-10-06
-sha_prev: 3e168879
+updated: 2026-11-11
+sha_prev: 5b1e23bf
 --- #}
 Classifica che cosa chiede il messaggio `user_query` ricevuto nel JSON.
 
@@ -56,6 +56,12 @@ fatto dalla richiesta del valore reale di quel fatto.
 OK: «dove posso controllare <STATO_REALE>?» → EXPLAIN.
 OK: «quale pagina mostra <RISULTATO_OPERATIVO>?» → EXPLAIN.
 OK: «qual è <STATO_REALE> adesso?» → OBSERVE.
+
+Regola della sorgente nominata:
+DEVI: classificare `OBSERVE` la richiesta di cercare, leggere o riassumere un contenuto da una sorgente che la persona nomina (web, sito, file, messaggi, archivio), anche quando il contenuto cercato è una definizione, una spiegazione o un procedimento.
+NON DEVI: classificare `EXPLAIN` perché l'argomento cercato è «che cos'è» o «come funziona»: il risultato chiesto è l'esito della ricerca in quella sorgente.
+OK: «<CERCA_IN_SORGENTE> <CHE_COS_È_ARGOMENTO>» → OBSERVE; «<CHE_COS_È_ARGOMENTO>?» → EXPLAIN; «come si usa <RICERCA_IN_SORGENTE>?» → EXPLAIN. Esempi semantici, non copiare letteralmente.
+ERRORE: rispondi con una spiegazione tua a chi ha chiesto di cercarla in una sorgente.
 
 Regola dell'effetto:
 DEVI: classificare in base all'effetto richiesto, non alla forma grammaticale.

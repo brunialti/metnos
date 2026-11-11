@@ -7,8 +7,8 @@ contengono: throttle thread-safe (`HostThrottle`), HTTP cache disk-based
 soft-fail con error_class (ADR 0101), parallelizzazione I/O bound, JS-
 render opt-in via sidecar Playwright (ADR 0125).
 
-Questo modulo e' il punto di indirezione canonical: espone i 4 verbi
-sotto i nomi `read_html`/`read_pdf`/`find`/`login` (no underscore, no
+Questo modulo e' il punto di indirezione canonical: espone i 3 verbi
+sotto i nomi `read_html`/`read_pdf`/`find` (no underscore, no
 `urls`/`session` suffix) per uniformita' con altri backend Metnos
 (es. `messages/email_metnos.send/read/find/delete/move`,
 `files/local.find/read/write/...`, `events/local_ics.read/create/delete`).
@@ -17,12 +17,12 @@ Architettura (decisione 13/5/2026):
 - Le funzioni qui non duplicano logica: chiamano il `_invoke_default` di
   ogni executor (rinominato dall'originale `invoke` durante il refactor
   dispatcher). Tutti i nomi di modulo lato executor restano accessibili
-  (`OWNED_FILE`, `COOKIES_DIR`, `_has_pypdf`, `_playwright_client`, ecc.)
+  (`OWNED_FILE`, `_has_pypdf`, `_playwright_client`, ecc.)
   per i test che li monkey-patchano.
 - Vantaggio del thin re-export: il backend e' UN punto di accesso
   canonico, ma la logica resta concentrata in un file singolo per
   executor — facile evoluzione (es. introdurre `httpx` HTTP/2 sostituira'
-  il backend in un punto, non in 4).
+  il backend in un punto, non in 3).
 
 Predisposizione plugin esterni (ADR pending): quando arrivera' il loader
 plugin esterni, `_HANDLERS` lato executor sara' arricchito con backend
@@ -32,24 +32,23 @@ Funzioni:
 - `read_html(args) -> dict`
 - `read_pdf(args) -> dict`
 - `find(args) -> dict`
-- `login(args) -> dict`
 
 Contratto: vedi le rispettive `invoke()` originali negli executor
-`read_urls_html`/`read_urls_pdf`/`find_urls`/`login_urls`.
+`read_urls_html`/`read_urls_pdf`/`find_urls`.
 """
 from __future__ import annotations
 
 import sys
 from pathlib import Path
 
-# Path dei 4 executor (siblings nella cartella `executors/`).
+# Path dei 3 executor (siblings nella cartella `executors/`).
 _EXECUTORS_DIR = Path(__file__).resolve().parent.parent.parent.parent / "executors"
 
 
 def _sibling(name: str):
     """Import the historical implementation of ONE executor, on demand.
 
-    The four modules used to be imported here, all together, the moment this
+    The modules used to be imported here, all together, the moment this
     backend was loaded.  Outside a sandbox that worked because every executor
     directory was reachable; inside one only the caller's own directory is
     bound, so an executor asking for its own backend failed on a module it has
@@ -57,12 +56,10 @@ def _sibling(name: str):
     each one asks for exactly that.
 
     There is no circularity: this never calls ``invoke``, only the historical
-    ``_invoke_default`` of one of the four literal modules compiled below.
+    ``_invoke_default`` of one of the three literal modules compiled below.
     Arbitrary sibling names are deliberately not supported by a closed build.
     """
-    if name not in {
-        "read_urls_html", "read_urls_pdf", "find_urls", "login_urls",
-    }:
+    if name not in {"read_urls_html", "read_urls_pdf", "find_urls"}:
         raise ValueError("unsupported builtin URL executor")
     location = str(_EXECUTORS_DIR / name)
     if location not in sys.path:
@@ -73,11 +70,8 @@ def _sibling(name: str):
     if name == "read_urls_pdf":
         import read_urls_pdf
         return read_urls_pdf
-    if name == "find_urls":
-        import find_urls
-        return find_urls
-    import login_urls
-    return login_urls
+    import find_urls
+    return find_urls
 
 
 def read_html(args: dict) -> dict:
@@ -136,17 +130,3 @@ def find(args: dict) -> dict:
     """
     return _sibling("find_urls")._invoke_default(args)
 
-
-def login(args: dict) -> dict:
-    """Login form web + persist cookie jar (ADR 0082).
-
-    Args:
-        domain: str (richiesto; deve avere credenziale salvata)
-        force?: bool (default False)
-        timeout_s?: float (default 15.0)
-
-    Returns:
-        {ok, cached, session_cookies, expires_at, login_url, domain,
-         cookie_file?}
-    """
-    return _sibling("login_urls")._invoke_default(args)

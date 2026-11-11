@@ -32,6 +32,10 @@ GROUPS = {
         "tests/runtime/engine/test_autopath_prune_aging.py",
         "tests/runtime/engine/test_fastpath_lifecycle.py",
         "tests/runtime/remote/test_server_named_folders.py",
+        "tests/runtime/skills/test_admission_layer7.py",
+        "tests/runtime/skills/test_manifest_routing_hygiene.py",
+        "tests/runtime/infra/test_config_args_marking_policy.py",
+        "tests/runtime/executors/test_executor_catalog_docs.py",
     ),
 }
 

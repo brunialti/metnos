@@ -67,7 +67,6 @@ _PARENT_PROJECTION_SEAL_V1 = object()
 _REVIEWED_MODULE_REVERSE_DIGESTS_V1 = {
     "create_images_indices": "sha256:5f5b94cf38d1a7a9bbde678e0397f4d9ae799f1f5898eb4a0148838e0030b845",
     "delete_dirs": "sha256:dd7106b098c107a0282b41a3ea37d363848ad78be509fffc5d7ba9c9e5c7d60d",
-    "login_urls": "sha256:bcac469765b5e27ac0fe0a975e9b51b9d4dd6ef70ac577b66ccb4689d45d1c1f",
     "open_sites": "sha256:c63e58a07045ad7f2563a6f03e1fdccce98ff0ac384f47fece1c7ae8350f6877",
     "organize_files": "sha256:4d5ac38d9fab260ee7f7b9af26e568c142841e9fafbe1b5890d112b038539ea0",
     "run_processes": "sha256:47eef328046d85d0e241af373e16bbff7064b9dbc2884ad3f24b975dabaa76b9",

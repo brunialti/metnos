@@ -32,7 +32,6 @@ MODULES = {
 OPT_IN = ("not test_installed_local_model_keeps_object_filter_and_continuation_separate"
           " and not test_real_library_click_stays_in_provider_frame_and_never_accepts_consent"
           " and not test_real_login_attempt_keeps_captcha_otp_and_credentials_separate")
-# test_login_urls.py opens local sockets, refused by this sandbox: run apart.
 PREEXISTING_FAILURES = tuple(SITES + name for name in ('test_browser_user_handoff_browser.py', 'test_click_dispatch_terminal.py', 'test_credential_ui_forms.py', 'test_login_cookie_precondition.py', 'test_login_navigation_browser.py', 'test_login_robot_user_control_browser.py', 'test_login_stato_non_azione.py'))
 COMPOSITION = (
     "install/data/i18n_seed.sqlite",

@@ -8102,7 +8102,7 @@ def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, progress=None,
     # passiamo al PLANNER una versione redacted. La metadata (solo
     # domain+context, NO password) viene iniettata nel system prompt come
     # blocco prescrittivo cosi' il PLANNER puo' settare credentials_domain
-    # nei tool che lo accettano (admin per CIFS, login_urls per HTTP web).
+    # nei tool che lo accettano (admin per CIFS).
     if credentials_prepared:
         redacted_query = str(user_query or "")
         extracted_meta = list(credential_meta or [])

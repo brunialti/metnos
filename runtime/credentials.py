@@ -186,7 +186,7 @@ def store(domain: str, payload: dict) -> Path:
     """Scrive payload cifrato in <CRED_DIR>/<domain>.json.age. Mode 0600.
 
     payload: dict con chiavi tipiche login_url, method, form_data, session_cookie_names.
-    Lo schema non e' validato qui: il chiamante (`login_urls`) sa cosa serve.
+    Lo schema non e' validato qui: il chiamante sa cosa serve.
     """
     if not isinstance(payload, dict):
         raise TypeError("payload must be a dict")
