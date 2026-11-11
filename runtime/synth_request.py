@@ -25,8 +25,8 @@ from synt_multistage import is_retryable as multistage_is_retryable
 from synt_multistage import is_synthesized as multistage_is_synthesized
 from loader import SYNTHESIZED_EXECUTORS_DIR
 from executor_birth_synth import (
-    SynthBirthData, require_synth_birth_service, submit_synth_multistage,
-    SynthTestData, validate_synth_tests,
+    SynthBirthData, candidate_refusal, require_synth_birth_service,
+    submit_synth_multistage, SynthTestData, validate_synth_tests,
 )
 from executor_birth_functional import validate_functional_cases
 from synth_proposal_store import (
@@ -393,6 +393,11 @@ def _install_synthesized(run, intent, user_query):
             reason=birth_reason(intent),
         ))
         if birth.publication is None:
+            refusal = candidate_refusal(birth)
+            if refusal is not None:
+                # Its own defect: it goes back to the builder with the reason,
+                # it does not wait for a person who could only refuse it.
+                raise CandidateTestsFailed(f"birth check failed: {refusal}")
             from synt import DEFAULT_PROPOSALS_DIR
             error_code = birth.error_code or "synth_birth_rejected"
             proposal_id = preserve_candidate(

@@ -9,6 +9,7 @@ from executor_birth_intent import (
 )
 from executor_birth_operational import BirthResult
 from executor_birth_functional import SynthTestData, SynthTestReport
+from executor_birth_shadow import BirthOutcome, CheckStatus
 from manifest_inventory import ContractId
 
 @dataclass(frozen=True, slots=True)
@@ -63,6 +64,24 @@ def validate_synth_tests(data: SynthTestData) -> SynthTestReport:
     return _validate_synth_tests(data)
 
 
+def candidate_refusal(result: BirthResult) -> str | None:
+    """The automatic check a refused candidate failed, or None.
+
+    None means the refusal is not about the candidate's content: a person's
+    review or consent is missing, or nothing was checked. A failed check is
+    the candidate's own defect: writing it again can fix it, a person's
+    decision cannot, so such a candidate must never wait for one.
+    """
+    report = getattr(result, "report", None)
+    if report is None or report.outcome is BirthOutcome.NEEDS_HUMAN:
+        return None
+    for check in report.checks:
+        if check.status is CheckStatus.FAILED:
+            detail = f" ({check.redacted_detail})" if check.redacted_detail else ""
+            return f"{check.check_id}: {check.error_code}{detail}"
+    return None
+
+
 def submit_synth_specialize(data: SynthBirthData) -> BirthResult:
     return submit_synth_specialize_birth(_as_intent(data))
 
@@ -72,5 +91,6 @@ def submit_synth_approve(data: SynthBirthData) -> BirthResult:
 
 
 __all__ = ["SynthBirthData", "SynthTestData", "SynthTestReport", "validate_synth_tests",
+           "candidate_refusal",
            "require_synth_birth_service", "submit_synth_multistage",
            "submit_synth_specialize", "submit_synth_approve"]

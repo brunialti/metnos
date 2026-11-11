@@ -713,8 +713,13 @@ def _observe_birth(
     revision_facts: RevisionFacts,
     private_parent: object | None = None,
     _dependencies: _BirthDependencies,
+    _last_check: str | None = None,
 ) -> BirthReport:
-    """Run an F3 shadow decision.  There is intentionally no publisher hook."""
+    """Run an F3 shadow decision.  There is intentionally no publisher hook.
+
+    ``_last_check`` ends the catalog after that check: the report then says
+    only whether the checks up to it hold, never that the candidate is admitted.
+    """
     decision = classify_revision(revision_facts)
     if not isinstance(_dependencies, _BirthDependencies) or _dependencies._seal is not _DEPENDENCY_SEAL:
         raise ValueError("birth_dependencies_untrusted")
@@ -728,6 +733,11 @@ def _observe_birth(
             lambda observed, decision: adoption.check(
                 observed, decision, "initial_catalog_adoption_v1"),
         ), *specs)
+    if _last_check is not None:
+        names = [spec.check_id for spec in specs]
+        if _last_check not in names:
+            raise ValueError("birth_check_unknown")
+        specs = specs[:names.index(_last_check) + 1]
     observed: ObservedCandidate | None = None
     results: list[tuple[CheckSpec, CheckResult]] = []
     try:

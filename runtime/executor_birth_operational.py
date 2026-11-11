@@ -31,7 +31,9 @@ if TYPE_CHECKING:
 from contract_store import BirthCommitAuthorization, ManifestRef, PublicationResult
 from manifest_inventory import ContractId
 from executor_birth import ObservedCandidate, observe_candidate
-from executor_birth_approval import ApprovalEvidence, ApprovalSubject, approval_evidence_hash
+from executor_birth_approval import (
+    ApprovalEvidence, ApprovalSubject, BirthApprovalError, approval_evidence_hash,
+)
 from executor_birth_canonical import decode_canonical_ascii_v1, encode_canonical_ascii_v1
 from executor_birth_identity import AdmissionContextV1, ExecutorOrigin, admission_context_id
 from executor_birth_predecessor import (
@@ -58,6 +60,9 @@ from executor_birth_shadow import (
 MAX_TERMINAL_ENVELOPE_BYTES = 4 * 1024 * 1024
 _TERMINAL_SIGNATURE_DOMAIN = b"metnos.executor-birth.terminal/v1\0"
 _PUBLISHED_OUTCOMES = frozenset({BirthOutcome.ADMITTED})
+# The checks that need no person end here; review and consent follow.
+_LAST_AUTOMATIC_CHECK = "properties"
+_CONSENT_MISSING = "approval_required"
 
 
 def _digest(domain: bytes, fields: Mapping[str, bytes]) -> str:
@@ -821,14 +826,31 @@ def _execute(request: BirthRequest, core: _BirthCore) -> BirthResult:
         )
         revision = classify_revision(facts).revision_class
         phase = "approval"
-        approval_subject, approval_evidence = core.approval_resolver(
-            request, observed, approval_scope(observed, revision), instant,
-        )
-        phase = "checks"
-        report = _ordinary_admission_report(
-            request, core, observed, producer, context, facts, instant,
-            approval_subject, approval_evidence,
-        )
+        try:
+            approval_subject, approval_evidence = core.approval_resolver(
+                request, observed, approval_scope(observed, revision), instant,
+            )
+        except BirthApprovalError as missing:
+            if missing.code != _CONSENT_MISSING:
+                raise
+            # The person is asked last: a candidate the automatic checks
+            # refuse anyway never reaches a human decision. When they hold,
+            # the answer is the same missing consent as before.
+            phase = "checks"
+            refused = _admission_report(
+                request, core, observed, producer, context, facts, instant,
+                None, None, last_check=_LAST_AUTOMATIC_CHECK,
+            )
+            if refused.error_code is None:
+                phase = "approval"
+                raise
+            report = refused
+        else:
+            phase = "checks"
+            report = _ordinary_admission_report(
+                request, core, observed, producer, context, facts, instant,
+                approval_subject, approval_evidence,
+            )
         if report.outcome not in _PUBLISHED_OUTCOMES or report.error_code is not None:
             rejected_result = BirthResult(
                 request.request_id, report, None, report.error_code,
@@ -950,6 +972,12 @@ def _execute(request: BirthRequest, core: _BirthCore) -> BirthResult:
 
 def _ordinary_admission_report(request, core, observed, producer, context, facts, instant,
                                approval_subject, approval_evidence):
+    return _admission_report(request, core, observed, producer, context, facts, instant,
+                             approval_subject, approval_evidence, last_check=None)
+
+
+def _admission_report(request, core, observed, producer, context, facts, instant,
+                      approval_subject, approval_evidence, *, last_check):
     shadow = core.shadow_dependencies
     property_runner = shadow.property_runner or ObservedPropertyRunner(
         observed, windows_registry=shadow.windows_sandbox_registry,
@@ -965,7 +993,7 @@ def _ordinary_admission_report(request, core, observed, producer, context, facts
         request.candidate_source_root, contract_id=request.manifest_ref.contract_id,
         executor_origin=producer.executor_origin, revision_authorship=producer.revision_authorship,
         objective_hash=producer.objective_hash, admission_context=context,
-        revision_facts=facts, _dependencies=borrowed,
+        revision_facts=facts, _dependencies=borrowed, _last_check=last_check,
     )
     return report
 
