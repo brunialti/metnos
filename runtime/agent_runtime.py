@@ -3351,7 +3351,13 @@ def finalize_local_executor_args(executor, args: dict) -> dict:
     import sandbox as _sandbox
     final = _fill_runtime_sourced_args(executor, dict(args or {}))
     final = _sandbox.resolve_filesystem_read_args(executor, final)
-    # A named folder still relative is the installation owner's, as on a PC.
+    # A named folder still relative is the installation owner's, as on a PC,
+    # for the closed filesystem operations only: they then ask the account's
+    # grant on the real path. Any other executor runs in a sandbox that never
+    # shows that folder: anchored, it reported an existing folder as missing
+    # (turn ff8c2bb2, 11/11/2026).
+    if not getattr(executor, "filesystem", None):
+        return final
     import server_filesystem_host
     return server_filesystem_host.anchor_named_folders(final)
 

@@ -471,6 +471,7 @@ def _captured_probe_target(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     return live_root, unit_root, wants, captured
 
 
+@LINUX_ONLY
 def test_an_unrelated_entry_beside_an_observed_file_is_not_a_change(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -494,6 +495,7 @@ def test_an_unrelated_entry_beside_an_observed_file_is_not_a_change(
             == preflight._stable_effective_systemd_v1(captured))
 
 
+@LINUX_ONLY
 def test_a_directory_of_the_chain_replaced_or_reowned_is_still_a_change(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -527,6 +529,7 @@ def test_a_directory_of_the_chain_replaced_or_reowned_is_still_a_change(
     ).detail.startswith("effective systemd file changed path=")
 
 
+@LINUX_ONLY
 def test_the_observed_file_itself_counts_whole(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:

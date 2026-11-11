@@ -7,22 +7,29 @@ applier every_10m). Cap 200 intent per fire.
 
 Logica per kind:
   - create_executor / extend_executor:
-      metrics = lookup executor_stats post applied_at
-      finalize: calls_post_apply >= 1 e last_call_ok=True (o non chiamato
-                ma applicato da >= grace_days)
-      rollback: last_call_ok=False e total_calls in finestra >= 3 con fail_rate>0.5
+      metrics = executor_stats of the executor (all its calls, not a window)
+      finalize: past the grace period, with at least one call and the last
+                one not failed, or never called
+      rollback: the executor was deprecated by the system, or its LAST call
+                failed and it has at least 3 calls in all (no failure rate
+                is computed)
 
   - dedupe_executors:
       finalize: alias file presente e executor B non chiamato (deprecato ok)
       rollback: executor B chiamato dopo deprecation (alias not enforced)
 
-  - materialize_pipeline / cache_pattern:
+  - materialize_pipeline:
+      the proposal was run once as a real turn; judged on that turn's outcome
+      finalize: the turn answered, past the grace period
+      rollback: false success, error, loop, or failures without any effect
+
+  - cache_pattern:
       finalize: state ancora 'active' in storage downstream
       rollback: state demoted (segnala che L1/L2 lo ha auto-degradato)
 
   - reject_pattern:
-      finalize: zero feedback ✗ per la (query,pipeline) dopo applied_at
-      rollback: nuovi ✗ post applied_at (significa che il ban non funziona)
+      finalize: no new ✗ on that request after applied_at
+      rollback: new ✗ on that request after applied_at (the ban does not work)
 
 Grace period default: 7 giorni (env METNOS_CHANGE_GRACE_DAYS).
 """

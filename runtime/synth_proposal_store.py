@@ -84,9 +84,19 @@ def preserve_candidate(source: Path, *, proposals_dir: Path, reason: str,
             shutil.rmtree(staging)
 
 
-def pending_for_name(proposals_dir: Path, name: str) -> str | None:
-    """The retained candidate that waits for review under ``name``, if any.
+def birth_reason(intent: str) -> str:
+    """Why Synth built a candidate: the request it was built from. The
+    retained candidate carries it, whatever name Synth chose."""
+    return f"synt multistage: {intent}"
 
+
+def pending_candidate(proposals_dir: Path, *, name: str, reason: str = "") -> str | None:
+    """The retained candidate that waits for review, if any: the one called
+    ``name`` or, when ``reason`` is given, the one built for that reason.
+
+    Synth chooses the candidate's name from the request, so it can differ
+    from the name the caller expected: by name alone the caller would not
+    see its own candidate and would ask Synth again at every run.
     Reads only the stored metadata: it decides nothing about the candidate,
     it tells a caller that asking Synth again would duplicate work.
     """
@@ -101,8 +111,9 @@ def pending_for_name(proposals_dir: Path, name: str) -> str | None:
             metadata = json.loads((folder / "proposal.json").read_text(encoding="utf-8"))
         except (OSError, ValueError):
             continue
-        if (isinstance(metadata, dict) and metadata.get("name") == name
-                and metadata.get("stage") == "birth_blocked"):
+        if not isinstance(metadata, dict) or metadata.get("stage") != "birth_blocked":
+            continue
+        if metadata.get("name") == name or (reason and metadata.get("reason") == reason):
             return folder.name
     return None
 

@@ -28,6 +28,10 @@ GROUPS = {
         "tests/runtime/safety/test_set_signatures_contract.py",
         "tests/runtime/safety/test_safety_admin_sudoer.py",
         "tests/runtime/http/test_change_row_escaping.py",
+        "tests/runtime/learning/test_change_observer.py",
+        "tests/runtime/engine/test_autopath_prune_aging.py",
+        "tests/runtime/engine/test_fastpath_lifecycle.py",
+        "tests/runtime/remote/test_server_named_folders.py",
     ),
 }
 

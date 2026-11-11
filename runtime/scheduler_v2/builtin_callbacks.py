@@ -195,7 +195,7 @@ _BUILTIN_JOBS: list[dict[str, Any]] = [
             "Applier daemon (ADR 0158): legge change_intents in stato "
             "ACCEPTED, applica fisicamente per kind (create_executor → "
             "synth, extend_executor → manifest patch, dedupe → alias, "
-            "materialize_pipeline → multi_tool active, cache_pattern → "
+            "materialize_pipeline → un turno reale di prova, cache_pattern → "
             "canonical_query_log active, reject_pattern → blocklist "
             "jsonl). Cap 20 intent per fire."
         ),

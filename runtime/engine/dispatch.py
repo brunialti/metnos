@@ -8657,6 +8657,8 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                 log.info("[L1 autopath] champion %s esegue in ERRORE → "
                          "fall-through a L3 (re-plan)", ap_hit.autopath_id)
             else:
+                # Served for real: only now the champion counts as in use.
+                _ap.mark_served(ap_hit.autopath_id)
                 _inject_gate_resume_if_paused(
                     run, query, runtime_ctx, framework=ap_hit.framework)
                 # Record observation per future feedback hooks. Skip se il piano

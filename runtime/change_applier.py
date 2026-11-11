@@ -8,7 +8,7 @@ Per kind:
   - create_executor       → invoca synth_request pipeline (~150s)
   - extend_executor       → manifest TOML patch + rollback_blob + re-sign
   - dedupe_executors      → alias setup
-  - materialize_pipeline  → multi_tool_paths.state = active
+  - materialize_pipeline  → la pipeline proposta gira una volta come turno reale
   - cache_pattern         → canonical_query_log.state = active
   - reject_pattern        → rejected_patterns.jsonl append
 
@@ -80,12 +80,27 @@ def _planner_can_use(name: str) -> bool:
         load_catalog(verify=True), VISIBILITY_COMPOSER).executors
 
 
-def pending_review(name: str) -> str | None:
-    """The retained candidate of ``name`` that waits for review, if any."""
+def _creation_request(ci: ChangeIntent) -> tuple[str, str]:
+    """The name a creation proposal asks for and the request Synth builds
+    from: the one frozen when the proposal was born, never the page sentence
+    (that one is rewritten at every new gap)."""
+    body = ci.intent_body or {}
+    target = ci.intent_target
+    return (body.get("name") or target,
+            body.get("intent_text") or body.get("query_sample")
+            or ci.intent_summary or target)
+
+
+def pending_review(ci: ChangeIntent) -> str | None:
+    """The retained candidate of this proposal that waits for review, if any:
+    under the name asked for or, when Synth chose another name, the one
+    built from the same request."""
+    name, intent_text = _creation_request(ci)
     try:
         from synt import DEFAULT_PROPOSALS_DIR
-        from synth_proposal_store import pending_for_name
-        return pending_for_name(DEFAULT_PROPOSALS_DIR, name)
+        from synth_proposal_store import birth_reason, pending_candidate
+        return pending_candidate(DEFAULT_PROPOSALS_DIR, name=name,
+                                 reason=birth_reason(intent_text))
     except Exception as exc:  # noqa: BLE001 - an unreadable store is not a candidate
         _log.warning("change_applier: pending review lookup failed: %r", exc)
         return None
@@ -103,13 +118,7 @@ def apply_create_executor(ci: ChangeIntent) -> dict:
     """
     from messages import get as _msg
 
-    body = ci.intent_body or {}
-    target = ci.intent_target
-    expected_name = body.get("name") or target
-    # What Synth builds from is the request frozen when the proposal was
-    # born, never the page sentence: that one is rewritten at every new gap.
-    intent_text = (body.get("intent_text") or body.get("query_sample")
-                   or ci.intent_summary or target)
+    expected_name, intent_text = _creation_request(ci)
 
     try:
         if _planner_can_use(expected_name):
@@ -120,7 +129,7 @@ def apply_create_executor(ci: ChangeIntent) -> dict:
     except Exception as exc:  # noqa: BLE001 - Synth below reports the real state
         _log.warning("change_applier: catalog check failed: %r", exc)
 
-    waiting = pending_review(expected_name)
+    waiting = pending_review(ci)
     if waiting:
         raise ReviewPending(waiting)
 

@@ -25,7 +25,9 @@ from executor_birth_synth import (
     SynthTestData, validate_synth_tests,
 )
 from executor_birth_functional import validate_functional_cases
-from synth_proposal_store import PendingSynthProposal, preserve_candidate
+from synth_proposal_store import (
+    PendingSynthProposal, birth_reason, preserve_candidate,
+)
 from vocab import render_actions_pipe, render_objects_pipe, render_qualifiers_pipe
 from messages import get as _msg
 from generated_executor_contract import (
@@ -329,7 +331,7 @@ def _install_synthesized(run, intent, user_query):
         birth = submit_synth_multistage(SynthBirthData(
             candidate_root=out_dir,
             contract_id=ContractId(ManifestOrigin.USER, f"{run.name}/manifest.toml"),
-            reason=f"synt multistage: {intent}",
+            reason=birth_reason(intent),
         ))
         if birth.publication is None:
             from synt import DEFAULT_PROPOSALS_DIR
@@ -337,7 +339,7 @@ def _install_synthesized(run, intent, user_query):
             proposal_id = preserve_candidate(
                 out_dir, proposals_dir=DEFAULT_PROPOSALS_DIR,
                 contract_id=ContractId(ManifestOrigin.USER, f"{run.name}/manifest.toml").value,
-                producer="synt_multistage", reason=f"synt multistage: {intent}",
+                producer="synt_multistage", reason=birth_reason(intent),
                 error_code=error_code,
             )
             raise PendingSynthProposal(proposal_id, error_code)

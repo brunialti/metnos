@@ -345,18 +345,26 @@ def _max_cosine_to_cluster(c, eb: bytes, cluster_id: str, limit: int = 50) -> fl
     return best
 
 
-def _touch_served(c, autopath_id: str) -> None:
-    """Rinfresca ts_last_used quando il champion viene SERVITO dalla cache
-    (2/7/2026, review Fable): l'aging del prune (`stale <90gg`) legge
-    ts_last_used, che prima veniva scritto SOLO su ✓-repromote — un champion
-    servito attivamente ma mai ri-votato veniva potato come zombie.
-    Best-effort: il fallimento non blocca il serve."""
+def mark_served(autopath_id: str) -> None:
+    """Refresh ``ts_last_used``: the champion's plan was SERVED, that is
+    accepted by the dispatcher's checks and run without error.
+
+    The aging of ``prune`` (active rows unused for 90 days) reads this field.
+    The dispatcher calls it, not ``lookup``: a champion found at every lookup
+    and refused at every check used to look in use and never aged out
+    (11/11/2026). Best-effort: a failure never blocks the answer.
+    """
+    c = None
     try:
+        c = _conn()
         c.execute("UPDATE autopaths SET ts_last_used = ? WHERE id = ?",
                   (now_iso_z(), autopath_id))
         c.commit()
     except sqlite3.Error as ex:
-        log.debug("autopath._touch_served noop: %r", ex)
+        log.debug("autopath.mark_served noop: %r", ex)
+    finally:
+        if c is not None:
+            c.close()
 
 
 def lookup(query: str, intent: Intent) -> Optional[AutopathHit]:
@@ -407,7 +415,6 @@ def lookup(query: str, intent: Intent) -> Optional[AutopathHit]:
                 if (row and not _is_query_specific(row[1])
                         and _sig_object(row[4]) == _qobj):
                     fw = Framework.from_dict(json.loads(row[1]))
-                    _touch_served(c, row[0])
                     return AutopathHit(autopath_id=row[0], framework=fw,
                                         cluster_id=best_cid, uses=row[2],
                                         composite_score=row[3] or 0.5,
@@ -438,7 +445,6 @@ def lookup(query: str, intent: Intent) -> Optional[AutopathHit]:
                 if _max_cosine_to_cluster(c, eb, ap_cluster) < COSINE_FLOOR_INTENT:
                     return None
             fw = Framework.from_dict(json.loads(row[1]))
-            _touch_served(c, row[0])
             return AutopathHit(autopath_id=row[0], framework=fw,
                                 cluster_id=ap_cluster or "", uses=row[3],
                                 composite_score=row[4] or 0.5,

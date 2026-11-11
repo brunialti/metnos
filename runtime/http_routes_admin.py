@@ -634,7 +634,7 @@ async def admin_changes(request: web.Request) -> web.Response:
         # An accepted creation whose candidate waits for the independent
         # review says so, instead of looking idle (computed when shown).
         row["review_pending"] = (
-            change_applier.pending_review(str(obj.intent_body.get("name") or obj.intent_target))
+            change_applier.pending_review(obj)
             if obj.state == ci_mod.STATE_ACCEPTED
             and obj.intent_kind == ci_mod.KIND_CREATE_EXECUTOR else None)
 
