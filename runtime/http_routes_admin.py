@@ -779,6 +779,14 @@ async def _generated_tools_preferences(request: web.Request) -> web.Response:
     return await admin_changes_preferences(request)
 
 
+# Every action a button of the changes page posts. The route below is built
+# from this list and a test ties the page's buttons to it: «Riapri» posted to
+# an address the service did not know, the answer was «not found» and the
+# page showed nothing (12/11/2026).
+CHANGE_ACTIONS = ("accept", "reject", "stage", "rollback", "retry", "reopen",
+                  "external", "close", "activate", "decline")
+
+
 async def admin_change_action(request: web.Request) -> web.Response:
     """POST /admin/changes/{id}/{action}.
 
@@ -2502,7 +2510,7 @@ ROUTES = (
     ("GET",  "/admin/changes",                    admin_changes),
     ("GET",  "/admin/changes/waiting", _generated_tools_waiting),
     ("POST", "/admin/changes/preferences", _generated_tools_preferences),
-    ("POST", r"/admin/changes/{id}/{action:accept|reject|stage|rollback|retry|external|close|activate|decline}",
+    ("POST", r"/admin/changes/{id}/{action:" + "|".join(CHANGE_ACTIONS) + "}",
               admin_change_action),
     # /admin/proposals* rimosse 13/6/2026: superate dalla vista unificata
     # /admin/changes (ADR 0158, full migration accepted 22/5). Telos/introvertiva

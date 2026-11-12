@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
-"""Texts of the chat page's own commands (`/clear`, `/clearbuf`), 12/11/2026.
+"""Texts of the chat page's own commands (`/clear`, `/clearbuf`) and of a page request that fails, 12/11/2026.
 
 The replay keeps the hashes of the previous baseline; it does not replace the DB.
 """
@@ -21,6 +21,15 @@ TRANSLATIONS = {
     'MSG_CHAT_BUFFER_CLEARED': (
         '✓ Elenco dei comandi già scritti cancellato.',
         '✓ List of typed commands removed.'),
+    # A page button whose request fails says so (every administration page).
+    'MSG_UI_REQUEST_FAILED': (
+        'La richiesta non è riuscita (errore {status}): la pagina non è cambiata. '
+        'Riprova; se succede ancora, segnalalo.',
+        'The request did not succeed (error {status}): the page did not change. '
+        'Try again; if it happens again, report it.'),
+    'MSG_UI_REQUEST_NO_ANSWER': (
+        'Il server non ha risposto: la pagina non è cambiata. Controlla la connessione e riprova.',
+        'The server did not answer: the page did not change. Check the connection and try again.'),
 }
 
 

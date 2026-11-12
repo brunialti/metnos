@@ -1223,6 +1223,8 @@ VALUE_BOUND_CLOSING_TECHNICAL_CONTAINERS: Mapping[str, str] = {
         "names of the commands the chat page runs by itself",
     "b15a9d1ac623a47d47666b3b64bc91ec47e56bfeb88d05249f1de5dead6bc92a":
         "private-use marks the engine puts around a table cell that must not wrap",
+    "6fa9666ea661bca78e7b315b99a1fa0c2b283682ed8513c7c20d5bb5ef994b04":
+        "names of the actions the buttons of the changes page post",
 }
 VALUE_BOUND_EXECUTABLE_CONTAINER_FINGERPRINTS = (
     VALUE_BOUND_EXECUTABLE_CONTAINER_FINGERPRINTS

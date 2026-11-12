@@ -88,6 +88,8 @@ body.nav-open #navToggle span:nth-child(3){transform:translateY(-6px) rotate(-45
 
   <main id="main">{% block body %}{% endblock %}</main>
 </div>
+<div id="requestFailure" role="alert" hidden
+     style="position:fixed;left:50%;transform:translateX(-50%);bottom:1rem;z-index:60;max-width:92vw;padding:.65rem 1rem;border-radius:.5rem;background:#b00020;color:#fff;box-shadow:0 2px 10px rgba(0,0,0,.35)"></div>
 
 <script>
 // La testata può andare a capo: allinea il menu alla sua altezza reale.
@@ -113,6 +115,39 @@ body.nav-open #navToggle span:nth-child(3){transform:translateY(-6px) rotate(-45
     best.classList.add("current"); best.setAttribute("aria-current", "page");
     const group = best.closest(".nav-group");
     if (group) group.open = true;
+  }
+})();
+
+// A button whose request fails says so. htmx discards an error status and the
+// page stays as it was: «Riapri» answered «not found» and nothing was shown
+// (12/11/2026). The text goes next to the button when its row has a place
+// for a notice, and always in the banner.
+(() => {
+  const banner = document.getElementById("requestFailure");
+  const refused = {{ msg("MSG_UI_REQUEST_FAILED")|tojson }};
+  const silent = {{ msg("MSG_UI_REQUEST_NO_ANSWER")|tojson }};
+  let timer = null;
+  const tell = (event, message) => {
+    const origin = event.detail && event.detail.elt;
+    const row = origin && origin.closest ? origin.closest("tr") : null;
+    const place = row ? row.querySelector('[role="alert"]') : null;
+    if (place) {
+      const chip = document.createElement("span");
+      chip.className = "chip bad";
+      chip.textContent = message;
+      place.replaceChildren(chip);
+    }
+    banner.textContent = message;
+    banner.hidden = false;
+    clearTimeout(timer);
+    timer = setTimeout(() => { banner.hidden = true; }, 15000);
+  };
+  document.body.addEventListener("htmx:responseError", (event) => {
+    const status = event.detail && event.detail.xhr ? event.detail.xhr.status : "";
+    tell(event, refused.replace("{status}", String(status)));
+  });
+  for (const name of ["htmx:sendError", "htmx:timeout"]) {
+    document.body.addEventListener(name, (event) => tell(event, silent));
   }
 })();
 
