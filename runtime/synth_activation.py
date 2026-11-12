@@ -134,6 +134,40 @@ def activate(proposals_dir: Path, proposal_id: str, *, by: str, at: str) -> dict
     return reply
 
 
+# The refusals of the final checks a person can be told in words. Every other
+# one is told with its closed code.
+_REFUSAL_WORDS = {
+    "semantic_review_uncertain": "MSG_ACTIVATION_REFUSED_UNCERTAIN",
+    "semantic_misaligned": "MSG_ACTIVATION_REFUSED_MISALIGNED",
+}
+
+
+def _failed_check(reply: dict) -> dict:
+    report = reply.get("report") if isinstance(reply.get("report"), dict) else {}
+    return next((check for check in report.get("checks") or []
+                 if isinstance(check, dict)
+                 and str(check.get("status")).lower().endswith("failed")), {})
+
+
+def refusal_words(reply: dict) -> str:
+    """Why the tool was not activated, in the words a person reads.
+
+    «birth check failed: semantic_review: semantic_review_uncertain
+    (uncertain)» was what the page showed on 12/11/2026: the refusal was
+    right, and nobody could tell what it said.
+    """
+    from messages import get as _msg
+
+    status = str(reply.get("status") or "unknown")
+    if status == "tests_failed":
+        failed = [str(case.get("name")) for case in reply.get("tests") or []
+                  if isinstance(case, dict) and case.get("passed") is not True]
+        return _msg("MSG_ACTIVATION_REFUSED_TESTS", cases=", ".join(failed[:4]))
+    code = str(_failed_check(reply).get("error_code") or reply.get("error") or status)
+    key = _REFUSAL_WORDS.get(code)
+    return _msg(key) if key else _msg("MSG_ACTIVATION_REFUSED_OTHER", code=code)
+
+
 def refusal_reason(reply: dict) -> str:
     """One line saying why the signer's reply is not an admission."""
     status = str(reply.get("status") or "unknown")

@@ -155,10 +155,52 @@ TRANSLATIONS = {
         'May I use the external model to finish it? I would send it the sample request, '
         'the description, the test cases and the generated code.'),
     'MSG_CHANGE_READY_PUSH': (
-        'Lo strumento «{name}» è pronto e provato. Per attivarlo o rifiutarlo apri la pagina '
-        'Modifiche: la domanda è in cima.',
-        'The tool “{name}” is ready and tested. To activate or refuse it open the Changes '
-        'page: the question is at the top.'),
+        'Lo strumento «{name}» è pronto e provato. Lo attivo?\n'
+        'Che cosa fa: {does}\n'
+        'Permessi che chiede: {permissions}\n'
+        '{undo}\n'
+        'Prove su cui è stato costruito: {cases}\n'
+        'Puoi rispondere qui sotto oppure nella pagina Modifiche, dove si leggono anche le prove.',
+        'The tool “{name}” is ready and tested. Shall I activate it?\n'
+        'What it does: {does}\n'
+        'Permissions it asks for: {permissions}\n'
+        '{undo}\n'
+        'Cases it was built on: {cases}\n'
+        'You can answer below or on the Changes page, where the cases can be read too.'),
+    'MSG_CHANGE_ACTIVATION_REQUESTED': (
+        'Va bene: attivo «{name}». Partono i controlli finali e la firma: può volerci qualche '
+        'minuto. Ti scrivo qui com’è andata.',
+        'All right: I am activating “{name}”. The final checks and the signature start now: it '
+        'can take a few minutes. I will write here how it went.'),
+    'MSG_CHANGE_DECLINED_BY_PERSON': (
+        'Va bene: «{name}» non viene attivato e il candidato è stato tolto. Non lo ripropongo '
+        'per trenta giorni. Se è stato un errore, si riapre dalla pagina Modifiche, scheda «Scartate».',
+        'All right: “{name}” is not activated and the candidate was removed. I will not propose '
+        'it again for thirty days. If it was a mistake, reopen it from the Changes page, '
+        '“Rejected” tab.'),
+    'MSG_CHANGE_ACTIVATION_REFUSED_PUSH': (
+        '«{name}» NON è stato attivato: {reason}. Lo strumento non è entrato in uso e il '
+        'candidato è stato tolto.',
+        '“{name}” was NOT activated: {reason}. The tool did not enter service and the candidate '
+        'was removed.'),
+    'MSG_CHANGE_ACTIVATION_NOT_DONE': (
+        'Non ho potuto completare l’attivazione di «{name}»: il programma di firma non ha '
+        'risposto. Lo strumento resta in attesa: puoi riprovare.',
+        'I could not complete the activation of “{name}”: the signing program did not answer. '
+        'The tool is still waiting: you can try again.'),
+    'MSG_ACTIVATION_REFUSED_UNCERTAIN': (
+        'il revisore finale non è sicuro che lo strumento faccia davvero ciò che la sua '
+        'descrizione promette',
+        'the final reviewer is not sure the tool really does what its description promises'),
+    'MSG_ACTIVATION_REFUSED_MISALIGNED': (
+        'il revisore finale ha trovato che lo strumento non fa ciò che la sua descrizione promette',
+        'the final reviewer found that the tool does not do what its description promises'),
+    'MSG_ACTIVATION_REFUSED_TESTS': (
+        'nella revisione finale non ha superato le sue prove ({cases})',
+        'in the final review it did not pass its cases ({cases})'),
+    'MSG_ACTIVATION_REFUSED_OTHER': (
+        'un controllo finale non è passato ({code})',
+        'a final check did not pass ({code})'),
     'MSG_CHANGE_EXTERNAL_ALLOWED': (
         'Va bene: finisco «{name}» con il modello esterno. Ti avviso quando è pronto.',
         'All right: I will finish “{name}” with the external model. I will tell you when it is ready.'),

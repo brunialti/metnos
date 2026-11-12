@@ -1680,6 +1680,8 @@ class ChannelDaemon:
                             reply_to=msg.message_id)
             return {"ok": False, "reason": "not_administrator"}
         by = str(principal.get("user_id") or principal.get("actor") or self.channel.name)
+        if change_applier.is_candidate_decision(answer):
+            return self._handle_candidate_callback(msg, answer, intent_id, by)
         try:
             updated = change_intents.person_answer(
                 intent_id, answer, by=by, reason=None, via=self.channel.name)
@@ -1695,6 +1697,46 @@ class ChannelDaemon:
                  name=updated.intent_target),
             reply_to=msg.message_id)
         return {"ok": True, "callback": f"change_{answer}", "id": intent_id}
+
+    def _handle_candidate_callback(self, msg: InboundMessage, answer: str,
+                                   intent_id: str, by: str) -> dict:
+        """«Attiva» or «No» on the pushed message of a ready tool (Roberto,
+        12/11/2026). Nothing is signed here and the signer is not called: it
+        accepts the administration service only. The «yes» is recorded and
+        that service carries it within a minute; the outcome comes back to
+        this chat. A «no» removes the candidate, as on the page."""
+        from messages import get as _msg
+        import change_applier
+        import change_intents
+        import synth_activation
+
+        def say(key: str, **values) -> None:
+            self._send_text(msg.sender_id, _msg(key, **values), reply_to=msg.message_id)
+
+        current = change_intents.get_intent(intent_id)
+        waits = (current is not None
+                 and current.state == change_intents.STATE_ACCEPTED
+                 and current.intent_kind == change_intents.KIND_CREATE_EXECUTOR
+                 and not change_applier.activation_running(current)
+                 and change_applier.pending_review(current))
+        if not waits:
+            say("MSG_CHANGE_ALREADY_ANSWERED")
+            return {"ok": False, "reason": "not_waiting", "id": intent_id}
+        name = change_applier._creation_request(current)[0]
+        if answer == change_applier.DECLINE:
+            change_applier.decline_candidate(current, by=by)
+            say("MSG_CHANGE_DECLINED_BY_PERSON", name=name)
+            return {"ok": True, "callback": "change_decline", "id": intent_id}
+        if not synth_activation.signer_available():
+            say("UI_CHANGE_SIGNER_MISSING")
+            return {"ok": False, "reason": "signer_missing", "id": intent_id}
+        try:
+            change_applier.start_activation(current, by=by, carried_later=True)
+        except (LookupError, RuntimeError):
+            say("MSG_CHANGE_ALREADY_ANSWERED")
+            return {"ok": False, "reason": "not_waiting", "id": intent_id}
+        say("MSG_CHANGE_ACTIVATION_REQUESTED", name=name)
+        return {"ok": True, "callback": "change_activate", "id": intent_id}
 
     def _sched_cb_reply(self, msg: InboundMessage, ok: bool, reply: str,
                          action: str, entry_name: str) -> dict:

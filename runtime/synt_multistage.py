@@ -702,6 +702,54 @@ def stage5_messages_problem(code: str) -> str | None:
             f"write them as: {calls}; or use a key whose text needs no value")
 
 
+# Names of calls that write, create, move or remove something on disk. One of
+# them is what a code with the permission to write must at least contain.
+_WRITING_CALLS = (
+    "write_text", "write_bytes", "write", "writelines", "writerow", "writerows", "dump",
+    "mkdir", "makedirs", "touch", "unlink", "remove", "rmdir", "rmtree", "rename",
+    "replace", "move", "copy", "copy2", "copyfile", "copytree", "truncate",
+    "symlink_to", "hardlink_to", "execute", "executemany", "executescript", "save",
+)
+_WRITING_MODES = "wax+"
+_WRITE_PERMISSION = "fs:write"
+
+
+def stage5_effect_problem(code: str, stage2: dict) -> str | None:
+    """A code that holds the permission to write and never writes, or None.
+
+    On 12/11/2026 a generated «create contacts» returned the data it received
+    as created, with the comment «simuliamo la creazione»: every case passed,
+    the reviewer agreed, and the person was asked to activate a tool that
+    saved nothing. A necessary condition, read on the syntax tree: with the
+    permission declared, the code opens a file for writing or calls something
+    that writes, creates, moves or removes. What it writes is the reviewer's.
+    """
+    import ast
+
+    declared = {str(item.get("name")) for item in (stage2 or {}).get("capabilities") or []
+                if isinstance(item, dict)}
+    if _WRITE_PERMISSION not in declared:
+        return None
+    for node in ast.walk(ast.parse(code)):
+        if not isinstance(node, ast.Call):
+            continue
+        called = node.func
+        name = called.attr if isinstance(called, ast.Attribute) else getattr(called, "id", "")
+        if name in _WRITING_CALLS:
+            return None
+        if name == "open":
+            modes = [argument.value for argument in node.args[1:2]
+                     if isinstance(argument, ast.Constant)]
+            modes += [keyword.value.value for keyword in node.keywords
+                      if keyword.arg == "mode" and isinstance(keyword.value, ast.Constant)]
+            if any(isinstance(mode, str) and set(mode) & set(_WRITING_MODES) for mode in modes):
+                return None
+    return ("the code holds the permission fs:write and never writes: it opens no file for "
+            "writing and creates, moves or removes nothing. A result returned as saved "
+            "without saving it is a false success: perform the effect the description "
+            "promises")
+
+
 def run_stage5(user_request: str, stage1: dict, stage2: dict, stage3: dict, stage4: dict,
                llm_call, *, scope: str | None = None, correction: str = "") -> StageResult:
     """Stage 5 = CODE. Usa wise.
@@ -765,8 +813,9 @@ def run_stage5(user_request: str, stage1: dict, stage2: dict, stage3: dict, stag
                        f"({problem}). Write the complete file again, shorter if needed.")
             continue
         # Read on the tree, like the syntax: a message shown with its
-        # placeholders unfilled is asked again once, with the reason.
-        problem = stage5_messages_problem(code)
+        # placeholders unfilled, or an effect only pretended, is asked again
+        # once, with the reason.
+        problem = stage5_messages_problem(code) or stage5_effect_problem(code, stage2)
         if problem is None:
             break
         if attempt:

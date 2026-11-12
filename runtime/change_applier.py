@@ -314,7 +314,10 @@ def is_candidate_decision(action: str) -> bool:
 PUSH_PREFIX = "chg:"
 _PUSH_EXTERNAL = "ext"
 _PUSH_CLOSE = "cls"
-_PUSH_ANSWERS = {_PUSH_EXTERNAL: "external", _PUSH_CLOSE: "close"}
+_PUSH_ACTIVATE = "act"
+_PUSH_DECLINE = "dec"
+_PUSH_ANSWERS = {_PUSH_EXTERNAL: "external", _PUSH_CLOSE: "close",
+                 _PUSH_ACTIVATE: ACTIVATE, _PUSH_DECLINE: DECLINE}
 
 
 def pushed_answer(data: str) -> tuple[str, str] | None:
@@ -330,15 +333,17 @@ def pushed_answer(data: str) -> tuple[str, str] | None:
     return _PUSH_ANSWERS[parts[1]], parts[2]
 
 
-def _push(body_key: str, ci: ChangeIntent, *, event_key: str, buttons: list | None = None) -> None:
+def _push(body_key: str, ci: ChangeIntent, *, event_key: str, buttons: list | None = None,
+          **values) -> None:
     """One notification per event, best effort: a channel that is down never
     stops the applier, and the page shows the same thing anyway."""
     try:
         import notify_admin
         from messages import get as _msg
 
+        values.setdefault("name", _creation_request(ci)[0])
         notify_admin.notify(
-            _msg(body_key, name=_creation_request(ci)[0]),
+            _msg(body_key, **values),
             kind="changes", severity="info", event_key=event_key,
             metadata={"change_intent": ci.id}, buttons=buttons)
     except Exception as exc:  # noqa: BLE001
@@ -386,10 +391,54 @@ def push_external_model_question(ci: ChangeIntent) -> None:
           ]])
 
 
+def _ready_key(proposal_id: str) -> str:
+    return f"change_ready:{proposal_id}"
+
+
 def push_ready_candidate(ci: ChangeIntent, proposal_id: str) -> None:
-    """Say once that a tested tool waits for the answer on the page."""
-    if proposal_id:
-        _push("MSG_CHANGE_READY_PUSH", ci, event_key=f"change_ready:{proposal_id}")
+    """Ask once, where the person is, whether the tested tool is activated:
+    what it does, what it asks for, and the two answers of the page (Roberto,
+    12/11/2026: the activation by button on Telegram too)."""
+    if not proposal_id:
+        return
+    from messages import get as _msg
+
+    try:
+        import config as C
+        import synth_activation
+        from synt import DEFAULT_PROPOSALS_DIR
+
+        card = synth_activation.candidate_card(
+            DEFAULT_PROPOSALS_DIR, proposal_id, lang=C.INSTANCE_LANG)
+    except Exception as exc:  # noqa: BLE001 - an unreadable candidate is not a question
+        _log.warning("change_applier: candidate card unavailable for the push: %r", exc)
+        return
+    permissions = "; ".join(
+        str(item.get("name")) + (f" ({', '.join(map(str, item['hint']))})" if item.get("hint") else "")
+        for item in card.get("capabilities") or [] if isinstance(item, dict)
+    ) or _msg("UI_CHANGE_READY_NO_PERMISSIONS")
+    _push("MSG_CHANGE_READY_PUSH", ci, event_key=_ready_key(proposal_id),
+          name=str(card.get("name") or _creation_request(ci)[0]),
+          does=str(card.get("description") or ""), permissions=permissions,
+          undo=_msg("UI_CHANGE_READY_UNDO_YES" if card.get("revertible")
+                    else "UI_CHANGE_READY_UNDO_NO"),
+          cases=len(card.get("cases") or []),
+          buttons=[[
+              {"text": _msg("UI_CHANGE_BTN_ACTIVATE"),
+               "data": f"{PUSH_PREFIX}{_PUSH_ACTIVATE}:{ci.id}"},
+              {"text": _msg("UI_CHANGE_BTN_DECLINE"),
+               "data": f"{PUSH_PREFIX}{_PUSH_DECLINE}:{ci.id}"},
+          ]])
+
+
+def candidate_answered(proposal_id: str) -> None:
+    """The person answered about this candidate, on the page or on the pushed
+    message: the message stops offering answers."""
+    try:
+        import notify_admin
+        notify_admin.clear_buttons(_ready_key(proposal_id))
+    except Exception as exc:  # noqa: BLE001 - the answer itself is recorded
+        _log.warning("change_applier: pushed candidate not closed: %r", exc)
 
 
 def _iso_now() -> str:
@@ -443,11 +492,18 @@ def accept_for_building(*, limit: int = 1) -> list[str]:
     return started
 
 
+# A «yes» recorded where the signer cannot be reached (a Telegram chat): the
+# administration service, the only caller the signer accepts, carries it.
+_REQUESTED = "requested"
+_RUNNING = "running"
+
+
 def activation_running(ci: ChangeIntent) -> bool:
-    """True while the signer is working on this proposal's candidate. A
-    record left by an interrupted service stops counting after a while."""
+    """True while the signer is working on this proposal's candidate, or is
+    about to. A record left by an interrupted service stops counting after a
+    while."""
     state = (ci.intent_body or {}).get("activation")
-    if not isinstance(state, dict) or state.get("state") != "running":
+    if not isinstance(state, dict) or state.get("state") not in (_RUNNING, _REQUESTED):
         return False
     try:
         started = time.mktime(time.strptime(str(state.get("at")), "%Y-%m-%dT%H:%M:%SZ"))
@@ -517,25 +573,58 @@ def decline_candidate(ci: ChangeIntent, *, by: str) -> ChangeIntent:
     proposal_id = pending_review(ci)
     if proposal_id:
         synth_activation.discard_candidate(DEFAULT_PROPOSALS_DIR, proposal_id)
+        candidate_answered(proposal_id)
     _audit({"event": "candidate_declined", "id": ci.id, "by": by,
             "proposal_id": proposal_id})
     return close_until(ci.id, reason="declined by the person", by=by)
 
 
-def start_activation(ci: ChangeIntent, *, by: str) -> tuple[str, str]:
+def start_activation(ci: ChangeIntent, *, by: str,
+                     carried_later: bool = False) -> tuple[str, str]:
     """Record the person's «yes» before the signer is called: the page shows
-    the work in progress and a second click cannot start it twice."""
+    the work in progress and a second click cannot start it twice.
+
+    ``carried_later``: the «yes» was given where the signer cannot be reached;
+    it is recorded as requested and the service carries it within a minute
+    (``carry_requested_activations``).
+    """
     proposal_id = pending_review(ci)
     if not proposal_id:
         raise LookupError("no candidate waits for this proposal")
     if activation_running(ci):
         raise RuntimeError("activation already running")
     at = _iso_now()
-    update_body(ci.id, activation={"state": "running", "by": by, "at": at,
-                                   "proposal_id": proposal_id})
+    update_body(ci.id, activation={
+        "state": _REQUESTED if carried_later else _RUNNING, "by": by, "at": at,
+        "proposal_id": proposal_id})
     _audit({"event": "activation_requested", "id": ci.id, "by": by,
-            "proposal_id": proposal_id})
+            "proposal_id": proposal_id, "carried_later": bool(carried_later)})
+    candidate_answered(proposal_id)
     return proposal_id, at
+
+
+def carry_requested_activations() -> dict:
+    """Carry to the signer every «yes» recorded elsewhere and not yet carried.
+
+    Run by the administration service every minute. Each activation works in
+    a thread of its own and counts as automatic work, so a restart or a
+    release waits for it like for one started from the page.
+    """
+    started: list[str] = []
+    for ci in list_intents(state=STATE_ACCEPTED, intent_kind=KIND_CREATE_EXECUTOR, limit=200):
+        state = (ci.intent_body or {}).get("activation")
+        if (not isinstance(state, dict) or state.get("state") != _REQUESTED
+                or not activation_running(ci)):
+            continue
+        proposal_id, by, at = (str(state.get(key) or "") for key in ("proposal_id", "by", "at"))
+        if not proposal_id:
+            continue
+        update_body(ci.id, activation={**state, "state": _RUNNING})
+        threading.Thread(
+            target=run_activation, args=(ci.id, proposal_id), kwargs={"by": by, "at": at},
+            name=f"activation-{ci.id[:8]}", daemon=True).start()
+        started.append(ci.id)
+    return {"ok": True, "started": len(started), "ids": started}
 
 
 def run_activation(ci_id: str, proposal_id: str, *, by: str, at: str) -> dict:
@@ -558,11 +647,21 @@ def run_activation(ci_id: str, proposal_id: str, *, by: str, at: str) -> dict:
     status = str(reply.get("status") or "")
     ci = get_intent(ci_id)
     name = _creation_request(ci)[0] if ci is not None else ""
+
+    def tell(body_key: str, **values) -> None:
+        # The answer to a «yes» is told where the person is, whichever way
+        # the «yes» came: on 12/11/2026 a refusal shown only on the page was
+        # read as «activated».
+        if ci is not None:
+            _push(body_key, ci, event_key=f"change_activation:{ci_id}:{at}",
+                  name=str(reply.get("name") or name), **values)
+
     if status in ("signer_missing", "signer_failed"):
         update_body(ci_id, activation={"state": "error", "by": by, "at": at,
                                        "note": status})
         _audit({"event": "activation_not_done", "id": ci_id, "status": status,
                 "error": reply.get("error")})
+        tell("MSG_CHANGE_ACTIVATION_NOT_DONE")
         return {"result": status}
     if status in ("admitted", "already_current"):
         usable = False
@@ -577,15 +676,20 @@ def run_activation(ci_id: str, proposal_id: str, *, by: str, at: str) -> dict:
                 "executor_name": str(reply.get("name") or name), "activated_by": by,
                 "review_id": reply.get("review_id")})
             _audit({"event": "activated", "id": ci_id, "by": by})
+            tell("UI_CHANGE_ACTIVATED")
             return {"result": "applied"}
         from messages import get as _msg
         reason = _msg("MSG_CHANGE_NOT_ACTIVE", name=str(reply.get("name") or name))
+        technical = "admitted_not_usable"
     else:
-        reason = synth_activation.refusal_reason(reply)
+        # In words for the person; the closed code stays beside them.
+        reason, technical = (synth_activation.refusal_words(reply),
+                             synth_activation.refusal_reason(reply))
     synth_activation.discard_candidate(DEFAULT_PROPOSALS_DIR, proposal_id)
     update_body(ci_id, activation={"state": "refused", "by": by, "at": at})
-    mark_failed(ci_id, reason=reason)
-    _audit({"event": "activation_refused", "id": ci_id, "reason": reason[:300]})
+    mark_failed(ci_id, reason=f"{reason} [{technical}]")
+    _audit({"event": "activation_refused", "id": ci_id, "reason": technical[:300]})
+    tell("MSG_CHANGE_ACTIVATION_REFUSED_PUSH", reason=reason)
     return {"result": "refused", "reason": reason}
 
 

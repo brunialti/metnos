@@ -201,6 +201,16 @@ _BUILTIN_JOBS: list[dict[str, Any]] = [
         ),
     },
     {
+        "name": "change_activations",
+        "trigger": "every_1m",
+        "callback_key": "change_activations",
+        "description": (
+            "Attivazioni chieste fuori dalla pagina (pulsante su Telegram): "
+            "il servizio di amministrazione, l'unico che il programma di firma "
+            "accetta, porta il «sì» alla firma. Senza richieste non fa nulla."
+        ),
+    },
+    {
         "name": "lre_answers",
         "trigger": "every_1m",
         "callback_key": "lre_answers",
@@ -330,6 +340,13 @@ def task_images_index_refresh() -> dict:
         )
     return (result if result is not None else
             {"ok": False, "error_class": "workload_not_admitted"})
+
+
+def task_change_activations() -> dict:
+    """Carry the activations asked for outside the page (``change_applier``)."""
+    import change_applier
+
+    return change_applier.carry_requested_activations()
 
 
 def task_lre_answers() -> dict:
@@ -697,6 +714,14 @@ def install_default_callbacks(scheduler) -> None:
         "change_applier",
         task_change_applier,
         "Applier change_intents accepted → applied (ADR 0158, every_10m)",
+        replace=True,
+    )
+
+    # A «yes» given on Telegram is carried to the signer by this service.
+    cb.register(
+        "change_activations",
+        _wrap_zero_arg(task_change_activations),
+        "Attivazioni chieste da Telegram portate alla firma (every_1m)",
         replace=True,
     )
 
