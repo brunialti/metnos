@@ -1659,6 +1659,42 @@ class ChannelDaemon:
             return self._sched_cb_reply(msg, ok, reply, "cancel", entry_name)
         return {"ok": False, "reason": "unknown_action", "action": action}
 
+    def _handle_change_callback(self, msg: InboundMessage, data: str) -> dict:
+        """The answer to a question Metnos pushed about a generated tool
+        (ADR 0240): allow the external model for that one tool, or close the
+        proposal. Only the administrator answers; the proposal itself decides
+        whether the question is still open, so a tap on an old message, or
+        after an answer given on the page, changes nothing and says so."""
+        from messages import get as _msg
+        import change_applier
+        import change_intents
+        import users
+
+        parsed = change_applier.pushed_answer(data)
+        if parsed is None:
+            return {"ok": False, "reason": "bad_callback_data", "data": data}
+        answer, intent_id = parsed
+        principal = (msg.extra or {}).get("_principal") or {}
+        if not users.is_instance_host(principal):
+            self._send_text(msg.sender_id, _msg("MSG_CHANGE_ADMIN_ONLY"),
+                            reply_to=msg.message_id)
+            return {"ok": False, "reason": "not_administrator"}
+        by = str(principal.get("user_id") or principal.get("actor") or self.channel.name)
+        try:
+            updated = change_intents.person_answer(intent_id, answer, by=by, reason=None)
+        except change_intents.TransitionError:
+            self._send_text(msg.sender_id, _msg("MSG_CHANGE_ALREADY_ANSWERED"),
+                            reply_to=msg.message_id)
+            return {"ok": False, "reason": "not_waiting", "id": intent_id}
+        change_applier.question_answered(updated)
+        allowed = updated.state == change_intents.STATE_ACCEPTED
+        self._send_text(
+            msg.sender_id,
+            _msg("MSG_CHANGE_EXTERNAL_ALLOWED" if allowed else "MSG_CHANGE_CLOSED_BY_PERSON",
+                 name=updated.intent_target),
+            reply_to=msg.message_id)
+        return {"ok": True, "callback": f"change_{answer}", "id": intent_id}
+
     def _sched_cb_reply(self, msg: InboundMessage, ok: bool, reply: str,
                          action: str, entry_name: str) -> dict:
         self._send_text(msg.sender_id, reply, reply_to=msg.message_id)
@@ -1717,6 +1753,9 @@ class ChannelDaemon:
             return self._handle_cap_callback(msg, data)
         if data.startswith("sched:"):
             return self._handle_scheduler_callback(msg, data)
+        import change_applier
+        if data.startswith(change_applier.PUSH_PREFIX):
+            return self._handle_change_callback(msg, data)
         if data == "loc_cancel":
             try:
                 # runtime/ già su sys.path (channels VIVE in runtime/).

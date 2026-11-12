@@ -216,6 +216,91 @@ def is_candidate_decision(action: str) -> bool:
     return action in (ACTIVATE, DECLINE)
 
 
+# The page is not always looked at: what waits for the person is also pushed
+# to the administrator's channel (Roberto, 12/11/2026). The external-model
+# question travels with its two answers; a ready tool is announced only, and
+# decided on the page, where everything about it can be read.
+PUSH_PREFIX = "chg:"
+_PUSH_EXTERNAL = "ext"
+_PUSH_CLOSE = "cls"
+_PUSH_ANSWERS = {_PUSH_EXTERNAL: "external", _PUSH_CLOSE: "close"}
+
+
+def pushed_answer(data: str) -> tuple[str, str] | None:
+    """``(answer, proposal id)`` carried by a button of a pushed question,
+    or None when the text is not one of ours."""
+    import re
+
+    parts = str(data or "").split(":")
+    if (len(parts) != 3 or parts[0] + ":" != PUSH_PREFIX
+            or parts[1] not in _PUSH_ANSWERS
+            or re.fullmatch(r"[0-9a-f-]{8,36}", parts[2]) is None):
+        return None
+    return _PUSH_ANSWERS[parts[1]], parts[2]
+
+
+def _push(body_key: str, ci: ChangeIntent, *, event_key: str, buttons: list | None = None) -> None:
+    """One notification per event, best effort: a channel that is down never
+    stops the applier, and the page shows the same thing anyway."""
+    try:
+        import notify_admin
+        from messages import get as _msg
+
+        notify_admin.notify(
+            _msg(body_key, name=_creation_request(ci)[0]),
+            kind="changes", severity="info", event_key=event_key,
+            metadata={"change_intent": ci.id}, buttons=buttons)
+    except Exception as exc:  # noqa: BLE001
+        _log.warning("change_applier: push failed: %r", exc)
+
+
+def _external_question_key(ci: ChangeIntent) -> str:
+    # One question per failure: a later failure of the same proposal asks again.
+    return f"change_external:{ci.id}:{ci.failed_at or ''}"
+
+
+def question_answered(ci: ChangeIntent) -> None:
+    """The external-model question of this proposal was answered, on the
+    page or on the pushed message: the message stops offering answers. The
+    page needs nothing: it shows the proposal's own state."""
+    try:
+        import notify_admin
+        notify_admin.clear_buttons(_external_question_key(ci))
+    except Exception as exc:  # noqa: BLE001 - the answer itself is recorded
+        _log.warning("change_applier: pushed question not closed: %r", exc)
+
+
+def waiting_signature(waiting: list, *, signer_available: bool) -> str:
+    """What an open page compares to know whether what waits has changed."""
+    import hashlib
+
+    facts = [[item.get("id"), item.get("waiting_kind"), item.get("activation_note"),
+              (item.get("candidate") or {}).get("proposal_id")] for item in waiting]
+    return hashlib.sha256(json.dumps(
+        [facts, bool(signer_available)], sort_keys=True).encode("utf-8")).hexdigest()[:16]
+
+
+def push_external_model_question(ci: ChangeIntent) -> None:
+    """Ask the question where the person is, with the two answers."""
+    from messages import get as _msg
+
+    current = get_intent(ci.id) or ci
+    _push("MSG_CHANGE_EXTERNAL_PUSH", current,
+          event_key=_external_question_key(current),
+          buttons=[[
+              {"text": _msg("UI_CHANGE_BTN_EXTERNAL"),
+               "data": f"{PUSH_PREFIX}{_PUSH_EXTERNAL}:{ci.id}"},
+              {"text": _msg("UI_CHANGE_BTN_CLOSE"),
+               "data": f"{PUSH_PREFIX}{_PUSH_CLOSE}:{ci.id}"},
+          ]])
+
+
+def push_ready_candidate(ci: ChangeIntent, proposal_id: str) -> None:
+    """Say once that a tested tool waits for the answer on the page."""
+    if proposal_id:
+        _push("MSG_CHANGE_READY_PUSH", ci, event_key=f"change_ready:{proposal_id}")
+
+
 def _iso_now() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
@@ -647,6 +732,7 @@ def task_change_applier(payload: dict | None = None) -> dict:
             effect = handler(ci)
         except ReviewPending as pending:
             # Still accepted: the next run checks again without asking Synth.
+            push_ready_candidate(ci, pending.proposal_id)
             skipped_count += 1
             details.append({"id": ci.id, "kind": ci.intent_kind,
                             "result": "review_pending",
@@ -674,6 +760,7 @@ def task_change_applier(payload: dict | None = None) -> dict:
                 close_until(ci.id, reason="external model not allowed by preference")
             else:
                 update_body(ci.id, external_model_offer=True)
+                push_external_model_question(ci)
             failed_count += 1
             result = "closed_by_preference" if never else "external_model_consent_needed"
             details.append({"id": ci.id, "kind": ci.intent_kind, "result": result})

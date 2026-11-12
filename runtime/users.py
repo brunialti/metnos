@@ -48,6 +48,12 @@ log = get_logger(__name__)
 DEFAULT_DB_PATH = _C.PATH_USER_DATA / "users.db"
 
 ROLES = ("host", "guest")
+HOST_ROLE = ROLES[0]
+
+
+def is_instance_host(principal: object) -> bool:
+    """True when a resolved principal is the administrator of the instance."""
+    return isinstance(principal, dict) and principal.get("role") == HOST_ROLE
 AUTONOMY_LEVELS = ("read_only", "restricted", "full")
 CHANNELS = ("telegram", "mail", "http")
 

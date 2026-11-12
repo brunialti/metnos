@@ -643,10 +643,10 @@ async def admin_changes(request: web.Request) -> web.Response:
 
     # What waits for the person comes first, whatever tab is open.
     import generated_tools_policy
-    import i18n as _i18n
-    import synth_activation
-    waiting = change_applier.waiting_for_person(every_intent, lang=_i18n.current_lang())
-    signer_available = synth_activation.signer_available()
+    from http_routes_generated_tools import waiting_context
+    waiting_now = waiting_context()
+    waiting = waiting_now["waiting"]
+    signer_available = waiting_now["signer_available"]
     external_preference = generated_tools_policy.external_model()
 
     # Facets — conta per family e kind sull'INSIEME corrente (state filtered)
@@ -696,6 +696,7 @@ async def admin_changes(request: web.Request) -> web.Response:
         template_ctx={
             "rows": rows,
             "waiting": waiting,
+            "waiting_signature": waiting_now["waiting_signature"],
             "signer_available": signer_available,
             "external_preference": external_preference,
             "external_choices": generated_tools_policy.EXTERNAL_MODEL_CHOICES,
@@ -768,6 +769,11 @@ def _change_error(request: web.Request, id_: str, status: int, code: str,
     return _error(status, code, message)
 
 
+async def _generated_tools_waiting(request: web.Request) -> web.Response:
+    from http_routes_generated_tools import admin_changes_waiting
+    return await admin_changes_waiting(request)
+
+
 async def _generated_tools_preferences(request: web.Request) -> web.Response:
     from http_routes_generated_tools import admin_changes_preferences
     return await admin_changes_preferences(request)
@@ -834,6 +840,8 @@ async def admin_change_action(request: web.Request) -> web.Response:
             # (ADR 0239): allow the external model for this one tool, or give
             # the proposal up for a while.
             updated = ci_mod.person_answer(id_, action, by=by, reason=reason)
+            # Answered here: the question pushed elsewhere stops offering answers.
+            await asyncio.to_thread(change_applier.question_answered, updated)
         elif action in ("accept", "reject", "stage"):
             updated = ci_mod.apply_decision(id_, action=action, by=by, reason=reason)
         elif action == "rollback":
@@ -2488,6 +2496,7 @@ ROUTES = (
     ("POST", "/admin/logout",                     admin_logout),
     ("GET",  "/admin",                            admin_home),
     ("GET",  "/admin/changes",                    admin_changes),
+    ("GET",  "/admin/changes/waiting", _generated_tools_waiting),
     ("POST", "/admin/changes/preferences", _generated_tools_preferences),
     ("POST", r"/admin/changes/{id}/{action:accept|reject|stage|rollback|retry|external|close|activate|decline}",
               admin_change_action),

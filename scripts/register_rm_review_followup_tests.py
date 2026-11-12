@@ -47,6 +47,7 @@ GROUPS = {
         "tests/runtime/infra/test_sandbox_relative_paths.py",
         "tests/runtime/learning/test_synt_undo_claim.py",
         "tests/runtime/learning/test_single_decision_cycle.py",
+        "tests/runtime/learning/test_generated_tools_push.py",
         "tests/runtime/executors/test_parallel_recursive_executors.py",
         "tests/runtime/executors/test_applicable_input_boundary.py",
         "tests/runtime/executors/test_array_args_boundary.py",

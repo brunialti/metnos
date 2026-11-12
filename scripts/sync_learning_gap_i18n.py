@@ -131,6 +131,30 @@ TRANSLATIONS = {
     'UI_CHANGE_EXTERNAL_PREF_ASK': ('chiedimelo ogni volta', 'ask me each time'),
     'UI_CHANGE_EXTERNAL_PREF_NEVER': ('mai', 'never'),
     'UI_CHANGE_EXTERNAL_PREF_ALWAYS': ('sempre, senza chiedere', 'always, without asking'),
+    'MSG_CHANGE_EXTERNAL_PUSH': (
+        'Ho provato tre volte a costruire lo strumento «{name}» e non ci sono riuscito. '
+        'Posso usare il modello esterno per finirlo? Gli manderei la richiesta d’esempio, '
+        'la descrizione, le prove e il codice generato.',
+        'I tried three times to build the tool “{name}” and did not succeed. '
+        'May I use the external model to finish it? I would send it the sample request, '
+        'the description, the test cases and the generated code.'),
+    'MSG_CHANGE_READY_PUSH': (
+        'Lo strumento «{name}» è pronto e provato. Per attivarlo o rifiutarlo apri la pagina '
+        'Modifiche: la domanda è in cima.',
+        'The tool “{name}” is ready and tested. To activate or refuse it open the Changes '
+        'page: the question is at the top.'),
+    'MSG_CHANGE_EXTERNAL_ALLOWED': (
+        'Va bene: finisco «{name}» con il modello esterno. Ti avviso quando è pronto.',
+        'All right: I will finish “{name}” with the external model. I will tell you when it is ready.'),
+    'MSG_CHANGE_CLOSED_BY_PERSON': (
+        'Proposta «{name}» chiusa: non la ripropongo per trenta giorni.',
+        'Proposal “{name}” closed: I will not propose it again for thirty days.'),
+    'MSG_CHANGE_ALREADY_ANSWERED': (
+        'Questa domanda ha già avuto risposta: non ho cambiato niente.',
+        'This question has already been answered: I changed nothing.'),
+    'MSG_CHANGE_ADMIN_ONLY': (
+        'A questa domanda può rispondere solo l’amministratore.',
+        'Only the administrator can answer this question.'),
     'UI_CHANGE_BTN_EXTERNAL': ('Usa il modello esterno', 'Use the external model'),
     'UI_CHANGE_BTN_CLOSE': ('Chiudi la proposta', 'Close the proposal'),
     'ERR_CHANGE_EXTERNAL_NOT_OFFERED': (

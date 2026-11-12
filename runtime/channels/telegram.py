@@ -676,6 +676,15 @@ class TelegramChannel:
 
     # --- transport ---------------------------------------------------------
 
+    def remove_inline_buttons(self, *, chat_id: str, message_id: str) -> dict:
+        """Leave the text of a sent message and take its answer buttons away:
+        a question answered elsewhere must not keep offering answers."""
+        return self._call("editMessageReplyMarkup", {
+            "chat_id": chat_id,
+            "message_id": str(message_id),
+            "reply_markup": json.dumps({"inline_keyboard": []}),
+        })
+
     def _call(self, method: str, params: dict[str, str], *, request_timeout_s: int = 15) -> dict:
         url = API_BASE.format(token=self.token, method=method)
         data = urllib.parse.urlencode(params).encode("utf-8")

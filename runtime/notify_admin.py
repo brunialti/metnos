@@ -107,20 +107,58 @@ def _telegram_recipient() -> tuple[str | None, str]:
         return None, f"recipient_lookup_failed:{type(exc).__name__}"
 
 
-def _deliver_telegram(title: str, body: str) -> tuple[bool, str]:
+def _deliver_telegram(title: str, body: str,
+                      buttons: list | None = None) -> tuple[bool, str, dict]:
+    """``(delivered, error, where)``: ``where`` names the sent message when
+    it carries buttons, so they can be taken away once the answer is given."""
     recipient, error = _telegram_recipient()
     if not recipient:
-        return False, error
+        return False, error, {}
     try:
         from channels import OutboundMessage
         from channels.telegram import TelegramChannel
-        TelegramChannel().send(
+        response = TelegramChannel().send(
             recipient=recipient,
-            message=OutboundMessage(text=f"{title}\n\n{body}"),
+            message=OutboundMessage(text=f"{title}\n\n{body}", buttons=buttons or None),
         )
-        return True, ""
+        # The channel reports a refusal in its answer, not with an exception.
+        if isinstance(response, dict) and response.get("ok") is False:
+            return False, "telegram_send_refused", {}
+        sent = response.get("result") if isinstance(response, dict) else None
+        message_id = sent.get("message_id") if isinstance(sent, dict) else None
+        where = ({"chat_id": recipient, "message_id": str(message_id)}
+                 if buttons and message_id is not None else {})
+        return True, "", where
     except Exception as exc:  # noqa: BLE001 - local event is already durable
-        return False, f"telegram_send_failed:{type(exc).__name__}"
+        return False, f"telegram_send_failed:{type(exc).__name__}", {}
+
+
+def clear_buttons(event_key: str) -> bool:
+    """Take the answer buttons away from the message of one notification.
+
+    Called when its question was answered, wherever that happened. True when
+    the message no longer offers answers; False when there was nothing to do
+    or the channel could not be reached (the daemon then refuses a late tap).
+    """
+    clean_key = str(event_key or "").strip()
+    if not clean_key:
+        return False
+    with _PROCESS_LOCK, _file_lock(exclusive=True):
+        rows = _read_unlocked()
+        event = next((row for row in rows if row.get("event_key") == clean_key), None)
+        where = dict(event.get("telegram_message") or {}) if event else {}
+        if not where:
+            return False
+        event["telegram_message"] = {}
+        _write_unlocked(rows)
+    try:
+        from channels.telegram import TelegramChannel
+        response = TelegramChannel().remove_inline_buttons(
+            chat_id=str(where.get("chat_id")), message_id=str(where.get("message_id")))
+        return bool(isinstance(response, dict) and response.get("ok"))
+    except Exception as exc:  # noqa: BLE001 - never fail the answer itself
+        log.warning("admin notification buttons not cleared: %s", type(exc).__name__)
+        return False
 
 
 def notify(
@@ -131,8 +169,13 @@ def notify(
     severity: str = "warning",
     event_key: str = "",
     metadata: dict | None = None,
+    buttons: list | None = None,
 ) -> dict:
-    """Persist one event and attempt Telegram delivery exactly once per key."""
+    """Persist one event and attempt Telegram delivery exactly once per key.
+
+    ``buttons``: rows of ``{"text", "data"}`` answers shown under the message
+    when it carries a question; the channel daemon owns what each answer does.
+    """
     clean_key = str(event_key or "").strip()
     with _PROCESS_LOCK, _file_lock(exclusive=True):
         rows = _read_unlocked()
@@ -157,9 +200,10 @@ def notify(
         rows.append(event)
         _write_unlocked(rows)
 
-    delivered, error = _deliver_telegram(event["title"], event["body"])
+    delivered, error, where = _deliver_telegram(event["title"], event["body"], buttons)
     event["delivery"] = "telegram" if delivered else "local"
     event["delivery_error"] = error
+    event["telegram_message"] = where
     with _PROCESS_LOCK, _file_lock(exclusive=True):
         rows = _read_unlocked()
         for index, row in enumerate(rows):

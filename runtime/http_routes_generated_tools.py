@@ -12,7 +12,35 @@ import functools
 
 from aiohttp import web
 
-from http_render import wants_html
+from http_render import render_template, wants_html
+
+
+def waiting_context() -> dict:
+    """What waits for the person, with the signature an open page compares."""
+    import change_applier
+    import change_intents
+    import i18n
+    import synth_activation
+
+    waiting = change_applier.waiting_for_person(
+        change_intents.list_intents(limit=5000), lang=i18n.current_lang())
+    signer = synth_activation.signer_available()
+    return {"waiting": waiting, "signer_available": signer,
+            "waiting_signature": change_applier.waiting_signature(
+                waiting, signer_available=signer)}
+
+
+async def admin_changes_waiting(request: web.Request) -> web.Response:
+    """GET /admin/changes/waiting: the fragment an open page keeps current.
+
+    The page sends the signature it shows. While nothing changed the answer
+    is empty and the page leaves what the person is reading as it is.
+    """
+    context = await asyncio.to_thread(waiting_context)
+    if request.query.get("sig") == context["waiting_signature"]:
+        return web.Response(status=204)
+    return web.Response(text=render_template("changes_waiting.html", **context),
+                        content_type="text/html")
 
 
 async def admin_changes_preferences(request: web.Request) -> web.Response:
