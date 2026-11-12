@@ -268,6 +268,17 @@ class TurnEventLog:
                 ],
             }
 
+    def seconds_since_last_activity(self) -> float | None:
+        """0 while a request is being served; otherwise the seconds since the
+        last one began or ended; None when none is remembered."""
+        with self._lock:
+            if any(not state.closed for state in self._turns.values()):
+                return 0.0
+            moments = [moment for state in self._turns.values()
+                       for moment in (state.created_at, state.closed_at)
+                       if moment is not None]
+        return max(0.0, time.time() - max(moments)) if moments else None
+
     def stats(self) -> dict:
         with self._lock:
             active = sum(1 for s in self._turns.values() if not s.closed)

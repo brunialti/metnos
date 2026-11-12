@@ -502,7 +502,6 @@ def invoke(args):
             inode=int(stat.st_ino),
         )
 
-    scan_started = time.perf_counter()
     walk = parallel_walk(
         base,
         accept=lambda path, kind, _depth: (
@@ -523,7 +522,6 @@ def invoke(args):
     for stamp in stamps:
         by_size[stamp.size].append(stamp)
     scanned_files = len(stamps)
-    scan_elapsed_ms = int((time.perf_counter() - scan_started) * 1000)
 
     same_size_candidates = sum(
         len(stamps) for stamps in by_size.values() if len(stamps) > 1)
@@ -554,7 +552,6 @@ def invoke(args):
             hashes_by_key[stamp.cache_key] = full_hash
         by_sample[(stamp.size, sample)].append(stamp.path)
 
-    sample_started = time.perf_counter()
     sample_workers = assigned_workers(item_count=len(missing_sample_jobs))
     for batch in _batches(missing_sample_jobs, sample_workers):
         raw_batch = [(stamp.path, stamp.size) for stamp in batch]
@@ -571,7 +568,6 @@ def invoke(args):
         # Checkpoint each completed batch. A daemon restart no longer throws
         # away every sample collected during a long remote-filesystem walk.
         _cache_store(cache_connection, batch, samples_by_key, hashes_by_key)
-    sample_elapsed_ms = int((time.perf_counter() - sample_started) * 1000)
 
     stamps_by_path = {stamp.path: stamp for stamp in sample_jobs}
     hash_jobs = [
@@ -599,7 +595,6 @@ def invoke(args):
 
     raw_hash_jobs = [(stamp.path, stamp.size) for stamp in missing_hash_jobs]
     hash_workers = _stream_worker_count(raw_hash_jobs)
-    hash_started = time.perf_counter()
     for batch in _batches(missing_hash_jobs, hash_workers):
         raw_batch = [(stamp.path, stamp.size) for stamp in batch]
         for stamp, (digest, reason) in zip(
@@ -615,7 +610,6 @@ def invoke(args):
         # Full hashes are the expensive part. Persist them incrementally so a
         # killed HTTP/service session resumes from the last completed batch.
         _cache_store(cache_connection, batch, samples_by_key, hashes_by_key)
-    hash_elapsed_ms = int((time.perf_counter() - hash_started) * 1000)
 
     cache_enabled = cache_connection is not None
     if cache_connection is not None:
@@ -689,9 +683,9 @@ def invoke(args):
             "patterns": patterns,
             "recursive": recursive,
             "case_sensitive": case_sensitive,
-            "scan_elapsed_ms": scan_elapsed_ms,
-            "sample_elapsed_ms": sample_elapsed_ms,
-            "hash_elapsed_ms": hash_elapsed_ms,
+            # No timings here: the same files must give the same result
+            # however long the machine took (a result that changed with the
+            # load made the equivalence proof fail by itself, 12/11/2026).
             **({"alias_resolved": alias_note} if alias_note else {}),
         },
     }

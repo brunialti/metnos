@@ -131,8 +131,7 @@ schema_inline = """
   visited_dirs: int,
   metadata: {
     base_path: str, patterns: Array<str>, recursive: bool,
-    case_sensitive: bool, scan_elapsed_ms: int,
-    sample_elapsed_ms: int, hash_elapsed_ms: int
+    case_sensitive: bool
   },
   authoritative_presentation?: {scope: 'always', text: str, covers_truncation: bool},
   partial?: bool,

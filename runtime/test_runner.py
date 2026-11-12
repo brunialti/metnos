@@ -29,6 +29,7 @@ Matcher supportati v1.1 (estesi nel ciclo 2):
 import fnmatch
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tomllib
@@ -433,10 +434,55 @@ def check_parallel_equivalence(
     return failures
 
 
+_PRIVATE_TMP_MARK = "METNOS_BIRTH_TESTS_PRIVATE_TMP"
+
+
+def _private_tmp_roots() -> list[str]:
+    """The directories directly under /tmp this run was told about: the
+    manifest, the working directory, the paths in the environment."""
+    named = [*sys.argv[1:], os.getcwd(), sys.executable, *sys.path]
+    for value in os.environ.values():
+        named.extend(value.split(os.pathsep))
+    roots = set()
+    for value in named:
+        parts = Path(value).parts if value.startswith("/tmp/") else ()
+        if len(parts) > 2 and os.path.isdir(os.path.join("/tmp", parts[2])):
+            roots.add(os.path.join("/tmp", parts[2]))
+    return sorted(roots)
+
+
+def _enter_private_tmp() -> None:
+    """Run this whole session with a /tmp of its own.
+
+    Birth tests name fixed paths under /tmp in their setup and teardown. Two
+    sessions on one machine then removed each other's files, and a test
+    failed for what another run was doing (first seen 12/11/2026 with two
+    suites side by side). Inside its own mount namespace the session sees an
+    empty /tmp plus the directories it was explicitly given; nothing it
+    writes there reaches the machine or another session. Where the isolation
+    is not available the session runs as before.
+    """
+    if os.environ.get(_PRIVATE_TMP_MARK) or not sys.platform.startswith("linux"):
+        return
+    bwrap = shutil.which("bwrap")
+    if not bwrap:
+        return
+    isolation = [bwrap, "--dev-bind", "/", "/", "--tmpfs", "/tmp"]
+    for root in _private_tmp_roots():
+        isolation += ["--bind", root, root]
+    isolation += ["--die-with-parent", "--"]
+    probe = subprocess.run([*isolation, "/bin/true"], capture_output=True)
+    if probe.returncode != 0:
+        return
+    os.environ[_PRIVATE_TMP_MARK] = "1"
+    os.execv(bwrap, [*isolation, *sys.orig_argv])
+
+
 def main():
     if len(sys.argv) != 2:
         print("Usage: test_runner.py <manifest.toml>", file=sys.stderr)
         sys.exit(2)
+    _enter_private_tmp()
 
     manifest_path = Path(sys.argv[1]).resolve()
     manifest_dir = manifest_path.parent

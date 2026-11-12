@@ -116,6 +116,10 @@ async def stack_health(request: web.Request) -> web.Response:
     sidecar = await asyncio.to_thread(_probe_sidecar)
     durable = await asyncio.to_thread(_probe_durable_activity)
     turns = TurnEventLog.get().stats()
+    # A build or an activation of a generated tool is work in progress too: a
+    # restart or a release waits for it, as for a turn.
+    import change_applier
+    automatic_work = change_applier.automatic_work_running()
     catalog_names = _catalog_names(request)
     broker_quiescent = all(
         int(sidecar.get(key) or 0) == 0
@@ -142,7 +146,9 @@ async def stack_health(request: web.Request) -> web.Response:
             turns.get("active", 0) == 0
             and broker_quiescent
             and durable_quiescent
+            and automatic_work == 0
         ),
+        "automatic_work": {"running": automatic_work},
         "http": {
             "ok": True,
             "operational": not bool(startup_failure),

@@ -21,8 +21,10 @@ Audit JSONL ~/.local/share/metnos/audit/change_applier.jsonl
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import sqlite3
+import threading
 import time
 from typing import Callable
 
@@ -84,6 +86,68 @@ def external_model_available() -> bool:
         return True
     except Exception:  # noqa: BLE001 - not configured is an ordinary answer
         return False
+
+
+class PersonActive(Exception):
+    """Someone is using Metnos: the build waits for a quiet moment. Nothing
+    failed and nothing is counted; the next run asks again."""
+
+
+# A build uses the same model as the conversation. It starts only after this
+# much silence on every channel, and between its stages it steps aside for as
+# long as someone is asking, up to a limit (it must end, too).
+QUIET_BEFORE_BUILD_S = 600
+_YIELD_POLL_S = 5
+_YIELD_MAX_S = 1800
+
+_automatic_work_lock = threading.Lock()
+_automatic_work = 0
+
+
+def automatic_work_running() -> int:
+    """How many builds or activations this process is carrying out now. A
+    restart or a release waits for zero: an automatic job is never cut."""
+    with _automatic_work_lock:
+        return _automatic_work
+
+
+@contextlib.contextmanager
+def _automatic_work_in_progress():
+    global _automatic_work
+    with _automatic_work_lock:
+        _automatic_work += 1
+    try:
+        yield
+    finally:
+        with _automatic_work_lock:
+            _automatic_work -= 1
+
+
+class _StepAside:
+    """What Synth is given as its progress listener when nobody is waiting
+    for the build: before each stage it waits while a person is asking."""
+
+    def __init__(self, *, sleep=time.sleep, clock=time.monotonic) -> None:
+        self._sleep, self._clock = sleep, clock
+        self.waited_s = 0.0
+
+    def start(self, _text: str) -> None:
+        self.update(0)
+
+    def update_free(self, _text: str) -> None:
+        return None
+
+    def update(self, _stage: int) -> None:
+        import person_activity
+
+        began = self._clock()
+        while (self.waited_s < _YIELD_MAX_S
+               and person_activity.person_is_active(_YIELD_POLL_S * 4)):
+            self._sleep(_YIELD_POLL_S)
+            self.waited_s += _YIELD_POLL_S
+        if self._clock() - began >= _YIELD_POLL_S:
+            _audit({"event": "build_stepped_aside",
+                    "seconds": round(self._clock() - began)})
 
 
 class ReviewPending(Exception):
@@ -159,6 +223,10 @@ def apply_create_executor(ci: ChangeIntent) -> dict:
     if waiting:
         raise ReviewPending(waiting)
 
+    import person_activity
+    if person_activity.person_is_active(QUIET_BEFORE_BUILD_S):
+        raise PersonActive(expected_name)
+
     from synth_request import handle_synth_request
     external = bool((ci.intent_body or {}).get("external_model_consent"))
     body = ci.intent_body or {}
@@ -166,13 +234,14 @@ def apply_create_executor(ci: ChangeIntent) -> dict:
     if body.get("verb") and body.get("object"):
         import learning_loop
         examples = learning_loop.gap_requests(str(body["verb"]), str(body["object"]))
-    result = handle_synth_request(
-        {"expected_name": expected_name, "intent": intent_text, "examples": examples},
-        user_query=intent_text,
-        progress=None,
-        verbose=False,
-        external_model=external,
-    )
+    with _automatic_work_in_progress():
+        result = handle_synth_request(
+            {"expected_name": expected_name, "intent": intent_text, "examples": examples},
+            user_query=intent_text,
+            progress=_StepAside(),
+            verbose=False,
+            external_model=external,
+        )
     if result.get("review_pending"):
         raise ReviewPending(str(result.get("proposal_id") or ""))
     if not result.get("ok", True):
@@ -458,7 +527,9 @@ def run_activation(ci_id: str, proposal_id: str, *, by: str, at: str) -> dict:
     from synt import DEFAULT_PROPOSALS_DIR
 
     try:
-        reply = synth_activation.activate(DEFAULT_PROPOSALS_DIR, proposal_id, by=by, at=at)
+        with _automatic_work_in_progress():
+            reply = synth_activation.activate(
+                DEFAULT_PROPOSALS_DIR, proposal_id, by=by, at=at)
     except Exception as exc:  # noqa: BLE001 - never leave the proposal «running»
         _log.exception("change_applier: activation failed: %r", exc)
         reply = {"status": "signer_failed", "error": type(exc).__name__}
@@ -730,6 +801,13 @@ def task_change_applier(payload: dict | None = None) -> dict:
             continue
         try:
             effect = handler(ci)
+        except PersonActive:
+            # Still accepted: built at the first quiet moment.
+            skipped_count += 1
+            details.append({"id": ci.id, "kind": ci.intent_kind,
+                            "result": "waiting_for_a_quiet_moment"})
+            _audit({"event": "build_waits_for_quiet", "id": ci.id})
+            continue
         except ReviewPending as pending:
             # Still accepted: the next run checks again without asking Synth.
             push_ready_candidate(ci, pending.proposal_id)

@@ -220,9 +220,11 @@ SURFACES: tuple[UiSurfaceSpec, ...] = (
          "lifecycle-state tabs", "family and kind filters",
          "minimum score and result-limit filters", "score", "kind", "target",
          "origin", "summary", "details, effects, and metrics"),
-        ("attiva", "no", "usa il modello esterno", "chiudi la proposta",
+        ("pulsante Attiva dello strumento pronto", "pulsante No dello strumento pronto",
+         "usa il modello esterno", "chiudi la proposta",
          "accetta", "rifiuta", "prepara", "ripristina", "riprova"),
-        ("activate", "no", "use the external model", "close the proposal",
+        ("Activate button of the ready tool", "No button of the ready tool",
+         "use the external model", "close the proposal",
          "accept", "reject", "stage", "roll back", "retry"),
         (
             "Se in cima compare «Aspettano una tua risposta», comincia da lì: per uno strumento che Metnos si è costruito da solo è l'unica cosa che ti viene chiesta.",
