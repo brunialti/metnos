@@ -372,6 +372,27 @@ def _send_to_telegram(entry: dict, text: str) -> str:
     return "deferred"
 
 
+def _send_files_to_telegram(entry: dict, turn) -> int:
+    """The files of the answer as documents, after its text: a link of the
+    web chat is of no use in a Telegram chat. Best effort, each on its own."""
+    from channels.telegram import TelegramChannel
+    from durable_workloads.events import resolve_telegram_recipient
+
+    sent = 0
+    for item in getattr(turn, "attachments", None) or []:
+        if not (isinstance(item, dict) and item.get("kind") == "file" and item.get("path")):
+            continue
+        try:
+            recipient = resolve_telegram_recipient(entry["owner_user_id"])
+            reply = recipient and TelegramChannel().send_document(
+                chat_id=recipient, path=item["path"], basename=item.get("basename"),
+                caption=item.get("basename"))
+            sent += bool(isinstance(reply, dict) and reply.get("ok"))
+        except Exception as exc:  # noqa: BLE001 - the text already arrived
+            log.warning("lre_answers: telegram document not sent: %r", exc)
+    return sent
+
+
 def _push(entry: dict, turn, *, title: str = "") -> str:
     """Put what was written in front of the person, where they are now.
 
@@ -401,6 +422,7 @@ def _push(entry: dict, turn, *, title: str = "") -> str:
     told = _send_to_telegram(entry, "\n\n".join(
         part for part in (title, _bounded_for_chat(completion.text)) if part))
     if told == "sent":
+        _send_files_to_telegram(entry, turn)
         return "telegram"
     if in_page:
         return "page"

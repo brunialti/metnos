@@ -5895,6 +5895,14 @@ class TurnLog:
             if notice and notice not in (self.final_message or ""):
                 self.final_message = ((self.final_message or "").rstrip()
                                      + "\n\n" + notice).strip()
+        # A very long answer is a document, not a chat message (Roberto,
+        # 12/11/2026): after every notice is in, so the file holds the whole
+        # answer and the message keeps its beginning, on every channel.
+        try:
+            import long_answers
+            long_answers.deliver_as_file(self)
+        except Exception as _long_exc:  # noqa: BLE001 - the turn is written anyway
+            log.warning("long answer not moved to a file: %r", _long_exc)
         # Footer "elapsed: Xs · chiuso HH:MM:SS" rimosso 7/5/2026 notte
         # (Roberto: ridondante con il badge meta della UI HTTP, valore
         # gia' presente nel jsonl come ts_end-ts_start per telemetria).

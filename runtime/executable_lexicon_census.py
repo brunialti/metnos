@@ -113,7 +113,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'admin/prompts_cli.py': ('7d6fa3114bafc8c70d26a9c801e44377b459b1c57a3bc47e369a50d72083001f', (('comparison', 29), ('helper-argument', 4))),
     'admin/proposals_cli.py': ('93c2deb1dc1a819d9382186e57847ad824d31aed3ff73da25aca22b73b4a9bbb', (('comparison', 11), ('helper-argument', 8))),
     'admin/scheduler_cli.py': ('97fe956403b25bcdae157bb885df716bd95985d7d0c1a8acaded33842c694547', (('comparison', 2), ('helper-argument', 2))),
-    'admin_chat_commands.py': ('23fcdf64527453538b5c030e36c2966c665e96abf4d35437f487a426318bbb65', (('comparison', 11),)),
+    'admin_chat_commands.py': ('a88a306af700787c6b2b11f73bab9c25a069d2062d7570f2e369e3974240d74b', (('comparison', 11),)),
     'admitted_module_v1.py': ('fd3e0dda561870ce6529a683a4c32876a750b8ad7720a594aca58071ae96a56f', (('comparison', 4), ('helper-argument', 1), ('prefix-suffix', 2))),
     'agent_mirror.py': ('870f4556a8cd0bcc06eeda1d834549ecfb560fdd5eb3dee87b0170f9d63fe875', (('helper-argument', 4),)),
     'agent_runtime.py': ('ff390aaec659fc0b238810878c58d4841e362d92350d20f941e701a0d0ed8562', (('comparison', 143), ('helper-argument', 1), ('iteration', 4), ('membership', 7), ('prefix-suffix', 2), ('regex', 3))),
@@ -605,7 +605,8 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'learning_loop.py': ('bf2aa8c14a168c9e67e13fbc3e6a87599f96be31ad0c66a333d0e2f7b3116c37', (('comparison', 1),)),
     'synth_activation.py': ('d0cf2d39678d3a10a8377323d1cb951b886cbb06e61ed7cfb97415a8970ba9a8', (('comparison', 3), ('prefix-suffix', 1))),
     'http_routes_generated_tools.py': ('960b28d3afa04ac7f3609d24f087460514485100940f5620a714ab3d84ba1fef', (('comparison', 1), ('helper-argument', 1))),
-    'lre_answers.py': ('497d6494da3ca6d0f88a0044c33fbf1111eb4854118296856f32016aa0f9ae34', (('comparison', 5), ('membership', 3))),
+    'lre_answers.py': ('f9c5eac4dad7d5d11ad6f7e82102ebb9ee250756cc4f378e0d1f79f1992cefe8', (('comparison', 6), ('membership', 3))),
+    'long_answers.py': ('4316e94905346b67d5f69633d00482d380e6cdb805fd4a583252be060f7bd3b5', (('comparison', 1), ('iteration', 1), ('prefix-suffix', 4))),
 }
 
 VALUE_BOUND_SEED_GATE_FINGERPRINTS: Mapping[str, int] = {
@@ -1218,6 +1219,10 @@ VALUE_BOUND_CLOSING_TECHNICAL_CONTAINERS: Mapping[str, str] = {
         "paths the isolated runner prepares for every functional case",
     "afe1444b2d7fc1d32fcd7755f0161b9d3ffdf185f3501ec2245601bd6f310ede":
         "fields of the standard tool answer that hold one value per item",
+    "5f4f89c126b6f0047970ec4b230f12a9bca07bd8f1425ded293a099fa69497b9":
+        "names of the commands the chat page runs by itself",
+    "b15a9d1ac623a47d47666b3b64bc91ec47e56bfeb88d05249f1de5dead6bc92a":
+        "private-use marks the engine puts around a table cell that must not wrap",
 }
 VALUE_BOUND_EXECUTABLE_CONTAINER_FINGERPRINTS = (
     VALUE_BOUND_EXECUTABLE_CONTAINER_FINGERPRINTS

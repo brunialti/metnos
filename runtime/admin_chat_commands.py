@@ -37,6 +37,12 @@ PREFIX = "/admin"
 _FORMA_COMANDO = _re.compile(r"^/(?:\?|[a-z][a-z0-9_-]*)$")
 
 
+# The commands the chat page runs by itself. Typed alone WITHOUT the slash
+# they are still that command, misspelt: on 12/11/2026 a bare «clear» was
+# planned as «undo the last action». The answer is the list of commands.
+CHAT_PAGE_COMMANDS = ("clear", "clearbuf", "reload", "health")
+
+
 def is_command_shape(query: str) -> bool:
     """True se la query E' un comando, anche se non lo conosciamo.
 
@@ -45,6 +51,9 @@ def is_command_shape(query: str) -> bool:
     Tutor costruita su una barra."""
     if not isinstance(query, str):
         return False
+    words = query.strip().lower().split()
+    if len(words) == 1 and words[0] in CHAT_PAGE_COMMANDS:
+        return True
     primo = query.strip().split(" ", 1)[0].lower()
     return bool(_FORMA_COMANDO.match(primo))
 

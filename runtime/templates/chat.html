@@ -482,6 +482,8 @@ const CHAT_I18N = {
   healthOk: {{ msg("MSG_CHAT_HEALTH_OK")|tojson }},
   healthFailed: {{ msg("MSG_CHAT_HEALTH_FAILED")|tojson }},
   unknownCommand: {{ msg("MSG_CHAT_UNKNOWN_COMMAND")|tojson }},
+  chatCleared: {{ msg("MSG_CHAT_CLEARED")|tojson }},
+  bufferCleared: {{ msg("MSG_CHAT_BUFFER_CLEARED")|tojson }},
   readOnlySubmit: {{ msg("MSG_CHAT_READ_ONLY_SUBMIT")|tojson }},
   imagesOnly: {{ msg("MSG_CHAT_IMAGES_ONLY")|tojson }},
   defaultImageQuery: {{ msg("MSG_CHAT_DEFAULT_IMAGE_QUERY")|tojson }},
@@ -671,6 +673,30 @@ function hasSettledTurnHistory(turnId, dialogId){
 function clearHistory(){
   try { localStorage.removeItem(historyKey()); } catch(_){}
   log.innerHTML = '';
+}
+// «/clear» cleans this browser's view of the conversation. The turns stay on
+// the server, which gives them back at every load: the newest one marks the
+// point before which a later load asks for nothing. Its time is the server's
+// own, so the two clocks need not agree.
+const CLEARED_KEY_PREFIX = 'metnos_chat_cleared:v1:' + CHAT_USER_SCOPE + ':';
+function clearedSince(){
+  try {
+    const mark = Number(localStorage.getItem(CLEARED_KEY_PREFIX + conversationId));
+    return mark > 0 ? mark : 0;
+  } catch(_){ return 0; }
+}
+async function clearChatView(){
+  let mark = Date.now() / 1000;
+  try {
+    const r = await fetch('/agent/turns/recent?conversation_id=' + encodeURIComponent(conversationId)
+                        + '&limit=1', { headers: { 'Accept': 'application/json' } });
+    if(r.ok){
+      const newest = ((await r.json()).turns || [])[0];
+      if(newest && Number(newest.ts_start) > 0) mark = Number(newest.ts_start);
+    }
+  } catch(_){}
+  try { localStorage.setItem(CLEARED_KEY_PREFIX + conversationId, String(mark)); } catch(_){}
+  clearHistory();
 }
 
 // --- buffer comandi (solo testo utente) ----------------------------
@@ -1607,8 +1633,9 @@ async function fetchServerHistory(){
       const key = JSON.stringify(item);
       requestedRecords.set(key, (requestedRecords.get(key) || 0) + 1);
     }
+    const cleared = clearedSince();
     const url = '/agent/turns/recent?conversation_id=' + encodeURIComponent(requestedConversation)
-              + '&limit=50';
+              + '&limit=50' + (cleared ? '&since_ts=' + encodeURIComponent(cleared) : '');
     const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
     if(!r.ok) return;
     const data = await r.json();
@@ -2233,6 +2260,18 @@ async function handleSlashCommand(text){
   const [cmd, ...rest] = text.slice(1).trim().split(/\s+/);
   const arg = rest.join(' ');
   switch(cmd.toLowerCase()){
+    // The help lists these two: they were dropped from here in July and the
+    // page answered «unknown command» to what its own help offered.
+    case 'clear':
+    case 'cls':
+      await clearChatView();
+      add('tool-info', CHAT_I18N.chatCleared, null, false);
+      return true;
+    case 'clearbuf':
+      clearCmdBuf();
+      cmdIdx = -1; cmdDraft = '';
+      add('tool-info', CHAT_I18N.bufferCleared, null, false);
+      return true;
     case 'reload':
       location.reload();
       return true;
