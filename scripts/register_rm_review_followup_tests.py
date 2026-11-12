@@ -61,6 +61,11 @@ GROUPS = {
         "tests/runtime/executors/test_parallel_recursive_executors.py",
         "tests/runtime/executors/test_applicable_input_boundary.py",
         "tests/runtime/executors/test_array_args_boundary.py",
+        "tests/runtime/durable_workloads/test_direct_partial_result.py",
+        "tests/runtime/durable_workloads/test_execution_bridge.py",
+        "tests/runtime/durable_workloads/test_domain_outcome.py",
+        "tests/runtime/durable_workloads/test_direct_invocation.py",
+        "tests/runtime/durable_workloads/test_fencing_and_recovery.py",
     ),
 }
 

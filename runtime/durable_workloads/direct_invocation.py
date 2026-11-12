@@ -8,6 +8,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any, Final
 
 from .compiler import VerifiedCatalogResolver, core_output_schemas
+from .domain_outcome import EXECUTOR_RESULT_SCHEMA
 from .models import RESOURCE_KEYS, DurableEffect, RunnerKind
 from .runtime_bindings import RuntimeRegistration
 from .schema import (
@@ -20,7 +21,7 @@ from .schema import (
 AUTO_LRE_MIN_TIMEOUT_S: Final[int] = 600
 DIRECT_PLAN_ID: Final[str] = "metnos.direct.v1"
 DIRECT_REGISTRATION_ID: Final[str] = "metnos.direct-runners.v1"
-DIRECT_OUTPUT_SCHEMA: Final[str] = "metnos.executor-result/1"
+DIRECT_OUTPUT_SCHEMA: Final[str] = EXECUTOR_RESULT_SCHEMA
 
 _DIGEST_RE = re.compile(r"sha256:[a-f0-9]{64}")
 _ARGUMENT_RE = re.compile(r"[a-z][a-z0-9_]{0,63}")

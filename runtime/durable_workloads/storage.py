@@ -82,7 +82,7 @@ from .schema import (
 )
 from .recovery import frozen_token_allowance
 from .transactions import checked_checkpoint, immediate_transaction
-from .domain_outcome import domain_terminal_detail
+from .domain_outcome import TOOL_CAUSES, domain_terminal_detail
 
 
 _ID_RE = re.compile(r"^[A-Za-z0-9_-]{8,128}$")
@@ -4526,12 +4526,14 @@ class DurableWorkloadStore:
         """Historical technical errors, independent of final domain item outcomes.
 
         Writer paths persist canonical StructuredAttemptError values. Read only
-        their versioned, bounded machine codes, approved runner cause and the
+        their versioned, bounded machine codes, approved runner cause (without
+        one, the cause the tool named for itself, from the closed list) and the
         frozen model tier for a proven readiness failure, never messages,
         endpoints, physical model names or arbitrary details. The
         revision's units lead the indexed attempt lookup even without planner
         statistics; no scan of an owner's unrelated attempt history is needed.
         """
+        tool_causes = sorted(TOOL_CAUSES)
         rows = self._connection.execute(
             """
             WITH error_facts AS MATERIALIZED (
@@ -4542,7 +4544,10 @@ class DurableWorkloadStore:
                        CASE WHEN json_extract(attempt.structured_error_json, '$.code')='execution.runner_failed'
                          AND json_type(attempt.structured_error_json, '$.details_redacted.reported_error_code')='text'
                        THEN json_extract(attempt.structured_error_json, '$.details_redacted.reported_error_code')
-                       END AS reported_cause
+                       END AS reported_cause,
+                       CASE WHEN json_extract(attempt.structured_error_json, '$.code')='execution.runner_failed'
+                       THEN json_extract(attempt.structured_error_json, '$.details_redacted.reported_error_class')
+                       END AS reported_class
                 FROM units unit CROSS JOIN attempts attempt
                 WHERE unit.owner_user_id=? AND unit.revision_id=?
                   AND attempt.owner_user_id=unit.owner_user_id
@@ -4561,7 +4566,11 @@ class DurableWorkloadStore:
                     AND length(CAST(reported_cause AS BLOB))=length(reported_cause)
                     AND reported_cause GLOB '[a-z]*'
                     AND reported_cause NOT GLOB '*[^a-z0-9_.-]*'
-                    THEN reported_cause END AS cause,
+                    THEN reported_cause
+                    -- Without an approved code, the cause the tool named for
+                    -- itself: a closed list, never an arbitrary string.
+                    WHEN reported_class IN ({tool_causes})
+                    THEN reported_class END AS cause,
                     CASE WHEN typeof(model_resource)='text'
                     AND length(model_resource) BETWEEN 1 AND 64
                     AND model_resource GLOB '[A-Za-z0-9]*'
@@ -4581,7 +4590,8 @@ class DurableWorkloadStore:
             FROM categories
             ORDER BY count DESC, code ASC, cause ASC, resource_name ASC
             LIMIT 20
-            """, (owner, revision_id, ERROR_SCHEMA_VERSION),
+            """.replace("{tool_causes}", ",".join("?" * len(tool_causes))),
+            (owner, revision_id, ERROR_SCHEMA_VERSION, *tool_causes),
         ).fetchall()
         return {
             "nattempts": int(rows[0]["nattempts"]) if rows else 0,

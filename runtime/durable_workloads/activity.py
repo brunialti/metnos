@@ -25,6 +25,25 @@ def _unknown(reason_code: str) -> dict[str, object]:
     }
 
 
+def _read_only(path: str | Path | None) -> sqlite3.Connection | str:
+    """A read-only connection to the durable store, or why there is none."""
+    database_path = Path(default_db_path() if path is None else path).expanduser()
+    try:
+        metadata = database_path.lstat()
+        if not stat.S_ISREG(metadata.st_mode) or stat.S_ISLNK(metadata.st_mode):
+            return "database_unsafe"
+        resolved = database_path.resolve(strict=True)
+        uri = f"file:{quote(os.fspath(resolved), safe='/')}?mode=ro&cache=private"
+        return sqlite3.connect(
+            uri,
+            uri=True,
+            timeout=BUSY_TIMEOUT_MS / 1000,
+            isolation_level=None,
+        )
+    except (OSError, sqlite3.Error, ValueError):
+        return "database_unavailable"
+
+
 def activity_snapshot(*, path: str | Path | None = None) -> dict[str, object]:
     """Observe authoritative active fences without migrating or writing the DB.
 
@@ -32,21 +51,9 @@ def activity_snapshot(*, path: str | Path | None = None) -> dict[str, object]:
     never owners, workload identifiers, inputs, paths or result contents.
     """
 
-    database_path = Path(default_db_path() if path is None else path).expanduser()
-    try:
-        metadata = database_path.lstat()
-        if not stat.S_ISREG(metadata.st_mode) or stat.S_ISLNK(metadata.st_mode):
-            return _unknown("database_unsafe")
-        resolved = database_path.resolve(strict=True)
-        uri = f"file:{quote(os.fspath(resolved), safe='/')}?mode=ro&cache=private"
-        connection = sqlite3.connect(
-            uri,
-            uri=True,
-            timeout=BUSY_TIMEOUT_MS / 1000,
-            isolation_level=None,
-        )
-    except (OSError, sqlite3.Error, ValueError):
-        return _unknown("database_unavailable")
+    connection = _read_only(path)
+    if isinstance(connection, str):
+        return _unknown(connection)
 
     try:
         connection.row_factory = sqlite3.Row
@@ -91,4 +98,29 @@ def activity_snapshot(*, path: str | Path | None = None) -> dict[str, object]:
     }
 
 
-__all__ = ["ACTIVITY_SCHEMA_VERSION", "activity_snapshot"]
+def long_job_working(*, path: str | Path | None = None) -> bool | None:
+    """Whether a durable job is being carried out now; None when unknown.
+
+    A job is at work from its first unit to its end, also in the instants
+    between two units, when no attempt is open. Background work that would
+    compete for the same models asks here before it starts.
+    """
+
+    connection = _read_only(path)
+    if isinstance(connection, str):
+        return None
+    try:
+        connection.execute(f"PRAGMA busy_timeout={BUSY_TIMEOUT_MS}")
+        connection.execute("PRAGMA query_only=ON")
+        row = connection.execute(
+            "SELECT 1 FROM workloads WHERE state IN "
+            "('running', 'pause_requested', 'cancel_requested') LIMIT 1"
+        ).fetchone()
+    except (sqlite3.Error, TypeError, ValueError):
+        return None
+    finally:
+        connection.close()
+    return row is not None
+
+
+__all__ = ["ACTIVITY_SCHEMA_VERSION", "activity_snapshot", "long_job_working"]

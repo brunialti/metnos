@@ -252,6 +252,15 @@ decision grants one attempt, not an unlimited loop. Accounting, authority and
 effect safety remain mandatory. History may show the approved attempt cause
 without confusing it with items that produced a negative domain outcome.</p>
 
+<p>A tool that worked and lost some items did not fail. When a search meets
+files it cannot read, LRE keeps what it found and closes the job as
+<strong>Completed with errors</strong>: the console lists the items that
+failed, grouped by cause. The attempt fails only when the tool declares an
+error of its own, that is, it could not work; the console then shows the
+declared cause, taken from a closed list, never the tool's free text. It is
+the same rule as in chat: partly done counts as done, with the rest
+declared.</p>
+
 <p>Checking empty directories left by interrupted publication uses a shared
 read lock: concurrent readers do not invalidate the catalog, while writers
 remain excluded during inspection. Format, ownership, permissions and absence

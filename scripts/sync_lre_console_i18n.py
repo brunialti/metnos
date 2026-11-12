@@ -31,6 +31,26 @@ TRANSLATIONS = {
         "Delete the {count} selected logs from the list?"),
     "UI_DURABLE_DISMISS_SELECTED_DONE": (
         "Log cancellati: {count}.", "Logs deleted: {count}."),
+    # What a tool names as the cause of a stop, or of one item it lost.
+    "UI_DURABLE_CAUSE_NOT_FOUND": (
+        "Percorso o elemento non trovato", "Path or item not found"),
+    "UI_DURABLE_CAUSE_PERMISSION_DENIED": ("Permesso negato", "Permission denied"),
+    "UI_DURABLE_CAUSE_IO_ERROR": (
+        "Lettura o scrittura non riuscita", "Read or write failed"),
+    "UI_DURABLE_CAUSE_INVALID_ARGS": ("Argomenti non validi", "Invalid arguments"),
+    "UI_DURABLE_CAUSE_INVALID_INPUT": (
+        "Dati in ingresso non validi", "Invalid input"),
+    "UI_DURABLE_CAUSE_RESOURCE_UNAVAILABLE": (
+        "Risorsa non disponibile", "Resource unavailable"),
+    "UI_DURABLE_CAUSE_DEPENDENCY_UNAVAILABLE": (
+        "Un componente necessario non è disponibile",
+        "A required component is unavailable"),
+    "UI_DURABLE_CAUSE_UNSUPPORTED": (
+        "Operazione non supportata", "Unsupported operation"),
+    "UI_DURABLE_CAUSE_TIMEOUT": ("Tempo scaduto", "Timed out"),
+    "UI_DURABLE_CAUSE_ITEM_FAILED": (
+        "Elemento non riuscito, causa non indicata",
+        "Item failed, cause not given"),
     "UI_DURABLE_DISMISS_SELECTED_FAILED": (
         "Non è stato possibile cancellare {count} log: restano selezionati.",
         "Could not delete {count} logs: they remain selected."),

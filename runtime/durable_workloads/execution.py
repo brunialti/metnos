@@ -34,6 +34,11 @@ from .coordinator import (
     normalize_instant,
     parse_instant,
 )
+from .domain_outcome import (
+    EXECUTOR_RESULT_SCHEMA,
+    item_failures_outcome,
+    tool_cause,
+)
 from .models import (
     AttemptState,
     DurableEffect,
@@ -968,7 +973,9 @@ class DurableExecutionBridge:
     ) -> ExecutionFailure:
         observed = observation.get("error_class")
         if type(observed) is not str or observed not in _REPORTED_ERROR_CLASSES:
-            observed = "unknown"
+            # A cause the tool names for itself is kept when the console has
+            # a text for it: it explains the stop, it never decides retry.
+            observed = tool_cause(observed) or "unknown"
         if observed in _TRANSIENT_ERRORS:
             error_class, retry = "executor_transient", "automatic"
         elif observed == "budget_exhausted":
@@ -1223,7 +1230,18 @@ class DurableExecutionBridge:
 
         if invocation_failure is None and isinstance(observation, Mapping):
             if observation.get("ok") is False:
-                invocation_failure = self._observation_failure(observation, schema)
+                # A tool that worked and lost some items did not fail: its
+                # result is committed with those items counted. Only the plain
+                # tool result has this meaning; a staged plan owns its schema.
+                lost_items = (
+                    item_failures_outcome(observation)
+                    if schema.name == EXECUTOR_RESULT_SCHEMA
+                    and "payload" not in observation else None
+                )
+                if lost_items is None:
+                    invocation_failure = self._observation_failure(observation, schema)
+                else:
+                    observation = {**observation, "domain_outcome": lost_items}
 
         if usage_sink is not None:
             try:

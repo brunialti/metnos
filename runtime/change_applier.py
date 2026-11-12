@@ -88,14 +88,38 @@ def external_model_available() -> bool:
         return False
 
 
-class PersonActive(Exception):
-    """Someone is using Metnos: the build waits for a quiet moment. Nothing
-    failed and nothing is counted; the next run asks again."""
+class NotQuiet(Exception):
+    """A person is using Metnos, or a long job is at work: the build waits
+    for a quiet moment. Nothing failed and nothing is counted; the next run
+    asks again."""
 
 
-# A build uses the same model as the conversation. It starts only after this
-# much silence on every channel, and between its stages it steps aside for as
-# long as someone is asking, up to a limit (it must end, too).
+def _busy_elsewhere(quiet_s: float) -> str | None:
+    """Who needs the models now: a person, a long job, or nobody (None).
+
+    A long job runs in the hours when no person is around, exactly when a
+    build would start; without this the two would slow each other down. When
+    the long jobs cannot be read (not installed, store busy) nobody is
+    assumed: a build must not wait forever for an answer that never comes.
+    """
+    import person_activity
+
+    if person_activity.person_is_active(quiet_s):
+        return "person"
+    try:
+        from durable_workloads.activity import long_job_working
+
+        if long_job_working():
+            return "long_job"
+    except Exception as exc:  # noqa: BLE001 - an unreadable store is "unknown"
+        _log.warning("change_applier: long jobs not readable: %r", exc)
+    return None
+
+
+# A build uses the same model as the conversation and as the long jobs. It
+# starts only after this much silence on every channel and with no long job at
+# work; between its stages it steps aside for as long as either is there, up
+# to a limit (it must end, too).
 QUIET_BEFORE_BUILD_S = 600
 _YIELD_POLL_S = 5
 _YIELD_MAX_S = 1800
@@ -125,7 +149,8 @@ def _automatic_work_in_progress():
 
 class _StepAside:
     """What Synth is given as its progress listener when nobody is waiting
-    for the build: before each stage it waits while a person is asking."""
+    for the build: before each stage it waits while a person is asking or a
+    long job is at work."""
 
     def __init__(self, *, sleep=time.sleep, clock=time.monotonic) -> None:
         self._sleep, self._clock = sleep, clock
@@ -138,11 +163,9 @@ class _StepAside:
         return None
 
     def update(self, _stage: int) -> None:
-        import person_activity
-
         began = self._clock()
         while (self.waited_s < _YIELD_MAX_S
-               and person_activity.person_is_active(_YIELD_POLL_S * 4)):
+               and _busy_elsewhere(_YIELD_POLL_S * 4) is not None):
             self._sleep(_YIELD_POLL_S)
             self.waited_s += _YIELD_POLL_S
         if self._clock() - began >= _YIELD_POLL_S:
@@ -223,9 +246,8 @@ def apply_create_executor(ci: ChangeIntent) -> dict:
     if waiting:
         raise ReviewPending(waiting)
 
-    import person_activity
-    if person_activity.person_is_active(QUIET_BEFORE_BUILD_S):
-        raise PersonActive(expected_name)
+    if _busy_elsewhere(QUIET_BEFORE_BUILD_S) is not None:
+        raise NotQuiet(expected_name)
 
     from synth_request import handle_synth_request
     external = bool((ci.intent_body or {}).get("external_model_consent"))
@@ -801,7 +823,7 @@ def task_change_applier(payload: dict | None = None) -> dict:
             continue
         try:
             effect = handler(ci)
-        except PersonActive:
+        except NotQuiet:
             # Still accepted: built at the first quiet moment.
             skipped_count += 1
             details.append({"id": ci.id, "kind": ci.intent_kind,

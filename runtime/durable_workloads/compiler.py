@@ -230,14 +230,21 @@ class OutputSchemaRegistry:
 def core_output_schemas() -> OutputSchemaRegistry:
     """Return schemas owned by generic LRE internal runners."""
 
+    from .domain_outcome import DOMAIN_OUTCOME_SCHEMA, EXECUTOR_RESULT_SCHEMA
+
     digest = {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"}
     return OutputSchemaRegistry((
         ApprovedOutputSchema.create(
-            "metnos.executor-result/1",
+            EXECUTOR_RESULT_SCHEMA,
             {
                 "type": "object",
                 "additionalProperties": True,
-                "properties": {"ok": {"type": "boolean"}},
+                "properties": {
+                    "ok": {"type": "boolean"},
+                    # The items a tool worked on and lost are a receipt of
+                    # its result, approved here once for every plain tool.
+                    "domain_outcome": DOMAIN_OUTCOME_SCHEMA,
+                },
                 "required": ["ok"],
             },
         ),

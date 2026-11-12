@@ -46,6 +46,61 @@ COMPLETION_OUTCOME_SCHEMA = {
 }
 
 
+# The result of a Metnos tool invoked as it is (§2.1): a list of items done
+# and, when some were lost, ``failed`` naming them.
+EXECUTOR_RESULT_SCHEMA = "metnos.executor-result/1"
+
+# What a tool names as the cause of a failure, its own or of one item
+# (``error_class`` is language-neutral). Closed on purpose: the console shows
+# only codes it has a text for, never a string chosen by a child process.
+TOOL_CAUSES = frozenset({
+    "not_found", "permission_denied", "io_error", "invalid_args",
+    "invalid_input", "resource_unavailable", "dependency_unavailable",
+    "unsupported", "timeout",
+})
+ITEM_FAILED = "item_failed"
+
+
+def tool_cause(value: object) -> str | None:
+    """The declared cause, when it is one the console can name."""
+    return value if type(value) is str and value in TOOL_CAUSES else None
+
+
+def item_failures_outcome(result: Mapping[str, Any]) -> dict[str, Any] | None:
+    """Domain outcome of a tool that worked and lost some items.
+
+    A tool answers ``ok: false`` both when it could not work and when it
+    worked and some items failed. Only the first is a failed attempt: in the
+    second the result stands and the lost items are counted, each under one
+    cause (the same rule the chat applies, §2.8).
+
+    Returns None when the tool declares an error of its own, names no failed
+    item, or already reports its own domain outcome: none of these is ours to
+    reinterpret.
+    """
+    if result.get("ok") is not False or "domain_outcome" in result:
+        return None
+    if any(result.get(key) not in (None, "")
+           for key in ("error", "error_class", "error_code")):
+        return None
+    failed = result.get("failed")
+    listed = ([item for item in failed if isinstance(item, Mapping)]
+              if isinstance(failed, list) else [])
+    total = result.get("fail_count")
+    if type(total) is not int or total < len(listed):
+        total = len(listed)
+    if not 1 <= total <= MAX_DOMAIN_ERRORS:
+        return None
+    counts: dict[str, int] = {}
+    for item in listed:
+        code = tool_cause(item.get("error_class")) or ITEM_FAILED
+        counts[code] = counts.get(code, 0) + 1
+    if total > len(listed):
+        # Items the tool counted without listing them: lost, cause not given.
+        counts[ITEM_FAILED] = counts.get(ITEM_FAILED, 0) + total - len(listed)
+    return {"version": 1, "error_counts": counts}
+
+
 def completion_outcome(payload: Mapping[str, Any]) -> str | None:
     if "completion_outcome" not in payload:
         return None

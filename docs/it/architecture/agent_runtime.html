@@ -271,6 +271,15 @@ Contabilità, autorizzazioni e sicurezza degli effetti restano obbligatorie.
 Lo storico può mostrare la causa approvata del tentativo senza confonderla con
 gli elementi che hanno prodotto un esito negativo di dominio.</p>
 
+<p>Uno strumento che ha lavorato e ha perso alcuni elementi non è fallito. Se
+una ricerca incontra file che non può leggere, LRE conserva ciò che ha trovato
+e chiude il lavoro come <strong>Completato con errori</strong>: la console
+elenca gli elementi non riusciti, raggruppati per causa. Il tentativo fallisce
+solo quando lo strumento dichiara un errore proprio, cioè non ha potuto
+lavorare; in quel caso la console mostra la causa dichiarata, presa da un
+elenco chiuso, e mai il testo libero dello strumento. È la stessa regola della
+chat: riuscito in parte vale come fatto, con il resto dichiarato.</p>
+
 <p>Il controllo delle cartelle vuote lasciate da una pubblicazione interrotta
 usa una lettura condivisa: altri lettori non rendono il catalogo non valido,
 mentre lo scrittore resta escluso durante la verifica. Formato, proprietà,
