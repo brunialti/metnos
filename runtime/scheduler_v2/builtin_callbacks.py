@@ -200,6 +200,17 @@ _BUILTIN_JOBS: list[dict[str, Any]] = [
             "jsonl). Cap 20 intent per fire."
         ),
     },
+    {
+        "name": "lre_answers",
+        "trigger": "every_1m",
+        "callback_key": "lre_answers",
+        "description": (
+            "Risposte dei lavori lunghi: quando un lavoro chiesto in una "
+            "conversazione finisce, la risposta viene scritta in quella "
+            "conversazione e spinta alla pagina aperta o alla chat Telegram. "
+            "Senza risposte in attesa non legge nulla."
+        ),
+    },
     # Bonifica 2026-05-28: rimossi i default schedule praxis_template_refresh
     # e praxis_cluster_merge (callback zero-arg → TypeError al fire + store
     # legacy praxis.sqlite non popolato da Engine v2). Le 2 entry live nel DB
@@ -319,6 +330,13 @@ def task_images_index_refresh() -> dict:
         )
     return (result if result is not None else
             {"ok": False, "error_class": "workload_not_admitted"})
+
+
+def task_lre_answers() -> dict:
+    """Deliver the answers of the long jobs that ended (``lre_answers``)."""
+    import lre_answers
+
+    return lre_answers.deliver_ready()
 
 
 def task_proposals_eta_aggregate() -> dict:
@@ -679,6 +697,14 @@ def install_default_callbacks(scheduler) -> None:
         "change_applier",
         task_change_applier,
         "Applier change_intents accepted → applied (ADR 0158, every_10m)",
+        replace=True,
+    )
+
+    # The answer of a long job goes back to the conversation that asked.
+    cb.register(
+        "lre_answers",
+        _wrap_zero_arg(task_lre_answers),
+        "Risposte dei lavori lunghi nella conversazione che li ha chiesti (every_1m)",
         replace=True,
     )
 

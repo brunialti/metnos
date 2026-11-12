@@ -4041,6 +4041,9 @@ async def turns_recent(request: web.Request) -> web.Response:
             out.append({
                 "turn_id": t.get("turn_id", ""),
                 "query": t.get("user_query", ""),
+                # A turn that continues an earlier one answers a question the
+                # conversation already shows: the page must not repeat it.
+                "continuation_of": t.get("parent_turn_id") or "",
                 "final_message": final_msg,
                 "inline_forms": inline_forms,
                 "final_message_html": _safe_final_html(final_msg) if final_msg else "",

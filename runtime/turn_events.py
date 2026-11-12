@@ -97,6 +97,10 @@ class TurnEventLog:
                     cls._INSTANCE = cls()
         return cls._INSTANCE
 
+    def bound_loop(self) -> asyncio.AbstractEventLoop | None:
+        """The service loop, for whoever must hand it an event from a thread."""
+        return self._loop
+
     def bind_loop(self, loop: asyncio.AbstractEventLoop) -> None:
         """Associa il loop asyncio principale (chiamato all'avvio HTTP)."""
         self._loop = loop

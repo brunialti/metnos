@@ -467,6 +467,7 @@ def delete_user(user_id: str) -> bool:
             import dialog_pending as _dialog_pending
             import deferred_turns as _deferred_turns
             import location_request as _location_request
+            import lre_answers as _lre_answers
             import location_store as _location_store
             import oauth_pending as _oauth_pending
             import user_notices as _user_notices
@@ -477,6 +478,7 @@ def delete_user(user_id: str) -> bool:
             _recurring_tasks.purge_owner(user_id)
             _deferred_turns.purge_owner(user_id)
             _location_request.purge_owner(user_id)
+            _lre_answers.purge_owner(user_id)
             _location_store.purge_owner(user_id)
             _oauth_pending.purge_owner(user_id)
             _user_notices.purge_owner(user_id)

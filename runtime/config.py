@@ -613,6 +613,8 @@ DB_MULTI_TOOL_PATHS = PATH_USER_DATA / "multi_tool_paths.sqlite"
 # Sostituisce 9 storage frammentati (telos jsonl, introvertiva sqlite,
 # synt jsonl, multi_tool sqlite, canonical_query_log, executor_history, ...).
 DB_CHANGE_INTENTS  = PATH_USER_STATE / "change_intents.sqlite"
+# Who asked for a long job, so that its answer goes back to that conversation.
+DB_LRE_ANSWERS     = PATH_USER_STATE / "lre_answers.sqlite"
 # Audit JSONL (append-only, no schema; non-DB ma simile)
 LOG_LOCATIONS_JSONL = PATH_USER_DATA / "locations.jsonl"
 

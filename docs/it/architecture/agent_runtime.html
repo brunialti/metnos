@@ -196,7 +196,12 @@ Telegram.</p>
  Metnos può proporre di riprovare quando il dispositivo tornerà disponibile.</li>
  <li><strong>Lavoro lungo:</strong> quando un piano soddisfa il contratto di LRE,
  il runtime può affidarlo automaticamente al motore dei lavori lunghi. L'utente
- non deve scegliere un profilo tecnico.</li>
+ non deve scegliere un profilo tecnico. Il turno si chiude subito dicendo che
+ il lavoro è registrato; quando il lavoro finisce, la risposta arriva nella
+ stessa conversazione che l'aveva chiesto, come un nuovo messaggio: nella
+ pagina aperta, oppure nella chat Telegram se la richiesta era partita da lì.
+ La risposta dichiara anche gli elementi che il lavoro non è riuscito a
+ trattare.</li>
 </ul>
 
 <p>Una ripresa non ricomincia alla cieca. Il runtime ricontrolla proprietario,
@@ -270,6 +275,15 @@ La decisione di riprovare autorizza un solo tentativo, non un ciclo illimitato.
 Contabilità, autorizzazioni e sicurezza degli effetti restano obbligatorie.
 Lo storico può mostrare la causa approvata del tentativo senza confonderla con
 gli elementi che hanno prodotto un esito negativo di dominio.</p>
+
+<p>Gli avvisi di LRE su Telegram dicono quale lavoro è e com'è finito: per un
+lavoro chiesto in conversazione riportano le parole della richiesta, per uno
+pianificato il suo nome (per esempio l'aggiornamento dell'indice delle foto).
+Arrivano solo quando c'è una novità: un lavoro finito con modifiche, con
+elementi non riusciti, fermo in attesa di un intervento o non completato.
+L'accettazione di un lavoro e una conclusione senza modifiche non producono
+avvisi. Il testo usa soltanto conteggi e le cause dell'elenco chiuso della
+console.</p>
 
 <p>Uno strumento che ha lavorato e ha perso alcuni elementi non è fallito. Se
 una ricerca incontra file che non può leggere, LRE conserva ciò che ha trovato

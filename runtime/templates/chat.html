@@ -1648,7 +1648,9 @@ async function fetchServerHistory(){
       if(t.turn_id && knownTurnIds.has(t.turn_id)) continue;
       if(t.turn_id) knownTurnIds.add(t.turn_id);
       // User input come messaggio "me"
-      if(t.query && (!t.turn_id || !knownQueryIds.has(t.turn_id))){
+      // A continuation (a resumed dialog, the answer of a long job) carries
+      // the question of the turn it continues: that turn already shows it.
+      if(t.query && !t.continuation_of && (!t.turn_id || !knownQueryIds.has(t.turn_id))){
         add('me', t.query, t.turn_id ? {query_turn_id: t.turn_id} : '', true,
             null, null, false, recoveredHistory);
         if(t.turn_id) knownQueryIds.add(t.turn_id);

@@ -102,6 +102,10 @@ _OUTBOX_CHANNELS = frozenset({"owner_event", "telegram"})
 _OUTBOX_CANCEL_REASONS = frozenset({
     "delivery_ambiguous",
     "event_not_supported",
+    # Nothing new to tell (a job that changed nothing), or already told in
+    # the conversation that asked for the job.
+    "no_news",
+    "told_in_conversation",
     "provider_rejected",
     "recipient_unavailable",
     "retry_exhausted",
@@ -5570,6 +5574,40 @@ class DurableWorkloadStore:
             and isinstance(manual_retry, bool)
             and manual_retry is lease.manual_retry
         )
+
+    def committed_tool_results(
+        self, owner_user_id: str, workload_id: str, *, tool: str, limit: int = 2,
+    ) -> list[dict]:
+        """The committed results of one tool in a job, for the owner who asked.
+
+        The console never shows result bodies. This reader exists for one
+        purpose: giving the answer of a job back to the conversation that
+        requested it. It is owner-scoped, bounded and reads the current
+        revision only.
+        """
+        owner = _require_owner(owner_user_id)
+        if not isinstance(tool, str) or not tool or not 1 <= int(limit) <= 16:
+            raise DurableStoreError("committed tool results must be bounded")
+        rows = self._connection.execute(
+            """
+            SELECT result.payload_json
+            FROM workloads workload
+            JOIN stages stage
+              ON stage.owner_user_id=workload.owner_user_id
+             AND stage.revision_id=workload.active_revision_id
+             AND stage.runner_kind='executor' AND stage.runner_name=?
+            JOIN units unit
+              ON unit.owner_user_id=stage.owner_user_id
+             AND unit.revision_id=stage.revision_id
+             AND unit.stage_id=stage.id AND unit.state='committed'
+            JOIN results result
+              ON result.owner_user_id=unit.owner_user_id
+             AND result.id=unit.committed_result_id
+            WHERE workload.owner_user_id=? AND workload.id=?
+            ORDER BY unit.id LIMIT ?
+            """, (tool, owner, workload_id, int(limit)),
+        ).fetchall()
+        return [json.loads(row["payload_json"]) for row in rows]
 
     def read_committed_entries(self, owner_user_id: str, references: object) -> list[dict]:
         """Read explicitly selected, digest-bound historical data, never replay effects.

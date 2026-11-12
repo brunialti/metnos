@@ -190,7 +190,11 @@ messages, or ordinary records.</p>
  offer to try again when the device becomes available.</li>
  <li><strong>Long-running work:</strong> when a plan satisfies the LRE contract,
  the runtime may submit it automatically to the long-running engine. The user
- does not need to choose a technical profile.</li>
+ does not need to choose a technical profile. The turn ends at once saying that
+ the job is registered; when the job ends, its answer arrives in the same
+ conversation that asked for it, as a new message: in the open page, or in the
+ Telegram chat when the request started there. The answer also declares the
+ items the job could not handle.</li>
 </ul>
 
 <p>A resumption does not continue blindly. The runtime checks the owner, expiry,
@@ -251,6 +255,14 @@ permanent errors and contract violations remain non-recoverable. A retry
 decision grants one attempt, not an unlimited loop. Accounting, authority and
 effect safety remain mandatory. History may show the approved attempt cause
 without confusing it with items that produced a negative domain outcome.</p>
+
+<p>LRE notices on Telegram say which job it is and how it ended: for a job
+asked in a conversation they quote the request, for a scheduled one its name
+(for example the update of the photo index). They arrive only when there is
+news: a job that ended with changes, with items that failed, stopped waiting
+for the person, or not completed. Accepting a job and ending without changes
+produce no notice. The text uses only counts and the causes of the console's
+closed list.</p>
 
 <p>A tool that worked and lost some items did not fail. When a search meets
 files it cannot read, LRE keeps what it found and closes the job as

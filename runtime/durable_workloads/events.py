@@ -21,13 +21,21 @@ from .storage import DurableWorkloadStore
 
 log = logging.getLogger("metnos.durable_workloads.events")
 
-_TELEGRAM_MESSAGE_KEYS = {
-    EventType.REVISION_ADMITTED: "MSG_DURABLE_WORKLOAD_ADMITTED",
-    EventType.NEEDS_ATTENTION: "MSG_DURABLE_WORKLOAD_NEEDS_ATTENTION",
-    EventType.FAILED: "MSG_DURABLE_WORKLOAD_FAILED",
-    EventType.COMPLETED: "MSG_DURABLE_WORKLOAD_COMPLETED",
-    EventType.COMPLETED_WITH_ERRORS: "MSG_DURABLE_WORKLOAD_COMPLETED_WITH_ERRORS",
+# What a pushed notice says for each visible event. A notice names the job and
+# how it ended; an event that brings no news is not pushed at all.
+_NOTICE_KEYS = {
+    EventType.NEEDS_ATTENTION: "MSG_DURABLE_NOTICE_NEEDS_ATTENTION",
+    EventType.FAILED: "MSG_DURABLE_NOTICE_FAILED",
+    EventType.COMPLETED: "MSG_DURABLE_NOTICE_COMPLETED",
+    # The same sentence, followed by how many items were lost and why.
+    EventType.COMPLETED_WITH_ERRORS: "MSG_DURABLE_NOTICE_COMPLETED",
 }
+_STATE_EVENTS = {
+    "needs_attention": EventType.NEEDS_ATTENTION,
+    "failed": EventType.FAILED,
+}
+_MAX_QUOTED_REQUEST = 120
+_MAX_CAUSES = 3
 
 
 class TelegramSender(Protocol):
@@ -85,22 +93,178 @@ def owner_language(owner_user_id: str) -> str | None:
     return i18n.current_lang()
 
 
-def terminal_notice(event: EventRecord, *, language: str | None = None) -> str | None:
-    """Render a closed, non-sensitive message for a visible workload event.
+def job_origin(owner_user_id: str, workload_id: str) -> Mapping[str, Any] | None:
+    """Who asked for the job in a conversation; None for a scheduled one."""
+    import lre_answers
 
-    The name is retained as the adapter's stable boundary while the initial
-    contract also covers admission and a request for owner attention.
-    """
+    return lre_answers.origin(workload_id, owner_user_id=owner_user_id)
 
-    message_key = _TELEGRAM_MESSAGE_KEYS.get(event.event_type)
-    if message_key is None:
-        return None
+
+def _facts(store: DurableWorkloadStore, owner_user_id: str, workload_id: str) -> dict:
+    """The bounded, redacted facts the console also shows for one job."""
+    from durable_runtime_registry import describe_plan
+
+    description = store.descriptions_many(
+        owner_user_id, (workload_id,), projector=describe_plan)[workload_id]
+    summary = store.execution_summary(owner_user_id, workload_id)
+    return {"description": description, "summary": summary}
+
+
+def _label(code: object) -> str | None:
+    """The console's own text for a closed error or cause code, if it has one."""
     import i18n
     from messages import get as message
 
+    if not isinstance(code, str) or not code.replace("_", "").isalnum():
+        return None
+    for family in ("UI_DURABLE_CAUSE_", "UI_DURABLE_ERROR_"):
+        key = family + code.upper()
+        if i18n.key_exists(key):
+            return message(key)
+    return None
+
+
+def _what(description: Mapping[str, Any], origin: Mapping[str, Any] | None) -> str:
+    from messages import get as message
+
+    request = " ".join(str((origin or {}).get("query") or "").split())
+    if request:
+        if len(request) > _MAX_QUOTED_REQUEST:
+            request = request[:_MAX_QUOTED_REQUEST - 1].rstrip() + "…"
+        return message("MSG_DURABLE_WHAT_REQUEST", query=request)
+    if description.get("kind") == "image_indexing":
+        return message("MSG_DURABLE_WHAT_PHOTO_INDEX")
+    operation = description.get("operation")
+    if isinstance(operation, str) and operation:
+        return message("MSG_DURABLE_WHAT_TOOL", tool=operation)
+    return message("MSG_DURABLE_WHAT_JOB")
+
+
+def _cause_sentence(cause: str) -> str:
+    from messages import get as message
+
+    # A label may be a sentence of its own: the template ends it once.
+    return message("MSG_DURABLE_NOTICE_CAUSE", cause=cause.rstrip(" ."))
+
+
+def _lost_items(summary: Mapping[str, Any]) -> str:
+    """How many items the job lost and why, in one line; empty when none."""
+    from messages import get as message
+
+    domain = summary.get("domain_errors") or {}
+    count = int(domain.get("nitems") or 0)
+    if count <= 0:
+        return ""
+    causes = [text for text in (
+        _label(item.get("error_code"))
+        for item in (domain.get("categories") or [])[:_MAX_CAUSES]
+    ) if text]
+    parts = [message("MSG_DURABLE_LOST_ITEMS", count=count)]
+    if causes:
+        parts.append(_cause_sentence(", ".join(dict.fromkeys(causes))))
+    return " ".join(parts)
+
+
+def _stop_cause(summary: Mapping[str, Any]) -> str:
+    """Why the job stopped, in the console's words; empty when it has none."""
+    for item in (summary.get("attempt_errors") or {}).get("categories") or []:
+        text = _label(item.get("cause_code"))
+        if text:
+            return text
+    for item in summary.get("error_categories") or []:
+        text = _label(item.get("error_code"))
+        if text:
+            return text
+    return ""
+
+
+def _compose(event_type: EventType, facts: Mapping[str, Any],
+             origin: Mapping[str, Any] | None, *, answer_follows: bool) -> str | None:
+    from messages import get as message
+
+    key = _NOTICE_KEYS.get(event_type)
+    if key is None:
+        return None
+    what = _what(facts["description"], origin)
+    summary = facts["summary"]
+    parts = [message(key, what=what)]
+    if event_type is EventType.COMPLETED_WITH_ERRORS:
+        lost = _lost_items(summary)
+        if lost:
+            parts.append(lost)
+    elif event_type is not EventType.COMPLETED:
+        cause = _stop_cause(summary)
+        if cause:
+            parts.append(_cause_sentence(cause))
+    if answer_follows:
+        parts.append(message("MSG_DURABLE_NOTICE_ANSWER_IN_CHAT"))
+    return " ".join(parts)
+
+
+def silence_reason(store: DurableWorkloadStore, event: EventRecord,
+                   origin: Mapping[str, Any] | None) -> str | None:
+    """Why this event is not pushed, or None when it is news.
+
+    Accepting a job is not news: who asked has just been told, and nobody
+    asked for a scheduled one. A job that changed nothing is not news either.
+    A job asked on Telegram is told about in that same chat by its answer.
+    """
+    if event.event_type is EventType.REVISION_ADMITTED:
+        return "no_news"
+    if event.event_type not in _NOTICE_KEYS:
+        return None
+    if (origin is not None and origin.get("channel") == "telegram"
+            and origin.get("expects_answer")):
+        return "told_in_conversation"
+    if event.event_type is EventType.COMPLETED:
+        progress = store.progress_many(
+            event.owner_user_id, (event.workload_id,))[event.workload_id]
+        if progress.get("completion_outcome") == "no_changes":
+            return "no_news"
+    return None
+
+
+def terminal_notice(event: EventRecord, *, language: str | None = None,
+                    store: DurableWorkloadStore | None = None,
+                    origin: Mapping[str, Any] | None = None) -> str | None:
+    """Render the notice of a visible workload event: which job, how it ended.
+
+    Only closed facts enter the text: the person's own request (when a
+    conversation asked for the job), counts and the console's labels.
+    """
     del language
+    if event.event_type not in _NOTICE_KEYS or store is None:
+        return None
+    import i18n
+
     with i18n.instance_language_context():
-        return message(message_key)
+        return _compose(
+            event.event_type,
+            _facts(store, event.owner_user_id, event.workload_id), origin,
+            answer_follows=bool(origin and origin.get("expects_answer"))
+            and event.event_type in (
+                EventType.COMPLETED, EventType.COMPLETED_WITH_ERRORS))
+
+
+def lost_items_note(store: DurableWorkloadStore, owner_user_id: str,
+                    workload_id: str) -> str:
+    """What the answer of a job must add when some items were lost (§2.8)."""
+    import i18n
+
+    with i18n.instance_language_context():
+        return _lost_items(store.execution_summary(owner_user_id, workload_id))
+
+
+def stopped_notice(store: DurableWorkloadStore, owner_user_id: str,
+                   workload_id: str, *, state: Any,
+                   origin: Mapping[str, Any] | None) -> str:
+    """The same words, for the conversation that asked for a job that stopped."""
+    import i18n
+
+    event_type = _STATE_EVENTS[getattr(state, "value", state)]
+    with i18n.instance_language_context():
+        return _compose(event_type, _facts(store, owner_user_id, workload_id),
+                        origin, answer_follows=False) or ""
 
 
 class TelegramOutboxAdapter:
@@ -114,6 +278,7 @@ class TelegramOutboxAdapter:
         worker_id: str = "durable-telegram-outbox",
         recipient_resolver: RecipientResolver = resolve_telegram_recipient,
         language_resolver: LanguageResolver = owner_language,
+        origin_resolver: Callable[[str, str], Mapping[str, Any] | None] = job_origin,
         retry_delay: timedelta = timedelta(seconds=30),
         max_retry_delay: timedelta = timedelta(hours=24),
         max_attempts: int = 12,
@@ -144,6 +309,7 @@ class TelegramOutboxAdapter:
         self._worker_id = worker_id
         self._recipient_resolver = recipient_resolver
         self._language_resolver = language_resolver
+        self._origin_resolver = origin_resolver
         self._retry_delay = retry_delay
         self._max_retry_delay = max_retry_delay
         self._max_attempts = max_attempts
@@ -265,8 +431,14 @@ class TelegramOutboxAdapter:
                 event = self._store.get_event(
                     record.owner_user_id, record.workload_id, record.event_id,
                 )
+                origin = self._origin_resolver(record.owner_user_id, record.workload_id)
+                silent = silence_reason(self._store, event, origin)
+                if silent is not None:
+                    count_cancel(record, silent)
+                    continue
                 text = terminal_notice(
                     event, language=self._language_resolver(record.owner_user_id),
+                    store=self._store, origin=origin,
                 )
                 if text is None:
                     count_cancel(record, "event_not_supported")
@@ -330,7 +502,11 @@ __all__ = [
     "DeliveryReport",
     "RecipientResolutionError",
     "TelegramOutboxAdapter",
+    "job_origin",
+    "lost_items_note",
     "owner_language",
     "resolve_telegram_recipient",
+    "silence_reason",
+    "stopped_notice",
     "terminal_notice",
 ]

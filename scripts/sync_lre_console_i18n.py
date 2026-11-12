@@ -51,6 +51,28 @@ TRANSLATIONS = {
     "UI_DURABLE_CAUSE_ITEM_FAILED": (
         "Elemento non riuscito, causa non indicata",
         "Item failed, cause not given"),
+    # The pushed notice of a job: which one, how it ended.
+    "MSG_DURABLE_WHAT_REQUEST": ("«{query}»", "“{query}”"),
+    "MSG_DURABLE_WHAT_PHOTO_INDEX": (
+        "Aggiornamento dell'indice delle foto", "Photo index update"),
+    "MSG_DURABLE_WHAT_TOOL": ("Lavoro {tool}", "Job {tool}"),
+    "MSG_DURABLE_WHAT_JOB": ("Un lavoro lungo", "A long job"),
+    "MSG_DURABLE_NOTICE_COMPLETED": ("{what}: completato.", "{what}: completed."),
+    "MSG_DURABLE_LOST_ITEMS": (
+        "Elementi non riusciti: {count}.", "Items that failed: {count}."),
+    "MSG_DURABLE_NOTICE_NEEDS_ATTENTION": (
+        "{what}: si è fermato e serve il tuo intervento, nella pagina dei lavori lunghi.",
+        "{what}: it stopped and needs you, in the long jobs page."),
+    "MSG_DURABLE_NOTICE_FAILED": ("{what}: non completato.", "{what}: not completed."),
+    "MSG_DURABLE_NOTICE_CAUSE": ("Motivo: {cause}.", "Reason: {cause}."),
+    "MSG_DURABLE_NOTICE_ANSWER_IN_CHAT": (
+        "La risposta è nella conversazione.", "The answer is in the conversation."),
+    "MSG_LRE_ANSWER_CUT": (
+        "La risposta è lunga: qui c'è l'inizio ({shown} caratteri su {total}).",
+        "The answer is long: this is its beginning ({shown} characters of {total})."),
+    "MSG_LRE_ANSWER_WILL_FOLLOW": (
+        "Ti scrivo qui la risposta quando finisce.",
+        "I will write the answer here when it ends."),
     "UI_DURABLE_DISMISS_SELECTED_FAILED": (
         "Non è stato possibile cancellare {count} log: restano selezionati.",
         "Could not delete {count} logs: they remain selected."),

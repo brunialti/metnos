@@ -163,6 +163,14 @@ def pipeline_effect_counts(steps) -> dict | None:
                 if _n:
                     countable += 1
                     mutations += max(0, _n)
+            elif isinstance(res.get("entries"), list) and res["entries"]:
+                # The same rule for a producer: a search that could not read
+                # some items and still returns what it found did produce it
+                # (find_files_hash on a folder with unreadable files,
+                # 12/11/2026). Counting nothing made the turn «failed» while
+                # its answer listed the results.
+                countable += 1
+                items += len(res["entries"])
             continue
         if _is_mutating_step(s, tool):
             mutating_attempted = True

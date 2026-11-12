@@ -7488,7 +7488,7 @@ def _run_engine(
     catalog_v2 = _engine_v2_catalog_with_builtins(catalog)
 
     def _admit_long_work(framework):
-        return submit_automatic_lre(
+        admitted = submit_automatic_lre(
             framework,
             catalog=catalog_v2,
             owner_user_id=owner_user_id or actor or "host",
@@ -7496,6 +7496,16 @@ def _run_engine(
             source_request_id=source_request_id,
             target_device=_target_name,
         )
+        # A job asked in a conversation gives its answer back there.
+        import lre_answers
+        lre_answers.remember_request(
+            admitted, framework, catalog_by_name=_catalog_by_name,
+            owner_user_id=owner_user_id or "", channel=channel or "",
+            actor=actor or "host", conversation_id=conversation_id or "",
+            turn_id=turn_id or "", query=user_query_raw or query,
+            target_device=_target_name or "",
+            intent_verb=str(getattr(intent, "verb", "") or ""))
+        return admitted
 
     # A pure request to save credentials for one explicit site only needs the
     # protected form. No planner call or secret value is needed to open it.
