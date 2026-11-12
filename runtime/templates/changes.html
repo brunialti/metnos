@@ -12,8 +12,13 @@
   <div style="margin-top:.3rem">{{ msg('UI_CHANGE_LEGEND_KIND_VS_MODULE') }}</div>
 </details>
 
+{% set activating = waiting|selectattr('waiting_kind', 'equalto', 'activating')|list %}
 {% if waiting %}
-<section class="tp-waiting" data-tutor-id="changes-waiting">
+<section class="tp-waiting" id="changes-waiting" data-tutor-id="changes-waiting"
+  {% if activating %}hx-get="/admin/changes?state={{ state }}{{ qs_extra }}"
+  hx-trigger="every 6s [document.visibilityState === 'visible']"
+  hx-select="#changes-waiting" hx-target="#changes-waiting" hx-swap="outerHTML"
+  hx-headers='{"Accept":"text/html"}'{% endif %}>
   <h2>{{ msg('UI_CHANGE_WAITING_TITLE') }} <span class="badge">{{ waiting|length }}</span></h2>
   <div class="table-wrap">
   <table class="tp">
@@ -21,12 +26,39 @@
     {% for w in waiting %}
       <tr>
         <td>
-          <code>{{ w.intent_target }}</code>
+          <code>{{ w.candidate.name if w.candidate else w.intent_target }}</code>
           <div class="muted">{{ w.intent_summary }}</div>
         </td>
         <td>
           {% if w.waiting_kind == 'external_model' %}
             <div data-tutor-id="changes-row-external-question">{{ msg('UI_CHANGE_EXTERNAL_QUESTION') }}</div>
+          {% elif w.waiting_kind in ['activation', 'activating'] %}
+            <div data-tutor-id="changes-row-ready"><strong>{{ msg('UI_CHANGE_READY_TITLE') }}</strong></div>
+            <div>{{ msg('UI_CHANGE_READY_DOES') }}: {{ w.candidate.description }}</div>
+            <div>{{ msg('UI_CHANGE_READY_PERMISSIONS') }}:
+              {% for c in w.candidate.capabilities %}<code>{{ c.name }}</code>{% if c.hint %} ({{ c.hint|join(', ') }}){% endif %}{% if not loop.last %}; {% endif %}{% else %}{{ msg('UI_CHANGE_READY_NO_PERMISSIONS') }}{% endfor %}
+            </div>
+            <div>{{ msg('UI_CHANGE_READY_UNDO_YES') if w.candidate.revertible else msg('UI_CHANGE_READY_UNDO_NO') }}</div>
+            <details>
+              <summary>{{ msg('UI_CHANGE_READY_CASES', n=w.candidate.cases|length) }}</summary>
+              <ul style="margin:.3rem 0">
+                {% for case in w.candidate.cases %}
+                  <li><code>{{ case.input|tojson }}</code> &rarr; <code>{{ case.expect|tojson }}</code></li>
+                {% endfor %}
+              </ul>
+            </details>
+            {% if w.waiting_kind == 'activating' %}
+              <div class="chip">{{ msg('UI_CHANGE_ACTIVATING') }}</div>
+            {% elif w.activation_note %}
+              <div class="chip bad">{{ msg('UI_CHANGE_SIGNER_SILENT') }}</div>
+            {% elif not signer_available %}
+              <div class="muted">{{ msg('UI_CHANGE_SIGNER_MISSING') }}</div>
+            {% endif %}
+          {% elif w.waiting_kind == 'activated' %}
+            <div class="chip ok">{{ msg('UI_CHANGE_ACTIVATED', name=w.intent_target) }}</div>
+          {% elif w.waiting_kind == 'activation_refused' %}
+            <div class="chip bad">{{ msg('UI_CHANGE_ACTIVATION_REFUSED', name=w.intent_target) }}</div>
+            <div class="muted">{{ w.failed_reason }}</div>
           {% endif %}
           <div id="ci-notice-{{ w.id }}" role="alert"></div>
         </td>
@@ -42,6 +74,15 @@
                     hx-target="closest tr" hx-swap="outerHTML">
               {{ msg('UI_CHANGE_BTN_CLOSE') }}
             </button>
+          {% elif w.waiting_kind == 'activation' %}
+            <button class="btn ok" data-tutor-id="changes-row-activate"
+                    hx-post="/admin/changes/{{ w.id }}/activate"{% if not signer_available %} disabled{% endif %}>
+              {{ msg('UI_CHANGE_BTN_ACTIVATE') }}
+            </button>
+            <button class="btn bad"
+                    hx-post="/admin/changes/{{ w.id }}/decline">
+              {{ msg('UI_CHANGE_BTN_DECLINE') }}
+            </button>
           {% endif %}
         </td>
       </tr>
@@ -51,6 +92,17 @@
   </div>
 </section>
 {% endif %}
+
+<form method="post" action="/admin/changes/preferences" class="row tp-filters"
+      data-tutor-id="changes-external-preference">
+  <label>{{ msg('UI_CHANGE_EXTERNAL_PREF_LABEL') }}
+    <select name="external_model" onchange="this.form.submit()">
+      {% for choice in external_choices %}
+        <option value="{{ choice }}"{% if external_preference == choice %} selected{% endif %}>{{ msg('UI_CHANGE_EXTERNAL_PREF_' ~ choice|upper) }}</option>
+      {% endfor %}
+    </select>
+  </label>
+</form>
 
 <nav class="tp-tiers">
   {% for st in tabs %}

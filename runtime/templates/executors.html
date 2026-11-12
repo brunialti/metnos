@@ -1,16 +1,14 @@
 {% extends "base.html" %}
-{% block title %}Catalogo executor · Console Metnos{% endblock %}
+{% block title %}{{ msg('UI_EXECUTOR_CATALOG_TITLE') }} · Metnos{% endblock %}
 {% block body %}
-<h1>Catalogo executor ({{ rows|length }})</h1>
-<p class="page-sub">Tutti gli executor installati, con appartenenza al
-prodotto distinta da origine e trasporto, versione, ciclo di vita e
-reversibilità.</p>
-<p><a class="btn" href="/admin/executors/stats">statistiche &amp; grafici</a></p>
+<h1>{{ msg('UI_EXECUTOR_CATALOG_TITLE') }} ({{ rows|length }})</h1>
+<p class="page-sub">{{ msg('UI_EXECUTOR_LIST_HELP') }}</p>
+<p><a class="btn" href="/admin/executors/stats">{{ msg('UI_EXECUTOR_STATISTICS') }}</a></p>
 <div class="table-wrap">
 <table>
   <thead>
-    <tr><th>nome</th><th>versione</th><th>ciclo di vita</th><th>appartenenza</th><th>origine</th>
-        <th>trasporto</th><th>standard</th><th>capability</th><th>reversibile</th></tr>
+    <tr><th>{{ msg('UI_EXECUTOR_COL_NAME') }}</th><th>{{ msg('UI_EXECUTOR_COL_VERSION') }}</th><th>{{ msg('UI_EXECUTOR_COL_LIFECYCLE') }}</th><th>{{ msg('UI_EXECUTOR_COL_MEMBERSHIP') }}</th><th>{{ msg('UI_EXECUTOR_COL_ORIGIN') }}</th>
+        <th>{{ msg('UI_EXECUTOR_COL_TRANSPORT') }}</th><th>{{ msg('UI_EXECUTOR_COL_STANDARD') }}</th><th>{{ msg('UI_EXECUTOR_COL_CAPABILITIES') }}</th><th>{{ msg('UI_EXECUTOR_COL_REVERTIBLE') }}</th></tr>
   </thead>
   <tbody>
   {% for r in rows %}
@@ -36,19 +34,18 @@ reversibilità.</p>
         {% else %}<span class="chip">{{ r.standard_state }}</span>{% endif %}
       </td>
       <td class="muted">{{ r.capabilities|length }}</td>
-      <td>{{ "sì" if r.revertible else "no" }}</td>
+      <td>{{ msg('UI_EXECUTOR_YES') if r.revertible else msg('UI_EXECUTOR_NO') }}</td>
     </tr>
   {% endfor %}
   </tbody>
 </table>
 </div>
 {% if rejected %}
-<h2>Rifiutati al caricamento ({{ rejected|length }})</h2>
-<p class="page-sub">Questi executor non sono entrati nel catalogo. Il motivo è
-esposto per evitare sparizioni silenziose.</p>
+<h2 data-tutor-id="executors-rejected">{{ msg('UI_EXECUTOR_REJECTED_TITLE') }} ({{ rejected|length }})</h2>
+<p class="page-sub">{{ msg('UI_EXECUTOR_REJECTED_HELP') }}</p>
 <div class="table-wrap">
 <table>
-  <thead><tr><th>nome</th><th>percorso</th><th>motivo</th></tr></thead>
+  <thead><tr><th>{{ msg('UI_EXECUTOR_COL_NAME') }}</th><th>{{ msg('UI_EXECUTOR_COL_PATH') }}</th><th>{{ msg('UI_EXECUTOR_COL_REASON') }}</th></tr></thead>
   <tbody>
   {% for r in rejected %}
     <tr><td><code>{{ r.name }}</code></td><td class="muted">{{ r.path }}</td>
@@ -62,5 +59,21 @@ esposto per evitare sparizioni silenziose.</p>
   </tbody>
 </table>
 </div>
+{% endif %}
+{% if retired %}
+<details data-tutor-id="executors-retired" style="margin-top:1rem">
+  <summary><strong>{{ msg('UI_EXECUTOR_RETIRED_TITLE') }} ({{ retired|length }})</strong></summary>
+  <p class="page-sub">{{ msg('UI_EXECUTOR_RETIRED_HELP') }}</p>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>{{ msg('UI_EXECUTOR_COL_NAME') }}</th><th>{{ msg('UI_EXECUTOR_COL_PATH') }}</th></tr></thead>
+    <tbody>
+    {% for r in retired %}
+      <tr><td><code>{{ r.name }}</code></td><td class="muted">{{ r.path }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</details>
 {% endif %}
 {% endblock %}

@@ -145,12 +145,12 @@ rejected pattern.</p>
 
 <h1 id="cap6">6. The cycle of a generated tool</h1>
 
-<p>Metnos can build for itself a tool it lacks. This is where its introspective
-functions are easiest to see: it notices what it cannot do, proposes to learn it,
-tries to build it and removes what does not work. The figure shows the whole path.</p>
+<p>Metnos can build by itself a tool it lacks. This is where its introspective functions
+show best: it notices what it cannot do, tries to build it, asks the person one thing
+only and removes what does not work. The figure shows the whole path.</p>
 
 <figure>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 548" width="100%" preserveAspectRatio="xMidYMid meet" role="img" aria-label="The path of a generated tool, from the request that was not served to its use" style="font-family:'Segoe UI',Calibri,sans-serif;font-size:11px;">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 548" width="100%" preserveAspectRatio="xMidYMid meet" role="img" aria-label="The path of a generated tool, from the request not served to its use" style="font-family:'Segoe UI',Calibri,sans-serif;font-size:11px;">
 <defs><marker id="m-cycle" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#1A477A"/></marker></defs>
 <rect x="10" y="24" width="190" height="56" rx="8" fill="#D9E4F0" stroke="#1A477A"/>
 <text x="105" y="48" text-anchor="middle" fill="#1A477A" font-weight="700">request not served</text>
@@ -161,16 +161,13 @@ tries to build it and removes what does not work. The figure shows the whole pat
 <rect x="470" y="24" width="190" height="56" rx="8" fill="#D9E4F0" stroke="#1A477A"/>
 <text x="565" y="48" text-anchor="middle" fill="#1A477A" font-weight="700">proposal</text>
 <text x="565" y="66" text-anchor="middle" fill="#475569" font-size="9.5">one per capability</text>
-<rect x="700" y="24" width="190" height="56" rx="8" fill="#FEF3C7" stroke="#B7791F"/>
-<text x="795" y="48" text-anchor="middle" fill="#1A477A" font-weight="700">decision</text>
-<text x="795" y="66" text-anchor="middle" fill="#475569" font-size="9.5">the person's, today</text>
+<rect x="700" y="24" width="190" height="56" rx="8" fill="#D9E4F0" stroke="#1A477A"/>
+<text x="795" y="48" text-anchor="middle" fill="#1A477A" font-weight="700">start</text>
+<text x="795" y="66" text-anchor="middle" fill="#475569" font-size="9.5">Metnos begins by itself</text>
 <path d="M200,52 H238" fill="none" stroke="#1A477A" stroke-width="2" marker-end="url(#m-cycle)"/>
 <path d="M430,52 H468" fill="none" stroke="#1A477A" stroke-width="2" marker-end="url(#m-cycle)"/>
 <path d="M660,52 H698" fill="none" stroke="#1A477A" stroke-width="2" marker-end="url(#m-cycle)"/>
-<rect x="452" y="98" width="330" height="28" rx="6" fill="#FFFFFF" stroke="#B7791F" stroke-dasharray="6 4"/>
-<text x="617" y="116" text-anchor="middle" fill="#475569" font-size="9.5">planned: Metnos accepts the best safe ones by itself</text>
-<path d="M810,80 V174" fill="none" stroke="#1A477A" stroke-width="2" marker-end="url(#m-cycle)"/>
-<text x="820" y="150" text-anchor="start" fill="#475569" font-size="9.5">accepted</text>
+<path d="M840,80 V174" fill="none" stroke="#1A477A" stroke-width="2" marker-end="url(#m-cycle)"/>
 <rect x="700" y="176" width="190" height="56" rx="8" fill="#D9E4F0" stroke="#1A477A"/>
 <text x="795" y="200" text-anchor="middle" fill="#1A477A" font-weight="700">building</text>
 <text x="795" y="218" text-anchor="middle" fill="#475569" font-size="9.5">attempt 1, 2, 3</text>
@@ -178,22 +175,25 @@ tries to build it and removes what does not work. The figure shows the whole pat
 <text x="565" y="200" text-anchor="middle" fill="#1A477A" font-weight="700">automatic checks</text>
 <text x="565" y="218" text-anchor="middle" fill="#475569" font-size="9.5">sandboxed tests, reviewer</text>
 <rect x="240" y="176" width="190" height="56" rx="8" fill="#FEF3C7" stroke="#B7791F"/>
-<text x="335" y="200" text-anchor="middle" fill="#1A477A" font-weight="700">review and consent</text>
-<text x="335" y="218" text-anchor="middle" fill="#475569" font-size="9.5">the person's, signed</text>
+<text x="335" y="200" text-anchor="middle" fill="#1A477A" font-weight="700">one question</text>
+<text x="335" y="218" text-anchor="middle" fill="#475569" font-size="9.5">Activate or No, on the page</text>
 <rect x="10" y="176" width="190" height="56" rx="8" fill="#DCFCE7" stroke="#3F6212"/>
 <text x="105" y="200" text-anchor="middle" fill="#1A477A" font-weight="700">tool in service</text>
-<text x="105" y="218" text-anchor="middle" fill="#475569" font-size="9.5">the planner uses it</text>
+<text x="105" y="218" text-anchor="middle" fill="#475569" font-size="9.5">after final checks and signature</text>
 <path d="M700,204 H662" fill="none" stroke="#1A477A" stroke-width="2" marker-end="url(#m-cycle)"/>
 <path d="M470,204 H432" fill="none" stroke="#1A477A" stroke-width="2" marker-end="url(#m-cycle)"/>
 <path d="M240,204 H202" fill="none" stroke="#1A477A" stroke-width="2" marker-end="url(#m-cycle)"/>
 <text x="451" y="168" text-anchor="middle" fill="#475569" font-size="9.5">passed</text>
-<path d="M600,176 V156 H760 V174" fill="none" stroke="#1A477A" stroke-width="2" marker-end="url(#m-cycle)"/>
-<text x="680" y="150" text-anchor="middle" fill="#475569" font-size="9.5">refused: the reason goes back to the builder</text>
+<text x="221" y="168" text-anchor="middle" fill="#475569" font-size="9.5">Activate</text>
+<path d="M600,176 V150 H760 V174" fill="none" stroke="#1A477A" stroke-width="2" marker-end="url(#m-cycle)"/>
+<text x="680" y="142" text-anchor="middle" fill="#475569" font-size="9.5">refused: the reason goes back to the builder</text>
+<rect x="150" y="98" width="370" height="28" rx="6" fill="#FFFFFF" stroke="#B7791F" stroke-dasharray="6 4"/>
+<text x="335" y="116" text-anchor="middle" fill="#475569" font-size="9.5">planned: no question at all for safe tools</text>
 <path d="M795,232 V298" fill="none" stroke="#1A477A" stroke-width="2" marker-end="url(#m-cycle)"/>
 <text x="785" y="286" text-anchor="end" fill="#475569" font-size="9.5">after 3 failed attempts</text>
 <rect x="700" y="300" width="190" height="56" rx="8" fill="#FEF3C7" stroke="#B7791F"/>
-<text x="795" y="324" text-anchor="middle" fill="#1A477A" font-weight="700">question to the person</text>
-<text x="795" y="342" text-anchor="middle" fill="#475569" font-size="9.5">use the external model?</text>
+<text x="795" y="324" text-anchor="middle" fill="#1A477A" font-weight="700">external model?</text>
+<text x="795" y="342" text-anchor="middle" fill="#475569" font-size="9.5">a preference set once</text>
 <rect x="470" y="300" width="190" height="56" rx="8" fill="#EDE4F7" stroke="#6B21A8"/>
 <text x="565" y="324" text-anchor="middle" fill="#1A477A" font-weight="700">external model</text>
 <text x="565" y="342" text-anchor="middle" fill="#475569" font-size="9.5">writes tests and code only</text>
@@ -201,74 +201,86 @@ tries to build it and removes what does not work. The figure shows the whole pat
 <text x="681" y="320" text-anchor="middle" fill="#475569" font-size="9.5">yes</text>
 <path d="M565,300 V234" fill="none" stroke="#1A477A" stroke-width="2" marker-end="url(#m-cycle)"/>
 <text x="555" y="262" text-anchor="end" fill="#475569" font-size="9.5">same checks</text>
-<path d="M795,356 V408" fill="none" stroke="#1A477A" stroke-width="2" marker-end="url(#m-cycle)"/>
+<rect x="470" y="410" width="190" height="56" rx="8" fill="#F1F5F9" stroke="#64748B"/>
+<text x="565" y="434" text-anchor="middle" fill="#1A477A" font-weight="700">proposal closed</text>
+<text x="565" y="452" text-anchor="middle" fill="#475569" font-size="9.5">for 30 days</text>
+<path d="M795,356 V438 H662" fill="none" stroke="#1A477A" stroke-width="2" marker-end="url(#m-cycle)"/>
 <text x="805" y="386" text-anchor="start" fill="#475569" font-size="9.5">no</text>
-<rect x="700" y="410" width="190" height="56" rx="8" fill="#F1F5F9" stroke="#64748B"/>
-<text x="795" y="434" text-anchor="middle" fill="#1A477A" font-weight="700">proposal closed</text>
-<text x="795" y="452" text-anchor="middle" fill="#475569" font-size="9.5">for 30 days</text>
-<path d="M565,356 V438 H698" fill="none" stroke="#1A477A" stroke-width="2" marker-end="url(#m-cycle)"/>
-<text x="575" y="430" text-anchor="start" fill="#475569" font-size="9.5">still not enough</text>
+<path d="M565,356 V408" fill="none" stroke="#1A477A" stroke-width="2" marker-end="url(#m-cycle)"/>
+<text x="575" y="386" text-anchor="start" fill="#475569" font-size="9.5">not enough even so</text>
+<path d="M335,232 V438 H468" fill="none" stroke="#1A477A" stroke-width="2" marker-end="url(#m-cycle)"/>
+<text x="345" y="262" text-anchor="start" fill="#475569" font-size="9.5">No</text>
 <path d="M70,232 V298" fill="none" stroke="#1A477A" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#m-cycle)"/>
-<text x="78" y="286" text-anchor="start" fill="#475569" font-size="9.5">if it fails</text>
-<path d="M150,232 V262 H335 V298" fill="none" stroke="#1A477A" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#m-cycle)"/>
-<text x="343" y="286" text-anchor="start" fill="#475569" font-size="9.5">if nobody uses it</text>
+<text x="78" y="286" text-anchor="start" fill="#475569" font-size="9.5">if it errors</text>
+<path d="M190,232 V262 H218 V438 H202" fill="none" stroke="#1A477A" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#m-cycle)"/>
+<text x="226" y="386" text-anchor="start" fill="#475569" font-size="9.5">if nobody uses it</text>
 <rect x="10" y="300" width="190" height="56" rx="8" fill="#FDE8E8" stroke="#9B1C1C" stroke-dasharray="6 4"/>
 <text x="105" y="324" text-anchor="middle" fill="#1A477A" font-weight="700">retired at once</text>
 <text x="105" y="342" text-anchor="middle" fill="#475569" font-size="9.5">and rewritten with that reason</text>
-<rect x="240" y="300" width="190" height="56" rx="8" fill="#F1F5F9" stroke="#64748B" stroke-dasharray="6 4"/>
-<text x="335" y="324" text-anchor="middle" fill="#1A477A" font-weight="700">decays</text>
-<text x="335" y="342" text-anchor="middle" fill="#475569" font-size="9.5">after 60 days without use</text>
+<rect x="10" y="410" width="190" height="56" rx="8" fill="#F1F5F9" stroke="#64748B" stroke-dasharray="6 4"/>
+<text x="105" y="434" text-anchor="middle" fill="#1A477A" font-weight="700">decays</text>
+<text x="105" y="452" text-anchor="middle" fill="#475569" font-size="9.5">after 60 days unused</text>
 <rect x="10" y="500" width="26" height="16" rx="4" fill="#D9E4F0" stroke="#1A477A"/>
-<text x="42" y="512" text-anchor="start" fill="#475569" font-size="9.5">working</text>
+<text x="42" y="512" text-anchor="start" fill="#475569" font-size="9.5">in operation</text>
 <rect x="250" y="500" width="26" height="16" rx="4" fill="#FFFFFF" stroke="#1A477A" stroke-dasharray="6 4"/>
 <text x="282" y="512" text-anchor="start" fill="#475569" font-size="9.5">planned</text>
 <rect x="470" y="500" width="26" height="16" rx="4" fill="#FEF3C7" stroke="#B7791F"/>
 <text x="502" y="512" text-anchor="start" fill="#475569" font-size="9.5">the person decides</text>
 </svg>
-<figcaption>The path of a generated tool. Dashed boxes are planned; yellow boxes are the person's decisions.</figcaption>
+<figcaption>The path of a generated tool. Dashed boxes are planned; yellow ones are decisions of the person.</figcaption>
 </figure>
 
 <ol>
  <li><strong>It notices.</strong> When a request ends with &ldquo;I cannot do this&rdquo;,
  Metnos records what was missing: which action, on which object. The same gap asked
- several times weighs more; when nobody asks for it any more, its weight goes down.</li>
- <li><strong>It proposes.</strong> Each missing capability has one proposal, together
- with the real requests it comes from. Today the person accepts or rejects it. It is
- planned that Metnos accepts the best safe proposals by itself and shows the person
- only the others.</li>
+ several times weighs more; when nobody asks any more, the weight goes down.</li>
+ <li><strong>It proposes and starts.</strong> Each missing capability has one proposal,
+ together with the real requests it was born from. When the name belongs to the tool
+ vocabulary, Metnos starts building without asking: building activates nothing. A few
+ candidates at a time, the most requested first.</li>
  <li><strong>It builds.</strong> With the local model it chooses the name, decides the
  arguments, writes the tests starting from those real requests, then the description
  and the code.</li>
  <li><strong>It checks.</strong> The candidate runs in an isolated sandbox against its
- tests, and a reviewer compares what the description promises with what the code
- does. If something does not match, the exact reason goes back to the builder, which
- tries again knowing what to fix. There are at most three attempts.</li>
+ tests, and a reviewer compares what the description promises with what the code does.
+ If something does not match, the precise reason goes back to the builder, which tries
+ again knowing what to fix. At most three attempts.</li>
  <li><strong>It asks for help only when needed.</strong> After three failed attempts
- Metnos does not insist: it asks the person whether it may use the external model to
- finish. With a yes, the external model writes tests and code only; name, arguments,
- description and checks stay the same. With a no, or when even that is not enough, the
- proposal is closed for thirty days: no endless loop of create, discard and recreate.</li>
- <li><strong>It enters service.</strong> The candidate that passes the checks waits for
- the person's review and consent, both signed. Only then can the planner use it. It is
- planned that for safe tools this step becomes automatic.</li>
+ Metnos does not insist. Whether it may use the external model to finish is decided by
+ the person, once: never, always, or &ldquo;ask me each time&rdquo;. The external model
+ writes tests and code only; name, arguments, description and checks stay the same.
+ Without permission, or if that is not enough either, the proposal closes for thirty
+ days: no endless loop of create, discard and recreate.</li>
+ <li><strong>It asks one question.</strong> The ready, tested tool appears on top of the
+ <strong>Changes</strong> page: what it does, which permissions it asks for, whether
+ what it does can be undone, which cases it was built on. The person answers
+ <strong>Activate</strong> or <strong>No</strong>. It is the only decision of the whole
+ path.</li>
+ <li><strong>It enters service.</strong> After the yes, the final checks and the
+ signature run; only then can the planner use the tool. The page shows the work in
+ progress and then the outcome. If the final checks refuse it, the tool does not enter
+ and the proposal says why. After a no the proposal rests for thirty days.</li>
  <li><strong>It stays under observation.</strong> It is planned that a generated tool
- that fails is retired at once and rewritten with that reason, and that one never used
+ that errors is retired at once and rewritten with that reason, and that one never used
  decays after sixty days.</li>
 </ol>
 
-<p>&ldquo;Safe&rdquo; has a precise meaning: the tool only reads or computes, or does
-things that can be undone, and asks for no new permission.</p>
+<p>The signature is not made by the service that built the tool. It is made by a small
+program of the server administrator, which keeps the keys and accepts the request only
+from the administration page. It is installed once; while it is missing, the page says
+so and the button stays off. Generated tools cannot reach it.</p>
 
-<p><strong>What always stays with the person:</strong> new vocabulary words, new
-permissions, actions that cannot be undone, external services such as mail or
-contacts, and the use of the external model. Hand-written tools are never touched by
-this cycle.</p>
+<p><strong>What always stays with the person:</strong> the final answer on every tool,
+new vocabulary words and the choice about the external model. Handwritten tools are
+never touched by this cycle.</p>
 
-<p>The question about the external model appears on the <strong>Changes</strong> page,
-in the row of the proposal, with two buttons. It is planned to arrive in chat as well.</p>
+<p>It is planned that &ldquo;safe&rdquo; tools need not even the final question.
+&ldquo;Safe&rdquo; has a precise meaning: the tool only reads or computes, or does things
+that can be undone, and asks for no new permission.</p>
 
 <p>The underlying idea: safety does not come from asking the person everything, but
-from being able to remove at once what does not work.</p>
+from asking one thing only, about something finished and tested, and from being able to
+remove at once what does not work.</p>
 
 <h1 id="cap7">7. Natural-language example</h1>
 

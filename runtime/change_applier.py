@@ -35,12 +35,16 @@ from change_intents import (
     KIND_MATERIALIZE_PIPELINE,
     KIND_REJECT_PATTERN,
     STATE_ACCEPTED,
+    STATE_PROPOSED,
     ChangeIntent,
+    apply_decision,
+    get_intent,
     list_intents,
     mark_applied,
     mark_failed,
     update_body,
     close_until,
+    waits_for_person,
 )
 from logging_setup import get_logger
 
@@ -195,6 +199,216 @@ def apply_create_executor(ci: ChangeIntent) -> dict:
         "stages_completed": result.get("stages_completed"),
         "final_state": result.get("final_state"),
     }
+
+
+# --- One decision of the person, at the end (ADR 0240) --------------------
+
+# Candidates that may wait for the person's answer at the same time: a longer
+# list is again a page nobody reads.
+BUILD_WAITING_MAX = 3
+_ACTIVATION_STALE_S = 1800
+# The two answers of the person on a candidate that is ready.
+ACTIVATE = "activate"
+DECLINE = "decline"
+
+
+def is_candidate_decision(action: str) -> bool:
+    return action in (ACTIVATE, DECLINE)
+
+
+def _iso_now() -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
+def _built_without_asking(ci: ChangeIntent) -> bool:
+    """A gap seen in real requests, with a name of the closed vocabulary.
+
+    Building it costs local compute and activates nothing: the person decides
+    once, on the finished and tested candidate. Proposals of every other
+    origin, and those that need a new word, still wait for a decision first.
+    """
+    if (ci.state != STATE_PROPOSED or ci.intent_kind != KIND_CREATE_EXECUTOR
+            or ci.origin_family != "observation" or ci.origin_module != "learning_loop"):
+        return False
+    import vocabulary_dossier
+    return not vocabulary_dossier.proposer_text(ci)
+
+
+def accept_for_building(*, limit: int = 1) -> list[str]:
+    """Start building the best gap proposals, at most ``limit`` per run and
+    never more than ``BUILD_WAITING_MAX`` candidates waiting for the person."""
+    building = [ci for ci in list_intents(state=STATE_ACCEPTED, limit=500)
+                if ci.intent_kind == KIND_CREATE_EXECUTOR]
+    room = min(int(limit), BUILD_WAITING_MAX - len(building))
+    started: list[str] = []
+    if room <= 0:
+        return started
+    for ci in list_intents(state=STATE_PROPOSED, intent_kind=KIND_CREATE_EXECUTOR,
+                           limit=500, order_by="score_desc"):
+        if len(started) >= room:
+            break
+        if not _built_without_asking(ci):
+            continue
+        try:
+            exists = _planner_can_use(_creation_request(ci)[0])
+        except Exception as exc:  # noqa: BLE001 - an unreadable catalog decides nothing
+            _log.warning("change_applier: catalog check failed: %r", exc)
+            continue
+        if exists:
+            # The gap was filled in the meantime: nothing to build or to ask.
+            apply_decision(ci.id, action="reject", by="metnos",
+                           reason="the capability exists now")
+            _audit({"event": "gap_already_filled", "id": ci.id,
+                    "target": ci.intent_target})
+            continue
+        apply_decision(ci.id, action="accept", by="metnos")
+        started.append(ci.id)
+        _audit({"event": "built_without_asking", "id": ci.id, "target": ci.intent_target})
+    return started
+
+
+def activation_running(ci: ChangeIntent) -> bool:
+    """True while the signer is working on this proposal's candidate. A
+    record left by an interrupted service stops counting after a while."""
+    state = (ci.intent_body or {}).get("activation")
+    if not isinstance(state, dict) or state.get("state") != "running":
+        return False
+    try:
+        started = time.mktime(time.strptime(str(state.get("at")), "%Y-%m-%dT%H:%M:%SZ"))
+    except ValueError:
+        return False
+    return time.mktime(time.gmtime()) - started < _ACTIVATION_STALE_S
+
+
+_OUTCOME_SHOWN_S = 900
+
+
+def _recent_activation_outcome(ci: ChangeIntent) -> str | None:
+    """``activated`` or ``activation_refused`` for a few minutes after the
+    signer answered, then nothing: the proposal's own tab keeps the record."""
+    state = (ci.intent_body or {}).get("activation")
+    if not isinstance(state, dict) or state.get("state") not in ("done", "refused"):
+        return None
+    try:
+        asked = time.mktime(time.strptime(str(state.get("at")), "%Y-%m-%dT%H:%M:%SZ"))
+    except ValueError:
+        return None
+    if time.mktime(time.gmtime()) - asked > _ACTIVATION_STALE_S + _OUTCOME_SHOWN_S:
+        return None
+    return "activated" if state["state"] == "done" else "activation_refused"
+
+
+def waiting_for_person(intents, *, lang: str) -> list[dict]:
+    """What waits for an answer of the person, to show first on the page:
+    the external-model question and the candidates ready to be activated."""
+    from dataclasses import asdict
+
+    waiting: list[dict] = []
+    for ci in intents:
+        kind = waits_for_person(ci)
+        if kind:
+            waiting.append(dict(asdict(ci), waiting_kind=kind))
+            continue
+        outcome = _recent_activation_outcome(ci)
+        if outcome:
+            # The answer to a click must be seen where the click was made.
+            waiting.append(dict(asdict(ci), waiting_kind=outcome))
+            continue
+        if ci.state != STATE_ACCEPTED or ci.intent_kind != KIND_CREATE_EXECUTOR:
+            continue
+        proposal_id = pending_review(ci)
+        if not proposal_id:
+            continue
+        try:
+            import synth_activation
+            from synt import DEFAULT_PROPOSALS_DIR
+            card = synth_activation.candidate_card(DEFAULT_PROPOSALS_DIR, proposal_id, lang=lang)
+        except Exception as exc:  # noqa: BLE001 - an unreadable candidate is not a question
+            _log.warning("change_applier: candidate card unavailable: %r", exc)
+            continue
+        waiting.append(dict(
+            asdict(ci), candidate=card,
+            waiting_kind="activating" if activation_running(ci) else "activation",
+            activation_note=((ci.intent_body or {}).get("activation") or {}).get("note")))
+    return waiting
+
+
+def decline_candidate(ci: ChangeIntent, *, by: str) -> ChangeIntent:
+    """The person's «no»: the candidate goes, the proposal rests for a while."""
+    import synth_activation
+    from synt import DEFAULT_PROPOSALS_DIR
+
+    proposal_id = pending_review(ci)
+    if proposal_id:
+        synth_activation.discard_candidate(DEFAULT_PROPOSALS_DIR, proposal_id)
+    _audit({"event": "candidate_declined", "id": ci.id, "by": by,
+            "proposal_id": proposal_id})
+    return close_until(ci.id, reason="declined by the person")
+
+
+def start_activation(ci: ChangeIntent, *, by: str) -> tuple[str, str]:
+    """Record the person's «yes» before the signer is called: the page shows
+    the work in progress and a second click cannot start it twice."""
+    proposal_id = pending_review(ci)
+    if not proposal_id:
+        raise LookupError("no candidate waits for this proposal")
+    if activation_running(ci):
+        raise RuntimeError("activation already running")
+    at = _iso_now()
+    update_body(ci.id, activation={"state": "running", "by": by, "at": at,
+                                   "proposal_id": proposal_id})
+    _audit({"event": "activation_requested", "id": ci.id, "by": by,
+            "proposal_id": proposal_id})
+    return proposal_id, at
+
+
+def run_activation(ci_id: str, proposal_id: str, *, by: str, at: str) -> dict:
+    """Carry the «yes» to the signer and settle the proposal on its answer.
+
+    Admitted and usable: applied. Refused: the candidate goes and the proposal
+    says why, so nothing keeps waiting for an answer already given. A signer
+    that is missing or silent leaves the candidate where it was.
+    """
+    import synth_activation
+    from synt import DEFAULT_PROPOSALS_DIR
+
+    try:
+        reply = synth_activation.activate(DEFAULT_PROPOSALS_DIR, proposal_id, by=by, at=at)
+    except Exception as exc:  # noqa: BLE001 - never leave the proposal «running»
+        _log.exception("change_applier: activation failed: %r", exc)
+        reply = {"status": "signer_failed", "error": type(exc).__name__}
+    status = str(reply.get("status") or "")
+    ci = get_intent(ci_id)
+    name = _creation_request(ci)[0] if ci is not None else ""
+    if status in ("signer_missing", "signer_failed"):
+        update_body(ci_id, activation={"state": "error", "by": by, "at": at,
+                                       "note": status})
+        _audit({"event": "activation_not_done", "id": ci_id, "status": status,
+                "error": reply.get("error")})
+        return {"result": status}
+    if status in ("admitted", "already_current"):
+        usable = False
+        try:
+            usable = _planner_can_use(str(reply.get("name") or name))
+        except Exception as exc:  # noqa: BLE001
+            _log.warning("change_applier: catalog check failed: %r", exc)
+        if usable:
+            synth_activation.discard_candidate(DEFAULT_PROPOSALS_DIR, proposal_id)
+            update_body(ci_id, activation={"state": "done", "by": by, "at": at})
+            mark_applied(ci_id, effect={
+                "executor_name": str(reply.get("name") or name), "activated_by": by,
+                "review_id": reply.get("review_id")})
+            _audit({"event": "activated", "id": ci_id, "by": by})
+            return {"result": "applied"}
+        from messages import get as _msg
+        reason = _msg("MSG_CHANGE_NOT_ACTIVE", name=str(reply.get("name") or name))
+    else:
+        reason = synth_activation.refusal_reason(reply)
+    synth_activation.discard_candidate(DEFAULT_PROPOSALS_DIR, proposal_id)
+    update_body(ci_id, activation={"state": "refused", "by": by, "at": at})
+    mark_failed(ci_id, reason=reason)
+    _audit({"event": "activation_refused", "id": ci_id, "reason": reason[:300]})
+    return {"result": "refused", "reason": reason}
 
 
 # --- Handler: extend_executor --------------------------------------------
@@ -410,6 +624,10 @@ def task_change_applier(payload: dict | None = None) -> dict:
     scheduler — meglio batchare e lasciare al fire successivo.
     """
     max_per_fire = (payload or {}).get("max_per_fire", 20)
+    try:
+        accept_for_building()
+    except Exception as exc:  # noqa: BLE001 - the decided ones are applied anyway
+        _log.warning("change_applier: accept_for_building failed: %r", exc)
     accepted = list_intents(state=STATE_ACCEPTED, limit=max_per_fire,
                              order_by="discovered_desc")
     applied_count = 0
@@ -437,14 +655,29 @@ def task_change_applier(payload: dict | None = None) -> dict:
                     "kind": ci.intent_kind, "proposal_id": pending.proposal_id})
             continue
         except ExternalModelConsentNeeded as need:
-            # Failed, with a question for the person: the page shows it.
+            # What the person decided once (ADR 0240): always, never, or the
+            # question each time, which the page shows first.
+            import generated_tools_policy
+            choice = generated_tools_policy.external_model()
+            if choice == generated_tools_policy.ALWAYS:
+                update_body(ci.id, external_model_consent={
+                    "by": "preference", "ts": _iso_now()})
+                skipped_count += 1
+                details.append({"id": ci.id, "kind": ci.intent_kind,
+                                "result": "external_model_by_preference"})
+                _audit({"event": "external_model_by_preference", "id": ci.id,
+                        "kind": ci.intent_kind})
+                continue
             mark_failed(ci.id, reason=str(need))
-            update_body(ci.id, external_model_offer=True)
+            never = choice == generated_tools_policy.NEVER
+            if never:
+                close_until(ci.id, reason="external model not allowed by preference")
+            else:
+                update_body(ci.id, external_model_offer=True)
             failed_count += 1
-            details.append({"id": ci.id, "kind": ci.intent_kind,
-                            "result": "external_model_consent_needed"})
-            _audit({"event": "external_model_consent_needed", "id": ci.id,
-                    "kind": ci.intent_kind})
+            result = "closed_by_preference" if never else "external_model_consent_needed"
+            details.append({"id": ci.id, "kind": ci.intent_kind, "result": result})
+            _audit({"event": result, "id": ci.id, "kind": ci.intent_kind})
             continue
         except ClosedAfterExternalModel as closed:
             mark_failed(ci.id, reason=str(closed))

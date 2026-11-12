@@ -23,6 +23,14 @@ log = get_logger(__name__)
 # the loader that writes it and the cutover guard that reads it back. A load
 # failure and a deliberate restriction must never be told apart by prose.
 RESTRICTED_REJECT_PREFIX = "restricted by the lifecycle owner"
+# What the contract store answers for a contract that was retired on purpose.
+# Its source may still be where the loader looks: that is history, not a
+# load failure, and the administration page must not list it among errors.
+RETIRED_REJECT_PREFIX = "contract_retired:"
+
+
+def is_retired_rejection(reason: object) -> bool:
+    return str(reason).startswith(RETIRED_REJECT_PREFIX)
 
 
 class Restriction(str, Enum):
@@ -179,7 +187,8 @@ def revive_executor(executor_name: str, *, reason: str) -> bool:
     return bool(undeprecate(executor_name, by=reason))
 
 
-__all__ = ["RESTRICTED_REJECT_PREFIX", "Restriction", "apply_inactivity_decay",
+__all__ = ["RESTRICTED_REJECT_PREFIX", "RETIRED_REJECT_PREFIX", "Restriction",
+           "apply_inactivity_decay", "is_retired_rejection",
            "credit_uses", "record_invocation", "recorded_source",
            "register_loaded_executors", "restrict_executor",
            "restriction_snapshot", "restrictions_from_snapshot",

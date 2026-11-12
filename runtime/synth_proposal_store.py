@@ -136,6 +136,34 @@ def load_candidate(proposals_dir: Path, proposal_id: str) -> tuple[Path, dict]:
     return root / "candidate", metadata
 
 
+def candidate_manifest(proposals_dir: Path, proposal_id: str) -> tuple[dict, dict]:
+    """The retained candidate's manifest and its stored metadata, read through
+    the same checked snapshot as every other use of the candidate."""
+    root, meta = load_candidate(proposals_dir, proposal_id)
+    with acquire_candidate_snapshot(root) as snapshot:
+        if _identity(snapshot, reason=meta["reason"], contract_id=meta["contract_id"],
+                     producer=meta["producer"]) != proposal_id:
+            raise ValueError("synth_proposal_changed")
+        return tomllib.loads(snapshot.manifest_bytes.decode("utf-8")), meta
+
+
+def discard_candidate(proposals_dir: Path, proposal_id: str) -> bool:
+    """Remove a retained candidate that will not be decided again.
+
+    Only an entry with its exact content address: a changed or linked entry is
+    left where it is and reported as not removed."""
+    try:
+        root, _meta = load_candidate(Path(proposals_dir), proposal_id)
+    except (OSError, ValueError):
+        return False
+    folder = root.parent
+    for path in folder.rglob("*"):
+        if not path.is_symlink():
+            path.chmod(0o700 if path.is_dir() else 0o600)
+    shutil.rmtree(folder)
+    return True
+
+
 def review_document(proposals_dir: Path, proposal_id: str, human_cases: list) -> dict:
     """Export data only; this neither signs proof nor records human consent."""
     root, meta = load_candidate(proposals_dir, proposal_id)

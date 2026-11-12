@@ -55,8 +55,8 @@ TRANSLATIONS = {
         'Il contenuto della richiesta non è leggibile: la decisione non è stata registrata.',
         'The request body cannot be read: the decision was not recorded.'),
     'UI_CHANGE_REVIEW_PENDING': (
-        'Candidato pronto, in attesa della revisione indipendente ({proposal_id}).',
-        'Candidate ready, waiting for the independent review ({proposal_id}).'),
+        'Strumento pronto e provato ({proposal_id}): aspetta la tua risposta, in cima alla pagina.',
+        'Tool ready and tested ({proposal_id}): it waits for your answer, at the top of the page.'),
     'MSG_PLAN_REJECTED_BY_DECISION': (
         'Non ho eseguito il piano: per questa richiesta quel percorso è stato rifiutato dalla '
         'pagina Modifiche e non ne ho trovato un altro. Non ho cambiato niente. '
@@ -90,6 +90,47 @@ TRANSLATIONS = {
     'UI_CHANGE_WAITING_TITLE': ('Aspettano una tua risposta', 'Waiting for your answer'),
     'UI_CHANGE_WAITING_ABOVE': (
         'La domanda è in cima alla pagina.', 'The question is at the top of the page.'),
+    'UI_CHANGE_READY_TITLE': (
+        'Strumento pronto e provato: lo attivo?', 'Tool ready and tested: shall I activate it?'),
+    'UI_CHANGE_READY_DOES': ('Che cosa fa', 'What it does'),
+    'UI_CHANGE_READY_PERMISSIONS': ('Permessi che chiede', 'Permissions it asks for'),
+    'UI_CHANGE_READY_NO_PERMISSIONS': ('nessuno', 'none'),
+    'UI_CHANGE_READY_UNDO_YES': (
+        'Quello che fa si può annullare.', 'What it does can be undone.'),
+    'UI_CHANGE_READY_UNDO_NO': (
+        'Quello che fa non si può annullare.', 'What it does cannot be undone.'),
+    'UI_CHANGE_READY_CASES': (
+        'Prove su cui è stato costruito: {n}', 'Cases it was built on: {n}'),
+    'UI_CHANGE_BTN_ACTIVATE': ('Attiva', 'Activate'),
+    'UI_CHANGE_BTN_DECLINE': ('No', 'No'),
+    'UI_CHANGE_ACTIVATING': (
+        'Attivazione in corso: controlli finali e firma. Può richiedere qualche minuto.',
+        'Activation in progress: final checks and signature. It can take a few minutes.'),
+    'UI_CHANGE_ACTIVATED': (
+        '{name} è attivo: Metnos può usarlo da ora.',
+        '{name} is active: Metnos can use it from now on.'),
+    'UI_CHANGE_ACTIVATION_REFUSED': (
+        '{name} non è stato attivato: i controlli finali lo hanno rifiutato.',
+        '{name} was not activated: the final checks refused it.'),
+    'UI_CHANGE_SIGNER_MISSING': (
+        'Su questo server manca il programma che firma le attivazioni: '
+        'lo installa una volta l’amministratore del server.',
+        'This server lacks the program that signs activations: '
+        'the server administrator installs it once.'),
+    'UI_CHANGE_SIGNER_SILENT': (
+        'Il programma di firma non ha risposto: nulla è stato attivato, puoi riprovare.',
+        'The signing program did not answer: nothing was activated, you can try again.'),
+    'ERR_CHANGE_NO_CANDIDATE': (
+        'Per questa proposta non c’è uno strumento pronto in attesa.',
+        'No ready tool is waiting for this proposal.'),
+    'ERR_CHANGE_ACTIVATION_RUNNING': (
+        'L’attivazione è già in corso.', 'The activation is already in progress.'),
+    'UI_CHANGE_EXTERNAL_PREF_LABEL': (
+        'Modello esterno per finire uno strumento dopo tre tentativi:',
+        'External model to finish a tool after three attempts:'),
+    'UI_CHANGE_EXTERNAL_PREF_ASK': ('chiedimelo ogni volta', 'ask me each time'),
+    'UI_CHANGE_EXTERNAL_PREF_NEVER': ('mai', 'never'),
+    'UI_CHANGE_EXTERNAL_PREF_ALWAYS': ('sempre, senza chiedere', 'always, without asking'),
     'UI_CHANGE_BTN_EXTERNAL': ('Usa il modello esterno', 'Use the external model'),
     'UI_CHANGE_BTN_CLOSE': ('Chiudi la proposta', 'Close the proposal'),
     'ERR_CHANGE_EXTERNAL_NOT_OFFERED': (
@@ -99,10 +140,10 @@ TRANSLATIONS = {
         'Funzione mancante chiesta {n} volte, per esempio: «{query}».',
         'Missing capability requested {n} times, for example: “{query}”.'),
     'MSG_LEARNING_GAP_RATIONALE': (
-        'Nessuno strumento esegue {target}. Se approvi, Synt prepara un candidato '
-        'che entra in uso solo dopo i controlli di Birth, la revisione e il tuo consenso.',
-        'No tool performs {target}. If you approve, Synt prepares a candidate that '
-        'is used only after the Birth checks, review and your consent.'),
+        'Nessuno strumento esegue {target}. Metnos prepara da solo un candidato e lo prova; '
+        'entra in uso solo dopo i controlli finali e il tuo sì, chiesto una volta in questa pagina.',
+        'No tool performs {target}. Metnos prepares a candidate by itself and tests it; '
+        'it is used only after the final checks and your yes, asked once on this page.'),
 }
 
 

@@ -3,6 +3,9 @@
 Inputs contain candidate bytes and human cases, never paths, keys or a claimed
 test outcome. Review does not admit a candidate. A separate, exact-subject
 consent resumes the original producer through all ordinary Birth checks.
+
+``activate`` joins the two for the one decision the person takes in the
+administration page (ADR 0240): it adds no check and removes none.
 """
 from __future__ import annotations
 
@@ -53,6 +56,10 @@ _PRODUCERS = {cap.producer_id: cap for cap in (
 _PROPOSAL_FIELDS = frozenset({"files", "contract_id", "reason", "producer"})
 _REVIEW_FIELDS = frozenset({"proposal", "human_cases"})
 _APPROVE_FIELDS = frozenset({"review_id", "subject_hash", "decision"})
+_ACTIVATE_FIELDS = frozenset({"proposal", "human_cases", "consent"})
+_CONSENT_FIELDS = frozenset({"decision", "by", "at"})
+# The only process that may bring a person's answer: the administration service.
+_PAGE_SERVICE_UNIT = "metnos-http.service"
 _MAX_DOCUMENT = 4 * 1024 * 1024
 _UNIT_PREFIX = "metnos-birth-review-"
 _TIMEOUT = 600
@@ -392,12 +399,83 @@ def run_delegated(operation: str, document: dict) -> dict:
     return json.loads(result.stdout)
 
 
-_OPERATIONS = ("review", "approve")
+def _page_consent(consent: object) -> dict:
+    """The person's answer as the administration page recorded it."""
+    if (type(consent) is not dict or set(consent) != _CONSENT_FIELDS
+            or consent["decision"] != "approved"
+            or type(consent["by"]) is not str
+            or re.fullmatch(r"[A-Za-z0-9_.@:+-]{1,120}", consent["by"]) is None
+            or type(consent["at"]) is not str
+            or re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ", consent["at"]) is None):
+        raise ValueError("synth_review_explicit_consent_required")
+    return consent
+
+
+def _require_page_peer(descriptor: int = 0) -> None:
+    """A document that arrives on the decision socket comes from the service.
+
+    The socket is reachable by the service account, and every executor runs
+    under that same account. Three facts tell the administration service from
+    anything it started: the account, the initial user namespace (an executor
+    in its sandbox has its own) and the service's own control group. A direct
+    call has no socket: only root can make it, and nothing is checked here.
+    """
+    import socket
+    import stat
+    import struct
+
+    if not stat.S_ISSOCK(os.fstat(descriptor).st_mode):
+        return
+    from executor_birth_account_identity import resolve_posix_account_snapshot_v1
+    from executor_birth_host_path_policy import SERVICE_ACCOUNT_NAME_V1
+
+    with socket.socket(fileno=os.dup(descriptor)) as connection:
+        pid, uid, _gid = struct.unpack("3i", connection.getsockopt(
+            socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize("3i")))
+    account = resolve_posix_account_snapshot_v1(SERVICE_ACCOUNT_NAME_V1)
+    try:
+        initial_namespace = (os.readlink(f"/proc/{pid}/ns/user")
+                             == os.readlink("/proc/self/ns/user"))
+        groups = Path(f"/proc/{pid}/cgroup").read_text(encoding="ascii").splitlines()
+    except (OSError, UnicodeError) as exc:
+        raise ValueError("synth_review_peer_invalid") from exc
+    in_service = any(_PAGE_SERVICE_UNIT in line.split(":", 2)[-1].split("/")
+                     for line in groups)
+    if uid != account.record.uid or not initial_namespace or not in_service:
+        raise ValueError("synth_review_peer_invalid")
+
+
+def activate(document: dict) -> dict:
+    """The review, then the consent the person gave in the page, in one call.
+
+    Nothing is added to what ``review`` and ``approve`` check: the same cases
+    run in the same runner, the same keys sign, and the candidate still passes
+    every Birth check. What changes is who brings the consent: the service,
+    reporting the answer of a signed-in administrator, instead of the
+    developer's terminal. A review that does not pass ends here, unsigned.
+    """
+    _closed(document, _ACTIVATE_FIELDS)
+    consent = _page_consent(document["consent"])
+    _require_page_peer()
+    reviewed = run_delegated("review", {"proposal": document["proposal"],
+                                        "human_cases": document["human_cases"]})
+    if reviewed.get("status") != "awaiting_consent":
+        return reviewed
+    # Who answered, and when, beside the signed record of what was reviewed.
+    print(json.dumps({"event": "page_consent", "review_id": reviewed["review_id"],
+                      "by": consent["by"], "at": consent["at"]}), file=sys.stderr)
+    decided = run_delegated("approve", {"review_id": reviewed["review_id"],
+                                        "subject_hash": reviewed["subject_hash"],
+                                        "decision": "approved"})
+    return {**decided, "name": reviewed["name"], "tests": reviewed["tests"]}
+
+
+_OPERATIONS = ("review", "approve", "activate")
 _CLOSED_CODE = re.compile(r"[a-z][a-z0-9_]{0,79}\Z")
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Closed administrative entry: ``review`` or ``approve``, document on stdin.
+    """Closed administrative entry: ``review``, ``approve`` or ``activate``, document on stdin.
 
     The root-owned launcher imports this from the verified release. There is
     deliberately no ``__main__`` guard: the launcher is the only way in, and
@@ -405,8 +483,9 @@ def main(argv: list[str] | None = None) -> int:
     """
     arguments = tuple(sys.argv[1:] if argv is None else argv)
     if len(arguments) != 1 or arguments[0] not in _OPERATIONS:
-        print("usage: synth_review review|approve < document.json", file=sys.stderr)
+        print("usage: synth_review review|approve|activate < document.json", file=sys.stderr)
         return 64
+    from_page = arguments[0] == "activate"
     try:
         from executor_birth_semantic_authority import _pairs
 
@@ -419,15 +498,18 @@ def main(argv: list[str] | None = None) -> int:
             document = json.loads(raw.decode("utf-8"), object_pairs_hook=_pairs)
         except (UnicodeError, ValueError) as exc:
             raise ValueError("synth_review_document_invalid") from exc
-        report = run_delegated(arguments[0], document)
+        report = activate(document) if from_page else run_delegated(arguments[0], document)
     except Exception as exc:
         # Closed codes only: an exception text may carry paths or bytes.
         code = getattr(exc, "code", None)
         if code is None:
             text = str(exc)
             code = text if _CLOSED_CODE.match(text) else type(exc).__name__
-        print(json.dumps({"error": str(code), "detail": str(getattr(exc, "detail", "") or "")}),
-              file=sys.stderr)
+        refusal = json.dumps({"error": str(code), "detail": str(getattr(exc, "detail", "") or "")})
+        print(refusal, file=sys.stderr)
+        if from_page:
+            # The page has one channel back: it must learn why, not only that.
+            print(refusal)
         return 1
     print(json.dumps(report, ensure_ascii=True, indent=2, sort_keys=True, default=str))
     return 0

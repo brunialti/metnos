@@ -133,9 +133,20 @@ release. The private keys must be backed up by the administrator.
 
 The root-owned `metnos-synth-review` launcher, installed once with
 `sudo internal/tools/install_synth_review.sh <account>` after a release, accepts
-exactly `review` and `approve` and runs `install.synth_review` from the selected
-release. The same script removes the retired `metnos-f5-authority` launcher and
-its sudoers rule.
+exactly `review`, `approve` and `activate` and runs `install.synth_review` from
+the selected release. The same script removes the retired `metnos-f5-authority`
+launcher and its sudoers rule.
+`activate` is the signer behind the «Activate» button of the administration
+page (ADR 0240): `review` followed by `approve` for a consent the service
+reports. It is not granted to the developer account; the script installs
+`metnos-synth-decision.socket` (`/run/metnos-synth-decision/socket`, root and
+the service group, one connection at a time) and the per-connection
+`metnos-synth-decision@.service`, which runs the launcher with the document on
+standard input. The launcher accepts a socket request only from the
+administration service (account, initial user namespace, its control group),
+and executors never see the socket. Without the socket the page says that the
+signer is missing and activates nothing. A script that predates `activate`
+must be run again once.
 The first consumes candidate bytes and three to six operator-confirmed cases;
 the second consumes only the exact review identity, subject hash and decision.
 Both run the authenticated installed implementation in a bounded transient

@@ -43,6 +43,9 @@ _FILESYSTEM_HOST_PRIVATE_PATHS = (
     (Path("/run/metnos-filesystem-host"), True),
     (Path("/var/lib/metnos-filesystem-host"), True),
     (Path("/etc/metnos/filesystem-host.json"), False),
+    # Where the administration service brings the person's decision on a
+    # generated tool (ADR 0240): never reachable by the tools themselves.
+    (Path("/run/metnos-synth-decision"), True),
 )
 
 

@@ -14,6 +14,33 @@ TRANSLATIONS = {
         "Conteggi del catalogo attuale, riscontrabili nell’elenco completo. I deprecati sono un sottoinsieme del totale.",
         "Current catalog counts, matching the full list. Deprecated executors are included in the total.",
     ),
+    "LIST_HELP": (
+        "Tutti gli strumenti installati: versione, ciclo di vita, appartenenza al prodotto, origine, trasporto e se ciò che fanno si può annullare.",
+        "Every installed tool: version, lifecycle, product membership, origin, transport and whether what it does can be undone.",
+    ),
+    "COL_NAME": ("nome", "name"),
+    "COL_VERSION": ("versione", "version"),
+    "COL_LIFECYCLE": ("ciclo di vita", "lifecycle"),
+    "COL_MEMBERSHIP": ("appartenenza", "membership"),
+    "COL_ORIGIN": ("origine", "origin"),
+    "COL_TRANSPORT": ("trasporto", "transport"),
+    "COL_STANDARD": ("standard", "standard"),
+    "COL_CAPABILITIES": ("permessi", "capabilities"),
+    "COL_REVERTIBLE": ("annullabile", "undoable"),
+    "COL_PATH": ("percorso", "path"),
+    "COL_REASON": ("motivo", "reason"),
+    "YES": ("sì", "yes"),
+    "NO": ("no", "no"),
+    "REJECTED_TITLE": ("Rifiutati al caricamento", "Refused at load"),
+    "REJECTED_HELP": (
+        "Questi strumenti non sono entrati nel catalogo. Il motivo è mostrato perché nessuno sparisca in silenzio.",
+        "These tools did not enter the catalog. The reason is shown so that none disappears silently.",
+    ),
+    "RETIRED_TITLE": ("Ritirati di proposito", "Retired on purpose"),
+    "RETIRED_HELP": (
+        "Strumenti ritirati con una decisione: non sono errori. Resta soltanto la loro sorgente, come storia; nessuno la usa.",
+        "Tools retired by a decision: they are not errors. Only their source remains, as history; nothing uses it.",
+    ),
     "TOTAL": ("Totale", "Total"),
     "ORIGIN_HANDCRAFTED": ("Manuali", "Handcrafted"),
     "ORIGIN_BUILTIN": ("Integrati", "Built-in"),
@@ -63,9 +90,11 @@ def sync(path: Path) -> int:
     updated_registry_keys = {"UI_SURFACE_SETTINGS_VISIBLE_3"} | {
         f"UI_SURFACE_EXECUTOR_STATS_VISIBLE_{index}" for index in range(3)
     }
+    # The whole description of the two pages the Tutor explains from here.
+    updated_surfaces = ("UI_SURFACE_EXECUTORS_", "UI_SURFACE_CHANGES_")
     for lang in ("it", "en"):
         for key, text in ui_surfaces.localization_inventory(lang):
-            if key in updated_registry_keys:
+            if key in updated_registry_keys or key.startswith(updated_surfaces):
                 catalog.setdefault(key, {})[lang] = text
     for key, translations in sorted(catalog.items()):
         for lang, previous in conn.execute(

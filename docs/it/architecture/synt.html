@@ -155,8 +155,9 @@ una certificazione di coerenza.</p>
 
 <p>Un candidato bocciato non chiude subito il percorso: il motivo preciso torna al
 costruttore, che riprova, fino a tre tentativi in tutto. Dopo il terzo fallimento
-Metnos chiede alla persona se pu&ograve; usare il modello esterno per scrivere prove e
-codice; nome, argomenti, descrizione e controlli restano locali. Il percorso completo,
+vale la scelta della persona sul modello esterno, fatta una volta: mai, sempre, oppure
+una domanda ogni volta. Il modello esterno scrive solo prove e codice; nome, argomenti,
+descrizione e controlli restano locali. Il percorso completo,
 con il disegno, &egrave; nel <a href="lifecycle.html#cap6">ciclo di uno strumento
 generato</a>.</p>
 
@@ -171,10 +172,19 @@ lingue e motivo sono conservati fuori dal catalogo. Il suo identificativo serve
 per ritrovarla e non costituisce un consenso. Nessuna firma dell'agente pu&ograve;
 sostituire l'ammissione attraverso Birth.</p>
 
+<p>Dalla pagina <strong>Modifiche</strong> la persona prende una sola decisione sul
+candidato pronto: <strong>Attiva</strong> oppure <strong>No</strong>. Con il s&igrave;,
+il servizio porta la risposta al programma di firma dell'amministratore del server,
+che esegue uno dopo l'altro i passaggi descritti qui sotto, con le stesse chiavi e
+gli stessi controlli. Il servizio non possiede le chiavi, e gli strumenti generati
+non possono raggiungere il programma di firma. Con il no, il candidato viene tolto
+e la proposta riposa per trenta giorni.</p>
+
 <ol>
- <li>L'operatore prepara o conferma da tre a sei casi indipendenti, ciascuno
- con nome, ingresso e risultato atteso. I casi generati da Synt non vengono
- presentati come prove indipendenti.</li>
+ <li>I casi sono da tre a sei, ciascuno con nome, ingresso e risultato atteso.
+ Dalla pagina sono quelli su cui il candidato &egrave; stato costruito, nati dalle
+ richieste reali: la persona li vede prima di rispondere. Dal terminale l'operatore
+ pu&ograve; fornire casi propri.</li>
  <li>L'autorit&agrave; amministrativa esegue quei casi nell'ambiente isolato
  di Birth e registra una prova firmata solo se tutti riescono. La prova lega
  il candidato esatto, il contesto, i casi e i risultati osservati.</li>
@@ -195,8 +205,7 @@ anche quando il modello &egrave; un servizio esterno. Le variabili del chiamante
 non possono scegliere un modello diverso per la revisione.
 Prima delle prove e del consenso, la preparazione comune calcola l’impronta
 dai sorgenti acquisiti, senza modificare il codice della funzione.
-Questa prima integrazione usa
-l'installazione Linux supportata e non dispone ancora di una pagina web dedicata.</p>
+Questa integrazione usa l'installazione Linux supportata.</p>
 
 <p>Un candidato ammesso da Birth dopo revisione e consenso &egrave; attivo.
 La <a href="lifecycle.html">gestione del ciclo di vita</a> pu&ograve; poi

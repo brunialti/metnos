@@ -642,9 +642,12 @@ async def admin_changes(request: web.Request) -> web.Response:
         row["external_model_offer"] = ci_mod.waits_for_external_model(obj)
 
     # What waits for the person comes first, whatever tab is open.
-    waiting = [dict(asdict(obj), waiting_kind=kind)
-               for obj in every_intent
-               for kind in (ci_mod.waits_for_person(obj),) if kind]
+    import generated_tools_policy
+    import i18n as _i18n
+    import synth_activation
+    waiting = change_applier.waiting_for_person(every_intent, lang=_i18n.current_lang())
+    signer_available = synth_activation.signer_available()
+    external_preference = generated_tools_policy.external_model()
 
     # Facets — conta per family e kind sull'INSIEME corrente (state filtered)
     all_in_state = ci_mod.list_intents(state=state, limit=5000)
@@ -675,6 +678,8 @@ async def admin_changes(request: web.Request) -> web.Response:
         json_payload={
             "rows": rows,
             "waiting": waiting,
+            "signer_available": signer_available,
+            "external_model_preference": external_preference,
             "counts": counts,
             "family_counts": family_counts,
             "kind_counts": kind_counts,
@@ -691,6 +696,9 @@ async def admin_changes(request: web.Request) -> web.Response:
         template_ctx={
             "rows": rows,
             "waiting": waiting,
+            "signer_available": signer_available,
+            "external_preference": external_preference,
+            "external_choices": generated_tools_policy.EXTERNAL_MODEL_CHOICES,
             "counts": counts,
             "family_counts": family_counts,
             "kind_counts": kind_counts,
@@ -760,10 +768,16 @@ def _change_error(request: web.Request, id_: str, status: int, code: str,
     return _error(status, code, message)
 
 
+async def _generated_tools_preferences(request: web.Request) -> web.Response:
+    from http_routes_generated_tools import admin_changes_preferences
+    return await admin_changes_preferences(request)
+
+
 async def admin_change_action(request: web.Request) -> web.Response:
     """POST /admin/changes/{id}/{action}.
 
     action ∈ accept | reject | stage | rollback | retry | external | close
+             | activate | decline
     Body opzionale: {"reason": "..."}.
     """
     import change_intents as ci_mod
@@ -775,14 +789,19 @@ async def admin_change_action(request: web.Request) -> web.Response:
     id_ = request.match_info["id"]
     action = request.match_info["action"]
 
+    import change_applier
     if (action not in ("accept", "reject", "stage", "rollback", "retry")
-            and not ci_mod.is_person_answer(action)):
+            and not ci_mod.is_person_answer(action)
+            and not change_applier.is_candidate_decision(action)):
         return _change_error(request, id_, 400, "INVALID_ACTION",
                              _msg("ERR_CHANGE_INVALID_ACTION", action=action))
 
     # Who decided: the signed-in person when the session has one.
     by = str(request.get("authenticated_user_id")
              or request.get("lan_principal") or "admin")
+    if change_applier.is_candidate_decision(action):
+        from http_routes_generated_tools import candidate_decision
+        return await candidate_decision(request, id_, action, by)
 
     # The page posts its reason field as a form; API clients send JSON. A body
     # that cannot be read may carry the reason: nothing is decided without it.
@@ -1058,14 +1077,19 @@ async def admin_executors(request: web.Request) -> web.Response:
     """GET /admin/executors"""
     catalog = app_get(request.app, CATALOG_PROVIDER, lambda: [])()
     rows = _executors_rows(catalog)
-    rejected = _executors_rejected(catalog)
+    left_out = _executors_rejected(catalog)
+    # A contract retired on purpose is history, not a load failure.
+    rejected = [row for row in left_out if not row["retired"]]
+    retired = [row for row in left_out if row["retired"]]
     return negotiate_collection(
         request,
         json_payload={"rows": rows, "total": len(rows),
                       "rejected": rejected,
-                      "rejected_total": len(rejected)},
+                      "rejected_total": len(rejected),
+                      "retired": retired,
+                      "retired_total": len(retired)},
         template="executors.html",
-        template_ctx={"rows": rows, "rejected": rejected},
+        template_ctx={"rows": rows, "rejected": rejected, "retired": retired},
     )
 
 
@@ -1075,14 +1099,15 @@ def _executors_rejected(catalog) -> list[dict]:
     ``restricted`` marks the ones the lifecycle owner stopped (unused for too
     long, a rolled-back change): those, and only those, can be brought back.
     """
-    from executor_lifecycle_state import RESTRICTED_REJECT_PREFIX
+    from executor_lifecycle_state import RESTRICTED_REJECT_PREFIX, is_retired_rejection
 
     rows = []
     for path, reason in (getattr(catalog, "rejected", None) or []):
         located = Path(path)
         name = located.parent.name if located.suffix else located.name
         rows.append({"path": path, "name": name, "reason": reason,
-                     "restricted": str(reason).startswith(RESTRICTED_REJECT_PREFIX)})
+                     "restricted": str(reason).startswith(RESTRICTED_REJECT_PREFIX),
+                     "retired": is_retired_rejection(reason)})
     return rows
 
 
@@ -2463,7 +2488,8 @@ ROUTES = (
     ("POST", "/admin/logout",                     admin_logout),
     ("GET",  "/admin",                            admin_home),
     ("GET",  "/admin/changes",                    admin_changes),
-    ("POST", r"/admin/changes/{id}/{action:accept|reject|stage|rollback|retry|external|close}",
+    ("POST", "/admin/changes/preferences", _generated_tools_preferences),
+    ("POST", r"/admin/changes/{id}/{action:accept|reject|stage|rollback|retry|external|close|activate|decline}",
               admin_change_action),
     # /admin/proposals* rimosse 13/6/2026: superate dalla vista unificata
     # /admin/changes (ADR 0158, full migration accepted 22/5). Telos/introvertiva
