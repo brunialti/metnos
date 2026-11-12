@@ -73,6 +73,22 @@ TRANSLATIONS = {
     'ERR_CHANGE_RETRY_NOT_FAILED': (
         'Si può riprovare solo una modifica fallita; questa è nello stato «{state}».',
         'Only a failed change can be retried; this one is in state “{state}”.'),
+    'ERR_CHANGE_REOPEN_NOT_REJECTED': (
+        'Si riapre solo una proposta scartata; questa è nello stato «{state}».',
+        'Only a rejected proposal can be reopened; this one is in state “{state}”.'),
+    'UI_CHANGE_BTN_REOPEN': ('Riapri', 'Reopen'),
+    'UI_CHANGE_CONFIRM_CLOSE': (
+        'Chiudo questa proposta? Resta chiusa per trenta giorni. '
+        'Se cambi idea, si riapre dalla scheda «Scartate».',
+        'Close this proposal? It stays closed for thirty days. '
+        'If you change your mind, reopen it from the “Rejected” tab.'),
+    'UI_CHANGE_CONFIRM_DECLINE': (
+        'Dico no a questo strumento? Il candidato viene tolto e la proposta resta chiusa '
+        'per trenta giorni. Se cambi idea, si riapre dalla scheda «Scartate» e lo strumento '
+        'viene ricostruito.',
+        'Say no to this tool? The candidate is removed and the proposal stays closed for '
+        'thirty days. If you change your mind, reopen it from the “Rejected” tab and the '
+        'tool is built again.'),
     'ERR_CHANGE_ROLLBACK_FAILED': (
         'Il ritiro non è riuscito: la modifica resta com’era. Riprova più tardi o guarda il registro.',
         'The rollback did not succeed: the change stays as it was. Try again later or check the log.'),
@@ -147,8 +163,10 @@ TRANSLATIONS = {
         'Va bene: finisco «{name}» con il modello esterno. Ti avviso quando è pronto.',
         'All right: I will finish “{name}” with the external model. I will tell you when it is ready.'),
     'MSG_CHANGE_CLOSED_BY_PERSON': (
-        'Proposta «{name}» chiusa: non la ripropongo per trenta giorni.',
-        'Proposal “{name}” closed: I will not propose it again for thirty days.'),
+        'Proposta «{name}» chiusa: non la ripropongo per trenta giorni. '
+        'Se è stato un errore, si riapre dalla pagina Modifiche, scheda «Scartate».',
+        'Proposal “{name}” closed: I will not propose it again for thirty days. '
+        'If it was a mistake, reopen it from the Changes page, “Rejected” tab.'),
     'MSG_CHANGE_ALREADY_ANSWERED': (
         'Questa domanda ha già avuto risposta: non ho cambiato niente.',
         'This question has already been answered: I changed nothing.'),

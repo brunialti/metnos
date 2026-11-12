@@ -228,6 +228,12 @@
           {% if r.decision_reason %}
             <div class="muted">{{ r.decision_reason }}</div>
           {% endif %}
+          {# The way back from a closure or a refusal given by mistake. #}
+          <button class="btn" data-tutor-id="changes-row-reopen"
+                  hx-post="/admin/changes/{{ r.id }}/reopen"
+                  hx-target="closest tr" hx-swap="outerHTML">
+            {{ msg('UI_CHANGE_BTN_REOPEN') }}
+          </button>
         {% elif r.state == 'rolled_back' %}
           <span class="chip bad">{{ msg('UI_CHANGE_BADGE_ROLLED_BACK') }}</span>
         {% elif r.state == 'failed' %}

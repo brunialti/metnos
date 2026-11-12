@@ -146,18 +146,18 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'calendar_resolver.py': ('ca5870a48f1e9241f906237adb80ae7543b3fc6cf8469a8c3d49d479c8d529ba', (('comparison', 4),)),
     'calibration_check.py': ('1372bc7e3adcb29f17155e1cc0a9f36501df90568a38129268444e09462b0afb', (('comparison', 1),)),
     'capabilities.py': ('9971e44f92f8597c815e12a129a1549f20fd315e44120f4d83246e983d025759', (('comparison', 12),)),
-    'change_applier.py': ('546465ee55e55402273ec01d3cebf83c7d8779f960977bee486caf77932fdd0a', (('comparison', 7), ('membership', 3), ('regex', 1))),
+    'change_applier.py': ('203305cb6f2eac03b32f2378140f93e1f036da20bf424a3144eb99c12d7a98a2', (('comparison', 7), ('membership', 3), ('regex', 1))),
     'change_applier_extend.py': ('e7d6b4979524f60c2aac6cf71988080c195da012a63fc21261d44fbb95b7108d', (('comparison', 2),)),
     'change_intent_adapters/_base.py': ('f6f87e2831c8a9ee8eeecc3b7589a40920c6a50d90a2ee543bf80a5e1edc7c6d', (('comparison', 1),)),
     'change_intent_adapters/introvertiva.py': ('f5b1248c9d1fec659b0afb1ddc563dee058fb64220ac3a150d7edb91902a6efe', (('comparison', 3),)),
     'change_intent_adapters/synt.py': ('c61f42767f29ef8d8b22adcce42e8c2e82651943d223c3eaa75532dd5b60383f', (('comparison', 3),)),
     'change_intent_adapters/telos.py': ('d7bcce89b9a6641cc306e284e45a8f1bc1cf4c55763a4bd59ca3e10506eeaa0f', (('comparison', 2),)),
     'change_intent_adapters/user_feedback.py': ('7ebb04050ddb83149d6520dfe8edbb2a08654bde0dfc959dba89d30fe58cc91b', (('comparison', 1), ('membership', 1))),
-    'change_intents.py': ('46c36740c2f2c788a988ed05d41a705873c18d92463f5df1c2708f2314d47130', (('comparison', 12), ('helper-argument', 1), ('membership', 1))),
+    'change_intents.py': ('35dd2ac76bbb1ebcffbef448e2c4f4048009dac6698b943be60446dac6668e69', (('comparison', 14), ('helper-argument', 1), ('membership', 1))),
     'change_observer.py': ('58ae58d18916c1d30b1244dfe0f7f7d5e226554dd0fe5eb83615bc482aaccec2', (('comparison', 12),)),
     'change_rollback.py': ('85f0f61cba91b45b554c202e361a2e255b0f14d5ffdc853bd75c80d6ecdce718', (('comparison', 2),)),
     'channels/approval.py': ('5f3e8f37e8be1611fc3193b95560574d3fcdd76d64fb5233a571a7043b6aa99b', (('comparison', 2),)),
-    'channels/daemon.py': ('18728f02f739721c181c48b3f5c3f46345d8c74b813cc6eea7d61d3e8ab04a41', (('comparison', 68), ('helper-argument', 1))),
+    'channels/daemon.py': ('6e20459373ec9068b50ef635479d894e3f579ca12d56f4fa83c6c67e7208db03', (('comparison', 68), ('helper-argument', 1))),
     'channels/inline_ui.py': ('5e8206d02d4b25a6c1c71d42429b41ee4180e116c681d91eefc181bf9431f5c8', (('comparison', 11), ('membership', 1))),
     'channels/telegram.py': ('2a2a9fe2d205ea0c39ab814722acf44ee2918633819331b7eb841d45349314c0', (('comparison', 3),)),
     'chat_target_store.py': ('f2ffa6957ac16260a636d62bfb51c1a1d0efeaa9a08b5e46d47645ef3b31ea03', (('helper-argument', 1),)),
@@ -425,7 +425,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'store.py': ('45927fda29a44168cbc00eb9ce4f6bd519edb4b3729723b68b1fe0ff349b8608', (('comparison', 1),)),
     'store_bootstrap.py': ('5ec6ad37a946c48c4fe51447ca84d58fc1b4ec910a5e8a6a5e536544e02cd7a7', (('helper-argument', 1),)),
     'synt.py': ('8b81761ad25a1a10fa08ace308d3b64ce60fe93386f9149d9b9dc5f7bd2aa63e', (('comparison', 21), ('helper-argument', 2))),
-    'synt_multistage.py': ('ab053a9fd8edaacd665301e4276cd1483a0b3a5429867d20360d86f3332008fb', (('comparison', 7), ('iteration', 1), ('membership', 1), ('prefix-suffix', 1))),
+    'synt_multistage.py': ('8ed3a073e9d8e67e47a2ab72779c4101afbcb1d1ea684be0926045a3b90320ee', (('comparison', 10), ('iteration', 1), ('membership', 1), ('prefix-suffix', 1))),
     'synth_orphan_cleanup.py': ('f25507830bd69d3016e8d51cdf91e38a134274aa723ae90b2c22993b04e5aa5a', (('comparison', 2), ('helper-argument', 1))),
     'synth_request.py': ('82bd98ef176d3a94e428a6ba582c6ed840167aa054b16be1e76e3eebbfd7998d', (('comparison', 3), ('helper-argument', 1))),
     'system/admin.py': ('95baaa5e7ca0105f272b3e9725a08b911b15e3f0f3cb2413144d9b47ca57361c', (('comparison', 35), ('helper-argument', 2), ('iteration', 2), ('literal-lookup', 1), ('membership', 1), ('prefix-suffix', 7), ('regex', 3))),
@@ -438,7 +438,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'telos_loader.py': ('bf3fb57f3a794d9bb222db59cb242e039f8e4a5786733264785e91210f857c1c', (('comparison', 2),)),
     'telos_proposals_store.py': ('e2841b6375afae80816125fc5e9287c4bd2799be4ca61b20477776401740499f', (('comparison', 5),)),
     'telos_synth_consumer.py': ('aaf4ff278417c498ac3712ff4ac0b33128d485513cb38d7acba75226efe5c0b0', (('comparison', 2), ('helper-argument', 1))),
-    'test_runner.py': ('e83f44c5382f3dcc74d357b44efe61f709841fc29f72fffa10c448190bb62cdd', (('comparison', 20), ('prefix-suffix', 2))),
+    'test_runner.py': ('f1f548c8196bafc22944643a83749c3e82b0df9a5efbba50bb5bdac2d08efad4', (('comparison', 20), ('prefix-suffix', 2))),
     'testing/populate_cases.py': ('d0f3367a885f0b71347daf237c515680cbbfe8f870fe70ea950655553f518a0d', (('comparison', 1), ('helper-argument', 12))),
     'testing/registry.py': ('cc9222c91ddcfb2797838af2e608f5660bb56a5403b6c4b2b804fb790d288bb5', (('comparison', 1),)),
     'testing/runner.py': ('17732635c0cc5fa202cada6312839dcd8453b06123dc54ea6c8cf503d427ba96', (('comparison', 9), ('helper-argument', 1))),
@@ -466,7 +466,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'tutor/sources.py': ('9414c0c05a98e50f09370d624148e4a00ccb0aa2c1e0578ed4aa81baf4e1eae5', (('comparison', 21), ('helper-argument', 4), ('iteration', 1))),
     'tutor/telemetry.py': ('8fade0cfd78ab152618dcec61e6408ff2f48f1494a0f42560712c05cfe9ba584', (('helper-argument', 1),)),
     'tutor_boundary.py': ('f29732f56e1158f0aaca759ba9ec7f1e6645389122ae35ee2088ceb7e6645acd', (('comparison', 3),)),
-    'ui_surfaces.py': ('e247e3ae41fb14575854b424621d6dcbf31161bfa7a6a7d5b4adbf2dd84be798', (('comparison', 4), ('helper-argument', 19))),
+    'ui_surfaces.py': ('53854281bbf0fd200ac0b2003693cfd6c70cccd7c9a08e46df9108ca0c95b3a5', (('comparison', 4), ('helper-argument', 19))),
     'undo.py': ('4bc7e755420dd6170ec907794952a54553f3815a433687e05ff31c40f7050b66', (('comparison', 12),)),
     'unique_rows_resolver.py': ('405249c233d60428fcea3d215cfbc3778fa96c17d54e5ea9569cffb4bb9814c0', (('comparison', 1), ('regex', 1))),
     'upload_cleanup.py': ('738a94cc1abc1dc46a767967ccebac1034924b9f4dc140116d20f4789ebdf9f8', (('comparison', 3),)),
@@ -1210,6 +1210,14 @@ VALUE_BOUND_CLOSING_TECHNICAL_CONTAINERS: Mapping[str, str] = {
         "closed language-neutral failure causes a tool declares (error_class)",
     "58fc63700cac154309ecf73a0b7e5b0eb6e39e549ffc8ba41801c028a22628ba":
         "closed reasons for which a durable notice is not delivered",
+    "e9a9b077413d840f67d18422ce30d332e81ef0f237136e313387439a233d2d68":
+        "body field identities a reopened change proposal drops",
+    "24e136864bcae446a6e243b70859f8f7b5ea34fe9bd46f7a8a57d1c7c38c6bfe":
+        "JSON Schema keywords copied from a generated signature to the case writer",
+    "d56e16065733ea6ceb9198f7b0c8311a4b0027cf4b53f4c938b0536adb524de9":
+        "paths the isolated runner prepares for every functional case",
+    "afe1444b2d7fc1d32fcd7755f0161b9d3ffdf185f3501ec2245601bd6f310ede":
+        "fields of the standard tool answer that hold one value per item",
 }
 VALUE_BOUND_EXECUTABLE_CONTAINER_FINGERPRINTS = (
     VALUE_BOUND_EXECUTABLE_CONTAINER_FINGERPRINTS

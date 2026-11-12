@@ -782,8 +782,8 @@ async def _generated_tools_preferences(request: web.Request) -> web.Response:
 async def admin_change_action(request: web.Request) -> web.Response:
     """POST /admin/changes/{id}/{action}.
 
-    action ∈ accept | reject | stage | rollback | retry | external | close
-             | activate | decline
+    action ∈ accept | reject | stage | rollback | retry | reopen | external
+             | close | activate | decline
     Body opzionale: {"reason": "..."}.
     """
     import change_intents as ci_mod
@@ -797,6 +797,7 @@ async def admin_change_action(request: web.Request) -> web.Response:
 
     import change_applier
     if (action not in ("accept", "reject", "stage", "rollback", "retry")
+            and not ci_mod.is_reopen(action)
             and not ci_mod.is_person_answer(action)
             and not change_applier.is_candidate_decision(action)):
         return _change_error(request, id_, 400, "INVALID_ACTION",
@@ -844,6 +845,9 @@ async def admin_change_action(request: web.Request) -> web.Response:
             await asyncio.to_thread(change_applier.question_answered, updated)
         elif action in ("accept", "reject", "stage"):
             updated = ci_mod.apply_decision(id_, action=action, by=by, reason=reason)
+        elif ci_mod.is_reopen(action):
+            # The way back from a closure or a refusal given by mistake.
+            updated = ci_mod.reopen(id_, by=by)
         elif action == "rollback":
             # The effect is taken back for real before the state says so: a
             # change marked «rolled back» with its tool still in the catalog

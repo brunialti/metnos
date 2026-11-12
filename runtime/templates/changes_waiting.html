@@ -58,8 +58,10 @@
                     hx-target="closest tr" hx-swap="outerHTML">
               {{ msg('UI_CHANGE_BTN_EXTERNAL') }}
             </button>
+            {# One tap closed a proposal for thirty days: it asks first. #}
             <button class="btn"
                     hx-post="/admin/changes/{{ w.id }}/close"
+                    hx-confirm="{{ msg('UI_CHANGE_CONFIRM_CLOSE') }}"
                     hx-target="closest tr" hx-swap="outerHTML">
               {{ msg('UI_CHANGE_BTN_CLOSE') }}
             </button>
@@ -69,7 +71,8 @@
               {{ msg('UI_CHANGE_BTN_ACTIVATE') }}
             </button>
             <button class="btn bad"
-                    hx-post="/admin/changes/{{ w.id }}/decline">
+                    hx-post="/admin/changes/{{ w.id }}/decline"
+                    hx-confirm="{{ msg('UI_CHANGE_CONFIRM_DECLINE') }}">
               {{ msg('UI_CHANGE_BTN_DECLINE') }}
             </button>
           {% endif %}

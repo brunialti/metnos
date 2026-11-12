@@ -519,7 +519,7 @@ def decline_candidate(ci: ChangeIntent, *, by: str) -> ChangeIntent:
         synth_activation.discard_candidate(DEFAULT_PROPOSALS_DIR, proposal_id)
     _audit({"event": "candidate_declined", "id": ci.id, "by": by,
             "proposal_id": proposal_id})
-    return close_until(ci.id, reason="declined by the person")
+    return close_until(ci.id, reason="declined by the person", by=by)
 
 
 def start_activation(ci: ChangeIntent, *, by: str) -> tuple[str, str]:

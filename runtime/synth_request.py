@@ -78,6 +78,40 @@ class CandidateTestsFailed(RuntimeError):
     """The candidate's code does not pass its own functional cases."""
 
 
+# How `_validate_birth_tests` names the first failed case in its report.
+_CASE_OPENS, _CASE_CLOSES = " | case ", " with input "
+
+
+def _failed_case(refusal: str) -> str | None:
+    """The case a refusal names as failed, as written in the report."""
+    _, opened, rest = str(refusal).partition(_CASE_OPENS)
+    name, closed, _ = rest.partition(_CASE_CLOSES)
+    return name if opened and closed and name else None
+
+
+def disputed_case(refusals: list[str]) -> str | None:
+    """The functional case the last two candidates both failed, or None.
+
+    The second candidate was written knowing that failure. When it fails the
+    same case again, a third rewrite of the code repeats the result: measured
+    on 12/11/2026, a checksum made up by the case writer and an address of
+    one letter each used all three attempts. The case is questioned instead.
+    """
+    names = [_failed_case(text) for text in refusals[-2:]]
+    return names[0] if len(names) == 2 and names[0] and names[0] == names[1] else None
+
+
+# What the case writer is told when a case is disputed. The returned value is
+# not the expectation: a case that copies it checks nothing.
+_CASES_DISPUTED = (
+    "two candidates in a row failed the case {case}, the second written knowing why: "
+    "{refusal}\n"
+    "A case that no code satisfies is wrong. Do not copy the returned value into the "
+    "expectation: when the expected value cannot be computed by hand with certainty, "
+    "check only ok, ok_count_eq and fail_count_eq; when the input is not a valid value "
+    "for what its argument means, replace it with a valid one or expect ok=false.")
+
+
 def _validate_birth_tests(executor_dir):
     """Validate private staging bytes before Birth, never execute on the host."""
     import tomllib
@@ -779,7 +813,8 @@ def handle_synth_request(args, *, user_query, progress=None, verbose=False, curr
     pending_proposal_id = None
     for _attempt in range(max_attempts):
         try:
-            if run is not None and multistage_can_repair(run):
+            disputed = disputed_case(refusals)
+            if run is not None and multistage_can_repair(run) and not disputed:
                 run = multistage_run_repair(
                     run, intent, _llm_code,
                     llm_call_fidelity=_llm_fidelity, feedback=refusals[-1])
@@ -794,6 +829,10 @@ def handle_synth_request(args, *, user_query, progress=None, verbose=False, curr
                     decided_name=expected_name,
                     llm_call_tests=_llm_tests,
                     real_requests=real_requests,
+                    # A case two candidates failed is written again, with
+                    # description and code after it: the code is not the suspect.
+                    cases_correction=(_CASES_DISPUTED.format(
+                        case=disputed, refusal=refusals[-1][:1200]) if disputed else ""),
                 )
         except Exception as ex:
             if progress is not None:

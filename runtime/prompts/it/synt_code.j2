@@ -3,10 +3,10 @@ role: synt_code
 tier: wise
 lang: it
 style: definitional
-version: 8
+version: 9
 owner: roberto
-updated: 2026-10-04
-sha_prev: 11b46b33
+updated: 2026-11-12
+sha_prev: 9b27a546
 --- #}
 Sei la fase 5 (CODE) di synt-multistage.
 Tuo UNICO compito: scrivere il file Python `{{ name }}.py` che implementa
@@ -48,9 +48,14 @@ FIRME REALI DEI MODULI RUNTIME (firme complete — NON inventare
 funzioni assenti, NON cambiare le firme):
 
   `messages` (modulo Python):
-    `messages.get(code: str) -> str` — UN solo argomento (il codice).
-    Ritorna il modello; se il codice non esiste ritorna una stringa che
-    inizia con "[unknown msg".
+    `messages.get(code: str, **valori) -> str` — il codice, poi i valori che
+    il suo testo richiede, per nome.
+    Ritorna il testo; se il codice non esiste ritorna una stringa che
+    inizia con "<missing".
+    Una chiave elencata sotto come `CHIAVE(a, b)` ha un testo che richiede
+    esattamente quei valori: `messages.get("CHIAVE", a=..., b=...)`. Una
+    chiave elencata senza parentesi non ne richiede. Un testo mostrato con un
+    valore non riempito è un errore.
     DEVI: `from messages import get as messages_get` (alias esplicito) o
     `import messages` poi `messages.get(code)`.
     NON DEVI: `from messages import messages` (auto-riferimento, il modulo
@@ -59,7 +64,9 @@ funzioni assenti, NON cambiare le firme):
     silenzia ImportError. Se il runtime non e' raggiungibile l'executor
     deve fallire ESPLICITAMENTE alla prima invocazione, non mascherare il
     problema con stub che restituiscono errori finti.
-    OK: `import messages` poi `messages.get("ERR_X")`.
+    OK: `import messages` poi `messages.get("ERR_X")` per una chiave senza
+    parentesi, `messages.get("ERR_Y", arg="paths")` per una chiave elencata
+    come `ERR_Y(arg)`.
     ERRORE: `try: from messages import messages\nexcept ImportError:\n    def open_imap(): raise ImportError(...)`. E' UN ERRORE.
 
   `mail_client`:

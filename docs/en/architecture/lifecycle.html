@@ -243,12 +243,13 @@ only and removes what does not work. The figure shows the whole path.</p>
  index. Between its stages it steps aside for both. While it runs, a restart or an
  update waits for it.</li>
  <li><strong>It builds.</strong> With the local model it chooses the name, decides the
- arguments, writes the tests starting from those real requests, then the description
- and the code.</li>
+ arguments, writes the tests starting from those real requests and from what each
+ argument means, then the description and the code.</li>
  <li><strong>It checks.</strong> The candidate runs in an isolated sandbox against its
  tests, and a reviewer compares what the description promises with what the code does.
  If something does not match, the precise reason goes back to the builder, which tries
- again knowing what to fix. At most three attempts.</li>
+ again knowing what to fix. If two candidates in a row fail the same test, the test is
+ written again, not the code a third time. At most three attempts.</li>
  <li><strong>It asks for help only when needed.</strong> After three failed attempts
  Metnos does not insist. Whether it may use the external model to finish is decided by
  the person, once: never, always, or &ldquo;ask me each time&rdquo;. The external model
@@ -257,7 +258,8 @@ only and removes what does not work. The figure shows the whole path.</p>
  days: no endless loop of create, discard and recreate. When the choice is
  &ldquo;ask me&rdquo;, the question also reaches the administrator on Telegram, with the
  same two buttons as the page: answering on one side closes the question on the
- other.</li>
+ other. Closing asks for confirmation, and a proposal closed by mistake is reopened from
+ the <strong>Rejected</strong> tab with <strong>Reopen</strong>.</li>
  <li><strong>It asks one question.</strong> The ready, tested tool appears on top of the
  <strong>Changes</strong> page: what it does, which permissions it asks for, whether
  what it does can be undone, which cases it was built on. The person answers
@@ -267,7 +269,8 @@ only and removes what does not work. The figure shows the whole path.</p>
  <li><strong>It enters service.</strong> After the yes, the final checks and the
  signature run; only then can the planner use the tool. The page shows the work in
  progress and then the outcome. If the final checks refuse it, the tool does not enter
- and the proposal says why. After a no the proposal rests for thirty days.</li>
+ and the proposal says why. After a no the proposal rests for thirty days; the no
+ asks for confirmation too and can be reopened.</li>
  <li><strong>It stays under observation.</strong> It is planned that a generated tool
  that errors is retired at once and rewritten with that reason, and that one never used
  decays after sixty days.</li>

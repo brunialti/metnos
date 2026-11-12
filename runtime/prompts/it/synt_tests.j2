@@ -3,18 +3,18 @@ role: synt_tests
 tier: middle
 lang: it
 style: definitional
-version: 18
+version: 19
 owner: roberto
-updated: 2026-11-11
-sha_prev: 23c5caa6
+updated: 2026-11-12
+sha_prev: e11f724e
 --- #}
 Genera i test dichiarativi della funzione descritta sotto. Restituisci solo JSON valido e compatto, senza markdown, commenti o spiegazioni.
 
-1. Produci quattro casi con nomi unici: normale con due o tre elementi, lista vuota solo se un argomento è una lista, input invalido e caso limite del dominio. Ogni caso verifica una sola proprietà. Nel caso limite usa un solo elemento con il minimo di caratteri necessario, preservando la caratteristica rilevante come Unicode o spazi. Il caso invalido deve contenere un elemento interno invalido se lo schema vincola gli elementi. Aggiungi un quinto o sesto caso solo per un vincolo distinto non ancora verificato. Usa dati piccoli e risultati calcolabili esattamente; rispetta sempre i vincoli della richiesta.
+1. Produci quattro casi con nomi unici: normale con due o tre elementi, lista vuota solo se un argomento è una lista, input invalido e caso limite del dominio. Ogni caso verifica una sola proprietà. Nel caso limite usa un solo elemento con il minimo di caratteri necessario, preservando la caratteristica rilevante come Unicode o spazi. Ogni valore di un caso che deve riuscire resta un valore valido per ciò che il suo argomento significa, come dice l’elenco degli argomenti qui sotto: un indirizzo e-mail resta un indirizzo, una data resta una data, un indirizzo web resta un indirizzo web. Accorcia il caso limite solo fin dove quel significato lo permette. Un percorso non si accorcia mai: resta uno dei percorsi preparati della regola 5. Il caso invalido deve contenere un elemento interno invalido se lo schema vincola gli elementi. Aggiungi un quinto o sesto caso solo per un vincolo distinto non ancora verificato. Usa dati piccoli e risultati calcolabili esattamente; rispetta sempre i vincoli della richiesta.
 
 2. Per OGNI input, verifica PRIMA tutti i vincoli della richiesta, inclusi tipo e numero degli elementi interni. Se la richiesta rifiuta tale input, expect è {"ok":false}: non eseguire mentalmente l’operazione su dati invalidi e non inventare conteggi o messaggi. Solo una richiesta che ammette esplicitamente errori per elemento consente elaborazione parziale: gli elementi scartati incrementano fail_count, gli altri ok_count.
 
-3. Per input valido, ok=true, ok_count è il numero di elementi elaborati senza errori, fail_count è il numero di elementi scartati. Un risultato false, zero o vuoto è un’elaborazione riuscita. Verifica i valori calcolati in field_eq: results per valori trasformati, entries per record letti o arricchiti. Non rinominare questi campi. Calcola separatamente il risultato di ciascun elemento valido, poi componi la lista nello stesso ordine. Non confondere un risultato con il numero di elementi elaborati. Rispetta maiuscole, spazi e Unicode come richiesto. Per il conteggio dei caratteri usa i punti di codice Unicode: "x" vale 1, "yz" vale 2, "è" vale 1, "🙂" vale 1 e "x🙂" vale 2. Verifica di nuovo ogni risultato contro il proprio input prima di emettere il JSON.
+3. Per input valido, ok=true, ok_count è il numero di elementi elaborati senza errori, fail_count è il numero di elementi scartati. Un risultato false, zero o vuoto è un’elaborazione riuscita. Verifica i valori calcolati in field_eq: results per valori trasformati, entries per record letti o arricchiti. Non rinominare questi campi. Entrambi sono sempre liste con un elemento per ogni elemento dell’input, anche per un elemento solo; field_eq non verifica altri campi calcolati. Calcola separatamente il risultato di ciascun elemento valido, poi componi la lista nello stesso ordine. Non confondere un risultato con il numero di elementi elaborati. Rispetta maiuscole, spazi e Unicode come richiesto. Per il conteggio dei caratteri usa i punti di codice Unicode: "x" vale 1, "yz" vale 2, "è" vale 1, "🙂" vale 1 e "x🙂" vale 2. Verifica di nuovo ogni risultato contro il proprio input prima di emettere il JSON.
 
 4. L’oggetto finale ha un solo campo tests, lista di oggetti con esattamente name (stringa), input (oggetto) ed expect (oggetto non vuoto). I soli controlli ammessi dentro expect sono ok (booleano), ok_count_eq (intero), fail_count_eq (intero), field_eq (oggetto campo:valore) ed error_contains (stringa). Usa error_contains solo se la richiesta specifica il testo dell’errore. Chiudi ogni oggetto e lista. Rappresenta tutti i numeri come piccoli interi o decimali, senza notazione esponenziale. Tutti gli input devono essere rappresentabili nel protocollo JSON del runner, anche quando la funzione deve rifiutarli. Un valore fuori dal protocollo non arriva alla funzione: NON generare casi per quel vincolo. Per un input numerico di tipo invalido usa null, "x" o un booleano. I limiti di rappresentazione del trasporto sono verificati dal runtime, separatamente dai test della funzione.
 
@@ -33,7 +33,8 @@ Esempio della sola forma per una funzione diversa: non copiarne input o aspettat
 Contratto della funzione:
 name: {{ name }}
 args required: {{ args_required }}
-args properties: {{ args_properties_summary }}
+args (tipo e vincoli dichiarati, poi significato):
+{{ args_properties_summary }}
 capabilities: {{ capabilities }}
 revertible: {{ revertible }}; reverse_pattern: {{ reverse_pattern }}
 

@@ -26,6 +26,7 @@ Matcher supportati v1.1 (estesi nel ciclo 2):
     metadata_field_lte    {field: int}
     metadata_field_gte    {field: int}
 """
+import math
 import fnmatch
 import json
 import os
@@ -281,6 +282,26 @@ def check_hints(args, capabilities, actor="host"):
     return None
 
 
+def _same_value(got, want) -> bool:
+    """Equality that does not fail a correct number on its last binary digit.
+
+    «37 °C in Fahrenheit» computes 98.60000000000001 and the case expects
+    98.6: exact equality refused a correct tool (12/11/2026). Numbers are
+    compared within one part in a thousand million, inside lists and records
+    too; booleans and every other value stay exact.
+    """
+    if isinstance(want, bool) or isinstance(got, bool):
+        return got is want
+    if isinstance(want, (int, float)) and isinstance(got, (int, float)):
+        return math.isclose(got, want, rel_tol=1e-9, abs_tol=1e-9)
+    if isinstance(want, list) and isinstance(got, list):
+        return len(got) == len(want) and all(map(_same_value, got, want))
+    if isinstance(want, dict) and isinstance(got, dict):
+        return got.keys() == want.keys() and all(
+            _same_value(got[key], item) for key, item in want.items())
+    return got == want
+
+
 def check_expect(actual, expected):
     failures = []
     for matcher, value in expected.items():
@@ -348,7 +369,7 @@ def check_expect(actual, expected):
             # Top-level field equality. Es: field_eq: {value: 9}.
             for field, want in value.items():
                 got = actual.get(field)
-                if got != want:
+                if not _same_value(got, want):
                     failures.append(f"field.{field}: atteso {want}, ottenuto {got}")
         elif matcher == "entries_field_eq":
             # Per-entry field check: entries_field_eq: {"0": {name: "b"}, "1": ...}.

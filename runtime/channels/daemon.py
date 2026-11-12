@@ -1681,7 +1681,8 @@ class ChannelDaemon:
             return {"ok": False, "reason": "not_administrator"}
         by = str(principal.get("user_id") or principal.get("actor") or self.channel.name)
         try:
-            updated = change_intents.person_answer(intent_id, answer, by=by, reason=None)
+            updated = change_intents.person_answer(
+                intent_id, answer, by=by, reason=None, via=self.channel.name)
         except change_intents.TransitionError:
             self._send_text(msg.sender_id, _msg("MSG_CHANGE_ALREADY_ANSWERED"),
                             reply_to=msg.message_id)

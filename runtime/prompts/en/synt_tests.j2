@@ -3,18 +3,18 @@ role: synt_tests
 tier: middle
 lang: en
 style: definitional
-version: 18
+version: 19
 owner: roberto
-updated: 2026-11-11
-sha_prev: 801bf57c
+updated: 2026-11-12
+sha_prev: 1ca6a751
 --- #}
 Generate declarative tests for the function below. Return only valid compact JSON, without markdown, comments or explanations.
 
-1. Produce four uniquely named cases: normal with two or three items, empty list only when an argument is a list, invalid input and a domain edge case. Each case checks one property. For the edge case use one item with the fewest necessary characters, preserving the relevant feature such as Unicode or spaces. The invalid case must contain an invalid nested item if the schema constrains items. Add a fifth or sixth case only for a distinct constraint not yet checked. Use small data and exactly calculable results; always respect request constraints.
+1. Produce four uniquely named cases: normal with two or three items, empty list only when an argument is a list, invalid input and a domain edge case. Each case checks one property. For the edge case use one item with the fewest necessary characters, preserving the relevant feature such as Unicode or spaces. Every value of a case that must succeed stays a valid value for what its argument means, as the argument list below says: an e-mail address is still an address, a date still a date, a web address still a web address. Shorten the edge case only as far as that meaning allows. A path is never shortened: it stays one of the prepared paths of rule 5. The invalid case must contain an invalid nested item if the schema constrains items. Add a fifth or sixth case only for a distinct constraint not yet checked. Use small data and exactly calculable results; always respect request constraints.
 
 2. For EVERY input, FIRST check all request constraints, including the type and number of nested items. If the request rejects that input, expect is {"ok":false}: do not mentally perform the operation on invalid data or invent counts or messages. Only a request explicitly allowing per-item errors permits partial processing: discarded items increment fail_count, other items increment ok_count.
 
-3. For valid input, ok=true, ok_count is the number of items processed without errors, fail_count is the number of discarded items. A false, zero or empty result is a successful computation. Check calculated values inside field_eq: results for transformed values, entries for read or enriched records. Do not rename these fields. Compute each valid item’s result separately, then assemble the list in the same order. Do not confuse a result with the number of processed items. Respect case, spaces and Unicode as requested. For character counts use Unicode code points: "x" is 1, "yz" is 2, "è" is 1, "🙂" is 1 and "x🙂" is 2. Check every result against its own input again before emitting JSON.
+3. For valid input, ok=true, ok_count is the number of items processed without errors, fail_count is the number of discarded items. A false, zero or empty result is a successful computation. Check calculated values inside field_eq: results for transformed values, entries for read or enriched records. Do not rename these fields. Both are always lists with one item per input item, even for a single item; field_eq checks no other computed field. Compute each valid item’s result separately, then assemble the list in the same order. Do not confuse a result with the number of processed items. Respect case, spaces and Unicode as requested. For character counts use Unicode code points: "x" is 1, "yz" is 2, "è" is 1, "🙂" is 1 and "x🙂" is 2. Check every result against its own input again before emitting JSON.
 
 4. The final object has only tests, a list of objects with exactly name (string), input (object) and expect (nonempty object). The only matchers inside expect are ok (boolean), ok_count_eq (integer), fail_count_eq (integer), field_eq (field:value object) and error_contains (string). Use error_contains only if the request specifies error wording. Close every object and list. Represent all numbers as small integers or decimals without exponent notation. Every input must be representable in the runner’s JSON protocol, even when the function must reject it. A value outside that protocol never reaches the function: DO NOT generate cases for that constraint. For an invalid numeric type use null, "x" or a boolean. Transport representation limits are checked by the runtime separately from function tests.
 
@@ -33,7 +33,8 @@ Shape-only example for a different function: do not copy its inputs or expectati
 Function contract:
 name: {{ name }}
 args required: {{ args_required }}
-args properties: {{ args_properties_summary }}
+args (type and declared constraints, then meaning):
+{{ args_properties_summary }}
 capabilities: {{ capabilities }}
 revertible: {{ revertible }}; reverse_pattern: {{ reverse_pattern }}
 

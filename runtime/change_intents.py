@@ -780,14 +780,56 @@ def update_body(id_: str, **fields: Any) -> ChangeIntent:
     return _transition(id_, to_state=current.state, extra_cols={"intent_body": body})
 
 
-def close_until(id_: str, *, reason: str, days: int = CLOSED_DAYS) -> ChangeIntent:
+def close_until(id_: str, *, reason: str, days: int = CLOSED_DAYS,
+                by: str = "metnos") -> ChangeIntent:
     """Give a failed proposal up for ``days``: it leaves the open list and
-    comes back only if the same gap is still seen after that date."""
+    comes back only if the same gap is still seen after that date.
+
+    ``by``: who closed it. Without it the row kept the name of whoever had
+    decided before, and a closure nobody remembered could not be traced
+    (12/11/2026).
+    """
     until = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() + days * 86400))
     update_body(id_, closed_until=until, external_model_offer=False)
     return _transition(id_, to_state=STATE_REJECTED, extra_cols={
-        "decision_action": "close", "decision_reason": reason,
+        "decision_by": by, "decision_action": "close", "decision_reason": reason,
         "decision_ts": _iso_utc_now(),
+    })
+
+
+# What a closure or a refusal leaves in the body and a reopened proposal drops.
+_CLOSED_FACTS = ("closed_until", "external_model_offer", "external_model_consent")
+
+
+REOPEN = "reopen"
+
+
+def is_reopen(action: str) -> bool:
+    """The action that takes a discarded proposal back among the proposals."""
+    return action == REOPEN
+
+
+def reopen(id_: str, *, by: str) -> ChangeIntent:
+    """Bring a discarded proposal back among the proposals.
+
+    The way back from a «close» or a «reject» given by mistake: one tap
+    closed a proposal for thirty days and nothing could take it back. The
+    closing date, the failure it followed and a consent given for that
+    attempt are dropped, so the proposal is judged as a new one.
+    """
+    from messages import get as _msg
+
+    current = get_intent(id_)
+    if current is None:
+        raise TransitionError(_msg("ERR_CHANGE_NOT_FOUND", id=id_))
+    if current.state != STATE_REJECTED:
+        raise TransitionError(_msg("ERR_CHANGE_REOPEN_NOT_REJECTED", state=current.state))
+    body = {key: value for key, value in (current.intent_body or {}).items()
+            if key not in _CLOSED_FACTS}
+    return _transition(id_, to_state=STATE_PROPOSED, extra_cols={
+        "intent_body": body, "failed_at": None, "failed_reason": None,
+        "decision_by": by, "decision_ts": _iso_utc_now(),
+        "decision_action": REOPEN, "decision_reason": None,
     })
 
 
@@ -814,8 +856,13 @@ def is_person_answer(action: str) -> bool:
     return action in ("external", "close")
 
 
-def person_answer(id_: str, action: str, *, by: str, reason: str | None) -> ChangeIntent:
-    """Record the person's answer; nothing else may give this consent."""
+def person_answer(id_: str, action: str, *, by: str, reason: str | None,
+                  via: str = "page") -> ChangeIntent:
+    """Record the person's answer; nothing else may give this consent.
+
+    ``via``: where the answer was given (the page, a pushed message). It is
+    kept with the closure, the answer that one tap gives and nothing undoes.
+    """
     from messages import get as _msg
 
     current = get_intent(id_)
@@ -824,7 +871,7 @@ def person_answer(id_: str, action: str, *, by: str, reason: str | None) -> Chan
     if current.state != STATE_FAILED:
         raise TransitionError(_msg("ERR_CHANGE_RETRY_NOT_FAILED", state=current.state))
     if action == "close":
-        return close_until(id_, reason=reason or "closed by the person")
+        return close_until(id_, reason=reason or f"closed by the person ({via})", by=by)
     if not waits_for_external_model(current):
         raise TransitionError(_msg("ERR_CHANGE_EXTERNAL_NOT_OFFERED"))
     update_body(id_, external_model_offer=False,

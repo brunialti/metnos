@@ -97,7 +97,12 @@ def _stage5_prompt_for_verb(verb: str, **vars) -> str:
     if "available_i18n_keys" not in vars:
         try:
             from i18n import keys_for_synth_context
-            vars["available_i18n_keys"] = keys_for_synth_context()
+            # Each key with the values its text needs: «KEY(arg, reason)».
+            # Shown bare, every key was called bare (12/11/2026).
+            vars["available_i18n_keys"] = {
+                family: [key + (f"({', '.join(needed)})" if needed else "")
+                         for key in keys for needed in (message_values(key),)]
+                for family, keys in keys_for_synth_context().items()}
         except Exception:
             vars["available_i18n_keys"] = {}
     lang = _i18n.current_lang()
@@ -406,6 +411,35 @@ def test_generation_options(provider) -> dict:
     return {"grammar": generate_json_grammar(decimal_numbers_only=True)}
 
 
+# The fields of the standard answer that hold one value per item, and the
+# other fields of that answer a case may check.
+_ITEM_FIELDS = ("results", "entries", "failed")
+_ANSWER_FIELDS = _ITEM_FIELDS + ("truncated", "truncated_what", "used", "available_total",
+                                 "cap_field", "cap_value")
+
+
+# What the isolated runner prepares for every case (the same list the case
+# prompt gives); a file to create goes under the output directory.
+_FIXTURE_ROOT = "fixture"
+_FIXTURE_PATHS = ("fixture", "fixture/input.txt", "fixture/empty.txt", "fixture/output")
+_FIXTURE_OUTPUT = "fixture/output/"
+_GLOB_SIGNS = "*?["
+
+
+def _absent_fixture(value) -> str | None:
+    """The first prepared-directory path in ``value`` that will not exist."""
+    if isinstance(value, dict):
+        value = list(value.values())
+    if isinstance(value, list):
+        return next((found for found in map(_absent_fixture, value) if found), None)
+    if not isinstance(value, str) or value.split("/", 1)[0] != _FIXTURE_ROOT:
+        return None
+    if (value.rstrip("/") in _FIXTURE_PATHS or value.startswith(_FIXTURE_OUTPUT)
+            or any(sign in value for sign in _GLOB_SIGNS)):
+        return None
+    return value
+
+
 def stage3_cases_problem(stage2: dict, tests: list) -> str | None:
     """A defect of the functional cases that no code could satisfy, or None.
 
@@ -413,11 +447,33 @@ def stage3_cases_problem(stage2: dict, tests: list) -> str | None:
     to succeed and to fail, or ``from_step`` passed as a value (in a test
     there is no earlier step: the records go in ``entries``). Whether an
     empty value is valid depends on the tool, so it is not judged here.
+
+    An expectation outside the standard answer is such a defect too: a bare
+    value where the answer holds a list («results: 2» against «[2]»), or a
+    field the answer does not have. Measured on 12/11/2026, it was the most
+    frequent reason a sound candidate failed its own cases. So is a case that
+    must succeed on a prepared file that will not be there.
     """
     verdicts: dict[str, tuple[str, bool]] = {}
     for case in tests or []:
+        checked = (case.get("expect") or {}).get("field_eq")
+        for field, value in (checked.items() if isinstance(checked, dict) else ()):
+            if field not in _ANSWER_FIELDS:
+                return (f"case {case.get('name')!r} checks the field {field!r}, which the answer "
+                        "does not have: computed values go in `results`, records read or "
+                        "enriched go in `entries`, one item per input item")
+            if field in _ITEM_FIELDS and not isinstance(value, list):
+                return (f"case {case.get('name')!r} expects {field}="
+                        f"{json.dumps(value, ensure_ascii=False)[:80]}: `{field}` is always a "
+                        "list with one item per input item, even for a single item")
         arguments = case.get("input") or {}
-        if "from_step" in arguments:
+        absent = _absent_fixture(arguments)
+        if absent and (case.get("expect") or {}).get("ok") is True:
+            return (f"case {case.get('name')!r} must succeed on {absent!r}, which does not "
+                    f"exist: the only prepared paths are {', '.join(_FIXTURE_PATHS[1:])}; "
+                    f"a file to create goes under {_FIXTURE_OUTPUT}")
+        # An explicit null is an argument left out, not a reference.
+        if arguments.get("from_step") is not None:
             return (f"case {case.get('name')!r} passes from_step={arguments['from_step']!r}: "
                     "a test has no earlier step, pass the concrete records in `entries`")
         expected = (case.get("expect") or {}).get("ok")
@@ -432,6 +488,40 @@ def stage3_cases_problem(stage2: dict, tests: list) -> str | None:
     return None
 
 
+# What the signature may declare about an argument besides its type.
+_ARGUMENT_FACTS = ("enum", "minimum", "maximum", "minLength", "maxLength",
+                   "pattern", "format", "default")
+_ARGUMENT_TEXT_LIMIT = 300
+
+
+def stage3_args_contract(stage2: dict) -> str:
+    """What the case writer reads about each argument: one line with type,
+    declared constraints and meaning, the same meaning the code stage reads.
+
+    With the bare type alone («email:string») the shortest valid value was any
+    one-letter text: the cases asked the code to accept «a» as an address, the
+    code refused it, and three rewrites of the code could not settle a
+    disagreement that was in the case (12/11/2026).
+    """
+    required = set(stage2.get("args_required") or [])
+    lines = []
+    for name, spec in (stage2.get("args_properties") or {}).items():
+        spec = spec if isinstance(spec, dict) else {}
+        kind = str(spec.get("type", "?"))
+        items = spec.get("items")
+        if isinstance(items, dict) and items.get("type"):
+            kind += f" of {items['type']}"
+        facts = [kind] + (["required"] if name in required else [])
+        facts += [f"{key}={json.dumps(spec[key], ensure_ascii=False)}"
+                  for key in _ARGUMENT_FACTS if key in spec]
+        meaning = spec.get("description")
+        if isinstance(meaning, dict):          # one text per language
+            meaning = meaning.get(_i18n.current_lang()) or next(iter(meaning.values()), "")
+        meaning = " ".join(str(meaning or "").split())[:_ARGUMENT_TEXT_LIMIT]
+        lines.append(f"- {name} ({', '.join(facts)})" + (f": {meaning}" if meaning else ""))
+    return "\n".join(lines)
+
+
 def run_stage3(user_request: str, stage1: dict, stage2: dict, llm_call, *,
                real_requests: tuple[str, ...] = (), correction: str = "") -> StageResult:
     """Stage 3 = TESTS. Procedurale, struttura fissa.
@@ -441,7 +531,7 @@ def run_stage3(user_request: str, stage1: dict, stage2: dict, llm_call, *,
     is born for and not on inputs a model made up. ``correction``: why the
     cases of a first attempt were refused.
     """
-    args_summary = ", ".join(f"{k}:{v.get('type','?')}" for k, v in stage2.get("args_properties", {}).items())
+    args_summary = stage3_args_contract(stage2)
     user_prompt = prompt_loader.get(
         "synt_tests",
         _i18n.current_lang(),
@@ -459,6 +549,12 @@ def run_stage3(user_request: str, stage1: dict, stage2: dict, llm_call, *,
                    **test_generation_options(llm_call))
     text = res.get("text", "")
     out = _parse_json_strict(text)
+    # A test has no earlier step: a reference to one is an argument that
+    # means nothing there. Refused, it came back the same and cost every
+    # attempt (12/11/2026); it is left out, and the case is judged on the rest.
+    for case in (out or {}).get("tests") or []:
+        if isinstance(case, dict) and isinstance(case.get("input"), dict):
+            case["input"].pop("from_step", None)
     if out is None:
         return StageResult(stage=3, success=False, error="JSON parse failed", raw_text=text[:500],
                            in_tokens=res.get("in_tokens", 0), out_tokens=res.get("out_tokens", 0),
@@ -559,6 +655,53 @@ def run_stage4(user_request: str, stage1: dict, stage2: dict, stage3: dict, llm_
                        latency_ms=res.get("latency_ms", 0))
 
 
+def message_values(key: str) -> tuple[str, ...]:
+    """The values the catalog text of ``key`` needs, by name; none when the
+    key or the catalog cannot be read."""
+    from string import Formatter
+
+    try:
+        text = _i18n.get_for_language(key, _i18n.current_lang())
+        return tuple(sorted({name for _, name, _, _ in Formatter().parse(text)
+                             if name and name.isidentifier()}))
+    except Exception:  # noqa: BLE001 - an unreadable catalog or text judges nothing
+        return ()
+
+
+def stage5_messages_problem(code: str) -> str | None:
+    """The catalog messages called without a value their texts need, or None.
+
+    A key whose text holds «{addr}» was called bare, and the person would have
+    read the placeholder itself (12/11/2026). Decided on the syntax tree and
+    the catalog, with no model; a call that passes ``**values`` is not judged.
+    All of them are named at once, each with the call to write.
+    """
+    import ast
+
+    incomplete: dict[str, tuple[str, ...]] = {}
+    for node in ast.walk(ast.parse(code)):
+        if not isinstance(node, ast.Call) or not node.args:
+            continue
+        called, key = node.func, node.args[0]
+        by_name = isinstance(called, ast.Name) and called.id == "_msg"
+        by_module = (isinstance(called, ast.Attribute) and called.attr == "get"
+                     and isinstance(called.value, ast.Name) and called.value.id == "messages")
+        if (not (by_name or by_module) or not isinstance(key, ast.Constant)
+                or not isinstance(key.value, str)
+                or any(keyword.arg is None for keyword in node.keywords)):
+            continue
+        needed = message_values(key.value)
+        if set(needed) - {keyword.arg for keyword in node.keywords}:
+            incomplete[key.value] = needed
+    if not incomplete:
+        return None
+    calls = "; ".join(
+        f"messages.get({key!r}, {', '.join(name + '=...' for name in needed)})"
+        for key, needed in sorted(incomplete.items()))
+    return ("these catalog messages are called without the values their texts need, "
+            f"write them as: {calls}; or use a key whose text needs no value")
+
+
 def run_stage5(user_request: str, stage1: dict, stage2: dict, stage3: dict, stage4: dict,
                llm_call, *, scope: str | None = None, correction: str = "") -> StageResult:
     """Stage 5 = CODE. Usa wise.
@@ -611,7 +754,6 @@ def run_stage5(user_request: str, stage1: dict, stage2: dict, stage3: dict, stag
         # once with the error, before the reviewer spends a call on it.
         try:
             ast.parse(code)
-            break
         except SyntaxError as exc:
             problem = f"line {exc.lineno}: {exc.msg}"
             if attempt:
@@ -621,6 +763,17 @@ def run_stage5(user_request: str, stage1: dict, stage2: dict, stage3: dict, stag
                                    latency_ms=res.get("latency_ms", 0))
             request = (f"{request}\n\nCORRECTION: the file you wrote does not parse "
                        f"({problem}). Write the complete file again, shorter if needed.")
+            continue
+        # Read on the tree, like the syntax: a message shown with its
+        # placeholders unfilled is asked again once, with the reason.
+        problem = stage5_messages_problem(code)
+        if problem is None:
+            break
+        if attempt:
+            return StageResult(stage=5, success=False, error=problem, raw_text=text[:500],
+                               in_tokens=res.get("in_tokens", 0), out_tokens=res.get("out_tokens", 0),
+                               latency_ms=res.get("latency_ms", 0))
+        request = f"{request}\n\nCORRECTION: {problem}. Write the complete file again."
     # Fase 11 (c) 19/5/2026 v4: scan delle chiavi i18n emesse dal LLM nel
     # codice synth. Ogni chiave non presente nel DB viene auto-registrata
     # come stub `<auto-synth: KEY>` con `needs_translation=1` per review
@@ -679,7 +832,8 @@ def run_full(user_request: str, llm_call_procedural, llm_call_wise, *,
              llm_call_creative=None, llm_call_fidelity=None,
              progress=None, decided_name: str = "",
              llm_call_tests=None,
-             real_requests: tuple[str, ...] = ()) -> MultistageRun:
+             real_requests: tuple[str, ...] = (),
+             cases_correction: str = "") -> MultistageRun:
     """Orchestratore a 6 stadi, separato per contratto di workload.
 
     Stages 1-3 are procedural (middle), stage 4 is editorial (creative),
@@ -691,6 +845,9 @@ def run_full(user_request: str, llm_call_procedural, llm_call_wise, *,
     `progress` (opzionale): istanza di runtime.progress.Progress. Se passato,
     riceve `update(stage)` all'inizio di ogni stadio per UX (Telegram, HTML).
     Default None = nessun progress (test/CLI).
+
+    ``cases_correction``: why the functional cases of an earlier candidate are
+    questioned (the attempt loop found a case no code satisfied).
     """
     import uuid
     llm_call_creative = llm_call_creative or llm_call_procedural
@@ -717,12 +874,14 @@ def run_full(user_request: str, llm_call_procedural, llm_call_wise, *,
 
     if progress is not None: progress.update(3)
     s3 = run_stage3(user_request, s1.output, s2.output,
-                    llm_call_tests or llm_call_procedural, real_requests=real_requests)
+                    llm_call_tests or llm_call_procedural, real_requests=real_requests,
+                    correction=cases_correction)
     if not s3.success and s3.output:
         # Cases refused for a reason the model can act on: asked once more.
         s3 = run_stage3(user_request, s1.output, s2.output,
                         llm_call_tests or llm_call_procedural,
-                        real_requests=real_requests, correction=str(s3.error))
+                        real_requests=real_requests,
+                        correction="\n".join(filter(None, (cases_correction, str(s3.error)))))
     run.stages.append(s3)
     if not s3.success:
         run.final_state = "abandoned"; run.abandon_reason = f"stage3: {s3.error}"; return run

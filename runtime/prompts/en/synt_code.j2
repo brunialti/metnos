@@ -3,10 +3,10 @@ role: synt_code
 tier: wise
 lang: en
 style: definitional
-version: 7
+version: 8
 owner: roberto
-updated: 2026-10-04
-sha_prev: 64f70c57
+updated: 2026-11-12
+sha_prev: c04a2a99
 --- #}
 You are phase 5 (CODE) of synt-multistage.
 Your ONLY task: write the Python file `{{ name }}.py` that implements the executor.
@@ -46,13 +46,14 @@ ERROR: `import requests`, `import boto3`, `import paramiko`. THIS IS AN ERROR.
 REAL RUNTIME MODULE APIs (complete signature — DO NOT invent missing functions, DO NOT change signatures):
 
   `messages` (Python module):
-    `messages.get(code: str) -> str` — A single argument (the code).
-    Returns the template; if the code does not exist, returns a string starting with "[unknown msg".
+    `messages.get(code: str, **values) -> str` — the code, then the values its text needs, by name.
+    Returns the text; if the code does not exist, returns a string starting with "<missing".
+    A key listed below as `KEY(a, b)` has a text that needs exactly those values: `messages.get("KEY", a=..., b=...)`. A key listed bare needs none. A text shown with an unfilled value is an error.
     MUST: `from messages import get as messages_get` (explicit alias) or
     `import messages` then `messages.get(code)`.
     MUST NOT: `from messages import messages` (auto-reference, module does not contain a name `messages`).
     MUST NOT: wrap runtime module imports in try/except that silences ImportError. If runtime is not reachable, the executor MUST fail EXPLICITLY on the first invoke, do not mask the problem with stubs that return fake errors.
-    OK: `import messages` then `messages.get("ERR_X")`.
+    OK: `import messages` then `messages.get("ERR_X")` for a bare key, `messages.get("ERR_Y", arg="paths")` for a key listed as `ERR_Y(arg)`.
     ERROR: `try: from messages import messages\nexcept ImportError:\n    def open_imap(): raise ImportError(...)`. THIS IS AN ERROR.
 
   `mail_client`:
