@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
-"""Add LRE console labels to a seed without replacing its catalog."""
+"""Bring the LRE texts of a seed up to date without replacing its catalog."""
 from __future__ import annotations
 
 import argparse
@@ -65,8 +65,6 @@ TRANSLATIONS = {
         "{what}: it stopped and needs you, in the long jobs page."),
     "MSG_DURABLE_NOTICE_FAILED": ("{what}: non completato.", "{what}: not completed."),
     "MSG_DURABLE_NOTICE_CAUSE": ("Motivo: {cause}.", "Reason: {cause}."),
-    "MSG_DURABLE_NOTICE_ANSWER_IN_CHAT": (
-        "La risposta è nella conversazione.", "The answer is in the conversation."),
     "MSG_LRE_ANSWER_CUT": (
         "La risposta è lunga: qui c'è l'inizio ({shown} caratteri su {total}).",
         "The answer is long: this is its beginning ({shown} characters of {total})."),
@@ -77,6 +75,12 @@ TRANSLATIONS = {
         "Non è stato possibile cancellare {count} log: restano selezionati.",
         "Could not delete {count} logs: they remain selected."),
 }
+
+# Texts no code uses any longer: taken out of a seed that still has them.
+RETIRED = (
+    # It pointed to an answer kept elsewhere; the answer now reaches the person.
+    "MSG_DURABLE_NOTICE_ANSWER_IN_CHAT",
+)
 
 
 def sync(path: Path) -> int:
@@ -96,6 +100,7 @@ def sync(path: Path) -> int:
             if current.get("it") == it and current.get("en") == en:
                 continue
             i18n.set_catalog_translations(key, {"it": it, "en": en}, source_lang="it")
+        i18n.delete_keys(RETIRED)
         i18n._checkpoint(conn)
     finally:
         conn.close()
@@ -107,4 +112,4 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--db", type=Path, default=ROOT / "install/data/i18n_seed.sqlite")
     args = parser.parse_args()
-    print(f"LRE: {sync(args.db)} translations added to {args.db}")
+    print(f"LRE: {sync(args.db)} translations current in {args.db}")

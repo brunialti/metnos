@@ -197,11 +197,16 @@ Telegram.</p>
  <li><strong>Lavoro lungo:</strong> quando un piano soddisfa il contratto di LRE,
  il runtime può affidarlo automaticamente al motore dei lavori lunghi. L'utente
  non deve scegliere un profilo tecnico. Il turno si chiude subito dicendo che
- il lavoro è registrato; quando il lavoro finisce, la risposta arriva nella
- stessa conversazione che l'aveva chiesto, come un nuovo messaggio: nella
- pagina aperta, oppure nella chat Telegram se la richiesta era partita da lì.
- La risposta dichiara anche gli elementi che il lavoro non è riuscito a
- trattare.</li>
+ il lavoro è registrato; quando il lavoro finisce, la risposta viene scritta
+ nella stessa conversazione che l'aveva chiesto, come un nuovo messaggio, e
+ raggiunge la persona dove si trova. Una richiesta fatta dalla chat web compare
+ nella pagina aperta; se in quel momento la persona non sta usando la pagina
+ (è chiusa, oppure è aperta ma l'ultima richiesta risale a più di cinque
+ minuti prima) la risposta arriva anche nella sua chat Telegram, preceduta
+ dalle parole della richiesta. Una richiesta fatta su Telegram riceve la
+ risposta lì. Senza una chat Telegram collegata, la risposta aspetta nella
+ conversazione. La risposta dichiara anche gli elementi che il lavoro non è
+ riuscito a trattare.</li>
 </ul>
 
 <p>Una ripresa non ricomincia alla cieca. Il runtime ricontrolla proprietario,
@@ -282,8 +287,10 @@ pianificato il suo nome (per esempio l'aggiornamento dell'indice delle foto).
 Arrivano solo quando c'è una novità: un lavoro finito con modifiche, con
 elementi non riusciti, fermo in attesa di un intervento o non completato.
 L'accettazione di un lavoro e una conclusione senza modifiche non producono
-avvisi. Il testo usa soltanto conteggi e le cause dell'elenco chiuso della
-console.</p>
+avvisi. Un lavoro che deve una risposta a una conversazione non produce
+avvisi: lo racconta la risposta stessa, e nessun messaggio rimanda a una
+risposta da andare a cercare altrove. Il testo usa soltanto conteggi e le
+cause dell'elenco chiuso della console.</p>
 
 <p>Uno strumento che ha lavorato e ha perso alcuni elementi non è fallito. Se
 una ricerca incontra file che non può leggere, LRE conserva ciò che ha trovato

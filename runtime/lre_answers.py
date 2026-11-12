@@ -6,7 +6,10 @@ with «the job is registered». The result used to stay inside the job: a search
 never gave its list back and the person had to go and look for it. This module
 remembers who asked (conversation, turn, words) and, when the job ends, writes
 the answer as a turn linked to the request, in the same conversation, and
-pushes it to the open page or to the Telegram chat.
+puts it in front of the person where they are: in the page they are using,
+otherwise in their Telegram chat. Nothing points them to an answer kept
+somewhere else (Roberto, 12/11/2026: a notice said «the answer is in the
+conversation» and no conversation of his showed it).
 
 The durable store keeps no request text on purpose. What is remembered here
 lives beside the turn log, belongs to the same owner and has the same life.
@@ -36,6 +39,11 @@ _MAX_FAILED_TRIES = 5
 # An answer pushed to a chat is bounded: a long table would arrive as dozens
 # of messages. The whole answer stays in the turn log.
 _MAX_PUSHED_CHAT_CHARS = 3500
+# How long after their last request in the web chat a person is taken to be
+# still at that page. A tab left open on a computer nobody is sitting at
+# must not keep the answer to itself. Within what the service remembers of a
+# closed request (`turn_events._TURN_EVENT_TTL_S`).
+_AT_THE_PAGE_S = 300
 _MAX_QUERY = 600
 _MAX_TEMPLATE = 4000
 _MAX_ARGS_JSON = 64 * 1024
@@ -193,16 +201,19 @@ def _mark(workload_id: str, state: str, *, answer_turn_id: str = "") -> None:
              workload_id))
 
 
-def _count_failure(entry: dict) -> None:
+def _count_failure(entry: dict) -> bool:
+    """One more failed try; True when it was the last one allowed."""
     tries = int(entry.get("failed_tries") or 0) + 1
     with _open() as connection:
         connection.execute(
             "UPDATE origins SET failed_tries=? WHERE workload_id=?",
             (tries, entry["workload_id"]))
-    if tries >= _MAX_FAILED_TRIES:
-        log.error("lre_answers: answer of %s given up after %d tries",
-                  entry["workload_id"][:16], tries)
-        _mark(entry["workload_id"], DONE)
+    if tries < _MAX_FAILED_TRIES:
+        return False
+    log.error("lre_answers: answer of %s given up after %d tries",
+              entry["workload_id"][:16], tries)
+    _mark(entry["workload_id"], DONE)
+    return True
 
 
 def purge_owner(owner_user_id: str) -> int:
@@ -311,53 +322,114 @@ def _bounded_for_chat(text: str) -> str:
         "MSG_LRE_ANSWER_CUT", shown=len(head.rstrip()), total=len(text))))
 
 
-def _push(entry: dict, turn) -> str:
-    """Put the answer in front of the person, where they asked."""
-    from orchestration import _completion_from_turnlog
+def _show_in_open_pages(entry: dict, completion) -> bool:
+    """Show it in every open page of the person; False when there is none."""
+    import active_sessions
 
-    completion = _completion_from_turnlog(turn)
-    if entry["channel"] == "http":
-        from concurrent.futures import Future
+    if not active_sessions.listening_pages(entry["owner_user_id"]):
+        return False
+    from concurrent.futures import Future
 
-        from orchestration import _consegna_esito_tardivo
-        from turn_events import TurnEventLog
+    from orchestration import _consegna_esito_tardivo
+    from turn_events import TurnEventLog
 
-        settled: Future = Future()
-        settled.set_result(completion)
-        _consegna_esito_tardivo(
-            settled, channel="http", owner_user_id=entry["owner_user_id"],
-            executor=entry["tool"], loop=TurnEventLog.get().bound_loop())
-        return "page"
-    if entry["channel"] == "telegram":
-        from channels import OutboundMessage
-        from channels.telegram import TelegramChannel
-        from durable_workloads.events import resolve_telegram_recipient
+    settled: Future = Future()
+    settled.set_result(completion)
+    _consegna_esito_tardivo(
+        settled, channel="http", owner_user_id=entry["owner_user_id"],
+        executor=entry["tool"], loop=TurnEventLog.get().bound_loop())
+    return True
 
+
+def _at_the_page(owner_user_id: str) -> bool:
+    import person_activity
+
+    idle = person_activity.seconds_since_web_request(owner_user_id)
+    return idle is not None and idle < _AT_THE_PAGE_S
+
+
+def _send_to_telegram(entry: dict, text: str) -> str:
+    """"sent", "deferred" to the person's next message there, or "unpaired"."""
+    from channels import OutboundMessage
+    from channels.telegram import TelegramChannel
+    from durable_workloads.events import resolve_telegram_recipient
+
+    try:
         # Resolved now: the chat may have been unpaired while the job ran.
         recipient = resolve_telegram_recipient(entry["owner_user_id"])
         if not recipient:
-            return "telegram_unpaired"
-        try:
-            reply = TelegramChannel().send(
-                recipient, OutboundMessage(text=_bounded_for_chat(completion.text)))
-            sent = not (isinstance(reply, dict) and reply.get("ok") is False)
-        except Exception as exc:  # noqa: BLE001 - the answer must not be lost
-            log.warning("lre_answers: telegram send failed: %r", exc)
-            sent = False
-        if sent:
-            return "telegram"
-        # Not lost: it opens the person's next message in that chat.
-        import user_notices
+            return "unpaired"
+        reply = TelegramChannel().send(recipient, OutboundMessage(text=text))
+        if not (isinstance(reply, dict) and reply.get("ok") is False):
+            return "sent"
+    except Exception as exc:  # noqa: BLE001 - the answer must not be lost
+        log.warning("lre_answers: telegram send failed: %r", exc)
+    # Not lost: it opens the person's next message in that chat.
+    import user_notices
 
-        user_notices.append("telegram", entry["actor"],
-                            _bounded_for_chat(completion.text),
-                            owner_user_id=entry["owner_user_id"])
-        return "telegram_deferred"
+    user_notices.append("telegram", entry["actor"], text,
+                        owner_user_id=entry["owner_user_id"])
+    return "deferred"
+
+
+def _push(entry: dict, turn, *, title: str = "") -> str:
+    """Put what was written in front of the person, where they are now.
+
+    A request made in the web chat is shown in the person's open pages. It
+    also goes to their Telegram chat unless they are at the page: asking
+    them to come back and look is what fails (the same reason a question
+    that waits for the person is pushed). A request made on Telegram is
+    answered there. ``title`` heads the Telegram text when the text does not
+    name the job by itself: it may arrive long after the request, or in a
+    chat where the request was never written.
+    """
+    from orchestration import _completion_from_turnlog
+
+    completion = _completion_from_turnlog(turn)
+    asked_on_the_web = entry["channel"] == "http"
+    in_page = False
+    if asked_on_the_web:
+        try:
+            in_page = _show_in_open_pages(entry, completion)
+        except Exception:  # noqa: BLE001 - then it goes the other way
+            log.exception("lre_answers: open pages of %s not reached",
+                          entry["workload_id"][:16])
+    if in_page and _at_the_page(entry["owner_user_id"]):
+        return "page"
+    if not asked_on_the_web and entry["channel"] != "telegram":
+        return "recorded"
+    told = _send_to_telegram(entry, "\n\n".join(
+        part for part in (title, _bounded_for_chat(completion.text)) if part))
+    if told == "sent":
+        return "telegram"
+    if in_page:
+        return "page"
+    if entry["channel"] == "telegram":
+        return "telegram_" + told
+    # Asked in the web chat, no page open, no Telegram chat to write to: the
+    # answer waits in the conversation, where the page shows it when opened.
     return "recorded"
 
 
+def _tell_outcome(entry: dict, store, state) -> str:
+    """Say how the job ended, when there is no answer of its own to give."""
+    from durable_workloads.events import ended_notice
+    from durable_workloads.models import WorkloadState
+
+    text = ended_notice(store, entry["owner_user_id"], entry["workload_id"],
+                        state=state, origin=entry)
+    stopped = state in (WorkloadState.NEEDS_ATTENTION, WorkloadState.FAILED)
+    turn = _write_turn(entry, text=text, kind="error" if stopped else "answer",
+                       result=None)
+    # In attention the job may still be resumed and end: the answer is due.
+    _mark(entry["workload_id"],
+          ATTENTION if state is WorkloadState.NEEDS_ATTENTION else DONE,
+          answer_turn_id=turn.turn_id)
+    return _push(entry, turn)
+
+
 def _deliver_one(entry: dict, store) -> str:
-    from durable_workloads.events import lost_items_note, stopped_notice
+    from durable_workloads.events import lost_items_note, request_title
     from durable_workloads.models import WorkloadState
 
     try:
@@ -370,9 +442,9 @@ def _deliver_one(entry: dict, store) -> str:
         results = store.committed_tool_results(
             entry["owner_user_id"], entry["workload_id"], tool=entry["tool"])
         if len(results) != 1:
-            # Not the single answer of a plain tool: nothing to say for it.
-            _mark(entry["workload_id"], DONE)
-            return "no_single_result"
+            # Not the single answer of a plain tool. Its notice was silenced
+            # because an answer was due: how it ended is said all the same.
+            return _tell_outcome(entry, store, state)
         text = _answer_text(entry, results[0])
         # Partly done is done, with the rest declared.
         lost = (lost_items_note(store, entry["owner_user_id"], entry["workload_id"])
@@ -380,7 +452,7 @@ def _deliver_one(entry: dict, store) -> str:
         turn = _write_turn(entry, text=text, kind="answer", result=results[0],
                            lost=lost)
         _mark(entry["workload_id"], DONE, answer_turn_id=turn.turn_id)
-        return _push(entry, turn)
+        return _push(entry, turn, title=request_title(entry))
     if state is WorkloadState.CANCELLED:
         # Stopped by the person in the page: they know.
         _mark(entry["workload_id"], DONE)
@@ -389,14 +461,20 @@ def _deliver_one(entry: dict, store) -> str:
     if not stopped or (state is WorkloadState.NEEDS_ATTENTION
                        and entry["state"] == ATTENTION):
         return "working"
-    text = stopped_notice(store, entry["owner_user_id"], entry["workload_id"],
-                          state=state, origin=entry)
-    turn = _write_turn(entry, text=text, kind="error", result=None)
-    # In attention the job may still be resumed and end: the answer is due.
-    _mark(entry["workload_id"],
-          DONE if state is WorkloadState.FAILED else ATTENTION,
-          answer_turn_id=turn.turn_id)
-    return _push(entry, turn)
+    return _tell_outcome(entry, store, state)
+
+
+def _tell_given_up(entry: dict, store) -> str:
+    """The answer could not be composed: how the job ended is said instead.
+
+    Its notice was silenced because an answer was due; leaving it at that
+    would be a job that ends and nobody is told (§2.8)."""
+    try:
+        state = store.get_workload(entry["owner_user_id"], entry["workload_id"]).state
+        return _tell_outcome(entry, store, state)
+    except Exception:  # noqa: BLE001 - nothing more can be tried for this one
+        log.exception("lre_answers: outcome of %s not told", entry["workload_id"][:16])
+        return "given_up"
 
 
 def deliver_ready(*, limit: int = 20, open_store=None) -> dict:
@@ -418,7 +496,8 @@ def deliver_ready(*, limit: int = 20, open_store=None) -> dict:
             except Exception as exc:  # noqa: BLE001 - one answer never holds the others
                 log.exception("lre_answers: answer of %s failed", entry["workload_id"][:16])
                 result = f"error:{type(exc).__name__}"
-                _count_failure(entry)
+                if _count_failure(entry):
+                    result = _tell_given_up(entry, store)
             if result not in {"working"}:
                 outcome["details"].append(
                     {"workload": entry["workload_id"][:16], "result": result})

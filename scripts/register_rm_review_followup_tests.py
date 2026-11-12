@@ -69,6 +69,7 @@ GROUPS = {
         "tests/runtime/infra/test_lre_answers.py",
         "tests/runtime/durable_workloads/test_job_notices.py",
         "tests/runtime/durable_workloads/test_outbox.py",
+        "tests/runtime/http/test_consegna_esito_al_proprietario.py",
     ),
 }
 

@@ -30,10 +30,6 @@ _NOTICE_KEYS = {
     # The same sentence, followed by how many items were lost and why.
     EventType.COMPLETED_WITH_ERRORS: "MSG_DURABLE_NOTICE_COMPLETED",
 }
-_STATE_EVENTS = {
-    "needs_attention": EventType.NEEDS_ATTENTION,
-    "failed": EventType.FAILED,
-}
 _MAX_QUOTED_REQUEST = 120
 _MAX_CAUSES = 3
 
@@ -124,14 +120,24 @@ def _label(code: object) -> str | None:
     return None
 
 
-def _what(description: Mapping[str, Any], origin: Mapping[str, Any] | None) -> str:
+def _request(origin: Mapping[str, Any] | None) -> str:
+    """The person's own request, quoted and bounded; empty when nobody asked."""
     from messages import get as message
 
     request = " ".join(str((origin or {}).get("query") or "").split())
+    if not request:
+        return ""
+    if len(request) > _MAX_QUOTED_REQUEST:
+        request = request[:_MAX_QUOTED_REQUEST - 1].rstrip() + "…"
+    return message("MSG_DURABLE_WHAT_REQUEST", query=request)
+
+
+def _what(description: Mapping[str, Any], origin: Mapping[str, Any] | None) -> str:
+    from messages import get as message
+
+    request = _request(origin)
     if request:
-        if len(request) > _MAX_QUOTED_REQUEST:
-            request = request[:_MAX_QUOTED_REQUEST - 1].rstrip() + "…"
-        return message("MSG_DURABLE_WHAT_REQUEST", query=request)
+        return request
     if description.get("kind") == "image_indexing":
         return message("MSG_DURABLE_WHAT_PHOTO_INDEX")
     operation = description.get("operation")
@@ -179,7 +185,7 @@ def _stop_cause(summary: Mapping[str, Any]) -> str:
 
 
 def _compose(event_type: EventType, facts: Mapping[str, Any],
-             origin: Mapping[str, Any] | None, *, answer_follows: bool) -> str | None:
+             origin: Mapping[str, Any] | None) -> str | None:
     from messages import get as message
 
     key = _NOTICE_KEYS.get(event_type)
@@ -196,8 +202,6 @@ def _compose(event_type: EventType, facts: Mapping[str, Any],
         cause = _stop_cause(summary)
         if cause:
             parts.append(_cause_sentence(cause))
-    if answer_follows:
-        parts.append(message("MSG_DURABLE_NOTICE_ANSWER_IN_CHAT"))
     return " ".join(parts)
 
 
@@ -207,14 +211,15 @@ def silence_reason(store: DurableWorkloadStore, event: EventRecord,
 
     Accepting a job is not news: who asked has just been told, and nobody
     asked for a scheduled one. A job that changed nothing is not news either.
-    A job asked on Telegram is told about in that same chat by its answer.
+    A job asked in a conversation is told about by its answer, which reaches
+    the person where they are (``lre_answers``): a notice pointing to an
+    answer kept somewhere else would only send them looking for it.
     """
     if event.event_type is EventType.REVISION_ADMITTED:
         return "no_news"
     if event.event_type not in _NOTICE_KEYS:
         return None
-    if (origin is not None and origin.get("channel") == "telegram"
-            and origin.get("expects_answer")):
+    if origin is not None and origin.get("expects_answer"):
         return "told_in_conversation"
     if event.event_type is EventType.COMPLETED:
         progress = store.progress_many(
@@ -240,10 +245,7 @@ def terminal_notice(event: EventRecord, *, language: str | None = None,
     with i18n.instance_language_context():
         return _compose(
             event.event_type,
-            _facts(store, event.owner_user_id, event.workload_id), origin,
-            answer_follows=bool(origin and origin.get("expects_answer"))
-            and event.event_type in (
-                EventType.COMPLETED, EventType.COMPLETED_WITH_ERRORS))
+            _facts(store, event.owner_user_id, event.workload_id), origin)
 
 
 def lost_items_note(store: DurableWorkloadStore, owner_user_id: str,
@@ -255,16 +257,26 @@ def lost_items_note(store: DurableWorkloadStore, owner_user_id: str,
         return _lost_items(store.execution_summary(owner_user_id, workload_id))
 
 
-def stopped_notice(store: DurableWorkloadStore, owner_user_id: str,
-                   workload_id: str, *, state: Any,
-                   origin: Mapping[str, Any] | None) -> str:
-    """The same words, for the conversation that asked for a job that stopped."""
+def ended_notice(store: DurableWorkloadStore, owner_user_id: str,
+                 workload_id: str, *, state: Any,
+                 origin: Mapping[str, Any] | None) -> str:
+    """The same words, for the conversation that asked: how its job ended.
+
+    A state and the event that announces it share one name."""
     import i18n
 
-    event_type = _STATE_EVENTS[getattr(state, "value", state)]
+    event_type = EventType(getattr(state, "value", state))
     with i18n.instance_language_context():
         return _compose(event_type, _facts(store, owner_user_id, workload_id),
-                        origin, answer_follows=False) or ""
+                        origin) or ""
+
+
+def request_title(origin: Mapping[str, Any] | None) -> str:
+    """The person's request in their own words, to head what answers it."""
+    import i18n
+
+    with i18n.instance_language_context():
+        return _request(origin)
 
 
 class TelegramOutboxAdapter:
@@ -502,11 +514,12 @@ __all__ = [
     "DeliveryReport",
     "RecipientResolutionError",
     "TelegramOutboxAdapter",
+    "ended_notice",
     "job_origin",
     "lost_items_note",
     "owner_language",
+    "request_title",
     "resolve_telegram_recipient",
     "silence_reason",
-    "stopped_notice",
     "terminal_notice",
 ]

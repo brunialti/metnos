@@ -25,6 +25,19 @@ def _seconds_since_http_request() -> float | None:
         return None
 
 
+def seconds_since_web_request(owner_user_id: str) -> float | None:
+    """Seconds since this person last asked something in the web chat; 0
+    while their request is being served; None when none is remembered."""
+    if not owner_user_id:
+        return None
+    try:
+        from turn_events import TurnEventLog
+        return TurnEventLog.get().seconds_since_last_activity(owner_user_id)
+    except Exception as exc:  # noqa: BLE001 - an unknown source says nothing
+        log.debug("person_activity: web activity of one person unavailable: %r", exc)
+        return None
+
+
 def _seconds_since_channel_message() -> float | None:
     """The other channels run in their own process: they leave the moment of
     the last message in the pairing store, written when it arrives."""

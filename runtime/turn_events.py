@@ -272,13 +272,19 @@ class TurnEventLog:
                 ],
             }
 
-    def seconds_since_last_activity(self) -> float | None:
+    def seconds_since_last_activity(self, owner_user_id: str = "") -> float | None:
         """0 while a request is being served; otherwise the seconds since the
-        last one began or ended; None when none is remembered."""
+        last one began or ended; None when none is remembered. With an owner,
+        only that person's requests count.
+
+        A closed request is remembered for `_TURN_EVENT_TTL_S` at least: an
+        answer below that bound is always a true one."""
         with self._lock:
-            if any(not state.closed for state in self._turns.values()):
+            turns = [state for state in self._turns.values()
+                     if not owner_user_id or state.owner_user_id == owner_user_id]
+            if any(not state.closed for state in turns):
                 return 0.0
-            moments = [moment for state in self._turns.values()
+            moments = [moment for state in turns
                        for moment in (state.created_at, state.closed_at)
                        if moment is not None]
         return max(0.0, time.time() - max(moments)) if moments else None

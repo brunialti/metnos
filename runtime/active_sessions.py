@@ -659,6 +659,20 @@ def publish_to_user(user_id: str, kind: str, payload: dict) -> int:
     return raggiunte
 
 
+def listening_pages(user_id: str) -> int:
+    """How many open pages of this person would receive an event now.
+
+    The same count `publish_to_user` returns, asked before publishing: who
+    has something for a person must know whether a page is there to show it,
+    or whether it has to reach them another way."""
+    if not user_id:
+        return 0
+    return sum(
+        len(_SUBSCRIBERS.get(str(session.get("device_token") or ""), ()))
+        for session in list_sessions_for_user(user_id)
+        if not session.get("revoked_at"))
+
+
 # Hook nel takeover: dopo aver revocato la sessione vecchia, notifica il
 # device sloggato. Non puo' essere fatto direttamente in confirm_takeover()
 # perche' quello e' sync e i subscriber sono asyncio queue; usiamo un

@@ -104,7 +104,7 @@ KNOWN_DETECTION_SEED_PATHS = frozenset({
 # per-operation cardinality observed by the closing review.  Any source edit,
 # added gate, copied exception or operation-shape change invalidates authority.
 LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, int], ...]]] = {
-    'active_sessions.py': ('db0242202cba9a0e3ec331eba33cf178e185fcd1380ec9bd04a75c2365b7dbf1', (('comparison', 2),)),
+    'active_sessions.py': ('c22d06a106da07468267287f685aa6cea558539becd7e0d1b98e41dbea5ceae9', (('comparison', 2),)),
     'adaptive_rerank.py': ('04cdfb013c155f2e0105a65f0b29abf3eda3ec1acb7759e5cd0c0e949cfba0ff', (('comparison', 1),)),
     'admin/i18n_cli.py': ('0c2932caac0b2ec2f483f5f6956ff78addaff89d9feafb57e9edcf5474eee2cd', (('comparison', 11), ('helper-argument', 3))),
     'admin/i18n_migrate_manifests.py': ('6dd6324ff6fe3d014e9f007d7ccb2f4492c46b3fbaa4d6e726007f48e3bd7696', (('comparison', 4),)),
@@ -186,7 +186,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'durable_workloads/control.py': ('db7a4c0f2295ef835542f380927fa00210558f761d9b2b17b7205f49d590c04d', (('comparison', 4), ('helper-argument', 1))),
     'durable_workloads/coordinator.py': ('596a60586216e220498142c64addbc382d7177d75941c42df0f7bd8a43d53042', (('comparison', 2), ('membership', 2))),
     'durable_workloads/direct_invocation.py': ('79acd682f431a84a86dac3d805bf391769f906392a914a360a5927a36325a554', (('comparison', 8), ('helper-argument', 1), ('iteration', 4), ('membership', 1))),
-    'durable_workloads/events.py': ('3c349ecac53145768285eabebd265fadd5951ad6b5bad89874fd6a3b6648474b', (('comparison', 5), ('iteration', 1))),
+    'durable_workloads/events.py': ('c0e938f85d832fa75f8cdf4758256fa679bc4f21bb1aca631de7ef7060ecc5cd', (('comparison', 4), ('iteration', 1))),
     'durable_workloads/execution.py': ('85ec102d8a2e808aa0e2fea619e3fdf158bf3c89eab57b4b08b019dd2319308b', (('comparison', 23), ('membership', 2), ('regex', 1))),
     'durable_workloads/image_preset.py': ('3223b56752d9cb233277732be9d4c02f0987d73fede79649ca9053c337dffb3e', (('comparison', 5), ('helper-argument', 9))),
     'durable_workloads/inventory.py': ('99014eade9b0ef02f820039d3edc93f8b0937d92f45e4ed7a832b7cbc4f812a3', (('comparison', 4), ('helper-argument', 1))),
@@ -448,7 +448,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'tool_grammar.py': ('982f5990e6516b0800e887903173bc5539b8e52e4550367dfdc6c4a0efe39590', (('comparison', 18), ('helper-argument', 7), ('regex', 2))),
     'tool_schema_slim.py': ('273cd4a9d0ec466eb795d3d9abb3c469f738c16322862c409f8d5804a3246e4c', (('comparison', 4),)),
     'treated_issues_guard.py': ('16f164d13e8c226bd102f261ea54101a9b44b14c0e4fef368ed09fac3e20c3b2', (('comparison', 1),)),
-    'turn_events.py': ('d69578551de428f1d9c91d44d6f27546ca676811b2bb60e8ca81210fc83bc686', (('comparison', 4),)),
+    'turn_events.py': ('34d60d2f5268df855c8a9b50a8951d2130e07d875c3aab908656e0a19d41240b', (('comparison', 4),)),
     'turn_feedback.py': ('6c143d8b03bc4e205bf836ec3fe330b674978ee70b5a6daffa906492b386975a', (('comparison', 10), ('helper-argument', 1))),
     'tutor/associations.py': ('fc9b06e5d4b667c66c87c4e6020a676bde731de570d85ad4b3ec16739072f078', (('comparison', 3), ('helper-argument', 2))),
     'tutor/catalog.py': ('97ec3dc2b0b3bcf746bf69c1d6adb1a606f80885f882f19f891775046b39324b', (('comparison', 7), ('helper-argument', 3))),
@@ -605,7 +605,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'learning_loop.py': ('bf2aa8c14a168c9e67e13fbc3e6a87599f96be31ad0c66a333d0e2f7b3116c37', (('comparison', 1),)),
     'synth_activation.py': ('d0cf2d39678d3a10a8377323d1cb951b886cbb06e61ed7cfb97415a8970ba9a8', (('comparison', 3), ('prefix-suffix', 1))),
     'http_routes_generated_tools.py': ('960b28d3afa04ac7f3609d24f087460514485100940f5620a714ab3d84ba1fef', (('comparison', 1), ('helper-argument', 1))),
-    'lre_answers.py': ('8b08ba5670153a79357cc31c1bcd34d8efa3ab72e7e0ba1bc393ff76e2aa3e72', (('comparison', 3), ('membership', 3))),
+    'lre_answers.py': ('497d6494da3ca6d0f88a0044c33fbf1111eb4854118296856f32016aa0f9ae34', (('comparison', 5), ('membership', 3))),
 }
 
 VALUE_BOUND_SEED_GATE_FINGERPRINTS: Mapping[str, int] = {

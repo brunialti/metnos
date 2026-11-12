@@ -191,10 +191,15 @@ messages, or ordinary records.</p>
  <li><strong>Long-running work:</strong> when a plan satisfies the LRE contract,
  the runtime may submit it automatically to the long-running engine. The user
  does not need to choose a technical profile. The turn ends at once saying that
- the job is registered; when the job ends, its answer arrives in the same
- conversation that asked for it, as a new message: in the open page, or in the
- Telegram chat when the request started there. The answer also declares the
- items the job could not handle.</li>
+ the job is registered; when the job ends, its answer is written in the same
+ conversation that asked for it, as a new message, and reaches the person
+ where they are. A request made in the web chat appears in the open page; if
+ the person is not using the page at that moment (it is closed, or it is open
+ but their last request is more than five minutes old) the answer also arrives
+ in their Telegram chat, headed by the words of the request. A request made on
+ Telegram is answered there. Without a paired Telegram chat, the answer waits
+ in the conversation. The answer also declares the items the job could not
+ handle.</li>
 </ul>
 
 <p>A resumption does not continue blindly. The runtime checks the owner, expiry,
@@ -261,8 +266,10 @@ asked in a conversation they quote the request, for a scheduled one its name
 (for example the update of the photo index). They arrive only when there is
 news: a job that ended with changes, with items that failed, stopped waiting
 for the person, or not completed. Accepting a job and ending without changes
-produce no notice. The text uses only counts and the causes of the console's
-closed list.</p>
+produce no notice. A job that owes an answer to a conversation produces no
+notice: its own answer tells about it, and no message points to an answer to
+be looked for somewhere else. The text uses only counts and the causes of the
+console's closed list.</p>
 
 <p>A tool that worked and lost some items did not fail. When a search meets
 files it cannot read, LRE keeps what it found and closes the job as
