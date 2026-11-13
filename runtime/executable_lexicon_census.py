@@ -582,7 +582,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'reverse_patterns_patch.py': ('ba1aecc0769cfa83a262207c7eccbac80e2b14acf8faa4c437891066c167eece', (('comparison', 2),)),
     'scheduler_v2/daemon.py': ('21656455487b5d8fdd036d5c98b4c680d25d92d84071aea39574c21f0c2a584e', (('comparison', 1), ('membership', 1))),
     'scheduler_v2/retry_notice.py': ('b7df458d431433c132f6f3c3a0a056635170c711a88e3135f2ed020757dfea07', (('comparison', 1),)),
-    'server_filesystem.py': ('837319e5c9038b8c9a8cb3a2ee2b11029e42909446ff490d0788affb38fa4c37', (('comparison', 35), ('helper-argument', 1), ('iteration', 2), ('membership', 8), ('prefix-suffix', 3), ('regex', 1))),
+    'server_filesystem.py': ('2f8758f392a7a9903f490ebf79e95d399ffd8f86557be768ae40c816ad648a36', (('comparison', 36), ('helper-argument', 1), ('iteration', 2), ('membership', 8), ('prefix-suffix', 3), ('regex', 1))),
     'server_filesystem_host.py': ('d7a12789905641dcb5b0a2ec88169387ce7700bc4d3d642ec64a63f6c767d3c9', (('comparison', 22), ('iteration', 2), ('membership', 3))),
     'server_filesystem_protocol.py': ('46f1deb9856a4c4264fdbc38d3b1c7497c3659160b8287c1ed18b77c3d765e1a', (('comparison', 57), ('helper-argument', 1), ('iteration', 2), ('membership', 10), ('regex', 3))),
     'service_profile.py': ('0a67e1c6f0efd8395dbe75bb30fe53409b3031b9f2946b67c4ce7a5599c7de37', (('comparison', 7), ('membership', 3))),
@@ -606,7 +606,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'synth_activation.py': ('5d1341506eac59de5953c1cf467ac8ffb4fd74c618751fd112cdbde58cfc2aaf', (('comparison', 4), ('prefix-suffix', 2))),
     'http_routes_generated_tools.py': ('960b28d3afa04ac7f3609d24f087460514485100940f5620a714ab3d84ba1fef', (('comparison', 1), ('helper-argument', 1))),
     'lre_answers.py': ('f9c5eac4dad7d5d11ad6f7e82102ebb9ee250756cc4f378e0d1f79f1992cefe8', (('comparison', 6), ('membership', 3))),
-    'long_answers.py': ('a51c905096b4217d98e9765d3b4fe31e3cf0c6ef174bcd33d10325dc6cced519', (('comparison', 1), ('iteration', 1), ('prefix-suffix', 4))),
+    'long_answers.py': ('155eae6b2abd4099e5fb8cce026c4e34e0dfdbe494552956d24da6f3fae152b7', (('comparison', 2), ('iteration', 1), ('prefix-suffix', 4))),
     'provider_reads.py': ('555d640180c5d06a6fb022c9585068579ac0b5ba7b76725fa292fdd7a1d19453', (('comparison', 4),)),
     'provider_catalog.py': ('f51fa274ab74fd2a4cfd1473ff05dab0ed87e51965a2c790ea9cbb6009b29ac7', (('comparison', 13), ('helper-argument', 1), ('prefix-suffix', 3))),
 }

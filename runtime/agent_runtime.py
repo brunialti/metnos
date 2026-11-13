@@ -5400,6 +5400,14 @@ class TurnLog:
 
         notices = []
         seen = set()
+        # Which step each notice speaks of: a results file that ends up
+        # holding everything takes back the notice of its own step.
+        by_step: dict = {}
+        self._truncation_notices_by_step = by_step
+
+        def _note(step, text):
+            notices.append(text)
+            by_step.setdefault(step.step_num, []).append(text)
         _turn_authoritative = _turn_has_authoritative_presentation(self)
         # Skip per query count soltanto quando la presentazione strutturata
         # copre l'intero turno. Una fragment per-step non deve nascondere il
@@ -5440,11 +5448,22 @@ class TurnLog:
             # fuorviante. Parallelo alla soppressione cap_expand (§2.7).
             try:
                 from output_policy import (
-                    resolve as _op_resolve, RANKED_MODES as _RANKED)
-                if _op_resolve(getattr(self, "intent_verb", ""),
-                               s.chosen_tool,
-                               getattr(self, "user_query", "")
-                               ).get("mode") in _RANKED:
+                    resolve as _op_resolve, RANKED_MODES as _RANKED, S as _SCALAR)
+                _mode = _op_resolve(getattr(self, "intent_verb", ""),
+                                    s.chosen_tool,
+                                    getattr(self, "user_query", "")
+                                    ).get("mode")
+                if _mode in _RANKED:
+                    continue
+                # A number is the answer («quanti?») and the tool counted them
+                # all: `@count` reads `available_total` first, so the cut of
+                # the list behind the number is not part of the answer (turn
+                # 36fe1a99, 13/11/2026: «ne considero 1000» before the right
+                # 30972). Only for the step the answer is drawn from: a later
+                # step would have worked on the cut list.
+                if (_mode == _SCALAR and type(res.get("available_total")) is int
+                        and not any(later.chosen_tool for later in
+                                    self.steps[self.steps.index(s) + 1:])):
                     continue
             except Exception as _e:
                 log.debug("output_policy ranked-notice skip noop: %r", _e)
@@ -5497,7 +5516,7 @@ class TurnLog:
                 key = (what, used, "extract_output")
                 if key not in seen:
                     seen.add(key)
-                    notices.append(msg(
+                    _note(s, msg(
                         "MSG_TRUNCATED_NO_TOTAL", used=used, what=what))
                 continue
             limit = collection_limit_message(res.get("cap_field"), res.get("cap_value"))
@@ -5506,7 +5525,7 @@ class TurnLog:
                 key = ("collection_limit", limit_key, limit_parameters["cap_value"])
                 if key not in seen:
                     seen.add(key)
-                    notices.append(msg("MSG_COLLECTION_COMPLETENESS_UNVERIFIED",
+                    _note(s, msg("MSG_COLLECTION_COMPLETENESS_UNVERIFIED",
                                        detail=msg(limit_key, **limit_parameters)))
                 continue
             key = (what, used, available)
@@ -5514,14 +5533,14 @@ class TurnLog:
                 continue
             seen.add(key)
             if available and used:
-                notices.append(msg("MSG_TRUNCATED_GENERIC",
+                _note(s, msg("MSG_TRUNCATED_GENERIC",
                                    available=available, what=what, used=used))
             elif used:
-                notices.append(msg("MSG_TRUNCATED_NO_TOTAL", used=used, what=what))
+                _note(s, msg("MSG_TRUNCATED_NO_TOTAL", used=used, what=what))
             else:
                 # Search budgets may stop before record cardinality is known.
                 # Never present action counts as records or invent a total.
-                notices.append(msg("MSG_TRUNCATED_UNKNOWN"))
+                _note(s, msg("MSG_TRUNCATED_UNKNOWN"))
         return notices
 
     def write(self):
@@ -7692,6 +7711,9 @@ def _run_engine(
         "gate_obs": gate_obs,
         "durable_admission": getattr(result, "durable_admission", None),
         "diagnostics": _diagnostics,
+        # Runtime-only: how this turn runs a tool, for the one case where a
+        # reading step is asked again without its cap (a results file).
+        "rerun": _invoke,
     }
 
 
@@ -7705,6 +7727,7 @@ def _finalize_engine_result(log, _engine_v2_res, *, actor, channel,
     e il branch foto-allegate (engine-uploads). Comportamento byte-invariato."""
     # Runtime-only: private persistence below, absent from public asdict(log).
     log._engine_diagnostics = _engine_v2_res.get("diagnostics")
+    log._rerun_step = _engine_v2_res.get("rerun")
     log.steps.extend(_engine_v2_res.get("steps") or [])
     log.match_source = str(_engine_v2_res.get("match_source") or "")
     log.durable_admission = _engine_v2_res.get("durable_admission")

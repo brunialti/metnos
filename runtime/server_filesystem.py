@@ -35,6 +35,9 @@ _SEARCH_ARGS = frozenset({"pattern", "patterns", "case_sensitive", "recursive", 
 # planner repeats the folder in `repo` (turns 3e4db9f6 and 0a61875a, 13/11/2026).
 _OTHER_BACKEND_ARGS = frozenset({"repo", "query"})
 _SEARCH_SCAN_MAX = 200_000
+# One page of a search: what one answer of the closed operation carries.
+_SEARCH_PAGE = 5000
+_SEARCH_PAGE_BYTES = 1024 * 1024
 
 
 def search_request(owner, manifest, args):
@@ -66,38 +69,54 @@ def search_request(owner, manifest, args):
 
 def search(owner, manifest, args, turn_id, *, timeout_s=30, db_path=None):
     """A local search outside the tool's own scope, done by the closed list
-    operation under the account's areas and grants, in the search's own shape."""
+    operation under the account's areas and grants, in the search's own shape.
+
+    The operation answers one page at a time; a search that asks for more
+    than a page goes on from the last entry it was given, within its time."""
     request = search_request(owner, manifest, args)
     listing = {"filesystem": {"protocol": permissions.CAPABILITY, "operation": "list"},
                "capabilities": manifest.get("capabilities", []), "args": manifest.get("args", {})}
+    wanted = request.get("max_results") or 1000
+    until = time.monotonic() + max(5, timeout_s - 10)
     found = execute(owner, listing, request, turn_id, timeout_s=timeout_s, db_path=db_path)
     if not found.get("ok"):
         return {**found, "entries": [], "matches": []}
+    items, more = list(found["entries"]), found.get("more") is True
+    while more and len(items) < wanted and items:
+        if time.monotonic() > until:
+            break
+        page = execute(owner, listing, {**request, "max_results": wanted - len(items), "after": items[-1]["path"]},
+                       turn_id, timeout_s=timeout_s, db_path=db_path)
+        if not page.get("ok") or not page["entries"]:
+            break
+        items.extend(page["entries"])
+        more = page.get("more") is True
     from backends.files.local import _kind_for, _mime_for
+    items.sort(key=lambda item: (item["name"].casefold(), item["path"]))
     entries = []
-    for item in found["entries"]:
+    for item in items[:wanted]:
         mime = _mime_for(item["name"]) if item["type"] == "file" else ""
         entries.append({"path": item["path"], "name": item["name"], "type": item["type"], "mime": mime,
                         "kind": _kind_for(mime) if item["type"] == "file" else item["type"],
                         "size": int(item["size"]), "mtime": float(item["mtime_epoch"])})
     skipped = found.get("skipped", [])
+    counted = found.get("counted") is True
+    truncated = more or found.get("unseen") is True
     result = {"ok": True, "entries": entries, "matches": [entry["path"] for entry in entries],
               "ok_count": len(entries), "fail_count": len(skipped), "failed": skipped,
               "metadata": {"base_path": request["path"], "patterns": request["name_patterns"],
                            "recursive": request["recursive"], "case_sensitive": request["case_sensitive"],
                            "count": len(entries), "visited": found.get("visited", len(entries)),
-                           "source_complete": found.get("counted") is True,
-                           "truncated": found.get("truncated") is True}}
-    if found.get("truncated"):
+                           "source_complete": counted, "truncated": truncated}}
+    if truncated:
         result.update({"truncated": True, "truncated_what": "file", "used": len(entries),
-                       "cap_field": "max_results", "cap_value": found["cap_value"]})
+                       "cap_field": "max_results", "cap_value": wanted})
         matched = max(int(found.get("matched") or 0), len(entries))
-        if found.get("counted") is True:
+        if counted:
             result["available_total"] = matched
         else:
             result.update({"available_at_least": matched, "source_scan_truncated": True})
     return result
-
 
 def write_specs(args):
     from backends.files.local import _collect_write_specs
@@ -423,99 +442,153 @@ class Broker:
             finally:
                 os.close(fd)
 
+    def _scan(self, current, recursive):
+        """The entries of one folder the account may read, as the closed list
+        operation reports them."""
+        self.check(current, "read", directory=True, recursive=recursive)
+        with io.parent(current) as (parent, name):
+            fd = os.open(name or "/", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+        try:
+            with os.scandir(fd) as listing:
+                for entry in listing:
+                    st = entry.stat(follow_symlinks=False)
+                    yield {"path": os.path.join(current, entry.name), "name": entry.name,
+                           "type": "symlink" if entry.is_symlink() else "dir" if entry.is_dir(follow_symlinks=False) else "file",
+                           "size": st.st_size, "mtime_epoch": st.st_mtime}
+        finally:
+            os.close(fd)
+
     def list(self, path):
         recursive = self.args.get("recursive") is True
         cap = self.args.get("max_results", 1000) or 1000
         depth = self.args.get("max_depth", 10) or 64
         if type(cap) is not int or type(depth) is not int or cap < 0 or depth < 0:
             raise permissions.PermissionError("ERR_FS_BROKER_UNSUPPORTED")
-        cap, depth = min(cap, 1000), min(depth, 64)
-        # A search is this same walk with a filter on the names: what does not
-        # match is visited and not returned, and a branch that cannot be opened
-        # is reported instead of ending the whole search.
-        patterns = self.args.get("name_patterns")
-        searching = patterns is not None
-        if searching and (not isinstance(patterns, list) or not patterns or len(patterns) > 50
-                          or any(not isinstance(p, str) or not p or len(p) > 200 for p in patterns)):
+        depth = min(depth, 64)
+        if self.args.get("name_patterns") is not None:
+            return self._search(path, recursive, min(cap, _SEARCH_PAGE), depth)
+        if self.args.get("after") is not None:
             raise permissions.PermissionError("ERR_FS_BROKER_UNSUPPORTED")
-        exact_case = self.args.get("case_sensitive") is True
-        with_dirs = not searching or self.args.get("include_dirs") is True
-        if searching and not exact_case:
-            patterns = [p.lower() for p in patterns]
-
-        def wanted(item):
-            if not searching:
-                return True
-            if item["type"] == "dir" and not with_dirs:
-                return False
-            name = item["name"] if exact_case else item["name"].lower()
-            return any(fnmatch.fnmatchcase(name, p) for p in patterns)
-
+        cap = min(cap, 1000)
         todo, entries, truncated, output_bytes = [(path, 0)], [], False, 0
-        visited, skipped = 0, []
-        # A search keeps counting what matches after its answer is full, as the
-        # tool's own wide probe does: «how many» is answered with the number,
-        # not with the cap. `unseen` = a part of the tree was not walked.
-        matched, full, unseen = 0, False, False
         while todo:
             current, level = todo.pop()
-            if searching and (visited >= _SEARCH_SCAN_MAX or time.monotonic() > self.deadline - 5):
-                truncated = unseen = True
-                break
+            listing = self._scan(current, recursive)
             try:
-                self.check(current, "read", directory=True, recursive=recursive)
-                with io.parent(current) as (parent, name):
-                    fd = os.open(name or "/", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
-            except (OSError, permissions.PermissionError) as exc:
-                if not searching or level == 0:
-                    raise
-                failure = error_result(exc)
-                if len(skipped) < 20:
-                    skipped.append({"path": current, "error": failure["error"],
-                                    "error_code": failure["error_code"]})
-                continue
-            try:
-                with os.scandir(fd) as listing:
-                    for entry in listing:
-                        st = entry.stat(follow_symlinks=False)
-                        item = {"path": os.path.join(current, entry.name), "name": entry.name,
-                                "type": "symlink" if entry.is_symlink() else "dir" if entry.is_dir(follow_symlinks=False) else "file",
-                                "size": st.st_size, "mtime_epoch": st.st_mtime}
-                        visited += 1
-                        if recursive and item["type"] == "dir":
-                            if level + 1 < depth:
-                                todo.append((item["path"], level + 1))
-                            else:
-                                truncated = unseen = True
-                        if not wanted(item):
-                            continue
-                        matched += 1
-                        if full:
-                            continue
-                        output_bytes += len(json.dumps(item).encode())
-                        if len(entries) >= cap or output_bytes > 256 * 1024:
-                            truncated = full = True
-                            if searching:
-                                continue
-                            break
-                        entries.append(item)
+                for item in listing:
+                    if recursive and item["type"] == "dir":
+                        if level + 1 < depth:
+                            todo.append((item["path"], level + 1))
+                        else:
+                            truncated = True
+                    output_bytes += len(json.dumps(item).encode())
+                    if len(entries) >= cap or output_bytes > 256 * 1024:
+                        truncated = True
+                        break
+                    entries.append(item)
             finally:
-                os.close(fd)
-            if not searching and (len(entries) >= cap or output_bytes > 256 * 1024):
+                listing.close()
+            if len(entries) >= cap or output_bytes > 256 * 1024:
                 truncated = truncated or bool(todo)
                 break
         sort = self.args.get("sort", "name")
         if sort not in {"name", "size", "mtime"}:
             raise permissions.PermissionError("ERR_FS_BROKER_UNSUPPORTED")
         entries.sort(key=lambda e: (e["name"].casefold() if sort == "name" else e["size" if sort == "size" else "mtime_epoch"], e["path"]), reverse=sort != "name")
+        return {"ok": True, "ok_count": len(entries), "entries": entries, "truncated": truncated,
+                "truncated_what": "entries", "used": len(entries), "cap_field": "max_results", "cap_value": cap,
+                "source_complete": not truncated, "metadata": {"path": path, "truncated": truncated, "source_complete": not truncated}}
+
+    def _search(self, path, recursive, cap, depth):
+        """The list walk with a filter on the names, one page at a time.
+
+        What does not match is visited and not returned; a branch that cannot
+        be opened is reported instead of ending the whole search. The walk has
+        one order, the same at every call: folder by folder, parents first,
+        names sorted inside a folder. So a page can go on from the last entry
+        of the page before (``after``) without walking again what was given.
+        The first page goes on counting what matches after it is full, as the
+        tool's own wide probe does: «how many» is answered with the number.
+        """
+        patterns = self.args["name_patterns"]
+        if (not isinstance(patterns, list) or not patterns or len(patterns) > 50
+                or any(not isinstance(p, str) or not p or len(p) > 200 for p in patterns)):
+            raise permissions.PermissionError("ERR_FS_BROKER_UNSUPPORTED")
+        exact_case = self.args.get("case_sensitive") is True
+        with_dirs = self.args.get("include_dirs") is True
+        if not exact_case:
+            patterns = [p.lower() for p in patterns]
+
+        def wanted(item):
+            if item["type"] == "dir" and not with_dirs:
+                return False
+            name = item["name"] if exact_case else item["name"].lower()
+            return any(fnmatch.fnmatchcase(name, p) for p in patterns)
+
+        after, cursor = self.args.get("after"), None
+        if after is not None:
+            if not isinstance(after, str) or not after:
+                raise permissions.PermissionError("ERR_FS_BROKER_UNSUPPORTED")
+            inside = os.path.relpath(permissions.normalize_path(after, "posix"), path).split(os.sep)
+            if inside[0] in (os.curdir, os.pardir):
+                raise permissions.PermissionError("ERR_FS_BROKER_UNSUPPORTED")
+            cursor = (tuple(inside[:-1]), inside[-1])
+        counting = cursor is None
+        todo, entries, skipped = [(path, 0, ())], [], []
+        visited = matched = output_bytes = 0
+        full = unseen = False
+        while todo:
+            current, level, here = todo.pop()
+            if visited >= _SEARCH_SCAN_MAX or time.monotonic() > self.deadline - 5:
+                unseen = True
+                break
+            try:
+                items = sorted(self._scan(current, recursive), key=lambda item: item["name"])
+            except (OSError, permissions.PermissionError) as exc:
+                if level == 0:
+                    raise
+                failure = error_result(exc)
+                if len(skipped) < 20:
+                    skipped.append({"path": current, "error": failure["error"],
+                                    "error_code": failure["error_code"]})
+                continue
+            visited += len(items)
+            # Folders above the cursor's own were given whole by earlier pages.
+            given = cursor is not None and here < cursor[0]
+            below = []
+            for item in items:
+                if recursive and item["type"] == "dir":
+                    branch = here + (item["name"],)
+                    if cursor is not None and branch < cursor[0] and cursor[0][:len(branch)] != branch:
+                        pass          # a branch wholly before the cursor
+                    elif level + 1 < depth:
+                        below.append((item["path"], level + 1, branch))
+                    else:
+                        unseen = True
+                if given or (cursor is not None and here == cursor[0] and item["name"] <= cursor[1]):
+                    continue
+                if not wanted(item):
+                    continue
+                matched += 1
+                if full:
+                    continue
+                output_bytes += len(json.dumps(item).encode())
+                if len(entries) >= cap or output_bytes > _SEARCH_PAGE_BYTES:
+                    full = True
+                    continue
+                entries.append(item)
+            if full and not counting:
+                break
+            todo.extend(reversed(below))
+        truncated = full or unseen
         result = {"ok": True, "ok_count": len(entries), "entries": entries, "truncated": truncated,
                   "truncated_what": "entries", "used": len(entries), "cap_field": "max_results", "cap_value": cap,
-                  "source_complete": not truncated, "metadata": {"path": path, "truncated": truncated, "source_complete": not truncated}}
-        if searching:
-            result.update({"visited": visited, "skipped": skipped, "matched": matched,
-                           "counted": not unseen and not skipped})
+                  "source_complete": not truncated,
+                  "metadata": {"path": path, "truncated": truncated, "source_complete": not truncated},
+                  "visited": visited, "skipped": skipped, "more": full, "unseen": unseen}
+        if counting:
+            result.update({"matched": matched, "counted": not unseen and not skipped})
         return result
-
 
 def outside_tool_scope(manifest, args, observation):
     """The truthful answer when a sandboxed tool said «not found» of a place

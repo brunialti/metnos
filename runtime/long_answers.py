@@ -190,15 +190,53 @@ def prune(now: float | None = None) -> int:
 
 def _records(turn):
     """The records of the last step that produced a list, with the tool that
-    produced them, or None. They are what the answer's table was drawn from:
-    the chat shows a bounded number of rows, the tool returned them all."""
+    produced them and the step, or None. They are what the answer's table was
+    drawn from: the chat shows a bounded number of rows, the tool returned
+    them all."""
     for step in reversed(getattr(turn, "steps", None) or []):
         result = getattr(step, "result", None)
         entries = result.get("entries") if isinstance(result, dict) else None
         if (isinstance(entries, list) and entries
                 and all(isinstance(entry, dict) for entry in entries)):
-            return entries, str(getattr(step, "chosen_tool", "") or "")
+            return entries, str(getattr(step, "chosen_tool", "") or ""), step
     return None
+
+
+def _beyond_the_cap(turn, step, tool: str, have: int):
+    """The records of a reading step that its tool cut at its own cap on
+    results, asked again with the cap raised to what a file holds; None when
+    there is nothing more to ask or no way to ask.
+
+    the design guide §2.11, exception of 13/11/2026: when the answer becomes a file
+    the cap widens by itself, without asking. Only for a tool that produces
+    by reading (never one that changes something, never one that works on a
+    list it was given), only for a cap that is an argument of that tool, and
+    only through the turn's own way of running a step.
+    """
+    import vocab
+
+    run = getattr(turn, "_rerun_step", None)
+    result = getattr(step, "result", None)
+    field = result.get("cap_field") if isinstance(result, dict) else None
+    verb = tool.partition("_")[0]
+    if (not callable(run) or not isinstance(field, str) or not field
+            or result.get("truncated") is not True or result.get("truncated_intentional")
+            or result.get("cap_expandable") is False
+            or verb not in vocab.SAFE_VERBS or verb in vocab.PROCESSOR_VERBS):
+        return None
+    args = getattr(step, "resolved_args", None) or getattr(step, "raw_args", None)
+    if not isinstance(args, dict) or type(args.get(field, 0)) is not int:
+        return None
+    total = result.get("available_total")
+    wanted = min(total, FILE_ROWS) if type(total) is int and total > 0 else FILE_ROWS
+    if wanted <= have:
+        return None
+    again = run(tool, {**args, field: wanted})
+    entries = again.get("entries") if isinstance(again, dict) and again.get("ok") is not False else None
+    if (not isinstance(entries, list) or len(entries) <= have
+            or not all(isinstance(entry, dict) for entry in entries)):
+        return None
+    return entries, again
 
 
 def _all_rows(entries: list, tool: str, header: list[str]) -> list[list[str]] | None:
@@ -229,6 +267,19 @@ def _all_rows(entries: list, tool: str, header: list[str]) -> list[list[str]] | 
     return [_cells(line) for line in lines[2:] if _is_row(line)]
 
 
+def _without_step_notices(turn, step, text: str) -> str:
+    """``text`` without the cut notices of ``step``, and the turn without the
+    question to widen that step: the file holds what they spoke of."""
+    number = getattr(step, "step_num", None)
+    for notice in (getattr(turn, "_truncation_notices_by_step", None) or {}).get(number, ()):
+        text = text.replace(notice, "", 1)
+    caps = getattr(turn, "expandable_caps", None)
+    if isinstance(caps, list):
+        turn.expandable_caps = [cap for cap in caps if not (
+            isinstance(cap, dict) and cap.get("step_num") == number and "cap_field" in cap)]
+    return text.strip()
+
+
 # ---- the rule -----------------------------------------------------------------
 
 def _texts() -> dict:
@@ -248,15 +299,33 @@ def _as_sheet(text: str, span: tuple[int, int], token: str, texts: dict, turn=No
     # The file holds every record the tool returned, not only the rows the
     # message had room for.
     found = _records(turn) if turn is not None else None
-    total = len(rows)
-    if found is not None and len(found[0]) > len(rows):
+    total, widened = len(rows), None
+    if found is not None:
+        entries, tool, step = found
         try:
-            complete = _all_rows(found[0], found[1], header)
-        except Exception as exc:  # noqa: BLE001 - the rows of the message are still there
-            log.warning("long_answers: full results not rendered (%r), message rows kept", exc)
-            complete = None
+            widened = _beyond_the_cap(turn, step, tool, len(entries))
+        except Exception as exc:  # noqa: BLE001 - what the tool returned the first time is still there
+            log.warning("long_answers: step not run again without its cap (%r)", exc)
+        if widened is not None:
+            entries = widened[0]
+        complete = None
+        if len(entries) > len(rows):
+            try:
+                complete = _all_rows(entries, tool, header)
+            except Exception as exc:  # noqa: BLE001 - the rows of the message are still there
+                log.warning("long_answers: full results not rendered (%r), message rows kept", exc)
         if complete is not None and len(complete) > len(rows):
-            rows, total = complete, len(found[0])
+            rows, total = complete, len(entries)
+            if widened is not None:
+                # The file now holds what the notice of this step said was
+                # left out: the notice and the question to widen go away, and
+                # what is still missing is said with the new numbers.
+                beyond = widened[1].get("available_total") if widened[1].get("truncated") is True else None
+                total = beyond if type(beyond) is int and beyond > len(entries) else len(entries)
+                text = _without_step_notices(turn, step, text)
+                lines = text.split("\n")
+                span = largest_table(text)
+                first, end = span if span is not None else (first, end)
     before, after = "\n".join(lines[:first]).strip(), "\n".join(lines[end:]).strip()
     notes = [line for block in (before, after) for line in block.split("\n") if line.strip()]
     name = f"{texts['stem']}-{token}.xlsx"

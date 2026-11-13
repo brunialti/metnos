@@ -17,10 +17,8 @@ TRANSLATIONS = {
         'Risultati: {total} righe. Sono tutte nel file allegato «{name}».',
         'Results: {total} rows. They are all in the attached file “{name}”.'),
     'MSG_LONG_ANSWER_RESULTS_CAPPED': (
-        'Risultati: {total} righe. Il file allegato «{name}» contiene le prime {shown}: '
-        'è il massimo per un file.',
-        'Results: {total} rows. The attached file “{name}” holds the first {shown}: it is '
-        'the maximum for one file.'),
+        'Risultati: {total} righe. Il file allegato «{name}» contiene le prime {shown}.',
+        'Results: {total} rows. The attached file “{name}” holds the first {shown}.'),
     'MSG_LONG_ANSWER_TEXT': (
         'La risposta è lunga: qui c’è l’inizio ({shown} caratteri di {total}). '
         'La risposta completa è nel file allegato «{name}».',
