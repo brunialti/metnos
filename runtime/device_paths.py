@@ -68,6 +68,23 @@ def _walk(value, is_path: bool, change):
     return value
 
 
+def server_roots(args: dict, workspace: str) -> dict:
+    """A bare drive root given to a tool that runs on this server becomes the
+    person's working folder.
+
+    A POSIX server has no drive: «C:\\» there is what the planner writes when
+    the person named no place («la mia cartella di lavoro», 10-13/11/2026: it
+    answered «path not found: C:\\»). A drive root followed by a path is left
+    alone: that is a real place, on some device, and the tool says so.
+    """
+    def change(value: str) -> str:
+        drive = value.strip().rstrip("\\/")
+        bare = len(drive) == 2 and bool(_WINDOWS_ROOT.match(drive + os.sep))
+        return workspace if bare else value
+
+    return _walk(args, False, change)
+
+
 def anchor_args(args: dict, profile_json: str | None) -> dict:
     """Replace a named user folder with the device's real one; the rest is unchanged."""
     return anchor_folders(args, _known_folders(profile_json))

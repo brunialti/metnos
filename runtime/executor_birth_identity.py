@@ -315,6 +315,9 @@ MANIFEST_FIELD_GRAMMAR_V1: dict[str, object] = {
     # Signed native file-broker contract (ADR 0237): part of the identity.
     "filesystem": {"protocol": None, "operation": None,
                    "when": {"arg": None, "values": None}},
+    # Signed declaration of a local search the server serves through the
+    # closed list operation (`filesystem_permissions.search_contract`).
+    "filesystem_search": {"protocol": None, "root": None},
     "sandbox": {"network_allowed": None, "fs_read": None, "fs_write": None,
                 "exec_allowed": None},
     "provenance": {"skill_id": None, "imported_from": None,

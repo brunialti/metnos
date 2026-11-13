@@ -284,3 +284,10 @@ expect_full = """
 scope    = "any"
 device_ok = true
 min_sandbox = "appcontainer"
+
+# A search rooted outside this tool's own scope is served on the server by the
+# closed list operation, under the account's areas and grants (the tool itself
+# sees only its sandbox). Read by the server only: a device runs the tool.
+[filesystem_search]
+protocol = "filesystem_broker_v1"
+root     = "base_path"

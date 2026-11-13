@@ -391,9 +391,19 @@ def _build_runtime_resolvers(ctx: dict) -> dict[str, str]:
     # risolverebbe a "" → `_detect_unresolved_placeholders` non lo intercetta
     # (non è letterale) → un send con to="" partirebbe silenzioso. Omettendo
     # la chiave, il placeholder resta letterale e viene bloccato come irrisolto.
+    # «la mia cartella di lavoro», «la mia area di lavoro»: the person's
+    # working folder on this server. The planner writes it by analogy with
+    # `${RUNTIME:actor}`; left unresolved the answer was «0» (11-13/11/2026).
+    try:
+        import config as _C
+        workspace = str(_C.PATH_WORKSPACE)
+    except Exception:
+        workspace = ""
     candidates = {
         "actor": actor,
         "actor_email": actor_email,
+        "workspace": workspace,
+        "actor_home": workspace,
         "lang": str(ctx.get("lang") or "it"),
         "channel": str(ctx.get("channel") or ""),
         "turn_id": str(ctx.get("turn_id") or ""),

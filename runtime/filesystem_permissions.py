@@ -304,6 +304,50 @@ def contract(manifest: dict, args: dict | None = None) -> str | None:
     return value["operation"]
 
 
+SEARCH_TABLE = "filesystem_search"
+
+
+def search_contract(manifest: dict, args: dict | None = None) -> str | None:
+    """The argument that names the root of a local search the server may
+    serve through the closed list operation, or None.
+
+    Since the service runs under its own system account (13/9/2026) a search
+    tool sees only what its sandbox shows; listing and reading reached the
+    person's areas and grants again on 30/10 through the broker, searching
+    did not. The declaration lives in a table of its own, read by the server
+    only: a device's native broker parses ``[filesystem]`` and would refuse an
+    operation it does not know.
+    """
+    value = manifest.get(SEARCH_TABLE)
+    if value is None or value == {}:
+        return None
+    if (not isinstance(value, dict) or set(value) != {"protocol", "root"}
+            or value.get("protocol") != CAPABILITY
+            or not isinstance(value.get("root"), str) or not value["root"]):
+        raise PermissionError("ERR_FS_CONTRACT_INVALID")
+    caps = {v.get("name") for v in manifest.get("capabilities", []) if isinstance(v, dict)}
+    declared = (manifest.get("args") or {}).get("properties") or {}
+    if ("fs:read" not in caps or manifest.get("filesystem")
+            or (declared.get(value["root"]) or {}).get("type") != "string"):
+        raise PermissionError("ERR_FS_CONTRACT_INVALID")
+    if args is not None and (args.get("client", "local") != "local"
+                             or (args.get("repo") and "client" not in args)):
+        return None
+    return value["root"]
+
+
+def manifest_shows(manifest: dict, args: dict | None, path: str, action: str = "read") -> bool:
+    """Whether the tool's own signed scope covers ``path``: what its sandbox
+    shows without the person's areas or any grant."""
+    from capabilities import effective_capabilities
+    from invocation_scope import _resolved, _within
+    caps = effective_capabilities(manifest.get("capabilities", []), manifest.get("args", {}), args or {})
+    return any(_within(_resolved(path), hint)
+               for cap in caps if cap.get("name") == "fs:" + action
+               for hint in cap.get("hint", []) or []
+               if isinstance(hint, str) and not hint.startswith("arg:"))
+
+
 def form_token(admin_key: str, device_id: str) -> str:
     if not admin_key:
         return ""

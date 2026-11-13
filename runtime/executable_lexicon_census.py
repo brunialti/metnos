@@ -199,7 +199,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'engine/autopath.py': ('b15a32c4c2d0e8feb6d094c497fabc019521314627d5d66111f1e876bae109c9', (('comparison', 9),)),
     'engine/cache_validity.py': ('327054d7405ded3d940765c513df0ad2e33ffd2b24a03d83b3a09e1ac3dcf8a3', (('comparison', 1), ('helper-argument', 1))),
     'engine/dispatch.py': ('b6657d774e8d743b2c3e5af6f45bb62576bbb74e8599c16c67a4d7aa03583d42', (('comparison', 254), ('helper-argument', 54), ('iteration', 4), ('membership', 7), ('prefix-suffix', 2), ('regex', 2))),
-    'engine/executor.py': ('60cb10570edbf76747c48b3dab7cd4ee7a0bebfbfb77cf902b8449c0450fe072', (('comparison', 68), ('helper-argument', 14), ('iteration', 1))),
+    'engine/executor.py': ('b5d6c068f81bbaf0b6dc0355d9c6930be8869bef47b96af02567e08e9eb781d2', (('comparison', 68), ('helper-argument', 14), ('iteration', 1))),
     'engine/fastpath.py': ('a4cce020f75e2f233b3fdf0440b74cbdf05fed1309a732d57631df630f907263', (('comparison', 5), ('iteration', 1))),
     'engine/fastpath_promote.py': ('cf53597bd2db6d7bdeec60f5b9ace2ca89d391ba5b23a9b5eea60ed3a49ad1fa', (('comparison', 4),)),
     'engine/grammar_framework.py': ('1e14e30dfe0909732c4b1d5f785843789c7b1f88b2e9a6f9a66eb50a042ed788', (('comparison', 1), ('helper-argument', 1))),
@@ -232,7 +232,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'executor_birth_dominant_startup.py': ('cf8d12a12cef117b16e780092702d40557a7c7fd7c39bf91e2b52f81e3fbfddd', (('comparison', 1), ('iteration', 1), ('prefix-suffix', 1))),
     'executor_birth_dominant_topology.py': ('f017b478366203b94308ca3e0d6264872feb468e8e75ae6e255c8000800a339b', (('comparison', 2), ('helper-argument', 1), ('iteration', 1), ('membership', 1), ('prefix-suffix', 3))),
     'executor_birth_enforcement_evidence.py': ('95c1f36c30ec24fed1917d7c614377c6c612c3e842afe88c3d83f6b74235c7bd', (('comparison', 1),)),
-    'executor_birth_identity.py': ('86159768af6688eaf2d1794de190443819fe41d6993100fe23825a83382bca54', (('comparison', 2),)),
+    'executor_birth_identity.py': ('72a7c737ced95ec5a7d9eb2c8d59957f772998d07524ab973ea12e3c220d3bba', (('comparison', 2),)),
     'executor_birth_keystore.py': ('6504cb895bf4d73a7b8d3948ae9b36b1fd557b0212c90b59db7693df1bd23636', (('comparison', 8), ('helper-argument', 1))),
     'executor_birth_legacy_neutralizer.py': ('f79979ffc84b57850aed4211517a4b38935f9de157be799189009389e35359bc', (('comparison', 9), ('helper-argument', 2), ('iteration', 1), ('membership', 1), ('prefix-suffix', 4))),
     'executor_birth_legacy_retirement.py': ('c82990ab38693edf6b8f8e20f3265d3f6f178dac4be2550e2859d195f645fc10', (('comparison', 6), ('membership', 3))),
@@ -532,7 +532,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'executor_prerequisites.py': ('e9a25cd4c3c006ef444a2738db0f2b5eaeefa1fcea8b496bfcfc6dc684c8dbb0', (('comparison', 6), ('membership', 1), ('prefix-suffix', 2), ('regex', 3))),
     'executor_support.py': ('7f4b2d7a0f1126c81eba3ec33985642ec4e4ef41c0814862c8a93edccbc00fa1', (('helper-argument', 1),)),
     'filesystem_io.py': ('69dc854d3d05e2723ff6430c58b871ac3f964ec436fc7c6790ae02a4f0d74ff9', (('regex', 1),)),
-    'filesystem_permissions.py': ('7233a05cbf16c26c97c668e37300e6fdf1004396fc4a184b5c54fdd472afecb8', (('comparison', 21), ('membership', 7), ('prefix-suffix', 4), ('regex', 2))),
+    'filesystem_permissions.py': ('6b0006c6a30b5a8af81609190b11e930ee11652be284058ee11ebb050bec6c34', (('comparison', 27), ('membership', 7), ('prefix-suffix', 5), ('regex', 2))),
     'filesystem_transfer_io.py': ('4afb531c8142fb78159ba3a33590a4b170b6421e4ffbf2525423cac840b83648', (('comparison', 7), ('regex', 1))),
     'frozen_plan_consent.py': ('4d938f6903fd429dba64f4219a91c6d8abe9e63e6544cd88f9c1ed9f9b73f1fe', (('comparison', 10), ('helper-argument', 1), ('iteration', 2), ('membership', 2), ('regex', 3))),
     'http_routes_filesystem_permissions.py': ('2129d56912213a6b6e41074011ee7f8ddeedb7bfd5648ec64e96f2eb2636cb4c', (('comparison', 14), ('helper-argument', 1), ('iteration', 2), ('membership', 1))),
@@ -582,7 +582,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'reverse_patterns_patch.py': ('ba1aecc0769cfa83a262207c7eccbac80e2b14acf8faa4c437891066c167eece', (('comparison', 2),)),
     'scheduler_v2/daemon.py': ('21656455487b5d8fdd036d5c98b4c680d25d92d84071aea39574c21f0c2a584e', (('comparison', 1), ('membership', 1))),
     'scheduler_v2/retry_notice.py': ('b7df458d431433c132f6f3c3a0a056635170c711a88e3135f2ed020757dfea07', (('comparison', 1),)),
-    'server_filesystem.py': ('fc2dd75a7e62923251005796fd3b3622ab7f98d7b35db04382b95fe29cd17244', (('comparison', 31), ('iteration', 1), ('membership', 8), ('regex', 1))),
+    'server_filesystem.py': ('8dda6b8f8054a614f78519067f248f0282d48d6865dacac25d4e4c3041e2dfe2', (('comparison', 35), ('helper-argument', 1), ('iteration', 2), ('membership', 8), ('prefix-suffix', 3), ('regex', 1))),
     'server_filesystem_host.py': ('d7a12789905641dcb5b0a2ec88169387ce7700bc4d3d642ec64a63f6c767d3c9', (('comparison', 22), ('iteration', 2), ('membership', 3))),
     'server_filesystem_protocol.py': ('46f1deb9856a4c4264fdbc38d3b1c7497c3659160b8287c1ed18b77c3d765e1a', (('comparison', 57), ('helper-argument', 1), ('iteration', 2), ('membership', 10), ('regex', 3))),
     'service_profile.py': ('0a67e1c6f0efd8395dbe75bb30fe53409b3031b9f2946b67c4ce7a5599c7de37', (('comparison', 7), ('membership', 3))),
@@ -1103,6 +1103,8 @@ VALUE_BOUND_EXECUTABLE_CONTAINER_FINGERPRINTS = frozenset({
 # relative path, lexical owner, symbol, container kind and complete payload;
 # the adjacent reason records why the value is not input-language authority.
 VALUE_BOUND_CLOSING_TECHNICAL_CONTAINERS: Mapping[str, str] = {
+    "7ea5835f677ae25cb87701414491557dbdf7813232c5d4c9bbd707ebed55c18f":
+        "closed argument names a search may pass to the closed list operation",
     "64e2b4c5d00abb207eadb4f2e8910969885e8ce4fd15409f90144623a3e68a72":
         "closed API names and versions behind the readable bases of a provider",
     "57f9b5a0034dae3d3bd23fc26a4ec18daabd7d7974f58ad14d827710de177530":

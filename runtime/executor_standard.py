@@ -671,6 +671,13 @@ def validate_manifest(manifest: dict, *, require_declaration: bool = True,
             parse_condition(manifest["filesystem"], manifest.get("args", {}))
         except (ValueError, TypeError, KeyError) as exc:
             _add(findings, "filesystem_contract", str(exc))
+    from filesystem_permissions import SEARCH_TABLE, search_contract
+    if SEARCH_TABLE in manifest:
+        try:
+            if not manifest[SEARCH_TABLE] or search_contract(manifest) is None:
+                raise ValueError("empty filesystem search contract")
+        except (ValueError, TypeError, KeyError) as exc:
+            _add(findings, "filesystem_search_contract", str(exc))
 
     code = manifest.get("code")
     if not isinstance(code, dict) or not code.get("files"):

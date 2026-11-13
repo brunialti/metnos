@@ -168,6 +168,13 @@ component verifies paths and signatures without executing arbitrary code with
 the additional rights. Hostname and platform are device observations and do
 not require a folder grant.</p>
 
+<p>On the server, searching files ("find the files&hellip;", "how many files are
+in&hellip;") works in the person's areas and in the granted folders too: outside the
+tool's own area it is done by the same list operation, with a filter on the
+names, under the same permissions. A branch that cannot be opened is declared,
+not left out. When an operation cannot work in a folder the answer says so: it
+does not call the folder missing.</p>
+
 <p>Transfers check size and data digests; an atomic replacement publishes the
 file and overwrites preserve an undo backup. The server rechecks grants before
 the final mutation; the device refreshes signed authority within five seconds.

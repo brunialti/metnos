@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import base64
 from contextlib import contextmanager
+import fnmatch
 import json
 import os
 import time
@@ -20,8 +21,74 @@ MAX_READ = 256 * 1024
 
 def manifest_for(executor):
     return {"filesystem": getattr(executor, "filesystem", None),
+            permissions.SEARCH_TABLE: getattr(executor, permissions.SEARCH_TABLE, None),
             "capabilities": getattr(executor, "capabilities", []),
             "args": getattr(executor, "args_schema", {})}
+
+
+# What a search asks the closed list operation, and nothing else: an argument
+# outside this set is a kind of search the operation cannot do.
+_SEARCH_ARGS = frozenset({"pattern", "patterns", "case_sensitive", "recursive", "max_results",
+                          "max_depth", "include_dirs", "client"})
+_SEARCH_SCAN_MAX = 200_000
+
+
+def search_request(owner, manifest, args):
+    """The list request that serves this search, or None when the tool's own
+    sandbox shows the root (it then runs as before) or it declares no search."""
+    root = permissions.search_contract(manifest, args)
+    if root is None or not isinstance(args.get(root), str) or not args[root].strip():
+        return None
+    try:
+        path = permissions.normalize_path(args[root], "posix")
+    except permissions.PermissionError:
+        return None                       # relative or malformed: the tool says so itself
+    if permissions.manifest_shows(manifest, args, path):
+        return None
+    given = {key for key in args if not key.startswith("_") and key != root}
+    if given - _SEARCH_ARGS:
+        raise permissions.PermissionError("ERR_FS_BROKER_UNSUPPORTED")
+    from backends.files.local import _parse_compound_pattern
+    patterns = (_parse_compound_pattern(args.get("pattern"))
+                + _parse_compound_pattern(args.get("patterns"))) or ["*"]
+    request = {"path": path, "recursive": args.get("recursive", True) is not False,
+               "name_patterns": patterns, "case_sensitive": args.get("case_sensitive") is True,
+               "include_dirs": args.get("include_dirs") is True}
+    for name in ("max_results", "max_depth"):
+        if args.get(name) is not None:
+            request[name] = args[name]
+    return request
+
+
+def search(owner, manifest, args, turn_id, *, timeout_s=30, db_path=None):
+    """A local search outside the tool's own scope, done by the closed list
+    operation under the account's areas and grants, in the search's own shape."""
+    request = search_request(owner, manifest, args)
+    listing = {"filesystem": {"protocol": permissions.CAPABILITY, "operation": "list"},
+               "capabilities": manifest.get("capabilities", []), "args": manifest.get("args", {})}
+    found = execute(owner, listing, request, turn_id, timeout_s=timeout_s, db_path=db_path)
+    if not found.get("ok"):
+        return {**found, "entries": [], "matches": []}
+    from backends.files.local import _kind_for, _mime_for
+    entries = []
+    for item in found["entries"]:
+        mime = _mime_for(item["name"]) if item["type"] == "file" else ""
+        entries.append({"path": item["path"], "name": item["name"], "type": item["type"], "mime": mime,
+                        "kind": _kind_for(mime) if item["type"] == "file" else item["type"],
+                        "size": int(item["size"]), "mtime": float(item["mtime_epoch"])})
+    skipped = found.get("skipped", [])
+    result = {"ok": True, "entries": entries, "matches": [entry["path"] for entry in entries],
+              "ok_count": len(entries), "fail_count": len(skipped), "failed": skipped,
+              "metadata": {"base_path": request["path"], "patterns": request["name_patterns"],
+                           "recursive": request["recursive"], "case_sensitive": request["case_sensitive"],
+                           "count": len(entries), "visited": found.get("visited", len(entries)),
+                           "source_complete": found.get("source_complete") is True and not skipped,
+                           "truncated": found.get("truncated") is True}}
+    if found.get("truncated"):
+        result.update({"truncated": True, "truncated_what": "file", "used": len(entries),
+                       "cap_field": "max_results", "cap_value": found["cap_value"],
+                       "available_at_least": len(entries), "source_scan_truncated": True})
+    return result
 
 
 def write_specs(args):
@@ -355,31 +422,68 @@ class Broker:
         if type(cap) is not int or type(depth) is not int or cap < 0 or depth < 0:
             raise permissions.PermissionError("ERR_FS_BROKER_UNSUPPORTED")
         cap, depth = min(cap, 1000), min(depth, 64)
+        # A search is this same walk with a filter on the names: what does not
+        # match is visited and not returned, and a branch that cannot be opened
+        # is reported instead of ending the whole search.
+        patterns = self.args.get("name_patterns")
+        searching = patterns is not None
+        if searching and (not isinstance(patterns, list) or not patterns or len(patterns) > 50
+                          or any(not isinstance(p, str) or not p or len(p) > 200 for p in patterns)):
+            raise permissions.PermissionError("ERR_FS_BROKER_UNSUPPORTED")
+        exact_case = self.args.get("case_sensitive") is True
+        with_dirs = not searching or self.args.get("include_dirs") is True
+        if searching and not exact_case:
+            patterns = [p.lower() for p in patterns]
+
+        def wanted(item):
+            if not searching:
+                return True
+            if item["type"] == "dir" and not with_dirs:
+                return False
+            name = item["name"] if exact_case else item["name"].lower()
+            return any(fnmatch.fnmatchcase(name, p) for p in patterns)
+
         todo, entries, truncated, output_bytes = [(path, 0)], [], False, 0
+        visited, skipped = 0, []
         while todo:
             current, level = todo.pop()
-            self.check(current, "read", directory=True, recursive=recursive)
-            with io.parent(current) as (parent, name):
-                fd = os.open(name or "/", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
-                try:
-                    with os.scandir(fd) as listing:
-                        for entry in listing:
-                            st = entry.stat(follow_symlinks=False)
-                            item = {"path": os.path.join(current, entry.name), "name": entry.name,
-                                    "type": "symlink" if entry.is_symlink() else "dir" if entry.is_dir(follow_symlinks=False) else "file",
-                                    "size": st.st_size, "mtime_epoch": st.st_mtime}
-                            output_bytes += len(json.dumps(item).encode())
-                            if len(entries) >= cap or output_bytes > 256 * 1024:
+            if searching and (visited >= _SEARCH_SCAN_MAX or time.monotonic() > self.deadline - 5):
+                truncated = True
+                break
+            try:
+                self.check(current, "read", directory=True, recursive=recursive)
+                with io.parent(current) as (parent, name):
+                    fd = os.open(name or "/", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+            except (OSError, permissions.PermissionError) as exc:
+                if not searching or level == 0:
+                    raise
+                failure = error_result(exc)
+                if len(skipped) < 20:
+                    skipped.append({"path": current, "error": failure["error"],
+                                    "error_code": failure["error_code"]})
+                continue
+            try:
+                with os.scandir(fd) as listing:
+                    for entry in listing:
+                        st = entry.stat(follow_symlinks=False)
+                        item = {"path": os.path.join(current, entry.name), "name": entry.name,
+                                "type": "symlink" if entry.is_symlink() else "dir" if entry.is_dir(follow_symlinks=False) else "file",
+                                "size": st.st_size, "mtime_epoch": st.st_mtime}
+                        visited += 1
+                        if recursive and item["type"] == "dir":
+                            if level + 1 < depth:
+                                todo.append((item["path"], level + 1))
+                            else:
                                 truncated = True
-                                break
-                            entries.append(item)
-                            if recursive and item["type"] == "dir":
-                                if level + 1 < depth:
-                                    todo.append((item["path"], level + 1))
-                                else:
-                                    truncated = True
-                finally:
-                    os.close(fd)
+                        if not wanted(item):
+                            continue
+                        output_bytes += len(json.dumps(item).encode())
+                        if len(entries) >= cap or output_bytes > 256 * 1024:
+                            truncated = True
+                            break
+                        entries.append(item)
+            finally:
+                os.close(fd)
             if len(entries) >= cap or output_bytes > 256 * 1024:
                 truncated = truncated or bool(todo)
                 break
@@ -387,9 +491,57 @@ class Broker:
         if sort not in {"name", "size", "mtime"}:
             raise permissions.PermissionError("ERR_FS_BROKER_UNSUPPORTED")
         entries.sort(key=lambda e: (e["name"].casefold() if sort == "name" else e["size" if sort == "size" else "mtime_epoch"], e["path"]), reverse=sort != "name")
-        return {"ok": True, "ok_count": len(entries), "entries": entries, "truncated": truncated,
-                "truncated_what": "entries", "used": len(entries), "cap_field": "max_results", "cap_value": cap,
-                "source_complete": not truncated, "metadata": {"path": path, "truncated": truncated, "source_complete": not truncated}}
+        result = {"ok": True, "ok_count": len(entries), "entries": entries, "truncated": truncated,
+                  "truncated_what": "entries", "used": len(entries), "cap_field": "max_results", "cap_value": cap,
+                  "source_complete": not truncated, "metadata": {"path": path, "truncated": truncated, "source_complete": not truncated}}
+        if searching:
+            result.update({"visited": visited, "skipped": skipped})
+        return result
+
+
+def outside_tool_scope(manifest, args, observation):
+    """The truthful answer when a sandboxed tool said «not found» of a place
+    its sandbox does not show, or None.
+
+    Such a tool cannot tell a missing folder from one it is not shown: it
+    answered «path not found» for folders that exist and even for granted ones
+    (13/11/2026). When the service itself can see that the path is there, or
+    cannot look, the answer says what is true: this operation does not work
+    there. A path that really is not there keeps the tool's own answer.
+    """
+    if (not isinstance(observation, dict) or observation.get("ok") is not False
+            or observation.get("error_code") != "ERR_PATH_NOT_FOUND" or not isinstance(args, dict)):
+        return None
+    values = []
+    for key, value in args.items():
+        if not key.startswith("_"):
+            values.extend(value if isinstance(value, list) else [value])
+    for value in values:
+        if not isinstance(value, str) or not value.startswith(("/", "~")):
+            continue
+        try:
+            path = permissions.normalize_path(os.path.expanduser(value), "posix")
+        except permissions.PermissionError:
+            continue
+        if permissions.manifest_shows(manifest, args, path):
+            continue
+        try:
+            there = os.path.lexists(path)
+        except OSError:
+            there = True
+        if not there:
+            try:
+                os.stat(os.path.dirname(path) or "/")
+            except PermissionError:
+                there = True               # the service cannot look: unknown, not «missing»
+            except OSError:
+                pass
+        if there:
+            from messages import get as _msg
+            return {"ok": False, "ok_count": 0, "fail_count": 1, "entries": [], "results": [], "failed": [],
+                    "error_code": "ERR_FS_TOOL_SCOPE", "error": _msg("ERR_FS_TOOL_SCOPE", path=value),
+                    "error_class": "filesystem_permission"}
+    return None
 
 
 def error_result(error):

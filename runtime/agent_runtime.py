@@ -3356,9 +3356,11 @@ def finalize_local_executor_args(executor, args: dict) -> dict:
     # grant on the real path. Any other executor runs in a sandbox that never
     # shows that folder: anchored, it reported an existing folder as missing
     # (turn ff8c2bb2, 11/11/2026).
-    if not getattr(executor, "filesystem", None):
+    if not (getattr(executor, "filesystem", None) or getattr(executor, "filesystem_search", None)):
         return final
+    import device_paths
     import server_filesystem_host
+    final = device_paths.server_roots(final, str(_C.PATH_WORKSPACE))
     return server_filesystem_host.anchor_named_folders(final)
 
 
@@ -3620,8 +3622,14 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
     _fs_owner = owner_user_id or _fs_devices.owner_id_for_actor(actor or "host")
     try:
         _fs_extension = _files.needs_extension(_fs_owner, _fs_manifest, args)
+        # A search whose root the tool's own sandbox does not show is served
+        # by the closed list operation, under the same areas and grants.
+        _fs_search = (not _fs_extension
+                      and _files.search_request(_fs_owner, _fs_manifest, args) is not None)
     except (ValueError, OSError, TypeError, LookupError) as exc:
         return _files.error_result(exc)
+    if _fs_search:
+        return _files.search(_fs_owner, _fs_manifest, args, turn_id or "", timeout_s=timeout_s)
     if _fs_extension:
         from invocation_scope import _server_authority_denial
         _admin_denial = _server_authority_denial(executor, actor=actor or "host")
@@ -3995,6 +4003,13 @@ def _invoke_executor_impl_optional_context(
         if admitted is not None:
             return admitted
     observation = _invoke_executor_impl(executor, args, **kwargs)
+    if kwargs.get("target_device") is None:
+        # «Not found» said of a place the tool's sandbox does not show is not
+        # a fact about the place: the answer says what is true instead.
+        import server_filesystem as _files
+        _truthful = _files.outside_tool_scope(_files.manifest_for(executor), args, observation)
+        if _truthful is not None:
+            observation = _truthful
     if execution_context is None and getattr(executor, "prerequisites", ()):
         from executor_prerequisites import admit_prerequisite
         return admit_prerequisite(
