@@ -395,8 +395,8 @@ def _build_runtime_resolvers(ctx: dict) -> dict[str, str]:
     # working folder on this server. The planner writes it by analogy with
     # `${RUNTIME:actor}`; left unresolved the answer was «0» (11-13/11/2026).
     try:
-        import config as _C
-        workspace = str(_C.PATH_WORKSPACE)
+        import person_files
+        workspace = str(person_files.for_actor(ctx.get("actor")))
     except Exception:
         workspace = ""
     candidates = {
@@ -447,6 +447,11 @@ def _resolve_runtime_time_key(key: str) -> str | None:
     if m:
         return (now - _dt.timedelta(hours=int(m.group(1)))).isoformat()
     return None
+
+
+# Runtime values a plan may name with `${RUNTIME:key}` but that are not passed
+# to every tool as hidden context.
+_RESOLVED_ONLY = frozenset({"workspace", "actor_home"})
 
 
 def _resolve_runtime_placeholders(args: dict, runtime_ctx: dict) -> dict:
@@ -500,7 +505,10 @@ def _resolve_runtime_placeholders(args: dict, runtime_ctx: dict) -> dict:
     for k, v in args.items():
         out[k] = _sub_recursive(v)
     for ck, cv in resolvers.items():
-        if cv:
+        # The working folder only answers a placeholder: it is not context
+        # every tool must receive (13/11/2026: it travelled as `_workspace`
+        # in the arguments of every call, to a device too).
+        if cv and ck not in _RESOLVED_ONLY:
             # Autorita' runtime: un valore omonimo presente nel piano non deve
             # mai prevalere sull'identita'/contesto autenticati.
             out[f"_{ck}"] = cv

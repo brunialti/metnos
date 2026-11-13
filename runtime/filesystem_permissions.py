@@ -254,6 +254,12 @@ def server_default_permits(owner, manifest, args, path, action):
     """
     if action not in {"read", "write"} or server_excluded(owner, path, action):
         return False
+    if owner:
+        # The person's own working folder, for reading and for writing.
+        import person_files
+        own = str(person_files.root(owner))
+        if path == own or path.startswith(own + "/"):
+            return True
     from capabilities import effective_capabilities
     from invocation_scope import _resolved, _within
     from workspace_policy import get_scope

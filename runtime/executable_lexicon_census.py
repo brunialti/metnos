@@ -199,7 +199,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'engine/autopath.py': ('b15a32c4c2d0e8feb6d094c497fabc019521314627d5d66111f1e876bae109c9', (('comparison', 9),)),
     'engine/cache_validity.py': ('327054d7405ded3d940765c513df0ad2e33ffd2b24a03d83b3a09e1ac3dcf8a3', (('comparison', 1), ('helper-argument', 1))),
     'engine/dispatch.py': ('b6657d774e8d743b2c3e5af6f45bb62576bbb74e8599c16c67a4d7aa03583d42', (('comparison', 254), ('helper-argument', 54), ('iteration', 4), ('membership', 7), ('prefix-suffix', 2), ('regex', 2))),
-    'engine/executor.py': ('b5d6c068f81bbaf0b6dc0355d9c6930be8869bef47b96af02567e08e9eb781d2', (('comparison', 68), ('helper-argument', 14), ('iteration', 1))),
+    'engine/executor.py': ('f283ffdd8c59bf3404fba8b86cfdeccb2303f905390060ff6865217e94fe2e14', (('comparison', 68), ('helper-argument', 14), ('iteration', 1))),
     'engine/fastpath.py': ('a4cce020f75e2f233b3fdf0440b74cbdf05fed1309a732d57631df630f907263', (('comparison', 5), ('iteration', 1))),
     'engine/fastpath_promote.py': ('cf53597bd2db6d7bdeec60f5b9ace2ca89d391ba5b23a9b5eea60ed3a49ad1fa', (('comparison', 4),)),
     'engine/grammar_framework.py': ('1e14e30dfe0909732c4b1d5f785843789c7b1f88b2e9a6f9a66eb50a042ed788', (('comparison', 1), ('helper-argument', 1))),
@@ -349,7 +349,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'paired_device_arg_resolver.py': ('cd4703ea17ef7756b1b31dd403937bfd442dd81b40522bc9fd48d286bb6d3ce2', (('comparison', 2), ('regex', 1))),
     'pairing.py': ('f946cd1296455f11d183c09e3d89282f65280b92029eaeba683ed046629fc961', (('comparison', 12), ('helper-argument', 1))),
     'parallel_walk.py': ('242fc2bc9168b8be43330bd613060debaa4cc28d88cddeaa60ad45f63ae51ab9', (('comparison', 1),)),
-    'path_alias.py': ('707ea8dd01406aba8feb330eb5676cba5400b91897c69fbc4afd4a5376970247', (('comparison', 1),)),
+    'path_alias.py': ('cd58b3d9e8cebfb77717395d23c5033f33937936c108c6d938c13b271c09847a', (('comparison', 1),)),
     'path_shape.py': ('abdc636d6235201961f33b133999087aedbff67bc1fce51111c3948ca78d42eb', (('comparison', 1),)),
     'persons_registry.py': ('86fe970b430aec48e924b90058c693bf36fa0a5b40d8028894849466169e00da', (('comparison', 3), ('helper-argument', 2))),
     'photo_fields_resolver.py': ('31730e2c2b57e02f56902d19c6644e98c928a1739a08fba2f642b13a66044f43', (('comparison', 4),)),
@@ -389,7 +389,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'safety/canonicalize.py': ('e507cdfa8cd29a0ecaecb71cd0d366871d39a03052300b32ff79a83d1599485b', (('comparison', 8), ('helper-argument', 4), ('membership', 1), ('prefix-suffix', 8), ('regex', 3))),
     'safety/seed_bootstrap.py': ('22560da20621786274dde1f7499dc02abfb7e344cb89f613c2bea3f07602c015', (('comparison', 1),)),
     'safety/storage.py': ('2d9ca532d9f8a1af98776b68ca4341ed038e783da7bd47402cc4202537808c56', (('comparison', 3), ('iteration', 2))),
-    'sandbox.py': ('7d4d1b9df5dd61c9a158e8f6a4117e0b2ed4e052a6cc7f40973f0bf19057e875', (('comparison', 47), ('helper-argument', 2), ('membership', 3), ('prefix-suffix', 1), ('regex', 1))),
+    'sandbox.py': ('72448bfd27f1f8e1f29104f2f5bc7bb0e80c9313870153ef24e82bfa58800de2', (('comparison', 47), ('helper-argument', 2), ('membership', 3), ('prefix-suffix', 1), ('regex', 1))),
     'scheduler_v2/builtin_callbacks.py': ('909622c1546eec4aae8445d710f905245bca2be6f06b916663ad479a3b204d24', (('comparison', 5),)),
     'scheduler_v2/client.py': ('7e03aa40bb99d625a2f7fb837624a172657406caaa7907913692d0a5cc84dc9f', (('helper-argument', 1),)),
     'scheduler_v2/health.py': ('80fdc47a3d8c1a598cb0cc26ff107721388d150ba17206409dc37e0c281d16af', (('comparison', 1), ('helper-argument', 1))),
@@ -532,7 +532,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'executor_prerequisites.py': ('e9a25cd4c3c006ef444a2738db0f2b5eaeefa1fcea8b496bfcfc6dc684c8dbb0', (('comparison', 6), ('membership', 1), ('prefix-suffix', 2), ('regex', 3))),
     'executor_support.py': ('7f4b2d7a0f1126c81eba3ec33985642ec4e4ef41c0814862c8a93edccbc00fa1', (('helper-argument', 1),)),
     'filesystem_io.py': ('69dc854d3d05e2723ff6430c58b871ac3f964ec436fc7c6790ae02a4f0d74ff9', (('regex', 1),)),
-    'filesystem_permissions.py': ('6b0006c6a30b5a8af81609190b11e930ee11652be284058ee11ebb050bec6c34', (('comparison', 27), ('membership', 7), ('prefix-suffix', 5), ('regex', 2))),
+    'filesystem_permissions.py': ('36299da5806359ce9626745bfb37c6bbf734c2b4cde29fdb8ee4988b0e32ca69', (('comparison', 27), ('membership', 7), ('prefix-suffix', 5), ('regex', 2))),
     'filesystem_transfer_io.py': ('4afb531c8142fb78159ba3a33590a4b170b6421e4ffbf2525423cac840b83648', (('comparison', 7), ('regex', 1))),
     'frozen_plan_consent.py': ('4d938f6903fd429dba64f4219a91c6d8abe9e63e6544cd88f9c1ed9f9b73f1fe', (('comparison', 10), ('helper-argument', 1), ('iteration', 2), ('membership', 2), ('regex', 3))),
     'http_routes_filesystem_permissions.py': ('2129d56912213a6b6e41074011ee7f8ddeedb7bfd5648ec64e96f2eb2636cb4c', (('comparison', 14), ('helper-argument', 1), ('iteration', 2), ('membership', 1))),
@@ -582,7 +582,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'reverse_patterns_patch.py': ('ba1aecc0769cfa83a262207c7eccbac80e2b14acf8faa4c437891066c167eece', (('comparison', 2),)),
     'scheduler_v2/daemon.py': ('21656455487b5d8fdd036d5c98b4c680d25d92d84071aea39574c21f0c2a584e', (('comparison', 1), ('membership', 1))),
     'scheduler_v2/retry_notice.py': ('b7df458d431433c132f6f3c3a0a056635170c711a88e3135f2ed020757dfea07', (('comparison', 1),)),
-    'server_filesystem.py': ('8dda6b8f8054a614f78519067f248f0282d48d6865dacac25d4e4c3041e2dfe2', (('comparison', 35), ('helper-argument', 1), ('iteration', 2), ('membership', 8), ('prefix-suffix', 3), ('regex', 1))),
+    'server_filesystem.py': ('837319e5c9038b8c9a8cb3a2ee2b11029e42909446ff490d0788affb38fa4c37', (('comparison', 35), ('helper-argument', 1), ('iteration', 2), ('membership', 8), ('prefix-suffix', 3), ('regex', 1))),
     'server_filesystem_host.py': ('d7a12789905641dcb5b0a2ec88169387ce7700bc4d3d642ec64a63f6c767d3c9', (('comparison', 22), ('iteration', 2), ('membership', 3))),
     'server_filesystem_protocol.py': ('46f1deb9856a4c4264fdbc38d3b1c7497c3659160b8287c1ed18b77c3d765e1a', (('comparison', 57), ('helper-argument', 1), ('iteration', 2), ('membership', 10), ('regex', 3))),
     'service_profile.py': ('0a67e1c6f0efd8395dbe75bb30fe53409b3031b9f2946b67c4ce7a5599c7de37', (('comparison', 7), ('membership', 3))),
@@ -606,7 +606,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'synth_activation.py': ('5d1341506eac59de5953c1cf467ac8ffb4fd74c618751fd112cdbde58cfc2aaf', (('comparison', 4), ('prefix-suffix', 2))),
     'http_routes_generated_tools.py': ('960b28d3afa04ac7f3609d24f087460514485100940f5620a714ab3d84ba1fef', (('comparison', 1), ('helper-argument', 1))),
     'lre_answers.py': ('f9c5eac4dad7d5d11ad6f7e82102ebb9ee250756cc4f378e0d1f79f1992cefe8', (('comparison', 6), ('membership', 3))),
-    'long_answers.py': ('4316e94905346b67d5f69633d00482d380e6cdb805fd4a583252be060f7bd3b5', (('comparison', 1), ('iteration', 1), ('prefix-suffix', 4))),
+    'long_answers.py': ('a51c905096b4217d98e9765d3b4fe31e3cf0c6ef174bcd33d10325dc6cced519', (('comparison', 1), ('iteration', 1), ('prefix-suffix', 4))),
     'provider_reads.py': ('555d640180c5d06a6fb022c9585068579ac0b5ba7b76725fa292fdd7a1d19453', (('comparison', 4),)),
     'provider_catalog.py': ('f51fa274ab74fd2a4cfd1473ff05dab0ed87e51965a2c790ea9cbb6009b29ac7', (('comparison', 13), ('helper-argument', 1), ('prefix-suffix', 3))),
 }
@@ -1103,8 +1103,12 @@ VALUE_BOUND_EXECUTABLE_CONTAINER_FINGERPRINTS = frozenset({
 # relative path, lexical owner, symbol, container kind and complete payload;
 # the adjacent reason records why the value is not input-language authority.
 VALUE_BOUND_CLOSING_TECHNICAL_CONTAINERS: Mapping[str, str] = {
+    "3cbbb088a54a51e3d5bf4100797ca270e3e30cb52f9f248fed599a55d016d323":
+        "closed runtime placeholder keys that are resolved but not passed as hidden context",
     "7ea5835f677ae25cb87701414491557dbdf7813232c5d4c9bbd707ebed55c18f":
         "closed argument names a search may pass to the closed list operation",
+    "484322ca46f3543eff893cca2449a789f9ccb77de7e23f5bd6f9fd9423c78a3d":
+        "closed argument names of a search tool's other backends, not read by a local search",
     "64e2b4c5d00abb207eadb4f2e8910969885e8ce4fd15409f90144623a3e68a72":
         "closed API names and versions behind the readable bases of a provider",
     "57f9b5a0034dae3d3bd23fc26a4ec18daabd7d7974f58ad14d827710de177530":

@@ -3358,10 +3358,22 @@ def finalize_local_executor_args(executor, args: dict) -> dict:
     # (turn ff8c2bb2, 11/11/2026).
     if not (getattr(executor, "filesystem", None) or getattr(executor, "filesystem_search", None)):
         return final
+    # For the closed filesystem operations every path leaves here absolute:
+    # the person's working folder for a bare drive root and for a path without
+    # a root, the owner's real folder for a named one, the real place for a
+    # name that is a link in the person's folder (a mounted archive).
     import device_paths
+    import person_files
     import server_filesystem_host
-    final = device_paths.server_roots(final, str(_C.PATH_WORKSPACE))
-    return server_filesystem_host.anchor_named_folders(final)
+    # The folder exists from the first decision on: the same request must
+    # yield the same paths when it is authorised and when it is executed.
+    try:
+        folder = person_files.ensure_for_actor(final.get("_actor"))
+    except OSError:
+        folder = person_files.for_args(final)
+    final = device_paths.server_roots(final, str(folder))
+    final = server_filesystem_host.anchor_named_folders(final, folder)
+    return device_paths.rooted(final, lambda value: person_files.absolute(value, folder))
 
 
 def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised",
@@ -3709,6 +3721,13 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
 
     payload = json.dumps(args)
     base_cmd = [sys.executable, str(executor.code_path)]
+    # The working folder of the person this invocation is for: where the child
+    # starts and what a path without a root means inside it.
+    import person_files as _person_files
+    try:
+        _person_folder = _person_files.ensure_for_actor(actor or args.get("_actor"))
+    except OSError:
+        _person_folder = None
     # Extras skill-backed (10/7, bug B2): senza, dal 9/7 (bubblewrap installato)
     # il token OAuth era INVISIBILE alla sandbox e i dispatcher `metnos:*`
     # senza rete → ogni op Google chiedeva il setup OAuth in loop. Bind della
@@ -3750,7 +3769,7 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
             sealed_ro_files=_dependency_signer_keys,
             force_net=_force_net,
             invocation_args=args,
-            working_directory=_sandbox.relative_path_root(),
+            working_directory=_person_folder,
         )
     except _sandbox.SandboxUnavailableError:
         return {
@@ -3812,6 +3831,8 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
         env["METNOS_CHANNEL"] = channel
     if owner_user_id:
         env["METNOS_OWNER_USER_ID"] = str(owner_user_id)
+    if _person_folder is not None:
+        env[_person_files.ENV] = str(_person_folder)
     # Unattended authority is task-scoped.  Propagate only the opaque task
     # identity; each domain reloads and validates its own persisted envelope.
     env.pop("METNOS_TASK_NAME", None)

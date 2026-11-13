@@ -414,17 +414,17 @@ def _index_resource_paths(hints: list[str]) -> list[Path]:
     return out
 
 
-def relative_path_root() -> Path:
-    """What a path without a root means, for every executor on this server.
-
-    The person's Metnos workspace, never the directory the service happens to
-    run from: that is the installed program, where ``runtime/...`` exists by
-    accident. One tool resolved the same folder there and another in the
-    workspace (turns ef88bd2e and d9599fbe, 11/11/2026). The child starts in
-    this directory and the grants are computed against it.
+def relative_path_root(args=None) -> Path:
+    """What a path without a root means, for every executor on this server:
+    the working folder of the person the invocation was authenticated for
+    (`person_files`), never the directory the service runs from nor its data
+    directory. One tool resolved the same folder in the installed program and
+    another in the data directory (turns ef88bd2e and d9599fbe, 11/11/2026),
+    and the data directory showed the service's own files (13/11/2026). The
+    child starts in this folder and the grants are computed against it.
     """
-    from path_alias import workspace_default
-    return workspace_default()
+    import person_files
+    return person_files.for_args(args)
 
 
 def _filesystem_argument_extras(
@@ -470,7 +470,7 @@ def _filesystem_argument_extras(
                     continue
                 path = Path(os.path.expanduser(value))
                 if not path.is_absolute():
-                    path = relative_path_root() / path
+                    path = relative_path_root(invocation) / path
                 if capability_name == "fs:read" and not path.exists():
                     try:
                         from path_alias import resolve_path_with_alias
@@ -572,7 +572,7 @@ def resolve_filesystem_read_args(executor, args) -> dict:
                     # whose keys include the lexical path.
                     candidate = Path(os.path.expanduser(value))
                     if not candidate.is_absolute():
-                        candidate = relative_path_root() / candidate
+                        candidate = relative_path_root(out) / candidate
                     if candidate.exists():
                         resolved = candidate.absolute()
                     else:

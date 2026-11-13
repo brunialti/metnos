@@ -52,6 +52,7 @@ GROUPS = {
         "tests/runtime/learning/test_provider_reads.py",
         "tests/runtime/learning/test_provider_catalog.py",
         "tests/runtime/remote/test_filesystem_search.py",
+        "tests/runtime/remote/test_person_files.py",
         "tests/runtime/learning/test_automatic_work_courtesy.py",
         "tests/runtime/http/test_http_routes_stack.py",
         "tests/runtime/infra/test_store_registry_isolation.py",

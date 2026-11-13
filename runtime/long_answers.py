@@ -26,10 +26,12 @@ log = get_logger(__name__)
 
 # Longer than this, an answer is a document. About a hundred lines.
 MAX_CHAT_ANSWER_CHARS = 6000
+# Rows a results file may hold. In the chat an answer is cut to what a person
+# reads; a file can carry them all (Roberto, 13/11/2026: «128k o 256k»).
+FILE_ROWS = 256_000
 # What stays in the chat fits one pushed message on every channel.
 SHORT_ANSWER_CHARS = 3200
 _SHOWN_ROWS = 20
-_SHOWN_ROWS_MIN = 3
 # A file nobody can reach any more is not kept: the links of a turn resolve
 # only while the turn is recent.
 KEEP_DAYS = 30
@@ -184,6 +186,49 @@ def prune(now: float | None = None) -> int:
     return removed
 
 
+# ---- every result, not only the rows a chat shows -------------------------------
+
+def _records(turn):
+    """The records of the last step that produced a list, with the tool that
+    produced them, or None. They are what the answer's table was drawn from:
+    the chat shows a bounded number of rows, the tool returned them all."""
+    for step in reversed(getattr(turn, "steps", None) or []):
+        result = getattr(step, "result", None)
+        entries = result.get("entries") if isinstance(result, dict) else None
+        if (isinstance(entries, list) and entries
+                and all(isinstance(entry, dict) for entry in entries)):
+            return entries, str(getattr(step, "chosen_tool", "") or "")
+    return None
+
+
+def _all_rows(entries: list, tool: str, header: list[str]) -> list[list[str]] | None:
+    """Every record as the row the chat would have shown, same columns; None
+    when the records are not what the message's table was drawn from."""
+    from engine import executor as engine
+
+    presentation = None
+    try:
+        from loader import load_catalog
+        known = load_catalog().executors.get(tool)
+        presentation = getattr(known, "presentation", None)
+    except Exception as exc:  # noqa: BLE001 - without a catalog the plain table is used
+        log.debug("long_answers: presentation of %s unavailable: %r", tool, exc)
+    if isinstance(presentation, dict) and isinstance(presentation.get("list"), dict):
+        presentation = {**presentation, "list": {**presentation["list"],
+                                                 "max_rows": FILE_ROWS, "max_chars": 10 ** 9}}
+    paged = engine._paged_tables.set(False)
+    try:
+        table = engine._entries_table(entries[:FILE_ROWS], max_rows=FILE_ROWS,
+                                      max_chars=10 ** 9, presentation=presentation)
+    finally:
+        engine._paged_tables.reset(paged)
+    lines = table.split("\n")
+    if len(lines) < 3 or not _is_row(lines[0]) or not _is_separator(lines[1]) \
+            or _cells(lines[0]) != header:
+        return None
+    return [_cells(line) for line in lines[2:] if _is_row(line)]
+
+
 # ---- the rule -----------------------------------------------------------------
 
 def _texts() -> dict:
@@ -194,31 +239,36 @@ def _texts() -> dict:
         ("notes", "MSG_LONG_ANSWER_NOTES"))}
 
 
-def _as_sheet(text: str, span: tuple[int, int], token: str, texts: dict):
+def _as_sheet(text: str, span: tuple[int, int], token: str, texts: dict, turn=None):
     from messages import get as message
 
     lines = text.split("\n")
     first, end = span
     header, rows = _cells(lines[first]), [_cells(line) for line in lines[first + 2:end]]
+    # The file holds every record the tool returned, not only the rows the
+    # message had room for.
+    found = _records(turn) if turn is not None else None
+    total = len(rows)
+    if found is not None and len(found[0]) > len(rows):
+        try:
+            complete = _all_rows(found[0], found[1], header)
+        except Exception as exc:  # noqa: BLE001 - the rows of the message are still there
+            log.warning("long_answers: full results not rendered (%r), message rows kept", exc)
+            complete = None
+        if complete is not None and len(complete) > len(rows):
+            rows, total = complete, len(found[0])
     before, after = "\n".join(lines[:first]).strip(), "\n".join(lines[end:]).strip()
     notes = [line for block in (before, after) for line in block.split("\n") if line.strip()]
     name = f"{texts['stem']}-{token}.xlsx"
     path = _store(name, lambda staged: _write_sheet(
         staged, header, rows, notes, sheet=texts["sheet"], notes_sheet=texts["notes"]))
-    shown, used = [], 0
-    for line in lines[first + 2:end]:
-        if len(shown) >= _SHOWN_ROWS or (
-                len(shown) >= _SHOWN_ROWS_MIN and used + len(line) > SHORT_ANSWER_CHARS // 2):
-            break
-        shown.append(line)
-        used += len(line) + 1
-    notice = message("MSG_LONG_ANSWER_TABLE", shown=len(shown), total=len(rows), name=name)
-    prose = max(200, (SHORT_ANSWER_CHARS - used - len(notice)) // 2 - 100)
+    # In the chat: the outcome in short, not the first rows (Roberto,
+    # 13/11/2026). What the tool itself said before and after the table stays.
+    notice = (message("MSG_LONG_ANSWER_RESULTS", total=total, name=name) if len(rows) >= total
+              else message("MSG_LONG_ANSWER_RESULTS_CAPPED", shown=len(rows), total=total, name=name))
+    prose = max(200, (SHORT_ANSWER_CHARS - len(notice)) // 2 - 100)
     short = "\n\n".join(part for part in (
-        _bounded(before, prose),
-        "\n".join([lines[first], lines[first + 1], *shown]),
-        notice,
-        _bounded(after, prose)) if part)
+        _bounded(before, prose), notice, _bounded(after, prose)) if part)
     return path, _XLSX_MIME, short
 
 
@@ -252,7 +302,7 @@ def deliver_as_file(turn) -> bool:
         made = None
         if span is not None and span[1] - span[0] - 2 > _SHOWN_ROWS:
             try:
-                made = _as_sheet(text, span, token, texts)
+                made = _as_sheet(text, span, token, texts, turn)
             except Exception as exc:  # noqa: BLE001 - the text file still holds it all
                 log.warning("long_answers: sheet not written (%r), text instead", exc)
         path, mime, short = made or _as_text(text, token, texts)

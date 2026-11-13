@@ -85,6 +85,13 @@ def server_roots(args: dict, workspace: str) -> dict:
     return _walk(args, False, change)
 
 
+def rooted(args: dict, absolute) -> dict:
+    """Every path argument still without a root, made absolute by
+    ``absolute(value)``; a template or an address is left alone."""
+    return _walk(args, False,
+                 lambda value: absolute(value) if _relative(value) and "{" not in value else value)
+
+
 def anchor_args(args: dict, profile_json: str | None) -> dict:
     """Replace a named user folder with the device's real one; the rest is unchanged."""
     return anchor_folders(args, _known_folders(profile_json))

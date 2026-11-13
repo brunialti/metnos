@@ -74,8 +74,18 @@ def _user_dir_aliases() -> dict[str, list[str]] | None:
 # quando il planner non specifica un path esplicito. Convention utente:
 # "se non specifico un path esplicitamente, /home/user/.local/share/metnos".
 # Lazy (function) per supportare mocking di Path.home() nei test.
-def workspace_default() -> Path:
+def legacy_workspace() -> Path:
+    """Where relative paths went until 13/11/2026: the service's data
+    directory. Still searched, after the person's folder, for the folders
+    reached by name."""
     return _home() / ".local" / "share" / "metnos"
+
+
+def workspace_default() -> Path:
+    """The working folder of the person a tool is working for
+    (`person_files`); the old place when the service did not name one."""
+    chosen = (os.environ.get("METNOS_PERSON_FILES") or "").strip()
+    return Path(chosen) if chosen else legacy_workspace()
 
 
 def _safe_is_dir(p: Path) -> bool:
@@ -107,12 +117,13 @@ def candidate_roots() -> list[Path]:
     """
     cands = [
         workspace_default(),
+        legacy_workspace(),
         _home(),
         Path("/tmp/nas_public/media"),
         Path("/mnt"),
         Path("/media"),
     ]
-    return [p for p in cands if _safe_is_dir(p)]
+    return list(dict.fromkeys(p for p in cands if _safe_is_dir(p)))
 
 
 def normalize_input_path(input_path: str) -> Path:

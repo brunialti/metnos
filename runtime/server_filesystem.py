@@ -30,6 +30,10 @@ def manifest_for(executor):
 # outside this set is a kind of search the operation cannot do.
 _SEARCH_ARGS = frozenset({"pattern", "patterns", "case_sensitive", "recursive", "max_results",
                           "max_depth", "include_dirs", "client"})
+# Arguments of the other backends of the same tool (a repository, a provider's
+# query): a local search does not read them, here as in the tool itself. The
+# planner repeats the folder in `repo` (turns 3e4db9f6 and 0a61875a, 13/11/2026).
+_OTHER_BACKEND_ARGS = frozenset({"repo", "query"})
 _SEARCH_SCAN_MAX = 200_000
 
 
@@ -46,7 +50,7 @@ def search_request(owner, manifest, args):
     if permissions.manifest_shows(manifest, args, path):
         return None
     given = {key for key in args if not key.startswith("_") and key != root}
-    if given - _SEARCH_ARGS:
+    if given - _SEARCH_ARGS - _OTHER_BACKEND_ARGS:
         raise permissions.PermissionError("ERR_FS_BROKER_UNSUPPORTED")
     from backends.files.local import _parse_compound_pattern
     patterns = (_parse_compound_pattern(args.get("pattern"))
@@ -82,12 +86,16 @@ def search(owner, manifest, args, turn_id, *, timeout_s=30, db_path=None):
               "metadata": {"base_path": request["path"], "patterns": request["name_patterns"],
                            "recursive": request["recursive"], "case_sensitive": request["case_sensitive"],
                            "count": len(entries), "visited": found.get("visited", len(entries)),
-                           "source_complete": found.get("source_complete") is True and not skipped,
+                           "source_complete": found.get("counted") is True,
                            "truncated": found.get("truncated") is True}}
     if found.get("truncated"):
         result.update({"truncated": True, "truncated_what": "file", "used": len(entries),
-                       "cap_field": "max_results", "cap_value": found["cap_value"],
-                       "available_at_least": len(entries), "source_scan_truncated": True})
+                       "cap_field": "max_results", "cap_value": found["cap_value"]})
+        matched = max(int(found.get("matched") or 0), len(entries))
+        if found.get("counted") is True:
+            result["available_total"] = matched
+        else:
+            result.update({"available_at_least": matched, "source_scan_truncated": True})
     return result
 
 
@@ -445,10 +453,14 @@ class Broker:
 
         todo, entries, truncated, output_bytes = [(path, 0)], [], False, 0
         visited, skipped = 0, []
+        # A search keeps counting what matches after its answer is full, as the
+        # tool's own wide probe does: «how many» is answered with the number,
+        # not with the cap. `unseen` = a part of the tree was not walked.
+        matched, full, unseen = 0, False, False
         while todo:
             current, level = todo.pop()
             if searching and (visited >= _SEARCH_SCAN_MAX or time.monotonic() > self.deadline - 5):
-                truncated = True
+                truncated = unseen = True
                 break
             try:
                 self.check(current, "read", directory=True, recursive=recursive)
@@ -474,17 +486,22 @@ class Broker:
                             if level + 1 < depth:
                                 todo.append((item["path"], level + 1))
                             else:
-                                truncated = True
+                                truncated = unseen = True
                         if not wanted(item):
+                            continue
+                        matched += 1
+                        if full:
                             continue
                         output_bytes += len(json.dumps(item).encode())
                         if len(entries) >= cap or output_bytes > 256 * 1024:
-                            truncated = True
+                            truncated = full = True
+                            if searching:
+                                continue
                             break
                         entries.append(item)
             finally:
                 os.close(fd)
-            if len(entries) >= cap or output_bytes > 256 * 1024:
+            if not searching and (len(entries) >= cap or output_bytes > 256 * 1024):
                 truncated = truncated or bool(todo)
                 break
         sort = self.args.get("sort", "name")
@@ -495,7 +512,8 @@ class Broker:
                   "truncated_what": "entries", "used": len(entries), "cap_field": "max_results", "cap_value": cap,
                   "source_complete": not truncated, "metadata": {"path": path, "truncated": truncated, "source_complete": not truncated}}
         if searching:
-            result.update({"visited": visited, "skipped": skipped})
+            result.update({"visited": visited, "skipped": skipped, "matched": matched,
+                           "counted": not unseen and not skipped})
         return result
 
 

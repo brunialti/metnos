@@ -13,11 +13,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 TRANSLATIONS = {
-    'MSG_LONG_ANSWER_TABLE': (
-        'Qui ci sono le prime {shown} righe di {total}. Tutte le righe sono nel file '
-        'allegato «{name}».',
-        'These are the first {shown} rows of {total}. All the rows are in the attached '
-        'file “{name}”.'),
+    'MSG_LONG_ANSWER_RESULTS': (
+        'Risultati: {total} righe. Sono tutte nel file allegato «{name}».',
+        'Results: {total} rows. They are all in the attached file “{name}”.'),
+    'MSG_LONG_ANSWER_RESULTS_CAPPED': (
+        'Risultati: {total} righe. Il file allegato «{name}» contiene le prime {shown}: '
+        'è il massimo per un file.',
+        'Results: {total} rows. The attached file “{name}” holds the first {shown}: it is '
+        'the maximum for one file.'),
     'MSG_LONG_ANSWER_TEXT': (
         'La risposta è lunga: qui c’è l’inizio ({shown} caratteri di {total}). '
         'La risposta completa è nel file allegato «{name}».',
@@ -32,6 +35,9 @@ TRANSLATIONS = {
     'MSG_LONG_ANSWER_SHEET': ('Risposta', 'Answer'),
     'MSG_LONG_ANSWER_NOTES': ('Note', 'Notes'),
 }
+
+# The message no longer repeats the first rows of a table (13/11/2026).
+RETIRED = ('MSG_LONG_ANSWER_TABLE',)
 
 
 def sync(path: Path) -> int:
@@ -56,6 +62,7 @@ def sync(path: Path) -> int:
                 "VALUES (?,?,?)", (key, lang, i18n._sha256_full(previous)),
             )
         i18n.set_catalog_translations(key, {"it": it, "en": en}, source_lang="it")
+    i18n.delete_keys(RETIRED)
     conn.commit()
     i18n._checkpoint(conn)
     conn.close()

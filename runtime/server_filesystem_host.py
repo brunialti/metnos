@@ -157,11 +157,12 @@ def known_folders():
     return checked
 
 
-def anchor_named_folders(args):
+def anchor_named_folders(args, folder=None):
     """«Documenti» on the server becomes the owner's real folder; nothing is granted.
 
     The broker then checks the account's grants on that exact path. A folder
-    of that name already in the Metnos workspace keeps the workspace meaning.
+    of that name already in the person's working folder (``folder``) keeps
+    that meaning.
     """
     if not isinstance(args, dict) or not device_paths.has_named_folder(args):
         return args
@@ -169,9 +170,11 @@ def anchor_named_folders(args):
         folders = known_folders()
     except permissions.PermissionError:
         return args
-    from path_alias import workspace_default
+    if folder is None:
+        from path_alias import workspace_default
+        folder = workspace_default()
     return device_paths.anchor_folders(
-        args, folders, keep=lambda name: (workspace_default() / name).exists())
+        args, folders, keep=lambda name: os.path.lexists(os.path.join(str(folder), name)))
 
 
 def source_size(owner, manifest, args, path):
