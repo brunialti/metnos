@@ -47,6 +47,7 @@ FUNCTIONAL_SUPPORT_FILES = COMMON_SUPPORT_FILES + (
     'detection_lexicon_seed_resolvers.py',
     'credential_intake.py',
     'record_identity.py',
+    'provider_reads.py',
 )
 
 DEVICE_SUPPORT_FILES = {name: name for name in COMMON_SUPPORT_FILES}

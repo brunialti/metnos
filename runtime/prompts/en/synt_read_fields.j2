@@ -1,0 +1,25 @@
+{# ---
+role: synt_read_fields
+tier: middle
+lang: en
+style: definitional
+version: 1
+owner: roberto
+updated: 2026-11-13
+sha_prev: 8d1e1188
+--- #}
+Choose, from the numbered list, the fields of the answer that the function described below uses. Return only valid JSON, with no markdown, comments or explanations, in this form: {"numbers":[<numbers>]}.
+
+Function: {{ name }}
+Original request: {{ user_request }}
+Read: {{ read }}
+
+Rules:
+1. Choose the fields needed to answer the request and those that tell the person which item it is (name or title, identifier); at most {{ limit }}.
+2. Do not choose service fields the request does not name.
+
+LIST:
+{{ items }}
+{% if correction %}
+MANDATORY CORRECTION: the previous answer was refused for this reason: {{ correction }}
+{% endif %}

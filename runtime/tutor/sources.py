@@ -611,7 +611,7 @@ def _provider_hints(executor, name: str) -> tuple[str, ...]:
         str(hint).strip().lower()
         for capability in (getattr(executor, "capabilities", ()) or ())
         if isinstance(capability, dict)
-        and str(capability.get("name") or "") == "provider:access"
+        and str(capability.get("name") or "").partition(":")[0] == "provider"
         for hint in (capability.get("hint") or ())
         if str(hint).strip()
     }

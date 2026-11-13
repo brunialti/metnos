@@ -111,6 +111,38 @@ TRANSLATIONS = {
     'UI_CHANGE_READY_DOES': ('Che cosa fa', 'What it does'),
     'UI_CHANGE_READY_PERMISSIONS': ('Permessi che chiede', 'Permissions it asks for'),
     'UI_CHANGE_READY_NO_PERMISSIONS': ('nessuno', 'none'),
+    'UI_CHANGE_PERMISSION_COMPUTE': (
+        'solo calcolo, non tocca nulla', 'computation only, it touches nothing'),
+    'UI_CHANGE_PERMISSION_FS_READ': ('legge file in {where}', 'reads files in {where}'),
+    'UI_CHANGE_PERMISSION_FS_WRITE': ('scrive file in {where}', 'writes files in {where}'),
+    'UI_CHANGE_PERMISSION_CODE_EXEC': (
+        'esegue comandi del sistema', 'runs system commands'),
+    'UI_CHANGE_PERMISSION_MAIL_READ': ('legge la posta', 'reads mail'),
+    'UI_CHANGE_PERMISSION_MAIL_SEND': ('spedisce posta', 'sends mail'),
+    'UI_CHANGE_PERMISSION_PROVIDER_READ': (
+        'legge dal tuo account {provider}: non può scrivere, cancellare, spedire o '
+        'condividere',
+        'reads from your {provider} account: it cannot write, delete, send or share'),
+    'MSG_SYNTH_PROVIDER_READ_ONLY': (
+        'Uno strumento costruito da Metnos su {provider} può solo cercare e leggere: '
+        'scrivere, cancellare, spedire e condividere restano agli strumenti di serie.',
+        'A tool Metnos builds by itself may only search and read on {provider}: writing, '
+        'deleting, sending and sharing stay with the built-in tools.'),
+    'MSG_SYNTH_PROVIDER_NOT_READABLE': (
+        'Uno strumento costruito da Metnos non può usare {provider}.',
+        'A tool Metnos builds by itself cannot use {provider}.'),
+    'ERR_PROVIDER_READ_ORDER': (
+        'La lettura numero {position} non è quella attesa ({asked}): lo strumento non '
+        'legge sempre nello stesso ordine.',
+        'Read number {position} is not the expected one ({asked}): the tool does not '
+        'always read in the same order.'),
+    'ERR_PROVIDER_READ_REFUSED': (
+        'Lo strumento ha chiesto una lettura che non è valida.',
+        'The tool asked for a read that is not valid.'),
+    'ERR_PROVIDER_READ_LIMIT': (
+        'Lo strumento ha chiesto più di {limit} letture in una sola volta: mi sono '
+        'fermato.',
+        'The tool asked for more than {limit} reads at once: I stopped.'),
     'UI_CHANGE_READY_UNDO_YES': (
         'Quello che fa si può annullare.', 'What it does can be undone.'),
     'UI_CHANGE_READY_UNDO_NO': (

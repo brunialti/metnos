@@ -212,6 +212,7 @@ l'uscita del comando <code>registry</code> sono le fonti complete e aggiornate.<
 <tr><td><code>metnos:cache</code></td><td>no</td><td><code>none</code></td><td><code>none</code></td><td>cache tecnica best-effort in un sottoalbero amministrato da Metnos, senza effetti sui dati utente</td></tr>
 <tr><td><code>system:read</code></td><td>no</td><td><code>per_target</code></td><td><code>exact</code></td><td>lettura diagnostica di sistema su host o dispositivo autorizzato</td></tr>
 <tr><td><code>provider:access</code></td><td>no</td><td><code>per_target</code></td><td><code>exact</code></td><td>accesso alla rete e alle credenziali di un fornitore autorizzato</td></tr>
+<tr><td><code>provider:read</code></td><td>no</td><td><code>per_target</code></td><td><code>exact</code></td><td>lettura da un fornitore autorizzato, eseguita dal runtime per lo strumento: lo strumento non riceve rete n&eacute; credenziali</td></tr>
 </table>
 
 <p>
@@ -294,6 +295,7 @@ La matrice &egrave; il prodotto dei tre livelli di autonomia (ReadOnly, Supervis
 <tr><td><code>metnos:cache</code></td><td><span class="v-allow">allowed</span></td><td><span class="v-allow">allowed</span></td><td><span class="v-allow">allowed</span></td></tr>
 <tr><td><code>system:read</code></td><td><span class="v-approve">approval</span></td><td><span class="v-approve">approval</span></td><td><span class="v-allow">allowed</span></td></tr>
 <tr><td><code>provider:access</code></td><td><span class="v-approve">approval</span></td><td><span class="v-approve">approval</span></td><td><span class="v-allow">allowed</span></td></tr>
+<tr><td><code>provider:read</code></td><td><span class="v-approve">approval</span></td><td><span class="v-approve">approval</span></td><td><span class="v-allow">allowed</span></td></tr>
 </table>
 
 <h2>3.1 Le tre regole che generano la tabella</h2>

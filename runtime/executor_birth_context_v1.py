@@ -106,6 +106,7 @@ CONTEXT_CATALOG_V1: tuple[tuple[str, str, tuple[str, ...], str], ...] = (
             'detection_lexicon_seed_resolvers.py',
             'credential_intake.py',
             'record_identity.py',
+            'provider_reads.py',
             'install/data/i18n_seed.sqlite',
         ),
         "productive",

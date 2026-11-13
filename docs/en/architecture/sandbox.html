@@ -172,6 +172,7 @@ arguments are computed on the same base.</p>
 <tr><td><code>index:read</code></td><td>Read-only access to the canonical root of the declared index. An unknown name grants nothing.</td></tr>
 <tr><td><code>systemd:read</code> and <code>system:read</code></td><td>Expose only known resources required for status inspection. Requesting network-interface information keeps the host network available.</td></tr>
 <tr><td><code>provider:access</code> or <code>skill:&lt;name&gt;</code></td><td>Read-write access to the integration home, including what OAuth refresh needs, plus host network access.</td></tr>
+<tr><td><code>provider:read</code></td><td>Nothing: neither network nor integration home. The service performs the read and hands its answer to the tool.</td></tr>
 <tr><td><code>mail:read</code></td><td>Read-only access to individual credential files for the requested account, plus host network access.</td></tr>
 </table>
 

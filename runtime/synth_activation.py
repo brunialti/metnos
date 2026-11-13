@@ -56,6 +56,42 @@ def declared_cases(manifest: dict) -> list:
             for case in manifest.get("tests") or [] if isinstance(case, dict)]
 
 
+# What each permission of a generated tool means, in the person's words
+# (`synt_multistage.GENERATED_CAPABILITIES`); one not listed is shown as named.
+_PERMISSION_WORDS = {
+    "compute:pure": "UI_CHANGE_PERMISSION_COMPUTE",
+    "fs:read": "UI_CHANGE_PERMISSION_FS_READ",
+    "fs:write": "UI_CHANGE_PERMISSION_FS_WRITE",
+    "code:exec": "UI_CHANGE_PERMISSION_CODE_EXEC",
+    "mail:read": "UI_CHANGE_PERMISSION_MAIL_READ",
+    "mail:send": "UI_CHANGE_PERMISSION_MAIL_SEND",
+    "provider:read": "UI_CHANGE_PERMISSION_PROVIDER_READ",
+}
+
+
+def _provider_label(binding: str) -> str:
+    from vocab import PROVIDER_DISPLAY_NAMES, PROVIDER_SKILLS
+
+    return next((PROVIDER_DISPLAY_NAMES[name] for name, skill in PROVIDER_SKILLS.items()
+                 if skill == binding and name in PROVIDER_DISPLAY_NAMES), binding)
+
+
+def permission_words(capabilities) -> list[str]:
+    """One plain sentence for each permission a candidate asks for."""
+    from messages import get as _msg
+
+    words = []
+    for item in capabilities or []:
+        name, hints = str(item.get("name") or ""), [str(hint) for hint in item.get("hint") or []]
+        key = _PERMISSION_WORDS.get(name)
+        if key is None:
+            words.append(name + (f" ({', '.join(hints)})" if hints else ""))
+        else:
+            words.append(_msg(key, where=", ".join(hints) or "—",
+                              provider=", ".join(map(_provider_label, hints)) or "—"))
+    return words
+
+
 def candidate_card(proposals_dir: Path, proposal_id: str, *, lang: str) -> dict:
     """What the person is asked to allow, in plain facts read from the candidate."""
     manifest, _metadata = _manifest(proposals_dir, proposal_id)
@@ -71,6 +107,7 @@ def candidate_card(proposals_dir: Path, proposal_id: str, *, lang: str) -> dict:
         "name": str(manifest.get("name") or ""),
         "description": " ".join(str(description or "").split()),
         "capabilities": capabilities,
+        "permissions": permission_words(capabilities),
         "revertible": manifest.get("revertible") is True,
         "cases": declared_cases(manifest),
     }

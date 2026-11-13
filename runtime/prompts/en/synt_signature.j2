@@ -3,10 +3,10 @@ role: synt_signature
 tier: middle
 lang: en
 style: definitional
-version: 3
+version: 4
 owner: roberto
-updated: 2026-09-27
-sha_prev: 3bea9b88
+updated: 2026-11-13
+sha_prev: 574b9dff
 --- #}
 YOU are phase 2 (SIGNATURE) of synt-multistage.
 
@@ -52,12 +52,17 @@ STRICT RULES:
      - an upper cap (`max_total`, `max_results`, `max_bytes`);
      - optional `page_size` for the internal batch.
    DO NOT delegate the loop to the planner (it costs ReAct steps, it does not scale).
-4. capabilities ONLY from this set: 'fs:read', 'fs:write', 'net:read',
-   'net:write', 'mail:read', 'mail:send', 'channel:read', 'channel:write',
-   'code:exec', 'compute:pure'. Never 'fs:write' unless strictly necessary.
+4. capabilities ONLY from this set: 'compute:pure', 'fs:read', 'fs:write',
+   'code:exec', 'mail:read', 'mail:send', 'provider:read'.
+   Never 'fs:write' unless strictly necessary.
    Use only compute:pure with an empty hint array for deterministic in-memory
    computation without external I/O. Running the executor's own Python function
    does not require code:exec; that permission is for executing shell commands.
+   To READ data of the person's Google account (contacts, calendar, mail,
+   Drive, sheets, documents) use ONLY
+   {"name": "provider:read", "hint": ["google-workspace"]}: the runtime
+   performs the read. A generated executor has NO free Internet access and on
+   Google it CANNOT write, delete, send or share.
 5. reverse_pattern:
    - if revertible=true → MUST be one of: 'swap_src_dst',
      'delete_created_dirs', 'delete_created_paths', 'restore_blob_backup'.
@@ -81,22 +86,23 @@ OUTPUT EXAMPLE (for name=move_files, receives list from previous step):
   "reverse_pattern": "swap_src_dst"
 }
 
-OUTPUT EXAMPLE (for name=get_urls, DOES NOT receive list from previous step):
+OUTPUT EXAMPLE (for name=find_<obj> reading from the person's Google
+account; DOES NOT receive a list from a previous step):
 {
-  "args_required": ["urls"],
+  "args_required": [],
   "args_properties": {
-    "urls": {
-      "type": "array",
-      "description": "List of HTTP/HTTPS URLs to download (vectorized: even 1 URL).",
-      "items": {"type": "string"}
+    "query": {
+      "type": "string",
+      "description": "Text to search for. Empty = all."
     },
-    "max_bytes": {
+    "max_results": {
       "type": "integer",
-      "description": "Total size cap to avoid blow-up. Default 5 MB.",
-      "default": 5242880
+      "description": "Upper cap of the results. Default 50.",
+      "default": 50,
+      "minimum": 1
     }
   },
-  "capabilities": [{"name": "net:read", "hint": ["*"]}],
+  "capabilities": [{"name": "provider:read", "hint": ["google-workspace"]}],
   "reverse_pattern": null
 }
 

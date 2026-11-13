@@ -1,0 +1,25 @@
+{# ---
+role: synt_read_fields
+tier: middle
+lang: it
+style: definitional
+version: 1
+owner: roberto
+updated: 2026-11-13
+sha_prev: 7ac9f4ad
+--- #}
+Scegli, dall'elenco numerato, i campi della risposta che la funzione descritta sotto usa. Restituisci solo JSON valido, senza markdown, commenti o spiegazioni, in questa forma: {"numbers":[<numeri>]}.
+
+Funzione: {{ name }}
+Richiesta originale: {{ user_request }}
+Lettura: {{ read }}
+
+Regole:
+1. Scegli i campi che servono per rispondere alla richiesta e quelli che dicono alla persona di quale elemento si parla (nome o titolo, identificativo); al massimo {{ limit }}.
+2. Non scegliere campi di servizio che la richiesta non nomina.
+
+ELENCO:
+{{ items }}
+{% if correction %}
+CORREZIONE OBBLIGATORIA: la risposta precedente e' stata rifiutata per questo motivo: {{ correction }}
+{% endif %}

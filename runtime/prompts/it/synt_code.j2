@@ -3,10 +3,10 @@ role: synt_code
 tier: wise
 lang: it
 style: definitional
-version: 9
+version: 11
 owner: roberto
-updated: 2026-11-12
-sha_prev: 9b27a546
+updated: 2026-11-13
+sha_prev: d40c5fbe
 --- #}
 Sei la fase 5 (CODE) di synt-multistage.
 Tuo UNICO compito: scrivere il file Python `{{ name }}.py` che implementa
@@ -203,6 +203,17 @@ CONTRATTO I/O (OBBLIGATORIO — il runtime invoca via subprocess):
     if __name__ == "__main__":
         main()
 
+{% if provider_bases %}
+LETTURE DA UN FORNITORE (permesso provider:read): il file NON ha rete ne' credenziali.
+DEVI: leggere solo con `from provider_reads import provider_get` e `dati = provider_get(args, "<indirizzo>", {<parametri>})`, che restituisce il JSON della risposta.
+DEVI: passare a provider_get l'oggetto `args` ricevuto da invoke, senza modificarlo; per la pagina successiva richiama provider_get con il parametro di pagina della risposta precedente.
+NON DEVI: importare urllib, http, socket, requests o subprocess; leggere file di credenziali; gestire errori di rete (una lettura fallita non torna al file: risponde il runtime); restituire dati non letti.
+OK (sola forma, non copiare letteralmente): `dati = provider_get(args, "https://people.googleapis.com/v1/people/me/connections", {"personFields": "names,emailAddresses", "pageSize": 200})`.
+ERRORE: `urllib.request.urlopen(url)`; restituire un elenco scritto a mano al posto della lettura. E' UN ERRORE.
+Ogni indirizzo comincia con uno di questi, senza eccezioni: {{ provider_bases }}.
+{% if provider_reads %}Le letture di questo file sono queste, dal catalogo del fornitore. Usa SOLO questi indirizzi e questi parametri; la risposta ha ESATTAMENTE questa forma (`nome[]` = lista):
+{{ provider_reads }}
+{% endif %}{% endif %}
 Richiesta utente originale: {{ user_request }}
 
 Rispondi SOLO con il codice Python completo del file `{{ name }}.py`,

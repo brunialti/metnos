@@ -283,6 +283,17 @@ program of the server administrator, which keeps the keys and accepts the reques
 from the administration page. It is installed once; while it is missing, the page says
 so and the button stays off. Generated tools cannot reach it.</p>
 
+<p><strong>What a generated tool may touch.</strong> It computes, and it works on the
+files the person opened to it. On the person's external services, such as the Google
+account, it may only search and read: writing, deleting, sending and sharing stay with
+the built-in tools, and a request to build one that writes is refused at once, with the
+reason. Even to read, the generated tool receives neither the network nor the account's
+key: it asks Metnos for the data, and Metnos performs the read alone, on the service's
+official addresses, and hands it the answer. Which reads exist and what shape their answers
+have is not left to the model's memory: whoever builds the tool chooses them from the
+list the service itself publishes. The card that asks <strong>Activate</strong>
+says in plain words what the tool touches. It has no free access to the Internet.</p>
+
 <p><strong>What always stays with the person:</strong> the final answer on every tool,
 new vocabulary words and the choice about the external model. Handwritten tools are
 never touched by this cycle.</p>

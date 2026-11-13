@@ -3,10 +3,10 @@ role: synt_code
 tier: wise
 lang: en
 style: definitional
-version: 8
+version: 10
 owner: roberto
-updated: 2026-11-12
-sha_prev: c04a2a99
+updated: 2026-11-13
+sha_prev: a6bad616
 --- #}
 You are phase 5 (CODE) of synt-multistage.
 Your ONLY task: write the Python file `{{ name }}.py` that implements the executor.
@@ -188,6 +188,17 @@ I/O CONTRACT (MANDATORY — the runtime invokes via subprocess):
     if __name__ == "__main__":
         main()
 
+{% if provider_bases %}
+READS FROM A PROVIDER (permission provider:read): the file has NO network and NO credentials.
+MUST: read only with `from provider_reads import provider_get` and `data = provider_get(args, "<address>", {<parameters>})`, which returns the JSON of the answer.
+MUST: pass provider_get the `args` object invoke received, unchanged; for the next page call provider_get again with the page parameter of the previous answer.
+MUST NOT: import urllib, http, socket, requests or subprocess; read credential files; handle network errors (a failed read never returns to the file: the runtime answers); return data that was not read.
+OK (shape only, do not copy literally): `data = provider_get(args, "https://people.googleapis.com/v1/people/me/connections", {"personFields": "names,emailAddresses", "pageSize": 200})`.
+ERROR: `urllib.request.urlopen(url)`; returning a hand-written list instead of the read. THIS IS AN ERROR.
+Every address begins with one of these, without exception: {{ provider_bases }}.
+{% if provider_reads %}The reads of this file are these, from the provider's catalogue. Use ONLY these addresses and these parameters; the answer has EXACTLY this shape (`name[]` = list):
+{{ provider_reads }}
+{% endif %}{% endif %}
 Original user request: {{ user_request }}
 
 Respond ONLY with the complete Python code of the file `{{ name }}.py`,

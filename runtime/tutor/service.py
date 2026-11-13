@@ -122,7 +122,7 @@ def _catalog_summary(card, lang: str, cards, audience: str) -> str:
             for capability in (getattr(executor, "capabilities", ()) or ()):
                 if not isinstance(capability, dict):
                     continue
-                if str(capability.get("name") or "") != "provider:access":
+                if str(capability.get("name") or "").partition(":")[0] != "provider":
                     continue
                 for hint in capability.get("hint") or ():
                     if str(hint).strip():

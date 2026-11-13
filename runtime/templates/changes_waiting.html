@@ -25,7 +25,7 @@
             <div data-tutor-id="changes-row-ready"><strong>{{ msg('UI_CHANGE_READY_TITLE') }}</strong></div>
             <div>{{ msg('UI_CHANGE_READY_DOES') }}: {{ w.candidate.description }}</div>
             <div>{{ msg('UI_CHANGE_READY_PERMISSIONS') }}:
-              {% for c in w.candidate.capabilities %}<code>{{ c.name }}</code>{% if c.hint %} ({{ c.hint|join(', ') }}){% endif %}{% if not loop.last %}; {% endif %}{% else %}{{ msg('UI_CHANGE_READY_NO_PERMISSIONS') }}{% endfor %}
+              {% for words in w.candidate.permissions %}{{ words }}{% if not loop.last %}; {% endif %}{% else %}{{ msg('UI_CHANGE_READY_NO_PERMISSIONS') }}{% endfor %}
             </div>
             <div>{{ msg('UI_CHANGE_READY_UNDO_YES') if w.candidate.revertible else msg('UI_CHANGE_READY_UNDO_NO') }}</div>
             <details>

@@ -413,10 +413,8 @@ def push_ready_candidate(ci: ChangeIntent, proposal_id: str) -> None:
     except Exception as exc:  # noqa: BLE001 - an unreadable candidate is not a question
         _log.warning("change_applier: candidate card unavailable for the push: %r", exc)
         return
-    permissions = "; ".join(
-        str(item.get("name")) + (f" ({', '.join(map(str, item['hint']))})" if item.get("hint") else "")
-        for item in card.get("capabilities") or [] if isinstance(item, dict)
-    ) or _msg("UI_CHANGE_READY_NO_PERMISSIONS")
+    permissions = ("; ".join(card.get("permissions") or [])
+                   or _msg("UI_CHANGE_READY_NO_PERMISSIONS"))
     _push("MSG_CHANGE_READY_PUSH", ci, event_key=_ready_key(proposal_id),
           name=str(card.get("name") or _creation_request(ci)[0]),
           does=str(card.get("description") or ""), permissions=permissions,

@@ -3,10 +3,10 @@ role: synt_tests
 tier: middle
 lang: en
 style: definitional
-version: 19
+version: 21
 owner: roberto
-updated: 2026-11-12
-sha_prev: 1ca6a751
+updated: 2026-11-13
+sha_prev: a4f929a0
 --- #}
 Generate declarative tests for the function below. Return only valid compact JSON, without markdown, comments or explanations.
 
@@ -44,7 +44,11 @@ Request to verify (determines input validity and expected behavior):
 Real requests from people this function is born from:
 {{ real_requests }}
 The normal case uses exactly the data of one of these requests, and every real request must correspond to a valid input (ok=true).
-{% endif %}{% if correction %}
+{% endif %}{% if provider_bases %}
+READS FROM A PROVIDER: this function reads its data through the runtime (permission provider:read). In a test the provider does not exist: in EVERY case that must succeed, input also holds `_provider_responses`, the list IN ORDER of the JSON answers the provider would give to the function's reads, in the form [{"url":"<address>","response":{...}}]. Every address begins with one of these: {{ provider_bases }}. Use invented data only (generic names, @example.com addresses). The expectations (entries, ok_count) follow from those answers. A case with invalid arguments holds no `_provider_responses`.
+{% if provider_reads %}The reads of this function are these, from the provider's catalogue. Addresses and shape of the answers are EXACTLY these: every `response` uses only these fields, nested this way (`name[]` = list).
+{{ provider_reads }}
+{% endif %}{% endif %}{% if correction %}
 MANDATORY CORRECTION: the cases you wrote before were refused for this reason:
 {{ correction }}
 Rewrite all the cases fixing this.

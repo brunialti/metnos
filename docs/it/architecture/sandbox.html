@@ -172,6 +172,7 @@ tutti. Le concessioni legate agli argomenti si calcolano sulla stessa base.</p>
 <tr><td><code>index:read</code></td><td>Accesso in sola lettura alla radice canonica dell'indice dichiarato; un nome sconosciuto non concede nulla.</td></tr>
 <tr><td><code>systemd:read</code> e <code>system:read</code></td><td>Visibilit&agrave; limitata alle risorse note necessarie alla lettura dello stato. La richiesta delle interfacce di rete mantiene disponibile la rete dell'host.</td></tr>
 <tr><td><code>provider:access</code> o <code>skill:&lt;nome&gt;</code></td><td>Cartella dell'integrazione in lettura e scrittura, necessaria anche al rinnovo OAuth, e rete dell'host.</td></tr>
+<tr><td><code>provider:read</code></td><td>Niente: n&eacute; rete n&eacute; cartella dell'integrazione. La lettura la esegue il servizio e ne passa la risposta allo strumento.</td></tr>
 <tr><td><code>mail:read</code></td><td>Singoli file di credenziali dell'account richiesto in sola lettura e rete dell'host.</td></tr>
 </table>
 

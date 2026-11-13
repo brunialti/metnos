@@ -1,0 +1,25 @@
+{# ---
+role: synt_reads
+tier: middle
+lang: en
+style: definitional
+version: 1
+owner: roberto
+updated: 2026-11-13
+sha_prev: 066129c5
+--- #}
+Choose, from the numbered list, the reads the function described below needs. Return only valid JSON, with no markdown, comments or explanations, in this form: {"numbers":[<numbers>]}.
+
+Function: {{ name }}
+Original request: {{ user_request }}
+
+Rules:
+1. Choose the minimum needed: normally one read, at most {{ limit }}.
+2. A read that lists or searches serves to find the items. A read that takes a single item serves only if the function receives its identifier or must read its whole content.
+3. If no read of the list serves, answer {"numbers":[]}.
+
+LIST:
+{{ items }}
+{% if correction %}
+MANDATORY CORRECTION: the previous answer was refused for this reason: {{ correction }}
+{% endif %}

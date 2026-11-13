@@ -1,0 +1,25 @@
+{# ---
+role: synt_reads
+tier: middle
+lang: it
+style: definitional
+version: 1
+owner: roberto
+updated: 2026-11-13
+sha_prev: 1116e447
+--- #}
+Scegli, dall'elenco numerato, le letture che servono alla funzione descritta sotto. Restituisci solo JSON valido, senza markdown, commenti o spiegazioni, in questa forma: {"numbers":[<numeri>]}.
+
+Funzione: {{ name }}
+Richiesta originale: {{ user_request }}
+
+Regole:
+1. Scegli il minimo necessario: di norma una lettura, al massimo {{ limit }}.
+2. Una lettura che elenca o cerca serve per trovare gli elementi. Una lettura che prende un solo elemento serve solo se la funzione riceve il suo identificativo o deve leggerne il contenuto completo.
+3. Se nessuna lettura dell'elenco serve, rispondi {"numbers":[]}.
+
+ELENCO:
+{{ items }}
+{% if correction %}
+CORREZIONE OBBLIGATORIA: la risposta precedente e' stata rifiutata per questo motivo: {{ correction }}
+{% endif %}

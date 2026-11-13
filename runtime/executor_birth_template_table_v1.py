@@ -74,6 +74,11 @@ NON DEVI: Treat "unknown" alone as evidence of purity, an undeclared effect, or 
 OK: Reject network access hidden inside a candidate declaring compute:pure.
 ERRORE: Approve unanalysed code merely because its scheduling policy is unknown.
 
+DEVI: Treat a call provider_get(args, url, params) as the effect the capability provider:read declares: one read-only request that the runtime, not the candidate, performs on that provider; list it in observed_effects.
+NON DEVI: Report provider_get as undeclared when provider:read is declared, nor accept it when provider:read is not declared.
+OK: Align a provider:read candidate whose only external effect is provider_get.
+ERRORE: Align a provider:read candidate that opens the network, runs a program or reads a credential file by itself.
+
 DEVI: Return only one JSON object conforming to the response schema below. Include all six required fields, starting with verdict; a reason never replaces verdict.
 NON DEVI: Add prose, Markdown fences, duplicate keys, or fields outside the schema.
 OK (format example only, do not copy literally): {"verdict":"uncertain","observed_effects":[],"undeclared_effects":[],"reason":"Insufficient evidence.","tests":[],"confidence":40}

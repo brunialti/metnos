@@ -3,10 +3,10 @@ role: synt_tests
 tier: middle
 lang: it
 style: definitional
-version: 19
+version: 21
 owner: roberto
-updated: 2026-11-12
-sha_prev: e11f724e
+updated: 2026-11-13
+sha_prev: 9dd5e3ce
 --- #}
 Genera i test dichiarativi della funzione descritta sotto. Restituisci solo JSON valido e compatto, senza markdown, commenti o spiegazioni.
 
@@ -44,7 +44,11 @@ Richiesta da verificare (determina validità degli input e comportamento atteso)
 Richieste reali delle persone da cui nasce questa funzione:
 {{ real_requests }}
 Il caso normale usa esattamente i dati di una di queste richieste, e ogni richiesta reale deve corrispondere a un input valido (ok=true).
-{% endif %}{% if correction %}
+{% endif %}{% if provider_bases %}
+LETTURE DA UN FORNITORE: questa funzione legge i dati tramite il runtime (permesso provider:read). Nel test il fornitore non esiste: in OGNI caso che deve riuscire, input contiene anche `_provider_responses`, la lista IN ORDINE delle risposte JSON che il fornitore darebbe alle letture della funzione, nella forma [{"url":"<indirizzo>","response":{...}}]. Ogni indirizzo comincia con uno di questi: {{ provider_bases }}. Usa solo dati inventati (nomi generici, indirizzi @example.com). Le aspettative (entries, ok_count) derivano da quelle risposte. Un caso con argomenti non validi non contiene `_provider_responses`.
+{% if provider_reads %}Le letture di questa funzione sono queste, dal catalogo del fornitore. Indirizzi e forma delle risposte sono ESATTAMENTE questi: ogni `response` usa solo questi campi, annidati cosi' (`nome[]` = lista).
+{{ provider_reads }}
+{% endif %}{% endif %}{% if correction %}
 CORREZIONE OBBLIGATORIA: i casi che hai scritto prima sono stati rifiutati per questo motivo:
 {{ correction }}
 Riscrivi tutti i casi correggendo questo.

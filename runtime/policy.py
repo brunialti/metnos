@@ -204,6 +204,14 @@ CAPABILITY_REGISTRY: dict[str, CapabilitySpec] = {
         target_kind="exact",
         description="Accesso a rete e credenziali di un provider autorizzato",
     ),
+    # Read from a remote provider, performed by the service for the tool: the
+    # tool itself gets neither the network nor the credentials
+    # (`provider_reads`). The only provider authority a generated tool may hold.
+    "provider:read": CapabilitySpec(
+        "provider:read", critical=False, grants_mutation=False, default_approval="per_target",
+        target_kind="exact",
+        description="Lettura da un provider autorizzato, eseguita dal runtime per lo strumento",
+    ),
     "auth.password_storage": CapabilitySpec(
         "auth.password_storage", critical=True, grants_mutation=False, default_approval="per_target",
         target_kind="exact",
@@ -253,7 +261,7 @@ def _init_table() -> None:
             if cap_name in ("fs:read", "mail:read", "calendar:read",
                             "network:sites",
                             "index:read", "metnos:read", "system:read",
-                            "provider:access",
+                            "provider:access", "provider:read",
                             "channel:in", "time:read", "parse:local"):
                 _TABLE[("ReadOnly", cap_name)] = "approval_required" if spec.default_approval != "none" else "allowed"
             else:

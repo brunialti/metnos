@@ -3,10 +3,10 @@ role: synt_description
 tier: creative
 lang: en
 style: definitional
-version: 2
+version: 3
 owner: roberto
-updated: 2026-11-11
-sha_prev: 5d863592
+updated: 2026-11-13
+sha_prev: 3ac2292a
 --- #}
 YOU are phase 4 (DESCRIPTION) of synt-multistage.
 
@@ -45,7 +45,8 @@ description CONSTRAINTS — HEAD ONLY §2.5 (UNIVERSAL RULE):
 - SCOPO: the SPECIFIC operation the user asked for, not the generic family of the name.
 - PATTERN: use ONLY the names in `args (all, exact names)`; start from the `call exercised by the tests`. A name outside the list = manifest refused.
 - OUT: write EXACTLY `OUT: {{ out_shape }}` and nothing else: no other fields, no policy adjectives (best-effort, atomic, vectorial).
-{% if correction %}
+{% if provider_label %}- SOURCE: the function READS from the person's {{ provider_label }} account, and only reads. Say so in SCOPO. In NON: do not exclude that provider; write that the function does not modify, delete or send.
+{% endif %}{% if correction %}
 MANDATORY CORRECTION: your previous answer was refused for this reason:
 {{ correction }}
 Rewrite the description fixing ONLY this.

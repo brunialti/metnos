@@ -49,6 +49,8 @@ GROUPS = {
         "tests/runtime/learning/test_synt_undo_claim.py",
         "tests/runtime/learning/test_single_decision_cycle.py",
         "tests/runtime/learning/test_generated_tools_push.py",
+        "tests/runtime/learning/test_provider_reads.py",
+        "tests/runtime/learning/test_provider_catalog.py",
         "tests/runtime/learning/test_automatic_work_courtesy.py",
         "tests/runtime/http/test_http_routes_stack.py",
         "tests/runtime/infra/test_store_registry_isolation.py",

@@ -245,7 +245,8 @@ def _validate_authority(findings: list[StandardFinding], manifest: dict) -> None
                             findings, exc.code,
                             f"capabilities[{index}].{exc}",
                         )
-                if name == "provider:access":
+                # Every provider authority names its providers in the hint.
+                if isinstance(name, str) and name.partition(":")[0] == "provider":
                     hints = capability.get("hint")
                     if (not isinstance(hints, list) or not hints
                             or any(not isinstance(hint, str) or not hint.strip()

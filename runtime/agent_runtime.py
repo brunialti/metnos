@@ -4019,12 +4019,15 @@ def invoke_executor(executor, args, timeout_s=30, *, autonomy="supervised",
     from executor_scheduler import concurrency_identity_for, invoke_scheduled
 
     def call():
-        return _invoke_executor_impl_optional_context(
-            executor, args, timeout_s=timeout_s, autonomy=autonomy,
-            turn_id=turn_id, actor=actor, channel=channel,
-            target_device=target_device, owner_user_id=owner_user_id,
-            execution_context=execution_context,
-        )
+        import provider_reads
+        return provider_reads.run(
+            executor, args,
+            lambda arguments: _invoke_executor_impl_optional_context(
+                executor, arguments, timeout_s=timeout_s, autonomy=autonomy,
+                turn_id=turn_id, actor=actor, channel=channel,
+                target_device=target_device, owner_user_id=owner_user_id,
+                execution_context=execution_context,
+            ))
 
     schedule_kwargs = {
         "concurrency_identity": concurrency_identity_for(
@@ -4049,12 +4052,15 @@ def submit_executor(executor, args, timeout_s=30, *, autonomy="supervised",
     from executor_scheduler import concurrency_identity_for, submit_scheduled
 
     def call():
-        return _invoke_executor_impl_optional_context(
-            executor, args, timeout_s=timeout_s, autonomy=autonomy,
-            turn_id=turn_id, actor=actor, channel=channel,
-            target_device=target_device, owner_user_id=owner_user_id,
-            execution_context=execution_context,
-        )
+        import provider_reads
+        return provider_reads.run(
+            executor, args,
+            lambda arguments: _invoke_executor_impl_optional_context(
+                executor, arguments, timeout_s=timeout_s, autonomy=autonomy,
+                turn_id=turn_id, actor=actor, channel=channel,
+                target_device=target_device, owner_user_id=owner_user_id,
+                execution_context=execution_context,
+            ))
 
     schedule_kwargs = {
         "concurrency_identity": concurrency_identity_for(

@@ -3,10 +3,10 @@ role: synt_description
 tier: creative
 lang: it
 style: definitional
-version: 2
+version: 3
 owner: roberto
-updated: 2026-11-11
-sha_prev: f054af72
+updated: 2026-11-13
+sha_prev: 382b5d4a
 --- #}
 SEI la fase 4 (DESCRIPTION) di synt-multistage.
 
@@ -47,7 +47,8 @@ VINCOLI description — SOLO TESTA §2.5 (REGOLA UNIVERSALE):
 - SCOPO: l'operazione SPECIFICA chiesta dall'utente, non la famiglia generica del nome.
 - PATTERN: usa SOLO i nomi in `args (tutti, nomi esatti)`; parti dalla `chiamata provata nei test`. Un nome fuori elenco = manifest rifiutato.
 - OUT: scrivi ESATTAMENTE `OUT: {{ out_shape }}` e nient'altro: niente altri campi, niente aggettivi di politica (best-effort, atomico, vettoriale).
-{% if correction %}
+{% if provider_label %}- FONTE: la funzione LEGGE dall'account {{ provider_label }} della persona, e soltanto legge. Dillo nello SCOPO. In NON: non escludere quel fornitore; scrivi che la funzione non modifica, non cancella e non spedisce.
+{% endif %}{% if correction %}
 CORREZIONE OBBLIGATORIA: la tua risposta precedente e' stata rifiutata per questo motivo:
 {{ correction }}
 Riscrivi la description correggendo SOLO questo.

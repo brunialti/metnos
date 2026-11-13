@@ -1902,6 +1902,104 @@ def photos_picker_download(args):
 
 
 # =========================================================================
+# Read-only API access for tools Metnos builds by itself
+# =========================================================================
+# A generated tool never holds the token and never opens the network: it asks
+# the runtime for one read, and the runtime runs this command. This is the
+# last door, so the rule lives here: GET only, these hosts only, no redirect.
+
+# Where a read may go: the documented base of each API the consent covers. A
+# plain literal: the runtime reads it from this file to tell a tool's builder
+# which addresses exist (`provider_reads.readable_bases`).
+_READ_API_BASES = (
+    "https://people.googleapis.com/v1/",
+    "https://gmail.googleapis.com/gmail/v1/users/me/",
+    "https://www.googleapis.com/calendar/v3/",
+    "https://www.googleapis.com/drive/v3/",
+    "https://sheets.googleapis.com/v4/spreadsheets/",
+    "https://docs.googleapis.com/v1/documents/",
+    "https://photoslibrary.googleapis.com/v1/",
+)
+_READ_API_MAX_BYTES = 4 * 1024 * 1024
+_READ_API_TIMEOUT_S = 30
+
+
+def _read_api_refused(reason: str) -> None:
+    print(f"ERROR api get: invalid argument: {reason}", file=sys.stderr)
+    sys.exit(2)
+
+
+def read_api_request(url: str, params_json: str) -> tuple[str, dict]:
+    """The checked (url, params) of one read, or exit with the reason."""
+    from urllib.parse import urlsplit
+
+    try:
+        parts = urlsplit(url)
+        port = parts.port
+    except ValueError:
+        _read_api_refused("url is not an address")
+    if (parts.scheme != "https" or parts.username or parts.password or port
+            or parts.query or parts.fragment or not parts.path.startswith("/")):
+        _read_api_refused("url must be https://<host>/<path>, parameters apart")
+    # The path is taken as written: no segment may walk out of the API's base.
+    lowered = parts.path.lower()
+    if ("\\" in lowered or "//" in lowered
+            or any(code in lowered for code in ("%2e", "%2f", "%5c", "%25"))
+            or any(segment in (".", "..") for segment in lowered.split("/"))):
+        _read_api_refused("url path must be plain segments")
+    address = f"https://{(parts.hostname or '').lower()}{parts.path}"
+    if not any(address.startswith(base) or address + "/" == base for base in _READ_API_BASES):
+        _read_api_refused("url is not under a readable Google API")
+    url = address
+    try:
+        params = json.loads(params_json or "{}")
+    except ValueError:
+        _read_api_refused("params is not JSON")
+    if not isinstance(params, dict):
+        _read_api_refused("params must be an object")
+
+    def plain(value) -> bool:
+        return isinstance(value, (str, int, float, bool)) and value == value
+
+    for key, value in params.items():
+        if not isinstance(key, str) or not key or not (
+                plain(value) or (isinstance(value, list) and all(map(plain, value)))):
+            _read_api_refused("params values must be text, numbers or lists of them")
+    return url, params
+
+
+def api_get(args):
+    """One read of a Google API on behalf of a generated tool."""
+    url, params = read_api_request(args.url, args.params)
+    wire = {key: ([str(item).lower() if isinstance(item, bool) else item for item in value]
+                  if isinstance(value, list)
+                  else str(value).lower() if isinstance(value, bool) else value)
+            for key, value in params.items()}
+    from google.auth.transport.requests import AuthorizedSession
+
+    resp = AuthorizedSession(get_credentials()).get(
+        url, params=wire, timeout=_READ_API_TIMEOUT_S, allow_redirects=False, stream=True)
+    body = resp.raw.read(_READ_API_MAX_BYTES + 1, decode_content=True)
+    if resp.status_code != 200:
+        try:
+            detail = json.loads(body).get("error", {}).get("message", "")
+        except Exception:
+            detail = ""
+        print(f"ERROR api get: HTTP {resp.status_code} {detail}"[:600], file=sys.stderr)
+        sys.exit(1)
+    if len(body) > _READ_API_MAX_BYTES:
+        print("ERROR api get: invalid argument: the answer is larger than "
+              f"{_READ_API_MAX_BYTES} bytes, ask for fewer items per page", file=sys.stderr)
+        sys.exit(2)
+    try:
+        data = json.loads(body)
+    except ValueError:
+        print("ERROR api get: invalid argument: the answer is not JSON", file=sys.stderr)
+        sys.exit(2)
+    print(json.dumps(data, ensure_ascii=False))
+
+
+# =========================================================================
 # CLI parser
 # =========================================================================
 
@@ -2197,6 +2295,15 @@ def main():
     p.add_argument("--output", required=True, help="Local destination directory")
     p.add_argument("--max", default="", help="Cap on downloaded items (empty = all)")
     p.set_defaults(func=photos_picker_download)
+
+    # --- Read-only API access for generated tools ---
+    api = sub.add_parser("api")
+    api_sub = api.add_subparsers(dest="action", required=True)
+
+    p = api_sub.add_parser("get")
+    p.add_argument("--url", required=True, help="https://<Google API host>/<path>")
+    p.add_argument("--params", default="{}", help="JSON object of query parameters")
+    p.set_defaults(func=api_get)
 
     args = parser.parse_args()
     args.func(args)

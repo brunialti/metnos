@@ -145,6 +145,14 @@ def validate_stage1(out: dict) -> Optional[str]:
     return None
 
 
+# What a generated tool may declare. The network is not among them: a remote
+# provider is only read, and through the service (`provider_reads`). A name
+# outside the canonical registry was refused at delivery, after every stage
+# (`net:read` and `channel:read` were offered by the prompt until 13/11/2026).
+GENERATED_CAPABILITIES = ("compute:pure", "fs:read", "fs:write", "code:exec",
+                          "mail:read", "mail:send", "provider:read")
+
+
 def validate_stage2(out: dict, stage1: dict) -> Optional[str]:
     if not isinstance(out.get("args_required"), list):
         return "args_required deve essere lista"
@@ -152,6 +160,11 @@ def validate_stage2(out: dict, stage1: dict) -> Optional[str]:
         return "args_properties deve essere dict"
     if not isinstance(out.get("capabilities"), list):
         return "capabilities deve essere lista"
+    for item in out["capabilities"]:
+        name = item.get("name") if isinstance(item, dict) else None
+        if name not in GENERATED_CAPABILITIES:
+            return (f"capability {name!r} is not one a generated tool may declare: "
+                    f"only {', '.join(GENERATED_CAPABILITIES)}")
     rp = out.get("reverse_pattern")
     if stage1["revertible"]:
         if rp not in REVERSE_PATTERNS:
@@ -370,7 +383,9 @@ def _run_stage1_once(user_request: str, llm_call, decided: dict | None) -> Stage
                        latency_ms=res.get("latency_ms", 0))
 
 
-def run_stage2(user_request: str, stage1: dict, llm_call) -> StageResult:
+def run_stage2(user_request: str, stage1: dict, llm_call, *,
+               correction: str = "") -> StageResult:
+    """``correction``: why the signature of a first attempt was refused."""
     user_prompt = prompt_loader.get(
         "synt_signature",
         _i18n.current_lang(),
@@ -381,6 +396,9 @@ def run_stage2(user_request: str, stage1: dict, llm_call) -> StageResult:
         target_kind=stage1["target_kind"],
         user_request=user_request,
     )
+    if correction:
+        user_prompt += ("\n\nThe signature you wrote before was refused: " + correction
+                        + "\nWrite the whole JSON object again, fixing this.")
     res = llm_call("", user_prompt, max_tokens=4000)
     text = res.get("text", "")
     out = _parse_json_strict(text)
@@ -413,6 +431,77 @@ def test_generation_options(provider) -> dict:
 
 # The fields of the standard answer that hold one value per item, and the
 # other fields of that answer a case may check.
+def settle_provider_claim(stage1: dict, stage2: dict, user_request: str) -> str | None:
+    """Give a tool that works on a remote provider the one authority a
+    generated tool may hold there, or say why it cannot be built.
+
+    Roberto, 13/11/2026: a tool Metnos builds by itself may only search and
+    read on Google; writing, deleting, sending and sharing stay with the
+    built-in tools. Decided here from the object's provider registry and the
+    closed list of reading verbs, not by the model: before this a request to
+    write on a provider was built as code that only pretended, used every
+    attempt and then asked for the external model. Returns the refusal in the
+    person's words, or None.
+    """
+    import provider_reads
+    from backend_resolver import OBJECT_BACKENDS, explicit_provider
+    from messages import get as _msg
+    from vocab import PROVIDER_SKILLS, SAFE_VERBS
+
+    capabilities = [item for item in stage2.get("capabilities") or [] if isinstance(item, dict)]
+    spec = OBJECT_BACKENDS.get(stage1.get("object")) or {}
+    preferred = spec.get("providers") or []
+    provider = explicit_provider(stage1.get("object"), user_request) if spec else None
+    if provider is None and preferred:
+        provider = preferred[0]
+    binding = PROVIDER_SKILLS.get(provider)
+    if binding is None:
+        # No remote provider owns this object: the model's own choice counts.
+        binding = next((hint for item in capabilities
+                        if item.get("name") == provider_reads.CAPABILITY
+                        for hint in item.get("hint") or []), None)
+    kept = [item for item in capabilities if item.get("name") != provider_reads.CAPABILITY]
+    if binding is None:
+        stage2["capabilities"] = kept or [{"name": "compute:pure"}]
+        return None
+    label = _provider_label(binding)
+    if binding not in provider_reads.BINDINGS:
+        return _msg("MSG_SYNTH_PROVIDER_NOT_READABLE", provider=label)
+    if stage1.get("action") not in SAFE_VERBS:
+        return _msg("MSG_SYNTH_PROVIDER_READ_ONLY", provider=label)
+    stage1["revertible"] = False
+    stage2["reverse_pattern"] = None
+    stage2["capabilities"] = (
+        [item for item in kept if item.get("name") != "compute:pure"]
+        + [{"name": provider_reads.CAPABILITY, "hint": [binding]}])
+    return None
+
+
+def _provider_label(binding: str) -> str:
+    from vocab import PROVIDER_DISPLAY_NAMES, PROVIDER_SKILLS
+
+    return next((PROVIDER_DISPLAY_NAMES[name] for name, skill in PROVIDER_SKILLS.items()
+                 if skill == binding and name in PROVIDER_DISPLAY_NAMES), str(binding))
+
+
+def provider_label(stage2: dict) -> str:
+    """The name of the provider a tool reads, for the description writer;
+    empty when the tool reads no provider."""
+    import provider_reads
+
+    binding = provider_reads.declared_binding((stage2 or {}).get("capabilities"))
+    return _provider_label(binding) if binding else ""
+
+
+def provider_bases(stage2: dict) -> tuple[str, ...]:
+    """The addresses a tool with a provider read may ask, for prompts and
+    checks; empty when the tool reads no provider."""
+    import provider_reads
+
+    binding = provider_reads.declared_binding((stage2 or {}).get("capabilities"))
+    return provider_reads.readable_bases(binding) if binding else ()
+
+
 _ITEM_FIELDS = ("results", "entries", "failed")
 _ANSWER_FIELDS = _ITEM_FIELDS + ("truncated", "truncated_what", "used", "available_total",
                                  "cap_field", "cap_value")
@@ -440,6 +529,123 @@ def _absent_fixture(value) -> str | None:
     return value
 
 
+# How much the model may choose from the provider's own list.
+_PLAN_READS_MAX = 3
+_PLAN_FIELDS_MAX = 8
+_ALL_FIELDS_MAX = 12        # a record this small is shown whole
+
+
+def _choose_numbers(llm_call, role: str, count: int, limit: int, **values) -> list[int]:
+    """The items the model picked from a numbered list of ``count``, as
+    positions; asked once more with the reason when the answer is not such a
+    list, then nothing is chosen."""
+    correction = ""
+    for _ in range(2):
+        res = llm_call("", prompt_loader.get(role, _i18n.current_lang(), limit=limit,
+                                             correction=correction, **values), max_tokens=300)
+        numbers = (_parse_json_strict(res.get("text", "")) or {}).get("numbers")
+        if (isinstance(numbers, list) and len(numbers) <= limit
+                and all(type(number) is int and 1 <= number <= count for number in numbers)
+                and len(set(numbers)) == len(numbers)):
+            return [number - 1 for number in numbers]
+        correction = (f"`numbers` must be a list of at most {limit} different whole numbers "
+                      f"between 1 and {count}")
+    return []
+
+
+def _numbered(items) -> str:
+    return "\n".join(f"{position}. {text}" for position, text in enumerate(items, 1))
+
+
+def run_provider_plan(user_request: str, stage1: dict, stage2: dict, llm_call) -> None:
+    """Choose, from the provider's own list, the reads the tool needs and the
+    fields it uses (`provider_catalog`).
+
+    The model only picks numbers; addresses, parameters and the shape of the
+    answers are then copied from the provider's description into the prompts
+    of cases and code, and checked on what they write. Left to memory, the
+    writer of the cases invented a shape the writer of the code did not share
+    (13/11/2026). Nothing chosen = the tool is built as before, on the bases
+    alone. The plan is kept in ``stage2["provider_reads"]``.
+    """
+    import provider_catalog
+    import provider_reads
+
+    stage2.pop("provider_reads", None)
+    binding = provider_reads.declared_binding(stage2.get("capabilities"))
+    catalog = provider_catalog.reads(binding) if binding else ()
+    if not catalog:
+        return
+    plan = []
+    for position in _choose_numbers(
+            llm_call, "synt_reads", len(catalog), _PLAN_READS_MAX, name=stage1["name"],
+            user_request=user_request,
+            items=_numbered(f"{read.id} — {read.description}" for read in catalog)):
+        read = catalog[position]
+        fields = provider_catalog.record_fields(read)
+        names = [name for name, _text in fields]
+        if len(fields) > _ALL_FIELDS_MAX:
+            names = [names[chosen] for chosen in _choose_numbers(
+                llm_call, "synt_read_fields", len(fields), _PLAN_FIELDS_MAX,
+                name=stage1["name"], user_request=user_request, read=f"{read.id} — {read.description}",
+                items=_numbered(f"{name} — {text}" for name, text in fields))]
+        plan.append({"id": read.id, "fields": names})
+    if plan:
+        stage2["provider_reads"] = plan
+
+
+def _planned_reads(stage2: dict) -> list:
+    """The chosen reads of a signature, each with the fields the tool uses."""
+    import provider_catalog
+    import provider_reads
+
+    binding = provider_reads.declared_binding((stage2 or {}).get("capabilities"))
+    found = []
+    for item in (stage2 or {}).get("provider_reads") or []:
+        read = provider_catalog.by_id(binding, str(item.get("id"))) if binding else None
+        if read is not None:
+            found.append((read, tuple(item.get("fields") or ())))
+    return found
+
+
+def provider_reads_text(stage2: dict) -> str:
+    """The chosen reads as the writers of cases and code are shown them."""
+    import provider_catalog
+
+    return "\n\n".join(provider_catalog.describe(read, fields)
+                        for read, fields in _planned_reads(stage2))
+
+
+def _provider_answers_problem(answers, bases: tuple[str, ...], planned=()) -> str | None:
+    """Why the canned provider answers of one case cannot serve, or None.
+
+    With the reads chosen from the provider's list, an answer must be one of
+    those reads and have the shape the provider gives it."""
+    import provider_catalog
+    import provider_reads
+
+    if not isinstance(answers, list) or not answers:
+        return "it gives no provider answers"
+    for answer in answers:
+        if not isinstance(answer, dict) or not isinstance(answer.get("response"), (dict, list)):
+            return "an answer has no JSON `response`"
+        # Parameters written in the url are tolerated: an answer is matched
+        # by where the read goes, in order (`provider_reads._address`).
+        if not provider_reads.under_a_base(answer.get("url"), bases):
+            return f"the url {str(answer.get('url'))[:120]!r} is not a readable address"
+        if not planned:
+            continue
+        read = next((read for read, _fields in planned
+                     if provider_catalog.matches(read, answer.get("url"))), None)
+        if read is None:
+            return (f"the url {str(answer.get('url'))[:120]!r} is not one of this tool's reads "
+                    f"({', '.join(read.url for read, _fields in planned)})")
+        wrong = provider_catalog.shape_problem(read, answer["response"])
+        if wrong:
+            return f"the answer of {read.id} is not the provider's: {wrong}"
+    return None
+
+
 def stage3_cases_problem(stage2: dict, tests: list) -> str | None:
     """A defect of the functional cases that no code could satisfy, or None.
 
@@ -454,8 +660,23 @@ def stage3_cases_problem(stage2: dict, tests: list) -> str | None:
     frequent reason a sound candidate failed its own cases. So is a case that
     must succeed on a prepared file that will not be there.
     """
+    import provider_reads
+
+    bases = provider_bases(stage2)
     verdicts: dict[str, tuple[str, bool]] = {}
     for case in tests or []:
+        answers = (case.get("input") or {}).get(provider_reads.RESPONSES_KEY)
+        if not bases and answers is not None:
+            return (f"case {case.get('name')!r} passes {provider_reads.RESPONSES_KEY}: this tool "
+                    "reads no provider, leave it out")
+        if bases and (case.get("expect") or {}).get("ok") is True:
+            wrong = _provider_answers_problem(answers, bases, _planned_reads(stage2))
+            if wrong:
+                return (f"case {case.get('name')!r} must succeed but {wrong}: in a test the "
+                        f"provider does not exist, so `input` holds "
+                        f"{provider_reads.RESPONSES_KEY}, the answers in order, each "
+                        '{"url": "<address>", "response": {...}} with an address that '
+                        f"begins with one of: {', '.join(bases)}")
         checked = (case.get("expect") or {}).get("field_eq")
         for field, value in (checked.items() if isinstance(checked, dict) else ()):
             if field not in _ANSWER_FIELDS:
@@ -544,6 +765,8 @@ def run_stage3(user_request: str, stage1: dict, stage2: dict, llm_call, *,
         user_request=user_request,
         real_requests="\n".join(f"- {text}" for text in real_requests),
         correction=correction,
+        provider_bases=", ".join(provider_bases(stage2)),
+        provider_reads=provider_reads_text(stage2),
     )
     res = llm_call("", user_prompt, max_tokens=4000,
                    **test_generation_options(llm_call))
@@ -635,6 +858,7 @@ def run_stage4(user_request: str, stage1: dict, stage2: dict, stage3: dict, llm_
         example_call=_stage4_example_call(stage1["name"], stage3),
         out_shape=out_shape,
         correction=correction,
+        provider_label=provider_label(stage2),
     )
     res = llm_call("", user_prompt, max_tokens=2200)
     text = res.get("text", "")
@@ -714,6 +938,64 @@ _WRITING_MODES = "wax+"
 _WRITE_PERMISSION = "fs:write"
 
 
+_READ_PERMISSION = "provider:read"
+_READ_CALL = "provider_get"
+# Modules that reach the network or another program: a tool that reads a
+# provider through the service has neither.
+_NETWORK_MODULES = ("urllib", "http", "socket", "ssl", "requests", "httpx", "subprocess",
+                    "ftplib", "smtplib", "imaplib", "poplib")
+
+
+def _provider_read_problem(tree, declared: set, stage2: dict) -> str | None:
+    """A code that holds the permission to read a provider and does not read
+    it through the service, or reads without holding it, or None.
+
+    The same necessary condition as for writing: a tool that returns data it
+    never read pretends. And one that opens the network by itself would fail
+    in its sandbox, where there is none: said here, the next attempt knows.
+    """
+    import ast
+
+    calls = [node for node in ast.walk(tree) if isinstance(node, ast.Call) and (
+        node.func.attr if isinstance(node.func, ast.Attribute)
+        else getattr(node.func, "id", "")) == _READ_CALL]
+    if _READ_PERMISSION not in declared:
+        return ("the code calls provider_get without the permission provider:read: this "
+                "tool reads no provider, do not call it") if calls else None
+    if not calls:
+        return ("the code holds the permission provider:read and never reads: it never calls "
+                "provider_get(args, url, params). Data returned without reading it is a false "
+                "success: read what the description promises")
+    imported = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imported.update(alias.name.split(".")[0] for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            imported.add(node.module.split(".")[0])
+    forbidden = sorted(imported & set(_NETWORK_MODULES))
+    if forbidden:
+        return (f"the code imports {', '.join(forbidden)}: a tool that reads a provider has no "
+                "network and runs no program, its only read is provider_get(args, url, params)")
+    # Every address written in the code, wherever it is assigned: one outside
+    # the provider's bases would be refused at the first real read.
+    import provider_catalog
+
+    bases, planned = provider_bases(stage2), _planned_reads(stage2)
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Constant) and isinstance(node.value, str)
+                and node.value.strip().startswith(("http://", "https://"))):
+            continue
+        address = node.value.strip()
+        if not any(address.startswith(base) or address + "/" == base or base.startswith(address)
+                   for base in bases):
+            return (f"the code reads {address[:100]!r}: a readable address begins "
+                    f"with one of {', '.join(bases)}")
+        if planned and not any(provider_catalog.begins(read, address) for read, _fields in planned):
+            return (f"the code reads {address[:100]!r}, which is not one of this tool's reads: "
+                    f"{', '.join(read.url for read, _fields in planned)}")
+    return None
+
+
 def stage5_effect_problem(code: str, stage2: dict) -> str | None:
     """A code that holds the permission to write and never writes, or None.
 
@@ -728,9 +1010,13 @@ def stage5_effect_problem(code: str, stage2: dict) -> str | None:
 
     declared = {str(item.get("name")) for item in (stage2 or {}).get("capabilities") or []
                 if isinstance(item, dict)}
+    tree = ast.parse(code)
+    problem = _provider_read_problem(tree, declared, stage2)
+    if problem:
+        return problem
     if _WRITE_PERMISSION not in declared:
         return None
-    for node in ast.walk(ast.parse(code)):
+    for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
         called = node.func
@@ -778,6 +1064,8 @@ def run_stage5(user_request: str, stage1: dict, stage2: dict, stage3: dict, stag
         tests_json=json.dumps(stage3["tests"], ensure_ascii=False, indent=2),
         user_request=user_request,
         scope=scope or "",
+        provider_bases=", ".join(provider_bases(stage2)),
+        provider_reads=provider_reads_text(stage2),
     )
     import ast
     # ``correction``: why an earlier file for this same candidate was refused.
@@ -914,9 +1202,17 @@ def run_full(user_request: str, llm_call_procedural, llm_call_wise, *,
 
     if progress is not None: progress.update(2)
     s2 = run_stage2(user_request, s1.output, llm_call_procedural)
+    if not s2.success and s2.output:
+        # A signature refused for a reason the model can act on: asked once more.
+        s2 = run_stage2(user_request, s1.output, llm_call_procedural,
+                        correction=str(s2.error))
     run.stages.append(s2)
     if not s2.success:
         run.final_state = "abandoned"; run.abandon_reason = f"stage2: {s2.error}"; return run
+    refusal = settle_provider_claim(s1.output, s2.output, user_request)
+    if refusal:
+        run.final_state = "rejected"; run.abandon_reason = refusal; return run
+    run_provider_plan(user_request, s1.output, s2.output, llm_call_procedural)
     if settle_undo_claim(s1.output, s2.output):
         log.info("synt %s: undo claim withdrawn, the door has no proof for this contract",
                  run.name)
