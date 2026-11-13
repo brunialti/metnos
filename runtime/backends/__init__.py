@@ -24,6 +24,8 @@ def _load_declared(area: str, provider: str):
             from .pulls import github as module
         case ("comments", "github"):
             from .comments import github as module
+        case ("contacts", "google_workspace"):
+            from .contacts import google_workspace as module
         case ("workflows", "github"):
             from .workflows import github as module
         case _:

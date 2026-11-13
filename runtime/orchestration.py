@@ -340,10 +340,7 @@ def _build_final_message_hint(state: dict, fmt: str) -> str:
     duplichiamo la logica qui per evitare un import del modulo executor (che
     vive in `executors/`, non in PYTHONPATH del runtime).
     """
-    def _resolve_msg(s):
-        if isinstance(s, str) and s.startswith("MSG_"):
-            return _msg(s)
-        return s
+    _resolve_msg = dialog_pending.words
     title = _resolve_msg(state.get("title") or _msg("MSG_ORCH_DEFAULT_QUESTION_TITLE"))
     dialog = state.get("dialog") or []
     n = len(dialog)

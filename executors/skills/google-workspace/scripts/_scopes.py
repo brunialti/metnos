@@ -8,7 +8,8 @@ invio mail e vision rotti in silenzio. Una lista sola + guard di parita'
 (`tests/runtime/backends/test_google_scopes_sot.py`): il drift diventa impossibile.
 
 NB: gmail.modify NON implica gmail.send (scope separato). cloud-vision serve a
-`vision web_detect`. contacts.readonly basta (People API in sola lettura).
+`vision web_detect`. `contacts` (scrittura compresa) serve a create_contacts e
+delete_contacts (12/11/2026); prima bastava contacts.readonly.
 """
 
 SCOPES = [
@@ -17,7 +18,7 @@ SCOPES = [
     "https://www.googleapis.com/auth/gmail.modify",
     "https://www.googleapis.com/auth/calendar",
     "https://www.googleapis.com/auth/drive",
-    "https://www.googleapis.com/auth/contacts.readonly",
+    "https://www.googleapis.com/auth/contacts",
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/documents",
     "https://www.googleapis.com/auth/cloud-vision",

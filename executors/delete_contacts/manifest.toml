@@ -1,0 +1,90 @@
+# Manifest dell'executor `delete_contacts` — Metnos (12/11/2026).
+# Naming compositivo §2.2: delete_contacts. Inverso di create_contacts
+# (pattern §2.3 `delete_contacts_by_id`). Una cancellazione su Google non si
+# ricrea identica: non annullabile, detto onestamente (§2.8).
+
+manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
+
+name        = "delete_contacts"
+version     = "0.1.0"
+timeout_s   = 60
+platforms   = ["linux"]
+author      = "Roberto Brunialti"
+affinity    = [
+    "cancella contatto", "elimina contatto", "rimuovi contatto",
+    "togli dalla rubrica", "cancella dalla rubrica", "delete contact",
+    "remove contact", "erase contact", "remove from address book"
+]
+revertible      = false
+
+[execution]
+effect            = "mutating"
+parallelism_class = 0
+resource_class    = "network_io"
+concurrency_key   = "none"
+
+[description]
+it = "SCOPO: cancella contatti dalla rubrica Google per identificativo. PATTERN: delete_contacts(contact_ids=[\"people/c123\"]); da una ricerca -> from_step=N. NON: cercare (-> find_contacts); profili identitari (-> delete_persons). OUT: results=[{contact_id,status}], n_deleted."
+en = "SCOPO: delete contacts from the Google address book by identifier. PATTERN: delete_contacts(contact_ids=[\"people/c123\"]); from a search -> from_step=N. NON: search (-> find_contacts); identity profiles (-> delete_persons). OUT: results=[{contact_id,status}], n_deleted."
+
+[code]
+files  = ["delete_contacts.py"]
+digest = "sha256:e10b8a6671748d3eb86840913546fcac599b46d517b84d43bedd5ba7137f7e9a"
+
+[output]
+schema_inline = "{ok: bool, results: Array<object>, used: int, ok_count: int, fail_count: int, failed: Array<object>, n_deleted: int, error_class?: str, error_code?: str, error?: str}"
+
+[args]
+type     = "object"
+required = []
+from_step_alternatives = ["contact_ids", "entries"]
+
+[args.properties.contact_ids]
+type        = "array"
+items       = { type = "string" }
+
+[args.properties.contact_ids.description]
+it = "Identificativi Google, dominio CHIUSO: match esatto, niente glob. Sono i contact_id di create_contacts e find_contacts. Esempio: [\"people/c123\"]."
+en = "Google identifiers, CLOSED domain: exact match, no globs. They are the contact_id values of create_contacts and find_contacts. Example: [\"people/c123\"]."
+
+[args.properties.entries]
+type        = "array"
+items       = { type = "object" }
+
+[args.properties.entries.description]
+it = "Contatti da from_step (es. find_contacts): il campo contact_id di ognuno indica cosa cancellare."
+en = "Contacts from from_step (e.g. find_contacts): the contact_id field of each one says what to delete."
+
+[args.properties.client]
+type        = "string"
+enum        = ["google_workspace"]
+default     = "google_workspace"
+# config non-intento: risolta dal runtime, NON esposta all'LLM.
+runtime_resolved = true
+
+[args.properties.client.description]
+it = "Rubrica di origine. Oggi solo 'google_workspace'. Il runtime la sceglie: non va indicata nella richiesta."
+en = "Source address book. Today only 'google_workspace'. The runtime picks it: it is not stated in the request."
+
+[[capabilities]]
+name = "provider:access"
+hint = ["google-workspace"]
+when = { arg = "client", values = ["google_workspace"] }
+
+# Prove di nascita: solo cio' che si verifica SENZA rete.
+
+[[tests]]
+name   = "identificativi_mancanti_rifiutati"
+input  = { contact_ids = [] }
+expect = { ok = false, error_contains = "Argomento obbligatorio mancante" }
+
+[[tests]]
+name   = "identificativo_malformato_rifiutato"
+input  = { contact_ids = ["prova"] }
+expect = { ok = false, error_contains = "non valido" }
+
+[[tests]]
+name   = "provider_sconosciuto_rifiutato"
+input  = { contact_ids = ["people/c1"], client = "gitlab" }
+expect = { ok = false, error_contains = "Operazione non applicabile per questo provider" }

@@ -575,7 +575,7 @@ OBJECT_DEFAULT_MUTATING_VERB: dict[str, str | None] = {
     "packages":   "install",   # ADR 0209: `install` e' verbo canonico
     "messages":   "send",
     "events":     "create",
-    "contacts":   "set",
+    "contacts":   "create",    # create_contacts (12/11/2026); `set_contacts` non esiste
     "places":     None,        # places sono entita' lookup-only
     "processes":  None,        # un processo nominato non implica avviarlo
     "urls":       None,        # urls sono fetched, non creati dall'utente

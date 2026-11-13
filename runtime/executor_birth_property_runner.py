@@ -471,7 +471,10 @@ def _candidate_files_with_support(code_files: Mapping[str, bytes]) -> dict[str, 
                   "helper": _HELPER_CLIENT_SOURCE, "package-app": _HELPER_CLIENT_SOURCE})
     for name in ("backends/_github_bridge.py", "backends/issues/__init__.py",
                  "backends/issues/github.py", "backends/comments/__init__.py",
-                 "backends/comments/github.py"):
+                 "backends/comments/github.py", "skill_wrapper.py",
+                 "backends/_google_api_runner.py", "backends/_google_auth_common.py",
+                 "backends/contacts/__init__.py",
+                 "backends/contacts/google_workspace.py"):
         owned['runtime/' + name] = (runtime / name).read_bytes()
     reserved = tuple(PurePosixPath(name.casefold()) for name in owned)
     for name in code_files:
@@ -537,6 +540,10 @@ def _domain_contract(manifest: Mapping[str, object]) -> str:
         if (manifest.get('reverse_pattern') == 'delete_comments_by_id'
                 and typed('targets', 'array') and typed('body', 'string')):
             return 'created_comments'
+    if ('provider:access' in caps and typed('client', 'string')
+            and manifest.get('reverse_pattern') == 'delete_contacts_by_id'
+            and typed('name', 'string') and typed('entries', 'array')):
+        return 'created_contacts'
     if (manifest.get('reverse_pattern') == 'module.reverse'
             and 'network:sites' in caps and typed('urls', 'array')):
         return 'session_broker'
@@ -628,7 +635,8 @@ class ObservedPropertyRunner:
             manifest = tomllib.loads(self._observed.snapshot.manifest_bytes.decode("utf-8"))
             request["helper_contract"] = _uses_managed_helper(manifest)
             domain = _domain_contract(manifest)
-            request['provider_contract'] = domain in ('created_issues', 'created_comments')
+            request['provider_contract'] = domain in (
+                'created_issues', 'created_comments', 'created_contacts')
             request['session_contract'] = domain == 'session_broker'
             request['file_contract'] = domain in (
                 'file_moves', 'frozen_file_plan', 'created_dirs', 'deleted_dirs',
@@ -637,7 +645,7 @@ class ObservedPropertyRunner:
                 request['frozen_plan'] = dict(manifest['execution']['frozen_plan'])
             if domain in ('created_paths', 'file_moves', 'created_dirs',
                           'deleted_files', 'written_files', 'created_table',
-                          'created_issues', 'created_comments'):
+                          'created_issues', 'created_comments', 'created_contacts'):
                 request['reverse_pattern'] = manifest['reverse_pattern']
         if fixture_id == "private_deletion_tree":
             request.update(source_path="fixture/source.bin",
@@ -759,7 +767,8 @@ class PropertyCandidateProfile:
         if self.domain_contract not in ('', 'created_paths', 'session_broker',
                                         'file_moves', 'frozen_file_plan', 'created_dirs',
                                         'deleted_dirs', 'deleted_files', 'written_files',
-                                        'created_table', 'created_issues', 'created_comments'):
+                                        'created_table', 'created_issues', 'created_comments',
+                                        'created_contacts'):
             raise PropertyContractError('property_candidate_invalid', 'domain_contract')
         allowed_types = {"array", "boolean", "integer", "null", "number", "object", "string"}
         keys: set[str] = set()
@@ -825,6 +834,18 @@ def _undo_cases(candidate: PropertyCandidateProfile) -> tuple[PropertyCase, ...]
                          {'repo': 'birth/fixture', 'body': 'Birth fixture', 'client': 'github',
                           'targets': ['issue:7', 'pr:8', 'issue:9'][:count]},
                          {'declared_input': True}) for count in (1, 3))
+    if domain == 'created_contacts':
+        # One contact and several piped ones: undo must remove exactly those.
+        return (PropertyCase('undo.created_contacts.1',
+                    {'name': 'Birth fixture', 'email': 'birth@fixture.invalid',
+                     'client': 'google_workspace'},
+                    {'declared_input': True}),
+                PropertyCase('undo.created_contacts.3',
+                    {'client': 'google_workspace',
+                     'entries': [{'name': f'Birth fixture {index}',
+                                  'phone': f'+39 000 000{index}'}
+                                 for index in range(3)]},
+                    {'declared_input': True}))
     if domain in ('created_dirs', 'deleted_dirs', 'deleted_files'):
         template = {'created_dirs': 'fixture/destination/new-{index}',
                     'deleted_dirs': 'fixture/empty-{index}',

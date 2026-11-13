@@ -1,0 +1,162 @@
+# Manifest dell'executor `create_contacts` — Metnos v1.1 (12/11/2026)
+# Naming compositivo §2.2: create_contacts. Scrive sulla rubrica esterna.
+# Il fornitore e' un argomento (`client`, RM-0011). Inverso esatto:
+# delete_contacts sui soli contatti creati (`_undo.ids`), provato alla porta
+# di nascita sul modello privato della rubrica (dominio created_contacts).
+# Etichette e descrizione misurate sul corpus del prefiltro (12/11/2026):
+# primo 91->91, primi tre 128->128, primi dieci 175->174.
+
+manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
+
+name        = "create_contacts"
+version     = "0.1.0"
+timeout_s   = 120
+platforms   = ["linux"]
+author      = "Roberto Brunialti"
+affinity    = [
+    "crea contatto", "crea contatti", "aggiungi contatto", "aggiungi ai contatti",
+    "salva contatto", "salva nei contatti", "nuovo contatto",
+    "aggiungi alla rubrica",
+    "create contact", "add contact", "save contact", "new contact",
+    "add to contacts"
+]
+revertible      = true
+reverse_pattern = "delete_contacts_by_id"
+
+[execution]
+effect            = "create_only"
+parallelism_class = 0
+resource_class    = "network_io"
+concurrency_key   = "none"
+
+[description]
+it = "SCOPO: aggiunge contatti nuovi alla rubrica. PATTERN: create_contacts(name=\"Nome Cognome\", email=\"nome@dominio.example\"); molti -> entries=[{name,email}]. NON: cercare (-> find_contacts); profili identitari (-> set_persons). OUT: results=[{contact_id,name,created,already_exists}], failed, contact_ids."
+en = "SCOPO: add new contacts to the address book. PATTERN: create_contacts(name=\"Nome Cognome\", email=\"nome@dominio.example\"); many -> entries=[{name,email}]. NON: search (-> find_contacts); identity profiles (-> set_persons). OUT: results=[{contact_id,name,created,already_exists}], failed, contact_ids."
+
+[code]
+files  = ["create_contacts.py"]
+digest = "sha256:90c69fef25ffc34d4c10e461385ef9ad19411a2d8b43ab1f5aae0fea562863e2"
+
+[args]
+type     = "object"
+required = []
+
+[args.properties.name]
+type    = "string"
+
+[args.properties.name.description]
+it = "Nome del contatto, come deve comparire in rubrica. Es. \"Ospite Prova\"."
+en = "Name of the contact, as it must appear in the address book. E.g. \"Ospite Prova\"."
+
+[args.properties.email]
+type    = "string"
+
+[args.properties.email.description]
+it = "Indirizzo email del contatto: un solo indirizzo completo. Es. \"ospite@example.com\"."
+en = "E-mail address of the contact: one complete address. E.g. \"ospite@example.com\"."
+
+[args.properties.phone]
+type    = "string"
+
+[args.properties.phone.description]
+it = "Numero di telefono del contatto, come lo scriveresti. Es. \"+39 000 0000000\"."
+en = "Phone number of the contact, as you would write it. E.g. \"+39 000 0000000\"."
+
+[args.properties.entries]
+type    = "array"
+items   = { type = "object" }
+
+[args.properties.entries.description]
+it = "Più contatti: un record per contatto con name e, se ci sono, email e phone. Es. [{\"name\": \"Ospite Prova\", \"email\": \"ospite@example.com\"}]. Lista vuota = niente da creare."
+en = "Several contacts: one record per contact with name and, if any, email and phone. E.g. [{\"name\": \"Ospite Prova\", \"email\": \"ospite@example.com\"}]. Empty list = nothing to create."
+
+[args.properties.max_total]
+type    = "integer"
+default = 50
+
+[args.properties.max_total.description]
+it = "Quanti contatti al massimo in una chiamata. Default 50; 0 = nessun limite."
+en = "How many contacts at most in one call. Default 50; 0 = no limit."
+
+[args.properties.client]
+type    = "string"
+enum    = ["google_workspace"]
+default = "google_workspace"
+# config non-intento (lessons A3/B1): risolta dal runtime, NON esposta
+# all'LLM. Politica: tests/runtime/infra/test_config_args_marking_policy.py.
+runtime_resolved = true
+
+[args.properties.client.description]
+it = "Servizio che tiene la rubrica. Default 'google_workspace', l'unico disponibile."
+en = "Service that keeps the address book. Default 'google_workspace', the only one available."
+
+[[capabilities]]
+name = "code:exec"
+hint = ["subprocess Python google_api.py contacts list|create"]
+
+[[capabilities]]
+name = "network:http"
+hint = ["Google People API HTTPS"]
+
+[[capabilities]]
+name = "provider:access"
+hint = ["google-workspace"]
+when = { arg = "client", values = ["google_workspace"] }
+
+[output]
+schema_inline = "{ ok: bool, results: Array<object>, failed: Array<object>, ok_count: int, fail_count: int, n_created: int, contact_ids: Array<string>, used: int, partial?: bool, truncated?: bool, truncated_what?: string, available_total?: int, cap_field?: string, cap_value?: int, _undo?: {reverse_pattern: 'delete_contacts_by_id', ids: Array<string>, scope: object}, error?: string, error_code?: string, error_class?: string }"
+
+[presentation]
+default_view = "list"
+
+[presentation.list]
+mode = "table"
+columns = [
+  { key = "name", source = ["name", "$entry"], cell_max = 160 },
+]
+max_rows = 200
+max_chars = 16000
+overflow = "notice"
+
+[[tests]]
+name   = "un contatto nuovo"
+input  = { name = "Ospite Prova", email = "ospite.prova@example.com" }
+env    = { METNOS_SUBPROCESS_FAKE = "skill_test_fakes.contacts_write" }
+expect = { ok = true }
+
+[[tests]]
+name   = "contatto gia' in rubrica"
+input  = { name = "Test Stub", email = "stub@example.com" }
+env    = { METNOS_SUBPROCESS_FAKE = "skill_test_fakes.contacts_write" }
+expect = { ok = true }
+
+[[tests]]
+name   = "piu' contatti"
+input  = { entries = [{ name = "Ospite Uno", email = "uno@example.com" }, { name = "Ospite Due", phone = "+39 000 0000002" }] }
+env    = { METNOS_SUBPROCESS_FAKE = "skill_test_fakes.contacts_write" }
+expect = { ok = true }
+
+[[tests]]
+name   = "lista vuota"
+input  = { entries = [] }
+env    = { METNOS_SUBPROCESS_FAKE = "skill_test_fakes.contacts_write" }
+expect = { ok = true }
+
+[[tests]]
+name   = "nessun contatto indicato"
+input  = { }
+env    = { METNOS_SUBPROCESS_FAKE = "skill_test_fakes.contacts_write" }
+expect = { ok = false }
+
+[[tests]]
+name   = "indirizzo non valido"
+input  = { name = "Ospite Prova", email = "non-un-indirizzo" }
+env    = { METNOS_SUBPROCESS_FAKE = "skill_test_fakes.contacts_write" }
+expect = { ok = false }
+
+[[tests]]
+name   = "client invalido"
+input  = { name = "Ospite Prova", client = "invalid" }
+env    = { METNOS_SUBPROCESS_FAKE = "skill_test_fakes.contacts_write" }
+expect = { ok = false, error_contains = "Operazione non applicabile per questo provider" }

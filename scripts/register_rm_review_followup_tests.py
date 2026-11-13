@@ -74,6 +74,7 @@ GROUPS = {
         "tests/runtime/http/test_consegna_esito_al_proprietario.py",
         "tests/runtime/http/test_chat_page_commands_browser.py",
         "tests/runtime/http/test_admin_request_failure_browser.py",
+        "tests/runtime/channels/test_telegram_authorization_buttons.py",
         "tests/runtime/http/test_http_server.py",
         "tests/runtime/tutor/test_tutor_non_ruba_i_comandi.py",
     ),

@@ -467,6 +467,7 @@ def detect_chunk_action(chunk: str) -> Optional[tuple[str, str]]:
     """
     try:
         from prefilter import (
+            canonical_verb_spans,
             tokenize,
             detect_canonical_verbs_all,
             object_hint_mapping,
@@ -486,7 +487,12 @@ def detect_chunk_action(chunk: str) -> Optional[tuple[str, str]]:
     # An explicit transform verb owns its clause even when a field name also
     # happens to be a verb hint in another domain (``email`` commonly boosts
     # send). Sequential actions are split into separate chunks above.
-    verb = next((item for item in verbs if item in TRANSFORM_VERBS), verbs[0])
+    # Otherwise the clause's action is the verb it names FIRST: the token bag
+    # is alphabetical, so «salva il contatto … con email …» read `send` (the
+    # field «email» sorts before «salva»). Real turn 65687e5a, 13/11/2026.
+    spans = sorted(canonical_verb_spans(chunk), key=lambda item: item[1])
+    first = next((name for name, _offset in spans if name in verbs), verbs[0])
+    verb = next((item for item in verbs if item in TRANSFORM_VERBS), first)
 
     # Transform tools consume the generic entry carrier.  Incidental domain
     # words in the predicate (for example ``email`` in "filter contacts that
@@ -497,19 +503,28 @@ def detect_chunk_action(chunk: str) -> Optional[tuple[str, str]]:
         return (verb, "entries")
 
     # 2. Detect object canonico
-    # Try the localized object-hint mapping first (più ricco)
+    # Try the localized object-hint mapping first (più ricco). The clause's
+    # object is the one it names FIRST, not the first in dictionary order: in
+    # «aggiungi il contatto … con email …» the field «email» (messages) must not
+    # replace the contact being added. Mapping order only breaks ties.
     detected_obj = None
-    for obj, hints in object_hint_mapping().items():
+    lowered = chunk.lower()
+    best = None
+    for rank, (obj, hints) in enumerate(object_hint_mapping().items()):
         for h in hints:
             h_tokens = set(h.lower().split())
             # Token-subset (preciso) per ogni hint; il fallback substring SOLO
             # per hint multi-parola (≥2 token): su mono-parola "h in chunk" dava
             # falsi positivi token-interni ("ora" in "lavora", bug 21/6).
-            if h_tokens <= tokens or (len(h_tokens) >= 2 and h in chunk.lower()):
-                detected_obj = obj
-                break
-        if detected_obj:
-            break
+            if not (h_tokens <= tokens or (len(h_tokens) >= 2 and h in lowered)):
+                continue
+            found = re.search(r"(?<!\w)" + re.escape(h.lower().split()[0]) + r"(?!\w)",
+                              lowered)
+            key = (found.start() if found else len(lowered), rank)
+            if best is None or key < best[0]:
+                best = (key, obj)
+    if best is not None:
+        detected_obj = best[1]
 
     # Fallback: try canonical_object on each token
     if not detected_obj:

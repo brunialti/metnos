@@ -820,7 +820,7 @@ def _apply_dialog_pending(sender_id: str, query: str,
             err=parse_error or "invalid_value",
             n=step_index + 1,
             total=len(steps),
-            prompt=current_step.get("prompt") or "",
+            prompt=_dialog_step_prompt(current_step, ""),
         ), dlg, dialog_id, channel=channel)
     # Avanza dialog con valore raccolto
     consume_res = consume_pending_step(
@@ -835,7 +835,7 @@ def _apply_dialog_pending(sender_id: str, query: str,
             err=consume_res.get("error") or "invalid_value",
             n=step_index + 1,
             total=len(steps),
-            prompt=current_step.get("prompt") or "",
+            prompt=_dialog_step_prompt(current_step, ""),
         ), dlg, dialog_id, channel=channel)
     # Se dialog completato → call canonical dispatcher process_completion_callback
     if consume_res.get("completed"):
@@ -857,7 +857,7 @@ def _apply_dialog_pending(sender_id: str, query: str,
         "MSG_DIALOG_STEP_PROMPT",
         n=next_index + 1,
         total=len(steps),
-        prompt=next_step.get("prompt") or "",
+        prompt=_dialog_step_prompt(next_step, ""),
         hint="",
     ), dlg, dialog_id, channel=channel)
 
@@ -1123,7 +1123,7 @@ def _consume_http_get_inputs_response(
         # malformato — verosimilmente errore di battitura).
         return (query, None, _with_dialog_form_marker(_msg(
             "MSG_DIALOG_STEP_REPROMPT", err=err, n=idx + 1,
-            total=len(dialog), prompt=cur_step.get("prompt") or "?",
+            total=len(dialog), prompt=_dialog_step_prompt(cur_step),
         ), state, dialog_id, channel="http"))
 
     cres = _dp.consume_pending_step(
@@ -1149,7 +1149,7 @@ def _consume_http_get_inputs_response(
 
     # Prossimo step (raro per cap-expand a 1 step).
     next_step = dialog[idx + 1]
-    next_prompt = next_step.get("prompt") or "?"
+    next_prompt = _dialog_step_prompt(next_step)
     return (query, None, _with_dialog_form_marker(_msg(
         "MSG_DIALOG_STEP_PROMPT", n=idx + 2, total=len(dialog),
         prompt=next_prompt, hint="",
@@ -2200,13 +2200,14 @@ def _resolve_i18n_str(s):
     Inserito perche' `_needs_inputs_oauth_setup` e altri builder lasciano
     le chiavi grezze nel payload (ADR 0090 + ADR 0123): la risoluzione
     avviene al boundary del canale, mantenendo lo state lingua-agnostico."""
-    if isinstance(s, str) and s.startswith("MSG_"):
-        try:
-            from messages import get as _msg
-            return _msg(s)
-        except Exception:
-            return s
-    return s
+    from dialog_pending import words
+    return words(s)
+
+
+def _dialog_step_prompt(step, default: str = "?") -> str:
+    """The question of a step in words, on the textual path too."""
+    from dialog_pending import step_prompt
+    return step_prompt(step, default)
 
 
 def _resolve_i18n_step(step):

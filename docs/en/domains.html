@@ -17,7 +17,7 @@
 </style></head><body>
 <div class="shell">
 <nav><a href="index.html">← Metnos</a><a href="interface.html">The interface</a><a href="architecture/index.html">Architecture guide</a><a href="architecture/executor_catalog.html">Technical catalog</a><a href="architecture/tutor.html">How the Tutor works</a><a href="/it/domains.html" hreflang="it">IT</a></nav>
-<header class="hero"><div><div class="eyebrow">Practical guide · capabilities and examples</div><h1>What you can ask Metnos to do</h1><p class="lead">Capabilities are grouped by area, called a domain in the Metnos code. Each example is a sentence you can use in chat: no operation names or special syntax are required.</p></div><div class="hero-note"><strong>29</strong><span>areas</span><strong>119</strong><span>documented operations</span></div></header>
+<header class="hero"><div><div class="eyebrow">Practical guide · capabilities and examples</div><h1>What you can ask Metnos to do</h1><p class="lead">Capabilities are grouped by area, called a domain in the Metnos code. Each example is a sentence you can use in chat: no operation names or special syntax are required.</p></div><div class="hero-note"><strong>29</strong><span>areas</span><strong>121</strong><span>documented operations</span></div></header>
 <p class="contract">This guide follows the 29 areas defined in the code. Its operation lists are generated from technical descriptions, called manifests, and the functions built into Metnos. A documented capability may require services, credentials, or permissions that your installation does not have. It must also pass Executor Birth checks before use. Installed skills can add services and operations. Ask the Tutor what is available on your instance.</p>
 <div class="jump"><a href="#group-content">Content and computation</a><a href="#group-composition">Result composition</a><a href="#group-communication">Communication and time</a><a href="#group-world">Web, places, and media</a><a href="#group-collaboration">Collaboration and providers</a><a href="#group-governance">Control and administration</a><a href="#group-system">Cross-domain utilities</a></div>
 
@@ -96,11 +96,11 @@
   <details><summary>Included operations (4)</summary><div class="operations"><code>create_events</code><code>delete_events</code><code>find_events_empty</code><code>read_events</code></div></details>
 </article>
 <article class="domain-card" id="domain-contacts">
-  <div class="domain-head"><div><span class="domain-key">contacts</span><h3>Contacts</h3></div><span class="count">2 documented operations</span></div>
+  <div class="domain-head"><div><span class="domain-key">contacts</span><h3>Contacts</h3></div><span class="count">4 documented operations</span></div>
   <p>Finds and reads address-book records containing names, email addresses, and phone numbers, locally or from a connected account.</p>
   <p class="boundary"><strong>Limits.</strong> A contact is an address-book record. Persons instead represents local identities and recognition in photos.</p>
   <div class="examples"><p class="example"><span>For example, write in chat:</span>“Find Laura Bianchi&#x27;s email address in my contacts.”</p><p class="example"><span>For example, write in chat:</span>“Show the phone number for the Acme Support contact.”</p></div>
-  <details><summary>Included operations (2)</summary><div class="operations"><code>find_contacts</code><code>read_contacts</code></div></details>
+  <details><summary>Included operations (4)</summary><div class="operations"><code>create_contacts</code><code>delete_contacts</code><code>find_contacts</code><code>read_contacts</code></div></details>
 </article>
 <article class="domain-card" id="domain-tasks">
   <div class="domain-head"><div><span class="domain-key">tasks</span><h3>Scheduled tasks</h3></div><span class="count">6 documented operations</span></div>

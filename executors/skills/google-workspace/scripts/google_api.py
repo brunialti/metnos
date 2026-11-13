@@ -14,6 +14,8 @@ Usage:
   python google_api.py calendar create --summary "Meeting" --start DATETIME --end DATETIME
   python google_api.py drive search "budget report" [--max 10]
   python google_api.py contacts list [--max 20]
+  python google_api.py contacts create --name NAME [--email E]... [--phone P]...
+  python google_api.py contacts delete people/c123
   python google_api.py sheets get SHEET_ID RANGE
   python google_api.py sheets update SHEET_ID RANGE --values '[[...]]'
   python google_api.py sheets append SHEET_ID RANGE --values '[[...]]'
@@ -1057,6 +1059,7 @@ def contacts_list(args):
                 "name": names[0].get("displayName", "") if names else "",
                 "emails": [e.get("value", "") for e in emails],
                 "phones": [p.get("value", "") for p in phones],
+                "resource_name": person.get("resourceName", ""),
             })
         print(json.dumps(contacts, indent=2, ensure_ascii=False))
         return
@@ -1076,8 +1079,51 @@ def contacts_list(args):
             "name": names[0].get("displayName", "") if names else "",
             "emails": [e.get("value", "") for e in emails],
             "phones": [p.get("value", "") for p in phones],
+            "resource_name": person.get("resourceName", ""),
         })
     print(json.dumps(contacts, indent=2, ensure_ascii=False))
+
+
+_PERSON_FIELDS = "names,emailAddresses,phoneNumbers"
+
+
+def contacts_create(args):
+    """Create ONE contact in the person's address book (People API
+    `people.createContact`). Needs the read-write `contacts` scope: with a
+    read-only token Google answers 403 «insufficient scopes», which the
+    runner turns into a new consent, never into a silent failure. The
+    resource name is the exact handle for deletion (undo)."""
+    body = {"names": [{"unstructuredName": args.name}]}
+    if args.email:
+        body["emailAddresses"] = [{"value": value} for value in args.email]
+    if args.phone:
+        body["phoneNumbers"] = [{"value": value} for value in args.phone]
+    if _gws_binary():
+        person = _run_gws(["people", "people", "createContact"],
+                          params={"personFields": _PERSON_FIELDS}, body=body)
+    else:
+        service = build_service("people", "v1")
+        person = service.people().createContact(
+            body=body, personFields=_PERSON_FIELDS).execute()
+    names = person.get("names") or [{}]
+    print(json.dumps({
+        "status": "created",
+        "resource_name": person.get("resourceName", ""),
+        "name": names[0].get("displayName", "") or args.name,
+        "emails": [item.get("value", "") for item in person.get("emailAddresses", [])],
+        "phones": [item.get("value", "") for item in person.get("phoneNumbers", [])],
+    }, ensure_ascii=False))
+
+
+def contacts_delete(args):
+    """Delete ONE contact by its exact resource name (`people.deleteContact`)."""
+    if _gws_binary():
+        _run_gws(["people", "people", "deleteContact"],
+                 params={"resourceName": args.resource_name})
+    else:
+        service = build_service("people", "v1")
+        service.people().deleteContact(resourceName=args.resource_name).execute()
+    print(json.dumps({"status": "deleted", "resource_name": args.resource_name}))
 
 
 # =========================================================================
@@ -2022,6 +2068,16 @@ def main():
     p = con_sub.add_parser("list")
     p.add_argument("--max", type=int, default=50)
     p.set_defaults(func=contacts_list)
+
+    p = con_sub.add_parser("create")
+    p.add_argument("--name", required=True)
+    p.add_argument("--email", action="append", default=[])
+    p.add_argument("--phone", action="append", default=[])
+    p.set_defaults(func=contacts_create)
+
+    p = con_sub.add_parser("delete")
+    p.add_argument("resource_name")
+    p.set_defaults(func=contacts_delete)
 
     # --- Sheets ---
     sh = sub.add_parser("sheets")

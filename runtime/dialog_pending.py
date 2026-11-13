@@ -98,6 +98,30 @@ _SAFE_RE = re.compile(r"[^A-Za-z0-9_.-]")
 _DIALOG_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
 
 
+def words(value):
+    """A dialog text as the person reads it.
+
+    A title, a description or a prompt may be carried as a message key
+    (``MSG_…``) instead of the words, so that the stored dialog serves every
+    language; the key is resolved where the text leaves for a channel. Only
+    the first step did it on the textual path: the second step of the Google
+    consent was shown as «MSG_OAUTH_PROMPT_SERVICES» (13/11/2026).
+    """
+    if isinstance(value, str) and value.startswith("MSG_"):
+        try:
+            from messages import get as _message
+            return _message(value)
+        except Exception:  # noqa: BLE001 - the key is better than nothing
+            return value
+    return value
+
+
+def step_prompt(step, default: str = "?") -> str:
+    """The question of one dialog step, in words."""
+    prompt = step.get("prompt") if isinstance(step, dict) else None
+    return str(words(prompt) or default)
+
+
 def _safe_sender(sender_id: str) -> str:
     """Sanitizza il sender_id per usarlo come nome di cartella."""
     if not sender_id:

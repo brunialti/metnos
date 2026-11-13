@@ -655,7 +655,7 @@ class ChannelDaemon:
                     err=parse_error or "invalid_value",
                     n=index + 1,
                     total=len(dialog),
-                    prompt=step.get("prompt") or "",
+                    prompt=_dp.step_prompt(step, ""),
                 ),
                 reply_to=msg.message_id,
             )
@@ -676,7 +676,7 @@ class ChannelDaemon:
                     err=result.get("error") or "invalid_value",
                     n=index + 1,
                     total=len(dialog),
-                    prompt=step.get("prompt") or "",
+                    prompt=_dp.step_prompt(step, ""),
                 ),
                 reply_to=msg.message_id,
             )
@@ -1028,7 +1028,7 @@ class ChannelDaemon:
                 return None, False, None
             # Ri-prompt dello stesso step
             return (_msg("MSG_DIALOG_STEP_REPROMPT", err=err, n=idx+1,
-                         total=len(dialog), prompt=cur_step.get('prompt')),
+                         total=len(dialog), prompt=_dp.step_prompt(cur_step)),
                     False, None)
         # Avanza lo stato
         cres = _dp.consume_pending_step(
@@ -1045,7 +1045,7 @@ class ChannelDaemon:
             return None, True, summary
         # Prossimo step
         next_step = dialog[idx + 1]
-        next_prompt = next_step.get("prompt") or "?"
+        next_prompt = _dp.step_prompt(next_step)
         next_kind = (next_step.get("schema") or {}).get("kind")
         masked_hint = ""
         if next_kind == "credentials":
@@ -1476,7 +1476,7 @@ class ChannelDaemon:
             "MSG_DIALOG_STEP_PROMPT",
             n=next_idx + 1,
             total=len(dialog),
-            prompt=next_step.get("prompt", "?"),
+            prompt=_dp.step_prompt(next_step),
             hint="",
         )
         # PR5: choice_with_preview → manda album thumb prima della
