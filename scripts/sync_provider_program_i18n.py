@@ -18,6 +18,12 @@ TRANSLATIONS = {
         'È un difetto di Metnos, non della tua richiesta',
         'The integration\'s program did not recognize this tool\'s command. '
         'It is a defect of Metnos, not of your request'),
+    # An undo whose inverse is another tool: why that tool did not run.
+    'ERR_UNDO_REVERSE_UNAVAILABLE': (
+        'lo strumento che fa l\'operazione inversa ({executor}) non è partito ({detail}). '
+        'Nulla è stato cambiato e l\'operazione resta annullabile',
+        'the tool that performs the inverse operation ({executor}) did not start ({detail}). '
+        'Nothing was changed and the operation can still be undone'),
 }
 
 

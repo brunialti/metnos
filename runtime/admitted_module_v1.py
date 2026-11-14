@@ -318,6 +318,40 @@ def _contained_file_v1(directory: Path, relative: str) -> Path:
     return current
 
 
+def _code_base_v1(code_path: Path, entry: str) -> Path:
+    """The folder a record's code files are relative to: the path of its
+    entry file without the entry's own components."""
+    components = entry.split("/")
+    base = code_path
+    for _component in components:
+        base = base.parent
+    if base.joinpath(*components) != code_path:
+        raise AdmittedModuleError("admitted_module_record_mismatch")
+    return base
+
+
+def _code_directory_v1(manifest_directory: Path, directory: Path,
+                       manifest_bytes: bytes) -> Path:
+    """Where the code of an authenticated manifest lives.
+
+    Beside the manifest, in a source layout.  An installed store keeps the
+    signed manifest of each generation in a folder of its own and leaves the
+    code in the authoring folder, beside a byte-identical copy of that
+    manifest.  The copy is what binds that folder to the signature just
+    verified; the bytes themselves are still compared with the signed digest
+    before they run.  Looking for the code only beside the generation manifest
+    made the door refuse every executor of an installation as "unreadable"
+    (seen live on 14/11/2026: nothing created through another tool could be
+    undone).
+    """
+    if directory == manifest_directory:
+        return manifest_directory
+    twin = _contained_file_v1(directory, "manifest.toml")
+    if _read_exact_file_v1(twin) != manifest_bytes:
+        raise AdmittedModuleError("admitted_module_record_mismatch")
+    return directory
+
+
 @dataclass(frozen=True, slots=True)
 class AdmittedExecutorRecordV1:
     """Bounded record projected by the parent from its verified catalogue."""
@@ -411,6 +445,15 @@ def admitted_code_dependency_projection_v1(
             raise AdmittedModuleError("admitted_module_record_invalid")
         if root not in roots:
             roots.append(root)
+        # In an installed store the code is not beside the generation
+        # manifest: the child must see both folders, read-only.
+        code_root = _code_base_v1(
+            Path(getattr(target, "code_path", "") or ""),
+            _closed_code_files_v1(getattr(target, "code_files", ()))[0])
+        if not code_root.is_absolute():
+            raise AdmittedModuleError("admitted_module_record_invalid")
+        if code_root not in roots:
+            roots.append(code_root)
         # Expose only the public key that authenticated this exact catalogue
         # row, never the key directory or unrelated trust anchors.
         public_key = _dependency_public_key_v1(
@@ -605,10 +648,12 @@ def _authenticate_parent_projection_v1(executor, *, projected: bool = False):
     if not isinstance(code, dict):
         raise AdmittedModuleError("admitted_module_record_mismatch")
     declared = _closed_code_files_v1(code.get("files"))
+    code_directory = _code_directory_v1(
+        directory, _code_base_v1(supplied[2], declared[0]), manifest_bytes)
     signed_binding = (
         manifest.get("name"),
         canonical_manifest,
-        _contained_file_v1(directory, declared[0]),
+        _contained_file_v1(code_directory, declared[0]),
         code.get("digest"),
         declared,
     )
@@ -688,10 +733,12 @@ def load_admitted_module_v1(executor) -> ModuleType:
     code_path = getattr(executor, "code_path", None)
     if not manifest_path.name or code_path is None:
         raise AdmittedModuleError("admitted_module_unpublished")
-    directory = manifest_path.parent
     entry = Path(code_path).resolve()
 
     declared = _closed_code_files_v1(getattr(executor, "code_files", ()))
+    # The folder was bound to the authenticated manifest a few lines above
+    # (`_code_directory_v1`): beside it, or the authoring folder of a store.
+    directory = _code_base_v1(Path(code_path), declared[0])
     paths = [_contained_file_v1(directory, name) for name in declared]
     payloads = [_read_exact_file_v1(path) for path in paths]
     if entry != paths[0].resolve(strict=True):

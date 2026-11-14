@@ -199,10 +199,16 @@ def _validate_undo_blob_with_fallback(results, id_field, scope_field, *, fallbac
 # Registry hook (idempotente)
 # ---------------------------------------------------------------------------
 
-def _dispatch_call(call, catalog):
-    """Invoke one delete executor admitted by the caller's verified catalog."""
+def _dispatch_call(call, catalog, reasons=None):
+    """Invoke one delete executor admitted by the caller's verified catalog.
+
+    `reasons` collects, in words for the person, why a call did not go
+    through. A reversal that fails for a reason nobody states read as
+    "unknown" (seen live on 14/11/2026).
+    """
     # Filesystem inverses do not load another executor or need its authority.
     from admitted_module_v1 import AdmittedModuleError, load_admitted_module_v1
+    from messages import get as _msg
 
     name = call["executor"]
     args = call["args"]
@@ -210,19 +216,32 @@ def _dispatch_call(call, catalog):
         next((key for key in args if key.endswith("_ids")), ""),
         [],
     ) or [1])
+
+    def refused(detail: str = ""):
+        if reasons is not None:
+            reasons.append(_msg("ERR_UNDO_REVERSE_UNAVAILABLE", executor=name, detail=detail))
+        return 0, failed
+
     try:
         if catalog is None:
-            return 0, failed
+            return refused("catalog")
         executor = catalog.get(name)
         if executor is None:
-            return 0, failed
+            return refused("catalog")
         mod = load_admitted_module_v1(executor)
         obs = mod.invoke(args)
-    except (AdmittedModuleError, AttributeError, TypeError):
-        return 0, failed
-    except Exception:
-        return 0, failed
+    except AdmittedModuleError as exc:
+        return refused(str(exc.args[0]) if exc.args else "admitted_module")
+    except Exception as exc:  # noqa: BLE001 - the reversal reports, it never raises
+        return refused(type(exc).__name__)
     if isinstance(obs, dict):
+        if not obs.get("ok") and reasons is not None:
+            stated = obs.get("error") or next(
+                (row.get("error") for row in obs.get("failed") or []
+                 if isinstance(row, dict) and row.get("error")), "")
+            reasons.append(str(stated) if stated else _msg(
+                "ERR_UNDO_REVERSE_UNAVAILABLE", executor=name,
+                detail=str(obs.get("error_class") or obs.get("decision") or "")))
         results = obs.get("results") or []
         # Riconosci ENTRAMBE le convenzioni per-riga: {"status":"deleted"|"ok"}
         # e {"ok": True} — alcuni executor forward usano la seconda → l'undo
@@ -265,16 +284,20 @@ def _make_pattern_callable(pattern_name_bound):
             return {"ok": False, "error": err, "calls": [], "ok_count": 0, "fail_count": 0}
         ok_total = 0
         fail_total = 0
+        reasons: list[str] = []
         for c in calls:
-            ok_i, fail_i = _dispatch_call(c, catalog)
+            ok_i, fail_i = _dispatch_call(c, catalog, reasons)
             ok_total += ok_i
             fail_total += fail_i
-        return {
+        outcome = {
             "ok": ok_total > 0 and fail_total == 0,
             "ok_count": ok_total,
             "fail_count": fail_total,
             "calls": calls,
         }
+        if not outcome["ok"] and reasons:
+            outcome["error"] = reasons[0]
+        return outcome
     _delete_by_id._metnos_catalog_required = True
     return _delete_by_id
 
