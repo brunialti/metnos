@@ -23,11 +23,19 @@ import detection_lexicon_seed_resolvers as _resolver_seed
 
 
 def _gw_creds() -> bool:
-    """OAuth Google Workspace presente? (events/contacts/files google)."""
+    """OAuth Google Workspace presente? (events/contacts/files google).
+
+    The one check is `_google_auth_common.has_creds`. From 5/8 to 14/11/2026
+    this called a function a refactor had removed, and a broad `except` turned
+    the missing name into «not connected»: every calendar request went to the
+    empty local calendar while Google was connected. Only a file system error
+    is an answer here; a wrong name must fail loudly.
+    """
+    from backends._google_auth_common import has_creds
+
     try:
-        from backends.events import google_workspace as _e
-        return bool(_e._has_creds())
-    except Exception:
+        return bool(has_creds())
+    except OSError:
         return False
 
 

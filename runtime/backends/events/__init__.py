@@ -52,8 +52,11 @@ def default_event_client() -> str:
     presenti, altrimenti `local`. Detect deterministico §7.9 (filesystem check).
     SoT condivisa da read/create/delete/find_events_empty (erano 4 copie
     identiche di `_default_client`, fattorizzate 23/6)."""
+    # The same check the server-side resolver makes (`backend_resolver`): one
+    # source of truth, and no broad `except` that hides a missing name.
+    from backends._google_auth_common import has_creds
+
     try:
-        from backends.events import google_workspace
-        return "google_workspace" if google_workspace._has_creds() else "local"
-    except Exception:
+        return "google_workspace" if has_creds() else "local"
+    except OSError:
         return "local"
