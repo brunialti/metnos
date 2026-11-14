@@ -43,6 +43,102 @@
   {% endif %}
 </div>
 
+{% macro secs(ms) %}{% if ms is none %}—{% elif ms < 1000 %}{{ ms }} ms{% else %}{{ '%.1f'|format(ms / 1000) }} s{% endif %}{% endmacro %}
+<div class="section" id="schede">
+  <h2>{{ msg("UI_SCORE_TOOLS_TITLE") }}</h2>
+  <p class="muted">{{ msg("UI_SCORE_TOOLS_HELP", days=window) }}</p>
+  <nav class="tp-tiers">
+    {% for d in windows %}
+      <a class="tp-tier{% if d == window %} current{% endif %}" href="?days={{ d }}#schede">{{ msg("UI_SCORE_WINDOW", days=d) }}</a>
+    {% endfor %}
+  </nav>
+  {% if not tools %}
+    <p class="muted">{{ msg("UI_SCORE_EMPTY") }}</p>
+  {% else %}
+    <div class="table-wrap">
+    <table class="score">
+      <thead>
+        <tr>
+          <th>{{ msg("UI_SCORE_COL_TOOL") }}</th>
+          <th class="n">{{ msg("UI_SCORE_COL_CALLS") }}</th>
+          <th class="n">{{ msg("UI_SCORE_COL_OK") }}</th>
+          <th class="n">{{ msg("UI_SCORE_COL_REFUSALS") }}</th>
+          <th class="n">{{ msg("UI_SCORE_COL_FAULTS") }}</th>
+          <th class="n">{{ msg("UI_SCORE_COL_TYPICAL") }}</th>
+          <th class="n">{{ msg("UI_SCORE_COL_SLOW") }}</th>
+          <th class="n">✓</th>
+          <th class="n">✗</th>
+          <th>{{ msg("UI_SCORE_COL_LAST") }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in tools %}
+        <tr>
+          <td><code>{{ t.name }}</code>{% if t.origin == "synthesized" %} <span class="chip">{{ msg("UI_SCORE_GENERATED") }}</span>{% endif %}</td>
+          <td class="n">{{ t.calls }}</td>
+          <td class="n">{{ t.ok }}</td>
+          <td class="n">{% if t.refusals %}<span title="{% for name, n in t.failure_classes %}{{ name }} {{ n }}{% if not loop.last %}, {% endif %}{% endfor %}">{{ t.refusals }}</span>{% else %}0{% endif %}</td>
+          <td class="n">{% if t.faults %}<span class="chip bad">{{ t.faults }}</span>{% else %}0{% endif %}</td>
+          <td class="n">{{ secs(t.ms_typical) }}</td>
+          <td class="n">{{ secs(t.ms_slow) }}</td>
+          <td class="n">{{ t.thumbs_up }}</td>
+          <td class="n">{{ t.thumbs_down }}</td>
+          <td>{{ t.last_used }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  {% endif %}
+</div>
+
+<div class="section">
+  <h2>{{ msg("UI_SCORE_PLANS_TITLE") }}</h2>
+  <p class="muted">{{ msg("UI_SCORE_PLANS_HELP", days=window) }}</p>
+  {% if not plans %}
+    <p class="muted">{{ msg("UI_SCORE_EMPTY") }}</p>
+  {% else %}
+    <div class="table-wrap">
+    <table class="score">
+      <thead>
+        <tr>
+          <th>{{ msg("UI_SCORE_COL_PLAN") }}</th>
+          <th class="n">{{ msg("UI_SCORE_COL_TURNS") }}</th>
+          <th class="n">{{ msg("UI_SCORE_COL_ANSWERED") }}</th>
+          <th class="n">{{ msg("UI_SCORE_COL_FAILED_STEP") }}</th>
+          <th>{{ msg("UI_SCORE_COL_SERVED") }}</th>
+          <th class="n">{{ msg("UI_SCORE_COL_SECONDS") }}</th>
+          <th class="n">{{ msg("UI_SCORE_COL_OUTSIDE") }}</th>
+          <th class="n">{{ msg("UI_SCORE_COL_MODEL") }}</th>
+          <th class="n">{{ msg("UI_SCORE_COL_DISTINCT") }}</th>
+          <th class="n">✓</th>
+          <th class="n">✗</th>
+          <th>{{ msg("UI_SCORE_COL_LAST") }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in plans %}
+        <tr>
+          <td class="seq">{% for name in p.tools %}<code>{{ name }}</code>{% if not loop.last %} → {% endif %}{% endfor %}</td>
+          <td class="n">{{ p.turns }}</td>
+          <td class="n">{{ p.answered }}</td>
+          <td class="n">{{ p.failed_steps }}</td>
+          <td>{% for words, n in p.served_words %}{{ words }} {{ n }}{% if not loop.last %} · {% endif %}{% endfor %}</td>
+          <td class="n">{% if p.seconds_typical is none %}—{% else %}{{ p.seconds_typical }} s{% endif %}</td>
+          <td class="n">{% if p.outside_s is none %}—{% else %}{{ p.outside_s }} s{% endif %}</td>
+          <td class="n">{% if p.model_calls is none %}—{% else %}{{ p.model_calls }}{% endif %}</td>
+          <td class="n">{{ p.distinct_requests }}</td>
+          <td class="n">{{ p.thumbs_up }}</td>
+          <td class="n">{{ p.thumbs_down }}</td>
+          <td>{{ p.last_used }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  {% endif %}
+</div>
+
 <div class="section">
   <h2>{{ msg("UI_EXECUTOR_EVENTS_TITLE") }}</h2>
   <p class="muted">{{ msg("UI_EXECUTOR_EVENTS_HELP") }}</p>
@@ -51,6 +147,10 @@
 </div>
 
 <style>
+table.score th.n,table.score td.n{text-align:right}
+table.score td.n,table.score td:last-child{white-space:nowrap}
+table.score td code{white-space:nowrap}
+table.score td.seq{min-width:16rem;line-height:1.9}
 .bar-track{background:var(--surface-3);height:14px;border-radius:4px;overflow:hidden}
 .bar-fill{height:100%;border-radius:4px;
           transition:width var(--t-2) var(--ease)}

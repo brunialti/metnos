@@ -466,7 +466,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'tutor/sources.py': ('6adb150b76f6ca243f3746756c29d16fcbaf25ec5fa572878aeed311290ec7dd', (('comparison', 21), ('helper-argument', 4), ('iteration', 1))),
     'tutor/telemetry.py': ('8fade0cfd78ab152618dcec61e6408ff2f48f1494a0f42560712c05cfe9ba584', (('helper-argument', 1),)),
     'tutor_boundary.py': ('f29732f56e1158f0aaca759ba9ec7f1e6645389122ae35ee2088ceb7e6645acd', (('comparison', 3),)),
-    'ui_surfaces.py': ('3c55ab532fd28b1c259c163b789111963dc585711a99f111419a08a208e3fbdb', (('comparison', 4), ('helper-argument', 19))),
+    'ui_surfaces.py': ('e70a4560d1d968210261457e1fd82c0123f49edaad49949ef7d6b86d4f8050e3', (('comparison', 4), ('helper-argument', 19))),
     'undo.py': ('1ba67d304eb1c120576ecd04d5afd995dbd87705f7c7ada935e95f503a75107b', (('comparison', 12),)),
     'unique_rows_resolver.py': ('405249c233d60428fcea3d215cfbc3778fa96c17d54e5ea9569cffb4bb9814c0', (('comparison', 1), ('regex', 1))),
     'upload_cleanup.py': ('738a94cc1abc1dc46a767967ccebac1034924b9f4dc140116d20f4789ebdf9f8', (('comparison', 3),)),
@@ -611,6 +611,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'provider_catalog.py': ('f51fa274ab74fd2a4cfd1473ff05dab0ed87e51965a2c790ea9cbb6009b29ac7', (('comparison', 13), ('helper-argument', 1), ('prefix-suffix', 3))),
     'oauth_flow.py': ('15fdff4c5dab34c478d3e5ae9b152c828a08079e669125c7f605fc9b55fe89e4', (('comparison', 2),)),
     'examined_content_receipts.py': ('cb3b694a19ff068fa68ff963647d05e0731d9c41adef6e37eec0d98634ec1151', (('comparison', 1), ('helper-argument', 1), ('regex', 1))),
+    'scorecards.py': ('36b5940c71cb09308804c8d58115d63092da7d0ee5c3c5f72764feccc9d3cb06', (('comparison', 2),)),
 }
 
 VALUE_BOUND_SEED_GATE_FINGERPRINTS: Mapping[str, int] = {
@@ -1255,6 +1256,8 @@ VALUE_BOUND_CLOSING_TECHNICAL_CONTAINERS: Mapping[str, str] = {
         "names of the actions the buttons of the changes page post",
     "761a80ba8f9db58d026dda06f334d821941a4eb24b77792fe648b32eca240dea":
         "closed runtime error classes of a failure of a tool's own code",
+    "4efbcaee0dbe466b537413d58278395c12d66ac02e251f86f94057dbac27e53e":
+        "closed codes of how a turn was served and the catalog keys of their names",
     "e356402eaad6a4fee78d4317b0a6380ab3323dc8f276ec7535ed47b001e3b4b8":
         "closed refusal codes of the final checks and the message key of each",
     "dd283acae7436c1b311108a589f2287e99a7d52bc42fd6382cf8421167fe924e":

@@ -1168,14 +1168,53 @@ async def admin_executor_revive(request: web.Request) -> web.Response:
     return web.json_response({"ok": True, "name": name, "lifecycle": "active"})
 
 
+# Sequences shown on the page: the most used ones, the rest is in the JSON of
+# a narrower window.
+_PLAN_CARDS_SHOWN = 40
+# How a turn was served, in words: the code the turn log keeps and the
+# catalog key of its name. A code without a name is shown as it is.
+_SERVED_WORDS = {
+    "fastpath": "UI_SCORE_SERVED_FASTPATH",
+    "autopath": "UI_SCORE_SERVED_AUTOPATH",
+    "engine": "UI_SCORE_SERVED_ENGINE",
+    "terminator": "UI_SCORE_SERVED_TERMINATOR",
+    "lre": "UI_SCORE_SERVED_LRE",
+    "recovery": "UI_SCORE_SERVED_RECOVERY",
+    "-": "UI_SCORE_SERVED_DIRECT",
+}
+
+
+def _served_in_words(served: dict) -> list[tuple[str, int]]:
+    from messages import get as _msg
+
+    return [(_msg(_SERVED_WORDS[code]) if code in _SERVED_WORDS else code, count)
+            for code, count in served.items()]
+
+
 async def admin_executors_stats(request: web.Request) -> web.Response:
     """GET /admin/executors/stats — counts + daily events.
 
     Negotiation Accept: html → grafici uPlot/CSS bar; json → payload raw.
     """
+    import scorecards
+
     catalog = app_get(request.app, CATALOG_PROVIDER, lambda: [])()
     counts = _executor_catalog_counts(catalog)
     daily = executor_aging.daily_event_counts(days=30)
+    # The cards of the tools and of the plans, over the window the page asks.
+    try:
+        window = int(request.query.get("days", scorecards.WINDOW_DAYS))
+    except ValueError:
+        window = scorecards.WINDOW_DAYS
+    if window not in scorecards.WINDOWS:
+        window = scorecards.WINDOW_DAYS
+    origins = {ex.name: getattr(ex, "source", "") for ex in catalog}
+    tools = await asyncio.to_thread(scorecards.tool_cards, window)
+    for card in tools:
+        card["origin"] = origins.get(card["name"], "")
+    plans = (await asyncio.to_thread(scorecards.plan_cards, window))[:_PLAN_CARDS_SHOWN]
+    for card in plans:
+        card["served_words"] = _served_in_words(card["served"])
     accept = request.headers.get("Accept", "")
     want_html = "text/html" in accept and "application/json" not in accept
     if want_html:
@@ -1197,11 +1236,15 @@ async def admin_executors_stats(request: web.Request) -> web.Response:
             bar_rows=bar_rows,
             daily=daily,
             daily_json=json.dumps(daily, default=str),
+            tools=tools, plans=plans, window=window, windows=scorecards.WINDOWS,
         )
         return web.Response(text=html, content_type="text/html")
     payload = {
         "counts_by_source_lifecycle": counts,
         "daily_event_counts": daily,
+        "window_days": window,
+        "tool_cards": tools,
+        "plan_cards": plans,
     }
     body = json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")
     return serve_with_etag(request, body, content_type="application/json")
