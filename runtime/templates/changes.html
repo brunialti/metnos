@@ -88,7 +88,7 @@
       <th>{{ msg('UI_CHANGE_COL_TARGET') }}</th>
       <th>{{ msg('UI_CHANGE_COL_ORIGIN') }}</th>
       <th>{{ msg('UI_CHANGE_COL_SUMMARY') }}</th>
-      <th>{{ msg('UI_CHANGE_COL_ACTIONS') }}</th>
+      <th class="tp-actions">{{ msg('UI_CHANGE_COL_ACTIONS') }}</th>
     </tr>
   </thead>
   <tbody>
@@ -204,19 +204,23 @@
           <div class="muted">{{ msg('UI_CHANGE_REWRITING') if r.intent_body.rewrite else msg('UI_CHANGE_AWAITING_APPLY') }}</div>
         {% elif r.state == 'applied' %}
           <span class="chip ok">{{ msg('UI_CHANGE_BADGE_APPLIED') }}</span>
+          {# For a tool Metnos built this takes the tool away, and today for
+             good: the button and its confirmation say so. #}
           <button class="btn bad"
                   hx-post="/admin/changes/{{ r.id }}/rollback"
-                  hx-confirm="{{ msg('UI_CHANGE_CONFIRM_ROLLBACK') }}"
+                  hx-confirm="{{ msg('UI_CHANGE_CONFIRM_WITHDRAW', name=r.intent_target) if r.intent_kind == 'create_executor' else msg('UI_CHANGE_CONFIRM_ROLLBACK') }}"
                   hx-target="closest tr" hx-swap="outerHTML">
-            {{ msg('UI_CHANGE_BTN_ROLLBACK') }}
+            {{ msg('UI_CHANGE_BTN_WITHDRAW') if r.intent_kind == 'create_executor' else msg('UI_CHANGE_BTN_ROLLBACK') }}
           </button>
         {% elif r.state == 'observed' %}
           <span class="chip ok">{{ msg('UI_CHANGE_BADGE_OBSERVED') }}</span>
+          {# For a tool Metnos built this takes the tool away, and today for
+             good: the button and its confirmation say so. #}
           <button class="btn bad"
                   hx-post="/admin/changes/{{ r.id }}/rollback"
-                  hx-confirm="{{ msg('UI_CHANGE_CONFIRM_ROLLBACK') }}"
+                  hx-confirm="{{ msg('UI_CHANGE_CONFIRM_WITHDRAW', name=r.intent_target) if r.intent_kind == 'create_executor' else msg('UI_CHANGE_CONFIRM_ROLLBACK') }}"
                   hx-target="closest tr" hx-swap="outerHTML">
-            {{ msg('UI_CHANGE_BTN_ROLLBACK') }}
+            {{ msg('UI_CHANGE_BTN_WITHDRAW') if r.intent_kind == 'create_executor' else msg('UI_CHANGE_BTN_ROLLBACK') }}
           </button>
         {% elif r.state == 'finalized' %}
           <span class="chip ok">{{ msg('UI_CHANGE_BADGE_FINALIZED') }}</span>
@@ -252,15 +256,17 @@
         {% if r.state in ['applied', 'observed', 'finalized'] and r.intent_kind == 'create_executor' %}
           {# A generated tool in use that is wrong: said in words, it is written
              again and stays in use meanwhile (ADR 0239, rule 4). #}
-          <input type="text" name="reason" maxlength="500"
-                 aria-label="{{ msg('UI_CHANGE_REWRITE_WORDS') }}"
-                 placeholder="{{ msg('UI_CHANGE_REWRITE_WORDS') }}"
-                 style="width:100%;margin:.3rem 0">
-          <button class="btn"
-                  hx-post="/admin/changes/{{ r.id }}/rewrite" hx-include="closest td"
-                  hx-target="closest tr" hx-swap="outerHTML">
-            {{ msg('UI_CHANGE_BTN_REWRITE') }}
-          </button>
+          <div class="tp-rewrite">
+            <label for="rewrite-{{ r.id }}">{{ msg('UI_CHANGE_REWRITE_WORDS') }}</label>
+            <textarea id="rewrite-{{ r.id }}" name="reason" rows="2" maxlength="500"
+                      placeholder="{{ msg('UI_CHANGE_REWRITE_EXAMPLE') }}"></textarea>
+            <div class="muted">{{ msg('UI_CHANGE_REWRITE_HINT') }}</div>
+            <button class="btn primary"
+                    hx-post="/admin/changes/{{ r.id }}/rewrite" hx-include="closest td"
+                    hx-target="closest tr" hx-swap="outerHTML">
+              {{ msg('UI_CHANGE_BTN_REWRITE') }}
+            </button>
+          </div>
         {% endif %}
       </td>
     </tr>

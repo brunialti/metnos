@@ -186,6 +186,31 @@ input[type=radio],input[type=checkbox]{accent-color:var(--accent);
 label{line-height:1.6}
 ::placeholder{color:var(--muted);opacity:.8}
 
+/* ---------- AZIONI DI RIGA (tp-actions) ----------------------------------- */
+/* The cell keeps a width a person can read and type in. A notice is a
+   sentence, not a label: it wraps instead of pushing the row off the page. */
+td.tp-actions{min-width:17rem;max-width:25rem;vertical-align:top}
+/* What a row says in detail never widens the table: it wraps. */
+table.tp td pre,table.tp td code{white-space:pre-wrap;overflow-wrap:anywhere}
+/* When the table is still wider than the window, the actions stay in sight
+   and the rest scrolls beneath them. Not on a phone: the column would cover
+   what it acts on. */
+@media (min-width:900px){
+  table.tp th.tp-actions,table.tp td.tp-actions{position:sticky;right:0;z-index:1;
+    background:var(--surface);box-shadow:-1px 0 0 var(--border)}
+  table.tp th.tp-actions{background:var(--surface-2)}
+  table.tp tbody tr:hover td.tp-actions{background:var(--surface-2)}
+}
+[role=alert] .chip{display:block;white-space:normal;border-radius:var(--r-1);
+  font-family:var(--font-ui);font-size:var(--fs-1);line-height:1.45;
+  padding:.35rem .6rem;margin-bottom:var(--sp-2)}
+.tp-rewrite{margin-top:var(--sp-3);padding:.65rem .75rem;background:var(--surface-2);
+  border:1px solid var(--border-strong);border-radius:var(--r-2)}
+.tp-rewrite label{display:block;font-weight:600;color:var(--ink);margin-bottom:.3rem}
+.tp-rewrite textarea{display:block;width:100%;box-sizing:border-box;min-height:3.6rem;
+  resize:vertical;margin-bottom:.35rem}
+.tp-rewrite .muted{font-size:var(--fs-1);line-height:1.4;margin-bottom:.5rem}
+
 /* ---------- TAB (nav secondaria a linguette: tp-tiers) ------------------- */
 nav.tp-tiers{display:flex;gap:.2rem;margin:var(--sp-4) 0 var(--sp-3);
              border-bottom:1px solid var(--border);flex-wrap:wrap}

@@ -32,8 +32,28 @@ TRANSLATIONS = {
         'New version: it replaces the one withdrawn after an internal error.'),
     'UI_CHANGE_BTN_REWRITE': ('Riscrivi', 'Rewrite'),
     'UI_CHANGE_REWRITE_WORDS': (
-        'Che cosa non va, in parole',
-        'What is wrong, in words'),
+        'Fa la cosa sbagliata? Scrivi che cosa non va',
+        'Does it do the wrong thing? Say what is wrong'),
+    'UI_CHANGE_REWRITE_EXAMPLE': (
+        'Esempio: mostra i nomi, non i codici',
+        'Example: show the names, not the codes'),
+    'UI_CHANGE_REWRITE_HINT': (
+        'Metnos lo riscrive e ti chiede di attivare la versione nuova. Intanto questo resta in uso.',
+        'Metnos writes it again and asks you to activate the new version. Meanwhile this one stays in use.'),
+    # The same action has two names: it restores what a change replaced, or
+    # it takes away a tool Metnos built.
+    'UI_CHANGE_BTN_ROLLBACK': ('Ripristina', 'Roll back'),
+    'UI_CHANGE_BTN_WITHDRAW': ('Ritira', 'Withdraw'),
+    'UI_CHANGE_TAB_ROLLED_BACK': ('Ritirate', 'Rolled back'),
+    'UI_CHANGE_BADGE_ROLLED_BACK': ('ritirata', 'rolled back'),
+    'UI_CHANGE_CONFIRM_ROLLBACK': (
+        'Sicuro? Verrà ripristinato lo stato precedente.',
+        'Sure? The previous state will be restored.'),
+    'UI_CHANGE_CONFIRM_WITHDRAW': (
+        'Sicuro? Lo strumento «{name}» verrà tolto per sempre: non si potrà riattivare né '
+        'ricostruire. Se fa la cosa sbagliata, usa Riscrivi.',
+        'Sure? The tool «{name}» will be removed for good: it cannot be reactivated or built '
+        'again. If it does the wrong thing, use Rewrite.'),
     'UI_CHANGE_REWRITING': (
         'In riscrittura: la nuova versione arriva appena è pronta',
         'Being written again: the new version comes as soon as it is ready'),
