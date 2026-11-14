@@ -47,6 +47,51 @@ log = get_logger(__name__)
 PROPOSALS_DIR = _C.PATH_USER_DATA / "synt_proposals"
 
 
+
+_PRESENTATION_COLUMNS = 5
+
+
+def _field_group(name: str) -> tuple[str, ...]:
+    """A technical field name with its documented variants (`field_synonyms`)."""
+    from field_synonyms import FIELD_SYNONYMS
+    return (name, *FIELD_SYNONYMS.get(name, ()))
+
+
+def presentation_columns(tests) -> list[dict]:
+    """The columns of the answer table of a generated tool.
+
+    They are the fields of the records its functional cases expect, the ones
+    a person reads first and the identifiers last.  One fixed generic column
+    took the first of a list that began with the identifier: six calendars
+    were answered as six opaque ids while each record also carried its name
+    (seen live on 14/11/2026).  Without known records the generic column
+    remains, in the same reading order.
+    """
+    labels, identifiers = _field_group("name"), _field_group("id")
+    seen: list[str] = []
+    for case in tests or []:
+        checked = ((case.get("expect") or {}).get("field_eq") or {}) if isinstance(case, dict) else {}
+        # every list of records the case checks, whatever its field is called
+        for rows in (checked.values() if isinstance(checked, dict) else ()):
+            for row in rows if isinstance(rows, list) else []:
+                if not isinstance(row, dict):
+                    continue
+                for key, value in row.items():
+                    # a field of the record: named by a word, holding one value
+                    if (isinstance(key, str) and key[:1].isalpha()
+                            and not isinstance(value, (dict, list)) and key not in seen):
+                        seen.append(key)
+
+    ordered = ([key for key in labels if key in seen]
+               + [key for key in seen if key not in labels and key not in identifiers]
+               + [key for key in seen if key in identifiers])
+    if ordered:
+        return [{"key": key, "source": key, "cell_max": 160}
+                for key in ordered[:_PRESENTATION_COLUMNS]]
+    generic = [*labels, *_field_group("subject")[:1], "path", "url", *identifiers[:1], "$entry"]
+    return [{"key": "item", "source": list(dict.fromkeys(generic)), "cell_max": 160}]
+
+
 def _toml_value(v):
     """Serializza un valore Python come TOML letterale.
     Usa = per dict (NON : come JSON). Ricorre per dict/list."""
@@ -377,7 +422,7 @@ def _install_synthesized(run, intent, user_query):
         '',
         '[presentation.list]',
         'mode = "table"',
-        'columns = [{ key = "item", source = ["id", "name", "title", "subject", "path", "url", "$entry"], cell_max = 160 }]',
+        'columns = ' + _toml_value(presentation_columns(stage_tests)),
         'max_rows = 200',
         'max_chars = 16000',
         'overflow = "notice"',
