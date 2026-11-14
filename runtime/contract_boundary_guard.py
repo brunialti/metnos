@@ -52,7 +52,7 @@ BIRTH_CLOSED_GUARD_VERSION = _boundary_policy.BIRTH_CLOSED_GUARD_VERSION
 BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:38a3a3db99b89d951ec700b5c063b765f503bee872883d570b302b51f115e883"
+BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:e0a4c0533155c128e1c55cf4b76826ae4b273a54e6b67302603d94182a17271f"
 RM0008_ACCEPTANCE_EVOLUTION_SHA256 = "sha256:e54a2181f2bf614b1de93f0e6fa198512c61682668baa046141d90d4e60ea8a1"
 DEFAULT_INVENTORY = Path("internal/reports/rm0007-m4-boundary-inventory.json")
 SCAN_ROOTS = _boundary_policy.SCAN_ROOTS
@@ -1830,6 +1830,16 @@ def scan_file(path: Path, *, repository_root: Path) -> list[ScopeFacts]:
 
 
 def discover(repository_root: Path) -> list[ScopeFacts]:
+    return discover_from_sources(boundary_sources(repository_root))
+
+
+def discover_from_sources(sources: tuple[tuple[str, bytes], ...]) -> list[ScopeFacts]:
+    """The facts of sources already read by `boundary_sources`."""
+    return list(_discover_source_facts(tuple(sources), _boundary_ast_limits()))
+
+
+def boundary_sources(repository_root: Path) -> tuple[tuple[str, bytes], ...]:
+    """Enumerate and read every boundary source, live, within the budgets."""
     repository_root = repository_root.resolve()
     paths: list[Path] = []
     for root_name in SCAN_ROOTS:
@@ -1859,7 +1869,7 @@ def discover(repository_root: Path) -> list[ScopeFacts]:
         if total_source_bytes > MAX_BOUNDARY_TOTAL_SOURCE_BYTES:
             raise ValueError("boundary total source byte budget exceeded")
         sources.append((path.relative_to(repository_root).as_posix(), content))
-    return list(_discover_source_facts(tuple(sources), _boundary_ast_limits()))
+    return tuple(sources)
 
 
 def _boundary_ast_limits() -> tuple[int, ...]:

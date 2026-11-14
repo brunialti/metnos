@@ -114,7 +114,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'admin/proposals_cli.py': ('93c2deb1dc1a819d9382186e57847ad824d31aed3ff73da25aca22b73b4a9bbb', (('comparison', 11), ('helper-argument', 8))),
     'admin/scheduler_cli.py': ('97fe956403b25bcdae157bb885df716bd95985d7d0c1a8acaded33842c694547', (('comparison', 2), ('helper-argument', 2))),
     'admin_chat_commands.py': ('a88a306af700787c6b2b11f73bab9c25a069d2062d7570f2e369e3974240d74b', (('comparison', 11),)),
-    'admitted_module_v1.py': ('0ff8fb37d8aaca121005ba972274fd61d6ced3a22137207753922cc882ba93f2', (('comparison', 4), ('helper-argument', 1), ('prefix-suffix', 2))),
+    'admitted_module_v1.py': ('4e8397a4a89db733434b2a50118f592129ecd3d429a2448ed6f0e671181cb518', (('comparison', 4), ('helper-argument', 1), ('prefix-suffix', 2))),
     'agent_mirror.py': ('870f4556a8cd0bcc06eeda1d834549ecfb560fdd5eb3dee87b0170f9d63fe875', (('helper-argument', 4),)),
     'agent_runtime.py': ('ff390aaec659fc0b238810878c58d4841e362d92350d20f941e701a0d0ed8562', (('comparison', 143), ('helper-argument', 1), ('iteration', 4), ('membership', 7), ('prefix-suffix', 2), ('regex', 3))),
     'agent_server.py': ('14faa41b18dbd6a44a77af8ca40b2aa94d132c12eed348976eac5cfda78cb14e', (('comparison', 11), ('helper-argument', 5))),
@@ -169,7 +169,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'compare_entries.py': ('ffc00edddb2c8ac4f9cc9227a90b824db0aec4a0af6e290eda791a2891414cbb', (('comparison', 1),)),
     'compound_decomposer.py': ('4a6d0af02e208a221b1fa85db053af81451e0761a3a42cca574a7c23c7c64fdc', (('comparison', 4),)),
     'config.py': ('f167c0aead46462b11d94ca0dc9a16d67ff875c1f7639cbb734a5df1f3fadf1e', (('comparison', 13), ('helper-argument', 1))),
-    'contract_boundary_guard.py': ('de351cf7b87a64862c88b68daf8d2204ff7cbe3689cf048994cf1183bc1bc325', (('comparison', 81),)),
+    'contract_boundary_guard.py': ('c82a6bca3c04018d06216ad73a9969f537eb801e969500e880d79ec5c8919058', (('comparison', 81),)),
     'contract_cutover_guard.py': ('d85d7c809262842f62aa932b241e13cbb07e7747fc8d3bc01e0605070798ec1e', (('comparison', 3), ('default', 1), ('prefix-suffix', 1))),
     'contract_store.py': ('4f185207cc6e1a4325afb0922a4ddc5ae4c02358d17bac8699c4008b2b3ecfc5', (('comparison', 42), ('helper-argument', 3), ('iteration', 1), ('prefix-suffix', 2))),
     'credential_mandates.py': ('0c63a0baa5c4cfc2c83f7fb7cfc63caee9f2d1d3b0ecdc8ee24a4a2f40a7b414', (('comparison', 5),)),
@@ -228,7 +228,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'executor_birth_cutover.py': ('f23d66c708c538e1a74ca1c505b5545b2e404305349da30655292d55bfc4bb23', (('comparison', 3),)),
     'executor_birth_distribution_assembler.py': ('495c406790b557e9e3fb7a3220fd5b3ebffd2c04973c765540771923524d4aa3', (('comparison', 11), ('helper-argument', 2))),
     'executor_birth_distribution_installer.py': ('3b8e2ea7272fecd3a52e45c12c1e69e8289c9e3651493500fa1be93a01af0cfb', (('prefix-suffix', 2),)),
-    'executor_birth_distribution_manifest.py': ('d09fe9ca9eaa6ea1a834a0963258900683bbae755af18c013c2aec751d97eb7e', (('comparison', 55), ('helper-argument', 4), ('literal-lookup', 1), ('membership', 5), ('prefix-suffix', 1))),
+    'executor_birth_distribution_manifest.py': ('069e873edaf74ee4225dce5b05fd0e3da53cce37bf41b32403f8e94d24d6fc6e', (('comparison', 55), ('helper-argument', 4), ('literal-lookup', 1), ('membership', 5), ('prefix-suffix', 1))),
     'executor_birth_dominant_startup.py': ('cf8d12a12cef117b16e780092702d40557a7c7fd7c39bf91e2b52f81e3fbfddd', (('comparison', 1), ('iteration', 1), ('prefix-suffix', 1))),
     'executor_birth_dominant_topology.py': ('f017b478366203b94308ca3e0d6264872feb468e8e75ae6e255c8000800a339b', (('comparison', 2), ('helper-argument', 1), ('iteration', 1), ('membership', 1), ('prefix-suffix', 3))),
     'executor_birth_enforcement_evidence.py': ('95c1f36c30ec24fed1917d7c614377c6c612c3e842afe88c3d83f6b74235c7bd', (('comparison', 1),)),
@@ -467,7 +467,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'tutor/telemetry.py': ('8fade0cfd78ab152618dcec61e6408ff2f48f1494a0f42560712c05cfe9ba584', (('helper-argument', 1),)),
     'tutor_boundary.py': ('f29732f56e1158f0aaca759ba9ec7f1e6645389122ae35ee2088ceb7e6645acd', (('comparison', 3),)),
     'ui_surfaces.py': ('3c55ab532fd28b1c259c163b789111963dc585711a99f111419a08a208e3fbdb', (('comparison', 4), ('helper-argument', 19))),
-    'undo.py': ('4bc7e755420dd6170ec907794952a54553f3815a433687e05ff31c40f7050b66', (('comparison', 12),)),
+    'undo.py': ('1ba67d304eb1c120576ecd04d5afd995dbd87705f7c7ada935e95f503a75107b', (('comparison', 12),)),
     'unique_rows_resolver.py': ('405249c233d60428fcea3d215cfbc3778fa96c17d54e5ea9569cffb4bb9814c0', (('comparison', 1), ('regex', 1))),
     'upload_cleanup.py': ('738a94cc1abc1dc46a767967ccebac1034924b9f4dc140116d20f4789ebdf9f8', (('comparison', 3),)),
     'users.py': ('02c382a6865ff1c58be93a15fcd8b6983cab3b61b50f456eaf3b684ce989483a', (('comparison', 17), ('prefix-suffix', 1), ('regex', 2))),
@@ -610,6 +610,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'provider_reads.py': ('555d640180c5d06a6fb022c9585068579ac0b5ba7b76725fa292fdd7a1d19453', (('comparison', 4),)),
     'provider_catalog.py': ('f51fa274ab74fd2a4cfd1473ff05dab0ed87e51965a2c790ea9cbb6009b29ac7', (('comparison', 13), ('helper-argument', 1), ('prefix-suffix', 3))),
     'oauth_flow.py': ('15fdff4c5dab34c478d3e5ae9b152c828a08079e669125c7f605fc9b55fe89e4', (('comparison', 2),)),
+    'examined_content_receipts.py': ('cb3b694a19ff068fa68ff963647d05e0731d9c41adef6e37eec0d98634ec1151', (('comparison', 1), ('helper-argument', 1), ('regex', 1))),
 }
 
 VALUE_BOUND_SEED_GATE_FINGERPRINTS: Mapping[str, int] = {
@@ -1114,6 +1115,8 @@ VALUE_BOUND_CLOSING_TECHNICAL_CONTAINERS: Mapping[str, str] = {
         "closed API names and versions behind the readable bases of a provider",
     "7c99590534cc984529d5fdb68c9ad46551212b2b3db70c2cd4c293c351c7f023":
         "closed codes of a refused return address and the catalog keys of their notices",
+    "008b86438148e2463117e1b71f6ace091bbe278afa09b90c52beb88da8b22fd1":
+        "closed decision codes of a tool that stopped to ask the person and did nothing yet",
     "57f9b5a0034dae3d3bd23fc26a4ec18daabd7d7974f58ad14d827710de177530":
         "closed JSON-Schema scalar type names",
     "fe44debc7b2e0bf4973786233bb18b803974601799a5282630eb536808beadaf":

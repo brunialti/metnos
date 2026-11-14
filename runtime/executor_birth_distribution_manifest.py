@@ -34,7 +34,7 @@ from contract_boundary_guard import (
     SCAN_ROOTS, SCHEMA as BOUNDARY_INVENTORY_SCHEMA,
     _bounded_ast_metrics, _boundary_ast_limits, birth_closed_findings,
     birth_closed_inventory_value_v1,
-    closed_python_source_review_sha256, discover,
+    boundary_sources, closed_python_source_review_sha256, discover_from_sources,
 )
 
 
@@ -466,6 +466,9 @@ class _VerificationEnvironment:
     require_administrative_metadata: bool
     verify_static_boundary: bool
     _seal: object
+    # Only the running service remembers an examination of identical content
+    # (`examined_content_receipts`); the release authority examines in full.
+    remember_examinations: bool = False
 
 
 _ENVIRONMENT_SEAL = object()
@@ -1661,9 +1664,88 @@ def _analyze_local_imports_v1(
     return tuple(result)
 
 
+def _examination_scope_v1(limits: object) -> bytes:
+    """What an examination depends on besides the bytes it reads."""
+    return repr((sys.version_info[:3], BIRTH_CLOSED_GUARD_VERSION, limits)).encode("utf-8")
+
+
+def _boundary_findings_v1(
+    environment: _VerificationEnvironment, inventory, inventory_bytes: bytes,
+):
+    """The findings of the static boundary analysis.
+
+    The sources are enumerated and read live on every call.  When the service
+    already found these very bytes clean under this very inventory, the
+    analysis is not repeated.
+    """
+    sources = boundary_sources(environment.installation_root)
+    if not environment.remember_examinations:
+        return birth_closed_findings(discover_from_sources(sources), inventory)
+    import examined_content_receipts as receipts
+
+    name = receipts.key(b"metnos-boundary-clean-v1", (
+        _examination_scope_v1(_boundary_ast_limits()),
+        receipts.sources_identity(sources),
+        hashlib.sha256(inventory_bytes).digest(),
+    ))
+    if receipts.load(name) == {"clean": True}:
+        return ()
+    findings = birth_closed_findings(discover_from_sources(sources), inventory)
+    if not findings:
+        receipts.store(name, {"clean": True})
+    return findings
+
+
+def _local_import_syntax_v1(
+    sources: tuple[tuple[str, bytes], ...], limits: tuple[object, ...], *,
+    remember: bool,
+) -> tuple[tuple[str, tuple[tuple[str, int], ...]], ...]:
+    """The imports written in each source.  Syntax only: the caller resolves
+    every one of them afresh against the files that exist now."""
+    if not remember:
+        return _analyze_local_imports_v1(sources, limits)
+    import examined_content_receipts as receipts
+
+    name = receipts.key(b"metnos-local-import-syntax-v1", (
+        _examination_scope_v1(limits), receipts.sources_identity(sources),
+    ))
+    remembered = _remembered_import_syntax_v1(receipts.load(name), sources)
+    if remembered is not None:
+        return remembered
+    result = _analyze_local_imports_v1(sources, limits)
+    receipts.store(name, [
+        [path, [[module, level] for module, level in modules]]
+        for path, modules in result
+    ])
+    return result
+
+
+def _remembered_import_syntax_v1(value: object, sources):
+    """A remembered syntax, only if it has exactly the shape the analysis
+    gives for these very sources; anything else is not a receipt."""
+    if type(value) is not list:
+        return None
+    paths = [path for path, _content in sources]
+    result = []
+    for row in value:
+        if (type(row) is not list or len(row) != 2 or type(row[0]) is not str
+                or type(row[1]) is not list):
+            return None
+        modules = []
+        for item in row[1]:
+            if (type(item) is not list or len(item) != 2 or type(item[0]) is not str
+                    or type(item[1]) is not int or item[1] < 0):
+                return None
+            modules.append((item[0], item[1]))
+        result.append((row[0], tuple(modules)))
+    if [path for path, _modules in result] != paths:
+        return None
+    return tuple(result)
+
+
 def _verify_local_import_closure(
     root: Path, files: tuple[DistributionFile, ...],
-    content: Mapping[str, bytes],
+    content: Mapping[str, bytes], *, remember: bool = False,
 ) -> None:
     declared = {item.path for item in files}
 
@@ -1684,7 +1766,7 @@ def _verify_local_import_closure(
     sources = tuple((item.path, content[item.path]) for item in files
                     if item.path.endswith(".py"))
     limits = (_boundary_ast_limits(), MAX_BOUNDARY_TOTAL_AST_NODES_V1)
-    for source_path, modules in _analyze_local_imports_v1(sources, limits):
+    for source_path, modules in _local_import_syntax_v1(sources, limits, remember=remember):
         for module, level in modules:
             candidates = local_candidates(module, source_path, level)
             existing = [candidate for candidate in candidates
@@ -1848,8 +1930,8 @@ def _verify_distribution_content_semantics_v1(
                 "birth_ownership_distribution_file_mismatch", "source review",
             )
         try:
-            findings = birth_closed_findings(
-                discover(environment.installation_root), inventory,
+            findings = _boundary_findings_v1(
+                environment, inventory, verified_content[inventory_path],
             )
         except Exception as exc:
             raise DistributionManifestError(
@@ -1868,6 +1950,7 @@ def _verify_distribution_content_semantics_v1(
     if not historical_review:
         _verify_local_import_closure(
             environment.installation_root, files, verified_content,
+            remember=environment.remember_examinations,
         )
 
 
@@ -2050,6 +2133,7 @@ def verify_installed_distribution_record_v1(
     environment = _VerificationEnvironment(
         observed.platform, observed.architecture, expected_root,
         expected_root.as_posix(), True, True, _ENVIRONMENT_SEAL,
+        remember_examinations=True,
     )
     return _verify_authenticated_distribution_record(
         record, environment, for_test=False,

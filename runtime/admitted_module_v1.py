@@ -65,13 +65,17 @@ _PARENT_PROJECTION_SEAL_V1 = object()
 # authenticated door therefore keeps the reviewed custom-reverse vocabulary
 # byte-exact. Ordinary modules and declarative reverse patterns are unchanged.
 _REVIEWED_MODULE_REVERSE_DIGESTS_V1 = {
-    "create_images_indices": "sha256:5f5b94cf38d1a7a9bbde678e0397f4d9ae799f1f5898eb4a0148838e0030b845",
+    # Reviewed on 14/11/2026 with Roberto's consent: each restores only what
+    # the tool itself changed, from its own recorded results.
+    "delete_events": "sha256:5e08d8726d53c6e3e280b00afb20d767f08ff0cbbd1c2ecfffda5a768eac8d6b",
+    "delete_persons": "sha256:f2ff10499335406fa3c5eb1fe9f2597cbd06b158675f064b0703eca1f8a5d432",
     "delete_dirs": "sha256:dd7106b098c107a0282b41a3ea37d363848ad78be509fffc5d7ba9c9e5c7d60d",
     "open_sites": "sha256:c63e58a07045ad7f2563a6f03e1fdccce98ff0ac384f47fece1c7ae8350f6877",
     "organize_files": "sha256:4d5ac38d9fab260ee7f7b9af26e568c142841e9fafbe1b5890d112b038539ea0",
-    "run_processes": "sha256:47eef328046d85d0e241af373e16bbff7064b9dbc2884ad3f24b975dabaa76b9",
+    # The digest had stayed at the code reviewed before a later change, so
+    # the reversal of a launched program was refused: reviewed again.
+    "run_processes": "sha256:9a8c6b54e6d2ee3abbb4dd8236593f9be3901a772f57b8d42e52f498c88c7f81",
     "set_messages": "sha256:6ad6030d29d86a7374dee06e9f7244f2e35719bfbd30160b3aa213378fe774c5",
-    "set_signatures": "sha256:5e975030b99cfac4b61a8b35fe4410f2cf20bed0d4b4703b152da117bb69b173",
     "share_files": "sha256:1c17b6d6b2f7190e992bb04861b6dca661fc74c76426b6a3f24c7b7a3779b403",
     "write_files_doc": "sha256:ef3b7111bb6871052bef6e99ec8e5d38d022961ac3ef1f48a876bb037ac0eeb5",
 }

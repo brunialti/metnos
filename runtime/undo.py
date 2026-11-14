@@ -28,9 +28,22 @@ PER_EXECUTION_OUTCOME = "per_execution"
 UNDO_OUTCOMES = frozenset({"reversible", "no_effect", "irreversible"})
 
 
+# A tool that stops to ask the person (data, a consent) has done nothing yet.
+_ASKING_DECISIONS = frozenset({
+    "needs_inputs", "input_required", "approval_required", "needs_confirmation",
+})
+
+
 def _mutated_result(results: object) -> bool:
     """Return whether a legacy unconditional receipt reports an effect."""
     if not isinstance(results, dict):
+        return False
+    # ``ok`` on a request for data means "asked", not "done": recording it as
+    # done offered an undo with nothing to reverse (seen on 13/11/2026, a
+    # contact creation that had only opened the consent form). Work already
+    # done before the question still counts.
+    if (results.get("decision") in _ASKING_DECISIONS
+            and not results.get("ok_count") and not results.get("results")):
         return False
     return (bool(results.get("ok")) or bool(results.get("ok_count"))
             or bool(results.get("results")))
