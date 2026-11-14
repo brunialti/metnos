@@ -91,6 +91,14 @@ DEFAULT_TIMEOUT_S = 60
 DEFAULT_BACKOFF_BASE_S = 0.5
 
 
+def _program_refused(rc: int, stderr: str) -> bool:
+    """The integration's own program refused the command line this backend
+    built (its parser exits 2 after a usage line). The two are parts of the
+    same installation: a mismatch is a defect of Metnos, and nothing the
+    person can mend by adding details to the request."""
+    return rc == 2 and (stderr or "").lstrip().startswith("usage:")
+
+
 def _is_ssl_error(stderr: str) -> bool:
     if not stderr:
         return False
@@ -149,6 +157,11 @@ def run_with_retry(
                 if _attempt < max_retries and backoff_base_s > 0:
                     time.sleep(min(4.0, backoff_base_s * (2 ** _attempt)))
                 continue
+        if _program_refused(rc, stderr):
+            return None, {"ok": False, "error_class": "exception",
+                          "error_code": "ERR_PROVIDER_PROGRAM_REFUSED",
+                          "error": _msg("ERR_PROVIDER_PROGRAM_REFUSED"),
+                          "detail": (stderr or "").strip()}
         ec = _classify_error(rc, stderr)
         err_code, err_text = _i18n_error_for_class(ec, stderr, rc)
         if ec == "auth_required":

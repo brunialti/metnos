@@ -1082,6 +1082,9 @@ def _build_bwrap_args(
             home = _skill_home_path(mode)
             if home is not None and home.exists():
                 args += ["--bind", str(home), str(home)]
+            program = _skill_code_path(mode)
+            if program is not None:
+                args += ["--ro-bind", str(program), str(program)]
             has_network = True
         elif kind == "code":
             # code:exec eredita /usr/bin per i tool consueti. In piu' i soli
@@ -1356,6 +1359,34 @@ def skill_extras(skills) -> tuple[list, bool]:
         if home is not None and Path(home).exists():
             paths.append(Path(home))
     return paths, bool(skills)
+
+
+def _skill_code_path(binding: str):
+    """The installed program of a bundled skill, when it is not the state
+    home itself. None for an imported skill, whose code lives in its home."""
+    try:
+        from skill_wrapper import _skill_code_home, _skill_home
+        code, home = Path(_skill_code_home(binding)), Path(_skill_home(binding))
+    except Exception:  # noqa: BLE001 - never block the sandbox for a helper
+        return None
+    return code if code != home and code.is_dir() else None
+
+
+def skill_code_extras(skills) -> list:
+    """Read-only program folders of the bundled skills an invocation runs.
+
+    `skill_extras` binds the state home (tokens). The program a first-party
+    skill runs is part of the installation and must be the installed one:
+    without this bind the child did not see it and silently ran the copy left
+    in the person's data when the skill was imported, which no release
+    updates (14/11/2026: a contact could be listed and not created).
+    """
+    paths = []
+    for skill in skills or []:
+        code = _skill_code_path(skill)
+        if code is not None:
+            paths.append(code)
+    return paths
 
 
 def _safe_mail_accounts(raw) -> tuple[list[str], bool]:

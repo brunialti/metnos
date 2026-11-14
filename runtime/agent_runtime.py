@@ -3747,6 +3747,7 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
             "error_code": "mail_configuration_invalid",
         }
     _extra_ro.extend(_dependency_roots)
+    _extra_ro.extend(_sandbox.skill_code_extras(_skill_names))
     # Dynamic filesystem inputs remain exact and capability-derived: only
     # signed ``fs:read`` hints such as ``arg:reference_images`` can add them.
     _extra_ro.extend(_sandbox.filesystem_extras(executor, args))
