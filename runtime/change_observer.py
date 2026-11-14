@@ -13,6 +13,9 @@ Logica per kind:
       rollback: the executor was deprecated by the system, or its LAST call
                 failed and it has at least 3 calls in all (no failure rate
                 is computed)
+      A created (generated) tool is not taken back for a failed call: one
+      that fails by its own code is withdrawn at once and written again
+      (generated_rewrite, ADR 0239 rule 4).
 
   - dedupe_executors:
       finalize: alias file presente e executor B non chiamato (deprecato ok)
@@ -107,7 +110,18 @@ def _age_days(iso: str | None) -> float:
 
 # --- Verifier: create_executor / extend_executor -------------------------
 
-def _verify_executor_health(ci: ChangeIntent) -> Verdict:
+def _verify_created_executor(ci: ChangeIntent) -> Verdict:
+    """A generated tool is not taken back here for a failed call.
+
+    One that fails by its own code is withdrawn at once and written again
+    (``generated_rewrite``, ADR 0239 rule 4); a declared failure is an answer
+    of the tool. Taking it back from here is a signed retirement, and that
+    closes the name for good: no corrected version could be born under it.
+    """
+    return _verify_executor_health(ci, failure_rolls_back=False)
+
+
+def _verify_executor_health(ci: ChangeIntent, *, failure_rolls_back: bool = True) -> Verdict:
     """Common health check via executor_stats."""
     effect = ci.applied_effect or {}
     name = effect.get("executor_name") or ci.intent_target
@@ -137,12 +151,12 @@ def _verify_executor_health(ci: ChangeIntent) -> Verdict:
                 f"executor auto-deprecated at {stat.deprecated_at}")
     # Rollback soft: last_call_ok=False con calls >= 3. The reason says what
     # is measured: the last call, not the last three.
-    if stat.last_call_ok is False and stat.total_calls >= 3:
+    if failure_rolls_back and stat.last_call_ok is False and stat.total_calls >= 3:
         return ("rollback", metrics,
                 f"last call failed after {stat.total_calls} calls")
     # Finalize: oltre grace e calls >= 1 success
     if age >= _grace_days():
-        if stat.total_calls >= 1 and stat.last_call_ok is not False:
+        if stat.total_calls >= 1 and (stat.last_call_ok is not False or not failure_rolls_back):
             return ("finalize", metrics, None)
         if stat.total_calls == 0:
             # Non chiamato, ma siamo a grace — finalize "dormiente"
@@ -320,7 +334,7 @@ def _verify_reject_pattern(ci: ChangeIntent) -> Verdict:
 # --- Dispatcher ----------------------------------------------------------
 
 _VERIFIERS: dict[str, Callable[[ChangeIntent], Verdict]] = {
-    KIND_CREATE_EXECUTOR:      _verify_executor_health,
+    KIND_CREATE_EXECUTOR:      _verify_created_executor,
     KIND_EXTEND_EXECUTOR:      _verify_executor_health,
     KIND_DEDUPE_EXECUTORS:     _verify_dedupe,
     KIND_MATERIALIZE_PIPELINE: _verify_pipeline,

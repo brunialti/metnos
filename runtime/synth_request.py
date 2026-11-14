@@ -157,6 +157,14 @@ _CASES_DISPUTED = (
     "for what its argument means, replace it with a valid one or expect ok=false.")
 
 
+# What the functional cases are told when they are written for the rewrite of
+# a version that was in use and was withdrawn (ADR 0239, rule 4).
+_CASES_WITHDRAWN = (
+    "an earlier version of this tool passed them, was put in use and was then "
+    "withdrawn. {reason} Write the cases so that a version with that same defect "
+    "fails at least one of them.")
+
+
 def _validate_birth_tests(executor_dir):
     """Validate private staging bytes before Birth, never execute on the host."""
     import tomllib
@@ -611,6 +619,10 @@ def handle_synth_request(args, *, user_query, progress=None, verbose=False, curr
     intent = (args or {}).get("intent") or user_query
     if not expected_name:
         return {"ok": False, "error": _msg("ERR_SYNTH_EXPECTED_NAME_REQUIRED")}
+    # A version in use was withdrawn and this is its rewrite (ADR 0239, rule 4):
+    # the name is the same on purpose, so what answers «it exists already» or
+    # points to a sibling does not apply.
+    withdrawn_reason = " ".join(str((args or {}).get("correction") or "").split())
 
     try:
         from loader import (
@@ -631,8 +643,8 @@ def handle_synth_request(args, *, user_query, progress=None, verbose=False, curr
         _raw_cat.executors.get(expected_name)
         if _raw_cat is not None else None
     )
-    if _existing_candidate is not None and _existing_candidate.lifecycle in {
-            "proposed", "synthesized"}:
+    if (not withdrawn_reason and _existing_candidate is not None
+            and _existing_candidate.lifecycle in {"proposed", "synthesized"}):
         # Store publication can become current before a final registry
         # callback reports failure. Re-entering the same publisher on the
         # existing candidate is idempotent and repairs that tail; merely
@@ -670,7 +682,7 @@ def handle_synth_request(args, *, user_query, progress=None, verbose=False, curr
             "message": _msg("MSG_SYNTH_CANDIDATE_CREATED", name=expected_name),
         }
 
-    if _cat is not None and expected_name in _cat.executors:
+    if not withdrawn_reason and _cat is not None and expected_name in _cat.executors:
         return {
             "ok": True,
             "synthesized": False,
@@ -682,7 +694,7 @@ def handle_synth_request(args, *, user_query, progress=None, verbose=False, curr
             ),
         }
 
-    if _cat is not None:
+    if not withdrawn_reason and _cat is not None:
         canonical = _find_canonical_alias(expected_name, _cat)
         if canonical:
             return {
@@ -834,6 +846,9 @@ def handle_synth_request(args, *, user_query, progress=None, verbose=False, curr
 
         _llm_tests = _llm_code = _llm_external
         max_attempts = SYNTH_EXTERNAL_ATTEMPTS
+    if withdrawn_reason:
+        # The withdrawn version was one of the attempts.
+        max_attempts = max(1, max_attempts - 1)
 
     if verbose:
         print(f"[synth_request] starting multistage for expected_name={expected_name!r} intent={intent!r}")
@@ -876,8 +891,12 @@ def handle_synth_request(args, *, user_query, progress=None, verbose=False, curr
                     real_requests=real_requests,
                     # A case two candidates failed is written again, with
                     # description and code after it: the code is not the suspect.
-                    cases_correction=(_CASES_DISPUTED.format(
-                        case=disputed, refusal=refusals[-1][:1200]) if disputed else ""),
+                    failed_call=(args or {}).get("failed_call") if withdrawn_reason else None,
+                    cases_correction="\n".join(filter(None, (
+                        _CASES_WITHDRAWN.format(reason=withdrawn_reason)
+                        if withdrawn_reason else "",
+                        _CASES_DISPUTED.format(case=disputed, refusal=refusals[-1][:1200])
+                        if disputed else ""))),
                 )
         except Exception as ex:
             if progress is not None:

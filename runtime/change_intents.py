@@ -119,9 +119,11 @@ _TRANSITIONS: dict[str, set[str]] = {
     STATE_PROPOSED:    {STATE_ACCEPTED, STATE_REJECTED, STATE_STAGED},
     STATE_STAGED:      {STATE_ACCEPTED, STATE_REJECTED, STATE_PROPOSED},
     STATE_ACCEPTED:    {STATE_APPLIED, STATE_FAILED, STATE_REJECTED},
-    STATE_APPLIED:     {STATE_OBSERVED, STATE_ROLLED_BACK},
-    STATE_OBSERVED:    {STATE_FINALIZED, STATE_ROLLED_BACK},
-    STATE_FINALIZED:   {STATE_ROLLED_BACK},
+    # Back to accepted: a generated tool withdrawn to be written again (ADR 0239,
+    # rule 4). Only ``send_back`` takes this way.
+    STATE_APPLIED:     {STATE_OBSERVED, STATE_ROLLED_BACK, STATE_ACCEPTED},
+    STATE_OBSERVED:    {STATE_FINALIZED, STATE_ROLLED_BACK, STATE_ACCEPTED},
+    STATE_FINALIZED:   {STATE_ROLLED_BACK, STATE_ACCEPTED},
     STATE_REJECTED:    {STATE_PROPOSED},          # ri-proposta dopo dismissal
     STATE_FAILED:      {STATE_ACCEPTED, STATE_REJECTED},  # retry o give up
     STATE_ROLLED_BACK: set(),                     # terminale (audit only)
@@ -795,6 +797,61 @@ def close_until(id_: str, *, reason: str, days: int = CLOSED_DAYS,
         "decision_by": by, "decision_action": "close", "decision_reason": reason,
         "decision_ts": _iso_utc_now(),
     })
+
+
+# States of a creation whose tool is in use: the ones a rewrite starts from.
+IN_USE_STATES = (STATE_APPLIED, STATE_OBSERVED, STATE_FINALIZED)
+REWRITE = "rewrite"
+REWRITE_REASON_LIMIT = 600
+
+
+def send_back(id_: str, *, reason: str, by: str, origin: str,
+              words: str = "", call: dict | None = None) -> ChangeIntent:
+    """Send the creation of a tool in use back to be built again (ADR 0239,
+    rule 4): the tool was found wrong, and the builder receives ``reason``.
+
+    ``origin``: what found it wrong, a failure in use or the person, whose own
+    ``words`` are kept to be shown again. ``call``: the call that failed,
+    without what it carried; it becomes a functional case of the rewrite. The
+    version in use counts as one of the attempts, so the rewrite has one less.
+    """
+    from messages import get as _msg
+
+    current = get_intent(id_)
+    if current is None:
+        raise TransitionError(_msg("ERR_CHANGE_NOT_FOUND", id=id_))
+    if current.state not in IN_USE_STATES or current.intent_kind != KIND_CREATE_EXECUTOR:
+        raise TransitionError(_msg("ERR_CHANGE_REWRITE_NOT_IN_USE", state=current.state))
+    now = _iso_utc_now()
+    body = {key: value for key, value in (current.intent_body or {}).items()
+            if key not in _CLOSED_FACTS and key != "activation"}
+    body["rewrite"] = {"reason": " ".join(str(reason).split())[:REWRITE_REASON_LIMIT],
+                       "origin": origin, "by": by, "at": now,
+                       "words": " ".join(str(words).split())[:REWRITE_REASON_LIMIT]}
+    if call is not None:              # a call without arguments is a call too
+        body["rewrite"]["call"] = call
+    return _transition(id_, to_state=STATE_ACCEPTED, extra_cols={
+        "intent_body": body, "failed_at": None, "failed_reason": None,
+        "decision_by": by, "decision_ts": now,
+        "decision_action": REWRITE, "decision_reason": body["rewrite"]["reason"],
+    })
+
+
+def back_in_use(id_: str, *, ended: str) -> ChangeIntent:
+    """A rewrite ended without a new version and the version it was to replace
+    is still usable: the proposal is applied again, as it was. What was asked
+    and how it ended stay in the body."""
+    current = get_intent(id_)
+    if current is None:
+        raise TransitionError(f"intent {id_} not found")
+    body = dict(current.intent_body or {})
+    asked = body.pop("rewrite", None)
+    if current.state != STATE_ACCEPTED or not isinstance(asked, dict):
+        raise TransitionError(f"intent {id_} is not a rewrite in progress")
+    body.pop("activation", None)
+    body["last_rewrite"] = {**asked, "ended": " ".join(str(ended).split())[:300],
+                            "ended_at": _iso_utc_now()}
+    return _transition(id_, to_state=STATE_APPLIED, extra_cols={"intent_body": body})
 
 
 # What a closure or a refusal leaves in the body and a reopened proposal drops.

@@ -1165,12 +1165,33 @@ def _register_synth_keys(code: str) -> int:
     return n_registered
 
 
+def add_failed_call(signature: dict, cases: dict, failed_call: dict | None) -> bool:
+    """Add to the functional cases the call on which the version in use failed.
+
+    The case writer is told about it in words and does not always repeat it
+    (measured on 14/11/2026): this case is written by the code. It asks only
+    that the call is answered, so a candidate that fails on it by its own
+    code is refused before any person sees it. When the cases are already as
+    many as the door accepts, it takes the place of the last one.
+    """
+    from executor_birth_functional import MAX_CASES
+    from generated_rewrite import answered_case
+
+    case = answered_case(failed_call, (signature or {}).get("args_properties") or {})
+    tests = list((cases or {}).get("tests") or [])
+    if case is None or any(item.get("name") == case["name"] for item in tests):
+        return False
+    cases["tests"] = tests[:MAX_CASES - 1] + [case]
+    return True
+
+
 def run_full(user_request: str, llm_call_procedural, llm_call_wise, *,
              llm_call_creative=None, llm_call_fidelity=None,
              progress=None, decided_name: str = "",
              llm_call_tests=None,
              real_requests: tuple[str, ...] = (),
-             cases_correction: str = "") -> MultistageRun:
+             cases_correction: str = "",
+             failed_call: dict | None = None) -> MultistageRun:
     """Orchestratore a 6 stadi, separato per contratto di workload.
 
     Stages 1-3 are procedural (middle), stage 4 is editorial (creative),
@@ -1185,6 +1206,8 @@ def run_full(user_request: str, llm_call_procedural, llm_call_wise, *,
 
     ``cases_correction``: why the functional cases of an earlier candidate are
     questioned (the attempt loop found a case no code satisfied).
+    ``failed_call``: a call on which the version in use failed by its own code
+    (ADR 0239, rule 4); it is added to the cases as it is, by the code.
     """
     import uuid
     llm_call_creative = llm_call_creative or llm_call_procedural
@@ -1230,6 +1253,7 @@ def run_full(user_request: str, llm_call_procedural, llm_call_wise, *,
     run.stages.append(s3)
     if not s3.success:
         run.final_state = "abandoned"; run.abandon_reason = f"stage3: {s3.error}"; return run
+    add_failed_call(s2.output, s3.output, failed_call)
 
     if progress is not None: progress.update(4)
     s4 = run_stage4(

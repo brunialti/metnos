@@ -4044,6 +4044,17 @@ def _invoke_executor_impl_optional_context(
     return observation
 
 
+def _observed_call(executor, args, invoke):
+    """Run one call and let the owner of the generated tools see how it ended:
+    one that fails by its own code is withdrawn at once (ADR 0239, rule 4)."""
+    import generated_rewrite
+    import provider_reads
+
+    result = provider_reads.run(executor, args, invoke)
+    generated_rewrite.observe(executor, args, result)
+    return result
+
+
 def invoke_executor(executor, args, timeout_s=30, *, autonomy="supervised",
                     turn_id=None, actor=None, channel=None, target_device=None,
                     owner_user_id=None, execution_context=None):
@@ -4056,8 +4067,7 @@ def invoke_executor(executor, args, timeout_s=30, *, autonomy="supervised",
     from executor_scheduler import concurrency_identity_for, invoke_scheduled
 
     def call():
-        import provider_reads
-        return provider_reads.run(
+        return _observed_call(
             executor, args,
             lambda arguments: _invoke_executor_impl_optional_context(
                 executor, arguments, timeout_s=timeout_s, autonomy=autonomy,
@@ -4089,8 +4099,7 @@ def submit_executor(executor, args, timeout_s=30, *, autonomy="supervised",
     from executor_scheduler import concurrency_identity_for, submit_scheduled
 
     def call():
-        import provider_reads
-        return provider_reads.run(
+        return _observed_call(
             executor, args,
             lambda arguments: _invoke_executor_impl_optional_context(
                 executor, arguments, timeout_s=timeout_s, autonomy=autonomy,

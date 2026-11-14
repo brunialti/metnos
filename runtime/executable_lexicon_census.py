@@ -146,15 +146,15 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'calendar_resolver.py': ('ca5870a48f1e9241f906237adb80ae7543b3fc6cf8469a8c3d49d479c8d529ba', (('comparison', 4),)),
     'calibration_check.py': ('1372bc7e3adcb29f17155e1cc0a9f36501df90568a38129268444e09462b0afb', (('comparison', 1),)),
     'capabilities.py': ('9971e44f92f8597c815e12a129a1549f20fd315e44120f4d83246e983d025759', (('comparison', 12),)),
-    'change_applier.py': ('20f228e3f38446a5cd1f9f4aafcdfc1cd8b477270385caed3995da289095155f', (('comparison', 7), ('iteration', 1), ('membership', 3), ('regex', 1))),
+    'change_applier.py': ('a7d2cfaf24cac39b661c6d710b3260f5dc22206105e6d5164953f1d53aa9611c', (('comparison', 7), ('iteration', 1), ('membership', 3), ('regex', 1))),
     'change_applier_extend.py': ('e7d6b4979524f60c2aac6cf71988080c195da012a63fc21261d44fbb95b7108d', (('comparison', 2),)),
     'change_intent_adapters/_base.py': ('f6f87e2831c8a9ee8eeecc3b7589a40920c6a50d90a2ee543bf80a5e1edc7c6d', (('comparison', 1),)),
     'change_intent_adapters/introvertiva.py': ('f5b1248c9d1fec659b0afb1ddc563dee058fb64220ac3a150d7edb91902a6efe', (('comparison', 3),)),
     'change_intent_adapters/synt.py': ('c61f42767f29ef8d8b22adcce42e8c2e82651943d223c3eaa75532dd5b60383f', (('comparison', 3),)),
     'change_intent_adapters/telos.py': ('d7bcce89b9a6641cc306e284e45a8f1bc1cf4c55763a4bd59ca3e10506eeaa0f', (('comparison', 2),)),
     'change_intent_adapters/user_feedback.py': ('7ebb04050ddb83149d6520dfe8edbb2a08654bde0dfc959dba89d30fe58cc91b', (('comparison', 1), ('membership', 1))),
-    'change_intents.py': ('35dd2ac76bbb1ebcffbef448e2c4f4048009dac6698b943be60446dac6668e69', (('comparison', 14), ('helper-argument', 1), ('membership', 1))),
-    'change_observer.py': ('58ae58d18916c1d30b1244dfe0f7f7d5e226554dd0fe5eb83615bc482aaccec2', (('comparison', 12),)),
+    'change_intents.py': ('b69e30d9aae8832af6cde11e1344a823324606e77f69ead8fb3c6afd97afb2d2', (('comparison', 17), ('helper-argument', 1), ('membership', 1))),
+    'change_observer.py': ('5e8f4eda210bd6fc6ac9aba91c3b7b997ffdfc88db427e5aa4e427693246ffe2', (('comparison', 12),)),
     'change_rollback.py': ('85f0f61cba91b45b554c202e361a2e255b0f14d5ffdc853bd75c80d6ecdce718', (('comparison', 2),)),
     'channels/approval.py': ('5f3e8f37e8be1611fc3193b95560574d3fcdd76d64fb5233a571a7043b6aa99b', (('comparison', 2),)),
     'channels/daemon.py': ('3271fa8695d4c13d0cd34d2ac1ac6ffa4762292b85e467544afcf22b3caa71f6', (('comparison', 68), ('helper-argument', 1))),
@@ -425,7 +425,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'store.py': ('45927fda29a44168cbc00eb9ce4f6bd519edb4b3729723b68b1fe0ff349b8608', (('comparison', 1),)),
     'store_bootstrap.py': ('5ec6ad37a946c48c4fe51447ca84d58fc1b4ec910a5e8a6a5e536544e02cd7a7', (('helper-argument', 1),)),
     'synt.py': ('8b81761ad25a1a10fa08ace308d3b64ce60fe93386f9149d9b9dc5f7bd2aa63e', (('comparison', 21), ('helper-argument', 2))),
-    'synt_multistage.py': ('c57fd4b37644853af2c9116a290bba4d626301391884907298c955a7e95c559a', (('comparison', 16), ('helper-argument', 1), ('iteration', 1), ('membership', 1), ('prefix-suffix', 2))),
+    'synt_multistage.py': ('ead7d466fae3ee890186b7cca6d48f3845f7a5bb9698ba30721947f920bb8941', (('comparison', 16), ('helper-argument', 1), ('iteration', 1), ('membership', 1), ('prefix-suffix', 2))),
     'synth_orphan_cleanup.py': ('f25507830bd69d3016e8d51cdf91e38a134274aa723ae90b2c22993b04e5aa5a', (('comparison', 2), ('helper-argument', 1))),
     'synth_request.py': ('82bd98ef176d3a94e428a6ba582c6ed840167aa054b16be1e76e3eebbfd7998d', (('comparison', 3), ('helper-argument', 1))),
     'system/admin.py': ('95baaa5e7ca0105f272b3e9725a08b911b15e3f0f3cb2413144d9b47ca57361c', (('comparison', 35), ('helper-argument', 2), ('iteration', 2), ('literal-lookup', 1), ('membership', 1), ('prefix-suffix', 7), ('regex', 3))),
@@ -1251,8 +1251,10 @@ VALUE_BOUND_CLOSING_TECHNICAL_CONTAINERS: Mapping[str, str] = {
         "names of the commands the chat page runs by itself",
     "b15a9d1ac623a47d47666b3b64bc91ec47e56bfeb88d05249f1de5dead6bc92a":
         "private-use marks the engine puts around a table cell that must not wrap",
-    "6fa9666ea661bca78e7b315b99a1fa0c2b283682ed8513c7c20d5bb5ef994b04":
+    "0c47fd895fb3baa4d1768e4b03d01dcd0819107a8bf8eff4c30d9fd1313ec490":
         "names of the actions the buttons of the changes page post",
+    "761a80ba8f9db58d026dda06f334d821941a4eb24b77792fe648b32eca240dea":
+        "closed runtime error classes of a failure of a tool's own code",
     "e356402eaad6a4fee78d4317b0a6380ab3323dc8f276ec7535ed47b001e3b4b8":
         "closed refusal codes of the final checks and the message key of each",
     "dd283acae7436c1b311108a589f2287e99a7d52bc42fd6382cf8421167fe924e":

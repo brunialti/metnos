@@ -222,10 +222,10 @@ SURFACES: tuple[UiSurfaceSpec, ...] = (
          "origin", "summary", "details, effects, and metrics"),
         ("pulsante Attiva dello strumento pronto", "pulsante No dello strumento pronto",
          "usa il modello esterno", "chiudi la proposta",
-         "accetta", "rifiuta", "prepara", "ripristina", "riprova", "riapri"),
+         "accetta", "rifiuta", "prepara", "ripristina", "riprova", "riapri", "riscrivi"),
         ("Activate button of the ready tool", "No button of the ready tool",
          "use the external model", "close the proposal",
-         "accept", "reject", "stage", "roll back", "retry", "reopen"),
+         "accept", "reject", "stage", "roll back", "retry", "reopen", "rewrite"),
         (
             "Se in cima compare «Aspettano una tua risposta», comincia da lì: per uno strumento che Metnos si è costruito da solo è l'unica cosa che ti viene chiesta.",
             "Per uno strumento pronto leggi che cosa fa, quali permessi chiede, se quello che fa si può annullare e su quali prove è stato costruito; poi premi Attiva oppure No.",
@@ -237,6 +237,7 @@ SURFACES: tuple[UiSurfaceSpec, ...] = (
             "Premi Accetta solo se contenuto e bersaglio coincidono con ciò che intendi autorizzare: l'accettazione mette la proposta in coda e non la applica immediatamente.",
             "Usa Rifiuta per respingerla o Prepara per differirla; Ripristina e Riprova compaiono soltanto negli stati che li ammettono.",
             "Chiudi la proposta e No chiedono conferma prima di agire. Una proposta chiusa o rifiutata per errore torna fra le proposte con Riapri, nella scheda Scartate.",
+            "Se uno strumento che Metnos ha costruito, e che è in uso, fa la cosa sbagliata, scrivi nella sua riga che cosa non va e premi Riscrivi: lo strumento resta in uso e, quando la versione nuova è pronta, ti viene chiesto di attivarla.",
             "Dopo l'accettazione verifica che la riga indichi Accettata e in coda per l'applicazione.",
         ),
         (
@@ -250,6 +251,7 @@ SURFACES: tuple[UiSurfaceSpec, ...] = (
             "Press Accept only when content and target match what you intend to authorize: acceptance queues the proposal and does not apply it immediately.",
             "Use Reject to decline it or Stage to defer it; Roll back and Retry appear only in states that allow them.",
             "Close the proposal and No ask for confirmation before acting. A proposal closed or rejected by mistake goes back among the proposals with Reopen, in the Rejected tab.",
+            "If a tool Metnos built, and that is in use, does the wrong thing, write in its row what is wrong and press Rewrite: the tool stays in use and, when the new version is ready, you are asked to activate it.",
             "After acceptance, verify that the row says Accepted and queued for application.",
         ),
         (

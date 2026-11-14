@@ -40,6 +40,7 @@ from change_intents import (
     STATE_PROPOSED,
     ChangeIntent,
     apply_decision,
+    back_in_use,
     get_intent,
     list_intents,
     mark_applied,
@@ -204,6 +205,45 @@ def _creation_request(ci: ChangeIntent) -> tuple[str, str]:
             or ci.intent_summary or target)
 
 
+def rewrite_reason(ci: ChangeIntent) -> str:
+    """Why the version in use was withdrawn, when this proposal is its rewrite."""
+    rewrite = (ci.intent_body or {}).get("rewrite")
+    return str(rewrite.get("reason") or "") if isinstance(rewrite, dict) else ""
+
+
+def replaces_words(ci: ChangeIntent) -> str:
+    """What the person is told a rewritten version replaces, or nothing."""
+    rewrite = (ci.intent_body or {}).get("rewrite")
+    if not isinstance(rewrite, dict):
+        return ""
+    from messages import get as _msg
+
+    words = str(rewrite.get("words") or "")
+    return (_msg("UI_CHANGE_READY_REPLACES_ASKED", words=words) if words
+            else _msg("UI_CHANGE_READY_REPLACES_FAULT"))
+
+
+def _version_in_use_stays(ci: ChangeIntent | None, ended: str, *, tell: bool = True) -> bool:
+    """A rewrite ended without a new version. When the version it was to
+    replace is still usable the proposal is applied again, as it was, and the
+    person is told the rewrite was not done. A version withdrawn for a fault
+    is not usable: its proposal ends like any other that failed."""
+    if ci is None or ci.state != STATE_ACCEPTED or not rewrite_reason(ci):
+        return False
+    try:
+        if not _planner_can_use(_creation_request(ci)[0]):
+            return False
+    except Exception as exc:  # noqa: BLE001 - an unreadable catalog keeps nothing
+        _log.warning("change_applier: catalog check failed: %r", exc)
+        return False
+    back_in_use(ci.id, ended=ended)
+    _audit({"event": "rewrite_not_done", "id": ci.id, "ended": ended[:300]})
+    if tell:
+        _push("MSG_CHANGE_REWRITE_NOT_DONE", ci,
+              event_key=f"change_rewrite_ended:{ci.id}:{_iso_now()}")
+    return True
+
+
 def pending_review(ci: ChangeIntent) -> str | None:
     """The retained candidate of this proposal that waits for review, if any:
     under the name asked for or, when Synth chose another name, the one
@@ -232,9 +272,12 @@ def apply_create_executor(ci: ChangeIntent) -> dict:
     from messages import get as _msg
 
     expected_name, intent_text = _creation_request(ci)
+    # The rewrite of a withdrawn version (ADR 0239, rule 4): the name being in
+    # the catalog is the version to replace, not the work already done.
+    withdrawn_reason = rewrite_reason(ci)
 
     try:
-        if _planner_can_use(expected_name):
+        if not withdrawn_reason and _planner_can_use(expected_name):
             return {
                 "executor_name": expected_name,
                 "short_circuit": "already_in_catalog",
@@ -258,7 +301,10 @@ def apply_create_executor(ci: ChangeIntent) -> dict:
         examples = learning_loop.gap_requests(str(body["verb"]), str(body["object"]))
     with _automatic_work_in_progress():
         result = handle_synth_request(
-            {"expected_name": expected_name, "intent": intent_text, "examples": examples},
+            {"expected_name": expected_name, "intent": intent_text, "examples": examples,
+             "correction": withdrawn_reason,
+             "failed_call": ((body.get("rewrite") or {}).get("call")
+                             if withdrawn_reason else None)},
             user_query=intent_text,
             progress=_StepAside(),
             verbose=False,
@@ -334,16 +380,19 @@ def pushed_answer(data: str) -> tuple[str, str] | None:
 
 
 def _push(body_key: str, ci: ChangeIntent, *, event_key: str, buttons: list | None = None,
-          **values) -> None:
+          lead: str = "", **values) -> None:
     """One notification per event, best effort: a channel that is down never
-    stops the applier, and the page shows the same thing anyway."""
+    stops the applier, and the page shows the same thing anyway.
+
+    ``lead``: a first line said before the message (what a new version replaces).
+    """
     try:
         import notify_admin
         from messages import get as _msg
 
         values.setdefault("name", _creation_request(ci)[0])
         notify_admin.notify(
-            _msg(body_key, **values),
+            "\n".join(filter(None, (lead, _msg(body_key, **values)))),
             kind="changes", severity="info", event_key=event_key,
             metadata={"change_intent": ci.id}, buttons=buttons)
     except Exception as exc:  # noqa: BLE001
@@ -416,6 +465,7 @@ def push_ready_candidate(ci: ChangeIntent, proposal_id: str) -> None:
     permissions = ("; ".join(card.get("permissions") or [])
                    or _msg("UI_CHANGE_READY_NO_PERMISSIONS"))
     _push("MSG_CHANGE_READY_PUSH", ci, event_key=_ready_key(proposal_id),
+          lead=replaces_words(ci),
           name=str(card.get("name") or _creation_request(ci)[0]),
           does=str(card.get("description") or ""), permissions=permissions,
           undo=_msg("UI_CHANGE_READY_UNDO_YES" if card.get("revertible")
@@ -557,7 +607,7 @@ def waiting_for_person(intents, *, lang: str) -> list[dict]:
             _log.warning("change_applier: candidate card unavailable: %r", exc)
             continue
         waiting.append(dict(
-            asdict(ci), candidate=card,
+            asdict(ci), candidate=card, replaces=replaces_words(ci),
             waiting_kind="activating" if activation_running(ci) else "activation",
             activation_note=((ci.intent_body or {}).get("activation") or {}).get("note")))
     return waiting
@@ -574,6 +624,8 @@ def decline_candidate(ci: ChangeIntent, *, by: str) -> ChangeIntent:
         candidate_answered(proposal_id)
     _audit({"event": "candidate_declined", "id": ci.id, "by": by,
             "proposal_id": proposal_id})
+    if _version_in_use_stays(ci, "declined by the person", tell=False):
+        return get_intent(ci.id)
     return close_until(ci.id, reason="declined by the person", by=by)
 
 
@@ -685,9 +737,10 @@ def run_activation(ci_id: str, proposal_id: str, *, by: str, at: str) -> dict:
                              synth_activation.refusal_reason(reply))
     synth_activation.discard_candidate(DEFAULT_PROPOSALS_DIR, proposal_id)
     update_body(ci_id, activation={"state": "refused", "by": by, "at": at})
-    mark_failed(ci_id, reason=f"{reason} [{technical}]")
     _audit({"event": "activation_refused", "id": ci_id, "reason": technical[:300]})
     tell("MSG_CHANGE_ACTIVATION_REFUSED_PUSH", reason=reason)
+    if not _version_in_use_stays(get_intent(ci_id), f"{reason} [{technical}]", tell=False):
+        mark_failed(ci_id, reason=f"{reason} [{technical}]")
     return {"result": "refused", "reason": reason}
 
 
@@ -924,7 +977,19 @@ def task_change_applier(payload: dict | None = None) -> dict:
             _audit({"event": "no_handler", "id": ci.id, "kind": ci.intent_kind})
             continue
         try:
-            effect = handler(ci)
+            try:
+                effect = handler(ci)
+            except (NotQuiet, ReviewPending):
+                raise
+            except Exception as ended:  # noqa: BLE001 - told below, by kind
+                # A rewrite that did not make it: the version in use stays.
+                if _version_in_use_stays(get_intent(ci.id),
+                                         f"{type(ended).__name__}: {ended}"):
+                    skipped_count += 1
+                    details.append({"id": ci.id, "kind": ci.intent_kind,
+                                    "result": "rewrite_not_done"})
+                    continue
+                raise
         except NotQuiet:
             # Still accepted: built at the first quiet moment.
             skipped_count += 1

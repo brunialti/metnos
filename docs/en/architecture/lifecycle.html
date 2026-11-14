@@ -210,11 +210,11 @@ only and removes what does not work. The figure shows the whole path.</p>
 <text x="575" y="386" text-anchor="start" fill="#475569" font-size="9.5">not enough even so</text>
 <path d="M335,232 V438 H468" fill="none" stroke="#1A477A" stroke-width="2" marker-end="url(#m-cycle)"/>
 <text x="345" y="262" text-anchor="start" fill="#475569" font-size="9.5">No</text>
-<path d="M70,232 V298" fill="none" stroke="#1A477A" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#m-cycle)"/>
+<path d="M70,232 V298" fill="none" stroke="#1A477A" stroke-width="2" marker-end="url(#m-cycle)"/>
 <text x="78" y="286" text-anchor="start" fill="#475569" font-size="9.5">if it errors</text>
 <path d="M190,232 V262 H218 V438 H202" fill="none" stroke="#1A477A" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#m-cycle)"/>
 <text x="226" y="386" text-anchor="start" fill="#475569" font-size="9.5">if nobody uses it</text>
-<rect x="10" y="300" width="190" height="56" rx="8" fill="#FDE8E8" stroke="#9B1C1C" stroke-dasharray="6 4"/>
+<rect x="10" y="300" width="190" height="56" rx="8" fill="#FDE8E8" stroke="#9B1C1C"/>
 <text x="105" y="324" text-anchor="middle" fill="#1A477A" font-weight="700">retired at once</text>
 <text x="105" y="342" text-anchor="middle" fill="#475569" font-size="9.5">and rewritten with that reason</text>
 <rect x="10" y="410" width="190" height="56" rx="8" fill="#F1F5F9" stroke="#64748B" stroke-dasharray="6 4"/>
@@ -273,9 +273,17 @@ only and removes what does not work. The figure shows the whole path.</p>
  pretends its own effect, for instance declaring saved what it wrote nowhere, is stopped
  before it reaches the person. After a no the proposal rests for thirty days; the no
  asks for confirmation too and can be reopened.</li>
- <li><strong>It stays under observation.</strong> It is planned that a generated tool
- that errors is retired at once and rewritten with that reason, and that one never used
- decays after sixty days.</li>
+ <li><strong>It stays under observation.</strong> A generated tool that fails because of a
+ defect in its own code is retired at once: the planner no longer sees it and the person
+ is told. A declared refusal, such as a wrong argument or an external service that does
+ not answer, is an answer of the tool and does not retire it. The retired tool goes back
+ to its builder with the reason and with the call that failed, repeated without its
+ content: the new version must answer that very call before it reaches the person, and it
+ counts as one of the three attempts. When it is ready the person answers
+ <strong>Activate</strong> and the new version takes the place of the old one. The person
+ can ask for a rewrite too: on the <strong>Changes</strong> page they write what is wrong
+ and press <strong>Rewrite</strong>; in this case the tool stays in use until the new
+ version replaces it. It is planned that a tool never used decays after sixty days.</li>
 </ol>
 
 <p>The signature is not made by the service that built the tool. It is made by a small

@@ -784,14 +784,14 @@ async def _generated_tools_preferences(request: web.Request) -> web.Response:
 # an address the service did not know, the answer was «not found» and the
 # page showed nothing (12/11/2026).
 CHANGE_ACTIONS = ("accept", "reject", "stage", "rollback", "retry", "reopen",
-                  "external", "close", "activate", "decline")
+                  "external", "close", "activate", "decline", "rewrite")
 
 
 async def admin_change_action(request: web.Request) -> web.Response:
     """POST /admin/changes/{id}/{action}.
 
     action ∈ accept | reject | stage | rollback | retry | reopen | external
-             | close | activate | decline
+             | close | activate | decline | rewrite
     Body opzionale: {"reason": "..."}.
     """
     import change_intents as ci_mod
@@ -804,7 +804,7 @@ async def admin_change_action(request: web.Request) -> web.Response:
     action = request.match_info["action"]
 
     import change_applier
-    if (action not in ("accept", "reject", "stage", "rollback", "retry")
+    if (action not in ("accept", "reject", "stage", "rollback", "retry", ci_mod.REWRITE)
             and not ci_mod.is_reopen(action)
             and not ci_mod.is_person_answer(action)
             and not change_applier.is_candidate_decision(action)):
@@ -856,6 +856,11 @@ async def admin_change_action(request: web.Request) -> web.Response:
         elif ci_mod.is_reopen(action):
             # The way back from a closure or a refusal given by mistake.
             updated = ci_mod.reopen(id_, by=by)
+        elif action == ci_mod.REWRITE:
+            # The person says in words what is wrong with a generated tool in
+            # use: it is written again, and stays in use meanwhile (ADR 0239).
+            import generated_rewrite
+            updated = generated_rewrite.rewrite_for_person(id_, words=reason or "", by=by)
         elif action == "rollback":
             # The effect is taken back for real before the state says so: a
             # change marked «rolled back» with its tool still in the catalog
