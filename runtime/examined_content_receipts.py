@@ -20,13 +20,18 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import re
 import stat
+import string
 from pathlib import Path
 
 _DIRECTORY = "examined-content-v1"
-_KEY = re.compile(r"[0-9a-f]{64}")
 _MAXIMUM_BYTES = 16 * 1024 * 1024
+
+
+def _is_key(name: object) -> bool:
+    """The lowercase hexadecimal form of a SHA-256 digest, and nothing else."""
+    return (isinstance(name, str) and len(name) == hashlib.sha256().digest_size * 2
+            and name == name.lower() and all(char in string.hexdigits for char in name))
 
 
 def key(domain: bytes, parts) -> str:
@@ -58,7 +63,7 @@ def _directory() -> Path | None:
     carries the account in its name, so two accounts sharing a state path
     never share receipts.
     """
-    if os.name != "posix":
+    if not hasattr(os, "geteuid"):         # no accounts of this kind: nothing is remembered
         return None
     account = os.geteuid()
     if account == 0:
@@ -79,7 +84,7 @@ def load(name: str):
     """The value remembered under a key, or None.  Anything unexpected about
     the file or its folder means there is no receipt."""
     directory = _directory()
-    if directory is None or not isinstance(name, str) or not _KEY.fullmatch(name):
+    if directory is None or not _is_key(name):
         return None
     try:
         folder = directory.lstat()
@@ -100,18 +105,18 @@ def load(name: str):
     finally:
         os.close(descriptor)
     try:
-        return json.loads(raw.decode("utf-8"))
-    except (ValueError, UnicodeDecodeError):
+        return json.loads(raw)
+    except ValueError:
         return None
 
 
 def store(name: str, value) -> None:
     """Remember a value.  Failing to write only costs the next examination."""
     directory = _directory()
-    if directory is None or not isinstance(name, str) or not _KEY.fullmatch(name):
+    if directory is None or not _is_key(name):
         return
     try:
-        data = json.dumps(value, separators=(",", ":"), ensure_ascii=True).encode("ascii")
+        data = json.dumps(value).encode()
         if len(data) > _MAXIMUM_BYTES:
             return
         directory.mkdir(parents=True, exist_ok=True, mode=0o700)

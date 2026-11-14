@@ -2252,6 +2252,63 @@ def _required_action_not_planned(framework: Framework, query: str, intent,
         framework=framework, error_class="capability_missing")
 
 
+def _reads_what_nothing_reads(framework: Framework, intent, catalog) -> str:
+    """The verb of a request to read an object that no tool can read, or "".
+
+    «List my calendars», when tools create and delete calendars and none
+    lists them.  Producers are interchangeable (find/read/get/list), but only
+    on the object that was asked: the planner answered with a neighbour — it
+    listed folders and got a permission error, or read events and found none —
+    so the person had a wrong answer and the gap was never counted (turns
+    0ed643fd, ea97d1db, d1c6193c, 14/11/2026).  A request like this is a
+    missing capability, and saying so is what lets it be built.
+
+    Only one action, with a producer verb, on an object of the closed
+    vocabulary.  It does not apply when the object can be read (by a tool on
+    it or, for files and their carriers, on its filesystem sibling), when the
+    object is a shape of data rather than a domain (every tool on it is a
+    processor: `entries`, `numbers`), or when the plan is one of the singular
+    operations whose object the vocabulary cannot name (`get_now`).
+    """
+    try:
+        from vocab import (FILE_CARRIER_OBJECTS, OBJECTS, PROCESSOR_VERBS,
+                           PRODUCER_VERBS)
+        import naming_grammar as _ng
+        verb = str(getattr(intent, "verb", "") or "").lower()
+        obj = str(getattr(intent, "object", "") or "").lower()
+        actions = [a for a in (getattr(intent, "actions", None) or []) if isinstance(a, dict)]
+        if (verb not in PRODUCER_VERBS or obj not in OBJECTS or len(actions) > 1
+                or obj in _FS_SIBLING_OBJECTS or obj in FILE_CARRIER_OBJECTS):
+            return ""
+        verbs_on_object = set()
+        known = 0
+        for entry in (catalog or []):
+            name = _entry_name(entry)
+            parsed = _ng.parse_name(name) if name else None
+            if not parsed:
+                continue
+            known += 1
+            # A tool may declare that it also serves another object.
+            aliases = (entry.get("planning_object_aliases", ())
+                       if isinstance(entry, dict) else
+                       getattr(entry, "planning_object_aliases", ())) or ()
+            if (parsed.verb in PRODUCER_VERBS
+                    and (obj in aliases or _entry_can_produce_object(entry, obj))):
+                return ""                  # something reads it
+            if parsed.obj == obj or obj in aliases:
+                verbs_on_object.add(parsed.verb)
+        if not known:
+            return ""
+        if verbs_on_object and verbs_on_object <= set(PROCESSOR_VERBS):
+            return ""                      # a shape of data, not a domain
+        steps = [step.tool or "" for step in framework.steps]
+        if any(tool in _SINGULAR_EXECUTORS for tool in steps):
+            return ""
+        return verb
+    except Exception:  # noqa: BLE001 - a guard never breaks the turn
+        return ""
+
+
 def _dropped_required_verbs(framework: Framework, query: str, intent=None,
                             catalog=None, *, weak_evidence: bool = True) -> set:
     """Verbi RICHIESTI dalla query ma ASSENTI dal framework → decomposizione
@@ -2339,7 +2396,9 @@ def _dropped_required_verbs(framework: Framework, query: str, intent=None,
     # requests.  That gap turned "install" into a read-only package lookup.
     required_effects = set(COVERAGE_REQUIRED_VERBS) - set(PRODUCER_VERBS)
     if len(qverbs) < 2 and not (qverbs & required_effects):
-        return set()
+        # Permissive on the verb, never on the object: see the helper.
+        _unreadable = _reads_what_nothing_reads(framework, intent, catalog)
+        return {_unreadable} if _unreadable else set()
     fw_verbs = set()
     planned_objects: dict[str, set[str]] = {}
     by_name = {_entry_name(entry): entry for entry in (catalog or [])}
@@ -2615,6 +2674,11 @@ def _dropped_required_verbs(framework: Framework, query: str, intent=None,
     # plan both reads or writes and writes into.
     if "change" in dropped and _plan_writes_a_named_sheet(framework, query):
         dropped.discard("change")
+    # A producer of ANOTHER object does not serve a request to read an object
+    # that nothing reads (see `_reads_what_nothing_reads`).
+    _unreadable = _reads_what_nothing_reads(framework, intent, catalog)
+    if _unreadable:
+        dropped.add(_unreadable)
     return dropped
 
 
