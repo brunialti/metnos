@@ -289,7 +289,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'http_cache.py': ('b8231d02ff7dc5f9f5aaeb551ebf861c93fcba5af6ce51010761c6713947c26e', (('comparison', 4),)),
     'http_render.py': ('8449bc91ca2bfe9d82a5e0cfc98c7392b3f92dac00697255f6efcbf87b5fad33', (('comparison', 2), ('helper-argument', 1))),
     'http_routes_admin.py': ('397d9043a989328f47b5b6a797681d3b8bb86adc01e37a2c09c20c13c853c347', (('comparison', 53), ('helper-argument', 12), ('literal-lookup', 1))),
-    'http_routes_agent.py': ('4eb36f539304c2eddef8066e687b8d45537b6502d4e191683e8a590d73e0bf60', (('comparison', 78), ('helper-argument', 19), ('iteration', 1), ('membership', 4), ('prefix-suffix', 1))),
+    'http_routes_agent.py': ('49d5ff06edea892925f6e5c58e37bbf06c6eade033fc37e430085cf3653035ba', (('comparison', 80), ('helper-argument', 19), ('iteration', 1), ('membership', 5), ('prefix-suffix', 1))),
     'http_routes_durable_workloads.py': ('9c72b2c4296cee7af9e8870f8466438c3280fb3429113c4f5c129a7fad273542', (('comparison', 2), ('helper-argument', 12), ('iteration', 3), ('literal-lookup', 1))),
     'http_routes_stack.py': ('8dced35285ba737e67128363e97dfc380f709c1bd6c9688dc4c0ca2e03377189', (('comparison', 1),)),
     'i18n.py': ('0918f6566736ae0711c545d7ea3850f0b90110861bc7afca7a8d320513864b15', (('comparison', 7),)),
@@ -609,6 +609,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'long_answers.py': ('155eae6b2abd4099e5fb8cce026c4e34e0dfdbe494552956d24da6f3fae152b7', (('comparison', 2), ('iteration', 1), ('prefix-suffix', 4))),
     'provider_reads.py': ('555d640180c5d06a6fb022c9585068579ac0b5ba7b76725fa292fdd7a1d19453', (('comparison', 4),)),
     'provider_catalog.py': ('f51fa274ab74fd2a4cfd1473ff05dab0ed87e51965a2c790ea9cbb6009b29ac7', (('comparison', 13), ('helper-argument', 1), ('prefix-suffix', 3))),
+    'oauth_flow.py': ('15fdff4c5dab34c478d3e5ae9b152c828a08079e669125c7f605fc9b55fe89e4', (('comparison', 2),)),
 }
 
 VALUE_BOUND_SEED_GATE_FINGERPRINTS: Mapping[str, int] = {
@@ -1111,6 +1112,8 @@ VALUE_BOUND_CLOSING_TECHNICAL_CONTAINERS: Mapping[str, str] = {
         "closed argument names of a search tool's other backends, not read by a local search",
     "64e2b4c5d00abb207eadb4f2e8910969885e8ce4fd15409f90144623a3e68a72":
         "closed API names and versions behind the readable bases of a provider",
+    "7c99590534cc984529d5fdb68c9ad46551212b2b3db70c2cd4c293c351c7f023":
+        "closed codes of a refused return address and the catalog keys of their notices",
     "57f9b5a0034dae3d3bd23fc26a4ec18daabd7d7974f58ad14d827710de177530":
         "closed JSON-Schema scalar type names",
     "fe44debc7b2e0bf4973786233bb18b803974601799a5282630eb536808beadaf":

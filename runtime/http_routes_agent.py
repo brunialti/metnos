@@ -2222,6 +2222,37 @@ def _resolve_i18n_step(step):
     return out
 
 
+_OAUTH_RETURN_NOTICES = {
+    "insecure": "MSG_OAUTH_RETURN_INSECURE",
+    "unregistered": "MSG_OAUTH_RETURN_UNREGISTERED",
+}
+
+
+def _oauth_return_notice(request: web.Request, state: dict) -> str:
+    """For the setup of a consent: the address the provider must bring the
+    person back to, when the client file on record does not allow it or when
+    there is no file yet. Without it the consent ends on the provider's own
+    error page, which names neither the address nor the remedy (14/11/2026).
+
+    Computed here because the address depends on where the page was opened
+    from, which only this layer knows.
+    """
+    on_complete = state.get("on_complete")
+    if not isinstance(on_complete, dict) or on_complete.get("type") != "start_oauth_redirect_flow":
+        return ""
+    import oauth_flow
+    from http_auth import external_request_scheme
+    from orchestration import _resolve_oauth_redirect_uri
+    redirect = _resolve_oauth_redirect_uri(
+        host_override=f"{external_request_scheme(request)}://{request.host}")
+    on_record = next((step.get("default") for step in state.get("dialog") or []
+                      if isinstance(step, dict) and step.get("var") == "client_secret_path"), None)
+    problem = oauth_flow.redirect_problem(on_record, redirect)
+    if (problem is None and on_record) or oauth_flow.return_accepted(on_complete.get("binding"), redirect):
+        return ""
+    return _msg(_OAUTH_RETURN_NOTICES.get(problem, "MSG_OAUTH_RETURN_ADDRESS"), redirect=redirect)
+
+
 async def dialog_form(request: web.Request) -> web.Response:
     """GET /agent/dialog/<dialog_id>/form — render del form HTML.
 
@@ -2262,6 +2293,7 @@ async def dialog_form(request: web.Request) -> web.Response:
             state.get("title") or _msg("MSG_CHAT_DIALOG_DEFAULT_TITLE")
         ),
         description=_resolve_i18n_str(state.get("description") or ""),
+        notice=_oauth_return_notice(request, state),
         expired_message=_resolve_i18n_str("MSG_DIALOG_EXPIRED"),
         dialog=dialog_steps,
         dialog_cap_query=_dialog_cap_query(request, dialog_id),
@@ -2539,6 +2571,14 @@ async def dialog_submit(request: web.Request) -> web.Response:
             _turn_pool(request).release(reservation)
 
 
+def _redirect_is_over(url: str) -> bool:
+    """A redirect carrying the state of a consent request is alive only while
+    that request is pending. An address without one is not judged here."""
+    import oauth_pending
+    states = urllib.parse.parse_qs(urllib.parse.urlsplit(url).query).get("state")
+    return bool(states) and oauth_pending.peek(states[0]) is None
+
+
 def _dialog_completion_response(state: dict, admin_key: str) -> web.Response:
     """Replay the complete result, rebuilding short-lived media capabilities."""
     receipt = state.get("callback_receipt") or state.get("http_callback_receipt") or {}
@@ -2570,6 +2610,13 @@ def _dialog_completion_response(state: dict, admin_key: str) -> web.Response:
             head, _, rest = completion_message.partition("\n")
             redirect_url = head[len("__REDIRECT__:"):].strip()
             msg_for_display = rest or msg_for_display
+        if redirect_url and _redirect_is_over(redirect_url):
+            # The request behind this address was answered or is too old. A
+            # completed form is replayed at every reload of the chat: sending
+            # the browser there again ends on an error page and keeps the
+            # person out of the chat (14/11/2026).
+            redirect_url = ""
+            msg_for_display = _msg("MSG_CHAT_DIALOG_REDIRECT_OVER")
         if redirect_url:
             esc_url = _escape_html(redirect_url)
             setup_started = _escape_html(
@@ -4194,14 +4241,14 @@ async def pair_consume(request: web.Request) -> web.Response:
 
     try:
         user = _users.consume_pairing_token("http", device_id, token)
-    except ValueError as ex:
-        return web.Response(
-            text=f"<h2>Pair fallito</h2><p>{html_escape(str(ex))}</p>"
-                 f"<p>Il token potrebbe essere gia' stato usato o scaduto. "
-                 f"Chiedi all'admin di generarne uno nuovo.</p>"
-                 f"<p><a href=\"/\">Torna</a></p>",
-            status=410, content_type="text/html",
-        )
+    except ValueError:
+        # The link works once. A browser that is already recognized and opens
+        # it again has nothing left to pair: the chat is where it was going.
+        if request.get("role") in {"user", "admin"}:
+            raise web.HTTPFound("/")
+        return _result_page(
+            ok=False, title=_msg("MSG_PAIR_LINK_SPENT_TITLE"),
+            body=f"<p>{html_escape(_msg('MSG_PAIR_LINK_SPENT_BODY'))}</p>", status=410)
 
     admin_key = app_get(request.app, APP_ADMIN_KEY, "")
     cookie_val = issue_user_cookie(admin_key, device_id)
@@ -4240,36 +4287,26 @@ async def oauth_callback(request: web.Request) -> web.Response:
     state = request.query.get("state") or ""
     error = request.query.get("error") or ""
 
+    import oauth_pending
+
+    def said(key: str, **params) -> str:
+        return f"<p>{html_escape(_msg(key, **params))}</p>"
+
     if error:
-        return _oauth_result_page(
-            ok=False,
-            title="Autorizzazione rifiutata",
-            body=(f"Google ha riportato: <code>{html_escape(error)}</code>. "
-                  f"Riprova dalla chat se vuoi rifare il setup."),
-        )
+        return _result_page(
+            ok=False, title=_msg("MSG_OAUTH_PAGE_REFUSED_TITLE"),
+            body=said("MSG_OAUTH_PAGE_REFUSED_BODY", error=error))
 
     if not code or not state:
-        return _oauth_result_page(
-            ok=False,
-            title="Callback OAuth incompleto",
-            body="Parametri <code>code</code> o <code>state</code> mancanti.",
-        )
+        return _result_page(
+            ok=False, title=_msg("MSG_OAUTH_PAGE_INCOMPLETE_TITLE"),
+            body=said("MSG_OAUTH_PAGE_REPEAT"))
 
-    try:
-        import oauth_pending
-        entry = oauth_pending.pop(state)
-    except ImportError:
-        return _oauth_result_page(
-            ok=False, title="OAuth non disponibile",
-            body="oauth_pending non importabile sul server.",
-        )
-
+    entry = oauth_pending.pop(state)
     if entry is None:
-        return _oauth_result_page(
-            ok=False, title="State scaduto",
-            body=("Il flow OAuth e' scaduto (TTL 10 min) o e' stato gia' "
-                  "consumato. Rifai la richiesta dalla chat per ripartire."),
-        )
+        return _result_page(
+            ok=False, title=_msg("MSG_OAUTH_PAGE_EXPIRED_TITLE"),
+            body=said("MSG_OAUTH_PAGE_EXPIRED_BODY", minutes=oauth_pending._TTL_S // 60))
 
     owner_user_id = str(entry.get("owner_user_id") or "").strip()
     try:
@@ -4283,11 +4320,9 @@ async def oauth_callback(request: web.Request) -> web.Response:
             return _finish_oauth_callback_for_owner(
                 entry, code, owner=owner)
     except OwnerUnavailable:
-        return _oauth_result_page(
-            ok=False, title="State scaduto",
-            body=("Il flow OAuth non appartiene piu' a un utente attivo. "
-                  "Rifai la richiesta dalla chat per ripartire."),
-        )
+        return _result_page(
+            ok=False, title=_msg("MSG_OAUTH_PAGE_EXPIRED_TITLE"),
+            body=said("MSG_OAUTH_PAGE_NO_OWNER_BODY"))
 
 
 def _finish_oauth_callback_for_owner(entry: dict, code: str, *,
@@ -4296,20 +4331,20 @@ def _finish_oauth_callback_for_owner(entry: dict, code: str, *,
 
     try:
         import oauth_flow
-        ok, err = oauth_flow.finish_flow(
+        ok, err, ungranted = oauth_flow.finish_flow(
             flow_state=entry.get("flow_state") or {},
             code=code,
             binding=entry.get("binding") or "",
             mirror_paths=entry.get("mirror_paths") or [],
         )
     except (ImportError, OSError, RuntimeError, ValueError) as ex:
-        return _oauth_result_page(
+        return _result_page(
             ok=False, title=_msg("MSG_TOKEN_EXCHANGE_FAILED"),
             body=f"<code>{html_escape(type(ex).__name__)}: {html_escape(str(ex))}</code>",
         )
 
     if not ok:
-        return _oauth_result_page(
+        return _result_page(
             ok=False, title=_msg("MSG_TOKEN_EXCHANGE_FAILED"),
             body=f"<code>{html_escape(str(err))}</code>",
         )
@@ -4343,7 +4378,12 @@ def _finish_oauth_callback_for_owner(entry: dict, code: str, *,
     else:
         resume_body = _msg("MSG_TOKEN_SAVED_NO_RESUME")
 
-    return _oauth_result_page(
+    if ungranted:
+        # Said first: what follows may fail for this very reason.
+        names = ", ".join(str(scope).rstrip("/").rsplit("/", 1)[-1] for scope in ungranted)
+        resume_body = (f"<p>{html_escape(_msg('MSG_OAUTH_PAGE_PARTIAL', missing=names))}</p>"
+                       + resume_body)
+    return _result_page(
         ok=True, title=_msg("MSG_SETUP_COMPLETED"),
         body=resume_body,
     )
@@ -4377,13 +4417,16 @@ def _format_resume_result(res) -> str:
     return f"<p>{_msg('MSG_RESUME_NO_OUTPUT')}</p>"
 
 
-def _oauth_result_page(*, ok: bool, title: str, body: str) -> web.Response:
-    """Render pagina HTML autostante per OAuth callback (success o failure)."""
+def _result_page(*, ok: bool, title: str, body: str, status: int = 200) -> web.Response:
+    """A page that stands alone, outside the chat: the outcome of a return
+    from a provider or of a pairing link. `title` is plain text, `body` HTML."""
+    import i18n as _i18n
     color = "#2a7c2a" if ok else "#a02020"
     icon = "✓" if ok else "✗"
+    title = html_escape(title)
     html = f"""<!doctype html>
-<html lang="it"><head><meta charset="utf-8">
-<title>Metnos - OAuth</title>
+<html lang="{html_escape(_i18n.current_lang())}"><head><meta charset="utf-8">
+<title>Metnos</title>
 <style>
 body{{font:14px system-ui,-apple-system,sans-serif;background:#fafafa;
      color:#222;max-width:640px;margin:2rem auto;padding:1rem;}}
@@ -4400,9 +4443,9 @@ a.btn:hover{{background:#eef}}
 <body><div class="card">
 <h1>{icon} {title}</h1>
 {body}
-<p><a class="btn" href="/">Torna alla chat</a></p>
+<p><a class="btn" href="/">{html_escape(_msg("MSG_CHAT_DIALOG_RETURN"))}</a></p>
 </div></body></html>"""
-    return web.Response(text=html, content_type="text/html")
+    return web.Response(text=html, content_type="text/html", status=status)
 
 
 async def turn_retry_handler(request: web.Request) -> web.Response:

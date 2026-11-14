@@ -6,6 +6,9 @@
   {% if description %}
   <p class="muted">{{ description|e }}</p>
   {% endif %}
+  {% if notice %}
+  <p data-notice style="padding:.5rem .7rem;border:1px solid var(--warn-line);border-radius:6px;background:var(--warn-soft);color:var(--warn-fg);overflow-wrap:anywhere;white-space:pre-line">{{ notice|e }}</p>
+  {% endif %}
   <p class="muted" style="font-size:.78rem;overflow-wrap:anywhere;">
     {% if origin_turn_id %}{{ msg("MSG_CHAT_DIALOG_TURN_ID_LABEL") }} <code>{{ origin_turn_id|e }}</code> · {% endif %}
     {{ msg("MSG_CHAT_DIALOG_ID_LABEL") }} <code>{{ dialog_id|e }}</code>

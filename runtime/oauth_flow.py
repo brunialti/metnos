@@ -26,11 +26,51 @@ Determinismo §7.9: niente LLM. Niente subprocess. Solo google-auth-oauthlib
 """
 from __future__ import annotations
 
+import ipaddress
 import json
 import os
 import shutil
+import urllib.parse
 from pathlib import Path
 from typing import Optional
+
+
+def _this_computer(host: str) -> bool:
+    if host == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
+def redirect_problem(client_secret_path: object, redirect_uri: str) -> Optional[str]:
+    """Why the provider would refuse this return address, as far as this side
+    can tell before sending the person there. A closed code or None.
+
+    ``insecure``: plain http towards a host that is not this computer. A
+    provider takes the return of a consent over https or on the loopback
+    interface only (RFC 8252).
+    ``unregistered``: a web client, whose file lists the return addresses
+    registered for it, and this one is not among them.
+
+    The file is a copy made when it was downloaded and the provider may know
+    more: a problem is a warning for the person, never a refusal. A file that
+    cannot be read says nothing here (`start_flow` reports it).
+    """
+    parts = urllib.parse.urlsplit(str(redirect_uri or ""))
+    if parts.scheme != "https" and not _this_computer(parts.hostname or ""):
+        return "insecure"
+    try:
+        data = json.loads(Path(str(client_secret_path or "")).expanduser().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    web = data.get("web") if isinstance(data, dict) else None
+    if isinstance(web, dict):
+        listed = web.get("redirect_uris")
+        if redirect_uri not in (listed if isinstance(listed, list) else []):
+            return "unregistered"
+    return None
 
 
 def start_flow(*,
@@ -104,11 +144,45 @@ def start_flow(*,
     return auth_url, flow_state
 
 
+def _accepted_returns() -> Path:
+    import config as C
+    return Path(C.PATH_USER_STATE) / "oauth" / "accepted_returns.json"
+
+
+def return_accepted(binding: object, redirect_uri: str) -> bool:
+    """Whether a consent for this integration already came back through this
+    address: the provider knows it, whatever a copy of the client file says."""
+    try:
+        known = json.loads(_accepted_returns().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    listed = known.get(str(binding)) if isinstance(known, dict) else None
+    return isinstance(listed, list) and redirect_uri in listed
+
+
+def _remember_return(binding: str, redirect_uri: str) -> None:
+    path = _accepted_returns()
+    try:
+        known = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        known = {}
+    if not isinstance(known, dict):
+        known = {}
+    listed = known.get(binding) if isinstance(known.get(binding), list) else []
+    if redirect_uri in listed:
+        return
+    known[binding] = sorted({*listed, redirect_uri})
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(json.dumps(known, indent=2), encoding="utf-8")
+    os.replace(tmp, path)
+
+
 def finish_flow(*,
                 flow_state: dict,
                 code: str,
                 binding: str,
-                mirror_paths: list | None = None) -> tuple[bool, Optional[str]]:
+                mirror_paths: list | None = None) -> tuple[bool, Optional[str], list]:
     """Stage 2 OAuth: scambia code per token, salva (cifrato + opzionali
     plain mirror).
 
@@ -120,19 +194,26 @@ def finish_flow(*,
                     JSON (chmod 0600). Per skill legacy che si aspettano il
                     file a path specifico. Vuota = solo cifrato in Metnos.
 
-    Returns: (ok, error_msg_or_None).
+    Returns: (ok, error_msg_or_None, ungranted): the permissions that were
+    asked and the person did not grant. A partial grant is a success, said in
+    words by the caller; it is never an error that throws the consent away.
     """
     from google_auth_oauthlib.flow import Flow
 
     secret_file = flow_state.get("client_secret_file")
     if not secret_file or not Path(secret_file).is_file():
-        return False, "client_secret_file mancante dal flow_state"
+        return False, "client_secret_file mancante dal flow_state", []
 
     scopes = flow_state.get("scopes") or []
     redirect_uri = flow_state.get("redirect_uri")
     if not redirect_uri:
-        return False, "flow_state senza redirect_uri"
+        return False, "flow_state senza redirect_uri", []
 
+    # The provider lets the person tick the permissions one by one. The OAuth
+    # library refuses an answer whose permissions differ from the ones asked
+    # unless told otherwise: the consent would be lost on a message about
+    # scopes, and the one-time code with it.
+    os.environ.setdefault("OAUTHLIB_RELAX_TOKEN_SCOPE", "1")
     try:
         flow = Flow.from_client_secrets_file(
             secret_file, scopes=scopes, redirect_uri=redirect_uri,
@@ -144,37 +225,52 @@ def finish_flow(*,
             flow.code_verifier = code_verifier
         flow.fetch_token(code=code)
     except Exception as e:
-        return False, f"token exchange failed: {e}"
+        return False, f"token exchange failed: {e}", []
 
     creds = flow.credentials
+    # What was granted, not what was asked: a later renewal that names a
+    # permission the person refused is itself refused by the provider.
+    answered = (getattr(getattr(flow, "oauth2session", None), "token", None) or {}).get("scope")
+    if isinstance(answered, str):
+        answered = answered.split()
+    granted = ([str(scope) for scope in answered]
+               if isinstance(answered, (list, tuple)) and answered
+               else list(creds.scopes or scopes))
+    ungranted = [scope for scope in scopes if scope not in granted]
     token_payload = {
         "token":          creds.token,
         "refresh_token":  creds.refresh_token,
         "token_uri":      creds.token_uri,
         "client_id":      creds.client_id,
         "client_secret":  creds.client_secret,
-        "scopes":         creds.scopes,
+        "scopes":         granted,
     }
 
     # Canonical: cifrato in Metnos credentials store (ADR 0082).
     try:
         from credentials import store as _cred_store  # type: ignore
         _cred_store(binding, token_payload)
-    except Exception:
-        # Test env: store non disponibile -> mirror plain e' l'unica copia.
-        pass
+    except Exception as ex:  # noqa: BLE001 - the plain mirror below is then the only copy
+        import logging
+        logging.getLogger(__name__).warning(
+            "oauth token not stored in the credentials store: %s", type(ex).__name__)
 
-    # Mirror plain (opzionale).
+    # Mirror plain (opzionale): never readable by others, not even while written.
     for mp in (mirror_paths or []):
         target = Path(mp).expanduser()
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(json.dumps(token_payload, indent=2), encoding="utf-8")
-        try:
-            os.chmod(target, 0o600)
-        except OSError:
-            pass
+        tmp = target.with_name(target.name + ".tmp")
+        with open(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w", encoding="utf-8") as out:
+            out.write(json.dumps(token_payload, indent=2))
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, target)
 
-    return True, None
+    try:
+        _remember_return(binding, redirect_uri)
+    except OSError:
+        pass          # only costs a notice the person does not need
+
+    return True, None, ungranted
 
 
 def has_valid_token(binding: str, mirror_paths: list | None = None) -> bool:

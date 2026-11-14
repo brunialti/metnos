@@ -324,6 +324,9 @@ button:disabled{opacity:.5;cursor:not-allowed}
 #sessionBanner.show{display:block}
 #sessionBanner.revoked{background:var(--err-soft);color:var(--err-fg);
                        border-bottom-color:var(--err-line)}
+#sessionBanner button{margin-left:.75rem;padding:.25rem .7rem;border:1px solid currentColor;
+                      border-radius:6px;background:transparent;color:inherit;font:inherit;cursor:pointer}
+#sessionBanner button:disabled{opacity:.5;cursor:default}
 body.readonly form#f{opacity:.5;pointer-events:none}
 body.readonly #q{cursor:not-allowed}
 /* La lease di scrittura vale per tutta la superficie conversazionale:
@@ -456,6 +459,8 @@ const CHAT_I18N = {
   dialogAria: {{ msg("MSG_CHAT_DIALOG_ARIA")|tojson }},
   dialogReference: {{ msg("MSG_CHAT_DIALOG_REFERENCE")|tojson }},
   authRedirect: {{ msg("MSG_CHAT_AUTH_REDIRECT")|tojson }},
+  authPending: {{ msg("MSG_CHAT_AUTH_PENDING")|tojson }},
+  authOpen: {{ msg("MSG_CHAT_AUTH_OPEN")|tojson }},
   downloadFile: {{ msg("MSG_CHAT_DOWNLOAD_FILE")|tojson }},
   galleryOpen: {{ msg("MSG_CHAT_GALLERY_OPEN")|tojson }},
   previousSession: {{ msg("MSG_CHAT_PREVIOUS_SESSION_SEPARATOR")|tojson }},
@@ -472,6 +477,7 @@ const CHAT_I18N = {
   deviceLabel: {{ msg("MSG_CHAT_DEVICE_LABEL")|tojson }},
   otherDevice: {{ msg("MSG_CHAT_OTHER_DEVICE")|tojson }},
   readOnly: {{ msg("MSG_CHAT_READ_ONLY")|tojson }},
+  activateCurrent: {{ msg("MSG_CHAT_SESSION_ACTIVATE_CURRENT")|tojson }},
   movedToDevice: {{ msg("MSG_CHAT_MOVED_TO_DEVICE")|tojson }},
   movedReload: {{ msg("MSG_CHAT_MOVED_RELOAD")|tojson }},
   sessionConflictBody: {{ msg("MSG_CHAT_SESSION_CONFLICT_BODY")|tojson }},
@@ -679,6 +685,15 @@ function clearHistory(){
 // point before which a later load asks for nothing. Its time is the server's
 // own, so the two clocks need not agree.
 const CLEARED_KEY_PREFIX = 'metnos_chat_cleared:v1:' + CHAT_USER_SCOPE + ':';
+const REDIRECTED_KEY_PREFIX = 'metnos_dialog_redirected:v1:' + CHAT_USER_SCOPE + ':';
+// True from the second time on: the first call records the navigation.
+function redirectedBefore(dialogId){
+  try {
+    if(localStorage.getItem(REDIRECTED_KEY_PREFIX + dialogId)) return true;
+    localStorage.setItem(REDIRECTED_KEY_PREFIX + dialogId, '1');
+  } catch(_){}
+  return false;
+}
 function clearedSince(){
   try {
     const mark = Number(localStorage.getItem(CLEARED_KEY_PREFIX + conversationId));
@@ -1085,9 +1100,21 @@ function add(cls, text, meta, persist, attachments, galleryInfo, htmlMode, histo
             removeDialogHistory(dialogId);
             const redirect = document.createElement('div');
             redirect.style.cssText = 'padding:.4rem;color:var(--navy);font-size:.9em;';
+            window.removeEventListener('message', onMsg);
+            // The browser is sent to the provider once. A completed form is
+            // replayed whenever the chat is opened again: navigating each
+            // time would keep the person out of the chat while the consent
+            // is pending. Later openings show the link and stay here.
+            if(redirectedBefore(dialogId)){
+              const link = document.createElement('a');
+              link.href = rurl;
+              link.textContent = CHAT_I18N.authOpen;
+              redirect.append(CHAT_I18N.authPending + ' ', link);
+              d.replaceChildren(redirect);
+              return;
+            }
             redirect.textContent = CHAT_I18N.authRedirect;
             d.replaceChildren(redirect);
-            window.removeEventListener('message', onMsg);
             window.top.location.href = rurl;
             return;
           }
@@ -2043,9 +2070,32 @@ function enterReadOnly(reason){
   btn.disabled = true;
   q.disabled = true;
   showBanner(reason || CHAT_I18N.readOnly, '');
+  offerSession();
   // Ferma il ping e il SSE: la sessione vecchia non e' piu' valida.
   if(pingTimer){ clearInterval(pingTimer); pingTimer = null; }
   if(sessionSse){ try{ sessionSse.close(); }catch(_){} sessionSse = null; }
+}
+// A read-only chat always carries the way back. The choice at page load
+// closes by itself after a few seconds and a page revoked by another device
+// gets none; the input being disabled, no other message could tell the
+// person what to do.
+function offerSession(){
+  const again = document.createElement('button');
+  again.type = 'button';
+  again.textContent = CHAT_I18N.activateCurrent;
+  again.addEventListener('click', async () => {
+    again.disabled = true;
+    if(await bootSession('activate_current')){
+      exitReadOnly();
+      await renderConversation();
+      q.focus();
+    } else if(!sessionBanner.querySelector('button')){
+      offerSession();          // the failure replaced the banner: offer again
+    } else {
+      again.disabled = false;
+    }
+  });
+  sessionBanner.appendChild(again);
 }
 function exitReadOnly(){
   sessionReadOnly = false;
@@ -2186,7 +2236,9 @@ function startPing(){
 }
 
 // Boot session: tenta register; se conflict + utente accetta, fa takeover.
-async function bootSession(){
+// `chosen` is a takeover mode the person already picked (the banner button):
+// the choice is not asked a second time.
+async function bootSession(chosen){
   // Se gia' abbiamo un device_token, valida con un ping prima di partire.
   // 409 = ricominciamo da capo (registry ha registrato un revoke).
   if(deviceToken){
@@ -2225,7 +2277,7 @@ async function bootSession(){
     return true;
   }
   if(r.status === 409 && r.data && r.data.conflict){
-    const mode = await showTakeoverPrompt(r.data.existing);
+    const mode = chosen || await showTakeoverPrompt(r.data.existing);
     if(!mode){
       enterReadOnly(CHAT_I18N.readOnly);
       return false;

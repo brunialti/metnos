@@ -143,6 +143,13 @@ the inventory while its executors are excluded from planner choices. This can
 happen when OAuth credentials, a required index, or a registered store is
 missing.</p>
 
+<p>When a provider's consent is missing, the first request opens a form: the client file and
+the services to authorize. After the consent the provider brings the browser back to Metnos,
+at the address of the page the form was sent from. The form says so beforehand, when it
+matters: if the client file is a &ldquo;web application&rdquo; that does not list that address,
+or if the page is opened from an address a provider does not accept (neither https nor
+localhost). The consent must be given within ten minutes and is valid once.</p>
+
 <ol>
  <li><code>list_skills</code> reads the registry and loaded catalog; it does not use a model to invent state.</li>
  <li><code>set_skills</code> enables or disables a known skill, passes through ordinary authorization policy, and takes effect on the next turn.</li>

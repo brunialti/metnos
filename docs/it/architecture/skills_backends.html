@@ -145,6 +145,13 @@ nell'inventario, mentre i suoi executor non entrano fra le scelte del
 pianificatore. Accade, per esempio, quando mancano credenziali OAuth, un indice
 necessario o un archivio registrato.</p>
 
+<p>Quando manca il consenso di un fornitore, la prima richiesta apre un modulo: il file del
+client e i servizi da autorizzare. Dopo il consenso il fornitore riporta il browser a Metnos,
+all'indirizzo della pagina da cui il modulo &egrave; stato inviato. Il modulo lo dice prima,
+quando serve: se il file del client &egrave; di tipo &laquo;applicazione web&raquo; e non elenca
+quell'indirizzo, o se la pagina &egrave; aperta da un indirizzo che un fornitore non accetta
+(n&eacute; https n&eacute; localhost). Il consenso va dato entro dieci minuti e vale una volta sola.</p>
+
 <ol>
  <li><code>list_skills</code> legge il registro e il catalogo caricato; non usa un modello per inventariare lo stato.</li>
  <li><code>set_skills</code> abilita o disabilita una skill nota, passa dalle normali regole di autorizzazione e ha effetto dal turno successivo.</li>
