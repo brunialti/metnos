@@ -13,7 +13,7 @@ adapt how they pursue the requested outcome, but they cannot widen their own
 goal, permissions, or admission status.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-![Python](https://img.shields.io/badge/python-%E2%89%A53.12-green)
+![Python](https://img.shields.io/badge/python-3.12-green)
 ![Self-hosted](https://img.shields.io/badge/cloud-optional-success)
 [![Docs](https://img.shields.io/badge/docs-metnos.com-1A477A.svg)](https://metnos.com)
 
@@ -45,7 +45,7 @@ still belong to you.
 ## Easy to start, built to remain understandable
 
 You do not need to learn executor names before Metnos becomes useful. Run the
-read-only preflight, follow the guided installer, open the web chat, and ask for
+preflight, follow the guided installer, open the web chat, and ask for
 an outcome. The six installation phases are idempotent and resumable: an
 interrupted model download or Tutor build can continue instead of turning into
 a fresh installation.
@@ -155,7 +155,7 @@ actually admits.
 
 | | OpenClaw | Hermes Agent | Metnos |
 |---|---|---|---|
-| **Getting started** | One-line installers followed by guided onboarding; broad desktop and messaging support. | Desktop packages or a one-line installer, then a setup wizard; native Windows is supported. | Four commands on a Linux host start a read-only preflight and six idempotent, resumable phases. They configure the isolated environment, model tiers, optional sidecars, encrypted secrets, services, and verified Tutor catalog — then prove the instance ready. |
+| **Getting started** | One-line installers followed by guided onboarding; broad desktop and messaging support. | Desktop packages or a one-line installer, then a setup wizard; native Windows is supported. | Four commands on a Linux host start a preflight and six idempotent, resumable phases. They configure the isolated environment, model tiers, optional sidecars, encrypted secrets, services, and verified Tutor catalog, then check that the services answer. |
 | **Everyday use** | A personal assistant across WebChat and many messaging channels. | CLI, desktop, and several messaging channels, with natural-language automation and delegation. | Web chat and Telegram turn ordinary-language outcomes into typed workflows across local, provider, and paired-device capabilities. |
 | **Managing the instance** | A Control UI and CLI cover the gateway, channels, agents, and configuration. | Desktop, TUI, CLI configuration, and a self-hosted dashboard provide operational surfaces. | The authenticated web Settings area unifies 14 pages for turns, schedules, index builds, executor lifecycle, memory, editable model configuration, service health and controls, safety, users, and paired devices. |
 | **Help inside the product** | Documentation, setup flows, and configuration commands are available from chat and the UI. | `/help`, setup, doctor, and extensive documentation guide the operator. | The Tutor is part of the product: it is compiled from that instance's admitted manifests, published documentation, and permitted live registries. It answers capability, configuration, and UI-navigation questions in the instance language, with exact paths and direct official links. |
@@ -261,11 +261,10 @@ admitted backend or narrow executor under the same contract.
 
 ## Install
 
-The managed server installation targets Linux, Python 3.12 or newer, and
-systemd. A GPU is useful for local models but not required: logical LLM tiers
-may point to compatible local or remote endpoints. Optional companion services
-provide self-hosted web search, geocoding, visual-language processing, and
-Playwright.
+Metnos installs on Linux x86-64 with systemd and Python 3.12. A GPU is useful for local
+models but not required: logical LLM tiers may point to compatible local or remote
+endpoints. Companion services provide self-hosted web search, geocoding, vision and a
+browser; each is installed locally unless you declare one you already run.
 
 ```bash
 git clone https://github.com/brunialti/metnos.git
@@ -274,35 +273,33 @@ bash install/bootstrap.sh --check
 bash install/bootstrap.sh
 ```
 
-The six-phase installer is idempotent and resumable. It creates the
-installation-owned `.venv`, runtime directories, encrypted credential store,
-model bindings, selected companion services, user-level systemd units, the
-verified Tutor catalog, and a one-shot admin onboarding link. In its final
-screen it prints the exact URL for this server and every detected private-LAN
-IPv4 address; the same addresses are saved in
-`~/.local/share/metnos/install_summary.md`.
+Install the system packages first: the [installer guide](install/README.md) has the
+command.
+
+The installer asks for administrator access, creates a dedicated `metnos` service account
+and runs six idempotent, resumable phases: dependencies, models and companion services,
+verified source and Tutor catalog, encrypted credentials, system services, first access. In
+its final screen it prints the address for this server and for every detected private-LAN
+IPv4 address, with a one-use first-access link.
 
 After installation:
 
 ```bash
-systemctl --user status metnos.target
+systemctl list-units 'metnos*'
 curl http://127.0.0.1:8770/agent/health
 ```
 
-On the server, open the printed `127.0.0.1` onboarding URL. From another device
-on the same trusted private network, open one of the printed LAN onboarding
-URLs instead. The default guided installation enables private-LAN access; it
-can be restricted to this server during phase 4. Metnos serves plain HTTP by
-default, so do not forward its port from a router or expose it directly to the
-Internet.
+Open the printed link on the server, or a printed LAN address from another device on the
+same trusted private network. Metnos serves plain HTTP on the private LAN, so do not forward
+its port from a router or expose it directly to the Internet.
 
 Then send a harmless complete turn, such as:
 “What time is it, and which time zone are you using?” An open health endpoint
 proves reachability; the answer proves that planning and execution work
 together.
 
-Read the [installer guide](install/README.md) before choosing model endpoints,
-optional services, or non-interactive installation.
+The [installer guide](install/README.md), also in [Italian](install/INSTALL.md), covers
+requirements, options, model endpoints and existing services.
 
 ## For readers and builders
 

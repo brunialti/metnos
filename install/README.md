@@ -1,98 +1,111 @@
-# Metnos installer
+# Install Metnos
 
-The supported entry point is `install/bootstrap.sh`. It runs six phases on
-Linux x86-64 with systemd and Python 3.12. See [INSTALL.md](INSTALL.md) for the
-complete procedure and [SERVICES.md](SERVICES.md) to reuse existing services.
+English · [Italiano](INSTALL.md)
+
+One guided installer sets up a complete Metnos server on Linux: a dedicated service account,
+the verified code, models, helper services and a first-access link.
+
+## In short
 
 ```bash
 git clone https://github.com/brunialti/metnos.git
 cd metnos
+sudo apt-get update
+sudo apt-get install -y $(python3 -c 'import tomllib; p=tomllib.load(open("install/manifest.toml","rb"))["system_packages"]; print(" ".join(p["debian"]+p["debian_optional"]+p["ubuntu_24_04_all_local"]))')
 bash install/bootstrap.sh --check
 bash install/bootstrap.sh
 ```
 
-Install the system packages listed in `manifest.toml` first, as shown in the
-complete procedure.
-`polkitd` is required even with remote companions: before activation, the
-installer prepares a rule limited to Metnos units for the **Services** controls.
-The bootstrap prepares `.venv` to launch the installer;
-`--check` can therefore create or update that environment. The direct
-`./.venv/bin/python -m install --check` does not run application phases.
+Then open the link printed at the end and send one real request in the chat.
 
-The installer requests administrative privileges after language selection,
-initial consent and confirmation. It provisions a dedicated `metnos` service
-account, fresh installation authorities and an exact-lock Python environment.
-Application phases run without administrative privileges. The administrative
-parent installs and verifies the signed distribution before activating its
-system services. No separate authority-provisioning command is needed.
+## Before you start
 
-## Existing services
+- **System:** Linux x86-64 with systemd and Python 3.12. Ubuntu 24.04 is the reference; the
+  installer accepts only the systemd versions listed in [INSTALL_NOTES.md](INSTALL_NOTES.md).
+- **Access:** an account that can use `sudo`. The installer asks for it after your consent.
+- **Resources:** Internet, Git, 8 GB of free disk besides the models, 8 GB of RAM
+  recommended. A GPU helps local models but is not required.
+- **Packages:** the ones in [`manifest.toml`](manifest.toml), installed by the `apt-get`
+  command above. `polkitd` is needed even when you reuse remote services.
+- **Existing services (optional):** to reuse a model server, search, geocoder or browser you
+  already run, prepare `~/.config/metnos/services.toml` first. See [SERVICES.md](SERVICES.md).
 
-After cloning and before installing, optionally create
-`~/.config/metnos/services.toml`. Listed services use explicit reachable
-endpoints; omitted services are prepared locally. The installer does not scan
-the network, add service-choice prompts or silently replace a failed service
-with a cloud provider. Local models and remote compatible model servers are
-supported. The frontier tier requires explicit consent and credentials.
+Approximate downloads when everything is local: embeddings 560 MB, vision 1.9 GB, search
+200 MB, geocoder 3 GB for one country, browser 700 MB, plus the text model you choose.
 
-The selected profile is included in the signed distribution. Resume with the
-same profile. Changing an installed service topology requires a new
-administrative release. The managed flow does not accept `--skip`.
+## What the installer does
 
-## Six phases
+It asks the language, shows the safety notice and asks for confirmation. Then it asks for
+administrator access, creates the `metnos` service account and runs six phases. Your answers
+are collected under that account; only preparation and activation run as administrator.
 
-| Phase | Responsibility |
+| Phase | Result |
 |---:|---|
-| 1 | Prerequisites, exact dependency verification, service-account directories |
-| 2 | Local BGE-M3 embeddings, model bindings and companion preparation |
-| 3 | Authenticated source and initial catalog, initial stores, translations, Tutor |
+| 1 | Prerequisites and exact dependencies checked; service-account directories |
+| 2 | Local BGE-M3, models, and helper services prepared or linked |
+| 3 | Verified source and initial catalog; databases, translations, Tutor |
 | 4 | Administrator key and optional encrypted credentials |
-| 5 | Signed system-service activation and health checks |
-| 6 | Capability selection, one-use onboarding link and summary |
+| 5 | Signed system services activated and checked |
+| 6 | Capability selection, one-use first-access link, summary |
 
-Initial catalog adoption authenticates the distributed catalog. It does not
-certify newly produced functions. Phase records support resumption but never
-replace the authenticated transition or authorize activation.
+- The installer creates new signing keys for this installation. You run no separate command
+  and copy no keys from another instance. Administrative keys stay readable by root only.
+- Phase 3 builds Tutor, the built-in help. On a CPU the first build can take several
+  minutes; later builds reuse what did not change.
+- Phase 4 can store credentials for Telegram, mail, GitHub and cloud model providers. All
+  are optional. Google Workspace is connected after installation through its OAuth flow.
 
-The first Tutor compilation can take several minutes on CPU. It runs before
-service startup; subsequent compilations reuse unchanged source vectors.
-The compiler bounds native thread pools by the available CPU quota, including
-container limits.
-Google Workspace is connected after installation through its OAuth flow.
+## Options
 
-Run `bash install/bootstrap.sh` again to resume. `--only-phase N` requires
-preceding phases to have completed; `--force-phase N` repeats one phase.
-`--force` accepts non-fatal warnings. `--yes` accepts non-sensitive defaults;
-it does not replace initial consent or opt into paid models.
+| Option | Effect |
+|---|---|
+| `--check` | Checks prerequisites and runs no phase. Through `bootstrap.sh` it may create or update `.venv`; `./.venv/bin/python -m install --check` writes nothing. |
+| `--yes` | Accepts non-sensitive defaults. It does not replace the initial consent and never enables a paid model. |
+| `--force` | Continues past non-fatal warnings. |
+| `--force-phase N` | Repeats phase N. |
+| `--only-phase N` | Runs phase N alone; earlier phases must be complete. |
 
-## Files and services
+`--skip` is not accepted: every service is either installed locally or declared in
+`services.toml`.
 
-The runtime uses an immutable managed source and Python environment.
-Configuration, data and state remain separate under the service-account home:
+**To resume** an interrupted installation, run `bash install/bootstrap.sh` again with the
+same `services.toml`. Completed phases are kept, and the verification is repeated every time.
 
-- `/var/lib/metnos-service/.config/metnos`
-- `/var/lib/metnos-service/.local/share/metnos`
-- `/var/lib/metnos-service/.local/state/metnos`
+## Where things are
 
-Downloaded models belong to data, not the immutable source. Administrative
-private keys remain root-only. Secrets collected during phase 4 are encrypted.
-Existing incompatible service units are refused, not overwritten.
+| Content | Directory |
+|---|---|
+| Configuration and credentials | `/var/lib/metnos-service/.config/metnos` |
+| Data, models and summary | `/var/lib/metnos-service/.local/share/metnos` |
+| State and phase markers | `/var/lib/metnos-service/.local/state/metnos` |
 
-Phase 2 asks whether to download the optional reCAPTCHA image-grid classifier
-from Hugging Face:
+The verified code and its Python live in separate root-owned stores. The `.venv` in the clone
+only launches the installer. Existing service units that do not match are refused, never
+overwritten.
+
+## Models and services
+
+- **Embeddings** (BGE-M3) are always local and run inside Metnos.
+- **Text model:** local, or an existing compatible server declared in `services.toml`. A
+  cloud model needs your explicit choice and its credentials; it is never chosen for you.
+- **Vision** starts on demand. **Search** (SearXNG), **geocoding** (Photon) and the
+  **browser** (Playwright) run as system services of the `metnos` account.
+- **Long jobs** are off by default; turn them on in **Settings → System → Services**.
+- Model settings are in **Settings → System → Models**; changing a model needs no reinstall.
+
+Phase 2 asks whether to download the optional reCAPTCHA image-grid classifier,
 [recaptcha-classification-57k](https://huggingface.co/DannyLuna/recaptcha-classification-57k)
-by DannyLuna, MIT license, about 109 MB. The default answer is no and `--yes`
-leaves it out; without it, image grids are left to you. To add it later:
+(MIT license), from Hugging Face. The default answer is no and `--yes` leaves it out; without
+it, image grids are left to you. To add it later:
 
 ```bash
 sudo -H -u metnos bash -s captcha-grid < install/download_models.sh
 ```
 
-The system catalog includes the HTTP server, selected companions and mandatory
-background services. Local vision starts on demand. LRE is disabled by default.
-The watchdog interval can be configured on Services; its default is 30 minutes.
+The chosen services are part of the signed installation. Changing them later is not done by
+editing generated files or restarting: it needs a new administrative release.
 
-## First access
+## First access and check
 
 ```bash
 systemctl --failed
@@ -100,20 +113,33 @@ systemctl list-units 'metnos*'
 curl http://127.0.0.1:8770/agent/health
 ```
 
-Phase 6 prints local and private-LAN URLs and saves them to
-`/var/lib/metnos-service/.local/share/metnos/install_summary.md`. The managed
-listener uses port 8770 and accepts LAN connections. Use a trusted network;
-HTTP is unencrypted and must not be exposed directly to the Internet.
+Phase 6 prints the address for this server and for each private-LAN address, with a
+first-access link that lasts 15 minutes and works once. The same addresses are saved in
+`/var/lib/metnos-service/.local/share/metnos/install_summary.md`.
 
-The onboarding link expires after 15 minutes and can be used once. Repeat
-phase 6 if it expires, or use `/admin/login` with the instance administrator
-key. After onboarding, send a harmless real chat request, such as “What time
-is it, and which time zone are you using?”, and verify Tutor and the chosen
-services. A health response alone does not prove a successful application turn.
+Metnos listens on port 8770 and accepts the private LAN. The connection is plain HTTP: use a
+trusted network, and never forward the port or expose it to the Internet.
 
-Model settings are available in **Settings → System → Models**. Service state
-is shown in **Settings → System → Services**. Existing installations must use
-the administrative release and migration path with an agreed restart window.
+A health answer only proves that the server started. To finish the check, send a harmless
+real request in the chat, such as “What time is it, and which time zone are you using?”, then
+try Tutor and the services you chose.
 
-[INSTALL_NOTES.md](INSTALL_NOTES.md) contains maintainer invariants;
-[`../README.md`](../README.md) describes the project and security model.
+## If something stops
+
+| What you see | What to do |
+|---|---|
+| The installation was interrupted | Run `bash install/bootstrap.sh` again. |
+| “Required system programs are missing” | Install the packages of “In short” and run again. |
+| “The service profile differs from the prepared installation” | Restore the `services.toml` you started with. |
+| A declared service does not answer | Fix the address or the service; nothing replaces it automatically. |
+| The first-access link expired | Run `bash install/bootstrap.sh --force-phase 6`, or open `/admin/login` with the administrator key of the instance. Do not share that key. |
+
+More cases are in the troubleshooting table of [INSTALL_NOTES.md](INSTALL_NOTES.md).
+
+## Updates
+
+An existing installation is updated through the administrative release path, with a check of
+the configuration and an agreed restart window.
+
+[INSTALL_NOTES.md](INSTALL_NOTES.md) holds the rules for those who maintain the installer;
+[`../README.md`](../README.md) describes the project and its security model.

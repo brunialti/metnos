@@ -502,8 +502,8 @@ def resolve_time_window(tool: str, args: dict, query: str,
             if where_field in temporal_aliases:
                 for key in (
                     "where_field", "where_value", "where_in", "where_not_in",
-                    "where_starts_with", "where_contains", "where_glob",
-                    "where_regex",
+                    "where_starts_with", "where_ends_with", "where_contains",
+                    "where_glob", "where_regex", "where_min", "where_max",
                 ):
                     out.pop(key, None)
             return out if out != args else args

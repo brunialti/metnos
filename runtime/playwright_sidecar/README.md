@@ -10,15 +10,19 @@ enforced by the broker.
 
 ## Install and service
 
-Use the common sidecar installer:
+In a supported installation the Metnos installer prepares the browser in its
+second phase, and the service runs as a system unit of the `metnos` account.
+Nothing else is needed: see the [installer guide](../../install/README.md).
+
+On a development machine the service can be installed alone:
 
 ```bash
 python -m install.sidecar playwright
 ```
 
-The installer creates a Metnos-owned virtual environment and browser cache,
-installs the selected browser (Chromium by default), renders the user systemd
-unit, and verifies `/health`. It does not reuse Python environments or browser
+This creates a Metnos-owned virtual environment and browser cache, installs
+the selected browser (Chromium by default), writes a user-level systemd unit
+and verifies `/health`. It does not reuse Python environments or browser
 caches belonging to other projects.
 
 Graphical sessions also use `metnos-side-display.service`, a persistent Xvfb
@@ -61,9 +65,9 @@ HTTP host checks, credential origins, consent, blocked service workers and WebRT
 and session isolation remain in force for site sessions. No extension, main-world
 evaluation bypass, COOP bypass, or external solver is enabled by this engine choice.
 
-The installer pins Python Camoufox 0.5.6, Playwright 1.61.0 and browser
-156.0.1-beta.33. It checks the official Linux archive's exact length and SHA-256
-before extraction (about 1.3 GB download, plus extracted space). Runtime startup
+The Python packages are pinned in the dependency lock and the browser build in
+`browser_engine.py`. The installer checks the official Linux archive's exact
+length and SHA-256 before extraction (about 1.3 GB download, plus extracted space). Runtime startup
 requires the pinned installation receipt and never fetches a browser. A missing
 or different installation fails explicitly. The browser is a prerelease; its
 synthetic checks do not guarantee access to a particular website or solve CAPTCHA.
@@ -105,7 +109,7 @@ that arrived after the factor request.
 
 ## Health and diagnostics
 
-Since release 122, the broker automatically saves a static page copy when an owned
+The broker automatically saves a static page copy when an owned
 action ends with `selector_hidden`; it needs no browser-console action from
 the user. Synthetic module and security-boundary checks cover this capture;
 the website workflow still requires its own end-to-end verification.
@@ -121,9 +125,12 @@ the original layout and cannot certify a complete website workflow.
 
 ```bash
 curl -fsS http://127.0.0.1:8771/health
-systemctl --user status metnos-playwright.service
-journalctl --user -u metnos-playwright.service -n 100
+systemctl status metnos-playwright.service
+journalctl -u metnos-playwright.service -n 100
 ```
+
+On a development machine with the user-level unit, add `--user` to the last
+two commands.
 
 The health response reports browser connectivity, generation, uptime, active
 sessions, pending approvals, pending factors, and pending opens. The services

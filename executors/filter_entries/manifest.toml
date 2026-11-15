@@ -149,6 +149,27 @@ type        = "string"
 it = "Prefisso case-insensitive su where_field. Esempio: summary inizia con 'HLT'. Richiede where_field e si combina in AND."
 en = "Case-insensitive prefix on where_field. Example: summary starts with 'HLT'. Requires where_field and combines using AND."
 
+[args.properties.where_ends_with]
+type        = "string"
+
+[args.properties.where_ends_with.description]
+it = "Suffisso case-insensitive su where_field. Esempio: summary finisce con 'call'. Richiede where_field e si combina in AND."
+en = "Case-insensitive suffix on where_field. Example: summary ends with 'call'. Requires where_field and combines using AND."
+
+[args.properties.where_min]
+type        = "number"
+
+[args.properties.where_min.description]
+it = "Valore minimo (incluso) di where_field, per campi numerici. Esempio: where_field='size', where_min=1000000 tiene chi vale almeno un milione. Richiede where_field e si combina in AND."
+en = "Minimum value (inclusive) of where_field, for numeric fields. Example: where_field='size', where_min=1000000 keeps what is at least one million. Requires where_field and combines using AND."
+
+[args.properties.where_max]
+type        = "number"
+
+[args.properties.where_max.description]
+it = "Valore massimo (incluso) di where_field, per campi numerici. Esempio: where_field='duration_min', where_max=30 tiene chi vale al massimo 30. Richiede where_field e si combina in AND."
+en = "Maximum value (inclusive) of where_field, for numeric fields. Example: where_field='duration_min', where_max=30 keeps what is at most 30. Requires where_field and combines using AND."
+
 [args.properties.where_contains]
 type        = "string"
 

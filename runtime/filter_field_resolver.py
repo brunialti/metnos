@@ -186,7 +186,8 @@ def _resolve_collection_presence(args: dict, entries: list, query: str) -> dict:
     if args.get("where_field") is not None or any(
             args.get(key) is not None for key in (
                 "where_value", "where_in", "where_not_in",
-                "where_starts_with", "where_contains", "where_glob",
+                "where_starts_with", "where_ends_with", "where_contains",
+                "where_glob", "where_min", "where_max",
                 "where_regex", "where_present")):
         return args
     raw_types = args.get("type")
@@ -260,7 +261,8 @@ def resolve_filter_field(tool: str, args: dict, query: str) -> dict:
     if args.get("where_field") is not None or any(
             args.get(key) is not None for key in (
                 "where_value", "where_in", "where_not_in",
-                "where_starts_with", "where_contains", "where_glob",
+                "where_starts_with", "where_ends_with", "where_contains",
+                "where_glob", "where_min", "where_max",
                 "where_regex")):
         return args
     try:

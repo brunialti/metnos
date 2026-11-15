@@ -911,8 +911,15 @@ rispetto a una lista di riferimento e viene usato nei monitor incrementali.
 Le tre primitive che lavorano sulle liste hanno ruoli complementari e
 ben separati: <code>filter_entries</code> riduce una lista applicando
 un predicato a un campo (<code>where_starts_with</code>,
-<code>where_contains</code>, <code>where_glob</code>,
-<code>where_regex</code>); <code>filter_lists</code> combina due liste
+<code>where_ends_with</code>, <code>where_contains</code>,
+<code>where_glob</code>, <code>where_regex</code>, e per i campi numerici i
+limiti <code>where_min</code> e <code>where_max</code>) e non perde mai un
+criterio: un valore passato insieme alla richiesta che il campo sia presente
+viene applicato, e un campo nominato senza alcun predicato &egrave; rifiutato
+invece di lasciar passare tutta la lista. Se il campo nominato non c'&egrave; nei
+record ma c'&egrave; una sola sua variante documentata (la persona dice
+&laquo;titolo&raquo;, i record portano <code>summary</code>), il filtro usa quella;
+<code>filter_lists</code> combina due liste
 con le operazioni di insieme appena viste; <code>compute_entries</code>
 calcola un singolo numero a partire da una lista (somma, media,
 minimo, massimo, conteggio). Le tre primitive coprono insieme la

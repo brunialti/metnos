@@ -1,108 +1,78 @@
-# Metnos user services
+# Metnos service units
 
-This directory contains source units for services that run in the user's systemd
-manager. The managed installer renders and installs the appropriate templates;
-manual copying is intended for development only.
+A supported installation runs Metnos as **system** services of the dedicated `metnos`
+account. The installer creates and activates them from the signed service catalog; you copy
+nothing by hand and no user lingering is needed. To install, follow the
+[installer guide](../install/README.md).
 
-The Metnos service panel at `/admin/services` presents registered services
-through one closed inventory. It offers Start for a stopped service and Stop or
-Restart for a running service when that action is valid. Coordinated executor
-deployments still go through the serialized stack reconciler.
+The three unit files in this directory are user-level sources for a development machine
+only. Do not install them beside a managed installation: the installer refuses service
+units that differ from its own.
 
-## Integrated stack ownership
+## Units of an installation
 
-`metnos.target` is the single user-level owner of the installed Metnos stack:
-HTTP, graphical display, Playwright and the installed Telegram, LLM, search,
-geocoder and translation units. The i18n timer is a required target dependency;
-the other companion components remain optional and are owned only when present.
+| Unit | Role |
+|---|---|
+| `metnos.target` | Owns the whole stack. |
+| `metnos-http.service` | Web chat and API, port 8770. |
+| `metnos-durable-worker.service` | Long jobs. |
+| `metnos-telegram-daemon.service` | Telegram channel, when configured. |
+| `metnos-playwright.service` | Browser service. |
+| `metnos-side-display.service` | Xvfb display `:99` for graphical browser sessions. |
+| `metnos-i18n-translator.timer` | Translations. Required: the target does not become ready without it. |
+| `metnos-stack-ready.service` | Readiness gate of the stack. |
+| `metnos-stack-watchdog.timer` | Periodic health check. |
 
-`metnos-stack-ready.service` gates readiness on the HTTP server contract,
-catalog parity, Playwright fingerprint equality when that sidecar is installed,
-the active i18n timer, and a readable broker state. `metnos-stack-quarantine.service` stops the closed
-unit set after a failed start, including both i18n timer and in-flight translator
-service. The first watchdog check is scheduled three minutes after target
-activation, later than the readiness timeout. Recovery is bounded by a
-persistent circuit breaker: three failures in ten minutes open it for fifteen
-minutes, so it cannot become an infinite restart loop.
+A text model, SearXNG and Photon installed locally run as `llama-server.service`,
+`searxng.service` and `photon.service`. Vision starts on demand and has no unit.
 
-Inspect or deploy a named executor change through the serialized reconciler:
-
-```bash
-python3 runtime/stack_reconcile.py check
-python3 runtime/stack_reconcile.py deploy --executor NAME --sign
-```
-
-`deploy` signs and verifies only explicitly named executor directories, then
-requires broker/turn quiescence, restarts the complete target and waits for
-composite readiness. It never discovers arbitrary units or performs a mass
-signature rewrite.
-
-## Migrating a legacy system HTTP service
-
-Do not manually start the user HTTP service beside an active system service and
-do not disable the system unit before the pilot. The migration helper preserves
-the effective command, working directory and allowlisted environment in a
-mode-0600 user drop-in, restores the system baseline after every pilot cycle and
-accepts cutover only with matching evidence:
+## Look at the services
 
 ```bash
-python3 runtime/stack_migration.py prepare
-python3 runtime/stack_migration.py pilot --cycles 2
-sudo python3 runtime/stack_migration.py cutover \
-  --service-user "$USER" \
-  --evidence ~/.local/state/metnos/stack_migration_pilot.json
+systemctl status metnos.target
+systemctl list-units 'metnos*'
+journalctl -u metnos-http.service -f
 ```
 
-The pilot performs two natural turns, each with at least one successful step and
-a distinct conversation identifier, then proves rollback while leaving the
-legacy system service active. Evidence is bound to the effective HTTP contract,
-effective stack units, control-plane sources, host and explicit service user.
-Cutover requires root because it changes unit enablement; it rechecks every
-binding and restores the legacy baseline after any failed start or readiness
-check.
+The page **Settings → System → Services** (`/admin/services`) shows the same services from
+one closed inventory. It offers Start for a stopped service and Stop or Restart for a running
+one, when that action is valid.
+
+Do not edit an installed unit and do not add drop-ins: the units are signed and a changed one
+is refused. Changing units or services needs a new administrative release.
+
+## Readiness and watchdog
+
+- The stack is ready when the HTTP server answers with the expected contract, the executor
+  catalog matches, the browser service (when installed) runs the current code, the
+  translation timer is active and the browser session state is readable.
+- The watchdog first runs three minutes after its timer starts, then every 30 minutes. An
+  administrator can set 5 to 1440 minutes on the Services page.
+- Automatic recovery is bounded: three failures in ten minutes stop further attempts for
+  fifteen minutes, so it cannot become an endless restart loop.
+- If Metnos cannot complete its startup checks, the HTTP server stays up in maintenance-only
+  mode: model configuration and service control work, requests are not executed.
 
 ## Graphical website browser
 
-`metnos-side-display.service` keeps an Xvfb display available on `:99`.
-`metnos-playwright.service` depends on that display and uses it for graphical
-browser sessions with `headless=False`.
+`metnos-side-display.service` keeps an Xvfb display on `:99`. `metnos-playwright.service`
+uses it for graphical browser sessions. Xvfb is in the package list of the installer guide.
 
-Host prerequisite:
-
-```bash
-sudo apt install xvfb
-```
-
-If the display service is unavailable, the graphical browser is reported as
-unavailable. The runtime does not silently replace a requested graphical
-surface with headless execution.
+If the display is not available, the graphical browser is reported as unavailable. Metnos
+does not silently replace a requested graphical session with a headless one.
 
 ## Telegram channel
 
-`metnos-telegram-daemon.service` performs Telegram long polling, dispatches each
-accepted message through the normal Metnos turn path, and sends the result back
-to the configured chat. The last processed update identifier is persisted under
-the Metnos state directory so a restart does not replay old messages.
+`metnos-telegram-daemon.service` performs Telegram long polling, passes each accepted
+message through the normal Metnos turn path and sends the result back to the configured
+chat. The last processed update is saved in the Metnos state directory, so a restart does
+not replay old messages.
 
-Telegram credentials are resolved through the encrypted Metnos credential
-store. They are not placed in the unit file.
+Telegram credentials come from the encrypted Metnos credential store. They are never placed
+in the unit file.
 
-## Manual service inspection
+## Changing an executor
 
-```bash
-systemctl --user daemon-reload
-systemctl --user status metnos-side-display.service
-systemctl --user status metnos-playwright.service
-systemctl --user status metnos-telegram-daemon.service
-journalctl --user -u metnos-playwright.service -f
-```
-
-User services that must survive logout require lingering for the service owner:
-
-```bash
-sudo loginctl enable-linger "$USER"
-```
-
-An upgraded HTTP server may remain a system service until the guarded migration
-passes. Use the service scope selected by the installer rather than installing
-a second copy manually.
+Executor changes go through the stack reconciler, which admits the named executor, waits
+until no turn or browser session is running and then activates it. The command and its rules
+are in section 6 of [INSTALL_NOTES.md](../install/INSTALL_NOTES.md).

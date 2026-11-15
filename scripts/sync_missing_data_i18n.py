@@ -16,6 +16,9 @@ TRANSLATIONS = {
     'ERR_UNKNOWN_FIELDS': (
         'Nei risultati non c\'è il dato «{unknown}». Ci sono: {supported}.',
         'The results carry no «{unknown}». They carry: {supported}.'),
+    'ERR_FILTER_WHERE_TEST': (
+        'La selezione nomina il dato «{field}» ma non dice che cosa deve valere: manca il criterio.',
+        'The selection names «{field}» but does not say what it must hold: the test is missing.'),
     'MSG_TERM_UNKNOWN_FIELD_ACTION': (
         'Posso scegliere solo in base ai dati elencati: riformula la richiesta con uno di quelli',
         'I can select only by the data listed: rephrase the request with one of those'),

@@ -843,7 +843,14 @@ reference list, used by incremental monitors).
 <p>
 The taxonomy of list operators is closed and readable:
 <code>filter_entries</code> reduces a single list (predicates:
-where_starts_with, where_contains, where_glob, where_regex),
+where_starts_with, where_ends_with, where_contains, where_glob, where_regex,
+and the bounds where_min and where_max for numeric fields)
+and never loses a criterion: a value given together with the request that the
+field be present is applied, and a field named without any predicate is
+refused instead of passing the whole list. When the named field is not in the
+records but exactly one documented variant of it is (the person says
+&ldquo;title&rdquo;, the records carry <code>summary</code>), the filter uses
+that one;
 <code>filter_lists</code> combines two lists with set ops,
 <code>compute_entries</code> computes a scalar (sum, average, min, max,
 count). The three primitives together cover almost every list

@@ -40,9 +40,11 @@ undo is dispatched back to the device that performed the original action.
 ## Commands
 
 ```text
-metnos-client register   pair this device with a one-time token
-metnos-client run        start the poll, execute, and delivery loop
-metnos-client whoami     show the local pairing identity
+metnos-client register      pair this device with a one-time token
+metnos-client run           start the poll, execute, and delivery loop
+metnos-client whoami        show the local pairing identity
+metnos-client helper setup  on Windows, fetch and install the elevated helper
+metnos-client unpair        forget the pairing and clean up the Windows sandbox
 ```
 
 The long-running client enforces a single-instance lock. Automatic self-update

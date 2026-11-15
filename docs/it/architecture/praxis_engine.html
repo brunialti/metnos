@@ -210,6 +210,12 @@ producono un solo candidato, altre confrontano pi&ugrave; alternative e ne resti
 una. La grammatica, quando &egrave; attiva, limita la forma dell'output ma non rende
 deterministica la scelta semantica del modello.</p>
 
+<p>Di ogni strumento del gruppo scelto per la richiesta il componente riceve il
+nome, la testa della descrizione, gli argomenti obbligatori e i nomi di tutti gli
+argomenti dichiarati, con i valori ammessi e i valori predefiniti. Restano fuori
+solo gli argomenti di configurazione che risolve il runtime. Un argomento che il
+componente non vede non pu&ograve; entrare in un piano.</p>
+
 <p>Prima dell'esecuzione, il motore risolve i riferimenti, i dati raccolti da un
 dialogo e i valori interni del runtime. Poi controlla le condizioni di ogni
 passo e invoca l'executor previsto. Passi indipendenti vengono

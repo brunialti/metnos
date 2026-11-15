@@ -44,6 +44,7 @@ from messages import get as _msg  # noqa: E402
 from executor_helpers import run_stdio, date_text  # noqa: E402
 from time_window_parser import observed_date_period  # noqa: E402
 from tabular_records import merge_source_metadata  # noqa: E402
+from field_synonyms import LABEL_FIELDS, field_group  # noqa: E402
 
 
 def _ensure_list(v):
@@ -73,6 +74,18 @@ def _parse_compound_pattern(value):
             if p:
                 out.append(p)
     return out
+
+
+def _as_number(value):
+    """The number a value holds, or None: a bound compares numbers only."""
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    try:
+        return float(str(value).strip().replace(",", "."))
+    except ValueError:
+        return None
 
 
 def _parse_iso_to_epoch(s):
@@ -209,14 +222,29 @@ def _invoke(args):
     # Backward-compatible interpretation of a common planner spelling.  The
     # manifest now exposes the typed ``where_present`` operator, but plans
     # produced by older/cached proposers may still use these two sentinels.
+    _value_names_presence = False
     if where_present is None and isinstance(raw_where_value, str):
         _presence_alias = raw_where_value.strip().casefold().replace("-", "_")
         if _presence_alias in {"not_empty", "non_empty", "present"}:
-            where_present = True
+            where_present, _value_names_presence = True, True
         elif _presence_alias in {"empty", "missing", "absent"}:
-            where_present = False
-    if not where_in and raw_where_value is not None and where_present is None:
-        where_in = [raw_where_value]
+            where_present, _value_names_presence = False, True
+    # A value is a criterion and is never dropped (seen live on 15/11/2026:
+    # ``where_value`` given together with ``where_present=true`` was ignored
+    # and every entry with a non-empty field passed).  A field that holds the
+    # value is present, so the two are applied together; a value asked of a
+    # field that must be absent can match nothing and is refused.
+    if raw_where_value is not None and not _value_names_presence:
+        if where_present is False:
+            return {
+                "ok": False,
+                "error_class": "invalid_input",
+                "error_code": "where_value_on_absent_field",
+                "error": _msg("ERR_ARG_INVALID", arg="where_value",
+                              reason="where_present=false"),
+            }
+        if not where_in:
+            where_in = [raw_where_value]
 
     # Producer schemas often expose collections with plural names while a
     # natural-language plan names the singular field (email -> emails).  If
@@ -234,6 +262,17 @@ def _invoke(args):
                     and candidate == str(where_field)[:-1])
             )
         }
+        if not _field_candidates:
+            # A documented variant of the same field (`field_synonyms`): the
+            # person says «title», the records carry `summary`.  Only when
+            # exactly one variant is there.
+            _variants = set(field_group(str(where_field).casefold()))
+            _field_candidates = {
+                candidate
+                for e in entries if isinstance(e, dict)
+                for candidate in e
+                if not str(candidate).startswith("_") and candidate in _variants
+            }
         if len(_field_candidates) == 1:
             where_field = _field_candidates.pop()
     # Operatori di stringa su where_field arbitrario (15/5/2026):
@@ -242,6 +281,7 @@ def _invoke(args):
     # contains, glob, regex per coprire i pattern naturali. Case-insensitive
     # di default (coerente con name_glob/name_regex).
     where_starts_with = args.get("where_starts_with")
+    where_ends_with = args.get("where_ends_with")
     where_contains = args.get("where_contains")
     where_glob = args.get("where_glob")
     where_regex_str = args.get("where_regex")
@@ -275,8 +315,38 @@ def _invoke(args):
                 "error": _msg("ERR_ARG_INVALID", arg="where_periods", reason=str(e)),
             }
     period_unreadable = 0
+    # Bounds on a field that holds numbers (15/11/2026): «bigger than», «at
+    # least», «at most» were planned as an exact value, because the only
+    # bounds were the ones of file size and time.  Inclusive, like those.
+    where_min = where_max = None
+    for _bound in ("where_min", "where_max"):
+        if args.get(_bound) is None:
+            continue
+        _number = _as_number(args.get(_bound))
+        if _number is None:
+            return {
+                "ok": False,
+                "error_class": "invalid_input",
+                "error_code": "invalid_where_bound",
+                "error": _msg("ERR_ARG_INVALID", arg=_bound,
+                              reason=str(args.get(_bound))[:80]),
+            }
+        if _bound == "where_min":
+            where_min = _number
+        else:
+            where_max = _number
     _has_where_str_op = any(x is not None for x in (
-        where_starts_with, where_contains, where_glob, where_regex_str))
+        where_starts_with, where_ends_with, where_contains, where_glob,
+        where_regex_str, where_min, where_max))
+    # A test on a text with no field named is a test on the name of the
+    # record, when the records carry exactly one field that names them.
+    if not where_field and any(x is not None for x in (
+            where_starts_with, where_ends_with, where_contains, where_glob,
+            where_regex_str)):
+        _labels = {field for e in entries if isinstance(e, dict)
+                   for field in e if field in LABEL_FIELDS}
+        if len(_labels) == 1:
+            where_field = _labels.pop()
     if (where_in or where_not_in or _has_where_str_op or where_periods
             or where_present is not None) and not where_field:
         return {
@@ -284,6 +354,24 @@ def _invoke(args):
             "error_class": "invalid_input",
             "error_code": "missing_where_field",
             "error": _msg("ERR_FILTER_WHERE_FIELD"),
+        }
+    # A field named without a test on it is a criterion lost on the way
+    # (15/11/2026: an operator this tool does not have was dropped from the
+    # plan, and every entry passed as if it had been selected).  Refused,
+    # unless the call selects the entries in another way.
+    _selects_otherwise = bool(
+        kinds or types or mime_prefix or name_globs or name_regex
+        or size_min is not None or size_max is not None
+        or mtime_after is not None or mtime_before is not None
+        or args.get("overlap_entries"))
+    if (where_field and not _selects_otherwise
+            and not (where_in or where_not_in or _has_where_str_op or where_periods
+                     or where_present is not None)):
+        return {
+            "ok": False,
+            "error_class": "invalid_input",
+            "error_code": "where_field_without_test",
+            "error": _msg("ERR_FILTER_WHERE_TEST", field=where_field),
         }
 
     # A field no entry has is a wrong name, not an empty result: selecting on
@@ -392,6 +480,15 @@ def _invoke(args):
             if where_starts_with is not None:
                 if not v_lower.startswith(str(where_starts_with).lower()):
                     return False
+            if where_ends_with is not None:
+                if not v_lower.endswith(str(where_ends_with).lower()):
+                    return False
+            if where_min is not None or where_max is not None:
+                number = _as_number(v)
+                if (number is None
+                        or (where_min is not None and number < where_min)
+                        or (where_max is not None and number > where_max)):
+                    return False
             if where_contains is not None:
                 if str(where_contains).lower() not in v_lower:
                     return False
@@ -471,6 +568,9 @@ def _invoke(args):
                 "where_in": where_in or None,
                 "where_not_in": where_not_in or None,
                 "where_starts_with": where_starts_with,
+                "where_ends_with": where_ends_with,
+                "where_min": where_min,
+                "where_max": where_max,
                 "where_contains": where_contains,
                 "where_glob": where_glob,
                 "where_regex": where_regex_str,

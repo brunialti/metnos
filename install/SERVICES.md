@@ -1,18 +1,16 @@
 # Servizi esistenti / Existing services
 
+[Italiano](#italiano) · [English](#english)
+
 ## Italiano
 
-Il file facoltativo `~/.config/metnos/services.toml` indica quali servizi
-esistenti riusare. Può puntare a un servizio sulla stessa macchina oppure su
-un altro computer raggiungibile. Non viene cercato nessun server nella rete.
+Il file facoltativo `~/.config/metnos/services.toml` dice all’installer quali servizi che hai
+già vanno riusati, su questa macchina o su un’altra raggiungibile. Ciò che non è nel file
+viene installato in locale. Nessun server viene cercato nella rete.
 
-- File assente o vuoto: tutti i componenti vengono predisposti localmente.
-- File parziale: solo i servizi indicati vengono riusati; tutti gli altri
-  vengono predisposti localmente.
-- Il percorso amministrato non accetta `--skip`: il catalogo richiede tutti
-  i servizi previsti, locali oppure indicati nel file.
+### Come si prepara
 
-Preparazione, **dopo il download del repository e prima dell'installazione**:
+Dopo aver scaricato il repository e **prima di installare**:
 
 ```bash
 install -d -m 700 ~/.config/metnos
@@ -21,8 +19,7 @@ ${EDITOR:-nano} ~/.config/metnos/services.toml
 bash install/bootstrap.sh --check
 ```
 
-Decommenta soltanto le sezioni necessarie e sostituisci gli indirizzi di esempio.
-Una sezione attiva deve avere `url`; una sezione vuota è un errore. Per esempio:
+Togli il commento solo alle sezioni che ti servono e sostituisci gli indirizzi d’esempio:
 
 ```toml
 [llm]
@@ -33,108 +30,123 @@ frontier = false
 url = "http://vision.example.test:8081"
 ```
 
-In questo esempio modello testuale e visione sono riusati; ricerca, geografia,
-browser ed embedder BGE-M3 vengono installati localmente. Il file non modifica
-il percorso amministrativo delle autorità né l'accettazione iniziale.
+Qui modello di testo e visione sono riusati; ricerca, geografia e browser sono installati in
+locale.
 
-| Sezione | Servizio richiesto | Verifica |
+### Sezioni ammesse
+
+| Sezione | Servizio richiesto | Come viene verificato |
 |---|---|---|
 | `llm` | llama-server con API compatibile OpenAI | `/v1/models` |
 | `vlm` | llama-server con modello visivo e proiettore caricati | `/v1/models` |
-| `searxng` | SearXNG con formato JSON abilitato | ricerca JSON |
-| `photon` | Photon con indice pronto | ricerca geografica |
-| `playwright` | servizio browser Metnos | `/health` con Chromium |
+| `searxng` | SearXNG con il formato JSON abilitato | una ricerca JSON |
+| `photon` | Photon con l’indice pronto | una ricerca geografica |
+| `playwright` | il servizio browser di Metnos | `/health`, con il browser pronto |
 
-Per `llm` e `vlm`, `model` è l'identificatore esatto restituito dal servizio.
-Puoi ometterlo se il catalogo contiene un solo modello. La verifica non esegue
-inferenza e non certifica la qualità del modello: il collaudo chat/foto resta
-necessario. `frontier` è ammesso soltanto in `[llm]` ed è `false` se omesso;
-`true` abilita esplicitamente il ruolo cloud Anthropic, che richiede credenziali
-separate e può comportare costi. Senza profilo, il cloud resta comunque una
-scelta esplicita; `--yes` non lo abilita e un errore locale non lo seleziona.
+| Chiave | Dove | Significato |
+|---|---|---|
+| `url` | ogni sezione, obbligatoria | Indirizzo HTTP o HTTPS, senza credenziali, parametri o frammenti. |
+| `model` | `llm`, `vlm` | Nome esatto restituito dal servizio. Si può omettere se il servizio elenca un solo modello. |
+| `frontier` | solo `llm` | `false` se omesso. `true` abilita il ruolo cloud a pagamento di Anthropic, che richiede credenziali separate. |
 
-Gli indirizzi devono usare HTTP o HTTPS, senza credenziali, query o frammenti.
-Questo profilo non gestisce token, comandi o variabili arbitrarie. Il servizio
-deve essere raggiungibile dall'ambiente dove si installa Metnos: dentro un
-container `localhost` indica il container. Le porte devono essere esposte dal
-server alla rete prevista; il file non apre porte né avvia processi remoti.
-L'embedder BGE-M3 resta locale: non esiste qui un'opzione per renderlo remoto.
+### Regole
 
-L'installer legge il file senza nuove domande sui servizi. Controlla gli
-indirizzi prima dei download della fase 2 e di nuovo prima dell'avvio della
-fase 5. Un errore di sintassi, un servizio incompatibile o irraggiungibile
-interrompono la procedura; nessuna copia locale o sostituzione cloud automatica.
-Un componente locale che non diventa utilizzabile interrompe ugualmente la
-fase: correggi il prerequisito prima di riprendere.
-
-Il profilo selezionato viene incluso nella distribuzione firmata. Il
-coordinatore amministrativo genera le unità di sistema con i soli parametri
-ammessi. I file privati `services.env` e `services-llm-tiers.toml` conservano
-le associazioni applicative. Non modificarli direttamente.
-
-Per riprendere un’installazione usa lo stesso `services.toml`: dopo la fase 2,
-un profilo diverso interrompe la ripresa. Cambiare la topologia di un’istanza
-già installata richiede un nuovo rilascio amministrato e una finestra di
-riavvio. Ripetere soltanto le fasi 2 e 5 non basta. Le unità locali incompatibili
-non vengono sostituite automaticamente.
-
-Se imposti `METNOS_USER_CONFIG`, il file e le configurazioni generate vivono
-in quella directory invece di `~/.config/metnos`. Un aggiornamento del codice
-non sostituisce il profilo personale.
+- File assente o vuoto: tutto in locale. Una sezione attiva senza `url` è un errore.
+- I vettori di testo BGE-M3 restano sempre locali.
+- Il servizio deve già accettare connessioni dall’ambiente in cui installi. Dentro un
+  contenitore `localhost` è il contenitore. Il file non apre porte e non avvia processi
+  remoti; non gestisce token, comandi o variabili.
+- L’installer non fa altre domande sui servizi. Controlla gli indirizzi prima degli
+  scaricamenti della fase 2 e di nuovo nella fase 5. Un errore nel file, un servizio
+  incompatibile o irraggiungibile fermano l’installazione: niente copia locale e niente
+  cloud al suo posto. Anche un componente locale che non parte ferma la fase.
+- Il cloud resta una scelta esplicita: `--yes` non lo abilita e un errore locale non lo
+  seleziona.
+- La verifica non esegue il modello e non ne certifica la qualità: prova tu una richiesta
+  in chat e una foto.
+- `--skip` non è accettato: ogni servizio è locale oppure dichiarato qui.
+- Per riprendere un’installazione usa lo stesso file: dopo la fase 2 un profilo diverso
+  ferma la ripresa.
+- Il profilo entra nell’installazione firmata. `services.env` e `services-llm-tiers.toml`
+  sono generati: non modificarli. Cambiare i servizi di un’istanza già installata richiede
+  un nuovo rilascio amministrato e una finestra di riavvio; ripetere le fasi 2 e 5 non basta.
+- Le unità locali diverse da quelle attese non vengono sostituite.
+- Con `METNOS_USER_CONFIG` il file e quelli generati stanno in quella directory. Un
+  aggiornamento del codice non sostituisce il tuo profilo.
+- Un server condiviso resta responsabile del proprio ciclo di vita e divide il carico fra i
+  suoi client; non dà accesso ai dati di un’altra istanza.
 
 ## English
 
-The optional `~/.config/metnos/services.toml` file selects existing services
-on this machine or another reachable host. There is no network discovery.
-An absent or empty file provisions every component locally. A partial file
-reuses only the listed services and provisions every other component locally.
-The managed flow requires all catalog services, either local or listed in the
-profile; it does not accept `--skip`.
+The optional file `~/.config/metnos/services.toml` tells the installer which services you
+already run should be reused, on this machine or on another reachable one. Whatever is not in
+the file is installed locally. No server is searched for on the network.
 
-After cloning the repository and **before installation**, copy
-`install/services.example.toml` into `~/.config/metnos/services.toml` with
-permissions `0600`, uncomment only the services to reuse, replace their URLs,
-then run `bash install/bootstrap.sh --check`. The shell commands above apply
-to both languages. Empty active sections are invalid: each needs a `url`.
+### How to prepare it
 
-Supported sections are `llm` and `vlm` (llama-server `/v1/models`), `searxng`
-(JSON search enabled), `photon` (ready geographical index), and `playwright`
-(Metnos browser service reporting Chromium health). For either model service,
-`model` must exactly match a catalog ID; it can be omitted only when the server
-lists one model. Vision also needs its visual model and projector loaded.
-Protocol checks perform no inference and do not certify model quality: test
-an actual chat turn and image separately.
+After cloning the repository and **before installing**:
 
-Only `[llm]` accepts `frontier`. It defaults to `false`; `true` explicitly
-enables the paid Anthropic cloud tier and requires separate credentials.
-Without a profile, cloud remains explicit opt-in, is disabled by `--yes`, and
-is never selected automatically after local provisioning fails.
+```bash
+install -d -m 700 ~/.config/metnos
+install -m 600 install/services.example.toml ~/.config/metnos/services.toml
+${EDITOR:-nano} ~/.config/metnos/services.toml
+bash install/bootstrap.sh --check
+```
 
-URLs use HTTP(S), without credentials, query strings or fragments. Tokens,
-commands and arbitrary environment variables are not supported here. The
-server must already accept connections from the installation environment.
-Inside a container, `localhost` means the container itself. The file neither
-opens firewall ports nor starts remote processes. BGE-M3 embeddings remain
-local. Initial consent and administrator authority provisioning still apply.
+Uncomment only the sections you need and replace the example addresses:
 
-The installer reads the file without additional service-choice prompts. It
-checks configured endpoints before phase-2 downloads and again before phase-5
-startup. An invalid profile or unavailable/incompatible server stops the
-installation, without a local or cloud replacement. An unusable local
-component also stops its phase; fix its prerequisite before resuming.
+```toml
+[llm]
+url = "http://models.example.test:8080"
+frontier = false
 
-The selected profile is included in the signed distribution. The administrative
-coordinator generates system units with only the permitted parameters. Private
-`services.env` and `services-llm-tiers.toml` retain application bindings; do not
-edit these generated files.
+[vlm]
+url = "http://vision.example.test:8081"
+```
 
-Resume with the same `services.toml`. A different profile after phase 2 stops
-resumption. Changing an installed topology requires a new administrative
-release and a restart window; repeating phases 2 and 5 alone is insufficient.
-Incompatible local units are never replaced automatically. The managed flow
-does not accept `--skip`.
+Here the text model and vision are reused; search, geocoding and browser are installed
+locally.
 
-`METNOS_USER_CONFIG` overrides the configuration directory for the profile
-and its generated files. Updating source code does not overwrite the user's
-profile. Shared servers retain responsibility for their lifecycle and share
-their load across clients; they do not grant access to another instance's data.
+### Allowed sections
+
+| Section | Required service | How it is checked |
+|---|---|---|
+| `llm` | llama-server with an OpenAI-compatible API | `/v1/models` |
+| `vlm` | llama-server with a visual model and projector loaded | `/v1/models` |
+| `searxng` | SearXNG with the JSON format enabled | a JSON search |
+| `photon` | Photon with a ready index | a geographical search |
+| `playwright` | the Metnos browser service | `/health`, with its browser ready |
+
+| Key | Where | Meaning |
+|---|---|---|
+| `url` | every section, required | HTTP or HTTPS address, without credentials, query string or fragment. |
+| `model` | `llm`, `vlm` | Exact name returned by the service. It can be omitted when the service lists one model. |
+| `frontier` | `llm` only | `false` when omitted. `true` enables the paid Anthropic cloud tier, which needs separate credentials. |
+
+### Rules
+
+- Absent or empty file: everything local. An active section without `url` is an error.
+- BGE-M3 embeddings always stay local.
+- The service must already accept connections from where you install. Inside a container,
+  `localhost` is the container. The file opens no port and starts no remote process; it
+  carries no tokens, commands or variables.
+- The installer asks no further question about services. It checks the addresses before the
+  phase-2 downloads and again in phase 5. A mistake in the file, or an incompatible or
+  unreachable service, stops the installation: no local copy and no cloud replacement. A
+  local component that does not start also stops its phase.
+- Cloud stays an explicit choice: `--yes` does not enable it and a local failure never
+  selects it.
+- The check runs no inference and does not certify model quality: try a real chat request
+  and an image yourself.
+- `--skip` is not accepted: every service is local or declared here.
+- To resume an installation use the same file: after phase 2 a different profile stops the
+  resume.
+- The profile becomes part of the signed installation. `services.env` and
+  `services-llm-tiers.toml` are generated: do not edit them. Changing the services of an
+  installed instance needs a new administrative release and a restart window; repeating
+  phases 2 and 5 is not enough.
+- Local units that differ from the expected ones are never replaced.
+- With `METNOS_USER_CONFIG` the file and the generated ones live in that directory. A code
+  update does not overwrite your profile.
+- A shared server stays responsible for its own lifecycle and shares its load across its
+  clients; it gives no access to another instance's data.

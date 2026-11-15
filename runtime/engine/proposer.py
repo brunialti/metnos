@@ -138,9 +138,12 @@ def _render_tool_pool(pool: list[str], catalog: Optional[list]) -> str:
         # come `client`/`account`/`provider` induce un BIAS (il pattern vince
         # sul colloquiale "OMETTI") → il backend lo risolve il RUNTIME, non il
         # proposer. L'arg resta nello schema per validazione/umani/iniezione.
+        # Every declared argument is shown (15/11/2026): with only the first
+        # eight, the text operators of the filter never reached the planner
+        # and «starts with» was planned as a value plus a presence flag.
         props = [p for p in props_map.keys()
                  if not (isinstance(props_map.get(p), dict)
-                         and props_map[p].get("runtime_resolved"))][:8]
+                         and props_map[p].get("runtime_resolved"))]
         bits = [f"- {name}"]
         if desc_short:
             bits.append(f" — {desc_short}")

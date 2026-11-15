@@ -200,6 +200,12 @@ candidate, while others compare several alternatives and return one. A
 grammar, when enabled, constrains output shape but does not make the model's
 semantic choice deterministic.</p>
 
+<p>For each tool in the pool selected for the request, the component receives
+its name, the head of its description, its required arguments, and the names of
+all declared arguments with their allowed and default values. Only configuration
+arguments resolved by the runtime are left out. An argument the component
+cannot see cannot enter a plan.</p>
+
 <p>Before execution, the engine resolves references, data gathered through a
 dialog, and internal runtime values. It then checks each step's conditions and
 invokes the selected executor. Independent steps run in parallel only
