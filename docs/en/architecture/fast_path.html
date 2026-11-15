@@ -214,8 +214,9 @@ becomes a fingerprint (a deterministic <em>hash</em>) and is looked up for an
 exact match, with no language model and no new embedding. It is the only route
 allowed for plans tied to a <em>single</em> request: the ones with literal
 arguments lifted from the question &mdash; a proper name used as a search key,
-say &mdash; which, replayed on a similar but different request, would return the
-wrong data.</li>
+say, or a number &mdash; which, replayed on a similar but different request,
+would return the wrong data. Such a plan is served to the identical sentence
+only.</li>
 
 <li><strong>0b &mdash; semantic cosine.</strong> If the fingerprint finds
 nothing, the query becomes a vector and is compared, by cosine, against
@@ -236,8 +237,10 @@ remove the underlying capability.
 
 <ul>
 <li><strong>Negative rating:</strong> a user &ldquo;&#10007;&rdquo; deletes the
-fastpath associated with that request. If the engine later resolves it
-successfully, it may create a new one.</li>
+L0 entries that turn was served from and the ones it wrote. The turn records
+them, so the entry of another request that served it by similarity is removed
+too, and so is the entry of a request addressed to a device or a site. If the
+engine later resolves it successfully, it may create a new one.</li>
 <li><strong>Administration:</strong> in the web chat, open
 <strong>Settings &gt; Memory &gt; Praxis</strong> to inspect L0 shortcuts and
 delete one. If you ask for directions from Telegram, this path still refers
@@ -398,9 +401,10 @@ path belonging to one action does not leak into the next.</li>
 
 <p>
 This preparation also applies to plans retrieved from L0 and L1. A plan with
-literal values that cannot be generalised remains eligible only for the exact
-request; some plans, including those with embedded numeric identifiers or
-authenticated sessions, are not stored at all.
+literal values that cannot be generalised, including a number taken from the
+request, remains eligible only for the exact request and never becomes an
+autopath; some plans, including those with authenticated sessions, are not
+stored at all.
 </p>
 
 

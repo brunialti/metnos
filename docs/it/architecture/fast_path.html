@@ -217,8 +217,9 @@ forma normale, diventa un'impronta (un <em>hash</em> deterministico) e si cerca
 una corrispondenza esatta, senza modello linguistico n&eacute; nuovo embedding.
 &Egrave; l'unica via concessa ai piani legati a una <em>singola</em> richiesta:
 quelli con argomenti letterali presi dalla domanda &mdash; un nome proprio usato
-come chiave di ricerca, poniamo &mdash; che, riusati su una richiesta somigliante
-ma diversa, restituirebbero il dato sbagliato.</li>
+come chiave di ricerca, poniamo, oppure un numero &mdash; che, riusati su una
+richiesta somigliante ma diversa, restituirebbero il dato sbagliato. Un piano
+cos&igrave; viene servito solo alla frase identica.</li>
 
 <li><strong>0b &mdash; coseno semantico.</strong> Se l'impronta non trova nulla,
 la query diventa un vettore e si confronta, per coseno, con le voci
@@ -239,8 +240,11 @@ rende quindi indisponibile la capacit&agrave; sottostante.
 
 <ul>
 <li><strong>Riscontro negativo:</strong> un &laquo;&#10007;&raquo; dell'utente
-cancella il fastpath associato a quella richiesta. Se in seguito il motore la
-risolve correttamente, pu&ograve; crearne uno nuovo.</li>
+cancella le voci L0 da cui quel turno &egrave; stato servito e quelle che ha
+scritto. Il turno le registra: cos&igrave; viene tolta anche la voce di
+un'altra richiesta che lo ha servito per somiglianza, e quella di una richiesta
+rivolta a un dispositivo o a un sito. Se in seguito il motore la risolve
+correttamente, pu&ograve; crearne una nuova.</li>
 <li><strong>Amministrazione:</strong> nella chat web apri
 <strong>Impostazioni &gt; Memoria &gt; Praxis</strong> per vedere le scorciatoie
 L0 e cancellarne una. Se chiedi istruzioni da Telegram, il percorso indicato
@@ -408,10 +412,10 @@ la data o il percorso di un'azione finiscano in quella successiva.</li>
 
 <p>
 Questa preparazione viene applicata anche ai piani recuperati da L0 e L1. Un
-piano con valori letterali che non possono essere generalizzati resta
-utilizzabile soltanto per la richiesta esatta; alcuni piani, per esempio quelli
-con identificatori numerici incorporati o sessioni autenticate, non vengono
-memorizzati affatto.
+piano con valori letterali che non possono essere generalizzati, compreso un
+numero preso dalla richiesta, resta utilizzabile soltanto per la richiesta
+esatta e non diventa un autopath; alcuni piani, per esempio quelli con sessioni
+autenticate, non vengono memorizzati affatto.
 </p>
 
 

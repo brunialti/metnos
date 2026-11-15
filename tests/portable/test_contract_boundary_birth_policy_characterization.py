@@ -24,9 +24,13 @@ POLICY_NAMES = (
 # only to the existing transition; no publication or runtime grant is added.
 # 9/11: F5 removed. The five F5 evidence and certification store owners leave
 # the coordinator list; nothing is added and no other value changes.
-POLICY_SHA256 = "d0bf880c317463e054825dc1c9e7e05748cfc2489baa8372a2852fa2ebae775c"
-INVENTORY_SHA256 = "d723fbe9b8aafed13681817078163b4b060ad7475dde74e5fca821f7efd8315b"
-FINDINGS_SHA256 = "79b9a9a47d8436ab9771c920d3c84a80c775609d1c469c83ad4ce30aa2f0477a"
+# 15/11: «Ritira» sets a generated tool aside and signs no retirement any
+# more. The retirement-only grant of change_rollback._rollback_create_executor
+# leaves the list (approved by Roberto); nothing is added, no other value
+# changes.
+POLICY_SHA256 = "d91c6ff25a24888a7aa9399ccc8868fde8b8151cbbfb5b0ab23675dc4ea30468"
+INVENTORY_SHA256 = "e319da249e6a8e89efff9508804ed3bc09a91a7ef486c24f25a022dc3614f4fb"
+FINDINGS_SHA256 = "14644c56fd4837ed78f22472a1bd2420fb003a718ecdcc586d89a1e5f112ce2e"
 
 DIRECT_MANIFEST_ROLES = frozenset({
     "migration_boundary", "offline_authoring", "store_owner",
@@ -123,7 +127,9 @@ def test_inventory_and_findings_outputs_are_frozen() -> None:
     first = [(item.code, item.scope, item.message) for item in imported]
     second = [(item.code, item.scope, item.message) for item in embedded]
     # 170, not 175: the five F5 coordinator store owners left the policy.
-    assert first == second and len(first) == 170
+    # 169, not 170: the retirement-only grant of «Ritira» left it (15/11/2026);
+    # the one finding that goes is its missing exception scope.
+    assert first == second and len(first) == 169
     assert _sha256(first) == FINDINGS_SHA256
 
 

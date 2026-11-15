@@ -39,7 +39,7 @@ from typing import Optional
 
 from .types import Framework
 from . import cluster as _cluster
-from .executor import is_query_specific
+from .executor import bakes_query_number, is_query_specific
 
 log = logging.getLogger(__name__)
 
@@ -131,6 +131,24 @@ class FastpathHit:
     # al hit (cache_validity.validate); vuote = riga pre-migrazione = MISS.
     tools_sig: str = ""
     pool_sig: str = ""
+
+
+def _exact_only(framework_json: str, exact_query: str) -> bool:
+    """The plan answers only the sentence it was recorded for: it holds a
+    literal of that sentence (`is_query_specific`) or one of its numbers.
+    Such a row is served by its exact text, never by similarity. Derived from
+    the row itself, so no stored flag can drift from it."""
+    if is_query_specific(framework_json):
+        return True
+    if not exact_query:
+        return False
+    try:
+        steps = (json.loads(framework_json) or {}).get("steps") or []
+    except Exception:  # noqa: BLE001 - an unreadable plan is never served anyway
+        return False
+    return bakes_query_number(
+        [step.get("args") for step in steps if isinstance(step, dict)],
+        exact_query)
 
 
 def _db_path() -> Path:
@@ -239,7 +257,7 @@ def lookup(query: str) -> Optional[FastpathHit]:
         if row:
             try:
                 fw = Framework.from_dict(json.loads(row[2]))
-                if is_query_specific(row[2]) and row[5] != query:
+                if _exact_only(row[2], row[5]) and row[5] != query:
                     return None
                 _touch(row[0])
                 return FastpathHit(fp_id=row[0], canonical_text=row[1],
@@ -267,7 +285,7 @@ def lookup(query: str) -> Optional[FastpathHit]:
         c = _conn()
         rows = c.execute(
             "SELECT id, canonical_text, framework_json, embedding, "
-            "tools_sig, pool_sig "
+            "tools_sig, pool_sig, exact_query "
             "FROM fastpaths WHERE embedding IS NOT NULL "
             "AND query_specific = 0").fetchall()
         c.close()
@@ -277,12 +295,12 @@ def lookup(query: str) -> Optional[FastpathHit]:
     threshold = _cluster.COSINE_HIGH + 0.02  # leggermente più stretto del cluster
     best = None
     best_sim = 0.0
-    for fp_id, ctext, fjson, stored_eb, tsig, psig in rows:
+    for fp_id, ctext, fjson, stored_eb, tsig, psig, exact in rows:
         if not stored_eb:
             continue
         # Il flag memorizzato è solo un filtro: vecchie righe possono essere
         # state classificate prima che il predicato riconoscesse questi dati.
-        if is_query_specific(fjson):
+        if _exact_only(fjson, exact or ""):
             continue
         sim = _cluster.cosine(eb, stored_eb)
         if sim > best_sim:
@@ -340,7 +358,7 @@ def record_success(query: str, framework: Framework, *,
     h = _cluster.normalize_hash(query)
     eb = _cluster.embed(query)  # può essere None se BGE-M3 mancante → solo 0a
     fjson = json.dumps(framework.to_dict(), ensure_ascii=False)
-    qspec = 1 if is_query_specific(fjson) else 0
+    qspec = 1 if _exact_only(fjson, query) else 0
     iverb = (getattr(intent, "verb", "") or "").lower().strip()
     iobj = (getattr(intent, "object", "") or "").lower().strip()
     # ADR 0182: firma del mondo alla registrazione (tool referenziati + famiglie
@@ -434,6 +452,28 @@ def delete(fp_id: int) -> bool:
         return cur.rowcount > 0
     except Exception:
         return False
+
+
+def delete_rows(fp_ids) -> int:
+    """Feedback ✗ valve: remove the rows a turn was served from or wrote
+    (`DispatchResult.fastpath_rows`, kept in the turn log). Returns how many
+    were still there."""
+    wanted = sorted({int(fp_id) for fp_id in fp_ids or ()
+                     if type(fp_id) is int and fp_id > 0})
+    if not wanted:
+        return 0
+    try:
+        with closing(_conn()) as c:
+            removed = sum(max(0, c.execute(
+                "DELETE FROM fastpaths WHERE id = ?", (fp_id,)).rowcount)
+                for fp_id in wanted)
+            c.commit()
+    except Exception as ex:
+        log.warning("fastpath.delete_rows failed: %r", ex)
+        return 0
+    if removed:
+        log.info("fastpath: delete_rows (feedback ✗) — %d riga/e", removed)
+    return removed
 
 
 def delete_by_query(query: str) -> int:
@@ -738,10 +778,10 @@ def prune(*, catalog_names: Optional[set] = None,
         # riconosciuti come query-specific. Ricalcolo deterministico nightly
         # (≤ max_rows righe, §7.9); mai downgrade implicito del piano: cambia
         # solo il canale di serve (0b→0a-only o viceversa).
-        for _rid, _rjson, _rq in c.execute(
-                "SELECT id, framework_json, query_specific "
+        for _rid, _rjson, _rq, _exact in c.execute(
+                "SELECT id, framework_json, query_specific, exact_query "
                 "FROM fastpaths").fetchall():
-            _nq = 1 if is_query_specific(_rjson) else 0
+            _nq = 1 if _exact_only(_rjson, _exact or "") else 0
             if _nq != _rq:
                 c.execute("UPDATE fastpaths SET query_specific = ? "
                           "WHERE id = ?", (_nq, _rid))

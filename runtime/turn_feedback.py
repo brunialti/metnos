@@ -166,16 +166,25 @@ def apply_feedback(turn_id: str, action: str, by: str = "user") -> dict:
             record["approved_pipeline"] = pipeline
 
     # ── Fastpath L0 valve (12/6/2026, §2.8) ───────────────────────────
-    # Un ✗ cancella la riga L0 della query del turno (qualunque layer
-    # l'abbia servito: il record L0 nasce dallo stesso piano appena
-    # eseguito). Senza valvola un fastpath sbagliato e colpito rinfresca
-    # last_used (l'aging non lo vede) e L0, vincendo in cascata, impedisce
-    # al piano pieno di ri-succedere → immortale fino al delete admin.
-    # LWW simmetrico con autopath: si ri-crea al prossimo turno-successo.
+    # Un ✗ cancella le righe L0 del turno (qualunque layer l'abbia servito:
+    # il record L0 nasce dallo stesso piano appena eseguito). Senza valvola
+    # un fastpath sbagliato e colpito rinfresca last_used (l'aging non lo
+    # vede) e L0, vincendo in cascata, impedisce al piano pieno di
+    # ri-succedere → immortale fino al delete admin. LWW simmetrico con
+    # autopath: si ri-crea al prossimo turno-successo.
+    #
+    # The rows are the ones the turn itself says it was served from or wrote
+    # (15/11/2026). Looking them up from the words the person typed removed
+    # the wrong row for a request served by similarity (the new row went, the
+    # row that gave the bad plan stayed) and nothing at all for a device or
+    # site request, whose row is kept under the planning text. A turn logged
+    # before the rows were kept is still looked up by its words.
     if action == "error":
         try:
-            from engine.fastpath import delete_by_query as _fp_delete
-            _n_fp = _fp_delete(turn.get("user_query") or "")
+            from engine import fastpath as _fp
+            rows = turn.get("fastpath_rows")
+            _n_fp = (_fp.delete_rows(rows) if isinstance(rows, list)
+                     else _fp.delete_by_query(turn.get("user_query") or ""))
             if _n_fp:
                 effects.append({"type": "fastpath_deleted", "rows": _n_fp})
         except Exception as ex:

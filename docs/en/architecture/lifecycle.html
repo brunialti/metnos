@@ -212,13 +212,13 @@ only and removes what does not work. The figure shows the whole path.</p>
 <text x="345" y="262" text-anchor="start" fill="#475569" font-size="9.5">No</text>
 <path d="M70,232 V298" fill="none" stroke="#1A477A" stroke-width="2" marker-end="url(#m-cycle)"/>
 <text x="78" y="286" text-anchor="start" fill="#475569" font-size="9.5">if it errors</text>
-<path d="M190,232 V262 H218 V438 H202" fill="none" stroke="#1A477A" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#m-cycle)"/>
+<path d="M190,232 V262 H218 V438 H202" fill="none" stroke="#1A477A" stroke-width="2" marker-end="url(#m-cycle)"/>
 <text x="226" y="386" text-anchor="start" fill="#475569" font-size="9.5">if nobody uses it</text>
 <rect x="10" y="300" width="190" height="56" rx="8" fill="#FDE8E8" stroke="#9B1C1C"/>
 <text x="105" y="324" text-anchor="middle" fill="#1A477A" font-weight="700">retired at once</text>
 <text x="105" y="342" text-anchor="middle" fill="#475569" font-size="9.5">and rewritten with that reason</text>
-<rect x="10" y="410" width="190" height="56" rx="8" fill="#F1F5F9" stroke="#64748B" stroke-dasharray="6 4"/>
-<text x="105" y="434" text-anchor="middle" fill="#1A477A" font-weight="700">decays</text>
+<rect x="10" y="410" width="190" height="56" rx="8" fill="#F1F5F9" stroke="#64748B"/>
+<text x="105" y="434" text-anchor="middle" fill="#1A477A" font-weight="700">set aside</text>
 <text x="105" y="452" text-anchor="middle" fill="#475569" font-size="9.5">after 60 days unused</text>
 <rect x="10" y="500" width="26" height="16" rx="4" fill="#D9E4F0" stroke="#1A477A"/>
 <text x="42" y="512" text-anchor="start" fill="#475569" font-size="9.5">in operation</text>
@@ -233,7 +233,9 @@ only and removes what does not work. The figure shows the whole path.</p>
 <ol>
  <li><strong>It notices.</strong> When a request ends with &ldquo;I cannot do this&rdquo;,
  Metnos records what was missing: which action, on which object. The same gap asked
- several times weighs more; when nobody asks any more, the weight goes down.</li>
+ several times weighs more; when nobody asks any more, the weight goes down. A proposal
+ nobody has asked for in ninety days expires: it leaves the list and is born again by
+ itself if the request comes back.</li>
  <li><strong>It proposes and starts.</strong> Each missing capability has one proposal,
  together with the real requests it was born from. When the name belongs to the tool
  vocabulary, Metnos starts building without asking: building activates nothing. A few
@@ -271,7 +273,10 @@ only and removes what does not work. The figure shows the whole path.</p>
  progress and then the outcome, which is written on Telegram too. If the final checks
  refuse it, the tool does not enter and the proposal says why in plain words. A tool that
  pretends its own effect, for instance declaring saved what it wrote nowhere, is stopped
- before it reaches the person. After a no the proposal rests for thirty days; the no
+ before it reaches the person. A tool too similar to one already in use is not activated
+ either: the one that was there before stays, and the person reads which one; if the
+ difference is small they can ask to have that one rewritten with the improvement.
+ After a no the proposal rests for thirty days; the no
  asks for confirmation too and can be reopened.</li>
  <li><strong>It stays under observation.</strong> A generated tool that fails because of a
  defect in its own code is retired at once: the planner no longer sees it and the person
@@ -283,7 +288,12 @@ only and removes what does not work. The figure shows the whole path.</p>
  <strong>Activate</strong> and the new version takes the place of the old one. The person
  can ask for a rewrite too: on the <strong>Changes</strong> page they write what is wrong
  and press <strong>Rewrite</strong>; in this case the tool stays in use until the new
- version replaces it. It is planned that a tool never used decays after sixty days.</li>
+ version replaces it. A tool nobody calls for sixty days is set aside by itself; every
+ call counts as a use, also one the tool refuses. Set aside means out of use, not deleted: it appears
+ in the <strong>Rolled back</strong> tab and comes back as it was with
+ <strong>Reactivate</strong>. The same happens when the person presses
+ <strong>Withdraw</strong>. If the same function is needed again after thirty days, Metnos
+ can propose to build it again.</li>
 </ol>
 
 <p>The signature is not made by the service that built the tool. It is made by a small
@@ -307,8 +317,10 @@ new vocabulary words and the choice about the external model. Handwritten tools 
 never touched by this cycle.</p>
 
 <p>It is planned that &ldquo;safe&rdquo; tools need not even the final question.
-&ldquo;Safe&rdquo; has a precise meaning: the tool only reads or computes, or does things
-that can be undone, and asks for no new permission.</p>
+&ldquo;Safe&rdquo; has a precise meaning: the tool only reads or computes, also when it
+reads from a connected external service, or does things that can be undone. Activation
+without a question will come with a notice and with the <strong>Withdraw</strong>
+button.</p>
 
 <p>The underlying idea: safety does not come from asking the person everything, but
 from asking one thing only, about something finished and tested, and from being able to

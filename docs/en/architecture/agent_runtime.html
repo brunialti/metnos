@@ -213,6 +213,17 @@ messages, or ordinary records.</p>
  file is a link to download, on Telegram it arrives as a document. An answer
  that fits the conversation is shown there.</p>
 
+<p>When the answer is a list of records, the table follows the order in which
+ a person reads them. If the tool declares its own columns, those are used; a
+ step that selects or reorders the records of another step, such as a filter
+ or a sort, shows them as that step does. Without declared columns the name of
+ the record comes first, then the period with its end beside its start, then
+ the other fields and the links last; the internal code of a record appears
+ only when no field names it. A column that is empty in every row is not
+ shown. Dates and times are written on the instance clock, without the zone
+ offset; a day stays a day. The file of a long answer has the same columns as
+ the message.</p>
+
 <p>A resumption does not continue blindly. The runtime checks the owner, expiry,
 dialogue state, catalog, and operating conditions again before proceeding.</p>
 

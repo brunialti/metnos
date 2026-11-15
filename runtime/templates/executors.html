@@ -49,7 +49,7 @@
   <tbody>
   {% for r in rejected %}
     <tr><td><code>{{ r.name }}</code></td><td class="muted">{{ r.path }}</td>
-        <td><span class="chip bad">{{ r.reason }}</span>
+        <td><span class="chip bad">{{ msg('UI_EXECUTOR_RESTRICTED_REASON') if r.restricted else r.reason }}</span>
           {% if r.restricted %}
           <button class="btn" hx-post="/admin/executors/{{ r.name }}/revive"
                   hx-confirm="{{ msg('UI_EXECUTOR_REVIVE_CONFIRM', name=r.name) }}"

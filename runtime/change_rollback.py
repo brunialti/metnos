@@ -5,7 +5,7 @@ fallisce le metriche di validation. Idempotente: re-run no-op se stato
 gia' ripristinato.
 
 Per kind:
-  - create_executor    → archive synth dir + remove from catalog
+  - create_executor    → set the tool aside (out of the catalog, reversible)
   - extend_executor    → restore manifest da rollback_blob + re-sign
   - dedupe_executors   → remove alias + undeprecate B
   - materialize_pipeline → state = demoted
@@ -14,9 +14,7 @@ Per kind:
 """
 from __future__ import annotations
 
-import contextlib
 import json
-import shutil
 import sqlite3
 import time
 from pathlib import Path
@@ -48,54 +46,36 @@ def _iso_now() -> str:
 # --- Rollback handlers ---------------------------------------------------
 
 def _rollback_create_executor(ci: ChangeIntent) -> dict:
+    """Set a tool Metnos built aside (Roberto, 14/11/2026).
+
+    It leaves the catalog through the store that owns the life cycle. Its
+    contract is not retired and its code is not moved: a signed retirement
+    closes the name for good (the door refuses every later version and there
+    is no reactivation in service), so the tool could neither be taken back
+    nor built again. Set aside, it comes back with «Riattiva», or as a new
+    version when the same need returns.
+    """
     effect = ci.applied_effect or {}
     name = effect.get("executor_name") or ci.intent_target
-    synth_dir = C.PATH_SYNTH_EXECUTORS / name
-    if not synth_dir.is_dir():
-        return {"executor_name": name, "note": "synth_dir already absent"}
-    from manifest_inventory import ManifestLayout, resolve_manifest_layout
-    try:
-        layout = resolve_manifest_layout()
-    except Exception as exc:
-        return {
-            "executor_name": name,
-            "error": f"publication layout invalid: {exc}",
-        }
-    boundary = contextlib.nullcontext()
-    if layout is ManifestLayout.STORE_ONLY:
-        from contract_store import catalog_admission_lock
+    from change_intents import built_a_tool
+    from executor_aging import _is_synth, lookup
+    from executor_lifecycle_state import set_aside
 
-        boundary = catalog_admission_lock()
-    with boundary:
-        if layout is ManifestLayout.STORE_ONLY:
-            # Keep retirement and code archival indivisible to cooperating
-            # publishers.  Releasing between them lets a reactivation commit
-            # and then lose the very code it has just verified.
-            try:
-                from sign import retire_executor_contract
-                retire_executor_contract(
-                    synth_dir,
-                    actor="change_rollback",
-                    reason=f"rollback create_executor change_intent={ci.id}",
-                )
-            except Exception as exc:
-                return {
-                    "executor_name": name,
-                    "error": f"contract retirement requires retry: {exc}",
-                }
-        archive_root = C.PATH_USER_DATA / "executors_archive"
-        archive_root.mkdir(parents=True, exist_ok=True)
-        dst = archive_root / f"{name}_{int(time.time())}"
-        shutil.move(str(synth_dir), str(dst))
-    # Il ritiro locale passa dal deposito che possiede la decisione.
-    archived = False
-    try:
-        from executor_lifecycle_state import Restriction, restrict_executor
-        archived = restrict_executor(name, restriction=Restriction.REMOVED,
-                                     reason=f"rollback create_executor change_intent={ci.id}")
-    except Exception as exc:
-        log.warning("rollback create: %s not restricted: %r", name, exc)
-    return {"executor_name": name, "archived_to": str(dst), "restricted": archived}
+    if not built_a_tool(ci):
+        # It found the tool already there and built nothing: nothing of its
+        # own to take away (15/11/2026: a built-in could be set aside).
+        return {"executor_name": name, "error": "this proposal built nothing: nothing set aside"}
+    known = lookup(name)
+    if known is None:
+        # Unknown to the store, it stays in the catalog: «set aside» would be
+        # said of a tool still in use (15/11/2026).
+        return {"executor_name": name, "error": "not in the life cycle store: not set aside"}
+    if not _is_synth(name, known.source):
+        return {"executor_name": name, "error": "not a tool Metnos built: not set aside"}
+    done = set_aside(name, reason=f"set aside: change_intent={ci.id}")
+    if not done:
+        return {"executor_name": name, "error": "the life cycle store did not record it"}
+    return {"executor_name": name, "set_aside": True}
 
 
 def _rollback_extend_executor(ci: ChangeIntent) -> dict:

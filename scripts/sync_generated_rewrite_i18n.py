@@ -13,6 +13,15 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 TRANSLATIONS = {
+    'MSG_CHANGE_TAKEN_OUT_OF_USE': (
+        'Metnos lo ha tolto dal catalogo per un\'altra decisione, per esempio perché doppione di un altro strumento',
+        'Metnos took it out of the catalog for another decision, for example as a duplicate of another tool'),
+    'UI_EXECUTOR_RESTRICTED_REASON': (
+        'Fuori dal catalogo: messo da parte, ritirato per un errore o senza uso. Puoi riattivarlo.',
+        'Out of the catalog: set aside, withdrawn after a fault or unused. You can bring it back.'),
+    'ERR_CHANGE_NOT_BUILT': (
+        'Questa proposta non ha costruito {name}: lo strumento c\'era già, quindi non si riscrive né si mette da parte da qui.',
+        'This proposal did not build {name}: the tool was already there, so it is neither rewritten nor set aside from here.'),
     'MSG_GENERATED_WITHDRAWN_REWRITING': (
         'Lo strumento «{name}», costruito da Metnos, ha dato un errore interno. L\'ho ritirato e '
         'lo riscrivo: quando la nuova versione è pronta ti chiedo di attivarla.',
@@ -50,10 +59,23 @@ TRANSLATIONS = {
         'Sicuro? Verrà ripristinato lo stato precedente.',
         'Sure? The previous state will be restored.'),
     'UI_CHANGE_CONFIRM_WITHDRAW': (
-        'Sicuro? Lo strumento «{name}» verrà tolto per sempre: non si potrà riattivare né '
-        'ricostruire. Se fa la cosa sbagliata, usa Riscrivi.',
-        'Sure? The tool «{name}» will be removed for good: it cannot be reactivated or built '
-        'again. If it does the wrong thing, use Rewrite.'),
+        'Sicuro? Lo strumento «{name}» esce dall\'uso. Non viene cancellato: lo riprendi quando '
+        'vuoi con Riattiva, nella scheda Ritirate. Se fa la cosa sbagliata, usa invece Riscrivi.',
+        'Sure? The tool «{name}» goes out of use. It is not deleted: you take it back whenever you '
+        'want with Reactivate, in the Rolled back tab. If it does the wrong thing, use Rewrite instead.'),
+    'UI_CHANGE_BTN_REACTIVATE': ('Riattiva', 'Reactivate'),
+    'UI_CHANGE_SET_ASIDE_HINT': (
+        'Messo da parte: torna com\'era con Riattiva.',
+        'Set aside: it comes back as it was with Reactivate.'),
+    'MSG_CHANGE_SET_ASIDE_UNUSED': (
+        'nessuno lo ha usato per {days} giorni',
+        'nobody used it for {days} days'),
+    'ERR_CHANGE_REACTIVATE_NOT_SET_ASIDE': (
+        'Si può riattivare solo uno strumento costruito da Metnos e messo da parte',
+        'Only a tool built by Metnos and set aside can be reactivated'),
+    'ERR_CHANGE_REACTIVATE_NOT_DONE': (
+        'Lo strumento «{name}» non è tornato in uso: non risulta messo da parte',
+        'The tool «{name}» did not come back into use: it is not recorded as set aside'),
     'UI_CHANGE_REWRITING': (
         'In riscrittura: la nuova versione arriva appena è pronta',
         'Being written again: the new version comes as soon as it is ready'),

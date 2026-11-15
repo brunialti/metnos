@@ -57,11 +57,12 @@ def task_change_intent_materialize(payload: dict | None = None) -> dict:
                 })
 
     # Gap proposals follow the requests still recent; old gaps are dropped.
-    gap_scores = gaps_pruned = 0
+    gap_scores = gaps_expired = gaps_pruned = 0
     try:
         import learning_loop
         from engine import terminator
         gap_scores = learning_loop.refresh_gap_scores()
+        gaps_expired = learning_loop.expire_gap_proposals()
         gaps_pruned = terminator.prune_gaps()
     except Exception as exc:
         errors += 1
@@ -85,6 +86,7 @@ def task_change_intent_materialize(payload: dict | None = None) -> dict:
         "by_state_yielded": dict(state_counts),
         "by_state_real": real_state_counts,
         "gap_scores_recomputed": gap_scores,
+        "gap_proposals_expired": gaps_expired,
         "gaps_pruned": gaps_pruned,
     }
     _audit({"event": "completed", **report})

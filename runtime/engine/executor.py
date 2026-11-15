@@ -32,6 +32,10 @@ from typing import Any, Callable, Optional
 from .types import Framework, StepSpec, StepRun, RunResult
 from messages import get as _msg  # §11: render user-facing via DB i18n
 from undo import UNDO_OUTCOMES
+from field_synonyms import (
+    LABEL_FIELDS as _LABEL_FIELDS, field_group as _field_group,
+    is_identifier_field as _is_identifier_field,
+)
 import detection_lexicon_seed_runtime_safety as _runtime_safety_lexicon
 
 log = logging.getLogger(__name__)
@@ -131,58 +135,167 @@ def _table_budget(max_rows: int, max_chars: int) -> tuple[int, int]:
             else (max_rows, max_chars))
 
 
-def _entries_table(entries: list, *, max_rows: int = _TABLE_MAX_ROWS,
-                   max_cols: int = _TABLE_MAX_COLS,
-                   max_chars: int = _TABLE_MAX_CHARS,
-                   presentation: dict | None = None) -> str:
-    """Rende una lista di entries come TABELLA markdown deterministica (§7.9,
-    zero LLM). Colonne = campi preferiti presenti (cap `max_cols`), righe fino
-    al primo fra `max_rows` e `max_chars` (§2.7: nota i18n sul resto). Entries
-    non-dict o senza campi tabulabili → fallback bullet-list."""
-    contract = (presentation or {}).get("list") if isinstance(presentation, dict) else None
-    if isinstance(contract, dict) and contract.get("columns"):
-        return _contract_entries_table(entries, contract)
+# ── How a person reads a record ───────────────────────────────────────────
+# A value that is wholly an ISO date or instant. Text that merely contains a
+# date is never matched.
+_ISO_TEMPORAL_RE = re.compile(
+    r"\d{4}-\d{2}-\d{2}(?:[T ](\d{2}:\d{2}(?::\d{2}(?:[.,]\d{1,9})?)?)"
+    r"(?:Z|[+-]\d{2}(?::?\d{2})?)?)?")
+_LINK_RE = re.compile(r"https?://\S+")
 
-    max_rows, max_chars = _table_budget(max_rows, max_chars)
-    rows = [e for e in entries if isinstance(e, dict)]
-    if not rows:
-        return _entries_bullet_lines(entries, fields=_BULLET_FIELDS_DATED,
-                                     more_key="MSG_RENDER_MORE_HIDDEN")
 
+def _blank(value: object) -> bool:
+    """Nothing to read: absent, empty text, empty collection (0 is a value)."""
+    return (value is None or value == [] or value == {}
+            or (isinstance(value, str) and not value.strip()))
+
+
+def _display_temporal(raw: object, kind: object = None) -> object:
+    """A date or an instant the way a person reads it: on the instance's
+    clock, without the zone offset.
+
+    ``kind`` is the type a manifest column declares ("date" or "datetime"):
+    it also admits an epoch number and a mail-style date. Without it only a
+    value that is wholly an ISO date or instant is recognised, so the same
+    rule serves a table nothing declared. A day stays a day; an instant that
+    names no zone is not moved. Anything else is returned as it came.
+    """
+    import datetime as _dt
+    typed = kind in ("date", "datetime")
+    try:
+        if isinstance(raw, str):
+            text = raw.strip()
+            match = _ISO_TEMPORAL_RE.fullmatch(text)
+            if match:
+                parsed = _dt.datetime.fromisoformat(
+                    text.replace("Z", "+00:00").replace(",", "."))
+                day_only = match.group(1) is None
+            elif typed:
+                from email.utils import parsedate_to_datetime
+                parsed, day_only = parsedate_to_datetime(text), False
+            else:
+                return raw
+        elif (typed and isinstance(raw, (int, float))
+              and not isinstance(raw, bool)):
+            parsed = _dt.datetime.fromtimestamp(float(raw), _dt.timezone.utc)
+            day_only = False
+        else:
+            return raw
+        if not isinstance(parsed, _dt.datetime):
+            return raw
+        if parsed.tzinfo is not None:
+            from time_window_parser import temporal_now
+            parsed = parsed.astimezone(temporal_now().tzinfo)
+        return parsed.strftime("%d/%m/%y" if day_only or kind == "date"
+                               else "%d/%m/%y %H:%M")
+    except (OverflowError, OSError, TypeError, ValueError):
+        return raw
+
+
+def _link_column(rows: list, key) -> bool:
+    """Every value the column holds is a web address."""
+    values = [row.get(key) for row in rows if not _blank(row.get(key))]
+    return bool(values) and all(
+        isinstance(value, str) and _LINK_RE.fullmatch(value.strip())
+        for value in values)
+
+
+def _generic_columns(rows: list, max_cols: int, wanted: list | None) -> list:
+    """The columns of a table that no manifest declared, in the order a
+    person reads a record: what it is called, its period with the end beside
+    the start, the preferred fields, the others, the links; a code that
+    stands for the record only when nothing names it. A column with no value
+    in any row is not a column.
+
+    ``wanted`` asks for exactly those columns instead (the file of a long
+    answer repeats the table of the chat over more rows): [] when the records
+    do not have them.
+    """
+    if wanted is not None:
+        names: dict = {}
+        for row in rows:
+            for key in row.keys():
+                names.setdefault(str(key), key)
+        return ([names[name] for name in wanted]
+                if wanted and all(name in names for name in wanted) else [])
+    sample = rows[:50]
     seen: list = []
-    for e in rows[:50]:
+    for e in sample:
         for k in e.keys():
             ks = str(k)
             if (k not in seen and not ks.startswith("_")
                     and ks not in _CONTENT_FIELDS
                     and not (ks in _TABLE_COL_SKIP
-                             and any(_bulky_cell(r.get(k)) for r in rows[:50]))):
+                             and any(_bulky_cell(r.get(k)) for r in sample))):
                 seen.append(k)
+    seen = [k for k in seen if any(not _blank(r.get(k)) for r in rows)]
+    label = next((k for k in _LABEL_FIELDS if k in seen), None)
+    start = next((k for k in _field_group("start") if k in seen), None)
+    end = next((k for k in _field_group("end") if k in seen), None)
+    period = (start, end) if start is not None and end is not None else ()
+
     def _rank(k):
-        return (_TABLE_COL_PREFERENCE.index(k)
-                if k in _TABLE_COL_PREFERENCE else 999, str(k))
-    cols = sorted(seen, key=_rank)[:max_cols]
+        ks = str(k)
+        if k == label:
+            return (0, 0, ks)
+        if k in period:
+            return (1, period.index(k), ks)
+        if _is_identifier_field(ks):
+            return (5, 0, ks)
+        if k in _TABLE_COL_PREFERENCE:
+            return (2, _TABLE_COL_PREFERENCE.index(k), ks)
+        return (4 if _link_column(sample, k) else 3, 0, ks)
+
+    cols = sorted(seen, key=_rank)
+    if label is not None:
+        cols = [k for k in cols if not _is_identifier_field(str(k))]
+    return cols[:max_cols]
+
+
+def _entries_table(entries: list, *, max_rows: int = _TABLE_MAX_ROWS,
+                   max_cols: int = _TABLE_MAX_COLS,
+                   max_chars: int = _TABLE_MAX_CHARS,
+                   presentation: dict | None = None,
+                   columns: list | None = None) -> str:
+    """Rende una lista di entries come TABELLA markdown deterministica (§7.9,
+    zero LLM). Colonne = quelle dichiarate dal manifest, altrimenti l'ordine
+    di lettura di `_generic_columns` (cap `max_cols`); righe fino al primo fra
+    `max_rows` e `max_chars` (§2.7: nota i18n sul resto). Entries non-dict o
+    senza campi tabulabili → fallback bullet-list. `columns` chiede
+    esattamente quelle colonne: stringa vuota se i record non le hanno."""
+    contract = (presentation or {}).get("list") if isinstance(presentation, dict) else None
+    if isinstance(contract, dict) and contract.get("columns"):
+        return _contract_entries_table(entries, contract, columns)
+
+    max_rows, max_chars = _table_budget(max_rows, max_chars)
+    rows = [e for e in entries if isinstance(e, dict)]
+    if not rows:
+        return "" if columns is not None else _entries_bullet_lines(
+            entries, fields=_BULLET_FIELDS_DATED,
+            more_key="MSG_RENDER_MORE_HIDDEN")
+
+    cols = _generic_columns(rows, max_cols, columns)
     if not cols:
-        return _entries_bullet_lines(entries, fields=_BULLET_FIELDS_DATED,
-                                     more_key="MSG_RENDER_MORE_HIDDEN")
+        return "" if columns is not None else _entries_bullet_lines(
+            entries, fields=_BULLET_FIELDS_DATED,
+            more_key="MSG_RENDER_MORE_HIDDEN")
+    # A cut path or link is not actionable and can name the wrong thing.
+    whole = {c for c in cols
+             if c in ("path", "url") or _link_column(rows[:50], c)}
+
     def _cell(column, v):
         if v is None:
             return ""
-        # Gli epoch grezzi non sono un formato utente. I produttori filesystem
-        # espongono `mtime` numerico: rendilo ISO UTC senza mutare il payload.
-        if column in {"mtime", "mtime_epoch", "date_modified_epoch"} \
-                and isinstance(v, (int, float)) and not isinstance(v, bool):
-            try:
-                import datetime as _dt
-                v = (_dt.datetime.fromtimestamp(float(v), _dt.timezone.utc)
-                     .isoformat().replace("+00:00", "Z"))
-            except (OSError, OverflowError, ValueError):
-                pass
+        # A raw epoch is not something a person reads: filesystem producers
+        # expose a numeric `mtime`. The payload is not changed.
+        numeric_time = (column in {"mtime", "mtime_epoch", "date_modified_epoch"}
+                        and isinstance(v, (int, float))
+                        and not isinstance(v, bool))
+        v = _display_temporal(v, "datetime" if numeric_time else None)
         text = str(v).replace("|", "\\|").replace("\n", " ")
-        # Un path troncato non è azionabile e può identificare il file
-        # sbagliato: preservalo integralmente. Per gli altri campi mantieni un
-        # cap generoso ma rendi VISIBILE il troncamento con ellissi.
-        if column in {"path", "url"}:
+        # Per gli altri campi mantieni un cap generoso ma rendi VISIBILE il
+        # troncamento con ellissi.
+        if column in whole:
             return text
         max_chars = 120
         return text if len(text) <= max_chars else text[:max_chars - 1] + "…"
@@ -254,8 +367,13 @@ def _read_content(result: dict, *, max_chars: int = _TABLE_MAX_CHARS) -> str:
     return rendered + suffix
 
 
-def _contract_entries_table(entries: list, contract: dict) -> str:
-    """Render a manifest-declared list projection with bounded dimensions."""
+def _contract_entries_table(entries: list, contract: dict,
+                            wanted: list | None = None) -> str:
+    """Render a manifest-declared list projection with bounded dimensions.
+
+    A declared column with no value in any row is not shown; ``wanted`` asks
+    for exactly those declared columns instead ("" when one is not declared).
+    """
     columns = contract.get("columns") or []
     max_rows, max_chars = _table_budget(int(contract.get("max_rows", _TABLE_MAX_ROWS)),
                                         int(contract.get("max_chars", _TABLE_MAX_CHARS)))
@@ -273,32 +391,18 @@ def _contract_entries_table(entries: list, contract: dict) -> str:
                 return candidate
         return spec.get("fallback", "")
 
-    def display_datetime(raw: object, kind: object) -> object:
-        """Format a manifest-typed date without knowing its producer domain."""
-        if kind not in {"date", "datetime"} or raw in (None, ""):
-            return raw
-        try:
-            import datetime as _dt
-            if isinstance(raw, (int, float)) and not isinstance(raw, bool):
-                parsed = _dt.datetime.fromtimestamp(float(raw), _dt.timezone.utc)
-            elif isinstance(raw, str):
-                text = raw.strip()
-                try:
-                    parsed = _dt.datetime.fromisoformat(text.replace("Z", "+00:00"))
-                except ValueError:
-                    from email.utils import parsedate_to_datetime
-                    parsed = parsedate_to_datetime(text)
-            else:
-                return raw
-            if not isinstance(parsed, _dt.datetime):
-                return raw
-            return (parsed.strftime("%d/%m/%y") if kind == "date"
-                    else parsed.strftime("%d/%m/%y %H:%M"))
-        except (OverflowError, OSError, TypeError, ValueError):
-            return raw
+    if wanted is not None:
+        declared = {str(spec.get("key")): spec for spec in columns}
+        if not wanted or not all(name in declared for name in wanted):
+            return ""
+        columns = [declared[name] for name in wanted]
+    else:
+        filled = [spec for spec in columns
+                  if any(not _blank(value(entry, spec)) for entry in entries)]
+        columns = filled or columns
 
     def cell(entry: object, spec: dict) -> str:
-        raw = display_datetime(value(entry, spec), spec.get("type"))
+        raw = _display_temporal(value(entry, spec), spec.get("type"))
         if isinstance(raw, (list, tuple, dict)):
             raw = json.dumps(raw, ensure_ascii=False, sort_keys=True)
         text = str(raw).replace("|", "\\|").replace("\n", " ").strip()
@@ -338,7 +442,7 @@ def _entries_bullet_lines(entries: list, *, fields: tuple,
             bits = []
             for k in fields:
                 if k in e and e[k]:
-                    bits.append(str(e[k])[:60])
+                    bits.append(str(_display_temporal(e[k]))[:60])
                 if len(bits) >= 3:
                     break
             lines.append("- " + " | ".join(bits))
@@ -824,6 +928,67 @@ def _referenced_producer(step, history: list):
     return None
 
 
+def _referenced_steps(args: object, history: list) -> list:
+    """The earlier steps these arguments read from, `from_step` first, then
+    the `${stepN…}` / `{{stepN…}}` references in the order they are written."""
+    if not isinstance(args, dict):
+        return []
+    numbers: list = []
+    fs = args.get("from_step")
+    if isinstance(fs, str) and fs.isdigit():
+        fs = int(fs)
+    if isinstance(fs, int) and not isinstance(fs, bool):
+        numbers.append(fs)
+    try:
+        blob = json.dumps(args, default=str)
+    except Exception:
+        blob = str(args)
+    numbers += [int(m.group(1)) for m in _STEP_REF_RE.finditer(blob)]
+    steps: list = []
+    for n in dict.fromkeys(numbers):
+        prod = next((s for s in history if getattr(s, "step_idx", None) == n), None)
+        if prod is None and 1 <= n <= len(history):
+            prod = history[n - 1]
+        if prod is not None and prod not in steps:
+            steps.append(prod)
+    return steps
+
+
+def _record_shapes(result: object) -> set | None:
+    """The sets of readable field names the records of a result have; None
+    when the result lists no records."""
+    if not isinstance(result, dict):
+        return None
+    rows = next((result[k] for k in ("entries", "results")
+                 if isinstance(result.get(k), list) and result[k]), None)
+    if not rows or not all(isinstance(row, dict) for row in rows):
+        return None
+    return {frozenset(str(k) for k in row if not str(k).startswith("_"))
+            for row in rows}
+
+
+def _inherited_presentation(args: object, history: list, result: object):
+    """The table of the step these records came from, when the step that
+    passed them on declares none of its own.
+
+    A step that selects or reorders records (a filter, a sort) returns them
+    with the fields they had: they are shown as their producer shows them,
+    whatever the two tools are called. A step that adds a field or keeps
+    fewer returns other records, and is shown by the general rule.
+    """
+    if not isinstance(result, dict) or result.get("_presentation_contract"):
+        return None
+    shapes = _record_shapes(result)
+    if not shapes:
+        return None
+    for producer in _referenced_steps(args, history):
+        source = producer.result if isinstance(producer.result, dict) else {}
+        contract = source.get("_presentation_contract")
+        if contract and shapes <= (_record_shapes(source) or set()):
+            return contract
+    return None
+
+
 def _identity_choice_obs(tool: str, args: dict, context_errors: list,
                          runtime_ctx: dict) -> dict | None:
     """needs_inputs asking which identity each ambiguous entry denotes.
@@ -897,27 +1062,9 @@ def _references_server_producer(step, history: list) -> bool:
         return False
     if getattr(step, "tool", "") in _DEVICE_VALUE_SINKS:
         return False
-    idxs: set = set()
-    fs = sa.get("from_step")
-    if isinstance(fs, str) and fs.isdigit():
-        fs = int(fs)
-    if isinstance(fs, int):
-        idxs.add(fs)
-    try:
-        blob = json.dumps(sa, default=str)
-    except Exception:
-        blob = str(sa)
-    for m in _STEP_REF_RE.finditer(blob):
-        idxs.add(int(m.group(1)))
-    for n in idxs:
-        prod = next((s for s in history if getattr(s, "step_idx", None) == n), None)
-        if prod is None and 1 <= n <= len(history):
-            prod = history[n - 1]
-        if (prod is not None
-                and (getattr(prod, "data_host", None)
-                     or getattr(prod, "host", "server")) == "server"):
-            return True
-    return False
+    return any((getattr(prod, "data_host", None)
+                or getattr(prod, "host", "server")) == "server"
+               for prod in _referenced_steps(sa, history))
 
 
 def _resolve_from_step(args: dict, history: list[StepRun],
@@ -1796,6 +1943,27 @@ def resolve_query_canonical_args(tool: str, args: dict, query: str,
     """
     return apply_arg_transforms(tool, args, query, scope="query-det",
                                 args_schema=args_schema)
+
+
+def bakes_query_number(steps_args, query: str) -> bool:
+    """A number of the request is written in an argument that is not content.
+
+    ``steps_args`` are the argument objects of the plan's steps. Such a plan
+    answers that sentence only: «cancella il task 40» must never be served the
+    plan of «cancella il task 42». Content and glob keys are left out: their
+    literals already bind the plan to its sentence (`is_query_specific`) and
+    the replay resolves them again."""
+    numbers = set(re.findall(r"\d+", query or ""))
+    if not numbers:
+        return False
+    exempt = CONTENT_ARG_KEYS | _GLOB_ARG_KEYS
+    for args in steps_args or ():
+        for key, value in (args.items() if isinstance(args, dict) else ()):
+            if key in ("from_step", "from_steps") or key in exempt:
+                continue
+            if numbers & set(re.findall(r"\d+", str(value))):
+                return True
+    return False
 
 
 def is_query_specific(framework_json: str) -> bool:
@@ -3102,6 +3270,10 @@ class Executor:
                                         actor=args.get("_actor") or "host")
                 except Exception as _rse:
                     log.debug("remember_scope_args noop: %r", _rse)
+
+            _shown_as = _inherited_presentation(_step_args, result.steps, r)
+            if _shown_as:
+                r = {**r, "_presentation_contract": _shown_as}
 
             _host = (r.get("_ran_on_device") or "server") if isinstance(r, dict) else "server"
             _data_host = _data_host_for_step(step, result.steps, _host)

@@ -215,13 +215,13 @@ La figura mostra tutto il percorso.</p>
 <text x="345" y="262" text-anchor="start" fill="#475569" font-size="9.5">No</text>
 <path d="M70,232 V298" fill="none" stroke="#1A477A" stroke-width="2" marker-end="url(#m-cycle)"/>
 <text x="78" y="286" text-anchor="start" fill="#475569" font-size="9.5">se d&#224; errore</text>
-<path d="M190,232 V262 H218 V438 H202" fill="none" stroke="#1A477A" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#m-cycle)"/>
+<path d="M190,232 V262 H218 V438 H202" fill="none" stroke="#1A477A" stroke-width="2" marker-end="url(#m-cycle)"/>
 <text x="226" y="386" text-anchor="start" fill="#475569" font-size="9.5">se nessuno lo usa</text>
 <rect x="10" y="300" width="190" height="56" rx="8" fill="#FDE8E8" stroke="#9B1C1C"/>
 <text x="105" y="324" text-anchor="middle" fill="#1A477A" font-weight="700">ritirato subito</text>
 <text x="105" y="342" text-anchor="middle" fill="#475569" font-size="9.5">e riscritto con quel motivo</text>
-<rect x="10" y="410" width="190" height="56" rx="8" fill="#F1F5F9" stroke="#64748B" stroke-dasharray="6 4"/>
-<text x="105" y="434" text-anchor="middle" fill="#1A477A" font-weight="700">decade</text>
+<rect x="10" y="410" width="190" height="56" rx="8" fill="#F1F5F9" stroke="#64748B"/>
+<text x="105" y="434" text-anchor="middle" fill="#1A477A" font-weight="700">messo da parte</text>
 <text x="105" y="452" text-anchor="middle" fill="#475569" font-size="9.5">dopo 60 giorni senza uso</text>
 <rect x="10" y="500" width="26" height="16" rx="4" fill="#D9E4F0" stroke="#1A477A"/>
 <text x="42" y="512" text-anchor="start" fill="#475569" font-size="9.5">in funzione</text>
@@ -237,7 +237,8 @@ La figura mostra tutto il percorso.</p>
  <li><strong>Si accorge.</strong> Quando una richiesta finisce con &laquo;questo non lo so
  fare&raquo;, Metnos annota che cosa mancava: quale azione, su quale oggetto. La stessa
  mancanza chiesta pi&ugrave; volte pesa di pi&ugrave;; se nessuno la chiede pi&ugrave;, il peso
- scende.</li>
+ scende. Una proposta che nessuno chiede da novanta giorni scade: esce dall'elenco e
+ rinasce da sola se la richiesta torna.</li>
  <li><strong>Propone e parte.</strong> Ogni capacit&agrave; mancante ha una sola proposta,
  insieme alle richieste reali da cui &egrave; nata. Se il nome sta nel vocabolario degli
  strumenti, Metnos comincia a costruire senza chiedere: costruire non attiva niente.
@@ -276,7 +277,10 @@ La figura mostra tutto il percorso.</p>
  lavoro in corso e poi l'esito, che viene scritto anche su Telegram. Se i controlli
  finali lo rifiutano, lo strumento non entra e la proposta dice perch&eacute; in parole
  semplici. Uno strumento che finge il proprio effetto, per esempio dichiara salvato ci&ograve;
- che non ha scritto da nessuna parte, viene fermato prima di arrivare alla persona. Dopo un no la proposta riposa per trenta giorni;
+ che non ha scritto da nessuna parte, viene fermato prima di arrivare alla persona. Anche
+ uno strumento che somiglia troppo a uno gi&agrave; in uso non viene attivato: resta quello
+ che c'era da prima, e la persona legge quale; se la differenza &egrave; piccola pu&ograve;
+ chiedere di riscrivere quello, migliorandolo. Dopo un no la proposta riposa per trenta giorni;
  anche il no chiede conferma e si pu&ograve; riaprire.</li>
  <li><strong>Resta sotto osservazione.</strong> Uno strumento generato che va in errore per
  un difetto del proprio codice &egrave; ritirato subito: il pianificatore non lo vede pi&ugrave;
@@ -289,7 +293,12 @@ La figura mostra tutto il percorso.</p>
  posto della vecchia. Anche la persona pu&ograve; chiedere la riscrittura: nella pagina
  <strong>Modifiche</strong> scrive che cosa non va e preme <strong>Riscrivi</strong>; in
  questo caso lo strumento resta in uso finch&eacute; la versione nuova non lo sostituisce.
- &Egrave; previsto che uno strumento mai usato decada dopo sessanta giorni.</li>
+ Uno strumento che nessuno chiama per sessanta giorni viene messo da parte da solo; ogni
+ chiamata vale come uso, anche una che lo strumento rifiuta. Messo da parte vuol dire fuori dall'uso, non
+ cancellato: compare nella scheda <strong>Ritirate</strong> e torna com'era con
+ <strong>Riattiva</strong>. Lo stesso accade quando &egrave; la persona a premere
+ <strong>Ritira</strong>. Se la stessa funzione torna a servire dopo trenta giorni, Metnos
+ pu&ograve; proporre di ricostruirla.</li>
 </ol>
 
 <p>La firma non la mette il servizio che ha costruito lo strumento. La mette un piccolo
@@ -316,7 +325,9 @@ scritti a mano non sono mai toccati da questo ciclo.</p>
 
 <p>&Egrave; previsto che per gli strumenti &laquo;sicuri&raquo; non serva nemmeno la domanda
 finale. &laquo;Sicuro&raquo; ha un significato preciso: lo strumento legge o calcola
-soltanto, oppure fa cose che si possono annullare, e non chiede permessi nuovi.</p>
+soltanto, anche quando legge da un servizio esterno collegato, oppure fa cose che si
+possono annullare. L'attivazione senza domanda arriver&agrave; con un avviso e con il
+pulsante <strong>Ritira</strong>.</p>
 
 <p>L'idea di fondo: la sicurezza non viene dal chiedere tutto alla persona, ma dal
 chiederle una cosa sola, su una cosa finita e provata, e dal saper togliere subito

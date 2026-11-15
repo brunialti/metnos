@@ -212,6 +212,57 @@ def observe(executor: object, args: object, result: object) -> None:
         log.warning("generated_rewrite: observation failed: %r", exc)
 
 
+def creation_set_aside(name: str):
+    """The creation proposal whose tool ``name`` was set aside, if any."""
+    from change_intents import KIND_CREATE_EXECUTOR, STATE_ROLLED_BACK, is_set_aside, list_intents
+
+    for intent in list_intents(state=STATE_ROLLED_BACK, intent_kind=KIND_CREATE_EXECUTOR, limit=500):
+        effect = intent.applied_effect or {}
+        if is_set_aside(intent) and (effect.get("executor_name") or intent.intent_target) == name:
+            return intent
+    return None
+
+
+def back_in_service(name: str, *, by: str):
+    """The person took ``name`` back: its creation says «in use» again.
+
+    Called after the life cycle store lifted the restriction, from wherever
+    the person did it. A tool without a creation set aside changes nothing.
+    """
+    from change_intents import TransitionError, reactivate
+
+    intent = creation_set_aside(name)
+    if intent is None:
+        return None
+    try:
+        returned = reactivate(intent.id, by=by)
+    except TransitionError as exc:
+        log.warning("generated_rewrite: %s not marked in use again: %r", name, exc)
+        return None
+    _audit({"event": "reactivated", "name": name, "by": by, "intent": intent.id})
+    return returned
+
+
+def reactivate_for_person(intent_id: str, *, by: str):
+    """«Riattiva» on a tool set aside, from the changes page: the life cycle
+    store brings the tool back first; only then the proposal says so."""
+    from change_intents import TransitionError, get_intent, is_set_aside, reactivate
+    from executor_lifecycle_state import revive_executor
+    from messages import get as _msg
+
+    intent = get_intent(intent_id)
+    if intent is None:
+        raise TransitionError(_msg("ERR_CHANGE_NOT_FOUND", id=intent_id))
+    if not is_set_aside(intent):
+        raise TransitionError(_msg("ERR_CHANGE_REACTIVATE_NOT_SET_ASIDE"))
+    name = str((intent.applied_effect or {}).get("executor_name") or intent.intent_target)
+    if not revive_executor(name, reason=by):
+        raise TransitionError(_msg("ERR_CHANGE_REACTIVATE_NOT_DONE", name=name))
+    returned = reactivate(intent_id, by=by)
+    _audit({"event": "reactivated", "name": name, "by": by, "intent": intent_id})
+    return returned
+
+
 def rewrite_for_person(intent_id: str, *, words: str, by: str):
     """The person says in words what is wrong with the tool of this proposal:
     it is written again with those words.

@@ -4424,6 +4424,9 @@ class TurnLog:
     # Non contengono testo utente e restano vuote sui record storici.
     metnos_version: str = ""
     match_source: str = ""
+    # Ids of the plan-memory (L0) rows this turn was served from or wrote: a
+    # ✗ on the turn removes exactly these. No user text.
+    fastpath_rows: list = field(default_factory=list)
     # Part of the persisted turn, including planning failures with no steps.
     error_class: str = ""
     durable_admission: dict | None = None
@@ -7720,6 +7723,7 @@ def _run_engine(
         "frozen_plan_resume": frozen_plan_resume,
         "gate_obs": gate_obs,
         "durable_admission": getattr(result, "durable_admission", None),
+        "fastpath_rows": list(getattr(result, "fastpath_rows", ()) or ()),
         "diagnostics": _diagnostics,
         # Runtime-only: how this turn runs a tool, for the one case where a
         # reading step is asked again without its cap (a results file).
@@ -7740,6 +7744,7 @@ def _finalize_engine_result(log, _engine_v2_res, *, actor, channel,
     log._rerun_step = _engine_v2_res.get("rerun")
     log.steps.extend(_engine_v2_res.get("steps") or [])
     log.match_source = str(_engine_v2_res.get("match_source") or "")
+    log.fastpath_rows = list(_engine_v2_res.get("fastpath_rows") or [])
     log.durable_admission = _engine_v2_res.get("durable_admission")
     _frozen = _engine_v2_res.get("frozen_plan_resume")
     if isinstance(_frozen, dict):

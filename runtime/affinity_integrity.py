@@ -123,6 +123,33 @@ def derived_tokens() -> frozenset[str]:
     return _derived
 
 
+def _look_alike(left: str, left_tags: set[str], right: str,
+                right_tags: set[str]) -> tuple[str, ...] | None:
+    """The words two tools of different families share, when they are too
+    many of the words the two have in all; None otherwise."""
+    if _family(left) == _family(right) or not left_tags or not right_tags:
+        return None
+    shared = left_tags & right_tags
+    if len(shared) / len(left_tags | right_tags) < OVERLAP_THRESHOLD:
+        return None
+    return tuple(sorted(shared))
+
+
+def look_alikes(name: str, affinity: Iterable[str],
+                affinities: Mapping[str, Iterable[str]]) -> list[Finding]:
+    """The tools of ``affinities`` a candidate called ``name`` would be
+    mistaken for, by the same measure `findings` applies to a catalog. A tool
+    already there under the candidate's own name is the version it replaces."""
+    own = _tags({name: affinity})[name]
+    others = _tags({other: tags for other, tags in affinities.items() if other != name})
+    out: list[Finding] = []
+    for other in sorted(others):
+        shared = _look_alike(name, own, other, others[other])
+        if shared is not None:
+            out.append(Finding("overlap", name, other, shared))
+    return out
+
+
 def findings(affinities: Mapping[str, Iterable[str]],
              providers: Mapping[str, str] | None = None) -> list[Finding]:
     """Every breach of the rule, for any executor, in a stable order.
@@ -136,11 +163,9 @@ def findings(affinities: Mapping[str, Iterable[str]],
     out: list[Finding] = []
     for index, left in enumerate(names):
         for right in names[index + 1:]:
-            if _family(left) == _family(right) or not tags[left] or not tags[right]:
-                continue
-            shared = tags[left] & tags[right]
-            if len(shared) / len(tags[left] | tags[right]) >= OVERLAP_THRESHOLD:
-                out.append(Finding("overlap", left, right, tuple(sorted(shared))))
+            shared = _look_alike(left, tags[left], right, tags[right])
+            if shared is not None:
+                out.append(Finding("overlap", left, right, shared))
     ignored = stopwords() | generic_affinity_verbs() | derived_generic_tokens(affinities)
     hints = object_hint_mapping()
     for name in names:

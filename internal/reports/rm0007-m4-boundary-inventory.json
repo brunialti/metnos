@@ -1,6 +1,6 @@
 {
   "schema": "metnos.contract-boundary-inventory/2",
-  "source_census": "sha256:dbbe26c5101b20a1b55efe9c3f1253865cb10a8a6b383034d898e8187c6a8051",
+  "source_census": "sha256:9beaa5f5ada84e90d0f4485bed70d9a43f642944205225887934465a50376d49",
   "scan_roots": [
     "runtime",
     "install",
@@ -1636,6 +1636,16 @@
       "phase": "M4"
     },
     {
+      "path": "runtime/change_applier.py",
+      "scope": "look_alike_words",
+      "role": "live_reader",
+      "capabilities": [
+        "live_artifact_read"
+      ],
+      "destination": "verified live catalog, immutable store, or live artifact boundary only",
+      "phase": "M4"
+    },
+    {
       "path": "runtime/change_applier_extend.py",
       "scope": "_contract_id",
       "role": "administrative_tool",
@@ -1687,17 +1697,6 @@
       ],
       "destination": "reviewed publication, retirement, reactivation, or rollback boundary",
       "phase": "M4"
-    },
-    {
-      "path": "runtime/change_rollback.py",
-      "scope": "_rollback_create_executor",
-      "role": "operational_producer",
-      "capabilities": [
-        "retire"
-      ],
-      "destination": "reviewed publication, retirement, reactivation, or rollback boundary",
-      "phase": "M4",
-      "closed_exception": "retirement_only"
     },
     {
       "path": "runtime/change_rollback.py",
@@ -5637,10 +5636,6 @@
       {
         "scope": "runtime/admin/manifest_refactor.py:refactor_manifest",
         "exception": "offline_nonproductive_authoring"
-      },
-      {
-        "scope": "runtime/change_rollback.py:_rollback_create_executor",
-        "exception": "retirement_only"
       },
       {
         "scope": "runtime/cli/skills_cli.py:_cmd_uninstall",

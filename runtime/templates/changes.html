@@ -204,24 +204,30 @@
           <div class="muted">{{ msg('UI_CHANGE_REWRITING') if r.intent_body.rewrite else msg('UI_CHANGE_AWAITING_APPLY') }}</div>
         {% elif r.state == 'applied' %}
           <span class="chip ok">{{ msg('UI_CHANGE_BADGE_APPLIED') }}</span>
-          {# For a tool Metnos built this takes the tool away, and today for
-             good: the button and its confirmation say so. #}
+          {# For a tool Metnos built this sets the tool aside: the button and
+             its confirmation say what happens and how to take it back. A
+             creation that found the tool already there takes nothing away. #}
+          {% if not (r.intent_kind == 'create_executor' and (r.applied_effect or {}).get('short_circuit')) %}
           <button class="btn bad"
                   hx-post="/admin/changes/{{ r.id }}/rollback"
                   hx-confirm="{{ msg('UI_CHANGE_CONFIRM_WITHDRAW', name=r.intent_target) if r.intent_kind == 'create_executor' else msg('UI_CHANGE_CONFIRM_ROLLBACK') }}"
                   hx-target="closest tr" hx-swap="outerHTML">
             {{ msg('UI_CHANGE_BTN_WITHDRAW') if r.intent_kind == 'create_executor' else msg('UI_CHANGE_BTN_ROLLBACK') }}
           </button>
+          {% endif %}
         {% elif r.state == 'observed' %}
           <span class="chip ok">{{ msg('UI_CHANGE_BADGE_OBSERVED') }}</span>
-          {# For a tool Metnos built this takes the tool away, and today for
-             good: the button and its confirmation say so. #}
+          {# For a tool Metnos built this sets the tool aside: the button and
+             its confirmation say what happens and how to take it back. A
+             creation that found the tool already there takes nothing away. #}
+          {% if not (r.intent_kind == 'create_executor' and (r.applied_effect or {}).get('short_circuit')) %}
           <button class="btn bad"
                   hx-post="/admin/changes/{{ r.id }}/rollback"
                   hx-confirm="{{ msg('UI_CHANGE_CONFIRM_WITHDRAW', name=r.intent_target) if r.intent_kind == 'create_executor' else msg('UI_CHANGE_CONFIRM_ROLLBACK') }}"
                   hx-target="closest tr" hx-swap="outerHTML">
             {{ msg('UI_CHANGE_BTN_WITHDRAW') if r.intent_kind == 'create_executor' else msg('UI_CHANGE_BTN_ROLLBACK') }}
           </button>
+          {% endif %}
         {% elif r.state == 'finalized' %}
           <span class="chip ok">{{ msg('UI_CHANGE_BADGE_FINALIZED') }}</span>
           {% if r.finalized_at %}
@@ -240,6 +246,15 @@
           </button>
         {% elif r.state == 'rolled_back' %}
           <span class="chip bad">{{ msg('UI_CHANGE_BADGE_ROLLED_BACK') }}</span>
+          {% if r.intent_kind == 'create_executor' and r.intent_body.closed_until %}
+            {# Set aside, not gone: it comes back as it was. #}
+            <button class="btn ok"
+                    hx-post="/admin/changes/{{ r.id }}/reactivate"
+                    hx-target="closest tr" hx-swap="outerHTML">
+              {{ msg('UI_CHANGE_BTN_REACTIVATE') }}
+            </button>
+            <div class="muted">{{ msg('UI_CHANGE_SET_ASIDE_HINT') }}</div>
+          {% endif %}
         {% elif r.state == 'failed' %}
           <span class="chip bad">{{ msg('UI_CHANGE_BADGE_FAILED') }}</span>
           {% if r.external_model_offer %}
@@ -253,7 +268,8 @@
           </button>
           {% endif %}
         {% endif %}
-        {% if r.state in ['applied', 'observed', 'finalized'] and r.intent_kind == 'create_executor' %}
+        {% if r.state in ['applied', 'observed', 'finalized'] and r.intent_kind == 'create_executor'
+              and not (r.applied_effect or {}).get('short_circuit') %}
           {# A generated tool in use that is wrong: said in words, it is written
              again and stays in use meanwhile (ADR 0239, rule 4). #}
           <div class="tp-rewrite">

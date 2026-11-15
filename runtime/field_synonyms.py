@@ -39,6 +39,24 @@ FIELD_SYNONYMS = {
 }
 
 
+def field_group(name: str) -> tuple[str, ...]:
+    """A technical field name with its documented variants, the name first."""
+    return (name, *FIELD_SYNONYMS.get(name, ()))
+
+
+# What a person reads a record by, in reading order: the name of the thing and
+# the words other producers use for it.  The identifier groups are the codes a
+# machine reads a record by.
+LABEL_FIELDS = tuple(dict.fromkeys(
+    ("name", "title", "subject", *field_group("name"), *field_group("subject"))))
+IDENTIFIER_FIELDS = field_group("id")
+
+
+def is_identifier_field(name: str) -> bool:
+    """A code that stands for a record: `id`, its variants, any `<thing>_id`."""
+    return name in IDENTIFIER_FIELDS or name.endswith("_id")
+
+
 def resolve_dotted_with_synonyms(obj, path: str, base_resolver):
     """Wrapper §7.9: prova path con base_resolver; se None, prova synonim
     dell'ultimo segment.

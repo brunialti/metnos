@@ -140,6 +140,11 @@ class DispatchResult:
     needs_inputs_obs: Optional[dict] = None
     # A durable admission is observable work, not inline executor completion.
     durable_admission: Optional[dict] = None
+    # The L0 rows this turn was served from or wrote. A ✗ on the turn removes
+    # exactly these (`turn_feedback`): the row a similar request was served
+    # from, and the row written under the planning text of a device or site
+    # request, are not found from the words the person typed.
+    fastpath_rows: tuple = ()
 
 
 def _admit_finalized_long_work(
@@ -287,14 +292,20 @@ def _canonical_framework_for_record(query: str, framework: Framework,
                      final_message=framework.final_message)
 
 
-def _should_cache_plan(framework, query) -> bool:
+def _should_cache_plan(framework, query, *, exact_repeat: bool = False) -> bool:
     """Igiene cache L0/L1 (Roberto 15/6): NON registrare un piano che bakeizza un
-    VALORE NUMERICO preso dalla query (id/conteggio). Un valore baked rende L0
-    non-discriminante (ri-servirebbe su query con valore diverso) e darebbe a L1
-    valori baked. Bug live: delete_tasks(id=42) su «cancella task 40». Tali query
-    ri-pianificano (L3) ogni volta. La GARANZIA hard è comunque a serve-time
-    (`_mutating_args_grounded`); questa è prevenzione a monte. §7.9 universale.
+    VALORE NUMERICO preso dalla query (id/conteggio). Un valore baked darebbe a
+    L1 valori baked e, servito per somiglianza, risponderebbe a una query con
+    valore diverso. Bug live: delete_tasks(id=42) su «cancella task 40». La
+    GARANZIA hard è comunque a serve-time (`_mutating_args_grounded`); questa è
+    prevenzione a monte. §7.9 universale.
     (Generalizzazione+re-bind dei valori in L1 = TODO Fable, fix completo.)
+
+    `exact_repeat` (15/11/2026): the caller records the plan for the identical
+    sentence only (L0: `fastpath` serves such a row by its exact text, never by
+    similarity), so the number check does not apply. Before, any digit of the
+    request found in an argument kept even the identical sentence from being
+    remembered, and it was planned again every time.
 
     ESENZIONE (1/7/2026): le chiavi CONTENT_ARG_KEYS/_GLOB_ARG_KEYS sono
     query-specific PER COSTRUZIONE (is_query_specific → 0a-only, mai 0b/L1
@@ -311,16 +322,11 @@ def _should_cache_plan(framework, query) -> bool:
     if any((getattr(s, "tool", "") or "") in _fp.NON_CACHEABLE_TOOLS
            for s in (getattr(framework, "steps", []) or [])):
         return False
-    from .executor import CONTENT_ARG_KEYS, _GLOB_ARG_KEYS
-    _exempt = CONTENT_ARG_KEYS | _GLOB_ARG_KEYS
-    qnums = set(re.findall(r"\d+", query or ""))
-    if qnums:
-        for s in (getattr(framework, "steps", []) or []):
-            for k, v in (getattr(s, "args", {}) or {}).items():
-                if k in ("from_step", "from_steps") or k in _exempt:
-                    continue
-                if set(re.findall(r"\d+", str(v))) & qnums:
-                    return False
+    from .executor import _GLOB_ARG_KEYS, bakes_query_number
+    if not exact_repeat and bakes_query_number(
+            [getattr(s, "args", None) for s in
+             (getattr(framework, "steps", []) or [])], query):
+        return False
     # Piani MATERIALIZZATI (bug live anom-1/anom-2, 7/7): uno step MUTANTE
     # con una LISTA literal i cui valori NON compaiono nella query = valori
     # risolti dai RESULT del turno (from_step già materializzato) → il
@@ -465,7 +471,7 @@ def _run_is_cacheworthy(run: RunResult) -> bool:
 def _maybe_record_fastpath(query: str, intent: Intent,
                             framework: Framework, run: RunResult,
                             origin: str = "auto",
-                            catalog: Optional[list] = None) -> None:
+                            catalog: Optional[list] = None) -> int:
     """Auto-produzione L0 (11/6/2026; classe estesa 12/6/2026): un turno
     completato con SUCCESSO da un piano la cui query esatta NON è ancora in
     cache 0a diventa fastpath: alla ripetizione della stessa query il piano
@@ -496,11 +502,14 @@ def _maybe_record_fastpath(query: str, intent: Intent,
     senza output contabile non è giudicabile e non blocca. Costo del falso
     positivo (mutante legittimamente a vuoto, es. «sposta lo spam» con 0
     spam): il piano si cacherà alla prima esecuzione CON effetto — un
-    re-planning in più, mai un misroute perpetuato."""
+    re-planning in più, mai un misroute perpetuato.
+
+    Returns the id of the row written, 0 when nothing was: the turn keeps it
+    so that a ✗ on the turn removes that row (`DispatchResult.fastpath_rows`)."""
     if not is_fastpath_enabled():
-        return
+        return 0
     if not _run_is_cacheworthy(run):
-        return
+        return 0
     # A successful read is not a successful write.  In particular, a
     # `find_packages` miss used to be cached for an explicit install request:
     # the executor was healthy, but the requested side effect was absent.
@@ -508,12 +517,13 @@ def _maybe_record_fastpath(query: str, intent: Intent,
     if (_dropped_required_verbs(framework, query, intent, catalog)
             or _prohibited_plan_verbs(framework, query)):
         log.info("[L0 fastpath] skip record: required action absent from plan")
-        return
-    # Cacheabilità L0 (Roberto 15/6): solo pipeline multi-step che NON bakeizzano
-    # un valore numerico della query (vedi _should_cache_plan). Esclude il bug
-    # delete_tasks(id=42) ri-servito su «cancella task 40».
-    if not _should_cache_plan(framework, query):
-        return
+        return 0
+    # Cacheabilità L0 (vedi _should_cache_plan). A plan that holds a number of
+    # the request is recorded for the identical sentence only: fastpath keeps
+    # such a row out of similarity, so «cancella task 40» is never served the
+    # plan of «cancella task 42».
+    if not _should_cache_plan(framework, query, exact_repeat=True):
+        return 0
     try:
         from pipeline_effects import ineffective_mutations
         ineff = ineffective_mutations(run.steps)
@@ -524,7 +534,7 @@ def _maybe_record_fastpath(query: str, intent: Intent,
         log.info("[L0 fastpath] skip record: step mutante a 0 effetto reale "
                  "%s — piano 'ok a vuoto' non cacheabile (criterio efficacia)",
                  ineff)
-        return
+        return 0
     # Efficacia estesa (16/6, turn e591854e/71117eef): un piano che DICHIARA
     # un mutante NON-guardato (senza if_prev_entries_nonempty) ma il turno ha
     # 0 effetto reale (0 items E 0 mutations — il mutante e' stato auto-skippato
@@ -552,7 +562,7 @@ def _maybe_record_fastpath(query: str, intent: Intent,
             log.info("[L0 fastpath] skip record: mutante non-guardato dichiarato "
                      "ma 0 effetto reale (0 items/0 mutations) — piano inefficace "
                      "non cacheabile")
-            return
+            return 0
     except Exception as ex:
         log.warning("fastpath noop-check fallito (registro comunque): %r", ex)
     try:
@@ -562,11 +572,13 @@ def _maybe_record_fastpath(query: str, intent: Intent,
         if fp_id:
             log.info("[L0 fastpath] auto-record fp_id=%d (origin=%s)",
                      fp_id, origin)
+        return int(fp_id or 0)
     except Exception as ex:
         # WARNING, non debug (§2.8): a livello debug questo ramo era
         # invisibile in prod (INFO) e ha nascosto per giorni la causa-radice
         # delle 0 righe (IntegrityError approved_at, fix 11/6/2026).
         log.warning("fastpath.record_success fallita (best-effort): %r", ex)
+        return 0
 
 
 def _apply_ordering_clause(framework: Framework, query: str,
@@ -8596,6 +8608,8 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                 fp_hit.framework, intent, query, catalog, runtime_ctx)
             durable, run = _execute_with_lre_boundary(fp_hit.framework)
             if durable is not None:
+                # Long work served from this row: a ✗ on it removes the row.
+                durable.fastpath_rows = (fp_hit.fp_id,)
                 return durable
             # Self-healing su ERRORE (1/7/2026, §2.8): un piano cachato che ora
             # FALLISCE (drift ambiente/schema) non va ri-servito come errore
@@ -8639,14 +8653,18 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                 # cosine da un'ALTRA query canonica → registra l'hash di QUESTA
                 # (vedi _maybe_record_fastpath). L'hit 0a NON registra: la riga
                 # esiste già.
+                _written = 0
                 if fp_hit.match_kind == "cosine":
-                    _maybe_record_fastpath(query, intent, fp_hit.framework, run,
-                                           origin="cosine", catalog=catalog)
+                    _written = _maybe_record_fastpath(
+                        query, intent, fp_hit.framework, run,
+                        origin="cosine", catalog=catalog)
                 return DispatchResult(
                     final_text=run.final_text, final_kind=run.final_kind,
                     match_source="fastpath", framework_hash=run.framework_hash,
                     elapsed_ms=int((time.time() - t_start) * 1000),
-                    run=run, framework=fp_hit.framework)
+                    run=run, framework=fp_hit.framework,
+                    fastpath_rows=tuple(dict.fromkeys(
+                        row for row in (fp_hit.fp_id, _written) if row)))
 
     # ── Layer 1: Autopath ────────────────────────────────────────────────
     # Seed-state (ADR 0177 M1): salta anche L1 con seed (vedi L0 sopra).
@@ -8741,13 +8759,15 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                 # senza record la stessa query ripaga PER SEMPRE embed+scan L1
                 # e il fastpath non si auto-produce mai per le query la cui
                 # famiglia ha già una skill (vedi _maybe_record_fastpath).
-                _maybe_record_fastpath(query, intent, ap_hit.framework, run,
-                                       origin="autopath", catalog=catalog)
+                _written = _maybe_record_fastpath(
+                    query, intent, ap_hit.framework, run,
+                    origin="autopath", catalog=catalog)
                 return DispatchResult(
                     final_text=run.final_text, final_kind=run.final_kind,
                     match_source="autopath", framework_hash=run.framework_hash,
                     elapsed_ms=int((time.time() - t_start) * 1000),
-                    run=run, framework=ap_hit.framework)
+                    run=run, framework=ap_hit.framework,
+                    fastpath_rows=(_written,) if _written else ())
 
     # ── Layer 3: Engine (Proposer + Executor + Recovery + Terminator) ────
     from .proposer import get_proposer
@@ -9079,16 +9099,18 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                     # Il piano RECUPERATO ha funzionato: cacharlo evita di
                     # ripetere fallimento+recovery alla prossima ripetizione.
                     # Seed-state (ADR 0177 M1): turni con allegati non cacheati.
+                    _written = 0
                     if not seed_state:
-                        _maybe_record_fastpath(query, intent, framework_alt,
-                                               run2, catalog=catalog)
+                        _written = _maybe_record_fastpath(
+                            query, intent, framework_alt, run2, catalog=catalog)
                     return DispatchResult(
                         final_text=run2.final_text, final_kind="answer",
                         match_source="recovery",
                         framework_hash=run2.framework_hash,
                         elapsed_ms=int((time.time() - t_start) * 1000),
                         run=run2, framework=framework_alt,
-                        error_class="")
+                        error_class="",
+                        fastpath_rows=(_written,) if _written else ())
                 # §2.8 (bug live 1ba8e2c4, 6/7): il run di RECOVERY è fallito.
                 # La verità più recente è run2 — che può aver TENTATO una
                 # mutazione (es. delete di massa → timeout con esecuzione
@@ -9160,10 +9182,13 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
             error_class=observed_error_class or err_class)
 
     # Seed-state (ADR 0177 M1): turni con allegati (upload) non cacheati.
+    _written = 0
     if not seed_state:
-        _maybe_record_fastpath(query, intent, framework, run, catalog=catalog)
+        _written = _maybe_record_fastpath(
+            query, intent, framework, run, catalog=catalog)
     return DispatchResult(
         final_text=run.final_text, final_kind=run.final_kind,
         match_source="engine", framework_hash=run.framework_hash,
         elapsed_ms=int((time.time() - t_start) * 1000),
-        run=run, framework=framework)
+        run=run, framework=framework,
+        fastpath_rows=(_written,) if _written else ())

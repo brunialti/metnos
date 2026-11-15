@@ -784,14 +784,14 @@ async def _generated_tools_preferences(request: web.Request) -> web.Response:
 # an address the service did not know, the answer was «not found» and the
 # page showed nothing (12/11/2026).
 CHANGE_ACTIONS = ("accept", "reject", "stage", "rollback", "retry", "reopen",
-                  "external", "close", "activate", "decline", "rewrite")
+                  "external", "close", "activate", "decline", "rewrite", "reactivate")
 
 
 async def admin_change_action(request: web.Request) -> web.Response:
     """POST /admin/changes/{id}/{action}.
 
     action ∈ accept | reject | stage | rollback | retry | reopen | external
-             | close | activate | decline | rewrite
+             | close | activate | decline | rewrite | reactivate
     Body opzionale: {"reason": "..."}.
     """
     import change_intents as ci_mod
@@ -804,7 +804,8 @@ async def admin_change_action(request: web.Request) -> web.Response:
     action = request.match_info["action"]
 
     import change_applier
-    if (action not in ("accept", "reject", "stage", "rollback", "retry", ci_mod.REWRITE)
+    if (action not in ("accept", "reject", "stage", "rollback", "retry",
+                       ci_mod.REWRITE, ci_mod.REACTIVATE)
             and not ci_mod.is_reopen(action)
             and not ci_mod.is_person_answer(action)
             and not change_applier.is_candidate_decision(action)):
@@ -856,6 +857,11 @@ async def admin_change_action(request: web.Request) -> web.Response:
         elif ci_mod.is_reopen(action):
             # The way back from a closure or a refusal given by mistake.
             updated = ci_mod.reopen(id_, by=by)
+        elif action == ci_mod.REACTIVATE:
+            # A tool Metnos built and the person set aside comes back as it was.
+            import generated_rewrite
+            updated = await asyncio.to_thread(
+                generated_rewrite.reactivate_for_person, id_, by=by)
         elif action == ci_mod.REWRITE:
             # The person says in words what is wrong with a generated tool in
             # use: it is written again, and stays in use meanwhile (ADR 0239).
@@ -1163,6 +1169,9 @@ async def admin_executor_revive(request: web.Request) -> web.Response:
     if not revived:
         return _error(404, "NOT_RESTRICTED",
                       _msg("UI_EXECUTOR_REVIVE_NOT_RESTRICTED", name=name))
+    # A tool Metnos built and that was set aside: its creation follows it.
+    import generated_rewrite
+    await asyncio.to_thread(generated_rewrite.back_in_service, name, by=by)
     if request.headers.get("HX-Request") == "true":
         # The whole table changes (the row moves between the two lists).
         return web.Response(status=200, headers={"HX-Refresh": "true"})

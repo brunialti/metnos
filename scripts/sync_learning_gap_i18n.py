@@ -252,6 +252,19 @@ TRANSLATIONS = {
     'ERR_CHANGE_EXTERNAL_NOT_OFFERED': (
         'Per questa proposta non c’è una richiesta di modello esterno in attesa.',
         'No external-model request is pending for this proposal.'),
+    'MSG_LEARNING_GAP_EXPIRED': (
+        'Nessuno l’ha più chiesta da {days} giorni: la proposta è scaduta. '
+        'Rinasce da sola se la richiesta torna.',
+        'Nobody has asked for it for {days} days: the proposal expired. '
+        'It is born again by itself if the request comes back.'),
+    'MSG_CHANGE_LOOK_ALIKE': (
+        'somiglia troppo a «{other}», che c’era già e resta in uso',
+        'it is too similar to “{other}”, which was there before and stays in use'),
+    'MSG_CHANGE_LOOK_ALIKE_REWRITE': (
+        'somiglia troppo a «{other}», che c’era già e resta in uso; se la differenza è '
+        'piccola puoi chiedere di riscrivere «{other}» migliorandolo',
+        'it is too similar to “{other}”, which was there before and stays in use; if the '
+        'difference is small you can ask to have “{other}” rewritten with the improvement'),
     'MSG_LEARNING_GAP_SUMMARY': (
         'Funzione mancante chiesta {n} volte, per esempio: «{query}».',
         'Missing capability requested {n} times, for example: “{query}”.'),

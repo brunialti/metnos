@@ -79,7 +79,8 @@ def test_standalone_preserves_private_public_aliases_and_order() -> None:
     assert standalone._BIRTH_CLOSED_EXCEPTION_SCOPES == tuple(sorted(
         standalone.BIRTH_CLOSED_EXCEPTION_SCOPES.items(),
     ))
-    assert len(exception_policy.BIRTH_EXCEPTION_GRANTS_V1) == 17
+    # 16, not 17: «Ritira» signs no retirement any more (15/11/2026).
+    assert len(exception_policy.BIRTH_EXCEPTION_GRANTS_V1) == 16
     authority_scopes = {
         facade.BIRTH_CLOSED_OWNER, *facade.BIRTH_CLOSED_COORDINATOR_STORE_OWNERS,
     }

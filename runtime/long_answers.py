@@ -239,16 +239,24 @@ def _beyond_the_cap(turn, step, tool: str, have: int):
     return entries, again
 
 
-def _all_rows(entries: list, tool: str, header: list[str]) -> list[list[str]] | None:
+def _all_rows(entries: list, tool: str, header: list[str],
+              shown_with: dict | None = None) -> list[list[str]] | None:
     """Every record as the row the chat would have shown, same columns; None
-    when the records are not what the message's table was drawn from."""
+    when the records are not what the message's table was drawn from.
+
+    ``shown_with`` is the table the step's result carried when the message
+    was drawn (its tool's own, or the one of the step its records came from);
+    without it the tool's declared table is read from the catalog. The
+    columns are the ones the message showed, whatever the further rows hold.
+    """
     from engine import executor as engine
 
-    presentation = None
+    presentation = shown_with
     try:
-        from loader import load_catalog
-        known = load_catalog().executors.get(tool)
-        presentation = getattr(known, "presentation", None)
+        if not presentation:
+            from loader import load_catalog
+            known = load_catalog().executors.get(tool)
+            presentation = getattr(known, "presentation", None)
     except Exception as exc:  # noqa: BLE001 - without a catalog the plain table is used
         log.debug("long_answers: presentation of %s unavailable: %r", tool, exc)
     if isinstance(presentation, dict) and isinstance(presentation.get("list"), dict):
@@ -257,7 +265,8 @@ def _all_rows(entries: list, tool: str, header: list[str]) -> list[list[str]] | 
     paged = engine._paged_tables.set(False)
     try:
         table = engine._entries_table(entries[:FILE_ROWS], max_rows=FILE_ROWS,
-                                      max_chars=10 ** 9, presentation=presentation)
+                                      max_chars=10 ** 9, presentation=presentation,
+                                      columns=header)
     finally:
         engine._paged_tables.reset(paged)
     lines = table.split("\n")
@@ -311,7 +320,11 @@ def _as_sheet(text: str, span: tuple[int, int], token: str, texts: dict, turn=No
         complete = None
         if len(entries) > len(rows):
             try:
-                complete = _all_rows(entries, tool, header)
+                shown_with = getattr(step, "result", None)
+                complete = _all_rows(
+                    entries, tool, header,
+                    shown_with.get("_presentation_contract")
+                    if isinstance(shown_with, dict) else None)
             except Exception as exc:  # noqa: BLE001 - the rows of the message are still there
                 log.warning("long_answers: full results not rendered (%r), message rows kept", exc)
         if complete is not None and len(complete) > len(rows):

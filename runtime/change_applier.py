@@ -94,6 +94,16 @@ def external_model_available() -> bool:
         return False
 
 
+class LookAlike(Exception):
+    """The candidate would be mistaken for a tool already in the catalog:
+    the one in use stays and the candidate is not offered (Roberto,
+    15/11/2026). Carries the words the person is told."""
+
+    def __init__(self, words: str, *, other: str) -> None:
+        self.other = other
+        super().__init__(words)
+
+
 class NotQuiet(Exception):
     """A person is using Metnos, or a long job is at work: the build waits
     for a quiet moment. Nothing failed and nothing is counted; the next run
@@ -197,6 +207,58 @@ def _planner_can_use(name: str) -> bool:
 
     return name in filter_for_visibility(
         load_catalog(verify=True), VISIBILITY_COMPOSER).executors
+
+
+def look_alike_words(proposal_id: str) -> tuple[str, str] | None:
+    """Why a candidate cannot be activated beside a tool already in the
+    catalog, in the person's words, with the name of that tool; None when it
+    resembles none.
+
+    The catalog load applies the same measure and the older tool stays: a
+    candidate activated all the same would be admitted and never usable.
+    Asked before the person is asked, and again before their «yes» is carried.
+    """
+    if not proposal_id:
+        return None
+    import affinity_integrity
+    import synth_activation
+    from loader import load_catalog
+    from messages import get as _msg
+    from synt import DEFAULT_PROPOSALS_DIR
+
+    manifest, _metadata = synth_activation._manifest(DEFAULT_PROPOSALS_DIR, proposal_id)
+    name = str(manifest.get("name") or "")
+    in_use = load_catalog(verify=True).executors
+    alike = affinity_integrity.look_alikes(
+        name, manifest.get("affinity") or [],
+        {known: list(executor.affinity or []) for known, executor in in_use.items()})
+    if not alike:
+        return None
+    other = alike[0].other
+    # Only a tool Metnos built can be asked to be written again, improved.
+    rewritable = getattr(in_use.get(other), "source", "") == "synthesized"
+    return (_msg("MSG_CHANGE_LOOK_ALIKE_REWRITE" if rewritable else "MSG_CHANGE_LOOK_ALIKE",
+                 other=other), other)
+
+
+def _stop_look_alike(proposal_id: str) -> None:
+    """Take a candidate that resembles a tool in use out of the way and raise
+    ``LookAlike``: it will not be decided, whatever the proposal was (a new
+    tool or the rewrite of one). A check that cannot be made stops nothing:
+    the catalog load still decides."""
+    try:
+        found = look_alike_words(proposal_id)
+    except Exception as exc:  # noqa: BLE001 - see above
+        _log.warning("change_applier: look-alike check not made: %r", exc)
+        return
+    if found is None:
+        return
+    import synth_activation
+    from synt import DEFAULT_PROPOSALS_DIR
+
+    synth_activation.discard_candidate(DEFAULT_PROPOSALS_DIR, proposal_id)
+    candidate_answered(proposal_id)
+    raise LookAlike(found[0], other=found[1])
 
 
 def _unrestricted(name: str) -> bool:
@@ -306,6 +368,7 @@ def apply_create_executor(ci: ChangeIntent) -> dict:
 
     waiting = pending_review(ci)
     if waiting:
+        _stop_look_alike(waiting)
         raise ReviewPending(waiting)
 
     if _busy_elsewhere(QUIET_BEFORE_BUILD_S) is not None:
@@ -330,6 +393,7 @@ def apply_create_executor(ci: ChangeIntent) -> dict:
             external_model=external,
         )
     if result.get("review_pending"):
+        _stop_look_alike(str(result.get("proposal_id") or ""))
         raise ReviewPending(str(result.get("proposal_id") or ""))
     if not result.get("ok", True):
         # Synth says why in one of three places: an error before it starts,
@@ -714,14 +778,23 @@ def run_activation(ci_id: str, proposal_id: str, *, by: str, at: str) -> dict:
     import synth_activation
     from synt import DEFAULT_PROPOSALS_DIR
 
+    alike = None
     try:
-        with _automatic_work_in_progress():
-            reply = synth_activation.activate(
-                DEFAULT_PROPOSALS_DIR, proposal_id, by=by, at=at)
+        # The catalog may have gained a look-alike since the question was asked.
+        alike = look_alike_words(proposal_id)
+    except Exception as exc:  # noqa: BLE001 - the catalog load still decides
+        _log.warning("change_applier: look-alike check not made: %r", exc)
+    reply = dict()
+    try:
+        if alike is None:
+            with _automatic_work_in_progress():
+                reply = synth_activation.activate(
+                    DEFAULT_PROPOSALS_DIR, proposal_id, by=by, at=at)
     except Exception as exc:  # noqa: BLE001 - never leave the proposal «running»
         _log.exception("change_applier: activation failed: %r", exc)
         reply = {"status": "signer_failed", "error": type(exc).__name__}
-    status = str(reply.get("status") or "")
+    # A look-alike is not carried to the signer: it is refused here.
+    status = "look_alike" if alike is not None else str(reply.get("status") or "")
     ci = get_intent(ci_id)
     name = _creation_request(ci)[0] if ci is not None else ""
 
@@ -758,6 +831,8 @@ def run_activation(ci_id: str, proposal_id: str, *, by: str, at: str) -> dict:
         from messages import get as _msg
         reason = _msg("MSG_CHANGE_NOT_ACTIVE", name=str(reply.get("name") or name))
         technical = "admitted_not_usable"
+    elif alike is not None:
+        reason, technical = alike[0], f"look_alike:{alike[1]}"
     else:
         # In words for the person; the closed code stays beside them.
         reason, technical = (synth_activation.refusal_words(reply),
@@ -1059,6 +1134,19 @@ def task_change_applier(payload: dict | None = None) -> dict:
             result = "closed_by_preference" if never else "external_model_consent_needed"
             details.append({"id": ci.id, "kind": ci.intent_kind, "result": result})
             _audit({"event": result, "id": ci.id, "kind": ci.intent_kind})
+            continue
+        except LookAlike as alike:
+            # The tool in use stays; the candidate is gone and the person is
+            # told why, where they are and on the page.
+            mark_failed(ci.id, reason=str(alike))
+            close_until(ci.id, reason=str(alike)[:500])
+            _push("MSG_CHANGE_ACTIVATION_REFUSED_PUSH", ci,
+                  event_key=f"change_look_alike:{ci.id}:{alike.other}", reason=str(alike))
+            failed_count += 1
+            details.append({"id": ci.id, "kind": ci.intent_kind,
+                            "result": "look_alike", "other": alike.other})
+            _audit({"event": "look_alike", "id": ci.id, "kind": ci.intent_kind,
+                    "other": alike.other})
             continue
         except ClosedAfterExternalModel as closed:
             mark_failed(ci.id, reason=str(closed))

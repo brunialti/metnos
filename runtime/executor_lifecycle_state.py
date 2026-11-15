@@ -10,6 +10,7 @@ starts unrestricted (`register_loaded_executors`).
 from __future__ import annotations
 
 from enum import Enum
+import json
 import sqlite3
 from typing import Iterable
 
@@ -55,7 +56,9 @@ def restriction_snapshot() -> tuple[tuple[str, str, str], ...]:
     return tuple(sorted(
         (name,
          Restriction.REMOVED.value if state == "archived" else Restriction.DEMOTED.value,
-         "inactive too long" if state == "archived" else state)
+         # Diagnostic only: set aside, unused or withdrawn all end here,
+         # and the page says it in words (UI_EXECUTOR_RESTRICTED_REASON).
+         "out of the catalog" if state == "archived" else state)
         for name, state in lifecycle_override_map(read_only=True).items()
     ))
 
@@ -180,10 +183,46 @@ def restrict_executor(executor_name: str, *, restriction: Restriction,
                 f"WHERE name=? AND {column} IS NULL",
                 (time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), executor_name),
             ).rowcount
+        if changed:
+            _record_reason(executor_name, restriction, reason)
         return bool(changed)
     except sqlite3.Error as ex:
         log.warning("lifecycle state: %s not restricted (%s): %r", executor_name, reason, ex)
         return False
+
+
+def _record_reason(executor_name: str, restriction: Restriction, reason: str) -> None:
+    """Keep why, with the event: until 15/11/2026 the reason was dropped and
+    every restriction was later told as «unused». The restriction stands even
+    when this record cannot be written; the log says so."""
+    from executor_aging import DB_PATH
+
+    try:
+        with sqlite3.connect(str(DB_PATH), timeout=10.0) as connection:
+            connection.execute(
+                "INSERT INTO executor_history (name, event_kind, detail) VALUES (?, ?, ?)",
+                (executor_name, "archived" if restriction is Restriction.REMOVED
+                 else "deprecated", json.dumps({"reason": str(reason)[:200]})))
+    except sqlite3.Error as ex:
+        log.warning("lifecycle state: why %s was restricted not recorded: %r", executor_name, ex)
+
+
+def set_aside(executor_name: str, *, reason: str) -> bool | None:
+    """Take one executor out of use, reversibly: it leaves the catalog and
+    nothing is signed or deleted, so it can be brought back as it is.
+
+    True when it is out of use after this call (already or now), False when
+    the store could not record it, None when the store does not know the
+    executor at all: there is nothing to set aside.
+    """
+    from executor_aging import lookup
+
+    if restrict_executor(executor_name, restriction=Restriction.REMOVED, reason=reason):
+        return True
+    known = lookup(executor_name)
+    if known is None:
+        return None
+    return bool(known.archived_at)
 
 
 def revive_executor(executor_name: str, *, reason: str) -> bool:
@@ -198,4 +237,4 @@ __all__ = ["RESTRICTED_REJECT_PREFIX", "RETIRED_REJECT_PREFIX", "Restriction",
            "credit_uses", "record_invocation", "recorded_source",
            "register_loaded_executors", "restrict_executor",
            "restriction_snapshot", "restrictions_from_snapshot",
-           "revive_executor"]
+           "revive_executor", "set_aside"]

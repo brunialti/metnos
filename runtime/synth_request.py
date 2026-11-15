@@ -54,8 +54,8 @@ _PRESENTATION_COLUMNS = 5
 
 def _field_group(name: str) -> tuple[str, ...]:
     """A technical field name with its documented variants (`field_synonyms`)."""
-    from field_synonyms import FIELD_SYNONYMS
-    return (name, *FIELD_SYNONYMS.get(name, ()))
+    from field_synonyms import field_group
+    return field_group(name)
 
 
 def presentation_columns(tests) -> list[dict]:

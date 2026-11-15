@@ -47,7 +47,8 @@ DB_PATH = Path(
     )
 )
 
-DEPRECATED_DAYS = int(os.environ.get("METNOS_EXECUTOR_DEPRECATED_DAYS", "30"))
+# A generated tool nobody used for this long is set aside (ADR 0239, rule 5).
+DEPRECATED_DAYS = int(os.environ.get("METNOS_EXECUTOR_DEPRECATED_DAYS", "60"))
 ARCHIVED_DAYS   = int(os.environ.get("METNOS_EXECUTOR_ARCHIVED_DAYS", "14"))
 
 # Mai retirare questi: sono il seed minimo che il sistema deve avere
@@ -180,6 +181,15 @@ def note_generation(name: str, generation: str) -> bool:
                 (now_iso_z(), generation, name))
             _log_event(conn, name, "undeprecated", row["source"],
                        {"by": "new_generation"})
+        elif row["loaded_generation"] and _is_synth(name, row["source"]):
+            # A new version of a generated tool starts its own clock, also
+            # when nothing restricted the old one: a rewrite asked by the
+            # person kept the old version's days and could be set aside the
+            # night after «Attiva» (15/11/2026).
+            conn.execute(
+                "UPDATE executor_stats SET last_used_at = NULL, last_call_ok = NULL, "
+                "first_seen = ?, loaded_generation = ? WHERE name = ?",
+                (now_iso_z(), generation, name))
         else:
             conn.execute("UPDATE executor_stats SET loaded_generation = ? WHERE name = ?",
                          (generation, name))
@@ -219,6 +229,57 @@ def _row(r) -> ExecutorStat:
         first_seen=r["first_seen"],
         source=src,
     )
+
+
+def first_known(names) -> dict[str, str]:
+    """When each of ``names`` was first recorded here: its earliest history
+    event. ``first_seen`` starts again with every new version of a generated
+    tool, the history does not, so this is how long a name has been around.
+    Read-only; a name never recorded is absent."""
+    wanted = sorted({str(name) for name in names or () if name})
+    conn = _open_read_only() if wanted else None
+    if conn is None:
+        return {}
+    try:
+        known: dict[str, str] = {}
+        for start in range(0, len(wanted), 500):
+            chunk = wanted[start:start + 500]
+            known.update(
+                (row[0], row[1]) for row in conn.execute(
+                    "SELECT name, MIN(ts) FROM executor_history WHERE name IN "
+                    f"({','.join('?' * len(chunk))}) GROUP BY name", chunk)
+                if row[1])
+        return known
+    except sqlite3.OperationalError:
+        return {}       # a store not yet created has recorded nobody
+    finally:
+        conn.close()
+
+
+def last_restriction(name: str) -> dict:
+    """What was recorded with the latest restriction of ``name``: the days
+    without use when the ager took it out, the reason when someone did.
+
+    The ager's archiving after a deprecation only follows that deprecation:
+    it is skipped, and the decision before it answers."""
+    import json as _json
+
+    conn = _open()
+    try:
+        rows = conn.execute(
+            "SELECT detail FROM executor_history WHERE name = ? "
+            "AND event_kind IN ('deprecated', 'archived') ORDER BY id DESC LIMIT 20",
+            (name,)).fetchall()
+    finally:
+        conn.close()
+    for row in rows:
+        try:
+            detail = _json.loads(row[0]) if row[0] else {}
+        except ValueError:
+            continue
+        if isinstance(detail, dict) and "after_deprecated_days" not in detail:
+            return detail
+    return {}
 
 
 def _log_event(conn, name: str, event_kind: str,
@@ -294,6 +355,10 @@ def touch(name: str, ok: bool | None = None) -> None:
         ).fetchone()
         is_first = existing is None or (existing["total_calls"] or 0) == 0
 
+        # Every call is a use, a refused one too (Roberto, 15/11/2026): a
+        # tool that is asked for is needed, also on the days it can only
+        # refuse (an expired authorization). A fault of its own code is not
+        # left to age: it withdraws the tool at once (ADR 0239, rule 4).
         conn.execute(
             """
             INSERT INTO executor_stats (name, last_used_at, total_calls, last_call_ok)

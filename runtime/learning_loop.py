@@ -92,6 +92,40 @@ def refresh_gap_scores() -> int:
     return changed
 
 
+def expire_gap_proposals() -> int:
+    """Let go of the open gap proposals nobody asked for in 90 days.
+
+    Roberto, 15/11/2026. A score never goes under its floor and building
+    does not ask: a proposal born months ago was built when its turn came,
+    without one example left (the requests are dropped after 90 days). An
+    expired proposal is closed with no date to wait for, so it is born again,
+    by the rule every proposal is born with, when the request comes back.
+    Only a proposal still waiting to be built: one being built, or waiting
+    for the person's answer, is not touched. Returns how many expired.
+    """
+    import change_intents as ci
+    from engine import terminator
+    from messages import get as _msg
+
+    limit = terminator._days_ago(terminator.GAP_RETENTION_DAYS)
+    expired = 0
+    for intent in ci.list_intents(state=ci.STATE_PROPOSED, origin_family="observation",
+                                  intent_kind=ci.KIND_CREATE_EXECUTOR, limit=5000):
+        body = intent.intent_body or {}
+        if (intent.origin_module != "learning_loop" or not body.get("verb")
+                or str(intent.discovered_at or "") >= limit):
+            continue
+        asked = terminator.last_gap_seen(body.get("verb"), body.get("object"))
+        if asked is not None and asked >= limit:
+            continue
+        ci.close_until(intent.id, days=0, reason=_msg(
+            "MSG_LEARNING_GAP_EXPIRED", days=terminator.GAP_RETENTION_DAYS))
+        log.info("[learning-loop] gap proposal %s (%s) expired: last asked %s",
+                 intent.id, intent.intent_target, asked or "more than 90 days ago")
+        expired += 1
+    return expired
+
+
 def gap_requests(verb: str, object_: str, *, limit: int = 5) -> list[str]:
     """The recent requests that found no tool for (verb, object), newest first.
 

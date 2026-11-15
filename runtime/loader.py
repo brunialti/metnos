@@ -1635,8 +1635,12 @@ def _check_affinity_overlap(
 
     A synthesized or imported executor that breaks it is refused here, where
     it enters the catalog; an authored one is refused by the release, so here
-    it is only reported. Between two refusable executors the larger structural
-    identity yields, stable across restarts. Refusals append to the audit.
+    it is only reported. Between two refusable executors the one that has
+    been around longer stays (Roberto, 15/11/2026) and the newer yields; with
+    nothing recorded about either, the larger structural identity yields,
+    stable across restarts. Until then identity alone decided: a tool just
+    activated could put out one in use for months. Refusals append to the
+    audit.
     """
     import affinity_integrity
 
@@ -1659,6 +1663,25 @@ def _check_affinity_overlap(
         if ex.authoring_manifest_path is not None:
             return ex.authoring_manifest_path.as_posix()
         return ex.name
+
+    # How long each refusable executor has been known to the lifecycle owner.
+    # One it never recorded is entering now: the newest of all.
+    born: dict[str, str] = {}
+    try:
+        from executor_aging import first_known
+        born = first_known([name for name in affinities if _refusable(name)])
+    except Exception as exc:  # noqa: BLE001 - the rule still holds, by identity alone
+        log.warning("[loader] ages of the executors unavailable: %s", type(exc).__name__)
+
+    def _newness(name: str) -> tuple:
+        return (name not in born, born.get(name, ""), _stable_identity(name))
+
+    def _pair(finding) -> tuple:
+        return (finding.name, finding.other) if finding.kind == "overlap" else (finding.name,)
+
+    def _yielding(finding) -> str | None:
+        candidates = [n for n in _pair(finding) if _refusable(n)]
+        return max(candidates, key=_newness) if candidates else None
 
     to_remove: dict[str, dict] = {}
     # The rule runs on every load. A breach between authored executors is
@@ -1684,13 +1707,17 @@ def _check_affinity_overlap(
             raise
         log.warning("[loader] affinity rule not evaluated: %s", type(exc).__name__)
         breaches = []
+    # Oldest yielding executor first: by the time a pair is judged, the fate
+    # of its older member is settled, so nobody yields to an executor that is
+    # itself refused (two went out where one was enough).
+    breaches = sorted(
+        breaches, key=lambda finding: ((loser := _yielding(finding)) is None,
+                                       _newness(loser) if loser else ()))
     for finding in breaches:
-        pair = (finding.name, finding.other) if finding.kind == "overlap" else (finding.name,)
-        if any(name in to_remove for name in pair):
+        if any(name in to_remove for name in _pair(finding)):
             # That executor is already refused: without it the breach is gone.
             continue
-        candidates = [n for n in pair if _refusable(n)]
-        loser = max(candidates, key=_stable_identity) if candidates else None
+        loser = _yielding(finding)
         subject = loser or finding.name
         other = finding.other if subject == finding.name else finding.name
         left, right = set(affinities.get(subject) or []), set(affinities.get(other) or [])

@@ -126,7 +126,10 @@ _TRANSITIONS: dict[str, set[str]] = {
     STATE_FINALIZED:   {STATE_ROLLED_BACK, STATE_ACCEPTED},
     STATE_REJECTED:    {STATE_PROPOSED},          # ri-proposta dopo dismissal
     STATE_FAILED:      {STATE_ACCEPTED, STATE_REJECTED},  # retry o give up
-    STATE_ROLLED_BACK: set(),                     # terminale (audit only)
+    # A tool set aside comes back as it was (``reactivate``) or, when the same
+    # need returns after the rest, as a proposal to build again. Every other
+    # rolled-back change stays where it is.
+    STATE_ROLLED_BACK: {STATE_APPLIED, STATE_PROPOSED},
 }
 
 
@@ -496,8 +499,10 @@ def upsert_intent(ci: ChangeIntent) -> str:
         new_discovered = max(existing["discovered_at"], ci.discovered_at)
         # A proposal given up with a date comes back, as a proposal, when the
         # same gap is seen again after that date (ADR 0239): never before.
+        # The same holds for a tool set aside: after its rest, the need seen
+        # again proposes to build it again (a signed retirement never could).
         reopened = False
-        if existing["state"] == STATE_REJECTED:
+        if existing["state"] in (STATE_REJECTED, STATE_ROLLED_BACK):
             try:
                 body = json.loads(existing["intent_body"] or "{}") or {}
             except (TypeError, ValueError):
@@ -746,20 +751,33 @@ def mark_finalized(id_: str) -> ChangeIntent:
 
 
 def mark_rolled_back(id_: str, *, reason: str) -> ChangeIntent:
-    """Transizione da QUALSIASI stato (escape hatch audit)."""
+    """Transizione da QUALSIASI stato (escape hatch audit).
+
+    A creation taken back is a tool set aside: it rests ``CLOSED_DAYS`` and
+    after that a returning need may build it again (``upsert_intent``).
+    """
     init_db()
     now = _iso_utc_now()
     with _conn() as cn:
         row = cn.execute(
-            "SELECT id FROM change_intents WHERE id=? LIMIT 1", (id_,),
+            "SELECT id, intent_kind, intent_body FROM change_intents WHERE id=? LIMIT 1", (id_,),
         ).fetchone()
         if row is None:
             raise TransitionError(f"intent {id_} not found")
+        try:
+            body = json.loads(row["intent_body"] or "{}") or {}
+        except (TypeError, ValueError):
+            body = {}
+        if row["intent_kind"] == KIND_CREATE_EXECUTOR:
+            body = {key: value for key, value in body.items() if key not in _IN_FLIGHT_FACTS}
+            body["closed_until"] = time.strftime(
+                "%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() + CLOSED_DAYS * 86400))
         cn.execute(
             """UPDATE change_intents
-                  SET state=?, rolled_back_at=?, rolled_back_reason=?, updated_at=?
+                  SET state=?, rolled_back_at=?, rolled_back_reason=?, updated_at=?,
+                      intent_body=?
                 WHERE id=?""",
-            (STATE_ROLLED_BACK, now, reason, now, id_),
+            (STATE_ROLLED_BACK, now, reason, now, json.dumps(body, ensure_ascii=False), id_),
         )
     out = get_intent(id_)
     if out is None:
@@ -805,10 +823,53 @@ def close_until(id_: str, *, reason: str, days: int = CLOSED_DAYS,
     })
 
 
+# What a creation carries only while something is being done to it.
+_IN_FLIGHT_FACTS = ("rewrite", "activation", "external_model_offer", "external_model_consent")
+
+
+def is_set_aside(intent: ChangeIntent) -> bool:
+    """A creation taken back in the reversible way: its tool can come back.
+
+    The ones taken back before 14/11/2026 carry no resting date: their
+    contract was retired with a signature and the name is closed.
+    """
+    return (intent.state == STATE_ROLLED_BACK and intent.intent_kind == KIND_CREATE_EXECUTOR
+            and bool((intent.intent_body or {}).get("closed_until")))
+
+
+def reactivate(id_: str, *, by: str) -> ChangeIntent:
+    """The tool set aside is in use again, as it was."""
+    from messages import get as _msg
+
+    current = get_intent(id_)
+    if current is None:
+        raise TransitionError(_msg("ERR_CHANGE_NOT_FOUND", id=id_))
+    if not is_set_aside(current):
+        raise TransitionError(_msg("ERR_CHANGE_REACTIVATE_NOT_SET_ASIDE"))
+    now = _iso_utc_now()
+    body = {key: value for key, value in (current.intent_body or {}).items()
+            if key != "closed_until"}
+    return _transition(id_, to_state=STATE_APPLIED, extra_cols={
+        "intent_body": body, "applied_at": now, "rolled_back_at": None, "rolled_back_reason": None,
+        "decision_by": by, "decision_ts": now, "decision_action": REACTIVATE,
+        "decision_reason": None,
+    })
+
+
 # States of a creation whose tool is in use: the ones a rewrite starts from.
 IN_USE_STATES = (STATE_APPLIED, STATE_OBSERVED, STATE_FINALIZED)
+
+
+def built_a_tool(intent: ChangeIntent) -> bool:
+    """True when this creation built the tool it names. One that found the
+    tool already there built nothing: rewriting or setting aside from it
+    would act on a tool it does not own, possibly one of the built-ins
+    (15/11/2026)."""
+    return (intent.intent_kind == KIND_CREATE_EXECUTOR
+            and not (intent.applied_effect or {}).get("short_circuit"))
 REWRITE = "rewrite"
 REWRITE_REASON_LIMIT = 600
+REACTIVATE = "reactivate"
 
 
 def send_back(id_: str, *, reason: str, by: str, origin: str,
@@ -828,6 +889,8 @@ def send_back(id_: str, *, reason: str, by: str, origin: str,
         raise TransitionError(_msg("ERR_CHANGE_NOT_FOUND", id=id_))
     if current.state not in IN_USE_STATES or current.intent_kind != KIND_CREATE_EXECUTOR:
         raise TransitionError(_msg("ERR_CHANGE_REWRITE_NOT_IN_USE", state=current.state))
+    if not built_a_tool(current):
+        raise TransitionError(_msg("ERR_CHANGE_NOT_BUILT", name=current.intent_target))
     now = _iso_utc_now()
     body = {key: value for key, value in (current.intent_body or {}).items()
             if key not in _CLOSED_FACTS and key != "activation"}

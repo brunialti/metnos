@@ -48,8 +48,12 @@ TOOL = ROOT / "internal" / "tools" / "render_contract_boundary_policy.py"
 # 9/11/2026: F5 and the promoter are removed. Only removals: the F5,
 # certification, migration and lifecycle-state owners, and the promoter and
 # quarantine Birth facades. Nothing is added and no remaining grant changed.
+# 15/11/2026: only one removal, the retirement-only grant of
+# change_rollback._rollback_create_executor («Ritira» sets a generated tool
+# aside and signs no retirement; approved by Roberto). Checked by comparing
+# the two decoded projections: no other value differs.
 GOLDEN_DIGEST_V1 = (
-    "sha256:7becad9435a7e4d474430740c1d897d6b4a2ba119af24c1a53a6bc4355cf30cb"
+    "sha256:21d7a3ab5255a8eefc800fc7c3b4faf29a57d369651ca3a938e83f5eccd3a557"
 )
 
 POLICY_NAMES = (

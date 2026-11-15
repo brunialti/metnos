@@ -54,6 +54,7 @@ from change_intents import (
     KIND_MATERIALIZE_PIPELINE,
     KIND_REJECT_PATTERN,
     STATE_APPLIED,
+    STATE_FINALIZED,
     STATE_OBSERVED,
     ChangeIntent,
     list_intents,
@@ -111,15 +112,37 @@ def _age_days(iso: str | None) -> float:
 
 # --- Verifier: create_executor / extend_executor -------------------------
 
+def _set_aside_by_the_store(ci: ChangeIntent) -> bool:
+    # No broad except: an unreadable store is an error of the night, not
+    # «nothing set aside» (15/11/2026).
+    from executor_aging import lookup
+
+    effect = ci.applied_effect or {}
+    stat = lookup(effect.get("executor_name") or ci.intent_target)
+    return bool(stat is not None and (stat.deprecated_at or stat.archived_at))
+
+
 def _verify_created_executor(ci: ChangeIntent) -> Verdict:
     """A generated tool is not taken back here for a failed call.
 
     One that fails by its own code is withdrawn at once and written again
     (``generated_rewrite``, ADR 0239 rule 4); a declared failure is an answer
-    of the tool. Taking it back from here is a signed retirement, and that
-    closes the name for good: no corrected version could be born under it.
+    of the tool. What is left for this check is the tool nobody uses any
+    more, which the life cycle store has set aside (rule 5): its proposal is
+    taken back too, in the reversible way, and says why in words.
     """
-    return _verify_executor_health(ci, failure_rolls_back=False)
+    verdict, metrics, reason = _verify_executor_health(ci, failure_rolls_back=False)
+    if verdict == "rollback":
+        from executor_aging import DEPRECATED_DAYS, last_restriction
+        from messages import get as _msg
+
+        # «Nobody used it» only when that is what took it out: a duplicate or
+        # another decision is said as such (15/11/2026).
+        effect = ci.applied_effect or {}
+        unused = "days_inactive" in last_restriction(effect.get("executor_name") or ci.intent_target)
+        reason = (_msg("MSG_CHANGE_SET_ASIDE_UNUSED", days=DEPRECATED_DAYS) if unused
+                  else _msg("MSG_CHANGE_TAKEN_OUT_OF_USE"))
+    return verdict, metrics, reason
 
 
 def _verify_executor_health(ci: ChangeIntent, *, failure_rolls_back: bool = True) -> Verdict:
@@ -354,6 +377,12 @@ def task_change_observer(payload: dict | None = None) -> dict:
     max_per_fire = (payload or {}).get("max_per_fire", 200)
     targets = list_intents(state=[STATE_APPLIED, STATE_OBSERVED],
                             limit=max_per_fire, order_by="discovered_desc")
+    # A consolidated creation is looked at for one thing only: a tool that
+    # nobody used any more and that the life cycle store set aside (ADR 0239,
+    # rule 5). Its proposal must say so, with the way back.
+    targets += [ci for ci in list_intents(state=STATE_FINALIZED, intent_kind=KIND_CREATE_EXECUTOR,
+                                          limit=max_per_fire)
+                if _set_aside_by_the_store(ci)]
     counts = {"finalized": 0, "rolled_back": 0, "observing": 0, "errors": 0}
     details: list[dict] = []
     for ci in targets:

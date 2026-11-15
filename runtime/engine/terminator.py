@@ -163,6 +163,22 @@ def recent_gap_count(verb, object_) -> int:
         conn.close()
 
 
+def last_gap_seen(verb, object_) -> str | None:
+    """When a capability on (verb, object) was last asked for; None when no
+    request is kept any more (they are dropped after 90 days)."""
+    import learning_loop as _ll
+    classes = sorted(_ll._CAPABILITY_GAP_CLASSES)
+    conn = _ensure_db()
+    try:
+        row = conn.execute(
+            "SELECT MAX(last_seen) FROM lacune WHERE intent_verb IS ? AND intent_object IS ? "
+            f"AND error_class IN ({','.join('?' * len(classes))})",
+            (verb, object_, *classes)).fetchone()
+    finally:
+        conn.close()
+    return str(row[0]) if row and row[0] else None
+
+
 def prune_gaps() -> int:
     """Drop gaps not seen for 90 days: they hold the request as it was typed."""
     conn = _ensure_db()

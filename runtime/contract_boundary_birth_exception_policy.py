@@ -93,10 +93,6 @@ BIRTH_EXCEPTION_GRANTS_V1 = (
         ('authoring_read', 'authoring_write', 'sign'),
     ),
     BirthExceptionGrantV1(
-        'runtime/change_rollback.py:_rollback_create_executor',
-        'retirement_only', ('retire',),
-    ),
-    BirthExceptionGrantV1(
         'runtime/cli/skills_cli.py:_cmd_uninstall',
         'retirement_only', ('authoring_read', 'retire'),
     ),
