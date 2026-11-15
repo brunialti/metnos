@@ -90,9 +90,7 @@ Go deeper: [the request runtime](https://metnos.com/en/architecture/agent_runtim
   that system offers, and returns a signed result.
 - **Long jobs outlive the chat.** Work too long for one turn becomes a supervised job.
   You get a receipt at once, the job resumes after a restart, and the answer arrives in
-  the conversation that asked for it. The engine is off until you turn it on in
-  Settings, and for now a long job is a single action: it cannot be combined with other
-  steps in the same request.
+  the conversation that asked for it. The engine is off until you turn it on in Settings.
 - **It explains itself.** Ask “where do I change the model?” and the built-in Tutor
   answers from the documentation and the tool contracts of your installation. Tutor
   explains; it never acts.
