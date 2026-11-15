@@ -929,6 +929,10 @@ class Executor:
 class Catalog:
     executors: dict[str, Executor] = field(default_factory=dict)
     rejected: list[tuple[str, str]] = field(default_factory=list)  # (path, reason)
+    # The name of each executor the lifecycle owner left out, by the path in
+    # `rejected`: in an installed store that path ends in a generation folder,
+    # not in the name (15/11/2026: «Riattiva» posted the generation hash).
+    restricted_names: dict[str, str] = field(default_factory=dict)
 
     def __len__(self):
         return len(self.executors)
@@ -1416,10 +1420,11 @@ def _load_catalog_under_catalog_lock(
 
     # Registration is accounting only, not visibility authority. It remains
     # best-effort and must never run during a side-effect-free cutover audit.
+    lifted: set[str] = set()
     if not audit_only:
         try:
             from executor_lifecycle_state import register_loaded_executors
-            register_loaded_executors(tuple(catalog.executors.values()))
+            register_loaded_executors(tuple(catalog.executors.values()), lifted=lifted)
         except Exception as exc:
             log.warning("loader: lifecycle registration failed: %s", exc)
 
@@ -1432,6 +1437,9 @@ def _load_catalog_under_catalog_lock(
 
     restrictions = restrictions_from_snapshot(
         tuple(catalog.executors.values()), lifecycle_snapshot)
+    # A new revision is not held by the restriction its predecessor earned.
+    for name in lifted:
+        restrictions.pop(name, None)
     for name, (restriction, reason) in restrictions.items():
         ex = catalog.executors.get(name)
         if ex is None:
@@ -1440,6 +1448,7 @@ def _load_catalog_under_catalog_lock(
             catalog.executors.pop(name)
             catalog.rejected.append(
                 (str(ex.manifest_path), f"{RESTRICTED_REJECT_PREFIX}: {reason}"))
+            catalog.restricted_names[str(ex.manifest_path)] = name
         else:
             ex.lifecycle = restriction.value
 

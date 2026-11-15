@@ -21,6 +21,7 @@ Audit JSONL ~/.local/share/metnos/audit/change_applier.jsonl
 """
 from __future__ import annotations
 
+import calendar
 import contextlib
 import json
 import sqlite3
@@ -80,12 +81,16 @@ class ClosedAfterExternalModel(Exception):
 
 def external_model_available() -> bool:
     """True when the instance has an external model configured."""
+    from llm_router import LLMRouter, TierConfigError
+    from llm_workloads import tier_for
+
     try:
-        from llm_router import LLMRouter
-        from llm_workloads import tier_for
         LLMRouter().provider(tier_for("synt.finalize.external"))
         return True
-    except Exception:  # noqa: BLE001 - not configured is an ordinary answer
+    except TierConfigError:                # not configured: an ordinary answer
+        return False
+    except Exception as exc:  # noqa: BLE001 - a broken setup must be seen
+        _log.warning("change_applier: external model setup unreadable: %r", exc)
         return False
 
 
@@ -194,6 +199,15 @@ def _planner_can_use(name: str) -> bool:
         load_catalog(verify=True), VISIBILITY_COMPOSER).executors
 
 
+def _unrestricted(name: str) -> bool:
+    """True when the lifecycle owner knows ``name`` and holds no restriction
+    on it: what the catalog would show, without loading the catalog."""
+    from executor_aging import lookup
+
+    stat = lookup(name)
+    return bool(stat and not stat.deprecated_at and not stat.archived_at)
+
+
 def _creation_request(ci: ChangeIntent) -> tuple[str, str]:
     """The name a creation proposal asks for and the request Synth builds
     from: the one frozen when the proposal was born, never the page sentence
@@ -230,11 +244,16 @@ def _version_in_use_stays(ci: ChangeIntent | None, ended: str, *, tell: bool = T
     is not usable: its proposal ends like any other that failed."""
     if ci is None or ci.state != STATE_ACCEPTED or not rewrite_reason(ci):
         return False
+    name = _creation_request(ci)[0]
     try:
-        if not _planner_can_use(_creation_request(ci)[0]):
-            return False
-    except Exception as exc:  # noqa: BLE001 - an unreadable catalog keeps nothing
-        _log.warning("change_applier: catalog check failed: %r", exc)
+        usable = _planner_can_use(name)
+    except Exception as exc:  # noqa: BLE001 - asked again of the lifecycle owner
+        # A catalog read during a publication can fail; that says nothing of
+        # the version in use. Until 15/11/2026 it was read as «not usable»:
+        # the proposal failed or closed while its tool was still in use.
+        _log.warning("change_applier: catalog check failed, asking the lifecycle owner: %r", exc)
+        usable = _unrestricted(name)
+    if not usable:
         return False
     back_in_use(ci.id, ended=ended)
     _audit({"event": "rewrite_not_done", "id": ci.id, "ended": ended[:300]})
@@ -544,6 +563,7 @@ def accept_for_building(*, limit: int = 1) -> list[str]:
 # administration service, the only caller the signer accepts, carries it.
 _REQUESTED = "requested"
 _RUNNING = "running"
+_EXPIRED = "expired"
 
 
 def activation_running(ci: ChangeIntent) -> bool:
@@ -554,10 +574,10 @@ def activation_running(ci: ChangeIntent) -> bool:
     if not isinstance(state, dict) or state.get("state") not in (_RUNNING, _REQUESTED):
         return False
     try:
-        started = time.mktime(time.strptime(str(state.get("at")), "%Y-%m-%dT%H:%M:%SZ"))
+        started = calendar.timegm(time.strptime(str(state.get("at")), "%Y-%m-%dT%H:%M:%SZ"))
     except ValueError:
         return False
-    return time.mktime(time.gmtime()) - started < _ACTIVATION_STALE_S
+    return time.time() - started < _ACTIVATION_STALE_S
 
 
 _OUTCOME_SHOWN_S = 900
@@ -570,10 +590,10 @@ def _recent_activation_outcome(ci: ChangeIntent) -> str | None:
     if not isinstance(state, dict) or state.get("state") not in ("done", "refused"):
         return None
     try:
-        asked = time.mktime(time.strptime(str(state.get("at")), "%Y-%m-%dT%H:%M:%SZ"))
+        asked = calendar.timegm(time.strptime(str(state.get("at")), "%Y-%m-%dT%H:%M:%SZ"))
     except ValueError:
         return None
-    if time.mktime(time.gmtime()) - asked > _ACTIVATION_STALE_S + _OUTCOME_SHOWN_S:
+    if time.time() - asked > _ACTIVATION_STALE_S + _OUTCOME_SHOWN_S:
         return None
     return "activated" if state["state"] == "done" else "activation_refused"
 
@@ -663,10 +683,17 @@ def carry_requested_activations() -> dict:
     started: list[str] = []
     for ci in list_intents(state=STATE_ACCEPTED, intent_kind=KIND_CREATE_EXECUTOR, limit=200):
         state = (ci.intent_body or {}).get("activation")
-        if (not isinstance(state, dict) or state.get("state") != _REQUESTED
-                or not activation_running(ci)):
+        if not isinstance(state, dict) or state.get("state") != _REQUESTED:
             continue
         proposal_id, by, at = (str(state.get(key) or "") for key in ("proposal_id", "by", "at"))
+        if not activation_running(ci):
+            # Too late to carry: the person was told «I will write here how
+            # it went» and the buttons went away. Until 15/11/2026 nothing
+            # more was said; the candidate waits again on the page.
+            update_body(ci.id, activation={**state, "state": _EXPIRED})
+            _push("MSG_CHANGE_ACTIVATION_NOT_CARRIED_PUSH", ci,
+                  event_key=f"change_activation_expired:{ci.id}:{at}")
+            continue
         if not proposal_id:
             continue
         update_body(ci.id, activation={**state, "state": _RUNNING})

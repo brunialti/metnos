@@ -68,6 +68,16 @@ def _ensure_db() -> sqlite3.Connection:
             last_seen TEXT
         );
         CREATE INDEX IF NOT EXISTS lacune_n_seen ON lacune(n_seen DESC);
+        -- The days a gap was seen: what a window counts. `n_seen` is a count
+        -- for the whole life of the row and cannot be cut to a window.
+        CREATE TABLE IF NOT EXISTS lacune_days (
+            lacuna_id TEXT NOT NULL,
+            day TEXT NOT NULL,
+            PRIMARY KEY (lacuna_id, day)
+        );
+        INSERT OR IGNORE INTO lacune_days(lacuna_id, day)
+            SELECT lacuna_id, substr(last_seen, 1, 10) FROM lacune
+             WHERE last_seen IS NOT NULL;
         """)
         conn.commit()
     return conn
@@ -95,6 +105,8 @@ def _record_lacuna(query: str, intent: Intent, error_class: str,
                 last_seen = excluded.last_seen
         """, (lid, ts, query, intent.verb, intent.object, error_class,
               root_cause, suggested_action, ts))
+        conn.execute("INSERT OR IGNORE INTO lacune_days(lacuna_id, day) VALUES (?, ?)",
+                     (lid, ts[:10]))
         conn.commit()
         # W1 learning-loop (ADR 0185): lacuna RICORRENTE → proposta di
         # capacità (change_intent PROPOSED, triage umano su /admin/changes).
@@ -128,15 +140,18 @@ def _recent_gap_count(conn: sqlite3.Connection, verb, object_) -> int:
     """Requests for a capability on (verb, object) in the last 30 days.
 
     A proposal's score follows this number: it goes down when the requests
-    stop arriving, not only up while they come.
+    stop arriving, not only up while they come. Each sentence counts once a
+    day, and only the days inside the window: until 15/11/2026 the lifetime
+    count of every sentence seen in the window was summed, so a sentence
+    asked on five days two months ago and once yesterday counted six.
     """
     import learning_loop as _ll
     classes = sorted(_ll._CAPABILITY_GAP_CLASSES)
     row = conn.execute(
-        "SELECT COALESCE(SUM(n_seen), 0) FROM lacune "
-        "WHERE intent_verb IS ? AND intent_object IS ? AND last_seen >= ? "
-        f"AND error_class IN ({','.join('?' * len(classes))})",
-        (verb, object_, _days_ago(GAP_WINDOW_DAYS), *classes)).fetchone()
+        "SELECT COUNT(*) FROM lacune_days d JOIN lacune l ON l.lacuna_id = d.lacuna_id "
+        "WHERE l.intent_verb IS ? AND l.intent_object IS ? AND d.day >= ? "
+        f"AND l.error_class IN ({','.join('?' * len(classes))})",
+        (verb, object_, _days_ago(GAP_WINDOW_DAYS)[:10], *classes)).fetchone()
     return int(row[0]) if row else 0
 
 
@@ -154,6 +169,8 @@ def prune_gaps() -> int:
     try:
         removed = conn.execute("DELETE FROM lacune WHERE last_seen < ?",
                                (_days_ago(GAP_RETENTION_DAYS),)).rowcount
+        conn.execute("DELETE FROM lacune_days WHERE day < ? OR lacuna_id NOT IN "
+                     "(SELECT lacuna_id FROM lacune)", (_days_ago(GAP_RETENTION_DAYS)[:10],))
         conn.commit()
         return int(removed or 0)
     finally:

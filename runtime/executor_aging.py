@@ -614,12 +614,12 @@ def _is_synth(name: str, source: str | None) -> bool:
     fratello (delete_files→delete_entries, find_events_empty→read_events). La
     presenza on-disk nel repo VINCE sul source: un core non invecchia mai. §7.9.
     """
-    try:
-        import config as _C
-        if (_C.PATH_EXECUTORS / name).is_dir():
-            return False
-    except Exception:  # noqa: BLE001 — best-effort, ricade sul source
-        pass
+    import config as _C
+
+    # No broad except: a failed check fell back on the recorded source, and a
+    # handcrafted tool recorded as «synth» was then aged out (15/11/2026).
+    if (_C.PATH_EXECUTORS / name).is_dir():
+        return False
     if source is None:
         return False
     return source.startswith("synth")

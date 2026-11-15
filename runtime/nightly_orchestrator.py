@@ -51,8 +51,20 @@ NIGHTLY_SEQUENCE: tuple[str, ...] = (
 )
 
 
-def _declared_failure(result) -> str | None:
-    """Normalizza i comuni report job senza imporre una shape unica."""
+_COUNTERS = ("fail_count", "failed", "error_count", "n_errors", "errors")
+_NESTED_DEPTH = 3
+
+
+def _declared_failure(result, _depth: int = 0) -> str | None:
+    """Normalizza i comuni report job senza imporre una shape unica.
+
+    The steps say a failure in many ways: ``ok: False``, a counter
+    (``errors: 2``, ``n_errors``), a list of errors, an ``error`` or
+    ``<part>_error`` field, or the same inside the report of one of their
+    parts (``{"ok": True, "report": {"x": {"error": ...}}}``).  Until
+    15/11/2026 only the top-level ``ok``, three counters and a list were read:
+    six steps reported their failures and the night still looked green.
+    """
     if not isinstance(result, dict):
         return None
     if result.get("workload_id") and result.get("state") in {
@@ -65,16 +77,26 @@ def _declared_failure(result) -> str | None:
                    or result.get("reason") or "reported_failure")
     if result.get("partial") is True or result.get("status") == "partial":
         return str(result.get("error_class") or "partial_result")
-    for field in ("fail_count", "failed", "error_count"):
+    for field in _COUNTERS:
+        value = result.get(field)
+        if isinstance(value, (list, dict)):
+            if value:
+                return f"{field}={len(value)}"
+            continue
         try:
-            count = int(result.get(field) or 0)
+            count = int(value or 0)
         except (TypeError, ValueError):
             count = 0
         if count > 0:
             return f"{field}={count}"
-    errors = result.get("errors")
-    if isinstance(errors, (list, dict)) and errors:
-        return f"errors={len(errors)}"
+    for field, value in result.items():
+        if (field == "error" or field.endswith("_error")) and value:
+            return field
+    if _depth < _NESTED_DEPTH:
+        for field, value in result.items():
+            inner = _declared_failure(value, _depth + 1) if isinstance(value, dict) else None
+            if inner:
+                return f"{field}.{inner}"
     return None
 
 

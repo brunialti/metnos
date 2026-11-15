@@ -241,6 +241,10 @@ def _open_rw() -> sqlite3.Connection:
             # seed del checkout è temporaneamente assente o illeggibile.
             _log.warning("i18n seed merge skipped: %s", exc)
         c.commit()
+        # The tools in the sandbox read the main file only (immutable): a
+        # release's new and changed texts left in the write-ahead log stayed
+        # invisible to them, which showed the old text (15/11/2026).
+        _checkpoint(c)
     return c
 
 
@@ -699,9 +703,12 @@ def _checkpoint(conn) -> None:
     quindi le chiavi appena scritte devono esserci subito. Best-effort (no-op su
     connessione read-only/immutable)."""
     try:
-        conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-    except Exception:  # noqa: BLE001
-        pass
+        busy, _log_frames, _done = conn.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
+    except sqlite3.Error as exc:
+        _log.warning("i18n checkpoint not done: %s", exc)
+        return
+    if busy:
+        _log.warning("i18n checkpoint not complete: a reader held the log")
 
 
 def mark_for_translation(key: str, target_lang: str, source_lang: str) -> None:

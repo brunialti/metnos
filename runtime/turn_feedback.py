@@ -194,6 +194,12 @@ def apply_feedback(turn_id: str, action: str, by: str = "user") -> dict:
             _out = _rec_fb(turn_id, _verdict)
             if _out.get("ok"):
                 effects.append({"type": "praxis_feedback", **_out})
+            else:
+                # Why the path memory did not take it (no observation of this
+                # turn, or an error): until 15/11/2026 nothing said it, and a
+                # broken hook read as «nothing to do».
+                effects.append({"type": "praxis_feedback_not_applied",
+                                "reason": str(_out.get("reason") or "")[:120]})
     except Exception as ex:
         log.warning("turn_feedback: autopath hook failed: %r", ex)
 

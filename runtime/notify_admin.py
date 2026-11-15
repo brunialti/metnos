@@ -179,12 +179,27 @@ def notify(
     clean_key = str(event_key or "").strip()
     with _PROCESS_LOCK, _file_lock(exclusive=True):
         rows = _read_unlocked()
-        if clean_key:
-            duplicate = next(
-                (row for row in rows if row.get("event_key") == clean_key), None,
-            )
-            if duplicate is not None:
-                return {**duplicate, "duplicate": True}
+        duplicate = next(
+            (row for row in rows if row.get("event_key") == clean_key), None,
+        ) if clean_key else None
+        if duplicate is not None and not _send_again(duplicate):
+            return {**duplicate, "duplicate": True}
+        if duplicate is not None:
+            # Telegram failed to take it: the same event is sent again when
+            # it is notified again, a few times (15/11/2026: a failed first
+            # send kept the «Attiva»/«No» question off Telegram for good).
+            duplicate["delivery_attempts"] = int(duplicate.get("delivery_attempts") or 1) + 1
+            _write_unlocked(rows)
+            event = duplicate
+        else:
+            event = None
+    if event is not None:                  # sent outside the lock, like a new one
+        return _deliver(event, buttons, duplicate=True)
+    with _PROCESS_LOCK, _file_lock(exclusive=True):
+        rows = _read_unlocked()
+        if clean_key and any(row.get("event_key") == clean_key for row in rows):
+            raced = next(row for row in rows if row.get("event_key") == clean_key)
+            return {**raced, "duplicate": True}
         event = {
             "id": uuid.uuid4().hex,
             "event_key": clean_key,
@@ -199,7 +214,21 @@ def notify(
         }
         rows.append(event)
         _write_unlocked(rows)
+    return _deliver(event, buttons)
 
+
+# A send Telegram refused or that failed is tried again, up to this many
+# times in all; a missing recipient is not: it needs a person to pair one.
+_DELIVERY_ATTEMPTS = 6
+
+
+def _send_again(row: dict) -> bool:
+    return (row.get("delivery") == "local"
+            and str(row.get("delivery_error") or "").startswith("telegram_send_")
+            and int(row.get("delivery_attempts") or 1) < _DELIVERY_ATTEMPTS)
+
+
+def _deliver(event: dict, buttons: list | None, *, duplicate: bool = False) -> dict:
     delivered, error, where = _deliver_telegram(event["title"], event["body"], buttons)
     event["delivery"] = "telegram" if delivered else "local"
     event["delivery_error"] = error
@@ -216,7 +245,7 @@ def notify(
             "admin notification persisted locally kind=%s delivery=%s",
             event["kind"], error or "unavailable",
         )
-    return dict(event)
+    return {**event, "duplicate": True} if duplicate else dict(event)
 
 
 def recent(*, limit: int = 20, kind_prefix: str = "") -> list[dict]:

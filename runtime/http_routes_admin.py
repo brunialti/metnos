@@ -1127,9 +1127,10 @@ def _executors_rejected(catalog) -> list[dict]:
     from executor_lifecycle_state import RESTRICTED_REJECT_PREFIX, is_retired_rejection
 
     rows = []
+    named = getattr(catalog, "restricted_names", None) or {}
     for path, reason in (getattr(catalog, "rejected", None) or []):
         located = Path(path)
-        name = located.parent.name if located.suffix else located.name
+        name = named.get(path) or (located.parent.name if located.suffix else located.name)
         rows.append({"path": path, "name": name, "reason": reason,
                      "restricted": str(reason).startswith(RESTRICTED_REJECT_PREFIX),
                      "retired": is_retired_rejection(reason)})

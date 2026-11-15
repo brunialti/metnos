@@ -3,10 +3,10 @@ role: synt_tests
 tier: middle
 lang: en
 style: definitional
-version: 21
+version: 22
 owner: roberto
-updated: 2026-11-13
-sha_prev: a4f929a0
+updated: 2026-11-15
+sha_prev: 0ea7fdd8
 --- #}
 Generate declarative tests for the function below. Return only valid compact JSON, without markdown, comments or explanations.
 
@@ -16,7 +16,7 @@ Generate declarative tests for the function below. Return only valid compact JSO
 
 3. For valid input, ok=true, ok_count is the number of items processed without errors, fail_count is the number of discarded items. A false, zero or empty result is a successful computation. Check calculated values inside field_eq: results for transformed values, entries for read or enriched records. Do not rename these fields. Both are always lists with one item per input item, even for a single item; field_eq checks no other computed field. Compute each valid item’s result separately, then assemble the list in the same order. Do not confuse a result with the number of processed items. Respect case, spaces and Unicode as requested. For character counts use Unicode code points: "x" is 1, "yz" is 2, "è" is 1, "🙂" is 1 and "x🙂" is 2. Check every result against its own input again before emitting JSON.
 
-4. The final object has only tests, a list of objects with exactly name (string), input (object) and expect (nonempty object). The only matchers inside expect are ok (boolean), ok_count_eq (integer), fail_count_eq (integer), field_eq (field:value object) and error_contains (string). Use error_contains only if the request specifies error wording. Close every object and list. Represent all numbers as small integers or decimals without exponent notation. Every input must be representable in the runner’s JSON protocol, even when the function must reject it. A value outside that protocol never reaches the function: DO NOT generate cases for that constraint. For an invalid numeric type use null, "x" or a boolean. Transport representation limits are checked by the runtime separately from function tests.
+4. The final object has only tests, a list of objects with exactly name (string), input (object) and expect (nonempty object). The only matchers inside expect are ok (boolean), ok_count_eq (integer), fail_count_eq (integer), field_eq (field:value object) and error_contains (string). Use error_contains only if the request specifies error wording. Close every object and list. Represent all numbers as small integers or decimals without exponent notation. Every input must be representable in the runner’s JSON protocol, even when the function must reject it. A value outside that protocol never reaches the function: DO NOT generate cases for that constraint. For an invalid numeric type use "x" or a boolean, never null: a case cannot carry null, and a field whose value is null is not checked. Transport representation limits are checked by the runtime separately from function tests.
 
 5. Direct invocation: use the declared argument names. Only when from_step is declared, pass entries containing concrete records instead of the reference; there is no scratchpad in a test. No setup, teardown, env, reference, shell command, network or host data. When files are needed, each case gets a fresh private environment: fixture/input.txt contains "birth fixture\n" (one line, two words, 14 characters with the line break), fixture/empty.txt is empty, fixture/output is an empty directory. Use relative paths. These are the ONLY paths that exist: any other (a.txt, src, /tmp/x) does not exist and the case would fail on a missing file; a file to create goes under fixture/output/. Compute expectations from the real content of these files. from_step never appears as a number in a test: pass entries in its place.
 

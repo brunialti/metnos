@@ -3,10 +3,10 @@ role: synt_tests
 tier: middle
 lang: it
 style: definitional
-version: 21
+version: 22
 owner: roberto
-updated: 2026-11-13
-sha_prev: 9dd5e3ce
+updated: 2026-11-15
+sha_prev: b9a0eaa6
 --- #}
 Genera i test dichiarativi della funzione descritta sotto. Restituisci solo JSON valido e compatto, senza markdown, commenti o spiegazioni.
 
@@ -16,7 +16,7 @@ Genera i test dichiarativi della funzione descritta sotto. Restituisci solo JSON
 
 3. Per input valido, ok=true, ok_count è il numero di elementi elaborati senza errori, fail_count è il numero di elementi scartati. Un risultato false, zero o vuoto è un’elaborazione riuscita. Verifica i valori calcolati in field_eq: results per valori trasformati, entries per record letti o arricchiti. Non rinominare questi campi. Entrambi sono sempre liste con un elemento per ogni elemento dell’input, anche per un elemento solo; field_eq non verifica altri campi calcolati. Calcola separatamente il risultato di ciascun elemento valido, poi componi la lista nello stesso ordine. Non confondere un risultato con il numero di elementi elaborati. Rispetta maiuscole, spazi e Unicode come richiesto. Per il conteggio dei caratteri usa i punti di codice Unicode: "x" vale 1, "yz" vale 2, "è" vale 1, "🙂" vale 1 e "x🙂" vale 2. Verifica di nuovo ogni risultato contro il proprio input prima di emettere il JSON.
 
-4. L’oggetto finale ha un solo campo tests, lista di oggetti con esattamente name (stringa), input (oggetto) ed expect (oggetto non vuoto). I soli controlli ammessi dentro expect sono ok (booleano), ok_count_eq (intero), fail_count_eq (intero), field_eq (oggetto campo:valore) ed error_contains (stringa). Usa error_contains solo se la richiesta specifica il testo dell’errore. Chiudi ogni oggetto e lista. Rappresenta tutti i numeri come piccoli interi o decimali, senza notazione esponenziale. Tutti gli input devono essere rappresentabili nel protocollo JSON del runner, anche quando la funzione deve rifiutarli. Un valore fuori dal protocollo non arriva alla funzione: NON generare casi per quel vincolo. Per un input numerico di tipo invalido usa null, "x" o un booleano. I limiti di rappresentazione del trasporto sono verificati dal runtime, separatamente dai test della funzione.
+4. L’oggetto finale ha un solo campo tests, lista di oggetti con esattamente name (stringa), input (oggetto) ed expect (oggetto non vuoto). I soli controlli ammessi dentro expect sono ok (booleano), ok_count_eq (intero), fail_count_eq (intero), field_eq (oggetto campo:valore) ed error_contains (stringa). Usa error_contains solo se la richiesta specifica il testo dell’errore. Chiudi ogni oggetto e lista. Rappresenta tutti i numeri come piccoli interi o decimali, senza notazione esponenziale. Tutti gli input devono essere rappresentabili nel protocollo JSON del runner, anche quando la funzione deve rifiutarli. Un valore fuori dal protocollo non arriva alla funzione: NON generare casi per quel vincolo. Per un input numerico di tipo invalido usa "x" o un booleano, mai null: un caso non può contenere null, e un campo che vale null non si controlla. I limiti di rappresentazione del trasporto sono verificati dal runtime, separatamente dai test della funzione.
 
 5. Invocazione diretta: usa i nomi di argomento dichiarati. Solo se è dichiarato from_step, passa entries con i record concreti al posto del riferimento; lo scratchpad non esiste nel test. Nessun setup, teardown, env, reference, comando shell, rete o dato dell’host. Se servono file, ogni caso ha un ambiente privato nuovo: fixture/input.txt contiene "birth fixture\n" (una riga, due parole, 14 caratteri col ritorno a capo), fixture/empty.txt è vuoto, fixture/output è una cartella vuota. Usa percorsi relativi. Questi sono i SOLI percorsi che esistono: ogni altro (a.txt, src, /tmp/x) non esiste e il caso fallirebbe per file mancante; un file da creare va sotto fixture/output/. Calcola le aspettative dal contenuto reale di questi file. from_step non compare mai come numero in un test: al suo posto passa entries.
 

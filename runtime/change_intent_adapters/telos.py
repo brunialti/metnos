@@ -29,6 +29,10 @@ from __future__ import annotations
 
 from typing import Iterable
 
+from logging_setup import get_logger
+
+_log = get_logger(__name__)
+
 from change_intents import (
     KIND_CREATE_EXECUTOR,
     KIND_EXTEND_EXECUTOR,
@@ -47,7 +51,8 @@ def iter_telos() -> Iterable[ChangeIntent]:
     try:
         rows = tps.load_all(enrich_rows=False, max_rows=10000)
         heads = tps.recompose_clusters(rows)
-    except Exception:
+    except Exception as exc:  # noqa: BLE001 - said, then no proposal from here
+        _log.warning("change_intent_adapters.telos: store unreadable: %r", exc)
         return
     for head in heads:
         if not head:

@@ -26,6 +26,10 @@ import json
 import sqlite3
 from typing import Iterable
 
+from logging_setup import get_logger
+
+_log = get_logger(__name__)
+
 import proposals_state as ps
 from change_intents import (
     KIND_DEDUPE_EXECUTORS,
@@ -51,7 +55,8 @@ def _state_legacy_to_canonical(s: str) -> str:
 def iter_introvertiva() -> Iterable[ChangeIntent]:
     try:
         cn = ps._open()
-    except Exception:
+    except Exception as exc:  # noqa: BLE001 - said, then no proposal from here
+        _log.warning("change_intent_adapters.introvertiva: store unreadable: %r", exc)
         return
     try:
         rows = cn.execute("""

@@ -146,15 +146,15 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'calendar_resolver.py': ('ca5870a48f1e9241f906237adb80ae7543b3fc6cf8469a8c3d49d479c8d529ba', (('comparison', 4),)),
     'calibration_check.py': ('1372bc7e3adcb29f17155e1cc0a9f36501df90568a38129268444e09462b0afb', (('comparison', 1),)),
     'capabilities.py': ('9971e44f92f8597c815e12a129a1549f20fd315e44120f4d83246e983d025759', (('comparison', 12),)),
-    'change_applier.py': ('a7d2cfaf24cac39b661c6d710b3260f5dc22206105e6d5164953f1d53aa9611c', (('comparison', 7), ('iteration', 1), ('membership', 3), ('regex', 1))),
+    'change_applier.py': ('9a59adaa006f7273a213dc78917eed7f831024709642e66cec8abec59d52e442', (('comparison', 7), ('iteration', 1), ('membership', 3), ('regex', 1))),
     'change_applier_extend.py': ('e7d6b4979524f60c2aac6cf71988080c195da012a63fc21261d44fbb95b7108d', (('comparison', 2),)),
     'change_intent_adapters/_base.py': ('f6f87e2831c8a9ee8eeecc3b7589a40920c6a50d90a2ee543bf80a5e1edc7c6d', (('comparison', 1),)),
-    'change_intent_adapters/introvertiva.py': ('f5b1248c9d1fec659b0afb1ddc563dee058fb64220ac3a150d7edb91902a6efe', (('comparison', 3),)),
+    'change_intent_adapters/introvertiva.py': ('7cc8a5ef40c2377951f6321f7caab0525d40a7c8d4771e5eeb4d515de858943b', (('comparison', 3),)),
     'change_intent_adapters/synt.py': ('c61f42767f29ef8d8b22adcce42e8c2e82651943d223c3eaa75532dd5b60383f', (('comparison', 3),)),
-    'change_intent_adapters/telos.py': ('d7bcce89b9a6641cc306e284e45a8f1bc1cf4c55763a4bd59ca3e10506eeaa0f', (('comparison', 2),)),
+    'change_intent_adapters/telos.py': ('6f8510f970b4a973cd7fa4fbe9336568ec66b7d92dc2420e871c61fdba707bda', (('comparison', 2),)),
     'change_intent_adapters/user_feedback.py': ('7ebb04050ddb83149d6520dfe8edbb2a08654bde0dfc959dba89d30fe58cc91b', (('comparison', 1), ('membership', 1))),
-    'change_intents.py': ('b69e30d9aae8832af6cde11e1344a823324606e77f69ead8fb3c6afd97afb2d2', (('comparison', 17), ('helper-argument', 1), ('membership', 1))),
-    'change_observer.py': ('5e8f4eda210bd6fc6ac9aba91c3b7b997ffdfc88db427e5aa4e427693246ffe2', (('comparison', 12),)),
+    'change_intents.py': ('4eda45baed53728aef7af6abc0506e3ac8afe5fb919aeb4ac69a953d1766c058', (('comparison', 18), ('helper-argument', 1), ('membership', 1))),
+    'change_observer.py': ('881837363987915b5a0ced1a6272e4552d310831d54c2cec4bd7d8c39b589fb7', (('comparison', 12),)),
     'change_rollback.py': ('85f0f61cba91b45b554c202e361a2e255b0f14d5ffdc853bd75c80d6ecdce718', (('comparison', 2),)),
     'channels/approval.py': ('5f3e8f37e8be1611fc3193b95560574d3fcdd76d64fb5233a571a7043b6aa99b', (('comparison', 2),)),
     'channels/daemon.py': ('3271fa8695d4c13d0cd34d2ac1ac6ffa4762292b85e467544afcf22b3caa71f6', (('comparison', 68), ('helper-argument', 1))),
@@ -199,7 +199,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'engine/autopath.py': ('b15a32c4c2d0e8feb6d094c497fabc019521314627d5d66111f1e876bae109c9', (('comparison', 9),)),
     'engine/cache_validity.py': ('327054d7405ded3d940765c513df0ad2e33ffd2b24a03d83b3a09e1ac3dcf8a3', (('comparison', 1), ('helper-argument', 1))),
     'engine/dispatch.py': ('b6657d774e8d743b2c3e5af6f45bb62576bbb74e8599c16c67a4d7aa03583d42', (('comparison', 254), ('helper-argument', 54), ('iteration', 4), ('membership', 7), ('prefix-suffix', 2), ('regex', 2))),
-    'engine/executor.py': ('f283ffdd8c59bf3404fba8b86cfdeccb2303f905390060ff6865217e94fe2e14', (('comparison', 68), ('helper-argument', 14), ('iteration', 1))),
+    'engine/executor.py': ('b0c74a378d65433eac60770e4442783b5d3c79e2b394951ceb86999d8a3050e2', (('comparison', 68), ('helper-argument', 14), ('iteration', 1), ('regex', 1))),
     'engine/fastpath.py': ('a4cce020f75e2f233b3fdf0440b74cbdf05fed1309a732d57631df630f907263', (('comparison', 5), ('iteration', 1))),
     'engine/fastpath_promote.py': ('cf53597bd2db6d7bdeec60f5b9ace2ca89d391ba5b23a9b5eea60ed3a49ad1fa', (('comparison', 4),)),
     'engine/grammar_framework.py': ('1e14e30dfe0909732c4b1d5f785843789c7b1f88b2e9a6f9a66eb50a042ed788', (('comparison', 1), ('helper-argument', 1))),
@@ -212,7 +212,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'engine/routing_pool.py': ('985dcb71537f064b80c52b34413336908e6ccba6d3a82606de2e30fc6d82473f', (('comparison', 14), ('iteration', 1))),
     'engine/terminator.py': ('e472ea80f60b73b52858737b20aac19568ad923ee0bcf77630fa29b6fb70cbd0', (('comparison', 1), ('membership', 1))),
     'engine/validator.py': ('2ee67b4d9edf42812bfc8098836334b6382e5bdf9de8e548bc051bb48d9aff2e', (('comparison', 12),)),
-    'executor_aging.py': ('c0d29f569a280a975a335a2d0e1a43c7172a371bf18769e59ae63aae3ec91d1f', (('comparison', 4), ('helper-argument', 1))),
+    'executor_aging.py': ('7288ed10759d4608b8bc259154940a8ca9d4c6de8957febed98634f765fda7e2', (('comparison', 4), ('helper-argument', 1))),
     'executor_birth_activation_probe.py': ('4f4dee67e65a43ea550f7e14894f407fde8509c531b66e7ada5233201c7c0d89', (('comparison', 1), ('helper-argument', 1), ('regex', 1))),
     'executor_birth_admin_operations.py': ('75fedbf55e79076fdbbbd2e87025e73971c10214696d3651f9be6a11a9cd77e9', (('comparison', 1),)),
     'executor_birth_admin_preflight.py': ('d990874e25bb87e1c3563a8bdd7259e66c7f6f3d39ce623e3971bad93f19c3d5', (('comparison', 354), ('helper-argument', 20), ('iteration', 8), ('membership', 14), ('prefix-suffix', 9), ('regex', 7))),
@@ -292,7 +292,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'http_routes_agent.py': ('49d5ff06edea892925f6e5c58e37bbf06c6eade033fc37e430085cf3653035ba', (('comparison', 80), ('helper-argument', 19), ('iteration', 1), ('membership', 5), ('prefix-suffix', 1))),
     'http_routes_durable_workloads.py': ('9c72b2c4296cee7af9e8870f8466438c3280fb3429113c4f5c129a7fad273542', (('comparison', 2), ('helper-argument', 12), ('iteration', 3), ('literal-lookup', 1))),
     'http_routes_stack.py': ('8dced35285ba737e67128363e97dfc380f709c1bd6c9688dc4c0ca2e03377189', (('comparison', 1),)),
-    'i18n.py': ('0918f6566736ae0711c545d7ea3850f0b90110861bc7afca7a8d320513864b15', (('comparison', 7),)),
+    'i18n.py': ('a15db49dcce5fa16a7ea42c5771f22b01214a0382bb3f5e41ea8794421241587', (('comparison', 7),)),
     'i18n_activation.py': ('0abc58c234dca972241de5bec924953c2c8a5a1bbb0225d71e9ae8007a5ec2fb', (('comparison', 36), ('helper-argument', 4))),
     'i18n_materializer.py': ('fe6e9e4fea9c4771cd7ff8d24354588ce47c552f02387189e28631494d0f1b2e', (('comparison', 19), ('helper-argument', 4))),
     'i18n_pipeline.py': ('03dc9751575c52b16d016ce31705c1f5c4e26b159e03913aaaefaea36f6ae96b', (('comparison', 63), ('helper-argument', 3))),
@@ -313,7 +313,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'jobs/i18n_translate_pending.py': ('d47d1081ab7280bd40781417227b7196623d1c23909696b71f66e612de791448', (('comparison', 4),)),
     'jobs/index_image_embed_backfill.py': ('41d340774651e77433b2f796d24783d6294e67e9c47362c0e807d16cdff0ea11', (('comparison', 1),)),
     'jobs/reembed_path_context.py': ('4bed0f44c608d86d50a489a57d1f64e778c0f4bd3fdc3a438d9d6c518c802821', (('comparison', 2), ('helper-argument', 1))),
-    'jobs/skill_sandbox_watchdog.py': ('d7b8489256996b34967e6c5471d216b03ae4ca5855b47f500c2cb47b5fac06e0', (('comparison', 1),)),
+    'jobs/skill_sandbox_watchdog.py': ('88e3f522e1968d7455d8c6ea2df62a2259d494c3d819852259a05fe2424e5003', (('comparison', 1),)),
     'junk_mail_resolver.py': ('bfeed627f4237e2a9b5916976425e51e3534d4938a1cc6a3b4e9877646ea77f7', (('comparison', 1),)),
     'lifecycle_summary.py': ('48c4352aaf665aa0031bb3f62f2a49e07001ab278d7d30b5ca5256911b108f24', (('comparison', 2), ('helper-argument', 4))),
     'llm_concurrency.py': ('4b4754412fcdb2327ba1813f88035169f8e1031fb426a5dfaf1f1c04b1b642d0', (('comparison', 1),)),
@@ -339,7 +339,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'mnestoma.py': ('5e8e36a858e61c8e1e3afc403d631c554321a77cbcfc680471f7046c6e9c1ed6', (('comparison', 17), ('default', 1), ('helper-argument', 2))),
     'model_identity.py': ('6786fbf24e433e1417c760a7bdcafb87229d9fea1b211d755d9d83e76042afba', (('comparison', 2), ('helper-argument', 3))),
     'naming_grammar.py': ('b2300f8e825d5ad095785a9408237fcfdb3d17581f316eb08dc868e050b2556f', (('comparison', 6),)),
-    'nightly_orchestrator.py': ('1c4f8bdd08f1daf2496a7a854cbce96934f86252476aa618e729989e25d7abb4', (('comparison', 4), ('helper-argument', 1), ('iteration', 1), ('membership', 1), ('prefix-suffix', 2))),
+    'nightly_orchestrator.py': ('afd97fc8785551c4972f2df682ae3c498479cc9f994133ffa24a9c38886e8d24', (('comparison', 5), ('helper-argument', 1), ('iteration', 1), ('membership', 1), ('prefix-suffix', 3))),
     'nlu.py': ('a3d7dac0348b73354b4464d84931d4509c7d306176bb86bf5f28835d2ece085d', (('comparison', 3),)),
     'observability.py': ('149e32b25e0a0d99a18d8d66abb4d64bac91fd1b8754fb8bd307a8db3953d60a', (('comparison', 5),)),
     'orchestration.py': ('fa5f6e41725a4c0aa76b1907ae25012e7fef90782fbb22da30478e88138f43e0', (('comparison', 90), ('helper-argument', 3), ('iteration', 2), ('membership', 11))),
@@ -425,7 +425,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'store.py': ('45927fda29a44168cbc00eb9ce4f6bd519edb4b3729723b68b1fe0ff349b8608', (('comparison', 1),)),
     'store_bootstrap.py': ('5ec6ad37a946c48c4fe51447ca84d58fc1b4ec910a5e8a6a5e536544e02cd7a7', (('helper-argument', 1),)),
     'synt.py': ('8b81761ad25a1a10fa08ace308d3b64ce60fe93386f9149d9b9dc5f7bd2aa63e', (('comparison', 21), ('helper-argument', 2))),
-    'synt_multistage.py': ('ead7d466fae3ee890186b7cca6d48f3845f7a5bb9698ba30721947f920bb8941', (('comparison', 16), ('helper-argument', 1), ('iteration', 1), ('membership', 1), ('prefix-suffix', 2))),
+    'synt_multistage.py': ('78efc02e0492a1f5cd60b3fdd670476e937f5356e260564b7102577d72bee142', (('comparison', 16), ('helper-argument', 1), ('iteration', 1), ('membership', 1), ('prefix-suffix', 2))),
     'synth_orphan_cleanup.py': ('f25507830bd69d3016e8d51cdf91e38a134274aa723ae90b2c22993b04e5aa5a', (('comparison', 2), ('helper-argument', 1))),
     'synth_request.py': ('82bd98ef176d3a94e428a6ba582c6ed840167aa054b16be1e76e3eebbfd7998d', (('comparison', 3), ('helper-argument', 1))),
     'system/admin.py': ('95baaa5e7ca0105f272b3e9725a08b911b15e3f0f3cb2413144d9b47ca57361c', (('comparison', 35), ('helper-argument', 2), ('iteration', 2), ('literal-lookup', 1), ('membership', 1), ('prefix-suffix', 7), ('regex', 3))),
@@ -449,7 +449,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'tool_schema_slim.py': ('273cd4a9d0ec466eb795d3d9abb3c469f738c16322862c409f8d5804a3246e4c', (('comparison', 4),)),
     'treated_issues_guard.py': ('16f164d13e8c226bd102f261ea54101a9b44b14c0e4fef368ed09fac3e20c3b2', (('comparison', 1),)),
     'turn_events.py': ('34d60d2f5268df855c8a9b50a8951d2130e07d875c3aab908656e0a19d41240b', (('comparison', 4),)),
-    'turn_feedback.py': ('6c143d8b03bc4e205bf836ec3fe330b674978ee70b5a6daffa906492b386975a', (('comparison', 10), ('helper-argument', 1))),
+    'turn_feedback.py': ('c73d52d1c54b1f85ff0c9f02d0d1bfae46e3b708635fb6e221653f60455a50bd', (('comparison', 10), ('helper-argument', 1))),
     'tutor/associations.py': ('fc9b06e5d4b667c66c87c4e6020a676bde731de570d85ad4b3ec16739072f078', (('comparison', 3), ('helper-argument', 2))),
     'tutor/catalog.py': ('97ec3dc2b0b3bcf746bf69c1d6adb1a606f80885f882f19f891775046b39324b', (('comparison', 7), ('helper-argument', 3))),
     'tutor/compose.py': ('ab5dc6262535f3659e10bf10e4ab9adad817d3d540f96422d4255016388f249f', (('comparison', 1),)),
@@ -528,7 +528,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'executor_birth_retention_authority.py': ('2164380cda98f5d09536a478185f5761a8f4a9492b327c4cbe1bfcb512fd84b7', (('comparison', 2), ('membership', 2))),
     'executor_birth_transition_gate.py': ('550a081dda5dcdc1965f6fa9ab61e8eda33bc261b6bdcaa1a6e5db370e7b27b1', (('comparison', 4),)),
     'executor_birth_transition_receipts.py': ('953acb4029c6f6b3624e4d21a63c322c0a725101bf53ede1375e777d7382072d', (('comparison', 1),)),
-    'executor_lifecycle_state.py': ('c795cb81a1d3c71082b90bedfa8c3c44970d78adb1c035c26d049d4fd1877413', (('comparison', 4),)),
+    'executor_lifecycle_state.py': ('5c7d62ad1eb7c2d0283920d08c1fa624a190344b03ee419f0eaa04a91cb2f109', (('comparison', 4),)),
     'executor_prerequisites.py': ('e9a25cd4c3c006ef444a2738db0f2b5eaeefa1fcea8b496bfcfc6dc684c8dbb0', (('comparison', 6), ('membership', 1), ('prefix-suffix', 2), ('regex', 3))),
     'executor_support.py': ('7f4b2d7a0f1126c81eba3ec33985642ec4e4ef41c0814862c8a93edccbc00fa1', (('helper-argument', 1),)),
     'filesystem_io.py': ('69dc854d3d05e2723ff6430c58b871ac3f964ec436fc7c6790ae02a4f0d74ff9', (('regex', 1),)),
@@ -611,7 +611,8 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'provider_catalog.py': ('f51fa274ab74fd2a4cfd1473ff05dab0ed87e51965a2c790ea9cbb6009b29ac7', (('comparison', 13), ('helper-argument', 1), ('prefix-suffix', 3))),
     'oauth_flow.py': ('15fdff4c5dab34c478d3e5ae9b152c828a08079e669125c7f605fc9b55fe89e4', (('comparison', 2),)),
     'examined_content_receipts.py': ('cb3b694a19ff068fa68ff963647d05e0731d9c41adef6e37eec0d98634ec1151', (('comparison', 1), ('helper-argument', 1), ('regex', 1))),
-    'scorecards.py': ('36b5940c71cb09308804c8d58115d63092da7d0ee5c3c5f72764feccc9d3cb06', (('comparison', 2),)),
+    'scorecards.py': ('4419f5b6ce806b4cb3fe38b8b05b2ba3e094ef22b5d37fc7888cca43333a3336', (('comparison', 2),)),
+    'notify_admin.py': ('9406cac514d6575bc84a4c83d3dff512d3e9092d0cd6cb49ce1549bffeeb95bc', (('comparison', 1), ('prefix-suffix', 1))),
 }
 
 VALUE_BOUND_SEED_GATE_FINGERPRINTS: Mapping[str, int] = {
@@ -1106,6 +1107,14 @@ VALUE_BOUND_EXECUTABLE_CONTAINER_FINGERPRINTS = frozenset({
 # relative path, lexical owner, symbol, container kind and complete payload;
 # the adjacent reason records why the value is not input-language authority.
 VALUE_BOUND_CLOSING_TECHNICAL_CONTAINERS: Mapping[str, str] = {
+    "00c33cc3ae50feee6c9134d8d04130f50a61e922f0955fa7b4f0db403750f745":
+        "closed step error codes and the message key of the action the terminator suggests",
+    "4868c5c620aec7dc1fd1091d5a301d578f3b2c34b669d6ac3fdad6ca1e898eb2":
+        "closed counter fields in which a nightly step reports its failures",
+    "c5266fea65d28a3c3cbc620a8636880f72fe218020005635ae281d0c56c3f02e":
+        "closed error classes the runtime records when a tool crashed",
+    "ff501cc5ab73747f58763a9bbb667dd71028dc0b0df2f0c68291f28a83c494d3":
+        "closed matcher names the functional test runner knows",
     "3cbbb088a54a51e3d5bf4100797ca270e3e30cb52f9f248fed599a55d016d323":
         "closed runtime placeholder keys that are resolved but not passed as hidden context",
     "7ea5835f677ae25cb87701414491557dbdf7813232c5d4c9bbd707ebed55c18f":

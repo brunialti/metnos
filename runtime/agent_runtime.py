@@ -8655,7 +8655,10 @@ def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, progress=None,
         if _engine_v2_res is None:
             log.final_kind = "error"
             # §11 messages: user-facing via i18n DB, mai diagnostica interna.
-            log.final_message = msg("ERR_QUERY_NOT_UNDERSTOOD")
+            if _force_legacy_compound:
+                log.final_message = msg("ERR_QUERY_NOT_UNDERSTOOD")
+            else:
+                _engine_failed(log)
             if verbose:
                 print("[engine] declino (engine None): intent/proposer non hanno "
                       "coperto la query")
@@ -8694,7 +8697,9 @@ def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, progress=None,
             return _finalize_engine_result(
                 log, _eng_up_res, actor=actor, channel=channel,
                 conversation_id=conversation_id, turn_id=turn_id)
-        # else: engine upload ha declinato → esito onesto (legacy rimosso)
+        _engine_failed(log)
+        log.final_kind = "error"
+        log.ts_end = time.time(); log.write(); return log
 
     # ══ PLANNER legacy RIMOSSO (ADR 0181-ext, 2026-07-04) ═══════════════════
     # Il ReAct legacy (~3350 LOC) è stato CANCELLATO. Ci si arrivava solo quando
@@ -8706,6 +8711,18 @@ def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, progress=None,
     log.final_kind = "error"
     log.final_message = msg("ERR_QUERY_NOT_UNDERSTOOD")
     log.ts_end = time.time(); log.write(); return log
+
+
+def _engine_failed(log) -> None:
+    """The engine did not return: an import failed or the dispatch raised.
+
+    It is a defect of Metnos, not a request it did not understand: until
+    15/11/2026 it was written as «not understood», with no origin and no
+    error class, and could not be told apart from a declined request.
+    """
+    log.final_message = msg("ERR_ENGINE_INTERNAL")
+    log.error_class = "engine_internal_error"
+    log.match_source = "engine"
 
 
 def format_simple_answer(executor_name, result):

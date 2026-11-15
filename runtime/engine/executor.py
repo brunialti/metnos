@@ -423,30 +423,41 @@ _RUNTIME_TIME_NOW_PLUS_HOURS = re.compile(r"^now_plus_(\d+)_?(?:h|hours?)$")
 _RUNTIME_TIME_NOW_MINUS_HOURS = re.compile(r"^now_minus_(\d+)_?(?:h|hours?)$")
 
 
-def _resolve_runtime_time_key(key: str) -> str | None:
+def _resolve_runtime_time_key(key: str, *, as_date: bool = False, now=None) -> str | None:
     """Universal §7.9: risolve placeholder TIME dinamici (now, today,
     now_plus_Nd, now_minus_Nh, ecc.) → ISO timestamp. Pattern in regex
     chiusa, deterministico, no LLM.
+
+    The clock is the instance's zone: «today» is the person's day, not the
+    UTC one (at half past midnight they differ).  ``as_date`` gives the day
+    alone, for a plan that writes a time after the placeholder
+    («${RUNTIME:now_plus_1d}T17:00:00+01:00» is tomorrow at 17).
     """
     import datetime as _dt
-    now = _dt.datetime.now(_dt.timezone.utc)
+    from time_window_parser import temporal_now
+
+    now = temporal_now(now)
     if _RUNTIME_TIME_NOW.match(key):
-        return now.isoformat()
-    if _RUNTIME_TIME_TODAY.match(key):
+        moment = now
+    elif _RUNTIME_TIME_TODAY.match(key):
         return now.date().isoformat()
-    m = _RUNTIME_TIME_NOW_PLUS_DAYS.match(key)
-    if m:
-        return (now + _dt.timedelta(days=int(m.group(1)))).isoformat()
-    m = _RUNTIME_TIME_NOW_MINUS_DAYS.match(key)
-    if m:
-        return (now - _dt.timedelta(days=int(m.group(1)))).isoformat()
-    m = _RUNTIME_TIME_NOW_PLUS_HOURS.match(key)
-    if m:
-        return (now + _dt.timedelta(hours=int(m.group(1)))).isoformat()
-    m = _RUNTIME_TIME_NOW_MINUS_HOURS.match(key)
-    if m:
-        return (now - _dt.timedelta(hours=int(m.group(1)))).isoformat()
-    return None
+    else:
+        moment = None
+        for pattern, unit, sign in ((_RUNTIME_TIME_NOW_PLUS_DAYS, "days", 1),
+                                    (_RUNTIME_TIME_NOW_MINUS_DAYS, "days", -1),
+                                    (_RUNTIME_TIME_NOW_PLUS_HOURS, "hours", 1),
+                                    (_RUNTIME_TIME_NOW_MINUS_HOURS, "hours", -1)):
+            m = pattern.match(key)
+            if m:
+                moment = now + sign * _dt.timedelta(**{unit: int(m.group(1))})
+                break
+        if moment is None:
+            return None
+    return moment.date().isoformat() if as_date else moment.isoformat()
+
+
+# A time written right after a placeholder: the placeholder is the day.
+_TIME_AFTER_PLACEHOLDER = re.compile(r"(?:T|\s+)\d{1,2}:\d{2}")
 
 
 # Runtime values a plan may name with `${RUNTIME:key}` but that are not passed
@@ -466,7 +477,7 @@ def _resolve_runtime_placeholders(args: dict, runtime_ctx: dict) -> dict:
     if not runtime_ctx:
         return args
     resolvers = _build_runtime_resolvers(runtime_ctx)
-    def _resolve_key(key: str) -> str | None:
+    def _resolve_key(key: str, *, as_date: bool = False) -> str | None:
         # 1. Static resolver (actor/lang/channel)
         if key in resolvers:
             return resolvers[key]
@@ -484,13 +495,14 @@ def _resolve_runtime_placeholders(args: dict, runtime_ctx: dict) -> dict:
             except Exception:
                 return None
         # 3. Dynamic time resolver
-        return _resolve_runtime_time_key(key)
+        return _resolve_runtime_time_key(key, as_date=as_date)
     def _sub_str(v: str) -> str:
         m = _RUNTIME_RE.search(v)
         if not m:
             return v
         def _repl(mm):
-            r = _resolve_key(mm.group(1))
+            dated = _TIME_AFTER_PLACEHOLDER.match(v, mm.end()) is not None
+            r = _resolve_key(mm.group(1), as_date=dated)
             return r if r is not None else mm.group(0)
         return _RUNTIME_RE.sub(_repl, v)
     def _sub_recursive(v):

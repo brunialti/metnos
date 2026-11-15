@@ -39,22 +39,16 @@ def _count_distinct_skills() -> int:
 
 
 def _count_guest_users() -> int:
-    """Conta user_channels con role != 'host'."""
-    import sqlite3
-    db_path = _C.PATH_USER_DATA / "users.sqlite"
-    if not db_path.exists():
-        return 0
-    try:
-        con = sqlite3.connect(str(db_path))
-        cur = con.cursor()
-        cur.execute(
-            "SELECT COUNT(*) FROM user_channels WHERE role != 'host'"
-        )
-        n = cur.fetchone()[0]
-        con.close()
-        return int(n)
-    except Exception:
-        return 0
+    """Guests registered on the instance (``users.role``).
+
+    Until 15/11/2026 this opened a database that does not exist
+    (``users.sqlite``, the store is ``users.db``) and asked for a column the
+    channels table does not have; a broad ``except`` read both as «no
+    guests», so this trigger could never fire.
+    """
+    import users
+
+    return len(users.list_users(role="guest"))
 
 
 def _audit_summary() -> dict:
@@ -109,7 +103,10 @@ def task_skill_sandbox_watchdog() -> dict:
     )
     try:
         from notify_admin import notify
-        notify(msg, kind="sandbox_threshold")
+        # Once per state of the triggers, not every night.
+        notify(msg, kind="sandbox_threshold", event_key=(
+            f"sandbox_threshold:{report['n_skills'] >= THRESHOLD_N_SKILLS}:"
+            f"{report['n_guests'] >= THRESHOLD_N_GUESTS}"))
     except Exception:
         import logging
         logging.getLogger(__name__).warning(msg)

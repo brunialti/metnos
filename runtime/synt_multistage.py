@@ -646,6 +646,52 @@ def _provider_answers_problem(answers, bases: tuple[str, ...], planned=()) -> st
     return None
 
 
+# The matchers the test runner knows (`test_runner.check_expect`): a case
+# naming another one fails every candidate, whatever its code (15/11/2026).
+RUNNER_MATCHERS = frozenset({
+    "content_contains", "content_length_eq", "content_length_gte", "content_length_lte",
+    "entries_field_eq", "entries_max", "entries_min", "error_contains", "fail_count_eq",
+    "field_eq", "has_field", "matches_contains", "matches_count_eq", "metadata_field_eq",
+    "metadata_field_gte", "metadata_field_lte", "ok", "ok_count_eq", "ok_or_err_class",
+})
+_MATCHER_SHAPES = {"ok": bool, "field_eq": dict, "error_contains": str,
+                   "ok_count_eq": int, "fail_count_eq": int}
+
+
+def _has_null(value) -> bool:
+    if value is None:
+        return True
+    if isinstance(value, dict):
+        return any(_has_null(item) for item in value.values())
+    if isinstance(value, list):
+        return any(_has_null(item) for item in value)
+    return False
+
+
+def _expect_problem(name, expect) -> str | None:
+    """A matcher the runner does not know, a value of the wrong kind, or a null
+    the manifest cannot carry (TOML has none)."""
+    for matcher, value in (expect or {}).items():
+        if value is None:                 # left out of the manifest: no check
+            continue
+        if matcher not in RUNNER_MATCHERS:
+            return (f"case {name!r} uses the matcher {matcher!r}, which does not exist: use only "
+                    "ok, ok_count_eq, fail_count_eq, field_eq and error_contains")
+        kind = _MATCHER_SHAPES.get(matcher)
+        if kind is not None and (not isinstance(value, kind)
+                                 or (kind is int and isinstance(value, bool))):
+            return (f"case {name!r} gives {matcher}={json.dumps(value, ensure_ascii=False)[:60]}: "
+                    f"{matcher} takes {'an object' if kind is dict else kind.__name__}")
+    return None
+
+
+def _null_problem(name, expect) -> str | None:
+    if any(_has_null(value) for value in (expect or {}).values() if value is not None):
+        return (f"case {name!r} expects null, which a case cannot carry: do not check a "
+                "field whose value is null")
+    return None
+
+
 def stage3_cases_problem(stage2: dict, tests: list) -> str | None:
     """A defect of the functional cases that no code could satisfy, or None.
 
@@ -665,6 +711,13 @@ def stage3_cases_problem(stage2: dict, tests: list) -> str | None:
     bases = provider_bases(stage2)
     verdicts: dict[str, tuple[str, bool]] = {}
     for case in tests or []:
+        wrong = _expect_problem(case.get("name"), case.get("expect"))
+        if wrong:
+            return wrong
+        if any(item is None for value in (case.get("input") or {}).values()
+               if isinstance(value, list) for item in value):
+            return (f"case {case.get('name')!r} puts null in a list, which a case cannot carry: "
+                    'use "x" or a boolean for an invalid item')
         answers = (case.get("input") or {}).get(provider_reads.RESPONSES_KEY)
         if not bases and answers is not None:
             return (f"case {case.get('name')!r} passes {provider_reads.RESPONSES_KEY}: this tool "
@@ -687,6 +740,9 @@ def stage3_cases_problem(stage2: dict, tests: list) -> str | None:
                 return (f"case {case.get('name')!r} expects {field}="
                         f"{json.dumps(value, ensure_ascii=False)[:80]}: `{field}` is always a "
                         "list with one item per input item, even for a single item")
+        wrong = _null_problem(case.get("name"), case.get("expect"))
+        if wrong:
+            return wrong
         arguments = case.get("input") or {}
         absent = _absent_fixture(arguments)
         if absent and (case.get("expect") or {}).get("ok") is True:

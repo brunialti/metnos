@@ -38,6 +38,7 @@ Grace period default: 7 giorni (env METNOS_CHANGE_GRACE_DAYS).
 """
 from __future__ import annotations
 
+import calendar
 import json
 import os
 import sqlite3
@@ -96,7 +97,7 @@ def _iso_to_epoch(iso: str | None) -> float:
     if not iso:
         return 0.0
     try:
-        return time.mktime(time.strptime(iso, "%Y-%m-%dT%H:%M:%SZ"))
+        return float(calendar.timegm(time.strptime(iso, "%Y-%m-%dT%H:%M:%SZ")))
     except (ValueError, TypeError):
         return 0.0
 
@@ -126,11 +127,12 @@ def _verify_executor_health(ci: ChangeIntent, *, failure_rolls_back: bool = True
     effect = ci.applied_effect or {}
     name = effect.get("executor_name") or ci.intent_target
     age = _age_days(ci.applied_at)
-    try:
-        from executor_aging import lookup
-        stat = lookup(name)
-    except Exception:
-        stat = None
+    from executor_aging import lookup
+
+    # An unreadable store is not «never called»: until 15/11/2026 it was, and
+    # the proposal was finalized as unused. The error reaches the observer
+    # task, which counts it and leaves the proposal for the next night.
+    stat = lookup(name)
     if stat is None:
         # Executor non in stats — non ancora chiamato, ok finche' giovane
         if age >= _grace_days():

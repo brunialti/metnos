@@ -15,6 +15,7 @@ from __future__ import annotations
 import ast
 import json
 import os
+import re
 import time
 from pathlib import Path
 
@@ -92,9 +93,28 @@ def presentation_columns(tests) -> list[dict]:
     return [{"key": "item", "source": list(dict.fromkeys(generic)), "cell_max": 160}]
 
 
+_TOML_BARE_KEY = re.compile(r"[A-Za-z0-9_-]+")
+
+
+def _toml_key(key) -> str:
+    """A key as TOML reads it back: bare when it can be, quoted otherwise.
+
+    Written bare, ``a.txt`` became the table ``a`` with a key ``txt`` and
+    ``città`` made the manifest unreadable (15/11/2026)."""
+    import json as _json
+    key = str(key)
+    return key if _TOML_BARE_KEY.fullmatch(key) else _json.dumps(key, ensure_ascii=False)
+
+
 def _toml_value(v):
     """Serializza un valore Python come TOML letterale.
-    Usa = per dict (NON : come JSON). Ricorre per dict/list."""
+    Usa = per dict (NON : come JSON). Ricorre per dict/list.
+
+    TOML has no null: a key whose value is None is left out of its table (an
+    argument not given), never written as an empty string, which is another
+    value (15/11/2026: an expected null became "" and a correct tool was
+    refused). The case check refuses a null that cannot be left out.
+    """
     import json as _json
     if isinstance(v, bool):
         return "true" if v else "false"
@@ -107,7 +127,7 @@ def _toml_value(v):
     if isinstance(v, list):
         return "[" + ", ".join(_toml_value(x) for x in v) + "]"
     if isinstance(v, dict):
-        parts = [f"{k} = {_toml_value(vv)}" for k, vv in v.items()]
+        parts = [f"{_toml_key(k)} = {_toml_value(vv)}" for k, vv in v.items() if vv is not None]
         return "{ " + ", ".join(parts) + " }"
     return _json.dumps(str(v), ensure_ascii=False)
 
@@ -121,6 +141,13 @@ SYNTH_EXTERNAL_ATTEMPTS = 2
 
 class CandidateTestsFailed(RuntimeError):
     """The candidate's code does not pass its own functional cases."""
+
+
+class BirthTestsUnavailable(RuntimeError):
+    """The place where the cases run could not be prepared: nothing was
+    learnt about the candidate, so it is not refused and no attempt is spent
+    (15/11/2026: it was charged to the code, the cases were called wrong and
+    the person was asked about the external model)."""
 
 
 # How `_validate_birth_tests` names the first failed case in its report.
@@ -182,6 +209,8 @@ def _validate_birth_tests(executor_dir):
     report = validate_synth_tests(data)
     if report.all_passed:
         return None
+    if report.error_code == "test_environment_unavailable":
+        raise BirthTestsUnavailable(report.error_code)
     # The summary names the failed cases; the first one also says what was
     # expected and what the code returned, so a rewrite has something to fix.
     failed = next((case for case in report.tests if case.get("passed") is not True), None)
@@ -632,7 +661,10 @@ def handle_synth_request(args, *, user_query, progress=None, verbose=False, curr
         )
         _raw_cat = _load_catalog(verify=True)
         _cat = _filter_for_visibility(_raw_cat, _VISIBILITY_COMPOSER)
-    except Exception:
+    except Exception as exc:  # noqa: BLE001 - said: the checks below are skipped
+        # Without the catalog «it exists already» and the sibling names are
+        # not checked: say it, a silent skip builds a duplicate (15/11/2026).
+        log.warning("synth_request: catalog unreadable, duplicate checks skipped: %r", exc)
         _raw_cat = None
         _cat = None
 
@@ -861,6 +893,11 @@ def handle_synth_request(args, *, user_query, progress=None, verbose=False, curr
     real_requests = tuple(
         " ".join(str(text).split())[:300]
         for text in (args.get("examples") or []) if str(text).strip())[:5]
+    if external_model:
+        # The consent names one request, the sample: the other requests stay
+        # here (15/11/2026: up to five, possibly of other people of the
+        # instance, went to the external model).
+        real_requests = ()
     t_start = time.time()
     # Counted attempts. The first writes the candidate; each later one knows
     # why the previous was refused, and rewrites only the code when name,

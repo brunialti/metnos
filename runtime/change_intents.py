@@ -499,14 +499,20 @@ def upsert_intent(ci: ChangeIntent) -> str:
         reopened = False
         if existing["state"] == STATE_REJECTED:
             try:
-                until = (json.loads(existing["intent_body"] or "{}") or {}).get("closed_until")
+                body = json.loads(existing["intent_body"] or "{}") or {}
             except (TypeError, ValueError):
-                until = None
+                body = {}
+            until = body.get("closed_until") if isinstance(body, dict) else None
             reopened = bool(until) and now >= str(until)
         if reopened:
+            # Judged as a new proposal, as a person's «Riapri» does: a consent
+            # given for the attempt that was closed is not a consent for this
+            # one (15/11/2026: it sent the build to the external model).
             cn.execute(
-                "UPDATE change_intents SET state=?, failed_at=NULL, failed_reason=NULL WHERE id=?",
-                (STATE_PROPOSED, existing["id"]))
+                "UPDATE change_intents SET state=?, failed_at=NULL, failed_reason=NULL,"
+                " intent_body=? WHERE id=?",
+                (STATE_PROPOSED, json.dumps(_without_closed_facts(body), ensure_ascii=False),
+                 existing["id"]))
         # What a person decided on stays as they read it: summary and
         # rationale follow new evidence only while the proposal is open.
         open_for_text = existing["state"] == STATE_PROPOSED or reopened
@@ -858,6 +864,13 @@ def back_in_use(id_: str, *, ended: str) -> ChangeIntent:
 _CLOSED_FACTS = ("closed_until", "external_model_offer", "external_model_consent")
 
 
+def _without_closed_facts(body: dict) -> dict:
+    """The body of a proposal that starts again: without the closure, the
+    consent given for the closed attempt and that attempt's activation."""
+    return {key: value for key, value in (body or {}).items()
+            if key not in _CLOSED_FACTS and key != "activation"}
+
+
 REOPEN = "reopen"
 
 
@@ -881,8 +894,7 @@ def reopen(id_: str, *, by: str) -> ChangeIntent:
         raise TransitionError(_msg("ERR_CHANGE_NOT_FOUND", id=id_))
     if current.state != STATE_REJECTED:
         raise TransitionError(_msg("ERR_CHANGE_REOPEN_NOT_REJECTED", state=current.state))
-    body = {key: value for key, value in (current.intent_body or {}).items()
-            if key not in _CLOSED_FACTS}
+    body = _without_closed_facts(current.intent_body or {})
     return _transition(id_, to_state=STATE_PROPOSED, extra_cols={
         "intent_body": body, "failed_at": None, "failed_reason": None,
         "decision_by": by, "decision_ts": _iso_utc_now(),

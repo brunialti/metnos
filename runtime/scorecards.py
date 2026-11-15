@@ -31,6 +31,10 @@ WINDOWS = (7, 30, 90)
 _ANSWER = "final_answer"
 _THUMBS_UP, _THUMBS_DOWN = "ok", "error"
 _TOP_CLASSES = 3
+# A tool that raised, or a built-in that returned no proper answer: a fault
+# of the code too, like the classes that withdraw a generated tool
+# (15/11/2026: they were counted as refusals the tool declared).
+_CRASH_CLASSES = frozenset({"exception", "internal_error"})
 
 _lock = threading.Lock()
 _days: dict[str, tuple[int, int, list]] = {}
@@ -156,7 +160,8 @@ def tool_cards(days: int = WINDOW_DAYS, *, now: float | None = None) -> list[dic
     """One card per tool that ran in the window, the most used first.
 
     ``faults`` are failures of the tool's own code (the classes that withdraw
-    a generated tool); ``refusals`` are the failures it declared itself.
+    a generated tool, and a crash); ``refusals`` are the failures it declared
+    itself.
     """
     from generated_rewrite import FAULT_CLASSES
 
@@ -172,7 +177,7 @@ def tool_cards(days: int = WINDOW_DAYS, *, now: float | None = None) -> list[dic
             card["calls"] += 1
             if ok:
                 card["ok"] += 1
-            elif error_class in FAULT_CLASSES:
+            elif error_class in FAULT_CLASSES or error_class in _CRASH_CLASSES:
                 card["faults"] += 1
             else:
                 card["refusals"] += 1

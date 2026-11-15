@@ -20,6 +20,15 @@ from __future__ import annotations
 
 import detection_lexicon as _detlex
 import detection_lexicon_seed_resolvers as _resolver_seed
+from logging_setup import get_logger
+
+log = get_logger(__name__)
+
+# What a provider check may meet that is an answer («not available now»): a
+# file that cannot be read, a state file that does not parse. Anything else
+# is a defect and must be seen (5/8–14/11/2026: a removed function, read as
+# «not connected», sent every calendar request to the empty local calendar).
+_CHECK_ERRORS = (OSError, ValueError)
 
 
 def _gw_creds() -> bool:
@@ -46,11 +55,9 @@ def _github_creds() -> bool:
     nessuna chiamata di rete. `resolve_github_token` e' la SoT unica
     (env > cred-store > gh CLI).
     """
-    try:
-        import skill_credentials as _sc
-        return bool(_sc.resolve_github_token())
-    except Exception:
-        return False
+    import skill_credentials as _sc
+
+    return bool(_sc.resolve_github_token())
 
 
 _CREDENTIALS = {
@@ -206,7 +213,8 @@ def resolve(object_name: str, query: str = "") -> str | None:
         try:
             if avail(prov):
                 return prov
-        except Exception:
+        except _CHECK_ERRORS as exc:
+            log.warning("backend_resolver: %s not checked: %r", prov, exc)
             continue
     # fallback: primo dichiarato (l'executor darà errore onesto se non usabile)
     provs = spec.get("providers") or []
@@ -239,8 +247,8 @@ def resolve_backend_arg(tool_name: str, args: dict, query: str = "",
         try:
             if avail(cur):
                 return args
-        except Exception:  # noqa: BLE001
-            pass
+        except _CHECK_ERRORS as exc:
+            log.warning("backend_resolver: %s not checked: %r", cur, exc)
     # Tool che NON DICHIARA l'arg di backend nel suo schema tipizzato →
     # niente injection (§7.3, 7/7/2026): scrivergli `client` è junk che
     # l'executor ignora — caso reale list_dirs (object dirs, ma il tool è

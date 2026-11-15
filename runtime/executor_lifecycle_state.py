@@ -87,12 +87,15 @@ def _generation(executor: object) -> str:
                or getattr(executor, "digest", None) or "")
 
 
-def register_loaded_executors(executors: Iterable[object]) -> int:
+def register_loaded_executors(executors: Iterable[object], *,
+                              lifted: set | None = None) -> int:
     """Let the aging store learn the names and revisions this load produced.
 
     A restriction earned by an earlier revision is lifted here when a new one
-    arrives under the same name; the load that notices it still applies the
-    snapshot it signed, the next one sees the executor unrestricted.
+    arrives under the same name, and ``lifted`` receives its name: the load
+    that notices it must not apply the restriction of the old revision from
+    the snapshot it took before. Until 15/11/2026 it did, and the first load
+    after «Attiva» judged the version just admitted not usable.
     """
     from executor_aging import note_generation, register
 
@@ -103,7 +106,10 @@ def register_loaded_executors(executors: Iterable[object]) -> int:
             if note_generation(executor.name, _generation(executor)):
                 log.info("lifecycle state: %s is a new revision, restriction lifted",
                          executor.name)
-        except Exception:
+                if lifted is not None:
+                    lifted.add(executor.name)
+        except Exception as exc:  # noqa: BLE001 - one row must not stop the load
+            log.warning("lifecycle state: %s not registered: %r", executor.name, exc)
             continue
         recorded += 1
     return recorded

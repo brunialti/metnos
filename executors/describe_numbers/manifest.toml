@@ -80,7 +80,7 @@ expect = { ok = true }
 [[tests]]
 name   = "field_invalido"
 input  = { values = [1, 2, 3], fields = ["mean", "kurtosis"] }
-expect = { ok = false, error_contains = "Campi sconosciuti" }
+expect = { ok = false, error_contains = "kurtosis" }
 
 [[tests]]
 name   = "scarta_non_numerici"

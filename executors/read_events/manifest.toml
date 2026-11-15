@@ -70,10 +70,11 @@ en = "Explicit upper cap (§2.7): max entries returned. 0 = no cap. Default 50."
 
 [args.properties.calendar_id]
 type    = "string"
+default = "primary"
 
 [args.properties.calendar_id.description]
-it = "Un calendario preciso. DEVI OMETTERLO per leggere tutti i calendari della persona. NON DEVI passarlo se la richiesta non nomina un calendario. 'primary' = solo il principale."
-en = "One specific calendar. YOU MUST OMIT IT to read all the person's calendars. YOU MUST NOT pass it unless the request names a calendar. 'primary' = the main one only."
+it = "Identificatore del calendario. Default 'primary'. Semantica specifica al backend (per i provider cloud, l'id del calendario remoto)."
+en = "Calendar identifier. Default 'primary'. Backend-specific semantics (for cloud providers, the remote calendar id)."
 
 [args.properties.client]
 type        = "string"
