@@ -202,6 +202,10 @@ _CAUSE_KEYS = {
 # gia' fornito.
 _ERROR_ACTION_KEYS = {
     "ERR_PATH_NOT_FOUND": "MSG_TERM_PATH_NOT_FOUND_ACTION",
+    # The request selects on a piece of data the results do not carry
+    # («contacts older than ten years»: a contact has no date). The tool says
+    # which data there are; asking for «path, name, period» again is no help.
+    "unknown_where_field": "MSG_TERM_UNKNOWN_FIELD_ACTION",
 }
 
 # Alcune classi executor non sono error_code ma descrivono comunque l'azione
